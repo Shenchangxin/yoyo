@@ -1,0 +1,113 @@
+:root {
+  color-scheme: dark;
+  --bg: #101115;
+  --bg-2: #17181d;
+  --bg-3: #1e2027;
+  --line: #2a2d36;
+  --text: #e8e6e1;
+  --muted: #9a978f;
+  --accent: #d7a35c;
+  --ok: #7dbe8c;
+  --bad: #d36c6c;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100%;
+}
+
+.side {
+  border-right: 1px solid var(--line);
+  background: var(--bg-2);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand {
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+  color: var(--accent);
+  padding: 8px 10px 16px;
+}
+
+.nav {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.nav.active, .nav:hover { background: var(--bg-3); color: var(--text); }
+
+.main { display: flex; flex-direction: column; min-width: 0; }
+.top {
+  height: 44px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hash { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+
+.panel { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.row { display: flex; gap: 8px; }
+input, textarea, select {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+textarea { min-height: 90px; width: 100%; resize: vertical; }
+button.btn {
+  background: var(--accent);
+  color: #1a140c;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.ghost {
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.log, pre, .mono {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }

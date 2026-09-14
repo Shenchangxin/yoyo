@@ -1,0 +1,44 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/yoyo
+/yoyo-desktop
+
+# Frontend
+frontend/node_modules/
+frontend/dist/**
+!frontend/dist/
+!frontend/dist/index.html
+frontend/bindings/
+
+# Wails / build
+build/bin/
+build/windows/info.json
+*.syso
+
+# Go
+vendor/
+coverage.out
+*.test
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local agent data
+.yoyo/
+*.log
+.env
+.env.*
+
+# Test scratch
+/tmp/
+testdata/tmp/
