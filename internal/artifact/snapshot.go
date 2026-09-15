@@ -18,20 +18,39 @@ func (s *Store) GetSnapshot(hash string) (HarnessSnapshot, error) {
 	return snap, err
 }
 
+type DiffField struct {
+	Field   string `json:"field"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Changed bool   `json:"changed"`
+}
+
+func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
+	join := func(xs []string) string { return strings.Join(xs, ",") }
+	rows := []DiffField{
+		{"model", a.ModelFingerprint, b.ModelFingerprint, a.ModelFingerprint != b.ModelFingerprint},
+		{"parent", a.Parent, b.Parent, a.Parent != b.Parent},
+		{"loop", a.LoopPreset, b.LoopPreset, a.LoopPreset != b.LoopPreset},
+		{"playbook", a.Playbook, b.Playbook, a.Playbook != b.Playbook},
+		{"policy", a.PolicyPack, b.PolicyPack, a.PolicyPack != b.PolicyPack},
+		{"eval", a.EvalSuite, b.EvalSuite, a.EvalSuite != b.EvalSuite},
+		{"prompts", join(a.PromptFragments), join(b.PromptFragments), join(a.PromptFragments) != join(b.PromptFragments)},
+		{"skills", join(a.Skills), join(b.Skills), join(a.Skills) != join(b.Skills)},
+		{"tools", join(a.Tools), join(b.Tools), join(a.Tools) != join(b.Tools)},
+		{"wasm", join(a.WASMPlugins), join(b.WASMPlugins), join(a.WASMPlugins) != join(b.WASMPlugins)},
+		{"note", a.Note, b.Note, a.Note != b.Note},
+	}
+	return rows
+}
+
 func SnapshotDiff(a, b HarnessSnapshot) string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "model %s -> %s\n", a.ModelFingerprint, b.ModelFingerprint)
-	fmt.Fprintf(&buf, "parent %s -> %s\n", a.Parent, b.Parent)
-	fmt.Fprintf(&buf, "loop %s -> %s\n", a.LoopPreset, b.LoopPreset)
-	fmt.Fprintf(&buf, "playbook %s -> %s\n", a.Playbook, b.Playbook)
-	fmt.Fprintf(&buf, "policy %s -> %s\n", a.PolicyPack, b.PolicyPack)
-	fmt.Fprintf(&buf, "eval %s -> %s\n", a.EvalSuite, b.EvalSuite)
-	fmt.Fprintf(&buf, "prompts %s\n  -> %s\n", strings.Join(a.PromptFragments, ","), strings.Join(b.PromptFragments, ","))
-	fmt.Fprintf(&buf, "skills %s\n  -> %s\n", strings.Join(a.Skills, ","), strings.Join(b.Skills, ","))
-	fmt.Fprintf(&buf, "tools %s\n  -> %s\n", strings.Join(a.Tools, ","), strings.Join(b.Tools, ","))
-	fmt.Fprintf(&buf, "wasm %s\n  -> %s\n", strings.Join(a.WASMPlugins, ","), strings.Join(b.WASMPlugins, ","))
-	if a.Note != b.Note {
-		fmt.Fprintf(&buf, "note %q -> %q\n", a.Note, b.Note)
+	for _, f := range SnapshotDiffFields(a, b) {
+		if !f.Changed {
+			fmt.Fprintf(&buf, "%s %s\n", f.Field, f.From)
+			continue
+		}
+		fmt.Fprintf(&buf, "%s %s -> %s\n", f.Field, f.From, f.To)
 	}
 	return buf.String()
 }

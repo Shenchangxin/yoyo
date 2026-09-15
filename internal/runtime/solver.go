@@ -21,6 +21,12 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 		return writeCall("hello.txt", "hello"), nil
 	case strings.Contains(user, "answer.txt") && !toolWrote(req, "answer.txt"):
 		return writeCall("answer.txt", "42"), nil
+	case strings.Contains(user, "README.md") && !toolWrote(req, "README.md"):
+		return writeCall("README.md", "yoyo"), nil
+	case strings.Contains(user, "notes/ok.txt") && !toolWrote(req, "notes/ok.txt"):
+		return writeCall("notes/ok.txt", "ok"), nil
+	case strings.Contains(user, "copy.txt") && strings.Contains(user, "seed.txt") && !toolWrote(req, "copy.txt"):
+		return writeCall("copy.txt", "seed"), nil
 	default:
 		return Message{Role: RoleAssistant, Content: "done"}, nil
 	}
@@ -48,4 +54,11 @@ func writeCall(path, content string) Message {
 	return Message{Role: RoleAssistant, ToolCalls: []ToolCall{{
 		ID: "w1", Name: "write_file", Arguments: string(args),
 	}}}
+}
+
+// FailingSolver never writes files. Used to prove parallel-model BoN prefers a working model.
+type FailingSolver struct{}
+
+func (FailingSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
+	return Message{Role: RoleAssistant, Content: "nope"}, nil
 }

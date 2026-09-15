@@ -54,7 +54,7 @@ func TestSeedCheckoutRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Checkout(h2); err != nil {
+	if err := a.CheckoutOpts(h2, app.CheckoutOpts{ConfirmL3: true}); err != nil {
 		t.Fatal(err)
 	}
 	if a.ActiveHash() != h2 {
@@ -107,6 +107,70 @@ func TestAgentLoopTrajectory(t *testing.T) {
 	if !sawTool {
 		t.Fatal("no tool call in trajectory")
 	}
+	out2, err := a.Send(context.Background(), sess.ID, "confirm the file", runtime.HeuristicSolver{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = out2
+	evs2, err := a.Trajectory(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var users int
+	for _, ev := range evs2 {
+		if ev.Type == trace.TypeUser {
+			users++
+		}
+	}
+	if users < 2 {
+		t.Fatalf("expected continued session, user events=%d", users)
+	}
+	active := a.ActiveHash()
+	if staged := a.Refs.GetOrEmpty(artifact.RefStaging); staged != "" && staged == active {
+		t.Fatal("online ACE staging must not move refs/active")
+	}
+}
+
+func TestCheckoutRequiresL3(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	h1 := a.ActiveHash()
+	loopH, err := a.CAS.Put(artifact.KindLoopPreset, "alt", runtime.DefaultLoop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := a.LoadSnapshot(h1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.Parent = h1
+	snap.LoopPreset = loopH
+	h2, err := a.CAS.PutSnapshot(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = a.Checkout(h2)
+	if _, ok := app.AsL3(err); !ok {
+		t.Fatalf("want L3, got %v", err)
+	}
+	if a.ActiveHash() != h1 {
+		t.Fatal("checkout without L3 moved active")
+	}
+	if err := a.CheckoutOpts(h2, app.CheckoutOpts{ConfirmL3: true}); err != nil {
+		t.Fatal(err)
+	}
+	if a.ActiveHash() != h2 {
+		t.Fatal(a.ActiveHash())
+	}
+	if err := a.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if a.ActiveHash() != h1 {
+		t.Fatalf("rollback should bypass L3, got %s", a.ActiveHash())
+	}
 }
 
 func TestEvalAndSelfHarnessPromote(t *testing.T) {
@@ -147,6 +211,13 @@ func TestEvalAndSelfHarnessPromote(t *testing.T) {
 	if after.Metrics.HeldInPass+after.Metrics.HeldOutPass == 0 {
 		t.Fatalf("evolved harness still failing: %+v", after)
 	}
+	for _, c := range res.Evidence.Clusters {
+		for _, id := range c.TaskIDs {
+			if id == "write-answer" {
+				t.Fatal("held-out task leaked into proposer evidence")
+			}
+		}
+	}
 }
 
 func TestWASMAdmitDispose(t *testing.T) {
@@ -186,5 +257,75 @@ func TestCapabilityJail(t *testing.T) {
 	res := tools.Call("read_file", `{"path":"`+filepath.ToSlash(filepath.Join(outside, "x.txt"))+`"}`)
 	if res.Err == nil {
 		t.Fatal("expected jail")
+	}
+}
+
+func TestForkRenameAndPlaybookThumb(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Send(context.Background(), sess.ID, "Write hello.txt containing hello", runtime.HeuristicSolver{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RenameSession(sess.ID, "pinned"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.GetSession(sess.ID)
+	if err != nil || got.Title != "pinned" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	fork, err := a.ForkSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.ID == sess.ID {
+		t.Fatal("fork reused id")
+	}
+	evs, err := a.Trajectory(fork.ID)
+	if err != nil || len(evs) == 0 {
+		t.Fatalf("fork trajectory %v %d", err, len(evs))
+	}
+	pb, err := a.Playbook()
+	if err != nil || len(pb.Bullets) == 0 {
+		t.Fatalf("%+v %v", pb, err)
+	}
+	before := pb.Bullets[0].Helpful
+	next, err := a.RatePlaybook(pb.Bullets[0].ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Bullets[0].Helpful != before+1 {
+		t.Fatalf("helpful %d -> %d", before, next.Bullets[0].Helpful)
+	}
+	if a.ActiveHash() == a.Refs.GetOrEmpty(artifact.RefStaging) {
+		t.Fatal("thumbs must not move refs/active")
+	}
+}
+
+func TestBestOfModelsPrefersWorkingSolver(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	rep, err := a.BestOfModels(context.Background(), []string{"fail", "ok"}, map[string]runtime.Client{
+		"fail": runtime.FailingSolver{},
+		"ok":   runtime.HeuristicSolver{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Kind != "models" || rep.BestModel != "ok" {
+		t.Fatalf("%+v", rep)
+	}
+	if rep.Best.Metrics.HeldInPass+rep.Best.Metrics.HeldOutPass == 0 {
+		t.Fatalf("winner should pass tasks: %+v", rep.Best)
 	}
 }

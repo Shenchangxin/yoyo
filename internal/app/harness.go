@@ -1,6 +1,9 @@
 package app
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
@@ -107,21 +110,68 @@ func (a *App) LoadSnapshot(hash string) (artifact.HarnessSnapshot, error) {
 }
 
 func (a *App) Checkout(hash string) error {
-	if _, err := a.CAS.GetSnapshot(hash); err != nil {
+	return a.CheckoutOpts(hash, CheckoutOpts{})
+}
+
+type CheckoutOpts struct {
+	ConfirmL3 bool
+}
+
+type ErrL3Required struct {
+	From     string   `json:"from"`
+	To       string   `json:"to"`
+	Surfaces []string `json:"surfaces"`
+}
+
+func (e ErrL3Required) Error() string {
+	return "L3 confirmation required to change " + strings.Join(e.Surfaces, ",")
+}
+
+func AsL3(err error) (ErrL3Required, bool) {
+	var e ErrL3Required
+	if errors.As(err, &e) {
+		return e, true
+	}
+	return ErrL3Required{}, false
+}
+
+func l3Surfaces(cur, next artifact.HarnessSnapshot) []string {
+	var out []string
+	if cur.LoopPreset != next.LoopPreset {
+		out = append(out, "loop_preset")
+	}
+	if cur.PolicyPack != next.PolicyPack {
+		out = append(out, "policy_pack")
+	}
+	return out
+}
+
+func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
+	next, err := a.CAS.GetSnapshot(hash)
+	if err != nil {
 		return err
 	}
 	prev := a.ActiveHash()
+	if prev != "" && prev != hash {
+		cur, err := a.CAS.GetSnapshot(prev)
+		if err == nil {
+			if surfaces := l3Surfaces(cur, next); len(surfaces) > 0 && !opts.ConfirmL3 {
+				return ErrL3Required{From: prev, To: hash, Surfaces: surfaces}
+			}
+		}
+	}
 	if prev != "" {
 		_ = a.Refs.Archive(prev)
 	}
 	if err := a.Refs.Set(artifact.RefActive, hash); err != nil {
 		return err
 	}
-	snap, err := a.CAS.GetSnapshot(hash)
-	if err == nil && snap.ModelFingerprint != "" {
-		_ = a.Refs.Set(artifact.ModelActive(snap.ModelFingerprint), hash)
+	if next.ModelFingerprint != "" {
+		_ = a.Refs.Set(artifact.ModelActive(next.ModelFingerprint), hash)
 	}
-	_, _ = a.Journal.Append("harness.checkout", map[string]string{"hash": hash, "prev": prev})
+	_, _ = a.Journal.Append("harness.checkout", map[string]any{
+		"hash": hash, "prev": prev, "l3": opts.ConfirmL3,
+	})
 	return a.Refs.Set(artifact.RefHead, hash)
 }
 
@@ -133,7 +183,7 @@ func (a *App) Rollback() error {
 	if snap.Parent == "" {
 		return errNoParent
 	}
-	return a.Checkout(snap.Parent)
+	return a.CheckoutOpts(snap.Parent, CheckoutOpts{ConfirmL3: true})
 }
 
 type errString string
@@ -142,15 +192,21 @@ func (e errString) Error() string { return string(e) }
 
 const errNoParent errString = "no parent snapshot to roll back to"
 
-func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFragment, artifact.Playbook, []artifact.Skill, artifact.EvalSuite, error) {
+func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFragment, artifact.Playbook, []artifact.Skill, artifact.EvalSuite, artifact.PolicyPack, error) {
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {
-		return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, err
+		return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, err
 	}
 	loop := runtime.DefaultLoop()
 	if snap.LoopPreset != "" {
 		if v, _, err := artifact.Decode[artifact.LoopPreset](a.CAS, snap.LoopPreset); err == nil {
 			loop = v
+		}
+	}
+	pol := runtime.DefaultPolicy()
+	if snap.PolicyPack != "" {
+		if v, _, err := artifact.Decode[artifact.PolicyPack](a.CAS, snap.PolicyPack); err == nil {
+			pol = v
 		}
 	}
 	var frags []artifact.PromptFragment
@@ -180,7 +236,7 @@ func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFrag
 			}
 		}
 	}
-	return loop, frags, pb, skills, suite, nil
+	return loop, frags, pb, skills, suite, pol, nil
 }
 
 func hIf(s string) string { return s }

@@ -27,10 +27,13 @@ type Task struct {
 }
 
 type TaskResult struct {
-	ID     string `json:"id"`
-	Pass   bool   `json:"pass"`
-	Output string `json:"output"`
-	Error  string `json:"error,omitempty"`
+	ID          string `json:"id"`
+	Pass        bool   `json:"pass"`
+	Output      string `json:"output"`
+	Error       string `json:"error,omitempty"`
+	Repeats     int    `json:"repeats,omitempty"`
+	RepeatsPass int    `json:"repeats_pass,omitempty"`
+	Isolate     string `json:"isolate,omitempty"`
 }
 
 type RunReport struct {
@@ -64,6 +67,10 @@ type RunOpts struct {
 	Model         string
 	AllowShell    bool
 	RevealHeldOut bool
+	// IsolateRoot, when a git repo, makes each task run in a detached
+	// worktree of that repo with the Harbor task overlaid. Eval copies
+	// remain the default when this is empty.
+	IsolateRoot string
 }
 
 func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
@@ -78,10 +85,20 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		heldOutSet[id] = true
 	}
 	ids := append([]string{}, opts.Suite.HeldIn...)
-	if opts.RevealHeldOut {
-		ids = append(ids, opts.Suite.HeldOut...)
-	} else {
-		ids = append(ids, opts.Suite.HeldOut...)
+	ids = append(ids, opts.Suite.HeldOut...)
+	safetySet := map[string]bool{}
+	for _, id := range opts.Suite.Safety {
+		safetySet[id] = true
+		already := false
+		for _, x := range ids {
+			if x == id {
+				already = true
+				break
+			}
+		}
+		if !already {
+			ids = append(ids, id)
+		}
 	}
 	repeats := opts.Suite.Repeats
 	if repeats <= 0 {
@@ -99,6 +116,9 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		task, err := LoadHarborTask(filepath.Join(root, id))
 		if err != nil {
 			rep.Results = append(rep.Results, TaskResult{ID: id, Error: err.Error()})
+			if safetySet[id] {
+				rep.Metrics.SafetyFail++
+			}
 			continue
 		}
 		passCount := 0
@@ -110,14 +130,19 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 			}
 		}
 		last.Pass = passCount > repeats/2 || (repeats == 1 && last.Pass)
+		last.Repeats = repeats
+		last.RepeatsPass = passCount
 		rep.Results = append(rep.Results, last)
+		if safetySet[id] && !last.Pass {
+			rep.Metrics.SafetyFail++
+		}
 		if heldOutSet[id] {
 			rep.HeldOut[id] = last.Pass
 			rep.Metrics.HeldOutTotal++
 			if last.Pass {
 				rep.Metrics.HeldOutPass++
 			}
-		} else {
+		} else if containsID(opts.Suite.HeldIn, id) {
 			rep.HeldIn[id] = last.Pass
 			rep.Metrics.HeldInTotal++
 			if last.Pass {
@@ -129,22 +154,23 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 }
 
 func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts) TaskResult {
-	work, err := os.MkdirTemp("", "yoyo-eval-*")
+	work, cleanup, isolate, err := prepareWork(task.Dir, opts.IsolateRoot)
 	if err != nil {
 		return TaskResult{ID: task.ID, Error: err.Error()}
 	}
-	defer os.RemoveAll(work)
-	if err := copyDir(task.Dir, work); err != nil {
-		return TaskResult{ID: task.ID, Error: err.Error()}
-	}
+	defer cleanup()
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	caps := capability.NewBroker(capability.AutoPolicy{
 		Allow: []capability.Level{capability.ReadWorkspace, capability.WriteWorkspace, capability.Shell},
-	}, func(capability.Request) (capability.Decision, error) {
+	}, func(context.Context, capability.Request) (capability.Decision, error) {
 		return capability.Always, nil
 	})
-	tools := &rt.WorkspaceTools{Workspace: work, SessionID: opts.SessionID, Caps: caps}
+	skillBodies := map[string]string{}
+	for _, s := range opts.Skills {
+		skillBodies[s.Name] = s.Body
+	}
+	tools := &rt.WorkspaceTools{Workspace: work, SessionID: opts.SessionID, Caps: caps, Skills: skillBodies, Depth: 1}
 	_, runErr := rt.Run(tctx, rt.RunRequest{
 		SessionID:        opts.SessionID,
 		TaskID:           task.ID,
@@ -162,7 +188,7 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		Client:           opts.Client,
 		Trace:            opts.Trace,
 	})
-	res := TaskResult{ID: task.ID, Output: ""}
+	res := TaskResult{ID: task.ID, Output: "", Isolate: isolate}
 	if runErr != nil {
 		res.Error = runErr.Error()
 	}
@@ -295,4 +321,38 @@ func copyDir(src, dst string) error {
 		}
 		return os.WriteFile(target, b, info.Mode())
 	})
+}
+
+func containsID(ids []string, id string) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareWork(taskDir, isolateRoot string) (string, func(), string, error) {
+	nop := func() {}
+	if isolateRoot != "" {
+		work, cleanup, err := rt.IsolateWorkspace(isolateRoot)
+		if err != nil {
+			return "", nop, "", err
+		}
+		if err := copyDir(taskDir, work); err != nil {
+			cleanup()
+			return "", nop, "", err
+		}
+		return work, cleanup, "git-worktree", nil
+	}
+	work, err := os.MkdirTemp("", "yoyo-eval-*")
+	if err != nil {
+		return "", nop, "", err
+	}
+	cleanup := func() { _ = os.RemoveAll(work) }
+	if err := copyDir(taskDir, work); err != nil {
+		cleanup()
+		return "", nop, "", err
+	}
+	return work, cleanup, "copy", nil
 }

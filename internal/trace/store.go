@@ -24,6 +24,8 @@ const (
 	TypeError      EventType = "error"
 	TypeEval       EventType = "eval"
 	TypeEvolve     EventType = "evolve"
+	TypeTurnEnd    EventType = "turn_end"
+	TypeApproval   EventType = "approval"
 )
 
 type Event struct {

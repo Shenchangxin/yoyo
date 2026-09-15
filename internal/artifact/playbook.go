@@ -40,22 +40,42 @@ func (p Playbook) ApplyDelta(add []PlaybookBullet, removeIDs []string) Playbook 
 }
 
 func (p Playbook) Render(max int) string {
-	if max <= 0 {
-		max = 32
+	return p.RenderBudget(max * 80)
+}
+
+// RenderBudget keeps high-value ACE bullets under a token-ish rune budget.
+// Harmful-heavy bullets stay out (grow-and-refine), never a full rewrite.
+func (p Playbook) RenderBudget(maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = 2000
 	}
-	var b strings.Builder
-	n := 0
+	type scored struct {
+		b     PlaybookBullet
+		score int
+	}
+	var items []scored
 	for _, bullet := range p.Bullets {
 		if bullet.Harmful > bullet.Helpful+2 {
 			continue
 		}
-		b.WriteString("- ")
-		b.WriteString(bullet.Text)
-		b.WriteByte('\n')
-		n++
-		if n >= max {
+		items = append(items, scored{b: bullet, score: bullet.Helpful - bullet.Harmful})
+	}
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			if items[j].score > items[i].score {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+	var b strings.Builder
+	used := 0
+	for _, it := range items {
+		line := "- " + it.b.Text + "\n"
+		if used+len(line) > maxRunes && used > 0 {
 			break
 		}
+		b.WriteString(line)
+		used += len(line)
 	}
 	return b.String()
 }

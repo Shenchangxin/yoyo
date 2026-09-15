@@ -22,10 +22,12 @@ type Engine struct {
 }
 
 type CycleResult struct {
-	Evidence  EvidenceBundle `json:"evidence"`
-	Proposals []Proposal     `json:"proposals"`
-	Tried     []Trial        `json:"tried"`
-	Promoted  string         `json:"promoted,omitempty"`
+	Evidence       EvidenceBundle `json:"evidence"`
+	Reflection     Reflection     `json:"reflection"`
+	ParentSelected string         `json:"parent_selected,omitempty"`
+	Proposals      []Proposal     `json:"proposals"`
+	Tried          []Trial        `json:"tried"`
+	Promoted       string         `json:"promoted,omitempty"`
 }
 
 type Trial struct {
@@ -37,13 +39,9 @@ type Trial struct {
 }
 
 type CycleOpts struct {
-	Base          artifact.HarnessSnapshot
-	BaseHash      string
+	Parent        MaterialSet
+	Baseline      MaterialSet
 	Suite         artifact.EvalSuite
-	Loop          artifact.LoopPreset
-	Fragments     []artifact.PromptFragment
-	Playbook      artifact.Playbook
-	Skills        []artifact.Skill
 	Client        runtime.Client
 	Trace         *trace.Store
 	SessionID     string
@@ -51,111 +49,129 @@ type CycleOpts struct {
 	FailedTasks   map[string]string
 	K             int
 	PromoteCanary bool
+	HeldOut       []string
+	StagingHash   string
+	IsolateRoot   string
 }
 
 func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error) {
 	var res CycleResult
-	events, _ := opts.Trace.Read(opts.SessionID)
-	res.Evidence = Mine(events, opts.FailedTasks)
+	parent := opts.Parent
+	baseline := opts.Baseline
+	if baseline.Hash == "" {
+		baseline = parent
+	}
+	if opts.K <= 0 {
+		opts.K = 3
+	}
+	res.ParentSelected = parent.Hash
+	if opts.IsolateRoot == "" {
+		if root, stop, err := ScratchGit(); err == nil {
+			defer stop()
+			opts.IsolateRoot = root
+		}
+	}
+
+	var events []trace.Event
+	if opts.Trace != nil {
+		events, _ = opts.Trace.Read(opts.SessionID)
+	}
+	held := map[string]bool{}
+	for _, id := range opts.HeldOut {
+		held[id] = true
+	}
+	if len(opts.HeldOut) == 0 {
+		for _, id := range opts.Suite.HeldOut {
+			held[id] = true
+		}
+	}
+	safeFailed := map[string]string{}
+	for k, v := range opts.FailedTasks {
+		if held[k] {
+			continue
+		}
+		safeFailed[k] = v
+	}
+	res.Evidence = Mine(events, safeFailed)
+	res.Reflection = Reflect(events, safeFailed, parent.Playbook)
+	curated := Curate(parent.Playbook, res.Reflection)
 	props, err := Propose(ctx, opts.Client, opts.Model, res.Evidence, opts.K)
 	if err != nil {
 		return res, err
 	}
+	for _, b := range curated.Bullets {
+		if playbookHas(parent.Playbook, b) {
+			continue
+		}
+		bb := b
+		props = append([]Proposal{{
+			ID:             "ace-" + b.ID,
+			Surface:        "playbook",
+			Expected:       "ace curator delta",
+			Risk:           "may overfit held-in tasks",
+			Audit:          "ace curator incremental bullet",
+			PlaybookBullet: &bb,
+		}}, props...)
+		break
+	}
 	res.Proposals = props
 
-	baseReport, err := e.Eval.Run(ctx, eval.RunOpts{
-		Suite:     opts.Suite,
-		Snapshot:  opts.Base,
-		Hash:      opts.BaseHash,
-		Client:    opts.Client,
-		Loop:      opts.Loop,
-		Fragments: opts.Fragments,
-		Playbook:  opts.Playbook,
-		Skills:    opts.Skills,
-		Trace:     opts.Trace,
-		SessionID: opts.SessionID + "-base",
-		Model:     opts.Model,
+	baseReport, err := e.evalMats(ctx, opts, baseline, "-base")
+	if err != nil {
+		return res, err
+	}
+
+	intent, err := e.Journal.Append("evolve.intent", map[string]any{
+		"base": parent.Hash, "baseline": baseline.Hash, "n": len(props),
 	})
 	if err != nil {
 		return res, err
 	}
 
-	intent, err := e.Journal.Append("evolve.intent", map[string]any{"base": opts.BaseHash, "n": len(props)})
-	if err != nil {
-		return res, err
+	if opts.StagingHash != "" && opts.StagingHash != baseline.Hash {
+		trial := e.trialSnapshot(ctx, opts, baseline, baseReport, opts.StagingHash, Proposal{
+			ID:      "online-ace-stage",
+			Surface: "playbook",
+			Audit:   "online ACE staging (Harbor gate)",
+		})
+		res.Tried = append(res.Tried, trial)
+		if trial.Accepted {
+			res.Promoted = trial.Hash
+			_ = e.Refs.Set(artifact.RefStaging, "")
+		} else {
+			_ = e.Refs.Set(artifact.RefStaging, "")
+		}
 	}
 
 	for _, p := range props {
-		candSnap, hash, err := ApplyProposal(e.CAS, opts.Base, opts.BaseHash, p)
+		candSnap, hash, err := ApplyProposal(e.CAS, parent.Snap, parent.Hash, p)
 		if err != nil {
 			res.Tried = append(res.Tried, Trial{Proposal: p, Reason: err.Error()})
 			continue
 		}
-		frags := append([]artifact.PromptFragment{}, opts.Fragments...)
-		pb := opts.Playbook
-		skills := append([]artifact.Skill{}, opts.Skills...)
+		mats := MaterialSet{
+			Snap:      candSnap,
+			Hash:      hash,
+			Loop:      parent.Loop,
+			Fragments: append([]artifact.PromptFragment{}, parent.Fragments...),
+			Playbook:  parent.Playbook,
+			Skills:    append([]artifact.Skill{}, parent.Skills...),
+		}
 		if p.Fragment != nil {
-			frags = append(frags, *p.Fragment)
+			mats.Fragments = append(mats.Fragments, *p.Fragment)
 		}
 		if p.PlaybookBullet != nil {
-			pb = pb.ApplyDelta([]artifact.PlaybookBullet{*p.PlaybookBullet}, nil)
+			mats.Playbook = mats.Playbook.ApplyDelta([]artifact.PlaybookBullet{*p.PlaybookBullet}, nil)
 		}
 		if p.SkillMD != "" {
 			if sk, err := artifact.ParseSkillMD(p.SkillMD, "evolve"); err == nil {
-				skills = append(skills, sk)
+				mats.Skills = append(mats.Skills, sk)
 			}
 		}
-		fiber, ferr := e.Kernel.Plugin("candidate:"+hash[:8], func(c *kernel.Context) error {
-			return c.Provide("candidate:"+hash[:8], hash)
-		})
-		if ferr != nil {
-			res.Tried = append(res.Tried, Trial{Proposal: p, Hash: hash, Reason: ferr.Error()})
-			continue
-		}
-		report, rerr := e.Eval.Run(ctx, eval.RunOpts{
-			Suite:     opts.Suite,
-			Snapshot:  candSnap,
-			Hash:      hash,
-			Client:    opts.Client,
-			Loop:      opts.Loop,
-			Fragments: frags,
-			Playbook:  pb,
-			Skills:    skills,
-			Trace:     opts.Trace,
-			SessionID: opts.SessionID + "-cand-" + p.ID,
-			Model:     opts.Model,
-		})
-		trial := Trial{Proposal: p, Hash: hash, Metrics: report.Metrics}
-		if rerr != nil {
-			trial.Reason = rerr.Error()
-			_ = fiber.Dispose()
-			res.Tried = append(res.Tried, trial)
-			_ = e.Archive.Add(Node{ID: hash, Parent: opts.BaseHash, Snapshot: hash, ProposalID: p.ID, Metrics: report.Metrics, Note: trial.Reason})
-			continue
-		}
-		ok, reason := eval.Promote(baseReport.Metrics, report.Metrics)
-		trial.Accepted = ok
-		trial.Reason = reason
-		if !ok {
-			_ = fiber.Dispose()
-		} else {
-			_ = e.Refs.Set(artifact.RefCanary, hash)
-			if opts.PromoteCanary {
-				_ = e.Refs.Set(artifact.RefActive, hash)
-				if fp := opts.Base.ModelFingerprint; fp != "" {
-					_ = e.Refs.Set(artifact.ModelActive(fp), hash)
-				}
-				res.Promoted = hash
-			}
-			_ = e.Refs.Archive(hash)
-		}
-		_ = e.Archive.Add(Node{
-			ID: hash, Parent: opts.BaseHash, Snapshot: hash, ProposalID: p.ID,
-			Metrics: report.Metrics, Accepted: ok, Canary: ok, Note: reason,
-		})
+		trial := e.trialMats(ctx, opts, baseline, baseReport, mats, p)
 		res.Tried = append(res.Tried, trial)
-		if !ok {
-			continue
+		if trial.Accepted {
+			res.Promoted = hash
 		}
 	}
 	_ = e.Journal.Commit(intent.Seq)
@@ -163,4 +179,81 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		return res, fmt.Errorf("no proposals evaluated")
 	}
 	return res, nil
+}
+
+func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet, suffix string) (eval.RunReport, error) {
+	return e.Eval.Run(ctx, eval.RunOpts{
+		Suite:       opts.Suite,
+		Snapshot:    mats.Snap,
+		Hash:        mats.Hash,
+		Client:      opts.Client,
+		Loop:        mats.Loop,
+		Fragments:   mats.Fragments,
+		Playbook:    mats.Playbook,
+		Skills:      mats.Skills,
+		Trace:       opts.Trace,
+		SessionID:   opts.SessionID + suffix,
+		Model:       opts.Model,
+		IsolateRoot: opts.IsolateRoot,
+	})
+}
+
+func (e *Engine) trialSnapshot(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, hash string, p Proposal) Trial {
+	snap, err := e.CAS.GetSnapshot(hash)
+	if err != nil {
+		return Trial{Proposal: p, Hash: hash, Reason: err.Error()}
+	}
+	mats := MaterialsFromSnapshot(e.CAS, snap, hash, baseline)
+	return e.trialMats(ctx, opts, baseline, baseReport, mats, p)
+}
+
+func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, mats MaterialSet, p Proposal) Trial {
+	fiber, ferr := e.Kernel.Plugin("candidate:"+mats.Hash[:min(8, len(mats.Hash))], func(c *kernel.Context) error {
+		return c.Provide("candidate:"+mats.Hash[:min(8, len(mats.Hash))], mats.Hash)
+	})
+	trial := Trial{Proposal: p, Hash: mats.Hash}
+	if ferr != nil {
+		trial.Reason = ferr.Error()
+		return trial
+	}
+	report, rerr := e.evalMats(ctx, opts, mats, "-cand-"+p.ID)
+	trial.Metrics = report.Metrics
+	if rerr != nil {
+		trial.Reason = rerr.Error()
+		_ = fiber.Dispose()
+		_ = e.Archive.Add(Node{ID: mats.Hash, Parent: opts.Parent.Hash, Snapshot: mats.Hash, ProposalID: p.ID, Metrics: report.Metrics, Note: trial.Reason})
+		return trial
+	}
+	ok, reason := eval.Promote(baseReport.Metrics, report.Metrics)
+	trial.Accepted = ok
+	trial.Reason = reason
+	if !ok {
+		_ = fiber.Dispose()
+	} else {
+		_ = e.Refs.Set(artifact.RefCanary, mats.Hash)
+		if opts.PromoteCanary {
+			_ = e.Refs.Set(artifact.RefActive, mats.Hash)
+			if fp := baseline.Snap.ModelFingerprint; fp != "" {
+				_ = e.Refs.Set(artifact.ModelActive(fp), mats.Hash)
+			}
+		}
+		_ = e.Refs.Archive(mats.Hash)
+	}
+	_ = e.Archive.Add(Node{
+		ID: mats.Hash, Parent: opts.Parent.Hash, Snapshot: mats.Hash, ProposalID: p.ID,
+		Metrics: report.Metrics, Accepted: ok, Canary: ok, Note: reason,
+	})
+	return trial
+}
+
+func playbookHas(pb artifact.Playbook, b artifact.PlaybookBullet) bool {
+	for _, x := range pb.Bullets {
+		if x.ID == b.ID {
+			return true
+		}
+		if x.Text != "" && b.Text != "" && x.Text == b.Text {
+			return true
+		}
+	}
+	return false
 }

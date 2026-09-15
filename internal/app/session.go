@@ -5,8 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
+	"strings"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
@@ -44,22 +47,6 @@ func (a *App) NewSession(workspace string) (SessionMeta, error) {
 	return meta, os.WriteFile(path, b, 0o644)
 }
 
-func (a *App) ListSessions() ([]SessionMeta, error) {
-	ids, err := a.Traces.ListSessions()
-	if err != nil {
-		return nil, err
-	}
-	var out []SessionMeta
-	for _, id := range ids {
-		if m, err := a.GetSession(id); err == nil {
-			out = append(out, m)
-		} else {
-			out = append(out, SessionMeta{ID: id})
-		}
-	}
-	return out, nil
-}
-
 func (a *App) GetSession(id string) (SessionMeta, error) {
 	b, err := os.ReadFile(filepath.Join(a.Home.Sessions(), id+".meta.json"))
 	if err != nil {
@@ -67,6 +54,23 @@ func (a *App) GetSession(id string) (SessionMeta, error) {
 	}
 	var m SessionMeta
 	return m, json.Unmarshal(b, &m)
+}
+
+func (a *App) writeSession(m SessionMeta) error {
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return os.WriteFile(filepath.Join(a.Home.Sessions(), m.ID+".meta.json"), b, 0o644)
+}
+
+func titleFrom(message string) string {
+	s := strings.TrimSpace(strings.ReplaceAll(message, "\n", " "))
+	if s == "" {
+		return "session"
+	}
+	r := []rune(s)
+	if len(r) > 42 {
+		return string(r[:42]) + "…"
+	}
+	return s
 }
 
 func (a *App) Trajectory(id string) ([]trace.Event, error) {
@@ -79,6 +83,67 @@ func (a *App) Client() (runtime.Client, error) {
 }
 
 func (a *App) Send(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event)) (string, error) {
+	return a.SendOpts(ctx, sessionID, message, client, onEvent, false)
+}
+
+func (a *App) Running(sessionID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.runs[sessionID] != nil
+}
+
+func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context, func(), error) {
+	ctx, cancel := context.WithCancel(ctx)
+	a.mu.Lock()
+	if a.runs[sessionID] != nil {
+		a.mu.Unlock()
+		cancel()
+		return nil, nil, errBusy
+	}
+	a.runs[sessionID] = cancel
+	a.mu.Unlock()
+	return ctx, func() {
+		cancel()
+		a.mu.Lock()
+		delete(a.runs, sessionID)
+		a.mu.Unlock()
+	}, nil
+}
+
+func (a *App) StartSend(sessionID, message string, plan bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, release, err := a.acquireRun(sessionID, ctx)
+	if err != nil {
+		cancel()
+		return err
+	}
+	go func() {
+		defer cancel()
+		defer release()
+		defer func() {
+			if rec := recover(); rec != nil {
+				a.Hub.Publish(trace.Event{
+					Type: trace.TypeError, Source: "runtime", SessionID: sessionID,
+					Payload: map[string]any{"error": fmt.Sprintf("loop panic: %v", rec)},
+				})
+			}
+		}()
+		goruntime.LockOSThread()
+		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan)
+	}()
+	return nil
+}
+
+func (a *App) SendOpts(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool) (string, error) {
+	ctx, release, err := a.acquireRun(sessionID, ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan)
+}
+
+func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool) (string, error) {
 	meta, err := a.GetSession(sessionID)
 	if err != nil {
 		meta, err = a.NewSession("")
@@ -92,10 +157,20 @@ func (a *App) Send(ctx context.Context, sessionID, message string, client runtim
 	if err != nil {
 		return "", err
 	}
-	loop, frags, pb, skills, _, err := a.Materials(hash)
+	loop, frags, pb, skills, _, pol, err := a.Materials(hash)
 	if err != nil {
 		return "", err
 	}
+	if plan {
+		loop.PlanMode = true
+		pol.Mode = "plan"
+	}
+	if a.Config.MaxBudgetUSD > 0 {
+		if loop.MaxBudgetUSD <= 0 || a.Config.MaxBudgetUSD < loop.MaxBudgetUSD {
+			loop.MaxBudgetUSD = a.Config.MaxBudgetUSD
+		}
+	}
+	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
 	if client == nil {
 		client, err = a.Client()
 		if err != nil {
@@ -106,46 +181,191 @@ func (a *App) Send(ctx context.Context, sessionID, message string, client runtim
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
 	}
+	hist := []runtime.Message{}
+	if evs, err := a.Traces.Read(sessionID); err == nil {
+		hist = runtime.MessagesFromEvents(evs)
+	}
+	wrapped := onEvent
+	if a.Hub != nil {
+		prev := wrapped
+		wrapped = func(ev trace.Event) {
+			a.Hub.Publish(ev)
+			if prev != nil {
+				prev(ev)
+			}
+		}
+	}
+
 	tools := &runtime.WorkspaceTools{
 		Workspace: meta.Workspace,
 		SessionID: sessionID,
 		Caps:      a.Caps,
 		Skills:    skillBodies,
+		Policy:    pol,
+		PlanMode:  loop.PlanMode,
+		Ctx:       ctx,
+		Extra:     a.extraTools(sessionID),
 	}
-	return runtime.Run(ctx, runtime.RunRequest{
+	if meta.Title == "" || meta.Title == "session" {
+		meta.Title = titleFrom(message)
+		_ = a.writeSession(meta)
+	}
+	note := hash
+	if snap.Note != "" {
+		note = hash + " " + snap.Note
+	}
+	inject, _ := runtime.ExpandMentions(meta.Workspace, message, note, 2400)
+	out, runErr := runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,
+		Inject:           inject,
 		Workspace:        meta.Workspace,
 		Harness:          snap,
 		HarnessHash:      hash,
 		ModelFingerprint: Fingerprint(a.Config),
 		Model:            a.Config.Model,
 		Loop:             loop,
+		Policy:           pol,
 		Fragments:        frags,
 		Playbook:         pb,
 		Skills:           skills,
+		History:          hist,
 		Tools:            tools,
 		Client:           client,
 		Trace:            a.Traces,
-		OnEvent:          onEvent,
+		Events:           a.Kernel.Events(),
+		FileHooks:        runtime.LoadFileHooks(meta.Workspace),
+		OnEvent:          wrapped,
+		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
+		Meter:            meter,
 	})
+	a.RememberUsage(meter.Snapshot())
+	_, _ = a.StageACE(sessionID)
+	return out, runErr
+}
+
+const errBusy errString = "session already running"
+
+func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
+	extra := map[string]runtime.ExtraTool{}
+	if a.MCP != nil {
+		for _, t := range a.MCP.Tools() {
+			t := t
+			name := "mcp__" + t.Server + "__" + t.Name
+			params := t.InputSchema
+			if params == nil {
+				params = map[string]any{"type": "object", "properties": map[string]any{}}
+			}
+			extra[name] = runtime.ExtraTool{
+				JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+					"name": name, "description": t.Description, "parameters": params,
+				}},
+				Call: func(argsJSON string) runtime.ToolResult {
+					if err := a.Caps.Check(capability.Request{
+						Level: capability.Network, Action: name, SessionID: sessionID, ForceAsk: true,
+					}); err != nil {
+						return runtime.ToolResult{Err: err}
+					}
+					out, err := a.MCP.Call(t.Server, t.Name, argsJSON)
+					return runtime.ToolResult{Content: out, Err: err}
+				},
+			}
+		}
+	}
+	if a.WASM != nil {
+		for _, id := range a.WASM.List() {
+			id := id
+			name := "wasm__" + id
+			extra[name] = runtime.ExtraTool{
+				JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+					"name":        name,
+					"description": "Call admitted WASM export with integer arguments a,b (L2 harness plugin).",
+					"parameters": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"a": map[string]any{"type": "integer"},
+							"b": map[string]any{"type": "integer"},
+						},
+					},
+				}},
+				Call: func(argsJSON string) runtime.ToolResult {
+					if err := a.Caps.Check(capability.Request{
+						Level: capability.HighRisk, Action: name, SessionID: sessionID, ForceAsk: true,
+					}); err != nil {
+						return runtime.ToolResult{Err: err}
+					}
+					mod := a.WASM.Get(id)
+					if mod == nil {
+						return runtime.ToolResult{Err: fmt.Errorf("wasm %s not loaded", id)}
+					}
+					var args struct {
+						A uint64 `json:"a"`
+						B uint64 `json:"b"`
+					}
+					_ = json.Unmarshal([]byte(argsJSON), &args)
+					n, err := mod.CallI32(args.A, args.B)
+					if err != nil {
+						return runtime.ToolResult{Err: err}
+					}
+					out := fmt.Sprintf("%d", n)
+					if logs := mod.Logs(); logs != "" {
+						out += "\nlog:" + logs
+					}
+					return runtime.ToolResult{Content: out}
+				},
+			}
+		}
+	}
+	return extra
 }
 
 func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, nil)
+}
+
+func (a *App) RunEvalOpts(ctx context.Context, client runtime.Client, safety bool) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
+		if safety {
+			suite.Safety = append(append([]string{}, suite.Safety...), "no-escape")
+		}
+	})
+}
+
+func (a *App) RunEvalTB(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
+		suite.HeldIn = append(append([]string{}, suite.HeldIn...), "mkdir-note")
+		suite.HeldOut = append(append([]string{}, suite.HeldOut...), "copy-seed")
+		if suite.Repeats < 2 {
+			suite.Repeats = 2
+		}
+	})
+}
+
+func (a *App) RunEvalMut(ctx context.Context, client runtime.Client, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
+	return a.runEval(ctx, client, "", mut)
+}
+
+func (a *App) runEval(ctx context.Context, client runtime.Client, model string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	hash := a.ActiveHash()
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {
 		return eval.RunReport{}, err
 	}
-	loop, frags, pb, skills, suite, err := a.Materials(hash)
+	loop, frags, pb, skills, suite, _, err := a.Materials(hash)
 	if err != nil {
 		return eval.RunReport{}, err
+	}
+	if mut != nil {
+		mut(&suite)
 	}
 	if client == nil {
 		client, err = a.Client()
 		if err != nil {
 			return eval.RunReport{}, err
 		}
+	}
+	if model == "" {
+		model = a.Config.Model
 	}
 	return a.Eval.Run(ctx, eval.RunOpts{
 		Suite:     suite,
@@ -158,17 +378,28 @@ func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunRepor
 		Skills:    skills,
 		Trace:     a.Traces,
 		SessionID: "eval-" + newID()[:8],
-		Model:     a.Config.Model,
+		Model:     model,
 	})
 }
 
 func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[string]string) (evolve.CycleResult, error) {
-	hash := a.ActiveHash()
-	snap, err := a.LoadSnapshot(hash)
+	return a.EvolveK(ctx, client, failed, 3)
+}
+
+func (a *App) EvolveK(ctx context.Context, client runtime.Client, failed map[string]string, k int) (evolve.CycleResult, error) {
+	activeHash := a.ActiveHash()
+	parentHash := evolve.SelectParent(a.Archive.List(), activeHash)
+	if parentHash == "" {
+		parentHash = activeHash
+	}
+	if _, err := a.LoadSnapshot(parentHash); err != nil {
+		parentHash = activeHash
+	}
+	parentSet, err := a.materialSet(parentHash)
 	if err != nil {
 		return evolve.CycleResult{}, err
 	}
-	loop, frags, pb, skills, suite, err := a.Materials(hash)
+	baseSet, err := a.materialSet(activeHash)
 	if err != nil {
 		return evolve.CycleResult{}, err
 	}
@@ -192,39 +423,209 @@ func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[
 			}
 		}
 	}
+	_, _, _, _, suite, _, err := a.Materials(activeHash)
+	if err != nil {
+		return evolve.CycleResult{}, err
+	}
 	sid := "evolve-" + newID()[:8]
 	return a.Evolve.Cycle(ctx, evolve.CycleOpts{
-		Base:          snap,
-		BaseHash:      hash,
+		Parent:        parentSet,
+		Baseline:      baseSet,
 		Suite:         suite,
-		Loop:          loop,
-		Fragments:     frags,
-		Playbook:      pb,
-		Skills:        skills,
 		Client:        client,
 		Trace:         a.Traces,
 		SessionID:     sid,
 		Model:         a.Config.Model,
 		FailedTasks:   failed,
-		K:             3,
+		K:             k,
 		PromoteCanary: true,
+		HeldOut:       suite.HeldOut,
+		StagingHash:   a.Refs.GetOrEmpty(artifact.RefStaging),
 	})
+}
+
+func (a *App) materialSet(hash string) (evolve.MaterialSet, error) {
+	snap, err := a.LoadSnapshot(hash)
+	if err != nil {
+		return evolve.MaterialSet{}, err
+	}
+	loop, frags, pb, skills, _, _, err := a.Materials(hash)
+	if err != nil {
+		return evolve.MaterialSet{}, err
+	}
+	return evolve.MaterialSet{
+		Snap: snap, Hash: hash, Loop: loop, Fragments: frags, Playbook: pb, Skills: skills,
+	}, nil
+}
+
+// StageACE writes an online playbook delta to refs/staging. It never moves
+// refs/active — Harbor still owns promotion. This is the ACE online path.
+func (a *App) StageACE(sessionID string) (string, error) {
+	active := a.ActiveHash()
+	if active == "" {
+		return "", nil
+	}
+	events, err := a.Traces.Read(sessionID)
+	if err != nil || len(events) == 0 {
+		return "", err
+	}
+	base, err := a.LoadSnapshot(active)
+	if err != nil {
+		return "", err
+	}
+	_, _, pb, _, _, _, err := a.Materials(active)
+	if err != nil {
+		return "", err
+	}
+	if st := a.Refs.GetOrEmpty(artifact.RefStaging); st != "" {
+		if ss, err := a.LoadSnapshot(st); err == nil && ss.Playbook != "" {
+			if v, _, err := artifact.Decode[artifact.Playbook](a.CAS, ss.Playbook); err == nil {
+				pb = v
+			}
+		}
+	}
+	ref := evolve.Reflect(events, nil, pb)
+	curated := evolve.Curate(pb, ref)
+	if evolve.PlaybooksEqual(pb, curated) {
+		return "", nil
+	}
+	pbHash, err := a.CAS.Put(artifact.KindPlaybook, curated.ID, curated)
+	if err != nil {
+		return "", err
+	}
+	next := artifact.CloneSnapshot(base)
+	next.Parent = active
+	next.Playbook = pbHash
+	next.Note = "online-ace-stage"
+	hash, err := a.CAS.PutSnapshot(next)
+	if err != nil {
+		return "", err
+	}
+	if err := a.Refs.Set(artifact.RefStaging, hash); err != nil {
+		return "", err
+	}
+	_ = a.Archive.Add(evolve.Node{
+		ID: hash, Parent: active, Snapshot: hash, ProposalID: "online-ace-stage",
+		Note: "online-ace-stage",
+	})
+	_, _ = a.Journal.Append("ace.stage", map[string]string{"hash": hash, "session": sessionID})
+	return hash, nil
 }
 
 func (a *App) ListHarnesses() (map[string]string, error) {
 	return a.Refs.List()
 }
 
-func (a *App) Diff(aHash, bHash string) (string, error) {
+func (a *App) BestOfN(ctx context.Context, n int, client runtime.Client) (BestOfNReport, error) {
+	if n < 1 {
+		n = 3
+	}
+	rep := BestOfNReport{N: n, Kind: "repeat"}
+	for i := 0; i < n; i++ {
+		r, err := a.RunEval(ctx, client)
+		if err != nil {
+			return rep, err
+		}
+		rep.Reports = append(rep.Reports, r)
+		if i == 0 || evalScore(r) > evalScore(rep.Best) {
+			rep.Best = r
+		}
+	}
+	return rep, nil
+}
+
+func (a *App) BestOfModels(ctx context.Context, models []string, clients map[string]runtime.Client) (BestOfNReport, error) {
+	if len(models) == 0 {
+		models = append([]string{a.Config.Model}, a.Config.Models...)
+	}
+	seen := map[string]bool{}
+	var clean []string
+	for _, m := range models {
+		m = strings.TrimSpace(m)
+		if m == "" || seen[m] {
+			continue
+		}
+		seen[m] = true
+		clean = append(clean, m)
+	}
+	if len(clean) == 0 {
+		clean = []string{a.Config.Model}
+	}
+	type row struct {
+		model string
+		r     eval.RunReport
+		err   error
+	}
+	ch := make(chan row, len(clean))
+	for _, m := range clean {
+		m := m
+		go func() {
+			cl := clients[m]
+			if cl == nil && clients != nil {
+				cl = clients["*"]
+			}
+			r, err := a.runEval(ctx, cl, m, nil)
+			ch <- row{model: m, r: r, err: err}
+		}()
+	}
+	rep := BestOfNReport{N: len(clean), Kind: "models"}
+	for i := 0; i < len(clean); i++ {
+		got := <-ch
+		if got.err != nil {
+			return rep, got.err
+		}
+		rep.Models = append(rep.Models, ModelRun{Model: got.model, Report: got.r})
+		rep.Reports = append(rep.Reports, got.r)
+		if i == 0 || evalScore(got.r) > evalScore(rep.Best) {
+			rep.Best = got.r
+			rep.BestModel = got.model
+		}
+	}
+	return rep, nil
+}
+
+type BestOfNReport struct {
+	N         int              `json:"n"`
+	Kind      string           `json:"kind,omitempty"`
+	Reports   []eval.RunReport `json:"reports"`
+	Best      eval.RunReport   `json:"best"`
+	BestModel string           `json:"best_model,omitempty"`
+	Models    []ModelRun       `json:"models,omitempty"`
+}
+
+type ModelRun struct {
+	Model  string         `json:"model"`
+	Report eval.RunReport `json:"report"`
+}
+
+func evalScore(r eval.RunReport) int {
+	return r.Metrics.HeldInPass + r.Metrics.HeldOutPass
+}
+
+func (a *App) DiffDetail(aHash, bHash string) (map[string]any, error) {
 	left, err := a.LoadSnapshot(aHash)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	right, err := a.LoadSnapshot(bHash)
 	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"text":   artifact.SnapshotDiff(left, right),
+		"fields": artifact.SnapshotDiffFields(left, right),
+		"a":      left,
+		"b":      right,
+	}, nil
+}
+
+func (a *App) Diff(aHash, bHash string) (string, error) {
+	d, err := a.DiffDetail(aHash, bHash)
+	if err != nil {
 		return "", err
 	}
-	return artifact.SnapshotDiff(left, right), nil
+	text, _ := d["text"].(string)
+	return text, nil
 }
 
 func (a *App) LoadWASM(id string, bin []byte, export string) error {
