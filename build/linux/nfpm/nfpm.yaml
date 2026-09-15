@@ -3,26 +3,26 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "yoyo-desktop.exe"
+name: "Yoyo"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A yoyo-desktop application"
-vendor: "My Company"
+description: "Self-harnessing local agent workstation"
+vendor: "Yoyo"
 homepage: "https://wails.io"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/yoyo-desktop.exe"
-    dst: "/usr/local/bin/yoyo-desktop.exe"
+  - src: "./bin/Yoyo"
+    dst: "/usr/local/bin/Yoyo"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/yoyo-desktop.exe.png"
-  - src: "./build/linux/yoyo-desktop.exe.desktop"
-    dst: "/usr/share/applications/yoyo-desktop.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/Yoyo.png"
+  - src: "./build/linux/Yoyo.desktop"
+    dst: "/usr/share/applications/Yoyo.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

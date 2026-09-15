@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A yoyo-desktop application
+Name=Yoyo
+Comment=Self-harnessing local agent workstation
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/yoyo-desktop.exe %u
+Exec=/usr/local/bin/Yoyo %u
 Terminal=false
 Type=Application
-Icon=yoyo-desktop.exe
+Icon=Yoyo
 Categories=Utility;
-StartupWMClass=yoyo-desktop.exe
+StartupWMClass=Yoyo
 
  

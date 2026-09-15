@@ -29,13 +29,13 @@ const (
 )
 
 type Request struct {
-	Level     Level
-	Action    string
-	Path      string
-	Command   string
-	SessionID string
-	Workspace string
-	ForceAsk  bool
+	Level     Level  `json:"level"`
+	Action    string `json:"action"`
+	Path      string `json:"path"`
+	Command   string `json:"command"`
+	SessionID string `json:"session_id"`
+	Workspace string `json:"workspace"`
+	ForceAsk  bool   `json:"force_ask"`
 }
 
 type AutoPolicy struct {

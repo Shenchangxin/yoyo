@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -61,11 +62,24 @@ func main() {
 
 	win := gui.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:              "Yoyo " + version.Version,
-		Width:              1280,
-		Height:             800,
-		BackgroundColour:   application.NewRGB(16, 17, 21),
+		Width:              1440,
+		Height:             900,
+		MinWidth:           1080,
+		MinHeight:          680,
+		BackgroundColour:   application.NewRGB(14, 14, 14),
 		URL:                "/",
-		UseApplicationMenu: true,
+		Frameless:          runtime.GOOS != "darwin",
+		InitialPosition:    application.WindowCentered,
+		UseApplicationMenu: runtime.GOOS == "darwin",
+		Mac: application.MacWindow{
+			TitleBar: application.MacTitleBarHiddenInset,
+		},
+		Windows: application.WindowsWindow{
+			Theme:                             application.SystemDefault,
+			DisableMenu:                       true,
+			DisableFramelessWindowDecorations: false,
+			NonClientRegionSupport:            true,
+		},
 	})
 	desktop.InstallChrome(gui, win, svc, ns)
 
