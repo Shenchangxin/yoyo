@@ -288,6 +288,8 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"running": a.Running(p.Session)}, nil
+	case "turn.running_ids":
+		return a.RunningIDs(), nil
 	case "context.get":
 		var p struct {
 			Session string `json:"session"`

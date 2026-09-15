@@ -1,11 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Yoyo</title>
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem("yoyo-theme");
+          var dark =
+            p === "light"
+              ? false
+              : p === "dark"
+                ? true
+                : !window.matchMedia || window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.classList.add(dark ? "dark" : "light");
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
-  <body>
+  <body class="h-full bg-background text-foreground antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

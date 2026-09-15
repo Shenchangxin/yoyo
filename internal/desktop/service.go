@@ -230,6 +230,18 @@ func (s *Service) Running(sessionID string) bool {
 	return s.App.Running(sessionID)
 }
 
+func (s *Service) RunningIDs() []string {
+	if s.RPC != nil {
+		v, err := s.call("turn.running_ids", nil)
+		ids, _ := decode[[]string](v, err)
+		if ids == nil {
+			return []string{}
+		}
+		return ids
+	}
+	return s.App.RunningIDs()
+}
+
 func (s *Service) ContextUsage(sessionID string) any {
 	if s.RPC != nil {
 		v, _ := s.call("context.get", map[string]any{"session": sessionID})

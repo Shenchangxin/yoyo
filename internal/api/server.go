@@ -25,6 +25,9 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.Health())
 	})
+	mux.HandleFunc("/api/running", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"ids": a.RunningIDs()})
+	})
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&a.Config)

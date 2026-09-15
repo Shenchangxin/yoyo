@@ -16,7 +16,10 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	}
 	file := menu.AddSubmenu("File")
 	file.Add("New Session").SetAccelerator("CmdOrCtrl+N").OnClick(func(ctx *application.Context) {
-		_, _ = svc.CreateSession("")
+		m, err := svc.CreateSession("")
+		if err == nil {
+			gui.Event.Emit("yoyo:sessions", m)
+		}
 	})
 	file.AddSeparator()
 	file.Add("Quit").SetAccelerator("CmdOrCtrl+Q").OnClick(func(ctx *application.Context) {
@@ -60,21 +63,24 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	})
 	tray.SetMenu(tmenu)
 
-	if ns == nil {
-		return
-	}
-	_, _ = ns.RequestNotificationAuthorization()
 	notify := func(title, body string) {
+		if ns == nil {
+			return
+		}
 		_ = ns.SendNotification(notifications.NotificationOptions{
 			ID:    "yoyo-" + title,
 			Title: title,
 			Body:  body,
 		})
 	}
+	if ns != nil {
+		_, _ = ns.RequestNotificationAuthorization()
+	}
 	if svc.App != nil {
 		ch, _ := svc.App.Hub.Subscribe("*")
 		go func() {
 			for ev := range ch {
+				gui.Event.Emit("yoyo:item", ev)
 				switch string(ev.Type) {
 				case "turn_end":
 					notify("Yoyo", "Turn finished")
@@ -89,6 +95,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		go func() {
 			for n := range svc.RPC.Notify {
 				if n.Method == "item.event" {
+					gui.Event.Emit("yoyo:item", n.Params)
 					notify("Yoyo", "agent event")
 				}
 			}

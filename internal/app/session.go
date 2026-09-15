@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -90,6 +91,17 @@ func (a *App) Running(sessionID string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.runs[sessionID] != nil
+}
+
+func (a *App) RunningIDs() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ids := make([]string, 0, len(a.runs))
+	for id := range a.runs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context, func(), error) {
