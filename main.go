@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
+	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/desktop"
 	"github.com/Shenchangxin/yoyo/internal/version"
@@ -17,6 +20,75 @@ import (
 var assets embed.FS
 
 func main() {
+	evals := resolveEvals()
+	home := os.Getenv("YOYO_HOME")
+	if os.Getenv("YOYO_WORKER") == "1" {
+		core, err := app.Open(home, evals)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer core.Close()
+		if err := api.ServeRPC(context.Background(), core, os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	svc, core, err := openDesktop(home, evals)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if core != nil {
+		defer core.Close()
+	}
+	defer svc.Close()
+
+	ns := notifications.New()
+	gui := application.New(application.Options{
+		Name:        "Yoyo",
+		Description: "Self-harnessing local agent workstation",
+		Services: []application.Service{
+			application.NewService(svc),
+			application.NewService(ns),
+		},
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
+		},
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: true,
+		},
+	})
+
+	win := gui.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:              "Yoyo " + version.Version,
+		Width:              1280,
+		Height:             800,
+		BackgroundColour:   application.NewRGB(16, 17, 21),
+		URL:                "/",
+		UseApplicationMenu: true,
+	})
+	desktop.InstallChrome(gui, win, svc, ns)
+
+	if err := gui.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
+	if os.Getenv("YOYO_ISOLATE") == "1" {
+		return desktop.OpenIsolated(home, evals)
+	}
+	core, err := app.Open(home, evals)
+	if err != nil {
+		return nil, nil, err
+	}
+	return desktop.NewService(core), core, nil
+}
+
+func resolveEvals() string {
+	if v := os.Getenv("YOYO_EVALS"); v != "" {
+		return v
+	}
 	evals := "evals"
 	if wd, err := os.Getwd(); err == nil {
 		if p := filepath.Join(wd, "evals"); dirExists(p) {
@@ -28,38 +100,7 @@ func main() {
 			evals = p
 		}
 	}
-	core, err := app.Open(os.Getenv("YOYO_HOME"), evals)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	svc := desktop.NewService(core)
-	gui := application.New(application.Options{
-		Name:        "Yoyo",
-		Description: "Self-harnessing local agent workstation",
-		Services: []application.Service{
-			application.NewService(svc),
-		},
-		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
-		},
-		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
-		},
-	})
-
-	gui.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "Yoyo " + version.Version,
-		Width:            1280,
-		Height:           800,
-		BackgroundColour: application.NewRGB(16, 17, 21),
-		URL:              "/",
-	})
-
-	if err := gui.Run(); err != nil {
-		log.Fatal(err)
-	}
-	_ = core.Close()
+	return evals
 }
 
 func dirExists(p string) bool {

@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	RefActive = "active"
-	RefCanary = "canary"
-	RefHead   = "HEAD"
+	RefActive  = "active"
+	RefCanary  = "canary"
+	RefHead    = "HEAD"
+	RefStaging = "staging"
 )
 
 // Refs is a git-like pointer store over CAS hashes.

@@ -3,6 +3,7 @@ module github.com/Shenchangxin/yoyo
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/cobra v1.9.1
 	github.com/tetratelabs/wazero v1.9.0
@@ -12,8 +13,8 @@ require (
 )
 
 require (
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

@@ -109,5 +109,44 @@ button.ghost {
   border-radius: 8px;
   padding: 12px;
 }
-.ok { color: var(--ok); }
+.side-sessions { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+.chat { display: flex; flex-direction: column; gap: 10px; min-height: 240px; max-height: calc(100vh - 280px); }
+.bubble { padding: 8px 10px; border-radius: 8px; background: var(--bg-3); }
+.bubble.user { background: #243018; }
+.bubble.tool { color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.who { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+.approve { border: 1px solid var(--accent); border-radius: 8px; padding: 10px; background: var(--bg-2); }
+.plan { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.mono-inline { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--accent); }
+.ctx { color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
 .bad { color: var(--bad); }
+pre.diff { max-height: 240px; }
+.hunks { display: flex; flex-direction: column; gap: 8px; }
+.hunk { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; font-size: 12px; }
+.hunk pre { margin: 0; max-height: 120px; grid-column: 1 / -1; }
+.metric { font-size: 22px; font-weight: 650; margin-top: 6px; }
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+table.grid th, table.grid td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+table.grid tr.changed td { color: var(--accent); }
+.ok-chip, .bad-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+.ok-chip { background: #1f3a28; color: var(--ok); }
+.bad-chip { background: #3a1f1f; color: var(--bad); }
+h3 { margin: 8px 0 0; font-size: 13px; color: var(--muted); font-weight: 600; }

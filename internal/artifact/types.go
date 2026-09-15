@@ -75,18 +75,27 @@ type ToolSpec struct {
 }
 
 type LoopPreset struct {
-	ID              string `json:"id"`
-	MaxTurns        int    `json:"max_turns"`
-	MaxToolMessages int    `json:"max_tool_messages"`
-	CompactionKeep  int    `json:"compaction_keep"`
-	Bootstrap       string `json:"bootstrap"`
-	Execution       string `json:"execution"`
-	Verification    string `json:"verification"`
-	FailureRecovery string `json:"failure_recovery"`
+	ID               string  `json:"id"`
+	MaxTurns         int     `json:"max_turns"`
+	MaxToolMessages  int     `json:"max_tool_messages"`
+	CompactionKeep   int     `json:"compaction_keep"`
+	CompactionTokens int     `json:"compaction_tokens,omitempty"`
+	ToolResultBudget int     `json:"tool_result_budget,omitempty"`
+	MicroKeep        int     `json:"micro_keep,omitempty"`
+	PlaybookTokens   int     `json:"playbook_tokens,omitempty"`
+	RulesTokens      int     `json:"rules_tokens,omitempty"`
+	AllowLLMCompact  bool    `json:"allow_llm_compact,omitempty"`
+	MaxBudgetUSD     float64 `json:"max_budget_usd,omitempty"`
+	PlanMode         bool    `json:"plan_mode,omitempty"`
+	Bootstrap        string  `json:"bootstrap"`
+	Execution        string  `json:"execution"`
+	Verification     string  `json:"verification"`
+	FailureRecovery  string  `json:"failure_recovery"`
 }
 
 type PolicyPack struct {
 	ID              string            `json:"id"`
+	Mode            string            `json:"mode,omitempty"` // auto | ask | plan | bypass
 	DefaultAllow    []string          `json:"default_allow"`
 	RequireApproval []string          `json:"require_approval"`
 	NetworkAllow    []string          `json:"network_allow"`
@@ -98,6 +107,7 @@ type EvalSuite struct {
 	TaskDir    string   `json:"task_dir"`
 	HeldIn     []string `json:"held_in"`
 	HeldOut    []string `json:"held_out"`
+	Safety     []string `json:"safety,omitempty"`
 	Repeats    int      `json:"repeats"`
 	TimeoutSec int      `json:"timeout_sec"`
 	Sealed     bool     `json:"sealed"`

@@ -1,8 +1,10 @@
 package app
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -15,16 +17,22 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/vault"
+	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
 type Config struct {
-	Provider  string `yaml:"provider" json:"provider"`
-	Model     string `yaml:"model" json:"model"`
-	BaseURL   string `yaml:"base_url" json:"base_url"`
-	Workspace string `yaml:"workspace" json:"workspace"`
-	AutoAllow bool   `yaml:"auto_allow" json:"auto_allow"`
+	Provider     string   `yaml:"provider" json:"provider"`
+	Model        string   `yaml:"model" json:"model"`
+	BaseURL      string   `yaml:"base_url" json:"base_url"`
+	Workspace    string   `yaml:"workspace" json:"workspace"`
+	AutoAllow    bool     `yaml:"auto_allow" json:"auto_allow"`
+	MaxBudgetUSD float64  `yaml:"max_budget_usd" json:"max_budget_usd"`
+	USDPerMTok   float64  `yaml:"usd_per_mtok" json:"usd_per_mtok"`
+	Models       []string `yaml:"models" json:"models"`
 }
 
 type App struct {
@@ -34,6 +42,8 @@ type App struct {
 	Refs         *artifact.Refs
 	Traces       *trace.Store
 	Caps         *capability.Broker
+	Gate         *capability.Gate
+	Hub          *Hub
 	Vault        *vault.Store
 	Journal      *journal.Log
 	WASM         *wasm.Host
@@ -43,6 +53,14 @@ type App struct {
 	Archive      *evolve.Archive
 	Config       Config
 	BundledEvals string
+
+	mu   sync.Mutex
+	runs map[string]context.CancelFunc
+
+	shapeMu   sync.Mutex
+	lastShape map[string]runtime.ShapeReport
+	usageMu   sync.Mutex
+	lastUsage map[string]any
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -63,7 +81,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Model:     "gpt-4.1-mini",
 		BaseURL:   "https://api.openai.com/v1",
 		Workspace: ".",
-		AutoAllow: true,
+		AutoAllow: false,
 	}
 	if b, err := os.ReadFile(h.Config()); err == nil {
 		_ = yaml.Unmarshal(b, &cfg)
@@ -73,13 +91,15 @@ func Open(root, bundledEvals string) (*App, error) {
 	if cfg.AutoAllow {
 		allow = append(allow, capability.Shell)
 	}
+	gate := capability.NewGate()
 	a := &App{
 		Home:         h,
 		Kernel:       k,
 		CAS:          artifact.NewStore(h.CAS()),
 		Refs:         artifact.NewRefs(h.Refs()),
 		Traces:       trace.NewStore(h.Sessions()),
-		Caps:         capability.NewBroker(capability.AutoPolicy{Allow: allow}, autoApprover),
+		Gate:         gate,
+		Hub:          NewHub(),
 		Vault:        vault.New(),
 		Journal:      j,
 		WASM:         wasm.NewHost(),
@@ -88,7 +108,17 @@ func Open(root, bundledEvals string) (*App, error) {
 		Archive:      arch,
 		Config:       cfg,
 		BundledEvals: bundledEvals,
+		runs:         map[string]context.CancelFunc{},
+		lastShape:    map[string]runtime.ShapeReport{},
 	}
+	a.Caps = capability.NewBroker(capability.AutoPolicy{Allow: allow}, a.approve)
+	a.Gate.SetOnOffer(func(o capability.Offer) {
+		a.Hub.Publish(trace.Event{
+			Type:    trace.TypeApproval,
+			Source:  "gate",
+			Payload: map[string]any{"id": o.ID, "action": o.Request.Action, "command": o.Request.Command, "path": o.Request.Path},
+		})
+	})
 	a.Evolve = &evolve.Engine{
 		CAS:     a.CAS,
 		Refs:    a.Refs,
@@ -117,11 +147,92 @@ func Open(root, bundledEvals string) (*App, error) {
 	if err := a.Seed(); err != nil {
 		return nil, err
 	}
+	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
+		return c.Effect(func() (func() error, error) {
+			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
+				return nil, nil
+			})
+			return func() error { off(); return nil }, nil
+		})
+	})
 	return a, nil
 }
 
-func autoApprover(capability.Request) (capability.Decision, error) {
-	return capability.Always, nil
+func runtimeHookPreTool() string { return "agent.pre_tool" }
+
+func (a *App) approve(ctx context.Context, req capability.Request) (capability.Decision, error) {
+	if a.Config.AutoAllow && !req.ForceAsk {
+		return capability.Always, nil
+	}
+	return a.Gate.Ask(ctx, req)
+}
+
+func (a *App) Interrupt(sessionID string) error {
+	a.mu.Lock()
+	cancel := a.runs[sessionID]
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return nil
+}
+
+func (a *App) RememberShape(sessionID string, r runtime.ShapeReport) {
+	a.shapeMu.Lock()
+	a.lastShape[sessionID] = r
+	a.shapeMu.Unlock()
+}
+
+func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
+	a.shapeMu.Lock()
+	defer a.shapeMu.Unlock()
+	return a.lastShape[sessionID]
+}
+
+func (a *App) RememberUsage(snap map[string]any) {
+	a.usageMu.Lock()
+	a.lastUsage = snap
+	a.usageMu.Unlock()
+}
+
+func (a *App) LastUsage() map[string]any {
+	a.usageMu.Lock()
+	defer a.usageMu.Unlock()
+	if a.lastUsage == nil {
+		return map[string]any{}
+	}
+	out := map[string]any{}
+	for k, v := range a.lastUsage {
+		out[k] = v
+	}
+	return out
+}
+
+func (a *App) Health() map[string]any {
+	return map[string]any{
+		"ok":         true,
+		"harness":    a.ActiveHash(),
+		"model":      a.Config.Model,
+		"version":    version.Version,
+		"usage":      a.LastUsage(),
+		"budget_usd": a.Config.MaxBudgetUSD,
+		"update":     update.Current(""),
+		"isolated":   false,
+		"models":     a.Config.Models,
+	}
+}
+
+func (a *App) ResolveApproval(id, decision string) error {
+	d := capability.Deny
+	switch decision {
+	case "always":
+		d = capability.Always
+	case "session":
+		d = capability.Session
+	case "once", "allow":
+		d = capability.Once
+	}
+	return a.Gate.Resolve(id, d)
 }
 
 func (a *App) SaveConfig() error {
@@ -146,4 +257,12 @@ func (a *App) Workspace() string {
 	}
 	wd, _ := os.Getwd()
 	return wd
+}
+
+func (a *App) StagingPath() string {
+	return filepath.Join(a.Home.Updates(), update.StagingName())
+}
+
+func (a *App) ApplyStagedUpdate(exe string) error {
+	return update.ApplyStaged(exe, a.StagingPath())
 }

@@ -42,3 +42,15 @@ func TestRejectHuge(t *testing.T) {
 		t.Fatal("expected too large")
 	}
 }
+
+func TestHostModuleInstantiatesWithClock(t *testing.T) {
+	h := NewHost()
+	defer h.Close()
+	m, err := h.Load("math", addWasm, "add", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Scratch(0) != 0 {
+		t.Fatal("scratch should start zero")
+	}
+}

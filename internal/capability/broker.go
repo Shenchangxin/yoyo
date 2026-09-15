@@ -1,6 +1,7 @@
 package capability
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,7 @@ type Request struct {
 	Command   string
 	SessionID string
 	Workspace string
+	ForceAsk  bool
 }
 
 type AutoPolicy struct {
@@ -44,13 +46,15 @@ type Broker struct {
 	mu      sync.Mutex
 	always  map[Level]bool
 	session map[string]map[Level]bool
-	ask     func(Request) (Decision, error)
+	ask     func(ctx context.Context, req Request) (Decision, error)
 	policy  AutoPolicy
 }
 
-func NewBroker(policy AutoPolicy, ask func(Request) (Decision, error)) *Broker {
+func NewBroker(policy AutoPolicy, ask func(ctx context.Context, req Request) (Decision, error)) *Broker {
 	if ask == nil {
-		ask = func(Request) (Decision, error) { return Deny, fmt.Errorf("capability: no approver") }
+		ask = func(context.Context, Request) (Decision, error) {
+			return Deny, fmt.Errorf("capability: no approver")
+		}
 	}
 	always := map[Level]bool{}
 	for _, l := range policy.Allow {
@@ -71,6 +75,13 @@ func (b *Broker) AllowAlways(l Level) {
 }
 
 func (b *Broker) Check(req Request) error {
+	return b.CheckCtx(context.Background(), req)
+}
+
+func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if req.Workspace != "" && req.Path != "" {
 		if !WithinWorkspace(req.Workspace, req.Path) && req.Level != SpecifiedPath && req.Level != HighRisk {
 			return fmt.Errorf("capability: path %q escapes workspace", req.Path)
@@ -87,7 +98,7 @@ func (b *Broker) Check(req Request) error {
 	}
 	ask := b.ask
 	b.mu.Unlock()
-	dec, err := ask(req)
+	dec, err := ask(ctx, req)
 	if err != nil {
 		return err
 	}

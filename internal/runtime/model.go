@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type Role string
@@ -47,8 +47,18 @@ type ChatRequest struct {
 	MaxTokens   int        `json:"max_tokens,omitempty"`
 }
 
+type StreamDelta struct {
+	Text string
+}
+
 type Client interface {
 	Chat(ctx context.Context, req ChatRequest) (Message, error)
+}
+
+// Streamer is an optional capability. The loop uses it when present so the
+// UI can render tokens without pulling a heavy agent SDK.
+type Streamer interface {
+	ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error)
 }
 
 type OpenAIClient struct {
@@ -65,12 +75,38 @@ func NewOpenAIClient(baseURL, apiKey string) *OpenAIClient {
 	return &OpenAIClient{
 		BaseURL:    baseURL,
 		APIKey:     apiKey,
-		HTTPClient: &http.Client{Timeout: 120 * time.Second},
+		HTTPClient: &http.Client{},
 	}
 }
 
 func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
-	body, err := json.Marshal(req)
+	return c.ChatStream(ctx, req, nil)
+}
+
+func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+	msg, err := c.doChat(ctx, req, true, emit)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "stream") {
+		return c.doChat(ctx, req, false, emit)
+	}
+	return msg, err
+}
+
+func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool, emit func(StreamDelta) error) (Message, error) {
+	payload := map[string]any{
+		"model":    req.Model,
+		"messages": req.Messages,
+		"stream":   stream,
+	}
+	if len(req.Tools) > 0 {
+		payload["tools"] = req.Tools
+	}
+	if req.Temperature != 0 {
+		payload["temperature"] = req.Temperature
+	}
+	if req.MaxTokens > 0 {
+		payload["max_tokens"] = req.MaxTokens
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return Message{}, err
 	}
@@ -79,6 +115,9 @@ func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, erro
 		return Message{}, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if stream {
+		httpReq.Header.Set("Accept", "text/event-stream")
+	}
 	if c.APIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
@@ -87,13 +126,137 @@ func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, erro
 		return Message{}, err
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
-	if err != nil {
-		return Message{}, err
-	}
 	if res.StatusCode >= 300 {
+		raw, _ := io.ReadAll(res.Body)
 		return Message{}, fmt.Errorf("openai: %s: %s", res.Status, truncate(string(raw), 800))
 	}
+	if !stream {
+		raw, err := io.ReadAll(res.Body)
+		if err != nil {
+			return Message{}, err
+		}
+		msg, err := parseOpenAIJSON(raw)
+		if err == nil && emit != nil && msg.Content != "" {
+			_ = emit(StreamDelta{Text: msg.Content})
+		}
+		return msg, err
+	}
+	return readOpenAIStream(res.Body, emit)
+}
+
+type streamAcc struct{ id, name, args string }
+
+func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error) {
+	br := bufio.NewReader(r)
+	var content strings.Builder
+	tools := map[int]*streamAcc{}
+	maxIdx := -1
+	sawData := false
+	for {
+		line, err := br.ReadString('\n')
+		if len(line) > 0 {
+			trim := strings.TrimSpace(line)
+			if !sawData && trim != "" && !strings.HasPrefix(trim, "data:") {
+				rest, _ := io.ReadAll(br)
+				return parseOpenAIJSON(append([]byte(line), rest...))
+			}
+			line = trim
+		}
+		if strings.HasPrefix(line, "data:") {
+			sawData = true
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data != "" && data != "[DONE]" {
+				msg, piece := applyStreamChunk(data, tools, &maxIdx)
+				if msg != nil {
+					if emit != nil && msg.Content != "" {
+						_ = emit(StreamDelta{Text: msg.Content})
+					}
+					return *msg, nil
+				}
+				if piece != "" {
+					content.WriteString(piece)
+					if emit != nil {
+						_ = emit(StreamDelta{Text: piece})
+					}
+				}
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return Message{}, err
+		}
+	}
+	out := Message{Role: RoleAssistant, Content: content.String()}
+	for i := 0; i <= maxIdx; i++ {
+		a := tools[i]
+		if a == nil {
+			continue
+		}
+		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: a.id, Name: a.name, Arguments: a.args})
+	}
+	return out, nil
+}
+
+func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string) {
+	var chunk struct {
+		Choices []struct {
+			Delta struct {
+				Content   any `json:"content"`
+				ToolCalls []struct {
+					Index    int    `json:"index"`
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"delta"`
+			Message *struct {
+				Content   any `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil || len(chunk.Choices) == 0 {
+		return nil, ""
+	}
+	ch := chunk.Choices[0]
+	if ch.Message != nil && (stringify(ch.Message.Content) != "" || len(ch.Message.ToolCalls) > 0) {
+		msg := Message{Role: RoleAssistant, Content: stringify(ch.Message.Content)}
+		for _, tc := range ch.Message.ToolCalls {
+			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
+		}
+		return &msg, ""
+	}
+	for _, tc := range ch.Delta.ToolCalls {
+		a := tools[tc.Index]
+		if a == nil {
+			a = &streamAcc{}
+			tools[tc.Index] = a
+		}
+		if tc.Index > *maxIdx {
+			*maxIdx = tc.Index
+		}
+		if tc.ID != "" {
+			a.id = tc.ID
+		}
+		if tc.Function.Name != "" {
+			a.name = tc.Function.Name
+		}
+		a.args += tc.Function.Arguments
+	}
+	return nil, stringify(ch.Delta.Content)
+}
+
+func parseOpenAIJSON(raw []byte) (Message, error) {
 	var parsed struct {
 		Choices []struct {
 			Message struct {
