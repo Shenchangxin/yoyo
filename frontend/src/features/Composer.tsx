@@ -8,8 +8,10 @@ import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Attachment, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
-import { formatTokens, lookupCatalogModel, mergeModelIds, modelsForProvider } from "../lib/models-dev";
+import { formatTokens, lookupCatalogModel, composerModelIds } from "../lib/models-dev";
 import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
+import { contextBreakdown, type CtxSliceId } from "../lib/context-usage";
+import type { Copy } from "../lib/copy";
 
 export function Composer(props: {
   draftKey: string;
@@ -45,17 +47,11 @@ export function Composer(props: {
   const fileRef = useRef<HTMLInputElement>(null);
   const copy = useCopy();
   const canSend = !props.disabled && !!value.trim();
-  const catalogModels = modelsForProvider(MODELS_DEV_SNAPSHOT, props.provider || "openai").map((m) => m.id);
-  const models = mergeModelIds(props.model, props.models, catalogModels);
   const currentModel = (props.model || "").trim();
-  const modelOptions = currentModel && !models.includes(currentModel) ? [currentModel, ...models] : models;
+  const modelOptions = composerModelIds(MODELS_DEV_SNAPSHOT, props.provider, currentModel, props.models);
   const slashOpen = hint === "slash";
   const meta = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "openai", currentModel);
-  const shapedBudget = (props.ctx?.budget && props.ctx.budget > 0) ? props.ctx.budget : 0;
-  const window = (props.ctx?.window && props.ctx.window > 0) ? props.ctx.window : (meta?.model.contextWindow || 0);
-  const budget = shapedBudget || window;
-  const used = props.ctx?.tokens || 0;
-  const pct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
+  const fallbackWindow = meta?.model.contextWindow || 0;
 
   const slashPrefix = slashQuery(value);
   const slashItems = slashPrefix ? filterSlash(slashPrefix, slashCatalog(copy)) : [];
@@ -137,8 +133,8 @@ export function Composer(props: {
   }
 
   return (
-    <div className={cn("no-drag shrink-0", props.compact ? "px-2 pb-2 pt-1" : "px-4 pb-4 pt-1")}>
-      <div className={cn("mx-auto w-full", !props.compact && "max-w-2xl")}>
+    <div className={cn("no-drag shrink-0", props.compact ? "px-3 pb-2 pt-1" : "px-5 pb-4 pt-1 sm:px-8 lg:px-10")}>
+      <div className="mx-auto w-full min-w-0">
         <div
           className={cn(
             "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
@@ -324,23 +320,17 @@ export function Composer(props: {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {modelOptions.map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
+                  {modelOptions.map((m) => {
+                    const label = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "", m)?.model.name || m;
+                    return <SelectItem key={m} value={m}>{label}</SelectItem>;
+                  })}
                 </SelectContent>
               </Select>
             ) : currentModel ? (
               <span className="hidden truncate px-1.5 text-[11px] text-muted sm:inline">{props.model}</span>
             ) : null}
             {props.running ? (
-              <button
-                type="button"
-                className="h-7 rounded-lg px-1.5 text-[12px] font-medium text-muted hover:bg-lift hover:text-foreground"
-                onClick={() => { props.onSend({ steer: true, attachments: atts }); setAtts([]); }}
-                disabled={!value.trim()}
-              >
-                {copy.composer.steer}
-              </button>
+              <span className="hidden max-w-[9rem] truncate text-[11px] text-muted lg:inline">{copy.composer.queueHint}</span>
             ) : null}
             <button
               type="button"
@@ -364,17 +354,14 @@ export function Composer(props: {
             </button>
           </div>
         </div>
-        {budget > 0 ? (
-          <div className="mt-1.5 flex items-center gap-2 px-1.5 text-[11px] tabular-nums text-muted" title={props.ctx?.note ? `${props.ctx.note} · shaped ${used} / budget ${budget} · window ${window}` : copy.composer.context}>
-            <span className="h-1 w-16 overflow-hidden rounded-full bg-lift">
-              <span className="block h-full rounded-full bg-accent" style={{ width: pct + "%" }} />
-            </span>
-            <span>{formatTokens(used)} / {formatTokens(budget)}</span>
-            {window > 0 && window !== budget ? <span className="text-muted/80">window {formatTokens(window)}</span> : null}
-            {props.ctx?.prefixTokens ? <span className="text-muted/80">prefix {formatTokens(props.ctx.prefixTokens)}</span> : null}
-            {meta?.model.name ? <span className="min-w-0 truncate">{meta.model.name}</span> : null}
-          </div>
-        ) : null}
+        <ContextMeter
+          ctx={props.ctx}
+          fallbackWindow={fallbackWindow}
+          queued={props.queued}
+          running={props.running}
+          compact={props.compact}
+          copy={copy}
+        />
       </div>
     </div>
   );
@@ -425,5 +412,121 @@ function PopupRow(props: { item: { token: string; hint: string }; active: boolea
       <span className="font-mono text-xs text-foreground">{props.item.token}</span>
       <span className="text-[11px] text-muted">{props.item.hint}</span>
     </button>
+  );
+}
+
+const SLICE_TONE: Record<CtxSliceId, string> = {
+  system: "bg-[var(--ctx-system)]",
+  tools: "bg-[var(--ctx-tools)]",
+  dynamic: "bg-[var(--ctx-dynamic)]",
+  chat: "bg-[var(--ctx-chat)]",
+  free: "bg-[var(--ctx-free)]",
+};
+
+function sliceLabel(id: CtxSliceId, copy: Copy): string {
+  if (id === "system") return copy.composer.ctxSystem;
+  if (id === "tools") return copy.composer.ctxTools;
+  if (id === "dynamic") return copy.composer.ctxDynamic;
+  if (id === "chat") return copy.composer.ctxChat;
+  return copy.composer.ctxFree;
+}
+
+function ContextMeter(props: {
+  ctx?: ContextUsage;
+  fallbackWindow: number;
+  queued?: number;
+  running?: boolean;
+  compact?: boolean;
+  copy: Copy;
+}) {
+  const copy = props.copy;
+  const br = contextBreakdown(props.ctx, props.fallbackWindow);
+  const queued = props.queued || 0;
+  if (br.capacity <= 0) {
+    if (!props.running && queued <= 0) return null;
+    return (
+      <div className="mt-2 flex min-w-0 items-center gap-2 px-0.5 text-[11px] text-muted">
+        {props.running ? <span>{copy.composer.queueHint}</span> : null}
+        {queued > 0 ? <span>{copy.composer.queuedCount.replace("{n}", String(queued))}</span> : null}
+      </div>
+    );
+  }
+
+  const visible = br.slices.filter((s) => s.tokens > 0);
+  const legend = props.compact ? visible.filter((s) => s.id !== "free") : visible;
+  const tooltip = (
+    <div className="flex min-w-[11rem] flex-col gap-1 py-0.5">
+      {br.slices.filter((s) => s.tokens > 0 || s.id === "free").map((s) => (
+        <div key={s.id} className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
+          <span className="flex items-center gap-1.5 text-muted">
+            <i className={cn("size-1.5 rounded-full", SLICE_TONE[s.id])} aria-hidden />
+            <span>{sliceLabel(s.id, copy)}</span>
+          </span>
+          <span className="text-foreground">{formatTokens(s.tokens)}</span>
+        </div>
+      ))}
+      <div className="mt-0.5 flex items-center justify-between gap-6 border-t border-border/70 pt-1 text-[11px] tabular-nums">
+        <span className="text-muted">{copy.composer.ctxWindow}</span>
+        <span className="text-foreground">{formatTokens(br.capacity)}</span>
+      </div>
+      {br.providerPrompt > 0 ? (
+        <div className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
+          <span className="text-muted">{copy.composer.ctxProvider}</span>
+          <span className="text-foreground">{formatTokens(br.providerPrompt)}</span>
+        </div>
+      ) : null}
+      {br.elided > 0 ? (
+        <div className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
+          <span className="text-muted">{copy.composer.ctxElided}</span>
+          <span className="text-foreground">{br.elided}</span>
+        </div>
+      ) : null}
+      {br.layers.length ? <div className="text-[10px] text-muted">{br.layers.join(" · ")}</div> : null}
+      {br.note ? <div className="text-[10px] text-muted">{br.note}</div> : null}
+    </div>
+  );
+
+  return (
+    <Tooltip content={tooltip} side="top" className="max-w-none px-2.5 py-2">
+      <div
+        className="mt-2 min-w-0 px-0.5"
+        role="group"
+        aria-label={copy.composer.context}
+      >
+        <div
+          className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--ctx-free)]"
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={br.pct}
+          aria-label={`${copy.composer.context} ${br.pct}%`}
+        >
+          {visible.map((s) => (
+            <span
+              key={s.id}
+              className={cn("h-full min-w-[2px] transition-[flex-grow] duration-300", SLICE_TONE[s.id], s.id === "free" && "min-w-0")}
+              style={{ flexGrow: Math.max(s.tokens, 1), flexBasis: 0 }}
+              title={`${sliceLabel(s.id, copy)} ${formatTokens(s.tokens)}`}
+            />
+          ))}
+        </div>
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] leading-none tabular-nums text-muted">
+          {!props.compact
+            ? legend.map((s) => (
+              <span key={s.id} className="inline-flex items-center gap-1.5">
+                <i className={cn("size-1.5 rounded-full", SLICE_TONE[s.id])} aria-hidden />
+                <span>{sliceLabel(s.id, copy)}</span>
+                <span className="text-foreground/75">{formatTokens(s.tokens)}</span>
+              </span>
+            ))
+            : null}
+          <span className={cn("inline-flex items-center gap-1.5", !props.compact && "ml-auto")}>
+            <span className={cn(br.pct >= 90 ? "text-danger" : "text-foreground/80")}>{br.pct}%</span>
+            <span>{formatTokens(br.used)} / {formatTokens(br.capacity)}</span>
+          </span>
+          {queued > 0 ? <span>{copy.composer.queuedCount.replace("{n}", String(queued))}</span> : null}
+        </div>
+      </div>
+    </Tooltip>
   );
 }

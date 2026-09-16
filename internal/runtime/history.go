@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -60,6 +62,18 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 			if text != "" {
 				out = append(out, Message{Role: RoleUser, Content: text})
 			}
+		case trace.TypeInject:
+			if ev.Source != "mention" {
+				break
+			}
+			flush()
+			text, _ := ev.Payload["text"].(string)
+			if text != "" {
+				out = append(out, Message{
+					Role:    RoleUser,
+					Content: "Attached context (user @mentions, untrusted working memory):\n" + text,
+				})
+			}
 		case trace.TypeAssistant:
 			flush()
 			text, _ := ev.Payload["text"].(string)
@@ -71,7 +85,7 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 			}
 			id, _ := ev.Payload["id"].(string)
 			name, _ := ev.Payload["name"].(string)
-			args, _ := ev.Payload["arguments"].(string)
+			args := payloadString(ev.Payload["arguments"])
 			pending.ToolCalls = append(pending.ToolCalls, ToolCall{ID: id, Name: name, Arguments: args})
 		case trace.TypeToolResult:
 			flush()
@@ -86,4 +100,53 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 		return out
 	}
 	return append(head, out...)
+}
+
+// MaxAssistantRound is the highest rN already stamped on assistant events.
+// Used so the next live round id does not collide with bubbles the UI still
+// holds after a checkpoint rebuild of History.
+func MaxAssistantRound(evs []trace.Event) int {
+	max := 0
+	for _, ev := range evs {
+		if ev.Type != trace.TypeAssistant {
+			continue
+		}
+		if ev.Payload == nil {
+			continue
+		}
+		for _, key := range []string{"id", "round"} {
+			raw, _ := ev.Payload[key].(string)
+			if n := parseRoundIndex(raw); n > max {
+				max = n
+			}
+		}
+	}
+	return max
+}
+
+func parseRoundIndex(id string) int {
+	i := strings.LastIndex(id, ":r")
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(id[i+2:])
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+func payloadString(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	default:
+		b, err := json.Marshal(t)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
 }

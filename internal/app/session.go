@@ -132,15 +132,54 @@ func (a *App) StartSend(sessionID, message string, plan bool) error {
 }
 
 func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachment) error {
+	atts, resume := takeResume(message, atts)
+	if resume {
+		message = ""
+	}
+	if resume && a.Running(sessionID) {
+		return errBusy
+	}
 	if a.Running(sessionID) {
 		a.Enqueue(sessionID, QueuedTurn{Text: message, Plan: plan, Attachments: atts})
 		return ErrQueued
 	}
+	return a.launchSend(sessionID, message, plan, atts, resume)
+}
+
+// RetrySession continues the current turn from existing history. It does not
+// append a new user message (unlike Send).
+func (a *App) RetrySession(sessionID string) error {
+	if a.Running(sessionID) {
+		return errBusy
+	}
+	return a.launchSend(sessionID, "", false, nil, true)
+}
+
+func takeResume(message string, atts []Attachment) ([]Attachment, bool) {
+	if strings.TrimSpace(message) != "" {
+		return atts, false
+	}
+	kept := make([]Attachment, 0, len(atts))
+	resume := false
+	for _, a := range atts {
+		if a.Name == "__resume__" || a.Path == "__resume__" {
+			resume = true
+			continue
+		}
+		kept = append(kept, a)
+	}
+	return kept, resume
+}
+
+func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment, resume bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	ctx, release, err := a.acquireRun(sessionID, ctx)
 	if err != nil {
 		cancel()
 		if err == errBusy {
+			if resume {
+				return errBusy
+			}
 			a.Enqueue(sessionID, QueuedTurn{Text: message, Plan: plan, Attachments: atts})
 			return ErrQueued
 		}
@@ -159,7 +198,7 @@ func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachm
 		}()
 		defer a.kickQueue(sessionID)
 		goruntime.LockOSThread()
-		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts)
+		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume)
 	}()
 	return nil
 }
@@ -170,10 +209,10 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 		return "", err
 	}
 	defer release()
-	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil)
+	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false)
 }
 
-func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment) (string, error) {
+func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (string, error) {
 	meta, err := a.GetSession(sessionID)
 	if err != nil {
 		meta, err = a.NewSession("")
@@ -234,8 +273,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		PlanText:  meta.PlanText,
 	}
 	hist := []runtime.Message{}
+	roundSeq := 0
 	if evs, err := a.Traces.Read(sessionID); err == nil {
 		hist = runtime.MessagesFromEvents(evs)
+		roundSeq = runtime.MaxAssistantRound(evs)
 	}
 	window := runtime.ModelContextWindow(model)
 	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window)
@@ -250,20 +291,26 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 	}
 
-	if meta.Title == "" || meta.Title == "session" {
-		meta.Title = titleFrom(message)
-		_ = a.writeSession(meta)
-	}
-	note := hash
-	if snap.Note != "" {
-		note = hash + " " + snap.Note
-	}
-	inject, _ := runtime.ExpandMentionsSkills(meta.Workspace, message, note, skillBodies, 2400)
-	if extra := runtime.ExpandAttachments(meta.Workspace, toRuntimeAtts(atts), 2400); extra != "" {
-		if inject != "" {
-			inject += "\n"
+	inject := ""
+	if resume {
+		message = ""
+		atts = nil
+	} else {
+		if meta.Title == "" || meta.Title == "session" {
+			meta.Title = titleFrom(message)
+			_ = a.writeSession(meta)
 		}
-		inject += extra
+		note := hash
+		if snap.Note != "" {
+			note = hash + " " + snap.Note
+		}
+		inject, _ = runtime.ExpandMentionsSkills(meta.Workspace, message, note, skillBodies, 2400)
+		if extra := runtime.ExpandAttachments(meta.Workspace, toRuntimeAtts(atts), 2400); extra != "" {
+			if inject != "" {
+				inject += "\n"
+			}
+			inject += extra
+		}
 	}
 	out, runErr := runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
@@ -282,6 +329,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Playbook:         pb,
 		Skills:           skills,
 		History:          hist,
+		RoundSeq:         roundSeq,
 		Tools:            tools,
 		Client:           client,
 		Trace:            a.Traces,

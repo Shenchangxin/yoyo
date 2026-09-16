@@ -175,6 +175,15 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, err
 		}
 		return map[string]any{"text": out}, nil
+	case "turn.retry":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		if err := a.RetrySession(p.Session); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
 	case "turn.interrupt":
 		var p struct {
 			Session string `json:"session"`

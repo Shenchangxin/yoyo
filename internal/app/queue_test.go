@@ -29,6 +29,28 @@ func TestQueueWhenBusy(t *testing.T) {
 	}
 }
 
+func TestRetryDoesNotQueue(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	a.runs[sess.ID] = func() {}
+	a.mu.Unlock()
+	err = a.RetrySession(sess.ID)
+	if err == nil || err.Error() != string(errBusy) {
+		t.Fatalf("want busy, got %v", err)
+	}
+	if q := a.QueueList(sess.ID); len(q) != 0 {
+		t.Fatalf("retry queued: %+v", q)
+	}
+}
+
 func TestPinArchiveDelete(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

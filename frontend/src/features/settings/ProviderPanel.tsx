@@ -33,17 +33,20 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   function pickProvider(id: string) {
     setProvider(id);
     const next = applyProviderPreset(id);
-    const cats = modelsForProvider(MODELS_DEV_SNAPSHOT, id);
-    if (!next) return;
+    if (!next) {
+      setModelsCsv(mergeModelIds(model).join(", "));
+      return;
+    }
     setBaseUrl(next.baseUrl);
-    const pick = cats.find((m) => m.id === next.model) || cats[0];
+    const cats = modelsForProvider(MODELS_DEV_SNAPSHOT, id);
+    const pick = cats.find((m) => m.id === next.model) || cats.find((m) => next.models.includes(m.id)) || cats[0];
     setModel(pick?.id || next.model);
-    setModelsCsv(mergeModelIds(cats.map((m) => m.id), next.models).join(", "));
+    setModelsCsv(mergeModelIds(pick?.id, next.models).join(", "));
   }
 
   function pickModel(id: string) {
     setModel(id);
-    setModelsCsv(mergeModelIds(id, modelsCsv.split(","), catalog.map((m) => m.id)).join(", "));
+    setModelsCsv(mergeModelIds(id, modelsCsv.split(",")).join(", "));
   }
 
   const hint =

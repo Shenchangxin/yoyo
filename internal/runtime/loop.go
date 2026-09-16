@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
@@ -38,7 +40,13 @@ type RunRequest struct {
 	Meter            *Meter
 	Inject           string
 	PullSteer        func() string
+	// RoundSeq is the highest assistant round already on this session's
+	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
+	// with bubbles still on screen after a checkpoint rebuild.
+	RoundSeq int
 }
+
+var emitSeq atomic.Int64
 
 func Run(ctx context.Context, req RunRequest) (string, error) {
 	if req.Loop.MaxTurns <= 0 {
@@ -69,7 +77,6 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	dyn := AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, "")
 	system := prefix + dyn
 	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": system})
-	emit(req, trace.TypeUser, "user", map[string]any{"text": req.User})
 
 	messages := []Message{{Role: RoleSystem, Content: system}}
 	if len(req.History) > 0 {
@@ -79,17 +86,30 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		emit(req, trace.TypeInject, "mention", map[string]any{"text": req.Inject})
 		messages = append(messages, Message{Role: RoleUser, Content: "Attached context (user @mentions, untrusted working memory):\n" + req.Inject})
 	}
-	messages = append(messages, Message{Role: RoleUser, Content: req.User})
+	if user := strings.TrimSpace(req.User); user != "" {
+		emit(req, trace.TypeUser, "user", map[string]any{"text": req.User})
+		messages = append(messages, Message{Role: RoleUser, Content: req.User})
+	} else if len(stripSystem(req.History)) == 0 {
+		return "", fmt.Errorf("nothing to continue")
+	}
 	var last string
 	toolCount := 0
 	overflowFails := 0
+	roundSeq := req.RoundSeq
+	if roundSeq <= 0 {
+		for _, m := range req.History {
+			if m.Role == RoleAssistant {
+				roundSeq++
+			}
+		}
+	}
 	for turn := 0; turn < loop.MaxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return last, err
 		}
 		if req.PullSteer != nil {
 			if extra := strings.TrimSpace(req.PullSteer()); extra != "" {
-				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra})
+				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra, "name": "steer"})
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 			}
 		}
@@ -106,21 +126,23 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		compacted = Legalize(compacted)
 		fillLedger(&report, prefix, dyn, toolsJSON, req.ModelWindow)
 		report.Tokens = messagesTokens(compacted) + overhead
-		if report.Note != "" || turn == 0 {
+		if req.OnShape != nil {
+			req.OnShape(report)
+		}
+		if report.Note != "" {
 			emit(req, trace.TypeCompact, "runtime", map[string]any{
 				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
-				"window": report.Window, "prefix_tokens": report.PrefixTokens, "schema_tokens": report.SchemaTokens,
-				"layers": report.Layers, "elided": report.Elided,
+				"window": report.Window, "prefix_tokens": report.PrefixTokens, "dynamic_tokens": report.DynamicTokens,
+				"schema_tokens": report.SchemaTokens, "layers": report.Layers, "elided": report.Elided,
 			})
-			if req.OnShape != nil {
-				req.OnShape(report)
-			}
-			if req.Events != nil && report.Note != "" {
+			if req.Events != nil {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
 		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: req.SessionID}
-		msg, err := chat(ctx, req, chatReq)
+		roundSeq++
+		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
+		msg, err := chat(ctx, req, chatReq, roundID)
 		for err != nil && IsContextOverflow(err) {
 			overflowFails++
 			if overflowFails >= 3 {
@@ -152,16 +174,17 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 			emit(req, trace.TypeCompact, "runtime", map[string]any{
 				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
-				"layers": report.Layers, "elided": report.Elided, "overflow": overflowFails,
+				"window": report.Window, "prefix_tokens": report.PrefixTokens, "dynamic_tokens": report.DynamicTokens,
+				"schema_tokens": report.SchemaTokens, "layers": report.Layers, "elided": report.Elided, "overflow": overflowFails,
 			})
 			if req.OnShape != nil {
 				req.OnShape(report)
 			}
 			chatReq.Messages = compacted
-			msg, err = chat(ctx, req, chatReq)
+			msg, err = chat(ctx, req, chatReq, roundID)
 		}
 		if err != nil {
-			emit(req, trace.TypeError, "model", map[string]any{"error": err.Error()})
+			emit(req, trace.TypeError, "model", ClassifyError(err).Payload())
 			return last, err
 		}
 		overflowFails = 0
@@ -181,13 +204,13 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 			req.Meter.Add(in, out)
 			if err := req.Meter.Check(loop.MaxBudgetUSD); err != nil {
-				emit(req, trace.TypeError, "runtime", map[string]any{"error": err.Error()})
+				emit(req, trace.TypeError, "runtime", ClassifyError(err).Payload())
 				return last, err
 			}
 		}
 		if msg.Content != "" {
 			last = msg.Content
-			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content})
+			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
 		}
 		if len(msg.ToolCalls) == 0 {
 			if spill != nil {
@@ -203,7 +226,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			return strings.TrimSpace(msg.Content), nil
 		}
 		messages = append(messages, msg)
-		results := dispatchTools(ctx, req, msg.ToolCalls)
+		results := dispatchTools(ctx, req, msg.ToolCalls, roundID)
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
 	}
@@ -217,11 +240,11 @@ func spillOf(req RunRequest) *Spill {
 	return nil
 }
 
-func chat(ctx context.Context, req RunRequest, chatReq ChatRequest) (Message, error) {
+func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (Message, error) {
 	if s, ok := req.Client.(Streamer); ok {
 		return s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" {
-				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true})
+				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
 			}
 			return nil
 		})
@@ -229,9 +252,18 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest) (Message, er
 	return req.Client.Chat(ctx, chatReq)
 }
 
-func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall) []Message {
+func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundID string) []Message {
 	n := len(calls)
 	out := make([]Message, n)
+	type job struct {
+		tc      ToolCall
+		deny    bool
+		reason  string
+		args    string
+		content string
+		ok      bool
+	}
+	jobs := make([]job, n)
 	readonly := true
 	for _, tc := range calls {
 		if !readonlyCall(req.Tools, tc.Name) {
@@ -239,26 +271,33 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall) []Mess
 			break
 		}
 	}
-	runOne := func(i int) {
-		tc := calls[i]
+	for i, tc := range calls {
+		if strings.TrimSpace(tc.ID) == "" {
+			tc.ID = fmt.Sprintf("%s:call:%d", roundID, i)
+			calls[i].ID = tc.ID
+		}
 		hook := applyFileHooks(req.FileHooks, ToolHook{Name: tc.Name, Arguments: tc.Arguments, SessionID: req.SessionID})
 		if !hook.Deny {
 			hook = applyPreTool(req.Events, hook)
 		}
-		emit(req, trace.TypeToolCall, "agent", map[string]any{"name": tc.Name, "arguments": tc.Arguments, "id": tc.ID})
+		args := tc.Arguments
+		if hook.Arguments != "" && hook.Arguments != tc.Arguments {
+			args = hook.Arguments
+		}
+		jobs[i] = job{tc: tc, deny: hook.Deny, reason: hook.Reason, args: args}
+		emit(req, trace.TypeToolCall, "agent", map[string]any{
+			"name": tc.Name, "arguments": tc.Arguments, "id": tc.ID, "round": roundID,
+		})
+	}
+	runExec := func(i int) {
+		j := jobs[i]
 		var res ToolResult
-		if hook.Deny {
-			res = ToolResult{Content: "ERROR: blocked by hook: " + hook.Reason, Err: fmt.Errorf("blocked")}
+		if j.deny {
+			res = ToolResult{Content: "ERROR: blocked by hook: " + j.reason, Err: fmt.Errorf("blocked")}
+		} else if req.Tools == nil {
+			res = ToolResult{Err: fmt.Errorf("no tools")}
 		} else {
-			args := tc.Arguments
-			if hook.Arguments != "" && hook.Arguments != tc.Arguments {
-				args = hook.Arguments
-			}
-			if req.Tools == nil {
-				res = ToolResult{Err: fmt.Errorf("no tools")}
-			} else {
-				res = req.Tools.Call(tc.Name, args)
-			}
+			res = req.Tools.Call(j.tc.Name, j.args)
 		}
 		content := res.Content
 		if res.Err != nil {
@@ -267,38 +306,43 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall) []Mess
 				content += "\n" + res.Content
 			}
 		}
-		content = ingestToolResult(spillOf(req), tc.ID, tc.Name, content)
-		post := applyPostTool(req.Events, ToolHook{Name: tc.Name, Arguments: tc.Arguments, SessionID: req.SessionID, Result: content})
+		content = ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content)
+		post := applyPostTool(req.Events, ToolHook{Name: j.tc.Name, Arguments: j.tc.Arguments, SessionID: req.SessionID, Result: content})
 		if post.Result != "" {
 			content = post.Result
 		}
-		if tc.Name == "load_skill" && res.Err == nil {
-			emit(req, trace.TypeInject, "skill", map[string]any{"name": tc.Name, "text": content})
-		}
-		emit(req, trace.TypeToolResult, "tool", map[string]any{"name": tc.Name, "id": tc.ID, "content": content, "untrusted": true})
-		out[i] = Message{Role: RoleTool, ToolCallID: tc.ID, Name: tc.Name, Content: content}
+		jobs[i].content = content
+		jobs[i].ok = res.Err == nil
 	}
 	if readonly && n > 1 {
 		var wg sync.WaitGroup
 		wg.Add(n)
-		for i := range calls {
+		for i := range jobs {
 			go func(i int) {
 				defer wg.Done()
-				runOne(i)
+				runExec(i)
 			}(i)
 		}
 		wg.Wait()
-		_ = ctx
-		return out
-	}
-	for i := range calls {
-		if err := ctx.Err(); err != nil {
-			for j := i; j < n; j++ {
-				out[j] = Message{Role: RoleTool, ToolCallID: calls[j].ID, Name: calls[j].Name, Content: "ERROR: interrupted"}
+	} else {
+		for i := range jobs {
+			if err := ctx.Err(); err != nil {
+				for j := i; j < n; j++ {
+					jobs[j].content = "ERROR: interrupted"
+				}
+				break
 			}
-			break
+			runExec(i)
 		}
-		runOne(i)
+	}
+	for i, j := range jobs {
+		if j.tc.Name == "load_skill" && j.ok {
+			emit(req, trace.TypeInject, "skill", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID})
+		}
+		emit(req, trace.TypeToolResult, "tool", map[string]any{
+			"name": j.tc.Name, "id": j.tc.ID, "content": j.content, "untrusted": true, "round": roundID,
+		})
+		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content}
 	}
 	return out
 }
@@ -354,7 +398,17 @@ func stripSystem(msgs []Message) []Message {
 }
 
 func emit(req RunRequest, typ trace.EventType, source string, payload map[string]any) {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if id, _ := payload["id"].(string); strings.TrimSpace(id) == "" {
+		switch typ {
+		case trace.TypeUser, trace.TypeInject, trace.TypeError, trace.TypeCompact, trace.TypeApproval:
+			payload["id"] = fmt.Sprintf("%s:%s:%d", req.SessionID, typ, emitSeq.Add(1))
+		}
+	}
 	ev := trace.Event{
+		TS:               time.Now().UTC(),
 		Type:             typ,
 		Source:           source,
 		SessionID:        req.SessionID,

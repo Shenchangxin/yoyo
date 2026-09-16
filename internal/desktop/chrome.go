@@ -73,7 +73,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				case "approval":
 					notify("yoyo-ask", n.Approval, payloadStr(ev.Payload, "action"), ev.SessionID)
 				case "error":
-					notify("yoyo-err", n.ErrTitle, payloadStr(ev.Payload, "error"), ev.SessionID)
+					notify("yoyo-err", n.ErrTitle, notifyError(ev.Payload), ev.SessionID)
 				}
 			}
 		}()
@@ -96,7 +96,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				case "approval":
 					notify("yoyo-ask", n.Approval, payloadStr(payload, "action"), session)
 				case "error":
-					notify("yoyo-err", n.ErrTitle, payloadStr(payload, "error"), session)
+					notify("yoyo-err", n.ErrTitle, notifyError(payload), session)
 				}
 			}
 		}()
@@ -267,4 +267,16 @@ func payloadStr(p map[string]any, key string) string {
 	}
 	s, _ := p[key].(string)
 	return s
+}
+
+func notifyError(p map[string]any) string {
+	title := payloadStr(p, "title")
+	if title != "" {
+		return title
+	}
+	err := payloadStr(p, "error")
+	if len(err) > 160 {
+		return err[:160] + "…"
+	}
+	return err
 }

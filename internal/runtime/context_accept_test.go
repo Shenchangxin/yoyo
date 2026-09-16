@@ -281,6 +281,205 @@ func (a *alwaysOverflow) Chat(_ context.Context, _ ChatRequest) (Message, error)
 	return Message{}, fmt.Errorf("context_length_exceeded")
 }
 
+func TestSecondTurnKeepsBothUsersAndSkipsEmptyShape(t *testing.T) {
+	st := trace.NewStore(t.TempDir())
+	c := &recordingClient{}
+	ws := t.TempDir()
+	loop := DefaultLoop()
+	_, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "first", Workspace: ws, Loop: loop, Client: c, Trace: st,
+		Tools: &WorkspaceTools{Workspace: ws, Depth: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := st.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Run(context.Background(), RunRequest{
+		SessionID: "s", User: "second", Workspace: ws, Loop: loop, Client: c, Trace: st,
+		History: MessagesFromEvents(evs),
+		Tools:   &WorkspaceTools{Workspace: ws, Depth: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var users []string
+	for _, m := range c.last.Messages {
+		if m.Role == RoleUser {
+			users = append(users, m.Content)
+		}
+	}
+	if len(users) < 2 || users[len(users)-1] != "second" {
+		t.Fatalf("users %+v", users)
+	}
+	nFirst := 0
+	for _, u := range users {
+		if u == "first" {
+			nFirst++
+		}
+	}
+	if nFirst != 1 {
+		t.Fatalf("first user count %d in %+v", nFirst, users)
+	}
+	evs, _ = st.Read("s")
+	emptyShape := 0
+	for _, ev := range evs {
+		if ev.Type != trace.TypeCompact {
+			continue
+		}
+		note, _ := ev.Payload["note"].(string)
+		kind, _ := ev.Payload["kind"].(string)
+		if kind == "shape" && note == "" {
+			emptyShape++
+		}
+	}
+	if emptyShape != 0 {
+		t.Fatalf("empty shape events=%d", emptyShape)
+	}
+	rounds := map[string]int{}
+	usersJSONL := 0
+	for _, ev := range evs {
+		if ev.Type == trace.TypeUser {
+			usersJSONL++
+		}
+		if ev.Type != trace.TypeAssistant {
+			continue
+		}
+		id, _ := ev.Payload["id"].(string)
+		if id == "" {
+			t.Fatalf("assistant missing round id: %+v", ev.Payload)
+		}
+		rounds[id]++
+	}
+	if usersJSONL != 2 {
+		t.Fatalf("jsonl users=%d", usersJSONL)
+	}
+	if len(rounds) != 2 {
+		t.Fatalf("assistant rounds=%v", rounds)
+	}
+}
+
+func TestResumeContinuesWithoutNewUser(t *testing.T) {
+	st := trace.NewStore(t.TempDir())
+	c := &recordingClient{}
+	ws := t.TempDir()
+	loop := DefaultLoop()
+	if _, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "first", Workspace: ws, Loop: loop, Client: c, Trace: st,
+		Tools: &WorkspaceTools{Workspace: ws, Depth: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := st.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "", Workspace: ws, Loop: loop, Client: c, Trace: st,
+		History: MessagesFromEvents(evs),
+		Tools:   &WorkspaceTools{Workspace: ws, Depth: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var users []string
+	for _, m := range c.last.Messages {
+		if m.Role == RoleUser {
+			users = append(users, m.Content)
+		}
+	}
+	if len(users) != 1 || users[0] != "first" {
+		t.Fatalf("resume users %+v", users)
+	}
+	evs, _ = st.Read("s")
+	usersJSONL := 0
+	for _, ev := range evs {
+		if ev.Type == trace.TypeUser {
+			usersJSONL++
+		}
+	}
+	if usersJSONL != 1 {
+		t.Fatalf("jsonl users=%d", usersJSONL)
+	}
+}
+
+func TestResumeEmptyHistoryErrors(t *testing.T) {
+	_, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "", Workspace: t.TempDir(), Loop: DefaultLoop(),
+		Client: &recordingClient{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "nothing to continue") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLiveEventsStampTSAndUniqueUserIDs(t *testing.T) {
+	st := trace.NewStore(t.TempDir())
+	c := &recordingClient{}
+	ws := t.TempDir()
+	loop := DefaultLoop()
+	var live []trace.Event
+	on := func(ev trace.Event) { live = append(live, ev) }
+	if _, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "ok", Workspace: ws, Loop: loop, Client: c, Trace: st, OnEvent: on,
+		Tools: &WorkspaceTools{Workspace: ws, Depth: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := st.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(context.Background(), RunRequest{
+		SessionID: "s", User: "ok", Workspace: ws, Loop: loop, Client: c, Trace: st, OnEvent: on,
+		History:  MessagesFromEvents(evs),
+		RoundSeq: MaxAssistantRound(evs),
+		Tools:    &WorkspaceTools{Workspace: ws, Depth: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var users []trace.Event
+	for _, ev := range live {
+		if ev.TS.IsZero() {
+			t.Fatalf("zero ts type=%s", ev.Type)
+		}
+		if ev.Type == trace.TypeUser {
+			users = append(users, ev)
+		}
+	}
+	if len(users) != 2 {
+		t.Fatalf("live users=%d", len(users))
+	}
+	id0, _ := users[0].Payload["id"].(string)
+	id1, _ := users[1].Payload["id"].(string)
+	if id0 == "" || id1 == "" || id0 == id1 {
+		t.Fatalf("user ids %q %q", id0, id1)
+	}
+	rounds := map[string]int{}
+	for _, ev := range live {
+		if ev.Type != trace.TypeAssistant {
+			continue
+		}
+		id, _ := ev.Payload["id"].(string)
+		if id != "" {
+			rounds[id]++
+		}
+	}
+	if len(rounds) != 2 {
+		t.Fatalf("assistant rounds=%v", rounds)
+	}
+}
+
+type recordingClient struct {
+	last ChatRequest
+}
+
+func (c *recordingClient) Chat(_ context.Context, req ChatRequest) (Message, error) {
+	c.last = req
+	return Message{Role: RoleAssistant, Content: "ok"}, nil
+}
+
 func TestC9OverflowRecoversSameTurn(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
