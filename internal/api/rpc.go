@@ -429,6 +429,14 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	case "config.set":
 		_ = json.Unmarshal(params, &a.Config)
 		return map[string]any{"ok": true}, a.SaveConfig()
+	case "provider.test":
+		return a.TestProvider(), nil
+	case "mcp.replace":
+		var p struct {
+			Servers []app.MCPServerConfig `json:"servers"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.ReplaceMCP(p.Servers)
 	case "key.set":
 		var p struct {
 			Value string `json:"value"`

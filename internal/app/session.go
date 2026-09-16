@@ -28,8 +28,8 @@ type SessionMeta struct {
 	Harness          string    `json:"harness"`
 	ModelFingerprint string    `json:"model_fingerprint"`
 	Title            string    `json:"title,omitempty"`
-	Archived         bool      `json:"archived,omitempty"`
-	Pinned           bool      `json:"pinned,omitempty"`
+	Archived         bool      `json:"archived"`
+	Pinned           bool      `json:"pinned"`
 	Model            string    `json:"model,omitempty"`
 }
 

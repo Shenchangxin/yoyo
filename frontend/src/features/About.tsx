@@ -19,12 +19,12 @@ export function About(props: {
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-panel p-5 focus:outline-none">
-          <Dialog.Title className="text-base font-semibold">{copy.about.title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-muted">{copy.about.body}</Dialog.Description>
-          <dl className="mt-4 space-y-2 font-mono text-xs">
+        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/80 bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none">
+          <Dialog.Title className="text-[15px] font-semibold">{copy.about.title}</Dialog.Title>
+          <Dialog.Description className="mt-2 text-[13px] text-muted">{copy.about.body}</Dialog.Description>
+          <dl className="mt-4 space-y-1.5">
             {rows.map(([k, v]) => (
-              <div key={k} className="flex justify-between gap-4">
+              <div key={k} className="flex justify-between gap-4 rounded-lg bg-card px-3 py-2 font-mono text-[11px]">
                 <dt className="text-muted">{k}</dt>
                 <dd className="truncate text-foreground">{v || "—"}</dd>
               </div>

@@ -35,6 +35,20 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, a.Config)
 	})
+	mux.HandleFunc("/api/provider/test", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.TestProvider())
+	})
+	mux.HandleFunc("/api/mcp/replace", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Servers []app.MCPServerConfig `json:"servers"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := a.ReplaceMCP(body.Servers); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var body struct {

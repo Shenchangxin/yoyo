@@ -79,11 +79,12 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 	}
 	var out []SessionMeta
 	for _, id := range ids {
-		if m, err := a.GetSession(id); err == nil {
-			out = append(out, m)
-		} else {
-			out = append(out, SessionMeta{ID: id})
+		m, err := a.GetSession(id)
+		if err != nil {
+			// jsonl without meta is a leftover, not a chat
+			continue
 		}
+		out = append(out, m)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Pinned != out[j].Pinned {

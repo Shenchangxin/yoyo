@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 import App from "./App";
 import { ThemeProvider, useTheme } from "./lib/theme";
+import { TooltipProvider } from "./components/ui/tooltip";
 import "./styles.css";
 
 function ThemedToaster() {
@@ -14,7 +15,7 @@ function ThemedToaster() {
       closeButton
       toastOptions={{
         classNames: {
-          toast: "border-border bg-panel text-foreground shadow-lg",
+          toast: "border-border bg-popover text-foreground shadow-[var(--shadow-popover)]",
         },
       }}
     />
@@ -24,8 +25,10 @@ function ThemedToaster() {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
-      <ThemedToaster />
+      <TooltipProvider>
+        <App />
+        <ThemedToaster />
+      </TooltipProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

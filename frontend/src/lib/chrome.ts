@@ -9,6 +9,7 @@ export function isMac(): boolean {
 }
 
 export function showCaptionButtons(): boolean {
+  if (isMac()) return false;
   const n = os();
   return n === "windows" || n === "linux" || n === "";
 }
@@ -22,5 +23,11 @@ export const chrome = {
   },
   close() {
     Window.Close().catch(() => {});
+  },
+  setAlwaysOnTop(v: boolean) {
+    Window.SetAlwaysOnTop(v).catch(() => {});
+  },
+  setZoom(v: number) {
+    Window.SetZoom(v).catch(() => {});
   },
 };

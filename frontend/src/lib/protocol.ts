@@ -1,4 +1,16 @@
-export type Lab = "agent" | "harbor" | "evolve" | "harness" | "control";
+export type Lab = "agent" | "harbor" | "evolve" | "harness";
+export type Surface = Lab | "settings";
+export type SettingsTab =
+  | "general"
+  | "appearance"
+  | "provider"
+  | "policy"
+  | "mcp"
+  | "plugins"
+  | "shortcuts"
+  | "updates"
+  | "logs"
+  | "danger";
 
 export type Thread = {
   id: string;
@@ -80,6 +92,21 @@ export type AppConfig = {
   updateUrl: string;
   keymap?: Record<string, string>;
   locale?: string;
+  alwaysOnTop?: boolean;
+  startAtLogin?: boolean;
+  notificationsEnabled?: boolean;
+  notifyWhenUnfocusedOnly?: boolean;
+  uiScale?: number;
+  updateChannel?: string;
+  theme?: string;
+};
+
+export type Notice = {
+  id: string;
+  title: string;
+  body: string;
+  ts: string;
+  sessionId?: string;
 };
 
 export type Attachment = {

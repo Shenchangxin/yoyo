@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -20,11 +21,14 @@ import (
 // worker process (YOYO_WORKER=1 / yoyo serve --stdio) so a wedged loop
 // cannot stall the window. App is used in-process otherwise.
 type Service struct {
-	App *app.App
-	RPC *api.LineClient
-	cmd *exec.Cmd
-	gui *application.App
-	win application.Window
+	App        *app.App
+	RPC        *api.LineClient
+	cmd        *exec.Cmd
+	gui        *application.App
+	win        application.Window
+	tray       *application.SystemTray
+	menuLocale string
+	quitting   atomic.Bool
 }
 
 func NewService(a *app.App) *Service { return &Service{App: a} }
@@ -76,10 +80,40 @@ func (s *Service) GetConfig() app.Config {
 func (s *Service) SetConfig(cfg app.Config) error {
 	if s.RPC != nil {
 		_, err := s.call("config.set", cfg)
+		if err == nil {
+			s.applyDesktop(cfg)
+		}
 		return err
 	}
 	s.App.Config = cfg
-	return s.App.SaveConfig()
+	if err := s.App.SaveConfig(); err != nil {
+		return err
+	}
+	s.applyDesktop(cfg)
+	return nil
+}
+
+func (s *Service) SetLocale(locale string) error {
+	cfg := s.GetConfig()
+	cfg.Locale = locale
+	return s.SetConfig(cfg)
+}
+
+func (s *Service) BeginQuit() {
+	s.quitting.Store(true)
+}
+
+func (s *Service) Quitting() bool {
+	return s.quitting.Load()
+}
+
+func (s *Service) applyDesktop(cfg app.Config) {
+	s.menuLocale = cfg.Locale
+	if s.win != nil {
+		s.win.SetAlwaysOnTop(cfg.AlwaysOnTop)
+	}
+	_ = SetStartAtLogin(cfg.StartAtLogin)
+	s.RebuildMenus()
 }
 
 func (s *Service) SetAPIKey(value string) {
@@ -91,10 +125,17 @@ func (s *Service) SetAPIKey(value string) {
 }
 
 func (s *Service) CreateSession(workspace string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
 	if s.RPC != nil {
-		return decode[app.SessionMeta](s.call("thread.start", map[string]any{"workspace": workspace}))
+		m, err = decode[app.SessionMeta](s.call("thread.start", map[string]any{"workspace": workspace}))
+	} else {
+		m, err = s.App.NewSession(workspace)
 	}
-	return s.App.NewSession(workspace)
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
 func (s *Service) ListSessions() ([]app.SessionMeta, error) {
@@ -105,18 +146,48 @@ func (s *Service) ListSessions() ([]app.SessionMeta, error) {
 }
 
 func (s *Service) ForkSession(id string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
 	if s.RPC != nil {
-		return decode[app.SessionMeta](s.call("thread.fork", map[string]any{"session": id}))
+		m, err = decode[app.SessionMeta](s.call("thread.fork", map[string]any{"session": id}))
+	} else {
+		m, err = s.App.ForkSession(id)
 	}
-	return s.App.ForkSession(id)
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
-func (s *Service) RenameSession(id, title string) error {
+func (s *Service) RenameSession(id, title string) (app.SessionMeta, error) {
+	var err error
 	if s.RPC != nil {
-		_, err := s.call("thread.rename", map[string]any{"session": id, "title": title})
-		return err
+		_, err = s.call("thread.rename", map[string]any{"session": id, "title": title})
+		if err != nil {
+			return app.SessionMeta{}, err
+		}
+		list, e2 := decode[[]app.SessionMeta](s.call("thread.list", nil))
+		if e2 != nil {
+			return app.SessionMeta{ID: id, Title: title}, nil
+		}
+		for _, m := range list {
+			if m.ID == id {
+				s.emitSessions(m)
+				return m, nil
+			}
+		}
+		s.emitSessions(id)
+		return app.SessionMeta{ID: id, Title: title}, nil
 	}
-	return s.App.RenameSession(id, title)
+	err = s.App.RenameSession(id, title)
+	if err != nil {
+		return app.SessionMeta{}, err
+	}
+	m, err := s.App.GetSession(id)
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
 func (s *Service) Playbook() (any, error) {

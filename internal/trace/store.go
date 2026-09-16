@@ -98,6 +98,16 @@ func (s *Store) Read(sessionID string) ([]Event, error) {
 	return out, sc.Err()
 }
 
+func (s *Store) Remove(sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := os.Remove(s.path(sessionID))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 func (s *Store) ListSessions() ([]string, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if err != nil {

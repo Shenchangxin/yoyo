@@ -35,6 +35,7 @@ func Open(root string) (*Dir, error) {
 		d.Tmp(),
 		d.Updates(),
 		d.Skills(),
+		d.Workspace(),
 	} {
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			return nil, err
@@ -64,7 +65,10 @@ func (d *Dir) Plugins() string  { return filepath.Join(d.Root, "plugins") }
 func (d *Dir) Tmp() string      { return filepath.Join(d.Root, "tmp") }
 func (d *Dir) Updates() string  { return filepath.Join(d.Root, "updates") }
 func (d *Dir) Skills() string  { return filepath.Join(d.Root, "skills") }
-func (d *Dir) Config() string   { return filepath.Join(d.Root, "config.yaml") }
+func (d *Dir) Workspace() string {
+	return filepath.Join(d.Root, "workspace")
+}
+func (d *Dir) Config() string { return filepath.Join(d.Root, "config.yaml") }
 func (d *Dir) ModelsRefs() string {
 	return filepath.Join(d.Refs(), "models")
 }

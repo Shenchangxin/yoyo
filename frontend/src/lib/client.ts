@@ -1,4 +1,5 @@
-import { asArray, asBool, bool, errMessage, num, pick, str } from "./normalize";
+import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
+import { getLocale } from "./i18n";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, SkillInfo, Thread } from "./protocol";
 
 export class ApiError extends Error {
@@ -13,16 +14,33 @@ export class ApiError extends Error {
 
 async function wailsService(): Promise<any | null> {
   if (import.meta.env.VITE_E2E) return null;
-  if (typeof window !== "undefined" && !(window as any)._wails?.environment?.OS) return null;
+  const w = window as any;
+  const desktop = !!(w._wails || w.wails || w.__YOYO_DESKTOP__);
+  if (typeof window !== "undefined" && !desktop && !w._wails?.environment?.OS) {
+    try {
+      const runtime: any = await import("@wailsio/runtime");
+      if (!runtime?.Environment && !runtime?.environment) return null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const spec = "../../bindings/github.com/Shenchangxin/yoyo/internal/desktop/service.js";
     const mod = await import(/* @vite-ignore */ spec);
     const svc = (mod as any).Service ?? (mod as any).default ?? mod;
-    if (svc && typeof (svc.ListSessions || svc.Health) === "function") return svc;
+    if (svc && typeof (svc.ListSessions || svc.Health || svc.listSessions) === "function") return svc;
     return null;
   } catch {
     return null;
   }
+}
+
+function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null {
+  if (!s) return null;
+  for (const n of names) {
+    if (typeof s[n] === "function") return s[n].bind(s);
+  }
+  return null;
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -86,6 +104,13 @@ export function configOf(v: any): AppConfig {
     updateUrl: str(pick(v, "update_url", "UpdateURL", "updateUrl")),
     keymap: (pick(v, "keymap", "Keymap") || {}) as Record<string, string>,
     locale: str(pick(v, "locale", "Locale")),
+    alwaysOnTop: bool(pick(v, "always_on_top", "AlwaysOnTop", "alwaysOnTop")),
+    startAtLogin: bool(pick(v, "start_at_login", "StartAtLogin", "startAtLogin")),
+    notificationsEnabled: boolOr(pick(v, "notifications_enabled", "NotificationsEnabled", "notificationsEnabled"), true),
+    notifyWhenUnfocusedOnly: bool(pick(v, "notify_when_unfocused_only", "NotifyWhenUnfocusedOnly", "notifyWhenUnfocusedOnly")),
+    uiScale: num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1,
+    updateChannel: str(pick(v, "update_channel", "UpdateChannel", "updateChannel"), "nightly"),
+    theme: str(pick(v, "theme", "Theme"), "system"),
   };
 }
 
@@ -143,10 +168,23 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     close_to_tray: cfg.closeToTray,
     update_url: cfg.updateUrl,
     locale: cfg.locale || "",
+    Locale: cfg.locale || "",
     keymap: cfg.keymap || {},
+    always_on_top: !!cfg.alwaysOnTop,
+    start_at_login: !!cfg.startAtLogin,
+    notifications_enabled: cfg.notificationsEnabled !== false,
+    notify_when_unfocused_only: !!cfg.notifyWhenUnfocusedOnly,
+    ui_scale: cfg.uiScale || 1,
+    update_channel: cfg.updateChannel || "nightly",
+    theme: cfg.theme || "system",
   };
   const s = await wailsService();
-  if (s?.SetConfig) return s.SetConfig(body);
+  if (s?.SetConfig) {
+    await s.SetConfig(body);
+    const loc = svcMethod(s, "SetLocale", "setLocale");
+    if (loc && cfg.locale) await loc(cfg.locale);
+    return;
+  }
   await http("/api/config", { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -309,7 +347,11 @@ export async function forkSession(id: string): Promise<Thread> {
 
 export async function renameSession(id: string, title: string): Promise<void> {
   const s = await wailsService();
-  if (s?.RenameSession) return s.RenameSession(id, title);
+  const fn = svcMethod(s, "RenameSession", "renameSession");
+  if (fn) {
+    await fn(id, title);
+    return;
+  }
   await http(`/api/sessions/${id}/title`, { method: "POST", body: JSON.stringify({ title }) });
 }
 
@@ -379,14 +421,22 @@ export async function checkoutSafe(hash: string): Promise<void> {
     const l3 = e?.body?.l3 || String(e.message || e).includes("L3 confirmation");
     if (!l3) throw e;
     const surfaces = (e?.body?.surfaces || ["loop_preset/policy_pack"]).join(", ");
-    if (!window.confirm(`L3 gate: changing ${surfaces}. Confirm checkout?`)) throw e;
+    const zh = getLocale() === "zh-CN";
+    const ok = window.confirm(
+      zh ? `L3 门禁：将改动 ${surfaces}。确认 checkout？` : `L3 gate: changing ${surfaces}. Confirm checkout?`,
+    );
+    if (!ok) throw e;
     await checkout(hash, true);
   }
 }
 
 export async function deleteSession(id: string): Promise<void> {
   const s = await wailsService();
-  if (s?.DeleteSession) return s.DeleteSession(id);
+  const fn = svcMethod(s, "DeleteSession", "deleteSession");
+  if (fn) {
+    await fn(id);
+    return;
+  }
   await http(`/api/sessions/${id}`, { method: "DELETE" });
 }
 
@@ -494,6 +544,23 @@ export async function checkUpdate(): Promise<any> {
   const s = await wailsService();
   if (s?.CheckUpdate) return s.CheckUpdate();
   return http("/api/update");
+}
+
+export async function testProvider(): Promise<any> {
+  const s = await wailsService();
+  if (s?.TestProvider) return s.TestProvider();
+  return http("/api/provider/test", { method: "POST", body: "{}" });
+}
+
+export async function replaceMCP(servers: { name: string; command: string; args: string[] }[]): Promise<void> {
+  const s = await wailsService();
+  if (s?.ReplaceMCP) return s.ReplaceMCP(servers);
+  await http("/api/mcp/replace", { method: "POST", body: JSON.stringify({ servers }) });
+}
+
+export async function revealLogs(): Promise<void> {
+  const s = await wailsService();
+  if (s?.RevealLogs) return s.RevealLogs();
 }
 
 export async function keyStatus(): Promise<any> {

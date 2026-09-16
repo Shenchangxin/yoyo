@@ -48,6 +48,11 @@ export function bool(v: any): boolean {
   return asBool(v);
 }
 
+export function boolOr(v: any, fallback: boolean): boolean {
+  if (v === undefined || v === null) return fallback;
+  return asBool(v);
+}
+
 export function errMessage(e: any): string {
   if (!e) return "unknown error";
   if (typeof e === "string") return e;

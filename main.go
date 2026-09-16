@@ -47,8 +47,9 @@ func main() {
 	var win application.Window
 	ns := notifications.New()
 	gui := application.New(application.Options{
-		Name:        "Yoyo",
-		Description: "Self-harnessing local agent workstation",
+		Name:                        "Yoyo",
+		Description:                 "Self-harnessing local agent workstation",
+		DisableDefaultSignalHandler: true,
 		Services: []application.Service{
 			application.NewService(svc),
 			application.NewService(ns),
@@ -70,6 +71,7 @@ func main() {
 	})
 
 	geom := desktop.RestoreGeometry(svc)
+	cfg := svc.GetConfig()
 	opts := application.WebviewWindowOptions{
 		Title:              "Yoyo " + version.Version,
 		Width:              geom.W,
@@ -79,6 +81,7 @@ func main() {
 		BackgroundColour:   application.NewRGB(14, 14, 14),
 		URL:                "/",
 		Frameless:          runtime.GOOS != "darwin",
+		AlwaysOnTop:        cfg.AlwaysOnTop,
 		InitialPosition:    application.WindowCentered,
 		UseApplicationMenu: runtime.GOOS == "darwin",
 		Mac: application.MacWindow{
@@ -89,6 +92,9 @@ func main() {
 			DisableMenu:                       true,
 			DisableFramelessWindowDecorations: false,
 			NonClientRegionSupport:            true,
+		},
+		Linux: application.LinuxWindow{
+			Icon: desktop.AppIcon,
 		},
 	}
 	if geom.Max {
@@ -101,6 +107,7 @@ func main() {
 	svc.Attach(gui, win)
 	desktop.InstallChrome(gui, win, svc, ns)
 	desktop.PersistWindow(svc, win)
+	desktop.WatchSignals(gui, svc, win)
 
 	if err := gui.Run(); err != nil {
 		log.Fatal(err)

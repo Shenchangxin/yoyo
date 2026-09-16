@@ -1,23 +1,27 @@
+import type { Copy } from "./copy";
+
 export type SlashCommand = {
   cmd: string;
   hint: string;
 };
 
-export const SLASH: SlashCommand[] = [
-  { cmd: "/new", hint: "New chat" },
-  { cmd: "/rename", hint: "Rename thread: /rename title" },
-  { cmd: "/fork", hint: "Fork this thread" },
-  { cmd: "/archive", hint: "Archive this thread" },
-  { cmd: "/delete", hint: "Delete this thread" },
-  { cmd: "/plan", hint: "Toggle plan mode" },
-  { cmd: "/diff", hint: "Refresh review diff" },
-  { cmd: "/steer", hint: "Steer the running turn" },
-  { cmd: "/compact", hint: "Compact context" },
-  { cmd: "/model", hint: "Set thread model: /model id" },
-  { cmd: "/export", hint: "Export thread as markdown" },
-  { cmd: "/stop", hint: "Stop the running turn" },
-  { cmd: "/quit", hint: "Quit Yoyo" },
-];
+export function slashCatalog(copy: Copy): SlashCommand[] {
+  return [
+    { cmd: "/new", hint: copy.slash.new },
+    { cmd: "/rename", hint: copy.slash.rename },
+    { cmd: "/fork", hint: copy.slash.fork },
+    { cmd: "/archive", hint: copy.slash.archive },
+    { cmd: "/delete", hint: copy.slash.delete },
+    { cmd: "/plan", hint: copy.slash.plan },
+    { cmd: "/diff", hint: copy.slash.diff },
+    { cmd: "/steer", hint: copy.slash.steer },
+    { cmd: "/compact", hint: copy.slash.compact },
+    { cmd: "/model", hint: copy.slash.model },
+    { cmd: "/export", hint: copy.slash.export },
+    { cmd: "/stop", hint: copy.slash.stop },
+    { cmd: "/quit", hint: copy.slash.quit },
+  ];
+}
 
 export function slashQuery(value: string): string | null {
   const last = (value.split("\n").pop() || "");
@@ -26,6 +30,6 @@ export function slashQuery(value: string): string | null {
   return last.toLowerCase();
 }
 
-export function filterSlash(prefix: string): SlashCommand[] {
-  return SLASH.filter((s) => s.cmd.startsWith(prefix) || s.cmd.slice(1).startsWith(prefix.slice(1)));
+export function filterSlash(prefix: string, items: SlashCommand[]): SlashCommand[] {
+  return items.filter((s) => s.cmd.startsWith(prefix) || s.cmd.slice(1).startsWith(prefix.slice(1)));
 }
