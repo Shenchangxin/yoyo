@@ -115,14 +115,14 @@ export function configOf(v: any): AppConfig {
 }
 
 export function approvalOf(v: any): Approval {
-  const req = pick(v, "request", "Request") || {};
+  const req = pick(v, "request", "Request") || v;
   return {
     id: str(pick(v, "id", "ID")),
     action: str(pick(req, "action", "Action")),
     command: str(pick(req, "command", "Command")),
     path: str(pick(req, "path", "Path")),
     level: str(pick(req, "level", "Level")),
-    sessionId: str(pick(req, "session_id", "SessionID", "sessionId")),
+    sessionId: str(pick(req, "session_id", "SessionID", "sessionId") ?? pick(v, "session_id", "SessionID", "sessionId")),
   };
 }
 
@@ -132,7 +132,9 @@ export function contextOf(v: any): ContextUsage {
     budget: num(pick(v, "budget", "Budget")),
     window: num(pick(v, "window", "Window")),
     prefixTokens: num(pick(v, "prefix_tokens", "PrefixTokens")),
+    dynamicTokens: num(pick(v, "dynamic_tokens", "DynamicTokens")),
     schemaTokens: num(pick(v, "schema_tokens", "SchemaTokens")),
+    providerPrompt: num(pick(v, "provider_prompt", "ProviderPrompt")),
     note: str(pick(v, "note", "Note")),
     layers: asArray(pick(v, "layers", "Layers")).map(String),
     elided: num(pick(v, "elided", "Elided")),
@@ -217,21 +219,63 @@ export async function trajectory(id: string): Promise<any[]> {
   return asArray(await http(`/api/sessions/${id}/trajectory`));
 }
 
+export async function retry(sessionID: string): Promise<void> {
+  const s = await wailsService();
+  const bound = svcMethod(s, "RetrySession", "retrySession");
+  if (bound) {
+    await bound(sessionID);
+    return;
+  }
+  if (s?.StartSendOpts) {
+    await s.StartSendOpts(sessionID, "", false, [{ name: "__resume__", path: "__resume__" }]);
+    return;
+  }
+  try {
+    await http(`/api/sessions/${sessionID}/retry`, { method: "POST" });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) {
+      await send(sessionID, "", { attachments: [{ name: "__resume__", path: "__resume__" }] });
+      return;
+    }
+    throw e;
+  }
+}
+
 export async function send(sessionID: string, text: string, opts?: { plan?: boolean; attachments?: Attachment[] }): Promise<{ queued?: boolean }> {
   const s = await wailsService();
-  if (s?.StartSendOpts) {
-    await s.StartSendOpts(sessionID, text, !!opts?.plan, opts?.attachments || []);
-    return {};
+  try {
+    if (s?.StartSendOpts) {
+      const raw = await s.StartSendOpts(sessionID, text, !!opts?.plan, opts?.attachments || []);
+      return { queued: isQueuedResult(raw) };
+    }
+    if (s?.StartSend) {
+      const raw = await s.StartSend(sessionID, text, !!opts?.plan);
+      return { queued: isQueuedResult(raw) };
+    }
+    const raw = await http<any>(`/api/sessions/${sessionID}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, async: true, plan: !!opts?.plan, attachments: opts?.attachments || [] }),
+    });
+    return { queued: !!raw?.queued || isQueuedResult(raw) };
+  } catch (e) {
+    const m = errMessage(e);
+    if (/queued/i.test(m)) return { queued: true };
+    throw e;
   }
-  if (s?.StartSend) {
-    await s.StartSend(sessionID, text, !!opts?.plan);
-    return {};
-  }
-  const raw = await http<any>(`/api/sessions/${sessionID}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ text, async: true, plan: !!opts?.plan, attachments: opts?.attachments || [] }),
-  });
-  return { queued: !!raw?.queued };
+}
+
+function isQueuedResult(raw: any): boolean {
+  if (raw == null) return false;
+  if (typeof raw === "string") return /queued/i.test(raw);
+  if (typeof raw === "object") return !!(raw.queued || raw.Queued);
+  return false;
+}
+
+export async function queueList(sessionID: string): Promise<{ text?: string }[]> {
+  const s = await wailsService();
+  if (s?.QueueList) return asArray(await s.QueueList(sessionID));
+  if (s) return [];
+  return asArray(await http(`/api/sessions/${sessionID}/queue`));
 }
 
 export async function running(sessionID: string): Promise<boolean> {

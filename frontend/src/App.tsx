@@ -67,6 +67,7 @@ export default function App() {
       models={ws.savedCfg.models}
       provider={ws.savedCfg.provider}
       ctx={ws.ctx}
+      queued={ws.queued}
       files={ws.files}
       skills={ws.skills}
       onSearchFiles={(q) => { void api.searchFiles(ws.savedCfg.workspace, q).then(ws.setFiles).catch(() => {}); }}
@@ -97,9 +98,6 @@ export default function App() {
       onToggle={(id) => ws.setHunkSel((s) => ({ ...s, [id]: !s[id] }))}
       onApply={ws.applySelected}
       onRefreshDiff={ws.refreshDiff}
-      ctx={ws.ctx}
-      approvals={ws.approvals}
-      onResolve={ws.onResolve}
       onQuote={(text) => {
         const cur = useUI.getState().drafts[ws.draftKey] || "";
         useUI.getState().setDraft(ws.draftKey, cur ? `${cur}\n${text}` : text);
@@ -108,7 +106,7 @@ export default function App() {
   );
 
   const agentPane = (
-    <section className="relative flex h-full min-h-0 flex-col">
+    <section className="relative flex h-full min-h-0 min-w-0 flex-col">
       <Transcript
         items={ws.items}
         approvals={ws.approvals}
@@ -117,6 +115,7 @@ export default function App() {
         onResolve={ws.onResolve}
         onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
         onSetup={() => ws.openSettings("general", "general-basics")}
+        onRetry={() => { void ws.onRetryLast(); }}
         onOpenReview={() => {
           ws.setInspector(true);
           ws.setInspTab("diff");
@@ -447,7 +446,7 @@ export default function App() {
           </Panel>
         ) : null}
         {showRail ? <ResizeHandle /> : null}
-        <Panel id="stage" minSize="50" className="h-full min-h-0">
+        <Panel id="stage" minSize="42" className="h-full min-h-0 min-w-0">
           <MainColumn>
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
@@ -472,11 +471,11 @@ export default function App() {
                   }));
                 }}
               >
-                <Panel id="main" minSize="40" className="h-full min-h-0">
+                <Panel id="main" minSize="32" className="h-full min-h-0 min-w-0">
                   {workspace}
                 </Panel>
                 <ResizeHandle />
-                <Panel id="inspect" minSize="20" maxSize="48" className="h-full min-h-0 pl-2">
+                <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0 pl-2">
                   <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border bg-sidebar">
                     {three ? inspect : (
                       <ChatDock
@@ -490,9 +489,11 @@ export default function App() {
                         models={ws.savedCfg.models}
                         provider={ws.savedCfg.provider}
                         ctx={ws.ctx}
+                        queued={ws.queued}
                         onSend={ws.onSend}
                         onStop={ws.onStop}
                         onResolve={ws.onResolve}
+                        onRetry={() => { void ws.onRetryLast(); }}
                         onOpenAgent={() => ws.setLab("agent")}
                         onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
                         onModel={async (model) => {

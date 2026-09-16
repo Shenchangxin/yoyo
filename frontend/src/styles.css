@@ -28,6 +28,11 @@ html.dark {
   --shadow-card: none;
   --shadow-composer: none;
   --shadow-popover: 0 18px 50px color-mix(in srgb, black 48%, transparent);
+  --ctx-system: color-mix(in srgb, var(--foreground) 42%, #6b7c93);
+  --ctx-tools: color-mix(in srgb, var(--accent) 55%, #4d8fd9);
+  --ctx-dynamic: #c4a35a;
+  --ctx-chat: var(--accent);
+  --ctx-free: color-mix(in srgb, var(--muted) 18%, transparent);
   color-scheme: dark;
 }
 
@@ -49,6 +54,11 @@ html.light {
   --shadow-card: none;
   --shadow-composer: 0 8px 28px -14px rgb(0 0 0 / 0.10);
   --shadow-popover: 0 18px 44px color-mix(in srgb, black 14%, transparent);
+  --ctx-system: color-mix(in srgb, var(--foreground) 28%, #8a96a8);
+  --ctx-tools: color-mix(in srgb, var(--accent) 45%, #3d7cc4);
+  --ctx-dynamic: #b8923f;
+  --ctx-chat: var(--accent);
+  --ctx-free: color-mix(in srgb, var(--muted) 16%, transparent);
   color-scheme: light;
 }
 
@@ -244,23 +254,54 @@ kbd,
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--lift) transparent;
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) transparent;
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: var(--lift);
+  background-color: color-mix(in srgb, var(--muted) 34%, transparent);
+  border: 2px solid transparent;
   border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.transcript-scroll {
+  scrollbar-gutter: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+.transcript-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.transcript-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 38%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.transcript-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--muted) 62%, transparent);
 }
 
 .md-body {
-  line-height: 1.7;
+  line-height: 1.65;
   font-size: 15px;
-  max-width: 75ch;
+  max-width: 100%;
+  letter-spacing: -0.011em;
 }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
 .md-body p { margin: 0.4em 0; }
 .md-body code {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
@@ -272,10 +313,10 @@ kbd,
 .md-body pre {
   background: var(--sidebar);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   padding: 12px 14px;
   overflow: auto;
-  margin: 12px 0;
+  margin: 10px 0;
 }
 .md-body pre code {
   background: transparent;
@@ -300,8 +341,34 @@ kbd,
 .caret-blink {
   animation: yoyo-caret 1s steps(1) infinite;
 }
+.assistant-live .md-body {
+  display: contents;
+}
+.assistant-live > p:last-of-type {
+  display: inline;
+}
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.thinking-dots i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--muted);
+  animation: yoyo-think 1.05s ease-in-out infinite;
+}
+.thinking-dots i:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes yoyo-think {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-1px); }
+}
 @media (prefers-reduced-motion: reduce) {
   .caret-blink { animation: none; opacity: 0.6; }
+  .thinking-dots i { animation: none; opacity: 0.7; }
 }
 
 [cmdk-root] {

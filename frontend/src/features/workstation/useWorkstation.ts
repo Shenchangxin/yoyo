@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
-import { mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
+import { classifyError, errorCopy, shortError } from "../../lib/error";
+import { dropTrailingErrors, mergeItem, mergePendingUsers, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
+import { num, str } from "../../lib/normalize";
 import { workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
@@ -32,7 +34,7 @@ export const emptyCfg: AppConfig = {
   updateChannel: "nightly",
   theme: "system",
 };
-const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, schemaTokens: 0, note: "", layers: [], elided: 0 };
+const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
 
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
   const next: Record<string, boolean> = {};
@@ -58,7 +60,7 @@ function localUser(sessionId: string, text: string): Item {
 function readInspTab(id: string) {
   try {
     const v = localStorage.getItem(`yoyo-insp-${id}`);
-    if (v === "diff" || v === "files" || v === "context" || v === "approvals") return v;
+    if (v === "diff" || v === "files") return v;
   } catch {
     /* ignore */
   }
@@ -101,6 +103,8 @@ export function useWorkstation() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [active, setActive] = useState<Thread | null>(null);
   const [items, setItems] = useState<Item[]>([]);
+  const itemsAcc = useRef<Item[]>([]);
+  const [queued, setQueued] = useState(0);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [ctx, setCtx] = useState<ContextUsage>(emptyCtx);
@@ -149,9 +153,10 @@ export function useWorkstation() {
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
 
   const fail = (e: unknown) => {
-    const m = api.errMessage(e);
-    setErr(m);
-    toast.error(m);
+    const classified = classifyError(api.errMessage(e));
+    const title = errorCopy(copy.transcript, classified.kind).title;
+    setErr(title);
+    toast.error(title);
   };
 
   const syncRunning = useCallback(async () => {
@@ -272,7 +277,7 @@ export function useWorkstation() {
       pushNotice({
         id: item.key || `${item.type}-${Date.now()}`,
         title: item.type === "approval" ? copy.app.approval : item.type === "error" ? copy.app.errorNotice : copy.app.turnFinished,
-        body: item.text || item.type,
+        body: item.type === "error" ? shortError(item, copy.transcript) : (item.text || item.type),
         ts: item.ts,
         sessionId: item.sessionId,
       });
@@ -281,29 +286,53 @@ export function useWorkstation() {
 
   useEffect(() => {
     if (!activeId) {
+      itemsAcc.current = [];
       setItems([]);
       return;
     }
+    itemsAcc.current = [];
     setItems([]);
-    let acc: Item[] = [];
-    const unsub = subscribeSession(activeId, (item) => {
-      acc = mergeItem(acc, item);
-      setItems(acc.slice());
-      if (item.type === "approval") {
-        api.approvals().then(setApprovals).catch(() => {});
-        setInspTab("approvals");
-        setInspector(true);
-      }
-      if (item.type === "turn_end" || item.type === "error") {
-        setRunning((m) => ({ ...m, [activeId]: false }));
-        api.contextUsage(activeId).then(setCtx).catch(() => {});
-      }
-    });
+    setQueued(0);
+    const unsub = subscribeSession(
+      activeId,
+      (item) => {
+        itemsAcc.current = mergeItem(itemsAcc.current, item);
+        setItems(itemsAcc.current.slice());
+        if (item.type === "compaction") {
+          const p = item.payload || {};
+          setCtx((prev) => ({
+            ...prev,
+            tokens: num(p.tokens, prev.tokens),
+            budget: num(p.budget, prev.budget),
+            window: num(p.window, prev.window || 0) || prev.window,
+            prefixTokens: num(p.prefix_tokens ?? p.prefixTokens, prev.prefixTokens || 0) || prev.prefixTokens,
+            dynamicTokens: num(p.dynamic_tokens ?? p.dynamicTokens, prev.dynamicTokens || 0) || prev.dynamicTokens,
+            schemaTokens: num(p.schema_tokens ?? p.schemaTokens, prev.schemaTokens || 0) || prev.schemaTokens,
+            providerPrompt: num(p.provider_prompt ?? p.providerPrompt, prev.providerPrompt || 0) || prev.providerPrompt,
+            note: str(p.note, prev.note),
+            layers: Array.isArray(p.layers) ? p.layers.map(String) : prev.layers,
+            elided: num(p.elided, prev.elided),
+          }));
+        }
+        if (item.type === "approval") {
+          api.approvals().then(setApprovals).catch(() => {});
+        }
+        if (item.type === "turn_end" || item.type === "error") {
+          setRunning((m) => ({ ...m, [activeId]: false }));
+          api.contextUsage(activeId).then(setCtx).catch(() => {});
+          api.queueList(activeId).then((q) => setQueued(q.length)).catch(() => setQueued(0));
+        }
+      },
+      (seed) => {
+        itemsAcc.current = mergePendingUsers(seed, itemsAcc.current);
+        setItems(itemsAcc.current.slice());
+      },
+    );
     api.approvals().then(setApprovals).catch(() => {});
     api.contextUsage(activeId).then(setCtx).catch(() => {});
     api.running(activeId).then((live) => setRunning((m) => ({ ...m, [activeId]: live }))).catch(() => {});
     return unsub;
-  }, [activeId, setInspTab, setInspector]);
+  }, [activeId]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -316,7 +345,7 @@ export function useWorkstation() {
         ]);
         setRunning((m) => ({ ...m, [activeId]: live }));
         setApprovals(offers);
-        if (!live) api.contextUsage(activeId).then(setCtx).catch(() => {});
+        api.contextUsage(activeId).then(setCtx).catch(() => {});
       }
     }, 1500);
     return () => window.clearInterval(t);
@@ -344,20 +373,55 @@ export function useWorkstation() {
       if (opts?.steer && running[t.id]) {
         await api.steer(t.id, text);
         useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
+        if (t.id === activeId) {
+          itemsAcc.current = mergeItem(itemsAcc.current, {
+            ...localUser(t.id, text),
+            source: "steer",
+            key: `ui-steer:${t.id}:${Date.now()}`,
+          });
+          setItems(itemsAcc.current.slice());
+        }
         toast.success(copy.app.steered);
         return;
       }
       const wasRunning = !!running[t.id];
       useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
       setRunning((m) => ({ ...m, [t.id]: true }));
-      setItems((prev) => (t.id === activeId ? [...prev, localUser(t.id, text)] : prev));
+      if (t.id === activeId) {
+        itemsAcc.current = mergeItem(itemsAcc.current, localUser(t.id, text));
+        setItems(itemsAcc.current.slice());
+      }
       const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
-      if (wasRunning || res.queued) toast.message(copy.app.queued);
+      if (wasRunning || res.queued) {
+        setQueued((n) => n + 1);
+        toast.message(copy.app.queued);
+      } else {
+        setQueued(0);
+      }
     } catch (e) {
       const m = api.errMessage(e);
-      if (!m.includes("already running") && !m.includes("queued")) {
-        if (activeId) setRunning((s) => ({ ...s, [activeId]: false }));
+      if (m.includes("queued") || m.includes("already running")) {
+        setQueued((n) => n + 1);
+        toast.message(copy.app.queued);
+        return;
       }
+      if (activeId) setRunning((s) => ({ ...s, [activeId]: false }));
+      fail(e);
+    }
+  }
+
+  async function onRetryLast() {
+    if (!activeId || running[activeId]) return;
+    const hasTurn = itemsAcc.current.some((it) => (it.type === "user" && it.source !== "steer") || it.type === "assistant");
+    if (!hasTurn) return;
+    setErr("");
+    setRunning((m) => ({ ...m, [activeId]: true }));
+    try {
+      await api.retry(activeId);
+      itemsAcc.current = dropTrailingErrors(itemsAcc.current);
+      setItems(itemsAcc.current.slice());
+    } catch (e) {
+      setRunning((s) => ({ ...s, [activeId]: false }));
       fail(e);
     }
   }
@@ -510,7 +574,9 @@ export function useWorkstation() {
     setThreads((prev) => [t, ...prev]);
     setActive(t);
     setLab("agent");
+    itemsAcc.current = [];
     setItems([]);
+    setQueued(0);
   }
 
   async function patchConfig(partial: Partial<AppConfig>) {
@@ -605,12 +671,12 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     setupDismissed, setSetupDismissed, sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, ctx, err, setErr,
+    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
   };
 }

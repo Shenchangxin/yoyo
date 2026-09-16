@@ -97,7 +97,7 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit fun
 func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool, emit func(StreamDelta) error) (Message, error) {
 	payload := map[string]any{
 		"model":    req.Model,
-		"messages": req.Messages,
+		"messages": wireMessages(req.Messages),
 		"stream":   stream,
 	}
 	if len(req.Tools) > 0 {

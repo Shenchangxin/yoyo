@@ -70,6 +70,7 @@ func IsContextOverflow(err error) bool {
 		"too many tokens", "maximum context", "prompt is too long",
 		"request too large", "string too long", "reduce the length of the messages",
 		"max context length", "maximum context length",
+		"context overflow",
 	} {
 		if strings.Contains(s, n) {
 			return true

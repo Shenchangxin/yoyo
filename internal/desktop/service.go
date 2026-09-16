@@ -304,6 +304,14 @@ func (s *Service) StartSendOpts(sessionID, text string, plan bool, atts []app.At
 	return err
 }
 
+func (s *Service) RetrySession(sessionID string) error {
+	if s.RPC != nil {
+		_, err := s.call("turn.retry", map[string]any{"session": sessionID})
+		return err
+	}
+	return s.App.RetrySession(sessionID)
+}
+
 func (s *Service) Interrupt(sessionID string) error {
 	if s.RPC != nil {
 		_, err := s.call("turn.interrupt", map[string]any{"session": sessionID})

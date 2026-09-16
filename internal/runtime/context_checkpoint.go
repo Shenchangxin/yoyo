@@ -194,11 +194,7 @@ func messagesFromAny(v any) []Message {
 				if cm == nil {
 					continue
 				}
-				m.ToolCalls = append(m.ToolCalls, ToolCall{
-					ID:        str(cm["id"]),
-					Name:      str(cm["name"]),
-					Arguments: str(cm["arguments"]),
-				})
+				m.ToolCalls = append(m.ToolCalls, parseToolCall(cm))
 			}
 		}
 		if m.Role != "" {
@@ -206,4 +202,21 @@ func messagesFromAny(v any) []Message {
 		}
 	}
 	return out
+}
+
+func parseToolCall(cm map[string]any) ToolCall {
+	tc := ToolCall{
+		ID:        str(cm["id"]),
+		Name:      str(cm["name"]),
+		Arguments: str(cm["arguments"]),
+	}
+	if fn, ok := cm["function"].(map[string]any); ok {
+		if n := str(fn["name"]); n != "" {
+			tc.Name = n
+		}
+		if a := str(fn["arguments"]); a != "" {
+			tc.Arguments = a
+		}
+	}
+	return tc
 }

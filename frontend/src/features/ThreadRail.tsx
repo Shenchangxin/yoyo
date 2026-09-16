@@ -262,8 +262,8 @@ function ThreadRow(props: {
 
   if (editing) {
     return (
-      <div className="mb-px flex w-full items-start gap-2 rounded-lg bg-lift px-2.5 py-[7px]">
-        <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
+      <div className="mb-px flex w-full items-center gap-2 rounded-lg bg-lift px-2.5 py-[7px]">
+        <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
         <input
           autoFocus
           aria-label={copy.rail.rename}
@@ -299,7 +299,7 @@ function ThreadRow(props: {
         <button
           type="button"
           aria-current={active ? "page" : undefined}
-          className="flex min-w-0 flex-1 items-start gap-2 px-2.5 py-[7px] text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left"
           onClick={() => {
             props.onSelect(t);
             props.onLab("agent");
@@ -316,7 +316,7 @@ function ThreadRow(props: {
             setMenuOpen(true);
           }}
         >
-          <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
+          <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1">
               {t.pinned ? <Pin className="size-3 text-accent" aria-hidden /> : null}

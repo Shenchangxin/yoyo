@@ -17,7 +17,7 @@ func NewHub() *Hub {
 }
 
 func (h *Hub) Subscribe(sessionID string) (<-chan trace.Event, func()) {
-	ch := make(chan trace.Event, 64)
+	ch := make(chan trace.Event, 2048)
 	h.mu.Lock()
 	if h.subs[sessionID] == nil {
 		h.subs[sessionID] = map[chan trace.Event]struct{}{}

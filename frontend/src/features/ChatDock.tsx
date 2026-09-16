@@ -2,6 +2,7 @@ import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import type { Approval, ContextUsage, Item } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
+import { lastUserTurns } from "../lib/stream";
 
 export function ChatDock(props: {
   items: Item[];
@@ -14,10 +15,12 @@ export function ChatDock(props: {
   models?: string[];
   provider?: string;
   ctx?: ContextUsage;
+  queued?: number;
   onSend: (opts?: { steer?: boolean; attachments?: import("../lib/protocol").Attachment[] }) => void;
   onStop: () => void;
   onResolve: (id: string, decision: string) => void;
   onOpenAgent: () => void;
+  onRetry?: () => void;
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
 }) {
@@ -30,7 +33,7 @@ export function ChatDock(props: {
           {copy.dock.expand}
         </button>
       </div>
-      <Transcript items={props.items.slice(-12)} approvals={props.approvals} running={props.running} compact onResolve={props.onResolve} />
+      <Transcript items={lastUserTurns(props.items, 3)} approvals={props.approvals} running={props.running} compact onResolve={props.onResolve} onRetry={props.onRetry} />
       <Composer
         draftKey={props.draftKey}
         running={props.running}
@@ -40,6 +43,7 @@ export function ChatDock(props: {
         models={props.models}
         provider={props.provider}
         ctx={props.ctx}
+        queued={props.queued}
         onSend={props.onSend}
         onStop={props.onStop}
         onSlash={props.onSlash}

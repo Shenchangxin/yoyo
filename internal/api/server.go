@@ -101,6 +101,14 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, map[string]any{"ok": true})
 			return
 		}
+		if len(parts) > 1 && parts[1] == "retry" && r.Method == http.MethodPost {
+			if err := a.RetrySession(id); err != nil {
+				http.Error(w, err.Error(), 409)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
 		if len(parts) > 1 && parts[1] == "fork" && r.Method == http.MethodPost {
 			m, err := a.ForkSession(id)
 			if err != nil {

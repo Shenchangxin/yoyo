@@ -1,4 +1,4 @@
-/** models.dev-shaped catalog used to fill context windows, pricing, and capabilities. */
+import { providerPreset } from "./providers";
 
 export type ModelDefinition = {
   id: string;
@@ -79,6 +79,42 @@ export function modelsForProvider(catalog: ModelsDevCatalog | null | undefined, 
     if (!cur || (entry.releaseDate || "") > (cur.releaseDate || "")) newest.set(family, entry);
   }
   return [...newest.values()].map((e) => e.model).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+}
+
+/** Exact catalog membership — no fuzzy cross-provider matching. */
+export function modelListedForProvider(
+  catalog: ModelsDevCatalog | null | undefined,
+  presetId: string,
+  modelId: string,
+): boolean {
+  const id = (modelId || "").trim();
+  if (!id || !catalog) return false;
+  const mapped = presetId === "azure" ? "openai" : presetId;
+  const models = catalog.providers[mapped];
+  if (!models) return false;
+  if (models[id]) return true;
+  const undated = id.replace(/-\d{8}$/, "");
+  return undated !== id && !!models[undated];
+}
+
+/**
+ * Models shown in the composer picker: the current session model plus the
+ * user's configured list, filtered to the active provider. Never dumps the
+ * full models.dev catalog.
+ */
+export function composerModelIds(
+  catalog: ModelsDevCatalog | null | undefined,
+  provider: string | undefined,
+  current: string | undefined,
+  configured?: string[],
+): string[] {
+  const preset = providerPreset(provider || "");
+  const now = (current || "").trim();
+  const seed = (configured || []).map((s) => s.trim()).filter(Boolean);
+  const base = seed.length ? seed : (preset?.models || []);
+  if (!provider || provider === "custom") return mergeModelIds(now, base);
+  const owned = base.filter((id) => id === now || preset?.models.includes(id) || modelListedForProvider(catalog, provider, id));
+  return mergeModelIds(now, owned.length ? owned : preset?.models);
 }
 
 export function mergeModelIds(...lists: Array<string | string[] | undefined | null>): string[] {

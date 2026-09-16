@@ -65,7 +65,9 @@ export type ContextUsage = {
   budget: number;
   window?: number;
   prefixTokens?: number;
+  dynamicTokens?: number;
   schemaTokens?: number;
+  providerPrompt?: number;
   note: string;
   layers: string[];
   elided: number;
