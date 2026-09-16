@@ -28,26 +28,51 @@ func (s *Service) CloseToTray() bool {
 	return s.App.Config.CloseToTray
 }
 
-func (s *Service) DeleteSession(id string) error {
-	if s.RPC != nil {
-		_, err := s.call("thread.delete", map[string]any{"session": id})
-		return err
+func (s *Service) emitSessions(payload any) {
+	if s.gui != nil {
+		s.gui.Event.Emit("yoyo:sessions", payload)
 	}
-	return s.App.DeleteSession(id)
+}
+
+func (s *Service) DeleteSession(id string) (map[string]any, error) {
+	var err error
+	if s.RPC != nil {
+		_, err = s.call("thread.delete", map[string]any{"session": id})
+	} else {
+		err = s.App.DeleteSession(id)
+	}
+	if err == nil {
+		s.emitSessions(id)
+	}
+	return map[string]any{"ok": err == nil, "id": id}, err
 }
 
 func (s *Service) ArchiveSession(id string, archived bool) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
 	if s.RPC != nil {
-		return decode[app.SessionMeta](s.call("thread.archive", map[string]any{"session": id, "archived": archived}))
+		m, err = decode[app.SessionMeta](s.call("thread.archive", map[string]any{"session": id, "archived": archived}))
+	} else {
+		m, err = s.App.ArchiveSession(id, archived)
 	}
-	return s.App.ArchiveSession(id, archived)
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
 func (s *Service) PinSession(id string, pinned bool) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
 	if s.RPC != nil {
-		return decode[app.SessionMeta](s.call("thread.pin", map[string]any{"session": id, "pinned": pinned}))
+		m, err = decode[app.SessionMeta](s.call("thread.pin", map[string]any{"session": id, "pinned": pinned}))
+	} else {
+		m, err = s.App.PinSession(id, pinned)
 	}
-	return s.App.PinSession(id, pinned)
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
 func (s *Service) SearchSessions(query string, includeArchived bool) ([]app.SessionMeta, error) {
@@ -214,11 +239,57 @@ func (s *Service) CheckUpdate() map[string]any {
 	return s.App.CheckUpdate()
 }
 
+func (s *Service) TestProvider() map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("provider.test", nil)
+		m, _ := decode[map[string]any](v, err)
+		return m
+	}
+	if s.App == nil {
+		return map[string]any{"ok": false, "error": "unavailable"}
+	}
+	return s.App.TestProvider()
+}
+
+func (s *Service) ReplaceMCP(servers []app.MCPServerConfig) error {
+	if s.RPC != nil {
+		_, err := s.call("mcp.replace", map[string]any{"servers": servers})
+		return err
+	}
+	return s.App.ReplaceMCP(servers)
+}
+
+func (s *Service) RevealLogs() error {
+	var path string
+	if s.RPC != nil {
+		v, err := s.call("logs.tail", map[string]any{"limit": 1})
+		m, _ := decode[map[string]any](v, err)
+		path, _ = m["path"].(string)
+	} else if s.App != nil {
+		path = s.App.Journal.Path
+	}
+	if path == "" {
+		return errors.New("journal path unknown")
+	}
+	return RevealPath(path)
+}
+
+func (s *Service) NotifyAllowed() bool {
+	cfg := s.GetConfig()
+	if !cfg.NotificationsEnabled {
+		return false
+	}
+	if cfg.NotifyWhenUnfocusedOnly && s.win != nil && s.win.IsFocused() {
+		return false
+	}
+	return true
+}
+
 func (s *Service) PickFolder() (string, error) {
 	if s.gui == nil {
 		return "", errors.New("native dialog unavailable")
 	}
-	dlg := s.gui.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).SetTitle("Choose workspace")
+	dlg := s.gui.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).SetTitle(nativeCopy(s.GetConfig().Locale).ChooseWorkspace)
 	if s.win != nil {
 		dlg = dlg.AttachToWindow(s.win)
 	}
@@ -229,7 +300,7 @@ func (s *Service) PickFiles() ([]string, error) {
 	if s.gui == nil {
 		return nil, errors.New("native dialog unavailable")
 	}
-	dlg := s.gui.Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).SetTitle("Attach files")
+	dlg := s.gui.Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).SetTitle(nativeCopy(s.GetConfig().Locale).AttachFiles)
 	if s.win != nil {
 		dlg = dlg.AttachToWindow(s.win)
 	}
@@ -241,6 +312,7 @@ func (s *Service) ShowAboutNative() {
 		return
 	}
 	about := s.About()
+	n := nativeCopy(s.GetConfig().Locale)
 	msg := fmt.Sprintf("Yoyo %v\nharness %v\nmodel %v", about["version"], about["harness"], about["model"])
-	s.gui.Dialog.Info().SetTitle("About Yoyo").SetMessage(msg).Show()
+	s.gui.Dialog.Info().SetTitle(n.About).SetMessage(msg).Show()
 }

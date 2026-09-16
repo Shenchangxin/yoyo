@@ -89,7 +89,7 @@ export function Transcript(props: {
 
   return (
     <div
-      className={cn("prose-select min-h-0 flex-1 px-4 pb-4 pt-6", virtual ? "overflow-hidden" : "overflow-auto")}
+      className={cn("prose-select min-h-0 flex-1 px-4 pb-3 pt-5", virtual ? "overflow-hidden" : "overflow-auto")}
       ref={scroller}
       onScroll={virtual ? undefined : () => {
         const el = scroller.current;
@@ -97,24 +97,28 @@ export function Transcript(props: {
       }}
     >
       {empty && !props.compact ? (
-        <div className="mx-auto flex h-full min-h-[240px] max-w-3xl flex-col justify-center">
-          <h1 className="text-2xl font-semibold tracking-tight">{copy.transcript.ready}</h1>
-          <p className="mt-2 max-w-lg text-sm text-muted">{copy.transcript.readyBody}</p>
+        <div className="mx-auto flex h-full min-h-[200px] max-w-2xl flex-col justify-end px-1 pb-4">
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
+            {props.needsSetup ? copy.transcript.setupTitle : copy.transcript.ready}
+          </h1>
+          <p className="mt-1.5 max-w-md text-[13px] leading-[1.6] text-muted/80">
+            {props.needsSetup ? copy.transcript.setupBody : copy.transcript.readyBody}
+          </p>
           {props.needsSetup ? (
             <button
               type="button"
-              className="mt-4 w-fit rounded-full bg-foreground px-4 py-2 text-sm text-background"
+              className="mt-5 w-fit rounded-full bg-foreground px-4 py-2 text-[13px] font-medium text-background"
               onClick={props.onSetup}
             >
               {copy.transcript.openControl}
             </button>
           ) : (
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-2">
               {copy.transcript.starters.map((s) => (
                 <button
                   type="button"
                   key={s.label}
-                  className="rounded-xl border border-border bg-panel px-3 py-2 text-left text-sm hover:bg-lift"
+                  className="rounded-full border border-border/70 bg-input-bar px-3.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-accent/35 hover:bg-lift/40"
                   onClick={() => props.onPrompt?.(s.text)}
                 >
                   {s.label}
@@ -126,7 +130,7 @@ export function Transcript(props: {
       ) : virtual ? (
         <VList
           ref={vlist}
-          className="mx-auto h-full w-full max-w-3xl"
+          className="mx-auto h-full w-full max-w-2xl"
           onScroll={(offset) => {
             const handle = vlist.current;
             if (!handle) return;
@@ -140,7 +144,7 @@ export function Transcript(props: {
           ))}
         </VList>
       ) : (
-        <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-5 overflow-auto">
+        <div className="mx-auto flex h-full w-full max-w-2xl flex-col gap-5">
           {rows.map((row) => (
             <div key={row.key}>{row.node}</div>
           ))}
@@ -169,7 +173,7 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
         {item.text && !streaming ? (
           <button
             type="button"
-            className="absolute -right-1 -top-1 hidden rounded-md p-1 text-muted hover:bg-lift group-hover:block"
+            className="absolute -right-1 -top-1 hidden rounded-md p-1 text-muted opacity-0 transition-opacity hover:bg-lift hover:text-foreground group-hover:block group-hover:opacity-100"
             aria-label={copy.transcript.copy}
             onClick={() => navigator.clipboard.writeText(item.text)}
           >
@@ -188,7 +192,7 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
   }
   if (item.type === "reasoning") {
     return (
-      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+      <details className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted">
         <summary className="cursor-pointer text-foreground">{copy.transcript.thinking}</summary>
         <div className="mt-2 text-sm text-muted"><Markdown text={item.text} /></div>
       </details>
@@ -199,7 +203,7 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
   }
   if (item.type === "subagent") {
     return (
-      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+      <details className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted">
         <summary className="cursor-pointer text-foreground">{copy.transcript.subagent}</summary>
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono">{item.text || JSON.stringify(item.payload).slice(0, 2000)}</pre>
       </details>
@@ -210,7 +214,7 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
   }
   if (item.type === "context_injection") {
     return (
-      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+      <details className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted">
         <summary className="cursor-pointer text-foreground">{copy.transcript.mention}</summary>
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono">{item.text.slice(0, 1200)}</pre>
       </details>
@@ -218,7 +222,7 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
   }
   if (item.type === "turn_end" || item.type === "system") return null;
   return (
-    <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+      <details className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted">
       <summary className="cursor-pointer text-foreground">{item.type}</summary>
       <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono">
         {item.text || JSON.stringify(item.payload).slice(0, 400)}
@@ -237,7 +241,7 @@ function ToolItem({ item, onOpenReview }: { item: Item; onOpenReview?: () => voi
       : String(item.payload.content || item.text || "");
   if (name === "update_plan") {
     return (
-      <div className="rounded-xl border border-border bg-panel px-3 py-2">
+      <div className="rounded-xl border border-border bg-card px-3 py-2">
         <div className="mb-1 text-[11px] text-muted">{copy.transcript.plan}</div>
         <pre className="whitespace-pre-wrap font-mono text-xs text-foreground">{body.slice(0, 4000)}</pre>
       </div>
@@ -245,7 +249,7 @@ function ToolItem({ item, onOpenReview }: { item: Item; onOpenReview?: () => voi
   }
   if (name === "apply_patch") {
     return (
-      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs" open>
+      <details className="rounded-xl border border-border bg-card px-3 py-2 text-xs" open>
         <summary className="cursor-pointer text-foreground">{copy.transcript.patch}</summary>
         <div className="mt-2">
           <DiffBlock src={body.slice(0, 6000)} mode="unified" />
@@ -259,7 +263,7 @@ function ToolItem({ item, onOpenReview }: { item: Item; onOpenReview?: () => voi
     );
   }
   return (
-    <div className="rounded-xl border border-border bg-panel">
+    <div className="rounded-xl border border-border bg-card">
       <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted" onClick={() => setOpen((v) => !v)}>
         <Wrench className="size-3.5" aria-hidden />
         <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] tracking-wide">

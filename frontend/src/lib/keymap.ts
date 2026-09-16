@@ -40,3 +40,37 @@ export function matchKey(e: KeyboardEvent, spec: string): boolean {
   if (keyName === "\\") return k === "\\" || e.code === "Backslash";
   return k.toLowerCase() === keyName.toLowerCase();
 }
+
+export function displayShortcut(spec: string): string {
+  const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+  return spec
+    .split("+")
+    .map((part) => {
+      const p = part.trim();
+      if (p === "Mod" || p === "CmdOrCtrl") return mac ? "⌘" : "Ctrl";
+      if (p === "Shift") return mac ? "⇧" : "Shift";
+      if (p === "Alt") return mac ? "⌥" : "Alt";
+      if (p === "Escape") return "Esc";
+      if (p === ",") return ",";
+      if (p === "\\") return "\\";
+      return p;
+    })
+    .join(mac ? "" : "+");
+}
+
+export function formatShortcut(e: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): string {
+  const ignore = new Set(["Control", "Meta", "Shift", "Alt"]);
+  if (ignore.has(e.key)) return "";
+  const parts: string[] = [];
+  if (e.metaKey || e.ctrlKey) parts.push("Mod");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey && e.key.length !== 1) parts.push("Shift");
+  if (e.shiftKey && e.key.length === 1 && e.key.toLowerCase() === e.key) parts.push("Shift");
+  let key = e.key;
+  if (key === " ") key = "Space";
+  if (key === "Escape") key = "Escape";
+  if (key.length === 1) key = e.shiftKey ? key.toUpperCase() : key.toUpperCase();
+  if (key === "\\") key = "\\";
+  parts.push(key);
+  return parts.join("+");
+}

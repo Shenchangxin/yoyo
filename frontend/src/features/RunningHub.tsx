@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { useCopy } from "../lib/i18n";
 import type { Thread } from "../lib/protocol";
@@ -9,6 +9,20 @@ export function RunningHub(props: {
 }) {
   const copy = useCopy();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const tmr = window.setTimeout(() => {
+      window.addEventListener("mousedown", close);
+      window.addEventListener("keydown", onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(tmr);
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   if (!props.threads.length) return null;
   return (
     <div className="relative hidden sm:block">
@@ -26,8 +40,8 @@ export function RunningHub(props: {
       {open ? (
         <div
           role="listbox"
-          className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-xl border border-border bg-panel py-1"
-          onMouseLeave={() => setOpen(false)}
+          className="absolute right-0 z-30 mt-1 min-w-[200px] overflow-hidden rounded-xl border border-border bg-popover py-1 shadow-[var(--shadow-popover)]"
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {props.threads.map((t) => (
             <button

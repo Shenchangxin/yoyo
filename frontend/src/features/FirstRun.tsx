@@ -32,12 +32,14 @@ export function FirstRun(props: {
   });
 
   useEffect(() => {
+    if (!props.open) return;
+    setStep(0);
     form.reset({
       workspace: props.cfg.workspace,
       apiKey: "",
       model: props.cfg.model || "gpt-4.1",
     });
-  }, [props.cfg, form]);
+  }, [props.open]);
   const field = STEPS[step];
 
   async function next() {
@@ -53,20 +55,23 @@ export function FirstRun(props: {
   return (
     <Dialog.Root open={props.open}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-background/80" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(440px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-panel p-6 focus:outline-none">
-          <Dialog.Title className="text-lg font-semibold">{copy.firstRun.title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-muted">{copy.firstRun.body}</Dialog.Description>
+        <Dialog.Overlay className="fixed inset-0 z-[70] bg-background/80" />
+        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-1/2 z-[80] w-[min(440px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/80 bg-popover p-6 shadow-[var(--shadow-popover)] focus:outline-none">
+          <Dialog.Title className="text-[20px] font-semibold tracking-tight">{copy.firstRun.title}</Dialog.Title>
+          <Dialog.Description className="mt-2 text-[13px] leading-5 text-muted">{copy.firstRun.body}</Dialog.Description>
           <ol className="mt-4 flex gap-2 text-[11px] text-muted" aria-label="Setup steps">
-            {["Workspace", "API key", "Model"].map((label, i) => (
+            {[copy.firstRun.stepWorkspace, copy.firstRun.stepKey, copy.firstRun.stepModel].map((label, i) => (
               <li
                 key={label}
-                className={cn("rounded-full px-2 py-0.5", i === step ? "bg-lift text-foreground" : "")}
+                className={cn("rounded-full px-2.5 py-0.5", i === step ? "bg-lift text-foreground" : "")}
               >
                 {i + 1}. {label}
               </li>
             ))}
           </ol>
+          <div className="mt-3 h-1 overflow-hidden rounded-full bg-lift" aria-hidden>
+            <div className="h-full rounded-full bg-accent transition-[width] duration-180" style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
+          </div>
           <form
             className="mt-4 space-y-3"
             onSubmit={(e) => {
@@ -122,7 +127,7 @@ export function FirstRun(props: {
                 </Button>
               ) : null}
               <Button type="submit">{step < STEPS.length - 1 ? copy.firstRun.next : copy.firstRun.finish}</Button>
-              <button type="button" className="ml-auto text-xs text-muted underline" onClick={props.onSkip}>
+              <button type="button" className="ml-auto text-[12px] text-muted hover:text-foreground" onClick={props.onSkip}>
                 {copy.firstRun.skip}
               </button>
             </div>

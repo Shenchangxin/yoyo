@@ -16,6 +16,10 @@
                 : !window.matchMedia || window.matchMedia("(prefers-color-scheme: dark)").matches;
           document.documentElement.classList.add(dark ? "dark" : "light");
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var scale = parseFloat(localStorage.getItem("yoyo-ui-scale") || "1");
+          if (scale > 0 && isFinite(scale)) {
+            document.documentElement.style.setProperty("--ui-scale", String(scale));
+          }
         } catch (e) {
           document.documentElement.classList.add("dark");
         }

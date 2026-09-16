@@ -58,6 +58,7 @@ func (a *App) CheckUpdate() map[string]any {
 		"staged":            staged,
 		"size":              size,
 		"url":               a.Config.UpdateURL,
+		"channel":           a.Config.UpdateChannel,
 		"pubkey_configured": len(update.PublicKeyFromEnv()) > 0,
 	}
 	if a.Config.UpdateURL == "" {

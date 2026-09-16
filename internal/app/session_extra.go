@@ -26,17 +26,37 @@ func toRuntimeAtts(atts []Attachment) []runtime.Attachment {
 }
 
 func (a *App) DeleteSession(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("empty session id")
+	}
 	if a.Running(id) {
 		_ = a.Interrupt(id)
 	}
+	a.mu.Lock()
+	if cancel := a.runs[id]; cancel != nil {
+		cancel()
+		delete(a.runs, id)
+	}
+	a.mu.Unlock()
 	a.queueMu.Lock()
 	delete(a.queue, id)
 	delete(a.steers, id)
 	a.queueMu.Unlock()
 	root := a.Home.Sessions()
-	_ = os.Remove(filepath.Join(root, id+".meta.json"))
-	_ = os.Remove(filepath.Join(root, id+".jsonl"))
-	return nil
+	var first error
+	for _, name := range []string{id + ".meta.json", id + ".jsonl"} {
+		err := os.Remove(filepath.Join(root, name))
+		if err != nil && !os.IsNotExist(err) && first == nil {
+			first = err
+		}
+	}
+	if a.Traces != nil {
+		if err := a.Traces.Remove(id); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
 }
 
 func (a *App) ArchiveSession(id string, archived bool) (SessionMeta, error) {
@@ -181,6 +201,22 @@ func (a *App) persistMCP() {
 	}
 	a.Config.MCP = out
 	_ = a.SaveConfig()
+}
+
+func (a *App) ReplaceMCP(servers []MCPServerConfig) error {
+	for _, info := range a.MCP.Info() {
+		_ = a.MCP.Stop(info.Name)
+	}
+	for _, srv := range servers {
+		if srv.Name == "" || srv.Command == "" {
+			continue
+		}
+		if err := a.MCP.Start(srv.Name, srv.Command, srv.Args); err != nil {
+			return err
+		}
+	}
+	a.persistMCP()
+	return nil
 }
 
 func (a *App) StartMCP(name, command string, args []string) error {

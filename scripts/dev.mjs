@@ -101,8 +101,38 @@ function run(cmd, args) {
     env: process.env,
     stdio: "inherit",
     shell: win,
+    windowsHide: false,
   });
+
+  let stopping = false;
+  const stop = (code = 0) => {
+    if (stopping) return;
+    stopping = true;
+    if (child.pid) {
+      if (win) {
+        try {
+          execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: "ignore" });
+        } catch {
+          /* gone */
+        }
+        killNamed("Yoyo.exe");
+      } else {
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          /* gone */
+        }
+      }
+    }
+    process.exit(code);
+  };
+
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(sig, () => stop(sig === "SIGINT" ? 130 : 143));
+  }
+
   child.on("exit", (code, signal) => {
+    if (stopping) return;
     if (signal) process.exit(1);
     process.exit(code ?? 1);
   });

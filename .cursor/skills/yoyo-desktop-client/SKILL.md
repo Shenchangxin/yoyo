@@ -43,6 +43,7 @@ Steal, do not clone:
 - Virtualize transcript and thread list.
 - cmdk palette; Radix dialogs; sonner; RHF+zod on Control.
 - Overlay titlebar + drag regions on Windows/macOS.
+- Control/settings is a gear surface with tab/section registry, not a fifth lab.
 - Wails Events remain source of truth; 1.5s poll only while running.
 
 ## Forbidden

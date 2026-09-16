@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, AtSign, Paperclip, Square } from "lucide-react";
-import { Button } from "../components/ui/button";
+import { ArrowUp, AtSign, Paperclip, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
+import { Tooltip } from "../components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
-import { filterSlash, slashQuery } from "../lib/slash";
-import type { Attachment, FileHit, SkillInfo } from "../lib/protocol";
-
-const MENTIONS = [
-  { token: "@file:", hint: "pin a file (bounded)" },
-  { token: "@folder:", hint: "pin a directory listing" },
-  { token: "@skill:", hint: "inject a skill body" },
-  { token: "@harness", hint: "inject active harness summary" },
-];
+import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
+import type { Attachment, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
+import { formatTokens, lookupCatalogModel, mergeModelIds, modelsForProvider } from "../lib/models-dev";
+import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
 
 export function Composer(props: {
   draftKey: string;
@@ -22,6 +18,8 @@ export function Composer(props: {
   disabledReason?: string;
   model?: string;
   models?: string[];
+  provider?: string;
+  ctx?: ContextUsage;
   queued?: number;
   skills?: SkillInfo[];
   files?: FileHit[];
@@ -31,6 +29,7 @@ export function Composer(props: {
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
   onPickFiles?: () => Promise<Attachment[]>;
+  compact?: boolean;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -46,9 +45,18 @@ export function Composer(props: {
   const fileRef = useRef<HTMLInputElement>(null);
   const copy = useCopy();
   const canSend = !props.disabled && !!value.trim();
+  const catalogModels = modelsForProvider(MODELS_DEV_SNAPSHOT, props.provider || "openai").map((m) => m.id);
+  const models = mergeModelIds(props.model, props.models, catalogModels);
+  const currentModel = (props.model || "").trim();
+  const modelOptions = currentModel && !models.includes(currentModel) ? [currentModel, ...models] : models;
+  const slashOpen = hint === "slash";
+  const meta = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "openai", currentModel);
+  const budget = (props.ctx?.budget && props.ctx.budget > 0) ? props.ctx.budget : (meta?.model.contextWindow || 0);
+  const used = props.ctx?.tokens || 0;
+  const pct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
 
   const slashPrefix = slashQuery(value);
-  const slashItems = slashPrefix ? filterSlash(slashPrefix) : [];
+  const slashItems = slashPrefix ? filterSlash(slashPrefix, slashCatalog(copy)) : [];
   const mentionItems = useMemo(() => {
     const last = (value.split("\n").pop() || "");
     const m = last.match(/(?:^|\s)(@(?:file:|folder:|skill:)?[\w./\\-]*)$/);
@@ -65,17 +73,31 @@ export function Composer(props: {
         .filter((s) => !q || s.name.toLowerCase().includes(q))
         .map((s) => ({ token: `@skill:${s.name}`, hint: s.description }));
     }
-    return MENTIONS.filter((x) => x.token.startsWith(token) || token === "@");
-  }, [value, props.files, props.skills]);
+    const mentions = [
+      { token: "@file:", hint: copy.composer.mentionFile },
+      { token: "@folder:", hint: copy.composer.mentionFolder },
+      { token: "@skill:", hint: copy.composer.mentionSkill },
+      { token: "@harness", hint: copy.composer.mentionHarness },
+    ];
+    return mentions.filter((x) => x.token.startsWith(token) || token === "@");
+  }, [value, props.files, props.skills, copy]);
 
   const popup = hint === "slash" ? slashItems.map((s) => ({ token: s.cmd, hint: s.hint })) : mentionItems;
+  const showPopup = !!hint && popup.length > 0;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
   }, [value]);
+
+  function insertAtTrigger() {
+    const needsSpace = value.length > 0 && !/\s$/.test(value);
+    onChange(value + (needsSpace ? " @" : "@"));
+    setHint("mention");
+    requestAnimationFrame(() => ref.current?.focus());
+  }
 
   function insertMention(token: string) {
     const next = value.replace(/@[^\s]*$/, "") + token + (token.endsWith(":") ? "" : " ");
@@ -106,14 +128,21 @@ export function Composer(props: {
     setAtts((prev) => [...prev, ...next]);
   }
 
+  function send() {
+    if (!canSend) return;
+    props.onSend({ attachments: atts });
+    setAtts([]);
+  }
+
   return (
-    <div className="no-drag shrink-0 px-4 pb-4 pt-2">
-      <div className="mx-auto w-full max-w-3xl">
+    <div className={cn("no-drag shrink-0", props.compact ? "px-2 pb-2 pt-1" : "px-4 pb-4 pt-1")}>
+      <div className={cn("mx-auto w-full", !props.compact && "max-w-2xl")}>
         <div
           className={cn(
-            "relative rounded-[var(--radius-composer)] border bg-panel transition-[border-color,box-shadow] duration-150",
-            focused ? "border-accent shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_22%,transparent)]" : "border-border",
-            props.disabled && "opacity-70",
+            "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
+            slashOpen && showPopup ? "rounded-b-[20px] rounded-t-none" : "rounded-[20px]",
+            focused ? "border-accent/20" : "border-border",
+            props.disabled && "opacity-55",
           )}
           onDragOver={(e) => {
             if (props.disabled) return;
@@ -125,27 +154,48 @@ export function Composer(props: {
             if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
           }}
         >
+          {showPopup && slashOpen ? (
+            <CommandWeld
+              label={copy.composer.commands}
+              items={popup}
+              hi={hi}
+              focused={focused}
+              onPick={(item) => applySlash(item)}
+            />
+          ) : null}
+          {showPopup && hint === "mention" ? (
+            <div
+              role="listbox"
+              aria-label={copy.composer.mentions}
+              className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-56 overflow-auto rounded-2xl border border-border bg-input-bar shadow-[var(--shadow-composer)]"
+            >
+              {popup.slice(0, 12).map((m, i) => (
+                <PopupRow key={m.token + i} item={m} active={i === hi} onPick={() => insertMention(m.token)} />
+              ))}
+            </div>
+          ) : null}
           {atts.length ? (
-            <div className="flex flex-wrap gap-1 px-3 pt-2">
+            <div className="flex flex-wrap gap-1 px-3 pt-3">
               {atts.map((a, i) => (
                 <button
                   type="button"
                   key={`${a.name}-${i}`}
-                  className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted"
+                  className="inline-flex items-center gap-1 rounded-full bg-lift px-2.5 py-0.5 text-[11px] text-muted hover:text-foreground"
                   onClick={() => setAtts((prev) => prev.filter((_, j) => j !== i))}
                 >
-                  {a.name || a.path || "file"} ×
+                  {a.name || a.path || "file"}
+                  <X className="size-3" />
                 </button>
               ))}
             </div>
           ) : null}
           <Textarea
             ref={ref}
-            rows={2}
+            rows={1}
             value={value}
             disabled={props.disabled}
             placeholder={props.disabled ? (props.disabledReason || copy.composer.disabled) : copy.composer.placeholder}
-            className="prose-select min-h-[52px] px-4 pt-3 pb-1"
+            className="prose-select min-h-6 px-4 pt-3 pb-1 text-[13.5px] leading-[1.6] placeholder:text-muted/45"
             aria-label={copy.composer.message}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -208,52 +258,40 @@ export function Composer(props: {
                   props.onSlash?.("/" + cmd, rest.join(" "));
                   return;
                 }
-                props.onSend({ attachments: atts });
-                setAtts([]);
+                send();
               }
             }}
           />
-          {hint && popup.length ? (
-            <div role="listbox" aria-label={hint === "slash" ? copy.composer.commands : copy.composer.mentions} className="absolute bottom-14 left-4 z-10 w-80 overflow-hidden rounded-xl border border-border bg-sidebar">
-              {popup.slice(0, 12).map((m, i) => (
-                <button
-                  type="button"
-                  key={m.token + i}
-                  role="option"
-                  aria-selected={i === hi}
-                  className={cn("flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-lift", i === hi && "bg-lift")}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (hint === "slash") applySlash(m.token);
-                    else insertMention(m.token);
-                  }}
-                >
-                  <span className="font-mono text-xs text-foreground">{m.token}</span>
-                  <span className="text-[11px] text-muted">{m.hint}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-center gap-2 px-2 pb-2">
-            <Button variant="ghost" size="icon" aria-label={copy.composer.mention} disabled={props.disabled} onClick={() => { setHint("mention"); ref.current?.focus(); }}>
-              <AtSign />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={copy.composer.attach}
-              disabled={props.disabled}
-              onClick={async () => {
-                if (props.onPickFiles) {
-                  const picked = await props.onPickFiles();
-                  if (picked.length) setAtts((prev) => [...prev, ...picked]);
-                  return;
-                }
-                fileRef.current?.click();
-              }}
-            >
-              <Paperclip />
-            </Button>
+          <div className="flex flex-nowrap items-center gap-x-1.5 px-2 pb-2 pt-1 sm:px-2.5">
+            <Tooltip content={copy.composer.mention}>
+              <button
+                type="button"
+                className={toolClass(false)}
+                aria-label={copy.composer.mention}
+                disabled={props.disabled}
+                onClick={insertAtTrigger}
+              >
+                <AtSign className="size-[17px]" />
+              </button>
+            </Tooltip>
+            <Tooltip content={copy.composer.attach}>
+              <button
+                type="button"
+                className={toolClass(false)}
+                aria-label={copy.composer.attach}
+                disabled={props.disabled}
+                onClick={async () => {
+                  if (props.onPickFiles) {
+                    const picked = await props.onPickFiles();
+                    if (picked.length) setAtts((prev) => [...prev, ...picked]);
+                    return;
+                  }
+                  fileRef.current?.click();
+                }}
+              >
+                <Paperclip className="size-[17px]" />
+              </button>
+            </Tooltip>
             <input
               ref={fileRef}
               type="file"
@@ -264,67 +302,124 @@ export function Composer(props: {
                 e.target.value = "";
               }}
             />
+            <span className="mx-0.5 h-4 w-px bg-border/70" aria-hidden />
             <button
               type="button"
               className={cn(
-                "rounded-full px-3 py-1 text-xs",
-                plan ? "bg-accent/15 text-accent" : "bg-lift text-muted hover:text-foreground",
+                "h-7 rounded-lg px-1.5 text-[12px] font-medium transition-colors",
+                plan ? "bg-accent/10 text-accent" : "text-foreground hover:bg-lift",
               )}
               onClick={() => setPlan(!plan)}
               aria-pressed={plan}
+              disabled={props.disabled}
             >
               {plan ? copy.composer.plan : copy.composer.agent}
             </button>
-            {props.models && props.models.length && props.onModel ? (
-              <select
-                className="max-w-[140px] truncate rounded-full bg-lift px-2 py-1 text-[11px] text-muted"
-                aria-label={copy.composer.model}
-                value={props.model || props.models[0]}
-                onChange={(e) => props.onModel?.(e.target.value)}
-              >
-                {(props.model && !props.models.includes(props.model) ? [props.model, ...props.models] : props.models).map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            ) : props.model ? (
-              <span className="hidden truncate text-[11px] text-muted sm:inline">{props.model}</span>
-            ) : null}
-            <span className="hidden text-[11px] text-muted sm:inline">
-              {props.disabled
-                ? (props.disabledReason || copy.composer.workspaceRequired)
-                : props.running
-                  ? copy.composer.queueHint
-                  : plan
-                    ? copy.composer.planHint
-                    : copy.composer.enter}
-              {props.queued ? ` · ${props.queued}` : ""}
-            </span>
             <span className="ml-auto" />
-            {props.running ? (
-              <>
-                <Button variant="lift" size="sm" onClick={() => props.onSend({ steer: true, attachments: atts })} disabled={!value.trim()}>
-                  {copy.composer.steer}
-                </Button>
-                <Button variant="danger" size="send" onClick={props.onStop} aria-label={copy.composer.stop}>
-                  <Square className="size-3 fill-current" />
-                </Button>
-              </>
+            {modelOptions.length > 0 && props.onModel ? (
+              <Select value={currentModel || modelOptions[0]} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
+                <SelectTrigger className="h-7 min-w-0 max-w-[148px] rounded-full border-transparent bg-transparent px-1.5 text-[11px] text-muted hover:bg-lift" aria-label={copy.composer.model}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : currentModel ? (
+              <span className="hidden truncate px-1.5 text-[11px] text-muted sm:inline">{props.model}</span>
             ) : null}
-            <Button
-              size="send"
-              disabled={!canSend}
+            {props.running ? (
+              <button
+                type="button"
+                className="h-7 rounded-lg px-1.5 text-[12px] font-medium text-muted hover:bg-lift hover:text-foreground"
+                onClick={() => { props.onSend({ steer: true, attachments: atts }); setAtts([]); }}
+                disabled={!value.trim()}
+              >
+                {copy.composer.steer}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={cn(
+                "grid size-8 shrink-0 place-items-center rounded-full transition-[background-color,color,box-shadow] duration-200",
+                props.running || canSend
+                  ? "bg-accent text-accent-fg shadow-[0_6px_18px_-6px_color-mix(in_srgb,var(--accent)_70%,transparent)]"
+                  : "bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] text-muted",
+              )}
+              disabled={props.running ? false : !canSend}
               onClick={() => {
-                props.onSend({ attachments: atts });
-                setAtts([]);
+                if (props.running) {
+                  props.onStop();
+                  return;
+                }
+                send();
               }}
-              aria-label={props.running ? copy.composer.queue : copy.composer.send}
-              className={cn(!canSend && "bg-lift text-muted")}
+              aria-label={props.running ? copy.composer.stop : copy.composer.send}
             >
-              <ArrowUp className="size-4" />
-            </Button>
+              {props.running ? <Square className="size-3 fill-current" /> : <ArrowUp className="size-4" />}
+            </button>
           </div>
         </div>
+        {budget > 0 ? (
+          <div className="mt-1.5 flex items-center gap-2 px-1.5 text-[11px] tabular-nums text-muted" title={props.ctx?.note || copy.composer.context}>
+            <span className="h-1 w-16 overflow-hidden rounded-full bg-lift">
+              <span className="block h-full rounded-full bg-accent" style={{ width: pct + "%" }} />
+            </span>
+            <span>{formatTokens(used)} / {formatTokens(budget)}</span>
+            {meta?.model.name ? <span className="min-w-0 truncate">{meta.model.name}</span> : null}
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function toolClass(active: boolean) {
+  return cn(
+    "flex size-7 items-center justify-center rounded-lg transition-[transform,colors] duration-150 hover:scale-[1.06] active:scale-[0.92] disabled:pointer-events-none disabled:opacity-30",
+    active ? "bg-accent/10 text-accent" : "text-foreground hover:bg-lift",
+  );
+}
+
+function CommandWeld(props: {
+  label: string;
+  items: { token: string; hint: string }[];
+  hi: number;
+  focused: boolean;
+  onPick: (token: string) => void;
+}) {
+  return (
+    <div
+      role="listbox"
+      aria-label={props.label}
+      className={cn(
+        "absolute -inset-x-px bottom-[calc(100%-1px)] z-10 max-h-56 overflow-auto rounded-t-[20px] border border-b-0 bg-input-bar",
+        props.focused ? "border-accent/20" : "border-border",
+      )}
+    >
+      {props.items.slice(0, 12).map((m, i) => (
+        <PopupRow key={m.token + i} item={m} active={i === props.hi} onPick={() => props.onPick(m.token)} />
+      ))}
+    </div>
+  );
+}
+
+function PopupRow(props: { item: { token: string; hint: string }; active: boolean; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={props.active}
+      className={cn("flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-lift", props.active && "bg-lift")}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        props.onPick();
+      }}
+    >
+      <span className="font-mono text-xs text-foreground">{props.item.token}</span>
+      <span className="text-[11px] text-muted">{props.item.hint}</span>
+    </button>
   );
 }

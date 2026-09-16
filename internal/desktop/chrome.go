@@ -12,121 +12,34 @@ import (
 
 // InstallChrome adds native menus, a tray icon, and typed desktop notifications.
 func InstallChrome(gui *application.App, win application.Window, svc *Service, ns *notifications.NotificationService) {
-	menu := gui.NewMenu()
-	if runtime.GOOS == "darwin" {
-		menu.AddRole(application.AppMenu)
-	}
-	file := menu.AddSubmenu("File")
-	file.Add("New Session").SetAccelerator("CmdOrCtrl+N").OnClick(func(ctx *application.Context) {
-		m, err := svc.CreateSession("")
-		if err == nil {
-			gui.Event.Emit("yoyo:sessions", m)
-		}
-	})
-	file.Add("Open Workspace…").SetAccelerator("CmdOrCtrl+O").OnClick(func(ctx *application.Context) {
-		path, err := svc.PickFolder()
-		if err == nil && path != "" {
-			gui.Event.Emit("yoyo:workspace", path)
-		}
-	})
-	file.AddSeparator()
-	file.Add("Close Window").SetAccelerator("CmdOrCtrl+W").OnClick(func(ctx *application.Context) {
-		if win != nil {
-			if svc.CloseToTray() {
-				win.Hide()
-				return
-			}
-			win.Close()
-		}
-	})
-	file.Add("Quit").SetAccelerator("CmdOrCtrl+Q").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:quit", nil)
-	})
-
-	menu.AddRole(application.EditMenu)
-
-	view := menu.AddSubmenu("View")
-	view.Add("Toggle Review").SetAccelerator("CmdOrCtrl+\\").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "review")
-	})
-	view.Add("Command Palette").SetAccelerator("CmdOrCtrl+K").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "palette")
-	})
-	view.Add("Control").SetAccelerator("CmdOrCtrl+,").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "control")
-	})
-
-	thread := menu.AddSubmenu("Thread")
-	thread.Add("Compact context").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "compact")
-	})
-	thread.Add("Export markdown").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "export")
-	})
-	thread.Add("Rename").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "rename")
-	})
-	thread.Add("Fork").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:command", "fork")
-	})
-
-	harness := menu.AddSubmenu("Harness")
-	harness.Add("Run eval suite").OnClick(func(ctx *application.Context) {
-		_, _ = svc.RunEval()
-	})
-	harness.Add("Run Terminal-Bench subset").OnClick(func(ctx *application.Context) {
-		_, _ = svc.RunEvalTB()
-	})
-	harness.Add("Evolve").OnClick(func(ctx *application.Context) {
-		_, _ = svc.Evolve()
-	})
-	harness.AddSeparator()
-	harness.Add("Apply staged update").OnClick(func(ctx *application.Context) {
-		_ = svc.ApplyUpdate()
-	})
-
-	help := menu.AddSubmenu("Help")
-	help.Add("About Yoyo").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:about", svc.About())
-		svc.ShowAboutNative()
-	})
-	help.Add("Doctor").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:doctor", svc.Doctor())
-	})
-	help.Add("Logs").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:logs", svc.Logs(80))
-	})
-	gui.Menu.Set(menu)
+	svc.gui = gui
+	svc.win = win
 
 	tray := gui.SystemTray.New()
+	tray.SetLabel("Yoyo")
 	tray.SetTooltip("Yoyo")
-	if runtime.GOOS == "darwin" {
+	if len(AppIcon) > 0 {
+		tray.SetIcon(AppIcon)
+		if runtime.GOOS == "darwin" {
+			tray.SetDarkModeIcon(AppIcon)
+		}
+	} else if runtime.GOOS == "darwin" {
 		tray.SetTemplateIcon(icons.SystrayMacTemplate)
 	} else {
 		tray.SetIcon(icons.DefaultWindowsIcon)
 	}
-	tmenu := gui.NewMenu()
-	tmenu.Add("Show").OnClick(func(ctx *application.Context) {
-		if win != nil {
-			win.Show().Focus()
-		}
-	})
-	tmenu.Add("Run eval").OnClick(func(ctx *application.Context) {
-		_, _ = svc.RunEval()
-	})
-	tmenu.AddSeparator()
-	tmenu.Add("Quit").OnClick(func(ctx *application.Context) {
-		gui.Event.Emit("yoyo:quit", nil)
-	})
-	tray.SetMenu(tmenu)
+	tray.OnClick(func() { showWindow(win) })
+	tray.OnRightClick(func() { tray.OpenMenu() })
+	svc.tray = tray
+	svc.menuLocale = svc.GetConfig().Locale
+	svc.RebuildMenus()
 
 	gui.Event.On("yoyo:do-quit", func(e *application.CustomEvent) {
-		saveWindowState(svc, win)
-		gui.Quit()
+		forceQuit(gui, svc, win)
 	})
 
 	notify := func(id, title, body, session string) {
-		if ns == nil {
+		if ns == nil || !svc.NotifyAllowed() {
 			return
 		}
 		if session != "" && !strings.Contains(id, session) {
@@ -143,9 +56,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	if ns != nil {
 		_, _ = ns.RequestNotificationAuthorization()
 		ns.OnNotificationResponse(func(result notifications.NotificationResult) {
-			if win != nil {
-				win.Show().Focus()
-			}
+			showWindow(win)
 			session := sessionFromNote(result.Response.ID, result.Response.UserInfo)
 			gui.Event.Emit("yoyo:focus", session)
 		})
@@ -155,39 +66,185 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		go func() {
 			for ev := range ch {
 				gui.Event.Emit("yoyo:item", ev)
+				n := nativeCopy(svc.GetConfig().Locale)
 				switch string(ev.Type) {
 				case "turn_end":
-					notify("yoyo-turn", "Yoyo", "Turn finished", ev.SessionID)
+					notify("yoyo-turn", "Yoyo", n.TurnFinished, ev.SessionID)
 				case "approval":
-					notify("yoyo-ask", "Yoyo approval", payloadStr(ev.Payload, "action"), ev.SessionID)
+					notify("yoyo-ask", n.Approval, payloadStr(ev.Payload, "action"), ev.SessionID)
 				case "error":
-					notify("yoyo-err", "Yoyo error", payloadStr(ev.Payload, "error"), ev.SessionID)
+					notify("yoyo-err", n.ErrTitle, payloadStr(ev.Payload, "error"), ev.SessionID)
 				}
 			}
 		}()
 	} else if svc.RPC != nil {
 		go func() {
-			for n := range svc.RPC.Notify {
-				if n.Method != "item.event" {
+			for msg := range svc.RPC.Notify {
+				if msg.Method != "item.event" {
 					continue
 				}
-				gui.Event.Emit("yoyo:item", n.Params)
+				gui.Event.Emit("yoyo:item", msg.Params)
 				var m map[string]any
-				_ = json.Unmarshal(n.Params, &m)
+				_ = json.Unmarshal(msg.Params, &m)
 				typ, _ := m["type"].(string)
 				payload, _ := m["payload"].(map[string]any)
 				session, _ := m["session_id"].(string)
+				n := nativeCopy(svc.GetConfig().Locale)
 				switch typ {
 				case "turn_end":
-					notify("yoyo-turn", "Yoyo", "Turn finished", session)
+					notify("yoyo-turn", "Yoyo", n.TurnFinished, session)
 				case "approval":
-					notify("yoyo-ask", "Yoyo approval", payloadStr(payload, "action"), session)
+					notify("yoyo-ask", n.Approval, payloadStr(payload, "action"), session)
 				case "error":
-					notify("yoyo-err", "Yoyo error", payloadStr(payload, "error"), session)
+					notify("yoyo-err", n.ErrTitle, payloadStr(payload, "error"), session)
 				}
 			}
 		}()
 	}
+}
+
+func (s *Service) RebuildMenus() {
+	// Do not use application.InvokeSync here: InstallChrome runs before gui.Run,
+	// when App.impl is still nil and dispatchOnMainThread panics.
+	s.rebuildMenusNow()
+}
+
+func (s *Service) rebuildMenusNow() {
+	gui := s.gui
+	win := s.win
+	if gui == nil {
+		return
+	}
+	locale := s.menuLocale
+	if locale == "" {
+		locale = s.GetConfig().Locale
+	}
+	n := nativeCopy(locale)
+
+	menu := gui.NewMenu()
+	if runtime.GOOS == "darwin" {
+		menu.AddRole(application.AppMenu)
+	}
+	file := menu.AddSubmenu(n.File)
+	file.Add(n.NewSession).SetAccelerator("CmdOrCtrl+N").OnClick(func(ctx *application.Context) {
+		m, err := s.CreateSession("")
+		if err == nil {
+			gui.Event.Emit("yoyo:sessions", m)
+		}
+	})
+	file.Add(n.OpenWorkspace).SetAccelerator("CmdOrCtrl+O").OnClick(func(ctx *application.Context) {
+		path, err := s.PickFolder()
+		if err == nil && path != "" {
+			gui.Event.Emit("yoyo:workspace", path)
+		}
+	})
+	file.AddSeparator()
+	file.Add(n.CloseWindow).SetAccelerator("CmdOrCtrl+W").OnClick(func(ctx *application.Context) {
+		if win != nil {
+			if s.CloseToTray() {
+				win.Hide()
+				return
+			}
+			win.Close()
+		}
+	})
+	file.Add(n.Quit).SetAccelerator("CmdOrCtrl+Q").OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:quit", nil)
+	})
+
+	menu.AddRole(application.EditMenu)
+
+	view := menu.AddSubmenu(n.View)
+	view.Add(n.ToggleReview).SetAccelerator("CmdOrCtrl+\\").OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "review")
+	})
+	view.Add(n.Palette).SetAccelerator("CmdOrCtrl+K").OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "palette")
+	})
+	view.Add(n.Settings).SetAccelerator("CmdOrCtrl+,").OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "control")
+	})
+
+	thread := menu.AddSubmenu(n.Thread)
+	thread.Add(n.Compact).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "compact")
+	})
+	thread.Add(n.Export).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "export")
+	})
+	thread.Add(n.Rename).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "rename")
+	})
+	thread.Add(n.Fork).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "fork")
+	})
+
+	harness := menu.AddSubmenu(n.Harness)
+	harness.Add(n.RunEval).OnClick(func(ctx *application.Context) {
+		_, _ = s.RunEval()
+	})
+	harness.Add(n.RunTB).OnClick(func(ctx *application.Context) {
+		_, _ = s.RunEvalTB()
+	})
+	harness.Add(n.Evolve).OnClick(func(ctx *application.Context) {
+		_, _ = s.Evolve()
+	})
+	harness.AddSeparator()
+	harness.Add(n.ApplyUpdate).OnClick(func(ctx *application.Context) {
+		_ = s.ApplyUpdate()
+	})
+
+	help := menu.AddSubmenu(n.Help)
+	help.Add(n.About).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:about", s.About())
+		s.ShowAboutNative()
+	})
+	help.Add(n.Doctor).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:doctor", s.Doctor())
+	})
+	help.Add(n.Logs).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:logs", s.Logs(80))
+	})
+	gui.Menu.Set(menu)
+
+	if s.tray == nil {
+		return
+	}
+	tmenu := gui.NewMenu()
+	tmenu.Add(n.Show).OnClick(func(ctx *application.Context) { showWindow(win) })
+	tmenu.Add(n.Hide).OnClick(func(ctx *application.Context) {
+		if win != nil {
+			win.Hide()
+		}
+	})
+	tmenu.AddSeparator()
+	tmenu.Add(n.NewChat).OnClick(func(ctx *application.Context) {
+		showWindow(win)
+		gui.Event.Emit("yoyo:command", "new")
+	})
+	tmenu.Add(n.Settings).OnClick(func(ctx *application.Context) {
+		showWindow(win)
+		gui.Event.Emit("yoyo:command", "control")
+	})
+	tmenu.AddSeparator()
+	tmenu.Add(n.RunEval).OnClick(func(ctx *application.Context) {
+		_, _ = s.RunEval()
+	})
+	tmenu.AddSeparator()
+	tmenu.Add(n.Quit).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:quit", nil)
+	})
+	s.tray.SetMenu(tmenu)
+}
+
+func showWindow(win application.Window) {
+	if win == nil {
+		return
+	}
+	if win.IsMinimised() {
+		win.UnMinimise()
+	}
+	win.Show().Focus()
 }
 
 func sessionFromNote(id string, info map[string]any) string {

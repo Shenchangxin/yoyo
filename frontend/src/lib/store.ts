@@ -1,11 +1,15 @@
 import { create } from "zustand";
-import type { Lab } from "./protocol";
+import type { Lab, Notice, SettingsTab, Surface } from "./protocol";
 
 export type InspTab = "diff" | "files" | "context" | "approvals";
 export type DiffMode = "unified" | "split";
 
 type UIState = {
   lab: Lab;
+  surface: Surface;
+  settingsTab: SettingsTab;
+  settingsSection: string;
+  settingsNav: number;
   inspector: boolean;
   palette: boolean;
   query: string;
@@ -14,7 +18,16 @@ type UIState = {
   plan: boolean;
   drafts: Record<string, string>;
   setupDismissed: boolean;
+  sidebarCollapsed: boolean;
+  sidebarHover: boolean;
+  notices: Notice[];
+  noticesOpen: boolean;
+  renameTick: number;
   setLab: (lab: Lab) => void;
+  requestRename: () => void;
+  openSettings: (tab?: SettingsTab, section?: string) => void;
+  closeSettings: () => void;
+  setSettingsTab: (tab: SettingsTab) => void;
   setInspector: (v: boolean | ((p: boolean) => boolean)) => void;
   setPalette: (v: boolean | ((p: boolean) => boolean)) => void;
   setQuery: (q: string) => void;
@@ -24,6 +37,11 @@ type UIState = {
   setDraft: (key: string, value: string) => void;
   patchDrafts: (patch: Record<string, string>) => void;
   setSetupDismissed: (v: boolean) => void;
+  setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
+  setSidebarHover: (v: boolean) => void;
+  pushNotice: (n: Notice) => void;
+  setNoticesOpen: (v: boolean | ((p: boolean) => boolean)) => void;
+  clearNotices: () => void;
 };
 
 function readDiffMode(): DiffMode {
@@ -42,8 +60,20 @@ function readSetupDismissed(): boolean {
   }
 }
 
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem("yoyo-sidebar-collapsed") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const useUI = create<UIState>((set) => ({
   lab: "agent",
+  surface: "agent",
+  settingsTab: "general",
+  settingsSection: "",
+  settingsNav: 0,
   inspector: true,
   palette: false,
   query: "",
@@ -52,7 +82,22 @@ export const useUI = create<UIState>((set) => ({
   plan: false,
   drafts: {},
   setupDismissed: readSetupDismissed(),
-  setLab: (lab) => set({ lab }),
+  sidebarCollapsed: readCollapsed(),
+  sidebarHover: false,
+  notices: [],
+  noticesOpen: false,
+  renameTick: 0,
+  setLab: (lab) => set({ lab, surface: lab }),
+  requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
+  openSettings: (tab, section) =>
+    set((s) => ({
+      surface: "settings",
+      settingsTab: tab || s.settingsTab || "general",
+      settingsSection: section || "",
+      settingsNav: Date.now(),
+    })),
+  closeSettings: () => set((s) => ({ surface: s.lab })),
+  setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
   setPalette: (v) => set((s) => ({ palette: typeof v === "function" ? v(s.palette) : v })),
   setQuery: (query) => set({ query }),
@@ -76,4 +121,18 @@ export const useUI = create<UIState>((set) => ({
     }
     set({ setupDismissed });
   },
+  setSidebarCollapsed: (v) =>
+    set((s) => {
+      const sidebarCollapsed = typeof v === "function" ? v(s.sidebarCollapsed) : v;
+      try {
+        localStorage.setItem("yoyo-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return { sidebarCollapsed, sidebarHover: sidebarCollapsed ? s.sidebarHover : false };
+    }),
+  setSidebarHover: (sidebarHover) => set({ sidebarHover }),
+  pushNotice: (n) => set((s) => ({ notices: [n, ...s.notices].slice(0, 30) })),
+  setNoticesOpen: (v) => set((s) => ({ noticesOpen: typeof v === "function" ? v(s.noticesOpen) : v })),
+  clearNotices: () => set({ notices: [] }),
 }));

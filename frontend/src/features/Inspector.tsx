@@ -32,8 +32,8 @@ export function Inspector(props: {
     { id: "approvals", label: props.approvals.length ? `${copy.review.ask} ${props.approvals.length}` : copy.review.ask, icon: ShieldAlert },
   ];
   return (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar">
-      <div className="flex gap-1 border-b border-border p-2" role="tablist" aria-label="Review">
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
+      <div className="flex gap-0.5 border-b border-border/80 p-1.5" role="tablist" aria-label={copy.review.tabs}>
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -43,13 +43,13 @@ export function Inspector(props: {
               role="tab"
               aria-selected={props.tab === t.id}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px]",
-                props.tab === t.id ? "bg-lift text-foreground" : "text-muted hover:text-foreground",
+                "flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors",
+                props.tab === t.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
               )}
               onClick={() => props.onTab(t.id)}
             >
               <Icon className="size-3" aria-hidden />
-              {t.label}
+              <span className="hidden min-[280px]:inline">{t.label}</span>
             </button>
           );
         })}
@@ -62,7 +62,7 @@ export function Inspector(props: {
               <Button size="sm" disabled={!Object.values(props.selected).some(Boolean)} onClick={props.onApply}>
                 {copy.review.apply}
               </Button>
-              <div className="ml-auto flex rounded-lg bg-lift p-0.5" role="group" aria-label="Diff layout">
+              <div className="ml-auto flex rounded-lg bg-lift p-0.5" role="group" aria-label={copy.review.diffLayout}>
                 {(["unified", "split"] as DiffMode[]).map((m) => (
                   <button
                     type="button"
@@ -83,7 +83,7 @@ export function Inspector(props: {
               <p className="text-xs text-muted">{copy.review.noHunks}</p>
             ) : (
               props.hunks.map((h) => (
-                <label key={h.id} className="mb-2 block rounded-xl border border-border bg-panel p-2">
+                <label key={h.id} className="mb-2 block rounded-xl border border-border bg-card p-2">
                   <div className="mb-1 flex items-center gap-2 text-xs">
                     <input type="checkbox" checked={!!props.selected[h.id]} onChange={() => props.onToggle(h.id)} />
                     <span className="font-mono tabular-nums text-muted">{h.file ? `${h.file} · ${h.id}` : h.id}</span>
@@ -118,8 +118,6 @@ export function Inspector(props: {
         ) : null}
         {props.tab === "context" ? (
           <div className="space-y-3 text-sm">
-            <Row k={copy.review.tokens} v={String(props.ctx.tokens || 0)} />
-            <Row k={copy.review.budget} v={String(props.ctx.budget || "—")} />
             <Row k={copy.review.elided} v={String(props.ctx.elided || 0)} />
             {props.ctx.layers?.length ? (
               <div className="flex flex-wrap gap-1">
@@ -131,6 +129,7 @@ export function Inspector(props: {
             <p className="text-xs text-muted">
               {props.ctx.note || copy.review.contextNote}
             </p>
+            <p className="text-xs text-muted">{copy.review.contextMoved}</p>
           </div>
         ) : null}
         {props.tab === "approvals" ? (
@@ -138,7 +137,7 @@ export function Inspector(props: {
             <p className="text-xs text-muted">{copy.review.noAsk}</p>
           ) : (
             props.approvals.map((a) => (
-              <div key={a.id} className="mb-2 rounded-xl border border-border bg-panel p-3">
+              <div key={a.id} className="mb-2 rounded-xl border border-border bg-card p-3">
                 <div className="text-sm font-medium">{a.action}</div>
                 <div className="mt-1 font-mono text-xs text-muted">{a.command || a.path}</div>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -158,7 +157,7 @@ export function Inspector(props: {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between rounded-lg bg-card px-3 py-2">
       <span className="text-muted">{k}</span>
       <strong className="tabular-nums">{v}</strong>
     </div>

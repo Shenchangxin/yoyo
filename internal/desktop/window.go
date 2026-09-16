@@ -94,6 +94,10 @@ func PersistWindow(svc *Service, win application.Window) {
 		saveWindowState(svc, win)
 	})
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if svc.Quitting() {
+			saveWindowState(svc, win)
+			return
+		}
 		if svc.CloseToTray() {
 			e.Cancel()
 			win.Hide()

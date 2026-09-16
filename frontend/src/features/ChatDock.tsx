@@ -1,6 +1,6 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
-import type { Approval, Item } from "../lib/protocol";
+import type { Approval, ContextUsage, Item } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
 
 export function ChatDock(props: {
@@ -12,6 +12,8 @@ export function ChatDock(props: {
   disabledReason?: string;
   model?: string;
   models?: string[];
+  provider?: string;
+  ctx?: ContextUsage;
   onSend: (opts?: { steer?: boolean; attachments?: import("../lib/protocol").Attachment[] }) => void;
   onStop: () => void;
   onResolve: (id: string, decision: string) => void;
@@ -21,11 +23,11 @@ export function ChatDock(props: {
 }) {
   const copy = useCopy();
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l border-border bg-background">
-      <div className="flex h-11 shrink-0 items-center border-b border-border px-3">
-        <span className="text-[13px] font-medium">Chat</span>
-        <button type="button" className="ml-auto text-[11px] text-muted hover:text-foreground" onClick={props.onOpenAgent}>
-          Expand
+    <aside className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="flex h-9 shrink-0 items-center border-b border-border/80 px-3">
+        <span className="text-[13px] font-medium">{copy.dock.chat}</span>
+        <button type="button" className="ml-auto rounded-md px-2 py-1 text-[11px] text-muted hover:bg-lift hover:text-foreground" onClick={props.onOpenAgent}>
+          {copy.dock.expand}
         </button>
       </div>
       <Transcript items={props.items.slice(-12)} approvals={props.approvals} running={props.running} compact onResolve={props.onResolve} />
@@ -36,10 +38,13 @@ export function ChatDock(props: {
         disabledReason={props.disabledReason || copy.composer.disabled}
         model={props.model}
         models={props.models}
+        provider={props.provider}
+        ctx={props.ctx}
         onSend={props.onSend}
         onStop={props.onStop}
         onSlash={props.onSlash}
         onModel={props.onModel}
+        compact
       />
     </aside>
   );

@@ -31,19 +31,26 @@ type MCPServerConfig struct {
 }
 
 type Config struct {
-	Provider     string            `yaml:"provider" json:"provider"`
-	Model        string            `yaml:"model" json:"model"`
-	BaseURL      string            `yaml:"base_url" json:"base_url"`
-	Workspace    string            `yaml:"workspace" json:"workspace"`
-	AutoAllow    bool              `yaml:"auto_allow" json:"auto_allow"`
-	MaxBudgetUSD float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
-	USDPerMTok   float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
-	Models       []string          `yaml:"models" json:"models"`
-	MCP          []MCPServerConfig `yaml:"mcp" json:"mcp"`
-	CloseToTray  bool              `yaml:"close_to_tray" json:"close_to_tray"`
-	UpdateURL    string            `yaml:"update_url" json:"update_url"`
-	Locale       string            `yaml:"locale" json:"locale"`
-	Keymap       map[string]string `yaml:"keymap" json:"keymap"`
+	Provider                string            `yaml:"provider" json:"provider"`
+	Model                   string            `yaml:"model" json:"model"`
+	BaseURL                 string            `yaml:"base_url" json:"base_url"`
+	Workspace               string            `yaml:"workspace" json:"workspace"`
+	AutoAllow               bool              `yaml:"auto_allow" json:"auto_allow"`
+	MaxBudgetUSD            float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
+	USDPerMTok              float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
+	Models                  []string          `yaml:"models" json:"models"`
+	MCP                     []MCPServerConfig `yaml:"mcp" json:"mcp"`
+	CloseToTray             bool              `yaml:"close_to_tray" json:"close_to_tray"`
+	UpdateURL               string            `yaml:"update_url" json:"update_url"`
+	Locale                  string            `yaml:"locale" json:"locale"`
+	Keymap                  map[string]string `yaml:"keymap" json:"keymap"`
+	AlwaysOnTop             bool              `yaml:"always_on_top" json:"always_on_top"`
+	StartAtLogin            bool              `yaml:"start_at_login" json:"start_at_login"`
+	NotificationsEnabled    bool              `yaml:"notifications_enabled" json:"notifications_enabled"`
+	NotifyWhenUnfocusedOnly bool              `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
+	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
+	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
+	Theme                   string            `yaml:"theme" json:"theme"`
 }
 
 type App struct {
@@ -92,15 +99,34 @@ func Open(root, bundledEvals string) (*App, error) {
 		return nil, err
 	}
 	cfg := Config{
-		Provider:  "openai",
-		Model:     "gpt-4.1-mini",
-		BaseURL:   "https://api.openai.com/v1",
-		Workspace: "",
-		AutoAllow: false,
+		Provider:             "openai",
+		Model:                "gpt-4.1-mini",
+		BaseURL:              "https://api.openai.com/v1",
+		Workspace:            "",
+		AutoAllow:            false,
+		NotificationsEnabled: true,
+		UIScale:              1,
+		UpdateChannel:        "nightly",
+		Theme:                "system",
 	}
 	if b, err := os.ReadFile(h.Config()); err == nil {
+		raw := map[string]any{}
+		_ = yaml.Unmarshal(b, &raw)
 		_ = yaml.Unmarshal(b, &cfg)
+		if _, ok := raw["notifications_enabled"]; !ok {
+			cfg.NotificationsEnabled = true
+		}
+		if cfg.UIScale <= 0 {
+			cfg.UIScale = 1
+		}
+		if cfg.UpdateChannel == "" {
+			cfg.UpdateChannel = "nightly"
+		}
+		if cfg.Theme == "" {
+			cfg.Theme = "system"
+		}
 	}
+	filledDefault := applyDefaultWorkspace(h, &cfg)
 	k := kernel.New()
 	allow := []capability.Level{capability.ReadWorkspace, capability.WriteWorkspace}
 	if cfg.AutoAllow {
@@ -169,6 +195,9 @@ func Open(root, bundledEvals string) (*App, error) {
 	}
 	if err := a.Seed(); err != nil {
 		return nil, err
+	}
+	if filledDefault {
+		_ = a.SaveConfig()
 	}
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
@@ -244,6 +273,7 @@ func (a *App) Health() map[string]any {
 		"models":          a.Config.Models,
 		"workspace_ready": WorkspaceReady(a.Config.Workspace),
 		"vault":           a.Vault.Status(),
+		"update_channel":  a.Config.UpdateChannel,
 	}
 }
 
@@ -283,6 +313,11 @@ func (a *App) Workspace() string {
 		if p, err := filepath.Abs(a.Config.Workspace); err == nil {
 			return p
 		}
+	}
+	if a.Home != nil {
+		p := a.Home.Workspace()
+		_ = os.MkdirAll(p, 0o755)
+		return p
 	}
 	wd, _ := os.Getwd()
 	return wd
