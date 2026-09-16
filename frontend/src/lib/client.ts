@@ -130,6 +130,9 @@ export function contextOf(v: any): ContextUsage {
   return {
     tokens: num(pick(v, "tokens", "Tokens")),
     budget: num(pick(v, "budget", "Budget")),
+    window: num(pick(v, "window", "Window")),
+    prefixTokens: num(pick(v, "prefix_tokens", "PrefixTokens")),
+    schemaTokens: num(pick(v, "schema_tokens", "SchemaTokens")),
     note: str(pick(v, "note", "Note")),
     layers: asArray(pick(v, "layers", "Layers")).map(String),
     elided: num(pick(v, "elided", "Elided")),

@@ -42,8 +42,11 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 		}
 		fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, st, step.Step)
 	}
+	t.mu.Lock()
 	t.PlanText = b.String()
-	return ToolResult{Content: t.PlanText}
+	plan := t.PlanText
+	t.mu.Unlock()
+	return ToolResult{Content: plan}
 }
 
 func (t *WorkspaceTools) wait(seconds int) ToolResult {

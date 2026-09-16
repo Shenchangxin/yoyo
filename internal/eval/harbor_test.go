@@ -10,6 +10,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	rt "github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 func TestHarborTaskPass(t *testing.T) {
@@ -166,5 +167,70 @@ func TestIsolateWorktree(t *testing.T) {
 	}
 	if rep.Results[0].Isolate != "git-worktree" {
 		t.Fatalf("isolate %q", rep.Results[0].Isolate)
+	}
+}
+
+func TestHarborShapeOnlyEvenIfAllowLLMCompact(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
+	e := NewEngine(root)
+	loop := rt.DefaultLoop()
+	loop.AllowLLMCompact = true
+	st := trace.NewStore(t.TempDir())
+	rep, err := e.Run(context.Background(), RunOpts{
+		Suite: artifact.EvalSuite{
+			ID:         "compact-resume",
+			TaskDir:    root,
+			HeldIn:     []string{"write-hello"},
+			HeldOut:    []string{"write-answer"},
+			Repeats:    1,
+			TimeoutSec: 30,
+		},
+		Client:    rt.HeuristicSolver{},
+		Loop:      loop,
+		Model:     "fixture",
+		Trace:     st,
+		SessionID: "h",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Metrics.HeldInPass != 1 || rep.Metrics.HeldOutPass != 1 {
+		t.Fatalf("%+v", rep)
+	}
+	evs, err := st.Read("h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		kind, _ := ev.Payload["kind"].(string)
+		if kind == "checkpoint" {
+			t.Fatal("harbor persisted a chat checkpoint")
+		}
+	}
+}
+
+func TestHarborPromptSensitiveUnchanged(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
+	e := NewEngine(root)
+	rep, err := e.Run(context.Background(), RunOpts{
+		Suite: artifact.EvalSuite{
+			ID:         "sensitive",
+			TaskDir:    root,
+			HeldIn:     []string{"write-hello"},
+			HeldOut:    []string{"write-answer"},
+			Repeats:    1,
+			TimeoutSec: 30,
+		},
+		Client: rt.PromptSensitiveSolver{},
+		Loop:   rt.DefaultLoop(),
+		Model:  "fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Metrics.HeldInPass != 0 || rep.Metrics.HeldOutPass != 0 {
+		t.Fatalf("PromptSensitiveSolver must stay unarmed without placeholder pin: %+v", rep)
 	}
 }

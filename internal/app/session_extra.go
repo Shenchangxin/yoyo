@@ -43,6 +43,10 @@ func (a *App) DeleteSession(id string) error {
 	delete(a.queue, id)
 	delete(a.steers, id)
 	a.queueMu.Unlock()
+	ws := ""
+	if m, err := a.GetSession(id); err == nil {
+		ws = m.Workspace
+	}
 	root := a.Home.Sessions()
 	var first error
 	for _, name := range []string{id + ".meta.json", id + ".jsonl"} {
@@ -56,6 +60,7 @@ func (a *App) DeleteSession(id string) error {
 			first = err
 		}
 	}
+	runtime.RemoveSessionContext(a.Home.Root, ws, id)
 	return first
 }
 
@@ -152,19 +157,24 @@ func (a *App) CompactSession(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	meta, _ := a.GetSession(id)
 	msgs := runtime.MessagesFromEvents(evs)
-	out, note := runtime.Compact(msgs, loop)
-	if note == "" {
-		note = "context already within budget"
+	spill := runtime.BindSpill(a.Home.Root, meta.Workspace, id)
+	model := a.Config.Model
+	if meta.Model != "" {
+		model = meta.Model
 	}
-	a.Hub.Publish(trace.Event{
-		Type:      trace.TypeCompact,
-		Source:    "user",
-		SessionID: id,
-		Payload:   map[string]any{"note": note, "kept": len(out)},
-	})
-	if a.Traces != nil {
-		_ = a.Traces.Append(trace.Event{Type: trace.TypeCompact, Source: "user", SessionID: id, Payload: map[string]any{"note": note, "kept": len(out)}})
+	window := runtime.ModelContextWindow(model)
+	client, _ := a.Client()
+	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window)
+	runtime.WriteDiscoverIndex(meta.Workspace, id, spill)
+	if a.Hub != nil {
+		a.Hub.Publish(trace.Event{
+			Type:      trace.TypeCompact,
+			Source:    "user",
+			SessionID: id,
+			Payload:   map[string]any{"note": note, "kind": "checkpoint"},
+		})
 	}
 	return note, nil
 }

@@ -51,7 +51,9 @@ export function Composer(props: {
   const modelOptions = currentModel && !models.includes(currentModel) ? [currentModel, ...models] : models;
   const slashOpen = hint === "slash";
   const meta = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "openai", currentModel);
-  const budget = (props.ctx?.budget && props.ctx.budget > 0) ? props.ctx.budget : (meta?.model.contextWindow || 0);
+  const shapedBudget = (props.ctx?.budget && props.ctx.budget > 0) ? props.ctx.budget : 0;
+  const window = (props.ctx?.window && props.ctx.window > 0) ? props.ctx.window : (meta?.model.contextWindow || 0);
+  const budget = shapedBudget || window;
   const used = props.ctx?.tokens || 0;
   const pct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
 
@@ -363,11 +365,13 @@ export function Composer(props: {
           </div>
         </div>
         {budget > 0 ? (
-          <div className="mt-1.5 flex items-center gap-2 px-1.5 text-[11px] tabular-nums text-muted" title={props.ctx?.note || copy.composer.context}>
+          <div className="mt-1.5 flex items-center gap-2 px-1.5 text-[11px] tabular-nums text-muted" title={props.ctx?.note ? `${props.ctx.note} · shaped ${used} / budget ${budget} · window ${window}` : copy.composer.context}>
             <span className="h-1 w-16 overflow-hidden rounded-full bg-lift">
               <span className="block h-full rounded-full bg-accent" style={{ width: pct + "%" }} />
             </span>
             <span>{formatTokens(used)} / {formatTokens(budget)}</span>
+            {window > 0 && window !== budget ? <span className="text-muted/80">window {formatTokens(window)}</span> : null}
+            {props.ctx?.prefixTokens ? <span className="text-muted/80">prefix {formatTokens(props.ctx.prefixTokens)}</span> : null}
             {meta?.model.name ? <span className="min-w-0 truncate">{meta.model.name}</span> : null}
           </div>
         ) : null}

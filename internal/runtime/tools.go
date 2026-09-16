@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
@@ -30,19 +32,21 @@ type ExtraTool struct {
 }
 
 type WorkspaceTools struct {
-	Workspace string
-	SessionID string
-	Caps      *capability.Broker
-	Skills    map[string]string
-	Loaded    []string
-	Policy    artifact.PolicyPack
-	PlanMode  bool
-	Ctx       context.Context
-	Extra     map[string]ExtraTool
-	Spill     *Spill
-	Depth     int
-	Task      TaskFunc
-	PlanText  string
+	Workspace    string
+	SessionID    string
+	Caps         *capability.Broker
+	Skills       map[string]string
+	Loaded       []string
+	ExtraEnabled []string
+	Policy       artifact.PolicyPack
+	PlanMode     bool
+	Ctx          context.Context
+	Extra        map[string]ExtraTool
+	Spill        *Spill
+	Depth        int
+	Task         TaskFunc
+	PlanText     string
+	mu           sync.Mutex
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -212,29 +216,56 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	if t == nil {
 		return out
 	}
-	extras := make([]ExtraTool, 0, len(t.Extra))
-	for _, extra := range t.Extra {
-		extras = append(extras, extra)
+	names := make([]string, 0, len(t.Extra))
+	for name := range t.Extra {
+		names = append(names, name)
 	}
+	sort.Strings(names)
 	const schemaCap = 8
-	if len(extras) <= schemaCap {
-		for _, extra := range extras {
-			out = append(out, extra.JSON)
+	enabled := map[string]bool{}
+	t.mu.Lock()
+	for _, n := range t.ExtraEnabled {
+		enabled[n] = true
+	}
+	t.mu.Unlock()
+	if len(names) <= schemaCap {
+		for _, name := range names {
+			out = append(out, t.Extra[name].JSON)
 		}
+		WriteMCPCatalog(t.Workspace, t.Extra)
 		return out
 	}
-	for _, extra := range extras {
-		j := extra.JSON
-		if fn, ok := j.Function["description"].(string); ok && len(fn) > 120 {
+	deferred := make([]string, 0, len(names))
+	for _, name := range names {
+		if enabled[name] {
+			out = append(out, t.Extra[name].JSON)
+			continue
+		}
+		deferred = append(deferred, name)
+	}
+	if len(deferred) > 0 {
+		for i := range out {
+			name, _ := out[i].Function["name"].(string)
+			if name != "tool_search" {
+				continue
+			}
+			desc, _ := out[i].Function["description"].(string)
 			cp := map[string]any{}
-			for k, v := range j.Function {
+			for k, v := range out[i].Function {
 				cp[k] = v
 			}
-			cp["description"] = fn[:117] + "…"
-			j.Function = cp
+			cp["description"] = desc + " Deferred extra tools: " + strings.Join(deferred, ", ") + "."
+			out[i].Function = cp
+			break
 		}
-		out = append(out, j)
+		if t.Spill != nil {
+			for _, name := range deferred {
+				raw, _ := json.Marshal(t.Extra[name].JSON)
+				t.Spill.Put("mcp-"+sanitizeID(name), string(raw))
+			}
+		}
 	}
+	WriteMCPCatalog(t.Workspace, t.Extra)
 	return out
 }
 
@@ -489,7 +520,12 @@ func (t *WorkspaceTools) listDir(rel string) ToolResult {
 		return ToolResult{Err: err}
 	}
 	var b strings.Builder
+	n := 0
 	for _, e := range ents {
+		if n >= 200 {
+			b.WriteString("…[truncated; use glob for more]\n")
+			break
+		}
 		if e.IsDir() {
 			b.WriteString("d ")
 		} else {
@@ -497,6 +533,7 @@ func (t *WorkspaceTools) listDir(rel string) ToolResult {
 		}
 		b.WriteString(e.Name())
 		b.WriteByte('\n')
+		n++
 	}
 	return ToolResult{Content: b.String()}
 }
@@ -585,6 +622,8 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	if !ok {
 		return ToolResult{Err: fmt.Errorf("unknown skill %s", name)}
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, n := range t.Loaded {
 		if n == name {
 			return ToolResult{Content: body}
@@ -612,6 +651,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	}
 	q = strings.ToLower(q)
 	var b strings.Builder
+	var matched []string
 	for name, extra := range t.Extra {
 		blob := strings.ToLower(name)
 		if d, _ := extra.JSON.Function["description"].(string); d != "" {
@@ -620,6 +660,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 		if q != "" && !strings.Contains(blob, q) {
 			continue
 		}
+		matched = append(matched, name)
 		raw, _ := json.Marshal(extra.JSON)
 		b.Write(raw)
 		b.WriteByte('\n')
@@ -627,6 +668,20 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	if b.Len() == 0 {
 		return ToolResult{Content: "no matches"}
 	}
+	t.mu.Lock()
+	for _, name := range matched {
+		seen := false
+		for _, n := range t.ExtraEnabled {
+			if n == name {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			t.ExtraEnabled = append(t.ExtraEnabled, name)
+		}
+	}
+	t.mu.Unlock()
 	return ToolResult{Content: b.String()}
 }
 
@@ -634,6 +689,8 @@ func (t *WorkspaceTools) loadedBodies() []string {
 	if t == nil {
 		return nil
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var out []string
 	for _, name := range t.Loaded {
 		if t.Skills == nil {
@@ -644,6 +701,15 @@ func (t *WorkspaceTools) loadedBodies() []string {
 		}
 	}
 	return out
+}
+
+func (t *WorkspaceTools) Pins() (loaded []string, plan string) {
+	if t == nil {
+		return nil, ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.Loaded...), t.PlanText
 }
 
 func str(v any) string {

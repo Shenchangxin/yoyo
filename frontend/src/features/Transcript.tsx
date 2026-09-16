@@ -199,7 +199,9 @@ function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: bo
     );
   }
   if (item.type === "compaction") {
-    return <div className="text-center text-[11px] text-muted">{item.payload.note || item.text || copy.app.compacted}</div>;
+    const kind = String(item.payload?.kind || "");
+    const label = kind === "checkpoint" ? (item.payload.note || "checkpoint") : (item.payload.note || item.text || copy.app.compacted);
+    return <div className="text-center text-[11px] text-muted">{label}</div>;
   }
   if (item.type === "subagent") {
     return (

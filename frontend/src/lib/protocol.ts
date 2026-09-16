@@ -63,6 +63,9 @@ export type Approval = {
 export type ContextUsage = {
   tokens: number;
   budget: number;
+  window?: number;
+  prefixTokens?: number;
+  schemaTokens?: number;
   note: string;
   layers: string[];
   elided: number;

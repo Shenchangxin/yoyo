@@ -1,6 +1,9 @@
 package artifact
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // ApplyDelta merges ACE-style incremental bullets without rewriting the book.
 func (p Playbook) ApplyDelta(add []PlaybookBullet, removeIDs []string) Playbook {
@@ -60,13 +63,12 @@ func (p Playbook) RenderBudget(maxRunes int) string {
 		}
 		items = append(items, scored{b: bullet, score: bullet.Helpful - bullet.Harmful})
 	}
-	for i := 0; i < len(items); i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[j].score > items[i].score {
-				items[i], items[j] = items[j], items[i]
-			}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].score != items[j].score {
+			return items[i].score > items[j].score
 		}
-	}
+		return items[i].b.ID < items[j].b.ID
+	})
 	var b strings.Builder
 	used := 0
 	for _, it := range items {

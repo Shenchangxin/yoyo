@@ -171,6 +171,8 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		skillBodies[s.Name] = s.Body
 	}
 	tools := &rt.WorkspaceTools{Workspace: work, SessionID: opts.SessionID, Caps: caps, Skills: skillBodies, Depth: 1}
+	loop := opts.Loop
+	loop.AllowLLMCompact = false
 	_, runErr := rt.Run(tctx, rt.RunRequest{
 		SessionID:        opts.SessionID,
 		TaskID:           task.ID,
@@ -180,7 +182,7 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		HarnessHash:      opts.Hash,
 		ModelFingerprint: opts.Snapshot.ModelFingerprint,
 		Model:            opts.Model,
-		Loop:             opts.Loop,
+		Loop:             loop,
 		Fragments:        opts.Fragments,
 		Playbook:         opts.Playbook,
 		Skills:           opts.Skills,

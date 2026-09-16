@@ -32,7 +32,7 @@ export const emptyCfg: AppConfig = {
   updateChannel: "nightly",
   theme: "system",
 };
-const emptyCtx: ContextUsage = { tokens: 0, budget: 0, note: "", layers: [], elided: 0 };
+const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, schemaTokens: 0, note: "", layers: [], elided: 0 };
 
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
   const next: Record<string, boolean> = {};

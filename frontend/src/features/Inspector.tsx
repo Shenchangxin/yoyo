@@ -119,6 +119,9 @@ export function Inspector(props: {
         {props.tab === "context" ? (
           <div className="space-y-3 text-sm">
             <Row k={copy.review.elided} v={String(props.ctx.elided || 0)} />
+            {props.ctx.window ? <Row k="window" v={String(props.ctx.window)} /> : null}
+            {props.ctx.prefixTokens ? <Row k="prefix" v={String(props.ctx.prefixTokens)} /> : null}
+            {props.ctx.schemaTokens ? <Row k="schemas" v={String(props.ctx.schemaTokens)} /> : null}
             {props.ctx.layers?.length ? (
               <div className="flex flex-wrap gap-1">
                 {props.ctx.layers.map((l) => (
