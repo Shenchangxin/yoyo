@@ -49,6 +49,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	childLoop := parent.Loop
 	childLoop.MaxTurns = 8
 	childLoop.MaxToolMessages = 12
+	childLoop.AllowLLMCompact = false
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
 		cp := *parent.Tools
@@ -82,6 +83,8 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		FileHooks:        parent.FileHooks,
 		OnEvent:          parent.OnEvent,
 		Meter:            parent.Meter,
+		Home:             parent.Home,
+		ModelWindow:      parent.ModelWindow,
 	})
 	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out}
 	if err != nil {

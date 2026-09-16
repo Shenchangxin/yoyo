@@ -31,6 +31,8 @@ type SessionMeta struct {
 	Archived         bool      `json:"archived"`
 	Pinned           bool      `json:"pinned"`
 	Model            string    `json:"model,omitempty"`
+	LoadedSkills     []string  `json:"loaded_skills,omitempty"`
+	PlanText         string    `json:"plan_text,omitempty"`
 }
 
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
@@ -214,10 +216,29 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	for _, s := range disk {
 		skillBodies[s.Name] = s.Body
 	}
+	model := a.Config.Model
+	if meta.Model != "" {
+		model = meta.Model
+	}
+	tools := &runtime.WorkspaceTools{
+		Workspace: meta.Workspace,
+		SessionID: sessionID,
+		Caps:      a.Caps,
+		Skills:    skillBodies,
+		Loaded:    append([]string(nil), meta.LoadedSkills...),
+		Policy:    pol,
+		PlanMode:  loop.PlanMode,
+		Ctx:       ctx,
+		Extra:     a.extraTools(sessionID),
+		Spill:     runtime.BindSpill(a.Home.Root, meta.Workspace, sessionID),
+		PlanText:  meta.PlanText,
+	}
 	hist := []runtime.Message{}
 	if evs, err := a.Traces.Read(sessionID); err == nil {
 		hist = runtime.MessagesFromEvents(evs)
 	}
+	window := runtime.ModelContextWindow(model)
+	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window)
 	wrapped := onEvent
 	if a.Hub != nil {
 		prev := wrapped
@@ -229,16 +250,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 	}
 
-	tools := &runtime.WorkspaceTools{
-		Workspace: meta.Workspace,
-		SessionID: sessionID,
-		Caps:      a.Caps,
-		Skills:    skillBodies,
-		Policy:    pol,
-		PlanMode:  loop.PlanMode,
-		Ctx:       ctx,
-		Extra:     a.extraTools(sessionID),
-	}
 	if meta.Title == "" || meta.Title == "session" {
 		meta.Title = titleFrom(message)
 		_ = a.writeSession(meta)
@@ -254,19 +265,17 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 		inject += extra
 	}
-	model := a.Config.Model
-	if meta.Model != "" {
-		model = meta.Model
-	}
 	out, runErr := runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,
 		Inject:           inject,
 		Workspace:        meta.Workspace,
+		Home:             a.Home.Root,
 		Harness:          snap,
 		HarnessHash:      hash,
 		ModelFingerprint: Fingerprint(a.Config),
 		Model:            model,
+		ModelWindow:      window,
 		Loop:             loop,
 		Policy:           pol,
 		Fragments:        frags,
@@ -283,6 +292,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Meter:            meter,
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
 	})
+	loaded, planText := tools.Pins()
+	meta.LoadedSkills = loaded
+	meta.PlanText = planText
+	_ = a.writeSession(meta)
 	a.RememberUsage(meter.Snapshot())
 	_, _ = a.StageACE(sessionID)
 	return out, runErr
@@ -528,7 +541,19 @@ func (a *App) StageACE(sessionID string) (string, error) {
 			}
 		}
 	}
-	ref := evolve.Reflect(events, nil, pb)
+	stripped := stripACEBodies(events)
+	ws := ""
+	if m, err := a.GetSession(sessionID); err == nil {
+		ws = m.Workspace
+	}
+	if notes := runtime.ReadNotes(runtime.BindSpill(a.Home.Root, ws, sessionID)); notes != "" {
+		stripped = append([]trace.Event{{
+			Type:      trace.TypeUser,
+			SessionID: sessionID,
+			Payload:   map[string]any{"text": notes},
+		}}, stripped...)
+	}
+	ref := evolve.Reflect(stripped, nil, pb)
 	curated := evolve.Curate(pb, ref)
 	if evolve.PlaybooksEqual(pb, curated) {
 		return "", nil
@@ -554,6 +579,33 @@ func (a *App) StageACE(sessionID string) (string, error) {
 	})
 	_, _ = a.Journal.Append("ace.stage", map[string]string{"hash": hash, "session": sessionID})
 	return hash, nil
+}
+
+func stripACEBodies(evs []trace.Event) []trace.Event {
+	out := make([]trace.Event, len(evs))
+	copy(out, evs)
+	for i := range out {
+		if out[i].Type != trace.TypeToolResult {
+			continue
+		}
+		p := map[string]any{}
+		for k, v := range out[i].Payload {
+			p[k] = v
+		}
+		name, _ := p["name"].(string)
+		id, _ := p["id"].(string)
+		content, _ := p["content"].(string)
+		if strings.HasPrefix(content, "ERROR:") {
+			if len(content) > 240 {
+				content = content[:240]
+			}
+			p["content"] = content
+		} else {
+			p["content"] = name + " " + id
+		}
+		out[i].Payload = p
+	}
+	return out
 }
 
 func (a *App) ListHarnesses() (map[string]string, error) {

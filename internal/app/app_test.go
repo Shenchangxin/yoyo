@@ -364,3 +364,66 @@ func TestSaveConfigWritesKeymap(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+func TestC5ForkRecallHitsCopiedSpill(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := runtime.BindSpill(a.Home.Root, ws, sess.ID)
+	sp.Put("fat", "secret-full-bytes")
+	fork, err := a.ForkSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := &runtime.WorkspaceTools{
+		Workspace: fork.Workspace,
+		Spill:     runtime.BindSpill(a.Home.Root, fork.Workspace, fork.ID),
+	}
+	res := tools.Call("recall_context", `{"id":"fat"}`)
+	if res.Err != nil || !strings.Contains(res.Content, "secret-full-bytes") {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestC10DeleteSessionRemovesContext(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Send(context.Background(), sess.ID, "Write hello.txt containing hello", runtime.HeuristicSolver{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	sp := runtime.BindSpill(a.Home.Root, ws, sess.ID)
+	sp.Put("notes", "## Objective\nclean me")
+	sp.Put("x", "bytes")
+	runtime.WriteDiscoverIndex(ws, sess.ID, sp)
+	id := sess.ID
+	if err := a.DeleteSession(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(a.Home.SessionSpill(id)); !os.IsNotExist(err) {
+		t.Fatal("home spill remains")
+	}
+	if _, err := os.Stat(filepath.Join(ws, ".yoyo", "context", id)); !os.IsNotExist(err) {
+		t.Fatal("workspace context remains")
+	}
+	if _, err := os.Stat(filepath.Join(a.Home.Sessions(), id+".meta.json")); !os.IsNotExist(err) {
+		t.Fatal("meta remains")
+	}
+	if _, err := os.Stat(filepath.Join(a.Home.Sessions(), id+".jsonl")); !os.IsNotExist(err) {
+		t.Fatal("jsonl remains")
+	}
+}

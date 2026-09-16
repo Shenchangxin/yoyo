@@ -64,11 +64,14 @@ func (d *Dir) Archive() string  { return filepath.Join(d.Root, "archive") }
 func (d *Dir) Plugins() string  { return filepath.Join(d.Root, "plugins") }
 func (d *Dir) Tmp() string      { return filepath.Join(d.Root, "tmp") }
 func (d *Dir) Updates() string  { return filepath.Join(d.Root, "updates") }
-func (d *Dir) Skills() string  { return filepath.Join(d.Root, "skills") }
+func (d *Dir) Skills() string   { return filepath.Join(d.Root, "skills") }
 func (d *Dir) Workspace() string {
 	return filepath.Join(d.Root, "workspace")
 }
 func (d *Dir) Config() string { return filepath.Join(d.Root, "config.yaml") }
+func (d *Dir) SessionSpill(id string) string {
+	return filepath.Join(d.Sessions(), id, "spill")
+}
 func (d *Dir) ModelsRefs() string {
 	return filepath.Join(d.Refs(), "models")
 }

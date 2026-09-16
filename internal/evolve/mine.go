@@ -66,15 +66,24 @@ func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 
 func classify(evs []trace.Event, cause string) Signature {
 	retries := 0
-	tools := 0
 	wrote := false
+	streak, best := 0, 0
+	last := ""
 	for _, ev := range evs {
 		switch ev.Type {
 		case trace.TypeToolCall:
-			tools++
 			name, _ := ev.Payload["name"].(string)
 			if name == "write_file" || name == "str_replace" {
 				wrote = true
+			}
+			if name != "" && name == last {
+				streak++
+			} else {
+				streak = 1
+				last = name
+			}
+			if streak > best {
+				best = streak
 			}
 		case trace.TypeToolResult:
 			if content, _ := ev.Payload["content"].(string); len(content) >= 6 && content[:6] == "ERROR:" {
@@ -91,7 +100,7 @@ func classify(evs []trace.Event, cause string) Signature {
 	case retries >= 2:
 		mech = "unproductive_retry"
 		status = "causal"
-	case tools > 20:
+	case best >= 8:
 		mech = "stalled_tool_loop"
 		status = "causal"
 	}

@@ -27,11 +27,13 @@ type ToolCall struct {
 }
 
 type Message struct {
-	Role       Role       `json:"role"`
-	Content    string     `json:"content,omitempty"`
-	Name       string     `json:"name,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	Role             Role       `json:"role"`
+	Content          string     `json:"content,omitempty"`
+	Name             string     `json:"name,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	PromptTokens     int        `json:"-"`
+	CompletionTokens int        `json:"-"`
 }
 
 type ToolJSON struct {
@@ -45,6 +47,7 @@ type ChatRequest struct {
 	Tools       []ToolJSON `json:"tools,omitempty"`
 	Temperature float64    `json:"temperature,omitempty"`
 	MaxTokens   int        `json:"max_tokens,omitempty"`
+	CacheKey    string     `json:"-"`
 }
 
 type StreamDelta struct {
@@ -106,6 +109,12 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	if req.MaxTokens > 0 {
 		payload["max_tokens"] = req.MaxTokens
 	}
+	if stream {
+		payload["stream_options"] = map[string]any{"include_usage": true}
+	}
+	if req.CacheKey != "" {
+		payload["prompt_cache_key"] = req.CacheKey
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return Message{}, err
@@ -120,6 +129,9 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	}
 	if c.APIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	if req.CacheKey != "" {
+		httpReq.Header.Set("X-Prompt-Cache-Key", req.CacheKey)
 	}
 	res, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
@@ -152,6 +164,7 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 	tools := map[int]*streamAcc{}
 	maxIdx := -1
 	sawData := false
+	promptTok, completionTok := 0, 0
 	for {
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
@@ -166,8 +179,16 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 			sawData = true
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data != "" && data != "[DONE]" {
-				msg, piece := applyStreamChunk(data, tools, &maxIdx)
+				msg, piece, uPrompt, uComp := applyStreamChunk(data, tools, &maxIdx)
+				if uPrompt > 0 {
+					promptTok = uPrompt
+				}
+				if uComp > 0 {
+					completionTok = uComp
+				}
 				if msg != nil {
+					msg.PromptTokens = promptTok
+					msg.CompletionTokens = completionTok
 					if emit != nil && msg.Content != "" {
 						_ = emit(StreamDelta{Text: msg.Content})
 					}
@@ -188,7 +209,7 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 			return Message{}, err
 		}
 	}
-	out := Message{Role: RoleAssistant, Content: content.String()}
+	out := Message{Role: RoleAssistant, Content: content.String(), PromptTokens: promptTok, CompletionTokens: completionTok}
 	for i := 0; i <= maxIdx; i++ {
 		a := tools[i]
 		if a == nil {
@@ -199,8 +220,12 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 	return out, nil
 }
 
-func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string) {
+func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, int, int) {
 	var chunk struct {
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 		Choices []struct {
 			Delta struct {
 				Content   any `json:"content"`
@@ -225,8 +250,15 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil || len(chunk.Choices) == 0 {
-		return nil, ""
+	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		return nil, "", 0, 0
+	}
+	uPrompt, uComp := 0, 0
+	if chunk.Usage != nil {
+		uPrompt, uComp = chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens
+	}
+	if len(chunk.Choices) == 0 {
+		return nil, "", uPrompt, uComp
 	}
 	ch := chunk.Choices[0]
 	if ch.Message != nil && (stringify(ch.Message.Content) != "" || len(ch.Message.ToolCalls) > 0) {
@@ -234,7 +266,7 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		for _, tc := range ch.Message.ToolCalls {
 			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
 		}
-		return &msg, ""
+		return &msg, "", uPrompt, uComp
 	}
 	for _, tc := range ch.Delta.ToolCalls {
 		a := tools[tc.Index]
@@ -253,11 +285,15 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		}
 		a.args += tc.Function.Arguments
 	}
-	return nil, stringify(ch.Delta.Content)
+	return nil, stringify(ch.Delta.Content), uPrompt, uComp
 }
 
 func parseOpenAIJSON(raw []byte) (Message, error) {
 	var parsed struct {
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
 		Choices []struct {
 			Message struct {
 				Role      string `json:"role"`
@@ -280,6 +316,10 @@ func parseOpenAIJSON(raw []byte) (Message, error) {
 	}
 	m := parsed.Choices[0].Message
 	out := Message{Role: Role(m.Role), Content: stringify(m.Content)}
+	if parsed.Usage != nil {
+		out.PromptTokens = parsed.Usage.PromptTokens
+		out.CompletionTokens = parsed.Usage.CompletionTokens
+	}
 	for _, tc := range m.ToolCalls {
 		out.ToolCalls = append(out.ToolCalls, ToolCall{
 			ID:        tc.ID,

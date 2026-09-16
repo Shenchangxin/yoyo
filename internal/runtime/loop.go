@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -17,10 +16,12 @@ type RunRequest struct {
 	TaskID           string
 	User             string
 	Workspace        string
+	Home             string
 	Harness          artifact.HarnessSnapshot
 	HarnessHash      string
 	ModelFingerprint string
 	Model            string
+	ModelWindow      int
 	Loop             artifact.LoopPreset
 	Policy           artifact.PolicyPack
 	Fragments        []artifact.PromptFragment
@@ -47,8 +48,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		req.Tools.Ctx = ctx
 		req.Tools.Policy = req.Policy
 		req.Tools.PlanMode = req.Loop.PlanMode || req.Policy.Mode == "plan"
-		if req.Tools.Spill == nil && req.Workspace != "" {
-			req.Tools.Spill = NewSpill(filepath.Join(req.Workspace, ".yoyo", "context", req.SessionID))
+		if req.Tools.Spill == nil {
+			req.Tools.Spill = BindSpill(req.Home, req.Workspace, req.SessionID)
 		}
 		if req.Tools.Task == nil && req.Tools.Depth == 0 {
 			parent := req
@@ -62,7 +63,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		loop.PlanMode = true
 	}
 	rules, rulesSrc := LoadWorkspaceRules(req.Workspace, loop.RulesTokens)
-	system := Assemble(loop, req.Fragments, req.Playbook, req.Skills, rules, rulesSrc, nil)
+	prefix := AssemblePrefix(loop, req.Fragments, req.Playbook, req.Skills, rules, rulesSrc)
+	spill := spillOf(req)
+	notes := ReadNotes(spill)
+	dyn := AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, "")
+	system := prefix + dyn
 	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": system})
 	emit(req, trace.TypeUser, "user", map[string]any{"text": req.User})
 
@@ -75,9 +80,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		messages = append(messages, Message{Role: RoleUser, Content: "Attached context (user @mentions, untrusted working memory):\n" + req.Inject})
 	}
 	messages = append(messages, Message{Role: RoleUser, Content: req.User})
-	toolsJSON := AllToolJSON(req.Tools)
 	var last string
 	toolCount := 0
+	overflowFails := 0
 	for turn := 0; turn < loop.MaxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return last, err
@@ -91,16 +96,20 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		if loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
 			messages = append(messages, Message{Role: RoleUser, Content: "Stop using tools and produce the final answer now."})
 		}
-		system = Assemble(loop, req.Fragments, req.Playbook, req.Skills, rules, rulesSrc, loadedFrom(req.Tools))
-		messages[0] = Message{Role: RoleSystem, Content: system}
-		var spill *Spill
-		if req.Tools != nil {
-			spill = req.Tools.Spill
-		}
-		compacted, report := Shape(messages, ShapeOpts{Loop: loop, Spill: spill})
+		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, "")
+		messages[0] = Message{Role: RoleSystem, Content: prefix + dyn}
+		toolsJSON := AllToolJSON(req.Tools)
+		overhead := toolsJSONTokens(toolsJSON)
+		compacted, report := Shape(messages, ShapeOpts{
+			Loop: loop, Spill: spill, ModelWindow: req.ModelWindow, Overhead: overhead,
+		})
+		compacted = Legalize(compacted)
+		fillLedger(&report, prefix, dyn, toolsJSON, req.ModelWindow)
+		report.Tokens = messagesTokens(compacted) + overhead
 		if report.Note != "" || turn == 0 {
 			emit(req, trace.TypeCompact, "runtime", map[string]any{
-				"note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
+				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
+				"window": report.Window, "prefix_tokens": report.PrefixTokens, "schema_tokens": report.SchemaTokens,
 				"layers": report.Layers, "elided": report.Elided,
 			})
 			if req.OnShape != nil {
@@ -110,14 +119,67 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: req.SessionID}
 		msg, err := chat(ctx, req, chatReq)
+		for err != nil && IsContextOverflow(err) {
+			overflowFails++
+			if overflowFails >= 3 {
+				err = fmt.Errorf("context overflow circuit breaker: %w", err)
+				break
+			}
+			tight := loop
+			if tight.CompactionKeep > 8 {
+				tight.CompactionKeep = 8 / overflowFails
+				if tight.CompactionKeep < 4 {
+					tight.CompactionKeep = 4
+				}
+			}
+			tight.MicroKeep = 1
+			tight.ToolResultBudget = 1_500
+			compacted, report = Shape(messages, ShapeOpts{
+				Loop: tight, Spill: spill, ModelWindow: req.ModelWindow, Overhead: overhead, Aggressive: true,
+			})
+			compacted = Legalize(compacted)
+			fillLedger(&report, prefix, dyn, toolsJSON, req.ModelWindow)
+			report.Tokens = messagesTokens(compacted) + overhead
+			report.Layers = append(report.Layers, "overflow")
+			report.Note = strings.Join(report.Layers, "+")
+			if req.Trace != nil && req.SessionID != "" {
+				n := NotesFromMessages(stripSystem(compacted))
+				WriteNotes(spill, n)
+				_ = PersistCheckpoint(req.Trace, req.SessionID, "overflow", n.Markdown(), stripSystem(compacted), true)
+				WriteDiscoverIndex(req.Workspace, req.SessionID, spill)
+			}
+			emit(req, trace.TypeCompact, "runtime", map[string]any{
+				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
+				"layers": report.Layers, "elided": report.Elided, "overflow": overflowFails,
+			})
+			if req.OnShape != nil {
+				req.OnShape(report)
+			}
+			chatReq.Messages = compacted
+			msg, err = chat(ctx, req, chatReq)
+		}
 		if err != nil {
 			emit(req, trace.TypeError, "model", map[string]any{"error": err.Error()})
 			return last, err
 		}
+		overflowFails = 0
+		if msg.PromptTokens > 0 {
+			report.ProviderPrompt = msg.PromptTokens
+			if req.OnShape != nil {
+				req.OnShape(report)
+			}
+		}
 		if req.Meter != nil {
-			req.Meter.Add(messagesTokens(compacted), messageTokens(msg))
+			in, out := messagesTokens(compacted)+overhead, messageTokens(msg)
+			if msg.PromptTokens > 0 {
+				in = msg.PromptTokens
+			}
+			if msg.CompletionTokens > 0 {
+				out = msg.CompletionTokens
+			}
+			req.Meter.Add(in, out)
 			if err := req.Meter.Check(loop.MaxBudgetUSD); err != nil {
 				emit(req, trace.TypeError, "runtime", map[string]any{"error": err.Error()})
 				return last, err
@@ -128,6 +190,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content})
 		}
 		if len(msg.ToolCalls) == 0 {
+			if spill != nil {
+				merged := NotesFromMessages(messages)
+				WriteNotes(spill, merged)
+				WriteDiscoverIndex(req.Workspace, req.SessionID, spill)
+				notes = merged.Markdown()
+			}
 			if req.Events != nil {
 				req.Events.Emit(HookTurnEnd, last)
 			}
@@ -140,6 +208,13 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		messages = append(messages, results...)
 	}
 	return last, fmt.Errorf("max turns reached")
+}
+
+func spillOf(req RunRequest) *Spill {
+	if req.Tools != nil {
+		return req.Tools.Spill
+	}
+	return nil
 }
 
 func chat(ctx context.Context, req RunRequest, chatReq ChatRequest) (Message, error) {
@@ -192,10 +267,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall) []Mess
 				content += "\n" + res.Content
 			}
 		}
-		capped, trunc := capText(content, defaultToolResultRunes)
-		if trunc {
-			content = capped
-		}
+		content = ingestToolResult(spillOf(req), tc.ID, tc.Name, content)
 		post := applyPostTool(req.Events, ToolHook{Name: tc.Name, Arguments: tc.Arguments, SessionID: req.SessionID, Result: content})
 		if post.Result != "" {
 			content = post.Result
@@ -247,6 +319,15 @@ func loadedFrom(t *WorkspaceTools) []string {
 		return nil
 	}
 	return t.loadedBodies()
+}
+
+func planTextOf(t *WorkspaceTools) string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.PlanText
 }
 
 func readonlyCall(tools *WorkspaceTools, name string) bool {

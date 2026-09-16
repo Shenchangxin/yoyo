@@ -49,6 +49,13 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 			return dst, err
 		}
 	}
+	_ = runtime.CopyTree(a.Home.SessionSpill(src.ID), a.Home.SessionSpill(dst.ID))
+	if src.Workspace != "" {
+		_ = runtime.CopyTree(
+			filepath.Join(src.Workspace, ".yoyo", "context", src.ID),
+			filepath.Join(src.Workspace, ".yoyo", "context", dst.ID),
+		)
+	}
 	return dst, nil
 }
 

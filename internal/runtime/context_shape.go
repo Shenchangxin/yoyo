@@ -1,25 +1,34 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-// ShapeReport is the observable context-engineering ledger (Cursor's
-// context-ring equivalent). Layers are cheapest-first, Claude Code order.
+// ShapeReport is the observable context-engineering ledger.
 type ShapeReport struct {
-	Note   string   `json:"note"`
-	Tokens int      `json:"tokens"`
-	Budget int      `json:"budget"`
-	Layers []string `json:"layers,omitempty"`
-	Elided int      `json:"elided,omitempty"`
+	Note           string   `json:"note"`
+	Tokens         int      `json:"tokens"`
+	Budget         int      `json:"budget"`
+	Window         int      `json:"window,omitempty"`
+	PrefixTokens   int      `json:"prefix_tokens,omitempty"`
+	DynamicTokens  int      `json:"dynamic_tokens,omitempty"`
+	SchemaTokens   int      `json:"schema_tokens,omitempty"`
+	ProviderPrompt int      `json:"provider_prompt,omitempty"`
+	Layers         []string `json:"layers,omitempty"`
+	Elided         int      `json:"elided,omitempty"`
 }
 
 type ShapeOpts struct {
-	Loop  artifact.LoopPreset
-	Spill *Spill
+	Loop          artifact.LoopPreset
+	Spill         *Spill
+	ModelWindow   int
+	OutputReserve int
+	Overhead      int
+	Aggressive    bool
 }
 
 // Compact is the eval-stable entry point: deterministic shapers only.
@@ -29,9 +38,10 @@ func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
 }
 
 // Shape is a read-time projection. The live transcript is not mutated.
-// Order: budget → snip → microcompact → collapse. LLM summarization is
-// opt-in (AllowLLMCompact) because ACE forbids collapsing the playbook
-// and Harbor evals must stay reproducible.
+// Order is cheapest-first and lossless where possible: legalize-prep →
+// budget (spill+preview) → microcompact stubs → forceFit stubs → snip old
+// turns into a spill pointer. User/assistant text is never rewritten; tool
+// bodies are stubbed with recall ids. LLM summarization is not part of Shape.
 func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	rep := ShapeReport{}
 	if len(msgs) == 0 {
@@ -42,17 +52,23 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	if keep <= 0 {
 		keep = 24
 	}
-	budget := loop.CompactionTokens
-	if budget <= 0 {
-		budget = 24_000
+	if opts.Aggressive && keep > 8 {
+		keep = 8
 	}
+	budget := effectiveBudget(opts)
 	per := loop.ToolResultBudget
 	if per <= 0 {
 		per = 8_000
 	}
+	if opts.Aggressive && per > 1_500 {
+		per = 1_500
+	}
 	microKeep := loop.MicroKeep
 	if microKeep <= 0 {
 		microKeep = 4
+	}
+	if opts.Aggressive {
+		microKeep = 1
 	}
 	rep.Budget = budget
 	out := copyMessages(msgs)
@@ -61,23 +77,20 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Layers = append(rep.Layers, "budget")
 		rep.Elided += n
 	}
-	if snipped := snipWindow(out, keep); snipped != nil {
-		out = snipped
-		rep.Layers = append(rep.Layers, "snip")
-	}
 	if n := microcompact(out, microKeep, opts.Spill); n > 0 {
 		rep.Layers = append(rep.Layers, "microcompact")
 		rep.Elided += n
 	}
-	collapsed, n := collapseOldTools(out, microKeep)
-	if n > 0 {
-		out = collapsed
-		rep.Layers = append(rep.Layers, "collapse")
-		rep.Elided += n
-	}
-	if messagesTokens(out) > budget {
-		if n := forceFit(out, budget, opts.Spill); n > 0 {
+	if messagesTokens(out)+opts.Overhead > budget {
+		if n := forceFit(out, budget-opts.Overhead, opts.Spill); n > 0 {
 			rep.Layers = append(rep.Layers, "force")
+			rep.Elided += n
+		}
+	}
+	if messagesTokens(out)+opts.Overhead > budget {
+		if snipped, n := snipWindow(out, keep, opts.Spill); snipped != nil {
+			out = snipped
+			rep.Layers = append(rep.Layers, "snip")
 			rep.Elided += n
 		}
 	}
@@ -88,7 +101,12 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 
 func copyMessages(msgs []Message) []Message {
 	out := make([]Message, len(msgs))
-	copy(out, msgs)
+	for i, m := range msgs {
+		out[i] = m
+		if len(m.ToolCalls) > 0 {
+			out[i].ToolCalls = append([]ToolCall(nil), m.ToolCalls...)
+		}
+	}
 	return out
 }
 
@@ -96,6 +114,9 @@ func applyBudget(msgs []Message, per int, spill *Spill) int {
 	n := 0
 	for i := range msgs {
 		if msgs[i].Role != RoleTool {
+			continue
+		}
+		if alreadyStubbed(msgs[i].Content) {
 			continue
 		}
 		capped, trunc := capText(msgs[i].Content, per)
@@ -112,12 +133,31 @@ func applyBudget(msgs []Message, per int, spill *Spill) int {
 	return n
 }
 
-func snipWindow(msgs []Message, keep int) []Message {
+func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 	if len(msgs) <= keep+1 {
-		return nil
+		return nil, 0
 	}
-	head := []Message{msgs[0]}
-	return append(head, msgs[len(msgs)-keep:]...)
+	cut := pairingBoundary(msgs, len(msgs)-keep)
+	if cut <= 1 {
+		return nil, 0
+	}
+	dropped := msgs[1:cut]
+	id := "snip"
+	if spill != nil {
+		raw, _ := json.Marshal(dropped)
+		id = spill.Put("", string(raw))
+	}
+	marker := Message{
+		Role: RoleUser,
+		Content: fmt.Sprintf(
+			"[elided %d earlier messages id=%s — call recall_context with this id; original transcript is intact on disk]",
+			len(dropped), id,
+		),
+	}
+	out := make([]Message, 0, 2+len(msgs)-cut)
+	out = append(out, msgs[0], marker)
+	out = append(out, msgs[cut:]...)
+	return out, len(dropped)
 }
 
 func microcompact(msgs []Message, keepLast int, spill *Spill) int {
@@ -144,45 +184,10 @@ func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 	return n
 }
 
-func collapseOldTools(msgs []Message, keepLast int) ([]Message, int) {
-	ids := toolIndexes(msgs)
-	if len(ids) <= keepLast+2 {
-		return msgs, 0
-	}
-	cutoff := ids[len(ids)-keepLast]
-	n := 0
-	out := make([]Message, 0, len(msgs))
-	i := 0
-	for i < len(msgs) {
-		if i >= cutoff || msgs[i].Role != RoleTool {
-			out = append(out, msgs[i])
-			i++
-			continue
-		}
-		j := i
-		var names []string
-		for j < cutoff && msgs[j].Role == RoleTool {
-			names = append(names, msgs[j].Name)
-			j++
-		}
-		if j-i < 3 {
-			out = append(out, msgs[i:j]...)
-			i = j
-			continue
-		}
-		out = append(out, Message{
-			Role:       RoleTool,
-			ToolCallID: msgs[i].ToolCallID,
-			Name:       "collapse",
-			Content:    fmt.Sprintf("[collapsed %d tool results: %s]", j-i, strings.Join(names, ", ")),
-		})
-		n += j - i - 1
-		i = j
-	}
-	return out, n
-}
-
 func forceFit(msgs []Message, budget int, spill *Spill) int {
+	if budget < 0 {
+		budget = 0
+	}
 	n := 0
 	for i := 1; i < len(msgs) && messagesTokens(msgs) > budget; i++ {
 		if msgs[i].Role != RoleTool || alreadyStubbed(msgs[i].Content) {
