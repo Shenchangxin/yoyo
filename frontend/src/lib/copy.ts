@@ -1,5 +1,5 @@
 /** English copy. Keys are stable so zh-CN can land without hunting strings. */
-export const copy = {
+export const en = {
   app: {
     setupBanner: "Set a workspace and API key before the first turn.",
     openControl: "Open Control",
@@ -12,6 +12,19 @@ export const copy = {
     rolledBack: "Rolled back",
     stagedUpdate: "Staged update applied",
     setupFirst: "Set a workspace in Control first.",
+    queued: "Queued for the next turn",
+    steered: "Steering injected",
+    compacted: "Context compacted",
+    deleted: "Thread deleted",
+    archived: "Archived",
+    pinned: "Pinned",
+    exported: "Copied export",
+    about: "About",
+    quit: "Quit",
+  },
+  dialog: {
+    cancel: "Cancel",
+    confirm: "Confirm",
   },
   rail: {
     newChat: "New chat",
@@ -19,6 +32,14 @@ export const copy = {
     noChats: "No chats yet",
     running: "Running",
     idle: "Idle",
+    archived: "Archived",
+    pin: "Pin",
+    unpin: "Unpin",
+    archive: "Archive",
+    unarchive: "Unarchive",
+    rename: "Rename",
+    delete: "Delete",
+    showArchived: "Show archived",
     labs: "Labs",
     control: "Control",
     harbor: "Harbor",
@@ -35,6 +56,10 @@ export const copy = {
     working: "Working…",
     needsApproval: "Needs approval",
     mention: "Mention",
+    thinking: "Reasoning",
+    plan: "Plan",
+    subagent: "Subagent",
+    patch: "Patch",
     copy: "Copy",
     once: "Once",
     session: "Session",
@@ -47,18 +72,24 @@ export const copy = {
     ],
   },
   composer: {
-    placeholder: "Message Yoyo. @ pins context.",
+    placeholder: "Message Yoyo. / commands, @ pins context.",
     disabled: "Set a workspace in Control to send…",
     enter: "Enter to send",
+    queueHint: "Enter queues behind the running turn",
     planHint: "Read and propose. Writes wait.",
     workspaceRequired: "Workspace required",
     agent: "Agent",
     plan: "Plan",
     send: "Send",
+    queue: "Queue",
     stop: "Stop",
+    steer: "Steer",
     mention: "Insert mention",
+    attach: "Attach files",
     mentions: "Mentions",
+    commands: "Commands",
     message: "Message",
+    model: "Model",
   },
   review: {
     diff: "Diff",
@@ -77,6 +108,12 @@ export const copy = {
     contextNote: "Trusted pins survive every turn. Tool transcript is untrusted working memory.",
     noAsk: "No pending approvals. In-stream cards appear in the transcript.",
     toggle: "Toggle review",
+    once: "Once",
+    session: "Session",
+    always: "Always",
+    deny: "Deny",
+    quote: "Quote into composer",
+    openReview: "Open in Review",
   },
   control: {
     title: "Control",
@@ -107,10 +144,29 @@ export const copy = {
     unload: "Unload",
     save: "Save",
     applyUpdate: "Apply staged update",
+    checkUpdate: "Check staged update",
     unsaved: "Unsaved changes",
     system: "System",
     dark: "Dark",
     light: "Light",
+    browse: "Browse",
+    mcp: "MCP",
+    mcpHint: "Stdio servers. Tools stay behind the network gate.",
+    mcpName: "Name",
+    mcpCommand: "Command",
+    mcpArgs: "Args",
+    mcpStart: "Start",
+    mcpStop: "Stop",
+    logs: "Logs",
+    logsHint: "Journal tail. The agent cannot edit this file.",
+    doctor: "Doctor",
+    closeToTray: "Close to tray",
+    vaultSource: "Vault",
+    noMcp: "No MCP servers running.",
+    shortcuts: "Shortcuts",
+    shortcutsHint: "Remappable keyboard paths. The agent cannot edit the keymap.",
+    language: "Language",
+    quitRunning: "A turn is still running. Quit anyway?",
   },
   firstRun: {
     title: "Set up this workstation",
@@ -125,6 +181,12 @@ export const copy = {
     back: "Back",
     finish: "Save and continue",
     skip: "Skip for now",
+    browse: "Browse",
+  },
+  about: {
+    title: "About Yoyo",
+    body: "One Go loop. Harbor before promote. Vault and updater stay off-agent.",
+    close: "Close",
   },
   harbor: {
     empty: "Sealed local suite: held-in write-hello, held-out write-answer. TB subset is opt-in.",
@@ -140,4 +202,28 @@ export const copy = {
     placeholder: "Jump to a thread or action…",
     empty: "No matches",
   },
+  titlebar: {
+    fork: "Fork",
+    diff: "Diff",
+    live: "live",
+    rename: "Rename chat",
+  },
 } as const;
+
+export type Copy = typeof en;
+
+let active: Copy = en;
+
+export function setCopyCatalog(next: Copy) {
+  active = next;
+}
+
+export function catalog(): Copy {
+  return active;
+}
+
+export const copy: Copy = new Proxy({} as Copy, {
+  get(_target, prop) {
+    return (active as Record<PropertyKey, unknown>)[prop];
+  },
+});

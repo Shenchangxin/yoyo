@@ -10,6 +10,22 @@ import (
 	"testing"
 )
 
+func TestPublicKeyFromEnv(t *testing.T) {
+	t.Setenv(EnvPubkey, "")
+	if PublicKeyFromEnv() != nil {
+		t.Fatal("empty env")
+	}
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvPubkey, hex.EncodeToString(pub))
+	got := PublicKeyFromEnv()
+	if len(got) != ed25519.PublicKeySize {
+		t.Fatalf("%d", len(got))
+	}
+}
+
 func TestCheckAndStage(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -13,6 +14,24 @@ import (
 	"strings"
 	"time"
 )
+
+const EnvPubkey = "YOYO_UPDATE_PUBKEY"
+
+// PublicKeyFromEnv reads a hex or standard-base64 ed25519 public key.
+// Empty means check-only against already-staged bytes; never apply automatically.
+func PublicKeyFromEnv() ed25519.PublicKey {
+	raw := strings.TrimSpace(os.Getenv(EnvPubkey))
+	if raw == "" {
+		return nil
+	}
+	if b, err := hex.DecodeString(raw); err == nil && len(b) == ed25519.PublicKeySize {
+		return ed25519.PublicKey(b)
+	}
+	if b, err := base64.StdEncoding.DecodeString(raw); err == nil && len(b) == ed25519.PublicKeySize {
+		return ed25519.PublicKey(b)
+	}
+	return nil
+}
 
 // CheckResult is advisory. Applying a binary is a human/L3 action; this
 // package never overwrites the running executable.
@@ -69,14 +88,22 @@ func Stage(destDir string, bin []byte, wantSHA string) (string, error) {
 }
 
 func httpGet(ctx context.Context, url string) ([]byte, error) {
+	return Fetch(ctx, url, 1<<20)
+}
+
+// Fetch downloads url up to max bytes. It never writes argv[0].
+func Fetch(ctx context.Context, url string, max int64) ([]byte, error) {
 	if url == "" {
 		return nil, fmt.Errorf("update: empty url")
+	}
+	if max <= 0 {
+		max = 1 << 20
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 45 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -85,5 +112,12 @@ func httpGet(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("update: http %d", resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("update: payload too large")
+	}
+	return b, nil
 }

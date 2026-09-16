@@ -13,6 +13,9 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.join(dir, "src") },
   },
+  define: {
+    "import.meta.env.VITE_E2E": JSON.stringify(process.env.VITE_E2E || ""),
+  },
   server: {
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,

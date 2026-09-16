@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -51,7 +52,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), serveCmd(), updateCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), serveCmd(), updateCmd(), doctorCmd())
 	return cmd
 }
 
@@ -274,6 +275,20 @@ func evalCmd() *cobra.Command {
 func updateCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "update", Short: "Stage and apply signed binary updates (never from the agent loop)"}
 	cmd.AddCommand(&cobra.Command{
+		Use:   "check",
+		Short: "Verify the update channel and download into staging if newer",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(a.CheckUpdate())
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
 		Use:   "apply",
 		Short: "Replace the current binary with updates/yoyo.staging (human/L3 action)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -291,6 +306,23 @@ func updateCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+func doctorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "Print workstation health for humans (vault, workspace, harness)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(a.Doctor())
+		},
+	}
 }
 
 func evolveCmd() *cobra.Command {

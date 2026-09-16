@@ -36,6 +36,7 @@ type RunRequest struct {
 	OnShape          func(ShapeReport)
 	Meter            *Meter
 	Inject           string
+	PullSteer        func() string
 }
 
 func Run(ctx context.Context, req RunRequest) (string, error) {
@@ -80,6 +81,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	for turn := 0; turn < loop.MaxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return last, err
+		}
+		if req.PullSteer != nil {
+			if extra := strings.TrimSpace(req.PullSteer()); extra != "" {
+				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra})
+				messages = append(messages, Message{Role: RoleUser, Content: extra})
+			}
 		}
 		if loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
 			messages = append(messages, Message{Role: RoleUser, Content: "Stop using tools and produce the final answer now."})
@@ -227,7 +234,8 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall) []Mess
 func isReadonlyTool(name string) bool {
 	switch name {
 	case "read_file", "list_dir", "glob", "grep", "load_skill",
-		"git_status", "git_diff", "recall_context", "tool_search":
+		"git_status", "git_diff", "recall_context", "tool_search",
+		"list_skills", "view_image", "update_plan", "wait":
 		return true
 	default:
 		return false

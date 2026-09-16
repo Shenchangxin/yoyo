@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"sync"
 	"time"
 
@@ -141,16 +143,27 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.NewSession(p.Workspace)
 	case "turn.start":
 		var p struct {
-			Session string `json:"session"`
-			Text    string `json:"text"`
-			Plan    bool   `json:"plan"`
-			Wait    bool   `json:"wait"`
+			Session     string `json:"session"`
+			Text        string `json:"text"`
+			Plan        bool   `json:"plan"`
+			Wait        bool   `json:"wait"`
+			Attachments []any  `json:"attachments"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, err
 		}
 		if !p.Wait {
-			if err := a.StartSend(p.Session, p.Text, p.Plan); err != nil {
+			var atts []app.Attachment
+			for _, raw := range p.Attachments {
+				b, _ := json.Marshal(raw)
+				var att app.Attachment
+				_ = json.Unmarshal(b, &att)
+				atts = append(atts, att)
+			}
+			if err := a.StartSendOpts(p.Session, p.Text, p.Plan, atts); err != nil {
+				if errors.Is(err, app.ErrQueued) {
+					return map[string]any{"ok": true, "queued": true}, nil
+				}
 				return nil, err
 			}
 			return map[string]any{"ok": true, "async": true}, nil
@@ -227,6 +240,121 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.ForkSession(p.Session)
+	case "thread.delete":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.DeleteSession(p.Session)
+	case "thread.archive":
+		var p struct {
+			Session  string `json:"session"`
+			Archived *bool  `json:"archived"`
+		}
+		_ = json.Unmarshal(params, &p)
+		archived := true
+		if p.Archived != nil {
+			archived = *p.Archived
+		}
+		return a.ArchiveSession(p.Session, archived)
+	case "thread.pin":
+		var p struct {
+			Session string `json:"session"`
+			Pinned  bool   `json:"pinned"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PinSession(p.Session, p.Pinned)
+	case "thread.search":
+		var p struct {
+			Query           string `json:"query"`
+			IncludeArchived bool   `json:"include_archived"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SearchSessions(p.Query, p.IncludeArchived)
+	case "thread.export":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		text, err := a.ExportSession(p.Session)
+		return map[string]any{"markdown": text}, err
+	case "thread.model.set":
+		var p struct {
+			Session string `json:"session"`
+			Model   string `json:"model"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionModel(p.Session, p.Model)
+	case "thread.compact":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		note, err := a.CompactSession(p.Session)
+		return map[string]any{"note": note}, err
+	case "thread.queue.list":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.QueueList(p.Session), nil
+	case "turn.steer":
+		var p struct {
+			Session string `json:"session"`
+			Text    string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.Steer(p.Session, p.Text)
+	case "fs.search":
+		var p struct {
+			Workspace string `json:"workspace"`
+			Query     string `json:"query"`
+			Limit     int    `json:"limit"`
+		}
+		_ = json.Unmarshal(params, &p)
+		ws := p.Workspace
+		if ws == "" {
+			ws = a.Workspace()
+		}
+		return runtime.FuzzySearch(ws, p.Query, p.Limit), nil
+	case "skills.list":
+		ws := a.Config.Workspace
+		if !app.WorkspaceReady(ws) {
+			ws = a.Workspace()
+		}
+		sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, ws, filepath.Join(filepath.Dir(a.BundledEvals), "skills"))...)
+		if _, _, _, cas, _, _, err := a.Materials(a.ActiveHash()); err == nil {
+			sk = runtime.MergeSkills(cas, sk)
+		}
+		var out []map[string]string
+		for _, s := range sk {
+			out = append(out, map[string]string{"name": s.Name, "description": s.Description})
+		}
+		return out, nil
+	case "key.status":
+		return a.Vault.Status(), nil
+	case "mcp.stop":
+		var p struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.StopMCP(p.Name)
+	case "mcp.list":
+		return map[string]any{"servers": a.MCP.Info(), "tools": a.MCP.Tools()}, nil
+	case "logs.tail":
+		var p struct {
+			Limit int `json:"limit"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.Logs(p.Limit), nil
+	case "doctor":
+		return a.Doctor(), nil
+	case "about":
+		h := a.Health()
+		h["goos"] = goruntime.GOOS
+		return h, nil
+	case "update.check":
+		return a.CheckUpdate(), nil
 	case "playbook.get":
 		return a.Playbook()
 	case "playbook.rate":
@@ -315,11 +443,11 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Args    []string `json:"args"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return map[string]any{"ok": true, "tools": a.MCP.Tools()}, a.MCP.Start(p.Name, p.Command, p.Args)
+		return map[string]any{"ok": true, "tools": a.MCP.Tools()}, a.StartMCP(p.Name, p.Command, p.Args)
 	case "archive.list":
 		return a.Archive.List(), nil
 	case "plugins.list":
-		return map[string]any{"fibers": a.Kernel.Fibers(), "wasm": a.WASM.List(), "mcp": a.MCP.List(), "tools": a.MCP.Tools()}, nil
+		return map[string]any{"fibers": a.Kernel.Fibers(), "wasm": a.WASM.List(), "mcp": a.MCP.Info(), "tools": a.MCP.Tools()}, nil
 	case "fiber.unload":
 		var p struct {
 			Name string `json:"name"`

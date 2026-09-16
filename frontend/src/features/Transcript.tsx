@@ -4,7 +4,8 @@ import { VList, type VListHandle } from "virtua";
 import { Markdown } from "../lib/markdown";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
-import { copy } from "../lib/copy";
+import { useCopy } from "../lib/i18n";
+import { DiffBlock } from "../lib/split-diff";
 import type { Approval, Item } from "../lib/protocol";
 
 export function Transcript(props: {
@@ -16,7 +17,9 @@ export function Transcript(props: {
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
   onSetup?: () => void;
+  onOpenReview?: () => void;
 }) {
+  const copy = useCopy();
   const scroller = useRef<HTMLDivElement>(null);
   const vlist = useRef<VListHandle>(null);
   const stick = useRef(true);
@@ -44,7 +47,7 @@ export function Transcript(props: {
   const rows: { key: string; node: ReactNode }[] = [
     ...props.items.map((it, i) => ({
       key: it.key,
-      node: <ItemRow item={it} streaming={props.running && it.type === "assistant" && i === lastAssistant} />,
+      node: <ItemRow item={it} streaming={props.running && it.type === "assistant" && i === lastAssistant} onOpenReview={props.onOpenReview} />,
     })),
     ...props.approvals.map((a) => ({
       key: `ask:${a.id}`,
@@ -147,7 +150,8 @@ export function Transcript(props: {
   );
 }
 
-function ItemRow({ item, streaming }: { item: Item; streaming?: boolean }) {
+function ItemRow({ item, streaming, onOpenReview }: { item: Item; streaming?: boolean; onOpenReview?: () => void }) {
+  const copy = useCopy();
   if (item.type === "user") {
     return (
       <div className="flex justify-end">
@@ -182,8 +186,27 @@ function ItemRow({ item, streaming }: { item: Item; streaming?: boolean }) {
       </div>
     );
   }
+  if (item.type === "reasoning") {
+    return (
+      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+        <summary className="cursor-pointer text-foreground">{copy.transcript.thinking}</summary>
+        <div className="mt-2 text-sm text-muted"><Markdown text={item.text} /></div>
+      </details>
+    );
+  }
+  if (item.type === "compaction") {
+    return <div className="text-center text-[11px] text-muted">{item.payload.note || item.text || copy.app.compacted}</div>;
+  }
+  if (item.type === "subagent") {
+    return (
+      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
+        <summary className="cursor-pointer text-foreground">{copy.transcript.subagent}</summary>
+        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono">{item.text || JSON.stringify(item.payload).slice(0, 2000)}</pre>
+      </details>
+    );
+  }
   if (item.type === "tool_call" || item.type === "tool_result") {
-    return <ToolItem item={item} />;
+    return <ToolItem item={item} onOpenReview={onOpenReview} />;
   }
   if (item.type === "context_injection") {
     return (
@@ -204,13 +227,37 @@ function ItemRow({ item, streaming }: { item: Item; streaming?: boolean }) {
   );
 }
 
-function ToolItem({ item }: { item: Item }) {
+function ToolItem({ item, onOpenReview }: { item: Item; onOpenReview?: () => void }) {
+  const copy = useCopy();
   const [open, setOpen] = useState(false);
   const name = item.name || item.payload.name || "tool";
   const body =
     item.type === "tool_call"
       ? String(item.payload.arguments || item.text || "")
       : String(item.payload.content || item.text || "");
+  if (name === "update_plan") {
+    return (
+      <div className="rounded-xl border border-border bg-panel px-3 py-2">
+        <div className="mb-1 text-[11px] text-muted">{copy.transcript.plan}</div>
+        <pre className="whitespace-pre-wrap font-mono text-xs text-foreground">{body.slice(0, 4000)}</pre>
+      </div>
+    );
+  }
+  if (name === "apply_patch") {
+    return (
+      <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs" open>
+        <summary className="cursor-pointer text-foreground">{copy.transcript.patch}</summary>
+        <div className="mt-2">
+          <DiffBlock src={body.slice(0, 6000)} mode="unified" />
+        </div>
+        {onOpenReview ? (
+          <button type="button" className="mt-2 text-[11px] text-accent hover:underline" onClick={onOpenReview}>
+            {copy.review.openReview}
+          </button>
+        ) : null}
+      </details>
+    );
+  }
   return (
     <div className="rounded-xl border border-border bg-panel">
       <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted" onClick={() => setOpen((v) => !v)}>

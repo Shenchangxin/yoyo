@@ -38,6 +38,7 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 	dst.Title = "fork of " + titleFrom(src.Title)
 	dst.Harness = src.Harness
 	dst.ModelFingerprint = src.ModelFingerprint
+	dst.Model = src.Model
 	if err := a.writeSession(dst); err != nil {
 		return dst, err
 	}
@@ -85,6 +86,9 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if out[i].Pinned != out[j].Pinned {
+			return out[i].Pinned
+		}
 		return out[i].CreatedAt.After(out[j].CreatedAt)
 	})
 	return out, nil

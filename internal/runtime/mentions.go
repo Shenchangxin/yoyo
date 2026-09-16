@@ -13,13 +13,14 @@ import (
 // Mentions are user-designated pins. They are working memory, not harness
 // pins: expand into a bounded inject block instead of dumping the repo.
 type Mention struct {
-	Kind string `json:"kind"` // file | folder | harness
+	Kind string `json:"kind"` // file | folder | harness | skill
 	Ref  string `json:"ref"`
 }
 
 var (
 	reFile    = regexp.MustCompile(`@file:(\S+)`)
 	reFolder  = regexp.MustCompile(`@folder:(\S+)`)
+	reSkill   = regexp.MustCompile(`@skill:(\S+)`)
 	reHarness = regexp.MustCompile(`@harness\b`)
 )
 
@@ -40,6 +41,9 @@ func ParseMentions(text string) []Mention {
 	for _, m := range reFolder.FindAllStringSubmatch(text, 4) {
 		add(Mention{Kind: "folder", Ref: m[1]})
 	}
+	for _, m := range reSkill.FindAllStringSubmatch(text, 8) {
+		add(Mention{Kind: "skill", Ref: strings.Trim(m[1], `'"`)})
+	}
 	if reHarness.MatchString(text) {
 		add(Mention{Kind: "harness", Ref: "active"})
 	}
@@ -47,6 +51,10 @@ func ParseMentions(text string) []Mention {
 }
 
 func ExpandMentions(workspace, text, harnessNote string, budget int) (inject string, refs []Mention) {
+	return ExpandMentionsSkills(workspace, text, harnessNote, nil, budget)
+}
+
+func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
 	if budget <= 0 {
 		budget = 2400
@@ -54,7 +62,7 @@ func ExpandMentions(workspace, text, harnessNote string, budget int) (inject str
 	var b strings.Builder
 	used := 0
 	for _, m := range refs {
-		chunk := mentionChunk(workspace, harnessNote, m, budget-used)
+		chunk := mentionChunk(workspace, harnessNote, skills, m, budget-used)
 		if chunk == "" {
 			continue
 		}
@@ -68,11 +76,25 @@ func ExpandMentions(workspace, text, harnessNote string, budget int) (inject str
 	return strings.TrimSpace(b.String()), refs
 }
 
-func mentionChunk(workspace, harnessNote string, m Mention, remain int) string {
+func mentionChunk(workspace, harnessNote string, skills map[string]string, m Mention, remain int) string {
 	if remain < 32 {
 		return ""
 	}
 	switch m.Kind {
+	case "skill":
+		if skills == nil {
+			return fmt.Sprintf("## @skill:%s\nERROR: no skill catalog\n", m.Ref)
+		}
+		body, ok := skills[m.Ref]
+		if !ok {
+			return fmt.Sprintf("## @skill:%s\nERROR: unknown skill\n", m.Ref)
+		}
+		capped, trunc := capText(body, remain)
+		out := "## @skill:" + m.Ref + "\n" + capped
+		if trunc {
+			out += "\n…[truncated]"
+		}
+		return out + "\n"
 	case "harness":
 		note := harnessNote
 		if note == "" {

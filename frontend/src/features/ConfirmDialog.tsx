@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import type { ReactNode } from "react";
 import { Button } from "../components/ui/button";
+import { useCopy } from "../lib/i18n";
 
 export function ConfirmDialog(props: {
   open: boolean;
@@ -11,6 +12,7 @@ export function ConfirmDialog(props: {
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const copy = useCopy();
   return (
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onCancel(); }}>
       <Dialog.Portal>
@@ -19,9 +21,9 @@ export function ConfirmDialog(props: {
           <Dialog.Title className="text-base font-semibold">{props.title}</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-muted">{props.body}</Dialog.Description>
           <div className="mt-5 flex justify-end gap-2">
-            <Button variant="lift" onClick={props.onCancel}>Cancel</Button>
+            <Button variant="lift" onClick={props.onCancel}>{copy.dialog.cancel}</Button>
             <Button variant={props.danger ? "danger" : "default"} onClick={props.onConfirm}>
-              {props.confirmLabel || "Confirm"}
+              {props.confirmLabel || copy.dialog.confirm}
             </Button>
           </div>
         </Dialog.Content>

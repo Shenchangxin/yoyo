@@ -28,6 +28,9 @@ type SessionMeta struct {
 	Harness          string    `json:"harness"`
 	ModelFingerprint string    `json:"model_fingerprint"`
 	Title            string    `json:"title,omitempty"`
+	Archived         bool      `json:"archived,omitempty"`
+	Pinned           bool      `json:"pinned,omitempty"`
+	Model            string    `json:"model,omitempty"`
 }
 
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
@@ -123,10 +126,22 @@ func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context
 }
 
 func (a *App) StartSend(sessionID, message string, plan bool) error {
+	return a.StartSendOpts(sessionID, message, plan, nil)
+}
+
+func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachment) error {
+	if a.Running(sessionID) {
+		a.Enqueue(sessionID, QueuedTurn{Text: message, Plan: plan, Attachments: atts})
+		return ErrQueued
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	ctx, release, err := a.acquireRun(sessionID, ctx)
 	if err != nil {
 		cancel()
+		if err == errBusy {
+			a.Enqueue(sessionID, QueuedTurn{Text: message, Plan: plan, Attachments: atts})
+			return ErrQueued
+		}
 		return err
 	}
 	go func() {
@@ -140,8 +155,9 @@ func (a *App) StartSend(sessionID, message string, plan bool) error {
 				})
 			}
 		}()
+		defer a.kickQueue(sessionID)
 		goruntime.LockOSThread()
-		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan)
+		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts)
 	}()
 	return nil
 }
@@ -152,10 +168,10 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 		return "", err
 	}
 	defer release()
-	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan)
+	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil)
 }
 
-func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool) (string, error) {
+func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment) (string, error) {
 	meta, err := a.GetSession(sessionID)
 	if err != nil {
 		meta, err = a.NewSession("")
@@ -193,6 +209,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
 	}
+	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, meta.Workspace, bundledSkillsDir(a.BundledEvals))...)
+	skills = runtime.MergeSkills(skills, disk)
+	for _, s := range disk {
+		skillBodies[s.Name] = s.Body
+	}
 	hist := []runtime.Message{}
 	if evs, err := a.Traces.Read(sessionID); err == nil {
 		hist = runtime.MessagesFromEvents(evs)
@@ -226,7 +247,17 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if snap.Note != "" {
 		note = hash + " " + snap.Note
 	}
-	inject, _ := runtime.ExpandMentions(meta.Workspace, message, note, 2400)
+	inject, _ := runtime.ExpandMentionsSkills(meta.Workspace, message, note, skillBodies, 2400)
+	if extra := runtime.ExpandAttachments(meta.Workspace, toRuntimeAtts(atts), 2400); extra != "" {
+		if inject != "" {
+			inject += "\n"
+		}
+		inject += extra
+	}
+	model := a.Config.Model
+	if meta.Model != "" {
+		model = meta.Model
+	}
 	out, runErr := runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,
@@ -235,7 +266,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Harness:          snap,
 		HarnessHash:      hash,
 		ModelFingerprint: Fingerprint(a.Config),
-		Model:            a.Config.Model,
+		Model:            model,
 		Loop:             loop,
 		Policy:           pol,
 		Fragments:        frags,
@@ -250,6 +281,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		OnEvent:          wrapped,
 		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
 		Meter:            meter,
+		PullSteer:        func() string { return a.pullSteer(sessionID) },
 	})
 	a.RememberUsage(meter.Snapshot())
 	_, _ = a.StageACE(sessionID)

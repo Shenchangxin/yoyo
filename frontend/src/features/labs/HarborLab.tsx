@@ -1,5 +1,5 @@
 import { asArray, num, pick, str } from "../../lib/normalize";
-import { copy } from "../../lib/copy";
+import { useCopy } from "../../lib/i18n";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LabFrame } from "./LabFrame";
@@ -14,6 +14,7 @@ export function HarborLab(props: {
   onModels: (v: string) => void;
   onRun: (kind: "suite" | "safety" | "tb" | "bon" | "models") => void;
 }) {
+  const copy = useCopy();
   const metrics = pick(props.report, "metrics", "Metrics") || {};
   const results = asArray(pick(props.report, "results", "Results"));
   const inP = num(pick(metrics, "held_in_pass", "HeldInPass"));

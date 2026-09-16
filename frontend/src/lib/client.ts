@@ -1,5 +1,5 @@
 import { asArray, asBool, bool, errMessage, num, pick, str } from "./normalize";
-import type { AppConfig, Approval, ContextUsage, Health, Hunk, Thread } from "./protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, SkillInfo, Thread } from "./protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -12,7 +12,8 @@ export class ApiError extends Error {
 }
 
 async function wailsService(): Promise<any | null> {
-  if (import.meta.env.VITE_E2E === "1") return null;
+  if (import.meta.env.VITE_E2E) return null;
+  if (typeof window !== "undefined" && !(window as any)._wails?.environment?.OS) return null;
   try {
     const spec = "../../bindings/github.com/Shenchangxin/yoyo/internal/desktop/service.js";
     const mod = await import(/* @vite-ignore */ spec);
@@ -28,6 +29,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...init,
+    signal: init?.signal ?? AbortSignal.timeout(8000),
   });
   const text = await res.text();
   let body: any = text;
@@ -50,6 +52,9 @@ export function threadOf(v: any): Thread {
     workspace: str(pick(v, "workspace", "Workspace")),
     harness: str(pick(v, "harness", "Harness")),
     createdAt: str(pick(v, "created_at", "CreatedAt")),
+    archived: bool(pick(v, "archived", "Archived")),
+    pinned: bool(pick(v, "pinned", "Pinned")),
+    model: str(pick(v, "model", "Model")),
   };
 }
 
@@ -63,6 +68,7 @@ export function healthOf(v: any): Health {
     isolated: bool(pick(v, "isolated")),
     budgetUsd: num(pick(v, "budget_usd", "budgetUsd")),
     usageUsd: num(pick(usage, "usd")),
+    workspaceReady: bool(pick(v, "workspace_ready", "workspaceReady")),
   };
 }
 
@@ -76,6 +82,10 @@ export function configOf(v: any): AppConfig {
     maxBudgetUsd: num(pick(v, "max_budget_usd", "MaxBudgetUSD", "maxBudgetUsd")),
     usdPerMtok: num(pick(v, "usd_per_mtok", "USDPerMTok", "usdPerMtok")),
     models: asArray(pick(v, "models", "Models")).map(String).filter(Boolean),
+    closeToTray: bool(pick(v, "close_to_tray", "CloseToTray", "closeToTray")),
+    updateUrl: str(pick(v, "update_url", "UpdateURL", "updateUrl")),
+    keymap: (pick(v, "keymap", "Keymap") || {}) as Record<string, string>,
+    locale: str(pick(v, "locale", "Locale")),
   };
 }
 
@@ -130,6 +140,10 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     max_budget_usd: cfg.maxBudgetUsd,
     usd_per_mtok: cfg.usdPerMtok,
     models: cfg.models,
+    close_to_tray: cfg.closeToTray,
+    update_url: cfg.updateUrl,
+    locale: cfg.locale || "",
+    keymap: cfg.keymap || {},
   };
   const s = await wailsService();
   if (s?.SetConfig) return s.SetConfig(body);
@@ -162,16 +176,21 @@ export async function trajectory(id: string): Promise<any[]> {
   return asArray(await http(`/api/sessions/${id}/trajectory`));
 }
 
-export async function send(sessionID: string, text: string, opts?: { plan?: boolean }): Promise<void> {
+export async function send(sessionID: string, text: string, opts?: { plan?: boolean; attachments?: Attachment[] }): Promise<{ queued?: boolean }> {
   const s = await wailsService();
+  if (s?.StartSendOpts) {
+    await s.StartSendOpts(sessionID, text, !!opts?.plan, opts?.attachments || []);
+    return {};
+  }
   if (s?.StartSend) {
     await s.StartSend(sessionID, text, !!opts?.plan);
-    return;
+    return {};
   }
-  await http(`/api/sessions/${sessionID}/messages`, {
+  const raw = await http<any>(`/api/sessions/${sessionID}/messages`, {
     method: "POST",
-    body: JSON.stringify({ text, async: true, plan: !!opts?.plan }),
+    body: JSON.stringify({ text, async: true, plan: !!opts?.plan, attachments: opts?.attachments || [] }),
   });
+  return { queued: !!raw?.queued };
 }
 
 export async function running(sessionID: string): Promise<boolean> {
@@ -363,6 +382,138 @@ export async function checkoutSafe(hash: string): Promise<void> {
     if (!window.confirm(`L3 gate: changing ${surfaces}. Confirm checkout?`)) throw e;
     await checkout(hash, true);
   }
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.DeleteSession) return s.DeleteSession(id);
+  await http(`/api/sessions/${id}`, { method: "DELETE" });
+}
+
+export async function archiveSession(id: string, archived: boolean): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.ArchiveSession
+    ? await s.ArchiveSession(id, archived)
+    : await http(`/api/sessions/${id}/archive`, { method: "POST", body: JSON.stringify({ archived }) });
+  return threadOf(raw);
+}
+
+export async function pinSession(id: string, pinned: boolean): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.PinSession
+    ? await s.PinSession(id, pinned)
+    : await http(`/api/sessions/${id}/pin`, { method: "POST", body: JSON.stringify({ pinned }) });
+  return threadOf(raw);
+}
+
+export async function exportSession(id: string): Promise<string> {
+  const s = await wailsService();
+  if (s?.ExportSession) return String(await s.ExportSession(id) || "");
+  const raw = await http<any>(`/api/sessions/${id}/export`);
+  return str(pick(raw, "markdown"));
+}
+
+export async function setSessionModel(id: string, model: string): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionModel
+    ? await s.SetSessionModel(id, model)
+    : await http(`/api/sessions/${id}/model`, { method: "POST", body: JSON.stringify({ model }) });
+  return threadOf(raw);
+}
+
+export async function compactSession(id: string): Promise<string> {
+  const s = await wailsService();
+  if (s?.CompactSession) return String(await s.CompactSession(id) || "");
+  const raw = await http<any>(`/api/sessions/${id}/compact`, { method: "POST" });
+  return str(pick(raw, "note"));
+}
+
+export async function steer(id: string, text: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.Steer) return s.Steer(id, text);
+  await http(`/api/sessions/${id}/steer`, { method: "POST", body: JSON.stringify({ text }) });
+}
+
+export async function searchFiles(workspace: string, query: string): Promise<FileHit[]> {
+  const s = await wailsService();
+  const raw = s?.SearchFiles
+    ? await s.SearchFiles(workspace, query)
+    : await http(`/api/fs/search?workspace=${encodeURIComponent(workspace || "")}&q=${encodeURIComponent(query)}`);
+  return asArray(raw).map((v) => ({ path: str(pick(v, "path", "Path")), kind: str(pick(v, "kind", "Kind"), "file") })).filter((h) => h.path);
+}
+
+export async function listSkills(): Promise<SkillInfo[]> {
+  const s = await wailsService();
+  const raw = s?.ListSkills ? await s.ListSkills() : await http("/api/skills");
+  return asArray(raw).map((v) => ({ name: str(pick(v, "name", "Name")), description: str(pick(v, "description", "Description")) })).filter((x) => x.name);
+}
+
+export async function pickFolder(): Promise<string> {
+  const s = await wailsService();
+  if (s?.PickFolder) return str(await s.PickFolder());
+  return "";
+}
+
+export async function pickFiles(): Promise<string[]> {
+  const s = await wailsService();
+  if (s?.PickFiles) return asArray(await s.PickFiles()).map(String).filter(Boolean);
+  return [];
+}
+
+export async function startMCP(name: string, command: string, args: string[]): Promise<void> {
+  const s = await wailsService();
+  if (s?.StartMCP) return s.StartMCP(name, command, args);
+  await http("/api/mcp/start", { method: "POST", body: JSON.stringify({ name, command, args }) });
+}
+
+export async function stopMCP(name: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.StopMCP) return s.StopMCP(name);
+  await http("/api/mcp/stop", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export async function about(): Promise<any> {
+  const s = await wailsService();
+  if (s?.About) return s.About();
+  return http("/api/about");
+}
+
+export async function doctor(): Promise<any> {
+  const s = await wailsService();
+  if (s?.Doctor) return s.Doctor();
+  return http("/api/doctor");
+}
+
+export async function logs(limit = 80): Promise<any> {
+  const s = await wailsService();
+  if (s?.Logs) return s.Logs(limit);
+  return http("/api/logs");
+}
+
+export async function checkUpdate(): Promise<any> {
+  const s = await wailsService();
+  if (s?.CheckUpdate) return s.CheckUpdate();
+  return http("/api/update");
+}
+
+export async function keyStatus(): Promise<any> {
+  const s = await wailsService();
+  if (s?.KeyStatus) return s.KeyStatus();
+  return http("/api/key/status");
+}
+
+export async function quit(): Promise<void> {
+  if (import.meta.env.VITE_E2E) return;
+  try {
+    const mod: any = await import("@wailsio/runtime");
+    if (mod.Events?.Emit) {
+      mod.Events.Emit("yoyo:do-quit");
+      return;
+    }
+  } catch {
+    /* browser */
+  }
+  window.close();
 }
 
 export { errMessage };
