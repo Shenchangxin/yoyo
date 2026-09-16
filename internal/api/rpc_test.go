@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,6 +43,33 @@ func TestRPCHealthAndUnknown(t *testing.T) {
 		t.Fatal("expected method error")
 	}
 }
+
+func TestRPCThreadLifecycle(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	created := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: "thread.start", Params: jsonRaw(`{"workspace":"` + filepath.ToSlash(ws) + `"}`)})
+	if created.Error != nil {
+		t.Fatal(created.Error)
+	}
+	m, _ := created.Result.(app.SessionMeta)
+	if m.ID == "" {
+		t.Fatalf("%+v", created.Result)
+	}
+	pin := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 2, Method: "thread.pin", Params: jsonRaw(`{"session":"` + m.ID + `","pinned":true}`)})
+	if pin.Error != nil {
+		t.Fatal(pin.Error)
+	}
+	del := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "thread.delete", Params: jsonRaw(`{"session":"` + m.ID + `"}`)})
+	if del.Error != nil {
+		t.Fatal(del.Error)
+	}
+}
+
+func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
 
 func TestLineClientHealth(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))

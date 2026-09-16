@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,6 +47,16 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				return
 			}
 			writeJSON(w, m)
+			return
+		}
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q != "" {
+			list, err := a.SearchSessions(q, r.URL.Query().Get("archived") == "1")
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			writeJSON(w, list)
 			return
 		}
 		list, err := a.ListSessions()
@@ -109,13 +119,18 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		if len(parts) > 1 && parts[1] == "messages" && r.Method == http.MethodPost {
 			var body struct {
-				Text  string `json:"text"`
-				Async bool   `json:"async"`
-				Plan  bool   `json:"plan"`
+				Text        string           `json:"text"`
+				Async       bool             `json:"async"`
+				Plan        bool             `json:"plan"`
+				Attachments []app.Attachment `json:"attachments"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if body.Async {
-				if err := a.StartSend(id, body.Text, body.Plan); err != nil {
+				if err := a.StartSendOpts(id, body.Text, body.Plan, body.Attachments); err != nil {
+					if errors.Is(err, app.ErrQueued) {
+						writeJSON(w, map[string]any{"ok": true, "queued": true})
+						return
+					}
 					http.Error(w, err.Error(), 409)
 					return
 				}
@@ -130,6 +145,91 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				return
 			}
 			writeJSON(w, map[string]any{"text": out})
+			return
+		}
+		if r.Method == http.MethodDelete {
+			if err := a.DeleteSession(id); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "archive" && r.Method == http.MethodPost {
+			var body struct {
+				Archived *bool `json:"archived"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			archived := true
+			if body.Archived != nil {
+				archived = *body.Archived
+			}
+			m, err := a.ArchiveSession(id, archived)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "pin" && r.Method == http.MethodPost {
+			var body struct {
+				Pinned bool `json:"pinned"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.PinSession(id, body.Pinned)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "export" {
+			text, err := a.ExportSession(id)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"markdown": text})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "steer" && r.Method == http.MethodPost {
+			var body struct {
+				Text string `json:"text"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if err := a.Steer(id, body.Text); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "queue" {
+			writeJSON(w, a.QueueList(id))
+			return
+		}
+		if len(parts) > 1 && parts[1] == "compact" && r.Method == http.MethodPost {
+			note, err := a.CompactSession(id)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"note": note})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "model" && r.Method == http.MethodPost {
+			var body struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionModel(id, body.Model)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
 			return
 		}
 		m, err := a.GetSession(id)
@@ -162,11 +262,46 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			Args    []string `json:"args"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if err := a.MCP.Start(body.Name, body.Command, body.Args); err != nil {
+		if err := a.StartMCP(body.Name, body.Command, body.Args); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true, "tools": a.MCP.Tools()})
+	})
+	mux.HandleFunc("/api/mcp/stop", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name string `json:"name"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := a.StopMCP(body.Name); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/fs/search", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		ws := q.Get("workspace")
+		if ws == "" {
+			ws = a.Workspace()
+		}
+		writeJSON(w, runtime.FuzzySearch(ws, q.Get("q"), 40))
+	})
+	mux.HandleFunc("/api/skills", func(w http.ResponseWriter, r *http.Request) {
+		sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, a.Config.Workspace, filepath.Join(filepath.Dir(a.BundledEvals), "skills"))...)
+		writeJSON(w, sk)
+	})
+	mux.HandleFunc("/api/about", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.Health())
+	})
+	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.Logs(80))
+	})
+	mux.HandleFunc("/api/doctor", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.Doctor())
+	})
+	mux.HandleFunc("/api/key/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.Vault.Status())
 	})
 	mux.HandleFunc("/api/harness", func(w http.ResponseWriter, r *http.Request) {
 		refs, _ := a.ListHarnesses()
@@ -337,7 +472,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, map[string]any{
 			"fibers": a.Kernel.Fibers(),
 			"wasm":   a.WASM.List(),
-			"mcp":    a.MCP.List(),
+			"mcp":    a.MCP.Info(),
 			"tools":  a.MCP.Tools(),
 		})
 	})
@@ -354,13 +489,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, map[string]any{"ok": true})
 			return
 		}
-		p := a.StagingPath()
-		st, err := os.Stat(p)
-		size := int64(0)
-		if err == nil {
-			size = st.Size()
-		}
-		writeJSON(w, map[string]any{"staging": p, "exists": err == nil, "size": size})
+		writeJSON(w, a.CheckUpdate())
 	})
 	mux.HandleFunc("/api/key", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

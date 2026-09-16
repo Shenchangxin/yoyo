@@ -1,7 +1,7 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import type { Approval, Item } from "../lib/protocol";
-import { copy } from "../lib/copy";
+import { useCopy } from "../lib/i18n";
 
 export function ChatDock(props: {
   items: Item[];
@@ -11,11 +11,15 @@ export function ChatDock(props: {
   disabled: boolean;
   disabledReason?: string;
   model?: string;
-  onSend: () => void;
+  models?: string[];
+  onSend: (opts?: { steer?: boolean; attachments?: import("../lib/protocol").Attachment[] }) => void;
   onStop: () => void;
   onResolve: (id: string, decision: string) => void;
   onOpenAgent: () => void;
+  onSlash?: (cmd: string, rest: string) => void;
+  onModel?: (model: string) => void;
 }) {
+  const copy = useCopy();
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-border bg-background">
       <div className="flex h-11 shrink-0 items-center border-b border-border px-3">
@@ -31,8 +35,11 @@ export function ChatDock(props: {
         disabled={props.disabled}
         disabledReason={props.disabledReason || copy.composer.disabled}
         model={props.model}
+        models={props.models}
         onSend={props.onSend}
         onStop={props.onStop}
+        onSlash={props.onSlash}
+        onModel={props.onModel}
       />
     </aside>
   );

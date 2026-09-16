@@ -6,6 +6,9 @@ export type Thread = {
   workspace: string;
   harness: string;
   createdAt: string;
+  archived?: boolean;
+  pinned?: boolean;
+  model?: string;
 };
 
 export type ItemType =
@@ -61,6 +64,7 @@ export type Health = {
   isolated: boolean;
   budgetUsd: number;
   usageUsd: number;
+  workspaceReady: boolean;
 };
 
 export type AppConfig = {
@@ -72,6 +76,27 @@ export type AppConfig = {
   maxBudgetUsd: number;
   usdPerMtok: number;
   models: string[];
+  closeToTray: boolean;
+  updateUrl: string;
+  keymap?: Record<string, string>;
+  locale?: string;
+};
+
+export type Attachment = {
+  path?: string;
+  name?: string;
+  mime?: string;
+  data_b64?: string;
+};
+
+export type SkillInfo = {
+  name: string;
+  description: string;
+};
+
+export type FileHit = {
+  path: string;
+  kind: string;
 };
 
 export type Hunk = {

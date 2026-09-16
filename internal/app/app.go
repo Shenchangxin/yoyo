@@ -24,15 +24,26 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
+type MCPServerConfig struct {
+	Name    string   `yaml:"name" json:"name"`
+	Command string   `yaml:"command" json:"command"`
+	Args    []string `yaml:"args" json:"args"`
+}
+
 type Config struct {
-	Provider     string   `yaml:"provider" json:"provider"`
-	Model        string   `yaml:"model" json:"model"`
-	BaseURL      string   `yaml:"base_url" json:"base_url"`
-	Workspace    string   `yaml:"workspace" json:"workspace"`
-	AutoAllow    bool     `yaml:"auto_allow" json:"auto_allow"`
-	MaxBudgetUSD float64  `yaml:"max_budget_usd" json:"max_budget_usd"`
-	USDPerMTok   float64  `yaml:"usd_per_mtok" json:"usd_per_mtok"`
-	Models       []string `yaml:"models" json:"models"`
+	Provider     string            `yaml:"provider" json:"provider"`
+	Model        string            `yaml:"model" json:"model"`
+	BaseURL      string            `yaml:"base_url" json:"base_url"`
+	Workspace    string            `yaml:"workspace" json:"workspace"`
+	AutoAllow    bool              `yaml:"auto_allow" json:"auto_allow"`
+	MaxBudgetUSD float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
+	USDPerMTok   float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
+	Models       []string          `yaml:"models" json:"models"`
+	MCP          []MCPServerConfig `yaml:"mcp" json:"mcp"`
+	CloseToTray  bool              `yaml:"close_to_tray" json:"close_to_tray"`
+	UpdateURL    string            `yaml:"update_url" json:"update_url"`
+	Locale       string            `yaml:"locale" json:"locale"`
+	Keymap       map[string]string `yaml:"keymap" json:"keymap"`
 }
 
 type App struct {
@@ -61,6 +72,10 @@ type App struct {
 	lastShape map[string]runtime.ShapeReport
 	usageMu   sync.Mutex
 	lastUsage map[string]any
+
+	queueMu sync.Mutex
+	queue   map[string][]QueuedTurn
+	steers  map[string][]string
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -80,7 +95,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Provider:  "openai",
 		Model:     "gpt-4.1-mini",
 		BaseURL:   "https://api.openai.com/v1",
-		Workspace: ".",
+		Workspace: "",
 		AutoAllow: false,
 	}
 	if b, err := os.ReadFile(h.Config()); err == nil {
@@ -100,7 +115,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Traces:       trace.NewStore(h.Sessions()),
 		Gate:         gate,
 		Hub:          NewHub(),
-		Vault:        vault.New(),
+		Vault:        vault.New(h.Root),
 		Journal:      j,
 		WASM:         wasm.NewHost(),
 		MCP:          mcp.NewHost(),
@@ -110,6 +125,14 @@ func Open(root, bundledEvals string) (*App, error) {
 		BundledEvals: bundledEvals,
 		runs:         map[string]context.CancelFunc{},
 		lastShape:    map[string]runtime.ShapeReport{},
+	}
+	a.initQueue()
+	a.loadKeymapFile()
+	for _, srv := range cfg.MCP {
+		if srv.Name == "" || srv.Command == "" {
+			continue
+		}
+		_ = a.MCP.Start(srv.Name, srv.Command, srv.Args)
 	}
 	a.Caps = capability.NewBroker(capability.AutoPolicy{Allow: allow}, a.approve)
 	a.Gate.SetOnOffer(func(o capability.Offer) {
@@ -210,15 +233,17 @@ func (a *App) LastUsage() map[string]any {
 
 func (a *App) Health() map[string]any {
 	return map[string]any{
-		"ok":         true,
-		"harness":    a.ActiveHash(),
-		"model":      a.Config.Model,
-		"version":    version.Version,
-		"usage":      a.LastUsage(),
-		"budget_usd": a.Config.MaxBudgetUSD,
-		"update":     update.Current(""),
-		"isolated":   false,
-		"models":     a.Config.Models,
+		"ok":              true,
+		"harness":         a.ActiveHash(),
+		"model":           a.Config.Model,
+		"version":         version.Version,
+		"usage":           a.LastUsage(),
+		"budget_usd":      a.Config.MaxBudgetUSD,
+		"update":          update.Current(""),
+		"isolated":        isolated(),
+		"models":          a.Config.Models,
+		"workspace_ready": WorkspaceReady(a.Config.Workspace),
+		"vault":           a.Vault.Status(),
 	}
 }
 
@@ -240,7 +265,11 @@ func (a *App) SaveConfig() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.Home.Config(), b, 0o644)
+	if err := os.WriteFile(a.Home.Config(), b, 0o644); err != nil {
+		return err
+	}
+	a.writeKeymapFile()
+	return nil
 }
 
 func (a *App) Close() error {

@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import type { Lab, Thread } from "../lib/protocol";
-import { copy } from "../lib/copy";
+import { useCopy } from "../lib/i18n";
 import { chrome } from "../lib/chrome";
 
 export function CommandPalette(props: {
@@ -12,7 +12,10 @@ export function CommandPalette(props: {
   onLab: (lab: Lab) => void;
   onSelectThread: (t: Thread) => void;
   onDiff: () => void;
+  onAbout?: () => void;
+  onQuit?: () => void;
 }) {
+  const copy = useCopy();
   return (
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
@@ -32,7 +35,8 @@ export function CommandPalette(props: {
                 <Command.Item value="harness refs" onSelect={() => { props.onLab("harness"); props.onClose(); }}>Harness</Command.Item>
                 <Command.Item value="control settings theme" onSelect={() => { props.onLab("control"); props.onClose(); }}>Control</Command.Item>
                 <Command.Item value="refresh diff" onSelect={() => { props.onDiff(); props.onClose(); }}>Refresh diff</Command.Item>
-                <Command.Item value="quit" onSelect={() => { chrome.close(); props.onClose(); }}>Quit</Command.Item>
+                <Command.Item value="about yoyo" onSelect={() => { props.onAbout?.(); props.onClose(); }}>About</Command.Item>
+                <Command.Item value="quit" onSelect={() => { props.onQuit ? props.onQuit() : chrome.close(); props.onClose(); }}>Quit</Command.Item>
               </Command.Group>
               {props.threads.length ? (
                 <Command.Group heading="Chats">

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as Dialog from "@radix-ui/react-dialog";
-import { copy } from "../lib/copy";
+import { useCopy } from "../lib/i18n";
 import { firstRunSchema, type FirstRunValues } from "../lib/control-schema";
 import type { AppConfig } from "../lib/protocol";
 import { Button } from "../components/ui/button";
@@ -17,7 +17,9 @@ export function FirstRun(props: {
   cfg: AppConfig;
   onSkip: () => void;
   onFinish: (values: FirstRunValues) => Promise<void>;
+  onBrowse?: () => Promise<string>;
 }) {
+  const copy = useCopy();
   const [step, setStep] = useState(0);
   const form = useForm<FirstRunValues>({
     resolver: zodResolver(firstRunSchema),
@@ -78,7 +80,21 @@ export function FirstRun(props: {
                 hint={copy.firstRun.workspaceHelp}
                 error={form.formState.errors.workspace?.message}
               >
-                <Input autoComplete="off" autoFocus {...form.register("workspace")} />
+                <div className="flex gap-2">
+                  <Input autoComplete="off" autoFocus {...form.register("workspace")} />
+                  {props.onBrowse ? (
+                    <Button
+                      type="button"
+                      variant="lift"
+                      onClick={async () => {
+                        const p = await props.onBrowse?.();
+                        if (p) form.setValue("workspace", p, { shouldDirty: true, shouldValidate: true });
+                      }}
+                    >
+                      {copy.firstRun.browse}
+                    </Button>
+                  ) : null}
+                </div>
               </Field>
             ) : null}
             {step === 1 ? (

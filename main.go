@@ -44,6 +44,7 @@ func main() {
 	}
 	defer svc.Close()
 
+	var win application.Window
 	ns := notifications.New()
 	gui := application.New(application.Options{
 		Name:        "Yoyo",
@@ -58,12 +59,21 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.yoyo.workstation",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				if win != nil {
+					win.Show().Focus()
+				}
+			},
+		},
 	})
 
-	win := gui.Window.NewWithOptions(application.WebviewWindowOptions{
+	geom := desktop.RestoreGeometry(svc)
+	opts := application.WebviewWindowOptions{
 		Title:              "Yoyo " + version.Version,
-		Width:              1440,
-		Height:             900,
+		Width:              geom.W,
+		Height:             geom.H,
 		MinWidth:           1080,
 		MinHeight:          680,
 		BackgroundColour:   application.NewRGB(14, 14, 14),
@@ -80,8 +90,17 @@ func main() {
 			DisableFramelessWindowDecorations: false,
 			NonClientRegionSupport:            true,
 		},
-	})
+	}
+	if geom.Max {
+		opts.StartState = application.WindowStateMaximised
+	}
+	win = gui.Window.NewWithOptions(opts)
+	if !geom.Max && (geom.X != 0 || geom.Y != 0) {
+		win.SetPosition(geom.X, geom.Y)
+	}
+	svc.Attach(gui, win)
 	desktop.InstallChrome(gui, win, svc, ns)
+	desktop.PersistWindow(svc, win)
 
 	if err := gui.Run(); err != nil {
 		log.Fatal(err)

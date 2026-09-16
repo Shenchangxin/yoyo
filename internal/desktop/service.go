@@ -3,9 +3,12 @@ package desktop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
@@ -20,6 +23,8 @@ type Service struct {
 	App *app.App
 	RPC *api.LineClient
 	cmd *exec.Cmd
+	gui *application.App
+	win application.Window
 }
 
 func NewService(a *app.App) *Service { return &Service{App: a} }
@@ -213,11 +218,19 @@ func (s *Service) Send(sessionID, text string) (string, error) {
 }
 
 func (s *Service) StartSend(sessionID, text string, plan bool) error {
+	return s.StartSendOpts(sessionID, text, plan, nil)
+}
+
+func (s *Service) StartSendOpts(sessionID, text string, plan bool, atts []app.Attachment) error {
 	if s.RPC != nil {
-		_, err := s.call("turn.start", map[string]any{"session": sessionID, "text": text, "plan": plan, "wait": false})
+		_, err := s.call("turn.start", map[string]any{"session": sessionID, "text": text, "plan": plan, "wait": false, "attachments": atts})
 		return err
 	}
-	return s.App.StartSend(sessionID, text, plan)
+	err := s.App.StartSendOpts(sessionID, text, plan, atts)
+	if errors.Is(err, app.ErrQueued) {
+		return nil
+	}
+	return err
 }
 
 func (s *Service) Interrupt(sessionID string) error {
@@ -279,7 +292,7 @@ func (s *Service) StartMCP(name, command string, args []string) error {
 		_, err := s.call("mcp.start", map[string]any{"name": name, "command": command, "args": args})
 		return err
 	}
-	return s.App.MCP.Start(name, command, args)
+	return s.App.StartMCP(name, command, args)
 }
 
 func (s *Service) Harness() (map[string]any, error) {
@@ -393,7 +406,7 @@ func (s *Service) Plugins() map[string]any {
 		m, _ := decode[map[string]any](v, err)
 		return m
 	}
-	return map[string]any{"fibers": s.App.Kernel.Fibers(), "wasm": s.App.WASM.List(), "mcp": s.App.MCP.List()}
+	return map[string]any{"fibers": s.App.Kernel.Fibers(), "wasm": s.App.WASM.List(), "mcp": s.App.MCP.Info(), "tools": s.App.MCP.Tools()}
 }
 
 func (s *Service) UnloadFiber(name string) error {

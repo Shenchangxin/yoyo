@@ -42,6 +42,7 @@ type WorkspaceTools struct {
 	Spill     *Spill
 	Depth     int
 	Task      TaskFunc
+	PlanText  string
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -152,6 +153,45 @@ func BuiltinToolJSON() []ToolJSON {
 				"isolate": map[string]any{"type": "boolean"},
 			},
 			"required": []string{"prompt"},
+		}),
+		fn("update_plan", "Replace the current task plan with a list of steps and statuses (pending, in_progress, complete).", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"explanation": map[string]any{"type": "string"},
+				"plan": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"step":   map[string]any{"type": "string"},
+							"status": map[string]any{"type": "string"},
+						},
+						"required": []string{"step", "status"},
+					},
+				},
+			},
+			"required": []string{"plan"},
+		}),
+		fn("wait", "Pause up to 30 seconds before the next action. Use when polling a command or a file.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"seconds": map[string]any{"type": "integer"},
+			},
+		}),
+		fn("list_skills", "List skill names available via load_skill.", map[string]any{"type": "object", "properties": map[string]any{}}),
+		fn("view_image", "Inspect an image file under the workspace (size and type). Prefer this over dumping binary via read_file.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+			},
+			"required": []string{"path"},
+		}),
+		fn("web_fetch", "HTTP GET a public https URL and return extracted text. Never used for localhost or private IPs. Requires network approval.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{"type": "string"},
+			},
+			"required": []string{"url"},
 		}),
 	}
 }
@@ -265,6 +305,16 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 		return t.toolSearch(str(args["query"]))
 	case "task":
 		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
+	case "update_plan":
+		return t.updatePlan(argsJSON)
+	case "wait":
+		return t.wait(intArg(args["seconds"]))
+	case "list_skills":
+		return t.listSkills()
+	case "view_image":
+		return t.viewImage(str(args["path"]))
+	case "web_fetch":
+		return t.webFetch(str(args["url"]))
 	default:
 		if t.Extra != nil {
 			if extra, ok := t.Extra[name]; ok {

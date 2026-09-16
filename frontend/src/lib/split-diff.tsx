@@ -61,13 +61,29 @@ function tone(kind: Kind, side: "left" | "right" | "uni") {
   return "text-muted";
 }
 
-export function DiffBlock({ src, mode }: { src: string; mode: DiffMode }) {
+export function DiffBlock({
+  src,
+  mode,
+  onLineClick,
+}: {
+  src: string;
+  mode: DiffMode;
+  onLineClick?: (text: string) => void;
+}) {
   const rows = linesOf(src);
+  const click = (text: string) => {
+    if (!onLineClick || !text.trim()) return;
+    onLineClick(text);
+  };
   if (mode === "unified") {
     return (
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
         {rows.map((row, i) => (
-          <span key={i} className={cn("block", tone(row.kind, "uni"))}>
+          <span
+            key={i}
+            className={cn("block", tone(row.kind, "uni"), onLineClick && "cursor-pointer hover:bg-lift")}
+            onClick={() => click(row.text)}
+          >
             {row.kind === "add" ? "+" : row.kind === "del" ? "-" : ""}
             {row.text || " "}
           </span>
@@ -80,10 +96,16 @@ export function DiffBlock({ src, mode }: { src: string; mode: DiffMode }) {
     <div className="grid max-h-48 grid-cols-2 gap-px overflow-auto rounded-lg bg-border font-mono text-[11px]">
       {pairs.map((p, i) => (
         <div key={i} className="contents">
-          <div className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.left.kind, "left"))}>
+          <div
+            className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.left.kind, "left"), onLineClick && "cursor-pointer hover:bg-lift")}
+            onClick={() => click(p.left.text)}
+          >
             {p.left.text || " "}
           </div>
-          <div className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.right.kind, "right"))}>
+          <div
+            className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.right.kind, "right"), onLineClick && "cursor-pointer hover:bg-lift")}
+            onClick={() => click(p.right.text)}
+          >
             {p.right.text || " "}
           </div>
         </div>

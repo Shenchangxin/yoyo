@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
@@ -327,5 +328,39 @@ func TestBestOfModelsPrefersWorkingSolver(t *testing.T) {
 	}
 	if rep.Best.Metrics.HeldInPass+rep.Best.Metrics.HeldOutPass == 0 {
 		t.Fatalf("winner should pass tasks: %+v", rep.Best)
+	}
+}
+
+func TestCheckUpdateNoURL(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	out := a.CheckUpdate()
+	if out["staged"] != false {
+		t.Fatalf("%+v", out)
+	}
+	if _, ok := out["staging"]; !ok {
+		t.Fatal("missing staging")
+	}
+}
+
+func TestSaveConfigWritesKeymap(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Config.Keymap = map[string]string{"palette": "Mod+P"}
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(a.Home.Root, "keymap.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Mod+P") {
+		t.Fatalf("%s", b)
 	}
 }

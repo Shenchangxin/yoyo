@@ -5,9 +5,11 @@ import * as api from "./lib/client";
 import { mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "./lib/stream";
 import { readLayout, writeLayout, type ShellLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
-import { copy } from "./lib/copy";
+import { workspaceReady } from "./lib/workspace";
+import { applyLocale, useCopy } from "./lib/i18n";
+import { mergeKeymap, matchKey } from "./lib/keymap";
 import { useUI } from "./lib/store";
-import type { AppConfig, Approval, ContextUsage, Health, Hunk, Item, Thread } from "./lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, Item, SkillInfo, Thread } from "./lib/protocol";
 import { WindowChrome } from "./features/WindowChrome";
 import { CommandPalette } from "./features/CommandPalette";
 import { ResizeHandle } from "./features/ResizeHandle";
@@ -18,13 +20,16 @@ import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
 import { ChatDock } from "./features/ChatDock";
 import { FirstRun } from "./features/FirstRun";
+import { About } from "./features/About";
+import { ConfirmDialog } from "./features/ConfirmDialog";
+import { BootSkeleton } from "./features/BootSkeleton";
 import { HarborLab } from "./features/labs/HarborLab";
 import { EvolveLab } from "./features/labs/EvolveLab";
 import { HarnessLab } from "./features/labs/HarnessLab";
 import { ControlLab } from "./features/labs/ControlLab";
 
-const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, budgetUsd: 0, usageUsd: 0 };
-const emptyCfg: AppConfig = { provider: "openai", model: "", baseUrl: "", workspace: "", autoAllow: false, maxBudgetUsd: 0, usdPerMtok: 0, models: [] };
+const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, budgetUsd: 0, usageUsd: 0, workspaceReady: false };
+const emptyCfg: AppConfig = { provider: "openai", model: "", baseUrl: "", workspace: "", autoAllow: false, maxBudgetUsd: 0, usdPerMtok: 0, models: [], closeToTray: false, updateUrl: "", keymap: {}, locale: "" };
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, note: "", layers: [], elided: 0 };
 
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
@@ -49,6 +54,7 @@ function localUser(sessionId: string, text: string): Item {
 }
 
 export default function App() {
+  const copy = useCopy();
   const lab = useUI((s) => s.lab);
   const setLab = useUI((s) => s.setLab);
   const inspector = useUI((s) => s.inspector);
@@ -94,13 +100,29 @@ export default function App() {
   const [diffOut, setDiffOut] = useState<any>(null);
   const [layout, setLayout] = useState<ShellLayout>(readLayout);
   const [booted, setBooted] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutInfo, setAboutInfo] = useState<Record<string, any>>({});
+  const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
+  const [files, setFiles] = useState<FileHit[]>([]);
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [logs, setLogs] = useState<any>(null);
+  const [doctor, setDoctor] = useState<any>(null);
+  const [vault, setVault] = useState<any>({});
+  const [pendingQuit, setPendingQuit] = useState(false);
   const narrow = useMedia("(max-width: 1099px)");
+  const handlers = useRef({
+    slash: async (_cmd: string, _rest: string) => {},
+    command: (_c: string) => {},
+    quit: () => {},
+    focus: (_id: string) => {},
+  });
 
   const activeId = active?.id || "";
   const draftKey = activeId || "_new";
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
-  const needsSetup = !savedCfg.workspace;
+  const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
   const three = lab === "agent" && inspector && !narrow;
   const dock = lab !== "agent";
 
@@ -137,8 +159,11 @@ export default function App() {
         if (cur && list.some((t) => t.id === cur.id)) return list.find((t) => t.id === cur.id) || cur;
         return list[0] || null;
       });
+      setBooted(true);
       try { setPlaybook(await api.playbook()); } catch { /* optional */ }
       try { setTree(await api.archive()); } catch { /* optional */ }
+      try { setSkills(await api.listSkills()); } catch { /* optional */ }
+      try { setVault(await api.keyStatus()); } catch { /* optional */ }
       await syncRunning();
     } catch (e) {
       fail(e);
@@ -147,8 +172,49 @@ export default function App() {
     }
   }, [syncRunning]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (savedCfg.locale) applyLocale(savedCfg.locale);
+  }, [savedCfg.locale]);
   useEffect(() => subscribeSessions(refresh), [refresh]);
+  useEffect(() => {
+    if (lab !== "control") return;
+    api.logs().then(setLogs).catch(() => {});
+    api.doctor().then(setDoctor).catch(() => {});
+  }, [lab]);
+  useEffect(() => {
+    if (import.meta.env.VITE_E2E) return;
+    if (typeof window !== "undefined" && !(window as any)._wails) return;
+    let offs: Array<() => void> = [];
+    let alive = true;
+    (async () => {
+      try {
+        const mod: any = await import("@wailsio/runtime");
+        const Events = mod.Events;
+        if (!alive || !Events?.On) return;
+        offs.push(Events.On("yoyo:about", (info: any) => { setAboutInfo(info || {}); setAboutOpen(true); }));
+        offs.push(Events.On("yoyo:workspace", (path: any) => {
+          const p = typeof path === "string" ? path : "";
+          if (!p) return;
+          setSavedCfg((cfg) => {
+            const next = { ...cfg, workspace: p };
+            void api.setConfig(next);
+            return next;
+          });
+        }));
+        offs.push(Events.On("yoyo:command", (cmd: any) => handlers.current.command(String(cmd || ""))));
+        offs.push(Events.On("yoyo:quit", () => handlers.current.quit()));
+        offs.push(Events.On("yoyo:focus", (session: any) => handlers.current.focus(typeof session === "string" ? session : "")));
+        offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(info || {}); setLab("control"); }));
+      } catch {
+        /* browser */
+      }
+    })();
+    return () => {
+      alive = false;
+      offs.forEach((o) => o());
+    };
+  }, []);
 
   useEffect(() => subscribeItems((item) => {
     if (item.type === "turn_end" || item.type === "error") {
@@ -211,10 +277,10 @@ export default function App() {
     return t;
   }
 
-  async function onSend() {
+  async function onSend(opts?: { steer?: boolean; attachments?: Attachment[] }) {
     const text = (useUI.getState().drafts[draftKey] || "").trim();
     if (!text) return;
-    if (!savedCfg.workspace) {
+    if (!workspaceReady(health.workspaceReady, savedCfg.workspace)) {
       toast.message(copy.app.setupFirst);
       setLab("control");
       return;
@@ -222,17 +288,109 @@ export default function App() {
     setErr("");
     try {
       const t = await ensureThread();
+      if (opts?.steer && running[t.id]) {
+        await api.steer(t.id, text);
+        useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
+        toast.success(copy.app.steered);
+        return;
+      }
+      const wasRunning = !!running[t.id];
       useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
       setRunning((m) => ({ ...m, [t.id]: true }));
       setItems((prev) => (t.id === activeId ? [...prev, localUser(t.id, text)] : prev));
-      await api.send(t.id, text, { plan: useUI.getState().plan });
+      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
+      if (wasRunning || res.queued) toast.message(copy.app.queued);
     } catch (e) {
       const m = api.errMessage(e);
-      if (!m.includes("already running")) {
+      if (!m.includes("already running") && !m.includes("queued")) {
         if (activeId) setRunning((s) => ({ ...s, [activeId]: false }));
       }
       fail(e);
     }
+  }
+
+  async function onSlash(cmd: string, rest: string) {
+    const raw = cmd.replace(/^\//, "");
+    if (raw === "plan") {
+      useUI.getState().setPlan((v) => !v);
+      return;
+    }
+    if (raw === "new") {
+      await onNew();
+      return;
+    }
+    if (raw === "quit") {
+      requestQuit();
+      return;
+    }
+    if (raw === "diff") {
+      await refreshDiff();
+      return;
+    }
+    if (raw === "stop") {
+      await onStop();
+      return;
+    }
+    if (raw === "steer") {
+      const text = rest.trim() || (useUI.getState().drafts[draftKey] || "").trim();
+      if (!text || !activeId) return;
+      await api.steer(activeId, text);
+      useUI.getState().patchDrafts({ [activeId]: "", _new: "" });
+      toast.success(copy.app.steered);
+      return;
+    }
+    if (!activeId && raw !== "new") return;
+    if (raw === "rename") {
+      const title = rest.trim();
+      if (!title || !activeId) return;
+      await api.renameSession(activeId, title);
+      await refresh();
+      return;
+    }
+    if (raw === "fork") {
+      if (!activeId) return;
+      const t = await api.forkSession(activeId);
+      setThreads((prev) => [t, ...prev]);
+      setActive(t);
+      return;
+    }
+    if (raw === "archive") {
+      if (!activeId) return;
+      await api.archiveSession(activeId, true);
+      await refresh();
+      toast.success(copy.app.archived);
+      return;
+    }
+    if (raw === "delete") {
+      if (!active) return;
+      setPendingDelete(active);
+      return;
+    }
+    if (raw === "compact") {
+      const note = await api.compactSession(activeId);
+      toast.success(note || copy.app.compacted);
+      return;
+    }
+    if (raw === "model") {
+      if (!rest.trim()) return;
+      const t = await api.setSessionModel(activeId, rest.trim());
+      setActive(t);
+      await refresh();
+      return;
+    }
+    if (raw === "export") {
+      const md = await api.exportSession(activeId);
+      await navigator.clipboard.writeText(md);
+      toast.success(copy.app.exported);
+    }
+  }
+
+  function requestQuit() {
+    if (anyRun) {
+      setPendingQuit(true);
+      return;
+    }
+    void api.quit();
   }
 
   async function onStop() {
@@ -299,30 +457,61 @@ export default function App() {
   }
 
   useEffect(() => {
+    const km = mergeKeymap(savedCfg.keymap);
     const onKey = (e: KeyboardEvent) => {
-      const meta = e.ctrlKey || e.metaKey;
       const typing = (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable]");
-      if (meta && e.key.toLowerCase() === "k") {
+      if (matchKey(e, km.palette)) {
         e.preventDefault();
         setPalette((v) => !v);
+        return;
       }
-      if (meta && e.key.toLowerCase() === "n" && !typing) {
+      if (!typing && matchKey(e, km.newChat)) {
         e.preventDefault();
         void onNew();
       }
-      if (meta && e.key === ",") {
+      if (matchKey(e, km.control)) {
         e.preventDefault();
         setLab("control");
       }
-      if (meta && e.key === "\\") {
+      if (matchKey(e, km.toggleReview)) {
         e.preventDefault();
         setInspector((v) => !v);
       }
-      if (e.key === "Escape") setPalette(false);
+      if (e.key === "Tab" && e.shiftKey && !typing) {
+        e.preventDefault();
+        useUI.getState().setPlan((v) => !v);
+      }
+      if (e.key === "Escape") {
+        if (useUI.getState().palette) {
+          setPalette(false);
+          return;
+        }
+        const firstAsk = approvals[0];
+        if (firstAsk && !typing && matchKey(e, km.deny)) {
+          e.preventDefault();
+          void onResolve(firstAsk.id, "deny");
+        }
+        return;
+      }
+      const first = approvals[0];
+      if (first && !typing && !(e.ctrlKey || e.metaKey)) {
+        if (matchKey(e, km.once)) {
+          e.preventDefault();
+          void onResolve(first.id, "once");
+        }
+        if (matchKey(e, km.session)) {
+          e.preventDefault();
+          void onResolve(first.id, "session");
+        }
+        if (matchKey(e, km.always)) {
+          e.preventDefault();
+          void onResolve(first.id, "always");
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.workspace, setLab, setInspector, setPalette]);
+  }, [savedCfg.keymap, approvals, setLab, setInspector, setPalette]);
 
   const composer = (
     <Composer
@@ -330,9 +519,23 @@ export default function App() {
       running={threadRunning}
       disabled={needsSetup}
       disabledReason={copy.composer.disabled}
-      model={savedCfg.model || health.model}
+      model={active?.model || savedCfg.model || health.model}
+      models={savedCfg.models.length ? savedCfg.models : [savedCfg.model || health.model].filter(Boolean)}
+      files={files}
+      skills={skills}
+      onSearchFiles={(q) => { void api.searchFiles(savedCfg.workspace, q).then(setFiles).catch(() => {}); }}
       onSend={onSend}
       onStop={onStop}
+      onSlash={(cmd, rest) => { void onSlash(cmd, rest); }}
+      onModel={async (model) => {
+        if (!activeId) return;
+        const t = await api.setSessionModel(activeId, model);
+        setActive(t);
+      }}
+      onPickFiles={async () => {
+        const paths = await api.pickFiles();
+        return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
+      }}
     />
   );
 
@@ -351,6 +554,10 @@ export default function App() {
       ctx={ctx}
       approvals={approvals}
       onResolve={onResolve}
+      onQuote={(text) => {
+        const cur = useUI.getState().drafts[draftKey] || "";
+        useUI.getState().setDraft(draftKey, cur ? `${cur}\n${text}` : text);
+      }}
     />
   );
 
@@ -362,11 +569,13 @@ export default function App() {
         workspace={savedCfg.workspace}
         inspector={inspector}
         title={active?.title || "New chat"}
+        runningCount={Object.values(running).filter(Boolean).length}
+        runningThreads={threads.filter((t) => running[t.id])}
+        onSelectRunning={(t) => { setActive(t); setLab("agent"); }}
         onToggleInspector={() => setInspector((v) => !v)}
         onControl={() => setLab("control")}
-        onRename={async () => {
-          const title = window.prompt("Rename thread", active?.title || "");
-          if (!title || !activeId) return;
+        onRename={async (title) => {
+          if (!activeId) return;
           await api.renameSession(activeId, title);
           await refresh();
         }}
@@ -386,6 +595,11 @@ export default function App() {
         onResolve={onResolve}
         onPrompt={(text) => useUI.getState().setDraft(draftKey, text)}
         onSetup={() => setLab("control")}
+        onOpenReview={() => {
+          setInspector(true);
+          setInspTab("diff");
+          void refreshDiff();
+        }}
       />
       {composer}
       {narrow && inspector && lab === "agent" ? (
@@ -476,6 +690,9 @@ export default function App() {
       <ControlLab
         saved={savedCfg}
         plugins={plugins}
+        logs={logs}
+        doctor={doctor}
+        vault={vault}
         onSave={async (next, key) => {
           if (key.trim()) await api.setAPIKey(key.trim());
           await api.setConfig(next);
@@ -487,15 +704,49 @@ export default function App() {
           try { await api.applyUpdate(); await refresh(); toast.success(copy.app.stagedUpdate); }
           catch (e) { fail(e); }
         }}
+        onCheckUpdate={async () => {
+          try {
+            const u = await api.checkUpdate();
+            if (u?.error) toast.error(String(u.error));
+            else if (u?.downloaded) toast.success(`downloaded ${u.size || 0} bytes`);
+            else if (u?.newer) toast.message("newer build verified — apply staged");
+            else toast.message(u?.staged ? `staged ${u.size || 0} bytes` : "no staged update");
+          } catch (e) { fail(e); }
+        }}
         onUnload={async (name) => { await api.unloadFiber(name); await refresh(); }}
+        onBrowse={async () => api.pickFolder()}
+        onStartMcp={async (name, command, args) => { await api.startMCP(name, command, args); await refresh(); }}
+        onStopMcp={async (name) => { await api.stopMCP(name); await refresh(); }}
       />
     ) : null;
 
   const showWizard = booted && needsSetup && !setupDismissed;
   const showSetup = booted && needsSetup && setupDismissed && lab !== "control";
 
+  handlers.current.slash = onSlash;
+  handlers.current.command = (c) => {
+    if (c === "review") setInspector((v) => !v);
+    else if (c === "palette") setPalette(true);
+    else if (c === "control") setLab("control");
+    else void onSlash("/" + c, "");
+  };
+  handlers.current.quit = requestQuit;
+  handlers.current.focus = (id) => {
+    if (!id) return;
+    const t = threads.find((x) => x.id === id);
+    if (t) {
+      setActive(t);
+      setLab("agent");
+    }
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      {!booted ? (
+        <div className="pointer-events-none absolute inset-0 z-30">
+          <BootSkeleton />
+        </div>
+      ) : null}
       <WindowChrome connected={health.ok} isolated={health.isolated} onPalette={() => setPalette(true)} />
       {err ? (
         <div className="flex items-center gap-3 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
@@ -539,11 +790,20 @@ export default function App() {
             query={query}
             running={running}
             lab={lab}
+            showArchived={showArchived}
             onQuery={setQuery}
             onSelect={setActive}
             onNew={onNew}
             onLab={setLab}
             onControl={() => setLab("control")}
+            onToggleArchived={() => setShowArchived((v) => !v)}
+            onPin={async (t, pinned) => { await api.pinSession(t.id, pinned); await refresh(); toast.success(copy.app.pinned); }}
+            onArchive={async (t, archived) => { await api.archiveSession(t.id, archived); await refresh(); toast.success(copy.app.archived); }}
+            onDelete={(t) => setPendingDelete(t)}
+            onRename={async (t, title) => {
+              await api.renameSession(t.id, title);
+              await refresh();
+            }}
           />
         </Panel>
         <ResizeHandle />
@@ -565,11 +825,18 @@ export default function App() {
               draftKey={draftKey}
               disabled={needsSetup}
               disabledReason={copy.composer.disabled}
-              model={savedCfg.model || health.model}
+              model={active?.model || savedCfg.model || health.model}
+              models={savedCfg.models}
               onSend={onSend}
               onStop={onStop}
               onResolve={onResolve}
               onOpenAgent={() => setLab("agent")}
+              onSlash={(cmd, rest) => { void onSlash(cmd, rest); }}
+              onModel={async (model) => {
+                if (!activeId) return;
+                const t = await api.setSessionModel(activeId, model);
+                setActive(t);
+              }}
             />
           </Panel>
         ) : null}
@@ -582,10 +849,13 @@ export default function App() {
         onLab={setLab}
         onSelectThread={setActive}
         onDiff={refreshDiff}
+        onAbout={async () => { setAboutInfo(await api.about().catch(() => ({}))); setAboutOpen(true); }}
+        onQuit={requestQuit}
       />
       <FirstRun
         open={showWizard}
         cfg={savedCfg}
+        onBrowse={async () => api.pickFolder()}
         onSkip={() => setSetupDismissed(true)}
         onFinish={async (values) => {
           if (values.apiKey.trim()) await api.setAPIKey(values.apiKey.trim());
@@ -595,6 +865,34 @@ export default function App() {
           setSavedCfg(next);
           setSetupDismissed(true);
           toast.success(copy.app.controlSaved);
+        }}
+      />
+      <About open={aboutOpen} info={aboutInfo} onClose={() => setAboutOpen(false)} />
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={copy.rail.delete}
+        body={pendingDelete?.title || pendingDelete?.id || ""}
+        danger
+        confirmLabel={copy.rail.delete}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          await api.deleteSession(pendingDelete.id);
+          setPendingDelete(null);
+          await refresh();
+          toast.success(copy.app.deleted);
+        }}
+      />
+      <ConfirmDialog
+        open={pendingQuit}
+        title={copy.control.quitRunning}
+        body={copy.control.quitRunning}
+        danger
+        confirmLabel={copy.app.quit}
+        onCancel={() => setPendingQuit(false)}
+        onConfirm={() => {
+          setPendingQuit(false);
+          void api.quit();
         }}
       />
     </div>

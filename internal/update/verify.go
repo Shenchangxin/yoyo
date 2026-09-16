@@ -12,6 +12,7 @@ type Manifest struct {
 	Version string `json:"version"`
 	Channel string `json:"channel"`
 	SHA256  string `json:"sha256"`
+	URL     string `json:"url,omitempty"`
 }
 
 func ParseManifest(b []byte) (Manifest, error) {

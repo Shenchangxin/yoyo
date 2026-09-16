@@ -1,7 +1,7 @@
 import { FileText, GitCompare, Layers, ShieldAlert } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
-import { copy } from "../lib/copy";
+import { useCopy } from "../lib/i18n";
 import { DiffBlock, type DiffMode } from "../lib/split-diff";
 import type { Approval, ContextUsage, Hunk } from "../lib/protocol";
 
@@ -21,7 +21,9 @@ export function Inspector(props: {
   ctx: ContextUsage;
   approvals: Approval[];
   onResolve: (id: string, decision: string) => void;
+  onQuote?: (text: string) => void;
 }) {
+  const copy = useCopy();
   const files = fileNames(props.diff);
   const tabs: { id: Tab; label: string; icon: typeof GitCompare }[] = [
     { id: "diff", label: props.hunks.length ? `${copy.review.diff} ${props.hunks.length}` : copy.review.diff, icon: GitCompare },
@@ -86,7 +88,11 @@ export function Inspector(props: {
                     <input type="checkbox" checked={!!props.selected[h.id]} onChange={() => props.onToggle(h.id)} />
                     <span className="font-mono tabular-nums text-muted">{h.file ? `${h.file} · ${h.id}` : h.id}</span>
                   </div>
-                  <DiffBlock src={(h.header + "\n" + h.body).slice(0, 1800)} mode={props.mode} />
+                  <DiffBlock
+                    src={(h.header + "\n" + h.body).slice(0, 1800)}
+                    mode={props.mode}
+                    onLineClick={props.onQuote ? (text) => props.onQuote?.(`In ${h.file || "file"}: ${text}`) : undefined}
+                  />
                 </label>
               ))
             )}
@@ -95,7 +101,18 @@ export function Inspector(props: {
         {props.tab === "files" ? (
           files.length ? (
             <ul className="space-y-1 font-mono text-xs text-muted">
-              {files.map((f) => <li key={f} className="truncate rounded-md px-2 py-1 hover:bg-lift">{f}</li>)}
+              {files.map((f) => (
+                <li key={f}>
+                  <button
+                    type="button"
+                    className="w-full truncate rounded-md px-2 py-1 text-left hover:bg-lift"
+                    title={copy.review.quote}
+                    onClick={() => props.onQuote?.(`@file:${f}`)}
+                  >
+                    {f}
+                  </button>
+                </li>
+              ))}
             </ul>
           ) : <p className="text-xs text-muted">{copy.review.noFiles}</p>
         ) : null}
@@ -124,9 +141,11 @@ export function Inspector(props: {
               <div key={a.id} className="mb-2 rounded-xl border border-border bg-panel p-3">
                 <div className="text-sm font-medium">{a.action}</div>
                 <div className="mt-1 font-mono text-xs text-muted">{a.command || a.path}</div>
-                <div className="mt-2 flex gap-2">
-                  <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>{copy.transcript.once}</Button>
-                  <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>{copy.transcript.deny}</Button>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>{copy.review.once}</Button>
+                  <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "session")}>{copy.review.session}</Button>
+                  <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "always")}>{copy.review.always}</Button>
+                  <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>{copy.review.deny}</Button>
                 </div>
               </div>
             ))

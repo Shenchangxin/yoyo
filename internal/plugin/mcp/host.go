@@ -99,6 +99,23 @@ func (h *Host) List() []string {
 	return out
 }
 
+type Info struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	Tools   int      `json:"tools"`
+}
+
+func (h *Host) Info() []Info {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]Info, 0, len(h.servers))
+	for _, s := range h.servers {
+		out = append(out, Info{Name: s.Name, Command: s.Command, Args: s.Args, Tools: len(s.Tools)})
+	}
+	return out
+}
+
 func (h *Host) Tools() []Tool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
