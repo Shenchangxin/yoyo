@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Copy, Loader2, ShieldAlert, Wrench } from "lucide-react";
+import { VList, type VListHandle } from "virtua";
 import { Markdown } from "../lib/markdown";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
+import { copy } from "../lib/copy";
 import type { Approval, Item } from "../lib/protocol";
-
-const STARTERS = [
-  { label: "Summarize the workspace", text: "Summarize this workspace and list the files that matter." },
-  { label: "Pin the harness", text: "@harness\nWhat is the active harness and what can I safely change?" },
-  { label: "Plan a change", text: "Propose a plan to add a README section describing how to run Yoyo desktop." },
-];
 
 export function Transcript(props: {
   items: Item[];
@@ -21,13 +17,20 @@ export function Transcript(props: {
   onPrompt?: (text: string) => void;
   onSetup?: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const vlist = useRef<VListHandle>(null);
   const stick = useRef(true);
+  const count = props.items.length + props.approvals.length + (props.running ? 1 : 0);
+
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !stick.current) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [props.items, props.approvals, props.running]);
+    if (!stick.current) return;
+    if (vlist.current && count > 0) {
+      vlist.current.scrollToIndex(count - 1, { align: "end" });
+      return;
+    }
+    const el = scroller.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [count, props.items, props.approvals, props.running]);
 
   const empty = props.items.length === 0 && !props.running && props.approvals.length === 0;
   let lastAssistant = -1;
@@ -38,33 +41,73 @@ export function Transcript(props: {
     }
   }
 
+  const rows: { key: string; node: ReactNode }[] = [
+    ...props.items.map((it, i) => ({
+      key: it.key,
+      node: <ItemRow item={it} streaming={props.running && it.type === "assistant" && i === lastAssistant} />,
+    })),
+    ...props.approvals.map((a) => ({
+      key: `ask:${a.id}`,
+      node: (
+        <div className="rounded-xl border border-accent/30 bg-accent/10 p-4" role="status">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-accent">
+            <ShieldAlert className="size-3.5" aria-hidden />
+            {copy.transcript.needsApproval}
+          </div>
+          <div className="text-sm font-medium">{a.action || "action"}</div>
+          <div className="mt-1 font-mono text-xs text-muted">{a.command || a.path || a.level}</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>{copy.transcript.once}</Button>
+            <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "session")}>{copy.transcript.session}</Button>
+            <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "always")}>{copy.transcript.always}</Button>
+            <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>{copy.transcript.deny}</Button>
+          </div>
+        </div>
+      ),
+    })),
+  ];
+  if (props.running) {
+    rows.push({
+      key: "working",
+      node: (
+        <div className="flex items-center gap-2 text-sm text-muted" role="status" aria-live="polite">
+          <Loader2 className="size-4 animate-spin text-accent" aria-hidden />
+          {copy.transcript.working}
+        </div>
+      ),
+    });
+  }
+
+  const virtual = !props.compact && rows.length > 24;
+
+  function onScrollNearBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }) {
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
   return (
     <div
-      className="prose-select min-h-0 flex-1 overflow-auto px-4 pb-4 pt-6"
-      ref={ref}
-      onScroll={() => {
-        const el = ref.current;
-        if (!el) return;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      className={cn("prose-select min-h-0 flex-1 px-4 pb-4 pt-6", virtual ? "overflow-hidden" : "overflow-auto")}
+      ref={scroller}
+      onScroll={virtual ? undefined : () => {
+        const el = scroller.current;
+        if (el) onScrollNearBottom(el);
       }}
     >
       {empty && !props.compact ? (
         <div className="mx-auto flex h-full min-h-[240px] max-w-3xl flex-col justify-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Ready for a turn</h1>
-          <p className="mt-2 max-w-lg text-sm text-muted">
-            Pin extra context with @file:path, @folder:dir, or @harness. Plan mode proposes without writing.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{copy.transcript.ready}</h1>
+          <p className="mt-2 max-w-lg text-sm text-muted">{copy.transcript.readyBody}</p>
           {props.needsSetup ? (
             <button
               type="button"
               className="mt-4 w-fit rounded-full bg-foreground px-4 py-2 text-sm text-background"
               onClick={props.onSetup}
             >
-              Open Control to set workspace
+              {copy.transcript.openControl}
             </button>
           ) : (
             <div className="mt-6 flex flex-wrap gap-2">
-              {STARTERS.map((s) => (
+              {copy.transcript.starters.map((s) => (
                 <button
                   type="button"
                   key={s.label}
@@ -77,34 +120,29 @@ export function Transcript(props: {
             </div>
           )}
         </div>
-      ) : null}
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-        {props.items.map((it, i) => (
-          <ItemRow key={it.key} item={it} streaming={props.running && it.type === "assistant" && i === lastAssistant} />
-        ))}
-        {props.approvals.map((a) => (
-          <div key={a.id} className="rounded-xl border border-accent/30 bg-accent/10 p-4" role="status">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-accent">
-              <ShieldAlert className="size-3.5" aria-hidden />
-              Needs approval
+      ) : virtual ? (
+        <VList
+          ref={vlist}
+          className="mx-auto h-full w-full max-w-3xl"
+          onScroll={(offset) => {
+            const handle = vlist.current;
+            if (!handle) return;
+            stick.current = handle.scrollSize - offset - handle.viewportSize < 80;
+          }}
+        >
+          {rows.map((row) => (
+            <div key={row.key} className="pb-5">
+              {row.node}
             </div>
-            <div className="text-sm font-medium">{a.action || "action"}</div>
-            <div className="mt-1 font-mono text-xs text-muted">{a.command || a.path || a.level}</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>Once</Button>
-              <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "session")}>Session</Button>
-              <Button size="sm" variant="lift" onClick={() => props.onResolve(a.id, "always")}>Always</Button>
-              <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>Deny</Button>
-            </div>
-          </div>
-        ))}
-        {props.running ? (
-          <div className="flex items-center gap-2 text-sm text-muted" role="status" aria-live="polite">
-            <Loader2 className="size-4 animate-spin text-accent" aria-hidden />
-            Working…
-          </div>
-        ) : null}
-      </div>
+          ))}
+        </VList>
+      ) : (
+        <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-5 overflow-auto">
+          {rows.map((row) => (
+            <div key={row.key}>{row.node}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -128,7 +166,7 @@ function ItemRow({ item, streaming }: { item: Item; streaming?: boolean }) {
           <button
             type="button"
             className="absolute -right-1 -top-1 hidden rounded-md p-1 text-muted hover:bg-lift group-hover:block"
-            aria-label="Copy"
+            aria-label={copy.transcript.copy}
             onClick={() => navigator.clipboard.writeText(item.text)}
           >
             <Copy className="size-3.5" />
@@ -150,7 +188,7 @@ function ItemRow({ item, streaming }: { item: Item; streaming?: boolean }) {
   if (item.type === "context_injection") {
     return (
       <details className="rounded-xl border border-border bg-panel px-3 py-2 text-xs text-muted">
-        <summary className="cursor-pointer text-foreground">Mention</summary>
+        <summary className="cursor-pointer text-foreground">{copy.transcript.mention}</summary>
         <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono">{item.text.slice(0, 1200)}</pre>
       </details>
     );

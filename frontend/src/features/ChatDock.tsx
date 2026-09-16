@@ -1,18 +1,16 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import type { Approval, Item } from "../lib/protocol";
+import { copy } from "../lib/copy";
 
 export function ChatDock(props: {
   items: Item[];
   approvals: Approval[];
   running: boolean;
-  message: string;
-  plan: boolean;
+  draftKey: string;
   disabled: boolean;
   disabledReason?: string;
   model?: string;
-  onChange: (v: string) => void;
-  onPlan: (v: boolean) => void;
   onSend: () => void;
   onStop: () => void;
   onResolve: (id: string, decision: string) => void;
@@ -28,14 +26,11 @@ export function ChatDock(props: {
       </div>
       <Transcript items={props.items.slice(-12)} approvals={props.approvals} running={props.running} compact onResolve={props.onResolve} />
       <Composer
-        value={props.message}
-        plan={props.plan}
+        draftKey={props.draftKey}
         running={props.running}
         disabled={props.disabled}
-        disabledReason={props.disabledReason}
+        disabledReason={props.disabledReason || copy.composer.disabled}
         model={props.model}
-        onChange={props.onChange}
-        onPlan={props.onPlan}
         onSend={props.onSend}
         onStop={props.onStop}
       />

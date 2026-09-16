@@ -146,9 +146,11 @@ go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-cd frontend && npm install && cd ..
-wails3 task dev
+npm run dev
+# 或者：bun run dev
 ```
+
+这一条会在 Windows 上补上 Go/Git 的 PATH、释放 Vite 的 9245 端口，并打开 Wails 窗口。第一次还会由 Wails task 安装前端依赖。
 
 正式包：
 
@@ -161,7 +163,7 @@ wails3 task build
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
-wails3 task dev
+npm run dev
 ```
 
 **C. 只用 CLI**

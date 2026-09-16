@@ -5,7 +5,9 @@ import * as api from "./lib/client";
 import { mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "./lib/stream";
 import { readLayout, writeLayout, type ShellLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
-import type { AppConfig, Approval, ContextUsage, Health, Hunk, Item, Lab, Thread } from "./lib/protocol";
+import { copy } from "./lib/copy";
+import { useUI } from "./lib/store";
+import type { AppConfig, Approval, ContextUsage, Health, Hunk, Item, Thread } from "./lib/protocol";
 import { WindowChrome } from "./features/WindowChrome";
 import { CommandPalette } from "./features/CommandPalette";
 import { ResizeHandle } from "./features/ResizeHandle";
@@ -15,6 +17,7 @@ import { Transcript } from "./features/Transcript";
 import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
 import { ChatDock } from "./features/ChatDock";
+import { FirstRun } from "./features/FirstRun";
 import { HarborLab } from "./features/labs/HarborLab";
 import { EvolveLab } from "./features/labs/EvolveLab";
 import { HarnessLab } from "./features/labs/HarnessLab";
@@ -46,31 +49,40 @@ function localUser(sessionId: string, text: string): Item {
 }
 
 export default function App() {
-  const [lab, setLab] = useState<Lab>("agent");
-  const labRef = useRef(lab);
-  labRef.current = lab;
+  const lab = useUI((s) => s.lab);
+  const setLab = useUI((s) => s.setLab);
+  const inspector = useUI((s) => s.inspector);
+  const setInspector = useUI((s) => s.setInspector);
+  const palette = useUI((s) => s.palette);
+  const setPalette = useUI((s) => s.setPalette);
+  const query = useUI((s) => s.query);
+  const setQuery = useUI((s) => s.setQuery);
+  const inspTab = useUI((s) => s.inspTab);
+  const setInspTab = useUI((s) => s.setInspTab);
+  const diffMode = useUI((s) => s.diffMode);
+  const setDiffMode = useUI((s) => s.setDiffMode);
+  const setupDismissed = useUI((s) => s.setupDismissed);
+  const setSetupDismissed = useUI((s) => s.setSetupDismissed);
+
   const [health, setHealth] = useState<Health>(emptyHealth);
-  const [cfg, setCfg] = useState<AppConfig>(emptyCfg);
   const [savedCfg, setSavedCfg] = useState<AppConfig>(emptyCfg);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [active, setActive] = useState<Thread | null>(null);
-  const [query, setQuery] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [ctx, setCtx] = useState<ContextUsage>(emptyCtx);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [plan, setPlan] = useState(false);
   const [err, setErr] = useState("");
-  const [inspector, setInspector] = useState(true);
-  const [inspTab, setInspTab] = useState<"diff" | "files" | "context" | "approvals">("diff");
   const [diff, setDiff] = useState("");
   const [hunks, setHunks] = useState<Hunk[]>([]);
   const [hunkSel, setHunkSel] = useState<Record<string, boolean>>({});
+  const lastApply = useRef<{ workspace: string; ids: string[]; snapshot: string } | null>(null);
   const [harness, setHarness] = useState<any>({});
   const [plugins, setPlugins] = useState<any>({});
   const [evalReport, setEvalReport] = useState<any>(null);
   const [bestReport, setBestReport] = useState<any>(null);
+  const [harborErr, setHarborErr] = useState("");
+  const [harborKind, setHarborKind] = useState<"suite" | "safety" | "tb" | "bon" | "models">("suite");
   const [evolve, setEvolve] = useState<any>(null);
   const [playbook, setPlaybook] = useState<any>(null);
   const [tree, setTree] = useState<any[]>([]);
@@ -80,17 +92,15 @@ export default function App() {
   const [diffA, setDiffA] = useState("");
   const [diffB, setDiffB] = useState("");
   const [diffOut, setDiffOut] = useState<any>(null);
-  const [palette, setPalette] = useState(false);
   const [layout, setLayout] = useState<ShellLayout>(readLayout);
+  const [booted, setBooted] = useState(false);
   const narrow = useMedia("(max-width: 1099px)");
 
   const activeId = active?.id || "";
   const draftKey = activeId || "_new";
-  const message = drafts[draftKey] || "";
-  const setMessage = (v: string) => setDrafts((d) => ({ ...d, [draftKey]: v }));
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
-  const needsSetup = !cfg.workspace;
+  const needsSetup = !savedCfg.workspace;
   const three = lab === "agent" && inspector && !narrow;
   const dock = lab !== "agent";
 
@@ -120,7 +130,6 @@ export default function App() {
       ]);
       setHealth(h);
       setSavedCfg(c);
-      setCfg((cur) => (labRef.current === "control" ? cur : c));
       setThreads(list);
       setHarness(hs);
       setPlugins(pl);
@@ -133,6 +142,8 @@ export default function App() {
       await syncRunning();
     } catch (e) {
       fail(e);
+    } finally {
+      setBooted(true);
     }
   }, [syncRunning]);
 
@@ -173,7 +184,7 @@ export default function App() {
     api.contextUsage(activeId).then(setCtx).catch(() => {});
     api.running(activeId).then((live) => setRunning((m) => ({ ...m, [activeId]: live }))).catch(() => {});
     return unsub;
-  }, [activeId]);
+  }, [activeId, setInspTab, setInspector]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -194,27 +205,27 @@ export default function App() {
 
   async function ensureThread(): Promise<Thread> {
     if (active) return active;
-    const t = await api.createSession(cfg.workspace);
+    const t = await api.createSession(savedCfg.workspace);
     setThreads((prev) => [t, ...prev]);
     setActive(t);
     return t;
   }
 
   async function onSend() {
-    const text = message.trim();
+    const text = (useUI.getState().drafts[draftKey] || "").trim();
     if (!text) return;
-    if (!cfg.workspace) {
-      toast.message("Set a workspace in Control first.");
+    if (!savedCfg.workspace) {
+      toast.message(copy.app.setupFirst);
       setLab("control");
       return;
     }
     setErr("");
     try {
       const t = await ensureThread();
-      setDrafts((d) => ({ ...d, [t.id]: "", _new: "" }));
+      useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
       setRunning((m) => ({ ...m, [t.id]: true }));
       setItems((prev) => (t.id === activeId ? [...prev, localUser(t.id, text)] : prev));
-      await api.send(t.id, text, { plan });
+      await api.send(t.id, text, { plan: useUI.getState().plan });
     } catch (e) {
       const m = api.errMessage(e);
       if (!m.includes("already running")) {
@@ -237,7 +248,7 @@ export default function App() {
 
   async function refreshDiff() {
     try {
-      const h = await api.workspaceHunks(cfg.workspace || active?.workspace || "");
+      const h = await api.workspaceHunks(savedCfg.workspace || active?.workspace || "");
       setDiff(h.diff);
       setHunks(h.hunks);
       setHunkSel({});
@@ -250,19 +261,37 @@ export default function App() {
     }
   }
 
+  async function undoLastApply() {
+    const last = lastApply.current;
+    if (!last) return;
+    try {
+      await api.reverseHunks(last.workspace, last.ids, last.snapshot);
+      lastApply.current = null;
+      await refreshDiff();
+      toast.success(copy.app.undone);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function applySelected() {
     const ids = Object.entries(hunkSel).filter(([, v]) => v).map(([k]) => k);
+    const workspace = savedCfg.workspace || active?.workspace || "";
+    const snapshot = diff;
     try {
-      await api.applyHunks(cfg.workspace || active?.workspace || "", ids);
+      await api.applyHunks(workspace, ids);
+      lastApply.current = { workspace, ids, snapshot };
       await refreshDiff();
-      toast.success("Applied selected hunks");
+      toast.success(copy.app.applied, {
+        action: { label: copy.app.undo, onClick: () => { void undoLastApply(); } },
+      });
     } catch (e) {
       fail(e);
     }
   }
 
   async function onNew() {
-    const t = await api.createSession(cfg.workspace);
+    const t = await api.createSession(savedCfg.workspace);
     setThreads((prev) => [t, ...prev]);
     setActive(t);
     setLab("agent");
@@ -293,20 +322,35 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cfg.workspace]);
+  }, [savedCfg.workspace, setLab, setInspector, setPalette]);
 
   const composer = (
     <Composer
-      value={message}
-      plan={plan}
+      draftKey={draftKey}
       running={threadRunning}
       disabled={needsSetup}
-      disabledReason="Set a workspace in Control to send…"
-      model={cfg.model || health.model}
-      onChange={setMessage}
-      onPlan={setPlan}
+      disabledReason={copy.composer.disabled}
+      model={savedCfg.model || health.model}
       onSend={onSend}
       onStop={onStop}
+    />
+  );
+
+  const inspect = (
+    <Inspector
+      tab={inspTab}
+      onTab={setInspTab}
+      diff={diff}
+      hunks={hunks}
+      selected={hunkSel}
+      mode={diffMode}
+      onMode={setDiffMode}
+      onToggle={(id) => setHunkSel((s) => ({ ...s, [id]: !s[id] }))}
+      onApply={applySelected}
+      onRefreshDiff={refreshDiff}
+      ctx={ctx}
+      approvals={approvals}
+      onResolve={onResolve}
     />
   );
 
@@ -315,7 +359,7 @@ export default function App() {
       <Titlebar
         health={health}
         ctx={ctx}
-        workspace={cfg.workspace}
+        workspace={savedCfg.workspace}
         inspector={inspector}
         title={active?.title || "New chat"}
         onToggleInspector={() => setInspector((v) => !v)}
@@ -340,25 +384,13 @@ export default function App() {
         running={threadRunning}
         needsSetup={needsSetup}
         onResolve={onResolve}
-        onPrompt={setMessage}
+        onPrompt={(text) => useUI.getState().setDraft(draftKey, text)}
         onSetup={() => setLab("control")}
       />
       {composer}
       {narrow && inspector && lab === "agent" ? (
-        <div className="absolute inset-y-0 right-0 z-20 w-[min(360px,92%)] border-l border-border bg-sidebar shadow-xl">
-          <Inspector
-            tab={inspTab}
-            onTab={setInspTab}
-            diff={diff}
-            hunks={hunks}
-            selected={hunkSel}
-            onToggle={(id) => setHunkSel((s) => ({ ...s, [id]: !s[id] }))}
-            onApply={applySelected}
-            onRefreshDiff={refreshDiff}
-            ctx={ctx}
-            approvals={approvals}
-            onResolve={onResolve}
-          />
+        <div className="absolute bottom-0 right-0 top-11 z-20 w-[min(360px,92%)] border-l border-border bg-sidebar shadow-xl">
+          {inspect}
         </div>
       ) : null}
     </section>
@@ -368,11 +400,15 @@ export default function App() {
     lab === "harbor" ? (
       <HarborLab
         busy={labBusy}
+        error={harborErr}
+        lastKind={harborKind}
         report={evalReport}
         best={bestReport}
         models={bonModels}
         onModels={setBonModels}
         onRun={async (kind) => {
+          setHarborKind(kind);
+          setHarborErr("");
           setLabBusy("Harbor running…");
           try {
             if (kind === "suite") { setEvalReport(await api.runEval()); setBestReport(null); }
@@ -388,7 +424,10 @@ export default function App() {
               setBestReport(r);
               setEvalReport(r.best || r.Best);
             }
-          } catch (e) { fail(e); }
+          } catch (e) {
+            setHarborErr(api.errMessage(e));
+            fail(e);
+          }
           finally { setLabBusy(null); }
         }}
       />
@@ -429,33 +468,31 @@ export default function App() {
         onCheckout={async (hash, l3) => {
           await api.checkout(hash, !!l3);
           await refresh();
-          toast.success("Checked out");
+          toast.success(copy.app.checkedOut);
         }}
-        onRollback={async () => { await api.rollback(); await refresh(); toast.success("Rolled back"); }}
+        onRollback={async () => { await api.rollback(); await refresh(); toast.success(copy.app.rolledBack); }}
       />
     ) : lab === "control" ? (
       <ControlLab
-        cfg={cfg}
         saved={savedCfg}
         plugins={plugins}
-        onCfg={setCfg}
-        onSave={async (key) => {
+        onSave={async (next, key) => {
           if (key.trim()) await api.setAPIKey(key.trim());
-          await api.setConfig(cfg);
+          await api.setConfig(next);
           await refresh();
-          setCfg(cfg);
-          setSavedCfg(cfg);
-          toast.success("Control saved");
+          setSavedCfg(next);
+          toast.success(copy.app.controlSaved);
         }}
         onUpdate={async () => {
-          try { await api.applyUpdate(); await refresh(); toast.success("Staged update applied"); }
+          try { await api.applyUpdate(); await refresh(); toast.success(copy.app.stagedUpdate); }
           catch (e) { fail(e); }
         }}
         onUnload={async (name) => { await api.unloadFiber(name); await refresh(); }}
       />
     ) : null;
 
-  const showSetup = needsSetup && lab !== "control";
+  const showWizard = booted && needsSetup && !setupDismissed;
+  const showSetup = booted && needsSetup && setupDismissed && lab !== "control";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -463,14 +500,14 @@ export default function App() {
       {err ? (
         <div className="flex items-center gap-3 border-b border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
           {err}
-          <button type="button" className="ml-auto text-xs underline" onClick={() => setErr("")}>Dismiss</button>
+          <button type="button" className="ml-auto text-xs underline" onClick={() => setErr("")}>{copy.app.dismiss}</button>
         </div>
       ) : null}
       {showSetup ? (
         <div className="flex items-center gap-3 border-b border-border bg-panel px-4 py-2 text-sm text-muted">
-          Set a workspace and API key in Control before the first turn.
+          {copy.app.setupBanner}
           <button type="button" className="rounded-full bg-lift px-3 py-1 text-xs text-foreground" onClick={() => setLab("control")}>
-            Open Control
+            {copy.app.openControl}
           </button>
         </div>
       ) : null}
@@ -516,19 +553,7 @@ export default function App() {
         {three || dock ? <ResizeHandle /> : null}
         {three ? (
           <Panel id="inspect" minSize="18" maxSize="42" className="h-full min-h-0">
-            <Inspector
-              tab={inspTab}
-              onTab={setInspTab}
-              diff={diff}
-              hunks={hunks}
-              selected={hunkSel}
-              onToggle={(id) => setHunkSel((s) => ({ ...s, [id]: !s[id] }))}
-              onApply={applySelected}
-              onRefreshDiff={refreshDiff}
-              ctx={ctx}
-              approvals={approvals}
-              onResolve={onResolve}
-            />
+            {inspect}
           </Panel>
         ) : null}
         {dock ? (
@@ -537,13 +562,10 @@ export default function App() {
               items={items}
               approvals={approvals}
               running={threadRunning}
-              message={message}
-              plan={plan}
+              draftKey={draftKey}
               disabled={needsSetup}
-              disabledReason="Set a workspace in Control to send…"
-              model={cfg.model || health.model}
-              onChange={setMessage}
-              onPlan={setPlan}
+              disabledReason={copy.composer.disabled}
+              model={savedCfg.model || health.model}
               onSend={onSend}
               onStop={onStop}
               onResolve={onResolve}
@@ -560,6 +582,20 @@ export default function App() {
         onLab={setLab}
         onSelectThread={setActive}
         onDiff={refreshDiff}
+      />
+      <FirstRun
+        open={showWizard}
+        cfg={savedCfg}
+        onSkip={() => setSetupDismissed(true)}
+        onFinish={async (values) => {
+          if (values.apiKey.trim()) await api.setAPIKey(values.apiKey.trim());
+          const next = { ...savedCfg, workspace: values.workspace, model: values.model };
+          await api.setConfig(next);
+          await refresh();
+          setSavedCfg(next);
+          setSetupDismissed(true);
+          toast.success(copy.app.controlSaved);
+        }}
       />
     </div>
   );

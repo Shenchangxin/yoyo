@@ -86,4 +86,11 @@ func TestApplyHunksGit(t *testing.T) {
 	if strings.ReplaceAll(string(got), "\r\n", "\n") != "keep\nnew\nstill\n" {
 		t.Fatalf("%q", got)
 	}
+	if err := ReverseApplyHunks(dir, string(diff), []string{hs[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = os.ReadFile(p)
+	if strings.ReplaceAll(string(got), "\r\n", "\n") != "keep\nold\nstill\n" {
+		t.Fatalf("undo %q", got)
+	}
 }

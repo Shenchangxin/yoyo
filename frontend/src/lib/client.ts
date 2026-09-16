@@ -12,6 +12,7 @@ export class ApiError extends Error {
 }
 
 async function wailsService(): Promise<any | null> {
+  if (import.meta.env.VITE_E2E === "1") return null;
   try {
     const spec = "../../bindings/github.com/Shenchangxin/yoyo/internal/desktop/service.js";
     const mod = await import(/* @vite-ignore */ spec);
@@ -103,6 +104,7 @@ export function contextOf(v: any): ContextUsage {
 export function hunkOf(v: any): Hunk {
   return {
     id: str(pick(v, "id", "ID")),
+    file: str(pick(v, "file", "File")),
     header: str(pick(v, "header", "Header")),
     body: str(pick(v, "body", "Body")),
   };
@@ -319,6 +321,12 @@ export async function applyHunks(workspace: string, ids: string[]): Promise<void
   const s = await wailsService();
   if (s?.ApplyHunks) return s.ApplyHunks(workspace, ids);
   await http("/api/workspace/hunks", { method: "POST", body: JSON.stringify({ workspace, ids }) });
+}
+
+export async function reverseHunks(workspace: string, ids: string[], snapshot: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.ReverseHunks) return s.ReverseHunks(workspace, ids, snapshot);
+  await http("/api/workspace/hunks", { method: "POST", body: JSON.stringify({ workspace, ids, snapshot, reverse: true }) });
 }
 
 export async function runEvalSafety(): Promise<any> {

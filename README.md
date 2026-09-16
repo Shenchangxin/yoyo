@@ -146,9 +146,11 @@ Open [http://127.0.0.1:3080](http://127.0.0.1:3080). Chat, Eval Lab, Evolution L
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-cd frontend && npm install && cd ..
-wails3 task dev
+npm run dev
+# or: bun run dev
 ```
+
+That one command prepends Go/Git on Windows, frees Vite port 9245, and opens the Wails window. First run also installs frontend deps via the Wails task.
 
 Production binary:
 
@@ -161,7 +163,7 @@ Run the loop in a child process (GUI stays alive if the agent wedges):
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
-wails3 task dev
+npm run dev
 ```
 
 **C. CLI only**

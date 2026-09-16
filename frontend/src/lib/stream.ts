@@ -142,6 +142,7 @@ export function subscribeSessions(onChange: () => void): () => void {
 }
 
 async function wailsEvents(): Promise<any | null> {
+  if (import.meta.env.VITE_E2E === "1") return null;
   try {
     const mod: any = await import("@wailsio/runtime");
     return mod.Events || mod.events || null;

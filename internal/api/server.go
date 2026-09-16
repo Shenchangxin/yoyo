@@ -237,9 +237,17 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			var body struct {
 				Workspace string   `json:"workspace"`
 				IDs       []string `json:"ids"`
+				Snapshot  string   `json:"snapshot"`
+				Reverse   bool     `json:"reverse"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if err := a.ApplyWorkspaceHunks(body.Workspace, body.IDs); err != nil {
+			var err error
+			if body.Reverse {
+				err = a.ReverseWorkspaceHunks(body.Workspace, body.IDs, body.Snapshot)
+			} else {
+				err = a.ApplyWorkspaceHunks(body.Workspace, body.IDs)
+			}
+			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return
 			}

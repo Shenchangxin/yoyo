@@ -1,10 +1,13 @@
 import { asArray, num, pick, str } from "../../lib/normalize";
+import { copy } from "../../lib/copy";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LabFrame } from "./LabFrame";
 
 export function HarborLab(props: {
   busy: string | null;
+  error?: string;
+  lastKind?: "suite" | "safety" | "tb" | "bon" | "models";
   report: any;
   best: any;
   models: string;
@@ -36,14 +39,23 @@ export function HarborLab(props: {
         <Button variant="lift" disabled={!!props.busy} onClick={() => props.onRun("models")}>Models BoN</Button>
       </div>
       {props.busy ? <p className="mb-4 text-sm text-accent">{props.busy}</p> : null}
+      {!props.busy && props.error ? (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <span>{props.error}</span>
+          <Button size="sm" variant="lift" onClick={() => props.onRun(props.lastKind || "suite")}>{copy.harbor.retry}</Button>
+        </div>
+      ) : null}
       {props.report ? (
         <>
           <div className="mb-4 grid grid-cols-3 gap-3">
-            <Stat label="Held-in" value={`${inP}/${inT}`} />
-            <Stat label="Held-out" value={`${outP}/${outT}`} />
-            <Stat label="Safety fail" value={String(safety)} bad={safety > 0} />
+            <Stat label={copy.harbor.heldIn} value={`${inP}/${inT}`} />
+            <Stat label={copy.harbor.heldOut} value={`${outP}/${outT}`} />
+            <Stat label={copy.harbor.safety} value={String(safety)} bad={safety > 0} />
           </div>
           {why ? <p className="mb-4 rounded-2xl border border-border bg-panel px-4 py-3 text-sm text-muted">{why}</p> : null}
+          {results.length === 0 ? (
+            <p className="text-sm text-muted">{copy.harbor.noResults}</p>
+          ) : (
           <table className="w-full text-left text-sm">
             <thead className="text-muted">
               <tr><th className="py-2">Task</th><th>Pass</th><th>Error</th></tr>
@@ -58,8 +70,9 @@ export function HarborLab(props: {
               ))}
             </tbody>
           </table>
+          )}
         </>
-      ) : <p className="text-sm text-muted">Sealed local suite: held-in write-hello, held-out write-answer. TB subset is opt-in.</p>}
+      ) : <p className="text-sm text-muted">{copy.harbor.empty}</p>}
       {props.best?.reports || props.best?.Reports ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {asArray(pick(props.best, "reports", "Reports")).map((r: any, i: number) => {

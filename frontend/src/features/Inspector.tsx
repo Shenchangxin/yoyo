@@ -1,6 +1,8 @@
 import { FileText, GitCompare, Layers, ShieldAlert } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
+import { copy } from "../lib/copy";
+import { DiffBlock, type DiffMode } from "../lib/split-diff";
 import type { Approval, ContextUsage, Hunk } from "../lib/protocol";
 
 type Tab = "diff" | "files" | "context" | "approvals";
@@ -11,6 +13,8 @@ export function Inspector(props: {
   diff: string;
   hunks: Hunk[];
   selected: Record<string, boolean>;
+  mode: DiffMode;
+  onMode: (m: DiffMode) => void;
   onToggle: (id: string) => void;
   onApply: () => void;
   onRefreshDiff: () => void;
@@ -20,10 +24,10 @@ export function Inspector(props: {
 }) {
   const files = fileNames(props.diff);
   const tabs: { id: Tab; label: string; icon: typeof GitCompare }[] = [
-    { id: "diff", label: props.hunks.length ? `Diff ${props.hunks.length}` : "Diff", icon: GitCompare },
-    { id: "files", label: "Files", icon: FileText },
-    { id: "context", label: "Context", icon: Layers },
-    { id: "approvals", label: props.approvals.length ? `Ask ${props.approvals.length}` : "Ask", icon: ShieldAlert },
+    { id: "diff", label: props.hunks.length ? `${copy.review.diff} ${props.hunks.length}` : copy.review.diff, icon: GitCompare },
+    { id: "files", label: copy.review.files, icon: FileText },
+    { id: "context", label: copy.review.context, icon: Layers },
+    { id: "approvals", label: props.approvals.length ? `${copy.review.ask} ${props.approvals.length}` : copy.review.ask, icon: ShieldAlert },
   ];
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar">
@@ -51,24 +55,38 @@ export function Inspector(props: {
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {props.tab === "diff" ? (
           <>
-            <div className="mb-3 flex gap-2">
-              <Button variant="lift" size="sm" onClick={props.onRefreshDiff}>Refresh</Button>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button variant="lift" size="sm" onClick={props.onRefreshDiff}>{copy.review.refresh}</Button>
               <Button size="sm" disabled={!Object.values(props.selected).some(Boolean)} onClick={props.onApply}>
-                Apply selected
+                {copy.review.apply}
               </Button>
+              <div className="ml-auto flex rounded-lg bg-lift p-0.5" role="group" aria-label="Diff layout">
+                {(["unified", "split"] as DiffMode[]).map((m) => (
+                  <button
+                    type="button"
+                    key={m}
+                    aria-pressed={props.mode === m}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-[11px]",
+                      props.mode === m ? "bg-panel text-foreground" : "text-muted",
+                    )}
+                    onClick={() => props.onMode(m)}
+                  >
+                    {m === "unified" ? copy.review.unified : copy.review.split}
+                  </button>
+                ))}
+              </div>
             </div>
             {props.hunks.length === 0 ? (
-              <p className="text-xs text-muted">No hunks. Run a turn, then refresh.</p>
+              <p className="text-xs text-muted">{copy.review.noHunks}</p>
             ) : (
               props.hunks.map((h) => (
                 <label key={h.id} className="mb-2 block rounded-xl border border-border bg-panel p-2">
                   <div className="mb-1 flex items-center gap-2 text-xs">
                     <input type="checkbox" checked={!!props.selected[h.id]} onChange={() => props.onToggle(h.id)} />
-                    <span className="font-mono tabular-nums text-muted">{h.id}</span>
+                    <span className="font-mono tabular-nums text-muted">{h.file ? `${h.file} · ${h.id}` : h.id}</span>
                   </div>
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
-                    {colorDiff((h.header + "\n" + h.body).slice(0, 1800))}
-                  </pre>
+                  <DiffBlock src={(h.header + "\n" + h.body).slice(0, 1800)} mode={props.mode} />
                 </label>
               ))
             )}
@@ -79,13 +97,13 @@ export function Inspector(props: {
             <ul className="space-y-1 font-mono text-xs text-muted">
               {files.map((f) => <li key={f} className="truncate rounded-md px-2 py-1 hover:bg-lift">{f}</li>)}
             </ul>
-          ) : <p className="text-xs text-muted">No changed files in the current diff.</p>
+          ) : <p className="text-xs text-muted">{copy.review.noFiles}</p>
         ) : null}
         {props.tab === "context" ? (
           <div className="space-y-3 text-sm">
-            <Row k="Tokens" v={String(props.ctx.tokens || 0)} />
-            <Row k="Budget" v={String(props.ctx.budget || "—")} />
-            <Row k="Elided" v={String(props.ctx.elided || 0)} />
+            <Row k={copy.review.tokens} v={String(props.ctx.tokens || 0)} />
+            <Row k={copy.review.budget} v={String(props.ctx.budget || "—")} />
+            <Row k={copy.review.elided} v={String(props.ctx.elided || 0)} />
             {props.ctx.layers?.length ? (
               <div className="flex flex-wrap gap-1">
                 {props.ctx.layers.map((l) => (
@@ -94,21 +112,21 @@ export function Inspector(props: {
               </div>
             ) : null}
             <p className="text-xs text-muted">
-              {props.ctx.note || "Trusted pins survive every turn. Tool transcript is untrusted working memory."}
+              {props.ctx.note || copy.review.contextNote}
             </p>
           </div>
         ) : null}
         {props.tab === "approvals" ? (
           props.approvals.length === 0 ? (
-            <p className="text-xs text-muted">No pending approvals. In-stream cards appear in the transcript.</p>
+            <p className="text-xs text-muted">{copy.review.noAsk}</p>
           ) : (
             props.approvals.map((a) => (
               <div key={a.id} className="mb-2 rounded-xl border border-border bg-panel p-3">
                 <div className="text-sm font-medium">{a.action}</div>
                 <div className="mt-1 font-mono text-xs text-muted">{a.command || a.path}</div>
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>Once</Button>
-                  <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>Deny</Button>
+                  <Button size="sm" onClick={() => props.onResolve(a.id, "once")}>{copy.transcript.once}</Button>
+                  <Button size="sm" variant="danger" onClick={() => props.onResolve(a.id, "deny")}>{copy.transcript.deny}</Button>
                 </div>
               </div>
             ))
@@ -117,17 +135,6 @@ export function Inspector(props: {
       </div>
     </aside>
   );
-}
-
-function colorDiff(src: string) {
-  return src.split("\n").map((line, i) => {
-    const cls = line.startsWith("+") && !line.startsWith("+++")
-      ? "text-accent"
-      : line.startsWith("-") && !line.startsWith("---")
-        ? "text-danger"
-        : "text-muted";
-    return <span key={i} className={"block " + cls}>{line || " "}</span>;
-  });
 }
 
 function Row({ k, v }: { k: string; v: string }) {

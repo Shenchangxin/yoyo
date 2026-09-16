@@ -1,45 +1,68 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { asArray, str } from "../../lib/normalize";
+import { copy } from "../../lib/copy";
+import { configToForm, controlSchema, formToConfig, type ControlValues } from "../../lib/control-schema";
 import type { AppConfig } from "../../lib/protocol";
 import { useTheme, type ThemePref } from "../../lib/theme";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { cn } from "../../lib/utils";
 import { LabFrame } from "./LabFrame";
 
 type Section = "appearance" | "provider" | "workspace" | "policy" | "plugins";
 
 const NAV: { id: Section; label: string; hint: string }[] = [
-  { id: "appearance", label: "Appearance", hint: "Theme follows the window, not the agent." },
-  { id: "provider", label: "Provider", hint: "Keys stay in the vault. The agent cannot read them." },
-  { id: "workspace", label: "Workspace", hint: "Turns run against this directory." },
-  { id: "policy", label: "Policy", hint: "Deny-first unless you opt in. Budget is a hard stop." },
-  { id: "plugins", label: "Plugins", hint: "WASM stays HighRisk + ForceAsk. No WASI filesystem." },
+  { id: "appearance", label: copy.control.appearance, hint: copy.control.appearanceHint },
+  { id: "provider", label: copy.control.provider, hint: copy.control.providerHint },
+  { id: "workspace", label: copy.control.workspace, hint: copy.control.workspaceHint },
+  { id: "policy", label: copy.control.policy, hint: copy.control.policyHint },
+  { id: "plugins", label: copy.control.plugins, hint: copy.control.pluginsHint },
 ];
 
 export function ControlLab(props: {
-  cfg: AppConfig;
   saved: AppConfig;
   plugins: any;
-  onCfg: (c: AppConfig) => void;
-  onSave: (apiKey: string) => void;
+  onSave: (next: AppConfig, apiKey: string) => Promise<void> | void;
   onUpdate: () => void;
   onUnload: (name: string) => void;
 }) {
   const [section, setSection] = useState<Section>(!props.saved.workspace ? "workspace" : "appearance");
-  const [apiKey, setApiKey] = useState("");
   const { pref, setPref, resolved } = useTheme();
   const fibers = asArray(props.plugins?.fibers || props.plugins?.Fibers);
   const current = NAV.find((n) => n.id === section)!;
-  const dirty = apiKey.trim().length > 0 || JSON.stringify(props.cfg) !== JSON.stringify(props.saved);
+  const form = useForm<ControlValues>({
+    resolver: zodResolver(controlSchema),
+    defaultValues: configToForm(props.saved),
+    mode: "onChange",
+  });
+
+  useEffect(() => {
+    form.reset(configToForm(props.saved));
+  }, [props.saved, form]);
 
   useEffect(() => {
     if (!props.saved.workspace) setSection("workspace");
   }, [props.saved.workspace]);
 
+  const dirty = form.formState.isDirty;
+  const THEME: { id: ThemePref; label: string }[] = [
+    { id: "system", label: copy.control.system },
+    { id: "dark", label: copy.control.dark },
+    { id: "light", label: copy.control.light },
+  ];
+
   return (
-    <LabFrame title="Control" hint="Vault, policy, and updater. The agent cannot change these surfaces.">
-      <div className="flex min-h-[420px] gap-6">
+    <LabFrame title={copy.control.title} hint={copy.control.hint}>
+      <form
+        className="flex min-h-[420px] gap-6"
+        onSubmit={form.handleSubmit(async (values) => {
+          await props.onSave(formToConfig(props.saved, values), values.apiKey);
+          form.reset({ ...values, apiKey: "" });
+        })}
+      >
         <nav className="w-40 shrink-0 space-y-1" aria-label="Control sections">
           {NAV.map((n) => (
             <button
@@ -60,86 +83,83 @@ export function ControlLab(props: {
           <p className="mb-4 text-sm text-muted">{current.hint}</p>
           {section === "appearance" ? (
             <Card>
-              <h3 className="mb-3 text-sm font-medium">Color mode</h3>
+              <h3 className="mb-3 text-sm font-medium">{copy.control.colorMode}</h3>
               <div className="flex flex-wrap gap-2">
-                {(["system", "dark", "light"] as ThemePref[]).map((p) => (
-                  <Button key={p} variant={pref === p ? "default" : "lift"} size="sm" onClick={() => setPref(p)}>
-                    {p[0].toUpperCase() + p.slice(1)}
+                {THEME.map((p) => (
+                  <Button key={p.id} type="button" variant={pref === p.id ? "default" : "lift"} size="sm" onClick={() => setPref(p.id)}>
+                    {p.label}
                   </Button>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-muted">Resolved {resolved}. Caption buttons and window background follow this.</p>
+              <p className="mt-3 text-xs text-muted">
+                {copy.control.resolved} {resolved}. {copy.control.captionFollow}
+              </p>
             </Card>
           ) : null}
           {section === "provider" ? (
             <Card>
-              <Field label="Model">
-                <Input autoComplete="off" value={props.cfg.model} onChange={(e) => props.onCfg({ ...props.cfg, model: e.target.value })} />
+              <Field label={copy.control.model} error={form.formState.errors.model?.message}>
+                <Input autoComplete="off" {...form.register("model")} />
               </Field>
-              <Field label="Base URL">
-                <Input autoComplete="off" value={props.cfg.baseUrl} onChange={(e) => props.onCfg({ ...props.cfg, baseUrl: e.target.value })} />
+              <Field label={copy.control.baseUrl} error={form.formState.errors.baseUrl?.message}>
+                <Input autoComplete="off" {...form.register("baseUrl")} />
               </Field>
-              <Field label="API key">
-                <Input
-                  type="password"
-                  autoComplete="off"
-                  placeholder="paste then Save — stored in vault"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
+              <Field label={copy.control.apiKey}>
+                <Input type="password" autoComplete="off" placeholder={copy.control.apiKeyPh} {...form.register("apiKey")} />
               </Field>
-              <Field label="Extra models (BoN)">
-                <Input value={props.cfg.models.join(",")} onChange={(e) => props.onCfg({ ...props.cfg, models: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+              <Field label={copy.control.extraModels}>
+                <Input {...form.register("modelsCsv")} />
               </Field>
             </Card>
           ) : null}
           {section === "workspace" ? (
             <Card>
-              <Field label="Path">
-                <Input autoComplete="off" value={props.cfg.workspace} onChange={(e) => props.onCfg({ ...props.cfg, workspace: e.target.value })} />
+              <Field label={copy.control.path} error={form.formState.errors.workspace?.message}>
+                <Input autoComplete="off" {...form.register("workspace")} />
               </Field>
             </Card>
           ) : null}
           {section === "policy" ? (
             <Card>
               <label className="flex items-center gap-2 text-sm text-muted">
-                <input type="checkbox" checked={props.cfg.autoAllow} onChange={(e) => props.onCfg({ ...props.cfg, autoAllow: e.target.checked })} />
-                Auto-allow shell (deny-first stays off unless you opt in)
+                <input type="checkbox" {...form.register("autoAllow")} />
+                {copy.control.autoAllow}
               </label>
-              <Field label="Max budget USD">
-                <Input type="number" value={props.cfg.maxBudgetUsd || ""} onChange={(e) => props.onCfg({ ...props.cfg, maxBudgetUsd: Number(e.target.value) })} />
+              <Field label={copy.control.maxBudget} error={form.formState.errors.maxBudgetUsd?.message}>
+                <Input type="number" {...form.register("maxBudgetUsd", { valueAsNumber: true })} />
               </Field>
-              <Field label="USD per MTok">
-                <Input type="number" value={props.cfg.usdPerMtok || ""} onChange={(e) => props.onCfg({ ...props.cfg, usdPerMtok: Number(e.target.value) })} />
+              <Field label={copy.control.usdPerMtok} error={form.formState.errors.usdPerMtok?.message}>
+                <Input type="number" {...form.register("usdPerMtok", { valueAsNumber: true })} />
               </Field>
             </Card>
           ) : null}
           {section === "plugins" ? (
             <Card>
-              {fibers.length === 0 ? <p className="text-sm text-muted">No extra fibers loaded.</p> : fibers.map((name: any) => (
-                <div className="mb-2 flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2" key={str(name)}>
-                  <span className="font-mono text-xs">{str(name)}</span>
-                  <Button size="sm" variant="ghost" onClick={() => props.onUnload(str(name))}>Unload</Button>
-                </div>
-              ))}
+              {fibers.length === 0 ? (
+                <p className="text-sm text-muted">{copy.control.noFibers}</p>
+              ) : (
+                fibers.map((name: any) => (
+                  <div className="mb-2 flex items-center justify-between rounded-xl border border-border bg-background px-3 py-2" key={str(name)}>
+                    <span className="font-mono text-xs">{str(name)}</span>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => props.onUnload(str(name))}>
+                      {copy.control.unload}
+                    </Button>
+                  </div>
+                ))
+              )}
             </Card>
           ) : null}
           <div className="mt-5 flex items-center gap-2">
-            <Button
-              disabled={!dirty}
-              onClick={() => {
-                const key = apiKey;
-                setApiKey("");
-                props.onSave(key);
-              }}
-            >
-              Save
+            <Button type="submit" disabled={!dirty}>
+              {copy.control.save}
             </Button>
-            <Button variant="lift" onClick={props.onUpdate}>Apply staged update</Button>
-            {dirty ? <span className="text-xs text-muted">Unsaved changes</span> : null}
+            <Button type="button" variant="lift" onClick={props.onUpdate}>
+              {copy.control.applyUpdate}
+            </Button>
+            {dirty ? <span className="text-xs text-muted">{copy.control.unsaved}</span> : null}
           </div>
         </div>
-      </div>
+      </form>
     </LabFrame>
   );
 }
@@ -148,11 +168,12 @@ function Card({ children }: { children: ReactNode }) {
   return <section className="space-y-3 rounded-2xl border border-border bg-panel p-5">{children}</section>;
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
-    <label className="block text-xs text-muted">
-      {label}
+    <div>
+      <Label>{label}</Label>
       <div className="mt-1">{children}</div>
-    </label>
+      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
+    </div>
   );
 }

@@ -342,6 +342,14 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.ApplyWorkspaceHunks(p.Workspace, p.IDs)
+	case "workspace.reverse_hunks":
+		var p struct {
+			Workspace string   `json:"workspace"`
+			IDs       []string `json:"ids"`
+			Snapshot  string   `json:"snapshot"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.ReverseWorkspaceHunks(p.Workspace, p.IDs, p.Snapshot)
 	case "update.status":
 		p := a.StagingPath()
 		st, err := os.Stat(p)
