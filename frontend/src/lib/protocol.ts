@@ -76,6 +76,7 @@ export type AppConfig = {
 
 export type Hunk = {
   id: string;
+  file: string;
   header: string;
   body: string;
 };

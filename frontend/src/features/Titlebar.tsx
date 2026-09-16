@@ -2,6 +2,7 @@ import { Folder, GitFork, PanelRight, Settings } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
+import { copy } from "../lib/copy";
 import type { ContextUsage, Health } from "../lib/protocol";
 
 export function Titlebar(props: {
@@ -29,39 +30,39 @@ export function Titlebar(props: {
       >
         {props.title}
       </button>
-      <div className="ml-auto flex min-w-0 items-center gap-1.5 overflow-hidden">
+      <div className="ml-auto flex min-w-0 items-center gap-1.5">
         {props.workspace ? (
-          <Badge title={props.workspace}>
+          <Badge className="hidden max-w-[140px] truncate sm:inline-flex" title={props.workspace}>
             <Folder className="mr-1 size-3" aria-hidden />
             {shortPath(props.workspace)}
           </Badge>
         ) : null}
         {ctx.budget > 0 ? (
-          <span className="flex items-center gap-2 text-[11px] tabular-nums text-muted" title={ctx.note || "context window"}>
+          <span className="hidden items-center gap-2 text-[11px] tabular-nums text-muted md:flex" title={ctx.note || "context window"}>
             <span className="h-1.5 w-16 overflow-hidden rounded-full bg-lift">
               <span className="block h-full bg-accent" style={{ width: pct + "%" }} />
             </span>
             {fmt(ctx.tokens)}/{fmt(ctx.budget)}
           </span>
         ) : null}
-        {h.usageUsd ? <Badge>${h.usageUsd.toFixed(4)}</Badge> : null}
-        <Badge>{h.model || "model"}</Badge>
-        <Button variant="ghost" size="sm" onClick={props.onFork} aria-label="Fork chat">
+        {h.usageUsd ? <Badge className="hidden lg:inline-flex">${h.usageUsd.toFixed(4)}</Badge> : null}
+        <Badge className="hidden sm:inline-flex">{h.model || "model"}</Badge>
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" onClick={props.onFork} aria-label="Fork chat">
           <GitFork />
           Fork
         </Button>
-        <Button variant="ghost" size="sm" onClick={props.onDiff}>Diff</Button>
+        <Button className="hidden sm:inline-flex" variant="ghost" size="sm" onClick={props.onDiff}>Diff</Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={props.onToggleInspector}
-          aria-label="Toggle review"
+          aria-label={copy.review.toggle}
           aria-pressed={props.inspector}
-          className={cn(props.inspector && "text-foreground")}
+          className={cn("shrink-0", props.inspector && "text-foreground")}
         >
           <PanelRight />
         </Button>
-        <Button variant="ghost" size="icon" onClick={props.onControl} aria-label="Open Control">
+        <Button variant="ghost" size="icon" className="shrink-0" onClick={props.onControl} aria-label="Open Control">
           <Settings />
         </Button>
       </div>

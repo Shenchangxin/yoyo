@@ -146,9 +146,11 @@ go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-cd frontend && npm install && cd ..
-wails3 task dev
+npm run dev
+# または: bun run dev
 ```
+
+この 1 本が Windows では Go/Git を PATH に足し、Vite の 9245 を空けて Wails ウィンドウを開きます。初回は Wails task がフロントエンド依存関係も入れます。
 
 本番バイナリ:
 
@@ -161,7 +163,7 @@ loop を子プロセスに（エージェントが固まってもウィンドウ
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
-wails3 task dev
+npm run dev
 ```
 
 **C. CLI だけ**

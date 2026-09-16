@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import type { Lab, Thread } from "../lib/protocol";
+import { copy } from "../lib/copy";
 import { chrome } from "../lib/chrome";
 
 export function CommandPalette(props: {
@@ -17,12 +18,12 @@ export function CommandPalette(props: {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
         <Dialog.Content className="fixed left-1/2 top-[16vh] z-50 w-[min(520px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-border bg-panel focus:outline-none">
-          <Dialog.Title className="sr-only">Command palette</Dialog.Title>
-          <Dialog.Description className="sr-only">Jump to a thread, lab, or action</Dialog.Description>
-          <Command label="Command palette">
-            <Command.Input placeholder="Jump to a thread or action…" />
+          <Dialog.Title className="sr-only">{copy.palette.title}</Dialog.Title>
+          <Dialog.Description className="sr-only">{copy.palette.desc}</Dialog.Description>
+          <Command label={copy.palette.title}>
+            <Command.Input placeholder={copy.palette.placeholder} />
             <Command.List>
-              <Command.Empty>No matches</Command.Empty>
+              <Command.Empty>{copy.palette.empty}</Command.Empty>
               <Command.Group heading="Actions">
                 <Command.Item value="new chat" onSelect={() => { props.onNew(); props.onClose(); }}>New chat</Command.Item>
                 <Command.Item value="agent" onSelect={() => { props.onLab("agent"); props.onClose(); }}>Agent</Command.Item>

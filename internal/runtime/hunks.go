@@ -156,6 +156,16 @@ func PatchFromHunks(diff string, ids []string) (string, error) {
 // ApplyHunks applies selected hunks from a workspace git diff. Paths are
 // jailed to workspace; this is not a sandbox, just the same path jail as tools.
 func ApplyHunks(workspace, diff string, ids []string) error {
+	return applyHunks(workspace, diff, ids, false)
+}
+
+// ReverseApplyHunks undoes a previously applied selection using the snapshot
+// diff from before apply. The snapshot must still contain those hunk IDs.
+func ReverseApplyHunks(workspace, diff string, ids []string) error {
+	return applyHunks(workspace, diff, ids, true)
+}
+
+func applyHunks(workspace, diff string, ids []string, reverse bool) error {
 	if workspace == "" {
 		return fmt.Errorf("empty workspace")
 	}
@@ -169,18 +179,24 @@ func ApplyHunks(workspace, diff string, ids []string) error {
 			return fmt.Errorf("hunk path outside workspace: %s", h.File)
 		}
 	}
-	cmd := exec.Command("git", "-C", workspace, "apply", "--unidiff-zero", "--whitespace=nowarn", "-")
-	cmd.Stdin = strings.NewReader(patch)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return nil
+	run := func(extra ...string) (string, error) {
+		args := append([]string{"-C", workspace, "apply"}, extra...)
+		if reverse {
+			args = append(args, "-R")
+		}
+		args = append(args, "-")
+		cmd := exec.Command("git", args...)
+		cmd.Stdin = strings.NewReader(patch)
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
 	}
-	// Fallback: git apply without --unidiff-zero (normal unified hunks).
-	cmd = exec.Command("git", "-C", workspace, "apply", "--whitespace=nowarn", "-")
-	cmd.Stdin = strings.NewReader(patch)
-	out2, err2 := cmd.CombinedOutput()
-	if err2 == nil {
+	if out, err := run("--unidiff-zero", "--whitespace=nowarn"); err == nil {
 		return nil
+	} else {
+		if out2, err2 := run("--whitespace=nowarn"); err2 == nil {
+			return nil
+		} else {
+			return fmt.Errorf("git apply: %s %s", out, out2)
+		}
 	}
-	return fmt.Errorf("git apply: %s %s", strings.TrimSpace(string(out)), strings.TrimSpace(string(out2)))
 }

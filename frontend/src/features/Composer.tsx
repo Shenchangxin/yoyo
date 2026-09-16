@@ -3,6 +3,8 @@ import { ArrowUp, AtSign, Square } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/input";
 import { cn } from "../lib/utils";
+import { copy } from "../lib/copy";
+import { useUI } from "../lib/store";
 
 const MENTIONS = [
   { token: "@file:", hint: "pin a file (bounded)" },
@@ -11,33 +13,35 @@ const MENTIONS = [
 ];
 
 export function Composer(props: {
-  value: string;
-  plan: boolean;
+  draftKey: string;
   running: boolean;
   disabled: boolean;
   disabledReason?: string;
   model?: string;
-  onChange: (v: string) => void;
-  onPlan: (v: boolean) => void;
   onSend: () => void;
   onStop: () => void;
 }) {
+  const value = useUI((s) => s.drafts[props.draftKey] || "");
+  const plan = useUI((s) => s.plan);
+  const setDraft = useUI((s) => s.setDraft);
+  const setPlan = useUI((s) => s.setPlan);
+  const onChange = (v: string) => setDraft(props.draftKey, v);
   const [hint, setHint] = useState(false);
   const [hi, setHi] = useState(0);
   const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const canSend = !props.disabled && !props.running && !!props.value.trim();
+  const canSend = !props.disabled && !props.running && !!value.trim();
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
-  }, [props.value]);
+  }, [value]);
 
   function insertMention(token: string) {
-    const next = props.value.replace(/@\w*$/, "") + token;
-    props.onChange(next);
+    const next = value.replace(/@\w*$/, "") + token;
+    onChange(next);
     setHint(false);
     requestAnimationFrame(() => ref.current?.focus());
   }
@@ -55,16 +59,16 @@ export function Composer(props: {
           <Textarea
             ref={ref}
             rows={2}
-            value={props.value}
+            value={value}
             disabled={props.disabled}
-            placeholder={props.disabled ? (props.disabledReason || "Set a workspace in Control to send…") : "Message Yoyo. @ pins context."}
+            placeholder={props.disabled ? (props.disabledReason || copy.composer.disabled) : copy.composer.placeholder}
             className="prose-select min-h-[52px] px-4 pt-3 pb-1"
-            aria-label="Message"
+            aria-label={copy.composer.message}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onChange={(e) => {
               const v = e.target.value;
-              props.onChange(v);
+              onChange(v);
               const last = v.split("\n").pop() || "";
               const show = last === "@" || /(?:^|\s)@\w*$/.test(last);
               setHint(show);
@@ -92,7 +96,7 @@ export function Composer(props: {
             }}
           />
           {hint ? (
-            <div role="listbox" aria-label="Mentions" className="absolute bottom-14 left-4 z-10 w-72 overflow-hidden rounded-xl border border-border bg-sidebar">
+            <div role="listbox" aria-label={copy.composer.mentions} className="absolute bottom-14 left-4 z-10 w-72 overflow-hidden rounded-xl border border-border bg-sidebar">
               {MENTIONS.map((m, i) => (
                 <button
                   type="button"
@@ -112,26 +116,26 @@ export function Composer(props: {
             </div>
           ) : null}
           <div className="flex items-center gap-2 px-2 pb-2">
-            <Button variant="ghost" size="icon" aria-label="Insert mention" disabled={props.disabled} onClick={() => { setHint(true); ref.current?.focus(); }}>
+            <Button variant="ghost" size="icon" aria-label={copy.composer.mention} disabled={props.disabled} onClick={() => { setHint(true); ref.current?.focus(); }}>
               <AtSign />
             </Button>
             <button
               type="button"
               className={cn(
                 "rounded-full px-3 py-1 text-xs",
-                props.plan ? "bg-accent/15 text-accent" : "bg-lift text-muted hover:text-foreground",
+                plan ? "bg-accent/15 text-accent" : "bg-lift text-muted hover:text-foreground",
               )}
-              onClick={() => props.onPlan(!props.plan)}
-              aria-pressed={props.plan}
+              onClick={() => setPlan(!plan)}
+              aria-pressed={plan}
             >
-              {props.plan ? "Plan" : "Agent"}
+              {plan ? copy.composer.plan : copy.composer.agent}
             </button>
             <span className="hidden text-[11px] text-muted sm:inline">
-              {props.disabled ? (props.disabledReason || "Workspace required") : props.plan ? "Read and propose. Writes wait." : "Enter to send"}
+              {props.disabled ? (props.disabledReason || copy.composer.workspaceRequired) : plan ? copy.composer.planHint : copy.composer.enter}
             </span>
             {props.model ? <span className="ml-auto hidden truncate text-[11px] text-muted sm:inline">{props.model}</span> : <span className="ml-auto" />}
             {props.running ? (
-              <Button variant="danger" size="send" onClick={props.onStop} aria-label="Stop">
+              <Button variant="danger" size="send" onClick={props.onStop} aria-label={copy.composer.stop}>
                 <Square className="size-3 fill-current" />
               </Button>
             ) : (
@@ -139,7 +143,7 @@ export function Composer(props: {
                 size="send"
                 disabled={!canSend}
                 onClick={props.onSend}
-                aria-label="Send"
+                aria-label={copy.composer.send}
                 className={cn(!canSend && "bg-lift text-muted")}
               >
                 <ArrowUp className="size-4" />

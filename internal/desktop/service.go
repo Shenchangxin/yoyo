@@ -160,6 +160,14 @@ func (s *Service) ApplyHunks(workspace string, ids []string) error {
 	return s.App.ApplyWorkspaceHunks(workspace, ids)
 }
 
+func (s *Service) ReverseHunks(workspace string, ids []string, snapshot string) error {
+	if s.RPC != nil {
+		_, err := s.call("workspace.reverse_hunks", map[string]any{"workspace": workspace, "ids": ids, "snapshot": snapshot})
+		return err
+	}
+	return s.App.ReverseWorkspaceHunks(workspace, ids, snapshot)
+}
+
 func (s *Service) RunEvalSafety() (any, error) {
 	if s.RPC != nil {
 		return s.call("eval.run_safety", nil)

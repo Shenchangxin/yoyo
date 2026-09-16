@@ -15,6 +15,10 @@ frontend/dist/**
 !frontend/dist/
 !frontend/dist/index.html
 frontend/bindings/
+frontend/playwright-report/
+frontend/test-results/
+frontend/playwright/.cache/
+.task/
 
 # Wails / build
 build/bin/

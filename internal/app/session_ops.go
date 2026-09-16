@@ -196,3 +196,13 @@ func (a *App) ApplyWorkspaceHunks(workspace string, ids []string) error {
 	}
 	return runtime.ApplyHunks(workspace, diff, ids)
 }
+
+func (a *App) ReverseWorkspaceHunks(workspace string, ids []string, snapshot string) error {
+	if workspace == "" {
+		workspace = a.Workspace()
+	}
+	if strings.TrimSpace(snapshot) == "" {
+		return fmt.Errorf("missing snapshot for undo")
+	}
+	return runtime.ReverseApplyHunks(workspace, snapshot, ids)
+}
