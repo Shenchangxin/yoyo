@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
@@ -32,6 +33,9 @@ func (a *App) DeleteSession(id string) error {
 	}
 	if a.Running(id) {
 		_ = a.Interrupt(id)
+	}
+	if a.Threads != nil {
+		a.Threads.Forget(id)
 	}
 	a.mu.Lock()
 	if cancel := a.runs[id]; cancel != nil {
@@ -97,12 +101,24 @@ func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, err
 		return nil, err
 	}
 	q = strings.ToLower(strings.TrimSpace(q))
+	allowed := map[string]bool{}
+	useIdx := false
+	if a.Threads != nil && a.Threads.Index != nil && q != "" {
+		useIdx = true
+		for _, id := range a.Threads.Index.Match(q) {
+			allowed[id] = true
+		}
+	}
 	var out []SessionMeta
 	for _, m := range list {
 		if m.Archived && !includeArchived {
 			continue
 		}
 		if q == "" {
+			out = append(out, m)
+			continue
+		}
+		if useIdx && allowed[m.ID] {
 			out = append(out, m)
 			continue
 		}
@@ -122,6 +138,24 @@ func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, err
 		}
 	}
 	return out, nil
+}
+
+func (a *App) ResumeSession(id string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	if a.Threads != nil && a.Caps != nil {
+		st := a.Threads.Load(id)
+		if len(st.SessionCaps) > 0 {
+			var lv []capability.Level
+			for _, c := range st.SessionCaps {
+				lv = append(lv, capability.Level(c))
+			}
+			a.Caps.RestoreSession(id, lv)
+		}
+	}
+	return m, nil
 }
 
 func (a *App) ExportSession(id string) (string, error) {
@@ -153,11 +187,18 @@ func (a *App) CompactSession(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	loop, _, _, _, _, _, err := a.Materials(a.ActiveHash())
+	meta, err := a.GetSession(id)
 	if err != nil {
 		return "", err
 	}
-	meta, _ := a.GetSession(id)
+	hash := meta.Harness
+	if hash == "" {
+		hash = a.ActiveHash()
+	}
+	loop, frags, _, _, _, _, err := a.Materials(hash)
+	if err != nil {
+		return "", err
+	}
 	msgs := runtime.MessagesFromEvents(evs)
 	spill := runtime.BindSpill(a.Home.Root, meta.Workspace, id)
 	model := a.Config.Model
@@ -166,7 +207,7 @@ func (a *App) CompactSession(id string) (string, error) {
 	}
 	window := runtime.ModelContextWindow(model)
 	client, _ := a.Client()
-	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window)
+	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window, frags)
 	runtime.WriteDiscoverIndex(meta.Workspace, id, spill)
 	if a.Hub != nil {
 		a.Hub.Publish(trace.Event{

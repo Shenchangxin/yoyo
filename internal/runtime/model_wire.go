@@ -17,6 +17,14 @@ func wireMessages(msgs []Message) []map[string]any {
 			if m.Name != "" {
 				row["name"] = m.Name
 			}
+		case RoleDeveloper:
+			row["role"] = "system"
+			row["name"] = "developer"
+			row["content"] = m.Content
+		case RoleMemory:
+			row["role"] = "user"
+			row["name"] = "working_memory"
+			row["content"] = m.Content
 		case RoleAssistant:
 			calls := wireToolCalls(m.ToolCalls)
 			if len(calls) > 0 {

@@ -1,6 +1,10 @@
 package app
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/Shenchangxin/yoyo/internal/session"
+)
 
 // ErrQueued means the session is already running and the turn was enqueued.
 const ErrQueued errString = "queued"
@@ -26,8 +30,15 @@ func (a *App) initQueue() {
 
 func (a *App) Enqueue(sessionID string, turn QueuedTurn) {
 	a.queueMu.Lock()
-	defer a.queueMu.Unlock()
 	a.queue[sessionID] = append(a.queue[sessionID], turn)
+	a.queueMu.Unlock()
+	if a.Threads != nil {
+		atts := make([]session.Attachment, 0, len(turn.Attachments))
+		for _, x := range turn.Attachments {
+			atts = append(atts, session.Attachment{Path: x.Path, Name: x.Name, MIME: x.MIME, DataB64: x.DataB64})
+		}
+		a.Threads.Enqueue(sessionID, session.QueuedTurn{Text: turn.Text, Plan: turn.Plan, Attachments: atts})
+	}
 }
 
 func (a *App) QueueList(sessionID string) []QueuedTurn {
@@ -63,6 +74,9 @@ func (a *App) Steer(sessionID, text string) error {
 	}
 	if !a.Running(sessionID) {
 		return errString("session is not running")
+	}
+	if a.Threads != nil {
+		_ = a.Threads.PushSteer(sessionID, text)
 	}
 	a.queueMu.Lock()
 	a.steers[sessionID] = append(a.steers[sessionID], text)

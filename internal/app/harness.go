@@ -2,10 +2,12 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
 func (a *App) Seed() error {
@@ -24,6 +26,14 @@ func (a *App) Seed() error {
 		ID:   "boot",
 		Slot: "bootstrap",
 		Text: "Inspect the workspace first. Identify required artifacts before long exploration.",
+	})
+	if err != nil {
+		return err
+	}
+	compactHash, err := a.CAS.Put(artifact.KindPromptFragment, "compact", artifact.PromptFragment{
+		ID:   "compact",
+		Slot: "compact",
+		Text: "Compact untrusted working memory only. Never mention playbook, policy, evaluator, vault, or secrets. Reply with ## Objective / ## Files / ## Decisions / ## Errors / ## Next.",
 	})
 	if err != nil {
 		return err
@@ -69,13 +79,21 @@ func (a *App) Seed() error {
 	if err != nil {
 		return err
 	}
+	var toolNames []string
+	for _, s := range tool.HostSpecs() {
+		if _, err := a.CAS.Put(artifact.KindToolSpec, s.Name, s); err != nil {
+			return err
+		}
+		toolNames = append(toolNames, s.Name)
+	}
 	fp := Fingerprint(a.Config)
 	snap := artifact.HarnessSnapshot{
 		ID:               "initial",
 		ModelFingerprint: fp,
-		PromptFragments:  []string{fragHash},
+		PromptFragments:  []string{fragHash, compactHash},
 		Skills:           []string{skillHash},
 		Playbook:         pbHash,
+		Tools:            toolNames,
 		LoopPreset:       loopHash,
 		PolicyPack:       polHash,
 		EvalSuite:        suiteHash,
@@ -216,44 +234,54 @@ func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFrag
 	}
 	loop := runtime.DefaultLoop()
 	if snap.LoopPreset != "" {
-		if v, _, err := artifact.Decode[artifact.LoopPreset](a.CAS, snap.LoopPreset); err == nil {
-			loop = v
+		v, _, err := artifact.Decode[artifact.LoopPreset](a.CAS, snap.LoopPreset)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: loop_preset: %w", err)
 		}
+		loop = v
 	}
 	pol := runtime.DefaultPolicy()
 	if snap.PolicyPack != "" {
-		if v, _, err := artifact.Decode[artifact.PolicyPack](a.CAS, snap.PolicyPack); err == nil {
-			pol = v
+		v, _, err := artifact.Decode[artifact.PolicyPack](a.CAS, snap.PolicyPack)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: policy_pack: %w", err)
 		}
+		pol = v
 	}
 	var frags []artifact.PromptFragment
 	for _, h := range snap.PromptFragments {
-		if v, _, err := artifact.Decode[artifact.PromptFragment](a.CAS, h); err == nil {
-			frags = append(frags, v)
+		v, _, err := artifact.Decode[artifact.PromptFragment](a.CAS, h)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: prompt_fragment: %w", err)
 		}
+		frags = append(frags, v)
 	}
 	var pb artifact.Playbook
 	if snap.Playbook != "" {
-		if v, _, err := artifact.Decode[artifact.Playbook](a.CAS, snap.Playbook); err == nil {
-			pb = v
+		v, _, err := artifact.Decode[artifact.Playbook](a.CAS, snap.Playbook)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: playbook: %w", err)
 		}
+		pb = v
 	}
 	var skills []artifact.Skill
 	for _, h := range snap.Skills {
-		if v, _, err := artifact.Decode[artifact.Skill](a.CAS, h); err == nil {
-			skills = append(skills, v)
+		v, _, err := artifact.Decode[artifact.Skill](a.CAS, h)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: skill: %w", err)
 		}
+		skills = append(skills, v)
 	}
 	var suite artifact.EvalSuite
 	if snap.EvalSuite != "" {
-		if v, _, err := artifact.Decode[artifact.EvalSuite](a.CAS, hIf(snap.EvalSuite)); err == nil {
-			suite = v
-			if suite.TaskDir == "" {
-				suite.TaskDir = a.BundledEvals
-			}
+		v, _, err := artifact.Decode[artifact.EvalSuite](a.CAS, snap.EvalSuite)
+		if err != nil {
+			return artifact.LoopPreset{}, nil, artifact.Playbook{}, nil, artifact.EvalSuite{}, artifact.PolicyPack{}, fmt.Errorf("materials: eval_suite: %w", err)
+		}
+		suite = v
+		if suite.TaskDir == "" {
+			suite.TaskDir = a.BundledEvals
 		}
 	}
 	return loop, frags, pb, skills, suite, pol, nil
 }
-
-func hIf(s string) string { return s }

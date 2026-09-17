@@ -172,7 +172,14 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 	for _, s := range opts.Skills {
 		skillBodies[s.Name] = s.Body
 	}
-	tools := &rt.WorkspaceTools{Workspace: work, SessionID: opts.SessionID, Caps: caps, Skills: skillBodies, Depth: 1}
+	advertised := append([]string(nil), opts.Snapshot.Tools...)
+	if len(opts.Snapshot.EvalTools) > 0 {
+		advertised = append([]string(nil), opts.Snapshot.EvalTools...)
+	}
+	tools := &rt.WorkspaceTools{
+		Workspace: work, SessionID: opts.SessionID, Caps: caps, Skills: skillBodies,
+		Advertised: advertised,
+	}
 	loop := opts.Loop
 	loop.AllowLLMCompact = false
 	_, runErr := rt.Run(tctx, rt.RunRequest{

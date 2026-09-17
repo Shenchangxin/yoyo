@@ -7,6 +7,12 @@ import (
 	"testing"
 )
 
+func TestProtocolVersion(t *testing.T) {
+	if ProtocolVersion != "2025-11-25" {
+		t.Fatalf("%s", ProtocolVersion)
+	}
+}
+
 func TestReadJSONLine(t *testing.T) {
 	r, w := io.Pipe()
 	s := &Server{stdout: bufio.NewReader(r)}

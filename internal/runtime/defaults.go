@@ -24,8 +24,8 @@ func DefaultPolicy() artifact.PolicyPack {
 	return artifact.PolicyPack{
 		ID:              "default",
 		Mode:            "auto",
-		DefaultAllow:    []string{string(artifact.KindPromptFragment)},
-		RequireApproval: []string{"high_risk", "network"},
+		DefaultAllow:    []string{"read_workspace", "write_workspace"},
+		RequireApproval: []string{"shell", "high_risk", "network"},
 	}
 }
 

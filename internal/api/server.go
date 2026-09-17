@@ -24,7 +24,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	mux.HandleFunc("/ws", handleWS(a))
 	mux.HandleFunc("/api/ws", handleWS(a))
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, a.Health())
+		restRPC(a, w, r, "health", nil)
 	})
 	mux.HandleFunc("/api/running", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ids": a.RunningIDs()})
@@ -648,4 +648,29 @@ func writeAppErr(w http.ResponseWriter, err error) {
 		return
 	}
 	http.Error(w, err.Error(), 500)
+}
+
+func restRPC(a *app.App, w http.ResponseWriter, r *http.Request, method string, params any) {
+	raw := []byte("{}")
+	if params != nil {
+		b, err := json.Marshal(params)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		raw = b
+	}
+	res := Dispatch(r.Context(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: raw})
+	if res.Error != nil {
+		code := 500
+		if res.Error.Code == 403 {
+			code = 403
+		}
+		if res.Error.Code == 429 {
+			code = 429
+		}
+		http.Error(w, res.Error.Message, code)
+		return
+	}
+	writeJSON(w, res.Result)
 }

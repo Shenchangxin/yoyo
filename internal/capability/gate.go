@@ -38,6 +38,11 @@ func (g *Gate) SetOnOffer(fn func(Offer)) {
 }
 
 func (g *Gate) Ask(ctx context.Context, req Request) (Decision, error) {
+	d, _, err := g.AskOffer(ctx, req)
+	return d, err
+}
+
+func (g *Gate) AskOffer(ctx context.Context, req Request) (Decision, Offer, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -52,12 +57,12 @@ func (g *Gate) Ask(ctx context.Context, req Request) (Decision, error) {
 	}
 	select {
 	case d := <-w.ch:
-		return d, nil
+		return d, w.offer, nil
 	case <-ctx.Done():
 		g.mu.Lock()
 		delete(g.pending, id)
 		g.mu.Unlock()
-		return Deny, ctx.Err()
+		return Deny, w.offer, ctx.Err()
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,7 +27,43 @@ const (
 	TypeEvolve     EventType = "evolve"
 	TypeTurnEnd    EventType = "turn_end"
 	TypeApproval   EventType = "approval"
+	TypePlan       EventType = "plan"
+	TypeFileChange EventType = "file_change"
+	TypeAsk        EventType = "ask_user"
 )
+
+func ItemKindOf(t EventType) string {
+	switch t {
+	case TypeUser:
+		return "user"
+	case TypeAssistant:
+		return "assistant"
+	case TypeReasoning:
+		return "reasoning"
+	case TypeToolCall:
+		return "tool_call"
+	case TypeToolResult:
+		return "tool_result"
+	case TypeInject:
+		return "inject"
+	case TypeSubagent:
+		return "subagent"
+	case TypeCompact:
+		return "compact"
+	case TypeTurnEnd:
+		return "turn_end"
+	case TypeApproval:
+		return "approval"
+	case TypePlan:
+		return "plan"
+	case TypeFileChange:
+		return "file_change"
+	case TypeAsk:
+		return "ask_user"
+	default:
+		return string(t)
+	}
+}
 
 type Event struct {
 	TS               time.Time      `json:"ts"`
@@ -36,6 +73,7 @@ type Event struct {
 	HarnessSnapshot  string         `json:"harness_snapshot,omitempty"`
 	ModelFingerprint string         `json:"model_fingerprint,omitempty"`
 	TaskID           string         `json:"task_id,omitempty"`
+	ItemKind         string         `json:"item_kind,omitempty"`
 	Payload          map[string]any `json:"payload,omitempty"`
 }
 
@@ -49,10 +87,19 @@ func NewStore(dir string) *Store {
 }
 
 func (s *Store) path(sessionID string) string {
+	clean := filepath.FromSlash(sessionID)
+	if strings.ContainsRune(clean, os.PathSeparator) {
+		dir := filepath.Join(s.Dir, filepath.Dir(clean))
+		_ = os.MkdirAll(dir, 0o755)
+		return filepath.Join(s.Dir, clean+".jsonl")
+	}
 	return filepath.Join(s.Dir, sessionID+".jsonl")
 }
 
 func (s *Store) Append(ev Event) error {
+	if ev.ItemKind == "" {
+		ev.ItemKind = ItemKindOf(ev.Type)
+	}
 	if ev.TS.IsZero() {
 		ev.TS = time.Now().UTC()
 	}

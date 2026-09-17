@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -50,14 +52,17 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	childLoop.MaxTurns = 8
 	childLoop.MaxToolMessages = 12
 	childLoop.AllowLLMCompact = false
+	childID := parent.SessionID + "/tasks/" + shortID()
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
 		cp := *parent.Tools
 		cp.Workspace = ws
+		cp.SessionID = childID
 		cp.Depth = parent.Tools.Depth + 1
 		cp.Task = nil
+		cp.prefetch = nil
 		if ws != "" {
-			cp.Spill = NewSpill(filepath.Join(ws, ".yoyo", "context", "task"))
+			cp.Spill = NewSpill(filepath.Join(ws, ".yoyo", "context", "task", filepath.Base(childID)))
 		}
 		cp.PlanMode = parent.Tools.PlanMode
 		childTools = &cp
@@ -67,8 +72,8 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		user = parent.Loop.TaskInstruction + "\n\n" + prompt
 	}
 	out, err := Run(ctx, RunRequest{
-		SessionID:        parent.SessionID + "-task",
-		TaskID:           parent.TaskID,
+		SessionID:        childID,
+		TaskID:           filepath.Base(childID),
 		User:             user,
 		Workspace:        ws,
 		Harness:          parent.Harness,
@@ -85,15 +90,22 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		Trace:            parent.Trace,
 		Events:           parent.Events,
 		FileHooks:        parent.FileHooks,
-		OnEvent:          parent.OnEvent,
+		StopHooks:        parent.StopHooks,
+		OnEvent:          nil,
 		Meter:            parent.Meter,
 		Home:             parent.Home,
 		ModelWindow:      parent.ModelWindow,
 	})
-	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out}
+	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID}
 	if err != nil {
 		payload["error"] = err.Error()
 	}
 	emit(parent, trace.TypeSubagent, "runtime", payload)
 	return out, err
+}
+
+func shortID() string {
+	var b [6]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

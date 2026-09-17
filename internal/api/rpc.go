@@ -56,12 +56,39 @@ func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 					"jsonrpc": "2.0",
 					"method":  "item.event",
 					"params": map[string]any{
-						"type":    string(ev.Type),
-						"session": ev.SessionID,
-						"source":  ev.Source,
-						"payload": ev.Payload,
+						"type":      string(ev.Type),
+						"item_kind": ev.ItemKind,
+						"session":   ev.SessionID,
+						"source":    ev.Source,
+						"payload":   ev.Payload,
 					},
 				})
+				if ev.Type == "approval" && ev.Source == "gate" {
+					_ = enc.Encode(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "approval.request",
+						"params": map[string]any{
+							"id":      ev.Payload["id"],
+							"session": ev.SessionID,
+							"action":  ev.Payload["action"],
+							"command": ev.Payload["command"],
+							"path":    ev.Payload["path"],
+							"level":   ev.Payload["level"],
+						},
+					})
+				}
+				if ev.Type == "turn_end" {
+					_ = enc.Encode(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "turn.completed",
+						"params": map[string]any{
+							"session": ev.SessionID,
+							"stop":    ev.Payload["stop"],
+							"ok":      ev.Payload["ok"],
+							"text":    ev.Payload["text"],
+						},
+					})
+				}
 				mu.Unlock()
 			}
 		}
@@ -132,6 +159,9 @@ func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 }
 
 func callMethod(ctx context.Context, a *app.App, method string, params json.RawMessage) (any, error) {
+	if method == "" {
+		return map[string]any{"ok": true}, nil
+	}
 	switch method {
 	case "health":
 		return a.Health(), nil
@@ -211,13 +241,14 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.SpillBlob(p.Session, p.ID)
 	case "approvals.list":
 		return a.Gate.Pending(), nil
-	case "approvals.resolve":
+	case "approvals.resolve", "approval.respond":
 		var p struct {
 			ID       string `json:"id"`
 			Decision string `json:"decision"`
+			Answer   string `json:"answer"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return map[string]any{"ok": true}, a.ResolveApproval(p.ID, p.Decision)
+		return map[string]any{"ok": true}, a.ResolveApprovalAnswer(p.ID, p.Decision, p.Answer)
 	case "harness.get":
 		refs, err := a.ListHarnesses()
 		if err != nil {
@@ -249,6 +280,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return a.DiffDetail(p.A, p.B)
 	case "thread.list":
 		return a.ListSessions()
+	case "thread.resume":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ResumeSession(p.Session)
 	case "thread.rename":
 		var p struct {
 			Session string `json:"session"`

@@ -68,6 +68,37 @@ func NewBroker(policy AutoPolicy, ask func(ctx context.Context, req Request) (De
 	}
 }
 
+func (b *Broker) SessionLevels(sessionID string) []Level {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	sess := b.session[sessionID]
+	out := make([]Level, 0, len(sess))
+	for l := range sess {
+		out = append(out, l)
+	}
+	return out
+}
+
+func (b *Broker) RestoreSession(sessionID string, levels []Level) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.session[sessionID] == nil {
+		b.session[sessionID] = map[Level]bool{}
+	}
+	for _, l := range levels {
+		if l == HighRisk {
+			continue
+		}
+		b.session[sessionID][l] = true
+	}
+}
+
+func (b *Broker) ClearSession(sessionID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.session, sessionID)
+}
+
 func (b *Broker) AllowAlways(l Level) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -92,9 +123,11 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 		b.mu.Unlock()
 		return nil
 	}
-	if sess := b.session[req.SessionID]; sess != nil && sess[req.Level] {
-		b.mu.Unlock()
-		return nil
+	if !req.ForceAsk {
+		if sess := b.session[req.SessionID]; sess != nil && sess[req.Level] {
+			b.mu.Unlock()
+			return nil
+		}
 	}
 	ask := b.ask
 	b.mu.Unlock()

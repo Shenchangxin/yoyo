@@ -176,7 +176,7 @@ func TestC3CompactDropsPreCheckpointBodies(t *testing.T) {
 	loop.AllowLLMCompact = false
 	loop.CompactionKeep = 4
 	loop.CompactionTokens = 1_200
-	_ = CompactHistory(st, "s", MessagesFromEvents(evs), loop, sp, nil, "", 0)
+	_ = CompactHistory(st, "s", MessagesFromEvents(evs), loop, sp, nil, "", 0, nil)
 	evs, err = st.Read("s")
 	if err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestC8PlaybookStableAcrossCheckpoint(t *testing.T) {
 	before := AssemblePrefix(loop, nil, pb, nil, "tabs", "YOYO.md")
 	st := trace.NewStore(t.TempDir())
 	hist := []Message{{Role: RoleUser, Content: "old"}, {Role: RoleAssistant, Content: "ok"}}
-	_ = CompactHistory(st, "s", hist, loop, nil, nil, "", 0)
+	_ = CompactHistory(st, "s", hist, loop, nil, nil, "", 0, nil)
 	after := AssemblePrefix(loop, nil, pb, nil, "tabs", "YOYO.md")
 	if before != after {
 		t.Fatal("playbook prefix mutated by checkpoint")
@@ -498,7 +498,7 @@ func TestC9OverflowRecoversSameTurn(t *testing.T) {
 	if out != "recovered" {
 		t.Fatalf("%q", out)
 	}
-	if client.last.CacheKey != "s" {
+	if client.last.CacheKey == "" || client.last.CacheKey == "s" {
 		t.Fatalf("cache key %q", client.last.CacheKey)
 	}
 	evs, _ := st.Read("s")
@@ -594,7 +594,7 @@ func TestCompactThenResumeDoesNotArmSensitiveSolver(t *testing.T) {
 	}
 	loop := DefaultLoop()
 	loop.AllowLLMCompact = false
-	_ = CompactHistory(st, "s", hist, loop, sp, nil, "", 0)
+	_ = CompactHistory(st, "s", hist, loop, sp, nil, "", 0, nil)
 	evs, _ := st.Read("s")
 	rebuilt := MessagesFromEvents(evs)
 	work := t.TempDir()

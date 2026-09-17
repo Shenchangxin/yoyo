@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -18,7 +19,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		model = a.Config.Model
 	}
 	window := runtime.ModelContextWindow(model)
-	hash := meta.Harness
+	hash := session.ResolveHarness(session.NormalizePolicy(meta.HarnessPolicy), meta.Harness, a.ActiveHash())
 	if hash == "" {
 		hash = a.ActiveHash()
 	}

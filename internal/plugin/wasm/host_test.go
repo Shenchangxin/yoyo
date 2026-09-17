@@ -35,6 +35,18 @@ func TestLoadCallUnload(t *testing.T) {
 	}
 }
 
+func TestCallJSONRequiresAlloc(t *testing.T) {
+	h := NewHost()
+	defer h.Close()
+	m, err := h.Load("math", addWasm, "add", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.CallJSON([]byte(`{"a":1}`)); err == nil {
+		t.Fatal("expected JSON ABI error")
+	}
+}
+
 func TestRejectHuge(t *testing.T) {
 	h := NewHost()
 	h.maxSize = 8

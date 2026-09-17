@@ -19,21 +19,27 @@ type FileHook struct {
 
 type hookFile struct {
 	PreTool []FileHook `json:"pre_tool"`
+	Stop    []FileHook `json:"stop"`
 }
 
 func LoadFileHooks(workspace string) []FileHook {
+	pre, _ := LoadHookFile(workspace)
+	return pre
+}
+
+func LoadHookFile(workspace string) (pre, stop []FileHook) {
 	if workspace == "" {
-		return nil
+		return nil, nil
 	}
 	b, err := os.ReadFile(filepath.Join(workspace, ".yoyo", "hooks.json"))
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	var hf hookFile
 	if json.Unmarshal(b, &hf) != nil {
-		return nil
+		return nil, nil
 	}
-	return hf.PreTool
+	return hf.PreTool, hf.Stop
 }
 
 func applyFileHooks(rules []FileHook, hook ToolHook) ToolHook {

@@ -35,6 +35,24 @@ func TestBrokerSessionAllow(t *testing.T) {
 	}
 }
 
+func TestBrokerForceAskSkipsSession(t *testing.T) {
+	n := 0
+	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {
+		n++
+		return Session, nil
+	})
+	req := Request{Level: Network, SessionID: "s1", ForceAsk: true, Action: "mcp"}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("ForceAsk should skip session cache, asked %d", n)
+	}
+}
+
 func TestBrokerForceAskHonorsAlways(t *testing.T) {
 	n := 0
 	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {
