@@ -10,14 +10,14 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 
 ```
 [ Thread rail ] [ Transcript + composer ] [ Review ]
-                      Labs are secondary
+                 Harness is one RSI workspace
 ```
 
 - **Thread** is an object: create, rename, fork, search, running indicator.
 - **Plan** is a composer chip, not a page. It proposes; it does not write.
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
-- **Harbor / Evolve / Harness** are laboratory workspaces. They are not chat siblings of equal weight.
-- **Control** is a gear surface (vault, policy, updater). The agent cannot change these.
+- **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
+- **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
 
 ## Distinctive, not decorative
 

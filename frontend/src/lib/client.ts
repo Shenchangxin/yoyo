@@ -475,11 +475,13 @@ export async function bestOfN(n: number): Promise<any> {
   return http("/api/eval/best", { method: "POST", body: JSON.stringify({ n }) });
 }
 
-export async function evolve(k = 3): Promise<any> {
+export async function evolve(k = 3, opts?: { rounds?: number; sealed?: boolean; promote?: boolean }): Promise<any> {
+  const body = { k, rounds: opts?.rounds ?? 0, sealed: !!opts?.sealed, promote: !!opts?.promote };
   const s = await wailsService();
-  if (s?.EvolveK) return s.EvolveK(k);
-  if (s?.Evolve && k === 3) return s.Evolve();
-  return http("/api/evolve", { method: "POST", body: JSON.stringify({ k }) });
+  if (s?.EvolveRun) return s.EvolveRun(body.k, body.rounds, body.sealed, body.promote);
+  if (s?.EvolveK && !body.rounds && !body.sealed && !body.promote) return s.EvolveK(k);
+  if (s?.Evolve && k === 3 && !body.rounds && !body.sealed && !body.promote) return s.Evolve();
+  return http("/api/evolve", { method: "POST", body: JSON.stringify(body) });
 }
 
 export async function archive(): Promise<any[]> {
@@ -562,6 +564,18 @@ export async function runEvalTB(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalTB) return s.RunEvalTB();
   return http("/api/eval/tb", { method: "POST" });
+}
+
+export async function runEvalSealed(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RunEvalSealed) return s.RunEvalSealed();
+  return http("/api/eval/sealed", { method: "POST" });
+}
+
+export async function runEvalTransfer(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RunEvalTransfer) return s.RunEvalTransfer();
+  return http("/api/eval/transfer", { method: "POST" });
 }
 
 export async function bestOfModels(models: string[]): Promise<any> {

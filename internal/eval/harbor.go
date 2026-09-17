@@ -34,6 +34,7 @@ type TaskResult struct {
 	Repeats     int    `json:"repeats,omitempty"`
 	RepeatsPass int    `json:"repeats_pass,omitempty"`
 	Isolate     string `json:"isolate,omitempty"`
+	Kind        string `json:"kind,omitempty"` // held_in | held_out | safety
 }
 
 type RunReport struct {
@@ -113,9 +114,9 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		root = e.SuitesRoot
 	}
 	for _, id := range ids {
-		task, err := LoadHarborTask(filepath.Join(root, id))
+		task, err := LoadHarborTask(e.resolveTaskDir(root, id))
 		if err != nil {
-			rep.Results = append(rep.Results, TaskResult{ID: id, Error: err.Error()})
+			rep.Results = append(rep.Results, TaskResult{ID: id, Error: err.Error(), Kind: taskKind(id, heldOutSet, safetySet, opts.Suite.HeldIn)})
 			if safetySet[id] {
 				rep.Metrics.SafetyFail++
 			}
@@ -132,6 +133,7 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		last.Pass = passCount > repeats/2 || (repeats == 1 && last.Pass)
 		last.Repeats = repeats
 		last.RepeatsPass = passCount
+		last.Kind = taskKind(id, heldOutSet, safetySet, opts.Suite.HeldIn)
 		rep.Results = append(rep.Results, last)
 		if safetySet[id] && !last.Pass {
 			rep.Metrics.SafetyFail++
@@ -227,6 +229,10 @@ func LoadHarborTask(dir string) (Task, error) {
 }
 
 func runVerifier(work string, task Task) (bool, string, error) {
+	expect := filepath.Join(task.Dir, "tests", "expect.toml")
+	if _, err := os.Stat(expect); err == nil {
+		return runExpect(work, expect)
+	}
 	order := []string{"test.ps1", "test.bat", "test.sh"}
 	if runtime.GOOS != "windows" {
 		order = []string{"test.sh", "test.ps1", "test.bat"}
@@ -267,8 +273,26 @@ func runVerifier(work string, task Task) (bool, string, error) {
 		}
 	}
 	cmd.Dir = work
+	if df := dockerfileOf(task.Dir); df != "" && dockerAvailable() {
+		if ok, out, err := runVerifierDocker(work, task, script); err == nil {
+			return ok, out, err
+		}
+	}
 	out, err := cmd.CombinedOutput()
 	return err == nil, string(out), err
+}
+
+func taskKind(id string, heldOut, safety map[string]bool, heldIn []string) string {
+	if safety[id] {
+		return "safety"
+	}
+	if heldOut[id] {
+		return "held_out"
+	}
+	if containsID(heldIn, id) {
+		return "held_in"
+	}
+	return ""
 }
 
 func runGoishVerifier(work, script string) (bool, string, error) {

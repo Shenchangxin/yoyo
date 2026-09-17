@@ -21,6 +21,8 @@ import { BootSkeleton } from "./features/BootSkeleton";
 import { HarborLab } from "./features/labs/HarborLab";
 import { EvolveLab } from "./features/labs/EvolveLab";
 import { HarnessLab } from "./features/labs/HarnessLab";
+import { HarnessWorkspace } from "./features/harness/HarnessWorkspace";
+import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
@@ -44,17 +46,21 @@ export default function App() {
   useSettingsHash();
   const copy = ws.copy;
   const [layout, setLayout] = useState(readLayout);
-  const sheetInspect = useMedia("(max-width: 799px)");
+  const sheetInspect = useMedia("(max-width: 1099px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = ws.surface === "settings";
-  const three = ws.surface === "agent" && ws.inspector && !sheetInspect;
-  const dock = ws.surface !== "agent" && !settings;
+  const harnessing = ws.surface === "harness";
+  const agent = ws.surface === "agent";
+  const three = agent && ws.inspector && !sheetInspect;
+  const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
-  const showRail = !ws.sidebarCollapsed && !railNarrow;
-  const overlayRail = !showRail && ws.sidebarHover;
+  const showRail = !settings && !ws.sidebarCollapsed && !railNarrow;
+  const overlayRail = !settings && !showRail && ws.sidebarHover;
   const mac = isMac();
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
+  const refs = parseHarnessRefs(ws.harness, ws.health.harness);
+  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
 
   const composer = (
     <Composer
@@ -129,84 +135,62 @@ export default function App() {
     </section>
   );
 
-  const labPane =
-    ws.lab === "harbor" ? (
-      <HarborLab
-        busy={ws.labBusy}
-        error={ws.harborErr}
-        lastKind={ws.harborKind}
-        report={ws.evalReport}
-        best={ws.bestReport}
-        models={ws.bonModels}
-        onModels={ws.setBonModels}
-        onRun={async (kind) => {
-          ws.setHarborKind(kind);
-          ws.setHarborErr("");
-          ws.setLabBusy(copy.labs.busyHarbor);
-          try {
-            if (kind === "suite") { ws.setEvalReport(await api.runEval()); ws.setBestReport(null); }
-            if (kind === "safety") { ws.setEvalReport(await api.runEvalSafety()); ws.setBestReport(null); }
-            if (kind === "tb") { ws.setEvalReport(await api.runEvalTB()); ws.setBestReport(null); }
-            if (kind === "bon") {
-              const r = await api.bestOfN(3);
-              ws.setBestReport(r);
-              ws.setEvalReport(r.best || r.Best);
-            }
-            if (kind === "models") {
-              const r = await api.bestOfModels(ws.bonModels.split(",").map((s) => s.trim()).filter(Boolean));
-              ws.setBestReport(r);
-              ws.setEvalReport(r.best || r.Best);
-            }
-          } catch (e) {
-            ws.setHarborErr(api.errMessage(e));
-            ws.fail(e);
-          } finally {
-            ws.setLabBusy(null);
-          }
-        }}
-      />
-    ) : ws.lab === "evolve" ? (
-      <EvolveLab
-        busy={!!ws.labBusy}
-        k={ws.evolveK}
-        onK={ws.setEvolveK}
-        evolve={ws.evolve}
-        playbook={ws.playbook}
-        archive={ws.tree}
-        onRun={async () => {
-          ws.setLabBusy(copy.labs.busyEvolve);
-          try {
-            ws.setEvolve(await api.evolve(ws.evolveK));
-            ws.setTree(await api.archive());
-            await ws.refresh();
-          } catch (e) { ws.fail(e); }
-          finally { ws.setLabBusy(null); }
-        }}
-        onRate={async (id, helpful) => {
-          ws.setPlaybook(await api.ratePlaybook(id, helpful));
-          await ws.refresh();
-        }}
-      />
-    ) : ws.lab === "harness" ? (
-      <HarnessLab
-        harness={ws.harness}
-        diffA={ws.diffA}
-        diffB={ws.diffB}
-        diffOut={ws.diffOut}
-        onA={ws.setDiffA}
-        onB={ws.setDiffB}
-        onCompare={async () => {
-          try { ws.setDiffOut(await api.diff(ws.diffA || ws.health.harness, ws.diffB)); }
-          catch (e) { ws.fail(e); }
-        }}
-        onCheckout={async (hash, l3) => {
-          await api.checkout(hash, !!l3);
-          await ws.refresh();
-          toast.success(copy.app.checkedOut);
-        }}
-        onRollback={async () => { await api.rollback(); await ws.refresh(); toast.success(copy.app.rolledBack); }}
-      />
-    ) : null;
+  const labPane = (
+    <HarnessWorkspace
+      tab={ws.harnessTab}
+      onTab={ws.setHarnessTab}
+      harness={ws.harness}
+      fallbackActive={ws.health.harness}
+      report={ws.evalReport}
+    >
+      {{
+        prove: (
+          <HarborLab
+            busy={ws.labBusy}
+            error={ws.harborErr}
+            lastKind={ws.harborKind}
+            report={ws.evalReport}
+            best={ws.bestReport}
+            models={ws.bonModels}
+            onModels={ws.setBonModels}
+            onRun={(kind) => { void ws.runHarbor(kind); }}
+          />
+        ),
+        propose: (
+          <EvolveLab
+            busy={!!ws.labBusy}
+            k={ws.evolveK}
+            onK={ws.setEvolveK}
+            rounds={ws.evolveRounds}
+            onRounds={ws.setEvolveRounds}
+            sealed={ws.evolveSealed}
+            onSealed={ws.setEvolveSealed}
+            evolve={ws.evolve}
+            playbook={ws.playbook}
+            archive={ws.tree}
+            onRun={() => { void ws.runEvolve(); }}
+            onRate={async (id, helpful) => {
+              ws.setPlaybook(await api.ratePlaybook(id, helpful));
+              await ws.refresh();
+            }}
+          />
+        ),
+        promote: (
+          <HarnessLab
+            harness={ws.harness}
+            diffA={ws.diffA}
+            diffB={ws.diffB}
+            diffOut={ws.diffOut}
+            onA={ws.setDiffA}
+            onB={ws.setDiffB}
+            onCompare={() => { void ws.compareHarness(); }}
+            onCheckout={ws.checkoutHarness}
+            onRollback={() => { void ws.rollbackHarness(); }}
+          />
+        ),
+      }}
+    </HarnessWorkspace>
+  );
 
   const rail = (
     <ThreadRail
@@ -216,6 +200,8 @@ export default function App() {
       running={ws.running}
       lab={ws.lab}
       surface={ws.surface}
+      harness={ws.harness}
+      fallbackActive={ws.health.harness}
       showArchived={ws.showArchived}
       notices={ws.notices}
       noticesOpen={ws.noticesOpen}
@@ -225,6 +211,7 @@ export default function App() {
       onSelect={ws.setActive}
       onNew={ws.onNew}
       onLab={ws.setLab}
+      onHarness={() => ws.openHarness("overview")}
       onSettings={() => ws.openSettings()}
       onCollapse={() => ws.setSidebarCollapsed(true)}
       onToggleArchived={() => ws.setShowArchived((v) => !v)}
@@ -296,26 +283,48 @@ export default function App() {
   ) : null;
 
   const headerRight = (
-    <button
-      type="button"
-      className="mr-0.5 hidden items-center rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-lift hover:text-foreground sm:inline-flex"
-      onClick={() => ws.setPalette(true)}
-      aria-label={copy.rail.jump}
-      title={copy.rail.jump}
-    >
-      <Kbd>{displayShortcut(DEFAULT_KEYMAP.palette)}</Kbd>
-    </button>
+    <>
+      {harnessing ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={ws.chatDock}
+          aria-label={copy.dock.toggle}
+          className={ws.chatDock ? "bg-lift text-foreground" : undefined}
+          onClick={() => ws.setChatDock((v) => !v)}
+        >
+          {copy.dock.chat}
+        </Button>
+      ) : null}
+      <button
+        type="button"
+        className="mr-0.5 hidden items-center rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-lift hover:text-foreground sm:inline-flex"
+        onClick={() => ws.setPalette(true)}
+        aria-label={copy.rail.jump}
+        title={copy.rail.jump}
+      >
+        <Kbd>{displayShortcut(DEFAULT_KEYMAP.palette)}</Kbd>
+      </button>
+    </>
   );
 
   const headerTitle = settings
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
-    : ws.surface === "harbor"
-      ? <HeaderLabel title={copy.labs.harbor} hint={copy.labs.harborHint} />
-      : ws.surface === "evolve"
-        ? <HeaderLabel title={copy.labs.evolve} hint={copy.labs.evolveHint} />
-        : ws.surface === "harness"
-          ? <HeaderLabel title={copy.labs.harness} hint={copy.labs.harnessHint} />
-          : (
+    : harnessing
+      ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[13px] font-medium">{copy.rsi.title}</span>
+          {refs.active ? (
+            <span className="truncate font-mono text-[11px] text-muted" title={refs.active}>{shortHash(refs.active)}</span>
+          ) : null}
+          {stagingDirty(refs) ? (
+            <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span>
+          ) : canaryDirty(refs) ? (
+            <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span>
+          ) : null}
+        </div>
+      )
+      : (
             <Titlebar
               workspace={ws.savedCfg.workspace}
               inspector={ws.inspector}
@@ -330,13 +339,6 @@ export default function App() {
                 await api.renameSession(ws.activeId, title);
                 await ws.refresh();
               }}
-              onFork={async () => {
-                if (!ws.activeId) return;
-                const t = await api.forkSession(ws.activeId);
-                ws.setThreads((prev) => [t, ...prev]);
-                ws.setActive(t);
-              }}
-              onDiff={ws.refreshDiff}
             />
           );
 
@@ -344,7 +346,7 @@ export default function App() {
     <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar">
       <SettingsSurface ws={ws} />
     </div>
-  ) : ws.surface === "agent" ? agentPane : labPane;
+  ) : agent ? agentPane : labPane;
 
   return (
     <AppFrame
@@ -357,10 +359,13 @@ export default function App() {
             onClose={() => ws.setPalette(false)}
             onNew={ws.onNew}
             onLab={ws.setLab}
+            onOpenHarness={() => ws.openHarness("overview")}
             onSelectThread={ws.setActive}
             onDiff={ws.refreshDiff}
             onAbout={async () => { ws.setAboutInfo(await api.about().catch(() => ({}))); ws.setAboutOpen(true); }}
             onQuit={ws.requestQuit}
+            onRunSuite={() => { void ws.runHarbor("suite"); }}
+            onRunCycle={() => { void ws.runEvolve(); }}
           />
           <About open={ws.aboutOpen} info={ws.aboutInfo} onClose={() => ws.setAboutOpen(false)} />
           <ConfirmDialog
@@ -399,11 +404,40 @@ export default function App() {
               void api.quit();
             }}
           />
-          <Sheet modal={false} open={sheetInspect && ws.inspector && ws.surface === "agent"} onOpenChange={ws.setInspector}>
+          <Sheet modal={false} open={sheetRight} onOpenChange={(open) => {
+            if (agent) ws.setInspector(open);
+            else ws.setChatDock(open);
+          }}>
             <SheetContent side="right" overlay={false} className="flex flex-col p-0">
-              <SheetTitle className="sr-only">{copy.review.toggle}</SheetTitle>
-              <SheetDescription className="sr-only">{copy.review.toggle}</SheetDescription>
-              {inspect}
+              <SheetTitle className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetTitle>
+              <SheetDescription className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetDescription>
+              {agent ? inspect : (
+                <ChatDock
+                  items={ws.items}
+                  approvals={ws.approvals}
+                  running={ws.threadRunning}
+                  draftKey={ws.draftKey}
+                  disabled={false}
+                  disabledReason=""
+                  model={ws.active?.model || ws.savedCfg.model || ws.health.model}
+                  models={ws.savedCfg.models}
+                  provider={ws.savedCfg.provider}
+                  ctx={ws.ctx}
+                  queued={ws.queued}
+                  onSend={ws.onSend}
+                  onStop={ws.onStop}
+                  onResolve={ws.onResolve}
+                  onRetry={() => { void ws.onRetryLast(); }}
+                  onOpenAgent={() => ws.setLab("agent")}
+                  onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
+                  onModel={async (model) => {
+                    if (!ws.activeId) return;
+                    const t = await api.setSessionModel(ws.activeId, model);
+                    ws.setActive(t);
+                    ws.refreshCtx();
+                  }}
+                />
+              )}
             </SheetContent>
           </Sheet>
         </>
@@ -498,7 +532,7 @@ export default function App() {
           </MainColumn>
         </Panel>
       </Group>
-      {!showRail ? (
+      {!showRail && !settings ? (
         <div
           className={overlayRail
             ? "absolute top-2 bottom-2 left-0 z-20 w-[min(288px,90%)]"
@@ -510,14 +544,6 @@ export default function App() {
         </div>
       ) : null}
     </AppFrame>
-  );
-}
-
-function HeaderLabel({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="min-w-0 truncate text-[13px] font-medium" title={hint}>
-      {title}
-    </div>
   );
 }
 

@@ -13,12 +13,13 @@ import (
 )
 
 type Engine struct {
-	CAS     *artifact.Store
-	Refs    *artifact.Refs
-	Eval    *eval.Engine
-	Journal *journal.Log
-	Archive *Archive
-	Kernel  *kernel.Context
+	CAS       *artifact.Store
+	Refs      *artifact.Refs
+	Eval      *eval.Engine
+	Journal   *journal.Log
+	Archive   *Archive
+	Kernel    *kernel.Context
+	TrialRoot string
 }
 
 type CycleResult struct {
@@ -28,30 +29,35 @@ type CycleResult struct {
 	Proposals      []Proposal     `json:"proposals"`
 	Tried          []Trial        `json:"tried"`
 	Promoted       string         `json:"promoted,omitempty"`
+	Merged         bool           `json:"merged,omitempty"`
+	ActiveMoved    bool           `json:"active_moved,omitempty"`
 }
 
 type Trial struct {
-	Proposal Proposal     `json:"proposal"`
-	Hash     string       `json:"hash"`
-	Metrics  eval.Metrics `json:"metrics"`
-	Accepted bool         `json:"accepted"`
-	Reason   string       `json:"reason"`
+	Proposal      Proposal     `json:"proposal"`
+	Hash          string       `json:"hash"`
+	Metrics       eval.Metrics `json:"metrics"`
+	Accepted      bool         `json:"accepted"`
+	Reason        string       `json:"reason"`
+	ManifestoHit  int          `json:"manifesto_hit,omitempty"`
+	ManifestoMiss int          `json:"manifesto_miss,omitempty"`
 }
 
 type CycleOpts struct {
-	Parent        MaterialSet
-	Baseline      MaterialSet
-	Suite         artifact.EvalSuite
-	Client        runtime.Client
-	Trace         *trace.Store
-	SessionID     string
-	Model         string
-	FailedTasks   map[string]string
-	K             int
-	PromoteCanary bool
-	HeldOut       []string
-	StagingHash   string
-	IsolateRoot   string
+	Parent         MaterialSet
+	Baseline       MaterialSet
+	Suite          artifact.EvalSuite
+	Client         runtime.Client
+	Trace          *trace.Store
+	SessionID      string
+	Model          string
+	FailedTasks    map[string]string
+	K              int
+	PromoteCanary  bool
+	HeldOut        []string
+	StagingHash    string
+	IsolateRoot    string
+	PromoteRepeats int
 }
 
 func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error) {
@@ -64,6 +70,13 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 	if opts.K <= 0 {
 		opts.K = 3
 	}
+	if opts.PromoteRepeats <= 0 {
+		opts.PromoteRepeats = 2
+	}
+	if opts.Suite.Repeats < opts.PromoteRepeats {
+		opts.Suite.Repeats = opts.PromoteRepeats
+	}
+	opts.Suite.Safety = uniqueSafety(opts.Suite.Safety, "no-escape")
 	res.ParentSelected = parent.Hash
 	if opts.IsolateRoot == "" {
 		if root, stop, err := ScratchGit(); err == nil {
@@ -85,6 +98,15 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 			held[id] = true
 		}
 	}
+	for _, id := range opts.Suite.Transfer {
+		held[id] = true
+	}
+
+	baseReport, err := e.evalMats(ctx, opts, baseline, "-base")
+	if err != nil {
+		return res, err
+	}
+
 	safeFailed := map[string]string{}
 	for k, v := range opts.FailedTasks {
 		if held[k] {
@@ -92,12 +114,46 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		}
 		safeFailed[k] = v
 	}
+	if len(safeFailed) == 0 {
+		for _, r := range baseReport.Results {
+			if r.Pass || held[r.ID] || r.Kind == "safety" {
+				continue
+			}
+			safeFailed[r.ID] = r.Error
+			if safeFailed[r.ID] == "" {
+				safeFailed[r.ID] = "verifier_fail"
+			}
+		}
+	}
+
 	res.Evidence = Mine(events, safeFailed)
+	for _, r := range baseReport.Results {
+		if !r.Pass || held[r.ID] || r.Kind == "safety" {
+			continue
+		}
+		res.Evidence.Passing = append(res.Evidence.Passing, PassSummary{TaskID: r.ID, Note: "held-in pass"})
+	}
+	if e.Archive != nil {
+		for _, n := range lastNodes(e.Archive.List(), 12) {
+			res.Evidence.Prior = append(res.Evidence.Prior, PriorTrial{
+				Hash: n.ID, Surface: n.Surface, Reason: n.Note, Accepted: n.Accepted,
+			})
+		}
+	}
+
 	res.Reflection = Reflect(events, safeFailed, parent.Playbook)
+	if llm, lerr := ReflectLLM(ctx, opts.Client, opts.Model, events, safeFailed, parent.Playbook); lerr == nil {
+		if len(llm.Insights) > 0 || len(llm.BulletTags) > 0 {
+			res.Reflection = llm
+		}
+	}
 	curated := Curate(parent.Playbook, res.Reflection)
 	props, err := Propose(ctx, opts.Client, opts.Model, res.Evidence, opts.K)
 	if err != nil {
 		return res, err
+	}
+	for i := range props {
+		props[i] = sanitizeHeldOut(props[i], held)
 	}
 	for _, b := range curated.Bullets {
 		if playbookHas(parent.Playbook, b) {
@@ -116,11 +172,6 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 	}
 	res.Proposals = props
 
-	baseReport, err := e.evalMats(ctx, opts, baseline, "-base")
-	if err != nil {
-		return res, err
-	}
-
 	intent, err := e.Journal.Append("evolve.intent", map[string]any{
 		"base": parent.Hash, "baseline": baseline.Hash, "n": len(props),
 	})
@@ -128,19 +179,18 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		return res, err
 	}
 
+	var accepted []Trial
 	if opts.StagingHash != "" && opts.StagingHash != baseline.Hash {
 		trial := e.trialSnapshot(ctx, opts, baseline, baseReport, opts.StagingHash, Proposal{
 			ID:      "online-ace-stage",
 			Surface: "playbook",
 			Audit:   "online ACE staging (Harbor gate)",
-		})
+		}, held)
 		res.Tried = append(res.Tried, trial)
 		if trial.Accepted {
-			res.Promoted = trial.Hash
-			_ = e.Refs.Set(artifact.RefStaging, "")
-		} else {
-			_ = e.Refs.Set(artifact.RefStaging, "")
+			accepted = append(accepted, trial)
 		}
+		_ = e.Refs.Set(artifact.RefStaging, "")
 	}
 
 	for _, p := range props {
@@ -149,36 +199,120 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 			res.Tried = append(res.Tried, Trial{Proposal: p, Reason: err.Error()})
 			continue
 		}
-		mats := MaterialSet{
-			Snap:      candSnap,
-			Hash:      hash,
-			Loop:      parent.Loop,
-			Fragments: append([]artifact.PromptFragment{}, parent.Fragments...),
-			Playbook:  parent.Playbook,
-			Skills:    append([]artifact.Skill{}, parent.Skills...),
-		}
-		if p.Fragment != nil {
-			mats.Fragments = append(mats.Fragments, *p.Fragment)
-		}
-		if p.PlaybookBullet != nil {
-			mats.Playbook = mats.Playbook.ApplyDelta([]artifact.PlaybookBullet{*p.PlaybookBullet}, nil)
-		}
-		if p.SkillMD != "" {
-			if sk, err := artifact.ParseSkillMD(p.SkillMD, "evolve"); err == nil {
-				mats.Skills = append(mats.Skills, sk)
-			}
-		}
-		trial := e.trialMats(ctx, opts, baseline, baseReport, mats, p)
+		mats := matsFrom(parent, candSnap, hash, p)
+		trial := e.trialMats(ctx, opts, baseline, baseReport, mats, p, held)
 		res.Tried = append(res.Tried, trial)
 		if trial.Accepted {
-			res.Promoted = hash
+			accepted = append(accepted, trial)
 		}
+	}
+
+	winner, merged := e.pickWinner(ctx, opts, parent, baseline, baseReport, accepted, held)
+	if winner.Hash != "" {
+		res.Promoted = winner.Hash
+		res.Merged = merged
+		res.ActiveMoved = e.publishCanary(opts, baseline, winner.Hash)
 	}
 	_ = e.Journal.Commit(intent.Seq)
 	if res.Promoted == "" && len(res.Tried) == 0 {
 		return res, fmt.Errorf("no proposals evaluated")
 	}
 	return res, nil
+}
+
+func matsFrom(parent MaterialSet, snap artifact.HarnessSnapshot, hash string, p Proposal) MaterialSet {
+	mats := MaterialSet{
+		Snap:      snap,
+		Hash:      hash,
+		Loop:      parent.Loop,
+		Fragments: append([]artifact.PromptFragment{}, parent.Fragments...),
+		Playbook:  parent.Playbook,
+		Skills:    append([]artifact.Skill{}, parent.Skills...),
+	}
+	if p.Fragment != nil {
+		mats.Fragments = append(mats.Fragments, *p.Fragment)
+	}
+	if p.PlaybookBullet != nil {
+		mats.Playbook = mats.Playbook.ApplyDelta([]artifact.PlaybookBullet{*p.PlaybookBullet}, nil)
+	}
+	if p.SkillMD != "" {
+		if sk, err := artifact.ParseSkillMD(p.SkillMD, "evolve"); err == nil {
+			mats.Skills = append(mats.Skills, sk)
+		}
+	}
+	if p.InstructionText != "" {
+		mats.Loop = mats.Loop.SetInstructionSlot(or(p.InstructionSlot, "verification"), p.InstructionText)
+	}
+	if p.MiddlewareText != "" {
+		n := p.MiddlewareN
+		if n <= 0 {
+			n = 2
+		}
+		mats.Loop.MaxRecentToolErrors = n
+		mats.Loop.ToolErrorInstruction = p.MiddlewareText
+	}
+	return mats
+}
+
+func (e *Engine) pickWinner(ctx context.Context, opts CycleOpts, parent, baseline MaterialSet, baseReport eval.RunReport, accepted []Trial, held map[string]bool) (Trial, bool) {
+	if len(accepted) == 0 {
+		return Trial{}, false
+	}
+	if len(accepted) == 1 {
+		return accepted[0], false
+	}
+	var props []Proposal
+	for _, t := range accepted {
+		if t.Proposal.ID == "online-ace-stage" {
+			continue
+		}
+		props = append(props, t.Proposal)
+	}
+	if len(props) < 2 {
+		return bestTrial(accepted), false
+	}
+	snap, hash, err := MergeProposals(e.CAS, parent.Snap, parent.Hash, props)
+	if err != nil {
+		return bestTrial(accepted), false
+	}
+	mats := MaterialsFromSnapshot(e.CAS, snap, hash, parent)
+	trial := e.trialMats(ctx, opts, baseline, baseReport, mats, Proposal{
+		ID:      "merge-accepted",
+		Surface: "merge",
+		Audit:   "merged all Harbor-accepted L1 deltas",
+	}, held)
+	if trial.Accepted {
+		return trial, true
+	}
+	return bestTrial(accepted), false
+}
+
+func bestTrial(ts []Trial) Trial {
+	best := ts[0]
+	bestScore := best.Metrics.HeldInPass + best.Metrics.HeldOutPass
+	for _, t := range ts[1:] {
+		s := t.Metrics.HeldInPass + t.Metrics.HeldOutPass
+		if s > bestScore {
+			best, bestScore = t, s
+		}
+	}
+	return best
+}
+
+func (e *Engine) publishCanary(opts CycleOpts, baseline MaterialSet, hash string) bool {
+	_ = e.Refs.Set(artifact.RefCanary, hash)
+	if fp := baseline.Snap.ModelFingerprint; fp != "" {
+		_ = e.Refs.Set(artifact.ModelCanary(fp), hash)
+	}
+	_ = e.Refs.Archive(hash)
+	if !opts.PromoteCanary {
+		return false
+	}
+	_ = e.Refs.Set(artifact.RefActive, hash)
+	if fp := baseline.Snap.ModelFingerprint; fp != "" {
+		_ = e.Refs.Set(artifact.ModelActive(fp), hash)
+	}
+	return true
 }
 
 func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet, suffix string) (eval.RunReport, error) {
@@ -198,18 +332,22 @@ func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet,
 	})
 }
 
-func (e *Engine) trialSnapshot(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, hash string, p Proposal) Trial {
+func (e *Engine) trialSnapshot(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, hash string, p Proposal, held map[string]bool) Trial {
 	snap, err := e.CAS.GetSnapshot(hash)
 	if err != nil {
 		return Trial{Proposal: p, Hash: hash, Reason: err.Error()}
 	}
 	mats := MaterialsFromSnapshot(e.CAS, snap, hash, baseline)
-	return e.trialMats(ctx, opts, baseline, baseReport, mats, p)
+	return e.trialMats(ctx, opts, baseline, baseReport, mats, p, held)
 }
 
-func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, mats MaterialSet, p Proposal) Trial {
-	fiber, ferr := e.Kernel.Plugin("candidate:"+mats.Hash[:min(8, len(mats.Hash))], func(c *kernel.Context) error {
-		return c.Provide("candidate:"+mats.Hash[:min(8, len(mats.Hash))], mats.Hash)
+func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline MaterialSet, baseReport eval.RunReport, mats MaterialSet, p Proposal, held map[string]bool) Trial {
+	short := mats.Hash
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	fiber, ferr := e.Kernel.Plugin("candidate:"+short, func(c *kernel.Context) error {
+		return c.Provide("candidate:"+short, mats.Hash)
 	})
 	trial := Trial{Proposal: p, Hash: mats.Hash}
 	if ferr != nil {
@@ -218,10 +356,13 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 	}
 	report, rerr := e.evalMats(ctx, opts, mats, "-cand-"+p.ID)
 	trial.Metrics = report.Metrics
+	hit, miss := scoreManifesto(p, report, held)
+	trial.ManifestoHit, trial.ManifestoMiss = hit, miss
+	e.logTrial(mats.Hash, report, p, held)
 	if rerr != nil {
 		trial.Reason = rerr.Error()
 		_ = fiber.Dispose()
-		_ = e.Archive.Add(Node{ID: mats.Hash, Parent: opts.Parent.Hash, Snapshot: mats.Hash, ProposalID: p.ID, Metrics: report.Metrics, Note: trial.Reason})
+		_ = e.Archive.Add(nodeFrom(opts.Parent.Hash, mats.Hash, p, report, trial, false))
 		return trial
 	}
 	ok, reason := eval.Promote(baseReport.Metrics, report.Metrics)
@@ -229,21 +370,35 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 	trial.Reason = reason
 	if !ok {
 		_ = fiber.Dispose()
-	} else {
-		_ = e.Refs.Set(artifact.RefCanary, mats.Hash)
-		if opts.PromoteCanary {
-			_ = e.Refs.Set(artifact.RefActive, mats.Hash)
-			if fp := baseline.Snap.ModelFingerprint; fp != "" {
-				_ = e.Refs.Set(artifact.ModelActive(fp), mats.Hash)
-			}
-		}
-		_ = e.Refs.Archive(mats.Hash)
 	}
-	_ = e.Archive.Add(Node{
-		ID: mats.Hash, Parent: opts.Parent.Hash, Snapshot: mats.Hash, ProposalID: p.ID,
-		Metrics: report.Metrics, Accepted: ok, Canary: ok, Note: reason,
-	})
+	_ = e.Archive.Add(nodeFrom(opts.Parent.Hash, mats.Hash, p, report, trial, ok))
 	return trial
+}
+
+func nodeFrom(parent, hash string, p Proposal, report eval.RunReport, trial Trial, ok bool) Node {
+	return Node{
+		ID: hash, Parent: parent, Snapshot: hash, ProposalID: p.ID,
+		Metrics: report.Metrics, Accepted: ok, Canary: false, Note: trial.Reason,
+		Surface: p.Surface, ManifestoHit: trial.ManifestoHit, ManifestoMiss: trial.ManifestoMiss,
+	}
+}
+
+func scoreManifesto(p Proposal, report eval.RunReport, held map[string]bool) (hit, miss int) {
+	byID := map[string]bool{}
+	for _, r := range report.Results {
+		byID[r.ID] = r.Pass
+	}
+	for _, id := range p.PredictedFixes {
+		if held[id] {
+			continue
+		}
+		if byID[id] {
+			hit++
+		} else {
+			miss++
+		}
+	}
+	return hit, miss
 }
 
 func playbookHas(pb artifact.Playbook, b artifact.PlaybookBullet) bool {
@@ -256,4 +411,23 @@ func playbookHas(pb artifact.Playbook, b artifact.PlaybookBullet) bool {
 		}
 	}
 	return false
+}
+
+func uniqueSafety(ids []string, id string) []string {
+	for _, x := range ids {
+		if x == id {
+			return ids
+		}
+	}
+	return append(ids, id)
+}
+
+func lastNodes(nodes []Node, n int) []Node {
+	if n <= 0 || len(nodes) == 0 {
+		return nil
+	}
+	if len(nodes) <= n {
+		return nodes
+	}
+	return nodes[len(nodes)-n:]
 }

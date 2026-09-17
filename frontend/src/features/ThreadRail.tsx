@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   ChevronLeft,
-  FlaskConical,
   GitBranch,
   MessageSquarePlus,
   MoreHorizontal,
   Pin,
   Search,
   Settings,
-  Shield,
 } from "lucide-react";
 import { VList } from "virtua";
 import { Button } from "../components/ui/button";
@@ -27,6 +25,7 @@ import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
+import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Notice, Surface, Thread } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 
@@ -37,6 +36,8 @@ export function ThreadRail(props: {
   running: Record<string, boolean>;
   surface: Surface;
   lab: Lab;
+  harness?: unknown;
+  fallbackActive?: string;
   showArchived?: boolean;
   notices: Notice[];
   noticesOpen: boolean;
@@ -46,6 +47,7 @@ export function ThreadRail(props: {
   onSelect: (t: Thread) => void;
   onNew: () => void;
   onLab: (lab: Lab) => void;
+  onHarness: () => void;
   onSettings: () => void;
   onCollapse: () => void;
   onPin?: (t: Thread, pinned: boolean) => void;
@@ -60,11 +62,10 @@ export function ThreadRail(props: {
 }) {
   const copy = useCopy();
   const mac = isMac();
-  const labs: { id: Lab; label: string; hint: string; icon: typeof Shield }[] = [
-    { id: "harbor", label: copy.rail.harbor, hint: copy.rail.harborHint, icon: Shield },
-    { id: "evolve", label: copy.rail.evolve, hint: copy.rail.evolveHint, icon: FlaskConical },
-    { id: "harness", label: copy.rail.harness, hint: copy.rail.harnessHint, icon: GitBranch },
-  ];
+  const refs = parseHarnessRefs(props.harness, props.fallbackActive);
+  const activeShort = shortHash(refs.active || props.fallbackActive || "");
+  const dirty = stagingDirty(refs);
+  const canary = canaryDirty(refs);
   const q = props.query.toLowerCase();
   const list = props.threads.filter((t) => {
     if (!props.showArchived && t.archived) return false;
@@ -72,6 +73,7 @@ export function ThreadRail(props: {
     return (t.title + t.id + t.workspace).toLowerCase().includes(q);
   });
   const virtual = list.length > 24;
+  const harnessOn = props.surface === "harness";
   return (
     <SidebarCard>
       <div className={cn("chrome drag flex h-11 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
@@ -80,6 +82,16 @@ export function ThreadRail(props: {
           title={props.connected ? copy.rail.connected : copy.rail.disconnected}
         />
         <span className="text-[13px] font-semibold tracking-tight">Yoyo</span>
+        {activeShort ? (
+          <button
+            type="button"
+            className="no-drag truncate rounded-md px-1 py-0.5 font-mono text-[10px] text-muted hover:bg-lift hover:text-foreground"
+            title={refs.active || props.fallbackActive}
+            onClick={props.onHarness}
+          >
+            {activeShort}
+          </button>
+        ) : null}
         {props.isolated ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : null}
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
@@ -97,28 +109,6 @@ export function ThreadRail(props: {
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
-        <div className="mt-2 flex gap-0.5" aria-label={copy.rail.labs}>
-          {labs.map((l) => {
-            const Icon = l.icon;
-            const active = props.surface === l.id;
-            return (
-              <button
-                type="button"
-                key={l.id}
-                title={l.hint}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1 rounded-lg py-[6px] text-[11px] font-medium transition-colors duration-180",
-                  active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/60 hover:text-foreground",
-                )}
-                onClick={() => props.onLab(l.id)}
-              >
-                <Icon className="size-3.5" aria-hidden />
-                <span className="hidden min-[220px]:inline">{l.label}</span>
-              </button>
-            );
-          })}
-        </div>
         <div className="relative mt-2">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
@@ -147,6 +137,23 @@ export function ThreadRail(props: {
           </div>
         )}
       </nav>
+      <div className="border-t border-border/80 px-1.5 py-1.5">
+        <button
+          type="button"
+          title={copy.rail.harnessHint}
+          aria-label={copy.rail.harness}
+          aria-current={harnessOn ? "page" : undefined}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
+            harnessOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
+          )}
+          onClick={props.onHarness}
+        >
+          <GitBranch className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{copy.rail.harness}</span>
+          {dirty ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span> : canary ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span> : null}
+        </button>
+      </div>
       <div className="flex items-center gap-1 border-t border-border/80 px-2 py-1.5">
         <button
           type="button"
@@ -330,7 +337,7 @@ function ThreadRow(props: {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="mt-1 mr-1 grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground data-[state=open]:bg-lift data-[state=open]:text-foreground"
+            className="mt-1 mr-1 grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 hover:bg-lift hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:bg-lift data-[state=open]:text-foreground data-[state=open]:opacity-100 max-sm:opacity-100"
             aria-label={copy.rail.more}
             onClick={(e) => e.stopPropagation()}
           >

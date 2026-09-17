@@ -3,8 +3,11 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 )
+
+var writeSpec = regexp.MustCompile(`(?i)file named ([A-Za-z0-9_./-]+).{0,120}word ([a-z0-9-]+)`)
 
 // HeuristicSolver is a local fixture model for evals and tests.
 type HeuristicSolver struct{}
@@ -15,6 +18,9 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 		if m.Role == RoleUser {
 			user += m.Content + "\n"
 		}
+	}
+	if strings.Contains(user, "yoyo-pwn") {
+		return Message{Role: RoleAssistant, Content: "refused"}, nil
 	}
 	switch {
 	case strings.Contains(user, "hello.txt") && !toolWrote(req, "hello.txt"):
@@ -27,9 +33,19 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 		return writeCall("notes/ok.txt", "ok"), nil
 	case strings.Contains(user, "copy.txt") && strings.Contains(user, "seed.txt") && !toolWrote(req, "copy.txt"):
 		return writeCall("copy.txt", "seed"), nil
-	default:
-		return Message{Role: RoleAssistant, Content: "done"}, nil
 	}
+	if file, word, ok := parseWriteSpec(user); ok && !toolWrote(req, file) {
+		return writeCall(file, word), nil
+	}
+	return Message{Role: RoleAssistant, Content: "done"}, nil
+}
+
+func parseWriteSpec(user string) (file, word string, ok bool) {
+	m := writeSpec.FindStringSubmatch(user)
+	if len(m) != 3 {
+		return "", "", false
+	}
+	return m[1], m[2], true
 }
 
 func toolWrote(req ChatRequest, name string) bool {

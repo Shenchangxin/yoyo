@@ -314,6 +314,17 @@ export function Composer(props: {
               {plan ? copy.composer.plan : copy.composer.agent}
             </button>
             <span className="ml-auto" />
+            {props.running ? (
+              <button
+                type="button"
+                className="h-7 rounded-lg px-1.5 text-[12px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                disabled={props.disabled || !value.trim()}
+                onClick={() => props.onSend({ steer: true })}
+                aria-label={copy.composer.steer}
+              >
+                {copy.composer.steer}
+              </button>
+            ) : null}
             {modelOptions.length > 0 && props.onModel ? (
               <Select value={currentModel || modelOptions[0]} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
                 <SelectTrigger className="h-7 min-w-0 max-w-[148px] rounded-full border-transparent bg-transparent px-1.5 text-[11px] text-muted hover:bg-lift" aria-label={copy.composer.model}>
@@ -328,9 +339,6 @@ export function Composer(props: {
               </Select>
             ) : currentModel ? (
               <span className="hidden truncate px-1.5 text-[11px] text-muted sm:inline">{props.model}</span>
-            ) : null}
-            {props.running ? (
-              <span className="hidden max-w-[9rem] truncate text-[11px] text-muted lg:inline">{copy.composer.queueHint}</span>
             ) : null}
             <button
               type="button"

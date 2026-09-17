@@ -6,7 +6,7 @@
 
 Yoyo is not another Cursor clone. It is a **self-harnessing** coding agent: one Go core serving CLI, browser, and a Wails desktop shell, with a versioned, evaluable, promotable harness as the product moat. Prompts, playbooks, and skills can evolve. The evaluator, vault, and updater cannot.
 
-**Version 0.1.0** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Threat model](docs/architecture/threat-model.md)
+**Version 0.2.4** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Threat model](docs/architecture/threat-model.md)
 
 ---
 
@@ -198,23 +198,28 @@ Sessions can be searched, renamed, and forked (JSONL copy). Forking does not mov
 
 ## Eval, safety, and evolve
 
-The default sealed suite stays small on purpose so promotion tests stay honest:
+The default **smoke** suite stays small so local tests stay honest. The private sealed catalog is opt-in (`--sealed`).
 
 | Task | Role | In default seed? |
 | --- | --- | --- |
 | `write-hello` | Held-in | Yes |
 | `write-answer` | Held-out (hidden from the proposer) | Yes |
+| `no-escape` | Safety: must not write outside the workspace | Yes (always on evolve; also on `yoyo eval`) |
 | `write-readme` | Opt-in | No |
-| `no-escape` | Safety: must not write outside the workspace | `--safety` |
 | `mkdir-note`, `copy-seed` | Terminal-Bench-style subset, `repeats=2` majority | `--tb` |
+| sealed catalog 20/10/5 | Private held-in / held-out / transfer | `--sealed` / `--transfer` |
 
 ```bash
 go run ./cmd/yoyo eval
+go run ./cmd/yoyo eval --sealed
+go run ./cmd/yoyo eval --transfer
 go run ./cmd/yoyo eval --safety
 go run ./cmd/yoyo eval --tb
 go run ./cmd/yoyo eval --best 3
 go run ./cmd/yoyo eval --models gpt-4.1-mini,gpt-4.1
 go run ./cmd/yoyo evolve
+go run ./cmd/yoyo evolve --rounds 4
+go run ./cmd/yoyo evolve --promote   # explicit: move refs/active
 ```
 
 Harbor layout (see [docs/architecture/harbor.md](docs/architecture/harbor.md)):
@@ -225,11 +230,13 @@ evals/<id>/
   task.toml
   tests/test.sh
   tests/test.ps1
+  tests/expect.toml      # optional
+  environment/Dockerfile # optional
 ```
 
-**ShouldPromote:** held-in and held-out must not regress; at least one split must improve; any safety fail blocks promotion. Online ACE and playbook thumbs write **`refs/staging` only**. Harbor is the only door to `refs/active`.
+**ShouldPromote:** held-in and held-out must not regress; at least one split must improve; any safety fail blocks promotion. Online ACE and playbook thumbs write **`refs/staging` only**. Evolve writes **`refs/canary` only** unless `--promote`. Harbor + Checkout is the door to `refs/active`.
 
-Evolve candidates run Harbor inside a **detached git worktree**, not in your working tree.
+Evolve candidates run Harbor inside a **detached git worktree**, not in your working tree. Each trial also logs metrics under the eval-runs directory (held-out bodies omitted).
 
 ---
 
@@ -240,12 +247,12 @@ Evolve candidates run Harbor inside a **detached git worktree**, not in your wor
 | `yoyo init` | Create home + seed harness |
 | `yoyo run [msg] --workspace --session` | One agent turn |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`, or JSON-RPC on stdio |
-| `yoyo eval [--safety] [--tb] [--best N] [--models a,b]` | Sealed suite / safety / TB subset / best-of-N |
-| `yoyo evolve` | One Self-Harness cycle (L1 materials) |
+| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 20/10 / transfer / safety / TB / best-of-N |
+| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness cycle (L1). Default: canary only |
 | `yoyo harness list\|show\|checkout\|rollback\|diff` | Snapshot pointers (`checkout --l3` for loop/policy) |
 | `yoyo replay [session]` | Print a JSONL trajectory |
 | `yoyo update apply` | Human install of `updates/yoyo.staging` |
-| `yoyo version` | `0.1.0` |
+| `yoyo version` | `0.2.4` |
 
 JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.event` notifications, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`.
 
@@ -262,6 +269,7 @@ JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.even
 | Extra BoN models | `models:` in config | empty |
 | Auto-allow shell | Settings checkbox | `false` |
 | Process isolation | `YOYO_ISOLATE=1` | off (in-process + panic recover) |
+| WASM admit key | `YOYO_WASM_PUBKEY` | empty = fail-closed on signed modules |
 | Worker mode | `YOYO_WORKER=1` | used internally by the desktop |
 
 Pins the loop re-assembles every turn: `YOYO.md`, `AGENTS.md`, `CLAUDE.md` (capped), plus the ACE playbook ranked by helpful−harmful.
@@ -301,8 +309,8 @@ CI (`.github/workflows/ci.yml`) runs Go tests on Windows and a frontend build on
 Push a `v*` tag to [release.yml](.github/workflows/release.yml) for installable desktop builds — Windows NSIS setup, macOS DMG, Linux AppImage / `.deb` / `.rpm` — plus a CGO-free CLI for each OS/arch:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.4
+git push origin v0.2.4
 ```
 
 macOS is ad-hoc signed (not notarized). Windows and Linux packages are unsigned. `yoyo update apply` stays a human step.

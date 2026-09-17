@@ -98,6 +98,13 @@ type LoopPreset struct {
 	Execution       string  `json:"execution"`
 	Verification    string  `json:"verification"`
 	FailureRecovery string  `json:"failure_recovery"`
+	// MaxRecentToolErrors is L1 middleware: after this many consecutive
+	// tool errors the runtime injects ToolErrorInstruction. Topology (L3)
+	// is unaffected.
+	MaxRecentToolErrors  int    `json:"max_recent_tool_errors,omitempty"`
+	ToolErrorInstruction string `json:"tool_error_instruction,omitempty"`
+	// TaskInstruction is prepended to depth-1 subagent prompts (L1).
+	TaskInstruction string `json:"task_instruction,omitempty"`
 }
 
 type PolicyPack struct {
@@ -118,6 +125,9 @@ type EvalSuite struct {
 	Repeats    int      `json:"repeats"`
 	TimeoutSec int      `json:"timeout_sec"`
 	Sealed     bool     `json:"sealed"`
+	// Transfer task ids are never shown to the proposer and are not part of
+	// ShouldPromote. They are a post-canary migration check only.
+	Transfer []string `json:"transfer,omitempty"`
 }
 
 type ModelBinding struct {
@@ -153,4 +163,7 @@ type WASMPlugin struct {
 	Export      string `json:"export"`
 	MemoryPages int    `json:"memory_pages"`
 	TimeoutMS   int    `json:"timeout_ms"`
+	// SigHex is an ed25519 signature over the raw module bytes. Empty means
+	// unsigned — Checkout must reject the snapshot.
+	SigHex string `json:"sig_hex,omitempty"`
 }

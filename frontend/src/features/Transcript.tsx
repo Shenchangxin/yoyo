@@ -368,7 +368,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
         </button>
         <button
           type="button"
-          className="rounded-full bg-lift px-3 py-1.5 text-[12px] text-foreground hover:bg-lift/80"
+          className="rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-lift"
           onClick={() => onResolve(item.id, "always")}
         >
           {copy.transcript.allowAlways}

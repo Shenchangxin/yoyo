@@ -6,7 +6,7 @@
 
 Yoyo は Cursor の複製ではありません。**self-harnessing** なコーディングエージェントです。ひとつの Go コアが CLI・ブラウザ・Wails デスクトップを同時に支え、製品の堀は IDE の見た目ではなく、**版管理でき、評価でき、昇格でき、巻き戻せるハーネス**です。プロンプト・プレイブック・スキルは進化してよい。評価器・保管庫・アップデータは進化してはならない。
 
-**バージョン 0.1.0** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md)
+**バージョン 0.2.4** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md)
 
 ---
 
@@ -227,7 +227,7 @@ evals/<id>/
   tests/test.ps1
 ```
 
-**ShouldPromote:** held-in と held-out が悪化してはならない。少なくとも一方は良くなる。安全失敗は昇格を止める。オンライン ACE と親指は **`refs/staging` だけ**。`refs/active` への扉は Harbor だけです。
+**ShouldPromote:** held-in と held-out が悪化してはならない。少なくとも一方は良くなる。安全失敗は昇格を止める。オンライン ACE と親指は **`refs/staging` だけ**。Evolve の既定は **`refs/canary` だけ**（`--promote` 以外）。`refs/active` への扉は Harbor + Checkout です。
 
 Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あなたの作業ツリーを汚しません。
 
@@ -240,12 +240,12 @@ Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あ�
 | `yoyo init` | ホーム作成とハーネス初期化 |
 | `yoyo run [msg] --workspace --session` | エージェント 1 ターン |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`、または stdio JSON-RPC |
-| `yoyo eval [--safety] [--tb] [--best N] [--models a,b]` | 密封スイート / 安全 / TB / best-of-N |
-| `yoyo evolve` | Self-Harness 1 周期（L1） |
+| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | スモーク / 密封 20/10 / transfer / 安全 / TB / best-of-N |
+| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。既定は canary のみ |
 | `yoyo harness list\|show\|checkout\|rollback\|diff` | スナップショット（loop/ポリシーは `checkout --l3`） |
 | `yoyo replay [session]` | JSONL 軌跡を表示 |
 | `yoyo update apply` | 人間が `updates/yoyo.staging` を適用 |
-| `yoyo version` | `0.1.0` |
+| `yoyo version` | `0.2.4` |
 
 JSON-RPC には `thread.*`、`turn.start` / `turn.interrupt`、`item.event`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*` があります。
 
@@ -301,8 +301,8 @@ CI（`.github/workflows/ci.yml`）は Windows で Go テスト、Ubuntu でフ�
 `v*` タグを push すると [release.yml](.github/workflows/release.yml) がインストール可能なデスクトップ成果物を公開します。Windows は NSIS インストーラ、macOS は DMG、Linux は AppImage / `.deb` / `.rpm`、加えて各 OS/arch の CGO=0 CLI です。
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.4
+git push origin v0.2.4
 ```
 
 macOS は ad-hoc 署名（公証なし）。Windows / Linux パッケージは未署名です。`yoyo update apply` は引き続き人手の手順です。

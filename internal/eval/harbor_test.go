@@ -36,6 +36,12 @@ func TestHarborTaskPass(t *testing.T) {
 	if rep.Metrics.HeldInPass != 1 || rep.Metrics.HeldOutPass != 1 {
 		t.Fatalf("%+v", rep)
 	}
+	if len(rep.Results) != 2 {
+		t.Fatalf("results=%d", len(rep.Results))
+	}
+	if rep.Results[0].Kind != "held_in" || rep.Results[1].Kind != "held_out" {
+		t.Fatalf("kind %+v", rep.Results)
+	}
 }
 
 func TestOptionalWriteReadmeNotInDefaultSeed(t *testing.T) {

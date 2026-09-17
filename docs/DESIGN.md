@@ -16,13 +16,13 @@ Features use `bg-background`, `bg-panel`, `bg-sidebar`, `bg-card`, `bg-lift`, `t
 
 ## Layout
 
-Padded app frame (`p-2`). Sidebar is a rounded card: brand, compact lab nav, threads, notifications + settings gear. Main column is a separate rounded card with a drag `PageHeader`. Three resizable panes inside the frame. Review collapses to a sheet under 1100px. Sidebar becomes an overlay under 800px. Labs keep the thread rail; chat docks as a right rail. Settings is a gear surface occupying the main column (200px nav + 680px content), not a fifth lab.
+Padded app frame (`p-2`). Sidebar is a rounded card: brand + active hash, New chat, search, threads, one Harness row, notifications + settings gear. Main column has a drag `PageHeader`. Three resizable panes on Agent. Review collapses to a sheet under 1100px. Sidebar becomes an overlay under 800px. Harness is one RSI workspace (Overview / Propose / Prove / Promote); chat docks as an optional right rail, off by default. Settings occupies the main column and hides the thread rail (200px nav + 680px content).
 
 ## Transcript and composer
 
 - User bubbles right; assistant prose left, max ~75ch.
 - Tools as compact disclosure rows. Streaming caret. Stick-to-bottom yields when the user scrolls up.
-- Enter sends. Shift+Enter newline. Composer disabled with an inline reason until a workspace exists.
+- Enter sends. Shift+Enter newline. Running turns expose Steer next to Stop. Composer disabled with an inline reason until a workspace exists.
 - Empty state: three operator prompts + workspace CTA. No Sparkles headline.
 
 ## Review
@@ -31,7 +31,7 @@ Split or unified highlighter. File list from the git diff. Apply selected with a
 
 ## Motion and a11y
 
-`prefers-reduced-motion` disables caret blink, section breathe, and decorative transitions. Visible focus rings on controls. Keyboard: New chat, send, stop, palette, Once/Deny, toggle review, settings (`Mod+,`). Cmd+K indexes settings sections and deep-links with a breathe highlight.
+`prefers-reduced-motion` disables caret blink, section breathe, and decorative transitions. Visible focus rings on controls. Keyboard: New chat, send, stop, palette, Once/Deny, toggle review, settings (`Mod+,`). On Harness, `Mod+1`–`Mod+4` switch Overview / Propose / Prove / Promote. Cmd+K indexes settings sections and deep-links with a breathe highlight.
 
 ## Forbidden
 

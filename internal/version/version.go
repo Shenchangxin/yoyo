@@ -4,4 +4,4 @@ package version
 // Release builds override it with:
 //
 //	-ldflags "-X github.com/Shenchangxin/yoyo/internal/version.Version=x.y.z"
-var Version = "0.1.0"
+var Version = "0.2.4"

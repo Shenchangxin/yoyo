@@ -424,14 +424,32 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
 		return a.RunEvalTB(tctx, nil)
+	case "eval.run_sealed":
+		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancel()
+		return a.RunEvalSealed(tctx, nil)
+	case "eval.run_transfer":
+		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancel()
+		return a.RunEvalTransfer(tctx, nil)
 	case "evolve.run":
 		var p struct {
-			K int `json:"k"`
+			K       int  `json:"k"`
+			Rounds  int  `json:"rounds"`
+			Promote bool `json:"promote"`
+			Sealed  bool `json:"sealed"`
 		}
 		_ = json.Unmarshal(params, &p)
-		tctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		timeout := 15 * time.Minute
+		if p.Rounds > 1 {
+			timeout = time.Duration(p.Rounds) * 15 * time.Minute
+			if timeout > 2*time.Hour {
+				timeout = 2 * time.Hour
+			}
+		}
+		tctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		return a.EvolveK(tctx, nil, nil, p.K)
+		return a.EvolveWith(tctx, nil, nil, app.EvolveRun{K: p.K, Rounds: p.Rounds, PromoteActive: p.Promote, Sealed: p.Sealed})
 	case "turn.running":
 		var p struct {
 			Session string `json:"session"`

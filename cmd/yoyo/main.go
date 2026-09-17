@@ -13,6 +13,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
@@ -212,10 +213,12 @@ func evalCmd() *cobra.Command {
 	var best int
 	var safety bool
 	var tb bool
+	var sealed bool
+	var transfer bool
 	var models []string
 	cmd := &cobra.Command{
 		Use:   "eval",
-		Short: "Run the active harness against the sealed eval suite",
+		Short: "Run the active harness against the smoke or sealed eval suite",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := openApp()
 			if err != nil {
@@ -254,22 +257,48 @@ func evalCmd() *cobra.Command {
 				}
 				return nil
 			}
-			rep, err := a.RunEvalOpts(ctx, runtime.HeuristicSolver{}, safety)
+			if transfer {
+				out, err := a.RunEvalTransfer(ctx, runtime.HeuristicSolver{})
+				if err != nil {
+					return err
+				}
+				printEval("transfer", out)
+				return nil
+			}
+			if sealed {
+				out, err := a.RunEvalSealed(ctx, runtime.HeuristicSolver{})
+				if err != nil {
+					return err
+				}
+				printEval("sealed", out)
+				return nil
+			}
+			out, err := a.RunEvalOpts(ctx, runtime.HeuristicSolver{}, safety)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("held-in %d/%d held-out %d/%d safety_fail=%d\n", rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail)
-			for _, r := range rep.Results {
-				fmt.Printf("  %s pass=%v %s\n", r.ID, r.Pass, r.Error)
-			}
+			printEval("smoke", out)
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&best, "best", 0, "repeat the suite N times and keep the best score")
-	cmd.Flags().BoolVar(&safety, "safety", false, "also run the no-escape safety task (does not change the sealed seed suite)")
+	cmd.Flags().BoolVar(&safety, "safety", false, "also run the no-escape safety task if the suite omitted it")
 	cmd.Flags().BoolVar(&tb, "tb", false, "opt-in Terminal-Bench-style subset (mkdir-note, copy-seed) with repeats=2")
+	cmd.Flags().BoolVar(&sealed, "sealed", false, "private 20/10/5 catalog (repeats=2); identities stay on the suite object")
+	cmd.Flags().BoolVar(&transfer, "transfer", false, "run the sealed transfer split only (never fed to Propose)")
 	cmd.Flags().StringSliceVar(&models, "models", nil, "parallel-model best-of-N (does not change the sealed seed suite)")
 	return cmd
+}
+
+func printEval(kind string, rep eval.RunReport) {
+	fmt.Printf("%s held-in %d/%d held-out %d/%d safety_fail=%d\n", kind, rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail)
+	for _, r := range rep.Results {
+		k := r.Kind
+		if k == "" {
+			k = "-"
+		}
+		fmt.Printf("  %s kind=%s pass=%v %s\n", r.ID, k, r.Pass, r.Error)
+	}
 }
 
 func updateCmd() *cobra.Command {
@@ -326,28 +355,40 @@ func doctorCmd() *cobra.Command {
 }
 
 func evolveCmd() *cobra.Command {
-	return &cobra.Command{
+	var k, rounds int
+	var promote, sealed bool
+	cmd := &cobra.Command{
 		Use:   "evolve",
-		Short: "Run one Self-Harness cycle (L1 materials)",
+		Short: "Run Self-Harness cycles (L1 materials). Default writes refs/canary only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := openApp()
 			if err != nil {
 				return err
 			}
 			defer a.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+			if rounds <= 0 {
+				rounds = 1
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rounds)*15*time.Minute)
 			defer cancel()
-			res, err := a.EvolveOnce(ctx, runtime.PromptSensitiveSolver{}, map[string]string{"write-hello": "missing_artifact"})
+			res, err := a.EvolveWith(ctx, runtime.PromptSensitiveSolver{}, map[string]string{"write-hello": "missing_artifact"}, app.EvolveRun{
+				K: k, Rounds: rounds, PromoteActive: promote, Sealed: sealed,
+			})
 			if err != nil {
 				return err
 			}
-			fmt.Printf("clusters=%d proposals=%d promoted=%s\n", len(res.Evidence.Clusters), len(res.Proposals), res.Promoted)
-			for _, t := range res.Tried {
-				fmt.Printf("  %s accepted=%v %s\n", t.Proposal.ID, t.Accepted, t.Reason)
+			fmt.Printf("clusters=%d proposals=%d promoted=%s merged=%v active_moved=%v\n", len(res.Evidence.Clusters), len(res.Proposals), res.Promoted, res.Merged, res.ActiveMoved)
+			for _, tr := range res.Tried {
+				fmt.Printf("  %s accepted=%v %s\n", tr.Proposal.ID, tr.Accepted, tr.Reason)
 			}
 			return nil
 		},
 	}
+	cmd.Flags().IntVar(&k, "k", 3, "proposals per cycle")
+	cmd.Flags().IntVar(&rounds, "rounds", 1, "outer Propose→Prove rounds (still canary-only unless --promote)")
+	cmd.Flags().BoolVar(&promote, "promote", false, "move refs/active (default: canary + archive only)")
+	cmd.Flags().BoolVar(&sealed, "sealed", false, "use the private 20/10/5 catalog")
+	return cmd
 }
 
 func replayCmd() *cobra.Command {

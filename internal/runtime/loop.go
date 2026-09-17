@@ -245,8 +245,28 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		results := dispatchTools(ctx, req, msg.ToolCalls, roundID)
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
+		if inj := middlewareNudge(loop, results); inj != "" {
+			messages = append(messages, Message{Role: RoleUser, Content: inj})
+		}
 	}
 	return last, fmt.Errorf("max turns reached")
+}
+
+func middlewareNudge(loop artifact.LoopPreset, results []Message) string {
+	n := loop.MaxRecentToolErrors
+	if n <= 0 || strings.TrimSpace(loop.ToolErrorInstruction) == "" {
+		return ""
+	}
+	errs := 0
+	for _, m := range results {
+		if strings.HasPrefix(m.Content, "ERROR:") {
+			errs++
+		}
+	}
+	if errs < n {
+		return ""
+	}
+	return loop.ToolErrorInstruction
 }
 
 func spillOf(req RunRequest) *Spill {

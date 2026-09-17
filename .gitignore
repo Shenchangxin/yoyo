@@ -45,3 +45,4 @@ Thumbs.db
 # Test scratch
 /tmp/
 testdata/tmp/
+evals/.materialized/
