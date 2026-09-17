@@ -298,6 +298,15 @@ cd frontend && npm install && npm run build
 
 CI（`.github/workflows/ci.yml`）は Windows で Go テスト、Ubuntu でフロントエンドをビルドします。
 
+`v*` タグを push すると [release.yml](.github/workflows/release.yml) が Windows / macOS（universal）/ Linux でデスクトップをネイティブビルドし、各 OS/arch の CGO=0 CLI と SHA-256 チェックサム付き GitHub Release を公開します。
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+macOS は ad-hoc 署名（公証なし）。Windows / Linux デスクトップは未署名です。`yoyo update apply` は引き続き人手の手順です。
+
 昇格、TCB fiber、アップデータを触る前に [不変条件](docs/architecture/invariants.md) を読んでください。テストが守っています。進化中のエージェントに編集する資格はありません。
 
 ---

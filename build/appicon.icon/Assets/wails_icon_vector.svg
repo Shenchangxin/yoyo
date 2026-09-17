@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" rx="224" fill="#0F9D78"/>
+  <rect width="1024" height="1024" rx="224" fill="#0A0A0A"/>
   <g fill="none" stroke="#FFFFFF" stroke-linecap="round">
     <circle cx="512" cy="307" r="172" stroke-width="78"/>
     <line x1="512" y1="479" x2="512" y2="635" stroke-width="33"/>

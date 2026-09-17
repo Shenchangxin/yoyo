@@ -222,7 +222,23 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if req.Events != nil {
 				req.Events.Emit(HookTurnEnd, last)
 			}
-			emit(req, trace.TypeTurnEnd, "runtime", map[string]any{"text": strings.TrimSpace(msg.Content), "ok": true})
+			end := map[string]any{"text": strings.TrimSpace(msg.Content), "ok": true}
+			if report.Tokens > 0 {
+				end["tokens"] = report.Tokens
+				end["budget"] = report.Budget
+				end["window"] = report.Window
+				end["prefix_tokens"] = report.PrefixTokens
+				end["dynamic_tokens"] = report.DynamicTokens
+				end["schema_tokens"] = report.SchemaTokens
+				end["elided"] = report.Elided
+			}
+			if report.ProviderPrompt > 0 {
+				end["provider_prompt"] = report.ProviderPrompt
+			}
+			if len(report.Layers) > 0 {
+				end["layers"] = report.Layers
+			}
+			emit(req, trace.TypeTurnEnd, "runtime", end)
 			return strings.TrimSpace(msg.Content), nil
 		}
 		messages = append(messages, msg)
@@ -256,12 +272,15 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 	n := len(calls)
 	out := make([]Message, n)
 	type job struct {
-		tc      ToolCall
-		deny    bool
-		reason  string
-		args    string
-		content string
-		ok      bool
+		tc        ToolCall
+		deny      bool
+		reason    string
+		args      string
+		content   string
+		ok        bool
+		spillID   string
+		elapsedMs int
+		bytes     int
 	}
 	jobs := make([]job, n)
 	readonly := true
@@ -290,6 +309,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		})
 	}
 	runExec := func(i int) {
+		started := time.Now()
 		j := jobs[i]
 		var res ToolResult
 		if j.deny {
@@ -306,12 +326,15 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 				content += "\n" + res.Content
 			}
 		}
-		content = ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content)
-		post := applyPostTool(req.Events, ToolHook{Name: j.tc.Name, Arguments: j.tc.Arguments, SessionID: req.SessionID, Result: content})
+		jobs[i].bytes = len(content)
+		preview, spillID := ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content)
+		post := applyPostTool(req.Events, ToolHook{Name: j.tc.Name, Arguments: j.tc.Arguments, SessionID: req.SessionID, Result: preview})
 		if post.Result != "" {
-			content = post.Result
+			preview = post.Result
 		}
-		jobs[i].content = content
+		jobs[i].content = preview
+		jobs[i].spillID = spillID
+		jobs[i].elapsedMs = int(time.Since(started).Milliseconds())
 		jobs[i].ok = res.Err == nil
 	}
 	if readonly && n > 1 {
@@ -339,9 +362,19 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		if j.tc.Name == "load_skill" && j.ok {
 			emit(req, trace.TypeInject, "skill", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID})
 		}
-		emit(req, trace.TypeToolResult, "tool", map[string]any{
+		payload := map[string]any{
 			"name": j.tc.Name, "id": j.tc.ID, "content": j.content, "untrusted": true, "round": roundID,
-		})
+		}
+		if j.spillID != "" {
+			payload["spill_id"] = j.spillID
+		}
+		if j.elapsedMs > 0 {
+			payload["elapsed_ms"] = j.elapsedMs
+		}
+		if j.bytes > 0 {
+			payload["bytes"] = j.bytes
+		}
+		emit(req, trace.TypeToolResult, "tool", payload)
 		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content}
 	}
 	return out

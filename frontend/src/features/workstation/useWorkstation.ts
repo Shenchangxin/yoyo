@@ -10,7 +10,7 @@ import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { useUI } from "../../lib/store";
 import { applyUiScale } from "../../lib/scale";
 import { useTheme } from "../../lib/theme";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, Item, SkillInfo, Thread } from "../../lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, Item, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -60,7 +60,7 @@ function localUser(sessionId: string, text: string): Item {
 function readInspTab(id: string) {
   try {
     const v = localStorage.getItem(`yoyo-insp-${id}`);
-    if (v === "diff" || v === "files") return v;
+    if (v === "diff" || v === "files" || v === "trace") return v;
   } catch {
     /* ignore */
   }
@@ -108,6 +108,7 @@ export function useWorkstation() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const [ctx, setCtx] = useState<ContextUsage>(emptyCtx);
+  const [trace, setTrace] = useState<SessionTrace | null>(null);
   const [err, setErr] = useState("");
   const [diff, setDiff] = useState("");
   const [hunks, setHunks] = useState<Hunk[]>([]);
@@ -151,6 +152,31 @@ export function useWorkstation() {
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
+
+  const refreshCtx = useCallback(() => {
+    if (!activeId) {
+      setCtx(emptyCtx);
+      return;
+    }
+    api.contextUsage(activeId).then(setCtx).catch(() => {});
+  }, [activeId]);
+
+  const refreshTrace = useCallback(async () => {
+    if (!activeId) {
+      setTrace(null);
+      return;
+    }
+    try {
+      setTrace(await api.sessionTrace(activeId));
+    } catch {
+      /* keep last projection */
+    }
+  }, [activeId]);
+
+  const loadSpill = useCallback(async (blobID: string): Promise<SpillBlob> => {
+    if (!activeId) return { id: blobID, bytes: 0, text: "", truncated: false };
+    return api.spillBlob(activeId, blobID);
+  }, [activeId]);
 
   const fail = (e: unknown) => {
     const classified = classifyError(api.errMessage(e));
@@ -231,6 +257,14 @@ export function useWorkstation() {
   }, [activeId, inspTab]);
 
   useEffect(() => {
+    if (inspTab !== "trace") return;
+    void refreshTrace();
+    if (!threadRunning) return;
+    const timer = window.setInterval(() => { void refreshTrace(); }, 2000);
+    return () => window.clearInterval(timer);
+  }, [inspTab, refreshTrace, threadRunning]);
+
+  useEffect(() => {
     if (import.meta.env.VITE_E2E) return;
     if (typeof window !== "undefined" && !(window as any)._wails) return;
     let offs: Array<() => void> = [];
@@ -288,11 +322,13 @@ export function useWorkstation() {
     if (!activeId) {
       itemsAcc.current = [];
       setItems([]);
+      setCtx(emptyCtx);
       return;
     }
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);
+    setCtx(emptyCtx);
     const unsub = subscribeSession(
       activeId,
       (item) => {
@@ -329,10 +365,10 @@ export function useWorkstation() {
       },
     );
     api.approvals().then(setApprovals).catch(() => {});
-    api.contextUsage(activeId).then(setCtx).catch(() => {});
+    refreshCtx();
     api.running(activeId).then((live) => setRunning((m) => ({ ...m, [activeId]: live }))).catch(() => {});
     return unsub;
-  }, [activeId]);
+  }, [activeId, refreshCtx]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -490,6 +526,7 @@ export function useWorkstation() {
     if (raw === "compact") {
       const note = await api.compactSession(activeId);
       toast.success(note || copy.app.compacted);
+      refreshCtx();
       return;
     }
     if (raw === "model") {
@@ -497,6 +534,7 @@ export function useWorkstation() {
       const t = await api.setSessionModel(activeId, rest.trim());
       setActive(t);
       await refresh();
+      refreshCtx();
       return;
     }
     if (raw === "export") {
@@ -671,12 +709,13 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     setupDismissed, setSetupDismissed, sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, err, setErr,
+    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
+    refreshTrace, loadSpill, refreshCtx,
   };
 }

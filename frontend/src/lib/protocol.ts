@@ -73,6 +73,67 @@ export type ContextUsage = {
   elided: number;
 };
 
+export type TraceStats = {
+  events: number;
+  users: number;
+  assistants: number;
+  toolCalls: number;
+  toolResults: number;
+  errors: number;
+  compactions: number;
+  deltas: number;
+  tokens: number;
+  durationMs: number;
+  spillBytes: number;
+};
+
+export type TraceEvent = {
+  index: number;
+  ts: string;
+  type: string;
+  source: string;
+  lane: string;
+  round: string;
+  name: string;
+  id: string;
+  summary: string;
+  detail: string;
+  bytes: number;
+  elapsedMs: number;
+  spillId: string;
+  tokens: number;
+  error: boolean;
+};
+
+export type TraceArtifact = {
+  kind: string;
+  id: string;
+  label: string;
+  bytes: number;
+  preview: string;
+};
+
+export type SessionTrace = {
+  sessionId: string;
+  title: string;
+  workspace: string;
+  harness: string;
+  model: string;
+  createdAt: string;
+  startedAt: string;
+  endedAt: string;
+  stats: TraceStats;
+  events: TraceEvent[];
+  artifacts: TraceArtifact[];
+};
+
+export type SpillBlob = {
+  id: string;
+  bytes: number;
+  text: string;
+  truncated: boolean;
+};
+
 export type Health = {
   ok: boolean;
   harness: string;

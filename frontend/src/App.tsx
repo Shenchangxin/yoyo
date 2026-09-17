@@ -78,6 +78,7 @@ export default function App() {
         if (!ws.activeId) return;
         const t = await api.setSessionModel(ws.activeId, model);
         ws.setActive(t);
+        ws.refreshCtx();
       }}
       onPickFiles={async () => {
         const paths = await api.pickFiles();
@@ -102,6 +103,11 @@ export default function App() {
         const cur = useUI.getState().drafts[ws.draftKey] || "";
         useUI.getState().setDraft(ws.draftKey, cur ? `${cur}\n${text}` : text);
       }}
+      sessionId={ws.activeId}
+      running={ws.threadRunning}
+      trace={ws.trace}
+      onRefreshTrace={() => { void ws.refreshTrace(); }}
+      onLoadSpill={ws.loadSpill}
     />
   );
 
@@ -500,6 +506,7 @@ export default function App() {
                           if (!ws.activeId) return;
                           const t = await api.setSessionModel(ws.activeId, model);
                           ws.setActive(t);
+                          ws.refreshCtx();
                         }}
                       />
                     )}

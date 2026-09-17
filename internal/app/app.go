@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -162,11 +164,20 @@ func Open(root, bundledEvals string) (*App, error) {
 	}
 	a.Caps = capability.NewBroker(capability.AutoPolicy{Allow: allow}, a.approve)
 	a.Gate.SetOnOffer(func(o capability.Offer) {
-		a.Hub.Publish(trace.Event{
-			Type:    trace.TypeApproval,
-			Source:  "gate",
-			Payload: map[string]any{"id": o.ID, "action": o.Request.Action, "command": o.Request.Command, "path": o.Request.Path},
-		})
+		ev := trace.Event{
+			TS:        time.Now().UTC(),
+			Type:      trace.TypeApproval,
+			Source:    "gate",
+			SessionID: o.Request.SessionID,
+			Payload: map[string]any{
+				"id": o.ID, "action": o.Request.Action, "command": o.Request.Command,
+				"path": o.Request.Path, "level": string(o.Request.Level),
+			},
+		}
+		if a.Traces != nil && o.Request.SessionID != "" {
+			_ = a.Traces.Append(ev)
+		}
+		a.Hub.Publish(ev)
 	})
 	a.Evolve = &evolve.Engine{
 		CAS:     a.CAS,
@@ -236,9 +247,16 @@ func (a *App) RememberShape(sessionID string, r runtime.ShapeReport) {
 }
 
 func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
-	a.shapeMu.Lock()
-	defer a.shapeMu.Unlock()
-	return a.lastShape[sessionID]
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID != "" && a.Running(sessionID) {
+		a.shapeMu.Lock()
+		live := a.lastShape[sessionID]
+		a.shapeMu.Unlock()
+		if live.Tokens > 0 || live.PrefixTokens > 0 || live.Window > 0 {
+			return live
+		}
+	}
+	return a.measureSessionContext(sessionID)
 }
 
 func (a *App) RememberUsage(snap map[string]any) {
@@ -287,7 +305,34 @@ func (a *App) ResolveApproval(id, decision string) error {
 	case "once", "allow":
 		d = capability.Once
 	}
-	return a.Gate.Resolve(id, d)
+	sessionID := ""
+	if a.Gate != nil {
+		for _, o := range a.Gate.Pending() {
+			if o.ID == id {
+				sessionID = o.Request.SessionID
+				break
+			}
+		}
+	}
+	if err := a.Gate.Resolve(id, d); err != nil {
+		return err
+	}
+	if sessionID != "" {
+		ev := trace.Event{
+			TS:        time.Now().UTC(),
+			Type:      trace.TypeApproval,
+			Source:    "user",
+			SessionID: sessionID,
+			Payload:   map[string]any{"id": id, "decision": decision},
+		}
+		if a.Traces != nil {
+			_ = a.Traces.Append(ev)
+		}
+		if a.Hub != nil {
+			a.Hub.Publish(ev)
+		}
+	}
+	return nil
 }
 
 func (a *App) SaveConfig() error {

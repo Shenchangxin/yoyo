@@ -212,14 +212,34 @@ test("continue this turn posts retry instead of a new user message", async ({ pa
   expect(await leaked).toBe(false);
 });
 
-test("review pane has diff and files only", async ({ page }) => {
+test("review pane has diff files and trace", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await expect(page.getByRole("tablist", { name: "Review" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Diff/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Files/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Trace/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Context/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
+});
+
+test("trace tab shows trajectory and artifacts", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "list files" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { name: "shell", arguments: "{\"cmd\":\"ls\"}", id: "c1" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { name: "shell", content: "a.txt", id: "c1", spill_id: "c1", bytes: 5, elapsed_ms: 12 } },
+    ],
+    artifacts: [{ kind: "spill", id: "c1", label: "c1", bytes: 5 }],
+    spill: { c1: { id: "c1", bytes: 5, text: "a.txt", truncated: false } },
+  });
+  await page.goto("/");
+  await page.getByRole("tab", { name: /^Trace/ }).click();
+  await expect(page.getByTestId("trace-panel")).toBeVisible();
+  await expect(page.getByTestId("trace-event").filter({ hasText: "list files" })).toBeVisible();
+  await expect(page.getByTestId("trace-event").filter({ hasText: "shell" }).first()).toBeVisible();
+  await expect(page.getByTestId("trace-panel").getByText("c1").first()).toBeVisible();
 });
 
 test("composer has no steer control", async ({ page }) => {

@@ -196,6 +196,19 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.Trajectory(p.Session)
+	case "trace.get":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SessionTrace(p.Session)
+	case "spill.get":
+		var p struct {
+			Session string `json:"session"`
+			ID      string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SpillBlob(p.Session, p.ID)
 	case "approvals.list":
 		return a.Gate.Pending(), nil
 	case "approvals.resolve":

@@ -22,7 +22,6 @@ frontend/playwright/.cache/
 
 # Wails / build
 build/bin/
-build/windows/info.json
 *.syso
 
 # Go
