@@ -12,27 +12,54 @@ export class ApiError extends Error {
   }
 }
 
+// Vite must see this glob so production builds embed the generated Service.
+// `@vite-ignore` of a runtime path 404s in the installer (no /bindings/*.js on the asset server),
+// then every call falls through to `/api/*` which the desktop webview does not serve.
+const boundService = import.meta.glob("../../bindings/**/internal/desktop/service.ts");
+
+function unwrapService(mod: any): any | null {
+  const svc = mod?.Service ?? mod?.default ?? mod;
+  if (svc && typeof (svc.ListSessions || svc.Health || svc.listSessions) === "function") return svc;
+  return null;
+}
+
+function nativeDesktop(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as any;
+  return !!(w.__YOYO_DESKTOP__ || w._wails?.environment?.OS);
+}
+
+function namedDesktopService(): any {
+  const name = (method: string) => `github.com/Shenchangxin/yoyo/internal/desktop.Service.${method}`;
+  return new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        if (typeof prop !== "string" || prop === "then") return undefined;
+        return (...args: any[]) =>
+          import("@wailsio/runtime").then((mod: any) => {
+            const byName = mod.Call?.ByName;
+            if (typeof byName !== "function") throw new Error("Wails Call.ByName missing");
+            return byName(name(prop), ...args);
+          });
+      },
+    },
+  );
+}
+
 async function wailsService(): Promise<any | null> {
   if (import.meta.env.VITE_E2E) return null;
-  const w = window as any;
-  const desktop = !!(w._wails || w.wails || w.__YOYO_DESKTOP__);
-  if (typeof window !== "undefined" && !desktop && !w._wails?.environment?.OS) {
+  const loaders = Object.values(boundService);
+  if (loaders.length) {
     try {
-      const runtime: any = await import("@wailsio/runtime");
-      if (!runtime?.Environment && !runtime?.environment) return null;
+      const svc = unwrapService(await loaders[0]!());
+      if (svc) return svc;
     } catch {
-      return null;
+      /* generated module missing at runtime */
     }
   }
-  try {
-    const spec = "../../bindings/github.com/Shenchangxin/yoyo/internal/desktop/service.js";
-    const mod = await import(/* @vite-ignore */ spec);
-    const svc = (mod as any).Service ?? (mod as any).default ?? mod;
-    if (svc && typeof (svc.ListSessions || svc.Health || svc.listSessions) === "function") return svc;
-    return null;
-  } catch {
-    return null;
-  }
+  if (nativeDesktop()) return namedDesktopService();
+  return null;
 }
 
 function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null {
@@ -44,11 +71,16 @@ function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(8000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(8000),
+    });
+  } catch (e) {
+    throw new Error(`${path}: ${errMessage(e)}`);
+  }
   const text = await res.text();
   let body: any = text;
   try {
@@ -57,8 +89,8 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     /* keep text */
   }
   if (!res.ok) {
-    const msg = typeof body === "object" && body?.error ? body.error : text || res.statusText;
-    throw new ApiError(res.status, body, msg);
+    const raw = typeof body === "object" && body?.error ? body.error : text || res.statusText;
+    throw new ApiError(res.status, body, `${path}: ${raw}`);
   }
   return body as T;
 }

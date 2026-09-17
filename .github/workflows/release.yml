@@ -70,7 +70,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          # Pin an x64 runner. windows-11-arm is a different image; amd64 == x64.
+          - os: windows-2025
             goos: windows
             goarch: amd64
           - os: macos-latest
@@ -125,14 +126,18 @@ jobs:
       - name: Stamp version metadata
         run: go run ./scripts/stampversion "$VERSION"
 
-      - name: Build Windows installer
+      - name: Build Windows x64 installer
         if: matrix.goos == 'windows'
-        run: >
-          wails3 task windows:package
-          "VERSION=${VERSION}"
-          "VERSION_NSIS=${VERSION_NSIS}"
-          ARCH=amd64
-          INSTALL_SCOPE=user
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          wails3 task windows:package \
+            "VERSION=${VERSION}" \
+            "VERSION_NSIS=${VERSION_NSIS}" \
+            ARCH=amd64 \
+            INSTALL_SCOPE=user
 
       - name: Build macOS app and DMG
         if: matrix.goos == 'darwin'
@@ -162,6 +167,7 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           $src = Get-ChildItem -Path bin -Filter "*-installer.exe" | Select-Object -First 1
           if (-not $src) { throw "missing NSIS installer in bin/" }
+          Copy-Item $src.FullName "dist/Yoyo-$env:VERSION-windows-x64-setup.exe"
           Copy-Item $src.FullName "dist/Yoyo-$env:VERSION-windows-amd64-setup.exe"
 
       - name: Collect macOS DMG
@@ -301,7 +307,7 @@ jobs:
           body: |
             Install the desktop app, then run it:
 
-            - **Windows:** `Yoyo-*-windows-amd64-setup.exe` — per-user installer, no admin. Finish page can launch Yoyo.
+            - **Windows x64:** `Yoyo-*-windows-x64-setup.exe` (same file as `windows-amd64`) — per-user installer, no admin. Finish page can launch Yoyo.
             - **macOS:** `Yoyo-*-darwin-universal.dmg` — open the disk image and drag Yoyo into Applications.
             - **Linux:** `Yoyo-*-linux-amd64.AppImage` (chmod +x, double-click) or install the `.deb` / `.rpm`.
 

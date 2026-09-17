@@ -56,5 +56,9 @@ export function boolOr(v: any, fallback: boolean): boolean {
 export function errMessage(e: any): string {
   if (!e) return "unknown error";
   if (typeof e === "string") return e;
-  return String(e.message || e.error || e);
+  const msg = e.message || e.error || e.Message;
+  const cause = e.cause != null ? errMessage(e.cause) : "";
+  const primary = msg != null && msg !== e ? String(msg) : String(e);
+  if (cause && cause !== primary && !primary.includes(cause)) return `${primary}: ${cause}`;
+  return primary;
 }
