@@ -176,11 +176,9 @@ export function Transcript(props: {
   items: Item[];
   approvals: Approval[];
   running: boolean;
-  needsSetup?: boolean;
   compact?: boolean;
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
-  onSetup?: () => void;
   onOpenReview?: () => void;
   onRetry?: () => void;
 }) {
@@ -305,33 +303,23 @@ export function Transcript(props: {
       {empty && !props.compact ? (
         <div className={cn(pad, "flex min-h-full flex-col justify-end pb-6")}>
           <h1 className="text-[26px] font-semibold tracking-[-0.038em] text-foreground">
-            {props.needsSetup ? copy.transcript.setupTitle : copy.transcript.ready}
+            {copy.transcript.ready}
           </h1>
           <p className="mt-2 max-w-md text-[14px] leading-[1.55] text-muted">
-            {props.needsSetup ? copy.transcript.setupBody : copy.transcript.readyBody}
+            {copy.transcript.readyBody}
           </p>
-          {props.needsSetup ? (
-            <button
-              type="button"
-              className="mt-6 w-fit rounded-full bg-foreground px-4 py-2 text-[13px] font-medium text-background"
-              onClick={props.onSetup}
-            >
-              {copy.transcript.openControl}
-            </button>
-          ) : (
-            <div className="mt-6 flex flex-wrap gap-2">
-              {copy.transcript.starters.map((s) => (
-                <button
-                  type="button"
-                  key={s.label}
-                  className="rounded-full border border-border/80 bg-transparent px-3.5 py-1.5 text-[12px] text-muted transition-colors hover:border-border hover:bg-lift/50 hover:text-foreground"
-                  onClick={() => props.onPrompt?.(s.text)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="mt-6 flex flex-wrap gap-2">
+            {copy.transcript.starters.map((s) => (
+              <button
+                type="button"
+                key={s.label}
+                className="rounded-full border border-border/80 bg-transparent px-3.5 py-1.5 text-[12px] text-muted transition-colors hover:border-border hover:bg-lift/50 hover:text-foreground"
+                onClick={() => props.onPrompt?.(s.text)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
       ) : virtual ? (
         <VList

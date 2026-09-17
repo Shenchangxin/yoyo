@@ -15,7 +15,6 @@ import { Transcript } from "./features/Transcript";
 import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
 import { ChatDock } from "./features/ChatDock";
-import { FirstRun } from "./features/FirstRun";
 import { About } from "./features/About";
 import { ConfirmDialog } from "./features/ConfirmDialog";
 import { BootSkeleton } from "./features/BootSkeleton";
@@ -61,8 +60,8 @@ export default function App() {
     <Composer
       draftKey={ws.draftKey}
       running={ws.threadRunning}
-      disabled={ws.needsSetup}
-      disabledReason={copy.composer.disabled}
+      disabled={false}
+      disabledReason=""
       model={ws.active?.model || ws.savedCfg.model || ws.health.model}
       models={ws.savedCfg.models}
       provider={ws.savedCfg.provider}
@@ -117,10 +116,8 @@ export default function App() {
         items={ws.items}
         approvals={ws.approvals}
         running={ws.threadRunning}
-        needsSetup={ws.needsSetup}
         onResolve={ws.onResolve}
         onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-        onSetup={() => ws.openSettings("general", "general-basics")}
         onRetry={() => { void ws.onRetryLast(); }}
         onOpenReview={() => {
           ws.setInspector(true);
@@ -290,8 +287,6 @@ export default function App() {
     />
   );
 
-  const showWizard = ws.booted && ws.needsSetup && !ws.setupDismissed;
-
   const headerLeft = settings ? (
     <Button size="sm" variant="ghost" onClick={ws.closeSettings}>{copy.settings.back}</Button>
   ) : ws.sidebarCollapsed || railNarrow ? (
@@ -328,7 +323,6 @@ export default function App() {
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               onSelectRunning={(t) => { ws.setActive(t); ws.setLab("agent"); }}
-              quiet={ws.needsSetup}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
               onRename={async (title) => {
@@ -367,21 +361,6 @@ export default function App() {
             onDiff={ws.refreshDiff}
             onAbout={async () => { ws.setAboutInfo(await api.about().catch(() => ({}))); ws.setAboutOpen(true); }}
             onQuit={ws.requestQuit}
-          />
-          <FirstRun
-            open={showWizard}
-            cfg={ws.savedCfg}
-            onBrowse={async () => api.pickFolder()}
-            onSkip={() => ws.setSetupDismissed(true)}
-            onFinish={async (values) => {
-              if (values.apiKey.trim()) await api.setAPIKey(values.apiKey.trim());
-              const next = { ...ws.savedCfg, workspace: values.workspace, model: values.model };
-              await api.setConfig(next);
-              await ws.refresh();
-              ws.setSavedCfg(next);
-              ws.setSetupDismissed(true);
-              toast.success(copy.app.controlSaved);
-            }}
           />
           <About open={ws.aboutOpen} info={ws.aboutInfo} onClose={() => ws.setAboutOpen(false)} />
           <ConfirmDialog
@@ -489,8 +468,8 @@ export default function App() {
                         approvals={ws.approvals}
                         running={ws.threadRunning}
                         draftKey={ws.draftKey}
-                        disabled={ws.needsSetup}
-                        disabledReason={copy.composer.disabled}
+                        disabled={false}
+                        disabledReason=""
                         model={ws.active?.model || ws.savedCfg.model || ws.health.model}
                         models={ws.savedCfg.models}
                         provider={ws.savedCfg.provider}

@@ -50,3 +50,29 @@ func TestDefaultWorkspaceOnOpen(t *testing.T) {
 		t.Fatalf("got %q want %q", a.Config.Workspace, a.Home.Workspace())
 	}
 }
+
+func TestDefaultWorkspaceReplacesPlaceholder(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evals, err := filepath.Abs(filepath.Join(wd, "..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"), []byte("workspace: \".\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Open(root, evals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if !a.WorkspaceReady() {
+		t.Fatalf("placeholder workspace not replaced: %q", a.Config.Workspace)
+	}
+	if a.Config.Workspace != a.Home.Workspace() {
+		t.Fatalf("got %q want %q", a.Config.Workspace, a.Home.Workspace())
+	}
+}
