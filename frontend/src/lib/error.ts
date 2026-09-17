@@ -109,3 +109,23 @@ function extractProviderMsg(s: string): string {
 export function shortError(item: Item, t: ErrorCopy): string {
   return errorCopy(t, classifyItem(item).kind).title;
 }
+
+function clipDetail(detail: string): string {
+  const t = detail.trim();
+  if (!t) return "";
+  if (/^<!doctype html/i.test(t) || /^<html[\s>]/i.test(t)) {
+    return "backend returned HTML instead of an API response";
+  }
+  return t.length > 280 ? `${t.slice(0, 277)}…` : t;
+}
+
+/** Title plus the real reason — the banner used to show only the generic title. */
+export function bannerError(raw: string, t: ErrorCopy, payload?: Record<string, any>): string {
+  const classified = classifyError(raw, payload);
+  const { title } = errorCopy(t, classified.kind);
+  const detail = clipDetail(classified.detail || raw);
+  if (!detail) return title;
+  if (detail === title || detail.toLowerCase() === title.toLowerCase()) return title;
+  if (title && detail.toLowerCase().startsWith(title.toLowerCase())) return detail;
+  return `${title} · ${detail}`;
+}

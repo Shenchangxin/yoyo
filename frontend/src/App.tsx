@@ -435,10 +435,10 @@ export default function App() {
           <MainColumn>
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
-              <div className="flex items-center gap-3 border-b border-danger/30 bg-danger/10 px-4 py-1.5 text-[13px] text-danger">
-                {ws.err}
-                <button type="button" className="ml-auto text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
-                <button type="button" className="text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
+              <div data-testid="app-error" className="flex items-start gap-3 border-b border-danger/30 bg-danger/10 px-4 py-1.5 text-[13px] text-danger">
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{ws.err}</span>
+                <button type="button" className="ml-auto shrink-0 text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
+                <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
               </div>
             ) : null}
             {inspectOpen ? (

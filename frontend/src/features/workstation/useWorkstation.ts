@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
-import { classifyError, errorCopy, shortError } from "../../lib/error";
+import { bannerError, shortError } from "../../lib/error";
 import { dropTrailingErrors, mergeItem, mergePendingUsers, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
 import { num, str } from "../../lib/normalize";
 import { workspaceReady } from "../../lib/workspace";
@@ -177,10 +177,9 @@ export function useWorkstation() {
   }, [activeId]);
 
   const fail = (e: unknown) => {
-    const classified = classifyError(api.errMessage(e));
-    const title = errorCopy(copy.transcript, classified.kind).title;
-    setErr(title);
-    toast.error(title);
+    const msg = bannerError(api.errMessage(e), copy.transcript);
+    setErr(msg);
+    toast.error(msg);
   };
 
   const syncRunning = useCallback(async () => {
