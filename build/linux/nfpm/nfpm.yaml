@@ -12,7 +12,7 @@ priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
 description: "Self-harnessing local agent workstation"
 vendor: "Yoyo"
-homepage: "https://wails.io"
+homepage: "https://github.com/Shenchangxin/yoyo"
 license: "MIT"
 release: "1"
 

@@ -101,6 +101,9 @@ tasks:
       - task: '{{if eq (.FORMAT | default "nsis") "msix"}}create:msix:package{{else}}create:nsis:installer{{end}}'
         vars:
           INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
+          VERSION: '{{.VERSION}}'
+          VERSION_NSIS: '{{.VERSION_NSIS}}'
+          ARCH: '{{.ARCH}}'
     vars:
       FORMAT: '{{.FORMAT | default "nsis"}}'
       INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
@@ -118,6 +121,9 @@ tasks:
     dir: build/windows/nsis
     deps:
       - task: build
+        vars:
+          ARCH: '{{.ARCH}}'
+          VERSION: '{{.VERSION}}'
     preconditions:
       - sh: '[ "{{.INSTALL_SCOPE}}" = "user" ] || [ "{{.INSTALL_SCOPE}}" = "machine" ]'
         msg: "INSTALL_SCOPE must be 'user' or 'machine', got '{{.INSTALL_SCOPE}}'"
@@ -126,14 +132,15 @@ tasks:
       - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
       - |
         {{if eq OS "windows"}}
-        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
+        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}{{if .VERSION_NSIS}}-DINFO_PRODUCTVERSION={{.VERSION_NSIS}} {{else if .VERSION}}-DINFO_PRODUCTVERSION={{.VERSION}} {{end}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi
         {{else}}
-        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
+        makensis {{if eq .INSTALL_SCOPE "user"}}-DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user {{end}}{{if .VERSION_NSIS}}-DINFO_PRODUCTVERSION={{.VERSION_NSIS}} {{else if .VERSION}}-DINFO_PRODUCTVERSION={{.VERSION}} {{end}}-DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" project.nsi
         {{end}}
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
-      ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
+      ARG_FLAG: '{{if eq (.ARCH | default ARCH) "arm64"}}ARM64{{else}}AMD64{{end}}'
       INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
+      VERSION_NSIS: '{{.VERSION_NSIS}}'
 
   create:msix:package:
     summary: Creates an MSIX package

@@ -75,3 +75,22 @@ func TestStampPlistAndNFPM(t *testing.T) {
 		t.Fatalf("nfpm not stamped: %s", n)
 	}
 }
+
+func TestStampNSIS(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wails_tools.nsh")
+	src := "!ifndef INFO_PRODUCTVERSION\n    !define INFO_PRODUCTVERSION \"0.1.0\"\n!endif\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := stampNSIS(path, "0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `!define INFO_PRODUCTVERSION "0.2.0"`) {
+		t.Fatalf("nsis not stamped: %s", got)
+	}
+}

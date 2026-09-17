@@ -298,14 +298,14 @@ cd frontend && npm install && npm run build
 
 CI（`.github/workflows/ci.yml`）在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端。
 
-推送 `v*` 标签会触发 [release.yml](.github/workflows/release.yml)：在 Windows、macOS（universal）、Linux 上原生构建桌面端，并交叉编译各 OS/架构的 CGO=0 CLI，发布到 GitHub Release（附 SHA-256 校验和）：
+推送 `v*` 标签会触发 [release.yml](.github/workflows/release.yml)，产出可安装的桌面包：Windows NSIS 安装程序、macOS DMG、Linux AppImage / `.deb` / `.rpm`，以及各 OS/架构的 CGO=0 CLI：
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-macOS 包是 ad-hoc 签名（未公证）。Windows / Linux 桌面二进制未签名。`yoyo update apply` 仍然是人工步骤。
+macOS 是 ad-hoc 签名（未公证）。Windows / Linux 安装包未签名。`yoyo update apply` 仍然是人工步骤。
 
 改晋升逻辑、TCB fiber 或更新器之前，先读 [不变量](docs/architecture/invariants.md)。这些规则由测试锁住；正在进化的智能体没有资格改它们。
 
