@@ -73,15 +73,12 @@ jobs:
           - os: windows-latest
             goos: windows
             goarch: amd64
-            task: windows:build
           - os: macos-latest
             goos: darwin
             goarch: universal
-            task: darwin:package:universal
           - os: ubuntu-24.04
             goos: linux
             goarch: amd64
-            task: linux:build
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     defaults:
@@ -98,6 +95,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Version parts
+        run: echo "VERSION_NSIS=${VERSION%%-*}" >> "$GITHUB_ENV"
+
       - name: Linux GTK / WebKit headers
         if: matrix.goos == 'linux'
         run: |
@@ -106,7 +106,15 @@ jobs:
             build-essential pkg-config gcc \
             libgtk-4-dev libwebkitgtk-6.0-dev \
             libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libwayland-dev
+            libwayland-dev \
+            wget file desktop-file-utils patchelf
+
+      - name: Install NSIS
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\NSIS"
 
       - name: Install Wails CLI
         run: |
@@ -117,44 +125,88 @@ jobs:
       - name: Stamp version metadata
         run: go run ./scripts/stampversion "$VERSION"
 
-      - name: Build desktop
-        run: wails3 task "${{ matrix.task }}" "VERSION=${VERSION}"
+      - name: Build Windows installer
+        if: matrix.goos == 'windows'
+        run: >
+          wails3 task windows:package
+          "VERSION=${VERSION}"
+          "VERSION_NSIS=${VERSION_NSIS}"
+          ARCH=amd64
+          INSTALL_SCOPE=user
 
-      - name: Package macOS DMG
+      - name: Build macOS app and DMG
         if: matrix.goos == 'darwin'
-        continue-on-error: true
-        run: wails3 task darwin:create:dmg "VERSION=${VERSION}"
+        run: |
+          set -euo pipefail
+          wails3 task darwin:package:universal "VERSION=${VERSION}"
+          wails3 task darwin:create:dmg "VERSION=${VERSION}"
 
-      - name: Package Windows
+      - name: Build Linux packages
+        if: matrix.goos == 'linux'
+        env:
+          GOARCH: amd64
+          NO_STRIP: "1"
+          GIT_COMMITTER_NAME: Yoyo
+          GIT_COMMITTER_EMAIL: noreply@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          wails3 task linux:build "VERSION=${VERSION}" ARCH=amd64
+          wails3 task linux:create:appimage "VERSION=${VERSION}" ARCH=amd64
+          wails3 task linux:create:deb "VERSION=${VERSION}" ARCH=amd64
+          wails3 task linux:create:rpm "VERSION=${VERSION}" ARCH=amd64
+
+      - name: Collect Windows installer
         if: matrix.goos == 'windows'
         shell: pwsh
         run: |
-          if (-not (Test-Path bin/Yoyo.exe)) { throw "missing bin/Yoyo.exe" }
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Force -Path bin/Yoyo.exe -DestinationPath "dist/Yoyo-$env:VERSION-windows-amd64.zip"
+          $src = Get-ChildItem -Path bin -Filter "*-installer.exe" | Select-Object -First 1
+          if (-not $src) { throw "missing NSIS installer in bin/" }
+          Copy-Item $src.FullName "dist/Yoyo-$env:VERSION-windows-amd64-setup.exe"
 
-      - name: Package macOS
+      - name: Collect macOS DMG
         if: matrix.goos == 'darwin'
         run: |
           set -euo pipefail
-          test -d bin/Yoyo.app
           mkdir -p dist
-          ditto -c -k --keepParent bin/Yoyo.app "dist/Yoyo-${VERSION}-darwin-universal.zip"
           shopt -s nullglob
           dmgs=(bin/*.dmg)
-          if (( ${#dmgs[@]} == 1 )); then
-            mv "${dmgs[0]}" "dist/Yoyo-${VERSION}-darwin-universal.dmg"
-          else
-            echo "dmg not produced; publishing .app zip only" >&2
+          if (( ${#dmgs[@]} != 1 )); then
+            echo "expected one .dmg in bin/, got: ${dmgs[*]:-none}" >&2
+            ls -la bin >&2 || true
+            exit 1
           fi
+          mv "${dmgs[0]}" "dist/Yoyo-${VERSION}-darwin-universal.dmg"
 
-      - name: Package Linux
+      - name: Collect Linux packages
         if: matrix.goos == 'linux'
         run: |
           set -euo pipefail
-          test -f bin/Yoyo
           mkdir -p dist
-          tar -C bin -czf "dist/Yoyo-${VERSION}-linux-amd64.tar.gz" Yoyo
+          shopt -s nullglob
+          images=(bin/*.AppImage)
+          debs=(bin/*.deb)
+          rpms=(bin/*.rpm)
+          if (( ${#images[@]} < 1 )); then
+            echo "missing AppImage in bin/" >&2
+            ls -la bin >&2 || true
+            exit 1
+          fi
+          if (( ${#debs[@]} < 1 )); then
+            echo "missing .deb in bin/" >&2
+            ls -la bin >&2 || true
+            exit 1
+          fi
+          if (( ${#rpms[@]} < 1 )); then
+            echo "missing .rpm in bin/" >&2
+            ls -la bin >&2 || true
+            exit 1
+          fi
+          cp "${images[0]}" "dist/Yoyo-${VERSION}-linux-amd64.AppImage"
+          chmod +x "dist/Yoyo-${VERSION}-linux-amd64.AppImage"
+          cp "${debs[0]}" "dist/Yoyo-${VERSION}-linux-amd64.deb"
+          cp "${rpms[0]}" "dist/Yoyo-${VERSION}-linux-amd64.rpm"
+          ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
@@ -247,9 +299,13 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           body: |
-            Native desktop builds (Windows amd64, macOS universal, Linux amd64) plus a CGO-free CLI for each OS/arch.
+            Install the desktop app, then run it:
 
-            macOS is ad-hoc signed, not notarized. Windows and Linux desktop binaries are unsigned. Installing an update is still a human step (`yoyo update apply`); these assets are for download, not silent self-replace.
+            - **Windows:** `Yoyo-*-windows-amd64-setup.exe` — per-user installer, no admin. Finish page can launch Yoyo.
+            - **macOS:** `Yoyo-*-darwin-universal.dmg` — open the disk image and drag Yoyo into Applications.
+            - **Linux:** `Yoyo-*-linux-amd64.AppImage` (chmod +x, double-click) or install the `.deb` / `.rpm`.
+
+            CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. `yoyo update apply` stays a human step.
           files: dist/*
           fail_on_unmatched_files: true
         env:

@@ -30,6 +30,9 @@ func main() {
 	if err := stampNFPM("build/linux/nfpm/nfpm.yaml", v); err != nil {
 		fatal(err)
 	}
+	if err := stampNSIS("build/windows/nsis/wails_tools.nsh", base); err != nil {
+		fatal(err)
+	}
 	fmt.Printf("stamped version %s (bundle %s, assembly %s)\n", v, base, asm)
 }
 
@@ -125,6 +128,22 @@ func stampNFPM(path, ver string) error {
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
+	}
+	return os.WriteFile(path, out, 0o644)
+}
+
+func stampNSIS(path, ver string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	re := regexp.MustCompile(`(!define INFO_PRODUCTVERSION\s+")[^"]+(")`)
+	out := re.ReplaceAll(b, []byte(`${1}`+ver+`${2}`))
+	if string(out) == string(b) {
+		return fmt.Errorf("%s: INFO_PRODUCTVERSION not found", path)
 	}
 	return os.WriteFile(path, out, 0o644)
 }

@@ -298,14 +298,14 @@ cd frontend && npm install && npm run build
 
 CI (`.github/workflows/ci.yml`) runs Go tests on Windows and a frontend build on Ubuntu.
 
-Push a `v*` tag to [release.yml](.github/workflows/release.yml) for native desktop builds (Windows, macOS universal, Linux) plus a CGO-free CLI for each OS/arch, published as a GitHub Release with SHA-256 checksums:
+Push a `v*` tag to [release.yml](.github/workflows/release.yml) for installable desktop builds — Windows NSIS setup, macOS DMG, Linux AppImage / `.deb` / `.rpm` — plus a CGO-free CLI for each OS/arch:
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-macOS assets are ad-hoc signed (not notarized). Windows and Linux desktop binaries are unsigned. `yoyo update apply` stays a human step.
+macOS is ad-hoc signed (not notarized). Windows and Linux packages are unsigned. `yoyo update apply` stays a human step.
 
 Read [invariants](docs/architecture/invariants.md) before changing promotion, TCB fibers, or the updater. Those rules are enforced by tests; an evolving agent is not allowed to edit them.
 
