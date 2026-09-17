@@ -15,14 +15,6 @@ export const controlSchema = z.object({
 
 export type ControlValues = z.infer<typeof controlSchema>;
 
-export const firstRunSchema = z.object({
-  workspace: z.string().trim().min(1, "Workspace path is required"),
-  apiKey: z.string(),
-  model: z.string().trim().min(1, "Model is required"),
-});
-
-export type FirstRunValues = z.infer<typeof firstRunSchema>;
-
 export function configToForm(cfg: AppConfig): ControlValues {
   return {
     model: cfg.model,

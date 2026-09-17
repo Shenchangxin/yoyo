@@ -85,8 +85,6 @@ export function useWorkstation() {
   const setInspTab = useUI((s) => s.setInspTab);
   const diffMode = useUI((s) => s.diffMode);
   const setDiffMode = useUI((s) => s.setDiffMode);
-  const setupDismissed = useUI((s) => s.setupDismissed);
-  const setSetupDismissed = useUI((s) => s.setSetupDismissed);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUI((s) => s.setSidebarCollapsed);
   const sidebarHover = useUI((s) => s.sidebarHover);
@@ -629,7 +627,6 @@ export function useWorkstation() {
       const typing = (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable]");
       if (matchKey(e, km.palette)) {
         e.preventDefault();
-        if (needsSetup && !useUI.getState().setupDismissed) return;
         setPalette((v) => !v);
         return;
       }
@@ -683,7 +680,7 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, closeSettings, setInspector, setPalette, setLab, needsSetup]);
+  }, [savedCfg.keymap, approvals, openSettings, closeSettings, setInspector, setPalette, setLab]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
@@ -707,7 +704,7 @@ export function useWorkstation() {
   return {
     copy, lab, setLab, surface, openSettings, closeSettings, inspector, setInspector,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
-    setupDismissed, setSetupDismissed, sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
+    sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,

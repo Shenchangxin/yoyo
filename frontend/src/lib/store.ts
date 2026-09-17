@@ -17,7 +17,6 @@ type UIState = {
   diffMode: DiffMode;
   plan: boolean;
   drafts: Record<string, string>;
-  setupDismissed: boolean;
   sidebarCollapsed: boolean;
   sidebarHover: boolean;
   notices: Notice[];
@@ -36,7 +35,6 @@ type UIState = {
   setPlan: (v: boolean | ((p: boolean) => boolean)) => void;
   setDraft: (key: string, value: string) => void;
   patchDrafts: (patch: Record<string, string>) => void;
-  setSetupDismissed: (v: boolean) => void;
   setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   setSidebarHover: (v: boolean) => void;
   pushNotice: (n: Notice) => void;
@@ -49,14 +47,6 @@ function readDiffMode(): DiffMode {
     return localStorage.getItem("yoyo-diff-mode") === "split" ? "split" : "unified";
   } catch {
     return "unified";
-  }
-}
-
-function readSetupDismissed(): boolean {
-  try {
-    return localStorage.getItem("yoyo-setup-dismissed") === "1";
-  } catch {
-    return false;
   }
 }
 
@@ -81,7 +71,6 @@ export const useUI = create<UIState>((set) => ({
   diffMode: readDiffMode(),
   plan: false,
   drafts: {},
-  setupDismissed: readSetupDismissed(),
   sidebarCollapsed: readCollapsed(),
   sidebarHover: false,
   notices: [],
@@ -113,14 +102,6 @@ export const useUI = create<UIState>((set) => ({
   setPlan: (v) => set((s) => ({ plan: typeof v === "function" ? v(s.plan) : v })),
   setDraft: (key, value) => set((s) => ({ drafts: { ...s.drafts, [key]: value } })),
   patchDrafts: (patch) => set((s) => ({ drafts: { ...s.drafts, ...patch } })),
-  setSetupDismissed: (setupDismissed) => {
-    try {
-      localStorage.setItem("yoyo-setup-dismissed", setupDismissed ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-    set({ setupDismissed });
-  },
   setSidebarCollapsed: (v) =>
     set((s) => {
       const sidebarCollapsed = typeof v === "function" ? v(s.sidebarCollapsed) : v;
