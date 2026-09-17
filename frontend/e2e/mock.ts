@@ -7,7 +7,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let cfg: any = {
@@ -117,8 +117,14 @@ export async function mockApi(
       const ids = extra?.running && sessions[0] ? [sid(sessions[0])] : [];
       return route.fulfill({ json: { ids } });
     }
-    if (path.endsWith("/api/harness") || path.endsWith("/api/playbook") || path.endsWith("/api/archive")) {
+    if (path.endsWith("/api/harness")) {
+      return route.fulfill({ json: extra?.harness ?? { active: "deadbeef", refs: { active: "deadbeef", staging: "" } } });
+    }
+    if (path.endsWith("/api/playbook") || path.endsWith("/api/archive")) {
       return route.fulfill({ json: {} });
+    }
+    if (path.endsWith("/api/eval") || path.includes("/api/eval/")) {
+      return route.fulfill({ json: { metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 }, results: [] } });
     }
     if (path.includes("/api/skills") || path.includes("/api/fs/search") || path.includes("/api/logs") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
       return route.fulfill({ json: [] });

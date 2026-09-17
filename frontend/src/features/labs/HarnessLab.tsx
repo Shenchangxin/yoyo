@@ -36,9 +36,6 @@ export function HarnessLab(props: {
 
   return (
     <LabFrame>
-      <div className="mb-4">
-        <Button variant="lift" onClick={props.onRollback}>{copy.labs.rollback}</Button>
-      </div>
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         {Object.entries(refs).map(([k, v]) => (
           <LabCard key={k}>
@@ -49,7 +46,7 @@ export function HarnessLab(props: {
             </div>
             <div className="mt-2 font-mono text-[11px] text-muted">{String(v).slice(0, 20)}</div>
             <div className="mt-3 flex gap-2">
-              <Button size="sm" variant="lift" onClick={() => void tryCheckout(String(v))}>{copy.labs.checkout}</Button>
+              <Button size="sm" onClick={() => void tryCheckout(String(v))}>{copy.labs.checkout}</Button>
               <Button size="sm" variant="ghost" onClick={() => props.onB(String(v))}>{copy.labs.diffAsB}</Button>
             </div>
           </LabCard>
@@ -59,7 +56,7 @@ export function HarnessLab(props: {
       <div className="mb-4 flex flex-wrap gap-2">
         <Input className="h-8 max-w-xs" placeholder={copy.labs.hashA} value={props.diffA} onChange={(e) => props.onA(e.target.value)} />
         <Input className="h-8 max-w-xs" placeholder={copy.labs.hashB} value={props.diffB} onChange={(e) => props.onB(e.target.value)} />
-        <Button onClick={props.onCompare}>{copy.labs.compare}</Button>
+        <Button variant="lift" onClick={props.onCompare}>{copy.labs.compare}</Button>
       </div>
       {fields.length ? (
         <LabTable>
@@ -81,6 +78,10 @@ export function HarnessLab(props: {
           </tbody>
         </LabTable>
       ) : null}
+      <div className="mt-8 border-t border-border/80 pt-4">
+        <div className="mb-2 text-[11px] font-medium text-muted">{copy.rsi.danger}</div>
+        <Button variant="danger" onClick={props.onRollback}>{copy.labs.rollback}</Button>
+      </div>
       <ConfirmDialog
         open={!!pending}
         title={copy.labs.l3}

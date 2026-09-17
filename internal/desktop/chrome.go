@@ -155,9 +155,19 @@ func (s *Service) rebuildMenusNow() {
 	menu.AddRole(application.EditMenu)
 
 	view := menu.AddSubmenu(n.View)
+	view.Add(n.ToggleSidebar).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "sidebar")
+	})
 	view.Add(n.ToggleReview).SetAccelerator("CmdOrCtrl+\\").OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "review")
 	})
+	view.Add(n.ToggleDock).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "dock")
+	})
+	view.Add(n.OpenHarness).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "harness")
+	})
+	view.AddSeparator()
 	view.Add(n.Palette).SetAccelerator("CmdOrCtrl+K").OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "palette")
 	})
@@ -178,21 +188,25 @@ func (s *Service) rebuildMenusNow() {
 	thread.Add(n.Fork).OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "fork")
 	})
+	thread.Add(n.Archive).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "archive")
+	})
 
 	harness := menu.AddSubmenu(n.Harness)
+	harness.Add(n.OpenHarness).OnClick(func(ctx *application.Context) {
+		showWindow(win)
+		gui.Event.Emit("yoyo:command", "harness")
+	})
 	harness.Add(n.RunEval).OnClick(func(ctx *application.Context) {
-		_, _ = s.RunEval()
+		showWindow(win)
+		gui.Event.Emit("yoyo:command", "run-eval")
 	})
-	harness.Add(n.RunTB).OnClick(func(ctx *application.Context) {
-		_, _ = s.RunEvalTB()
+	harness.Add(n.RunCycle).OnClick(func(ctx *application.Context) {
+		showWindow(win)
+		gui.Event.Emit("yoyo:command", "run-evolve")
 	})
-	harness.Add(n.Evolve).OnClick(func(ctx *application.Context) {
-		_, _ = s.Evolve()
-	})
-	harness.AddSeparator()
-	harness.Add(n.ApplyUpdate).OnClick(func(ctx *application.Context) {
-		_ = s.ApplyUpdate()
-	})
+
+	menu.AddRole(application.WindowMenu)
 
 	help := menu.AddSubmenu(n.Help)
 	help.Add(n.About).OnClick(func(ctx *application.Context) {
@@ -225,10 +239,6 @@ func (s *Service) rebuildMenusNow() {
 	tmenu.Add(n.Settings).OnClick(func(ctx *application.Context) {
 		showWindow(win)
 		gui.Event.Emit("yoyo:command", "control")
-	})
-	tmenu.AddSeparator()
-	tmenu.Add(n.RunEval).OnClick(func(ctx *application.Context) {
-		_, _ = s.RunEval()
 	})
 	tmenu.AddSeparator()
 	tmenu.Add(n.Quit).OnClick(func(ctx *application.Context) {

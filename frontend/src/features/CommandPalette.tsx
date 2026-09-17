@@ -1,14 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
-  FlaskConical,
-  GitBranch,
   GitCompare,
   Info,
   MessageSquarePlus,
   Search,
   Settings,
-  Shield,
   Square,
 } from "lucide-react";
 import type { Lab, Thread } from "../lib/protocol";
@@ -26,10 +23,13 @@ export function CommandPalette(props: {
   onClose: () => void;
   onNew: () => void;
   onLab: (lab: Lab) => void;
+  onOpenHarness: () => void;
   onSelectThread: (t: Thread) => void;
   onDiff: () => void;
   onAbout?: () => void;
   onQuit?: () => void;
+  onRunSuite?: () => void;
+  onRunCycle?: () => void;
 }) {
   const copy = useCopy();
   return (
@@ -58,18 +58,6 @@ export function CommandPalette(props: {
                   <Square className="size-4 text-muted" />
                   {copy.palette.agent}
                 </Command.Item>
-                <Command.Item value={`${copy.rail.harbor} harbor eval`} onSelect={() => { props.onLab("harbor"); props.onClose(); }}>
-                  <Shield className="size-4 text-muted" />
-                  {copy.rail.harbor}
-                </Command.Item>
-                <Command.Item value={`${copy.rail.evolve} evolve ace`} onSelect={() => { props.onLab("evolve"); props.onClose(); }}>
-                  <FlaskConical className="size-4 text-muted" />
-                  {copy.rail.evolve}
-                </Command.Item>
-                <Command.Item value={`${copy.rail.harness} harness refs`} onSelect={() => { props.onLab("harness"); props.onClose(); }}>
-                  <GitBranch className="size-4 text-muted" />
-                  {copy.rail.harness}
-                </Command.Item>
                 <Command.Item value={`${copy.palette.refreshDiff} refresh diff`} onSelect={() => { props.onDiff(); props.onClose(); }}>
                   <GitCompare className="size-4 text-muted" />
                   {copy.palette.refreshDiff}
@@ -80,6 +68,29 @@ export function CommandPalette(props: {
                 </Command.Item>
                 <Command.Item value={`${copy.palette.quit} quit`} onSelect={() => { props.onQuit ? props.onQuit() : chrome.close(); props.onClose(); }}>
                   {copy.palette.quit}
+                </Command.Item>
+              </Command.Group>
+              <Command.Group heading={copy.palette.rsi}>
+                <Command.Item value={`${copy.palette.openHarness} harness overview rsi`} onSelect={() => { props.onOpenHarness(); props.onClose(); }}>
+                  {copy.palette.openHarness}
+                </Command.Item>
+                <Command.Item value={`${copy.rsi.overview} overview`} onSelect={() => { useUI.getState().openHarness("overview"); props.onClose(); }}>
+                  {copy.rsi.overview}
+                </Command.Item>
+                <Command.Item value={`${copy.rsi.propose} evolve propose ace`} onSelect={() => { props.onLab("evolve"); props.onClose(); }}>
+                  {copy.rsi.propose}
+                </Command.Item>
+                <Command.Item value={`${copy.rsi.prove} harbor prove eval`} onSelect={() => { props.onLab("harbor"); props.onClose(); }}>
+                  {copy.rsi.prove}
+                </Command.Item>
+                <Command.Item value={`${copy.rsi.promote} harness refs checkout`} onSelect={() => { props.onLab("harness"); props.onClose(); }}>
+                  {copy.rsi.promote}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.runSuite} run eval suite`} onSelect={() => { props.onRunSuite?.(); props.onClose(); }}>
+                  {copy.palette.runSuite}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.runCycle} run evolve cycle`} onSelect={() => { props.onRunCycle?.(); props.onClose(); }}>
+                  {copy.palette.runCycle}
                 </Command.Item>
               </Command.Group>
               <Command.Group heading={copy.palette.settings}>

@@ -12,9 +12,12 @@ func TestSelectParentPrefersUnderexploredWinners(t *testing.T) {
 		{ID: "b", Parent: "a", Metrics: eval.Metrics{HeldInPass: 2, HeldOutPass: 2}, Accepted: true},
 		{ID: "c", Parent: "a", Metrics: eval.Metrics{HeldInPass: 0, HeldOutPass: 0}},
 	}
-	got := SelectParent(nodes, "a")
+	got := BestParent(nodes, "a")
 	if got != "b" {
 		t.Fatalf("got %s", got)
+	}
+	if ParentWeight(nodes[1], 0) <= ParentWeight(nodes[0], 2) {
+		t.Fatal("underexplored winner should weigh more")
 	}
 }
 
@@ -23,7 +26,7 @@ func TestSelectParentSkipsUnevaluatedStaging(t *testing.T) {
 		{ID: "prod", Metrics: eval.Metrics{HeldInPass: 1, HeldOutPass: 1, HeldInTotal: 1, HeldOutTotal: 1}, Accepted: true},
 		{ID: "stage", Parent: "prod", Note: "online-ace-stage"},
 	}
-	got := SelectParent(nodes, "prod")
+	got := SelectParentSeeded(nodes, "prod", 1)
 	if got != "prod" {
 		t.Fatalf("got %s", got)
 	}

@@ -496,14 +496,44 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, rep)
 	})
+	mux.HandleFunc("/api/eval/sealed", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		defer cancel()
+		rep, err := a.RunEvalSealed(ctx, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, rep)
+	})
+	mux.HandleFunc("/api/eval/transfer", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		defer cancel()
+		rep, err := a.RunEvalTransfer(ctx, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, rep)
+	})
 	mux.HandleFunc("/api/evolve", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			K int `json:"k"`
+			K       int  `json:"k"`
+			Rounds  int  `json:"rounds"`
+			Promote bool `json:"promote"`
+			Sealed  bool `json:"sealed"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
+		timeout := 15 * time.Minute
+		if body.Rounds > 1 {
+			timeout = time.Duration(body.Rounds) * 15 * time.Minute
+			if timeout > 2*time.Hour {
+				timeout = 2 * time.Hour
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
-		res, err := a.EvolveK(ctx, nil, nil, body.K)
+		res, err := a.EvolveWith(ctx, nil, nil, app.EvolveRun{K: body.K, Rounds: body.Rounds, PromoteActive: body.Promote, Sealed: body.Sealed})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

@@ -8,6 +8,10 @@ export function EvolveLab(props: {
   busy: boolean;
   k: number;
   onK: (n: number) => void;
+  rounds: number;
+  onRounds: (n: number) => void;
+  sealed: boolean;
+  onSealed: (v: boolean) => void;
   onRun: () => void;
   evolve: any;
   playbook: any;
@@ -19,18 +23,26 @@ export function EvolveLab(props: {
   const bullets = asArray(pick(props.playbook, "bullets", "Bullets"));
   return (
     <LabFrame>
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-[13px] text-muted">
           {copy.labs.k}
           <Input type="number" min={1} max={8} className="h-8 w-16" value={props.k} onChange={(e) => props.onK(Number(e.target.value) || 3)} />
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          {copy.labs.rounds}
+          <Input type="number" min={1} max={20} className="h-8 w-16" value={props.rounds} onChange={(e) => props.onRounds(Number(e.target.value) || 1)} />
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={props.sealed} onChange={(e) => props.onSealed(e.target.checked)} />
+          {copy.labs.sealed}
         </label>
         <Button disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
       </div>
       {props.evolve ? (
         <div className="mb-5 grid grid-cols-3 gap-3">
           <LabStat label={copy.labs.promoted} value={slice(pick(props.evolve, "promoted", "Promoted") || "none")} />
-          <LabStat label={copy.labs.parent} value={slice(pick(props.evolve, "parent_selected", "ParentSelected"))} />
-          <LabStat label={copy.labs.trials} value={String(trials.length)} />
+          <LabStat label={copy.labs.merged} value={bool(pick(props.evolve, "merged", "Merged")) ? copy.labs.accepted : copy.labs.rejected} />
+          <LabStat label={copy.labs.activeMoved} value={bool(pick(props.evolve, "active_moved", "ActiveMoved")) ? copy.rsi.active : copy.rsi.canary} />
         </div>
       ) : <p className="mb-4 text-[13px] text-muted">{copy.labs.noCycle}</p>}
       {trials.length ? (

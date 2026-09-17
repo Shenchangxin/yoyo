@@ -11,15 +11,19 @@ import (
 )
 
 type Node struct {
-	ID         string       `json:"id"`
-	Parent     string       `json:"parent"`
-	Snapshot   string       `json:"snapshot"`
-	ProposalID string       `json:"proposal_id,omitempty"`
-	Metrics    eval.Metrics `json:"metrics"`
-	Accepted   bool         `json:"accepted"`
-	Canary     bool         `json:"canary"`
-	Note       string       `json:"note,omitempty"`
-	CreatedAt  time.Time    `json:"created_at"`
+	ID            string       `json:"id"`
+	Parent        string       `json:"parent"`
+	Snapshot      string       `json:"snapshot"`
+	ProposalID    string       `json:"proposal_id,omitempty"`
+	Metrics       eval.Metrics `json:"metrics"`
+	Accepted      bool         `json:"accepted"`
+	Canary        bool         `json:"canary"`
+	Note          string       `json:"note,omitempty"`
+	Surface       string       `json:"surface,omitempty"`
+	ManifestoHit  int          `json:"manifesto_hit,omitempty"`
+	ManifestoMiss int          `json:"manifesto_miss,omitempty"`
+	TransferFail  bool         `json:"transfer_fail,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
 }
 
 type Archive struct {
@@ -45,6 +49,20 @@ func (a *Archive) Add(n Node) error {
 		n.CreatedAt = time.Now().UTC()
 	}
 	a.nodes = append(a.nodes, n)
+	return a.flush()
+}
+
+func (a *Archive) FlagTransfer(id string, fail bool) error {
+	if a == nil || id == "" {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i := range a.nodes {
+		if a.nodes[i].ID == id {
+			a.nodes[i].TransferFail = fail
+		}
+	}
 	return a.flush()
 }
 

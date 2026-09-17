@@ -8,9 +8,10 @@ import { workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { useUI } from "../../lib/store";
+import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { useTheme } from "../../lib/theme";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, Item, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -73,10 +74,15 @@ export function useWorkstation() {
   const lab = useUI((s) => s.lab);
   const setLab = useUI((s) => s.setLab);
   const surface = useUI((s) => s.surface);
+  const harnessTab = useUI((s) => s.harnessTab);
+  const setHarnessTab = useUI((s) => s.setHarnessTab);
+  const openHarness = useUI((s) => s.openHarness);
   const openSettings = useUI((s) => s.openSettings);
   const closeSettings = useUI((s) => s.closeSettings);
   const inspector = useUI((s) => s.inspector);
   const setInspector = useUI((s) => s.setInspector);
+  const chatDock = useUI((s) => s.chatDock);
+  const setChatDock = useUI((s) => s.setChatDock);
   const palette = useUI((s) => s.palette);
   const setPalette = useUI((s) => s.setPalette);
   const query = useUI((s) => s.query);
@@ -117,12 +123,14 @@ export function useWorkstation() {
   const [evalReport, setEvalReport] = useState<any>(null);
   const [bestReport, setBestReport] = useState<any>(null);
   const [harborErr, setHarborErr] = useState("");
-  const [harborKind, setHarborKind] = useState<"suite" | "safety" | "tb" | "bon" | "models">("suite");
+  const [harborKind, setHarborKind] = useState<HarborKind>("suite");
   const [evolve, setEvolve] = useState<any>(null);
   const [playbook, setPlaybook] = useState<any>(null);
   const [tree, setTree] = useState<any[]>([]);
   const [labBusy, setLabBusy] = useState<string | null>(null);
   const [evolveK, setEvolveK] = useState(3);
+  const [evolveRounds, setEvolveRounds] = useState(1);
+  const [evolveSealed, setEvolveSealed] = useState(false);
   const [bonModels, setBonModels] = useState("");
   const [diffA, setDiffA] = useState("");
   const [diffB, setDiffB] = useState("");
@@ -614,6 +622,69 @@ export function useWorkstation() {
     setQueued(0);
   }
 
+  async function runHarbor(kind: HarborKind) {
+    setHarborKind(kind);
+    setHarborErr("");
+    setLabBusy(copy.labs.busyHarbor);
+    openHarness("prove");
+    try {
+      if (kind === "suite") { setEvalReport(await api.runEval()); setBestReport(null); }
+      if (kind === "safety") { setEvalReport(await api.runEvalSafety()); setBestReport(null); }
+      if (kind === "sealed") { setEvalReport(await api.runEvalSealed()); setBestReport(null); }
+      if (kind === "transfer") { setEvalReport(await api.runEvalTransfer()); setBestReport(null); }
+      if (kind === "tb") { setEvalReport(await api.runEvalTB()); setBestReport(null); }
+      if (kind === "bon") {
+        const r = await api.bestOfN(3);
+        setBestReport(r);
+        setEvalReport(r.best || r.Best);
+      }
+      if (kind === "models") {
+        const r = await api.bestOfModels(bonModels.split(",").map((s) => s.trim()).filter(Boolean));
+        setBestReport(r);
+        setEvalReport(r.best || r.Best);
+      }
+    } catch (e) {
+      setHarborErr(api.errMessage(e));
+      fail(e);
+    } finally {
+      setLabBusy(null);
+    }
+  }
+
+  async function runEvolve() {
+    setLabBusy(copy.labs.busyEvolve);
+    openHarness("propose");
+    try {
+      setEvolve(await api.evolve(evolveK, { rounds: evolveRounds, sealed: evolveSealed }));
+      setTree(await api.archive());
+      await refresh();
+    } catch (e) {
+      fail(e);
+    } finally {
+      setLabBusy(null);
+    }
+  }
+
+  async function compareHarness() {
+    try {
+      setDiffOut(await api.diff(diffA || health.harness, diffB));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function checkoutHarness(hash: string, l3?: boolean) {
+    await api.checkout(hash, !!l3);
+    await refresh();
+    toast.success(copy.app.checkedOut);
+  }
+
+  async function rollbackHarness() {
+    await api.rollback();
+    await refresh();
+    toast.success(copy.app.rolledBack);
+  }
+
   async function patchConfig(partial: Partial<AppConfig>) {
     const next = { ...savedCfg, ...partial };
     setSavedCfg(next);
@@ -639,7 +710,15 @@ export function useWorkstation() {
       }
       if (matchKey(e, km.toggleReview)) {
         e.preventDefault();
-        setInspector((v) => !v);
+        if (useUI.getState().surface === "harness") setChatDock((v) => !v);
+        else setInspector((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !typing && useUI.getState().surface === "harness") {
+        const idx = ["1", "2", "3", "4"].indexOf(e.key);
+        if (idx >= 0) {
+          e.preventDefault();
+          setHarnessTab(HARNESS_TABS[idx]);
+        }
       }
       if (e.key === "Tab" && e.shiftKey && !typing) {
         e.preventDefault();
@@ -684,6 +763,11 @@ export function useWorkstation() {
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
     if (c === "review") setInspector((v) => !v);
+    else if (c === "sidebar") setSidebarCollapsed((v) => !v);
+    else if (c === "dock") setChatDock((v) => !v);
+    else if (c === "harness") openHarness("overview");
+    else if (c === "run-eval") void runHarbor("suite");
+    else if (c === "run-evolve") void runEvolve();
     else if (c === "palette") setPalette(true);
     else if (c === "control") openSettings();
     else if (c === "rename") useUI.getState().requestRename();
@@ -701,17 +785,19 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, openSettings, closeSettings, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, inspector, setInspector,
+    chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
-    evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
+    evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx,
+    runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness,
   };
 }

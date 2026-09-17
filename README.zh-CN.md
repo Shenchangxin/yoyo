@@ -6,7 +6,7 @@
 
 Yoyo 不是 Cursor 的仿制品。它是一台 **self-harnessing** 的编程智能体：同一套 Go 核心同时服务 CLI、浏览器和 Wails 桌面壳。产品护城河不是 IDE 皮肤，而是 **可版本化、可评测、可晋升、可回滚的 harness**。提示词、playbook、技能可以进化；评测器、密钥库、更新器不行。
 
-**版本 0.1.0** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [威胁模型](docs/architecture/threat-model.md)
+**版本 0.2.4** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [威胁模型](docs/architecture/threat-model.md)
 
 ---
 
@@ -198,23 +198,28 @@ go run ./cmd/yoyo evolve
 
 ## 评测、安全与进化
 
-默认密封套件刻意很小，这样晋升测试才诚实：
+默认 **冒烟** 套件刻意很小，本地测试才诚实。私有密封目录用 `--sealed` 打开。
 
 | 任务 | 角色 | 默认种子里？ |
 | --- | --- | --- |
 | `write-hello` | 持有（held-in） | 是 |
 | `write-answer` | 留出（held-out，提议者看不到身份） | 是 |
+| `no-escape` | 安全：不得写到工作区外 | 是（evolve 始终带；`yoyo eval` 也带） |
 | `write-readme` | 可选 | 否 |
-| `no-escape` | 安全：不得写到工作区外 | `--safety` |
 | `mkdir-note`、`copy-seed` | Terminal-Bench 风格子集，`repeats=2` 多数票 | `--tb` |
+| 密封目录 20/10/5 | 私有 held-in / held-out / transfer | `--sealed` / `--transfer` |
 
 ```bash
 go run ./cmd/yoyo eval
+go run ./cmd/yoyo eval --sealed
+go run ./cmd/yoyo eval --transfer
 go run ./cmd/yoyo eval --safety
 go run ./cmd/yoyo eval --tb
 go run ./cmd/yoyo eval --best 3
 go run ./cmd/yoyo eval --models gpt-4.1-mini,gpt-4.1
 go run ./cmd/yoyo evolve
+go run ./cmd/yoyo evolve --rounds 4
+go run ./cmd/yoyo evolve --promote   # 显式：移动 refs/active
 ```
 
 Harbor 布局见 [docs/architecture/harbor.md](docs/architecture/harbor.md)：
@@ -225,11 +230,13 @@ evals/<id>/
   task.toml
   tests/test.sh
   tests/test.ps1
+  tests/expect.toml
+  environment/Dockerfile
 ```
 
-**ShouldPromote：** 持有和留出都不能回退；至少一边要变好；任何安全失败都会挡住晋升。在线 ACE 和 playbook 点赞 **只写 `refs/staging`**。通向 `refs/active` 的门只有 Harbor。
+**ShouldPromote：** 持有和留出都不能回退；至少一边要变好；任何安全失败都会挡住晋升。在线 ACE 和 playbook 点赞 **只写 `refs/staging`**。Evolve 默认 **只写 `refs/canary`**，除非 `--promote`。通向 `refs/active` 的门是 Harbor + Checkout。
 
-Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的工作树。
+Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的工作树。每次 trial 还会把摘要落到评测运行目录（不含 held-out 正文）。
 
 ---
 
@@ -240,12 +247,12 @@ Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的�
 | `yoyo init` | 创建 home 并种下 harness |
 | `yoyo run [msg] --workspace --session` | 一轮智能体 |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`，或 stdio JSON-RPC |
-| `yoyo eval [--safety] [--tb] [--best N] [--models a,b]` | 密封套件 / 安全 / TB 子集 / best-of-N |
-| `yoyo evolve` | 一次 Self-Harness 周期（L1 材料） |
+| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 20/10 / 迁移 / 安全 / TB / best-of-N |
+| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
 | `yoyo harness list\|show\|checkout\|rollback\|diff` | 快照指针（改 loop/策略要 `checkout --l3`） |
 | `yoyo replay [session]` | 打印 JSONL 轨迹 |
 | `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
-| `yoyo version` | `0.1.0` |
+| `yoyo version` | `0.2.4` |
 
 JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通知、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`。
 
@@ -262,6 +269,7 @@ JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通�
 | 额外 BoN 模型 | 配置里的 `models:` | 空 |
 | 自动放行 shell | Settings 勾选 | `false` |
 | 进程隔离 | `YOYO_ISOLATE=1` | 关（同进程 + panic recover） |
+| WASM 准入公钥 | `YOYO_WASM_PUBKEY` | 空则对签名模块失败关闭 |
 | Worker 模式 | `YOYO_WORKER=1` | 桌面内部使用 |
 
 每轮重建的钉子：`YOYO.md`、`AGENTS.md`、`CLAUDE.md`（有上限），以及按 helpful−harmful 排序的 ACE playbook。
@@ -301,8 +309,8 @@ CI（`.github/workflows/ci.yml`）在 Windows 上跑 Go 测试，在 Ubuntu 上�
 推送 `v*` 标签会触发 [release.yml](.github/workflows/release.yml)，产出可安装的桌面包：Windows NSIS 安装程序、macOS DMG、Linux AppImage / `.deb` / `.rpm`，以及各 OS/架构的 CGO=0 CLI：
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.4
+git push origin v0.2.4
 ```
 
 macOS 是 ad-hoc 签名（未公证）。Windows / Linux 安装包未签名。`yoyo update apply` 仍然是人工步骤。

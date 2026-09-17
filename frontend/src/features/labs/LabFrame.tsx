@@ -5,7 +5,7 @@ export function LabFrame({ children }: { title?: string; hint?: string; children
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto max-w-4xl px-8 py-6">{children}</div>
+        <div className="mx-auto w-full max-w-6xl px-6 py-5">{children}</div>
       </div>
     </div>
   );

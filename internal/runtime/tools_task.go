@@ -62,10 +62,14 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		cp.PlanMode = parent.Tools.PlanMode
 		childTools = &cp
 	}
+	user := prompt
+	if strings.TrimSpace(parent.Loop.TaskInstruction) != "" {
+		user = parent.Loop.TaskInstruction + "\n\n" + prompt
+	}
 	out, err := Run(ctx, RunRequest{
 		SessionID:        parent.SessionID + "-task",
 		TaskID:           parent.TaskID,
-		User:             prompt,
+		User:             user,
 		Workspace:        ws,
 		Harness:          parent.Harness,
 		HarnessHash:      parent.HarnessHash,

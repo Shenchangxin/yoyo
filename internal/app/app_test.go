@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"crypto/ed25519"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
@@ -222,7 +224,9 @@ func TestCheckoutRequiresL3(t *testing.T) {
 	}
 	defer a.Close()
 	h1 := a.ActiveHash()
-	loopH, err := a.CAS.Put(artifact.KindLoopPreset, "alt", runtime.DefaultLoop())
+	loop := runtime.DefaultLoop()
+	loop.MaxTurns = 99
+	loopH, err := a.CAS.Put(artifact.KindLoopPreset, "alt", loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,10 +276,11 @@ func TestEvalAndSelfHarnessPromote(t *testing.T) {
 	if base.Metrics.HeldInPass != 0 {
 		t.Fatalf("baseline should fail without placeholder instruction: %+v", base)
 	}
-	res, err := a.EvolveOnce(ctx, solver, map[string]string{
+	active := a.ActiveHash()
+	res, err := a.EvolveWith(ctx, solver, map[string]string{
 		"write-hello":  "missing file",
 		"write-answer": "missing file",
-	})
+	}, app.EvolveRun{K: 3, PromoteRepeats: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,6 +292,22 @@ func TestEvalAndSelfHarnessPromote(t *testing.T) {
 	}
 	if !accepted && res.Promoted == "" {
 		t.Fatalf("expected a promotion, got %+v", res)
+	}
+	if res.ActiveMoved {
+		t.Fatal("default evolve must not move refs/active")
+	}
+	if a.ActiveHash() != active {
+		t.Fatal("evolve moved active")
+	}
+	canary := a.Refs.GetOrEmpty(artifact.RefCanary)
+	if canary == "" {
+		canary = res.Promoted
+	}
+	if canary == "" {
+		t.Fatal("missing canary")
+	}
+	if err := a.Checkout(canary); err != nil {
+		t.Fatal(err)
 	}
 	after, err := a.RunEval(ctx, solver)
 	if err != nil {
@@ -381,6 +402,7 @@ func TestForkRenameAndPlaybookThumb(t *testing.T) {
 		t.Fatalf("%+v %v", pb, err)
 	}
 	before := pb.Bullets[0].Helpful
+	active := a.ActiveHash()
 	next, err := a.RatePlaybook(pb.Bullets[0].ID, true)
 	if err != nil {
 		t.Fatal(err)
@@ -388,8 +410,12 @@ func TestForkRenameAndPlaybookThumb(t *testing.T) {
 	if next.Bullets[0].Helpful != before+1 {
 		t.Fatalf("helpful %d -> %d", before, next.Bullets[0].Helpful)
 	}
-	if a.ActiveHash() == a.Refs.GetOrEmpty(artifact.RefStaging) {
+	if a.ActiveHash() != active {
 		t.Fatal("thumbs must not move refs/active")
+	}
+	st := a.Refs.GetOrEmpty(artifact.RefStaging)
+	if st == "" || st == active {
+		t.Fatal("thumbs must write refs/staging")
 	}
 }
 
@@ -508,5 +534,171 @@ func TestC10DeleteSessionRemovesContext(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(a.Home.Sessions(), id+".jsonl")); !os.IsNotExist(err) {
 		t.Fatal("jsonl remains")
+	}
+}
+
+func TestCheckoutInstructionSkipsL3(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	h1 := a.ActiveHash()
+	loop := runtime.DefaultLoop()
+	loop.Bootstrap = "write a placeholder file first"
+	loopH, err := a.CAS.Put(artifact.KindLoopPreset, "copy", loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := a.LoadSnapshot(h1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.Parent = h1
+	snap.LoopPreset = loopH
+	h2, err := a.CAS.PutSnapshot(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Checkout(h2); err != nil {
+		t.Fatalf("instruction-only checkout should skip L3: %v", err)
+	}
+	if a.ActiveHash() != h2 {
+		t.Fatal(a.ActiveHash())
+	}
+}
+
+func TestSeedIncludesSafety(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	_, _, _, _, suite, _, err := a.Materials(a.ActiveHash())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, id := range suite.Safety {
+		if id == "no-escape" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("seed missing safety: %+v", suite)
+	}
+}
+
+func TestUnsignedWASMRejectedOnCheckout(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	h1 := a.ActiveHash()
+	ph, err := a.CAS.Put(artifact.KindWASMPlugin, "math", artifact.WASMPlugin{ID: "math", Export: "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := a.LoadSnapshot(h1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.Parent = h1
+	snap.WASMPlugins = []string{ph}
+	h2, err := a.CAS.PutSnapshot(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Checkout(h2); err == nil {
+		t.Fatal("unsigned wasm checked out")
+	}
+	if a.ActiveHash() != h1 {
+		t.Fatal("unsigned wasm moved active")
+	}
+}
+
+func TestSignedWASMStagesNotActive(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.SetWASMPublicKey(pub)
+	a.Config.AutoAllow = true
+	bin := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60,
+		0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01,
+		0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20,
+		0x00, 0x20, 0x01, 0x6a, 0x0b,
+	}
+	sig := wasm.Sign(priv, bin)
+	active := a.ActiveHash()
+	if err := a.StageSignedWASM("math", bin, "add", sig); err != nil {
+		t.Fatal(err)
+	}
+	if a.ActiveHash() != active {
+		t.Fatal("load wasm moved active")
+	}
+	st := a.Refs.GetOrEmpty(artifact.RefStaging)
+	if st == "" {
+		t.Fatal("expected staging snapshot")
+	}
+	if err := a.Checkout(st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSealedSuiteCounts(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	rep, err := a.RunEvalMut(context.Background(), runtime.HeuristicSolver{}, func(suite *artifact.EvalSuite) {
+		eval.ApplySealed(suite)
+		suite.Repeats = 1
+		suite.HeldIn = suite.HeldIn[:1]
+		suite.HeldOut = suite.HeldOut[:1]
+		suite.Transfer = nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Metrics.HeldInTotal != 1 || rep.Metrics.HeldOutTotal != 1 {
+		t.Fatalf("sealed materialize %+v", rep)
+	}
+	if rep.Metrics.HeldInPass != 1 || rep.Metrics.HeldOutPass != 1 {
+		t.Fatalf("heuristic should pass sealed writes: %+v", rep)
+	}
+}
+
+func TestEvolvePromoteFlagMovesActive(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ctx := context.Background()
+	solver := runtime.PromptSensitiveSolver{}
+	active := a.ActiveHash()
+	res, err := a.EvolveWith(ctx, solver, map[string]string{"write-hello": "missing file"}, app.EvolveRun{
+		K: 3, PromoteActive: true, PromoteRepeats: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Promoted == "" {
+		t.Fatalf("expected a promotion, got %+v", res)
+	}
+	if !res.ActiveMoved {
+		t.Fatal("explicit --promote must move refs/active")
+	}
+	if a.ActiveHash() == active {
+		t.Fatal("active unchanged despite PromoteActive")
 	}
 }

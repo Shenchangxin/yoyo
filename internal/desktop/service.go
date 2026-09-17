@@ -262,6 +262,24 @@ func (s *Service) RunEvalTB() (any, error) {
 	return s.App.RunEvalTB(ctx, nil)
 }
 
+func (s *Service) RunEvalSealed() (any, error) {
+	if s.RPC != nil {
+		return s.call("eval.run_sealed", nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	return s.App.RunEvalSealed(ctx, nil)
+}
+
+func (s *Service) RunEvalTransfer() (any, error) {
+	if s.RPC != nil {
+		return s.call("eval.run_transfer", nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	return s.App.RunEvalTransfer(ctx, nil)
+}
+
 func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 	if s.RPC != nil {
 		return decode[[]trace.Event](s.call("trajectory.get", map[string]any{"session": id}))
@@ -476,12 +494,23 @@ func (s *Service) Evolve() (evolve.CycleResult, error) {
 }
 
 func (s *Service) EvolveK(k int) (evolve.CycleResult, error) {
+	return s.EvolveRun(k, 1, false, false)
+}
+
+func (s *Service) EvolveRun(k, rounds int, sealed, promote bool) (evolve.CycleResult, error) {
 	if s.RPC != nil {
-		return decode[evolve.CycleResult](s.call("evolve.run", map[string]any{"k": k}))
+		return decode[evolve.CycleResult](s.call("evolve.run", map[string]any{"k": k, "rounds": rounds, "sealed": sealed, "promote": promote}))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	timeout := 15 * time.Minute
+	if rounds > 1 {
+		timeout = time.Duration(rounds) * 15 * time.Minute
+		if timeout > 2*time.Hour {
+			timeout = 2 * time.Hour
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return s.App.EvolveK(ctx, nil, nil, k)
+	return s.App.EvolveWith(ctx, nil, nil, app.EvolveRun{K: k, Rounds: rounds, Sealed: sealed, PromoteActive: promote})
 }
 
 func (s *Service) Archive() []evolve.Node {

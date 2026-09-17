@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,7 @@ type App struct {
 	Archive      *evolve.Archive
 	Config       Config
 	BundledEvals string
+	wasmPub      ed25519.PublicKey
 
 	mu   sync.Mutex
 	runs map[string]context.CancelFunc
@@ -180,12 +182,18 @@ func Open(root, bundledEvals string) (*App, error) {
 		a.Hub.Publish(ev)
 	})
 	a.Evolve = &evolve.Engine{
-		CAS:     a.CAS,
-		Refs:    a.Refs,
-		Eval:    a.Eval,
-		Journal: a.Journal,
-		Archive: a.Archive,
-		Kernel:  a.Kernel,
+		CAS:       a.CAS,
+		Refs:      a.Refs,
+		Eval:      a.Eval,
+		Journal:   a.Journal,
+		Archive:   a.Archive,
+		Kernel:    a.Kernel,
+		TrialRoot: h.EvalRuns(),
+	}
+	if k := os.Getenv("YOYO_WASM_PUBKEY"); k != "" {
+		if pub, err := wasm.ParseKey(k); err == nil {
+			a.wasmPub = pub
+		}
 	}
 	if _, err := a.Kernel.Plugin("tcb", func(c *kernel.Context) error {
 		if err := c.Provide("cas", a.CAS); err != nil {

@@ -103,6 +103,10 @@ func ModelActive(fingerprint string) string {
 	return "models/" + sanitize(fingerprint) + "/active"
 }
 
+func ModelCanary(fingerprint string) string {
+	return "models/" + sanitize(fingerprint) + "/canary"
+}
+
 func sanitize(s string) string {
 	s = strings.ReplaceAll(s, "/", "_")
 	s = strings.ReplaceAll(s, "\\", "_")

@@ -60,6 +60,7 @@ func (a *App) Seed() error {
 		TaskDir:    a.BundledEvals,
 		HeldIn:     []string{"write-hello"},
 		HeldOut:    []string{"write-answer"},
+		Safety:     []string{"no-escape"},
 		Repeats:    1,
 		TimeoutSec: 60,
 		Sealed:     true,
@@ -135,13 +136,22 @@ func AsL3(err error) (ErrL3Required, bool) {
 	return ErrL3Required{}, false
 }
 
-func l3Surfaces(cur, next artifact.HarnessSnapshot) []string {
+func l3Surfaces(cas *artifact.Store, cur, next artifact.HarnessSnapshot) []string {
 	var out []string
-	if cur.LoopPreset != next.LoopPreset {
-		out = append(out, "loop_preset")
-	}
 	if cur.PolicyPack != next.PolicyPack {
 		out = append(out, "policy_pack")
+	}
+	if cur.LoopPreset == next.LoopPreset {
+		return out
+	}
+	if cas == nil {
+		out = append(out, "loop_topology")
+		return out
+	}
+	cl, _, e1 := artifact.Decode[artifact.LoopPreset](cas, cur.LoopPreset)
+	nl, _, e2 := artifact.Decode[artifact.LoopPreset](cas, next.LoopPreset)
+	if e1 != nil || e2 != nil || !artifact.LoopTopologyEqual(cl, nl) {
+		out = append(out, "loop_topology")
 	}
 	return out
 }
@@ -155,10 +165,13 @@ func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
 	if prev != "" && prev != hash {
 		cur, err := a.CAS.GetSnapshot(prev)
 		if err == nil {
-			if surfaces := l3Surfaces(cur, next); len(surfaces) > 0 && !opts.ConfirmL3 {
+			if surfaces := l3Surfaces(a.CAS, cur, next); len(surfaces) > 0 && !opts.ConfirmL3 {
 				return ErrL3Required{From: prev, To: hash, Surfaces: surfaces}
 			}
 		}
+	}
+	if err := a.verifySnapshotWASM(next); err != nil {
+		return err
 	}
 	if prev != "" {
 		_ = a.Refs.Archive(prev)
@@ -172,7 +185,11 @@ func (a *App) CheckoutOpts(hash string, opts CheckoutOpts) error {
 	_, _ = a.Journal.Append("harness.checkout", map[string]any{
 		"hash": hash, "prev": prev, "l3": opts.ConfirmL3,
 	})
-	return a.Refs.Set(artifact.RefHead, hash)
+	if err := a.Refs.Set(artifact.RefHead, hash); err != nil {
+		return err
+	}
+	a.syncWASM(next)
+	return nil
 }
 
 func (a *App) Rollback() error {

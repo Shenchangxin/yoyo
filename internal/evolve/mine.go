@@ -25,7 +25,9 @@ type Cluster struct {
 }
 
 type EvidenceBundle struct {
-	Clusters []Cluster `json:"clusters"`
+	Clusters []Cluster     `json:"clusters"`
+	Passing  []PassSummary `json:"passing,omitempty"`
+	Prior    []PriorTrial  `json:"prior,omitempty"`
 }
 
 func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {

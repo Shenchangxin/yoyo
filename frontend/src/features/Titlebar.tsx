@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Folder, GitCompare, GitFork, PanelRight } from "lucide-react";
+import { Folder, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
@@ -10,17 +10,13 @@ import { RunningHub } from "./RunningHub";
 
 export function Titlebar(props: {
   workspace: string;
-  onControl?: () => void;
   onToggleInspector: () => void;
   inspector: boolean;
   title: string;
   onRename: (title: string) => void;
-  onFork: () => void;
-  onDiff: () => void;
   runningCount?: number;
   runningThreads?: Thread[];
   onSelectRunning?: (t: Thread) => void;
-  quiet?: boolean;
   renameTick?: number;
 }) {
   const copy = useCopy();
@@ -103,20 +99,6 @@ export function Titlebar(props: {
           <RunningHub threads={props.runningThreads} onSelect={props.onSelectRunning} />
         ) : props.runningCount ? (
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
-        ) : null}
-        {!props.quiet ? (
-          <>
-            <Tooltip content={copy.titlebar.fork}>
-              <Button className="hidden md:inline-flex" variant="ghost" size="icon" onClick={props.onFork} aria-label={copy.titlebar.fork}>
-                <GitFork />
-              </Button>
-            </Tooltip>
-            <Tooltip content={copy.titlebar.diff}>
-              <Button className="hidden md:inline-flex" variant="ghost" size="icon" onClick={props.onDiff} aria-label={copy.titlebar.diff}>
-                <GitCompare />
-              </Button>
-            </Tooltip>
-          </>
         ) : null}
         <Tooltip content={copy.review.toggle}>
           <Button

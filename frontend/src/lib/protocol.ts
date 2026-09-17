@@ -1,5 +1,7 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
-export type Surface = Lab | "settings";
+export type HarnessTab = "overview" | "propose" | "prove" | "promote";
+export type Surface = "agent" | "harness" | "settings";
+export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer";
 export type SettingsTab =
   | "general"
   | "appearance"

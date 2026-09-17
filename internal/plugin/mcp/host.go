@@ -164,7 +164,7 @@ func (s *Server) handshake() error {
 	_, err := s.call("initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "yoyo", "version": "0.1.0"},
+		"clientInfo":      map[string]any{"name": "yoyo", "version": "0.2.4"},
 	})
 	if err != nil {
 		return err

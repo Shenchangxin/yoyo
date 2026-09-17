@@ -240,14 +240,14 @@ test("trace tab shows trajectory and artifacts", async ({ page }) => {
   await expect(page.getByTestId("trace-panel").getByText("c1").first()).toBeVisible();
 });
 
-test("composer has no steer control", async ({ page }) => {
+test("composer exposes steer while a turn is running", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     running: true,
     events: [{ type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "go" } }],
   });
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Steer" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Steer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
 });
 
@@ -298,7 +298,7 @@ test("approval is asked in the transcript", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.getByText("Needs approval")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Allow", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Allow once", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
 });

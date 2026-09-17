@@ -431,7 +431,16 @@ func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunRepor
 func (a *App) RunEvalOpts(ctx context.Context, client runtime.Client, safety bool) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		if safety {
-			suite.Safety = append(append([]string{}, suite.Safety...), "no-escape")
+			already := false
+			for _, id := range suite.Safety {
+				if id == "no-escape" {
+					already = true
+					break
+				}
+			}
+			if !already {
+				suite.Safety = append(append([]string{}, suite.Safety...), "no-escape")
+			}
 		}
 	})
 }
@@ -443,6 +452,20 @@ func (a *App) RunEvalTB(ctx context.Context, client runtime.Client) (eval.RunRep
 		if suite.Repeats < 2 {
 			suite.Repeats = 2
 		}
+	})
+}
+
+func (a *App) RunEvalSealed(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, eval.ApplySealed)
+}
+
+func (a *App) RunEvalTransfer(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
+		eval.ApplySealed(suite)
+		suite.HeldIn = nil
+		suite.HeldOut = append([]string{}, suite.Transfer...)
+		suite.Transfer = nil
+		suite.Safety = nil
 	})
 }
 
@@ -488,10 +511,77 @@ func (a *App) runEval(ctx context.Context, client runtime.Client, model string, 
 }
 
 func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[string]string) (evolve.CycleResult, error) {
-	return a.EvolveK(ctx, client, failed, 3)
+	return a.EvolveWith(ctx, client, failed, EvolveRun{K: 3})
 }
 
 func (a *App) EvolveK(ctx context.Context, client runtime.Client, failed map[string]string, k int) (evolve.CycleResult, error) {
+	return a.EvolveWith(ctx, client, failed, EvolveRun{K: k})
+}
+
+// EvolveRun is the operator-facing evolve control surface. PromoteActive is
+// off by default: Harbor-accepted edits land on refs/canary only.
+type EvolveRun struct {
+	K              int
+	Rounds         int
+	PromoteActive  bool
+	Sealed         bool
+	MaxWall        time.Duration
+	MaxUSD         float64
+	PromoteRepeats int
+}
+
+func (a *App) EvolveWith(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) (evolve.CycleResult, error) {
+	if run.Rounds > 1 {
+		all, err := a.EvolveLoop(ctx, client, failed, run)
+		if err != nil {
+			return evolve.CycleResult{}, err
+		}
+		if len(all) == 0 {
+			return evolve.CycleResult{}, fmt.Errorf("no evolve rounds")
+		}
+		return all[len(all)-1], nil
+	}
+	return a.evolveOnce(ctx, client, failed, run)
+}
+
+func (a *App) EvolveLoop(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) ([]evolve.CycleResult, error) {
+	n := run.Rounds
+	if n <= 0 {
+		n = 1
+	}
+	start := time.Now()
+	var out []evolve.CycleResult
+	for i := 0; i < n; i++ {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		if run.MaxWall > 0 && time.Since(start) > run.MaxWall {
+			break
+		}
+		if run.MaxUSD > 0 && a.spentUSD() >= run.MaxUSD {
+			break
+		}
+		res, err := a.evolveOnce(ctx, client, failed, run)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, res)
+		failed = nil
+	}
+	return out, nil
+}
+
+func (a *App) spentUSD() float64 {
+	a.usageMu.Lock()
+	defer a.usageMu.Unlock()
+	if a.lastUsage == nil {
+		return 0
+	}
+	v, _ := a.lastUsage["usd"].(float64)
+	return v
+}
+
+func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) (evolve.CycleResult, error) {
 	activeHash := a.ActiveHash()
 	parentHash := evolve.SelectParent(a.Archive.List(), activeHash)
 	if parentHash == "" {
@@ -516,37 +606,75 @@ func (a *App) EvolveK(ctx context.Context, client runtime.Client, failed map[str
 	}
 	if failed == nil {
 		failed = map[string]string{}
-		report, err := a.RunEval(ctx, client)
-		if err == nil {
-			for _, r := range report.Results {
-				if !r.Pass {
-					failed[r.ID] = r.Error
-					if failed[r.ID] == "" {
-						failed[r.ID] = "verifier_fail"
-					}
-				}
-			}
-		}
 	}
 	_, _, _, _, suite, _, err := a.Materials(activeHash)
 	if err != nil {
 		return evolve.CycleResult{}, err
 	}
+	if run.Sealed {
+		eval.ApplySealed(&suite)
+	}
+	k := run.K
+	if k <= 0 {
+		k = 3
+	}
 	sid := "evolve-" + newID()[:8]
-	return a.Evolve.Cycle(ctx, evolve.CycleOpts{
-		Parent:        parentSet,
-		Baseline:      baseSet,
-		Suite:         suite,
-		Client:        client,
-		Trace:         a.Traces,
-		SessionID:     sid,
-		Model:         a.Config.Model,
-		FailedTasks:   failed,
-		K:             k,
-		PromoteCanary: true,
-		HeldOut:       suite.HeldOut,
-		StagingHash:   a.Refs.GetOrEmpty(artifact.RefStaging),
+	res, err := a.Evolve.Cycle(ctx, evolve.CycleOpts{
+		Parent:         parentSet,
+		Baseline:       baseSet,
+		Suite:          suite,
+		Client:         client,
+		Trace:          a.Traces,
+		SessionID:      sid,
+		Model:          a.Config.Model,
+		FailedTasks:    failed,
+		K:              k,
+		PromoteCanary:  run.PromoteActive,
+		HeldOut:        suite.HeldOut,
+		StagingHash:    a.Refs.GetOrEmpty(artifact.RefStaging),
+		PromoteRepeats: run.PromoteRepeats,
 	})
+	if err != nil {
+		return res, err
+	}
+	if res.Promoted != "" && len(suite.Transfer) > 0 {
+		a.markTransfer(ctx, client, activeHash, res.Promoted, suite)
+	}
+	return res, nil
+}
+
+func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash, canary string, suite artifact.EvalSuite) {
+	baseSet, err := a.materialSet(baseHash)
+	if err != nil {
+		return
+	}
+	candSet, err := a.materialSet(canary)
+	if err != nil {
+		return
+	}
+	xfer := suite
+	xfer.HeldIn = nil
+	xfer.HeldOut = append([]string{}, suite.Transfer...)
+	xfer.Transfer = nil
+	xfer.Safety = nil
+	baseRep, err := a.Eval.Run(ctx, eval.RunOpts{
+		Suite: xfer, Snapshot: baseSet.Snap, Hash: baseSet.Hash, Client: client,
+		Loop: baseSet.Loop, Fragments: baseSet.Fragments, Playbook: baseSet.Playbook, Skills: baseSet.Skills,
+		SessionID: "xfer-base", Model: a.Config.Model,
+	})
+	if err != nil {
+		return
+	}
+	candRep, err := a.Eval.Run(ctx, eval.RunOpts{
+		Suite: xfer, Snapshot: candSet.Snap, Hash: candSet.Hash, Client: client,
+		Loop: candSet.Loop, Fragments: candSet.Fragments, Playbook: candSet.Playbook, Skills: candSet.Skills,
+		SessionID: "xfer-cand", Model: a.Config.Model,
+	})
+	if err != nil {
+		return
+	}
+	fail := candRep.Metrics.HeldOutPass < baseRep.Metrics.HeldOutPass
+	_ = a.Archive.FlagTransfer(canary, fail)
 }
 
 func (a *App) materialSet(hash string) (evolve.MaterialSet, error) {
@@ -770,16 +898,6 @@ func (a *App) Diff(aHash, bHash string) (string, error) {
 	}
 	text, _ := d["text"].(string)
 	return text, nil
-}
-
-func (a *App) LoadWASM(id string, bin []byte, export string) error {
-	if err := a.Caps.Check(capability.Request{Level: capability.HighRisk, Action: "load_wasm", SessionID: "ui"}); err != nil {
-		if !a.Config.AutoAllow {
-			return err
-		}
-	}
-	_, err := evolve.AdmitWASM(a.Kernel, a.WASM, id, bin, export)
-	return err
 }
 
 func newID() string {
