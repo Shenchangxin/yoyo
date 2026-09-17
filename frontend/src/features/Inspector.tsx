@@ -1,15 +1,15 @@
-import { FileText, GitCompare } from "lucide-react";
+import { Activity, FileText, GitCompare } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { DiffBlock, type DiffMode } from "../lib/split-diff";
-import type { Hunk } from "../lib/protocol";
-
-type Tab = "diff" | "files";
+import type { Hunk, SessionTrace, SpillBlob } from "../lib/protocol";
+import type { InspTab } from "../lib/store";
+import { TracePanel } from "./TracePanel";
 
 export function Inspector(props: {
-  tab: Tab;
-  onTab: (t: Tab) => void;
+  tab: InspTab;
+  onTab: (t: InspTab) => void;
   diff: string;
   hunks: Hunk[];
   selected: Record<string, boolean>;
@@ -19,13 +19,19 @@ export function Inspector(props: {
   onApply: () => void;
   onRefreshDiff: () => void;
   onQuote?: (text: string) => void;
+  sessionId?: string;
+  running?: boolean;
+  trace?: SessionTrace | null;
+  onRefreshTrace?: () => void;
+  onLoadSpill?: (id: string) => Promise<SpillBlob>;
 }) {
   const copy = useCopy();
   const files = fileNames(props.diff);
-  const active: Tab = props.tab === "files" ? "files" : "diff";
-  const tabs: { id: Tab; label: string; icon: typeof GitCompare }[] = [
+  const active: InspTab = props.tab === "files" || props.tab === "trace" ? props.tab : "diff";
+  const tabs: { id: InspTab; label: string; icon: typeof GitCompare }[] = [
     { id: "diff", label: props.hunks.length ? `${copy.review.diff} ${props.hunks.length}` : copy.review.diff, icon: GitCompare },
     { id: "files", label: copy.review.files, icon: FileText },
+    { id: "trace", label: copy.trace.tab, icon: Activity },
   ];
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
@@ -51,7 +57,15 @@ export function Inspector(props: {
         })}
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {active === "diff" ? (
+        {active === "trace" ? (
+          <TracePanel
+            sessionId={props.sessionId || ""}
+            running={props.running}
+            trace={props.trace || null}
+            onRefresh={() => props.onRefreshTrace?.()}
+            onLoadSpill={props.onLoadSpill || (async () => ({ id: "", bytes: 0, text: "", truncated: false }))}
+          />
+        ) : active === "diff" ? (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
               <Button variant="lift" size="sm" onClick={props.onRefreshDiff}>{copy.review.refresh}</Button>

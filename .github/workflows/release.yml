@@ -1,0 +1,256 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.25.x"
+  NODE_VERSION: "22"
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver="0.0.0-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Test
+        run: go test ./...
+      - name: Build CLI
+        run: go build -o bin/yoyo.exe ./cmd/yoyo
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build UI
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+  desktop:
+    needs: [meta, test, frontend]
+    name: desktop (${{ matrix.goos }}-${{ matrix.goarch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            task: windows:build
+          - os: macos-latest
+            goos: darwin
+            goarch: universal
+            task: darwin:package:universal
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            task: linux:build
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Linux GTK / WebKit headers
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config gcc \
+            libgtk-4-dev libwebkitgtk-6.0-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libwayland-dev
+
+      - name: Install Wails CLI
+        run: |
+          ver="$(go list -m github.com/wailsapp/wails/v3 | awk '{print $2}')"
+          echo "wails ${ver}"
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@${ver}"
+
+      - name: Stamp version metadata
+        run: go run ./scripts/stampversion "$VERSION"
+
+      - name: Build desktop
+        run: wails3 task "${{ matrix.task }}" "VERSION=${VERSION}"
+
+      - name: Package macOS DMG
+        if: matrix.goos == 'darwin'
+        continue-on-error: true
+        run: wails3 task darwin:create:dmg "VERSION=${VERSION}"
+
+      - name: Package Windows
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path bin/Yoyo.exe)) { throw "missing bin/Yoyo.exe" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Force -Path bin/Yoyo.exe -DestinationPath "dist/Yoyo-$env:VERSION-windows-amd64.zip"
+
+      - name: Package macOS
+        if: matrix.goos == 'darwin'
+        run: |
+          set -euo pipefail
+          test -d bin/Yoyo.app
+          mkdir -p dist
+          ditto -c -k --keepParent bin/Yoyo.app "dist/Yoyo-${VERSION}-darwin-universal.zip"
+          shopt -s nullglob
+          dmgs=(bin/*.dmg)
+          if (( ${#dmgs[@]} == 1 )); then
+            mv "${dmgs[0]}" "dist/Yoyo-${VERSION}-darwin-universal.dmg"
+          else
+            echo "dmg not produced; publishing .app zip only" >&2
+          fi
+
+      - name: Package Linux
+        if: matrix.goos == 'linux'
+        run: |
+          set -euo pipefail
+          test -f bin/Yoyo
+          mkdir -p dist
+          tar -C bin -czf "dist/Yoyo-${VERSION}-linux-amd64.tar.gz" Yoyo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  cli:
+    needs: [meta, test]
+    name: cli (${{ matrix.goos }}-${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build CLI
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p bin dist
+          ext=""
+          if [[ "${GOOS}" == windows ]]; then
+            ext=".exe"
+          fi
+          out="bin/yoyo${ext}"
+          go build -trimpath \
+            -ldflags="-s -w -X github.com/Shenchangxin/yoyo/internal/version.Version=${VERSION}" \
+            -o "${out}" ./cmd/yoyo
+          if [[ "${GOOS}" == windows ]]; then
+            python3 -c "import os, zipfile; v, o, a = os.environ['VERSION'], os.environ['GOOS'], os.environ['GOARCH']; z = zipfile.ZipFile(f'dist/yoyo-cli-{v}-{o}-{a}.zip', 'w', zipfile.ZIP_DEFLATED); z.write('bin/yoyo.exe', 'yoyo.exe')"
+          else
+            tar -C bin -czf "dist/yoyo-cli-${VERSION}-${GOOS}-${GOARCH}.tar.gz" yoyo
+          fi
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: [meta, desktop, cli]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ls -la
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Yoyo ${{ env.VERSION }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            Native desktop builds (Windows amd64, macOS universal, Linux amd64) plus a CGO-free CLI for each OS/arch.
+
+            macOS is ad-hoc signed, not notarized. Windows and Linux desktop binaries are unsigned. Installing an update is still a human step (`yoyo update apply`); these assets are for download, not silent self-replace.
+          files: dist/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

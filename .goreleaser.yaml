@@ -1,5 +1,8 @@
 version: 2
 
+# CLI archives only. Desktop (Wails) binaries are built natively per OS by
+# .github/workflows/release.yml on v* tags. Keep GitHub publishing disabled
+# here so the two pipelines cannot fight over the same tag.
 project_name: yoyo
 
 builds:
@@ -8,6 +11,10 @@ builds:
     binary: yoyo
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/Shenchangxin/yoyo/internal/version.Version={{.Version}}
     goos: [windows, linux, darwin]
     goarch: [amd64, arm64]
     ignore:
@@ -22,4 +29,4 @@ checksum:
   name_template: checksums.txt
 
 release:
-  draft: true
+  disable: true

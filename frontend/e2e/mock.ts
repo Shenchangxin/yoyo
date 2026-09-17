@@ -7,7 +7,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let cfg: any = {
@@ -51,12 +51,20 @@ export async function mockApi(
     if (path.endsWith("/api/sessions")) {
       return route.fulfill({ json: sessions });
     }
+    const spillOp = path.match(/\/api\/sessions\/([^/]+)\/spill\/([^/]+)$/);
+    if (spillOp) {
+      const blob = extra?.spill?.[spillOp[2]] ?? { id: spillOp[2], bytes: 11, text: "hello world", truncated: false };
+      return route.fulfill({ json: blob });
+    }
     const sessOp = path.match(/\/api\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessOp) {
       const id = decodeURIComponent(sessOp[1]);
       const op = sessOp[2] || "";
       if (op === "trajectory") {
         return route.fulfill({ json: extra?.events || [] });
+      }
+      if (op === "trace") {
+        return route.fulfill({ json: extra?.trace ?? mockTrace(id, extra) });
       }
       if (op === "running") {
         return route.fulfill({ json: { running: !!extra?.running } });
@@ -123,4 +131,58 @@ export async function mockApi(
     }
     return route.fulfill({ status: 200, json: {} });
   });
+}
+
+function mockTrace(id: string, extra?: { sessions?: any[]; events?: any[]; artifacts?: any[]; context?: any }) {
+  const events = extra?.events || [];
+  const projected: any[] = [];
+  let tools = 0;
+  let users = 0;
+  let errors = 0;
+  let deltas = 0;
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i] || {};
+    const p = ev.payload || {};
+    if (p.delta) {
+      deltas++;
+      continue;
+    }
+    if (ev.type === "user") users++;
+    if (ev.type === "tool_call") tools++;
+    if (ev.type === "error") errors++;
+    const text = String(p.text || p.content || p.arguments || p.note || "");
+    projected.push({
+      index: i,
+      ts: ev.ts || "",
+      type: ev.type || "",
+      source: ev.source || "",
+      lane: ev.type === "tool_call" || ev.type === "tool_result" || ev.type === "approval" ? "exec" : ev.type === "error" ? "error" : ev.type === "compaction" ? "memory" : "dialog",
+      round: p.round || "",
+      name: p.name || "",
+      id: p.id || "",
+      summary: text.slice(0, 120) || ev.type,
+      detail: text.slice(0, 4000),
+      bytes: p.bytes || 0,
+      elapsed_ms: p.elapsed_ms || 0,
+      spill_id: p.spill_id || "",
+      tokens: p.tokens || 0,
+      error: ev.type === "error",
+    });
+  }
+  return {
+    session_id: id,
+    title: extra?.sessions?.[0]?.title || id,
+    stats: {
+      events: events.length,
+      users,
+      tool_calls: tools,
+      errors,
+      deltas,
+      tokens: extra?.context?.tokens || 0,
+      duration_ms: 0,
+      spill_bytes: extra?.artifacts?.reduce((n: number, a: any) => n + (a.bytes || 0), 0) || 0,
+    },
+    events: projected,
+    artifacts: extra?.artifacts || [],
+  };
 }

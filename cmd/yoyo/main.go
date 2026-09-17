@@ -52,7 +52,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), serveCmd(), updateCmd(), doctorCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), traceCmd(), serveCmd(), updateCmd(), doctorCmd())
 	return cmd
 }
 
@@ -369,6 +369,28 @@ func replayCmd() *cobra.Command {
 				fmt.Printf("%s %s %s %v\n", ev.TS.Format(time.RFC3339), ev.Type, ev.Source, ev.Payload)
 			}
 			return nil
+		},
+	}
+}
+
+func traceCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "trace [session]",
+		Short: "Print a session trace (calls, trajectory, artifacts)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			tr, err := a.SessionTrace(args[0])
+			if err != nil {
+				return err
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(tr)
 		},
 	}
 }

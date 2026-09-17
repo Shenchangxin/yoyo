@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Lab, Notice, SettingsTab, Surface } from "./protocol";
 
-export type InspTab = "diff" | "files";
+export type InspTab = "diff" | "files" | "trace";
 export type DiffMode = "unified" | "split";
 
 type UIState = {

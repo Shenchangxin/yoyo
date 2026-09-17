@@ -1,6 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, SkillInfo, Thread } from "./protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -217,6 +217,89 @@ export async function trajectory(id: string): Promise<any[]> {
   const s = await wailsService();
   if (s?.Trajectory) return asArray(await s.Trajectory(id));
   return asArray(await http(`/api/sessions/${id}/trajectory`));
+}
+
+export function sessionTraceOf(v: any): SessionTrace {
+  if (v && typeof v === "object" && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
+    v = v.result;
+  }
+  const statsRaw = pick(v, "stats", "Stats") || {};
+  const stats: TraceStats = {
+    events: num(pick(statsRaw, "events", "Events")),
+    users: num(pick(statsRaw, "users", "Users")),
+    assistants: num(pick(statsRaw, "assistants", "Assistants")),
+    toolCalls: num(pick(statsRaw, "tool_calls", "ToolCalls")),
+    toolResults: num(pick(statsRaw, "tool_results", "ToolResults")),
+    errors: num(pick(statsRaw, "errors", "Errors")),
+    compactions: num(pick(statsRaw, "compactions", "Compactions")),
+    deltas: num(pick(statsRaw, "deltas", "Deltas")),
+    tokens: num(pick(statsRaw, "tokens", "Tokens")),
+    durationMs: num(pick(statsRaw, "duration_ms", "DurationMs")),
+    spillBytes: num(pick(statsRaw, "spill_bytes", "SpillBytes")),
+  };
+  const events: TraceEvent[] = asArray(pick(v, "events", "Events")).map((ev: any, i: number) => ({
+    index: num(pick(ev, "index", "Index"), i),
+    ts: str(pick(ev, "ts", "TS")),
+    type: str(pick(ev, "type", "Type")),
+    source: str(pick(ev, "source", "Source")),
+    lane: str(pick(ev, "lane", "Lane")) || "dialog",
+    round: str(pick(ev, "round", "Round")),
+    name: str(pick(ev, "name", "Name")),
+    id: str(pick(ev, "id", "ID")),
+    summary: str(pick(ev, "summary", "Summary")),
+    detail: str(pick(ev, "detail", "Detail")),
+    bytes: num(pick(ev, "bytes", "Bytes")),
+    elapsedMs: num(pick(ev, "elapsed_ms", "ElapsedMs")),
+    spillId: str(pick(ev, "spill_id", "SpillID", "spillId")),
+    tokens: num(pick(ev, "tokens", "Tokens")),
+    error: bool(pick(ev, "error", "Error")),
+  }));
+  const artifacts: TraceArtifact[] = asArray(pick(v, "artifacts", "Artifacts")).map((art: any) => ({
+    kind: str(pick(art, "kind", "Kind")),
+    id: str(pick(art, "id", "ID")),
+    label: str(pick(art, "label", "Label")) || str(pick(art, "id", "ID")),
+    bytes: num(pick(art, "bytes", "Bytes")),
+    preview: str(pick(art, "preview", "Preview")),
+  }));
+  return {
+    sessionId: str(pick(v, "session_id", "SessionID", "sessionId")),
+    title: str(pick(v, "title", "Title")),
+    workspace: str(pick(v, "workspace", "Workspace")),
+    harness: str(pick(v, "harness", "Harness")),
+    model: str(pick(v, "model", "Model")),
+    createdAt: str(pick(v, "created_at", "CreatedAt")),
+    startedAt: str(pick(v, "started_at", "StartedAt")),
+    endedAt: str(pick(v, "ended_at", "EndedAt")),
+    stats,
+    events,
+    artifacts,
+  };
+}
+
+export function spillBlobOf(v: any): SpillBlob {
+  if (v && typeof v === "object" && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
+    v = v.result;
+  }
+  return {
+    id: str(pick(v, "id", "ID")),
+    bytes: num(pick(v, "bytes", "Bytes")),
+    text: str(pick(v, "text", "Text")),
+    truncated: bool(pick(v, "truncated", "Truncated")),
+  };
+}
+
+export async function sessionTrace(id: string): Promise<SessionTrace> {
+  const s = await wailsService();
+  const raw = s?.SessionTrace ? await s.SessionTrace(id) : await http(`/api/sessions/${id}/trace`);
+  return sessionTraceOf(raw);
+}
+
+export async function spillBlob(sessionID: string, blobID: string): Promise<SpillBlob> {
+  const s = await wailsService();
+  const raw = s?.SpillBlob
+    ? await s.SpillBlob(sessionID, blobID)
+    : await http(`/api/sessions/${sessionID}/spill/${encodeURIComponent(blobID)}`);
+  return spillBlobOf(raw);
 }
 
 export async function retry(sessionID: string): Promise<void> {

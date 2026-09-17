@@ -10,7 +10,7 @@ import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Attachment, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
 import { formatTokens, lookupCatalogModel, composerModelIds } from "../lib/models-dev";
 import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
-import { contextBreakdown, type CtxSliceId } from "../lib/context-usage";
+import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
 
 export function Composer(props: {
@@ -356,6 +356,7 @@ export function Composer(props: {
         </div>
         <ContextMeter
           ctx={props.ctx}
+          draftTokens={estimateTokens(value)}
           fallbackWindow={fallbackWindow}
           queued={props.queued}
           running={props.running}
@@ -433,6 +434,7 @@ function sliceLabel(id: CtxSliceId, copy: Copy): string {
 
 function ContextMeter(props: {
   ctx?: ContextUsage;
+  draftTokens?: number;
   fallbackWindow: number;
   queued?: number;
   running?: boolean;
@@ -440,7 +442,7 @@ function ContextMeter(props: {
   copy: Copy;
 }) {
   const copy = props.copy;
-  const br = contextBreakdown(props.ctx, props.fallbackWindow);
+  const br = contextBreakdown(props.ctx, props.fallbackWindow, props.draftTokens || 0);
   const queued = props.queued || 0;
   if (br.capacity <= 0) {
     if (!props.running && queued <= 0) return null;

@@ -145,7 +145,7 @@ func TestC2RecallKeepsTailOfHugeDump(t *testing.T) {
 	sp := NewSpill(filepath.Join(dir, "spill"))
 	tools := &WorkspaceTools{Workspace: dir, Spill: sp}
 	full := strings.Repeat("HEAD", 2000) + strings.Repeat("x", 2<<20) + "UNIQUE_TAIL_MARKER"
-	preview := ingestToolResult(sp, "big", "shell", full)
+	preview, _ := ingestToolResult(sp, "big", "shell", full)
 	if !strings.Contains(preview, "elided") {
 		t.Fatalf("expected preview stub")
 	}

@@ -119,6 +119,25 @@ func (s *Spill) Get(id string) (string, error) {
 	return "", err
 }
 
+func (s *Spill) Size(id string) int {
+	if s == nil || s.Dir == "" {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	name := sanitizeID(id) + ".txt"
+	for _, dir := range []string{s.Dir, s.Mirror} {
+		if dir == "" {
+			continue
+		}
+		fi, err := os.Stat(filepath.Join(dir, name))
+		if err == nil {
+			return int(fi.Size())
+		}
+	}
+	return 0
+}
+
 func (s *Spill) ListIDs() []string {
 	if s == nil || s.Dir == "" {
 		return nil

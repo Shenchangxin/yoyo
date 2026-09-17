@@ -63,7 +63,7 @@ func TestSpillBeforeCapIsLossless(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
 	full := strings.Repeat("TAIL", 20_000)
-	preview := ingestToolResult(sp, "big", "shell", full)
+	preview, _ := ingestToolResult(sp, "big", "shell", full)
 	if !strings.Contains(preview, "elided") {
 		t.Fatalf("expected preview stub, got %s", preview[:min(120, len(preview))])
 	}

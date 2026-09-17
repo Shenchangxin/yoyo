@@ -132,6 +132,89 @@ func TestAgentLoopTrajectory(t *testing.T) {
 	}
 }
 
+func TestContextUsageSurvivesReopen(t *testing.T) {
+	home := t.TempDir()
+	a, err := app.Open(home, evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := a.ContextUsage(sess.ID)
+	if fresh.Tokens <= 0 || fresh.PrefixTokens <= 0 || fresh.SchemaTokens <= 0 || fresh.Window <= 0 {
+		t.Fatalf("idle usage %+v", fresh)
+	}
+	if _, err := a.Send(context.Background(), sess.ID, "Write hello.txt containing hello", runtime.HeuristicSolver{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	used := a.ContextUsage(sess.ID)
+	if used.Tokens <= fresh.Tokens {
+		t.Fatalf("turn should grow usage: idle=%d after=%d", fresh.Tokens, used.Tokens)
+	}
+	a.Close()
+	a2, err := app.Open(home, evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a2.Close()
+	again := a2.ContextUsage(sess.ID)
+	if again.Tokens <= 0 || again.PrefixTokens <= 0 || again.Window <= 0 {
+		t.Fatalf("after reopen %+v", again)
+	}
+	if again.Tokens < used.Tokens/2 {
+		t.Fatalf("reopen lost context: before=%d after=%d", used.Tokens, again.Tokens)
+	}
+}
+
+func TestSessionTraceIncludesSpillArtifact(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("artifact-bytes-", 200)
+	sp := runtime.BindSpill(a.Home.Root, ws, sess.ID)
+	if sp == nil {
+		t.Fatal("spill")
+	}
+	if id := sp.Put("c1", body); id != "c1" {
+		t.Fatalf("put %q", id)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: sess.ID, Payload: map[string]any{"text": "dump", "id": "u1"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeToolCall, SessionID: sess.ID, Payload: map[string]any{"id": "c1", "name": "shell", "arguments": `{"cmd":"cat"}`}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeToolResult, SessionID: sess.ID, Payload: map[string]any{
+		"id": "c1", "name": "shell", "content": body[:80], "spill_id": "c1", "bytes": len(body), "elapsed_ms": 7,
+	}})
+	tr, err := a.SessionTrace(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.Stats.ToolCalls != 1 || tr.Stats.Users != 1 {
+		t.Fatalf("stats %+v", tr.Stats)
+	}
+	var sawSpill bool
+	for _, art := range tr.Artifacts {
+		if art.Kind == "spill" && art.ID == "c1" && art.Bytes == len(body) {
+			sawSpill = true
+		}
+	}
+	if !sawSpill {
+		t.Fatalf("artifacts %+v", tr.Artifacts)
+	}
+	blob, err := a.SpillBlob(sess.ID, "c1")
+	if err != nil || blob.Text != body || blob.Truncated {
+		t.Fatalf("blob err=%v len=%d trunc=%v", err, len(blob.Text), blob.Truncated)
+	}
+}
+
 func TestCheckoutRequiresL3(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

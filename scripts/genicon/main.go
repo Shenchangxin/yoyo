@@ -1,4 +1,4 @@
-// Generates the Yoyo app mark (teal rounded square + yo-yo) as PNG/ICO.
+// Generates the Yoyo app mark (black rounded square + white yo-yo) as PNG/ICO.
 package main
 
 import (
@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	teal = color.RGBA{0x0F, 0x9D, 0x78, 0xFF}
-	ink  = color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}
+	bg  = color.RGBA{0x0A, 0x0A, 0x0A, 0xFF}
+	ink = color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}
 )
 
 func main() {
@@ -25,12 +25,13 @@ func main() {
 	png1024 := render(1024)
 	mustWrite(filepath.Join(root, "build", "appicon.png"), png1024)
 	mustWrite(filepath.Join(root, "internal", "desktop", "assets", "appicon.png"), render(256))
+	mustWrite(filepath.Join(root, "build", "ios", "icon.png"), png1024)
 	mustWrite(filepath.Join(root, "build", "windows", "icon.ico"), packICO(
 		render(16), render(32), render(48), render(256),
 	))
 	svg := `<?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" rx="224" fill="#0F9D78"/>
+  <rect width="1024" height="1024" rx="224" fill="#0A0A0A"/>
   <g fill="none" stroke="#FFFFFF" stroke-linecap="round">
     <circle cx="512" cy="307" r="172" stroke-width="78"/>
     <line x1="512" y1="479" x2="512" y2="635" stroke-width="33"/>
@@ -99,7 +100,7 @@ func sample(x, y float64) color.RGBA {
 	stem := capsule(x, y, 0.50, 0.66, 0.50, 0.86, 0.062)
 	letter := union(aa(left), union(aa(right), union(aa(stem), aa(str))))
 	mark := union(yoyo, letter)
-	return mix(teal, ink, mark*cover, cover)
+	return mix(bg, ink, mark*cover, cover)
 }
 
 func capsule(px, py, ax, ay, bx, by, r float64) float64 {

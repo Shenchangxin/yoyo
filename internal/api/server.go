@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -137,6 +138,28 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				return
 			}
 			writeJSON(w, evs)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "trace" {
+			tr, err := a.SessionTrace(id)
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			writeJSON(w, tr)
+			return
+		}
+		if len(parts) > 2 && parts[1] == "spill" {
+			blob, err := a.SpillBlob(id, parts[2])
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.Error(w, "not found", 404)
+					return
+				}
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			writeJSON(w, blob)
 			return
 		}
 		if len(parts) > 1 && parts[1] == "messages" && r.Method == http.MethodPost {

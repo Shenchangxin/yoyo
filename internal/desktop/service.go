@@ -269,6 +269,20 @@ func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 	return s.App.Trajectory(id)
 }
 
+func (s *Service) SessionTrace(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("trace.get", map[string]any{"session": id})
+	}
+	return s.App.SessionTrace(id)
+}
+
+func (s *Service) SpillBlob(sessionID, blobID string) (any, error) {
+	if s.RPC != nil {
+		return s.call("spill.get", map[string]any{"session": sessionID, "id": blobID})
+	}
+	return s.App.SpillBlob(sessionID, blobID)
+}
+
 func (s *Service) Send(sessionID, text string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("turn.start", map[string]any{"session": sessionID, "text": text, "wait": true})
