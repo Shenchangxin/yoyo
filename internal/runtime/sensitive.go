@@ -13,7 +13,7 @@ func (PromptSensitiveSolver) Chat(ctx context.Context, req ChatRequest) (Message
 	var sys, user string
 	for _, m := range req.Messages {
 		switch m.Role {
-		case RoleSystem:
+		case RoleSystem, RoleDeveloper:
 			sys += m.Content
 		case RoleUser:
 			user += m.Content

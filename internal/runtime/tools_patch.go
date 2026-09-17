@@ -40,7 +40,21 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 	if len(reports) == 0 {
 		return ToolResult{Err: fmt.Errorf("no patch hunks")}
 	}
-	return ToolResult{Content: strings.Join(reports, "\n")}
+	return ToolResult{
+		Content:    strings.Join(reports, "\n"),
+		FileChange: &FileChange{Paths: pathsFromReports(reports), Patch: patch},
+	}
+}
+
+func pathsFromReports(reports []string) []string {
+	var out []string
+	for _, r := range reports {
+		fields := strings.Fields(r)
+		if len(fields) > 0 {
+			out = append(out, fields[len(fields)-1])
+		}
+	}
+	return out
 }
 
 func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {

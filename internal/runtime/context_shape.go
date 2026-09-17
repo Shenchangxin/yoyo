@@ -134,14 +134,15 @@ func applyBudget(msgs []Message, per int, spill *Spill) int {
 }
 
 func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
-	if len(msgs) <= keep+1 {
+	head := pinnedPrefix(msgs)
+	if len(msgs) <= keep+head {
 		return nil, 0
 	}
 	cut := pairingBoundary(msgs, len(msgs)-keep)
-	if cut <= 1 {
+	if cut <= head {
 		return nil, 0
 	}
-	dropped := msgs[1:cut]
+	dropped := msgs[head:cut]
 	id := "snip"
 	if spill != nil {
 		raw, _ := json.Marshal(dropped)
@@ -154,10 +155,22 @@ func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 			len(dropped), id,
 		),
 	}
-	out := make([]Message, 0, 2+len(msgs)-cut)
-	out = append(out, msgs[0], marker)
+	out := make([]Message, 0, head+1+len(msgs)-cut)
+	out = append(out, msgs[:head]...)
+	out = append(out, marker)
 	out = append(out, msgs[cut:]...)
 	return out, len(dropped)
+}
+
+func pinnedPrefix(msgs []Message) int {
+	n := 0
+	for n < len(msgs) && (msgs[n].Role == RoleSystem || msgs[n].Role == RoleDeveloper || msgs[n].Role == RoleMemory) {
+		n++
+	}
+	if n == 0 {
+		return 1
+	}
+	return n
 }
 
 func microcompact(msgs []Message, keepLast int, spill *Spill) int {
@@ -167,7 +180,8 @@ func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 	}
 	n := 0
 	cutoff := ids[len(ids)-keepLast]
-	for i := 1; i < cutoff; i++ {
+	start := pinnedPrefix(msgs)
+	for i := start; i < cutoff; i++ {
 		if msgs[i].Role != RoleTool || alreadyStubbed(msgs[i].Content) {
 			continue
 		}
@@ -189,7 +203,8 @@ func forceFit(msgs []Message, budget int, spill *Spill) int {
 		budget = 0
 	}
 	n := 0
-	for i := 1; i < len(msgs) && messagesTokens(msgs) > budget; i++ {
+	start := pinnedPrefix(msgs)
+	for i := start; i < len(msgs) && messagesTokens(msgs) > budget; i++ {
 		if msgs[i].Role != RoleTool || alreadyStubbed(msgs[i].Content) {
 			continue
 		}

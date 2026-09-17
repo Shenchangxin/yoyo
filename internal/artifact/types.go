@@ -42,6 +42,7 @@ type Skill struct {
 	AllowedTools  string            `json:"allowed_tools,omitempty"`
 	Body          string            `json:"body"`
 	Source        string            `json:"source,omitempty"`
+	Dir           string            `json:"dir,omitempty"`
 }
 
 type PlaybookBullet struct {
@@ -66,12 +67,17 @@ const (
 )
 
 type ToolSpec struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Parameters  map[string]any `json:"parameters"`
-	Capability  string         `json:"capability"`
-	Impl        ToolImplKind   `json:"impl"`
-	Pointer     string         `json:"pointer,omitempty"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	Parameters      map[string]any `json:"parameters"`
+	Capability      string         `json:"capability"`
+	Impl            ToolImplKind   `json:"impl"`
+	Pointer         string         `json:"pointer,omitempty"`
+	ReadOnly        bool           `json:"read_only,omitempty"`
+	ConcurrencySafe bool           `json:"concurrency_safe,omitempty"`
+	OpenWorld       bool           `json:"open_world,omitempty"`
+	Destructive     bool           `json:"destructive,omitempty"`
+	Exclusive       bool           `json:"exclusive,omitempty"`
 }
 
 type LoopPreset struct {
@@ -149,6 +155,7 @@ type HarnessSnapshot struct {
 	LoopPreset       string   `json:"loop_preset"`
 	PolicyPack       string   `json:"policy_pack"`
 	EvalSuite        string   `json:"eval_suite,omitempty"`
+	EvalTools        []string `json:"eval_tools,omitempty"`
 	WASMPlugins      []string `json:"wasm_plugins,omitempty"`
 	Parent           string   `json:"parent,omitempty"`
 	Note             string   `json:"note,omitempty"`

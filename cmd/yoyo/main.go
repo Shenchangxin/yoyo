@@ -357,6 +357,7 @@ func doctorCmd() *cobra.Command {
 func evolveCmd() *cobra.Command {
 	var k, rounds int
 	var promote, sealed bool
+	var solver string
 	cmd := &cobra.Command{
 		Use:   "evolve",
 		Short: "Run Self-Harness cycles (L1 materials). Default writes refs/canary only.",
@@ -371,7 +372,11 @@ func evolveCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rounds)*15*time.Minute)
 			defer cancel()
-			res, err := a.EvolveWith(ctx, runtime.PromptSensitiveSolver{}, map[string]string{"write-hello": "missing_artifact"}, app.EvolveRun{
+			var client runtime.Client
+			if solver == "prompt-sensitive" {
+				client = runtime.PromptSensitiveSolver{}
+			}
+			res, err := a.EvolveWith(ctx, client, map[string]string{"write-hello": "missing_artifact"}, app.EvolveRun{
 				K: k, Rounds: rounds, PromoteActive: promote, Sealed: sealed,
 			})
 			if err != nil {
@@ -388,6 +393,7 @@ func evolveCmd() *cobra.Command {
 	cmd.Flags().IntVar(&rounds, "rounds", 1, "outer Propose→Prove rounds (still canary-only unless --promote)")
 	cmd.Flags().BoolVar(&promote, "promote", false, "move refs/active (default: canary + archive only)")
 	cmd.Flags().BoolVar(&sealed, "sealed", false, "use the private 20/10/5 catalog")
+	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or prompt-sensitive for fixture tests")
 	return cmd
 }
 

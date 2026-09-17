@@ -11,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
 func (a *App) RenameSession(id, title string) error {
@@ -36,9 +37,12 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 		return SessionMeta{}, err
 	}
 	dst.Title = "fork of " + titleFrom(src.Title)
-	dst.Harness = src.Harness
+	dst.Harness = session.ResolveHarness(session.NormalizePolicy(src.HarnessPolicy), src.Harness, a.ActiveHash())
+	dst.HarnessPolicy = session.Pin
 	dst.ModelFingerprint = src.ModelFingerprint
 	dst.Model = src.Model
+	dst.LoadedSkills = append([]string(nil), src.LoadedSkills...)
+	dst.PlanText = src.PlanText
 	if err := a.writeSession(dst); err != nil {
 		return dst, err
 	}

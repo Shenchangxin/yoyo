@@ -3,11 +3,11 @@ package runtime
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-// SkillRoots returns discovery directories in overlay order (later wins).
 func SkillRoots(home, workspace, bundled string) []string {
 	var out []string
 	if bundled != "" {
@@ -24,7 +24,6 @@ func SkillRoots(home, workspace, bundled string) []string {
 	return out
 }
 
-// LoadSkillDirs walks SKILL.md files (Codex/Agent Skills layout).
 func LoadSkillDirs(roots ...string) []artifact.Skill {
 	seen := map[string]artifact.Skill{}
 	order := []string{}
@@ -54,28 +53,9 @@ func LoadSkillDirs(roots ...string) []artifact.Skill {
 	for _, name := range order {
 		out = append(out, seen[name])
 	}
-	// Re-apply overlays so later roots replace earlier ones while keeping
-	// first-seen order for new names.
-	for _, root := range roots {
-		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info == nil || info.IsDir() || info.Name() != "SKILL.md" {
-				return nil
-			}
-			sk, err := artifact.LoadSkillFile(path)
-			if err != nil {
-				return nil
-			}
-			seen[sk.Name] = sk
-			return nil
-		})
-	}
-	for i, name := range order {
-		out[i] = seen[name]
-	}
 	return out
 }
 
-// MergeSkills overlays extra onto base by name. Extra wins.
 func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 	idx := map[string]int{}
 	out := append([]artifact.Skill(nil), base...)
@@ -88,6 +68,20 @@ func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 			continue
 		}
 		idx[s.Name] = len(out)
+		out = append(out, s)
+	}
+	return out
+}
+
+func FilterSkills(skills []artifact.Skill, planMode bool) []artifact.Skill {
+	if !planMode {
+		return skills
+	}
+	var out []artifact.Skill
+	for _, s := range skills {
+		if strings.Contains(strings.ToLower(s.Compatibility), "network") {
+			continue
+		}
 		out = append(out, s)
 	}
 	return out

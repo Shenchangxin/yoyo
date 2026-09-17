@@ -29,7 +29,68 @@ func ShellDenied(command, workspace string, networkAllow []string) error {
 	if err := denyEscapingAbsPaths(cmd, workspace); err != nil {
 		return err
 	}
+	if argv := SplitShellArgv(cmd); len(argv) > 0 {
+		if err := DenyArgvPaths(argv, workspace); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func SplitShellArgv(command string) []string {
+	var out []string
+	var cur strings.Builder
+	quote := rune(0)
+	for _, r := range strings.TrimSpace(command) {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				cur.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == ' ' || r == '\t':
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+func DenyArgvPaths(argv []string, workspace string) error {
+	if workspace == "" {
+		return nil
+	}
+	for _, f := range argv {
+		f = strings.Trim(f, `"'`)
+		if !filepath.IsAbs(f) {
+			continue
+		}
+		if !capability.WithinWorkspace(workspace, f) {
+			return fmt.Errorf("shell policy denied path outside workspace")
+		}
+	}
+	return nil
+}
+
+func looksSimpleArgv(argv []string) bool {
+	if len(argv) == 0 {
+		return false
+	}
+	low := strings.ToLower(argv[0])
+	if low == "cmd" || low == "cmd.exe" || low == "powershell" || low == "pwsh" || low == "sh" || low == "bash" {
+		return false
+	}
+	return !strings.ContainsAny(argv[0], `&|;<>`)
 }
 
 var destructiveShell = []string{

@@ -15,9 +15,11 @@ type Role string
 
 const (
 	RoleSystem    Role = "system"
+	RoleDeveloper Role = "developer"
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"
+	RoleMemory    Role = "working_memory"
 )
 
 type ToolCall struct {
@@ -51,7 +53,9 @@ type ChatRequest struct {
 }
 
 type StreamDelta struct {
-	Text string
+	Text     string
+	Tool     ToolCall
+	ToolDone bool
 }
 
 type Client interface {
@@ -156,7 +160,10 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	return readOpenAIStream(res.Body, emit)
 }
 
-type streamAcc struct{ id, name, args string }
+type streamAcc struct {
+	id, name, args string
+	done           bool
+}
 
 func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error) {
 	br := bufio.NewReader(r)
@@ -200,6 +207,9 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 						_ = emit(StreamDelta{Text: piece})
 					}
 				}
+				if emit != nil {
+					emitCompletedTools(tools, emit)
+				}
 			}
 		}
 		if err == io.EOF {
@@ -218,6 +228,19 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: a.id, Name: a.name, Arguments: a.args})
 	}
 	return out, nil
+}
+
+func emitCompletedTools(tools map[int]*streamAcc, emit func(StreamDelta) error) {
+	for i := 0; i < len(tools)+8; i++ {
+		a := tools[i]
+		if a == nil || a.done || a.name == "" {
+			continue
+		}
+		if a.args != "" && json.Valid([]byte(a.args)) {
+			a.done = true
+			_ = emit(StreamDelta{Tool: ToolCall{ID: a.id, Name: a.name, Arguments: a.args}, ToolDone: true})
+		}
+	}
 }
 
 func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, int, int) {

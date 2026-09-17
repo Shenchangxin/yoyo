@@ -39,7 +39,10 @@ export type ItemType =
   | "compaction"
   | "subagent"
   | "eval"
-  | "evolve";
+  | "evolve"
+  | "plan"
+  | "file_change"
+  | "ask_user";
 
 export type Item = {
   key: string;

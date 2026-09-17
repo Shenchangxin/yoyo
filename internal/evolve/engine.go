@@ -9,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/tool"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -53,7 +54,8 @@ type CycleOpts struct {
 	Model          string
 	FailedTasks    map[string]string
 	K              int
-	PromoteCanary  bool
+	PromoteCanary  bool // deprecated: does not move refs/active
+	PromoteActive  bool
 	HeldOut        []string
 	StagingHash    string
 	IsolateRoot    string
@@ -305,7 +307,7 @@ func (e *Engine) publishCanary(opts CycleOpts, baseline MaterialSet, hash string
 		_ = e.Refs.Set(artifact.ModelCanary(fp), hash)
 	}
 	_ = e.Refs.Archive(hash)
-	if !opts.PromoteCanary {
+	if !opts.PromoteActive {
 		return false
 	}
 	_ = e.Refs.Set(artifact.RefActive, hash)
@@ -347,7 +349,25 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 		short = short[:8]
 	}
 	fiber, ferr := e.Kernel.Plugin("candidate:"+short, func(c *kernel.Context) error {
-		return c.Provide("candidate:"+short, mats.Hash)
+		reg := tool.NewRegistry()
+		want := map[string]bool{}
+		for _, n := range mats.Snap.Tools {
+			want[n] = true
+		}
+		for _, s := range tool.HostSpecs() {
+			if len(want) > 0 && !want[s.Name] {
+				continue
+			}
+			spec := s
+			reg.Register(specTool{spec})
+		}
+		if err := c.Provide("candidate:"+short, mats.Hash); err != nil {
+			return err
+		}
+		if err := c.Provide("candidate:"+short+":tools", reg); err != nil {
+			return err
+		}
+		return c.Provide("candidate:"+short+":skills", mats.Skills)
 	})
 	trial := Trial{Proposal: p, Hash: mats.Hash}
 	if ferr != nil {
@@ -430,4 +450,14 @@ func lastNodes(nodes []Node, n int) []Node {
 		return nodes
 	}
 	return nodes[len(nodes)-n:]
+}
+
+type specTool struct{ s artifact.ToolSpec }
+
+func (t specTool) Spec() artifact.ToolSpec { return t.s }
+func (t specTool) Annotations() tool.Annotations {
+	return tool.AnnFromSpec(t.s)
+}
+func (t specTool) Call(ctx context.Context, inv tool.Invocation) tool.Result {
+	return tool.Result{Err: fmt.Errorf("candidate fiber does not execute host tools")}
 }

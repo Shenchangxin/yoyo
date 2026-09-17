@@ -21,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/vault"
@@ -65,6 +66,7 @@ type App struct {
 	Caps         *capability.Broker
 	Gate         *capability.Gate
 	Hub          *Hub
+	Threads      *session.Manager
 	Vault        *vault.Store
 	Journal      *journal.Log
 	WASM         *wasm.Host
@@ -87,6 +89,9 @@ type App struct {
 	queueMu sync.Mutex
 	queue   map[string][]QueuedTurn
 	steers  map[string][]string
+
+	askMu  sync.Mutex
+	askAns map[string]string
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -145,6 +150,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Traces:       trace.NewStore(h.Sessions()),
 		Gate:         gate,
 		Hub:          NewHub(),
+		Threads:      session.NewManager(h.Sessions()),
 		Vault:        vault.New(h.Root),
 		Journal:      j,
 		WASM:         wasm.NewHost(),
@@ -155,7 +161,10 @@ func Open(root, bundledEvals string) (*App, error) {
 		BundledEvals: bundledEvals,
 		runs:         map[string]context.CancelFunc{},
 		lastShape:    map[string]runtime.ShapeReport{},
+		askAns:       map[string]string{},
 	}
+	a.Hub.Overflow = filepath.Join(h.Sessions(), "_overflow")
+	a.MCP.Roots = []string{a.Workspace()}
 	a.initQueue()
 	a.loadKeymapFile()
 	for _, srv := range cfg.MCP {
@@ -165,6 +174,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		_ = a.MCP.Start(srv.Name, srv.Command, srv.Args)
 	}
 	a.Caps = capability.NewBroker(capability.AutoPolicy{Allow: allow}, a.approve)
+	a.restoreRuns()
 	a.Gate.SetOnOffer(func(o capability.Offer) {
 		ev := trace.Event{
 			TS:        time.Now().UTC(),
@@ -180,6 +190,19 @@ func Open(root, bundledEvals string) (*App, error) {
 			_ = a.Traces.Append(ev)
 		}
 		a.Hub.Publish(ev)
+		if a.Threads != nil && o.Request.SessionID != "" && a.Gate != nil {
+			var offers []session.PendingApproval
+			for _, p := range a.Gate.Pending() {
+				if p.Request.SessionID != o.Request.SessionID {
+					continue
+				}
+				offers = append(offers, session.PendingApproval{
+					ID: p.ID, Action: p.Request.Action, Level: string(p.Request.Level),
+					Path: p.Request.Path, Command: p.Request.Command,
+				})
+			}
+			a.Threads.SetApprovals(o.Request.SessionID, offers)
+		}
 	})
 	a.Evolve = &evolve.Engine{
 		CAS:       a.CAS,
@@ -235,10 +258,22 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 	if a.Config.AutoAllow && !req.ForceAsk {
 		return capability.Always, nil
 	}
-	return a.Gate.Ask(ctx, req)
+	dec, err := a.Gate.Ask(ctx, req)
+	if err != nil {
+		return dec, err
+	}
+	if dec == capability.Session && req.SessionID != "" && a.Threads != nil {
+		caps := append(a.Threads.Caps(req.SessionID), string(req.Level))
+		a.Threads.SetCaps(req.SessionID, caps)
+		a.Threads.SetApprovals(req.SessionID, nil)
+	}
+	return dec, nil
 }
 
 func (a *App) Interrupt(sessionID string) error {
+	if a.Threads != nil {
+		a.Threads.Interrupt(sessionID)
+	}
 	a.mu.Lock()
 	cancel := a.runs[sessionID]
 	a.mu.Unlock()
@@ -304,6 +339,18 @@ func (a *App) Health() map[string]any {
 }
 
 func (a *App) ResolveApproval(id, decision string) error {
+	return a.ResolveApprovalAnswer(id, decision, "")
+}
+
+func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
+	if answer != "" {
+		a.askMu.Lock()
+		if a.askAns == nil {
+			a.askAns = map[string]string{}
+		}
+		a.askAns[id] = answer
+		a.askMu.Unlock()
+	}
 	d := capability.Deny
 	switch decision {
 	case "always":
@@ -382,4 +429,45 @@ func (a *App) StagingPath() string {
 
 func (a *App) ApplyStagedUpdate(exe string) error {
 	return update.ApplyStaged(exe, a.StagingPath())
+}
+
+func (a *App) restoreRuns() {
+	if a.Threads == nil || a.Home == nil {
+		return
+	}
+	entries, err := os.ReadDir(a.Home.Sessions())
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".run.json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".run.json")
+		st := a.Threads.Load(id)
+		if len(st.Queue) > 0 {
+			a.queueMu.Lock()
+			for _, t := range st.Queue {
+				atts := make([]Attachment, 0, len(t.Attachments))
+				for _, x := range t.Attachments {
+					atts = append(atts, Attachment{Path: x.Path, Name: x.Name, MIME: x.MIME, DataB64: x.DataB64})
+				}
+				a.queue[id] = append(a.queue[id], QueuedTurn{Text: t.Text, Plan: t.Plan, Attachments: atts})
+			}
+			a.queueMu.Unlock()
+		}
+		if a.Caps != nil && len(st.SessionCaps) > 0 {
+			var lv []capability.Level
+			for _, c := range st.SessionCaps {
+				lv = append(lv, capability.Level(c))
+			}
+			a.Caps.RestoreSession(id, lv)
+		}
+		if len(st.Steers) > 0 {
+			a.queueMu.Lock()
+			a.steers[id] = append(a.steers[id], st.Steers...)
+			a.queueMu.Unlock()
+		}
+	}
 }

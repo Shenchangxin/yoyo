@@ -3,6 +3,7 @@ package artifact
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -52,7 +53,18 @@ func ParseSkillMD(raw, source string) (Skill, error) {
 		AllowedTools:  meta.AllowedTools,
 		Body:          body,
 		Source:        source,
+		Dir:           skillDir(source),
 	}, nil
+}
+
+func skillDir(source string) string {
+	if source == "" || source == "builtin" {
+		return ""
+	}
+	if strings.HasSuffix(strings.ToLower(source), "skill.md") {
+		return filepath.Dir(source)
+	}
+	return ""
 }
 
 func LoadSkillFile(path string) (Skill, error) {

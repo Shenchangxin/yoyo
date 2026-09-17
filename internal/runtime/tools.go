@@ -17,18 +17,28 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
 type ToolResult struct {
-	Content string
-	Err     error
+	Content    string
+	Err        error
+	FileChange *FileChange
+}
+
+type FileChange struct {
+	Paths []string
+	Patch string
 }
 
 // ExtraTool is a host-bridged tool (MCP, WASM) sharing the same capability gate.
 type ExtraTool struct {
-	JSON     ToolJSON
-	Call     func(argsJSON string) ToolResult
-	ReadOnly bool
+	JSON        ToolJSON
+	Call        func(argsJSON string) ToolResult
+	ReadOnly    bool
+	OpenWorld   bool
+	Exclusive   bool
+	Destructive bool
 }
 
 type WorkspaceTools struct {
@@ -36,6 +46,7 @@ type WorkspaceTools struct {
 	SessionID    string
 	Caps         *capability.Broker
 	Skills       map[string]string
+	SkillDirs    map[string]string
 	Loaded       []string
 	ExtraEnabled []string
 	Policy       artifact.PolicyPack
@@ -46,158 +57,21 @@ type WorkspaceTools struct {
 	Depth        int
 	Task         TaskFunc
 	PlanText     string
+	Advertised   []string
+	AllowedTools []string
+	AskUser      func(question string) (string, error)
+	SkillMeta    map[string]artifact.Skill
+	prefetch     map[string]Message
 	mu           sync.Mutex
 }
 
 func BuiltinToolJSON() []ToolJSON {
-	return []ToolJSON{
-		fn("read_file", "Read a UTF-8 file under the workspace. Optional offset/limit are 1-based line numbers.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":   map[string]any{"type": "string"},
-				"offset": map[string]any{"type": "integer"},
-				"limit":  map[string]any{"type": "integer"},
-			},
-			"required": []string{"path"},
-		}),
-		fn("write_file", "Write a UTF-8 file under the workspace.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":    map[string]any{"type": "string"},
-				"content": map[string]any{"type": "string"},
-			},
-			"required": []string{"path", "content"},
-		}),
-		fn("str_replace", "Replace old_str with new_str. Fails if old_str is not unique unless replace_all is true.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":        map[string]any{"type": "string"},
-				"old_str":     map[string]any{"type": "string"},
-				"new_str":     map[string]any{"type": "string"},
-				"replace_all": map[string]any{"type": "boolean"},
-			},
-			"required": []string{"path", "old_str", "new_str"},
-		}),
-		fn("list_dir", "List a directory under the workspace.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path": map[string]any{"type": "string"},
-			},
-		}),
-		fn("glob", "Find files by glob pattern relative to the workspace (e.g. **/*.go).", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"pattern": map[string]any{"type": "string"},
-			},
-			"required": []string{"pattern"},
-		}),
-		fn("grep", "Search file contents with a regex. Optional glob limits which files are scanned.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"pattern": map[string]any{"type": "string"},
-				"glob":    map[string]any{"type": "string"},
-				"path":    map[string]any{"type": "string"},
-			},
-			"required": []string{"pattern"},
-		}),
-		fn("shell", "Run a shell command in the workspace directory. Prefer glob/grep/read_file when possible.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command":     map[string]any{"type": "string"},
-				"timeout_sec": map[string]any{"type": "integer"},
-			},
-			"required": []string{"command"},
-		}),
-		fn("load_skill", "Load a skill body by name into context.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name": map[string]any{"type": "string"},
-			},
-			"required": []string{"name"},
-		}),
-		fn("apply_patch", "Apply a Codex-style patch (*** Begin Patch / *** Add File or *** Update File / *** End Patch).", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"patch": map[string]any{"type": "string"},
-			},
-			"required": []string{"patch"},
-		}),
-		fn("git_status", "Show git status of the workspace.", map[string]any{"type": "object", "properties": map[string]any{}}),
-		fn("git_diff", "Show git diff. Optional staged=true for --cached.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"staged": map[string]any{"type": "boolean"},
-			},
-		}),
-		fn("git_commit", "Stage all and commit with a message. Prefer this over shell git.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"message": map[string]any{"type": "string"},
-			},
-			"required": []string{"message"},
-		}),
-		fn("recall_context", "Retrieve a previously elided tool result by id from the context spill store.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id": map[string]any{"type": "string"},
-			},
-			"required": []string{"id"},
-		}),
-		fn("tool_search", "Look up extra (MCP/WASM) tool schemas by substring. Use when extra tools were deferred.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"query": map[string]any{"type": "string"},
-			},
-			"required": []string{"query"},
-		}),
-		fn("task", "Run a subagent on a prompt. Returns a summary only (child transcript is isolated). Set isolate=true to copy/worktree the workspace.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"prompt":  map[string]any{"type": "string"},
-				"isolate": map[string]any{"type": "boolean"},
-			},
-			"required": []string{"prompt"},
-		}),
-		fn("update_plan", "Replace the current task plan with a list of steps and statuses (pending, in_progress, complete).", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"explanation": map[string]any{"type": "string"},
-				"plan": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"step":   map[string]any{"type": "string"},
-							"status": map[string]any{"type": "string"},
-						},
-						"required": []string{"step", "status"},
-					},
-				},
-			},
-			"required": []string{"plan"},
-		}),
-		fn("wait", "Pause up to 30 seconds before the next action. Use when polling a command or a file.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"seconds": map[string]any{"type": "integer"},
-			},
-		}),
-		fn("list_skills", "List skill names available via load_skill.", map[string]any{"type": "object", "properties": map[string]any{}}),
-		fn("view_image", "Inspect an image file under the workspace (size and type). Prefer this over dumping binary via read_file.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path": map[string]any{"type": "string"},
-			},
-			"required": []string{"path"},
-		}),
-		fn("web_fetch", "HTTP GET a public https URL and return extracted text. Never used for localhost or private IPs. Requires network approval.", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"url": map[string]any{"type": "string"},
-			},
-			"required": []string{"url"},
-		}),
+	specs := tool.HostSpecs()
+	out := make([]ToolJSON, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, specJSON(s))
 	}
+	return out
 }
 
 func AllToolJSON(t *WorkspaceTools) []ToolJSON {
@@ -215,6 +89,30 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	}
 	if t == nil {
 		return out
+	}
+	if len(t.Advertised) > 0 || len(t.AllowedTools) > 0 {
+		allow := map[string]bool{}
+		for _, n := range t.AllowedTools {
+			for _, part := range strings.Fields(n) {
+				allow[part] = true
+			}
+		}
+		want := map[string]bool{}
+		for _, n := range t.Advertised {
+			want[n] = true
+		}
+		var filtered []ToolJSON
+		for _, j := range out {
+			name, _ := j.Function["name"].(string)
+			if len(want) > 0 && !want[name] {
+				continue
+			}
+			if len(allow) > 0 && !allow[name] && !alwaysAdvertise(name) {
+				continue
+			}
+			filtered = append(filtered, j)
+		}
+		out = filtered
 	}
 	names := make([]string, 0, len(t.Extra))
 	for name := range t.Extra {
@@ -288,71 +186,66 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	if args == nil {
 		args = map[string]any{}
 	}
-	if t.PlanMode && !readonlyCall(t, name) {
+	if t != nil && !t.toolAllowed(name) {
+		return ToolResult{Err: fmt.Errorf("tool %s is not advertised for this harness/skill", name)}
+	}
+	if t != nil && t.PlanMode && !readonlyCall(t, name) {
 		return ToolResult{Err: fmt.Errorf("plan mode: write/shell tools are disabled; produce a plan instead")}
 	}
-	switch name {
-	case "read_file":
-		return t.readFile(str(args["path"]), intArg(args["offset"]), intArg(args["limit"]))
-	case "write_file":
-		return t.writeFile(str(args["path"]), str(args["content"]))
-	case "str_replace":
-		return t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
-	case "list_dir":
-		p := str(args["path"])
-		if p == "" {
-			p = "."
+	if fn := hostFns[name]; fn != nil {
+		return fn(t, args, argsJSON)
+	}
+	if t != nil && t.Extra != nil {
+		if extra, ok := t.Extra[name]; ok {
+			return extra.Call(argsJSON)
 		}
-		return t.listDir(p)
-	case "glob":
-		return t.glob(str(args["pattern"]))
-	case "grep":
-		return t.grep(str(args["pattern"]), str(args["glob"]), str(args["path"]))
-	case "shell":
-		return t.shell(str(args["command"]), intArg(args["timeout_sec"]))
-	case "load_skill":
-		return t.loadSkill(str(args["name"]))
-	case "apply_patch":
-		return t.applyPatch(str(args["patch"]))
-	case "git_status":
-		return t.git([]string{"status", "--short", "--branch"}, false)
-	case "git_diff":
-		if boolArg(args["staged"]) {
-			return t.git([]string{"diff", "--cached"}, false)
+	}
+	return ToolResult{Err: fmt.Errorf("unknown tool %s", name)}
+}
+
+func (t *WorkspaceTools) toolAllowed(name string) bool {
+	if t == nil {
+		return true
+	}
+	if t.Extra != nil {
+		if _, ok := t.Extra[name]; ok {
+			return true
 		}
-		return t.git([]string{"diff"}, false)
-	case "git_commit":
-		msg := str(args["message"])
-		if msg == "" {
-			return ToolResult{Err: fmt.Errorf("empty commit message")}
-		}
-		if res := t.git([]string{"add", "-A"}, true); res.Err != nil {
-			return res
-		}
-		return t.git([]string{"commit", "-m", msg}, true)
-	case "recall_context":
-		return t.recall(str(args["id"]))
-	case "tool_search":
-		return t.toolSearch(str(args["query"]))
-	case "task":
-		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
-	case "update_plan":
-		return t.updatePlan(argsJSON)
-	case "wait":
-		return t.wait(intArg(args["seconds"]))
-	case "list_skills":
-		return t.listSkills()
-	case "view_image":
-		return t.viewImage(str(args["path"]))
-	case "web_fetch":
-		return t.webFetch(str(args["url"]))
-	default:
-		if t.Extra != nil {
-			if extra, ok := t.Extra[name]; ok {
-				return extra.Call(argsJSON)
+	}
+	if len(t.Advertised) > 0 {
+		ok := false
+		for _, n := range t.Advertised {
+			if n == name {
+				ok = true
+				break
 			}
 		}
-		return ToolResult{Err: fmt.Errorf("unknown tool %s", name)}
+		if !ok && !alwaysAdvertise(name) {
+			return false
+		}
+	}
+	if len(t.AllowedTools) == 0 {
+		return true
+	}
+	if alwaysAdvertise(name) {
+		return true
+	}
+	for _, n := range t.AllowedTools {
+		for _, part := range strings.Fields(n) {
+			if part == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func alwaysAdvertise(name string) bool {
+	switch name {
+	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -396,7 +289,18 @@ func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
 			return true
 		}
 	}
-	return p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk)
+	if p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk) {
+		return true
+	}
+	if p.Mode == "bypass" {
+		return false
+	}
+	for _, s := range p.DefaultAllow {
+		if s == string(level) {
+			return false
+		}
+	}
+	return level == capability.Shell || level == capability.Network || level == capability.HighRisk
 }
 
 func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
@@ -585,7 +489,11 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 }
 
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
+	argv := SplitShellArgv(command)
 	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow); err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := DenyArgvPaths(argv, t.Workspace); err != nil {
 		return ToolResult{Err: err}
 	}
 	if err := t.check(capability.Shell, "shell", t.Workspace, command); err != nil {
@@ -602,9 +510,17 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	defer cancel()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		if looksSimpleArgv(argv) {
+			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
+		} else {
+			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		}
 	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-lc", command)
+		if looksSimpleArgv(argv) {
+			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
+		} else {
+			cmd = exec.CommandContext(ctx, "sh", "-lc", command)
+		}
 	}
 	cmd.Dir = t.Workspace
 	out, err := cmd.CombinedOutput()
@@ -630,6 +546,11 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 		}
 	}
 	t.Loaded = append(t.Loaded, name)
+	if t.SkillMeta != nil {
+		if sk, ok := t.SkillMeta[name]; ok && strings.TrimSpace(sk.AllowedTools) != "" {
+			t.AllowedTools = strings.Fields(sk.AllowedTools)
+		}
+	}
 	return ToolResult{Content: body}
 }
 

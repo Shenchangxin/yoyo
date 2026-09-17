@@ -48,7 +48,7 @@ func PersistCheckpoint(store *trace.Store, sessionID, source string, summary str
 
 // MaybeCheckpoint persists a checkpoint when history already exceeds the
 // shape budget so the next rebuild does not replay every tool body.
-func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int) []Message {
+func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment) []Message {
 	if store == nil || len(hist) == 0 {
 		return hist
 	}
@@ -58,13 +58,10 @@ func MaybeCheckpoint(store *trace.Store, sessionID string, hist []Message, loop 
 	if messagesTokens(dummy) <= budget {
 		return hist
 	}
-	return forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "runtime")
+	return forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "runtime", fragments)
 }
 
-// CompactHistory is the user /compact path. force persists even when already
-// within budget only if the projection actually stubbed or snipped; otherwise
-// it reports that the window is already fine.
-func CompactHistory(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int) string {
+func CompactHistory(store *trace.Store, sessionID string, hist []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, fragments []artifact.PromptFragment) string {
 	if len(hist) == 0 {
 		return "context already within budget"
 	}
@@ -75,7 +72,7 @@ func CompactHistory(store *trace.Store, sessionID string, hist []Message, loop a
 	if messagesTokens(dummy) <= budget && rep.Note == "" {
 		return "context already within budget"
 	}
-	_ = forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "user")
+	_ = forceCheckpoint(store, sessionID, dummy, loop, spill, client, model, window, "user", fragments)
 	_ = shaped
 	if rep.Note == "" {
 		return "checkpoint"
@@ -83,7 +80,7 @@ func CompactHistory(store *trace.Store, sessionID string, hist []Message, loop a
 	return rep.Note
 }
 
-func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, source string) []Message {
+func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, source string, fragments []artifact.PromptFragment) []Message {
 	shaped, _ := Shape(withSystem, ShapeOpts{Loop: loop, Spill: spill, ModelWindow: window})
 	tail := stripSystem(shaped)
 	notes := NotesFromMessages(tail)
@@ -91,7 +88,7 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 	summary := notes.Markdown()
 	lossless := true
 	if loop.AllowLLMCompact && client != nil && model != "" {
-		if s, err := LLMTranscriptCompact(context.Background(), client, model, shaped); err == nil && strings.TrimSpace(s) != "" {
+		if s, err := LLMTranscriptCompact(context.Background(), client, model, shaped, fragments); err == nil && strings.TrimSpace(s) != "" {
 			summary = s
 			lossless = false
 		}
@@ -106,13 +103,13 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 
 // LLMTranscriptCompact summarizes untrusted transcript only. Pins/playbook
 // are stripped. Tools are disabled so the compact fork cannot recurse.
-func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs []Message) (string, error) {
+func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs []Message, fragments []artifact.PromptFragment) (string, error) {
 	if client == nil {
 		return "", nil
 	}
 	body := make([]Message, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Role == RoleSystem {
+		if m.Role == RoleSystem || m.Role == RoleDeveloper {
 			continue
 		}
 		body = append(body, m)
@@ -120,9 +117,13 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 	if len(body) == 0 {
 		return "", nil
 	}
+	sys := compactPrompt(fragments)
+	if strings.TrimSpace(sys) == "" {
+		sys = compactSystem
+	}
 	req := ChatRequest{
 		Model: model,
-		Messages: append([]Message{{Role: RoleSystem, Content: compactSystem}}, append(body, Message{
+		Messages: append([]Message{{Role: RoleSystem, Content: sys}}, append(body, Message{
 			Role:    RoleUser,
 			Content: "Compact the working memory above. Text only.",
 		})...),

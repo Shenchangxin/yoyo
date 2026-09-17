@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 func TestTaskSubagentSummaryOnly(t *testing.T) {
@@ -35,6 +37,52 @@ func TestTaskSubagentSummaryOnly(t *testing.T) {
 	}
 	if string(b) != "hello" {
 		t.Fatalf("%q", b)
+	}
+}
+
+func TestSubagentOwnJSONL(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	st := trace.NewStore(filepath.Join(home, "sessions"))
+	client := &ScriptedClient{Steps: []Message{
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "task", Arguments: `{"prompt":"Write hello.txt containing hello","isolate":false}`}}},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "2", Name: "write_file", Arguments: `{"path":"hello.txt","content":"hello"}`}}},
+		{Role: RoleAssistant, Content: "child done"},
+		{Role: RoleAssistant, Content: "parent done"},
+	}}
+	parentID := "parent"
+	_, err := Run(context.Background(), RunRequest{
+		SessionID: parentID,
+		User:      "delegate the write",
+		Workspace: dir,
+		Home:      home,
+		Tools:     &WorkspaceTools{Workspace: dir},
+		Client:    client,
+		Loop:      DefaultLoop(),
+		Trace:     st,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := st.Read(parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range parent {
+		if ev.Type == trace.TypeToolCall {
+			if name, _ := ev.Payload["name"].(string); name == "write_file" {
+				t.Fatal("child tool_call leaked into parent JSONL")
+			}
+		}
+	}
+	found := false
+	for _, ev := range parent {
+		if ev.Type == trace.TypeSubagent {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing parent subagent summary")
 	}
 }
 

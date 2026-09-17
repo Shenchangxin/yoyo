@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	goruntime "runtime"
 	"sort"
 	"strings"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -26,6 +26,7 @@ type SessionMeta struct {
 	CreatedAt        time.Time `json:"created_at"`
 	Workspace        string    `json:"workspace"`
 	Harness          string    `json:"harness"`
+	HarnessPolicy    string    `json:"harness_policy,omitempty"`
 	ModelFingerprint string    `json:"model_fingerprint"`
 	Title            string    `json:"title,omitempty"`
 	Archived         bool      `json:"archived"`
@@ -45,6 +46,7 @@ func (a *App) NewSession(workspace string) (SessionMeta, error) {
 		CreatedAt:        time.Now().UTC(),
 		Workspace:        workspace,
 		Harness:          a.ActiveHash(),
+		HarnessPolicy:    session.FollowActive,
 		ModelFingerprint: Fingerprint(a.Config),
 		Title:            "session",
 	}
@@ -197,7 +199,6 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 			}
 		}()
 		defer a.kickQueue(sessionID)
-		goruntime.LockOSThread()
 		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume)
 	}()
 	return nil
@@ -213,15 +214,20 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 }
 
 func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (string, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return "", fmt.Errorf("empty session id")
+	}
 	meta, err := a.GetSession(sessionID)
 	if err != nil {
-		meta, err = a.NewSession("")
-		if err != nil {
-			return "", err
-		}
-		sessionID = meta.ID
+		return "", fmt.Errorf("unknown session %s: %w", sessionID, err)
 	}
-	hash := a.ActiveHash()
+	if meta.HarnessPolicy == "" {
+		meta.HarnessPolicy = session.FollowActive
+	}
+	hash := session.ResolveHarness(meta.HarnessPolicy, meta.Harness, a.ActiveHash())
+	if hash == "" {
+		return "", fmt.Errorf("session %s has no harness", sessionID)
+	}
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {
 		return "", err
@@ -252,25 +258,37 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, meta.Workspace, bundledSkillsDir(a.BundledEvals))...)
 	skills = runtime.MergeSkills(skills, disk)
-	for _, s := range disk {
+	skills = runtime.FilterSkills(skills, loop.PlanMode || plan)
+	skillDirs := map[string]string{}
+	skillMeta := map[string]artifact.Skill{}
+	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
+		if s.Dir != "" {
+			skillDirs[s.Name] = s.Dir
+		}
+		skillMeta[s.Name] = s
 	}
 	model := a.Config.Model
 	if meta.Model != "" {
 		model = meta.Model
 	}
+	preHooks, stopHooks := runtime.LoadHookFile(meta.Workspace)
 	tools := &runtime.WorkspaceTools{
-		Workspace: meta.Workspace,
-		SessionID: sessionID,
-		Caps:      a.Caps,
-		Skills:    skillBodies,
-		Loaded:    append([]string(nil), meta.LoadedSkills...),
-		Policy:    pol,
-		PlanMode:  loop.PlanMode,
-		Ctx:       ctx,
-		Extra:     a.extraTools(sessionID),
-		Spill:     runtime.BindSpill(a.Home.Root, meta.Workspace, sessionID),
-		PlanText:  meta.PlanText,
+		Workspace:  meta.Workspace,
+		SessionID:  sessionID,
+		Caps:       a.Caps,
+		Skills:     skillBodies,
+		SkillDirs:  skillDirs,
+		SkillMeta:  skillMeta,
+		Loaded:     append([]string(nil), meta.LoadedSkills...),
+		Policy:     pol,
+		PlanMode:   loop.PlanMode,
+		Ctx:        ctx,
+		Extra:      a.extraTools(sessionID),
+		Spill:      runtime.BindSpill(a.Home.Root, meta.Workspace, sessionID),
+		PlanText:   meta.PlanText,
+		Advertised: append([]string(nil), snap.Tools...),
+		AskUser:    a.askUserFn(ctx, sessionID),
 	}
 	hist := []runtime.Message{}
 	roundSeq := 0
@@ -279,7 +297,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		roundSeq = runtime.MaxAssistantRound(evs)
 	}
 	window := runtime.ModelContextWindow(model)
-	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window)
+	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
 	wrapped := onEvent
 	if a.Hub != nil {
 		prev := wrapped
@@ -334,7 +352,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Client:           client,
 		Trace:            a.Traces,
 		Events:           a.Kernel.Events(),
-		FileHooks:        runtime.LoadFileHooks(meta.Workspace),
+		FileHooks:        preHooks,
+		StopHooks:        stopHooks,
 		OnEvent:          wrapped,
 		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
 		Meter:            meter,
@@ -346,6 +365,13 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	_ = a.writeSession(meta)
 	a.RememberUsage(meter.Snapshot())
 	_, _ = a.StageACE(sessionID)
+	if a.Threads != nil {
+		var blob strings.Builder
+		blob.WriteString(meta.Title)
+		blob.WriteByte(' ')
+		blob.WriteString(message)
+		a.Threads.IndexBlob(sessionID, blob.String())
+	}
 	return out, runErr
 }
 
@@ -365,6 +391,9 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 				JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
 					"name": name, "description": t.Description, "parameters": params,
 				}},
+				ReadOnly:  t.ReadOnlyHint,
+				OpenWorld: t.OpenWorldHint,
+				Exclusive: t.OpenWorldHint || t.DestructiveHint,
 				Call: func(argsJSON string) runtime.ToolResult {
 					if err := a.Caps.Check(capability.Request{
 						Level: capability.Network, Action: name, SessionID: sessionID, ForceAsk: true,
@@ -384,12 +413,13 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 			extra[name] = runtime.ExtraTool{
 				JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
 					"name":        name,
-					"description": "Call admitted WASM export with integer arguments a,b (L2 harness plugin).",
+					"description": "Call admitted WASM plugin with JSON in/out (no WASI FS).",
 					"parameters": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"a": map[string]any{"type": "integer"},
-							"b": map[string]any{"type": "integer"},
+							"input": map[string]any{"type": "string"},
+							"a":     map[string]any{"type": "integer"},
+							"b":     map[string]any{"type": "integer"},
 						},
 					},
 				}},
@@ -402,6 +432,13 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 					mod := a.WASM.Get(id)
 					if mod == nil {
 						return runtime.ToolResult{Err: fmt.Errorf("wasm %s not loaded", id)}
+					}
+					if out, err := mod.CallJSON([]byte(argsJSON)); err == nil {
+						text := string(out)
+						if logs := mod.Logs(); logs != "" {
+							text += "\nlog:" + logs
+						}
+						return runtime.ToolResult{Content: text}
 					}
 					var args struct {
 						A uint64 `json:"a"`
@@ -422,6 +459,41 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 		}
 	}
 	return extra
+}
+
+func (a *App) askUserFn(ctx context.Context, sessionID string) func(string) (string, error) {
+	return func(question string) (string, error) {
+		ev := trace.Event{
+			TS:        time.Now().UTC(),
+			Type:      trace.TypeAsk,
+			Source:    "agent",
+			SessionID: sessionID,
+			Payload:   map[string]any{"question": question, "text": question},
+		}
+		if a.Traces != nil {
+			_ = a.Traces.Append(ev)
+		}
+		if a.Hub != nil {
+			a.Hub.Publish(ev)
+		}
+		if a.Gate == nil {
+			return "no operator; continue with a reasonable default", nil
+		}
+		dec, offer, err := a.Gate.AskOffer(ctx, capability.Request{
+			Level: capability.ReadWorkspace, Action: "ask_user", Command: question,
+			SessionID: sessionID, ForceAsk: true,
+		})
+		if err != nil {
+			return "", err
+		}
+		a.askMu.Lock()
+		ans := a.askAns[offer.ID]
+		a.askMu.Unlock()
+		if strings.TrimSpace(ans) == "" {
+			return "operator decision: " + string(dec), nil
+		}
+		return ans, nil
+	}
 }
 
 func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
@@ -629,7 +701,7 @@ func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[
 		Model:          a.Config.Model,
 		FailedTasks:    failed,
 		K:              k,
-		PromoteCanary:  run.PromoteActive,
+		PromoteActive:  run.PromoteActive,
 		HeldOut:        suite.HeldOut,
 		StagingHash:    a.Refs.GetOrEmpty(artifact.RefStaging),
 		PromoteRepeats: run.PromoteRepeats,
@@ -694,19 +766,37 @@ func (a *App) materialSet(hash string) (evolve.MaterialSet, error) {
 // StageACE writes an online playbook delta to refs/staging. It never moves
 // refs/active — Harbor still owns promotion. This is the ACE online path.
 func (a *App) StageACE(sessionID string) (string, error) {
-	active := a.ActiveHash()
-	if active == "" {
+	meta, err := a.GetSession(sessionID)
+	if err != nil {
+		return "", nil
+	}
+	hash := session.ResolveHarness(session.NormalizePolicy(meta.HarnessPolicy), meta.Harness, a.ActiveHash())
+	if hash == "" {
 		return "", nil
 	}
 	events, err := a.Traces.Read(sessionID)
 	if err != nil || len(events) == 0 {
 		return "", err
 	}
-	base, err := a.LoadSnapshot(active)
+	var lastEnd *trace.Event
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == trace.TypeTurnEnd {
+			lastEnd = &events[i]
+			break
+		}
+	}
+	if lastEnd == nil {
+		return "", nil
+	}
+	ok, _ := lastEnd.Payload["ok"].(bool)
+	if !ok {
+		return "", nil
+	}
+	base, err := a.LoadSnapshot(hash)
 	if err != nil {
 		return "", err
 	}
-	_, _, pb, _, _, _, err := a.Materials(active)
+	_, _, pb, _, _, _, err := a.Materials(hash)
 	if err != nil {
 		return "", err
 	}
@@ -739,22 +829,22 @@ func (a *App) StageACE(sessionID string) (string, error) {
 		return "", err
 	}
 	next := artifact.CloneSnapshot(base)
-	next.Parent = active
+	next.Parent = hash
 	next.Playbook = pbHash
 	next.Note = "online-ace-stage"
-	hash, err := a.CAS.PutSnapshot(next)
+	staged, err := a.CAS.PutSnapshot(next)
 	if err != nil {
 		return "", err
 	}
-	if err := a.Refs.Set(artifact.RefStaging, hash); err != nil {
+	if err := a.Refs.Set(artifact.RefStaging, staged); err != nil {
 		return "", err
 	}
 	_ = a.Archive.Add(evolve.Node{
-		ID: hash, Parent: active, Snapshot: hash, ProposalID: "online-ace-stage",
+		ID: staged, Parent: hash, Snapshot: staged, ProposalID: "online-ace-stage",
 		Note: "online-ace-stage",
 	})
-	_, _ = a.Journal.Append("ace.stage", map[string]string{"hash": hash, "session": sessionID})
-	return hash, nil
+	_, _ = a.Journal.Append("ace.stage", map[string]string{"hash": staged, "session": sessionID})
+	return staged, nil
 }
 
 func stripACEBodies(evs []trace.Event) []trace.Event {

@@ -1,14 +1,53 @@
 package runtime
 
+import "unicode"
+
 const defaultToolResultRunes = 16_000
 
-// estimateTokens is a tokenizer-free budget heuristic (~4 bytes/token).
+// estimateTokens approximates cl100k: CJK is 1 token/rune, latin words
+// split on punctuation, Harbor still uses this same function so eval is stable.
+func CountTokens(s string) int { return estimateTokens(s) }
+
+func TokenizerName(model string) string {
+	_ = model
+	return "approx-cl100k"
+}
+
 func estimateTokens(s string) int {
 	if s == "" {
 		return 0
 	}
-	n := len(s)
-	return (n + 3) / 4
+	n := 0
+	word := 0
+	flush := func() {
+		if word == 0 {
+			return
+		}
+		n += (word + 3) / 4
+		if n == 0 {
+			n = 1
+		}
+		word = 0
+	}
+	for _, r := range s {
+		switch {
+		case r <= 32:
+			flush()
+		case unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hangul, r) || unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r):
+			flush()
+			n++
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			word++
+		default:
+			flush()
+			n++
+		}
+	}
+	flush()
+	if n <= 0 {
+		return 1
+	}
+	return n
 }
 
 func messageTokens(m Message) int {
@@ -27,8 +66,6 @@ func messagesTokens(msgs []Message) int {
 	return n
 }
 
-// capText keeps head and tail of oversized tool output so the model still
-// sees errors and structure without blowing the context window.
 func capText(s string, maxRunes int) (out string, truncated bool) {
 	if maxRunes <= 0 {
 		maxRunes = defaultToolResultRunes

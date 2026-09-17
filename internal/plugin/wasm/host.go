@@ -192,3 +192,61 @@ func (m *Module) CallI32(args ...uint64) (uint64, error) {
 	}
 	return out[0], nil
 }
+
+// CallJSON is the L2 guest ABI: JSON bytes in, JSON bytes out, no WASI FS.
+// Guest must export alloc(i32)->i32 and either call_json(i32,i32)->i64
+// (hi=ptr, lo=len) or the configured Export with the same signature.
+func (m *Module) CallJSON(input []byte) ([]byte, error) {
+	if m == nil || m.mod == nil {
+		return nil, fmt.Errorf("wasm: module disposed")
+	}
+	mem := m.mod.Memory()
+	if mem == nil {
+		return nil, fmt.Errorf("wasm: no memory")
+	}
+	alloc := m.mod.ExportedFunction("alloc")
+	if alloc == nil {
+		return nil, fmt.Errorf("wasm: JSON ABI requires alloc")
+	}
+	fn := m.mod.ExportedFunction("call_json")
+	if fn == nil {
+		fn = m.mod.ExportedFunction(m.Export)
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("wasm: missing call_json export")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), m.Timeout)
+	defer cancel()
+	n := uint64(len(input))
+	ptrOut, err := alloc.Call(ctx, n)
+	if err != nil {
+		return nil, fmt.Errorf("wasm: alloc: %w", err)
+	}
+	if len(ptrOut) == 0 {
+		return nil, fmt.Errorf("wasm: alloc returned nothing")
+	}
+	ptr := uint32(ptrOut[0])
+	if n > 0 && !mem.Write(ptr, input) {
+		return nil, fmt.Errorf("wasm: write input failed")
+	}
+	packed, err := fn.Call(ctx, uint64(ptr), n)
+	if err != nil {
+		return nil, err
+	}
+	if len(packed) == 0 {
+		return []byte("{}"), nil
+	}
+	v := packed[0]
+	outPtr := uint32(v >> 32)
+	outLen := uint32(v)
+	if outLen == 0 {
+		return []byte("{}"), nil
+	}
+	buf, ok := mem.Read(outPtr, outLen)
+	if !ok {
+		return nil, fmt.Errorf("wasm: read output failed")
+	}
+	out := make([]byte, len(buf))
+	copy(out, buf)
+	return out, nil
+}

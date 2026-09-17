@@ -37,6 +37,7 @@ func SnapshotDiffFields(a, b HarnessSnapshot) []DiffField {
 		{"prompts", join(a.PromptFragments), join(b.PromptFragments), join(a.PromptFragments) != join(b.PromptFragments)},
 		{"skills", join(a.Skills), join(b.Skills), join(a.Skills) != join(b.Skills)},
 		{"tools", join(a.Tools), join(b.Tools), join(a.Tools) != join(b.Tools)},
+		{"eval_tools", join(a.EvalTools), join(b.EvalTools), join(a.EvalTools) != join(b.EvalTools)},
 		{"wasm", join(a.WASMPlugins), join(b.WASMPlugins), join(a.WASMPlugins) != join(b.WASMPlugins)},
 		{"note", a.Note, b.Note, a.Note != b.Note},
 	}
@@ -59,6 +60,7 @@ func CloneSnapshot(s HarnessSnapshot) HarnessSnapshot {
 	s.PromptFragments = append([]string(nil), s.PromptFragments...)
 	s.Skills = append([]string(nil), s.Skills...)
 	s.Tools = append([]string(nil), s.Tools...)
+	s.EvalTools = append([]string(nil), s.EvalTools...)
 	s.WASMPlugins = append([]string(nil), s.WASMPlugins...)
 	return s
 }

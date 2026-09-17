@@ -40,6 +40,9 @@ type RunRequest struct {
 	Meter            *Meter
 	Inject           string
 	PullSteer        func() string
+	Checkpoint       string
+	Stop             *StopReason
+	StopHooks        []FileHook
 	// RoundSeq is the highest assistant round already on this session's
 	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
 	// with bubbles still on screen after a checkpoint rebuild.
@@ -71,14 +74,28 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		loop.PlanMode = true
 	}
 	rules, rulesSrc := LoadWorkspaceRules(req.Workspace, loop.RulesTokens)
-	prefix := AssemblePrefix(loop, req.Fragments, req.Playbook, req.Skills, rules, rulesSrc)
+	identity := AssembleIdentity(loop, req.Fragments)
+	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, rulesSrc)
+	prefix := identity + pins
 	spill := spillOf(req)
-	notes := ReadNotes(spill)
-	dyn := AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, "")
-	system := prefix + dyn
-	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": system})
+	notes := capRunes(ReadNotes(spill), 2000)
+	if mem := ReadWorkspaceMemory(req.Workspace); mem != "" {
+		if notes != "" {
+			notes += "\n"
+		}
+		notes += mem
+	}
+	checkpoint := req.Checkpoint
+	if checkpoint == "" {
+		checkpoint = lastCheckpoint(req.History)
+	}
+	dyn := AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
+	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": prefix + dyn})
 
-	messages := []Message{{Role: RoleSystem, Content: system}}
+	messages := []Message{{Role: RoleSystem, Content: identity}}
+	if strings.TrimSpace(pins) != "" {
+		messages = append(messages, Message{Role: RoleDeveloper, Content: pins})
+	}
 	if len(req.History) > 0 {
 		messages = append(messages, stripSystem(req.History)...)
 	}
@@ -105,7 +122,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	}
 	for turn := 0; turn < loop.MaxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
-			return last, err
+			setStop(&req, StopCancelled)
+			return last, stopErr(StopCancelled, err.Error(), err)
 		}
 		if req.PullSteer != nil {
 			if extra := strings.TrimSpace(req.PullSteer()); extra != "" {
@@ -116,8 +134,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		if loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
 			messages = append(messages, Message{Role: RoleUser, Content: "Stop using tools and produce the final answer now."})
 		}
-		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, "")
-		messages[0] = Message{Role: RoleSystem, Content: prefix + dyn}
+		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
+		messages = setDynamic(messages, dyn)
 		toolsJSON := AllToolJSON(req.Tools)
 		overhead := toolsJSONTokens(toolsJSON)
 		compacted, report := Shape(messages, ShapeOpts{
@@ -139,14 +157,17 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: req.SessionID}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, prefix, toolsJSON)}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		msg, err := chat(ctx, req, chatReq, roundID)
+		if err != nil && isStreamErr(err) {
+			msg, err = req.Client.Chat(ctx, chatReq)
+		}
 		for err != nil && IsContextOverflow(err) {
 			overflowFails++
 			if overflowFails >= 3 {
-				err = fmt.Errorf("context overflow circuit breaker: %w", err)
+				err = stopErr(StopOverflow, "context overflow circuit breaker", err)
 				break
 			}
 			tight := loop
@@ -185,7 +206,15 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if err != nil {
 			emit(req, trace.TypeError, "model", ClassifyError(err).Payload())
-			return last, err
+			reason := StopModelError
+			if IsContextOverflow(err) {
+				reason = StopOverflow
+			}
+			if ctx.Err() != nil {
+				reason = StopCancelled
+			}
+			setStop(&req, reason)
+			return last, stopErr(reason, "", err)
 		}
 		overflowFails = 0
 		if msg.PromptTokens > 0 {
@@ -205,7 +234,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			req.Meter.Add(in, out)
 			if err := req.Meter.Check(loop.MaxBudgetUSD); err != nil {
 				emit(req, trace.TypeError, "runtime", ClassifyError(err).Payload())
-				return last, err
+				setStop(&req, StopBudget)
+				return last, stopErr(StopBudget, err.Error(), err)
 			}
 		}
 		if msg.Content != "" {
@@ -238,6 +268,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if len(report.Layers) > 0 {
 				end["layers"] = report.Layers
 			}
+			end["stop"] = string(StopEndTurn)
+			setStop(&req, StopEndTurn)
+			if block, extra := applyStopHook(req); block {
+				messages = append(messages, Message{Role: RoleUser, Content: extra})
+				continue
+			}
 			emit(req, trace.TypeTurnEnd, "runtime", end)
 			return strings.TrimSpace(msg.Content), nil
 		}
@@ -249,7 +285,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			messages = append(messages, Message{Role: RoleUser, Content: inj})
 		}
 	}
-	return last, fmt.Errorf("max turns reached")
+	setStop(&req, StopMaxTurns)
+	return last, maxTurnsErr()
 }
 
 func middlewareNudge(loop artifact.LoopPreset, results []Message) string {
@@ -278,12 +315,31 @@ func spillOf(req RunRequest) *Spill {
 
 func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (Message, error) {
 	if s, ok := req.Client.(Streamer); ok {
-		return s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
+		var wg sync.WaitGroup
+		msg, err := s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" {
 				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
 			}
+			if d.ToolDone && d.Tool.Name != "" && readonlyCall(req.Tools, d.Tool.Name) {
+				tc := d.Tool
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					out := dispatchTools(ctx, req, []ToolCall{tc}, roundID)
+					if len(out) == 1 && req.Tools != nil {
+						req.Tools.mu.Lock()
+						if req.Tools.prefetch == nil {
+							req.Tools.prefetch = map[string]Message{}
+						}
+						req.Tools.prefetch[tc.ID] = out[0]
+						req.Tools.mu.Unlock()
+					}
+				}()
+			}
 			return nil
 		})
+		wg.Wait()
+		return msg, err
 	}
 	return req.Client.Chat(ctx, chatReq)
 }
@@ -301,13 +357,17 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		spillID   string
 		elapsedMs int
 		bytes     int
+		change    *FileChange
 	}
 	jobs := make([]job, n)
 	readonly := true
+	exclusive := false
 	for _, tc := range calls {
 		if !readonlyCall(req.Tools, tc.Name) {
 			readonly = false
-			break
+		}
+		if exclusiveCall(req.Tools, tc.Name) {
+			exclusive = true
 		}
 	}
 	for i, tc := range calls {
@@ -329,6 +389,16 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		})
 	}
 	runExec := func(i int) {
+		if req.Tools != nil {
+			req.Tools.mu.Lock()
+			pre, ok := req.Tools.prefetch[jobs[i].tc.ID]
+			req.Tools.mu.Unlock()
+			if ok {
+				jobs[i].content = pre.Content
+				jobs[i].ok = !strings.HasPrefix(pre.Content, "ERROR:")
+				return
+			}
+		}
 		started := time.Now()
 		j := jobs[i]
 		var res ToolResult
@@ -356,17 +426,37 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		jobs[i].spillID = spillID
 		jobs[i].elapsedMs = int(time.Since(started).Milliseconds())
 		jobs[i].ok = res.Err == nil
+		jobs[i].change = res.FileChange
 	}
 	if readonly && n > 1 {
+		sem := make(chan struct{}, 8)
 		var wg sync.WaitGroup
 		wg.Add(n)
 		for i := range jobs {
 			go func(i int) {
 				defer wg.Done()
+				sem <- struct{}{}
 				runExec(i)
+				<-sem
 			}(i)
 		}
 		wg.Wait()
+	} else if exclusive {
+		for i := range jobs {
+			if err := ctx.Err(); err != nil {
+				for j := i; j < n; j++ {
+					jobs[j].content = "ERROR: interrupted"
+				}
+				break
+			}
+			runExec(i)
+			if !jobs[i].ok {
+				for j := i + 1; j < n; j++ {
+					jobs[j].content = "ERROR: aborted after exclusive tool failure"
+				}
+				break
+			}
+		}
 	} else {
 		for i := range jobs {
 			if err := ctx.Err(); err != nil {
@@ -382,6 +472,9 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		if j.tc.Name == "load_skill" && j.ok {
 			emit(req, trace.TypeInject, "skill", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID})
 		}
+		if j.tc.Name == "update_plan" && j.ok {
+			emit(req, trace.TypePlan, "agent", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID, "id": j.tc.ID})
+		}
 		payload := map[string]any{
 			"name": j.tc.Name, "id": j.tc.ID, "content": j.content, "untrusted": true, "round": roundID,
 		}
@@ -391,8 +484,11 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		if j.elapsedMs > 0 {
 			payload["elapsed_ms"] = j.elapsedMs
 		}
-		if j.bytes > 0 {
-			payload["bytes"] = j.bytes
+		if j.change != nil {
+			payload["paths"] = j.change.Paths
+			emit(req, trace.TypeFileChange, "tool", map[string]any{
+				"id": j.tc.ID, "name": j.tc.Name, "paths": j.change.Paths, "round": roundID,
+			})
 		}
 		emit(req, trace.TypeToolResult, "tool", payload)
 		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content}
@@ -404,7 +500,7 @@ func isReadonlyTool(name string) bool {
 	switch name {
 	case "read_file", "list_dir", "glob", "grep", "load_skill",
 		"git_status", "git_diff", "recall_context", "tool_search",
-		"list_skills", "view_image", "update_plan", "wait":
+		"list_skills", "view_image", "update_plan", "wait", "ask_user":
 		return true
 	default:
 		return false
@@ -436,13 +532,75 @@ func readonlyCall(tools *WorkspaceTools, name string) bool {
 			return extra.ReadOnly
 		}
 	}
-	return false
+	ann := HostAnn(name)
+	return ann.ReadOnly
+}
+
+func exclusiveCall(tools *WorkspaceTools, name string) bool {
+	if name == "shell" || name == "run_skill_script" {
+		return true
+	}
+	if tools != nil && tools.Extra != nil {
+		if extra, ok := tools.Extra[name]; ok {
+			return extra.Exclusive || extra.OpenWorld
+		}
+	}
+	ann := HostAnn(name)
+	return ann.Exclusive || ann.OpenWorld
+}
+
+func setStop(req *RunRequest, r StopReason) {
+	if req != nil && req.Stop != nil {
+		*req.Stop = r
+	}
+}
+
+func isStreamErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "stream") || strings.Contains(s, "sse")
+}
+
+func applyStopHook(req RunRequest) (bool, string) {
+	for _, r := range req.StopHooks {
+		if r.Deny {
+			msg := r.Reason
+			if msg == "" {
+				msg = "blocked by .yoyo/hooks.json stop hook"
+			}
+			return true, msg
+		}
+	}
+	if req.Events == nil {
+		return false, ""
+	}
+	out, err := req.Events.Serial(HookStop, lastStopPayload{})
+	if err != nil {
+		return true, "Stop hook blocked completion: " + err.Error()
+	}
+	if h, ok := out.(StopHookResult); ok && h.Block {
+		msg := h.Message
+		if msg == "" {
+			msg = "Stop hook asked to continue."
+		}
+		return true, msg
+	}
+	return false, ""
+}
+
+type lastStopPayload struct{}
+
+type StopHookResult struct {
+	Block   bool
+	Message string
 }
 
 func stripSystem(msgs []Message) []Message {
 	out := make([]Message, 0, len(msgs))
 	for _, m := range msgs {
-		if m.Role == RoleSystem {
+		if m.Role == RoleSystem || m.Role == RoleDeveloper || m.Role == RoleMemory {
 			continue
 		}
 		out = append(out, m)
