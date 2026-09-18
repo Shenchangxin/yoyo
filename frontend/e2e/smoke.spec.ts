@@ -106,6 +106,30 @@ test("two-turn transcript keeps both assistant rounds", async ({ page }) => {
   await expect(page.getByText("second answer")).toBeVisible();
 });
 
+test("second-turn markdown keeps headings and lists", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "first question" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "first answer", id: "s1:r1" } },
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { text: "write a report" } },
+      {
+        type: "assistant",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:03Z",
+        payload: { text: "## Report\n\n- item one\n- item two\n\nDone.", id: "s1:r2" },
+      },
+    ],
+  });
+  await page.goto("/");
+  const live = page.getByTestId("agent-turn").filter({ hasText: "Report" });
+  await expect(live.getByRole("heading", { name: "Report" })).toBeVisible();
+  await expect(live.getByText("item one")).toBeVisible();
+  await expect(live.getByText("item two")).toBeVisible();
+  await expect(live.getByText("Done.")).toBeVisible();
+  await expect(page.getByText("first answer")).toBeVisible();
+});
+
 test("copy sits under the message, not the column corner", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
@@ -166,8 +190,8 @@ test("in-progress caret stays on the live assistant", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.getByText("first answer")).toBeVisible();
-  await expect(page.locator(".caret-blink")).toHaveCount(0);
-  await expect(page.getByText(/1 tools/)).toBeVisible();
+  await expect(page.locator(".assistant-live")).toHaveCount(0);
+  await expect(page.getByTestId("tool-row").filter({ hasText: "read_file" })).toBeVisible();
 });
 
 test("streaming caret sits on the open assistant", async ({ page }) => {
@@ -183,12 +207,10 @@ test("streaming caret sits on the open assistant", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.getByText("live answer")).toBeVisible();
-  const caret = page.locator(".caret-blink");
-  await expect(caret).toHaveCount(1);
   const live = page.getByTestId("agent-turn").filter({ hasText: "live answer" });
   const old = page.getByTestId("agent-turn").filter({ hasText: "old answer" });
-  await expect(live.locator(".caret-blink")).toHaveCount(1);
-  await expect(old.locator(".caret-blink")).toHaveCount(0);
+  await expect(live.locator(".assistant-live")).toHaveCount(1);
+  await expect(old.locator(".assistant-live")).toHaveCount(0);
 });
 
 test("continue this turn posts retry instead of a new user message", async ({ page }) => {
@@ -301,4 +323,61 @@ test("approval is asked in the transcript", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Allow once", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
+});
+
+test("conversation and composer share a reading column", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "first question" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "first answer", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  const thread = page.getByTestId("conversation-column");
+  const composer = page.getByTestId("composer-column");
+  await expect(thread).toBeVisible();
+  await expect(composer).toBeVisible();
+  const a = await thread.boundingBox();
+  const b = await composer.boundingBox();
+  expect(a && b).toBeTruthy();
+  expect(Math.abs(a!.x - b!.x)).toBeLessThan(8);
+  expect(Math.abs(a!.width - b!.width)).toBeLessThan(8);
+  expect(a!.width).toBeLessThanOrEqual(768);
+});
+
+test("tool timeline shows name and path without dumping json", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "read the file" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", content: "package main", elapsed_ms: 12 } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "it is a go file", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  const row = page.getByTestId("tool-row").filter({ hasText: "read_file" });
+  await expect(row).toBeVisible();
+  await expect(row.getByText("src/main.go")).toBeVisible();
+  await expect(row.getByText("12ms")).toBeVisible();
+  await expect(page.getByText("{\"path\":\"src/main.go\"}")).toHaveCount(0);
+});
+
+test("office artifacts land as review cards", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "write the weekly" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { id: "c1", name: "office_create", arguments: "{\"path\":\"reports/week.docx\",\"kind\":\"docx\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "office_create", content: "wrote reports/week.docx", path: "reports/week.docx" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "weekly is ready", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  const card = page.getByTestId("artifact-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByText("Artifact")).toBeVisible();
+  await expect(card.getByText("reports/week.docx")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Open in Review" })).toBeVisible();
 });

@@ -143,6 +143,10 @@ export function configOf(v: any): AppConfig {
     uiScale: num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1,
     updateChannel: str(pick(v, "update_channel", "UpdateChannel", "updateChannel"), "nightly"),
     theme: str(pick(v, "theme", "Theme"), "system"),
+    gateMode: str(pick(v, "gate_mode", "GateMode", "gateMode"), "manual"),
+    crashResume: boolOr(pick(v, "crash_resume", "CrashResume", "crashResume"), true),
+    searchUrl: str(pick(v, "search_url", "SearchURL", "searchUrl")),
+    searchKey: str(pick(v, "search_key", "SearchKey", "searchKey")),
   };
 }
 
@@ -692,6 +696,138 @@ export async function startMCP(name: string, command: string, args: string[]): P
   await http("/api/mcp/start", { method: "POST", body: JSON.stringify({ name, command, args }) });
 }
 
+export async function startMCPHTTP(name: string, endpoint: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.StartMCPHTTP) return s.StartMCPHTTP(name, endpoint);
+  await http("/api/mcp/http", { method: "POST", body: JSON.stringify({ name, endpoint }) });
+}
+
+export async function inboxList(): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.InboxList) return asArray(await s.InboxList());
+  return asArray(await http("/api/inbox"));
+}
+
+export async function inboxRead(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.InboxMarkRead) return s.InboxMarkRead(id);
+  await http("/api/inbox", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function isolationReport(): Promise<any> {
+  const s = await wailsService();
+  if (s?.IsolationReport) return s.IsolationReport();
+  return http("/api/isolation");
+}
+
+export async function connectors(): Promise<any> {
+  const s = await wailsService();
+  if (s?.ConnectorsList) {
+    return { accounts: asArray(await s.ConnectorsList()), catalog: asArray(s.ConnectorCatalog ? await s.ConnectorCatalog() : []) };
+  }
+  return http("/api/connectors");
+}
+
+export async function connectorConnect(row: any): Promise<any> {
+  const s = await wailsService();
+  if (s?.ConnectorConnect) return s.ConnectorConnect(row);
+  return http("/api/connectors", { method: "POST", body: JSON.stringify(row) });
+}
+
+export async function connectorAuthURL(provider: string, clientId: string, redirect: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.ConnectorAuthURL) return s.ConnectorAuthURL(provider, clientId, redirect);
+  return http("/api/connectors/oauth", { method: "POST", body: JSON.stringify({ provider, client_id: clientId, redirect }) });
+}
+
+export async function memoryList(q = "", kind = ""): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.MemoryList) return asArray(await s.MemoryList(q, kind));
+  const qs = new URLSearchParams({ q, kind });
+  return asArray(await http(`/api/memory?${qs}`));
+}
+
+export async function memoryPromote(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.MemoryPromote) { await s.MemoryPromote(id); return; }
+  await http("/api/memory", { method: "POST", body: JSON.stringify({ op: "promote", id }) });
+}
+
+export async function memoryForget(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.MemoryForget) { await s.MemoryForget(id); return; }
+  await http("/api/memory", { method: "POST", body: JSON.stringify({ op: "forget", id }) });
+}
+
+export async function memoryWrite(kind: string, text: string, project = ""): Promise<any> {
+  const s = await wailsService();
+  if (s?.MemoryWrite) return s.MemoryWrite(kind, text, project);
+  return http("/api/memory", { method: "POST", body: JSON.stringify({ kind, text, project }) });
+}
+
+export async function scheduleList(): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.ScheduleList) return asArray(await s.ScheduleList());
+  return asArray(await http("/api/schedule"));
+}
+
+export async function scheduleCreate(job: any): Promise<any> {
+  const s = await wailsService();
+  if (s?.ScheduleCreate) return s.ScheduleCreate(job);
+  return http("/api/schedule", { method: "POST", body: JSON.stringify(job) });
+}
+
+export async function scheduleCancel(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.ScheduleCancel) { await s.ScheduleCancel(id); return; }
+  await http(`/api/schedule?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function projectsList(): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.ProjectsList) return asArray(await s.ProjectsList());
+  return asArray(await http("/api/projects"));
+}
+
+export async function projectCreate(p: any): Promise<any> {
+  const s = await wailsService();
+  if (s?.ProjectCreate) return s.ProjectCreate(p);
+  return http("/api/projects", { method: "POST", body: JSON.stringify(p) });
+}
+
+export async function reviewQueue(): Promise<any> {
+  const s = await wailsService();
+  if (s?.ReviewQueue) return s.ReviewQueue();
+  return http("/api/review/queue");
+}
+
+export async function clipboardRead(): Promise<string> {
+  const s = await wailsService();
+  if (s?.ClipboardRead) return String(await s.ClipboardRead() || "");
+  return "";
+}
+
+export async function captureScreenshot(): Promise<string> {
+  const s = await wailsService();
+  if (s?.Screenshot) {
+    await s.Screenshot("");
+    return ".yoyo/captures/shot.png";
+  }
+  return "";
+}
+
+export async function admitExpert(dir: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.AdmitExpert) return s.AdmitExpert(dir);
+  return http("/api/expert/admit", { method: "POST", body: JSON.stringify({ dir }) });
+}
+
+export async function distillExpert(name: string, description: string, body: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.DistillExpert) return s.DistillExpert(name, description, body);
+  return http("/api/expert/distill", { method: "POST", body: JSON.stringify({ name, description, body }) });
+}
+
 export async function stopMCP(name: string): Promise<void> {
   const s = await wailsService();
   if (s?.StopMCP) return s.StopMCP(name);
@@ -728,7 +864,7 @@ export async function testProvider(): Promise<any> {
   return http("/api/provider/test", { method: "POST", body: "{}" });
 }
 
-export async function replaceMCP(servers: { name: string; command: string; args: string[] }[]): Promise<void> {
+export async function replaceMCP(servers: { name: string; command: string; args: string[]; endpoint?: string }[]): Promise<void> {
   const s = await wailsService();
   if (s?.ReplaceMCP) return s.ReplaceMCP(servers);
   await http("/api/mcp/replace", { method: "POST", body: JSON.stringify({ servers }) });

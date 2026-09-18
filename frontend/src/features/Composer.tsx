@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, AtSign, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, Clipboard, Camera, MoreHorizontal, Paperclip, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
@@ -31,7 +33,10 @@ export function Composer(props: {
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
   onPickFiles?: () => Promise<Attachment[]>;
+  onClipboard?: () => Promise<string>;
+  onScreenshot?: () => Promise<string>;
   compact?: boolean;
+  flush?: boolean;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -132,9 +137,16 @@ export function Composer(props: {
     setAtts([]);
   }
 
+  const hasOverflow = !!(props.onClipboard || props.onScreenshot);
+  const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
+  const col = props.flush ? "w-full min-w-0" : THREAD_COL;
+
   return (
-    <div className={cn("no-drag shrink-0", props.compact ? "px-3 pb-2 pt-1" : "px-5 pb-4 pt-1 sm:px-8 lg:px-10")}>
-      <div className="mx-auto w-full min-w-0">
+    <div className="relative no-drag w-full shrink-0" data-testid={props.compact ? undefined : "composer-column"}>
+      {props.compact ? null : (
+        <div className="pointer-events-none absolute inset-x-0 -top-8 h-8 bg-gradient-to-t from-background to-transparent" />
+      )}
+      <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : "pb-3 pt-1")}>
         <div
           className={cn(
             "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
@@ -290,6 +302,39 @@ export function Composer(props: {
                 <Paperclip className="size-[17px]" />
               </button>
             </Tooltip>
+            {hasOverflow ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={toolClass(false)} aria-label={copy.composer.more} disabled={props.disabled}>
+                    <MoreHorizontal className="size-[17px]" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top">
+                  {props.onClipboard ? (
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        const t = await props.onClipboard?.();
+                        if (t) onChange((value ? value + "\n" : "") + t);
+                      }}
+                    >
+                      <Clipboard className="size-3.5" aria-hidden />
+                      {copy.composer.clipboard}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {props.onScreenshot ? (
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        const p = await props.onScreenshot?.();
+                        if (p) setAtts((prev) => [...prev, { path: p, name: p.replace(/^.*[\\/]/, "") }]);
+                      }}
+                    >
+                      <Camera className="size-3.5" aria-hidden />
+                      {copy.composer.screenshot}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             <input
               ref={fileRef}
               type="file"

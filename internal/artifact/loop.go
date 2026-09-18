@@ -14,7 +14,8 @@ func LoopTopologyEqual(a, b LoopPreset) bool {
 		a.RulesTokens == b.RulesTokens &&
 		a.AllowLLMCompact == b.AllowLLMCompact &&
 		a.MaxBudgetUSD == b.MaxBudgetUSD &&
-		a.PlanMode == b.PlanMode
+		a.PlanMode == b.PlanMode &&
+		a.MaxParallel == b.MaxParallel
 }
 
 // SetInstructionSlot writes one L1 instruction field. Unknown slots are ignored.

@@ -20,6 +20,11 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
     { cmd: "/export", hint: copy.slash.export },
     { cmd: "/stop", hint: copy.slash.stop },
     { cmd: "/quit", hint: copy.slash.quit },
+    { cmd: "/schedule", hint: copy.slash.schedule },
+    { cmd: "/remember", hint: copy.slash.remember },
+    { cmd: "/forget", hint: copy.slash.forget },
+    { cmd: "/project", hint: copy.slash.project },
+    { cmd: "/artifact", hint: copy.slash.artifact },
   ];
 }
 

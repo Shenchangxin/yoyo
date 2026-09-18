@@ -100,6 +100,7 @@ type LoopPreset struct {
 	AllowLLMCompact bool    `json:"allow_llm_compact,omitempty"`
 	MaxBudgetUSD    float64 `json:"max_budget_usd,omitempty"`
 	PlanMode        bool    `json:"plan_mode,omitempty"`
+	MaxParallel     int     `json:"max_parallel,omitempty"`
 	Bootstrap       string  `json:"bootstrap"`
 	Execution       string  `json:"execution"`
 	Verification    string  `json:"verification"`

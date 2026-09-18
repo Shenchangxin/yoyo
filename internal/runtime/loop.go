@@ -43,6 +43,7 @@ type RunRequest struct {
 	Checkpoint       string
 	Stop             *StopReason
 	StopHooks        []FileHook
+	ProfileMemory    string
 	// RoundSeq is the highest assistant round already on this session's
 	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
 	// with bubbles still on screen after a checkpoint rebuild.
@@ -62,11 +63,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		if req.Tools.Spill == nil {
 			req.Tools.Spill = BindSpill(req.Home, req.Workspace, req.SessionID)
 		}
-		if req.Tools.Task == nil && req.Tools.Depth == 0 {
+		if req.Tools.Task == nil && req.Tools.Depth < MaxTaskDepth {
 			parent := req
 			req.Tools.Task = func(prompt string, isolate bool) (string, error) {
 				return spawnTask(ctx, parent, prompt, isolate)
 			}
+		}
+		if req.Tools.MaxParallel <= 0 {
+			req.Tools.MaxParallel = req.Loop.MaxParallel
 		}
 	}
 	loop := req.Loop
@@ -76,6 +80,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	rules, rulesSrc := LoadWorkspaceRules(req.Workspace, loop.RulesTokens)
 	identity := AssembleIdentity(loop, req.Fragments)
 	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, rulesSrc)
+	if strings.TrimSpace(req.ProfileMemory) != "" {
+		pins += "\n## Profile memory\n" + req.ProfileMemory
+	}
 	prefix := identity + pins
 	spill := spillOf(req)
 	notes := capRunes(ReadNotes(spill), 2000)
@@ -358,6 +365,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		elapsedMs int
 		bytes     int
 		change    *FileChange
+		parts     []ContentPart
 	}
 	jobs := make([]job, n)
 	readonly := true
@@ -427,6 +435,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		jobs[i].elapsedMs = int(time.Since(started).Milliseconds())
 		jobs[i].ok = res.Err == nil
 		jobs[i].change = res.FileChange
+		jobs[i].parts = res.Parts
 	}
 	if readonly && n > 1 {
 		sem := make(chan struct{}, 8)
@@ -491,7 +500,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			})
 		}
 		emit(req, trace.TypeToolResult, "tool", payload)
-		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content}
+		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content, Parts: j.parts}
 	}
 	return out
 }
@@ -500,7 +509,9 @@ func isReadonlyTool(name string) bool {
 	switch name {
 	case "read_file", "list_dir", "glob", "grep", "load_skill",
 		"git_status", "git_diff", "recall_context", "tool_search",
-		"list_skills", "view_image", "update_plan", "wait", "ask_user":
+		"list_skills", "view_image", "update_plan", "wait", "ask_user",
+		"office_query", "office_render", "memory_search", "schedule_list",
+		"browser_snapshot", "clipboard_read", "project_list", "connector_read":
 		return true
 	default:
 		return false

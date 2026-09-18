@@ -33,6 +33,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	svc.tray = tray
 	svc.menuLocale = svc.GetConfig().Locale
 	svc.RebuildMenus()
+	startGlobalHotkeys(svc)
 
 	gui.Event.On("yoyo:do-quit", func(e *application.CustomEvent) {
 		forceQuit(gui, svc, win)

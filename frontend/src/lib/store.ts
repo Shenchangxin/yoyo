@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { HarnessTab, Lab, Notice, SettingsTab, Surface } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 
-export type InspTab = "diff" | "files" | "trace";
+export type InspTab = "diff" | "files" | "trace" | "queue";
 export type DiffMode = "unified" | "split";
 
 type UIState = {

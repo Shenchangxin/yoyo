@@ -35,3 +35,11 @@ Purpose, constraints, and the shortest procedure that actually changes the work.
 - Use `scripts/` only for deterministic helpers the model would otherwise rewrite.
 - Do not grant extra capabilities. Skills cannot bypass the gate, vault, Harbor, or updater.
 - After writing, call `list_skills` and `load_skill` to confirm the name resolves.
+
+## Distill a trajectory
+
+When asked to turn a successful turn into an Expert:
+
+- Expert = `SKILL.md` + optional `EVALS.txt` + Harbor suite ids + policy. Not a persona pack.
+- Distill only the procedure that changed the work. Drop chatter.
+- Unsigned packs cannot become `refs/active`. Write the skill under `$YOYO_HOME/skills/<name>/` as staging; admit requires an ed25519 `SKILL.sig`.

@@ -187,6 +187,9 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 		}
 		return err
 	}
+	if a.Threads != nil && strings.TrimSpace(message) != "" {
+		a.Threads.SetResume(sessionID, message, plan)
+	}
 	go func() {
 		defer cancel()
 		defer release()
@@ -213,7 +216,11 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false)
 }
 
-func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (string, error) {
+func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (out string, runErr error) {
+	if a.Observe != nil {
+		sp := a.Observe.Start("turn", sessionID, map[string]any{"plan": plan, "resume": resume})
+		defer func() { a.Observe.End(sp, runErr) }()
+	}
 	if strings.TrimSpace(sessionID) == "" {
 		return "", fmt.Errorf("empty session id")
 	}
@@ -290,6 +297,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
 	}
+	a.attachPersonal(tools)
 	hist := []runtime.Message{}
 	roundSeq := 0
 	if evs, err := a.Traces.Read(sessionID); err == nil {
@@ -330,7 +338,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			inject += extra
 		}
 	}
-	out, runErr := runtime.Run(ctx, runtime.RunRequest{
+	profile := ""
+	if a.Memory != nil {
+		profile = a.Memory.ProfilePin(800)
+	}
+	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,
 		Inject:           inject,
@@ -354,6 +366,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Events:           a.Kernel.Events(),
 		FileHooks:        preHooks,
 		StopHooks:        stopHooks,
+		ProfileMemory:    profile,
 		OnEvent:          wrapped,
 		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
 		Meter:            meter,
@@ -371,6 +384,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		blob.WriteByte(' ')
 		blob.WriteString(message)
 		a.Threads.IndexBlob(sessionID, blob.String())
+		if runErr == nil {
+			a.Threads.SetResume(sessionID, "", false)
+		}
 	}
 	return out, runErr
 }

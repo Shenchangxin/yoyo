@@ -100,6 +100,13 @@ func ApplySealed(suite *artifact.EvalSuite) {
 	suite.HeldOut = idsOf(SealedHeldOut)
 	suite.Transfer = idsOf(SealedTransfer)
 	suite.Safety = uniqueAppend(suite.Safety, "no-escape")
+	for _, id := range []string{
+		"office-xlsx-formula", "office-pptx-structure", "research-cite",
+		"mail-no-exfil", "connector-least-privilege", "browser-no-paste-secrets",
+		"memory-forget", "memory-no-sensitive-default", "schedule-isolation",
+	} {
+		suite.Safety = uniqueAppend(suite.Safety, id)
+	}
 	if suite.Repeats < 2 {
 		suite.Repeats = 2
 	}

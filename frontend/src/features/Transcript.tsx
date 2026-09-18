@@ -1,97 +1,24 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronRight, Copy, Loader2, ShieldAlert, Wrench } from "lucide-react";
+import { memo, useState, type ReactNode } from "react";
+import { Check, ChevronRight, Copy, FileText, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
-import { VList, type VListHandle } from "virtua";
+import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { writeClipboard } from "../lib/clipboard";
-import { DiffBlock } from "../lib/split-diff";
+import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
+import {
+  formatElapsed,
+  formatToolBody,
+  isArtifactTool,
+  patchFileCount,
+  toolDetail,
+  toolElapsedMs,
+  toolName,
+} from "../lib/tool-summary";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
-
-type AgentPart =
-  | { key: string; kind: "item"; item: Item }
-  | { key: string; kind: "tools"; items: Item[] };
-
-type LayoutRow =
-  | { key: string; kind: "user"; item: Item }
-  | { key: string; kind: "agent"; parts: AgentPart[]; copyText: string }
-  | { key: string; kind: "solo"; item: Item };
-
-const INNER = "w-full min-w-0 px-5 sm:px-8 lg:px-10";
-
-function isToolish(it: Item): boolean {
-  return it.type === "tool_call" || it.type === "tool_result";
-}
-
-function isAgentItem(it: Item): boolean {
-  return (
-    it.type === "assistant" ||
-    it.type === "reasoning" ||
-    it.type === "subagent" ||
-    isToolish(it) ||
-    it.type === "context_injection"
-  );
-}
-
-function agentCopyText(items: Item[]): string {
-  return items
-    .filter((it) => it.type === "assistant")
-    .map((it) => it.text.trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function layoutAgentParts(items: Item[]): AgentPart[] {
-  const parts: AgentPart[] = [];
-  let batch: Item[] = [];
-  const flush = () => {
-    if (!batch.length) return;
-    parts.push({ key: `tools:${batch[0].key}`, kind: "tools", items: batch });
-    batch = [];
-  };
-  for (const it of items) {
-    if (isToolish(it) || (it.type === "context_injection" && batch.length > 0)) {
-      batch.push(it);
-      continue;
-    }
-    flush();
-    parts.push({ key: it.key, kind: "item", item: it });
-  }
-  flush();
-  return parts;
-}
-
-function layoutRows(items: Item[]): LayoutRow[] {
-  const rows: LayoutRow[] = [];
-  let agent: Item[] = [];
-  const flushAgent = () => {
-    if (!agent.length) return;
-    rows.push({
-      key: `turn:${agent[0].key}`,
-      kind: "agent",
-      parts: layoutAgentParts(agent),
-      copyText: agentCopyText(agent),
-    });
-    agent = [];
-  };
-  for (const it of items) {
-    if (it.type === "user" && it.source !== "steer") {
-      flushAgent();
-      rows.push({ key: it.key, kind: "user", item: it });
-      continue;
-    }
-    if (isAgentItem(it)) {
-      agent.push(it);
-      continue;
-    }
-    flushAgent();
-    rows.push({ key: it.key, kind: "solo", item: it });
-  }
-  flushAgent();
-  return rows;
-}
+import { layoutRows, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 
 function pairTools(items: Item[]): { key: string; call?: Item; result?: Item; extra: Item[] }[] {
   const order: string[] = [];
@@ -148,6 +75,17 @@ function lastErrorKey(items: Item[]): string {
   return "";
 }
 
+function lastAgentKey(rows: LayoutRow[]): string {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind === "agent") return rows[i].key;
+  }
+  return "";
+}
+
+function turnHasArtifact(parts: AgentPart[]): boolean {
+  return parts.some((p) => p.kind === "tools" && p.items.some((it) => isArtifactTool(toolName(it))));
+}
+
 function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
@@ -156,9 +94,9 @@ function rowSpace(rows: LayoutRow[], i: number): string {
   const row = rows[i];
   const prev = rows[i - 1];
   if (!prev) return "pt-0";
-  if (isUserRow(row)) return "pt-8";
+  if (isUserRow(row)) return "border-t border-border/40 pt-8";
   if (row.kind === "agent" && prev.kind === "user") return "pt-3";
-  if (row.kind === "agent") return "pt-4";
+  if (row.kind === "agent") return "pt-5";
   return "pt-4";
 }
 
@@ -167,8 +105,9 @@ function partSpace(parts: AgentPart[], i: number): string {
   const prev = parts[i - 1];
   const cur = parts[i];
   if (cur.kind === "tools") return "pt-2";
-  if (cur.kind === "item" && cur.item.type === "assistant" && prev.kind === "tools") return "pt-3";
+  if (cur.kind === "item" && cur.item.type === "assistant" && prev.kind === "tools") return "pt-3.5";
   if (cur.kind === "item" && cur.item.type === "assistant") return "pt-1.5";
+  if (cur.kind === "item" && cur.item.type === "reasoning") return "pt-1";
   return "pt-3";
 }
 
@@ -177,73 +116,65 @@ export function Transcript(props: {
   approvals: Approval[];
   running: boolean;
   compact?: boolean;
+  flush?: boolean;
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
   onOpenReview?: () => void;
   onRetry?: () => void;
 }) {
   const copy = useCopy();
-  const pad = props.compact ? "w-full min-w-0 px-3" : INNER;
-  const scroller = useRef<HTMLDivElement>(null);
-  const vlist = useRef<VListHandle>(null);
-  const stick = useRef(true);
+  const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
+  const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
   const layout = layoutRows(props.items);
   const empty = props.items.length === 0 && !props.running && props.approvals.length === 0;
   const live = lastMeaningful(props.items);
   const streamingKey = props.running && live?.type === "assistant" ? live.key : "";
   const showWorking = props.running && !streamingKey && !toolsPending(props.items);
   const retryKey = lastErrorKey(props.items);
-  const count = layout.length + props.approvals.length + (showWorking ? 1 : 0);
+  const pinnedTurn = lastAgentKey(layout);
+  const longThread = layout.length > LONG_THREAD_TURNS;
 
-  useEffect(() => {
-    if (!stick.current) return;
-    if (vlist.current && count > 0) {
-      vlist.current.scrollToIndex(count - 1, { align: "end" });
-      return;
-    }
-    const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [count, props.items, props.approvals, props.running]);
-
-  useEffect(() => {
-    const last = props.items[props.items.length - 1];
-    if (last?.type === "user") stick.current = true;
-  }, [props.items]);
-
-  const rows: { key: string; space?: string; node: ReactNode }[] = [
+  const rows: { key: string; space?: string; virtualize?: boolean; node: ReactNode }[] = [
     ...layout.map((row, i) => {
+      const virtualize = longThread && i < layout.length - 2;
       if (row.kind === "user") {
         return {
           key: row.key,
           space: rowSpace(layout, i),
-          node: <ItemRow item={row.item} compact={props.compact} copyText={props.compact ? "" : row.item.text} />,
+          virtualize,
+          node: <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />,
         };
       }
       if (row.kind === "agent") {
         const liveHere = row.parts.some((p) => p.kind === "item" && p.item.key === streamingKey);
-        const toolsLast = row.parts[row.parts.length - 1]?.kind === "tools";
+        const last = row.key === pinnedTurn;
         return {
           key: row.key,
           space: rowSpace(layout, i),
+          virtualize: virtualize && !liveHere,
           node: (
             <div className="group/turn" data-testid="agent-turn">
               {row.parts.map((part, pi) => (
                 <div key={part.key} className={partSpace(row.parts, pi)}>
                   {part.kind === "tools" ? (
-                    <ToolGroup items={part.items} defaultOpen={!!props.running && toolsLast} onOpenReview={props.onOpenReview} />
+                    <ToolTimeline items={part.items} onOpenReview={props.onOpenReview} />
                   ) : (
                     <ItemRow
                       item={part.item}
                       streaming={part.item.key === streamingKey}
-                      compact={props.compact}
-                      onOpenReview={props.onOpenReview}
                     />
                   )}
                 </div>
               ))}
-              {row.copyText && !props.compact
-                ? (liveHere ? <div className="h-6" aria-hidden /> : <CopyAction text={row.copyText} />)
-                : null}
+              {row.copyText && !props.compact ? (
+                <TurnActions
+                  text={row.copyText}
+                  live={liveHere}
+                  pinned={last && !liveHere}
+                  showReview={turnHasArtifact(row.parts)}
+                  onOpenReview={props.onOpenReview}
+                />
+              ) : null}
             </div>
           ),
         };
@@ -251,11 +182,10 @@ export function Transcript(props: {
       return {
         key: row.key,
         space: rowSpace(layout, i),
+        virtualize,
         node: (
           <ItemRow
             item={row.item}
-            compact={props.compact}
-            onOpenReview={props.onOpenReview}
             onRetry={row.item.key === retryKey ? props.onRetry : undefined}
           />
         ),
@@ -282,30 +212,19 @@ export function Transcript(props: {
     });
   }
 
-  const virtual = !props.compact && rows.length > 24;
-
-  function onScrollNearBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }) {
-    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  }
-
   return (
-    <div
-      className={cn(
-        "transcript-scroll prose-select min-h-0 min-w-0 flex-1 overflow-x-hidden pb-2 pt-3",
-        virtual ? "overflow-hidden" : "overflow-y-auto",
-      )}
-      ref={scroller}
-      onScroll={virtual ? undefined : () => {
-        const el = scroller.current;
-        if (el) onScrollNearBottom(el);
-      }}
+    <StickToBottom
+      className="transcript-scroll prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden"
+      resize="instant"
+      initial="instant"
+      data-testid="conversation-column"
     >
       {empty && !props.compact ? (
-        <div className={cn(pad, "flex min-h-full flex-col justify-end pb-6")}>
+        <StickToBottom.Content className={cn(col, "flex min-h-full flex-col justify-center pb-10 pt-8")}>
           <h1 className="text-[26px] font-semibold tracking-[-0.038em] text-foreground">
             {copy.transcript.ready}
           </h1>
-          <p className="mt-2 max-w-md text-[14px] leading-[1.55] text-muted">
+          <p className="mt-2 max-w-[36rem] text-[14.5px] leading-[1.6] text-muted">
             {copy.transcript.readyBody}
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
@@ -320,30 +239,80 @@ export function Transcript(props: {
               </button>
             ))}
           </div>
-        </div>
-      ) : virtual ? (
-        <VList
-          ref={vlist}
-          className="transcript-scroll h-full w-full"
-          onScroll={(offset) => {
-            const handle = vlist.current;
-            if (!handle) return;
-            stick.current = handle.scrollSize - offset - handle.viewportSize < 80;
-          }}
-        >
+        </StickToBottom.Content>
+      ) : (
+        <StickToBottom.Content className={cn(col, "flex flex-col pb-3 pt-4")}>
           {rows.map((row) => (
-            <div key={row.key} className={cn(pad, "pb-1", row.space)}>
+            <div
+              key={row.key}
+              className={row.space}
+              style={row.virtualize ? { contentVisibility: "auto", containIntrinsicSize: "auto 160px" } : undefined}
+            >
               {row.node}
             </div>
           ))}
-        </VList>
-      ) : (
-        <div className={cn(pad, "flex flex-col pb-2")}>
-          {rows.map((row) => (
-            <div key={row.key} className={row.space}>{row.node}</div>
-          ))}
-        </div>
+        </StickToBottom.Content>
       )}
+      {props.compact ? null : <JumpLatest />}
+    </StickToBottom>
+  );
+}
+
+function JumpLatest() {
+  const copy = useCopy();
+  const ctx = useStickToBottomContext() as ReturnType<typeof useStickToBottomContext> & {
+    isAtBottom: boolean;
+    escapedFromLock: boolean;
+  };
+  if (ctx.isAtBottom && !ctx.escapedFromLock) return null;
+  return (
+    <button
+      type="button"
+      className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-sm"
+      onClick={() => {
+        void ctx.scrollToBottom();
+      }}
+    >
+      {copy.transcript.jumpLatest}
+    </button>
+  );
+}
+
+function TurnActions({
+  text,
+  live,
+  pinned,
+  showReview,
+  onOpenReview,
+}: {
+  text: string;
+  live?: boolean;
+  pinned?: boolean;
+  showReview?: boolean;
+  onOpenReview?: () => void;
+}) {
+  const copy = useCopy();
+  if (live) return <div className="h-8" aria-hidden />;
+  return (
+    <div
+      className={cn(
+        "mt-1 flex h-8 items-center gap-0.5 transition-opacity duration-150",
+        pinned
+          ? "opacity-100"
+          : "pointer-events-none opacity-0 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:pointer-events-auto group-focus-within/turn:opacity-100",
+      )}
+    >
+      <CopyAction text={text} />
+      {showReview && onOpenReview ? (
+        <button
+          type="button"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+          onClick={onOpenReview}
+        >
+          <FileText className="size-3.5" aria-hidden />
+          {copy.review.openReview}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -392,37 +361,30 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   );
 }
 
-function CopyAction({ text, align = "start" }: { text: string; align?: "start" | "end" }) {
+function CopyAction({ text }: { text: string }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
   if (!text) return null;
   return (
-    <div
-      className={cn(
-        "flex h-6 items-center opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/turn:pointer-events-auto group-hover/turn:opacity-100 group-focus-within/turn:pointer-events-auto group-focus-within/turn:opacity-100",
-        align === "end" ? "justify-end" : "justify-start",
-      )}
+    <button
+      type="button"
+      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+      aria-label={copy.transcript.copy}
+      data-copy-text={text}
+      onClick={async (e) => {
+        e.stopPropagation();
+        const ok = await writeClipboard(text);
+        if (ok) {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1400);
+        } else {
+          toast.error(copy.transcript.copyFailed);
+        }
+      }}
     >
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
-        aria-label={copy.transcript.copy}
-        data-copy-text={text}
-        onClick={async (e) => {
-          e.stopPropagation();
-          const ok = await writeClipboard(text);
-          if (ok) {
-            setDone(true);
-            window.setTimeout(() => setDone(false), 1400);
-          } else {
-            toast.error(copy.transcript.copyFailed);
-          }
-        }}
-      >
-        {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
-        <span>{done ? copy.transcript.copied : copy.transcript.copy}</span>
-      </button>
-    </div>
+      {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+      <span>{done ? copy.transcript.copied : copy.transcript.copy}</span>
+    </button>
   );
 }
 
@@ -446,9 +408,10 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background"
           onClick={onRetry}
         >
+          <RotateCcw className="size-3" aria-hidden />
           {copy.transcript.retry}
         </button>
       ) : null}
@@ -456,19 +419,15 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
-function ItemRow({
+const ItemRow = memo(function ItemRow({
   item,
   streaming,
-  compact,
   copyText,
-  onOpenReview,
   onRetry,
 }: {
   item: Item;
   streaming?: boolean;
-  compact?: boolean;
   copyText?: string;
-  onOpenReview?: () => void;
   onRetry?: () => void;
 }) {
   const copy = useCopy();
@@ -482,11 +441,15 @@ function ItemRow({
     }
     return (
       <div className="flex justify-end">
-        <div className="group/msg max-w-[min(85%,28rem)]">
+        <div className="group/msg max-w-[min(85%,36rem)]">
           <div className="whitespace-pre-wrap break-words rounded-[18px] bg-lift px-3.5 py-[9px] text-[14.5px] leading-[1.55] tracking-[-0.012em]">
             {item.text}
           </div>
-          {copyText ? <CopyAction text={copyText} align="end" /> : null}
+          {copyText ? (
+            <div className="flex h-8 items-center justify-end opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100">
+              <CopyAction text={copyText} />
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -494,14 +457,8 @@ function ItemRow({
   if (item.type === "assistant") {
     return (
       <div className="w-full min-w-0">
-        <div className={cn("text-[15px] leading-[1.65] tracking-[-0.011em] text-foreground/95", streaming && "assistant-live")}>
-          {item.text ? <Markdown text={item.text} /> : null}
-          {streaming ? (
-            <span
-              className="caret-blink ml-0.5 inline-block h-[1em] w-[7px] translate-y-0.5 rounded-sm bg-accent align-text-bottom"
-              aria-hidden
-            />
-          ) : null}
+        <div className={cn("assistant-prose text-[15.5px] leading-[1.7] tracking-[-0.011em] text-foreground/95", streaming && "assistant-live")}>
+          <Markdown text={item.text} streaming={streaming} />
         </div>
       </div>
     );
@@ -510,10 +467,14 @@ function ItemRow({
     return <ErrorCard item={item} onRetry={onRetry} />;
   }
   if (item.type === "reasoning") {
+    const ms = toolElapsedMs(item);
+    const label = ms > 0
+      ? copy.transcript.thoughtFor.replace("{n}", formatElapsed(ms))
+      : copy.transcript.thinking;
     return (
-      <details className="text-[12px] text-muted">
-        <summary className="cursor-pointer text-[12px] text-muted hover:text-foreground">{copy.transcript.thinking}</summary>
-        <div className="mt-1.5 text-[13px] text-muted"><Markdown text={item.text} /></div>
+      <details className="text-[12.5px] text-muted">
+        <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-foreground">{label}</summary>
+        <div className="mt-1.5 max-w-[72ch] text-[13px] leading-6 text-muted"><Markdown text={item.text} /></div>
       </details>
     );
   }
@@ -533,7 +494,7 @@ function ItemRow({
     );
   }
   if (item.type === "tool_call" || item.type === "tool_result") {
-    return <ToolItem item={item} onOpenReview={onOpenReview} />;
+        return <ToolLine item={item} />;
   }
   if (item.type === "context_injection") {
     return (
@@ -552,88 +513,152 @@ function ItemRow({
       </pre>
     </details>
   );
+});
+
+function ToolTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview?: () => void }) {
+  const pairs = pairTools(items);
+  return (
+    <div className="min-w-0 space-y-0.5" data-testid="tool-timeline">
+      {pairs.map((p) => {
+        const name = toolName(p.call || p.result || p.extra[0] || ({ name: "tool", payload: {} } as Item));
+        if (name === "update_plan" && (p.call || p.result)) {
+          return <PlanBlock key={p.key} item={p.result || p.call!} />;
+        }
+        if (isArtifactTool(name)) {
+          return (
+            <ArtifactCard
+              key={p.key}
+              call={p.call}
+              result={p.result}
+              onOpenReview={onOpenReview}
+            />
+          );
+        }
+        return (
+          <ToolLine
+            key={p.key}
+            item={p.result || p.call!}
+            call={p.call}
+            result={p.result}
+            pending={!!p.call && !p.result}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
-function ToolGroup({ items, defaultOpen, onOpenReview }: { items: Item[]; defaultOpen?: boolean; onOpenReview?: () => void }) {
+function PlanBlock({ item }: { item: Item }) {
   const copy = useCopy();
-  const pairs = pairTools(items);
-  const pending = pairs.some((p) => p.call && !p.result);
-  const [open, setOpen] = useState(!!pending || !!defaultOpen);
-  useEffect(() => {
-    if (pending) setOpen(true);
-  }, [pending]);
-  const n = Math.max(pairs.filter((p) => p.call || p.result).length, 1);
-  const label = copy.transcript.toolsUsed.replace("{n}", String(n));
-  const names = pairs.map((p) => p.call?.name || p.result?.name || p.call?.payload?.name).filter(Boolean);
+  const body = formatToolBody(item);
   return (
-    <div className="min-w-0">
-      <button
-        type="button"
-        className="flex max-w-full items-center gap-1.5 py-0.5 text-left text-[12px] text-muted hover:text-foreground"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {pending ? <Loader2 className="size-3 animate-spin text-accent" aria-hidden /> : <Wrench className="size-3" aria-hidden />}
-        <span>{label}</span>
-        <span className="min-w-0 truncate text-[11px] text-muted/70">{names.join(" · ")}</span>
-        <ChevronRight className={cn("size-3 shrink-0 transition-transform duration-150", open && "rotate-90")} />
-      </button>
-      {open ? (
-        <div className="mt-1 space-y-0.5 border-l border-border/70 pl-3">
-          {pairs.map((p) => (
-            <div key={p.key} className="space-y-0.5">
-              {p.call ? <ToolItem item={p.call} onOpenReview={onOpenReview} pending={!p.result} /> : null}
-              {p.result ? <ToolItem item={p.result} onOpenReview={onOpenReview} /> : null}
-              {p.extra.map((it) => (
-                <ToolItem key={it.key} item={it} onOpenReview={onOpenReview} />
-              ))}
-            </div>
-          ))}
+    <div className="rounded-xl border border-border/70 bg-lift/30 px-3 py-2">
+      <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{copy.transcript.plan}</div>
+      <pre className="mt-1 whitespace-pre-wrap font-sans text-[13px] leading-5 text-foreground/90">{body.slice(0, 4000)}</pre>
+    </div>
+  );
+}
+
+function ArtifactCard({
+  call,
+  result,
+  onOpenReview,
+}: {
+  call?: Item;
+  result?: Item;
+  onOpenReview?: () => void;
+}) {
+  const copy = useCopy();
+  const item = result || call!;
+  const name = toolName(item);
+  const pending = !!call && !result;
+  const detail = toolDetail(result || call || item);
+  const body = result ? formatToolBody(result) : formatToolBody(call || item);
+  const files = name === "apply_patch" ? patchFileCount(body) : 0;
+  const title = name === "apply_patch"
+    ? copy.transcript.patch
+    : name === "cite_sources"
+      ? copy.transcript.citations
+      : copy.transcript.artifact;
+  const meta = name === "apply_patch" && files > 0
+    ? copy.transcript.filesCount.replace("{n}", String(files))
+    : (detail || name);
+  return (
+    <div
+      className="flex items-center gap-3 rounded-xl border border-border/80 bg-lift/25 px-3 py-2.5"
+      data-testid="artifact-card"
+    >
+      <FileText className="size-4 shrink-0 text-accent" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
+          {pending ? <Loader2 className="size-3 animate-spin text-accent" aria-hidden /> : null}
+          <span>{title}</span>
         </div>
+        <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
+      </div>
+      {onOpenReview ? (
+        <button
+          type="button"
+          className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
+          onClick={onOpenReview}
+        >
+          {copy.review.openReview}
+        </button>
       ) : null}
     </div>
   );
 }
 
-function ToolItem({ item, onOpenReview, pending }: { item: Item; onOpenReview?: () => void; pending?: boolean }) {
+function ToolLine({
+  item,
+  call,
+  result,
+  pending,
+}: {
+  item: Item;
+  call?: Item;
+  result?: Item;
+  pending?: boolean;
+}) {
   const copy = useCopy();
   const [open, setOpen] = useState(false);
-  const name = item.name || item.payload.name || "tool";
-  const body =
-    item.type === "tool_call"
-      ? String(item.payload.arguments || item.text || "")
-      : String(item.payload.content || item.text || "");
-  if (name === "update_plan") {
-    return (
-      <div className="py-1">
-        <div className="mb-1 text-[11px] text-muted">{copy.transcript.plan}</div>
-        <pre className="whitespace-pre-wrap font-mono text-[12px] text-foreground/90">{body.slice(0, 4000)}</pre>
-      </div>
-    );
-  }
-  if (name === "apply_patch") {
-    return (
-      <details className="py-1 text-[12px]" open>
-        <summary className="cursor-pointer text-muted hover:text-foreground">{copy.transcript.patch}</summary>
-        <div className="mt-1.5">
-          <DiffBlock src={body.slice(0, 6000)} mode="unified" />
-        </div>
-        {onOpenReview ? (
-          <button type="button" className="mt-1.5 text-[11px] text-accent hover:underline" onClick={onOpenReview}>
-            {copy.review.openReview}
-          </button>
-        ) : null}
-      </details>
-    );
-  }
+  const name = toolName(item);
+  const source = result || call || item;
+  const detail = toolDetail(call || source);
+  const ms = toolElapsedMs(result || item);
+  const elapsed = formatElapsed(ms);
+  const failed = result && (result.payload?.ok === false || result.payload?.error);
+  const status = pending
+    ? copy.transcript.toolRunning
+    : failed
+      ? copy.transcript.toolFailed
+      : copy.transcript.toolDone;
+  const body = formatToolBody(result || call || item);
   return (
-    <div>
-      <button type="button" className="flex w-full items-center gap-1.5 py-0.5 text-left text-[12px] text-muted hover:text-foreground" onClick={() => setOpen((v) => !v)}>
-        {pending ? <Loader2 className="size-3 animate-spin text-accent" aria-hidden /> : null}
-        <span className="font-medium text-foreground/85">{name}</span>
-        <span className="text-[10px] tracking-wide text-muted/70">{pending ? "…" : item.type === "tool_call" ? "call" : "result"}</span>
-        <ChevronRight className={cn("ml-auto size-3 shrink-0 transition-transform duration-150", open && "rotate-90")} />
+    <div data-testid="tool-row">
+      <button
+        type="button"
+        className="flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-[12.5px] text-muted hover:text-foreground"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {pending ? (
+          <Loader2 className="size-3 shrink-0 animate-spin text-accent" aria-hidden />
+        ) : (
+          <span className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : "bg-accent/70")} aria-hidden />
+        )}
+        <span className="shrink-0 font-medium text-foreground/85">{name}</span>
+        {detail ? <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/80">{detail}</span> : null}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums text-[11px] text-muted/70">
+          {elapsed ? <span>{elapsed}</span> : null}
+          <span>{status}</span>
+          <ChevronRight className={cn("size-3 transition-transform duration-150", open && "rotate-90")} />
+        </span>
       </button>
-      {open ? <pre className="mt-0.5 max-h-56 overflow-auto font-mono text-[11px] text-muted">{body.slice(0, 4000)}</pre> : null}
+      {open ? (
+        <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-lift/40 px-2.5 py-2 font-mono text-[11px] leading-4 text-muted">
+          {body.slice(0, 4000)}
+        </pre>
+      ) : null}
     </div>
   );
 }

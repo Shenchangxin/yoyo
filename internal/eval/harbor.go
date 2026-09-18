@@ -236,6 +236,9 @@ func LoadHarborTask(dir string) (Task, error) {
 }
 
 func runVerifier(work string, task Task) (bool, string, error) {
+	if ok, out, err, handled := runPersonalVerifier(work, task); handled {
+		return ok, out, err
+	}
 	expect := filepath.Join(task.Dir, "tests", "expect.toml")
 	if _, err := os.Stat(expect); err == nil {
 		return runExpect(work, expect)

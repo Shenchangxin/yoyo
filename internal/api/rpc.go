@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
 type RPCRequest struct {
@@ -577,6 +580,132 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.ApplyStagedUpdate(p.Exe)
+	case "inbox.list":
+		return a.InboxList(), nil
+	case "inbox.read":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		a.InboxMarkRead(p.ID)
+		return map[string]any{"ok": true}, nil
+	case "projects.list":
+		return a.ProjectsList(), nil
+	case "projects.create":
+		var p project.Project
+		_ = json.Unmarshal(params, &p)
+		return a.ProjectCreate(p), nil
+	case "memory.list":
+		var p struct {
+			Q    string `json:"q"`
+			Kind string `json:"kind"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryList(p.Q, p.Kind), nil
+	case "memory.promote":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryPromote(p.ID), nil
+	case "memory.forget":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryForget(p.ID), nil
+	case "memory.write":
+		var p struct {
+			Kind    string `json:"kind"`
+			Text    string `json:"text"`
+			Project string `json:"project"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.MemoryWrite(p.Kind, p.Text, p.Project), nil
+	case "schedule.list":
+		return a.ScheduleList(), nil
+	case "schedule.create":
+		var p schedule.Job
+		_ = json.Unmarshal(params, &p)
+		return a.ScheduleCreate(p), nil
+	case "schedule.cancel":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ScheduleCancel(p.ID), nil
+	case "connectors.list":
+		return a.ConnectorsList(), nil
+	case "connectors.catalog":
+		return a.ConnectorCatalog(), nil
+	case "connectors.connect":
+		var p connector.Account
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorConnect(p), nil
+	case "connectors.auth_url":
+		var p struct {
+			Provider string `json:"provider"`
+			ClientID string `json:"client_id"`
+			Redirect string `json:"redirect"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorAuthURL(p.Provider, p.ClientID, p.Redirect)
+	case "connectors.token":
+		var p struct {
+			ID    string `json:"id"`
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.ConnectorStoreToken(p.ID, p.Token)
+	case "isolation.report":
+		return a.IsolationReport(), nil
+	case "review.queue":
+		return a.ReviewQueue(), nil
+	case "phone.status":
+		return a.PhoneStatus(), nil
+	case "phone.approve":
+		var p struct {
+			ID       string `json:"id"`
+			Decision string `json:"decision"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.PhoneApprove(p.ID, p.Decision)
+	case "phone.steer":
+		var p struct {
+			Session string `json:"session"`
+			Text    string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.PhoneSteer(p.Session, p.Text)
+	case "mcp.start_http":
+		var p struct {
+			Name     string `json:"name"`
+			Endpoint string `json:"endpoint"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.StartMCPHTTP(p.Name, p.Endpoint)
+	case "expert.admit":
+		var p struct {
+			Dir string `json:"dir"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.AdmitExpert(p.Dir)
+	case "expert.distill":
+		var p struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Body        string `json:"body"`
+		}
+		_ = json.Unmarshal(params, &p)
+		path, err := a.DistillExpert(p.Name, p.Description, p.Body)
+		return map[string]any{"path": path}, err
+	case "computer.allow":
+		var p struct {
+			App string `json:"app"`
+		}
+		_ = json.Unmarshal(params, &p)
+		a.ComputerAllow(p.App)
+		return map[string]any{"ok": true}, nil
 	default:
 		return nil, errMethod(method)
 	}

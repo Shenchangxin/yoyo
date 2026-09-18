@@ -107,7 +107,11 @@ func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 	if len(head) > 64 {
 		head = head[:64]
 	}
-	return ToolResult{Content: fmt.Sprintf("image %s (%d bytes, %s). Path is inside the workspace; describe it from this metadata and a later read if needed.\nmagic=%x", rel, st.Size(), ext, head[:min(8, len(head))])}
+	res := ToolResult{Content: fmt.Sprintf("image %s (%d bytes, %s). pixels attached as a multimodal part.\nmagic=%x", rel, st.Size(), ext, head[:min(8, len(head))])}
+	if url, err := encodeDataURL(p); err == nil {
+		res.Parts = []ContentPart{{Type: "image_url", ImageURL: url, MIME: "image/" + strings.TrimPrefix(ext, ".")}}
+	}
+	return res
 }
 
 func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {

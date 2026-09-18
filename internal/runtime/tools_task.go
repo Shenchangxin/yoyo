@@ -6,10 +6,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
+
+// MaxTaskDepth is 2: parent (0) may spawn a child (1) which may spawn one
+// more (2). Deeper nesting is forbidden.
+const MaxTaskDepth = 2
 
 // TaskFunc runs an isolated child loop and returns a summary only —
 // Claude Code's subagent pattern: the parent context never absorbs the
@@ -20,7 +26,7 @@ func (t *WorkspaceTools) task(prompt string, isolate bool) ToolResult {
 	if strings.TrimSpace(prompt) == "" {
 		return ToolResult{Err: fmt.Errorf("empty task prompt")}
 	}
-	if t != nil && t.Depth >= 1 {
+	if t != nil && t.Depth >= MaxTaskDepth {
 		return ToolResult{Err: fmt.Errorf("nested subagent forbidden")}
 	}
 	if t == nil || t.Task == nil {
@@ -35,7 +41,7 @@ func (t *WorkspaceTools) task(prompt string, isolate bool) ToolResult {
 }
 
 func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bool) (string, error) {
-	if parent.Tools != nil && parent.Tools.Depth >= 1 {
+	if parent.Tools != nil && parent.Tools.Depth >= MaxTaskDepth {
 		return "", fmt.Errorf("nested subagent forbidden")
 	}
 	ws := parent.Workspace
@@ -65,6 +71,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 			cp.Spill = NewSpill(filepath.Join(ws, ".yoyo", "context", "task", filepath.Base(childID)))
 		}
 		cp.PlanMode = parent.Tools.PlanMode
+		cp.MaxParallel = parent.Tools.MaxParallel
 		childTools = &cp
 	}
 	user := prompt
@@ -102,6 +109,60 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	}
 	emit(parent, trace.TypeSubagent, "runtime", payload)
 	return out, err
+}
+
+func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool) ToolResult {
+	if t != nil && t.Depth >= MaxTaskDepth {
+		return ToolResult{Err: fmt.Errorf("nested subagent forbidden")}
+	}
+	if t == nil || t.Task == nil {
+		return ToolResult{Err: fmt.Errorf("subagent not available")}
+	}
+	max := t.MaxParallel
+	if max <= 0 {
+		max = 4
+	}
+	if max > 8 {
+		max = 8
+	}
+	if len(prompts) > max {
+		prompts = prompts[:max]
+	}
+	type res struct {
+		i   int
+		out string
+		err error
+	}
+	ch := make(chan res, len(prompts))
+	sem := make(chan struct{}, max)
+	var wg sync.WaitGroup
+	for i, p := range prompts {
+		wg.Add(1)
+		go func(i int, p string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			out, err := t.Task(p, isolate)
+			ch <- res{i: i, out: out, err: err}
+		}(i, p)
+	}
+	go func() { wg.Wait(); close(ch) }()
+	got := make([]res, 0, len(prompts))
+	for r := range ch {
+		got = append(got, r)
+	}
+	sort.Slice(got, func(i, j int) bool { return got[i].i < got[j].i })
+	var b strings.Builder
+	for _, r := range got {
+		fmt.Fprintf(&b, "## worker %d\n", r.i+1)
+		if r.err != nil {
+			fmt.Fprintf(&b, "ERROR: %s\n", r.err)
+		}
+		capped, _ := capText(r.out, 1200)
+		b.WriteString(capped)
+		b.WriteString("\n\n")
+	}
+	return ToolResult{Content: "SUBAGENT_FANOUT:\n" + b.String()}
 }
 
 func shortID() string {

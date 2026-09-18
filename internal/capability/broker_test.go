@@ -59,7 +59,7 @@ func TestBrokerForceAskHonorsAlways(t *testing.T) {
 		n++
 		return Always, nil
 	})
-	req := Request{Level: HighRisk, SessionID: "s1", ForceAsk: true, Action: "wasm"}
+	req := Request{Level: Network, SessionID: "s1", ForceAsk: true, Action: "mcp"}
 	if err := b.Check(req); err != nil {
 		t.Fatal(err)
 	}
@@ -68,5 +68,23 @@ func TestBrokerForceAskHonorsAlways(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("ForceAsk must still honor Always, asked %d", n)
+	}
+}
+
+func TestBrokerNeverAlwaysHighRisk(t *testing.T) {
+	n := 0
+	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {
+		n++
+		return Always, nil
+	})
+	req := Request{Level: HighRisk, SessionID: "s1", ForceAsk: true, Action: "wasm"}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("identity Always must not stick, asked %d", n)
 	}
 }

@@ -36,6 +36,14 @@ func Open(root string) (*Dir, error) {
 		d.Updates(),
 		d.Skills(),
 		d.Workspace(),
+		d.Projects(),
+		d.Memory(),
+		d.Schedule(),
+		d.Inbox(),
+		d.Connectors(),
+		d.Browser(),
+		d.Computer(),
+		d.Observe(),
 	} {
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			return nil, err
@@ -69,6 +77,14 @@ func (d *Dir) Workspace() string {
 	return filepath.Join(d.Root, "workspace")
 }
 func (d *Dir) Config() string { return filepath.Join(d.Root, "config.yaml") }
+func (d *Dir) Projects() string { return filepath.Join(d.Root, "projects") }
+func (d *Dir) Memory() string { return filepath.Join(d.Root, "memory") }
+func (d *Dir) Schedule() string { return filepath.Join(d.Root, "schedule") }
+func (d *Dir) Inbox() string { return filepath.Join(d.Root, "inbox") }
+func (d *Dir) Connectors() string { return filepath.Join(d.Root, "connectors") }
+func (d *Dir) Browser() string { return filepath.Join(d.Root, "browser") }
+func (d *Dir) Computer() string { return filepath.Join(d.Root, "computer") }
+func (d *Dir) Observe() string { return filepath.Join(d.Root, "observe") }
 func (d *Dir) SessionSpill(id string) string {
 	return filepath.Join(d.Sessions(), id, "spill")
 }

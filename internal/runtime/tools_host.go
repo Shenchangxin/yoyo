@@ -69,6 +69,9 @@ func init() {
 		return t.toolSearch(str(args["query"]))
 	}
 	hostFns["task"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		if prompts := anyStrings(args["prompts"]); len(prompts) > 1 {
+			return t.taskFanout(prompts, boolArg(args["isolate"]))
+		}
 		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
 	}
 	hostFns["update_plan"] = func(t *WorkspaceTools, _ map[string]any, raw string) ToolResult {
@@ -94,6 +97,87 @@ func init() {
 	}
 	hostFns["run_skill_script"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.runSkillScript(str(args["skill"]), str(args["script"]), str(args["args"]))
+	}
+	hostFns["office_create"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.officeCreate(args)
+	}
+	hostFns["office_edit"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.officeEdit(str(args["path"]), str(args["old_str"]), str(args["new_str"]))
+	}
+	hostFns["office_query"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.officeQuery(str(args["path"]))
+	}
+	hostFns["office_render"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.officeRender(str(args["path"]))
+	}
+	hostFns["cite_sources"] = func(t *WorkspaceTools, args map[string]any, raw string) ToolResult {
+		return t.citeSources(str(args["path"]), raw)
+	}
+	hostFns["memory_search"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.memorySearch(str(args["query"]), str(args["kind"]))
+	}
+	hostFns["memory_write"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.memoryWrite(str(args["kind"]), str(args["text"]), str(args["project"]))
+	}
+	hostFns["memory_forget"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.memoryForget(str(args["id"]))
+	}
+	hostFns["schedule_create"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.scheduleCreate(str(args["kind"]), str(args["spec"]), str(args["prompt"]))
+	}
+	hostFns["schedule_list"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.scheduleList()
+	}
+	hostFns["schedule_cancel"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.scheduleCancel(str(args["id"]))
+	}
+	hostFns["browser_open"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserOpen(str(args["url"]))
+	}
+	hostFns["browser_snapshot"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.browserSnapshot()
+	}
+	hostFns["browser_click"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserClick(str(args["selector"]))
+	}
+	hostFns["browser_type"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserType(str(args["selector"]), str(args["text"]))
+	}
+	hostFns["browser_fill"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserType(str(args["selector"]), str(args["text"]))
+	}
+	hostFns["browser_download"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserDownload(str(args["url"]), str(args["path"]))
+	}
+	hostFns["clipboard_read"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.clipboardRead()
+	}
+	hostFns["clipboard_write"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.clipboardWrite(str(args["text"]))
+	}
+	hostFns["screenshot_region"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.screenshot(str(args["path"]))
+	}
+	hostFns["fs_batch"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.fsBatch(str(args["from"]), str(args["to"]))
+	}
+	hostFns["connector_read"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.connectorRead(str(args["account"]), str(args["query"]))
+	}
+	hostFns["connector_draft"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.connectorDraft(str(args["account"]), str(args["to"]), str(args["subject"]), str(args["body"]))
+	}
+	hostFns["connector_send"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.connectorSend(str(args["draft_id"]))
+	}
+	hostFns["computer_act"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.computerAct(str(args["app"]), str(args["op"]), str(args["detail"]))
+	}
+	hostFns["project_list"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.projectList()
+	}
+	hostFns["notify_actionable"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.notifyActionable(str(args["title"]), str(args["body"]))
 	}
 }
 

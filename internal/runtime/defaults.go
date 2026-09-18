@@ -7,6 +7,7 @@ func DefaultLoop() artifact.LoopPreset {
 		ID:               "default",
 		MaxTurns:         32,
 		MaxToolMessages:  40,
+		MaxParallel:      4,
 		CompactionKeep:   24,
 		CompactionTokens: 24_000,
 		ToolResultBudget: 8_000,
@@ -25,7 +26,7 @@ func DefaultPolicy() artifact.PolicyPack {
 		ID:              "default",
 		Mode:            "auto",
 		DefaultAllow:    []string{"read_workspace", "write_workspace"},
-		RequireApproval: []string{"shell", "high_risk", "network"},
+		RequireApproval: []string{"shell", "high_risk", "network", "send_as_you", "computer_use", "write_connector", "browser", "schedule", "memory_write"},
 	}
 }
 
