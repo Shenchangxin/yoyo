@@ -4,7 +4,7 @@ import * as api from "../../lib/client";
 import { bannerError, shortError } from "../../lib/error";
 import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
 import { num, str } from "../../lib/normalize";
-import { workspaceReady } from "../../lib/workspace";
+import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { useUI } from "../../lib/store";
@@ -46,6 +46,16 @@ function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<s
   for (const id of Object.keys(prev)) next[id] = false;
   for (const id of ids) next[id] = true;
   return next;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    p.then(
+      (v) => { window.clearTimeout(t); resolve(v); },
+      (e) => { window.clearTimeout(t); reject(e); },
+    );
+  });
 }
 
 function localUser(sessionId: string, text: string): Item {
@@ -146,6 +156,7 @@ export function useWorkstation() {
   const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
   const [files, setFiles] = useState<FileHit[]>([]);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const activeIdRef = useRef("");
   const [logs, setLogs] = useState<any>(null);
   const [doctor, setDoctor] = useState<any>(null);
   const [vault, setVault] = useState<any>({});
@@ -158,6 +169,7 @@ export function useWorkstation() {
   });
 
   const activeId = active?.id || "";
+  activeIdRef.current = activeId;
   const draftKey = activeId || "_new";
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
@@ -205,13 +217,13 @@ export function useWorkstation() {
 
   const refresh = useCallback(async () => {
     try {
-      const [h, c, list, hs, pl] = await Promise.all([
+      const [h, c, list, hs, pl] = await withTimeout(Promise.all([
         api.health(),
         api.getConfig(),
         api.listSessions(),
         api.harness().catch(() => ({})),
         api.plugins().catch(() => ({})),
-      ]);
+      ]), 8000, "boot");
       setHealth(h);
       setSavedCfg(c);
       setThreads(list);
@@ -224,7 +236,6 @@ export function useWorkstation() {
       setBooted(true);
       try { setPlaybook(await api.playbook()); } catch { /* optional */ }
       try { setTree(await api.archive()); } catch { /* optional */ }
-      try { setSkills(await api.listSkills()); } catch { /* optional */ }
       try { setVault(await api.keyStatus()); } catch { /* optional */ }
       await syncRunning();
     } catch (e) {
@@ -244,6 +255,11 @@ export function useWorkstation() {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => subscribeSessions(refresh), [refresh]);
+  useEffect(() => {
+    if (!booted) return;
+    const ws = active?.workspace || savedCfg.workspace;
+    api.listSkills(ws).then(setSkills).catch(() => {});
+  }, [booted, active?.workspace, savedCfg.workspace]);
   useEffect(() => {
     if (surface !== "settings") return;
     api.logs().then(setLogs).catch(() => {});
@@ -292,6 +308,12 @@ export function useWorkstation() {
             void api.setConfig(next);
             return next;
           });
+          const id = activeIdRef.current;
+          if (!id) return;
+          void api.setSessionWorkspace(id, p).then((t) => {
+            setActive(t);
+            setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
+          }).catch(() => {});
         }));
         offs.push(Events.On("yoyo:command", (cmd: any) => handlers.current.command(String(cmd || ""))));
         offs.push(Events.On("yoyo:quit", () => handlers.current.quit()));
@@ -404,10 +426,11 @@ export function useWorkstation() {
     return t;
   }
 
-  async function onSend(opts?: { steer?: boolean; attachments?: Attachment[] }) {
-    const text = (useUI.getState().drafts[draftKey] || "").trim();
-    if (!text) return;
-    if (!workspaceReady(health.workspaceReady, savedCfg.workspace)) {
+  async function onSend(opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) {
+    const text = (opts?.text !== undefined ? opts.text : (useUI.getState().drafts[draftKey] || "")).trim();
+    if (!text && !(opts?.attachments && opts.attachments.length)) return;
+    const turnWs = active?.workspace || savedCfg.workspace;
+    if (!pathReady(turnWs) && !workspaceReady(health.workspaceReady, savedCfg.workspace)) {
       toast.message(copy.app.setupFirst);
       openSettings("general", "general-basics");
       return;
@@ -607,7 +630,7 @@ export function useWorkstation() {
 
   async function refreshDiff() {
     try {
-      const h = await api.workspaceHunks(savedCfg.workspace || active?.workspace || "");
+      const h = await api.workspaceHunks(active?.workspace || savedCfg.workspace || "");
       setDiff(h.diff);
       setHunks(h.hunks);
       setHunkSel({});
@@ -635,7 +658,7 @@ export function useWorkstation() {
 
   async function applySelected() {
     const ids = Object.entries(hunkSel).filter(([, v]) => v).map(([k]) => k);
-    const workspace = savedCfg.workspace || active?.workspace || "";
+    const workspace = active?.workspace || savedCfg.workspace || "";
     const snapshot = diff;
     try {
       await api.applyHunks(workspace, ids);

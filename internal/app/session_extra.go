@@ -34,6 +34,9 @@ func (a *App) DeleteSession(id string) error {
 	if a.Running(id) {
 		_ = a.Interrupt(id)
 	}
+	if a.Caps != nil {
+		a.Caps.ClearSession(id)
+	}
 	if a.Threads != nil {
 		a.Threads.Forget(id)
 	}
@@ -95,6 +98,58 @@ func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 	return m, a.writeSession(m)
 }
 
+func (a *App) SetSessionAuthMode(id, mode string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	mode = capability.ParseAuthMode(mode)
+	a.applySessionAuth(id, mode)
+	m.AuthMode = mode
+	if err := a.writeSession(m); err != nil {
+		return m, err
+	}
+	return m, nil
+}
+
+func (a *App) SetSessionWorkspace(id, workspace string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	workspace = filepath.Clean(strings.TrimSpace(workspace))
+	if !WorkspaceReady(workspace) {
+		return m, fmt.Errorf("workspace is not a directory")
+	}
+	if a.Running(id) {
+		return m, fmt.Errorf("cannot change workspace while a turn is running")
+	}
+	if m.Workspace == workspace {
+		return m, nil
+	}
+	m.Workspace = workspace
+	if err := a.writeSession(m); err != nil {
+		return m, err
+	}
+	return m, nil
+}
+
+func (a *App) ListSkills(workspace string) []map[string]string {
+	ws := strings.TrimSpace(workspace)
+	if !WorkspaceReady(ws) {
+		ws = a.Workspace()
+	}
+	sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, ws, bundledSkillsDir(a.BundledEvals))...)
+	if _, _, _, cas, _, _, err := a.Materials(a.ActiveHash()); err == nil {
+		sk = runtime.MergeSkills(cas, sk)
+	}
+	out := make([]map[string]string, 0, len(sk))
+	for _, item := range sk {
+		out = append(out, map[string]string{"name": item.Name, "description": item.Description})
+	}
+	return out
+}
+
 func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, error) {
 	list, err := a.ListSessions()
 	if err != nil {
@@ -147,6 +202,7 @@ func (a *App) ResumeSession(id string) (SessionMeta, error) {
 	}
 	if a.Threads != nil && a.Caps != nil {
 		st := a.Threads.Load(id)
+		a.Caps.ApplyAuthMode(id, st.AuthMode)
 		if len(st.SessionCaps) > 0 {
 			var lv []capability.Level
 			for _, c := range st.SessionCaps {

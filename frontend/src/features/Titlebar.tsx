@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Folder, Inbox, PanelRight } from "lucide-react";
+import { Inbox, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
@@ -11,7 +11,6 @@ import * as api from "../lib/client";
 import { useUI } from "../lib/store";
 
 export function Titlebar(props: {
-  workspace: string;
   onToggleInspector: () => void;
   inspector: boolean;
   title: string;
@@ -91,12 +90,6 @@ export function Titlebar(props: {
       )}
       <div className="h-full min-w-4 flex-1" aria-hidden />
       <div className="no-drag flex shrink-0 items-center gap-1">
-        {props.workspace ? (
-          <Badge className="hidden max-w-[140px] truncate lg:inline-flex" title={props.workspace}>
-            <Folder className="mr-1 size-3" aria-hidden />
-            {shortPath(props.workspace)}
-          </Badge>
-        ) : null}
         {props.runningThreads && props.onSelectRunning ? (
           <RunningHub threads={props.runningThreads} onSelect={props.onSelectRunning} />
         ) : props.runningCount ? (
@@ -150,10 +143,4 @@ function InboxButton() {
       </Button>
     </Tooltip>
   );
-}
-
-function shortPath(p: string): string {
-  if (!p) return "";
-  const parts = p.replace(/\\/g, "/").split("/");
-  return parts.slice(-2).join("/");
 }

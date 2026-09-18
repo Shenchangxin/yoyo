@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -278,6 +277,32 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, m)
 			return
 		}
+		if len(parts) > 1 && parts[1] == "auth" && r.Method == http.MethodPost {
+			var body struct {
+				Mode string `json:"mode"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionAuthMode(id, body.Mode)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "workspace" && r.Method == http.MethodPost {
+			var body struct {
+				Workspace string `json:"workspace"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionWorkspace(id, body.Workspace)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
 		m, err := a.GetSession(id)
 		if err != nil {
 			http.Error(w, err.Error(), 404)
@@ -334,8 +359,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, runtime.FuzzySearch(ws, q.Get("q"), 40))
 	})
 	mux.HandleFunc("/api/skills", func(w http.ResponseWriter, r *http.Request) {
-		sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, a.Config.Workspace, filepath.Join(filepath.Dir(a.BundledEvals), "skills"))...)
-		writeJSON(w, sk)
+		writeJSON(w, a.ListSkills(r.URL.Query().Get("workspace")))
 	})
 	mux.HandleFunc("/api/about", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.Health())

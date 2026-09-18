@@ -194,9 +194,7 @@ func (s *Service) Screenshot(path string) error {
 }
 
 func (s *Service) RaiseWindow() {
-	if s.win != nil {
-		s.win.Show().Focus()
-	}
+	Raise(s.win)
 }
 
 func (s *Service) ComputerAllow(name string) {

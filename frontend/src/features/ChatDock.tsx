@@ -1,6 +1,6 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
-import type { Approval, ContextUsage, Item } from "../lib/protocol";
+import type { Approval, Attachment, AuthMode, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
 import { lastUserTurns } from "../lib/stream";
 
@@ -16,8 +16,20 @@ export function ChatDock(props: {
   provider?: string;
   ctx?: ContextUsage;
   queued?: number;
-  onSend: (opts?: { steer?: boolean; attachments?: import("../lib/protocol").Attachment[] }) => void;
+  files?: FileHit[];
+  skills?: SkillInfo[];
+  authMode?: AuthMode | string;
+  onSearchFiles?: (q: string) => void;
+  onPickFiles?: () => Promise<Attachment[]>;
+  onAuthMode?: (mode: AuthMode) => void;
+  workspace?: string;
+  workspaces?: string[];
+  onWorkspace?: (path: string) => void;
+  onBrowseWorkspace?: () => void;
+  onSend: (opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) => void;
   onStop: () => void;
+  onClipboard?: () => Promise<string>;
+  onScreenshot?: () => Promise<string>;
   onResolve: (id: string, decision: string) => void;
   onOpenAgent: () => void;
   onRetry?: () => void;
@@ -44,10 +56,22 @@ export function ChatDock(props: {
         provider={props.provider}
         ctx={props.ctx}
         queued={props.queued}
+        files={props.files}
+        skills={props.skills}
+        authMode={props.authMode}
+        onSearchFiles={props.onSearchFiles}
+        onPickFiles={props.onPickFiles}
+        onAuthMode={props.onAuthMode}
+        workspace={props.workspace}
+        workspaces={props.workspaces}
+        onWorkspace={props.onWorkspace}
+        onBrowseWorkspace={props.onBrowseWorkspace}
         onSend={props.onSend}
         onStop={props.onStop}
         onSlash={props.onSlash}
         onModel={props.onModel}
+        onClipboard={props.onClipboard}
+        onScreenshot={props.onScreenshot}
         compact
       />
     </aside>

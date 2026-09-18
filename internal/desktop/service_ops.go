@@ -3,7 +3,6 @@ package desktop
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -102,6 +101,27 @@ func (s *Service) SetSessionModel(id, model string) (app.SessionMeta, error) {
 	return s.App.SetSessionModel(id, model)
 }
 
+func (s *Service) SetSessionAuthMode(id, mode string) (app.SessionMeta, error) {
+	if s.RPC != nil {
+		return decode[app.SessionMeta](s.call("thread.auth.set", map[string]any{"session": id, "mode": mode}))
+	}
+	return s.App.SetSessionAuthMode(id, mode)
+}
+
+func (s *Service) SetSessionWorkspace(id, workspace string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("thread.workspace.set", map[string]any{"session": id, "workspace": workspace}))
+	} else {
+		m, err = s.App.SetSessionWorkspace(id, workspace)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
+}
+
 func (s *Service) CompactSession(id string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.compact", map[string]any{"session": id})
@@ -151,8 +171,12 @@ func (s *Service) SearchFiles(workspace, query string) []runtime.FileHit {
 }
 
 func (s *Service) ListSkills() []map[string]string {
+	return s.ListSkillsFor("")
+}
+
+func (s *Service) ListSkillsFor(workspace string) []map[string]string {
 	if s.RPC != nil {
-		v, err := s.call("skills.list", nil)
+		v, err := s.call("skills.list", map[string]any{"workspace": workspace})
 		out, _ := decode[[]map[string]string](v, err)
 		if out == nil {
 			return []map[string]string{}
@@ -162,16 +186,7 @@ func (s *Service) ListSkills() []map[string]string {
 	if s.App == nil {
 		return nil
 	}
-	ws := s.App.Config.Workspace
-	sk := runtime.LoadSkillDirs(runtime.SkillRoots(s.App.Home.Root, ws, filepath.Join(filepath.Dir(s.App.BundledEvals), "skills"))...)
-	if _, _, _, cas, _, _, err := s.App.Materials(s.App.ActiveHash()); err == nil {
-		sk = runtime.MergeSkills(cas, sk)
-	}
-	out := make([]map[string]string, 0, len(sk))
-	for _, item := range sk {
-		out = append(out, map[string]string{"name": item.Name, "description": item.Description})
-	}
-	return out
+	return s.App.ListSkills(workspace)
 }
 
 func (s *Service) KeyStatus() map[string]any {

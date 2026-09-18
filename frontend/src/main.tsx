@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 import App from "./App";
+import { AppErrorBoundary } from "./features/AppErrorBoundary";
 import { ThemeProvider, useTheme } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./styles.css";
@@ -26,7 +27,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
       <TooltipProvider>
-        <App />
+        <AppErrorBoundary>
+          <App />
+        </AppErrorBoundary>
         <ThemedToaster />
       </TooltipProvider>
     </ThemeProvider>

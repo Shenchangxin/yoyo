@@ -1,6 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, Health, Hunk, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -95,6 +95,14 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export function parseAuthMode(v: any): AuthMode {
+  const s = str(v).toLowerCase().replace(/[-\s]/g, "_");
+  if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
+  if (s === "auto_edit" || s === "autoedit") return "auto_edit";
+  if (s === "full" || s === "full_access") return "full";
+  return "default";
+}
+
 export function threadOf(v: any): Thread {
   return {
     id: str(pick(v, "id", "ID")),
@@ -105,6 +113,7 @@ export function threadOf(v: any): Thread {
     archived: bool(pick(v, "archived", "Archived")),
     pinned: bool(pick(v, "pinned", "Pinned")),
     model: str(pick(v, "model", "Model")),
+    authMode: parseAuthMode(pick(v, "auth_mode", "AuthMode", "authMode")),
   };
 }
 
@@ -651,6 +660,22 @@ export async function setSessionModel(id: string, model: string): Promise<Thread
   return threadOf(raw);
 }
 
+export async function setSessionAuthMode(id: string, mode: string): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionAuthMode
+    ? await s.SetSessionAuthMode(id, mode)
+    : await http(`/api/sessions/${id}/auth`, { method: "POST", body: JSON.stringify({ mode }) });
+  return threadOf(raw);
+}
+
+export async function setSessionWorkspace(id: string, workspace: string): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionWorkspace
+    ? await s.SetSessionWorkspace(id, workspace)
+    : await http(`/api/sessions/${id}/workspace`, { method: "POST", body: JSON.stringify({ workspace }) });
+  return threadOf(raw);
+}
+
 export async function compactSession(id: string): Promise<string> {
   const s = await wailsService();
   if (s?.CompactSession) return String(await s.CompactSession(id) || "");
@@ -672,9 +697,13 @@ export async function searchFiles(workspace: string, query: string): Promise<Fil
   return asArray(raw).map((v) => ({ path: str(pick(v, "path", "Path")), kind: str(pick(v, "kind", "Kind"), "file") })).filter((h) => h.path);
 }
 
-export async function listSkills(): Promise<SkillInfo[]> {
+export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
   const s = await wailsService();
-  const raw = s?.ListSkills ? await s.ListSkills() : await http("/api/skills");
+  const raw = s?.ListSkillsFor
+    ? await s.ListSkillsFor(workspace || "")
+    : s?.ListSkills
+      ? await s.ListSkills()
+      : await http(`/api/skills${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`);
   return asArray(raw).map((v) => ({ name: str(pick(v, "name", "Name")), description: str(pick(v, "description", "Description")) })).filter((x) => x.name);
 }
 

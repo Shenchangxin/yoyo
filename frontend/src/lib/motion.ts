@@ -1,0 +1,15 @@
+import { useReducedMotion, type Transition } from "motion/react";
+
+/** Same curve as `--ease-out` / the settings nav pill. */
+export const EASE = [0.22, 0.61, 0.36, 1] as const;
+export const DURATION = 0.18;
+export const DURATION_FAST = 0.12;
+
+export function useMotionReduced(): boolean {
+  return useReducedMotion() === true;
+}
+
+export function motionTransition(reduced: boolean, duration = DURATION): Transition {
+  if (reduced) return { duration: 0 };
+  return { duration, ease: EASE };
+}

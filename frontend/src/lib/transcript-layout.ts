@@ -1,8 +1,12 @@
 import type { Item } from "./protocol";
+import { isOutcomeToolName, isToolFailed, toolElapsedMs, toolName } from "./tool-summary";
+
+export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
 export type AgentPart =
   | { key: string; kind: "item"; item: Item }
-  | { key: string; kind: "tools"; items: Item[] };
+  | { key: string; kind: "process"; items: Item[]; live: boolean }
+  | { key: string; kind: "artifact"; items: Item[] };
 
 export type LayoutRow =
   | { key: string; kind: "user"; item: Item }
@@ -13,14 +17,75 @@ export function isToolish(it: Item): boolean {
   return it.type === "tool_call" || it.type === "tool_result";
 }
 
+export function isSteer(it: Item): boolean {
+  return it.type === "user" && it.source === "steer";
+}
+
+/** Duplicate of a tool already in the turn — keep in the agent block, never render. */
+export function isTranscriptDuplicate(it: Item): boolean {
+  return it.type === "plan" || it.type === "file_change" || it.type === "ask_user";
+}
+
+export function isOutcomeTool(it: Item): boolean {
+  return isToolish(it) && isOutcomeToolName(toolName(it));
+}
+
+export function isProcessItem(it: Item): boolean {
+  if (it.type === "reasoning" || it.type === "subagent" || it.type === "context_injection") return true;
+  return isToolish(it) && !isOutcomeTool(it);
+}
+
 export function isAgentItem(it: Item): boolean {
   return (
     it.type === "assistant" ||
     it.type === "reasoning" ||
     it.type === "subagent" ||
     isToolish(it) ||
-    it.type === "context_injection"
+    it.type === "context_injection" ||
+    it.type === "plan" ||
+    it.type === "file_change" ||
+    it.type === "ask_user" ||
+    isSteer(it)
   );
+}
+
+export function pairTools(items: Item[]): ToolPair[] {
+  const order: string[] = [];
+  const map = new Map<string, ToolPair>();
+  for (const it of items) {
+    const id = String(it.payload?.id || (it.type === "context_injection" ? it.key : "") || it.key);
+    if (!map.has(id)) {
+      map.set(id, { key: id, extra: [] });
+      order.push(id);
+    }
+    const row = map.get(id)!;
+    if (it.type === "tool_call") row.call = it;
+    else if (it.type === "tool_result") row.result = it;
+    else row.extra.push(it);
+  }
+  return order.map((id) => map.get(id)!);
+}
+
+export function processGroupLive(items: Item[]): boolean {
+  const open = new Set<string>();
+  for (const it of items) {
+    const id = String(it.payload?.id || it.key);
+    if (it.type === "tool_call") open.add(id);
+    if (it.type === "tool_result") open.delete(id);
+  }
+  return open.size > 0;
+}
+
+export function processToolPairs(items: Item[]): ToolPair[] {
+  return pairTools(items).filter((p) => p.call || p.result);
+}
+
+export function processElapsedMs(items: Item[]): number {
+  return processToolPairs(items).reduce((sum, p) => sum + (p.result ? toolElapsedMs(p.result) : 0), 0);
+}
+
+export function processFailedCount(items: Item[]): number {
+  return processToolPairs(items).filter((p) => isToolFailed(p.result)).length;
 }
 
 function agentCopyText(items: Item[]): string {
@@ -33,21 +98,41 @@ function agentCopyText(items: Item[]): string {
 
 export function layoutAgentParts(items: Item[]): AgentPart[] {
   const parts: AgentPart[] = [];
-  let batch: Item[] = [];
-  const flush = () => {
-    if (!batch.length) return;
-    parts.push({ key: `tools:${batch[0].key}`, kind: "tools", items: batch });
-    batch = [];
+  let process: Item[] = [];
+  let artifacts: Item[] = [];
+  const flushProcess = () => {
+    if (!process.length) return;
+    parts.push({
+      key: `process:${process[0].key}`,
+      kind: "process",
+      items: process,
+      live: processGroupLive(process),
+    });
+    process = [];
+  };
+  const flushArtifacts = () => {
+    if (!artifacts.length) return;
+    parts.push({ key: `artifact:${artifacts[0].key}`, kind: "artifact", items: artifacts });
+    artifacts = [];
   };
   for (const it of items) {
-    if (isToolish(it) || (it.type === "context_injection" && batch.length > 0)) {
-      batch.push(it);
+    if (isTranscriptDuplicate(it)) continue;
+    if (isProcessItem(it)) {
+      flushArtifacts();
+      process.push(it);
       continue;
     }
-    flush();
+    if (isOutcomeTool(it)) {
+      flushProcess();
+      artifacts.push(it);
+      continue;
+    }
+    flushProcess();
+    flushArtifacts();
     parts.push({ key: it.key, kind: "item", item: it });
   }
-  flush();
+  flushProcess();
+  flushArtifacts();
   return parts;
 }
 

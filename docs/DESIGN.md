@@ -20,8 +20,8 @@ Padded app frame (`p-2`). Sidebar is a rounded card: brand + active hash, New ch
 
 ## Transcript and composer
 
-- User bubbles right; assistant prose left, max ~75ch.
-- Tools as compact disclosure rows. Streaming caret. Stick-to-bottom yields when the user scrolls up.
+- Transcript uses the main pane (gutters only). Composer stays a centered 48rem column. User bubbles right; assistant prose left, max ~75ch.
+- Process (tools, reasoning, injections) folds per model round: live shows the in-flight step, settled collapses to “N tools”. A turn is one letter — one copy for all assistant prose, process lines are not selectable. Outcomes stay open: assistant prose, patch/artifact cards, approvals. Streaming caret only while tokens arrive. Stick-to-bottom yields when the user scrolls up.
 - Enter sends. Shift+Enter newline. Running turns expose Steer next to Stop. Composer disabled with an inline reason until a workspace exists.
 - Empty state: three operator prompts + workspace CTA. No Sparkles headline.
 

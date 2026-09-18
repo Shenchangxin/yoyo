@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEvents, unwrapEvent } from "../src/lib/stream-fold";
 import { layoutRows } from "../src/lib/transcript-layout";
-import { toolDetail, toolName, isArtifactTool } from "../src/lib/tool-summary";
+import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import type { Item } from "../src/lib/protocol";
 
 function liveUser(text: string, extra?: Record<string, any>): Item {
@@ -155,4 +155,111 @@ test("tool detail prefers path over raw json", () => {
   expect(toolDetail(item)).toBe("src/main.go");
   expect(isArtifactTool("office_create")).toBe(true);
   expect(isArtifactTool("read_file")).toBe(false);
+});
+
+test("ERROR: content marks a tool result as failed", () => {
+  const ok = itemFromEvent({
+    type: "tool_result",
+    session_id: "s",
+    payload: { id: "c1", name: "read_file", content: "package main" },
+  });
+  const bad = itemFromEvent({
+    type: "tool_result",
+    session_id: "s",
+    payload: { id: "c2", name: "shell", content: "ERROR: exit 1" },
+  });
+  expect(isToolFailed(ok)).toBe(false);
+  expect(isToolFailed(bad)).toBe(true);
+});
+
+test("plan and file_change stay inside the agent turn", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "plan it" } },
+    { type: "assistant", session_id: "s", payload: { text: "drafting", id: "s:r1" } },
+    { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "p1", name: "update_plan", content: "1. look\n2. patch" } },
+    { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. look\n2. patch", id: "p1" } },
+    { type: "tool_call", session_id: "s", payload: { id: "a1", name: "apply_patch", arguments: "{}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "a1", name: "apply_patch", content: "*** Add File: README.md" } },
+    { type: "file_change", session_id: "s", payload: { id: "a1", name: "apply_patch", paths: ["README.md"] } },
+    { type: "assistant", session_id: "s", payload: { text: "done", id: "s:r2" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["item", "artifact", "item"]);
+  const artifacts = agent.parts[1];
+  expect(artifacts.kind).toBe("artifact");
+  if (artifacts.kind !== "artifact") return;
+  expect(artifacts.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["update_plan", "apply_patch"]);
+  expect(agent.parts.filter((p) => p.kind === "process")).toHaveLength(0);
+});
+
+test("ask_user does not split the agent turn", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "ask me" } },
+    { type: "assistant", session_id: "s", payload: { text: "one question", id: "s:r1" } },
+    { type: "ask_user", session_id: "s", payload: { question: "which file?" } },
+    { type: "assistant", session_id: "s", payload: { text: "thanks", id: "s:r2" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(2);
+});
+
+test("process tools batch separately from artifacts", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "look around" } },
+    { type: "tool_call", session_id: "s", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "c1", name: "read_file", content: "ok", elapsed_ms: 12 } },
+    { type: "tool_call", session_id: "s", payload: { id: "c2", name: "grep", arguments: "{\"query\":\"main\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "c2", name: "grep", content: "src/main.go" } },
+    { type: "tool_call", session_id: "s", payload: { id: "c3", name: "apply_patch", arguments: "{}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "c3", name: "apply_patch", content: "*** Update File: src/main.go" } },
+    { type: "assistant", session_id: "s", payload: { text: "patched", id: "s:r1" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
+  const process = agent.parts[0];
+  expect(process.kind).toBe("process");
+  if (process.kind !== "process") return;
+  expect(process.live).toBe(false);
+  expect(process.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["read_file", "grep"]);
+});
+
+test("unmatched tool call marks the process group live", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "read it" } },
+    { type: "tool_call", session_id: "s", payload: { id: "c1", name: "read_file", arguments: "{}" } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts).toHaveLength(1);
+  expect(agent.parts[0].kind).toBe("process");
+  if (agent.parts[0].kind !== "process") return;
+  expect(agent.parts[0].live).toBe(true);
+});
+
+test("steer stays inside the running agent turn", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "go" } },
+    { type: "assistant", session_id: "s", payload: { text: "working", id: "s:r1" } },
+    { type: "user", session_id: "s", source: "steer", payload: { text: "User steering (apply now): stop the shell" } },
+    { type: "tool_call", session_id: "s", payload: { id: "c1", name: "read_file", arguments: "{}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "c1", name: "read_file", content: "ok" } },
+    { type: "assistant", session_id: "s", payload: { text: "stopped", id: "s:r2" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
 });

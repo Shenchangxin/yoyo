@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -43,9 +44,11 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 	dst.Model = src.Model
 	dst.LoadedSkills = append([]string(nil), src.LoadedSkills...)
 	dst.PlanText = src.PlanText
+	dst.AuthMode = capability.ParseAuthMode(src.AuthMode)
 	if err := a.writeSession(dst); err != nil {
 		return dst, err
 	}
+	a.applySessionAuth(dst.ID, dst.AuthMode)
 	srcLog := filepath.Join(a.Home.Sessions(), src.ID+".jsonl")
 	dstLog := filepath.Join(a.Home.Sessions(), dst.ID+".jsonl")
 	if b, err := os.ReadFile(srcLog); err == nil {

@@ -249,13 +249,7 @@ func (s *Service) rebuildMenusNow() {
 }
 
 func showWindow(win application.Window) {
-	if win == nil {
-		return
-	}
-	if win.IsMinimised() {
-		win.UnMinimise()
-	}
-	win.Show().Focus()
+	Raise(win)
 }
 
 func sessionFromNote(id string, info map[string]any) string {

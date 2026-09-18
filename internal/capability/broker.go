@@ -46,6 +46,7 @@ type Broker struct {
 	mu      sync.Mutex
 	always  map[Level]bool
 	session map[string]map[Level]bool
+	strict  map[string]bool
 	ask     func(ctx context.Context, req Request) (Decision, error)
 	policy  AutoPolicy
 }
@@ -63,6 +64,7 @@ func NewBroker(policy AutoPolicy, ask func(ctx context.Context, req Request) (De
 	return &Broker{
 		always:  always,
 		session: map[string]map[Level]bool{},
+		strict:  map[string]bool{},
 		ask:     ask,
 		policy:  policy,
 	}
@@ -94,6 +96,30 @@ func (b *Broker) ClearSession(sessionID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.session, sessionID)
+	delete(b.strict, sessionID)
+}
+
+// ApplyAuthMode replaces this session's grant set. Ask skips the always-map
+// so even workspace reads/writes prompt. Identity levels stay ForceAsk.
+func (b *Broker) ApplyAuthMode(sessionID, mode string) {
+	if b == nil || sessionID == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.strict == nil {
+		b.strict = map[string]bool{}
+	}
+	if b.session == nil {
+		b.session = map[string]map[Level]bool{}
+	}
+	mode = ParseAuthMode(mode)
+	b.strict[sessionID] = mode == AuthAsk
+	next := map[Level]bool{}
+	for _, l := range DropSticky(AuthModeLevels(mode)) {
+		next[l] = true
+	}
+	b.session[sessionID] = next
 }
 
 func (b *Broker) AllowAlways(l Level) {
@@ -116,7 +142,8 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 		}
 	}
 	b.mu.Lock()
-	if b.always[req.Level] {
+	strict := b.strict[req.SessionID]
+	if !strict && b.always[req.Level] {
 		b.mu.Unlock()
 		return nil
 	}

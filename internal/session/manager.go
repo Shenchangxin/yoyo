@@ -157,6 +157,22 @@ func (m *Manager) SetCaps(id string, caps []string) {
 	m.persist(id)
 }
 
+func (m *Manager) SetAuthMode(id, mode string, caps []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	st.AuthMode = mode
+	st.SessionCaps = dropHighRisk(caps)
+	m.runs[id] = st
+	m.persist(id)
+}
+
+func (m *Manager) AuthMode(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.state(id).AuthMode
+}
+
 func (m *Manager) Caps(id string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()

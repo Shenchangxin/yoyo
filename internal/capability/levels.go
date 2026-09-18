@@ -55,3 +55,51 @@ func ParseGateMode(s string) string {
 		return GateManual
 	}
 }
+
+// AuthMode is the per-session approval posture. Settings GateMode remains
+// the app ceiling when an action actually reaches the approver.
+const (
+	AuthDefault  = "default"
+	AuthAutoEdit = "auto_edit"
+	AuthFull     = "full"
+	AuthAsk      = "ask"
+)
+
+func ParseAuthMode(s string) string {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), "-", "_")) {
+	case AuthAsk, "ask_every_time", "strict":
+		return AuthAsk
+	case AuthAutoEdit, "autoedit":
+		return AuthAutoEdit
+	case AuthFull, "full_access", "yolo":
+		return AuthFull
+	default:
+		return AuthDefault
+	}
+}
+
+// AuthModeLevels are session grants applied for a mode. Identity levels are
+// never included; Default and Ask grant nothing extra (Default relies on the
+// broker always-map, Ask skips that map).
+func AuthModeLevels(mode string) []Level {
+	switch ParseAuthMode(mode) {
+	case AuthAutoEdit:
+		return []Level{WriteWorkspace, SpecifiedPath, MemoryWrite}
+	case AuthFull:
+		return []Level{
+			ReadWorkspace, WriteWorkspace, SpecifiedPath, MemoryWrite,
+			Shell, Network, Browser, Schedule, ReadConnector, WriteConnector,
+		}
+	default:
+		return nil
+	}
+}
+
+func AuthModeCapStrings(mode string) []string {
+	lv := DropSticky(AuthModeLevels(mode))
+	out := make([]string, 0, len(lv))
+	for _, l := range lv {
+		out = append(out, string(l))
+	}
+	return out
+}

@@ -17,7 +17,9 @@ export default defineConfig({
     "import.meta.env.VITE_E2E": JSON.stringify(process.env.VITE_E2E || ""),
   },
   server: {
-    host: "127.0.0.1",
+    // Wails loads http://localhost:9245. Binding only 127.0.0.1 leaves ::1
+    // dead on Windows, so WebView2 connects and paints a blank window.
+    host: true,
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
