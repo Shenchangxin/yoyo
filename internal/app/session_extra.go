@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -41,8 +42,10 @@ func (a *App) DeleteSession(id string) error {
 		a.Threads.Forget(id)
 	}
 	a.mu.Lock()
-	if cancel := a.runs[id]; cancel != nil {
-		cancel()
+	if slot := a.runs[id]; slot != nil {
+		if slot.cancel != nil {
+			slot.cancel()
+		}
 		delete(a.runs, id)
 	}
 	a.mu.Unlock()
@@ -51,8 +54,12 @@ func (a *App) DeleteSession(id string) error {
 	delete(a.steers, id)
 	a.queueMu.Unlock()
 	ws := ""
+	worktree := ""
+	origin := ""
 	if m, err := a.GetSession(id); err == nil {
 		ws = m.Workspace
+		worktree = m.Worktree
+		origin = m.ProjectRoot()
 	}
 	root := a.Home.Sessions()
 	var first error
@@ -68,6 +75,9 @@ func (a *App) DeleteSession(id string) error {
 		}
 	}
 	runtime.RemoveSessionContext(a.Home.Root, ws, id)
+	if worktree != "" {
+		runtime.RemoveWorktree(origin, worktree)
+	}
 	return first
 }
 
@@ -124,17 +134,30 @@ func (a *App) SetSessionWorkspace(id, workspace string) (SessionMeta, error) {
 	if a.Running(id) {
 		return m, fmt.Errorf("cannot change workspace while a turn is running")
 	}
-	if m.Workspace == workspace {
+	if m.ProjectRoot() == workspace && !m.Isolate {
 		return m, nil
 	}
+	oldTree := m.Worktree
+	oldOrigin := m.ProjectRoot()
 	m.Workspace = workspace
+	m.OriginWorkspace = workspace
+	if m.Isolate {
+		m.Worktree = ""
+		if err := a.writeSession(m); err != nil {
+			return m, err
+		}
+		if oldTree != "" && oldTree != workspace {
+			runtime.RemoveWorktree(oldOrigin, oldTree)
+		}
+		return a.EnsureSessionWorktree(id)
+	}
 	if err := a.writeSession(m); err != nil {
 		return m, err
 	}
 	return m, nil
 }
 
-func (a *App) ListSkills(workspace string) []map[string]string {
+func (a *App) collectSkills(workspace string) []artifact.Skill {
 	ws := strings.TrimSpace(workspace)
 	if !WorkspaceReady(ws) {
 		ws = a.Workspace()
@@ -143,11 +166,42 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 	if _, _, _, cas, _, _, err := a.Materials(a.ActiveHash()); err == nil {
 		sk = runtime.MergeSkills(cas, sk)
 	}
+	return sk
+}
+
+func (a *App) ListSkills(workspace string) []map[string]string {
+	sk := a.collectSkills(workspace)
 	out := make([]map[string]string, 0, len(sk))
 	for _, item := range sk {
-		out = append(out, map[string]string{"name": item.Name, "description": item.Description})
+		body := item.Body
+		if len(body) > 400 {
+			body = body[:400]
+		}
+		out = append(out, map[string]string{
+			"name":        item.Name,
+			"description": item.Description,
+			"dir":         item.Dir,
+			"body":        body,
+			"source":      skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
+		})
 	}
 	return out
+}
+
+func (a *App) GetSkill(workspace, name string) map[string]string {
+	name = strings.TrimSpace(name)
+	for _, item := range a.collectSkills(workspace) {
+		if item.Name == name {
+			return map[string]string{
+				"name":        item.Name,
+				"description": item.Description,
+				"dir":         item.Dir,
+				"body":        item.Body,
+				"source":      skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
+			}
+		}
+	}
+	return nil
 }
 
 func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, error) {
@@ -256,7 +310,7 @@ func (a *App) CompactSession(id string) (string, error) {
 		return "", err
 	}
 	msgs := runtime.MessagesFromEvents(evs)
-	spill := runtime.BindSpill(a.Home.Root, meta.Workspace, id)
+	spill := runtime.BindSpill(a.Home.Root, meta.ToolRoot(), id)
 	model := a.Config.Model
 	if meta.Model != "" {
 		model = meta.Model
@@ -264,7 +318,7 @@ func (a *App) CompactSession(id string) (string, error) {
 	window := runtime.ModelContextWindow(model)
 	client, _ := a.Client()
 	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window, frags)
-	runtime.WriteDiscoverIndex(meta.Workspace, id, spill)
+	runtime.WriteDiscoverIndex(meta.ToolRoot(), id, spill)
 	if a.Hub != nil {
 		a.Hub.Publish(trace.Event{
 			Type:      trace.TypeCompact,

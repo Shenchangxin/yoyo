@@ -1,6 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
-import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -104,16 +104,26 @@ export function parseAuthMode(v: any): AuthMode {
 }
 
 export function threadOf(v: any): Thread {
+  const workspace = str(pick(v, "origin_workspace", "OriginWorkspace", "workspace", "Workspace"));
+  const worktree = str(pick(v, "worktree", "Worktree"));
+  const isolate = bool(pick(v, "isolate", "Isolate"));
+  const toolRoot = isolate && worktree ? worktree : str(pick(v, "workspace", "Workspace"), workspace);
   return {
     id: str(pick(v, "id", "ID")),
     title: str(pick(v, "title", "Title"), "thread"),
-    workspace: str(pick(v, "workspace", "Workspace")),
+    workspace,
+    toolRoot,
+    worktree,
+    originWorkspace: workspace,
+    isolate,
     harness: str(pick(v, "harness", "Harness")),
     createdAt: str(pick(v, "created_at", "CreatedAt")),
     archived: bool(pick(v, "archived", "Archived")),
     pinned: bool(pick(v, "pinned", "Pinned")),
     model: str(pick(v, "model", "Model")),
     authMode: parseAuthMode(pick(v, "auth_mode", "AuthMode", "authMode")),
+    pinnedSkills: asArray(pick(v, "pinned_skills", "PinnedSkills")).map(String).filter(Boolean),
+    loadedSkills: asArray(pick(v, "loaded_skills", "LoadedSkills")).map(String).filter(Boolean),
   };
 }
 
@@ -125,6 +135,7 @@ export function healthOf(v: any): Health {
     model: str(pick(v, "model")),
     version: str(pick(v, "version"), "0.1.0"),
     isolated: bool(pick(v, "isolated")),
+    isolationKind: str(pick(v, "isolation_kind", "isolationKind") || pick(pick(pick(v, "isolation"), "os") || {}, "kind", "Kind")),
     budgetUsd: num(pick(v, "budget_usd", "budgetUsd")),
     usageUsd: num(pick(usage, "usd")),
     workspaceReady: bool(pick(v, "workspace_ready", "workspaceReady")),
@@ -427,6 +438,16 @@ export async function runningIDs(): Promise<string[]> {
   return asArray(pick(r, "ids", "IDs") ?? r).map(String).filter(Boolean);
 }
 
+export async function runningStatus(): Promise<RunStatus[]> {
+  const s = await wailsService();
+  const raw = s?.RunningStatus ? await s.RunningStatus() : s ? [] : pick(await http<any>("/api/running"), "runs", "Runs") ?? [];
+  return asArray(raw).map((v) => ({
+    id: str(pick(v, "id", "ID")),
+    startedAt: str(pick(v, "started_at", "StartedAt")),
+    lastTool: str(pick(v, "last_tool", "LastTool")),
+  })).filter((x) => x.id);
+}
+
 export async function contextUsage(sessionID: string): Promise<ContextUsage> {
   const s = await wailsService();
   const raw = s?.ContextUsage ? await s.ContextUsage(sessionID) : await http(`/api/sessions/${sessionID}/context`);
@@ -676,6 +697,22 @@ export async function setSessionWorkspace(id: string, workspace: string): Promis
   return threadOf(raw);
 }
 
+export async function setSessionIsolate(id: string, isolate: boolean): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionIsolate
+    ? await s.SetSessionIsolate(id, isolate)
+    : await http(`/api/sessions/${id}/isolate`, { method: "POST", body: JSON.stringify({ isolate }) });
+  return threadOf(raw);
+}
+
+export async function setSessionPinnedSkills(id: string, names: string[]): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionPinnedSkills
+    ? await s.SetSessionPinnedSkills(id, names)
+    : await http(`/api/sessions/${id}/skills`, { method: "POST", body: JSON.stringify({ names }) });
+  return threadOf(raw);
+}
+
 export async function compactSession(id: string): Promise<string> {
   const s = await wailsService();
   if (s?.CompactSession) return String(await s.CompactSession(id) || "");
@@ -704,7 +741,103 @@ export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
     : s?.ListSkills
       ? await s.ListSkills()
       : await http(`/api/skills${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`);
-  return asArray(raw).map((v) => ({ name: str(pick(v, "name", "Name")), description: str(pick(v, "description", "Description")) })).filter((x) => x.name);
+  return asArray(raw).map((v) => ({
+    name: str(pick(v, "name", "Name")),
+    description: str(pick(v, "description", "Description")),
+    body: str(pick(v, "body", "Body")),
+    dir: str(pick(v, "dir", "Dir")),
+    source: str(pick(v, "source", "Source")),
+  })).filter((x) => x.name);
+}
+
+export async function getSkill(workspace: string, name: string): Promise<SkillInfo | null> {
+  const s = await wailsService();
+  const raw = s?.GetSkill
+    ? await s.GetSkill(workspace || "", name)
+    : await http(`/api/skills?workspace=${encodeURIComponent(workspace || "")}&name=${encodeURIComponent(name)}`);
+  const info = {
+    name: str(pick(raw, "name", "Name")),
+    description: str(pick(raw, "description", "Description")),
+    body: str(pick(raw, "body", "Body")),
+    dir: str(pick(raw, "dir", "Dir")),
+    source: str(pick(raw, "source", "Source")),
+  };
+  return info.name ? info : null;
+}
+
+export type SkillMarketItem = {
+  slug: string;
+  name: string;
+  purpose: string;
+  prerequisites: string;
+  category: string;
+  featured: boolean;
+};
+
+export type SkillMarketCatalog = {
+  source: string;
+  fetchedAt: string;
+  items: SkillMarketItem[];
+};
+
+export async function skillMarket(refresh = false): Promise<SkillMarketCatalog> {
+  const s = await wailsService();
+  const raw = s?.SkillMarket
+    ? await s.SkillMarket(refresh)
+    : await http(`/api/skills/market${refresh ? "?refresh=1" : ""}`);
+  return {
+    source: str(pick(raw, "source", "Source"), "infometa/workbuddyskills"),
+    fetchedAt: str(pick(raw, "fetched_at", "FetchedAt")),
+    items: asArray(pick(raw, "items", "Items")).map((v) => ({
+      slug: str(pick(v, "slug", "Slug")),
+      name: str(pick(v, "name", "Name")),
+      purpose: str(pick(v, "purpose", "Purpose")),
+      prerequisites: str(pick(v, "prerequisites", "Prerequisites")),
+      category: str(pick(v, "category", "Category")),
+      featured: bool(pick(v, "featured", "Featured")),
+    })).filter((x) => x.slug),
+  };
+}
+
+export async function installMarketSkill(slug: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.InstallMarketSkill) {
+    await s.InstallMarketSkill(slug);
+    return;
+  }
+  await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug }) });
+}
+
+export async function uninstallMarketSkill(slug: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.UninstallMarketSkill) {
+    await s.UninstallMarketSkill(slug);
+    return;
+  }
+  await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug, op: "uninstall" }) });
+}
+
+export async function openPath(path: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.OpenPath) return s.OpenPath(path);
+  await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "path" }) });
+}
+
+export async function openInEditor(path: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.OpenInEditor) return s.OpenInEditor(path);
+  await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "editor" }) });
+}
+
+export async function openWorkspaceTerminal(dir: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.OpenWorkspaceTerminal) return s.OpenWorkspaceTerminal(dir);
+  await http("/api/open", { method: "POST", body: JSON.stringify({ path: dir, kind: "terminal" }) });
+}
+
+export async function popOutThread(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.PopOutThread) return s.PopOutThread(id);
 }
 
 export async function pickFolder(): Promise<string> {
@@ -741,6 +874,12 @@ export async function inboxRead(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.InboxMarkRead) return s.InboxMarkRead(id);
   await http("/api/inbox", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function inboxDismiss(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.InboxDismiss) { await s.InboxDismiss(id); return; }
+  await http("/api/inbox", { method: "POST", body: JSON.stringify({ id, op: "dismiss" }) });
 }
 
 export async function isolationReport(): Promise<any> {

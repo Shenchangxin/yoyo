@@ -73,7 +73,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
               onClick={() => pickProvider(p.id)}
               className={cn(
                 "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
-                active ? "border-accent/50 bg-accent/8" : "border-border/80 bg-card hover:bg-lift/60",
+                active ? "border-foreground/30 bg-lift" : "border-border/80 bg-card hover:bg-lift/60",
               )}
             >
               <ProviderMark id={p.id} />
@@ -122,7 +122,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                   <li key={m.id} className={cn(i < catalog.length - 1 && "border-b border-border/70")}>
                     <button
                       type="button"
-                      className={cn("flex w-full items-start justify-between gap-3 px-5 py-3 text-left hover:bg-lift/70", active && "bg-accent/8")}
+                      className={cn("flex w-full items-start justify-between gap-3 px-5 py-3 text-left hover:bg-lift/70", active && "bg-lift")}
                       onClick={() => pickModel(m.id)}
                     >
                       <span className="min-w-0">

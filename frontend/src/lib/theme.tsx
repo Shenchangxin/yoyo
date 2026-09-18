@@ -42,7 +42,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     apply(resolved);
     try { localStorage.setItem(KEY, pref); } catch { /* ignore */ }
     import("@wailsio/runtime").then(({ Window }) => {
-      const rgb = resolved === "dark" ? [20, 20, 20] : [242, 242, 239];
+      const rgb = resolved === "dark" ? [15, 16, 17] : [243, 243, 240];
       return Window.SetBackgroundColour(rgb[0], rgb[1], rgb[2], 255);
     }).catch(() => {});
   }, [pref, resolved]);

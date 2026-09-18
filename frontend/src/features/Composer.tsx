@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { ArrowUp, AtSign, BookOpen, Boxes, Camera, Check, ChevronDown, FileText, Folder, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, BookOpen, Boxes, Camera, Check, ChevronDown, FileText, Folder, GitBranch, Paperclip, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -52,8 +52,10 @@ export function Composer(props: {
   onAuthMode?: (mode: AuthMode) => void;
   workspace?: string;
   workspaces?: string[];
+  isolate?: boolean;
   onWorkspace?: (path: string) => void;
   onBrowseWorkspace?: () => void;
+  onIsolate?: (isolate: boolean) => void;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -265,7 +267,7 @@ export function Composer(props: {
           className={cn(
             "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
             popupWelded ? "rounded-b-[var(--radius-composer)] rounded-t-none" : "rounded-[var(--radius-composer)]",
-            focused ? "border-accent/20" : "border-border",
+            focused ? "border-foreground/20" : "border-border",
             props.disabled && "opacity-55",
           )}
           onDragOver={(e) => {
@@ -309,7 +311,7 @@ export function Composer(props: {
                     type="button"
                     data-testid="mention-chip"
                     aria-label={c.token}
-                    className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-accent/12 px-1.5 py-0.5 text-[11px] text-accent hover:bg-accent/20"
+                    className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-[11px] text-foreground hover:bg-lift/80"
                     onClick={() => setChips((prev) => prev.filter((_, j) => j !== i))}
                   >
                     <MentionGlyph kind={c.kind} />
@@ -480,7 +482,7 @@ export function Composer(props: {
                   className={cn(
                     ghostSelect,
                     "inline-flex items-center",
-                    plan && "bg-accent/10 text-accent hover:text-accent",
+                    plan && "bg-lift text-foreground hover:text-foreground",
                   )}
                   aria-label={copy.composer.mode}
                   disabled={props.disabled}
@@ -498,7 +500,7 @@ export function Composer(props: {
                     <span>{copy.composer.agent}</span>
                     <span className="text-[11px] text-muted">{copy.composer.agentHint}</span>
                   </span>
-                  {!plan ? <Check className="mt-0.5 size-3.5 shrink-0 text-accent" /> : null}
+                  {!plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="items-start"
@@ -508,7 +510,7 @@ export function Composer(props: {
                     <span>{copy.composer.plan}</span>
                     <span className="text-[11px] text-muted">{copy.composer.planHint}</span>
                   </span>
-                  {plan ? <Check className="mt-0.5 size-3.5 shrink-0 text-accent" /> : null}
+                  {plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -551,7 +553,7 @@ export function Composer(props: {
                         <span className="truncate">{displayWorkspace(p, p)}</span>
                         <span className="truncate text-[11px] text-muted">{p}</span>
                       </span>
-                      {p === props.workspace ? <Check className="size-3.5 shrink-0 text-accent" /> : null}
+                      {p === props.workspace ? <Check className="size-3.5 shrink-0" /> : null}
                     </DropdownMenuItem>
                   ))}
                   {(props.workspaces?.length && props.onBrowseWorkspace) ? <DropdownMenuSeparator /> : null}
@@ -562,6 +564,21 @@ export function Composer(props: {
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : null}
+            {props.onIsolate ? (
+              <Tooltip content={props.isolate ? copy.composer.isolateOn : copy.composer.isolateHint}>
+                <button
+                  type="button"
+                  className={cn(ghostSelect, "inline-flex items-center", props.isolate && "bg-lift text-foreground")}
+                  aria-pressed={!!props.isolate}
+                  aria-label={copy.composer.isolate}
+                  disabled={props.disabled || props.running}
+                  onClick={() => props.onIsolate?.(!props.isolate)}
+                >
+                  <GitBranch className="size-3 shrink-0 opacity-70" />
+                  <span className="truncate">{copy.composer.isolate}</span>
+                </button>
+              </Tooltip>
             ) : null}
             <span className="ml-auto" />
             {props.running ? (
@@ -593,9 +610,9 @@ export function Composer(props: {
             <button
               type="button"
               className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full transition-[background-color,color,box-shadow] duration-200",
+                "grid size-7 shrink-0 place-items-center rounded-full transition-[background-color,color] duration-150",
                 props.running || canSend
-                  ? "bg-accent text-accent-fg shadow-[0_6px_18px_-6px_color-mix(in_srgb,var(--accent)_70%,transparent)]"
+                  ? "bg-foreground text-background"
                   : "bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] text-muted",
               )}
               disabled={props.running ? false : !canSend}
@@ -689,7 +706,7 @@ function CommandWeld(props: {
       aria-label={props.label}
       className={cn(
         "absolute -inset-x-px bottom-[calc(100%-1px)] z-10 max-h-52 overflow-auto rounded-t-[var(--radius-composer)] border border-b-0 bg-input-bar",
-        props.focused ? "border-accent/20" : "border-border",
+        props.focused ? "border-foreground/20" : "border-border",
       )}
     >
       {props.items.length ? props.items.slice(0, 12).map((m, i) => (

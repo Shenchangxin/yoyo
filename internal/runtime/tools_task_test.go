@@ -132,3 +132,28 @@ func TestIsolateWorkspaceCopy(t *testing.T) {
 		t.Fatalf("%q", b)
 	}
 }
+
+func TestPersistWorktreeCopy(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "wt")
+	if err := PersistWorktree(src, dest); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "keep.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "ok" {
+		t.Fatalf("%q", b)
+	}
+	if err := PersistWorktree(src, dest); err != nil {
+		t.Fatal(err)
+	}
+	RemoveWorktree(src, dest)
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("worktree still present: %v", err)
+	}
+}

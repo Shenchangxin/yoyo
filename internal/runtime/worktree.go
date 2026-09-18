@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -32,6 +33,46 @@ func IsolateWorkspace(src string) (string, func(), error) {
 		return "", nil, err
 	}
 	return dst, cleanup, nil
+}
+
+// PersistWorktree creates a durable isolate at dest (git worktree or copy).
+// Unlike IsolateWorkspace, dest is operator-owned and is not cleaned up here.
+func PersistWorktree(src, dest string) error {
+	src = filepath.Clean(src)
+	dest = filepath.Clean(dest)
+	if src == "" || dest == "" || src == dest {
+		return fmt.Errorf("invalid worktree paths")
+	}
+	if st, err := os.Stat(dest); err == nil && st.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(dest)
+	if gitWorktree(src, dest) == nil {
+		return nil
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	if err := copyTree(src, dest); err != nil {
+		_ = os.RemoveAll(dest)
+		return err
+	}
+	return nil
+}
+
+// RemoveWorktree drops a persist isolate. src is the origin git repo when known.
+func RemoveWorktree(src, dest string) {
+	dest = filepath.Clean(dest)
+	if dest == "" || dest == "." || dest == string(filepath.Separator) {
+		return
+	}
+	if src != "" {
+		_ = exec.Command("git", "-C", src, "worktree", "remove", "--force", dest).Run()
+	}
+	_ = os.RemoveAll(dest)
 }
 
 func gitWorktree(src, dst string) error {

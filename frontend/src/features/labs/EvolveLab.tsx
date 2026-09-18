@@ -1,5 +1,6 @@
 import { asArray, bool, num, pick, str } from "../../lib/normalize";
 import { useCopy } from "../../lib/i18n";
+import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LabCard, LabChip, LabFrame, LabStat, LabTable } from "./LabFrame";
@@ -21,6 +22,14 @@ export function EvolveLab(props: {
   const copy = useCopy();
   const trials = asArray(pick(props.evolve, "tried", "Tried"));
   const bullets = asArray(pick(props.playbook, "bullets", "Bullets"));
+  const deltas = trials.flatMap((t: any) => {
+    if (!bool(pick(t, "accepted", "Accepted"))) return [];
+    const p = pick(t, "proposal", "Proposal") || {};
+    const b = pick(p, "playbook_bullet", "PlaybookBullet");
+    const text = str(pick(b, "text", "Text") || pick(p, "expected", "Expected"));
+    if (!text) return [];
+    return [{ id: str(pick(p, "id", "ID")), text }];
+  });
   return (
     <LabFrame>
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -45,6 +54,14 @@ export function EvolveLab(props: {
           <LabStat label={copy.labs.activeMoved} value={bool(pick(props.evolve, "active_moved", "ActiveMoved")) ? copy.rsi.active : copy.rsi.canary} />
         </div>
       ) : <p className="mb-4 text-[13px] text-muted">{copy.labs.noCycle}</p>}
+      {deltas.length ? (
+        <div className="mb-5 overflow-hidden rounded-[10px] border border-border/80 bg-card">
+          <div className="border-b border-border/70 px-4 py-2 text-[12px] font-medium">{copy.labs.thisCycle} · {copy.labs.playbookDelta}</div>
+          {deltas.map((d, i) => (
+            <div key={d.id || i} className={cn("px-4 py-2.5 text-[13px]", i > 0 && "border-t border-border/70")}>{d.text}</div>
+          ))}
+        </div>
+      ) : props.evolve ? <p className="mb-5 text-[12.5px] text-muted">{copy.labs.noDelta}</p> : null}
       {trials.length ? (
         <div className="mb-6">
           <LabTable>
@@ -88,15 +105,29 @@ export function EvolveLab(props: {
           </LabCard>
         ))}
       </div>
-      <h3 className="mb-3 text-[13px] font-medium">{copy.labs.archive}</h3>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {props.archive.map((n: any) => (
-          <LabCard className="p-3" key={str(pick(n, "id", "ID"))}>
-            <div className="font-mono text-[11px]">{slice(pick(n, "id", "ID"))}</div>
-            <div className="mt-1 text-[11px] text-muted">{str(pick(n, "proposal_id", "ProposalID", "note", "Note"))}</div>
-            <div className="mt-1 text-[11px]">{bool(pick(n, "accepted", "Accepted")) ? copy.labs.accepted : copy.labs.rejected}</div>
-          </LabCard>
-        ))}
+      <h3 className="mb-3 text-[13px] font-medium">{copy.labs.timeline}</h3>
+      <div className="relative mb-2">
+        {props.archive.length === 0 ? (
+          <p className="text-[13px] text-muted">{copy.labs.noCycle}</p>
+        ) : (
+          <div className="overflow-hidden rounded-[10px] border border-border/80 bg-card">
+            {props.archive.map((n: any, i: number) => (
+              <div key={str(pick(n, "id", "ID"), String(i))} className={cn("flex gap-3 px-4 py-3", i > 0 && "border-t border-border/70")}>
+                <div className="mt-1 size-1.5 shrink-0 rounded-full bg-foreground/70" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[12px]">{slice(pick(n, "id", "ID"))}</span>
+                    <span className="text-[11px] text-muted">{bool(pick(n, "accepted", "Accepted")) ? copy.labs.accepted : copy.labs.rejected}</span>
+                  </div>
+                  <div className="mt-0.5 text-[12px] text-muted">
+                    {str(pick(n, "proposal_id", "ProposalID", "note", "Note")) || copy.labs.parent}
+                    {str(pick(n, "parent", "Parent")) ? ` · ${slice(pick(n, "parent", "Parent"))}` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </LabFrame>
   );

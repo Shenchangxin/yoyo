@@ -38,6 +38,12 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
+type runSlot struct {
+	cancel   context.CancelFunc
+	started  time.Time
+	lastTool string
+}
+
 type MCPServerConfig struct {
 	Name     string   `yaml:"name" json:"name"`
 	Command  string   `yaml:"command" json:"command"`
@@ -94,7 +100,7 @@ type App struct {
 	wasmPub      ed25519.PublicKey
 
 	mu   sync.Mutex
-	runs map[string]context.CancelFunc
+	runs map[string]*runSlot
 
 	shapeMu   sync.Mutex
 	lastShape map[string]runtime.ShapeReport
@@ -192,7 +198,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Archive:      arch,
 		Config:       cfg,
 		BundledEvals: bundledEvals,
-		runs:         map[string]context.CancelFunc{},
+		runs:         map[string]*runSlot{},
 		lastShape:    map[string]runtime.ShapeReport{},
 		askAns:       map[string]string{},
 	}
@@ -347,10 +353,10 @@ func (a *App) Interrupt(sessionID string) error {
 		a.Threads.Interrupt(sessionID)
 	}
 	a.mu.Lock()
-	cancel := a.runs[sessionID]
+	slot := a.runs[sessionID]
 	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if slot != nil && slot.cancel != nil {
+		slot.cancel()
 	}
 	return nil
 }
@@ -403,6 +409,7 @@ func (a *App) Health() map[string]any {
 		"budget_usd":      a.Config.MaxBudgetUSD,
 		"update":          update.Current(""),
 		"isolated":        isolated(),
+		"isolation_kind":  isolationKind(),
 		"models":          a.Config.Models,
 		"workspace_ready": WorkspaceReady(a.Config.Workspace),
 		"vault":           a.Vault.Status(),

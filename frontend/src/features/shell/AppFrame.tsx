@@ -37,7 +37,7 @@ export function SidebarCard({ children, className }: { children: ReactNode; clas
   return (
     <div
       className={cn(
-        "no-drag flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-sidebar",
+        "surface-inset no-drag flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-border bg-sidebar",
         className,
       )}
     >

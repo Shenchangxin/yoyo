@@ -74,6 +74,9 @@ export function CommandPalette(props: {
                 <Command.Item value={`${copy.palette.openHarness} harness overview rsi`} onSelect={() => { props.onOpenHarness(); props.onClose(); }}>
                   {copy.palette.openHarness}
                 </Command.Item>
+                <Command.Item value={`${copy.palette.openSkills} skills market catalog`} onSelect={() => { useUI.getState().openSkills(); props.onClose(); }}>
+                  {copy.palette.openSkills}
+                </Command.Item>
                 <Command.Item value={`${copy.rsi.overview} overview`} onSelect={() => { useUI.getState().openHarness("overview"); props.onClose(); }}>
                   {copy.rsi.overview}
                 </Command.Item>

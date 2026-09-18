@@ -51,7 +51,7 @@ export function SelectItem({ className, children, ...props }: ComponentProps<typ
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator className="absolute right-2">
-        <Check className="size-3.5 text-accent" />
+        <Check className="size-3.5" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   );

@@ -1,4 +1,5 @@
 import type { Item } from "./protocol";
+import { looksLikeHTML, looksLikePDF } from "./html-preview";
 
 export function parseMaybeJSON(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -66,12 +67,18 @@ export function isArtifactTool(name: string): boolean {
   return name === "apply_patch" || name === "cite_sources" || name.startsWith("office_");
 }
 
+export function isRichResult(name: string, body: string, path = ""): boolean {
+  if (looksLikeHTML(body) || looksLikePDF(path)) return true;
+  const n = name.toLowerCase();
+  return n.includes("mcp") && looksLikeHTML(body);
+}
+
 export function isPlanTool(name: string): boolean {
   return name === "update_plan";
 }
 
-export function isOutcomeToolName(name: string): boolean {
-  return isPlanTool(name) || isArtifactTool(name);
+export function isOutcomeToolName(name: string, body = "", path = ""): boolean {
+  return isPlanTool(name) || isArtifactTool(name) || isRichResult(name, body, path);
 }
 
 /** Match the Go emit: failures land in content as `ERROR:…`, not always `ok:false`. */

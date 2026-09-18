@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { HarnessTab, Lab, Notice, SettingsTab, Surface } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 
-export type InspTab = "diff" | "files" | "trace" | "queue";
+export type InspTab = "diff" | "files" | "trace" | "queue" | "memory";
 export type DiffMode = "unified" | "split";
 
 type UIState = {
@@ -31,6 +31,8 @@ type UIState = {
   requestRename: () => void;
   openSettings: (tab?: SettingsTab, section?: string) => void;
   closeSettings: () => void;
+  openSkills: () => void;
+  closeSkills: () => void;
   setSettingsTab: (tab: SettingsTab) => void;
   setInspector: (v: boolean | ((p: boolean) => boolean)) => void;
   setChatDock: (v: boolean | ((p: boolean) => boolean)) => void;
@@ -141,6 +143,8 @@ export const useUI = create<UIState>((set) => ({
       settingsNav: Date.now(),
     })),
   closeSettings: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
+  openSkills: () => set({ surface: "skills" }),
+  closeSkills: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
   setChatDock: (v) =>

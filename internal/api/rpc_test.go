@@ -63,6 +63,14 @@ func TestRPCThreadLifecycle(t *testing.T) {
 	if pin.Error != nil {
 		t.Fatal(pin.Error)
 	}
+	iso := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 4, Method: "thread.isolate.set", Params: jsonRaw(`{"session":"` + m.ID + `","isolate":true}`)})
+	if iso.Error != nil {
+		t.Fatal(iso.Error)
+	}
+	im, _ := iso.Result.(app.SessionMeta)
+	if !im.Isolate || im.Worktree == "" {
+		t.Fatalf("isolate %+v", iso.Result)
+	}
 	del := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "thread.delete", Params: jsonRaw(`{"session":"` + m.ID + `"}`)})
 	if del.Error != nil {
 		t.Fatal(del.Error)

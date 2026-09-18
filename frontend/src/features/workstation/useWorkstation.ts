@@ -11,9 +11,10 @@ import { useUI } from "../../lib/store";
 import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { useTheme } from "../../lib/theme";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
+import { readPopoutId } from "../../lib/popout";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
 
-const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, budgetUsd: 0, usageUsd: 0, workspaceReady: false };
+const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
   provider: "openai",
   model: "",
@@ -75,7 +76,7 @@ function localUser(sessionId: string, text: string): Item {
 function readInspTab(id: string) {
   try {
     const v = localStorage.getItem(`yoyo-insp-${id}`);
-    if (v === "diff" || v === "files" || v === "trace" || v === "queue") return v;
+    if (v === "diff" || v === "files" || v === "trace" || v === "queue" || v === "memory") return v;
   } catch {
     /* ignore */
   }
@@ -93,6 +94,8 @@ export function useWorkstation() {
   const openHarness = useUI((s) => s.openHarness);
   const openSettings = useUI((s) => s.openSettings);
   const closeSettings = useUI((s) => s.closeSettings);
+  const openSkills = useUI((s) => s.openSkills);
+  const closeSkills = useUI((s) => s.closeSkills);
   const inspector = useUI((s) => s.inspector);
   const setInspector = useUI((s) => s.setInspector);
   const chatDock = useUI((s) => s.chatDock);
@@ -125,6 +128,7 @@ export function useWorkstation() {
   const [queued, setQueued] = useState(0);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
+  const [runStatus, setRunStatus] = useState<RunStatus[]>([]);
   const [ctx, setCtx] = useState<ContextUsage>(emptyCtx);
   const [trace, setTrace] = useState<SessionTrace | null>(null);
   const [err, setErr] = useState("");
@@ -208,8 +212,9 @@ export function useWorkstation() {
 
   const syncRunning = useCallback(async () => {
     try {
-      const ids = await api.runningIDs();
+      const [ids, status] = await Promise.all([api.runningIDs(), api.runningStatus().catch(() => [] as RunStatus[])]);
       setRunning((prev) => runningMap(ids, prev));
+      setRunStatus(status);
     } catch {
       /* ignore */
     }
@@ -230,6 +235,8 @@ export function useWorkstation() {
       setHarness(hs);
       setPlugins(pl);
       setActive((cur) => {
+        const pop = readPopoutId();
+        if (pop) return list.find((t) => t.id === pop) || cur || list[0] || null;
         if (cur && list.some((t) => t.id === cur.id)) return list.find((t) => t.id === cur.id) || cur;
         return list[0] || null;
       });
@@ -257,9 +264,14 @@ export function useWorkstation() {
   useEffect(() => subscribeSessions(refresh), [refresh]);
   useEffect(() => {
     if (!booted) return;
-    const ws = active?.workspace || savedCfg.workspace;
-    api.listSkills(ws).then(setSkills).catch(() => {});
+    const path = active?.workspace || savedCfg.workspace;
+    api.listSkills(path).then(setSkills).catch(() => {});
   }, [booted, active?.workspace, savedCfg.workspace]);
+
+  const reloadSkills = useCallback(() => {
+    const path = active?.workspace || savedCfg.workspace;
+    api.listSkills(path).then(setSkills).catch(() => {});
+  }, [active?.workspace, savedCfg.workspace]);
   useEffect(() => {
     if (surface !== "settings") return;
     api.logs().then(setLogs).catch(() => {});
@@ -725,9 +737,13 @@ export function useWorkstation() {
     }
   }
 
-  async function compareHarness() {
+  async function compareHarness(a?: string, b?: string) {
     try {
-      setDiffOut(await api.diff(diffA || health.harness, diffB));
+      const left = a || diffA || health.harness;
+      const right = b || diffB;
+      if (a) setDiffA(a);
+      if (b) setDiffB(b);
+      setDiffOut(await api.diff(left, right));
     } catch (e) {
       fail(e);
     }
@@ -793,6 +809,10 @@ export function useWorkstation() {
           closeSettings();
           return;
         }
+        if (useUI.getState().surface === "skills") {
+          closeSkills();
+          return;
+        }
         const firstAsk = approvals[0];
         if (firstAsk && !typing && matchKey(e, km.deny)) {
           e.preventDefault();
@@ -818,7 +838,7 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, closeSettings, setInspector, setPalette, setLab]);
+  }, [savedCfg.keymap, approvals, openSettings, closeSettings, closeSkills, setInspector, setPalette, setLab]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
@@ -845,19 +865,19 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, queued, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, runStatus, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
-    refreshTrace, loadSpill, refreshCtx,
+    refreshTrace, loadSpill, refreshCtx, reloadSkills,
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness,
   };
 }

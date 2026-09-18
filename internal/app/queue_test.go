@@ -18,7 +18,7 @@ func TestQueueWhenBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.mu.Lock()
-	a.runs[sess.ID] = func() {}
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
 	a.mu.Unlock()
 	if err := a.StartSendOpts(sess.ID, "hello", false, nil); !errors.Is(err, ErrQueued) {
 		t.Fatalf("want queued, got %v", err)
@@ -40,7 +40,7 @@ func TestRetryDoesNotQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.mu.Lock()
-	a.runs[sess.ID] = func() {}
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
 	a.mu.Unlock()
 	err = a.RetrySession(sess.ID)
 	if err == nil || err.Error() != string(errBusy) {

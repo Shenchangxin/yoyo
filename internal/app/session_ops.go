@@ -33,7 +33,8 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 	if err != nil {
 		return SessionMeta{}, err
 	}
-	dst, err := a.NewSession(src.Workspace)
+	ws := src.ProjectRoot()
+	dst, err := a.NewSession(ws)
 	if err != nil {
 		return SessionMeta{}, err
 	}
@@ -43,8 +44,10 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 	dst.ModelFingerprint = src.ModelFingerprint
 	dst.Model = src.Model
 	dst.LoadedSkills = append([]string(nil), src.LoadedSkills...)
+	dst.PinnedSkills = append([]string(nil), src.PinnedSkills...)
 	dst.PlanText = src.PlanText
 	dst.AuthMode = capability.ParseAuthMode(src.AuthMode)
+	dst.OriginWorkspace = src.ProjectRoot()
 	if err := a.writeSession(dst); err != nil {
 		return dst, err
 	}
@@ -57,11 +60,14 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 		}
 	}
 	_ = runtime.CopyTree(a.Home.SessionSpill(src.ID), a.Home.SessionSpill(dst.ID))
-	if src.Workspace != "" {
+	if src.ProjectRoot() != "" {
 		_ = runtime.CopyTree(
-			filepath.Join(src.Workspace, ".yoyo", "context", src.ID),
-			filepath.Join(src.Workspace, ".yoyo", "context", dst.ID),
+			filepath.Join(src.ProjectRoot(), ".yoyo", "context", src.ID),
+			filepath.Join(src.ProjectRoot(), ".yoyo", "context", dst.ID),
 		)
+	}
+	if src.Isolate {
+		return a.EnsureSessionWorktree(dst.ID)
 	}
 	return dst, nil
 }

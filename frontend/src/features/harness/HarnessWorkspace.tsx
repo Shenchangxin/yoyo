@@ -102,7 +102,7 @@ function HarnessOverview(props: {
   return (
     <LabFrame>
       <div data-testid="harness-overview">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 surface-inset">
           <div className="min-w-0">
             <div className="text-[11px] text-muted">{copy.rsi.next}</div>
             <p className="mt-0.5 text-[13px] text-foreground">{reason}</p>
@@ -118,7 +118,7 @@ function HarnessOverview(props: {
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[13px] font-medium">{c.name}</div>
                   {c.kind === "active" ? (
-                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[11px] text-accent">{copy.labs.trusted}</span>
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
                   ) : null}
                   {c.kind === "staging" ? (
                     <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
@@ -84,11 +85,14 @@ func (a *App) ReviewQueue() map[string]any {
 	}
 	recording := a.ComputerRecording()
 	pending := 0
+	offers := []capability.Offer{}
 	if a.Gate != nil {
-		pending = len(a.Gate.Pending())
+		offers = a.Gate.Pending()
+		pending = len(offers)
 	}
 	return map[string]any{
 		"approvals": pending,
+		"offers":    offers,
 		"drafts":    drafts,
 		"browser":   browser,
 		"computer":  recording,

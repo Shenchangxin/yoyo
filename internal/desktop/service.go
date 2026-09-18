@@ -64,6 +64,13 @@ func (s *Service) Health() map[string]any {
 			if badge, ok := iso["sandbox_badge_ok"].(bool); ok {
 				m["isolated"] = badge
 			}
+			if m["isolation_kind"] == nil {
+				if os, ok := iso["os"].(map[string]any); ok {
+					if kind, ok := os["kind"].(string); ok {
+						m["isolation_kind"] = kind
+					}
+				}
+			}
 		}
 		return m
 	}
@@ -374,6 +381,21 @@ func (s *Service) RunningIDs() []string {
 		return ids
 	}
 	return s.App.RunningIDs()
+}
+
+func (s *Service) RunningStatus() []app.RunStatus {
+	if s.RPC != nil {
+		v, err := s.call("turn.running_status", nil)
+		out, _ := decode[[]app.RunStatus](v, err)
+		if out == nil {
+			return []app.RunStatus{}
+		}
+		return out
+	}
+	if s.App == nil {
+		return nil
+	}
+	return s.App.RunningStatus()
 }
 
 func (s *Service) ContextUsage(sessionID string) any {
