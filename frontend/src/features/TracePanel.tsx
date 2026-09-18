@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Button } from "../components/ui/button";
+import { useMemo, useState, type ReactNode } from "react";
+import { Activity, Check, Copy, RefreshCw } from "lucide-react";
+import { Tooltip } from "../components/ui/tooltip";
 import { writeClipboard } from "../lib/clipboard";
 import { useCopy } from "../lib/i18n";
 import { formatTokens } from "../lib/models-dev";
@@ -45,7 +46,7 @@ export function TracePanel(props: {
   };
 
   if (!props.sessionId) {
-    return <p className="text-xs text-muted">{copy.trace.noSession}</p>;
+    return <Empty title={copy.trace.noSession} />;
   }
 
   const stats = t?.stats;
@@ -56,33 +57,61 @@ export function TracePanel(props: {
     { id: "memory", label: copy.trace.filterMemory },
     { id: "error", label: copy.trace.filterError },
   ];
+  const errors = stats?.errors || 0;
 
   return (
-    <div className="flex min-h-0 flex-col gap-3" data-testid="trace-panel">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="lift" size="sm" onClick={props.onRefresh}>{copy.trace.refresh}</Button>
-        {props.running ? <span className="text-[11px] text-muted">{copy.rail.running}</span> : null}
+    <div className="flex min-h-0 flex-col" data-testid="trace-panel">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5">
+        <dl className="flex min-w-0 flex-1 items-center gap-x-2.5 overflow-hidden whitespace-nowrap text-[11.5px] tabular-nums text-muted" data-testid="trace-stats">
+          <Stat value={String(stats?.events || 0)} label={copy.trace.events} />
+          <Dot />
+          <Stat value={String(stats?.toolCalls || 0)} label={copy.trace.tools} />
+          <Dot />
+          <Stat value={String(errors)} label={copy.trace.errors} tone={errors > 0 ? "text-danger" : undefined} />
+          <Dot />
+          <Stat value={formatDuration(stats?.durationMs || 0)} />
+          <Dot />
+          <Stat value={formatTokens(stats?.tokens || 0)} label={copy.trace.tokens} />
+          {stats?.spillBytes ? (
+            <>
+              <Dot />
+              <Stat value={formatBytes(stats.spillBytes)} label={copy.trace.spilled} />
+            </>
+          ) : null}
+        </dl>
+        {props.running ? <span className="pulse-dot mr-1.5" aria-label={copy.rail.running} /> : null}
+        <Tooltip content={copy.trace.refresh}>
+          <button
+            type="button"
+            aria-label={copy.trace.refresh}
+            className="grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground"
+            onClick={props.onRefresh}
+          >
+            <RefreshCw className="size-3.5" aria-hidden />
+          </button>
+        </Tooltip>
       </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] tabular-nums sm:grid-cols-3" data-testid="trace-stats">
-        <Stat label={copy.trace.events} value={String(stats?.events || 0)} />
-        <Stat label={copy.trace.tools} value={String(stats?.toolCalls || 0)} />
-        <Stat label={copy.trace.errors} value={String(stats?.errors || 0)} />
-        <Stat label={copy.trace.duration} value={formatDuration(stats?.durationMs || 0)} />
-        <Stat label={copy.trace.tokens} value={formatTokens(stats?.tokens || 0)} />
-        <Stat label={copy.trace.spilled} value={formatBytes(stats?.spillBytes || 0)} />
-      </dl>
+
       {(t?.artifacts || []).length ? (
         <section>
-          <h3 className="mb-1.5 text-[11px] font-medium text-muted">{copy.trace.artifacts}</h3>
-          <ul className="flex flex-col gap-1">
+          <div className="flex h-8 items-center px-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">
+            {copy.trace.artifacts}
+            <span className="ml-2 tabular-nums normal-case tracking-normal text-muted/60">{t!.artifacts.length}</span>
+          </div>
+          <ul className="divide-y divide-border/50 border-y border-border/50">
             {t!.artifacts.map((art) => (
               <ArtifactRow
                 key={`${art.kind}:${art.id}`}
                 art={art}
                 blob={art.kind === "spill" ? blobs[art.id] : art.preview ? { id: art.id, bytes: art.bytes, text: art.preview, truncated: false } : undefined}
                 onOpen={() => {
+                  const key = `art:${art.kind}:${art.id}`;
+                  if (open === key) {
+                    setOpen(null);
+                    return;
+                  }
                   if (art.kind === "spill") void loadSpill(art.id);
-                  setOpen(`art:${art.kind}:${art.id}`);
+                  setOpen(key);
                 }}
                 open={open === `art:${art.kind}:${art.id}`}
                 onCopy={async (text) => {
@@ -94,9 +123,9 @@ export function TracePanel(props: {
           </ul>
         </section>
       ) : null}
-      <section>
-        <h3 className="mb-1.5 text-[11px] font-medium text-muted">{copy.trace.timeline}</h3>
-        <div className="mb-2 flex flex-wrap gap-1" role="tablist" aria-label={copy.trace.timeline}>
+
+      <section className="min-h-0">
+        <div className="flex h-9 items-center gap-1 px-1.5" role="tablist" aria-label={copy.trace.timeline}>
           {filters.map((f) => (
             <button
               type="button"
@@ -104,8 +133,8 @@ export function TracePanel(props: {
               role="tab"
               aria-selected={filter === f.id}
               className={cn(
-                "rounded-md px-2 py-1 text-[11px]",
-                filter === f.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
+                "h-6 rounded-md px-2 text-[11px] font-medium transition-colors",
+                filter === f.id ? "bg-lift text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => setFilter(f.id)}
             >
@@ -114,11 +143,11 @@ export function TracePanel(props: {
           ))}
         </div>
         {!t || (t.events.length === 0 && filter === "all") ? (
-          <p className="text-xs text-muted">{copy.trace.empty}</p>
+          <Empty title={copy.trace.empty} icon={<Activity className="size-4" />} />
         ) : events.length === 0 ? (
-          <p className="text-xs text-muted">{copy.trace.noMatch}</p>
+          <Empty title={copy.trace.noMatch} />
         ) : (
-          <ol className="space-y-1">
+          <ol className="divide-y divide-border/40 border-t border-border/50">
             {events.map((ev) => {
               const key = eventKey(ev);
               const expanded = open === key;
@@ -126,20 +155,23 @@ export function TracePanel(props: {
                 <li key={key} data-testid="trace-event" data-type={ev.type}>
                   <button
                     type="button"
+                    aria-expanded={expanded}
                     className={cn(
-                      "w-full rounded-lg border border-border bg-card px-2 py-1.5 text-left hover:bg-lift/40",
-                      ev.error && "border-danger/40",
+                      "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-3 py-1.5 text-left transition-colors hover:bg-lift/40",
+                      expanded && "bg-lift/30",
                     )}
                     onClick={() => setOpen(expanded ? null : key)}
                   >
-                    <div className="flex items-baseline gap-2">
-                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted">{formatTime(ev.ts)}</span>
-                      <span className={cn("shrink-0 text-[10px] font-medium uppercase tracking-wide", ev.error ? "text-danger" : "text-muted")}>
+                    <span className="font-mono text-[10.5px] tabular-nums text-muted/60">{formatTime(ev.ts)}</span>
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className={cn("shrink-0 font-mono text-[10.5px]", ev.error ? "text-danger" : "text-muted")}>
                         {ev.name || ev.type}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-foreground">{ev.summary}</span>
-                      {ev.elapsedMs > 0 ? <span className="shrink-0 font-mono text-[10px] text-muted">{ev.elapsedMs}ms</span> : null}
-                    </div>
+                      <span className="min-w-0 truncate text-[12px] text-foreground/85">{ev.summary}</span>
+                    </span>
+                    <span className="font-mono text-[10.5px] tabular-nums text-muted/60">
+                      {ev.elapsedMs > 0 ? `${ev.elapsedMs}ms` : ""}
+                    </span>
                   </button>
                   {expanded ? (
                     <EventDetail
@@ -163,12 +195,52 @@ export function TracePanel(props: {
   );
 }
 
-function Stat(props: { label: string; value: string }) {
+function Empty({ title, icon }: { title: string; icon?: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt className="text-muted">{props.label}</dt>
-      <dd className="font-mono text-foreground">{props.value}</dd>
+    <div className="flex min-h-[8rem] flex-col items-center justify-center px-6 text-center">
+      {icon ? <span className="mb-3 grid size-8 place-items-center rounded-lg bg-lift/60 text-muted" aria-hidden>{icon}</span> : null}
+      <p className="text-[12px] text-muted">{title}</p>
     </div>
+  );
+}
+
+function Dot() {
+  return <span className="text-muted/40" aria-hidden>·</span>;
+}
+
+function Stat(props: { value: string; label?: string; tone?: string }) {
+  return (
+    <div className="flex items-baseline gap-1">
+      <dd className={cn("font-medium text-foreground/85", props.tone)}>{props.value}</dd>
+      {props.label ? <dt className="text-muted/80">{props.label.toLowerCase()}</dt> : null}
+    </div>
+  );
+}
+
+function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void }) {
+  const copy = useCopy();
+  return (
+    <button
+      type="button"
+      className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+      onClick={onClick}
+    >
+      {copied ? <Check className="size-3" aria-hidden /> : <Copy className="size-3" aria-hidden />}
+      {copied ? copy.trace.copied : copy.trace.copy}
+    </button>
+  );
+}
+
+function Surface({ children, tone }: { children: ReactNode; tone?: "fg" }) {
+  return (
+    <pre
+      className={cn(
+        "max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border/60 bg-panel/70 px-3 py-2 font-mono text-[11px] leading-[1.55]",
+        tone === "fg" ? "text-foreground/90" : "text-muted",
+      )}
+    >
+      {children}
+    </pre>
   );
 }
 
@@ -183,26 +255,34 @@ function ArtifactRow(props: {
   const copy = useCopy();
   const art = props.art;
   return (
-    <li className="rounded-lg border border-border bg-card">
-      <button type="button" className="flex w-full items-baseline gap-2 px-2 py-1.5 text-left text-[11px]" onClick={props.onOpen}>
-        <span className="shrink-0 font-medium uppercase tracking-wide text-muted">{art.kind}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-foreground">{art.label}</span>
-        {art.bytes > 0 ? <span className="shrink-0 tabular-nums text-muted">{formatBytes(art.bytes)}</span> : null}
+    <li>
+      <button
+        type="button"
+        aria-expanded={props.open}
+        className={cn(
+          "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 px-3 py-1.5 text-left text-[11.5px] transition-colors hover:bg-lift/40",
+          props.open && "bg-lift/30",
+        )}
+        onClick={props.onOpen}
+      >
+        <span className="font-mono text-[10.5px] text-muted">{art.kind}</span>
+        <span className="min-w-0 truncate font-mono text-foreground/85">{art.label}</span>
+        <span className="font-mono text-[10.5px] tabular-nums text-muted/60">{art.bytes > 0 ? formatBytes(art.bytes) : ""}</span>
       </button>
       {props.open ? (
-        <div className="border-t border-border px-2 py-2">
+        <div className="px-3 pb-2.5 pt-0.5">
           {props.blob === "loading" ? <p className="text-[11px] text-muted">…</p> : null}
           {props.blob === "error" ? <p className="text-[11px] text-danger">—</p> : null}
           {props.blob && typeof props.blob === "object" ? (
             <>
-              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-muted">{props.blob.text}</pre>
-              {props.blob.truncated ? <p className="mt-1 text-[10px] text-muted">{copy.trace.truncated}</p> : null}
-              <Button variant="ghost" size="sm" className="mt-1 h-7 px-2" onClick={() => props.onCopy(props.blob && typeof props.blob === "object" ? props.blob.text : art.preview)}>
-                {props.copied ? copy.trace.copied : copy.trace.copy}
-              </Button>
+              <Surface>{props.blob.text}</Surface>
+              <div className="mt-1.5 flex items-center gap-2">
+                <CopyButton copied={props.copied} onClick={() => props.onCopy(props.blob && typeof props.blob === "object" ? props.blob.text : art.preview)} />
+                {props.blob.truncated ? <span className="text-[10.5px] text-muted">{copy.trace.truncated}</span> : null}
+              </div>
             </>
           ) : art.preview ? (
-            <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-muted">{art.preview}</pre>
+            <Surface>{art.preview}</Surface>
           ) : art.kind === "spill" ? (
             <p className="text-[11px] text-muted">{copy.trace.loadSpill}</p>
           ) : null}
@@ -222,28 +302,30 @@ function EventDetail(props: {
   const copy = useCopy();
   const ev = props.ev;
   return (
-    <div className="mt-1 rounded-lg border border-border/80 bg-panel/40 px-2 py-2">
-      {ev.detail ? (
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-muted">{ev.detail}</pre>
-      ) : null}
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={props.onCopy}>
-          {props.copied ? copy.trace.copied : copy.trace.copy}
-        </Button>
+    <div className="px-3 pb-2.5 pt-0.5">
+      {ev.detail ? <Surface>{ev.detail}</Surface> : null}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <CopyButton copied={props.copied} onClick={props.onCopy} />
         {ev.spillId && props.onLoadSpill ? (
-          <Button variant="lift" size="sm" className="h-7 px-2" onClick={props.onLoadSpill}>
+          <button
+            type="button"
+            className="h-6 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+            onClick={props.onLoadSpill}
+          >
             {copy.trace.loadSpill}
-          </Button>
+          </button>
         ) : null}
-        {ev.bytes > 0 ? <span className="text-[10px] tabular-nums text-muted">{formatBytes(ev.bytes)}</span> : null}
-        {ev.spillId ? <span className="font-mono text-[10px] text-muted">{ev.spillId}</span> : null}
+        <span className="ml-auto flex items-center gap-2 font-mono text-[10.5px] tabular-nums text-muted/60">
+          {ev.bytes > 0 ? <span>{formatBytes(ev.bytes)}</span> : null}
+          {ev.spillId ? <span>{ev.spillId}</span> : null}
+        </span>
       </div>
       {props.blob === "loading" ? <p className="mt-1 text-[11px] text-muted">…</p> : null}
       {props.blob && typeof props.blob === "object" ? (
-        <>
-          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/90">{props.blob.text}</pre>
-          {props.blob.truncated ? <p className="mt-1 text-[10px] text-muted">{copy.trace.truncated}</p> : null}
-        </>
+        <div className="mt-2">
+          <Surface tone="fg">{props.blob.text}</Surface>
+          {props.blob.truncated ? <p className="mt-1 text-[10.5px] text-muted">{copy.trace.truncated}</p> : null}
+        </div>
       ) : null}
     </div>
   );
@@ -257,7 +339,7 @@ function formatTime(ts: string) {
   if (!ts || ts.startsWith("0001-")) return "";
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
 function formatDuration(ms: number) {

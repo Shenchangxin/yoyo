@@ -149,18 +149,30 @@ func (a *App) Send(ctx context.Context, sessionID, message string, client runtim
 func (a *App) Running(sessionID string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.runs[sessionID] != nil
+	slot := a.runs[sessionID]
+	return slot != nil && !slot.done
 }
 
 func (a *App) RunningIDs() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	ids := make([]string, 0, len(a.runs))
-	for id := range a.runs {
+	for id, slot := range a.runs {
+		if slot == nil || slot.done {
+			continue
+		}
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+func (a *App) markRunDone(sessionID string) {
+	a.mu.Lock()
+	if slot := a.runs[sessionID]; slot != nil {
+		slot.done = true
+	}
+	a.mu.Unlock()
 }
 
 type RunStatus struct {
@@ -174,7 +186,7 @@ func (a *App) RunningStatus() []RunStatus {
 	defer a.mu.Unlock()
 	out := make([]RunStatus, 0, len(a.runs))
 	for id, slot := range a.runs {
-		if slot == nil {
+		if slot == nil || slot.done {
 			continue
 		}
 		out = append(out, RunStatus{ID: id, StartedAt: slot.started, LastTool: slot.lastTool})
@@ -470,6 +482,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Meter:            meter,
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
 	})
+	a.markRunDone(sessionID)
 	loaded, planText := tools.Pins()
 	meta.LoadedSkills = loaded
 	meta.PlanText = planText

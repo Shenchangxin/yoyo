@@ -820,6 +820,10 @@ function ContextMeter(props: {
     );
   }
 
+  // An untouched window is not information. Show the meter once tokens exist,
+  // a turn is running, or something is queued behind it.
+  if (br.used <= 0 && !props.running && queued <= 0) return null;
+
   const visible = br.slices.filter((s) => s.tokens > 0);
   const legend = props.compact ? visible.filter((s) => s.id !== "free") : visible;
   const tooltip = (

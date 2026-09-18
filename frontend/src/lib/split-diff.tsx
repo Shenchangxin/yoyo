@@ -53,13 +53,26 @@ function pair(rows: Line[]): { left: Line; right: Line }[] {
   return out;
 }
 
-function tone(kind: Kind, side: "left" | "right" | "uni") {
-  if (kind === "add") return "bg-accent/10 text-accent";
-  if (kind === "del") return "bg-danger/10 text-danger";
-  if (kind === "hunk" || kind === "meta") return "text-muted";
-  if (kind === "empty") return side === "left" ? "bg-danger/5" : "bg-accent/5";
+/**
+ * Tinted rows, plain foreground text. Colour lives in the background and the
+ * gutter marker, never in the code itself — long coloured lines are what made
+ * the old panel feel loud.
+ */
+function rowTone(kind: Kind, side: "left" | "right" | "uni"): string {
+  if (kind === "add") return "bg-success/[0.11] text-foreground/90";
+  if (kind === "del") return "bg-danger/[0.11] text-foreground/80";
+  if (kind === "hunk" || kind === "meta") return "text-muted/60";
+  if (kind === "empty") return side === "left" ? "bg-danger/[0.05]" : "bg-success/[0.05]";
   return "text-muted";
 }
+
+function marker(kind: Kind): { glyph: string; tone: string } {
+  if (kind === "add") return { glyph: "+", tone: "text-success" };
+  if (kind === "del") return { glyph: "−", tone: "text-danger" };
+  return { glyph: "", tone: "" };
+}
+
+const LINE = "diff-line grid min-w-0 grid-cols-[14px_minmax(0,1fr)] items-baseline gap-1.5 whitespace-pre-wrap break-words px-2 py-px";
 
 export function DiffBlock({
   src,
@@ -75,38 +88,44 @@ export function DiffBlock({
     if (!onLineClick || !text.trim()) return;
     onLineClick(text);
   };
+  const clickable = onLineClick ? "cursor-pointer hover:brightness-110" : "";
   if (mode === "unified") {
     return (
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
-        {rows.map((row, i) => (
-          <span
-            key={i}
-            className={cn("block", tone(row.kind, "uni"), onLineClick && "cursor-pointer hover:bg-lift")}
-            onClick={() => click(row.text)}
-          >
-            {row.kind === "add" ? "+" : row.kind === "del" ? "-" : ""}
-            {row.text || " "}
-          </span>
-        ))}
-      </pre>
+      <div className="max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]" style={{ tabSize: 2 }}>
+        {rows.map((row, i) => {
+          const m = marker(row.kind);
+          return (
+            <div
+              key={i}
+              className={cn(LINE, rowTone(row.kind, "uni"), clickable)}
+              onClick={() => click(row.text)}
+            >
+              <span className={cn("select-none text-right", m.tone)} aria-hidden>{m.glyph}</span>
+              <span>{row.text || " "}</span>
+            </div>
+          );
+        })}
+      </div>
     );
   }
   const pairs = pair(rows);
   return (
-    <div className="grid max-h-48 grid-cols-2 gap-px overflow-auto rounded-lg bg-border font-mono text-[11px]">
+    <div className="max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]" style={{ tabSize: 2 }}>
       {pairs.map((p, i) => (
-        <div key={i} className="contents">
+        <div key={i} className="grid grid-cols-2 divide-x divide-border/50">
           <div
-            className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.left.kind, "left"), onLineClick && "cursor-pointer hover:bg-lift")}
+            className={cn(LINE, rowTone(p.left.kind, "left"), clickable)}
             onClick={() => click(p.left.text)}
           >
-            {p.left.text || " "}
+            <span className={cn("select-none text-right", marker(p.left.kind).tone)} aria-hidden>{marker(p.left.kind).glyph}</span>
+            <span>{p.left.text || " "}</span>
           </div>
           <div
-            className={cn("whitespace-pre-wrap bg-panel px-2 py-0.5", tone(p.right.kind, "right"), onLineClick && "cursor-pointer hover:bg-lift")}
+            className={cn(LINE, rowTone(p.right.kind, "right"), clickable)}
             onClick={() => click(p.right.text)}
           >
-            {p.right.text || " "}
+            <span className={cn("select-none text-right", marker(p.right.kind).tone)} aria-hidden>{marker(p.right.kind).glyph}</span>
+            <span>{p.right.text || " "}</span>
           </div>
         </div>
       ))}

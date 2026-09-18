@@ -5,18 +5,12 @@ export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed"
 export type SettingsTab =
   | "general"
   | "appearance"
+  | "shortcuts"
   | "provider"
   | "policy"
-  | "isolation"
-  | "connectors"
-  | "memory"
-  | "automations"
-  | "mcp"
-  | "plugins"
-  | "shortcuts"
-  | "updates"
-  | "logs"
-  | "danger";
+  | "extensions"
+  | "personal"
+  | "advanced";
 
 export type AuthMode = "default" | "auto_edit" | "full" | "ask";
 

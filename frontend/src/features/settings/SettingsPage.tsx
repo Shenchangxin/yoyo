@@ -6,19 +6,16 @@ import { useUI } from "../../lib/store";
 import { ScrollFade } from "../../components/ui/scroll-fade";
 import { SettingsSidebar } from "./SettingsSidebar";
 import {
+  AdvancedSettings,
   AppearanceSettings,
-  DangerSettings,
   GeneralSettings,
-  LogsSettings,
-  McpSettings,
   type SettingsHost,
-  PluginsSettings,
   PolicySettings,
   ProviderSettings,
   ShortcutsSettings,
-  UpdatesSettings,
 } from "./pages";
-import { AutomationSettings, ConnectorSettings, IsolationSettings, MemorySettings } from "./PersonalPages";
+import { ExtensionsSettings } from "./ExtensionsPanel";
+import { PersonalSettings } from "./PersonalPanel";
 
 export function SettingsPage({ host }: { host: SettingsHost }) {
   const copy = useCopy();
@@ -26,7 +23,8 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
   const section = useUI((s) => s.settingsSection);
   const nav = useUI((s) => s.settingsNav);
   const setSettingsTab = useUI((s) => s.setSettingsTab);
-  const compact = useMedia("(max-width: 860px)");
+  const openSettings = useUI((s) => s.openSettings);
+  const compact = useMedia("(max-width: 900px)");
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,24 +45,23 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <SettingsSidebar tab={tab} onTab={onTab} compact={compact} />
-      <div className="w-px self-stretch bg-border/80" aria-hidden />
-      <ScrollFade className="min-w-0 flex-1">
-        <div ref={scroller} className="mx-auto max-w-[680px] px-8 py-8">
+      <SettingsSidebar
+        tab={tab}
+        onTab={onTab}
+        onSection={(t, id) => openSettings(t, id)}
+        compact={compact}
+      />
+      <div className="w-px self-stretch bg-border" aria-hidden />
+      <ScrollFade className="min-w-0 flex-1 bg-background">
+        <div ref={scroller} className="mx-auto max-w-[720px] px-9 py-9">
           {tab === "general" ? <GeneralSettings host={host} /> : null}
           {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
+          {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}
           {tab === "provider" ? <ProviderSettings host={host} /> : null}
           {tab === "policy" ? <PolicySettings host={host} /> : null}
-          {tab === "isolation" ? <IsolationSettings host={host} /> : null}
-          {tab === "connectors" ? <ConnectorSettings /> : null}
-          {tab === "memory" ? <MemorySettings /> : null}
-          {tab === "automations" ? <AutomationSettings /> : null}
-          {tab === "mcp" ? <McpSettings host={host} /> : null}
-          {tab === "plugins" ? <PluginsSettings host={host} /> : null}
-          {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}
-          {tab === "updates" ? <UpdatesSettings host={host} /> : null}
-          {tab === "logs" ? <LogsSettings host={host} /> : null}
-          {tab === "danger" ? <DangerSettings host={host} /> : null}
+          {tab === "extensions" ? <ExtensionsSettings host={host} /> : null}
+          {tab === "personal" ? <PersonalSettings /> : null}
+          {tab === "advanced" ? <AdvancedSettings host={host} /> : null}
           <p className="sr-only">{copy.settings.hint}</p>
         </div>
       </ScrollFade>
