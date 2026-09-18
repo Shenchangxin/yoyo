@@ -53,7 +53,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), traceCmd(), serveCmd(), updateCmd(), doctorCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd())
 	return cmd
 }
 
@@ -470,6 +470,33 @@ func serveCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:3080", "listen address")
 	cmd.Flags().BoolVar(&stdio, "stdio", false, "JSON-RPC on stdin/stdout instead of HTTP")
+	return cmd
+}
+
+func daemonCmd() *cobra.Command {
+	var addr string
+	cmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Always-on local daemon (same JSON-RPC/HTTP as serve; sleeps skip jobs)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			fmt.Println("yoyo daemon", addr, "active", a.ActiveHash())
+			fmt.Println("honest always-on: this machine must stay awake; sleep skips scheduled jobs")
+			var static http.Handler
+			for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
+				if st, err := os.Stat(dir); err == nil && st.IsDir() {
+					static = http.FileServer(http.Dir(dir))
+					break
+				}
+			}
+			return http.ListenAndServe(addr, api.Handler(a, static))
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:3080", "listen address")
 	return cmd
 }
 

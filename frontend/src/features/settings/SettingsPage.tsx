@@ -18,6 +18,7 @@ import {
   ShortcutsSettings,
   UpdatesSettings,
 } from "./pages";
+import { AutomationSettings, ConnectorSettings, IsolationSettings, MemorySettings } from "./PersonalPages";
 
 export function SettingsPage({ host }: { host: SettingsHost }) {
   const copy = useCopy();
@@ -54,6 +55,10 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
           {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
           {tab === "provider" ? <ProviderSettings host={host} /> : null}
           {tab === "policy" ? <PolicySettings host={host} /> : null}
+          {tab === "isolation" ? <IsolationSettings host={host} /> : null}
+          {tab === "connectors" ? <ConnectorSettings /> : null}
+          {tab === "memory" ? <MemorySettings /> : null}
+          {tab === "automations" ? <AutomationSettings /> : null}
           {tab === "mcp" ? <McpSettings host={host} /> : null}
           {tab === "plugins" ? <PluginsSettings host={host} /> : null}
           {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}

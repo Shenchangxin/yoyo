@@ -37,7 +37,9 @@ type RunState struct {
 	Steers           []string          `json:"steers,omitempty"`
 	SessionCaps      []string          `json:"session_caps,omitempty"`
 	PendingApprovals []PendingApproval `json:"pending_approvals,omitempty"`
-	AskQuestion      string            `json:"ask_question,omitempty"`
+	ResumeText  string `json:"resume_text,omitempty"`
+	ResumePlan  bool   `json:"resume_plan,omitempty"`
+	AskQuestion string `json:"ask_question,omitempty"`
 }
 
 func runPath(dir, id string) string {
@@ -61,7 +63,7 @@ func LoadRun(dir, id string) (RunState, error) {
 		st.PendingApprovals = nil
 		st.AskQuestion = ""
 	}
-	st.SessionCaps = dropHighRisk(st.SessionCaps)
+	st.SessionCaps = dropSticky(st.SessionCaps)
 	return st, nil
 }
 
@@ -84,13 +86,16 @@ func RemoveRun(dir, id string) error {
 	return err
 }
 
-func dropHighRisk(caps []string) []string {
+func dropSticky(caps []string) []string {
 	out := make([]string, 0, len(caps))
 	for _, c := range caps {
-		if strings.EqualFold(strings.TrimSpace(c), "high_risk") {
+		n := strings.ToLower(strings.TrimSpace(c))
+		if n == "high_risk" || n == "send_as_you" || n == "computer_use" {
 			continue
 		}
 		out = append(out, c)
 	}
 	return out
 }
+
+func dropHighRisk(caps []string) []string { return dropSticky(caps) }

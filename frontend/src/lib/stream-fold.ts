@@ -1,4 +1,4 @@
-import { pick, str } from "./normalize";
+import { asBool, pick, str } from "./normalize";
 import type { Item, ItemType } from "./protocol";
 
 function payload(raw: any): Record<string, any> {
@@ -56,12 +56,12 @@ export function itemFromEvent(raw: any, idx = 0): Item {
   const p = payload(src);
   const type = str(pick(src, "type", "Type"), "system") as ItemType;
   const sessionId = str(pick(src, "session_id", "SessionID", "sessionId"));
-  const ts = coerceTS(pick(src, "ts", "TS"));
-  const text = str(pick(p, "text", "content", "error"));
-  const name = str(pick(p, "name", "action"));
-  const delta = !!pick(p, "delta");
-  const id = str(pick(p, "id"));
-  const round = str(pick(p, "round"));
+  const ts = coerceTS(pick(src, "ts", "TS", "Ts"));
+  const text = str(pick(p, "text", "Text", "content", "Content", "error", "Error"));
+  const name = str(pick(p, "name", "Name", "action", "Action"));
+  const delta = asBool(pick(p, "delta", "Delta"));
+  const id = str(pick(p, "id", "Id", "ID"));
+  const round = str(pick(p, "round", "Round", "round_id", "roundId", "RoundID"));
   return {
     key: itemKey({ sessionId, type, id, round, ts, name, text, delta, idx }),
     type,
@@ -71,7 +71,7 @@ export function itemFromEvent(raw: any, idx = 0): Item {
     text,
     name,
     delta,
-    payload: p,
+    payload: { ...p, ...(id ? { id } : {}), ...(round ? { round } : {}), delta },
   };
 }
 
@@ -231,6 +231,14 @@ export function mergePendingUsers(seed: Item[], live: Item[]): Item[] {
   return out;
 }
 
+/** Replay live items onto a trajectory seed so a late seed cannot drop round 2. */
+export function foldLiveIntoSeed(seed: Item[], live: Item[]): Item[] {
+  if (!live.length) return seed;
+  let out = seed;
+  for (const it of live) out = mergeItem(out, it);
+  return out;
+}
+
 export function lastUserTurns(items: Item[], users = 3): Item[] {
   if (users <= 0 || items.length === 0) return items;
   let n = 0;
@@ -258,13 +266,22 @@ export function replayEvents(raws: any[]): Item[] {
   return acc;
 }
 
-export function unwrapEvent(e: any): any {
-  if (e == null) return e;
+function isTraceEnvelopeType(t: unknown): boolean {
+  return typeof t === "string" && t.length > 0 && !t.startsWith("yoyo:");
+}
+
+/**
+ * Peel only the Wails v3 `{ name, data }` envelope (or a 1-length args array).
+ * Never walk an arbitrary `.data` / `.detail` once a trace event is in hand —
+ * that used to swallow the second-round payload.
+ */
+export function unwrapEvent(e: any, depth = 0): any {
+  if (e == null || depth > 4) return e;
   if (typeof e === "string") {
     const t = e.trim();
     if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
       try {
-        return unwrapEvent(JSON.parse(t));
+        return unwrapEvent(JSON.parse(t), depth + 1);
       } catch {
         return e;
       }
@@ -272,17 +289,13 @@ export function unwrapEvent(e: any): any {
     return e;
   }
   if (Array.isArray(e)) {
-    if (e.length === 1) return unwrapEvent(e[0]);
-    const hit = e.find((x) => x && typeof x === "object" && (x.type || x.Type || x.payload || x.Payload || x.data || x.detail));
-    if (hit) return unwrapEvent(hit);
+    if (e.length === 1) return unwrapEvent(e[0], depth + 1);
+    const hit = e.find((x) => x && typeof x === "object" && isTraceEnvelopeType(x.type ?? x.Type));
+    return hit ? unwrapEvent(hit, depth + 1) : e;
   }
-  if (typeof e === "object") {
-    const t = e.type;
-    if (typeof t === "string" && t.startsWith("yoyo:") && e.data != null) return unwrapEvent(e.data);
-    if (e.data !== undefined && e.data !== null && typeof e.data !== "boolean") {
-      if (typeof e.data === "object" || typeof e.data === "string") return unwrapEvent(e.data);
-    }
-    if (e.detail !== undefined && e.detail !== null && typeof e.detail === "object") return unwrapEvent(e.detail);
-  }
+  if (typeof e !== "object") return e;
+  if (isTraceEnvelopeType(e.type ?? e.Type)) return e;
+  const named = typeof e.name === "string";
+  if (named && e.data != null) return unwrapEvent(e.data, depth + 1);
   return e;
 }

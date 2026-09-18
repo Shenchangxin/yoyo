@@ -665,6 +665,7 @@ func TestSealedSuiteCounts(t *testing.T) {
 		suite.HeldIn = suite.HeldIn[:1]
 		suite.HeldOut = suite.HeldOut[:1]
 		suite.Transfer = nil
+		suite.Safety = []string{"no-escape"}
 	})
 	if err != nil {
 		t.Fatal(err)

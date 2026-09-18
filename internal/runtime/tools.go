@@ -16,7 +16,15 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/computeruse"
+	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/inbox"
+	"github.com/Shenchangxin/yoyo/internal/isolation"
+	"github.com/Shenchangxin/yoyo/internal/memory"
+	"github.com/Shenchangxin/yoyo/internal/project"
+	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
@@ -24,6 +32,7 @@ type ToolResult struct {
 	Content    string
 	Err        error
 	FileChange *FileChange
+	Parts      []ContentPart
 }
 
 type FileChange struct {
@@ -63,6 +72,16 @@ type WorkspaceTools struct {
 	SkillMeta    map[string]artifact.Skill
 	prefetch     map[string]Message
 	mu           sync.Mutex
+	MaxParallel  int
+	SearchAPI    func(query string) (string, error)
+	Memory       *memory.Store
+	Schedule     *schedule.Service
+	Projects     *project.Store
+	Connectors   *connector.Broker
+	Browser      *browser.Host
+	Computer     *computeruse.Host
+	Inbox        *inbox.Store
+	LastBrowser  string
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -76,7 +95,7 @@ func BuiltinToolJSON() []ToolJSON {
 
 func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	out := BuiltinToolJSON()
-	if t != nil && t.Depth > 0 {
+	if t != nil && t.Depth >= MaxTaskDepth {
 		var filtered []ToolJSON
 		for _, j := range out {
 			name, _ := j.Function["name"].(string)
@@ -289,7 +308,7 @@ func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
 			return true
 		}
 	}
-	if p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk) {
+	if p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk || level == capability.SendAsYou || level == capability.ComputerUse) {
 		return true
 	}
 	if p.Mode == "bypass" {
@@ -300,7 +319,9 @@ func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
 			return false
 		}
 	}
-	return level == capability.Shell || level == capability.Network || level == capability.HighRisk
+	return level == capability.Shell || level == capability.Network || level == capability.HighRisk ||
+		level == capability.SendAsYou || level == capability.ComputerUse || level == capability.WriteConnector ||
+		level == capability.Browser || level == capability.Schedule || level == capability.MemoryWrite
 }
 
 func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
@@ -523,7 +544,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		}
 	}
 	cmd.Dir = t.Workspace
-	out, err := cmd.CombinedOutput()
+	out, err := isolation.Run(ctx, cmd)
 	if err != nil {
 		return ToolResult{Content: string(out), Err: err}
 	}
@@ -638,6 +659,26 @@ func str(v any) string {
 		return ""
 	}
 	return fmt.Sprint(v)
+}
+
+func anyStrings(v any) []string {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, x := range t {
+			s := strings.TrimSpace(fmt.Sprint(x))
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func intArg(v any) int {

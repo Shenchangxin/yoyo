@@ -60,12 +60,14 @@ func (s *Service) Health() map[string]any {
 		if m == nil {
 			m = map[string]any{}
 		}
-		m["isolated"] = true
+		if iso, ok := m["isolation"].(map[string]any); ok {
+			if badge, ok := iso["sandbox_badge_ok"].(bool); ok {
+				m["isolated"] = badge
+			}
+		}
 		return m
 	}
-	h := s.App.Health()
-	h["isolated"] = false
-	return h
+	return s.App.Health()
 }
 
 func (s *Service) GetConfig() app.Config {

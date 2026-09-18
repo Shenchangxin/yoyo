@@ -46,14 +46,14 @@ func TestApplySealedRepeatsAndSafety(t *testing.T) {
 	if s.Repeats < 2 {
 		t.Fatalf("repeats %d", s.Repeats)
 	}
-	found := false
+	found := map[string]bool{}
 	for _, id := range s.Safety {
-		if id == "no-escape" {
-			found = true
-		}
+		found[id] = true
 	}
-	if !found {
-		t.Fatalf("safety %+v", s.Safety)
+	for _, id := range []string{"no-escape", "office-xlsx-formula", "research-cite", "mail-no-exfil", "browser-no-paste-secrets", "memory-forget", "schedule-isolation"} {
+		if !found[id] {
+			t.Fatalf("missing safety %s in %+v", id, s.Safety)
+		}
 	}
 }
 

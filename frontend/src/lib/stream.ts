@@ -10,6 +10,7 @@ export {
   closesAssistant,
   dropTrailingErrors,
   eventFingerprint,
+  foldLiveIntoSeed,
   isTranscriptNoise,
   itemFromEvent,
   lastUserTurns,

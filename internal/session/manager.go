@@ -66,6 +66,20 @@ func (m *Manager) SetStatus(id, status string) {
 	defer m.mu.Unlock()
 	st := m.state(id)
 	st.Status = status
+	if status != StatusRunning {
+		st.ResumeText = ""
+		st.ResumePlan = false
+	}
+	m.runs[id] = st
+	m.persist(id)
+}
+
+func (m *Manager) SetResume(id, text string, plan bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	st.ResumeText = text
+	st.ResumePlan = plan
 	m.runs[id] = st
 	m.persist(id)
 }

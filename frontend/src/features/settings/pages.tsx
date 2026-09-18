@@ -172,8 +172,24 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
       <h1 className="mb-1 text-[20px] font-bold">{copy.settings.tabs.policy}</h1>
       <p className="mb-6 text-[12px] text-muted">{copy.control.policyHint}</p>
       <SettingSection id="policy-gate" title={copy.settings.sections.policyGate}>
-        <SettingRow title={copy.settings.autoAllow} description={copy.settings.autoAllowDesc} border={false}>
+        <SettingRow title={copy.settings.autoAllow} description={copy.settings.autoAllowDesc}>
           <Switch checked={!!host.cfg.autoAllow} onCheckedChange={(v) => void host.patch({ autoAllow: v })} />
+        </SettingRow>
+        <SettingRow title={copy.settings.gateMode} description={copy.settings.gateModeDesc}>
+          <Select value={host.cfg.gateMode || "manual"} onValueChange={(v) => void host.patch({ gateMode: v })}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">{copy.settings.gateManual}</SelectItem>
+              <SelectItem value="autosafe">{copy.settings.gateAutoSafe}</SelectItem>
+              <SelectItem value="skip">{copy.settings.gateSkip}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow title={copy.settings.crashResume} description={copy.settings.crashResumeDesc}>
+          <Switch checked={host.cfg.crashResume !== false} onCheckedChange={(v) => void host.patch({ crashResume: v })} />
+        </SettingRow>
+        <SettingRow title={copy.settings.searchUrl} description={copy.settings.searchUrlDesc} border={false}>
+          <Input className="h-8 w-56 text-[12px]" value={host.cfg.searchUrl || ""} onChange={(e) => void host.patch({ searchUrl: e.target.value })} />
         </SettingRow>
       </SettingSection>
       <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
@@ -204,12 +220,14 @@ export function McpSettings({ host }: { host: SettingsHost }) {
   const [name, setName] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
+  const [endpoint, setEndpoint] = useState("");
   const [json, setJson] = useState("[]");
   useEffect(() => {
     const rows = mcp.map((row: any) => ({
       name: str(row?.name || row?.Name || row),
       command: str(row?.command || row?.Command),
       args: asArray(row?.args || row?.Args).map(String),
+      endpoint: str(row?.endpoint || row?.Endpoint),
     }));
     setJson(JSON.stringify(rows, null, 2));
   }, [host.plugins]);
@@ -236,6 +254,17 @@ export function McpSettings({ host }: { host: SettingsHost }) {
           <Input placeholder={copy.settings.mcpName} value={name} onChange={(e) => setName(e.target.value)} />
           <Input placeholder={copy.settings.mcpCommand} value={command} onChange={(e) => setCommand(e.target.value)} />
           <Input placeholder={copy.settings.mcpArgs} value={args} onChange={(e) => setArgs(e.target.value)} />
+        </div>
+        <div className="grid gap-2 px-5 pb-3 sm:grid-cols-[1fr_auto]">
+          <Input placeholder={copy.settings.mcpEndpoint} value={endpoint} onChange={(e) => setEndpoint(e.target.value)} />
+          <Button
+            size="sm"
+            variant="lift"
+            disabled={!name.trim() || !endpoint.trim()}
+            onClick={() => void host.onStartMcpHttp?.(name.trim(), endpoint.trim())}
+          >
+            {copy.settings.mcpHttp}
+          </Button>
         </div>
         <div className="px-5 pb-4">
           <Button
@@ -264,7 +293,8 @@ export function McpSettings({ host }: { host: SettingsHost }) {
                   name: String(r.name || ""),
                   command: String(r.command || ""),
                   args: Array.isArray(r.args) ? r.args.map(String) : [],
-                })).filter((s: { name: string; command: string }) => s.name && s.command);
+                  endpoint: String(r.endpoint || ""),
+                })).filter((s: { name: string; command: string; endpoint: string }) => s.name && (s.command || s.endpoint));
                 await host.onReplaceMcp(servers);
                 toast.success(copy.app.controlSaved);
               } catch (e: any) {

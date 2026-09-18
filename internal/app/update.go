@@ -8,11 +8,12 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
 func isolated() bool {
-	return os.Getenv("YOYO_ISOLATE") == "1"
+	return isolation.Status().Sandbox
 }
 
 func (a *App) loadKeymapFile() {

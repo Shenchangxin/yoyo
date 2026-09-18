@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
+import { cn } from "./lib/utils";
+import { THREAD_COL, THREAD_GUTTER } from "./lib/thread";
 import * as api from "./lib/client";
 import { readLayout, writeLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
@@ -89,6 +91,9 @@ export default function App() {
         const paths = await api.pickFiles();
         return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
       }}
+      onClipboard={async () => api.clipboardRead()}
+      onScreenshot={async () => api.captureScreenshot()}
+      flush
     />
   );
 
@@ -118,20 +123,23 @@ export default function App() {
 
   const agentPane = (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col">
-      <Transcript
-        items={ws.items}
-        approvals={ws.approvals}
-        running={ws.threadRunning}
-        onResolve={ws.onResolve}
-        onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-        onRetry={() => { void ws.onRetryLast(); }}
-        onOpenReview={() => {
-          ws.setInspector(true);
-          ws.setInspTab("diff");
-          void ws.refreshDiff();
-        }}
-      />
-      {composer}
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", THREAD_COL, THREAD_GUTTER)}>
+        <Transcript
+          items={ws.items}
+          approvals={ws.approvals}
+          running={ws.threadRunning}
+          flush
+          onResolve={ws.onResolve}
+          onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+          onRetry={() => { void ws.onRetryLast(); }}
+          onOpenReview={() => {
+            ws.setInspector(true);
+            ws.setInspTab("diff");
+            void ws.refreshDiff();
+          }}
+        />
+        {composer}
+      </div>
     </section>
   );
 
@@ -566,6 +574,7 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
         },
         onBrowse: () => api.pickFolder(),
         onStartMcp: async (name, command, args) => { await api.startMCP(name, command, args); await ws.refresh(); },
+        onStartMcpHttp: async (name, endpoint) => { await api.startMCPHTTP(name, endpoint); await ws.refresh(); },
         onStopMcp: async (name) => { await api.stopMCP(name); await ws.refresh(); },
         onReplaceMcp: async (servers) => { await api.replaceMCP(servers); await ws.refresh(); },
         onUnload: async (name) => { await api.unloadFiber(name); await ws.refresh(); },

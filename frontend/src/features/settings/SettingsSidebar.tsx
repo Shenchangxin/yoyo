@@ -14,6 +14,10 @@ import {
   ScrollText,
   Shield,
   SlidersHorizontal,
+  Lock,
+  Link2,
+  Brain,
+  Clock,
 } from "lucide-react";
 
 const ICONS = {
@@ -27,6 +31,10 @@ const ICONS = {
   download: Download,
   scroll: ScrollText,
   alert: AlertTriangle,
+  lock: Lock,
+  link: Link2,
+  brain: Brain,
+  clock: Clock,
 } as const;
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;

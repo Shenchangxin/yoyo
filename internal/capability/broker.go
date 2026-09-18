@@ -85,10 +85,7 @@ func (b *Broker) RestoreSession(sessionID string, levels []Level) {
 	if b.session[sessionID] == nil {
 		b.session[sessionID] = map[Level]bool{}
 	}
-	for _, l := range levels {
-		if l == HighRisk {
-			continue
-		}
+	for _, l := range DropSticky(levels) {
 		b.session[sessionID][l] = true
 	}
 }
@@ -137,6 +134,15 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 	}
 	switch dec {
 	case Always:
+		if NeverAlways(req.Level) {
+			b.mu.Lock()
+			if b.session[req.SessionID] == nil {
+				b.session[req.SessionID] = map[Level]bool{}
+			}
+			b.session[req.SessionID][req.Level] = true
+			b.mu.Unlock()
+			return nil
+		}
 		b.AllowAlways(req.Level)
 		return nil
 	case Session:

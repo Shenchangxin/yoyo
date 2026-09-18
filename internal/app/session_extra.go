@@ -231,6 +231,7 @@ func (a *App) Doctor() map[string]any {
 		"vault":           a.Vault.Status(),
 		"isolated":        isolated(),
 		"mcp":             a.MCP.List(),
+		"isolation":       a.IsolationReport(),
 	}
 }
 
@@ -248,7 +249,7 @@ func (a *App) Logs(limit int) map[string]any {
 func (a *App) persistMCP() {
 	var out []MCPServerConfig
 	for _, info := range a.MCP.Info() {
-		out = append(out, MCPServerConfig{Name: info.Name, Command: info.Command, Args: info.Args})
+		out = append(out, MCPServerConfig{Name: info.Name, Command: info.Command, Args: info.Args, Endpoint: info.Endpoint})
 	}
 	a.Config.MCP = out
 	_ = a.SaveConfig()
@@ -259,7 +260,16 @@ func (a *App) ReplaceMCP(servers []MCPServerConfig) error {
 		_ = a.MCP.Stop(info.Name)
 	}
 	for _, srv := range servers {
-		if srv.Name == "" || srv.Command == "" {
+		if srv.Name == "" {
+			continue
+		}
+		if srv.Endpoint != "" {
+			if err := a.MCP.StartHTTP(srv.Name, srv.Endpoint); err != nil {
+				return err
+			}
+			continue
+		}
+		if srv.Command == "" {
 			continue
 		}
 		if err := a.MCP.Start(srv.Name, srv.Command, srv.Args); err != nil {

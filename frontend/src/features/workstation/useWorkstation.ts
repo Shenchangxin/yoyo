@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, shortError } from "../../lib/error";
-import { dropTrailingErrors, mergeItem, mergePendingUsers, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
+import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
 import { num, str } from "../../lib/normalize";
 import { workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -34,6 +34,10 @@ export const emptyCfg: AppConfig = {
   uiScale: 1,
   updateChannel: "nightly",
   theme: "system",
+  gateMode: "manual",
+  crashResume: true,
+  searchUrl: "",
+  searchKey: "",
 };
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
 
@@ -61,7 +65,7 @@ function localUser(sessionId: string, text: string): Item {
 function readInspTab(id: string) {
   try {
     const v = localStorage.getItem(`yoyo-insp-${id}`);
-    if (v === "diff" || v === "files" || v === "trace") return v;
+    if (v === "diff" || v === "files" || v === "trace" || v === "queue") return v;
   } catch {
     /* ignore */
   }
@@ -365,15 +369,15 @@ export function useWorkstation() {
         }
       },
       (seed) => {
-        itemsAcc.current = mergePendingUsers(seed, itemsAcc.current);
+        itemsAcc.current = foldLiveIntoSeed(seed, itemsAcc.current);
         setItems(itemsAcc.current.slice());
       },
     );
     api.approvals().then(setApprovals).catch(() => {});
-    refreshCtx();
+    api.contextUsage(activeId).then(setCtx).catch(() => {});
     api.running(activeId).then((live) => setRunning((m) => ({ ...m, [activeId]: live }))).catch(() => {});
     return unsub;
-  }, [activeId, refreshCtx]);
+  }, [activeId]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -497,6 +501,33 @@ export function useWorkstation() {
       toast.success(copy.app.steered);
       return;
     }
+    if (raw === "schedule") {
+      const prompt = rest.trim();
+      if (!prompt) return;
+      await api.scheduleCreate({ kind: "heartbeat", spec: "30m", prompt, isolate: true });
+      toast.success(copy.settings.addJob);
+      return;
+    }
+    if (raw === "remember") {
+      const text = rest.trim();
+      if (!text) return;
+      await api.memoryWrite("episodic", text);
+      toast.success(copy.settings.save);
+      return;
+    }
+    if (raw === "forget") {
+      const id = rest.trim();
+      if (!id) return;
+      await api.memoryForget(id);
+      toast.success(copy.settings.forget);
+      return;
+    }
+    if (raw === "project") {
+      const name = rest.trim() || "project";
+      await api.projectCreate({ name, root: savedCfg.workspace });
+      toast.success(name);
+      return;
+    }
     if (!activeId && raw !== "new") return;
     if (raw === "rename") {
       const title = rest.trim();
@@ -546,6 +577,12 @@ export function useWorkstation() {
       const md = await api.exportSession(activeId);
       await navigator.clipboard.writeText(md);
       toast.success(copy.app.exported);
+      return;
+    }
+    if (raw === "artifact") {
+      const cur = useUI.getState().drafts[draftKey] || "";
+      const next = (cur ? cur + "\n" : "") + "Deliver a real .docx, formula .xlsx, and .pptx. Preview with office_render. Do not send mail.";
+      useUI.getState().setDraft(draftKey, next);
     }
   }
 

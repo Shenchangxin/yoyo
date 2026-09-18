@@ -7,6 +7,10 @@ export type SettingsTab =
   | "appearance"
   | "provider"
   | "policy"
+  | "isolation"
+  | "connectors"
+  | "memory"
+  | "automations"
   | "mcp"
   | "plugins"
   | "shortcuts"
@@ -170,6 +174,10 @@ export type AppConfig = {
   uiScale?: number;
   updateChannel?: string;
   theme?: string;
+  gateMode?: string;
+  crashResume?: boolean;
+  searchUrl?: string;
+  searchKey?: string;
 };
 
 export type Notice = {

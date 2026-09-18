@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/ed25519"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,15 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/browser"
+	"github.com/Shenchangxin/yoyo/internal/computeruse"
+	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/inbox"
+	"github.com/Shenchangxin/yoyo/internal/memory"
+	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/project"
+	"github.com/Shenchangxin/yoyo/internal/safeguard"
+	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/update"
@@ -29,9 +39,10 @@ import (
 )
 
 type MCPServerConfig struct {
-	Name    string   `yaml:"name" json:"name"`
-	Command string   `yaml:"command" json:"command"`
-	Args    []string `yaml:"args" json:"args"`
+	Name     string   `yaml:"name" json:"name"`
+	Command  string   `yaml:"command" json:"command"`
+	Args     []string `yaml:"args" json:"args"`
+	Endpoint string   `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
 }
 
 type Config struct {
@@ -55,6 +66,10 @@ type Config struct {
 	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
 	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
 	Theme                   string            `yaml:"theme" json:"theme"`
+	GateMode                string            `yaml:"gate_mode" json:"gate_mode"`
+	CrashResume             bool              `yaml:"crash_resume" json:"crash_resume"`
+	SearchURL               string            `yaml:"search_url" json:"search_url"`
+	SearchKey               string            `yaml:"search_key" json:"search_key"`
 }
 
 type App struct {
@@ -92,6 +107,16 @@ type App struct {
 
 	askMu  sync.Mutex
 	askAns map[string]string
+
+	Memory     *memory.Store
+	Schedule   *schedule.Service
+	Projects   *project.Store
+	Inbox      *inbox.Store
+	Connectors *connector.Broker
+	Browser    *browser.Host
+	Computer   *computeruse.Host
+	Observe    *observe.Tracer
+	schedStop  chan struct{}
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -117,6 +142,8 @@ func Open(root, bundledEvals string) (*App, error) {
 		UIScale:              1,
 		UpdateChannel:        "nightly",
 		Theme:                "system",
+		CrashResume:          true,
+		GateMode:             capability.GateManual,
 	}
 	if b, err := os.ReadFile(h.Config()); err == nil {
 		raw := map[string]any{}
@@ -133,6 +160,12 @@ func Open(root, bundledEvals string) (*App, error) {
 		}
 		if cfg.Theme == "" {
 			cfg.Theme = "system"
+		}
+		if cfg.GateMode == "" {
+			cfg.GateMode = capability.GateManual
+		}
+		if _, ok := raw["crash_resume"]; !ok {
+			cfg.CrashResume = true
 		}
 	}
 	filledDefault := applyDefaultWorkspace(h, &cfg)
@@ -168,7 +201,14 @@ func Open(root, bundledEvals string) (*App, error) {
 	a.initQueue()
 	a.loadKeymapFile()
 	for _, srv := range cfg.MCP {
-		if srv.Name == "" || srv.Command == "" {
+		if srv.Name == "" {
+			continue
+		}
+		if srv.Endpoint != "" {
+			_ = a.MCP.StartHTTP(srv.Name, srv.Endpoint)
+			continue
+		}
+		if srv.Command == "" {
 			continue
 		}
 		_ = a.MCP.Start(srv.Name, srv.Command, srv.Args)
@@ -241,21 +281,53 @@ func Open(root, bundledEvals string) (*App, error) {
 	if filledDefault {
 		_ = a.SaveConfig()
 	}
+	if err := a.openPersonal(); err != nil {
+		return nil, err
+	}
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
 			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
+				hook, ok := payload.(runtime.ToolHook)
+				if !ok {
+					return nil, nil
+				}
+				if deny, reason := safeguard.PreTool(hook.Name, hook.Arguments); deny {
+					hook.Deny = true
+					hook.Reason = reason
+					return hook, nil
+				}
 				return nil, nil
 			})
 			return func() error { off(); return nil }, nil
 		})
 	})
+	if a.crashResume() {
+		a.resumeCrashed()
+	}
 	return a, nil
 }
 
 func runtimeHookPreTool() string { return "agent.pre_tool" }
 
 func (a *App) approve(ctx context.Context, req capability.Request) (capability.Decision, error) {
+	mode := capability.ParseGateMode(a.Config.GateMode)
+	if mode == capability.GateSkip && !capability.NeverAlways(req.Level) && !req.ForceAsk {
+		return capability.Always, nil
+	}
+	if mode == capability.GateAutoSafe {
+		if unsafe, why := safeguard.RequestUnsafe(req); unsafe {
+			return capability.Deny, fmt.Errorf("autosafe: %s", why)
+		}
+		if req.Level == capability.ReadWorkspace || req.Level == capability.ReadConnector {
+			if !req.ForceAsk {
+				return capability.Once, nil
+			}
+		}
+	}
 	if a.Config.AutoAllow && !req.ForceAsk {
+		if capability.NeverAlways(req.Level) {
+			return capability.Once, nil
+		}
 		return capability.Always, nil
 	}
 	dec, err := a.Gate.Ask(ctx, req)
@@ -335,6 +407,8 @@ func (a *App) Health() map[string]any {
 		"workspace_ready": WorkspaceReady(a.Config.Workspace),
 		"vault":           a.Vault.Status(),
 		"update_channel":  a.Config.UpdateChannel,
+		"isolation":       a.IsolationReport(),
+		"gate_mode":       capability.ParseGateMode(a.Config.GateMode),
 	}
 }
 
@@ -403,6 +477,13 @@ func (a *App) SaveConfig() error {
 }
 
 func (a *App) Close() error {
+	if a.schedStop != nil {
+		select {
+		case <-a.schedStop:
+		default:
+			close(a.schedStop)
+		}
+	}
 	_ = a.MCP.Close()
 	_ = a.WASM.Close()
 	return a.Kernel.Dispose()
@@ -469,5 +550,24 @@ func (a *App) restoreRuns() {
 			a.steers[id] = append(a.steers[id], st.Steers...)
 			a.queueMu.Unlock()
 		}
+		if strings.TrimSpace(st.ResumeText) != "" {
+			a.queueMu.Lock()
+			a.queue[id] = append([]QueuedTurn{{Text: st.ResumeText, Plan: st.ResumePlan}}, a.queue[id]...)
+			a.queueMu.Unlock()
+		}
+	}
+}
+
+func (a *App) resumeCrashed() {
+	a.queueMu.Lock()
+	ids := make([]string, 0, len(a.queue))
+	for id, q := range a.queue {
+		if len(q) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	a.queueMu.Unlock()
+	for _, id := range ids {
+		go a.kickQueue(id)
 	}
 }

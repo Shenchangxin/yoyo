@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Folder, PanelRight } from "lucide-react";
+import { Folder, Inbox, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
@@ -7,6 +7,8 @@ import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import type { Thread } from "../lib/protocol";
 import { RunningHub } from "./RunningHub";
+import * as api from "../lib/client";
+import { useUI } from "../lib/store";
 
 export function Titlebar(props: {
   workspace: string;
@@ -100,6 +102,7 @@ export function Titlebar(props: {
         ) : props.runningCount ? (
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
         ) : null}
+        <InboxButton />
         <Tooltip content={copy.review.toggle}>
           <Button
             variant="ghost"
@@ -114,6 +117,38 @@ export function Titlebar(props: {
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+function InboxButton() {
+  const copy = useCopy();
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const tick = () => {
+      void api.inboxList().then((items) => setN(items.filter((it: any) => it.unread || it.Unread).length)).catch(() => {});
+    };
+    tick();
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <Tooltip content={copy.titlebar.inbox}>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => {
+          useUI.getState().setInspector(true);
+          useUI.getState().setInspTab("queue");
+        }}
+        aria-label={copy.titlebar.inbox}
+        className={cn("relative shrink-0", n > 0 && "text-foreground")}
+      >
+        <Inbox className="size-4" aria-hidden />
+        {n > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-accent px-1 text-[9px] text-accent-fg">{n}</span>
+        ) : null}
+      </Button>
+    </Tooltip>
   );
 }
 

@@ -87,7 +87,7 @@ func TestSubagentOwnJSONL(t *testing.T) {
 }
 
 func TestNestedTaskForbidden(t *testing.T) {
-	tools := &WorkspaceTools{Depth: 1}
+	tools := &WorkspaceTools{Depth: MaxTaskDepth}
 	res := tools.Call("task", `{"prompt":"nope"}`)
 	if res.Err == nil {
 		t.Fatal("expected nested deny")
@@ -97,6 +97,20 @@ func TestNestedTaskForbidden(t *testing.T) {
 		if name == "task" {
 			t.Fatal("child schema still lists task")
 		}
+	}
+}
+
+func TestTaskListedAtDepthOne(t *testing.T) {
+	tools := &WorkspaceTools{Depth: 1}
+	found := false
+	for _, j := range AllToolJSON(tools) {
+		name, _ := j.Function["name"].(string)
+		if name == "task" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("depth 1 must still advertise task (nesting cap is 2)")
 	}
 }
 

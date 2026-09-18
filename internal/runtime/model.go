@@ -28,10 +28,18 @@ type ToolCall struct {
 	Arguments string `json:"arguments"`
 }
 
+type ContentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+	MIME     string `json:"mime,omitempty"`
+}
+
 type Message struct {
-	Role             Role       `json:"role"`
-	Content          string     `json:"content,omitempty"`
-	Name             string     `json:"name,omitempty"`
+	Role             Role          `json:"role"`
+	Content          string        `json:"content,omitempty"`
+	Parts            []ContentPart `json:"parts,omitempty"`
+	Name             string        `json:"name,omitempty"`
 	ToolCallID       string     `json:"tool_call_id,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	PromptTokens     int        `json:"-"`

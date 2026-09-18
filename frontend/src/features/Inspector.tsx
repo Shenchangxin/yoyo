@@ -1,4 +1,4 @@
-import { Activity, FileText, GitCompare } from "lucide-react";
+import { Activity, FileText, GitCompare, Inbox } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
@@ -6,6 +6,9 @@ import { DiffBlock, type DiffMode } from "../lib/split-diff";
 import type { Hunk, SessionTrace, SpillBlob } from "../lib/protocol";
 import type { InspTab } from "../lib/store";
 import { TracePanel } from "./TracePanel";
+import { useEffect, useState } from "react";
+import * as api from "../lib/client";
+import { asArray, str } from "../lib/normalize";
 
 export function Inspector(props: {
   tab: InspTab;
@@ -27,10 +30,11 @@ export function Inspector(props: {
 }) {
   const copy = useCopy();
   const files = fileNames(props.diff);
-  const active: InspTab = props.tab === "files" || props.tab === "trace" ? props.tab : "diff";
+  const active: InspTab = props.tab === "files" || props.tab === "trace" || props.tab === "queue" ? props.tab : "diff";
   const tabs: { id: InspTab; label: string; icon: typeof GitCompare }[] = [
     { id: "diff", label: props.hunks.length ? `${copy.review.diff} ${props.hunks.length}` : copy.review.diff, icon: GitCompare },
     { id: "files", label: copy.review.files, icon: FileText },
+    { id: "queue", label: copy.review.queue, icon: Inbox },
     { id: "trace", label: copy.trace.tab, icon: Activity },
   ];
   return (
@@ -65,6 +69,8 @@ export function Inspector(props: {
             onRefresh={() => props.onRefreshTrace?.()}
             onLoadSpill={props.onLoadSpill || (async () => ({ id: "", bytes: 0, text: "", truncated: false }))}
           />
+        ) : active === "queue" ? (
+          <ReviewQueue />
         ) : active === "diff" ? (
           <>
             <div className="mb-3 flex flex-wrap gap-2">
@@ -140,4 +146,39 @@ function fileNames(diff: string): string[] {
     }
   }
   return [...out];
+}
+
+function ReviewQueue() {
+  const copy = useCopy();
+  const [q, setQ] = useState<any>({});
+  useEffect(() => {
+    void api.reviewQueue().then(setQ).catch(() => {});
+  }, []);
+  const drafts = asArray(q.drafts);
+  const browser = asArray(q.browser);
+  const inbox = asArray(q.inbox);
+  if (!drafts.length && !browser.length && !inbox.length) {
+    return <p className="text-xs text-muted">{copy.review.noQueue}</p>;
+  }
+  return (
+    <div className="space-y-3 text-[12px]">
+      {drafts.map((d: any, i: number) => (
+        <div key={str(d.id || i)} className="rounded-md border border-border p-2">
+          <div className="font-medium">mail draft {str(d.to)}</div>
+          <div className="text-muted">{str(d.subject)}</div>
+        </div>
+      ))}
+      {browser.map((b: any, i: number) => (
+        <div key={i} className="rounded-md border border-border p-2 text-muted">
+          {str(b.op)} {str(b.detail)}
+        </div>
+      ))}
+      {inbox.map((it: any) => (
+        <div key={str(it.id)} className="rounded-md border border-border p-2">
+          <div className="font-medium">{str(it.title)}</div>
+          <div className="text-muted">{str(it.body).slice(0, 200)}</div>
+        </div>
+      ))}
+    </div>
+  );
 }

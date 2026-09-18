@@ -21,7 +21,7 @@ func Assemble(loop artifact.LoopPreset, fragments []artifact.PromptFragment, pla
 
 func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragment) string {
 	var b strings.Builder
-	b.WriteString("You are Yoyo, a local coding agent. Prefer concrete workspace changes over advice.\n")
+	b.WriteString("You are Yoyo, a local personal assistant. Deliver workspace artifacts — code, documents, spreadsheets, slides, and cited research — rather than advice.\n")
 	if loop.Bootstrap != "" {
 		b.WriteString("\n## Bootstrap\n")
 		b.WriteString(loop.Bootstrap)

@@ -19,6 +19,7 @@ import (
 
 func Handler(a *app.App, static http.Handler) http.Handler {
 	mux := http.NewServeMux()
+	mountPersonal(mux, a)
 	mux.HandleFunc("/rpc", handleRPC(a))
 	mux.HandleFunc("/api/rpc", handleRPC(a))
 	mux.HandleFunc("/ws", handleWS(a))

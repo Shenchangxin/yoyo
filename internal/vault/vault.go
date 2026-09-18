@@ -10,12 +10,13 @@ import (
 
 const EnvAPIKey = "YOYO_API_KEY"
 
-// Store holds provider secrets. Memory first, then a 0600 file under YOYO_HOME,
-// then process environment. Callers never receive keys except via Lease.
+// Store holds provider secrets. Lookup order: memory, OS keychain, 0600 file,
+// process environment. Callers never receive keys except via Lease.
 type Store struct {
-	mu   sync.Mutex
-	mem  map[string]string
-	path string
+	mu       sync.Mutex
+	mem      map[string]string
+	path     string
+	keychain bool
 }
 
 func New(home string) *Store {
@@ -23,6 +24,10 @@ func New(home string) *Store {
 	if home != "" {
 		s.path = filepath.Join(home, "vault.json")
 		s.loadFile()
+	}
+	s.keychain = keychainAvailable()
+	if s.keychain {
+		s.migrateToKeychain()
 	}
 	return s
 }
@@ -35,8 +40,14 @@ func (s *Store) Set(name, value string) {
 	}
 	if value == "" {
 		delete(s.mem, name)
+		_ = keychainDelete(name)
 	} else {
 		s.mem[name] = value
+		if s.keychain {
+			if err := keychainSet(name, value); err == nil {
+				delete(s.mem, name)
+			}
+		}
 	}
 	_ = s.flushLocked()
 }
@@ -48,6 +59,9 @@ func (s *Store) Get(name string) (string, error) {
 		return v, nil
 	}
 	s.mu.Unlock()
+	if v, err := keychainGet(name); err == nil && v != "" {
+		return v, nil
+	}
 	if name == "openai" || name == "default" {
 		if v := os.Getenv(EnvAPIKey); v != "" {
 			return v, nil
@@ -74,12 +88,41 @@ func (s *Store) Status() map[string]any {
 	defer s.mu.Unlock()
 	saved := len(s.mem) > 0
 	source := "empty"
-	if saved {
+	if s.keychain {
+		source = "keychain"
+		if saved {
+			source = "keychain+file"
+		}
+	} else if saved {
 		source = "file"
 	} else if os.Getenv(EnvAPIKey) != "" || os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("DEEPSEEK_API_KEY") != "" {
 		source = "env"
 	}
-	return map[string]any{"saved": saved || source == "env", "source": source, "path": s.path}
+	return map[string]any{
+		"saved":    saved || source == "env" || source == "keychain" || source == "keychain+file",
+		"source":   source,
+		"path":     s.path,
+		"keychain": s.keychain,
+	}
+}
+
+func (s *Store) migrateToKeychain() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.mem) == 0 {
+		return
+	}
+	kept := map[string]string{}
+	for k, v := range s.mem {
+		if v == "" {
+			continue
+		}
+		if err := keychainSet(k, v); err != nil {
+			kept[k] = v
+		}
+	}
+	s.mem = kept
+	_ = s.flushLocked()
 }
 
 func (s *Store) loadFile() {
