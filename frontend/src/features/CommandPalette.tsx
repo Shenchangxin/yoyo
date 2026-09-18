@@ -100,7 +100,7 @@ export function CommandPalette(props: {
                 {SETTINGS_TABS.map((t) => (
                   <Command.Item
                     key={t.key}
-                    value={`settings ${t.key} ${copy.settings.tabs[t.key]}`}
+                    value={`settings ${t.key} ${copy.settings.tabs[t.key]} ${copy.settings.groups[t.group]}`}
                     onSelect={() => {
                       useUI.getState().openSettings(t.key);
                       props.onClose();
@@ -108,12 +108,13 @@ export function CommandPalette(props: {
                   >
                     <Settings className="size-4 text-muted" />
                     {copy.settings.tabs[t.key]}
+                    <span className="ml-auto text-[11px] text-muted">{copy.settings.groups[t.group]}</span>
                   </Command.Item>
                 ))}
                 {SETTINGS_SECTIONS.map((s) => (
                   <Command.Item
                     key={s.id}
-                    value={`settings section ${s.id} ${copy.settings.sections[s.titleKey]} ${copy.settings.tabs[s.tab]}`}
+                    value={`settings section ${s.id} ${s.keywords || ""} ${copy.settings.sections[s.titleKey]} ${copy.settings.tabs[s.tab]}`}
                     onSelect={() => {
                       useUI.getState().openSettings(s.tab, s.id);
                       props.onClose();

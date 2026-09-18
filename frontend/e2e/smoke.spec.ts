@@ -82,10 +82,10 @@ test("provider preset fills a compatible base URL", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Provider", exact: true }).click();
+  await page.getByRole("button", { name: "Models", exact: true }).click();
   await page.getByRole("radio", { name: "DeepSeek" }).click();
   await expect(page.getByRole("textbox", { name: "Base URL" })).toHaveValue("https://api.deepseek.com");
-  await expect(page.getByRole("textbox", { name: "Model" })).toHaveValue("deepseek-chat");
+  await expect(page.getByRole("textbox", { name: "Model", exact: true })).toHaveValue("deepseek-chat");
   await expect(page.getByText("DeepSeek Chat")).toBeVisible();
 });
 
@@ -442,7 +442,8 @@ test("settled tools collapse until the operator expands them", async ({ page }) 
   await expect(page.getByText("it is a go file")).toBeVisible();
   const summary = page.getByTestId("process-summary");
   await expect(summary).toBeVisible();
-  await expect(summary).toContainText("1 tools");
+  await expect(summary).toContainText("Worked for 1s");
+  await expect(summary).toContainText("Read 1 file");
   await expect(page.getByText("src/main.go")).toHaveCount(0);
   await expect(page.getByText("{\"path\":\"src/main.go\"}")).toHaveCount(0);
   await summary.click();
@@ -451,6 +452,32 @@ test("settled tools collapse until the operator expands them", async ({ page }) 
   await expect(row.getByText("src/main.go")).toBeVisible();
   await expect(row.getByText("12ms")).toBeVisible();
   await expect(page.getByText("{\"path\":\"src/main.go\"}")).toHaveCount(0);
+});
+
+test("a call without a result on a finished turn reads interrupted, never running", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    running: false,
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "read the file" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", content: "package main", elapsed_ms: 12 } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { id: "c2", name: "bash", arguments: "{\"cmd\":\"go test ./...\"}" } },
+    ],
+  });
+  await page.goto("/");
+  const group = page.getByTestId("process-group");
+  await expect(group).toHaveAttribute("data-live", "false");
+  await expect(page.getByTestId("working-line")).toHaveCount(0);
+  const summary = page.getByTestId("process-summary");
+  await expect(summary).toContainText("Interrupted");
+  await expect(summary).not.toContainText("Running");
+  await summary.click();
+  const row = page.getByTestId("tool-row").filter({ hasText: "bash" });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Interrupted");
+  await expect(row.locator(".pulse-dot")).toHaveCount(0);
+  await expect(page.getByTestId("tool-row").filter({ hasText: "read_file" })).not.toContainText("Interrupted");
 });
 
 test("office artifacts land as review cards", async ({ page }) => {

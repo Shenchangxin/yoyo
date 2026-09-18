@@ -25,6 +25,8 @@ html.dark {
   --accent: #6d8a7e;
   --accent-fg: #0c1210;
   --danger: #dc3d3d;
+  --success: #6fae82;
+  --warning: #d1a24a;
   --ring: #ececea;
   --radius: 0.625rem;
   --radius-composer: 1rem;
@@ -64,6 +66,8 @@ html.light {
   --accent: #5d7368;
   --accent-fg: #ffffff;
   --danger: #c43333;
+  --success: #3f8a58;
+  --warning: #a97a1f;
   --ring: #1b1b1b;
   --shadow-card: inset 0 1px 0 color-mix(in srgb, white 72%, transparent);
   --shadow-composer: inset 0 1px 0 color-mix(in srgb, white 86%, transparent);
@@ -78,6 +82,7 @@ html.light {
 
 @theme inline {
   --font-sans: "Inter Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-sidebar: var(--sidebar);
@@ -96,6 +101,8 @@ html.light {
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-ring: var(--ring);
   --color-app: var(--background);
   --color-fg: var(--foreground);
@@ -146,6 +153,16 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Diffs and tool payloads must show the bytes on disk: no `!=` → `≠` ligatures. */
+pre,
+code,
+kbd,
+samp,
+.font-mono {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 
 ::selection {
@@ -460,6 +477,96 @@ kbd,
   .thinking-dots i { animation: none; opacity: 0.7; }
 }
 
+/*
+ * Live activity grammar (Codex "Worked for" / Claude status line):
+ * a shimmer sweeping through the verb, a breathing dot on the rail,
+ * and a hairline step rail once the group is expanded. No spinners on
+ * text; spinners belong to controls (HIG: stop them the instant work ends).
+ */
+.shimmer-text {
+  color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    var(--muted) 38%,
+    var(--foreground) 50%,
+    var(--muted) 62%,
+    var(--muted) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: yoyo-shimmer 1.9s var(--ease-out) infinite;
+}
+@keyframes yoyo-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+.pulse-dot {
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--foreground);
+  flex: none;
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 1px solid var(--foreground);
+  opacity: 0;
+  animation: yoyo-pulse 1.4s var(--ease-out) infinite;
+}
+@keyframes yoyo-pulse {
+  0% { transform: scale(0.6); opacity: 0.55; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+.empty-rise {
+  animation: yoyo-rise 320ms var(--ease-out) both;
+}
+@keyframes yoyo-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-rail {
+  position: relative;
+}
+.step-rail::before {
+  content: "";
+  position: absolute;
+  left: 6.5px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border);
+}
+
+.step-row {
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.step-row:hover {
+  background-color: color-mix(in srgb, var(--lift) 55%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--foreground);
+  }
+  .pulse-dot::after { animation: none; opacity: 0; }
+  .empty-rise { animation: none; }
+}
+
 [cmdk-root] {
   width: 100%;
 }
@@ -539,10 +646,30 @@ kbd,
   to { opacity: 1; transform: scaleX(1); }
 }
 
-.theme-preview-dark { background: #0f1011; }
-.theme-preview-dark .theme-preview-inner { background: #161718; }
-.theme-preview-light { background: #f3f3f0; }
-.theme-preview-light .theme-preview-inner { background: #ffffff; }
+/* Miniature window used by the theme picker cards. */
+.theme-preview-dark {
+  background: #0f1011;
+  --tp-rail: #1a1b1c;
+  --tp-line: #3d3f40;
+  --tp-bubble: #1f2021;
+  --tp-border: color-mix(in srgb, white 10%, transparent);
+}
+.theme-preview-light {
+  background: #f3f3f0;
+  --tp-rail: #e6e6e0;
+  --tp-line: #c4c4bd;
+  --tp-bubble: #ffffff;
+  --tp-border: color-mix(in srgb, black 10%, transparent);
+}
+.theme-preview-rail {
+  background: var(--tp-rail);
+  border-color: var(--tp-border);
+}
+.theme-preview-line { background: var(--tp-line); }
+.theme-preview-bubble {
+  background: var(--tp-bubble);
+  border: 1px solid var(--tp-border);
+}
 
 .surface-inset {
   box-shadow: var(--shadow-card);
@@ -550,10 +677,11 @@ kbd,
 
 @keyframes setting-breathe {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 0 1px var(--foreground); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 75%, transparent); }
 }
 .setting-section-breathe [data-setting-section-id] {
-  animation: setting-breathe 900ms var(--ease-out) 3;
+  animation: setting-breathe 1100ms var(--ease-out) 3;
+  border-radius: 12px;
 }
 
 .scroll-fade {
@@ -567,7 +695,7 @@ kbd,
   }
   .setting-section-breathe [data-setting-section-id] {
     animation: none;
-    box-shadow: 0 0 0 1px var(--foreground);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 75%, transparent);
   }
   .command-menu-sheen::after,
   .command-menu-input-underline {

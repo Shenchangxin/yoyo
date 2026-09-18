@@ -129,6 +129,10 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	}
 	for turn := 0; turn < loop.MaxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
+			// Interrupt landed between a tool batch and the next model call.
+			// The UI only learns a turn is over from a terminal event, so do
+			// not return silently — same card the mid-stream cancel path shows.
+			emit(req, trace.TypeError, "runtime", ClassifyError(err).Payload())
 			setStop(&req, StopCancelled)
 			return last, stopErr(StopCancelled, err.Error(), err)
 		}
@@ -292,6 +296,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			messages = append(messages, Message{Role: RoleUser, Content: inj})
 		}
 	}
+	emit(req, trace.TypeError, "runtime", maxTurnsInfo(loop.MaxTurns).Payload())
 	setStop(&req, StopMaxTurns)
 	return last, maxTurnsErr()
 }

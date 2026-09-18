@@ -51,6 +51,40 @@ func TestRetryDoesNotQueue(t *testing.T) {
 	}
 }
 
+// A finished loop must stop reporting Running() even while the slot is still
+// held for post-turn bookkeeping — otherwise the UI's 1.5s poll resurrects the
+// spinner after it already saw turn_end. A second send still queues.
+func TestDoneSlotIsNotRunningButStillQueues(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
+	a.mu.Unlock()
+	if !a.Running(sess.ID) {
+		t.Fatal("slot should be running before done")
+	}
+	a.markRunDone(sess.ID)
+	if a.Running(sess.ID) {
+		t.Fatal("done slot must not report running")
+	}
+	if ids := a.RunningIDs(); len(ids) != 0 {
+		t.Fatalf("done slot leaked into RunningIDs: %v", ids)
+	}
+	if st := a.RunningStatus(); len(st) != 0 {
+		t.Fatalf("done slot leaked into RunningStatus: %+v", st)
+	}
+	if err := a.StartSendOpts(sess.ID, "hello", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatalf("want queued while slot held, got %v", err)
+	}
+}
+
 func TestPinArchiveDelete(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

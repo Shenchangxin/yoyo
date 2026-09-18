@@ -1,15 +1,15 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { isSettingsTab } from "./registry";
+import { resolveSettingsTarget } from "./registry";
 import { useUI } from "../../lib/store";
-import type { SettingsTab } from "../../lib/protocol";
 
+/** Accepts links minted before the eight-tab regroup; they resolve onto the new layout. */
 function parseSettingsHash() {
   const h = location.hash.slice(1);
   const [path, query] = h.split("?");
   const m = path.match(/^\/settings\/([a-z-]+)$/);
-  if (!m || !isSettingsTab(m[1])) return null;
+  if (!m) return null;
   const params = new URLSearchParams(query || "");
-  return { tab: m[1] as SettingsTab, section: params.get("section") || "" };
+  return resolveSettingsTarget(m[1], params.get("section") || "");
 }
 
 export function useSettingsHash() {

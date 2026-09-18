@@ -152,6 +152,11 @@ export default function App() {
       mode={ws.diffMode}
       onMode={ws.setDiffMode}
       onToggle={(id) => ws.setHunkSel((s) => ({ ...s, [id]: !s[id] }))}
+      onSelect={(ids, on) => ws.setHunkSel((s) => {
+        const next = { ...s };
+        for (const id of ids) next[id] = on;
+        return next;
+      })}
       onApply={ws.applySelected}
       onRefreshDiff={ws.refreshDiff}
       onQuote={(text) => {
@@ -182,12 +187,12 @@ export default function App() {
 
   const agentPane = (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col">
-      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", THREAD_GUTTER)}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
           items={ws.items}
           approvals={ws.approvals}
           running={ws.threadRunning}
-          flush
+          workspace={sessionWs}
           onResolve={ws.onResolve}
           onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
           onRetry={() => { void ws.onRetryLast(); }}

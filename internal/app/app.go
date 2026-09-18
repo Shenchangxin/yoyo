@@ -42,6 +42,11 @@ type runSlot struct {
 	cancel   context.CancelFunc
 	started  time.Time
 	lastTool string
+	// done flips as soon as the model loop returns. The slot stays in the map
+	// (so a second send still queues) while post-turn bookkeeping — ACE
+	// staging, thread indexing — finishes, but Running() must already say no:
+	// the UI has seen turn_end and a late poll must not resurrect the spinner.
+	done bool
 }
 
 type MCPServerConfig struct {

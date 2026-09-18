@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
-import { Check, Copy, FileText, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Check, CircleDashed, Copy, FileText, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
@@ -11,6 +11,7 @@ import {
   formatToolBody,
   isArtifactTool,
   isRichResult,
+  itemTimeMs,
   patchFileCount,
   toolArgs,
   toolDetail,
@@ -19,9 +20,11 @@ import {
 import { extractHTML, looksLikeHTML, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
-import { layoutRows, pairTools, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { layoutRows, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
+import { YoyoMark } from "./shell/YoyoMark";
+import { displayWorkspace } from "../lib/display-title";
 import * as api from "../lib/client";
 
 function lastRealUserIndex(items: Item[]): number {
@@ -42,17 +45,25 @@ function lastMeaningful(items: Item[]): Item | null {
   return null;
 }
 
-function toolsPending(items: Item[]): boolean {
-  const start = lastRealUserIndex(items);
-  const from = start < 0 ? 0 : start + 1;
-  const open = new Set<string>();
-  for (let i = from; i < items.length; i++) {
-    const it = items[i];
-    const id = String(it.payload?.id || it.key);
-    if (it.type === "tool_call") open.add(id);
-    if (it.type === "tool_result") open.delete(id);
-  }
-  return open.size > 0;
+/** Start of the live clock: the operator's last real message. */
+function lastUserTimeMs(items: Item[]): number {
+  const i = lastRealUserIndex(items);
+  return i >= 0 ? itemTimeMs(items[i]) : 0;
+}
+
+/**
+ * The tail part of the tail agent row owns the live indicator. A process
+ * group there narrates itself ("Reading …" / "Thinking"); an artifact with an
+ * open call shows its own pending state; anything else gets the working line.
+ */
+function tailOwnsActivity(rows: LayoutRow[]): boolean {
+  const row = rows[rows.length - 1];
+  if (!row || row.kind !== "agent") return false;
+  const part = row.parts[row.parts.length - 1];
+  if (!part) return false;
+  if (part.kind === "process") return true;
+  if (part.kind === "artifact") return processGroupLive(part.items);
+  return false;
 }
 
 function lastErrorKey(items: Item[]): string {
@@ -81,8 +92,8 @@ function rowSpace(rows: LayoutRow[], i: number): string {
   const row = rows[i];
   const prev = rows[i - 1];
   if (!prev) return "pt-0";
-  if (isUserRow(row)) return "border-t border-border/40 pt-8";
-  if (row.kind === "agent" && prev.kind === "user") return "pt-3";
+  if (isUserRow(row)) return "pt-10";
+  if (row.kind === "agent" && prev.kind === "user") return "pt-4";
   if (row.kind === "agent") return "pt-5";
   return "pt-4";
 }
@@ -107,19 +118,20 @@ export function Transcript(props: {
   running: boolean;
   compact?: boolean;
   flush?: boolean;
+  workspace?: string;
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
   onOpenReview?: () => void;
   onRetry?: () => void;
 }) {
-  const copy = useCopy();
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
   const layout = layoutRows(props.items);
   const empty = props.items.length === 0 && !props.running && props.approvals.length === 0;
   const live = lastMeaningful(props.items);
   const streamingKey = props.running && live?.type === "assistant" && live.delta ? live.key : "";
-  const showWorking = props.running && !streamingKey && !toolsPending(props.items);
+  const showWorking = props.running && !streamingKey && !tailOwnsActivity(layout);
+  const since = props.running ? lastUserTimeMs(props.items) : 0;
   const retryKey = lastErrorKey(props.items);
   const pinnedTurn = lastAgentKey(layout);
   const longThread = layout.length > LONG_THREAD_TURNS;
@@ -139,6 +151,7 @@ export function Transcript(props: {
         const liveHere = row.parts.some((p) => p.kind === "item" && p.item.key === streamingKey);
         const last = row.key === pinnedTurn;
         const workingHere = last && showWorking;
+        const tail = row.parts.length - 1;
         return {
           key: row.key,
           space: rowSpace(layout, i),
@@ -155,9 +168,14 @@ export function Transcript(props: {
                   )}
                 >
                   {part.kind === "process" ? (
-                    <ProcessGroup items={part.items} live={part.live && props.running && last} compact={props.compact} />
+                    <ProcessGroup
+                      items={part.items}
+                      live={props.running && last && pi === tail}
+                      running={props.running}
+                      compact={props.compact}
+                    />
                   ) : part.kind === "artifact" ? (
-                    <ArtifactTimeline items={part.items} onOpenReview={props.onOpenReview} />
+                    <ArtifactTimeline items={part.items} running={props.running} onOpenReview={props.onOpenReview} />
                   ) : (
                     <ItemRow
                       item={part.item}
@@ -168,15 +186,15 @@ export function Transcript(props: {
               ))}
               {workingHere ? (
                 <div className={row.parts.length ? "pt-1.5" : undefined}>
-                  <WorkingLine />
+                  <WorkingLine since={since} />
                 </div>
               ) : null}
               {row.copyText && !props.compact ? (
                 <div className="u-chrome">
                   <TurnActions
                     text={row.copyText}
-                    live={liveHere}
-                    pinned={last && !liveHere && !workingHere}
+                    live={liveHere || (last && props.running)}
+                    pinned={last && !props.running}
                     showReview={turnHasArtifact(row.parts)}
                     onOpenReview={props.onOpenReview}
                   />
@@ -208,7 +226,7 @@ export function Transcript(props: {
     rows.push({
       key: "working",
       space: "pt-3",
-      node: <WorkingLine />,
+      node: <WorkingLine since={since} />,
     });
   }
 
@@ -222,26 +240,9 @@ export function Transcript(props: {
       {empty && !props.compact ? (
         <StickToBottom.Content
           scrollClassName="transcript-scroll"
-          className={cn(col, "flex min-h-full flex-col justify-center pb-10 pt-8")}
+          className={cn(col, "flex min-h-full flex-col justify-end pb-7 pt-8")}
         >
-          <h1 className="text-[22px] font-semibold tracking-[-0.032em] text-foreground">
-            {copy.transcript.ready}
-          </h1>
-          <p className="mt-2 max-w-[34rem] text-[13.5px] leading-[1.6] text-muted">
-            {copy.transcript.readyBody}
-          </p>
-          <div className="mt-7 flex max-w-[28rem] flex-col gap-1.5">
-            {copy.transcript.starters.map((s) => (
-              <button
-                type="button"
-                key={s.label}
-                className="rounded-xl border border-border/70 bg-card/40 px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors duration-150 hover:border-border hover:bg-lift/55"
-                onClick={() => props.onPrompt?.(s.text)}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
         </StickToBottom.Content>
       ) : (
         <StickToBottom.Content
@@ -264,6 +265,51 @@ export function Transcript(props: {
   );
 }
 
+/**
+ * Empty thread. Sits just above the composer so the greeting, the hints and
+ * the input read as one block instead of a headline floating in a void.
+ */
+function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (text: string) => void }) {
+  const copy = useCopy();
+  const ws = displayWorkspace(workspace, "");
+  const hints = [
+    ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
+    { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+    { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
+    { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
+  ].filter(Boolean) as { key: string; node: ReactNode }[];
+  return (
+    <div className="empty-rise" data-testid="empty-turn">
+      <YoyoMark className="size-4 text-foreground/70" />
+      <h1 className="mt-4 text-[21px] font-semibold tracking-[-0.03em] text-foreground">
+        {copy.transcript.ready}
+      </h1>
+      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] leading-[1.6] text-muted">
+        {hints.map((h, i) => (
+          <span key={h.key} className="inline-flex items-center">
+            {i > 0 ? <span className="mr-3 text-muted/40" aria-hidden>·</span> : null}
+            {h.node}
+          </span>
+        ))}
+      </p>
+      <div className="mt-6 flex flex-wrap gap-1.5">
+        {copy.transcript.starters.map((s, i) => (
+          <button
+            type="button"
+            key={s.label}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/40 py-1.5 pl-3 pr-2.5 text-[12.5px] text-foreground/90 transition-[border-color,background-color,color] duration-150 hover:border-border hover:bg-lift/60 hover:text-foreground"
+            style={{ animationDelay: `${60 + i * 40}ms` }}
+            onClick={() => onPrompt?.(s.text)}
+          >
+            {s.label}
+            <ArrowUpRight className="size-3 text-muted/60" aria-hidden />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function JumpLatest() {
   const copy = useCopy();
   const ctx = useStickToBottomContext() as ReturnType<typeof useStickToBottomContext> & {
@@ -274,11 +320,12 @@ function JumpLatest() {
   return (
     <button
       type="button"
-      className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-sm"
+      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-popover/95 py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-md transition-colors hover:bg-lift"
       onClick={() => {
         void ctx.scrollToBottom();
       }}
     >
+      <ArrowDown className="size-3 text-muted" aria-hidden />
       {copy.transcript.jumpLatest}
     </button>
   );
@@ -325,43 +372,64 @@ function TurnActions({
 
 function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string) => void }) {
   const copy = useCopy();
+  const subject = item.command || item.path || item.level;
   return (
-    <div className="surface-inset rounded-2xl border border-border bg-card/90 px-4 py-3.5" role="status">
-      <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-        <ShieldAlert className="size-3.5 text-muted" aria-hidden />
-        {copy.transcript.needsApproval}
-      </div>
-      <div className="mt-1.5 text-[13.5px] font-medium tracking-[-0.015em]">{item.action || "action"}</div>
-      <div className="mt-0.5 truncate font-mono text-[11px] text-muted">{item.command || item.path || item.level}</div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          className="rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background"
-          onClick={() => onResolve(item.id, "once")}
-        >
-          {copy.transcript.allow}
-        </button>
-        <button
-          type="button"
-          className="rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground hover:bg-lift"
-          onClick={() => onResolve(item.id, "always")}
-        >
-          {copy.transcript.allowAlways}
-        </button>
-        <button
-          type="button"
-          className="rounded-full px-3 py-1.5 text-[12px] text-muted hover:bg-lift hover:text-foreground"
-          onClick={() => onResolve(item.id, "session")}
-        >
-          {copy.transcript.allowSession}
-        </button>
-        <button
-          type="button"
-          className="rounded-full px-3 py-1.5 text-[12px] text-muted hover:bg-danger/10 hover:text-danger"
-          onClick={() => onResolve(item.id, "deny")}
-        >
-          {copy.transcript.reject}
-        </button>
+    <div
+      className="surface-inset relative overflow-hidden rounded-2xl border border-border bg-card/90 px-4 py-3.5"
+      role="status"
+      data-testid="approval-card"
+    >
+      <span className="pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full bg-warning/80" aria-hidden />
+      <div className="flex items-start gap-3">
+        <span className="mt-px grid size-7 shrink-0 place-items-center rounded-lg bg-warning/12 text-warning" aria-hidden>
+          <ShieldAlert className="size-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+            {copy.transcript.needsApproval}
+          </div>
+          <div className="mt-0.5 text-[13.5px] font-medium tracking-[-0.015em] text-foreground">{item.action || "action"}</div>
+          {subject ? (
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11.5px] leading-[1.5] text-foreground/85">
+              {subject}
+            </pre>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
+              onClick={() => onResolve(item.id, "once")}
+            >
+              {copy.transcript.allow}
+              <kbd className="border-background/20 bg-background/15 text-background/80" aria-hidden>1</kbd>
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] text-foreground transition-colors hover:bg-lift"
+              onClick={() => onResolve(item.id, "session")}
+            >
+              {copy.transcript.allowSession}
+              <kbd aria-hidden>2</kbd>
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+              onClick={() => onResolve(item.id, "always")}
+            >
+              {copy.transcript.allowAlways}
+              <kbd aria-hidden>3</kbd>
+            </button>
+            <span className="flex-1" />
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+              onClick={() => onResolve(item.id, "deny")}
+            >
+              {copy.transcript.reject}
+              <kbd aria-hidden>Esc</kbd>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -401,20 +469,32 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   const hint = classified.payloadHint || labels.hint;
   const detail = classified.detail;
   const showDetail = !!detail && detail !== labels.title && detail !== classified.payloadTitle;
+  const soft = classified.kind === "canceled" || classified.kind === "max_turns";
+  const detailsLabel = soft ? copy.transcript.details : copy.transcript.errorDetails;
   return (
-    <div className="rounded-2xl border border-danger/25 bg-danger/8 px-4 py-3" role="alert">
-      <div className="text-[13.5px] font-medium text-danger">{labels.title}</div>
-      {hint ? <p className="mt-1 text-[13px] leading-5 text-danger/80">{hint}</p> : null}
+    <div
+      className={cn(
+        "surface-inset relative overflow-hidden rounded-2xl border px-4 py-3.5",
+        soft ? "border-border bg-card/80" : "border-danger/25 bg-danger/8",
+      )}
+      role="alert"
+    >
+      <span
+        className={cn("pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full", soft ? "bg-muted/60" : "bg-danger/80")}
+        aria-hidden
+      />
+      <div className={cn("text-[13.5px] font-medium tracking-[-0.01em]", soft ? "text-foreground" : "text-danger")}>{labels.title}</div>
+      {hint ? <p className={cn("mt-1 text-[13px] leading-5", soft ? "text-muted" : "text-danger/80")}>{hint}</p> : null}
       {showDetail ? (
         <details className="mt-2 text-[12px] text-muted">
-          <summary className="cursor-pointer text-danger/70">{copy.transcript.errorDetails}</summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{detail}</pre>
+          <summary className={cn("cursor-pointer select-none", soft ? "text-muted hover:text-foreground" : "text-danger/70")}>{detailsLabel}</summary>
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.5]">{detail}</pre>
         </details>
       ) : null}
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
           onClick={onRetry}
         >
           <RotateCcw className="size-3" aria-hidden />
@@ -488,10 +568,10 @@ const ItemRow = memo(function ItemRow({
   return null;
 });
 
-function ArtifactTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview?: () => void }) {
+function ArtifactTimeline({ items, running, onOpenReview }: { items: Item[]; running: boolean; onOpenReview?: () => void }) {
   const pairs = pairTools(items);
   return (
-    <div className="u-chrome min-w-0 space-y-0.5" data-testid="tool-timeline">
+    <div className="u-chrome min-w-0 space-y-1" data-testid="tool-timeline">
       {pairs.map((p) => {
         const name = toolName(p.call || p.result || p.extra[0] || ({ name: "tool", payload: {} } as Item));
         if (name === "update_plan" && (p.call || p.result)) {
@@ -503,6 +583,7 @@ function ArtifactTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview
               key={p.key}
               call={p.call}
               result={p.result}
+              running={running}
               onOpenReview={onOpenReview}
             />
           );
@@ -517,9 +598,9 @@ function PlanBlock({ item }: { item: Item }) {
   const copy = useCopy();
   const body = formatToolBody(item);
   return (
-    <div className="rounded-xl border border-border/70 bg-lift/30 px-3 py-2">
-      <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted">{copy.transcript.plan}</div>
-      <pre className="mt-1 whitespace-pre-wrap font-sans text-[13px] leading-5 text-foreground/90">{body.slice(0, 4000)}</pre>
+    <div className="surface-inset rounded-xl border border-border/70 bg-card/60 px-3.5 py-2.5">
+      <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">{copy.transcript.plan}</div>
+      <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[13px] leading-[1.55] text-foreground/90">{body.slice(0, 4000)}</pre>
     </div>
   );
 }
@@ -527,16 +608,20 @@ function PlanBlock({ item }: { item: Item }) {
 function ArtifactCard({
   call,
   result,
+  running,
   onOpenReview,
 }: {
   call?: Item;
   result?: Item;
+  running: boolean;
   onOpenReview?: () => void;
 }) {
   const copy = useCopy();
   const item = result || call!;
   const name = toolName(item);
-  const pending = !!call && !result;
+  const open = !!call && !result;
+  const pending = open && running;
+  const interrupted = open && !running;
   const detail = toolDetail(result || call || item);
   const body = result ? formatToolBody(result) : formatToolBody(call || item);
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
@@ -556,15 +641,22 @@ function ArtifactCard({
     : (detail || name);
   return (
     <div
-      className="rounded-xl border border-border/80 bg-lift/25 px-3 py-2.5"
+      className={cn(
+        "surface-inset rounded-xl border bg-card/60 px-3.5 py-2.5 transition-colors duration-200",
+        pending ? "border-foreground/15" : "border-border/80",
+      )}
       data-testid="artifact-card"
     >
       <div className="flex items-center gap-3">
-        <FileText className="size-4 shrink-0 text-muted" aria-hidden />
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lift/70 text-muted" aria-hidden>
+          {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-3.5" />}
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
-            {pending ? <Loader2 className="size-3 animate-spin text-muted" aria-hidden /> : null}
-            <span>{title}</span>
+            <span className={cn(pending && "shimmer-text")}>{title}</span>
+            {interrupted ? (
+              <span className="rounded-md bg-warning/12 px-1.5 py-px text-[10.5px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
+            ) : null}
           </div>
           <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
         </div>
@@ -572,7 +664,7 @@ function ArtifactCard({
           {path ? (
             <button
               type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
               onClick={() => { void api.openPath(path); }}
             >
               {pdf ? copy.transcript.openPdf : copy.transcript.openFile}
@@ -581,7 +673,7 @@ function ArtifactCard({
           {onOpenReview ? (
             <button
               type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
               onClick={onOpenReview}
             >
               {copy.review.openReview}

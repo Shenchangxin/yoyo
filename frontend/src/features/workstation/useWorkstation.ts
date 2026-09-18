@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
-import { bannerError, shortError } from "../../lib/error";
+import { bannerError, classifyItem, shortError } from "../../lib/error";
 import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
 import { num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
@@ -47,6 +47,19 @@ function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<s
   for (const id of Object.keys(prev)) next[id] = false;
   for (const id of ids) next[id] = true;
   return next;
+}
+
+/**
+ * After the stream says a turn ended, a poll answer that is still in flight
+ * (or a backend still doing post-turn bookkeeping) may answer `running: true`.
+ * Treat the event as authoritative for a short grace window so the working
+ * line and tool spinners cannot flicker back on a finished turn.
+ */
+const SETTLE_GRACE_MS = 6000;
+
+function settled(endedAt: Record<string, number>, id: string): boolean {
+  const t = endedAt[id];
+  return !!t && Date.now() - t < SETTLE_GRACE_MS;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -128,6 +141,7 @@ export function useWorkstation() {
   const [queued, setQueued] = useState(0);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
+  const endedAt = useRef<Record<string, number>>({});
   const [runStatus, setRunStatus] = useState<RunStatus[]>([]);
   const [ctx, setCtx] = useState<ContextUsage>(emptyCtx);
   const [trace, setTrace] = useState<SessionTrace | null>(null);
@@ -210,11 +224,24 @@ export function useWorkstation() {
     toast.error(msg);
   };
 
+  const markEnded = useCallback((id: string) => {
+    if (!id) return;
+    endedAt.current[id] = Date.now();
+    setRunning((m) => (m[id] ? { ...m, [id]: false } : m));
+  }, []);
+
+  const markStarted = useCallback((id: string) => {
+    if (!id) return;
+    delete endedAt.current[id];
+    setRunning((m) => ({ ...m, [id]: true }));
+  }, []);
+
   const syncRunning = useCallback(async () => {
     try {
       const [ids, status] = await Promise.all([api.runningIDs(), api.runningStatus().catch(() => [] as RunStatus[])]);
-      setRunning((prev) => runningMap(ids, prev));
-      setRunStatus(status);
+      const live = ids.filter((id) => !settled(endedAt.current, id));
+      setRunning((prev) => runningMap(live, prev));
+      setRunStatus(status.filter((s) => !settled(endedAt.current, s.id)));
     } catch {
       /* ignore */
     }
@@ -330,8 +357,8 @@ export function useWorkstation() {
         offs.push(Events.On("yoyo:command", (cmd: any) => handlers.current.command(String(cmd || ""))));
         offs.push(Events.On("yoyo:quit", () => handlers.current.quit()));
         offs.push(Events.On("yoyo:focus", (session: any) => handlers.current.focus(typeof session === "string" ? session : "")));
-        offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(info || {}); openSettings("logs", "logs-doctor"); }));
-        offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(info || {}); openSettings("logs", "logs-journal"); }));
+        offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(info || {}); openSettings("advanced", "advanced-doctor"); }));
+        offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(info || {}); openSettings("advanced", "advanced-logs"); }));
       } catch {
         /* browser */
       }
@@ -343,14 +370,21 @@ export function useWorkstation() {
   }, [openSettings]);
 
   useEffect(() => subscribeItems((item) => {
+    // The loop emits exactly one `system` event when a run starts, so a queued
+    // turn kicked right after turn_end lifts the settle grace immediately.
+    if (item.type === "system" || (item.type === "user" && item.source === "user")) {
+      markStarted(item.sessionId);
+    }
     if (item.type === "turn_end" || item.type === "error") {
-      const id = item.sessionId;
-      if (id) setRunning((m) => ({ ...m, [id]: false }));
+      markEnded(item.sessionId);
     }
     if (item.type === "approval") {
       api.approvals().then(setApprovals).catch(() => {});
     }
-    if (item.type === "turn_end" || item.type === "approval" || item.type === "error") {
+    // A deliberate Stop lands as a "canceled" error card in the stream; it is
+    // not news worth a notice.
+    const stopped = item.type === "error" && classifyItem(item).kind === "canceled";
+    if ((item.type === "turn_end" || item.type === "approval" || item.type === "error") && !stopped) {
       pushNotice({
         id: item.key || `${item.type}-${Date.now()}`,
         title: item.type === "approval" ? copy.app.approval : item.type === "error" ? copy.app.errorNotice : copy.app.turnFinished,
@@ -359,7 +393,7 @@ export function useWorkstation() {
         sessionId: item.sessionId,
       });
     }
-  }), [pushNotice]);
+  }), [pushNotice, markEnded, markStarted]);
 
   useEffect(() => {
     if (!activeId) {
@@ -397,7 +431,7 @@ export function useWorkstation() {
           api.approvals().then(setApprovals).catch(() => {});
         }
         if (item.type === "turn_end" || item.type === "error") {
-          setRunning((m) => ({ ...m, [activeId]: false }));
+          markEnded(activeId);
           api.contextUsage(activeId).then(setCtx).catch(() => {});
           api.queueList(activeId).then((q) => setQueued(q.length)).catch(() => setQueued(0));
         }
@@ -409,25 +443,31 @@ export function useWorkstation() {
     );
     api.approvals().then(setApprovals).catch(() => {});
     api.contextUsage(activeId).then(setCtx).catch(() => {});
-    api.running(activeId).then((live) => setRunning((m) => ({ ...m, [activeId]: live }))).catch(() => {});
+    api.running(activeId)
+      .then((live) => setRunning((m) => ({ ...m, [activeId]: live && !settled(endedAt.current, activeId) })))
+      .catch(() => {});
     return unsub;
-  }, [activeId]);
+  }, [activeId, markEnded]);
 
   useEffect(() => {
     if (!anyRun) return;
+    let alive = true;
     const t = window.setInterval(async () => {
       await syncRunning();
-      if (activeId) {
-        const [live, offers] = await Promise.all([
-          api.running(activeId).catch(() => false),
-          api.approvals().catch(() => [] as Approval[]),
-        ]);
-        setRunning((m) => ({ ...m, [activeId]: live }));
-        setApprovals(offers);
-        api.contextUsage(activeId).then(setCtx).catch(() => {});
-      }
+      if (!alive || !activeId) return;
+      const [live, offers] = await Promise.all([
+        api.running(activeId).catch(() => false),
+        api.approvals().catch(() => [] as Approval[]),
+      ]);
+      if (!alive) return;
+      setRunning((m) => ({ ...m, [activeId]: live && !settled(endedAt.current, activeId) }));
+      setApprovals(offers);
+      api.contextUsage(activeId).then(setCtx).catch(() => {});
     }, 1500);
-    return () => window.clearInterval(t);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
   }, [anyRun, activeId, syncRunning]);
 
   async function ensureThread(): Promise<Thread> {
@@ -444,7 +484,7 @@ export function useWorkstation() {
     const turnWs = active?.workspace || savedCfg.workspace;
     if (!pathReady(turnWs) && !workspaceReady(health.workspaceReady, savedCfg.workspace)) {
       toast.message(copy.app.setupFirst);
-      openSettings("general", "general-basics");
+      openSettings("general", "general-workspace");
       return;
     }
     setErr("");
@@ -466,7 +506,7 @@ export function useWorkstation() {
       }
       const wasRunning = !!running[t.id];
       useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
-      setRunning((m) => ({ ...m, [t.id]: true }));
+      markStarted(t.id);
       if (t.id === activeId) {
         itemsAcc.current = mergeItem(itemsAcc.current, localUser(t.id, text));
         setItems(itemsAcc.current.slice());
@@ -485,7 +525,7 @@ export function useWorkstation() {
         toast.message(copy.app.queued);
         return;
       }
-      if (activeId) setRunning((s) => ({ ...s, [activeId]: false }));
+      if (activeId) markEnded(activeId);
       fail(e);
     }
   }
@@ -495,13 +535,13 @@ export function useWorkstation() {
     const hasTurn = itemsAcc.current.some((it) => (it.type === "user" && it.source !== "steer") || it.type === "assistant");
     if (!hasTurn) return;
     setErr("");
-    setRunning((m) => ({ ...m, [activeId]: true }));
+    markStarted(activeId);
     try {
       await api.retry(activeId);
       itemsAcc.current = dropTrailingErrors(itemsAcc.current);
       setItems(itemsAcc.current.slice());
     } catch (e) {
-      setRunning((s) => ({ ...s, [activeId]: false }));
+      markEnded(activeId);
       fail(e);
     }
   }
@@ -632,7 +672,7 @@ export function useWorkstation() {
   async function onStop() {
     if (!activeId) return;
     await api.interrupt(activeId);
-    setRunning((m) => ({ ...m, [activeId]: false }));
+    markEnded(activeId);
   }
 
   async function onResolve(id: string, decision: string) {

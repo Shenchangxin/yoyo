@@ -1,7 +1,8 @@
 export type ShellLayout = { rail: number; main: number; inspect: number };
 
 const KEY = "yoyo-layout-v1";
-const FALLBACK: ShellLayout = { rail: 20, main: 56, inspect: 24 };
+/** Review needs room for a diff; 30% of a 1440 window is ~430px of hunk. */
+const FALLBACK: ShellLayout = { rail: 19, main: 51, inspect: 30 };
 
 export function readLayout(): ShellLayout {
   try {

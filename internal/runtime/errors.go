@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -16,8 +17,22 @@ const (
 	ErrKindCanceled  = "canceled"
 	ErrKindProvider  = "provider"
 	ErrKindBudget    = "budget"
+	ErrKindMaxTurns  = "max_turns"
 	ErrKindUnknown   = "unknown"
 )
+
+// maxTurnsInfo is the terminal card for a loop that ran out of turns. It is
+// retryable: "continue this turn" resumes from history without a new user
+// message, which is exactly what an operator wants after a long tool run.
+func maxTurnsInfo(limit int) ErrorInfo {
+	return ErrorInfo{
+		Kind:      ErrKindMaxTurns,
+		Title:     "Reached the turn limit",
+		Hint:      "The loop stopped before the model finished. Continue this turn to keep going.",
+		Detail:    "max turns reached (" + strconv.Itoa(limit) + ")",
+		Retryable: true,
+	}
+}
 
 // ErrorInfo is a UI-facing projection of a provider/runtime failure.
 type ErrorInfo struct {

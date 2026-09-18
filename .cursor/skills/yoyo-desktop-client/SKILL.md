@@ -30,12 +30,17 @@ Steal, do not clone:
 | Claude Code | Plan chip, in-stream permission cards | VS Code editor |
 | Cursor | Three-pane density, thread object | IDE, LSP, composer-as-editor |
 
-## Visual world (Operate)
+## Visual world
 
-- Dark zinc workstation. One teal accent for primary send/selection. Distinctive craft comes from **review density and lab evidence**, not Sparkles or gold leaf.
-- Semantic tokens only. Theme selection, caret, scrollbars, `color-scheme: dark`.
-- Composer: portal-grade focus, Enter-to-send (Shift+Enter newline) **or** document Ctrl+Enter consistently; Codex uses Enter.
-- User bubbles right; assistant prose left, max ~75ch; tools as compact disclosure rows.
+The full system lives in `docs/DESIGN.md` — read it before touching any surface. The one-line version: **show the work, hide the chrome; color is evidence; motion is state.**
+
+- One 46rem reading column shared by transcript and composer (`lib/thread.ts`). Scroll container stays pane-wide.
+- Hairline lists, not bordered cards. Cards only for objects the operator acts on (approval, artifact, error).
+- Semantic tokens only (`styles.css`): zinc chrome; `success`/`danger` for diff and step state, `warning` for interrupted/needs-approval, `accent` for primary selection. Step opacity for greys.
+- Live grammar: shimmer verb + pulse dot + `Worked for` clock while running; past tense and a static glyph the instant it stops. A call without a result on a finished turn is *interrupted*, never spinning.
+- Composer: Enter sends, Shift+Enter newline. Context meter appears only once tokens exist.
+- Review panel: text tabs with underline, 36px icon toolbars, file-grouped diff with a footer CTA only when something is selected.
+- Code and diffs in `--font-mono` with ligatures off; counts in `tabular-nums`.
 
 ## Engineering
 
@@ -53,3 +58,4 @@ Steal, do not clone:
 - L4 UI. Evaluator/vault/updater as agent-editable.
 - Fake sandbox badges.
 - daisyUI (conflicts with shadcn tokens already in use).
+- Avatars in the transcript, spinners on text, cards inside cards, labelled buttons in toolbars, ligatures in code (see `docs/DESIGN.md` §9).

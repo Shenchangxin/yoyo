@@ -1,5 +1,14 @@
 import type { Item } from "./protocol";
-import { isOutcomeToolName, isToolFailed, toolArgs, toolElapsedMs, toolName } from "./tool-summary";
+import {
+  isOutcomeToolName,
+  isToolFailed,
+  itemTimeMs,
+  toolArgs,
+  toolElapsedMs,
+  toolKind,
+  toolName,
+  type ToolKind,
+} from "./tool-summary";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
@@ -88,8 +97,62 @@ export function processElapsedMs(items: Item[]): number {
   return processToolPairs(items).reduce((sum, p) => sum + (p.result ? toolElapsedMs(p.result) : 0), 0);
 }
 
+/** Earliest timestamp in the group — the "Worked for" clock starts here. */
+export function processStartMs(items: Item[]): number {
+  let min = 0;
+  for (const it of items) {
+    const t = itemTimeMs(it);
+    if (t && (!min || t < min)) min = t;
+  }
+  return min;
+}
+
+/**
+ * Wall-clock span of a settled group. Model thinking between tool batches is
+ * part of the work, so this beats summing per-tool elapsed_ms; fall back to
+ * the sum when timestamps are missing (old JSONL, mocks).
+ */
+export function processSpanMs(items: Item[]): number {
+  const start = processStartMs(items);
+  let end = 0;
+  for (const it of items) {
+    const t = itemTimeMs(it);
+    if (t > end) end = t;
+  }
+  const span = start && end > start ? end - start : 0;
+  return span || processElapsedMs(items);
+}
+
 export function processFailedCount(items: Item[]): number {
   return processToolPairs(items).filter((p) => isToolFailed(p.result)).length;
+}
+
+export type PairState = "running" | "done" | "failed" | "interrupted";
+
+/**
+ * A call without a result is only "running" while the thread is. Once the
+ * turn is over the honest state is "interrupted" — never a spinner on a
+ * finished turn (the bug WorkBuddy shipped a fix for twice, and Codex once).
+ */
+export function pairState(pair: ToolPair, running: boolean): PairState {
+  if (pair.call && !pair.result) return running ? "running" : "interrupted";
+  if (isToolFailed(pair.result)) return "failed";
+  return "done";
+}
+
+export type KindTally = Partial<Record<ToolKind, number>>;
+
+export function processKindTally(items: Item[]): KindTally {
+  const tally: KindTally = {};
+  for (const p of processToolPairs(items)) {
+    const k = toolKind(toolName(p.call || p.result!));
+    tally[k] = (tally[k] || 0) + 1;
+  }
+  return tally;
+}
+
+export function processHasReasoning(items: Item[]): boolean {
+  return items.some((it) => it.type === "reasoning");
 }
 
 function agentCopyText(items: Item[]): string {
