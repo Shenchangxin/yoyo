@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { asArray, num, pick, str } from "../../lib/normalize";
 import { readHarborMetrics } from "../../lib/harness-refs";
 import { useCopy } from "../../lib/i18n";
+import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import {
@@ -11,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { LabCard, LabChip, LabFrame, LabStat, LabTable } from "./LabFrame";
+import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
 import type { HarborKind } from "../../lib/protocol";
 
 export function HarborLab(props: {
@@ -62,7 +63,7 @@ export function HarborLab(props: {
           </>
         ) : null}
       </div>
-      {props.busy ? <p className="mb-4 text-[13px] text-accent">{props.busy}</p> : null}
+      {props.busy ? <p className="mb-4 text-[13px] text-muted">{props.busy}</p> : null}
       {!props.busy && props.error ? (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
           <span>{props.error}</span>
@@ -71,12 +72,35 @@ export function HarborLab(props: {
       ) : null}
       {props.report ? (
         <>
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <LabStat label={copy.harbor.heldIn} value={`${inP}/${inT}`} />
-            <LabStat label={copy.harbor.heldOut} value={`${outP}/${outT}`} />
-            <LabStat label={copy.harbor.safety} value={String(safety)} bad={safety > 0} />
+          <div className="mb-4 overflow-hidden rounded-[10px] border border-border/80 bg-card">
+            <StoryRow
+              step="1"
+              label={copy.harbor.heldIn}
+              detail={copy.harbor.storyHeldIn}
+              value={`${inP}/${inT}`}
+              ok={inT === 0 || inP === inT}
+            />
+            <StoryRow
+              step="2"
+              label={copy.harbor.heldOut}
+              detail={copy.harbor.storyHeldOut}
+              value={`${outP}/${outT}`}
+              ok={outT === 0 || outP === outT}
+            />
+            <StoryRow
+              step="3"
+              label={copy.harbor.safety}
+              detail={copy.harbor.storySafety}
+              value={String(safety)}
+              ok={safety === 0}
+              last
+            />
           </div>
-          {why ? <p className="mb-4 rounded-xl border border-border/80 bg-card px-4 py-3 text-[13px] text-muted">{why}</p> : null}
+          <p className="mb-4 text-[13px] text-muted">
+            <span className="font-medium text-foreground">{copy.harbor.verdict}. </span>
+            {safety > 0 ? copy.harbor.verdictBlock : props.report ? (inT && outT && inP === inT && outP === outT ? copy.harbor.verdictPromote : copy.harbor.whyEvidence) : copy.harbor.verdictIdle}
+          </p>
+          {why && safety > 0 ? <p className="mb-4 rounded-xl border border-border/80 bg-card px-4 py-3 text-[13px] text-muted">{why}</p> : null}
           {results.length === 0 ? (
             <p className="text-[13px] text-muted">{copy.harbor.noResults}</p>
           ) : (
@@ -119,5 +143,18 @@ export function HarborLab(props: {
         </div>
       ) : null}
     </LabFrame>
+  );
+}
+
+function StoryRow(props: { step: string; label: string; detail: string; value: string; ok: boolean; last?: boolean }) {
+  return (
+    <div className={cn("flex items-start gap-3 px-4 py-3", !props.last && "border-b border-border/70")}>
+      <span className="mt-0.5 w-4 font-mono text-[11px] text-muted">{props.step}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium text-foreground">{props.label}</div>
+        <div className="text-[12px] text-muted">{props.detail}</div>
+      </div>
+      <span className={cn("font-mono text-[13px] tabular-nums", !props.ok && "text-danger")}>{props.value}</span>
+    </div>
   );
 }

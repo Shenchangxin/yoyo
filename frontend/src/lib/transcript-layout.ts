@@ -1,5 +1,5 @@
 import type { Item } from "./protocol";
-import { isOutcomeToolName, isToolFailed, toolElapsedMs, toolName } from "./tool-summary";
+import { isOutcomeToolName, isToolFailed, toolArgs, toolElapsedMs, toolName } from "./tool-summary";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
@@ -27,7 +27,11 @@ export function isTranscriptDuplicate(it: Item): boolean {
 }
 
 export function isOutcomeTool(it: Item): boolean {
-  return isToolish(it) && isOutcomeToolName(toolName(it));
+  if (!isToolish(it)) return false;
+  const name = toolName(it);
+  const body = it.type === "tool_result" ? String(it.payload?.content || it.text || "") : "";
+  const path = String(toolArgs(it).path || "");
+  return isOutcomeToolName(name, body, path);
 }
 
 export function isProcessItem(it: Item): boolean {

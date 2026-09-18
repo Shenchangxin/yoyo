@@ -119,7 +119,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
               key={m.id}
               className={cn(
                 "w-[108px] rounded-xl border p-2 text-left transition-colors",
-                pref === m.id ? "border-accent ring-1 ring-accent/40" : "border-border hover:border-muted",
+                pref === m.id ? "border-foreground/40 ring-1 ring-foreground/20" : "border-border hover:border-muted",
               )}
               onClick={() => {
                 setPref(m.id);

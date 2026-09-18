@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
-import type { Thread } from "../lib/protocol";
+import type { RunStatus, Thread } from "../lib/protocol";
 import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
 import { useUI } from "../lib/store";
@@ -17,6 +17,7 @@ export function Titlebar(props: {
   onRename: (title: string) => void;
   runningCount?: number;
   runningThreads?: Thread[];
+  runningStatus?: RunStatus[];
   onSelectRunning?: (t: Thread) => void;
   renameTick?: number;
 }) {
@@ -91,7 +92,7 @@ export function Titlebar(props: {
       <div className="h-full min-w-4 flex-1" aria-hidden />
       <div className="no-drag flex shrink-0 items-center gap-1">
         {props.runningThreads && props.onSelectRunning ? (
-          <RunningHub threads={props.runningThreads} onSelect={props.onSelectRunning} />
+          <RunningHub threads={props.runningThreads} status={props.runningStatus} onSelect={props.onSelectRunning} />
         ) : props.runningCount ? (
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
         ) : null}
@@ -138,7 +139,7 @@ function InboxButton() {
       >
         <Inbox className="size-4" aria-hidden />
         {n > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-accent px-1 text-[9px] text-accent-fg">{n}</span>
+          <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{n}</span>
         ) : null}
       </Button>
     </Tooltip>

@@ -92,7 +92,7 @@ export function ProcessGroup({
                 {failed > 0 ? (
                   <span className="size-1.5 shrink-0 rounded-full bg-danger" aria-label={copy.transcript.toolFailed} />
                 ) : (
-                  <span className="size-1.5 shrink-0 rounded-full bg-accent/70" aria-hidden />
+                  <span className="size-1.5 shrink-0 rounded-full bg-foreground/70" aria-hidden />
                 )}
                 <span className="min-w-0 truncate">
                   {summary}
@@ -138,7 +138,7 @@ function LiveActivity({ pair }: { pair?: ToolPair }) {
       role="status"
       aria-live="polite"
     >
-      <Loader2 className="size-3 shrink-0 animate-spin text-accent" aria-hidden />
+      <Loader2 className="size-3 shrink-0 animate-spin text-muted" aria-hidden />
       <span className="shrink-0 font-medium text-foreground/85">{name}</span>
       {detail ? <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/80">{detail}</span> : null}
     </div>
@@ -272,9 +272,9 @@ export function ToolLine({
         onClick={() => setOpen((v) => !v)}
       >
         {pending ? (
-          <Loader2 className="size-3 shrink-0 animate-spin text-accent" aria-hidden />
+          <Loader2 className="size-3 shrink-0 animate-spin text-muted" aria-hidden />
         ) : (
-          <span className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : "bg-accent/70")} aria-hidden />
+          <span className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : "bg-foreground/70")} aria-hidden />
         )}
         <span className={cn("shrink-0 font-medium", failed ? "text-danger" : "text-foreground/85")}>{name}</span>
         {detail ? <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/80">{detail}</span> : null}

@@ -10,14 +10,19 @@ import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } f
 import {
   formatToolBody,
   isArtifactTool,
+  isRichResult,
   patchFileCount,
+  toolArgs,
   toolDetail,
   toolName,
 } from "../lib/tool-summary";
+import { extractHTML, looksLikeHTML, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
 import { layoutRows, pairTools, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
+import { SandboxedFrame } from "./transcript/SandboxedFrame";
+import * as api from "../lib/client";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -219,18 +224,18 @@ export function Transcript(props: {
           scrollClassName="transcript-scroll"
           className={cn(col, "flex min-h-full flex-col justify-center pb-10 pt-8")}
         >
-          <h1 className="text-[26px] font-semibold tracking-[-0.038em] text-foreground">
+          <h1 className="text-[22px] font-semibold tracking-[-0.032em] text-foreground">
             {copy.transcript.ready}
           </h1>
-          <p className="mt-2 max-w-[36rem] text-[14.5px] leading-[1.6] text-muted">
+          <p className="mt-2 max-w-[34rem] text-[13.5px] leading-[1.6] text-muted">
             {copy.transcript.readyBody}
           </p>
-          <div className="mt-6 flex flex-wrap gap-2">
+          <div className="mt-7 flex max-w-[28rem] flex-col gap-1.5">
             {copy.transcript.starters.map((s) => (
               <button
                 type="button"
                 key={s.label}
-                className="rounded-full border border-border/80 bg-transparent px-3.5 py-1.5 text-[12px] text-muted transition-colors hover:border-border hover:bg-lift/50 hover:text-foreground"
+                className="rounded-xl border border-border/70 bg-card/40 px-3.5 py-2.5 text-left text-[13px] text-foreground transition-colors duration-150 hover:border-border hover:bg-lift/55"
                 onClick={() => props.onPrompt?.(s.text)}
               >
                 {s.label}
@@ -321,9 +326,9 @@ function TurnActions({
 function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string) => void }) {
   const copy = useCopy();
   return (
-    <div className="rounded-2xl border border-border bg-card/90 px-4 py-3.5" role="status">
+    <div className="surface-inset rounded-2xl border border-border bg-card/90 px-4 py-3.5" role="status">
       <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-        <ShieldAlert className="size-3.5 text-accent" aria-hidden />
+        <ShieldAlert className="size-3.5 text-muted" aria-hidden />
         {copy.transcript.needsApproval}
       </div>
       <div className="mt-1.5 text-[13.5px] font-medium tracking-[-0.015em]">{item.action || "action"}</div>
@@ -492,7 +497,7 @@ function ArtifactTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview
         if (name === "update_plan" && (p.call || p.result)) {
           return <PlanBlock key={p.key} item={p.result || p.call!} />;
         }
-        if (isArtifactTool(name)) {
+        if (isArtifactTool(name) || isRichResult(name, formatToolBody(p.result || p.call || ({ payload: {} } as Item)), String(toolArgs(p.call || p.result || ({ payload: {} } as Item)).path || ""))) {
           return (
             <ArtifactCard
               key={p.key}
@@ -535,36 +540,56 @@ function ArtifactCard({
   const detail = toolDetail(result || call || item);
   const body = result ? formatToolBody(result) : formatToolBody(call || item);
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
+  const args = toolArgs(call || result || item);
+  const path = String(args.path || args.file || "");
+  const html = result ? extractHTML(body) : "";
+  const pdf = looksLikePDF(path);
   const title = name === "apply_patch"
     ? copy.transcript.patch
     : name === "cite_sources"
       ? copy.transcript.citations
-      : copy.transcript.artifact;
+      : html
+        ? copy.transcript.mcpApp
+        : copy.transcript.artifact;
   const meta = name === "apply_patch" && files > 0
     ? copy.transcript.filesCount.replace("{n}", String(files))
     : (detail || name);
   return (
     <div
-      className="flex items-center gap-3 rounded-xl border border-border/80 bg-lift/25 px-3 py-2.5"
+      className="rounded-xl border border-border/80 bg-lift/25 px-3 py-2.5"
       data-testid="artifact-card"
     >
-      <FileText className="size-4 shrink-0 text-accent" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
-          {pending ? <Loader2 className="size-3 animate-spin text-accent" aria-hidden /> : null}
-          <span>{title}</span>
+      <div className="flex items-center gap-3">
+        <FileText className="size-4 shrink-0 text-muted" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
+            {pending ? <Loader2 className="size-3 animate-spin text-muted" aria-hidden /> : null}
+            <span>{title}</span>
+          </div>
+          <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
         </div>
-        <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
+        <div className="flex shrink-0 gap-1.5">
+          {path ? (
+            <button
+              type="button"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
+              onClick={() => { void api.openPath(path); }}
+            >
+              {pdf ? copy.transcript.openPdf : copy.transcript.openFile}
+            </button>
+          ) : null}
+          {onOpenReview ? (
+            <button
+              type="button"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
+              onClick={onOpenReview}
+            >
+              {copy.review.openReview}
+            </button>
+          ) : null}
+        </div>
       </div>
-      {onOpenReview ? (
-        <button
-          type="button"
-          className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground hover:bg-lift"
-          onClick={onOpenReview}
-        >
-          {copy.review.openReview}
-        </button>
-      ) : null}
+      {html && looksLikeHTML(html) ? <SandboxedFrame html={html} title={title} /> : null}
     </div>
   );
 }

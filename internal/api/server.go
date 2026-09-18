@@ -27,7 +27,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		restRPC(a, w, r, "health", nil)
 	})
 	mux.HandleFunc("/api/running", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"ids": a.RunningIDs()})
+		writeJSON(w, map[string]any{"ids": a.RunningIDs(), "runs": a.RunningStatus()})
 	})
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -303,6 +303,32 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, m)
 			return
 		}
+		if len(parts) > 1 && parts[1] == "isolate" && r.Method == http.MethodPost {
+			var body struct {
+				Isolate bool `json:"isolate"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionIsolate(id, body.Isolate)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "skills" && r.Method == http.MethodPost {
+			var body struct {
+				Names []string `json:"names"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionPinnedSkills(id, body.Names)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
 		m, err := a.GetSession(id)
 		if err != nil {
 			http.Error(w, err.Error(), 404)
@@ -359,7 +385,68 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, runtime.FuzzySearch(ws, q.Get("q"), 40))
 	})
 	mux.HandleFunc("/api/skills", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, a.ListSkills(r.URL.Query().Get("workspace")))
+		ws := r.URL.Query().Get("workspace")
+		if name := strings.TrimSpace(r.URL.Query().Get("name")); name != "" {
+			sk := a.GetSkill(ws, name)
+			if sk == nil {
+				http.Error(w, "unknown skill", 404)
+				return
+			}
+			writeJSON(w, sk)
+			return
+		}
+		writeJSON(w, a.ListSkills(ws))
+	})
+	mux.HandleFunc("/api/skills/market", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body struct {
+				Slug string `json:"slug"`
+				Op   string `json:"op"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Op == "uninstall" {
+				if err := a.UninstallMarketSkill(body.Slug); err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				writeJSON(w, map[string]any{"ok": true})
+				return
+			}
+			out, err := a.InstallMarketSkill(body.Slug)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, out)
+			return
+		}
+		c, err := a.SkillMarket(r.URL.Query().Get("refresh") == "1")
+		if err != nil {
+			http.Error(w, err.Error(), 502)
+			return
+		}
+		writeJSON(w, c)
+	})
+	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		var err error
+		switch body.Kind {
+		case "editor":
+			err = a.OpenInEditor(body.Path)
+		case "terminal":
+			err = a.OpenWorkspaceTerminal(body.Path)
+		default:
+			err = a.OpenPath(body.Path)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/api/about", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.Health())

@@ -15,8 +15,13 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		if r.Method == http.MethodPost {
 			var body struct {
 				ID string `json:"id"`
+				Op string `json:"op"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Op == "dismiss" {
+				writeJSON(w, map[string]any{"ok": a.InboxDismiss(body.ID)})
+				return
+			}
 			a.InboxMarkRead(body.ID)
 		}
 		writeJSON(w, a.InboxList())

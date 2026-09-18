@@ -1,6 +1,6 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
-export type Surface = "agent" | "harness" | "settings";
+export type Surface = "agent" | "harness" | "settings" | "skills";
 export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer";
 export type SettingsTab =
   | "general"
@@ -24,12 +24,18 @@ export type Thread = {
   id: string;
   title: string;
   workspace: string;
+  toolRoot?: string;
+  worktree?: string;
+  originWorkspace?: string;
+  isolate?: boolean;
   harness: string;
   createdAt: string;
   archived?: boolean;
   pinned?: boolean;
   model?: string;
   authMode?: AuthMode;
+  pinnedSkills?: string[];
+  loadedSkills?: string[];
 };
 
 export type ItemType =
@@ -152,6 +158,7 @@ export type Health = {
   model: string;
   version: string;
   isolated: boolean;
+  isolationKind: string;
   budgetUsd: number;
   usageUsd: number;
   workspaceReady: boolean;
@@ -201,6 +208,15 @@ export type Attachment = {
 export type SkillInfo = {
   name: string;
   description: string;
+  body?: string;
+  dir?: string;
+  source?: string;
+};
+
+export type RunStatus = {
+  id: string;
+  startedAt: string;
+  lastTool: string;
 };
 
 export type FileHit = {

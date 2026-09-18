@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -360,6 +361,20 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.SetSessionWorkspace(p.Session, p.Workspace)
+	case "thread.isolate.set":
+		var p struct {
+			Session string `json:"session"`
+			Isolate bool   `json:"isolate"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionIsolate(p.Session, p.Isolate)
+	case "thread.skills.pin":
+		var p struct {
+			Session string   `json:"session"`
+			Names   []string `json:"names"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionPinnedSkills(p.Session, p.Names)
 	case "thread.compact":
 		var p struct {
 			Session string `json:"session"`
@@ -398,6 +413,49 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.ListSkills(p.Workspace), nil
+	case "skills.get":
+		var p struct {
+			Workspace string `json:"workspace"`
+			Name      string `json:"name"`
+		}
+		_ = json.Unmarshal(params, &p)
+		sk := a.GetSkill(p.Workspace, p.Name)
+		if sk == nil {
+			return nil, fmt.Errorf("unknown skill")
+		}
+		return sk, nil
+	case "skills.market":
+		var p struct {
+			Refresh bool `json:"refresh"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SkillMarket(p.Refresh)
+	case "skills.install":
+		var p struct {
+			Slug string `json:"slug"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.InstallMarketSkill(p.Slug)
+	case "skills.uninstall":
+		var p struct {
+			Slug string `json:"slug"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.UninstallMarketSkill(p.Slug)
+	case "host.open":
+		var p struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		}
+		_ = json.Unmarshal(params, &p)
+		switch p.Kind {
+		case "editor":
+			return map[string]any{"ok": true}, a.OpenInEditor(p.Path)
+		case "terminal":
+			return map[string]any{"ok": true}, a.OpenWorkspaceTerminal(p.Path)
+		default:
+			return map[string]any{"ok": true}, a.OpenPath(p.Path)
+		}
 	case "key.status":
 		return a.Vault.Status(), nil
 	case "mcp.stop":
@@ -503,6 +561,8 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return map[string]any{"running": a.Running(p.Session)}, nil
 	case "turn.running_ids":
 		return a.RunningIDs(), nil
+	case "turn.running_status":
+		return a.RunningStatus(), nil
 	case "context.get":
 		var p struct {
 			Session string `json:"session"`
@@ -587,6 +647,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return map[string]any{"ok": true}, a.ApplyStagedUpdate(p.Exe)
 	case "inbox.list":
 		return a.InboxList(), nil
+	case "inbox.dismiss":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": a.InboxDismiss(p.ID)}, nil
 	case "inbox.read":
 		var p struct {
 			ID string `json:"id"`

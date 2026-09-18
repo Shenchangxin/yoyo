@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
+  BookOpen,
   ChevronLeft,
   GitBranch,
   MessageSquarePlus,
@@ -28,6 +29,69 @@ import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Notice, Surface, Thread } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
+import { YoyoMark } from "./shell/YoyoMark";
+import type { Copy } from "../lib/copy";
+
+type DayBucket = "today" | "yesterday" | "earlier";
+
+function dayBucket(iso: string, now = Date.now()): DayBucket {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "earlier";
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const midnight = start.getTime();
+  if (t >= midnight) return "today";
+  if (t >= midnight - 86_400_000) return "yesterday";
+  return "earlier";
+}
+
+type RailEntry =
+  | { kind: "label"; id: string; label: string }
+  | { kind: "thread"; thread: Thread };
+
+function railEntries(threads: Thread[], copy: Copy): RailEntry[] {
+  const pinned: Thread[] = [];
+  const rest: Thread[] = [];
+  for (const t of threads) {
+    if (t.pinned) pinned.push(t);
+    else rest.push(t);
+  }
+  const projects = new Map<string, Thread[]>();
+  for (const t of rest) {
+    const key = displayWorkspace(t.originWorkspace || t.workspace, copy.rail.project);
+    const list = projects.get(key) || [];
+    list.push(t);
+    projects.set(key, list);
+  }
+  const useProjects = projects.size > 1;
+  const out: RailEntry[] = [];
+  if (pinned.length) {
+    out.push({ kind: "label", id: "pinned", label: copy.rail.pinned });
+    for (const thread of pinned) out.push({ kind: "thread", thread });
+  }
+  if (useProjects) {
+    const names = [...projects.keys()].sort((a, b) => a.localeCompare(b));
+    for (const name of names) {
+      const items = (projects.get(name) || []).slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      out.push({ kind: "label", id: "p-" + name, label: name });
+      for (const thread of items) out.push({ kind: "thread", thread });
+    }
+    return out;
+  }
+  const buckets: Record<DayBucket, Thread[]> = { today: [], yesterday: [], earlier: [] };
+  for (const t of rest) buckets[dayBucket(t.createdAt)].push(t);
+  const groups: { id: string; label: string; items: Thread[] }[] = [
+    { id: "today", label: copy.rail.today, items: buckets.today },
+    { id: "yesterday", label: copy.rail.yesterday, items: buckets.yesterday },
+    { id: "earlier", label: copy.rail.earlier, items: buckets.earlier },
+  ].filter((g) => g.items.length);
+  const label = pinned.length > 0 || groups.length > 1;
+  for (const g of groups) {
+    if (label) out.push({ kind: "label", id: g.id, label: g.label });
+    for (const thread of g.items) out.push({ kind: "thread", thread });
+  }
+  return out;
+}
 
 export function ThreadRail(props: {
   threads: Thread[];
@@ -43,11 +107,13 @@ export function ThreadRail(props: {
   noticesOpen: boolean;
   connected: boolean;
   isolated?: boolean;
+  isolationKind?: string;
   onQuery: (q: string) => void;
   onSelect: (t: Thread) => void;
   onNew: () => void;
   onLab: (lab: Lab) => void;
   onHarness: () => void;
+  onSkills: () => void;
   onSettings: () => void;
   onCollapse: () => void;
   onPin?: (t: Thread, pinned: boolean) => void;
@@ -55,6 +121,9 @@ export function ThreadRail(props: {
   onDelete?: (t: Thread) => void;
   onRename?: (t: Thread, title: string) => void;
   onFork?: (t: Thread) => void;
+  onPopOut?: (t: Thread) => void;
+  onOpenEditor?: (t: Thread) => void;
+  onOpenTerminal?: (t: Thread) => void;
   onToggleArchived?: () => void;
   onToggleNotices: () => void;
   onClearNotices: () => void;
@@ -74,25 +143,28 @@ export function ThreadRail(props: {
   });
   const virtual = list.length > 24;
   const harnessOn = props.surface === "harness";
+  const skillsOn = props.surface === "skills";
   return (
     <SidebarCard>
       <div className={cn("chrome drag flex h-11 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
-        <span
-          className={cn("size-2 rounded-full", props.connected ? "bg-accent" : "bg-muted")}
-          title={props.connected ? copy.rail.connected : copy.rail.disconnected}
-        />
-        <span className="text-[13px] font-semibold tracking-tight">Yoyo</span>
+        <span className="relative grid size-2 place-items-center" title={props.connected ? copy.rail.connected : copy.rail.disconnected}>
+          <span className={cn("size-1.5 rounded-full", props.connected ? "bg-foreground" : "bg-muted")} />
+        </span>
+        <YoyoMark className="size-3.5 shrink-0" />
+        <span className="text-[13px] font-semibold tracking-[-0.02em]">Yoyo</span>
         {activeShort ? (
           <button
             type="button"
-            className="no-drag truncate rounded-md px-1 py-0.5 font-mono text-[10px] text-muted hover:bg-lift hover:text-foreground"
+            className="no-drag truncate rounded-md bg-lift/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted hover:bg-lift hover:text-foreground"
             title={refs.active || props.fallbackActive}
             onClick={props.onHarness}
           >
             {activeShort}
           </button>
         ) : null}
-        {props.isolated ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : null}
+        {props.isolated ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
+          <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
+        ) : null}
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
             type="button"
@@ -105,7 +177,7 @@ export function ThreadRail(props: {
         </Tooltip>
       </div>
       <div className="px-2.5 pb-2">
-        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" variant="outline" onClick={props.onNew}>
+        <Button className="h-9 w-full justify-start gap-2 rounded-lg text-[13px]" variant="lift" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
@@ -125,19 +197,41 @@ export function ThreadRail(props: {
           <EmptyState title={copy.rail.noChats} />
         ) : virtual ? (
           <VList className="h-full">
-            {list.map((t) => (
-              <ThreadRow key={t.id} thread={t} {...props} />
-            ))}
+            {railEntries(list, copy).map((e) =>
+              e.kind === "label" ? (
+                <RailLabel key={e.id} label={e.label} />
+              ) : (
+                <ThreadRow key={e.thread.id} thread={e.thread} {...props} />
+              ),
+            )}
           </VList>
         ) : (
           <div className="h-full overflow-auto">
-            {list.map((t) => (
-              <ThreadRow key={t.id} thread={t} {...props} />
-            ))}
+            {railEntries(list, copy).map((e) =>
+              e.kind === "label" ? (
+                <RailLabel key={e.id} label={e.label} />
+              ) : (
+                <ThreadRow key={e.thread.id} thread={e.thread} {...props} />
+              ),
+            )}
           </div>
         )}
       </nav>
       <div className="border-t border-border/80 px-1.5 py-1.5">
+        <button
+          type="button"
+          title={copy.rail.skillsHint}
+          aria-label={copy.rail.skills}
+          aria-current={skillsOn ? "page" : undefined}
+          className={cn(
+            "mb-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
+            skillsOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
+          )}
+          onClick={props.onSkills}
+        >
+          <BookOpen className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{copy.rail.skills}</span>
+        </button>
         <button
           type="button"
           title={copy.rail.harnessHint}
@@ -173,7 +267,7 @@ export function ThreadRail(props: {
               >
                   <Bell className="size-4" />
                   {props.notices.length ? (
-                    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-accent" />
+                    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />
                   ) : null}
                 </button>
             </DropdownMenuTrigger>
@@ -218,6 +312,14 @@ export function ThreadRail(props: {
   );
 }
 
+function RailLabel({ label }: { label: string }) {
+  return (
+    <div className="px-2.5 pb-1 pt-2.5 text-[11px] font-medium text-muted first:pt-1">
+      {label}
+    </div>
+  );
+}
+
 function ThreadRow(props: {
   thread: Thread;
   activeId: string;
@@ -230,6 +332,9 @@ function ThreadRow(props: {
   onDelete?: (t: Thread) => void;
   onRename?: (t: Thread, title: string) => void;
   onFork?: (t: Thread) => void;
+  onPopOut?: (t: Thread) => void;
+  onOpenEditor?: (t: Thread) => void;
+  onOpenTerminal?: (t: Thread) => void;
 }) {
   const copy = useCopy();
   const t = props.thread;
@@ -270,7 +375,7 @@ function ThreadRow(props: {
   if (editing) {
     return (
       <div className="mb-px flex w-full items-center gap-2 rounded-lg bg-lift px-2.5 py-[7px]">
-        <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
+        <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-foreground" : "bg-muted/35")} aria-hidden />
         <input
           autoFocus
           aria-label={copy.rail.rename}
@@ -323,14 +428,14 @@ function ThreadRow(props: {
             setMenuOpen(true);
           }}
         >
-          <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-accent" : "bg-muted/35")} aria-hidden />
+          <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-foreground" : "bg-muted/35")} aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1">
-              {t.pinned ? <Pin className="size-3 text-accent" aria-hidden /> : null}
+              {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
               <span className="block truncate text-[13px] font-medium text-foreground">{displayTitle(t.title, copy.rail.untitled)}</span>
             </span>
             <span className="block truncate text-[11px] text-muted">
-              {run ? copy.rail.running : t.archived ? copy.rail.archived : displayWorkspace(t.workspace, copy.rail.idle)}
+              {run ? copy.rail.running : t.archived ? copy.rail.archived : t.isolate ? copy.rail.isolated : displayWorkspace(t.originWorkspace || t.workspace, copy.rail.idle)}
             </span>
           </span>
         </button>
@@ -348,6 +453,9 @@ function ThreadRow(props: {
       <DropdownMenuContent align="end" className="w-44" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuItem onSelect={startRename}>{copy.rail.rename}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onFork?.(t)}>{copy.rail.fork}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => props.onPopOut?.(t)}>{copy.rail.popOut}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => props.onOpenEditor?.(t)}>{copy.rail.openEditor}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => props.onOpenTerminal?.(t)}>{copy.rail.openTerminal}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onPin?.(t, !t.pinned)}>{t.pinned ? copy.rail.unpin : copy.rail.pin}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onArchive?.(t, !t.archived)}>{t.archived ? copy.rail.unarchive : copy.rail.archive}</DropdownMenuItem>
         <DropdownMenuSeparator />

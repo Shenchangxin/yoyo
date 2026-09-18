@@ -6,9 +6,9 @@ export function Slider({ className, ...props }: ComponentProps<typeof SliderPrim
   return (
     <SliderPrimitive.Root className={cn("relative flex w-40 touch-none items-center select-none", className)} {...props}>
       <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-lift">
-        <SliderPrimitive.Range className="absolute h-full bg-accent" />
+        <SliderPrimitive.Range className="absolute h-full bg-foreground" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-border bg-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+      <SliderPrimitive.Thumb className="block size-4 rounded-full border border-border bg-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/20" />
     </SliderPrimitive.Root>
   );
 }

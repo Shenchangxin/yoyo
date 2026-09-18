@@ -26,8 +26,10 @@ import { HarnessLab } from "./features/labs/HarnessLab";
 import { HarnessWorkspace } from "./features/harness/HarnessWorkspace";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
+import { readPopoutId } from "./lib/popout";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
@@ -48,17 +50,20 @@ export default function App() {
   const ws = useWorkstation();
   useSettingsHash();
   const copy = ws.copy;
+  const popoutId = readPopoutId();
+  const popout = !!popoutId;
   const [layout, setLayout] = useState(readLayout);
   const sheetInspect = useMedia("(max-width: 1099px)");
   const railNarrow = useMedia("(max-width: 799px)");
-  const settings = ws.surface === "settings";
-  const harnessing = ws.surface === "harness";
-  const agent = ws.surface === "agent";
-  const three = agent && ws.inspector && !sheetInspect;
+  const settings = !popout && ws.surface === "settings";
+  const skills = !popout && ws.surface === "skills";
+  const harnessing = !popout && ws.surface === "harness";
+  const agent = popout || ws.surface === "agent";
+  const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
-  const showRail = !settings && !ws.sidebarCollapsed && !railNarrow;
-  const overlayRail = !settings && !showRail && ws.sidebarHover;
+  const showRail = !popout && !settings && !ws.sidebarCollapsed && !railNarrow;
+  const overlayRail = !popout && !settings && !showRail && ws.sidebarHover;
   const mac = isMac();
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
@@ -66,6 +71,7 @@ export default function App() {
   const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
+  const toolRoot = ws.active?.toolRoot || sessionWs;
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
@@ -84,12 +90,19 @@ export default function App() {
     authMode: ws.active?.authMode || "default",
     workspace: sessionWs,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
+    isolate: !!ws.active?.isolate,
     onWorkspace: (path: string) => { void applySessionWorkspace(path); },
     onBrowseWorkspace: async () => {
       const p = await api.pickFolder();
       if (p) await applySessionWorkspace(p);
     },
-    onSearchFiles: (q: string) => { void api.searchFiles(sessionWs, q).then(ws.setFiles).catch(() => {}); },
+    onIsolate: async (isolate: boolean) => {
+      if (!ws.activeId) return;
+      const t = await api.setSessionIsolate(ws.activeId, isolate);
+      ws.setActive(t);
+      ws.setThreads((list) => patchThread(list, t.id, t));
+    },
+    onSearchFiles: (q: string) => { void api.searchFiles(toolRoot, q).then(ws.setFiles).catch(() => {}); },
     onPickFiles: async () => {
       const paths = await api.pickFiles();
       return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
@@ -148,8 +161,22 @@ export default function App() {
       sessionId={ws.activeId}
       running={ws.threadRunning}
       trace={ws.trace}
+      thread={ws.active}
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
+      onResolve={ws.onResolve}
+      onOpenThread={(id) => {
+        const t = ws.threads.find((x) => x.id === id);
+        if (t) {
+          ws.setActive(t);
+          ws.setLab("agent");
+        }
+      }}
+      onOpenPath={(rel) => {
+        const root = ws.active?.workspace || ws.savedCfg.workspace;
+        const path = joinWorkspace(root, rel);
+        if (path) void api.openInEditor(path);
+      }}
     />
   );
 
@@ -249,11 +276,13 @@ export default function App() {
       noticesOpen={ws.noticesOpen}
       connected={ws.health.ok}
       isolated={ws.health.isolated}
+      isolationKind={ws.health.isolationKind}
       onQuery={ws.setQuery}
       onSelect={ws.setActive}
       onNew={ws.onNew}
       onLab={ws.setLab}
       onHarness={() => ws.openHarness("overview")}
+      onSkills={() => ws.openSkills()}
       onSettings={() => ws.openSettings()}
       onCollapse={() => ws.setSidebarCollapsed(true)}
       onToggleArchived={() => ws.setShowArchived((v) => !v)}
@@ -303,6 +332,15 @@ export default function App() {
           ws.fail(e);
         }
       }}
+      onPopOut={(t) => { void api.popOutThread(t.id); }}
+      onOpenEditor={(t) => {
+        const path = t.workspace || ws.savedCfg.workspace;
+        if (path) void api.openInEditor(path);
+      }}
+      onOpenTerminal={(t) => {
+        const path = t.workspace || ws.savedCfg.workspace;
+        if (path) void api.openWorkspaceTerminal(path);
+      }}
       onRename={async (t, title) => {
         try {
           await api.renameSession(t.id, title);
@@ -318,6 +356,8 @@ export default function App() {
 
   const headerLeft = settings ? (
     <Button size="sm" variant="ghost" onClick={ws.closeSettings}>{copy.settings.back}</Button>
+  ) : skills ? (
+    <Button size="sm" variant="ghost" onClick={ws.closeSkills}>{copy.skills.close}</Button>
   ) : ws.sidebarCollapsed || railNarrow ? (
     <Button size="icon" variant="ghost" aria-label={copy.rail.expand} onClick={() => { ws.setSidebarCollapsed(false); ws.setSidebarHover(true); }}>
       <PanelLeft />
@@ -352,6 +392,8 @@ export default function App() {
 
   const headerTitle = settings
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
+    : skills
+      ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -372,6 +414,7 @@ export default function App() {
               title={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
+              runningStatus={ws.runStatus}
               onSelectRunning={(t) => { ws.setActive(t); ws.setLab("agent"); }}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
@@ -383,11 +426,29 @@ export default function App() {
             />
           );
 
+  const skillsPane = (
+    <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
+      <SkillsWorkspace
+        installed={ws.skills}
+        pinned={ws.active?.pinnedSkills || []}
+        loaded={ws.active?.loadedSkills || []}
+        threadId={ws.activeId}
+        onPinSkills={async (names) => {
+          if (!ws.activeId) return;
+          const t = await api.setSessionPinnedSkills(ws.activeId, names);
+          ws.setActive(t);
+          ws.setThreads((list) => patchThread(list, t.id, t));
+        }}
+        onRefreshInstalled={() => { void ws.reloadSkills(); }}
+      />
+    </div>
+  );
+
   const workspace = settings ? (
-    <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar">
+    <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
       <SettingsSurface ws={ws} />
     </div>
-  ) : agent ? agentPane : labPane;
+  ) : skills ? skillsPane : agent ? agentPane : labPane;
 
   return (
     <AppFrame
@@ -537,7 +598,7 @@ export default function App() {
                 </Panel>
                 <ResizeHandle />
                 <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0 pl-2">
-                  <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border bg-sidebar">
+                  <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}
@@ -575,7 +636,7 @@ export default function App() {
           </MainColumn>
         </Panel>
       </Group>
-      {!showRail && !settings ? (
+      {!showRail && !settings && !popout ? (
         <div
           className={overlayRail
             ? "absolute top-2 bottom-2 left-0 z-20 w-[min(288px,90%)]"
@@ -623,4 +684,11 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
       }}
     />
   );
+}
+
+function joinWorkspace(root: string, rel: string): string {
+  if (!rel) return root;
+  if (/^[a-zA-Z]:[\\/]/.test(rel) || rel.startsWith("/")) return rel;
+  const base = (root || "").replace(/[\\/]+$/, "");
+  return base ? `${base}/${rel.replace(/^[\\/]+/, "")}` : rel;
 }

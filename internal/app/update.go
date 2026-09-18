@@ -16,6 +16,10 @@ func isolated() bool {
 	return isolation.Status().Sandbox
 }
 
+func isolationKind() string {
+	return isolation.Status().Kind
+}
+
 func (a *App) loadKeymapFile() {
 	if len(a.Config.Keymap) > 0 {
 		return

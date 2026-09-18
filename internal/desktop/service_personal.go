@@ -27,6 +27,16 @@ func (s *Service) InboxMarkRead(id string) {
 	s.App.InboxMarkRead(id)
 }
 
+func (s *Service) InboxDismiss(id string) bool {
+	if s.RPC != nil {
+		v, _ := s.call("inbox.dismiss", map[string]any{"id": id})
+		m, _ := decode[map[string]any](v, nil)
+		b, _ := m["ok"].(bool)
+		return b
+	}
+	return s.App.InboxDismiss(id)
+}
+
 func (s *Service) ProjectsList() []project.Project {
 	if s.RPC != nil {
 		v, _ := s.call("projects.list", nil)

@@ -12,11 +12,11 @@ import (
 type Kind string
 
 const (
-	KindApproval Kind = "approval"
-	KindSchedule Kind = "schedule"
-	KindAsk      Kind = "ask_user"
+	KindApproval  Kind = "approval"
+	KindSchedule  Kind = "schedule"
+	KindAsk       Kind = "ask_user"
 	KindHeartbeat Kind = "heartbeat"
-	KindArtifact Kind = "artifact"
+	KindArtifact  Kind = "artifact"
 )
 
 type Item struct {
@@ -91,6 +91,26 @@ func (s *Store) MarkRead(id string) {
 		}
 	}
 	_ = s.flush()
+}
+
+func (s *Store) Dismiss(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.items[:0]
+	found := false
+	for _, it := range s.items {
+		if it.ID == id {
+			found = true
+			continue
+		}
+		out = append(out, it)
+	}
+	if !found {
+		return false
+	}
+	s.items = out
+	_ = s.flush()
+	return true
 }
 
 func (s *Store) load() error {

@@ -25,6 +25,9 @@ type SessionMeta struct {
 	ID               string    `json:"id"`
 	CreatedAt        time.Time `json:"created_at"`
 	Workspace        string    `json:"workspace"`
+	OriginWorkspace  string    `json:"origin_workspace,omitempty"`
+	Worktree         string    `json:"worktree,omitempty"`
+	Isolate          bool      `json:"isolate,omitempty"`
 	Harness          string    `json:"harness"`
 	HarnessPolicy    string    `json:"harness_policy,omitempty"`
 	ModelFingerprint string    `json:"model_fingerprint"`
@@ -33,8 +36,23 @@ type SessionMeta struct {
 	Pinned           bool      `json:"pinned"`
 	Model            string    `json:"model,omitempty"`
 	LoadedSkills     []string  `json:"loaded_skills,omitempty"`
+	PinnedSkills     []string  `json:"pinned_skills,omitempty"`
 	PlanText         string    `json:"plan_text,omitempty"`
 	AuthMode         string    `json:"auth_mode,omitempty"`
+}
+
+func (m SessionMeta) ProjectRoot() string {
+	if strings.TrimSpace(m.OriginWorkspace) != "" {
+		return m.OriginWorkspace
+	}
+	return m.Workspace
+}
+
+func (m SessionMeta) ToolRoot() string {
+	if m.Isolate && strings.TrimSpace(m.Worktree) != "" {
+		return m.Worktree
+	}
+	return m.Workspace
 }
 
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
@@ -145,6 +163,38 @@ func (a *App) RunningIDs() []string {
 	return ids
 }
 
+type RunStatus struct {
+	ID        string    `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+	LastTool  string    `json:"last_tool,omitempty"`
+}
+
+func (a *App) RunningStatus() []RunStatus {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]RunStatus, 0, len(a.runs))
+	for id, slot := range a.runs {
+		if slot == nil {
+			continue
+		}
+		out = append(out, RunStatus{ID: id, StartedAt: slot.started, LastTool: slot.lastTool})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (a *App) noteRunTool(sessionID, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	a.mu.Lock()
+	if slot := a.runs[sessionID]; slot != nil {
+		slot.lastTool = name
+	}
+	a.mu.Unlock()
+}
+
 func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context, func(), error) {
 	ctx, cancel := context.WithCancel(ctx)
 	a.mu.Lock()
@@ -153,7 +203,7 @@ func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context
 		cancel()
 		return nil, nil, errBusy
 	}
-	a.runs[sessionID] = cancel
+	a.runs[sessionID] = &runSlot{cancel: cancel, started: time.Now().UTC()}
 	a.mu.Unlock()
 	return ctx, func() {
 		cancel()
@@ -293,11 +343,21 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			return "", err
 		}
 	}
+	skillRoot := meta.ProjectRoot()
+	toolRoot := meta.ToolRoot()
+	if meta.Isolate {
+		ensured, e2 := a.EnsureSessionWorktree(sessionID)
+		if e2 == nil {
+			meta = ensured
+			skillRoot = meta.ProjectRoot()
+			toolRoot = meta.ToolRoot()
+		}
+	}
 	skillBodies := map[string]string{}
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
 	}
-	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, meta.Workspace, bundledSkillsDir(a.BundledEvals))...)
+	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, skillRoot, bundledSkillsDir(a.BundledEvals))...)
 	skills = runtime.MergeSkills(skills, disk)
 	skills = runtime.FilterSkills(skills, loop.PlanMode || plan)
 	skillDirs := map[string]string{}
@@ -313,20 +373,20 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if meta.Model != "" {
 		model = meta.Model
 	}
-	preHooks, stopHooks := runtime.LoadHookFile(meta.Workspace)
+	preHooks, stopHooks := runtime.LoadHookFile(toolRoot)
 	tools := &runtime.WorkspaceTools{
-		Workspace:  meta.Workspace,
+		Workspace:  toolRoot,
 		SessionID:  sessionID,
 		Caps:       a.Caps,
 		Skills:     skillBodies,
 		SkillDirs:  skillDirs,
 		SkillMeta:  skillMeta,
-		Loaded:     append([]string(nil), meta.LoadedSkills...),
+		Loaded:     uniqueStrings(meta.PinnedSkills, meta.LoadedSkills),
 		Policy:     pol,
 		PlanMode:   loop.PlanMode,
 		Ctx:        ctx,
 		Extra:      a.extraTools(sessionID),
-		Spill:      runtime.BindSpill(a.Home.Root, meta.Workspace, sessionID),
+		Spill:      runtime.BindSpill(a.Home.Root, toolRoot, sessionID),
 		PlanText:   meta.PlanText,
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
@@ -344,6 +404,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if a.Hub != nil {
 		prev := wrapped
 		wrapped = func(ev trace.Event) {
+			if ev.Type == trace.TypeToolCall {
+				name, _ := ev.Payload["name"].(string)
+				a.noteRunTool(sessionID, name)
+			}
 			a.Hub.Publish(ev)
 			if prev != nil {
 				prev(ev)
@@ -364,8 +428,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		if snap.Note != "" {
 			note = hash + " " + snap.Note
 		}
-		inject, _ = runtime.ExpandMentionsSkills(meta.Workspace, message, note, skillBodies, 2400)
-		if extra := runtime.ExpandAttachments(meta.Workspace, toRuntimeAtts(atts), 2400); extra != "" {
+		inject, _ = runtime.ExpandMentionsSkills(toolRoot, message, note, skillBodies, 2400)
+		if extra := runtime.ExpandAttachments(toolRoot, toRuntimeAtts(atts), 2400); extra != "" {
 			if inject != "" {
 				inject += "\n"
 			}
@@ -380,7 +444,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		SessionID:        sessionID,
 		User:             message,
 		Inject:           inject,
-		Workspace:        meta.Workspace,
+		Workspace:        toolRoot,
 		Home:             a.Home.Root,
 		Harness:          snap,
 		HarnessHash:      hash,
@@ -860,7 +924,7 @@ func (a *App) StageACE(sessionID string) (string, error) {
 	stripped := stripACEBodies(events)
 	ws := ""
 	if m, err := a.GetSession(sessionID); err == nil {
-		ws = m.Workspace
+		ws = m.ToolRoot()
 	}
 	if notes := runtime.ReadNotes(runtime.BindSpill(a.Home.Root, ws, sessionID)); notes != "" {
 		stripped = append([]trace.Event{{

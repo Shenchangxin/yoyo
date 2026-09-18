@@ -122,6 +122,34 @@ func (s *Service) SetSessionWorkspace(id, workspace string) (app.SessionMeta, er
 	return m, err
 }
 
+func (s *Service) SetSessionIsolate(id string, isolate bool) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("thread.isolate.set", map[string]any{"session": id, "isolate": isolate}))
+	} else {
+		m, err = s.App.SetSessionIsolate(id, isolate)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
+}
+
+func (s *Service) SetSessionPinnedSkills(id string, names []string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("thread.skills.pin", map[string]any{"session": id, "names": names}))
+	} else {
+		m, err = s.App.SetSessionPinnedSkills(id, names)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
+}
+
 func (s *Service) CompactSession(id string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.compact", map[string]any{"session": id})
@@ -187,6 +215,57 @@ func (s *Service) ListSkillsFor(workspace string) []map[string]string {
 		return nil
 	}
 	return s.App.ListSkills(workspace)
+}
+
+func (s *Service) GetSkill(workspace, name string) map[string]string {
+	if s.RPC != nil {
+		v, err := s.call("skills.get", map[string]any{"workspace": workspace, "name": name})
+		out, _ := decode[map[string]string](v, err)
+		if out == nil {
+			return map[string]string{}
+		}
+		return out
+	}
+	if s.App == nil {
+		return nil
+	}
+	sk := s.App.GetSkill(workspace, name)
+	if sk == nil {
+		return map[string]string{}
+	}
+	return sk
+}
+
+func (s *Service) SkillMarket(refresh bool) (any, error) {
+	if s.RPC != nil {
+		return s.call("skills.market", map[string]any{"refresh": refresh})
+	}
+	if s.App == nil {
+		return nil, errors.New("no app")
+	}
+	return s.App.SkillMarket(refresh)
+}
+
+func (s *Service) InstallMarketSkill(slug string) (map[string]any, error) {
+	if s.RPC != nil {
+		v, err := s.call("skills.install", map[string]any{"slug": slug})
+		return decode[map[string]any](v, err)
+	}
+	if s.App == nil {
+		return nil, errors.New("no app")
+	}
+	return s.App.InstallMarketSkill(slug)
+}
+
+func (s *Service) UninstallMarketSkill(slug string) error {
+	if s.RPC != nil {
+		_, err := s.call("skills.uninstall", map[string]any{"slug": slug})
+		return err
+	}
+	if s.App == nil {
+		return errors.New("no app")
+	}
+	return s.App.UninstallMarketSkill(slug)
 }
 
 func (s *Service) KeyStatus() map[string]any {
