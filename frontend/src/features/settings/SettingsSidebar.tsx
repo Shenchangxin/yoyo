@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
+import { DURATION, EASE } from "../../lib/motion";
 import type { SettingsTab } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { SETTINGS_TABS } from "./registry";
@@ -37,8 +38,6 @@ const ICONS = {
   clock: Clock,
 } as const;
 
-const EASE = [0.22, 0.61, 0.36, 1] as const;
-
 export function SettingsSidebar(props: {
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
@@ -71,7 +70,7 @@ export function SettingsSidebar(props: {
               <motion.span
                 layoutId="settings-nav-pill"
                 className="absolute inset-0 rounded-lg bg-lift"
-                transition={{ duration: 0.18, ease: EASE }}
+                transition={{ duration: DURATION, ease: EASE }}
               />
             ) : null}
             <Icon className="relative z-10 size-4 shrink-0" aria-hidden />

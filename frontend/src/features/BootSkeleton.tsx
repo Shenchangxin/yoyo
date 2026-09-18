@@ -15,7 +15,7 @@ export function BootSkeleton() {
           <div className="h-11 border-b border-border/50" />
           <div className="flex-1" />
           <div className="px-4 pb-4">
-            <div className="mx-auto h-[88px] max-w-2xl animate-pulse rounded-[20px] border border-border bg-input-bar" />
+            <div className="mx-auto h-[72px] max-w-2xl animate-pulse rounded-[var(--radius-composer)] border border-border bg-input-bar" />
           </div>
         </div>
       </div>

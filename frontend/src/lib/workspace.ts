@@ -10,3 +10,15 @@ export function workspaceReady(healthReady: boolean | undefined, workspace: stri
   if (healthReady) return true;
   return pathReady(workspace);
 }
+
+export function recentWorkspaces(paths: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of paths) {
+    const p = (raw || "").trim();
+    if (!p || seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
+}

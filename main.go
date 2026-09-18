@@ -63,9 +63,7 @@ func main() {
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.yoyo.workstation",
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
-				if win != nil {
-					win.Show().Focus()
-				}
+				desktop.Raise(win)
 			},
 		},
 	})
@@ -97,13 +95,15 @@ func main() {
 			Icon: desktop.AppIcon,
 		},
 	}
-	if geom.Max {
+	if geom.Max && !geom.Recenter {
 		opts.StartState = application.WindowStateMaximised
+	} else if !geom.Refit && !geom.Recenter && (geom.X != 0 || geom.Y != 0) {
+		opts.InitialPosition = application.WindowXY
+		opts.X = geom.X
+		opts.Y = geom.Y
 	}
 	win = gui.Window.NewWithOptions(opts)
-	if !geom.Max && (geom.X != 0 || geom.Y != 0) {
-		win.SetPosition(geom.X, geom.Y)
-	}
+	desktop.ApplyLaunchGeometry(win, geom)
 	svc.Attach(gui, win)
 	desktop.InstallChrome(gui, win, svc, ns)
 	desktop.PersistWindow(svc, win)

@@ -66,6 +66,23 @@ export function isArtifactTool(name: string): boolean {
   return name === "apply_patch" || name === "cite_sources" || name.startsWith("office_");
 }
 
+export function isPlanTool(name: string): boolean {
+  return name === "update_plan";
+}
+
+export function isOutcomeToolName(name: string): boolean {
+  return isPlanTool(name) || isArtifactTool(name);
+}
+
+/** Match the Go emit: failures land in content as `ERROR:…`, not always `ok:false`. */
+export function isToolFailed(item?: Item | null): boolean {
+  if (!item) return false;
+  if (item.payload?.ok === false) return true;
+  if (item.payload?.error) return true;
+  const body = toolResultBody(item);
+  return body.startsWith("ERROR:");
+}
+
 export function formatElapsed(ms?: number): string {
   if (!ms || ms <= 0) return "";
   if (ms < 1000) return `${Math.round(ms)}ms`;

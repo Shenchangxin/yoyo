@@ -40,7 +40,7 @@ test("slash plan toggles the plan chip", async ({ page }) => {
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.fill("/plan");
   await box.press("Enter");
-  await expect(page.getByRole("button", { name: "Plan", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Mode" })).toContainText("Plan");
 });
 
 test("control shortcuts section is reachable", async ({ page }) => {
@@ -191,6 +191,8 @@ test("in-progress caret stays on the live assistant", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("first answer")).toBeVisible();
   await expect(page.locator(".assistant-live")).toHaveCount(0);
+  await expect(page.getByTestId("process-group")).toHaveAttribute("data-live", "true");
+  await expect(page.getByTestId("process-summary")).toHaveCount(0);
   await expect(page.getByTestId("tool-row").filter({ hasText: "read_file" })).toBeVisible();
 });
 
@@ -202,7 +204,8 @@ test("streaming caret sits on the open assistant", async ({ page }) => {
       { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "first question" } },
       { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "old answer", id: "s1:r1" } },
       { type: "user", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { text: "second question" } },
-      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "live answer", id: "s1:r2" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "", id: "s1:r2", delta: true } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { text: "live answer", id: "s1:r2", delta: true } },
     ],
   });
   await page.goto("/");
@@ -211,6 +214,23 @@ test("streaming caret sits on the open assistant", async ({ page }) => {
   const old = page.getByTestId("agent-turn").filter({ hasText: "old answer" });
   await expect(live.locator(".assistant-live")).toHaveCount(1);
   await expect(old.locator(".assistant-live")).toHaveCount(0);
+});
+
+test("a finished round keeps one letter and thinks at the foot", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    running: true,
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "look around" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "looking around", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  const turn = page.getByTestId("agent-turn");
+  await expect(turn.getByText("looking around")).toBeVisible();
+  await expect(turn.locator(".assistant-live")).toHaveCount(0);
+  await expect(turn.getByTestId("working-line")).toBeVisible();
+  await expect(page.getByTestId("working-line")).toHaveCount(1);
 });
 
 test("continue this turn posts retry instead of a new user message", async ({ page }) => {
@@ -325,7 +345,7 @@ test("approval is asked in the transcript", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
 });
 
-test("conversation and composer share a reading column", async ({ page }) => {
+test("conversation uses the pane while composer stays a reading column", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
@@ -334,6 +354,11 @@ test("conversation and composer share a reading column", async ({ page }) => {
     ],
   });
   await page.goto("/");
+  const toggle = page.getByRole("button", { name: "Toggle review" });
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-pressed")) === "true") {
+    await toggle.click();
+  }
   const thread = page.getByTestId("conversation-column");
   const composer = page.getByTestId("composer-column");
   await expect(thread).toBeVisible();
@@ -341,12 +366,69 @@ test("conversation and composer share a reading column", async ({ page }) => {
   const a = await thread.boundingBox();
   const b = await composer.boundingBox();
   expect(a && b).toBeTruthy();
-  expect(Math.abs(a!.x - b!.x)).toBeLessThan(8);
-  expect(Math.abs(a!.width - b!.width)).toBeLessThan(8);
-  expect(a!.width).toBeLessThanOrEqual(768);
+  expect(a!.width).toBeGreaterThan(b!.width + 24);
+  expect(b!.width).toBeLessThanOrEqual(768);
 });
 
-test("tool timeline shows name and path without dumping json", async ({ page }) => {
+test("insert mention keeps the popup open and pins a file token", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+  });
+  await page.goto("/");
+  const box = page.getByRole("textbox", { name: "Message" });
+  await expect(box).toBeEnabled({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Insert mention" }).click();
+  await expect(page.getByRole("listbox", { name: "Mentions" })).toBeVisible();
+  await page.getByRole("option", { name: /@file:/ }).first().click();
+  await expect(page.getByRole("option", { name: /@file:src\/main.go/ })).toBeVisible();
+  await page.getByRole("option", { name: /@file:src\/main.go/ }).click();
+  await expect(page.getByTestId("mention-chip")).toHaveAttribute("aria-label", "@file:src/main.go");
+  await expect(page.getByTestId("mention-chip")).toContainText("main.go");
+  await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
+});
+
+test("session authorization mode is on the composer", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws", auth_mode: "default" }],
+  });
+  await page.goto("/");
+  const auth = page.getByRole("combobox", { name: "Authorization" });
+  await expect(auth).toBeVisible();
+  await auth.click();
+  await page.getByRole("option", { name: "Full access" }).click();
+  await expect(auth).toHaveText("Full access");
+});
+
+test("composer mode menu switches agent and plan", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+  });
+  await page.goto("/");
+  const mode = page.getByRole("button", { name: "Mode" });
+  await expect(mode).toContainText("Agent");
+  await mode.click();
+  await page.getByRole("menuitem", { name: /Plan/ }).click();
+  await expect(mode).toContainText("Plan");
+});
+
+test("session workspace is on the composer", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [
+      { id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" },
+      { id: "s2", title: "Other", workspace: "C:/tmp/other" },
+    ],
+  });
+  await page.goto("/");
+  const picker = page.getByTestId("composer-column").getByRole("button", { name: "Workspace" });
+  await expect(picker).toBeVisible();
+  await expect(picker).toContainText("ws");
+  await expect(page.getByTitle("C:/tmp/ws")).toHaveCount(1);
+  await picker.click();
+  await page.getByRole("menuitem", { name: /other/ }).click();
+  await expect(picker).toContainText("other");
+});
+
+test("settled tools collapse until the operator expands them", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
@@ -357,6 +439,13 @@ test("tool timeline shows name and path without dumping json", async ({ page }) 
     ],
   });
   await page.goto("/");
+  await expect(page.getByText("it is a go file")).toBeVisible();
+  const summary = page.getByTestId("process-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText("1 tools");
+  await expect(page.getByText("src/main.go")).toHaveCount(0);
+  await expect(page.getByText("{\"path\":\"src/main.go\"}")).toHaveCount(0);
+  await summary.click();
   const row = page.getByTestId("tool-row").filter({ hasText: "read_file" });
   await expect(row).toBeVisible();
   await expect(row.getByText("src/main.go")).toBeVisible();

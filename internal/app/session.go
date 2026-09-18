@@ -34,6 +34,7 @@ type SessionMeta struct {
 	Model            string    `json:"model,omitempty"`
 	LoadedSkills     []string  `json:"loaded_skills,omitempty"`
 	PlanText         string    `json:"plan_text,omitempty"`
+	AuthMode         string    `json:"auth_mode,omitempty"`
 }
 
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
@@ -52,7 +53,11 @@ func (a *App) NewSession(workspace string) (SessionMeta, error) {
 	}
 	b, _ := json.MarshalIndent(meta, "", "  ")
 	path := filepath.Join(a.Home.Sessions(), id+".meta.json")
-	return meta, os.WriteFile(path, b, 0o644)
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		return meta, err
+	}
+	a.applySessionAuth(id, capability.AuthDefault)
+	return a.attachAuthMode(meta), nil
 }
 
 func (a *App) GetSession(id string) (SessionMeta, error) {
@@ -61,7 +66,36 @@ func (a *App) GetSession(id string) (SessionMeta, error) {
 		return SessionMeta{ID: id}, err
 	}
 	var m SessionMeta
-	return m, json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		return m, err
+	}
+	return a.attachAuthMode(m), nil
+}
+
+func (a *App) attachAuthMode(m SessionMeta) SessionMeta {
+	mode := capability.AuthDefault
+	if a != nil && a.Threads != nil && m.ID != "" {
+		if st := a.Threads.Load(m.ID); strings.TrimSpace(st.AuthMode) != "" {
+			mode = capability.ParseAuthMode(st.AuthMode)
+		} else if strings.TrimSpace(m.AuthMode) != "" {
+			mode = capability.ParseAuthMode(m.AuthMode)
+		}
+	} else if strings.TrimSpace(m.AuthMode) != "" {
+		mode = capability.ParseAuthMode(m.AuthMode)
+	}
+	m.AuthMode = mode
+	return m
+}
+
+func (a *App) applySessionAuth(id, mode string) {
+	mode = capability.ParseAuthMode(mode)
+	caps := capability.AuthModeCapStrings(mode)
+	if a.Threads != nil {
+		a.Threads.SetAuthMode(id, mode, caps)
+	}
+	if a.Caps != nil {
+		a.Caps.ApplyAuthMode(id, mode)
+	}
 }
 
 func (a *App) writeSession(m SessionMeta) error {

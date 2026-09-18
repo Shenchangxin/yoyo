@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
-import { Check, ChevronRight, Copy, FileText, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
+import { Check, Copy, FileText, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
@@ -8,34 +8,16 @@ import { useCopy } from "../lib/i18n";
 import { writeClipboard } from "../lib/clipboard";
 import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import {
-  formatElapsed,
   formatToolBody,
   isArtifactTool,
   patchFileCount,
   toolDetail,
-  toolElapsedMs,
   toolName,
 } from "../lib/tool-summary";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
-import { layoutRows, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
-
-function pairTools(items: Item[]): { key: string; call?: Item; result?: Item; extra: Item[] }[] {
-  const order: string[] = [];
-  const map = new Map<string, { key: string; call?: Item; result?: Item; extra: Item[] }>();
-  for (const it of items) {
-    const id = String(it.payload?.id || (it.type === "context_injection" ? it.key : "") || it.key);
-    if (!map.has(id)) {
-      map.set(id, { key: id, extra: [] });
-      order.push(id);
-    }
-    const row = map.get(id)!;
-    if (it.type === "tool_call") row.call = it;
-    else if (it.type === "tool_result") row.result = it;
-    else row.extra.push(it);
-  }
-  return order.map((id) => map.get(id)!);
-}
+import { layoutRows, pairTools, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -83,7 +65,7 @@ function lastAgentKey(rows: LayoutRow[]): string {
 }
 
 function turnHasArtifact(parts: AgentPart[]): boolean {
-  return parts.some((p) => p.kind === "tools" && p.items.some((it) => isArtifactTool(toolName(it))));
+  return parts.some((p) => p.kind === "artifact");
 }
 
 function isUserRow(row: LayoutRow): boolean {
@@ -104,11 +86,14 @@ function partSpace(parts: AgentPart[], i: number): string {
   if (i === 0) return "";
   const prev = parts[i - 1];
   const cur = parts[i];
-  if (cur.kind === "tools") return "pt-2";
-  if (cur.kind === "item" && cur.item.type === "assistant" && prev.kind === "tools") return "pt-3.5";
-  if (cur.kind === "item" && cur.item.type === "assistant") return "pt-1.5";
-  if (cur.kind === "item" && cur.item.type === "reasoning") return "pt-1";
-  return "pt-3";
+  if (cur.kind === "process") return "pt-1.5";
+  if (cur.kind === "artifact") return "pt-2";
+  if (cur.kind === "item" && cur.item.type === "assistant") {
+    if (prev.kind === "process") return "pt-1.5";
+    if (prev.kind === "artifact") return "pt-2.5";
+    return "pt-1";
+  }
+  return "pt-2";
 }
 
 export function Transcript(props: {
@@ -128,7 +113,7 @@ export function Transcript(props: {
   const layout = layoutRows(props.items);
   const empty = props.items.length === 0 && !props.running && props.approvals.length === 0;
   const live = lastMeaningful(props.items);
-  const streamingKey = props.running && live?.type === "assistant" ? live.key : "";
+  const streamingKey = props.running && live?.type === "assistant" && live.delta ? live.key : "";
   const showWorking = props.running && !streamingKey && !toolsPending(props.items);
   const retryKey = lastErrorKey(props.items);
   const pinnedTurn = lastAgentKey(layout);
@@ -148,16 +133,26 @@ export function Transcript(props: {
       if (row.kind === "agent") {
         const liveHere = row.parts.some((p) => p.kind === "item" && p.item.key === streamingKey);
         const last = row.key === pinnedTurn;
+        const workingHere = last && showWorking;
         return {
           key: row.key,
           space: rowSpace(layout, i),
-          virtualize: virtualize && !liveHere,
+          virtualize: virtualize && !liveHere && !workingHere,
           node: (
-            <div className="group/turn" data-testid="agent-turn">
+            <article className="assistant-letter group/turn" data-testid="agent-turn">
               {row.parts.map((part, pi) => (
-                <div key={part.key} className={partSpace(row.parts, pi)}>
-                  {part.kind === "tools" ? (
-                    <ToolTimeline items={part.items} onOpenReview={props.onOpenReview} />
+                <div
+                  key={part.key}
+                  className={cn(
+                    partSpace(row.parts, pi),
+                    part.kind === "item" && part.item.type === "assistant" && "assistant-block",
+                    (part.kind === "process" || part.kind === "artifact") && "u-chrome",
+                  )}
+                >
+                  {part.kind === "process" ? (
+                    <ProcessGroup items={part.items} live={part.live && props.running && last} compact={props.compact} />
+                  ) : part.kind === "artifact" ? (
+                    <ArtifactTimeline items={part.items} onOpenReview={props.onOpenReview} />
                   ) : (
                     <ItemRow
                       item={part.item}
@@ -166,16 +161,23 @@ export function Transcript(props: {
                   )}
                 </div>
               ))}
-              {row.copyText && !props.compact ? (
-                <TurnActions
-                  text={row.copyText}
-                  live={liveHere}
-                  pinned={last && !liveHere}
-                  showReview={turnHasArtifact(row.parts)}
-                  onOpenReview={props.onOpenReview}
-                />
+              {workingHere ? (
+                <div className={row.parts.length ? "pt-1.5" : undefined}>
+                  <WorkingLine />
+                </div>
               ) : null}
-            </div>
+              {row.copyText && !props.compact ? (
+                <div className="u-chrome">
+                  <TurnActions
+                    text={row.copyText}
+                    live={liveHere}
+                    pinned={last && !liveHere && !workingHere}
+                    showReview={turnHasArtifact(row.parts)}
+                    onOpenReview={props.onOpenReview}
+                  />
+                </div>
+              ) : null}
+            </article>
           ),
         };
       }
@@ -197,30 +199,26 @@ export function Transcript(props: {
       node: <ApprovalCard item={a} onResolve={props.onResolve} />,
     })),
   ];
-  if (showWorking) {
+  if (showWorking && !pinnedTurn) {
     rows.push({
       key: "working",
       space: "pt-3",
-      node: (
-        <div className="flex items-center gap-2 text-[13px] text-muted" role="status" aria-live="polite">
-          <span className="thinking-dots" aria-hidden>
-            <i /><i /><i />
-          </span>
-          {copy.transcript.working}
-        </div>
-      ),
+      node: <WorkingLine />,
     });
   }
 
   return (
     <StickToBottom
-      className="transcript-scroll prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden"
+      className="prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       resize="instant"
       initial="instant"
       data-testid="conversation-column"
     >
       {empty && !props.compact ? (
-        <StickToBottom.Content className={cn(col, "flex min-h-full flex-col justify-center pb-10 pt-8")}>
+        <StickToBottom.Content
+          scrollClassName="transcript-scroll"
+          className={cn(col, "flex min-h-full flex-col justify-center pb-10 pt-8")}
+        >
           <h1 className="text-[26px] font-semibold tracking-[-0.038em] text-foreground">
             {copy.transcript.ready}
           </h1>
@@ -241,7 +239,10 @@ export function Transcript(props: {
           </div>
         </StickToBottom.Content>
       ) : (
-        <StickToBottom.Content className={cn(col, "flex flex-col pb-3 pt-4")}>
+        <StickToBottom.Content
+          scrollClassName="transcript-scroll"
+          className={cn(col, "flex flex-col pb-3 pt-4")}
+        >
           {rows.map((row) => (
             <div
               key={row.key}
@@ -456,8 +457,8 @@ const ItemRow = memo(function ItemRow({
   }
   if (item.type === "assistant") {
     return (
-      <div className="w-full min-w-0">
-        <div className={cn("assistant-prose text-[15.5px] leading-[1.7] tracking-[-0.011em] text-foreground/95", streaming && "assistant-live")}>
+      <div className="assistant-prose w-full min-w-0 text-[15.5px] leading-[1.7] tracking-[-0.011em] text-foreground/95">
+        <div className={cn(streaming && "assistant-live")}>
           <Markdown text={item.text} streaming={streaming} />
         </div>
       </div>
@@ -466,18 +467,6 @@ const ItemRow = memo(function ItemRow({
   if (item.type === "error") {
     return <ErrorCard item={item} onRetry={onRetry} />;
   }
-  if (item.type === "reasoning") {
-    const ms = toolElapsedMs(item);
-    const label = ms > 0
-      ? copy.transcript.thoughtFor.replace("{n}", formatElapsed(ms))
-      : copy.transcript.thinking;
-    return (
-      <details className="text-[12.5px] text-muted">
-        <summary className="cursor-pointer select-none text-[12.5px] text-muted hover:text-foreground">{label}</summary>
-        <div className="mt-1.5 max-w-[72ch] text-[13px] leading-6 text-muted"><Markdown text={item.text} /></div>
-      </details>
-    );
-  }
   if (item.type === "compaction") {
     const kind = String(item.payload?.kind || "");
     const label = kind === "checkpoint"
@@ -485,40 +474,19 @@ const ItemRow = memo(function ItemRow({
       : (item.payload.note || item.text || copy.app.compacted);
     return <div className="text-center text-[11px] text-muted/80">{String(label)}</div>;
   }
-  if (item.type === "subagent") {
-    return (
-      <details className="text-[12px] text-muted">
-        <summary className="cursor-pointer hover:text-foreground">{copy.transcript.subagent}</summary>
-        <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{item.text || JSON.stringify(item.payload).slice(0, 2000)}</pre>
-      </details>
-    );
-  }
   if (item.type === "tool_call" || item.type === "tool_result") {
-        return <ToolLine item={item} />;
-  }
-  if (item.type === "context_injection") {
-    return (
-      <details className="text-[12px] text-muted">
-        <summary className="cursor-pointer hover:text-foreground">{copy.transcript.mention}</summary>
-        <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">{item.text.slice(0, 1200)}</pre>
-      </details>
-    );
+    return <ToolLine item={item} />;
   }
   if (item.type === "turn_end" || item.type === "system") return null;
-  return (
-    <details className="text-[12px] text-muted">
-      <summary className="cursor-pointer hover:text-foreground">{item.type}</summary>
-      <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px]">
-        {item.text || JSON.stringify(item.payload).slice(0, 400)}
-      </pre>
-    </details>
-  );
+  if (item.type === "plan" || item.type === "file_change" || item.type === "ask_user") return null;
+  if (item.type === "approval") return null;
+  return null;
 });
 
-function ToolTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview?: () => void }) {
+function ArtifactTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview?: () => void }) {
   const pairs = pairTools(items);
   return (
-    <div className="min-w-0 space-y-0.5" data-testid="tool-timeline">
+    <div className="u-chrome min-w-0 space-y-0.5" data-testid="tool-timeline">
       {pairs.map((p) => {
         const name = toolName(p.call || p.result || p.extra[0] || ({ name: "tool", payload: {} } as Item));
         if (name === "update_plan" && (p.call || p.result)) {
@@ -534,15 +502,7 @@ function ToolTimeline({ items, onOpenReview }: { items: Item[]; onOpenReview?: (
             />
           );
         }
-        return (
-          <ToolLine
-            key={p.key}
-            item={p.result || p.call!}
-            call={p.call}
-            result={p.result}
-            pending={!!p.call && !p.result}
-          />
-        );
+        return null;
       })}
     </div>
   );
@@ -604,60 +564,6 @@ function ArtifactCard({
         >
           {copy.review.openReview}
         </button>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolLine({
-  item,
-  call,
-  result,
-  pending,
-}: {
-  item: Item;
-  call?: Item;
-  result?: Item;
-  pending?: boolean;
-}) {
-  const copy = useCopy();
-  const [open, setOpen] = useState(false);
-  const name = toolName(item);
-  const source = result || call || item;
-  const detail = toolDetail(call || source);
-  const ms = toolElapsedMs(result || item);
-  const elapsed = formatElapsed(ms);
-  const failed = result && (result.payload?.ok === false || result.payload?.error);
-  const status = pending
-    ? copy.transcript.toolRunning
-    : failed
-      ? copy.transcript.toolFailed
-      : copy.transcript.toolDone;
-  const body = formatToolBody(result || call || item);
-  return (
-    <div data-testid="tool-row">
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-[12.5px] text-muted hover:text-foreground"
-        onClick={() => setOpen((v) => !v)}
-      >
-        {pending ? (
-          <Loader2 className="size-3 shrink-0 animate-spin text-accent" aria-hidden />
-        ) : (
-          <span className={cn("size-1.5 shrink-0 rounded-full", failed ? "bg-danger" : "bg-accent/70")} aria-hidden />
-        )}
-        <span className="shrink-0 font-medium text-foreground/85">{name}</span>
-        {detail ? <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/80">{detail}</span> : null}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 tabular-nums text-[11px] text-muted/70">
-          {elapsed ? <span>{elapsed}</span> : null}
-          <span>{status}</span>
-          <ChevronRight className={cn("size-3 transition-transform duration-150", open && "rotate-90")} />
-        </span>
-      </button>
-      {open ? (
-        <pre className="mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-lift/40 px-2.5 py-2 font-mono text-[11px] leading-4 text-muted">
-          {body.slice(0, 4000)}
-        </pre>
       ) : null}
     </div>
   );

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
@@ -701,5 +702,79 @@ func TestEvolvePromoteFlagMovesActive(t *testing.T) {
 	}
 	if a.ActiveHash() == active {
 		t.Fatal("active unchanged despite PromoteActive")
+	}
+}
+
+func TestSessionAuthMode(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.AuthMode != capability.AuthDefault {
+		t.Fatalf("new session auth %q", sess.AuthMode)
+	}
+	got, err := a.SetSessionAuthMode(sess.ID, capability.AuthFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AuthMode != capability.AuthFull {
+		t.Fatalf("set %q", got.AuthMode)
+	}
+	reload, err := a.GetSession(sess.ID)
+	if err != nil || reload.AuthMode != capability.AuthFull {
+		t.Fatalf("persist %+v %v", reload, err)
+	}
+	if err := a.Caps.Check(capability.Request{Level: capability.Shell, SessionID: sess.ID}); err != nil {
+		t.Fatalf("full access should grant shell: %v", err)
+	}
+	fork, err := a.ForkSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.AuthMode != capability.AuthFull {
+		t.Fatalf("fork auth %q", fork.AuthMode)
+	}
+}
+
+func TestSessionWorkspace(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	first := t.TempDir()
+	second := t.TempDir()
+	sess, err := a.NewSession(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Workspace != first {
+		t.Fatalf("new session workspace %q", sess.Workspace)
+	}
+	got, err := a.SetSessionWorkspace(sess.ID, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Workspace != second {
+		t.Fatalf("set %q", got.Workspace)
+	}
+	reload, err := a.GetSession(sess.ID)
+	if err != nil || reload.Workspace != second {
+		t.Fatalf("persist %+v %v", reload, err)
+	}
+	if _, err := a.SetSessionWorkspace(sess.ID, filepath.Join(second, "missing")); err == nil {
+		t.Fatal("missing dir must fail")
+	}
+	fork, err := a.ForkSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.Workspace != second {
+		t.Fatalf("fork workspace %q", fork.Workspace)
 	}
 }

@@ -13,22 +13,22 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/computeruse"
+	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
+	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
-	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
-	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
-	"github.com/Shenchangxin/yoyo/internal/runtime"
-	"github.com/Shenchangxin/yoyo/internal/browser"
-	"github.com/Shenchangxin/yoyo/internal/computeruse"
-	"github.com/Shenchangxin/yoyo/internal/connector"
-	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
+	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/project"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -538,12 +538,15 @@ func (a *App) restoreRuns() {
 			}
 			a.queueMu.Unlock()
 		}
-		if a.Caps != nil && len(st.SessionCaps) > 0 {
-			var lv []capability.Level
-			for _, c := range st.SessionCaps {
-				lv = append(lv, capability.Level(c))
+		if a.Caps != nil {
+			a.Caps.ApplyAuthMode(id, st.AuthMode)
+			if len(st.SessionCaps) > 0 {
+				var lv []capability.Level
+				for _, c := range st.SessionCaps {
+					lv = append(lv, capability.Level(c))
+				}
+				a.Caps.RestoreSession(id, lv)
 			}
-			a.Caps.RestoreSession(id, lv)
 		}
 		if len(st.Steers) > 0 {
 			a.queueMu.Lock()

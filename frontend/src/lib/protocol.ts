@@ -18,6 +18,8 @@ export type SettingsTab =
   | "logs"
   | "danger";
 
+export type AuthMode = "default" | "auto_edit" | "full" | "ask";
+
 export type Thread = {
   id: string;
   title: string;
@@ -27,6 +29,7 @@ export type Thread = {
   archived?: boolean;
   pinned?: boolean;
   model?: string;
+  authMode?: AuthMode;
 };
 
 export type ItemType =

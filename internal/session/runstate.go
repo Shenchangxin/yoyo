@@ -37,9 +37,10 @@ type RunState struct {
 	Steers           []string          `json:"steers,omitempty"`
 	SessionCaps      []string          `json:"session_caps,omitempty"`
 	PendingApprovals []PendingApproval `json:"pending_approvals,omitempty"`
-	ResumeText  string `json:"resume_text,omitempty"`
-	ResumePlan  bool   `json:"resume_plan,omitempty"`
-	AskQuestion string `json:"ask_question,omitempty"`
+	ResumeText       string            `json:"resume_text,omitempty"`
+	ResumePlan       bool              `json:"resume_plan,omitempty"`
+	AskQuestion      string            `json:"ask_question,omitempty"`
+	AuthMode         string            `json:"auth_mode,omitempty"`
 }
 
 func runPath(dir, id string) string {

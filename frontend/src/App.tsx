@@ -35,7 +35,8 @@ import { PanelLeft } from "lucide-react";
 import { DEFAULT_KEYMAP, displayShortcut } from "./lib/keymap";
 import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
-import type { Thread } from "./lib/protocol";
+import { recentWorkspaces } from "./lib/workspace";
+import type { AuthMode, Thread } from "./lib/protocol";
 
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
   const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
@@ -64,6 +65,45 @@ export default function App() {
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
   const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
 
+  const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
+  const applySessionWorkspace = async (path: string) => {
+    if (!path) return;
+    if (!ws.activeId) {
+      const t = await api.createSession(path);
+      ws.setActive(t);
+      ws.setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
+      return;
+    }
+    const t = await api.setSessionWorkspace(ws.activeId, path);
+    ws.setActive(t);
+    ws.setThreads((list) => patchThread(list, t.id, t));
+  };
+  const bindComposer = {
+    files: ws.files,
+    skills: ws.skills,
+    authMode: ws.active?.authMode || "default",
+    workspace: sessionWs,
+    workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
+    onWorkspace: (path: string) => { void applySessionWorkspace(path); },
+    onBrowseWorkspace: async () => {
+      const p = await api.pickFolder();
+      if (p) await applySessionWorkspace(p);
+    },
+    onSearchFiles: (q: string) => { void api.searchFiles(sessionWs, q).then(ws.setFiles).catch(() => {}); },
+    onPickFiles: async () => {
+      const paths = await api.pickFiles();
+      return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
+    },
+    onAuthMode: async (mode: AuthMode) => {
+      if (!ws.activeId) return;
+      const t = await api.setSessionAuthMode(ws.activeId, mode);
+      ws.setActive(t);
+      ws.setThreads((list) => patchThread(list, t.id, t));
+    },
+    onClipboard: async () => api.clipboardRead(),
+    onScreenshot: async () => api.captureScreenshot(),
+  };
+
   const composer = (
     <Composer
       draftKey={ws.draftKey}
@@ -75,9 +115,6 @@ export default function App() {
       provider={ws.savedCfg.provider}
       ctx={ws.ctx}
       queued={ws.queued}
-      files={ws.files}
-      skills={ws.skills}
-      onSearchFiles={(q) => { void api.searchFiles(ws.savedCfg.workspace, q).then(ws.setFiles).catch(() => {}); }}
       onSend={ws.onSend}
       onStop={ws.onStop}
       onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
@@ -87,13 +124,8 @@ export default function App() {
         ws.setActive(t);
         ws.refreshCtx();
       }}
-      onPickFiles={async () => {
-        const paths = await api.pickFiles();
-        return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
-      }}
-      onClipboard={async () => api.clipboardRead()}
-      onScreenshot={async () => api.captureScreenshot()}
       flush
+      {...bindComposer}
     />
   );
 
@@ -123,7 +155,7 @@ export default function App() {
 
   const agentPane = (
     <section className="relative flex h-full min-h-0 min-w-0 flex-col">
-      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", THREAD_COL, THREAD_GUTTER)}>
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", THREAD_GUTTER)}>
         <Transcript
           items={ws.items}
           approvals={ws.approvals}
@@ -138,6 +170,8 @@ export default function App() {
             void ws.refreshDiff();
           }}
         />
+      </div>
+      <div className={cn(THREAD_COL, THREAD_GUTTER)}>
         {composer}
       </div>
     </section>
@@ -334,7 +368,6 @@ export default function App() {
       )
       : (
             <Titlebar
-              workspace={ws.savedCfg.workspace}
               inspector={ws.inspector}
               title={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat}
               runningCount={Object.values(ws.running).filter(Boolean).length}
@@ -444,6 +477,7 @@ export default function App() {
                     ws.setActive(t);
                     ws.refreshCtx();
                   }}
+                  {...bindComposer}
                 />
               )}
             </SheetContent>
@@ -529,6 +563,7 @@ export default function App() {
                           ws.setActive(t);
                           ws.refreshCtx();
                         }}
+                        {...bindComposer}
                       />
                     )}
                   </div>

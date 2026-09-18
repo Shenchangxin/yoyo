@@ -7,7 +7,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[] },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let cfg: any = {
@@ -109,6 +109,20 @@ export async function mockApi(
         sessions = [t, ...sessions];
         return route.fulfill({ json: t });
       }
+      if (method === "POST" && op === "model") {
+        if (idx >= 0) sessions[idx] = { ...sessions[idx], model: String(body().model || "") };
+        return route.fulfill({ json: sessions[idx] || { id, model: String(body().model || "") } });
+      }
+      if (method === "POST" && op === "auth") {
+        const mode = String(body().mode || body().auth_mode || "default");
+        if (idx >= 0) sessions[idx] = { ...sessions[idx], auth_mode: mode };
+        return route.fulfill({ json: sessions[idx] || { id, auth_mode: mode } });
+      }
+      if (method === "POST" && op === "workspace") {
+        const nextWs = String(body().workspace || workspace);
+        if (idx >= 0) sessions[idx] = { ...sessions[idx], workspace: nextWs };
+        return route.fulfill({ json: sessions[idx] || { id, workspace: nextWs } });
+      }
     }
     if (path.endsWith("/api/plugins")) {
       return route.fulfill({ json: extra?.plugins ?? { fibers: [], mcp: [] } });
@@ -126,7 +140,16 @@ export async function mockApi(
     if (path.endsWith("/api/eval") || path.includes("/api/eval/")) {
       return route.fulfill({ json: { metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 }, results: [] } });
     }
-    if (path.includes("/api/skills") || path.includes("/api/fs/search") || path.includes("/api/logs") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
+    if (path.includes("/api/fs/search")) {
+      return route.fulfill({
+        json: extra?.files ?? [
+          { path: "src/main.go", kind: "file" },
+          { path: "README.md", kind: "file" },
+          { path: "src", kind: "dir" },
+        ],
+      });
+    }
+    if (path.includes("/api/skills") || path.includes("/api/logs") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
       return route.fulfill({ json: [] });
     }
     if (path.includes("/api/approvals")) {

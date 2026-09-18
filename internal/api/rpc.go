@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	goruntime "runtime"
 	"sync"
 	"time"
@@ -347,6 +346,20 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.SetSessionModel(p.Session, p.Model)
+	case "thread.auth.set":
+		var p struct {
+			Session string `json:"session"`
+			Mode    string `json:"mode"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionAuthMode(p.Session, p.Mode)
+	case "thread.workspace.set":
+		var p struct {
+			Session   string `json:"session"`
+			Workspace string `json:"workspace"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionWorkspace(p.Session, p.Workspace)
 	case "thread.compact":
 		var p struct {
 			Session string `json:"session"`
@@ -380,19 +393,11 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		return runtime.FuzzySearch(ws, p.Query, p.Limit), nil
 	case "skills.list":
-		ws := a.Config.Workspace
-		if !app.WorkspaceReady(ws) {
-			ws = a.Workspace()
+		var p struct {
+			Workspace string `json:"workspace"`
 		}
-		sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, ws, filepath.Join(filepath.Dir(a.BundledEvals), "skills"))...)
-		if _, _, _, cas, _, _, err := a.Materials(a.ActiveHash()); err == nil {
-			sk = runtime.MergeSkills(cas, sk)
-		}
-		var out []map[string]string
-		for _, s := range sk {
-			out = append(out, map[string]string{"name": s.Name, "description": s.Description})
-		}
-		return out, nil
+		_ = json.Unmarshal(params, &p)
+		return a.ListSkills(p.Workspace), nil
 	case "key.status":
 		return a.Vault.Status(), nil
 	case "mcp.stop":
