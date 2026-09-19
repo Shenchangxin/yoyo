@@ -78,7 +78,7 @@ export function isPlanTool(name: string): boolean {
 }
 
 export function isOutcomeToolName(name: string, body = "", path = ""): boolean {
-  return isPlanTool(name) || isArtifactTool(name) || isRichResult(name, body, path);
+  return isArtifactTool(name) || isRichResult(name, body, path);
 }
 
 /** Match the Go emit: failures land in content as `ERROR:…`, not always `ok:false`. */

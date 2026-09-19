@@ -11,6 +11,8 @@ import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Attachment, AuthMode, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
+import type { TaskPlan } from "../lib/plan";
+import { PlanChip } from "./PlanChip";
 import { formatTokens, lookupCatalogModel, composerModelIds } from "../lib/models-dev";
 import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
@@ -56,6 +58,7 @@ export function Composer(props: {
   onWorkspace?: (path: string) => void;
   onBrowseWorkspace?: () => void;
   onIsolate?: (isolate: boolean) => void;
+  taskPlan?: TaskPlan | null;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -302,6 +305,9 @@ export function Composer(props: {
               }
               onPick={(item) => insertMention(item)}
             />
+          ) : null}
+          {props.taskPlan ? (
+            <PlanChip key={props.draftKey} plan={props.taskPlan} running={props.running} compact={props.compact} />
           ) : null}
           {chips.length || atts.length ? (
             <div className="flex flex-wrap items-center gap-1 px-3 pt-2.5">

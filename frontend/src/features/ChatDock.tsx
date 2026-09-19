@@ -1,11 +1,13 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import type { Approval, Attachment, AuthMode, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
+import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
 import { lastUserTurns } from "../lib/stream";
 
 export function ChatDock(props: {
   items: Item[];
+  taskPlan?: TaskPlan | null;
   approvals: Approval[];
   running: boolean;
   draftKey: string;
@@ -76,6 +78,7 @@ export function ChatDock(props: {
         onModel={props.onModel}
         onClipboard={props.onClipboard}
         onScreenshot={props.onScreenshot}
+        taskPlan={props.taskPlan}
         compact
       />
     </aside>

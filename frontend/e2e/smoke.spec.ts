@@ -497,3 +497,64 @@ test("office artifacts land as review cards", async ({ page }) => {
   await expect(card.getByText("reports/week.docx")).toBeVisible();
   await expect(card.getByRole("button", { name: "Open in Review" })).toBeVisible();
 });
+
+test("task plan sits above the composer instead of the letter", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "do the work" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "on it", id: "s1:r1" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:02Z",
+        payload: {
+          id: "p1",
+          name: "update_plan",
+          arguments: JSON.stringify({
+            explanation: "Ship the composer chip",
+            plan: [
+              { step: "Read the shell", status: "complete" },
+              { step: "Move the checklist", status: "in_progress" },
+              { step: "Cover with a test", status: "pending" },
+            ],
+          }),
+        },
+      },
+      {
+        type: "tool_result",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:03Z",
+        payload: {
+          id: "p1",
+          name: "update_plan",
+          content: "Ship the composer chip\n\n1. [complete] Read the shell\n2. [in_progress] Move the checklist\n3. [pending] Cover with a test\n",
+        },
+      },
+      {
+        type: "plan",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:03Z",
+        payload: {
+          name: "update_plan",
+          id: "p1",
+          text: "Ship the composer chip\n\n1. [complete] Read the shell\n2. [in_progress] Move the checklist\n3. [pending] Cover with a test\n",
+        },
+      },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { text: "working the list", id: "s1:r2" } },
+    ],
+  });
+  await page.goto("/");
+  const chip = page.getByTestId("task-plan");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("Move the checklist");
+  await expect(chip).toContainText("1/3");
+  await expect(page.getByTestId("artifact-card")).toHaveCount(0);
+  await expect(page.getByTestId("process-summary")).toContainText("Updated the plan");
+  await expect(page.getByTestId("conversation-column").getByText("Ship the composer chip")).toHaveCount(0);
+  await page.getByRole("button", { name: "Hide plan" }).click();
+  await expect(page.getByRole("button", { name: "Show plan" })).toBeVisible();
+  await expect(chip.getByText("Cover with a test")).toHaveCount(0);
+  await page.getByRole("button", { name: "Show plan" }).click();
+  await expect(chip.getByText("Cover with a test")).toBeVisible();
+});
