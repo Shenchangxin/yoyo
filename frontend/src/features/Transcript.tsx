@@ -574,9 +574,6 @@ function ArtifactTimeline({ items, running, onOpenReview }: { items: Item[]; run
     <div className="u-chrome min-w-0 space-y-1" data-testid="tool-timeline">
       {pairs.map((p) => {
         const name = toolName(p.call || p.result || p.extra[0] || ({ name: "tool", payload: {} } as Item));
-        if (name === "update_plan" && (p.call || p.result)) {
-          return <PlanBlock key={p.key} item={p.result || p.call!} />;
-        }
         if (isArtifactTool(name) || isRichResult(name, formatToolBody(p.result || p.call || ({ payload: {} } as Item)), String(toolArgs(p.call || p.result || ({ payload: {} } as Item)).path || ""))) {
           return (
             <ArtifactCard
@@ -590,17 +587,6 @@ function ArtifactTimeline({ items, running, onOpenReview }: { items: Item[]; run
         }
         return null;
       })}
-    </div>
-  );
-}
-
-function PlanBlock({ item }: { item: Item }) {
-  const copy = useCopy();
-  const body = formatToolBody(item);
-  return (
-    <div className="surface-inset rounded-xl border border-border/70 bg-card/60 px-3.5 py-2.5">
-      <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted">{copy.transcript.plan}</div>
-      <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[13px] leading-[1.55] text-foreground/90">{body.slice(0, 4000)}</pre>
     </div>
   );
 }

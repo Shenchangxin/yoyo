@@ -39,6 +39,7 @@ import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
 import { recentWorkspaces } from "./lib/workspace";
 import type { AuthMode, Thread } from "./lib/protocol";
+import { latestTaskPlan } from "./lib/plan";
 
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
   const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
@@ -115,6 +116,7 @@ export default function App() {
     },
     onClipboard: async () => api.clipboardRead(),
     onScreenshot: async () => api.captureScreenshot(),
+    taskPlan: latestTaskPlan(ws.items),
   };
 
   const composer = (

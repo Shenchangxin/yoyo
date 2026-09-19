@@ -35,6 +35,7 @@ export function isTranscriptDuplicate(it: Item): boolean {
   return it.type === "plan" || it.type === "file_change" || it.type === "ask_user";
 }
 
+/** Artifacts the operator acts on. `update_plan` stays in the process rail. */
 export function isOutcomeTool(it: Item): boolean {
   if (!isToolish(it)) return false;
   const name = toolName(it);

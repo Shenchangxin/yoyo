@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEvents, unwrapEvent } from "../src/lib/stream-fold";
 import { layoutRows } from "../src/lib/transcript-layout";
+import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import type { Item } from "../src/lib/protocol";
 
@@ -189,12 +190,39 @@ test("plan and file_change stay inside the agent turn", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["item", "artifact", "item"]);
-  const artifacts = agent.parts[1];
+  expect(agent.parts.map((p) => p.kind)).toEqual(["item", "process", "artifact", "item"]);
+  const process = agent.parts[1];
+  expect(process.kind).toBe("process");
+  if (process.kind !== "process") return;
+  expect(process.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["update_plan"]);
+  const artifacts = agent.parts[2];
   expect(artifacts.kind).toBe("artifact");
   if (artifacts.kind !== "artifact") return;
-  expect(artifacts.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["update_plan", "apply_patch"]);
-  expect(agent.parts.filter((p) => p.kind === "process")).toHaveLength(0);
+  expect(artifacts.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["apply_patch"]);
+  const plan = latestTaskPlan(items);
+  expect(plan?.steps.map((s) => s.step)).toEqual(["look", "patch"]);
+});
+
+test("plan text parses statuses and explanation", () => {
+  const plan = parsePlanText("Ship the chip\n\n1. [complete] Read the shell\n2. [in_progress] Move the checklist\n3. [pending] Cover with a test\n");
+  expect(plan?.explanation).toBe("Ship the chip");
+  expect(plan?.steps).toEqual([
+    { step: "Read the shell", status: "complete" },
+    { step: "Move the checklist", status: "in_progress" },
+    { step: "Cover with a test", status: "pending" },
+  ]);
+});
+
+test("failed update_plan is skipped for the composer chip", () => {
+  const items = replayEvents([
+    { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"old\",\"status\":\"pending\"}]}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "p1", name: "update_plan", content: "1. [pending] old" } },
+    { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. [pending] old", id: "p1" } },
+    { type: "tool_call", session_id: "s", payload: { id: "p2", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"new\",\"status\":\"in_progress\"}]}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "p2", name: "update_plan", content: "ERROR: empty plan" } },
+  ]);
+  const plan = latestTaskPlan(items);
+  expect(plan?.steps).toEqual([{ step: "old", status: "pending" }]);
 });
 
 test("ask_user does not split the agent turn", () => {
