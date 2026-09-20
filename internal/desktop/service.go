@@ -325,21 +325,64 @@ func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 	if s.RPC != nil {
 		return decode[[]trace.Event](s.call("trajectory.get", map[string]any{"session": id}))
 	}
-	return s.App.Trajectory(id)
+	resolved, err := s.App.ResolveSessionID(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.App.Trajectory(resolved)
 }
 
 func (s *Service) SessionTrace(id string) (any, error) {
 	if s.RPC != nil {
 		return s.call("trace.get", map[string]any{"session": id})
 	}
-	return s.App.SessionTrace(id)
+	resolved, err := s.App.ResolveSessionID(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.App.SessionTrace(resolved)
 }
 
 func (s *Service) SpillBlob(sessionID, blobID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("spill.get", map[string]any{"session": sessionID, "id": blobID})
 	}
-	return s.App.SpillBlob(sessionID, blobID)
+	resolved, err := s.App.ResolveSessionID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return s.App.SpillBlob(resolved, blobID)
+}
+
+func (s *Service) DumpSession(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("session.dump", map[string]any{"session": id})
+	}
+	return s.App.DumpSession(id)
+}
+
+func (s *Service) ListSessionIndex() (any, error) {
+	if s.RPC != nil {
+		return s.call("session.list", nil)
+	}
+	return s.App.ListSessionIndex(), nil
+}
+
+func (s *Service) ResolveSessionID(id string) (string, error) {
+	if s.RPC != nil {
+		v, err := s.call("session.resolve", map[string]any{"session": id})
+		if err != nil {
+			return "", err
+		}
+		m, _ := v.(map[string]any)
+		if m != nil {
+			if got, ok := m["id"].(string); ok {
+				return got, nil
+			}
+		}
+		return "", fmt.Errorf("session resolve: empty id")
+	}
+	return s.App.ResolveSessionID(id)
 }
 
 func (s *Service) Send(sessionID, text string) (string, error) {

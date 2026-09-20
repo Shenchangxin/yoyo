@@ -22,6 +22,9 @@ import (
 )
 
 type SessionMeta struct {
+	// ID is the durable session identity. It is assigned at create time and
+	// never changes. Trajectory lives at sessions/{id}.jsonl; spill artifacts
+	// live at sessions/{id}/spill. DumpSession(id) returns both in full.
 	ID               string    `json:"id"`
 	CreatedAt        time.Time `json:"created_at"`
 	Workspace        string    `json:"workspace"`

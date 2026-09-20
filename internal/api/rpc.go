@@ -228,20 +228,50 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Session string `json:"session"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.Trajectory(p.Session)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.Trajectory(id)
 	case "trace.get":
 		var p struct {
 			Session string `json:"session"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.SessionTrace(p.Session)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.SessionTrace(id)
 	case "spill.get":
 		var p struct {
 			Session string `json:"session"`
 			ID      string `json:"id"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.SpillBlob(p.Session, p.ID)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.SpillBlob(id, p.ID)
+	case "session.dump":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.DumpSession(p.Session)
+	case "session.list":
+		return a.ListSessionIndex(), nil
+	case "session.resolve":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"id": id}, nil
 	case "approvals.list":
 		return a.Gate.Pending(), nil
 	case "approvals.resolve", "approval.respond":

@@ -428,6 +428,7 @@ export default function App() {
             <Titlebar
               inspector={ws.inspector}
               title={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat}
+              sessionId={ws.active?.id || ""}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}

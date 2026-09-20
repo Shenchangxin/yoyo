@@ -131,6 +131,18 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, map[string]any{"ok": true})
 			return
 		}
+		if resolved, err := a.ResolveSessionID(id); err == nil {
+			id = resolved
+		}
+		if len(parts) > 1 && parts[1] == "dump" {
+			dump, err := a.DumpSession(id)
+			if err != nil {
+				http.Error(w, err.Error(), 404)
+				return
+			}
+			writeJSON(w, dump)
+			return
+		}
 		if len(parts) > 1 && parts[1] == "trajectory" {
 			evs, err := a.Trajectory(id)
 			if err != nil {

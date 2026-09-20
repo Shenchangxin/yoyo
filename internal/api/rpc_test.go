@@ -94,6 +94,14 @@ func TestRPCThreadLifecycle(t *testing.T) {
 	if !im.Isolate || im.Worktree == "" {
 		t.Fatalf("isolate %+v", iso.Result)
 	}
+	dump := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 5, Method: "session.dump", Params: jsonRaw(`{"session":"` + m.ID[:8] + `"}`)})
+	if dump.Error != nil {
+		t.Fatal(dump.Error)
+	}
+	dm, _ := dump.Result.(app.SessionDump)
+	if dm.ID != m.ID {
+		t.Fatalf("dump %+v", dump.Result)
+	}
 	del := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "thread.delete", Params: jsonRaw(`{"session":"` + m.ID + `"}`)})
 	if del.Error != nil {
 		t.Fatal(del.Error)
