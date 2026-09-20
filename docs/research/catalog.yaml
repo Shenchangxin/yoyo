@@ -1,0 +1,665 @@
+# Yoyo research catalog. Source of truth for ids / dates / status.
+# last_reviewed: 2026-09-20
+# policy: frontier entries must have year_first: 2026
+
+cutoff: 2026-01-01
+last_reviewed: 2026-09-20
+sources_doc: SOURCES.md
+
+entries:
+  - id: "2606.09498"
+    slug: self-harness
+    title: "Self-Harness: Harnesses That Improve Themselves"
+    year_first: 2026
+    published: 2026-06-08
+    version: v3
+    authors: [Hangfan Zhang, Shao Zhang, Kangcong Li, Chen Zhang, Yang Chen, Yiqun Zhang, Lei Bai, Shuyue Hu]
+    venue: arXiv
+    url: https://arxiv.org/abs/2606.09498
+    pdf: https://arxiv.org/pdf/2606.09498.pdf
+    layer: frontier
+    status: implemented
+    yoyo: "internal/evolve/{mine,propose,engine}.go; internal/eval/promote.go"
+    card: corpus/2606.09498-self-harness.md
+
+  - id: "2607.15524"
+    slug: rhi
+    title: "Recursive Harness Self-Improvement"
+    year_first: 2026
+    published: 2026-07-17
+    version: v1
+    authors: [Hyunin Lee, Jinglue Xu, Jeffrey Seely, Donghyun Lee, Matei Zaharia, Yujin Tang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2607.15524
+    pdf: https://arxiv.org/pdf/2607.15524.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "prompt-level loop slots exist; pairwise revision-history optimizer does not"
+    card: corpus/2607.15524-rhi.md
+
+  - id: "2609.14857"
+    slug: modular-rsi
+    title: "ModularRSI: Modular and Generalizable Recursive Harness Self-Improvement"
+    year_first: 2026
+    published: 2026-09-14
+    version: v1
+    authors: [Siwei Wu, Jincheng Ren, Yizhi Li, Haau-Sing Li, Chengran Yang, Yuxuan Zhang, Weicheng Gu, Jian Yang, Riza Batista-Navarro, Chuanyi Zhang, Xianglong Liu, Ming Zhou, Bryan Dai, Chenghua Lin]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.14857
+    pdf: https://arxiv.org/pdf/2609.14857.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "L1 surfaces are bounded but not the five-module RSI split; evolution is not benchmark-disjoint"
+    card: corpus/2609.14857-modular-rsi.md
+
+  - id: "2608.08466"
+    slug: hsi
+    title: "Hierarchical Self-Improvement: A Framework for Task-Specific Evolvable Agent Harnesses"
+    year_first: 2026
+    published: 2026-08-09
+    version: v1
+    authors: [Tailin Zhou]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.08466
+    pdf: https://arxiv.org/pdf/2608.08466.pdf
+    layer: frontier
+    status: partial
+    yoyo: "L4 frozen TCB is the outer anchor; no meta-evolver of evolve strategy"
+    card: corpus/2608.08466-hsi.md
+
+  - id: "2609.00829"
+    slug: harness-evolve
+    title: "HarnessEvolve: Learning from Reference Trajectories for Reliable Agent Self-Evolution"
+    year_first: 2026
+    published: 2026-09-01
+    version: v1
+    authors: [Wen Jiang, Mingmin Chu, Yimeng Tian, Qianxin Zhang, Haofei Yang, Rui Yang, Yang Liu, Tao Lv, Fangming Li]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.00829
+    pdf: https://arxiv.org/pdf/2609.00829.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "credit assignment is cluster-level; no ground-truth reference trajectories; no quality gate vs prompt bloat"
+    card: corpus/2609.00829-harness-evolve.md
+
+  - id: "2607.13683"
+    slug: harness-bank
+    title: "HarnessBank: Semantic Gene-Bank Search with Gated Verification for Agent-Harness Self-Evolution"
+    year_first: 2026
+    published: 2026-07-15
+    version: v2
+    authors: [Xiaotian Luo, Dizhan Xue, Fengxingyu Wang, Chuanrui Hu, Yafeng Deng]
+    venue: arXiv
+    url: https://arxiv.org/abs/2607.13683
+    pdf: https://arxiv.org/pdf/2607.13683.pdf
+    layer: frontier
+    status: watch
+    yoyo: "DGM archive is score-weighted, not a semantic gene bank"
+    card: corpus/2607.13683-harness-bank.md
+
+  - id: "2607.12227"
+    slug: rethink-eval
+    title: "Rethinking the Evaluation of Harness Evolution for Agents"
+    year_first: 2026
+    published: 2026-07-14
+    version: v2
+    authors: [Yike Wang, Huaisheng Zhu, Zhengyu Hu, Yige Yuan, Zhengyu Chen, Shakti Senthil, Hannaneh Hajishirzi, Yulia Tsvetkov, Pradeep Dasigi, Teng Xiao]
+    venue: arXiv
+    url: https://arxiv.org/abs/2607.12227
+    pdf: https://arxiv.org/pdf/2607.12227.pdf
+    layer: frontier
+    status: critique
+    yoyo: "ShouldPromote exists; matched-budget vs test-time scaling is not logged"
+    card: corpus/2607.12227-rethink-eval.md
+
+  - id: "2609.14858"
+    slug: dream-rsi
+    title: "Dream-RSI: Recursive Self-Improvement through Evolving Worlds"
+    year_first: 2026
+    published: 2026-09-14
+    version: v1
+    authors: [Tong Zheng, Xidong Wu, Zheng Zhang, Zhankui He, Chaoyi Zhang, Benjamin Coleman, Ruoqiao Wei, Di Bai, Haolin Liu, Rui Liu, Xue Wang, Yue Zhuan, Wang-Cheng Kang, Renkai Xiang, Heng Huang, Xinwu Cheng, Yunsong Guo]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.14858
+    pdf: https://arxiv.org/pdf/2609.14858.pdf
+    layer: frontier
+    status: watch
+    yoyo: "replay-from-discovery-trees is for search domains; keep as RSI pattern, not a coding-loop change"
+    card: corpus/2609.14858-dream-rsi.md
+
+  - id: "2608.24302"
+    slug: videoharness-rsi
+    title: "VideoHarness-RSI: Recursive Harness Self-Improvement for Long-Video Understanding with Frozen VLMs"
+    year_first: 2026
+    published: 2026-08-25
+    version: v2
+    authors: [Guoyang Xu, Hao Chen]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.24302
+    pdf: https://arxiv.org/pdf/2608.24302.pdf
+    layer: frontier
+    status: watch
+    yoyo: "executable context constructor as independent optimization layer — analogue of runtime.Shape"
+    card: corpus/2608.24302-videoharness-rsi.md
+
+  - id: "2601.11868"
+    slug: terminal-bench
+    title: "Terminal-Bench: Benchmarking Agents on Hard, Realistic Tasks in Command Line Interfaces"
+    year_first: 2026
+    published: 2026-01-17
+    version: v1
+    authors: [Mike A. Merrill, Alexander G. Shaw, Nicholas Carlini]
+    venue: ICLR 2026
+    url: https://arxiv.org/abs/2601.11868
+    pdf: https://arxiv.org/pdf/2601.11868.pdf
+    layer: frontier
+    status: partial
+    yoyo: "evals/ use Harbor/TB layout; not running the 89-task TB2.0 suite in CI"
+    card: corpus/2601.11868-terminal-bench.md
+
+  - id: "2609.04298"
+    slug: harbor-index
+    title: "Harbor Adapters and Harbor-Index: Infrastructure and a Curated Meta-Dataset for Large-Scale Agentic Evaluation"
+    year_first: 2026
+    published: 2026-09-03
+    version: v3
+    authors: [Lin Shi, Haowei Lin, Zixuan Zhu, Mike Merrill, Ludwig Schmidt, Alex Shaw]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.04298
+    pdf: https://arxiv.org/pdf/2609.04298.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "local Harbor adapter + sealed splits; no Harbor-Index 82-task gate"
+    card: corpus/2609.04298-harbor-index.md
+
+  - id: "2609.00006"
+    slug: harness-anatomy
+    title: "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents"
+    year_first: 2026
+    published: 2026-07-15
+    version: v1
+    authors: [Paul Barbaste, Tristan Darrigol, Germain Vu, Tom Wiltberger]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.00006
+    pdf: https://arxiv.org/pdf/2609.00006.pdf
+    layer: frontier
+    status: partial
+    yoyo: "seven subsystems mostly present; no LangChain; deterministic retrieval; SKILL.md + MCP"
+    card: corpus/2609.00006-harness-anatomy.md
+
+  - id: "2609.11987"
+    slug: harness-or-model
+    title: "Harness or Model? Isolating the Harness Effect in Agentic Coding"
+    year_first: 2026
+    published: 2026-09-08
+    version: v1
+    authors: [Mohsen Arjmandi]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.11987
+    pdf: https://arxiv.org/pdf/2609.11987.pdf
+    layer: frontier
+    status: critique
+    yoyo: "model fingerprint refs exist; private sealed suite is the right instinct"
+    card: corpus/2609.11987-harness-or-model.md
+
+  - id: "2604.14228"
+    slug: claude-code-design-space
+    title: "Dive into Claude Code: The Design Space of Today's and Future AI Agent Systems"
+    year_first: 2026
+    published: 2026-04-14
+    version: v2
+    authors: [Jiacheng Liu, Xiaohan Zhao, Xinyi Shang, Zhiqiang Shen]
+    venue: arXiv
+    url: https://arxiv.org/abs/2604.14228
+    pdf: https://arxiv.org/pdf/2604.14228.pdf
+    layer: frontier
+    status: partial
+    yoyo: "one loop, capability broker, compaction, skills, depth-1 subagents; fewer hook events, no ML classifier"
+    card: corpus/2604.14228-claude-code.md
+
+  - id: "2603.24477"
+    slug: composer-2
+    title: "Composer 2 Technical Report"
+    year_first: 2026
+    published: 2026-03-25
+    version: v2
+    authors: [Cursor Research]
+    venue: arXiv
+    url: https://arxiv.org/abs/2603.24477
+    pdf: https://arxiv.org/pdf/2603.24477.pdf
+    layer: frontier
+    status: watch
+    yoyo: "Yoyo does not train weights; traces could become future training data (RHI co-evolution thesis)"
+    card: corpus/2603.24477-composer-2.md
+
+  - id: "2602.14690"
+    slug: harness-config-study
+    title: "Harness Engineering for Agentic AI Coding Tools: An Exploratory Study"
+    year_first: 2026
+    published: 2026-02-16
+    version: v5
+    authors: [Matthias Galster, Seyedmoein Mohsenimofidi, Jai Lal Lulla, Muhammad Auwal Abubakar, Christoph Treude, Sebastian Baltes]
+    venue: arXiv
+    url: https://arxiv.org/abs/2602.14690
+    pdf: https://arxiv.org/pdf/2602.14690.pdf
+    layer: frontier
+    status: implemented
+    yoyo: "YOYO.md / AGENTS.md / CLAUDE.md pins, skills, MCP"
+    card: corpus/2602.14690-harness-config.md
+
+  - id: "2602.20867"
+    slug: sok-skills
+    title: "SoK: Agentic Skills — Beyond Tool Use in LLM Agents"
+    year_first: 2026
+    published: 2026-02-24
+    version: v1
+    authors: [Yanna Jiang, Delong Li, Haiyu Deng, Baihe Ma, Xu Wang, Qin Wang, Guangsheng Yu]
+    venue: arXiv
+    url: https://arxiv.org/abs/2602.20867
+    pdf: https://arxiv.org/pdf/2602.20867.pdf
+    layer: frontier
+    status: partial
+    yoyo: "progressive disclosure catalog; unsigned skill packs cannot admit to active"
+    card: corpus/2602.20867-sok-skills.md
+
+  - id: "2603.29919"
+    slug: skill-reducer
+    title: "SkillReducer: Optimizing LLM Agent Skills for Token Efficiency"
+    year_first: 2026
+    published: 2026-03-31
+    version: v2
+    authors: [Yudong Gao, Zongjie Li, Yuanyuan Yuan, Zimo Ji, Pingchuan Ma, Shuai Wang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2603.29919
+    pdf: https://arxiv.org/pdf/2603.29919.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "catalog-only injection exists; no adversarial compression of skill bodies"
+    card: corpus/2603.29919-skill-reducer.md
+
+  - id: "2608.26263"
+    slug: skill-state
+    title: "SKILL.state: Scalable Long-Horizon Agent Skills"
+    year_first: 2026
+    published: 2026-08-26
+    version: v3
+    authors: [Sanket Badhe, Priyanka Tiwari, Jonghyun Chung]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.26263
+    pdf: https://arxiv.org/pdf/2608.26263.pdf
+    layer: frontier
+    status: candidate
+    yoyo: "Shape stubs tool bodies; skill execution is still conversational, not a mutable skill state"
+    card: corpus/2608.26263-skill-state.md
+
+  - id: "2510.04618"
+    slug: ace
+    title: "Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models"
+    year_first: 2025
+    published: 2025-10-06
+    version: v3
+    note: "ICLR 2026; last arXiv revision 2026-03. Lineage only — do not treat as 2026-first research."
+    authors: [Qizheng Zhang, Changran Hu, Shubhangi Upasani, Boyuan Ma, Fenglu Hong, James Zou, Kunle Olukotun]
+    venue: ICLR 2026
+    url: https://arxiv.org/abs/2510.04618
+    pdf: https://arxiv.org/pdf/2510.04618.pdf
+    layer: lineage
+    status: implemented
+    yoyo: "internal/evolve/curate.go; StageACE → refs/staging"
+    card: corpus/2510.04618-ace.md
+
+  - id: "2505.22954"
+    slug: dgm
+    title: "Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents"
+    year_first: 2025
+    published: 2025-05-29
+    version: v3
+    note: "2025-first. Lineage only."
+    authors: [Jenny Zhang, Shengran Hu, Cong Lu, Robert Lange, Jeff Clune]
+    venue: arXiv
+    url: https://arxiv.org/abs/2505.22954
+    pdf: https://arxiv.org/pdf/2505.22954.pdf
+    layer: lineage
+    status: implemented
+    yoyo: "internal/evolve/select.go ParentWeight; archive nodes.json"
+    card: corpus/2505.22954-dgm.md
+
+  - id: "2603.28052"
+    slug: meta-harness
+    title: "Meta-Harness: End-to-End Optimization of Model Harnesses"
+    year_first: 2026
+    published: 2026-03-30
+    version: v1
+    authors: [Yoonho Lee, Roshen Nair, Qizheng Zhang, Kangwook Lee, Omar Khattab, Chelsea Finn]
+    venue: ICML 2026
+    url: https://arxiv.org/abs/2603.28052
+    pdf: https://arxiv.org/pdf/2603.28052.pdf
+    extra:
+      icml: https://icml.cc/virtual/2026/67972
+      hf: https://huggingface.co/papers/2603.28052
+    layer: frontier
+    status: candidate
+    yoyo: "proposer already gets a sealed evidence bundle; do not let evolve grep the evaluator. Steal filesystem-of-trials as optional evidence store."
+    card: corpus/2603.28052-meta-harness.md
+
+  - id: "2604.25850"
+    slug: ahe
+    title: "Agentic Harness Engineering: Observability-Driven Automatic Evolution of Coding-Agent Harnesses"
+    year_first: 2026
+    published: 2026-04-28
+    version: v4
+    authors: [Jiahang Lin, Shichun Liu, Chengjun Pan, Lizhi Lin, Shihan Dou, Zhiheng Xi, Xuanjing Huang, Hang Yan, Zhenhua Han, Tao Gui]
+    venue: arXiv
+    url: https://arxiv.org/abs/2604.25850
+    pdf: https://arxiv.org/pdf/2604.25850.pdf
+    extra:
+      hf: https://huggingface.co/papers/2604.25850
+      code: https://github.com/china-qijizhifeng/agentic-harness-engineering
+    layer: frontier
+    status: candidate
+    yoyo: "Proposal.PredictedFixes is a weak change manifest; journal is the evidence plane. System-prompt-only evolution is warned against."
+    card: corpus/2604.25850-ahe.md
+
+  - id: "2603.03329"
+    slug: autoharness
+    title: "AutoHarness: improving LLM agents by automatically synthesizing a code harness"
+    year_first: 2026
+    published: 2026-02-10
+    version: v1
+    authors: [Xinghua Lou, Miguel Lazaro-Gredilla, Antoine Dedieu, Carter Wendelken, Wolfgang Lehrach, Kevin P. Murphy]
+    venue: ICLR 2026 Workshop RSI
+    url: https://arxiv.org/abs/2603.03329
+    pdf: https://arxiv.org/pdf/2603.03329.pdf
+    extra:
+      openreview: https://openreview.net/forum?id=g9rEYVNn5T
+    layer: frontier
+    status: watch
+    yoyo: "synthesizes legality wrappers; Yoyo already has capability broker. Do not replace the loop with a compiled code-policy."
+    card: corpus/2603.03329-autoharness.md
+
+  - id: "2608.13951"
+    slug: helix
+    title: "HELIX: Model-Harness Co-evolution for Recursive Self-Improvement"
+    year_first: 2026
+    published: 2026-08-14
+    version: v1
+    authors: [Tianyu Fan, Chao Huang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.13951
+    pdf: https://arxiv.org/pdf/2608.13951.pdf
+    extra:
+      code: https://github.com/HKUDS/HELIX
+    layer: frontier
+    status: watch
+    yoyo: "evidence plane / provenance matches journal+CAS. We freeze the model; do not close the weight-update half."
+    card: corpus/2608.13951-helix.md
+
+  - id: "2609.01437"
+    slug: harness-dev
+    title: "HarnessDev: Can LLMs Create and Evolve Their Own Agent Harness?"
+    year_first: 2026
+    published: 2026-09-01
+    version: v1
+    authors: [Yuhao Wu, Jingyuan Zhang, Jiajun Shi, Wenxuan Zhang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.01437
+    pdf: https://arxiv.org/pdf/2609.01437.pdf
+    extra:
+      hf: https://huggingface.co/papers/2609.01437
+    layer: frontier
+    status: critique
+    yoyo: "evolution gains unstable and model-dependent; creation from a seed is not a Yoyo path (we ship a human seed)."
+    card: corpus/2609.01437-harness-dev.md
+
+  - id: "2608.02276"
+    slug: harness-r1
+    title: "Harness-R1: Learning to Edit Executable Runtime Harnesses from Agent Failure Trajectories"
+    year_first: 2026
+    published: 2026-08-03
+    version: v1
+    authors: [Shuai Shao, Kangning Zhang, Qingyao Li, Weiwen Liu, Weinan Zhang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.02276
+    pdf: https://arxiv.org/pdf/2608.02276.pdf
+    extra:
+      hf: https://huggingface.co/papers/2608.02276
+    layer: frontier
+    status: watch
+    yoyo: "we do not train a harness engineer. Outcome-gated patches are the same idea as Harbor."
+    card: corpus/2608.02276-harness-r1.md
+
+  - id: "2608.24876"
+    slug: recuris
+    title: "Recursive Experiential-Working Memory Evolution for Long-Horizon Agent Harnesses"
+    year_first: 2026
+    published: 2026-08-25
+    version: v1
+    authors: [Zhaochen Yu, Yingcheng Wu, Zhenfei Yin, Kaiyuan Chen, Zhe Zhao, Mengdi Wang, Shuicheng Yan, Ling Yang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.24876
+    pdf: https://arxiv.org/pdf/2608.24876.pdf
+    extra:
+      hf: https://huggingface.co/papers/2608.24876
+      code: https://github.com/Gen-Verse/Recuris
+    layer: frontier
+    status: candidate
+    yoyo: "memory writes stay staging; Recuris localizes skill updates. Do not let a meta-agent rewrite Skill Memory onto refs/active."
+    card: corpus/2608.24876-recuris.md
+
+  - id: "2609.20804"
+    slug: harness-design-study
+    title: "An Empirical Study of Harness Design for Coding Agents"
+    year_first: 2026
+    published: 2026-09-17
+    version: v1
+    authors: [Run-Ze Fan, Zihao Zhang, Simin Ma, Yebowen Hu, Shouju Wang, Kaiqiang Song, Fei Liu, Hamed Zamani, Xiaoyang Wang]
+    venue: arXiv
+    url: https://arxiv.org/abs/2609.20804
+    pdf: https://arxiv.org/pdf/2609.20804.pdf
+    layer: frontier
+    status: partial
+    yoyo: "Shape already does rule-based elision before any LLM compact; recoverability via spill exists. Paper says recoverability rarely helps accuracy — keep spill for audit, not for hoping the model will recall."
+    card: corpus/2609.20804-harness-design.md
+
+  - id: "2608.26218"
+    slug: same-model-harness
+    title: "Same Model, Different Harness: Different Coding-Agent Results"
+    year_first: 2026
+    published: 2026-08-26
+    version: v1
+    authors: [Sydney Lewis]
+    venue: arXiv
+    url: https://arxiv.org/abs/2608.26218
+    pdf: https://arxiv.org/pdf/2608.26218.pdf
+    layer: frontier
+    status: critique
+    yoyo: "tight-window elision of old tool results is exactly Shape. Report numbers with harness hash."
+    card: corpus/2608.26218-same-model-harness.md
+
+  - id: "2605.13821"
+    slug: aevo
+    title: "Harnessing Agentic Evolution"
+    year_first: 2026
+    published: 2026-05-13
+    version: v1
+    authors: [Jiayi Zhang, Yongfeng Gu, Jianhao Ruan, Bang Liu, Chenglin Wu, Yuyu Luo]
+    venue: arXiv
+    url: https://arxiv.org/abs/2605.13821
+    pdf: https://arxiv.org/pdf/2605.13821.pdf
+    layer: frontier
+    status: watch
+    yoyo: "evolves the evolution procedure itself. That is L4. Do not."
+    card: corpus/2605.13821-aevo.md
+
+  - id: "2606.13643"
+    slug: rah
+    title: "Recursive Agent Harnesses"
+    year_first: 2026
+    published: 2026-06-11
+    version: v1
+    authors: [Elias Lumer, Sahil Sen, Kevin Paul, Vamse Kumar Subbiah]
+    venue: arXiv
+    url: https://arxiv.org/abs/2606.13643
+    pdf: https://arxiv.org/pdf/2606.13643.pdf
+    layer: frontier
+    status: watch
+    yoyo: "depth-1 task subagents by design. Unbounded harness recursion is an L3 topology change."
+    card: corpus/2606.13643-rah.md
+
+  - id: "2605.02964"
+    slug: rhb
+    title: "Reward Hacking Benchmark: Measuring Exploits in LLM Agents with Tool Use"
+    year_first: 2026
+    published: 2026-05-03
+    version: v1
+    authors: [Kunvar Thaman]
+    venue: ICML 2026
+    url: https://arxiv.org/abs/2605.02964
+    pdf: https://arxiv.org/pdf/2605.02964.pdf
+    layer: frontier
+    status: critique
+    yoyo: "safety suite and sealed splits exist; add behavioral probes for skipping verification / tampering with tests."
+    card: corpus/2605.02964-rhb.md
+
+  - id: "2510.21614"
+    slug: hgm
+    title: "Huxley-Gödel Machine: Human-Level Coding Agent Development by an Approximation of the Optimal Self-Improving Machine"
+    year_first: 2025
+    published: 2025-10-24
+    version: v3
+    note: "ICLR 2026. Lineage only — self-modifies agent code, which Yoyo forbids at L4."
+    authors: [Wenyi Wang, Piotr Piekos, Li Nanbo, Mingchen Zhuge, Jürgen Schmidhuber]
+    venue: ICLR 2026
+    url: https://arxiv.org/abs/2510.21614
+    pdf: https://arxiv.org/pdf/2510.21614.pdf
+    extra:
+      code: https://github.com/metauto-ai/HGM
+    layer: lineage
+    status: lineage
+    yoyo: "CMP/archive sampling is a cousin of DGM ParentWeight. Do not evolve Go."
+    card: corpus/2510.21614-hgm.md
+
+  - id: iclr2026-rsi-reward-hacking
+    slug: rsi-reward-hacking
+    title: "Reward Hacking in Self-Improving Code Agents"
+    year_first: 2026
+    published: 2026-03-05
+    authors: [Bingchen Zhao, Dhruv Srikanth, Yuxiang Wu, Zhengyao Jiang]
+    venue: ICLR 2026 Workshop RSI
+    url: https://openreview.net/forum?id=ikrQWGgxYg
+    extra:
+      iclr: https://iclr.cc/virtual/2026/10018648
+    layer: frontier
+    status: critique
+    yoyo: "held-out already exists because proxy-vs-real is the default RSI failure. Do not promote on held-in alone."
+    card: corpus/iclr2026-rsi-reward-hacking.md
+
+  - id: "2602.11988"
+    slug: agents-md
+    title: "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?"
+    year_first: 2026
+    published: 2026-02-12
+    version: v2
+    authors: [Thibaud Gloaguen, Niels Mündler, Mark Müller, Veselin Raychev, Martin Vechev]
+    venue: ICLR 2026 Workshop RSI
+    url: https://arxiv.org/abs/2602.11988
+    pdf: https://arxiv.org/pdf/2602.11988.pdf
+    extra:
+      code: https://github.com/eth-sri/agentbench
+    layer: frontier
+    status: critique
+    yoyo: "workspace pins exist with a token cap. Treat AGENTS.md as nonstandard-practice only; do not let evolve dump repo overviews into playbook."
+    card: corpus/2602.11988-agents-md.md
+
+  - id: "2602.16805"
+    slug: simple-baselines
+    title: "Simple Baselines are Competitive with Code Evolution"
+    year_first: 2026
+    published: 2026-02-18
+    version: v1
+    authors: [Yonatan Gideoni, Sebastian Risi, Yarin Gal]
+    venue: ICLR 2026 Workshop RSI
+    url: https://arxiv.org/abs/2602.16805
+    pdf: https://arxiv.org/pdf/2602.16805.pdf
+    extra:
+      code: https://github.com/YonatanGideoni/code_evo_simple_baselines
+    layer: frontier
+    status: critique
+    yoyo: "evolve lab must beat IID/SCS and eval --best N under the same budget. Search space (L1 surfaces) matters more than a fancier proposer."
+    card: corpus/2602.16805-simple-baselines.md
+
+  - id: "2511.07919"
+    slug: feedback-descent
+    title: "Feedback Descent: Open-Ended Text Optimization via Pairwise Comparison"
+    year_first: 2025
+    published: 2025-11-11
+    version: v2
+    note: "ICLR 2026. Lineage only — 2025-first pairwise text optimization; cousin of ACE deltas and Meta-Harness evidence."
+    authors: [Yoonho Lee, Joseph Boen, Chelsea Finn]
+    venue: ICLR 2026
+    url: https://arxiv.org/abs/2511.07919
+    pdf: https://arxiv.org/pdf/2511.07919.pdf
+    layer: lineage
+    status: lineage
+    yoyo: "keep Harbor as the gate; steal pairwise textual reasons into proposer evidence, not as a promotion score."
+    card: corpus/2511.07919-feedback-descent.md
+
+products:
+  - id: openai-codex-loop
+    title: "Unrolling the Codex agent loop"
+    year: 2026
+    url: https://openai.com/index/unrolling-the-codex-agent-loop/
+    status: implemented
+    card: products/openai-codex.md
+  - id: openai-codex-app-server
+    title: "Unlocking the Codex harness: how we built the App Server"
+    year: 2026
+    url: https://openai.com/index/unlocking-the-codex-harness/
+    status: implemented
+    card: products/openai-codex.md
+  - id: anthropic-claude-code
+    title: "How Claude Code works / Agent SDK loop"
+    year: 2026
+    url: https://code.claude.com/docs/en/how-claude-code-works
+    status: partial
+    card: products/anthropic-claude-code.md
+  - id: harbor-framework
+    title: "Harbor: sandboxed agent tasks for evaluation and optimization"
+    year: 2026
+    url: https://www.harborframework.com
+    status: partial
+    card: products/harbor.md
+  - id: wails-v3
+    title: "Wails v3 desktop shell"
+    year: 2026
+    url: https://v3.wails.io
+    status: implemented
+    card: products/wails-v3.md
+  - id: anthropic-long-running-harness
+    title: "Harness design for long-running application development"
+    year: 2026
+    url: https://www.anthropic.com/engineering/harness-design-long-running-apps
+    status: candidate
+    card: products/anthropic-long-running.md
+  - id: google-harness-engineering
+    title: "The Anatomy of Harness Engineering (Google Developers Blog)"
+    year: 2026
+    url: https://developers.googleblog.com/the-anatomy-of-harness-engineering-how-to-evaluate-iterate-and-guard-ai-coding-agents/
+    status: candidate
+    card: products/google-harness-engineering.md
+  - id: xai-grok-build
+    title: "Grok Build is Now Open Source"
+    year: 2026
+    url: https://x.ai/news/grok-build-open-source
+    extra:
+      github: https://github.com/xai-org/grok-build
+    status: watch
+    card: products/xai-grok-build.md
+  - id: iclr2026-rsi-workshop
+    title: "ICLR 2026 Workshop on AI with Recursive Self-Improvement"
+    year: 2026
+    url: https://iclr.cc/virtual/2026/workshop/10000796
+    extra:
+      openreview: https://openreview.net/submissions?venue=ICLR.cc/2026/Workshop/RSI
+    status: watch
+    card: products/iclr2026-rsi-workshop.md

@@ -6,7 +6,7 @@
 
 Yoyo は Cursor の複製ではありません。**self-harnessing** なコーディングエージェントです。ひとつの Go コアが CLI・ブラウザ・Wails デスクトップを同時に支え、製品の堀は IDE の見た目ではなく、**版管理でき、評価でき、昇格でき、巻き戻せるハーネス**です。プロンプト・プレイブック・スキルは進化してよい。評価器・保管庫・アップデータは進化してはならない。
 
-**バージョン 0.3.0** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md)
+**バージョン 0.3.0** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
 
 ---
 
@@ -287,6 +287,7 @@ internal/api      HTTP、SSE、JSON-RPC、WebSocket
 internal/update   ed25519、stage、apply
 evals/            Harbor 形式タスク
 docs/architecture 不変条件、Harbor、脅威モデル
+docs/research     文献の系譜と 2026 年のフロンティア
 ```
 
 ---

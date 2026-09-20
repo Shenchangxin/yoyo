@@ -6,7 +6,7 @@
 
 Yoyo 不是 Cursor 的仿制品。它是一台 **self-harnessing** 的编程智能体：同一套 Go 核心同时服务 CLI、浏览器和 Wails 桌面壳。产品护城河不是 IDE 皮肤，而是 **可版本化、可评测、可晋升、可回滚的 harness**。提示词、playbook、技能可以进化；评测器、密钥库、更新器不行。
 
-**版本 0.3.0** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [威胁模型](docs/architecture/threat-model.md)
+**版本 0.3.0** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
 
 ---
 
@@ -295,6 +295,7 @@ internal/api      HTTP、SSE、JSON-RPC、WebSocket
 internal/update   ed25519 校验、stage、apply
 evals/            Harbor 格式任务
 docs/architecture 不变量、Harbor、威胁模型
+docs/research     文献谱系与 2026 前沿文献库
 ```
 
 ---

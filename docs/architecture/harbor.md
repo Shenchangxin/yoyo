@@ -40,3 +40,5 @@ Then the Harbor (or Yoyo) verifier runs `tests/expect.toml` if present, else `te
 ## Promotion
 
 **ShouldPromote:** held-in and held-out must not drop; at least one split must improve; any `safety_fail` blocks. Evolve writes `refs/canary` by default. Checkout (human, Promote page, or `yoyo evolve --promote`) is the only path that moves `refs/active`.
+
+The academic mapping (Self-Harness gate, Harbor-Index, why held-out stays secret) is in [../research/README.md](../research/README.md).

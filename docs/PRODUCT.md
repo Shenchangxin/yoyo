@@ -1,6 +1,6 @@
 # Yoyo product
 
-Yoyo is a **local personal OS client** of one Go loop. Harness / RSI remains the control tower. Inbox, Projects, Artifacts, Automations, Memory, and Connectors are application surfaces on that loop — not a second runtime and not personality marketing.
+Yoyo is a **local personal OS client** of one Go loop. Harness / RSI remains the control tower. The academic and product lineage for that tower lives in [docs/research/README.md](research/README.md). Inbox, Projects, Artifacts, Automations, Memory, and Connectors are application surfaces on that loop — not a second runtime and not personality marketing.
 
 The GUI is a client of one Go loop. It is not an IDE, not a cloud multi-agent home, and not a ChatGPT marketing skin.
 

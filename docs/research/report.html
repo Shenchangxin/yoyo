@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yoyo research · 2026</title>
+<!-- Hand-authored. Do not generate from a script. Contract: .cursor/rules/research-report.mdc -->
+<link rel="preconnect" href="https://rsms.me" crossorigin>
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+:root, html.light {
+  --bg: #f3f3f0;
+  --fg: #1b1b1b;
+  --fg-85: color-mix(in srgb, var(--fg) 85%, transparent);
+  --sidebar: #e9e9e4;
+  --lift: #e2e2dc;
+  --border: color-mix(in srgb, black 8.5%, transparent);
+  --muted: #6b6b66;
+  --muted-70: color-mix(in srgb, var(--muted) 70%, transparent);
+  --accent: #5d7368;
+  --success: #3f8a58;
+  --warning: #a97a1f;
+  --danger: #c43333;
+  --ring: #1b1b1b;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  color-scheme: light;
+}
+html.dark {
+  --bg: #0f1011;
+  --fg: #ececea;
+  --fg-85: color-mix(in srgb, var(--fg) 85%, transparent);
+  --sidebar: #161718;
+  --lift: #252627;
+  --border: color-mix(in srgb, white 9%, transparent);
+  --muted: #8c8e8d;
+  --muted-70: color-mix(in srgb, var(--muted) 70%, transparent);
+  --accent: #6d8a7e;
+  --success: #6fae82;
+  --warning: #d1a24a;
+  --danger: #dc3d3d;
+  --ring: #ececea;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body {
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss03", "calt";
+  font-optical-sizing: auto;
+  font-size: 13px;
+  line-height: 1.45;
+}
+button, input { font: inherit; color: inherit; }
+a { color: inherit; }
+code, .mono {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-ligatures: none;
+  font-size: 0.92em;
+}
+
+header {
+  position: sticky; top: 0; z-index: 4;
+  height: 40px;
+  display: flex; align-items: center; gap: 28px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(8px);
+}
+.brand { font-size: 13px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; }
+.brand em { font-style: normal; color: var(--muted); font-weight: 400; margin-left: 8px; }
+nav { display: flex; gap: 2px; height: 40px; align-items: stretch; flex: 1; }
+nav button {
+  appearance: none; background: none; border: 0;
+  padding: 0 10px; color: var(--muted); cursor: pointer;
+  position: relative; font-size: 13px; font-weight: 500;
+}
+nav button:hover { color: var(--fg); }
+nav button[aria-current="true"] { color: var(--fg); }
+nav button[aria-current="true"]::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0;
+  height: 1.5px; background: var(--fg);
+}
+nav .n { margin-left: 6px; font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.hdr-right { margin-left: auto; }
+.hdr-right button {
+  appearance: none; background: none; border: 0; color: var(--muted);
+  cursor: pointer; height: 24px; padding: 0 8px; border-radius: 6px;
+}
+.hdr-right button:hover { background: var(--lift); color: var(--fg); }
+
+main { padding: 56px 0 128px; }
+.sec {
+  width: min(42rem, calc(100% - 64px));
+  margin: 0 auto;
+  padding-bottom: 96px;
+  scroll-margin-top: 56px;
+}
+.sec:last-of-type { padding-bottom: 0; }
+
+.date {
+  font-size: 11.5px; color: var(--muted);
+  margin: 0 0 28px;
+}
+h1 {
+  font-size: 21px; font-weight: 600; letter-spacing: -0.03em;
+  line-height: 1.25; margin: 0 0 12px;
+}
+.lede {
+  font-size: 15.5px; line-height: 1.7; letter-spacing: -0.011em;
+  color: var(--fg-85); margin: 0 0 40px; max-width: 72ch;
+}
+.prose p {
+  font-size: 15.5px; line-height: 1.7; letter-spacing: -0.011em;
+  color: var(--fg-85); margin: 0 0 22px; max-width: 72ch;
+}
+.prose p:last-child { margin-bottom: 0; }
+.prose strong { color: var(--fg); font-weight: 500; }
+
+.cluster { margin: 40px 0 0; }
+.cluster h2 {
+  font-size: 13px; font-weight: 500; letter-spacing: -0.01em;
+  margin: 0 0 10px; color: var(--fg);
+}
+.cluster p {
+  font-size: 15.5px; line-height: 1.7; letter-spacing: -0.011em;
+  color: var(--fg-85); margin: 0; max-width: 72ch;
+}
+
+.find { margin: 8px 0 12px; }
+.search {
+  width: 100%; height: 36px; padding: 0;
+  border: 0; border-bottom: 1px solid var(--border);
+  border-radius: 0; background: transparent; outline: none;
+}
+.search::placeholder { color: var(--muted-70); }
+.search:focus { border-bottom-color: var(--fg); }
+.lanes { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 8px; }
+.lanes button {
+  appearance: none; background: none; border: 0; padding: 0;
+  color: var(--muted); cursor: pointer; font-size: 12.5px; height: 28px;
+}
+.lanes button:hover { color: var(--fg); }
+.lanes button[aria-pressed="true"] { color: var(--fg); }
+
+.lab {
+  font-size: 13px; font-weight: 500; color: var(--muted);
+  margin: 40px 0 8px;
+}
+.lab:first-child { margin-top: 16px; }
+#shown:empty { display: none; }
+
+.paper { padding: 18px 0; }
+.paper + .paper { border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+.head {
+  display: grid; grid-template-columns: 1fr auto; gap: 16px;
+  width: 100%; text-align: left; appearance: none;
+  background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+}
+.head:hover .name { color: var(--accent); }
+.name { display: block; font-size: 15.5px; font-weight: 500; letter-spacing: -0.011em; line-height: 1.35; }
+.one { display: block; margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 62ch; }
+.meta { font-size: 11.5px; color: var(--muted-70); white-space: nowrap; padding-top: 3px; }
+.body { display: none; padding: 16px 0 4px; }
+.paper.on .body { display: block; animation: rise 180ms var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .paper.on .body { animation: none; } }
+
+article h2, article .dek, article .kicker { display: none; }
+article p {
+  font-size: 15.5px; line-height: 1.7; letter-spacing: -0.011em;
+  color: var(--fg-85); margin: 0 0 14px; max-width: 72ch;
+}
+article h3 { display: none; }
+.take { margin: 6px 0 0; padding: 0; list-style: none; }
+.take li {
+  padding: 0 0 6px; font-size: 13px; line-height: 1.55;
+  color: var(--muted); max-width: 72ch;
+}
+.take li.deny { color: color-mix(in srgb, var(--danger) 72%, var(--muted)); }
+.take li.steal, .take li.done { color: var(--fg-85); }
+.links { margin: 18px 0 0 !important; font-size: 12.5px !important; color: var(--muted) !important; }
+.links a { color: inherit; text-decoration: none; }
+.links a:hover { color: var(--fg); }
+.links a + a::before { content: " · "; color: var(--muted-70); }
+
+.empty { color: var(--muted); padding: 24px 0; font-size: 13px; }
+
+button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--ring); outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  header { padding: 0 16px; gap: 12px; }
+  .sec { width: calc(100% - 32px); }
+  .head { grid-template-columns: 1fr; gap: 6px; }
+  .meta { padding-top: 0; }
+}
+@media print {
+  header { position: static; }
+  nav, .hdr-right, .find { display: none !important; }
+  .paper .body { display: block !important; animation: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Yoyo <em>research</em></div>
+  <nav aria-label="章节">
+    <button type="button" data-sec="brief" aria-current="true">判断</button>
+    <button type="button" data-sec="agenda">下一步</button>
+    <button type="button" data-sec="reject">不做</button>
+    <button type="button" data-sec="library">文献<span class="n" id="nav-libn"></span></button>
+  </nav>
+  <div class="hdr-right">
+    <button type="button" id="theme">深色</button>
+  </div>
+</header>
+
+<main>
+<section class="sec" id="brief">
+  <p class="date">2026年9月20日审阅 · 只看当年</p>
+  <h1>固定模型，进化 harness。</h1>
+  <p class="lede">下一跃迁是模块化、评测不相交、预算诚实。不是更宽的搜索。evolve 改不了 Go、评测器和密钥。</p>
+  <div class="prose">
+    <p>脚手架确实涨分。Self-Harness 在九个模型–基准组合上，终态 harness 的 held-in 与 held-out 都升。这是 evolve 的主定理。</p>
+    <p>但涨分很容易是过拟合，或只是多搜了几次。把钱对齐以后，自动进化并不稳定地赢过当场多试几次。解法不是把 K 开得更大，而是进化数据与评测基准不相交，并且一次只动一块。</p>
+    <p>生产系统已经平台化。解剖过的十一套代码里，没有人用 LangChain，也没有向量检索。Yoyo 站在这条线上：一个 Go 内核，多个 client。不要倒回去做 IDE 皮肤。</p>
+    <p>已经站稳的几件事。新 harness 先在 canary 里活，你自己 checkout 才算数。内核和评测器，智能体碰不到。上下文是规则裁出来的，不是模型摘要。期末考卷对出题的人保密。</p>
+  </div>
+  <div class="cluster">
+    <h2>评测要诚实</h2>
+    <p>进化集和晋升集切开。同一轮 evolve 花掉的钱，拿去跑 best-of-N 和随机对照。Harbor 报告核对它自己写下的预测。声称完成之前，先跑一层便宜的行为检查。</p>
+  </div>
+  <div class="cluster">
+    <h2>进化要能归因</h2>
+    <p>proposer 看失败簇，和同一道题做对的那次对比，而不是单条轨迹。一次只动一个运行时模块，过门再 merge。playbook 设长度上限，禁止抄题，禁止仓库导览。</p>
+  </div>
+  <div class="cluster">
+    <h2>技能先不动</h2>
+    <p>可执行 skill 和执行状态外置都还早。那是改 runtime，不是改证据格式。</p>
+  </div>
+</section>
+
+<section class="sec" id="agenda">
+  <h1>先看清楚，再改结构。</h1>
+  <p class="lede">完成前面两段之后，再考虑外部进化集。技能状态不要先上。</p>
+  <div class="cluster">
+    <h2>这周</h2>
+    <p>实验室把 evolve、best-of-N、随机采样画在同一张预算图上。proposer 改为失败簇加同任务对比。canary 加上质量门。Harbor 核对 predicted_fixes。加一层秒级行为检查。</p>
+  </div>
+  <div class="cluster">
+    <h2>这季</h2>
+    <p>进化集与晋升集切开，哪怕只是本地 suite 再划一刀。提案一次只动一个模块，过 Harbor 再 merge。可选：用 Harbor-Index 当 transfer 门，而不是继续堆本地题。</p>
+  </div>
+  <div class="cluster">
+    <h2>先别动</h2>
+    <p>技能执行状态外置。能改的是 playbook 和 skills；工具要签名；loop 形状要人点头；Go、评测器、密钥没人改。</p>
+  </div>
+</section>
+
+<section class="sec" id="reject">
+  <h1>明确不做的。</h1>
+  <p class="lede">读这些是为了拒绝时有词。不是待办。</p>
+  <div class="cluster">
+    <h2>不要改内核</h2>
+    <p>不要进化智能体源码，也不要进化进化程序本身。不要用更强的外部模型当教练。不要在桌面里训一个 harness 工程师。不要为 RSI 引入世界模型。</p>
+  </div>
+  <div class="cluster">
+    <h2>不要在考题上刷分</h2>
+    <p>不要在评测集上进化，再报同一套分数。不要复杂进化却不跟随机采样、best-of-N 比预算。不要靠模型说自己没作弊。</p>
+  </div>
+  <div class="cluster">
+    <h2>不要把产品做回皮肤</h2>
+    <p>不要前端第二套 loop。不要向量检索代码。不要让模型写长说明书和仓库概览。不要无界 harness 递归。不要整页重写 system prompt。不要让 proposer 去翻评测器和密钥。</p>
+  </div>
+</section>
+
+<section class="sec" id="library">
+  <h1>按要不要读。</h1>
+  <p class="lede">先读第一组。其余点开一行即可。卡片和 PDF 仍在原文那边。</p>
+  <div class="find">
+    <input class="search" id="q" type="search" placeholder="找一篇" aria-label="搜索文献">
+    <div class="lanes" role="group" aria-label="线">
+      <button type="button" data-track="all" aria-pressed="true">全部</button>
+      <button type="button" data-track="rsi">自我改进</button>
+      <button type="button" data-track="eval">怎么评</button>
+      <button type="button" data-track="prod">生产上</button>
+      <button type="button" data-track="skill">技能</button>
+      <button type="button" data-track="lineage">从哪来</button>
+    </div>
+  </div>
+  <p class="date" id="shown"></p>
+  <div id="list"></div>
+</section>
+</main>
+
+<template id="articles">
+<article id="a-self-harness" data-track="rsi" data-pri="P0" data-star data-q="self-harness zhang evolve mine propose harbor">
+  <p class="kicker">已经在用 · 2026年6月</p>
+  <h2>Self-Harness</h2>
+  <p class="dek">我们的 evolve 循环几乎是这篇的实现。固定模型，改进自己的 operating harness。</p>
+  <p>三步：Weakness Mining → Harness Proposal → Proposal Validation。晋升要求 held-in 与 held-out 都不回退。九个模型–基准组合上终态 harness 两边都升。</p>
+  <p><code>mine.go</code>、<code>propose.go</code>、<code>ShouldPromote</code>、<code>engine.go</code>。我们比论文更严：通过回归只写 <code>refs/canary</code>，<code>refs/active</code> 仍要人。</p>
+  <ul class="take">
+    <li class="done">已落地：失败聚类、最小提案、held-out、模型指纹。</li>
+    <li class="deny">拒：用更强模型当外部优化器。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2606.09498">arXiv</a><a href="corpus/2606.09498-self-harness.md">卡片</a><a href="originals/2606.09498.pdf">PDF</a></p>
+</article>
+
+<article id="a-modular-rsi" data-track="rsi" data-pri="P0" data-star data-q="modularrsi 模块 不相交">
+  <p class="kicker">可以偷 · 2026年9月</p>
+  <h2>ModularRSI</h2>
+  <p class="dek">本季最该偷。五模块、对比轨迹、2000 道与评测不相交的进化题。</p>
+  <p>泛化卡在三件事：在评测集上进化、单条轨迹缠死缺陷与题面、整包优化互相污染。回答是同任务成败对比、五块独立进化再集成、进化数据与 TB / SWE 完全分开。</p>
+  <p>能改的表面已经有界，但不是这五个运行时模块，evolve 证据仍来自同一套题。下一步里「这周」和「这季」的直接来源。</p>
+  <ul class="take">
+    <li class="steal">偷：同任务对比；进化集 ⊥ 评测集；一次一块。</li>
+    <li class="deny">拒：为了模块化去改 Go 里的 loop 拓扑。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.14857">arXiv</a><a href="corpus/2609.14857-modular-rsi.md">卡片</a><a href="originals/2609.14857.pdf">PDF</a></p>
+</article>
+
+<article id="a-rethink-eval" data-track="rsi" data-pri="P0" data-star data-q="wang rethink budget scaling">
+  <p class="kicker">用来打假 · 2026年7月</p>
+  <h2>Rethinking harness-evolution eval</h2>
+  <p class="dek">没有匹配预算对照，evolve 实验室是自欺。</p>
+  <p>在同一套公开题上搜索再报告，分不清可复用改进和多试了几次。TB 2.1 上自动进化并不稳定赢过并行采样或顺序 refinement。</p>
+  <p>已有 held-out 与 transfer。缺的是把一轮 evolve 的美元拿去跑 <code>eval --best N</code>。不要读成「停掉 evolve」。</p>
+  <ul class="take">
+    <li class="steal">偷：匹配预算协议；BoN 作为对照基线。</li>
+    <li class="deny">拒：因为这篇就删掉 Harbor 门。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2607.12227">arXiv</a><a href="corpus/2607.12227-rethink-eval.md">卡片</a><a href="originals/2607.12227.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-evolve" data-track="rsi" data-pri="P1" data-star data-q="harnessevolve 参考轨迹 质量门">
+  <p class="kicker">可以偷 · 2026年9月</p>
+  <h2>HarnessEvolve</h2>
+  <p class="dek">参考轨迹解决 credit assignment。质量门打 prompt 膨胀。</p>
+  <p>三个坑：终局对错说不清是哪一步、背题、新补丁打掉旧能力。给定标准答案生成参考轨迹，对齐失败执行。质量门滤泄漏与膨胀；性能门看当前 batch 且不伤最近 batch。</p>
+  <p>Harbor 任务带人写参考解，evolve 目前没用。质量门可以立刻做确定性检查，不必再请一个模型当门卫。</p>
+  <ul class="take">
+    <li class="steal">偷：参考轨迹只给进化管线；质量门；batch 级遗忘检查。</li>
+    <li class="deny">拒：把标准答案泄漏给执行智能体。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.00829">arXiv</a><a href="corpus/2609.00829-harness-evolve.md">卡片</a><a href="originals/2609.00829.pdf">PDF</a></p>
+</article>
+
+<article id="a-hsi" data-track="rsi" data-pri="P1" data-q="hsi 分层 外锚">
+  <p class="kicker">部分对齐 · 2026年8月</p>
+  <h2>HSI</h2>
+  <p class="dek">分层自改加冻结外锚。我们 L4 已经是外锚。不要做 meta-evolver。</p>
+  <p>冻结模型，在任务 harness、evolver、meta-evolver 三层上改自己。Meta-evolver 的执行逻辑永不修改。</p>
+  <p>L4 比「冻结 meta-evolver 文件」更硬。可对齐的是固定 injection seam。不要让 evolve 去改 <code>internal/evolve</code>。</p>
+  <ul class="take">
+    <li class="steal">偷：外锚；固定 seam。</li>
+    <li class="deny">拒：第三层自改 Go。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.08466">arXiv</a><a href="corpus/2608.08466-hsi.md">卡片</a><a href="originals/2608.08466.pdf">PDF</a></p>
+</article>
+
+<article id="a-rhi" data-track="rsi" data-pri="P1" data-q="rhi 修订历史 共进化">
+  <p class="kicker">可以偷 · 2026年7月</p>
+  <h2>RHI</h2>
+  <p class="dek">prompt 级 harness、成对修订历史、少步数。适合这次任务特化，不是全局晋升。</p>
+  <p>Harness 还是未来模型的数据发动机。沿自己的修订历史做成对比较，而不是种群搜索。少则一两轮就能抬低 reasoning 的智能体。</p>
+  <p>全局晋升继续走 Harbor。RHI 适合写进 <code>refs/staging</code> 的局部特化。JSONL 与 journal 必须干净到将来能被一次共训吃掉。</p>
+  <ul class="take">
+    <li class="steal">偷：成对修订；少步数；contract / hop 当可编辑对象。</li>
+    <li class="deny">拒：用 LLM-as-judge 替代 Harbor 作为 active 的门。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2607.15524">arXiv</a><a href="corpus/2607.15524-rhi.md">卡片</a><a href="originals/2607.15524.pdf">PDF</a></p>
+</article>
+
+<article id="a-ahe" data-track="rsi" data-pri="P1" data-q="ahe 可观测 predicted_fixes">
+  <p class="kicker">可以偷 · 2026年4月</p>
+  <h2>AHE</h2>
+  <p class="dek">可观测性三柱：组件文件化、轨迹蒸馏、可证伪的 change manifest。</p>
+  <p>每次编辑带自报预测，下一轮用任务结果证伪；无效则按文件回滚。只改 system prompt 会回退。工具、middleware、长期记忆才带走增益。</p>
+  <p>CAS 已经接近文件级可逆。<code>Proposal.PredictedFixes</code> 写了，Harbor 没有对账。不要把 evolve 做成写长 system prompt。</p>
+  <ul class="take">
+    <li class="steal">偷：change manifest；失败则文件级回滚。</li>
+    <li class="deny">拒：evolver 改 loop 拓扑或 eval。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2604.25850">arXiv</a><a href="corpus/2604.25850-ahe.md">卡片</a><a href="originals/2604.25850.pdf">PDF</a></p>
+</article>
+
+<article id="a-meta-harness" data-track="rsi" data-pri="P1" data-q="meta-harness icml 文件系统">
+  <p class="kicker">可以偷 · ICML 2026</p>
+  <h2>Meta-Harness</h2>
+  <p class="dek">用文件系统当证据通道。不要让它 grep 评测器。</p>
+  <p>Coding agent 当 proposer：历史候选的源码、分数、轨迹放在文件系统里，按需 grep/cat，而不是塞进一个 prompt。</p>
+  <p>现在 proposer 拿到密封 JSON 包。把 trial 日志做成可 grep 的证据平面合法，held-out 正文仍剥离。评测器、vault 不可搜索。</p>
+  <ul class="take">
+    <li class="steal">偷：证据在文件系统；proposer 是 agent 不是填空模型。</li>
+    <li class="deny">拒：进化 Go；把 evaluator 放进可搜索树。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2603.28052">arXiv</a><a href="corpus/2603.28052-meta-harness.md">卡片</a><a href="originals/2603.28052.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-bank" data-track="rsi" data-pri="P2" data-q="harnessbank gene archive">
+  <p class="kicker">先读着 · 2026年7月</p>
+  <h2>HarnessBank</h2>
+  <p class="dek">语义 gene bank 加 gated screening。档案升级的备选，不是现在换采样的理由。</p>
+  <p>按语义坐标存放高表现 harness，避免贪心搜索塌缩。先便宜筛选，再花得起的预算做完整评估。</p>
+  <p>我们的 archive 是 <code>score/(1+children)</code>。先把对比与不相交数据做上。基因库是下一层搜索结构。</p>
+  <ul class="take">
+    <li class="steal">偷：保留语义上不同的高分快照；筛选门降低全量 Harbor 次数。</li>
+    <li class="deny">拒：用模型自评替代 Harbor。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2607.13683">arXiv</a><a href="corpus/2607.13683-harness-bank.md">卡片</a><a href="originals/2607.13683.pdf">PDF</a></p>
+</article>
+
+<article id="a-recuris" data-track="rsi" data-pri="P2" data-q="recuris 记忆 skill">
+  <p class="kicker">可以偷 · 2026年8月</p>
+  <h2>Recuris</h2>
+  <p class="dek">工作记忆引导技能选择。技能更新必须局部，并且过门。</p>
+  <p>长程失败常常是历史淹没任务状态。固定 Meta-Agent 把执行证据变成对 Skill Memory 的局部、过验证门的更新。horizon 越长优势越大。</p>
+  <p>Memory 表面已规定：模型自选事实不得未过 Harbor 就晋升。不要让 Meta-Agent 直接写 <code>refs/active</code>。</p>
+  <ul class="take">
+    <li class="steal">偷：工作记忆 vs 经验记忆；局部更新加验证门。</li>
+    <li class="deny">拒：无门的自生成技能库。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.24876">arXiv</a><a href="corpus/2608.24876-recuris.md">卡片</a><a href="originals/2608.24876.pdf">PDF</a></p>
+</article>
+
+<article id="a-dream-rsi" data-track="rsi" data-pri="P3" data-q="dream 世界模型 发现树">
+  <p class="kicker">先读着 · 2026年9月</p>
+  <h2>Dream-RSI</h2>
+  <p class="dek">用历史发现树做 off-policy 做梦。搜索域。模式有用，世界模型不要做进桌面循环。</p>
+  <p>冻结执行 agent，进化的是探索策略。历史发现树当 replay 模拟器，拿即时反馈再部署回线上。</p>
+  <p>接近「冻结 loop 拓扑、进化 playbook」。若以后在进化档案上离线打分提案，那就是这篇的做梦。现在 archive 太小。</p>
+  <ul class="take">
+    <li class="steal">偷：冻结执行，进化编排。</li>
+    <li class="deny">拒：为 RSI 引入独立世界模型训练。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.14858">arXiv</a><a href="corpus/2609.14858-dream-rsi.md">卡片</a><a href="originals/2609.14858.pdf">PDF</a></p>
+</article>
+
+<article id="a-videoharness" data-track="rsi" data-pri="P3" data-q="videoharness shape 上下文构造">
+  <p class="kicker">先读着 · 2026年8月</p>
+  <h2>VideoHarness-RSI</h2>
+  <p class="dek">可执行的上下文构造是单独一层。对 <code>Shape</code> 有启发。我们不是视频产品。</p>
+  <p>冻结回答模型，递归搜索上下文构造器。优势在匹配的视觉 token 预算下保持。</p>
+  <p><code>runtime.Shape</code> 已经是这个层：spill、microcompact、snip。LLM 摘要不是 Shape 的一部分。evolve 若碰 compaction 策略，那是 L3。</p>
+  <ul class="take">
+    <li class="steal">偷：构造程序与答题模型解耦。</li>
+    <li class="deny">拒：用 LLM 摘要替换 spill。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.24302">arXiv</a><a href="corpus/2608.24302-videoharness-rsi.md">卡片</a><a href="originals/2608.24302.pdf">PDF</a></p>
+</article>
+
+<article id="a-helix" data-track="rsi" data-pri="P3" data-q="helix 共进化 证据平面">
+  <p class="kicker">先读着 · 2026年8月</p>
+  <h2>HELIX</h2>
+  <p class="dek">模型–harness 共进化的证据平面。我们冻结权重，只取 build 这一半。</p>
+  <p>build–update–rebuild。证据平面保留轨迹、测试、策略决定、出处，而不是压成一个成功 bit。</p>
+  <p>CAS、journal、Harbor 是 build。不要关闭权重更新环。</p>
+  <ul class="take">
+    <li class="steal">偷：出处；sibling 成败成对保留。</li>
+    <li class="deny">拒：RSI 改 Go；训权重。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.13951">arXiv</a><a href="corpus/2608.13951-helix.md">卡片</a><a href="originals/2608.13951.pdf">PDF</a></p>
+</article>
+
+<article id="a-autoharness" data-track="rsi" data-pri="P3" data-q="autoharness murphy 合法性">
+  <p class="kicker">先读着 · ICLR RSI 2026</p>
+  <h2>AutoHarness</h2>
+  <p class="dek">合成合法性代码包装。DeepMind 作者线。对象是游戏，不是 SWE。</p>
+  <p>用环境反馈让较小模型合成合法动作过滤器。极限情况：整份策略编译成代码，推理时不再调用 LLM。</p>
+  <p>capability broker 已经是「非法动作进不了环境」。不要把整个 agent 编译成无 LLM 策略。</p>
+  <ul class="take">
+    <li class="steal">偷：用环境反馈合成守卫代码，而不是再写一段请不要非法操作。</li>
+    <li class="deny">拒：用合成策略替换 ReAct loop。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2603.03329">arXiv</a><a href="corpus/2603.03329-autoharness.md">卡片</a><a href="originals/2603.03329.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-r1" data-track="rsi" data-pri="P3" data-q="harness-r1 rl 工程师">
+  <p class="kicker">先读着 · 2026年8月</p>
+  <h2>Harness-R1</h2>
+  <p class="dek">用 RL 训练 harness 工程师。我们不训权重。奖励思想对齐 Harbor。</p>
+  <p>单独的 9B 工程师用在线 RL，奖励来自冻结目标智能体在同一 batch 上的重跑。</p>
+  <p>补丁的奖励必须是同一批任务重跑的真实结果。不要为了追这篇去加 GPU 训练环。</p>
+  <ul class="take">
+    <li class="steal">偷：失败条件化的补丁；重跑结果当奖励。</li>
+    <li class="deny">拒：在桌面 agent 里跑 RL 训练。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.02276">arXiv</a><a href="corpus/2608.02276-harness-r1.md">卡片</a><a href="originals/2608.02276.pdf">PDF</a></p>
+</article>
+
+<article id="a-aevo" data-track="rsi" data-pri="P3" data-q="aevo 进化程序">
+  <p class="kicker">先读着 · 2026年5月</p>
+  <h2>AEvo</h2>
+  <p class="dek">把进化程序本身当环境。L4 禁止。读这篇是为了能拒绝它。</p>
+  <p>编辑「控制未来搜索的机制或上下文」，而不只是生成下一个候选。</p>
+  <p><code>internal/evolve</code> 不可被 agent 改。超参 K、rounds 是人调的旋钮。</p>
+  <ul class="take">
+    <li class="deny">拒：进化程序成为进化对象。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2605.13821">arXiv</a><a href="corpus/2605.13821-aevo.md">卡片</a><a href="originals/2605.13821.pdf">PDF</a></p>
+</article>
+
+<article id="a-rah" data-track="rsi" data-pri="P3" data-q="rah 递归 depth">
+  <p class="kicker">先读着 · 2026年6月</p>
+  <h2>RAH</h2>
+  <p class="dek">递归单位是整份 harness，不是一次模型调用。我们 depth-1。</p>
+  <p>父代理写脚本并行 spawn 子 harness。固定 GPT-5 时，Oolong-Synthetic 相对 Codex 基线 71.75% → 81.36%，增益归 harness。</p>
+  <p>无界递归是 L3 拓扑，也放大权限面。办公长任务以后可以做「父写脚本、子只读」，默认不要打开。</p>
+  <ul class="take">
+    <li class="steal">偷：递归单位是 harness；评测时固定骨干。</li>
+    <li class="deny">拒：无界深度；子代理继承 <code>send_as_you</code>。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2606.13643">arXiv</a><a href="corpus/2606.13643-rah.md">卡片</a><a href="originals/2606.13643.pdf">PDF</a></p>
+</article>
+
+<article id="a-terminal-bench" data-track="eval" data-pri="P0" data-star data-q="terminal-bench harbor 容器">
+  <p class="kicker">部分对齐 · ICLR 2026</p>
+  <h2>Terminal-Bench 2.0</h2>
+  <p class="dek">领域标准。Self-Harness 与 ModularRSI 都在这上面说话。</p>
+  <p>89 道终端任务：独立容器、人写指令、人写参考解、综合测试。前沿模型加脚手架仍低于 65%。</p>
+  <p><code>evals/</code> 模仿这套四件套。CI 仍走 smoke，正确。全量 TB 不该绑在每次 commit 上，也不该进默认 <code>ShouldPromote</code>。</p>
+  <ul class="take">
+    <li class="steal">偷：容器化、人写测试、失败模式分类。</li>
+    <li class="deny">拒：把 89 题放进默认晋升门。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2601.11868">arXiv</a><a href="corpus/2601.11868-terminal-bench.md">卡片</a><a href="originals/2601.11868.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-design" data-track="eval" data-pri="P0" data-star data-q="fan shape 规则裁剪">
+  <p class="kicker">部分对齐 · 2026年9月</p>
+  <h2>Harness design study</h2>
+  <p class="dek">规则裁剪先于 LLM 摘要最有效。可恢复性几乎不涨分。直接给 Shape 背书。</p>
+  <p>固定 loop，只改 planning、action space、context management。176 个匹配设置。窗口越紧，上下文管理越值钱，主要靠防止 overflow。让被裁内容可恢复，模型几乎不用。</p>
+  <p><code>context_shape.go</code> 已经是最便宜且无损的先做。保留 spill 是为了审计和对证，不是幻想模型会主动召回。</p>
+  <ul class="take">
+    <li class="done">已对齐：规则裁剪优先；plan 是模式不是页。</li>
+    <li class="deny">拒：为省 token 改成纯 bash、丢掉 office 工具。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.20804">arXiv</a><a href="corpus/2609.20804-harness-design.md">卡片</a><a href="originals/2609.20804.pdf">PDF</a></p>
+</article>
+
+<article id="a-harbor-index" data-track="eval" data-pri="P1" data-star data-q="harbor-index 82 transfer">
+  <p class="kicker">可以偷 · 2026年9月</p>
+  <h2>Harbor-Index</h2>
+  <p class="dek">82 道难而多样、全模型低于 30%。比盲目扩 sealed suite 更值。</p>
+  <p>Adapters 把 80+ 基准接到任意 agent，并证明 parity。Index 从 6627 候选筛到 82 道。Verifier 与 agent 分 sandbox，grader 只拿声明产物。</p>
+  <p>我们实现的是任务布局，不是 Harbor 产品。Index 作为 transfer 门时，题目 id 仍不得送给 proposer。</p>
+  <ul class="take">
+    <li class="steal">偷：parity；独立 grader；高信号短套件。</li>
+    <li class="deny">拒：把 54 个基准搬进桌面 CI；把晋升权交给云端排行榜。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.04298">arXiv</a><a href="corpus/2609.04298-harbor-index.md">卡片</a><a href="originals/2609.04298.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-or-model" data-track="eval" data-pri="P1" data-q="arjmandi harness or model">
+  <p class="kicker">用来打假 · 2026年9月</p>
+  <h2>Harness or Model?</h2>
+  <p class="dek">同模型换 harness，平均差接近 0。仓库 vs 竞赛交互显著。</p>
+  <p>污染受控的私有套件上做配对。平均 solve-rate 差的置信区间穿过零。但 Opus 原生 harness 在仓库题上落后约 9pp，在竞赛题上领先约 24pp。</p>
+  <p>护城河不能说成脚手架比别人神。该卖的是可证明的进化过程。公开 TB 题一旦进 evolve，就不再是这篇意义下的私有套件。</p>
+  <ul class="take">
+    <li class="steal">偷：同模型配对；私有套件；把取消和没做对分开记账。</li>
+    <li class="deny">拒：因为平均差为零就停止 evolve。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.11987">arXiv</a><a href="corpus/2609.11987-harness-or-model.md">卡片</a><a href="originals/2609.11987.pdf">PDF</a></p>
+</article>
+
+<article id="a-same-model" data-track="eval" data-pri="P1" data-q="lewis same model 紧窗口">
+  <p class="kicker">用来打假 · 2026年8月</p>
+  <h2>Same model, different harness</h2>
+  <p class="dek">紧窗口下裁旧工具结果显著涨分。评测必须带 harness 身份。</p>
+  <p>完整对话 vs 上下文满时机械缩短旧工具结果。紧窗口下处理组 fail-to-pass 提高。宽窗口时差距缩小。</p>
+  <p>与 Arjmandi 一起读：harness 效应依赖窗口压力。Shape 正是机械缩短旧工具结果。对外数字必须带 snapshot hash。</p>
+  <ul class="take">
+    <li class="done">已对齐：Shape 的工具结果裁剪。</li>
+    <li class="steal">偷：数字带 harness 身份。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.26218">arXiv</a><a href="corpus/2608.26218-same-model-harness.md">卡片</a><a href="originals/2608.26218.pdf">PDF</a></p>
+</article>
+
+<article id="a-harness-dev" data-track="eval" data-pri="P1" data-q="harnessdev 造 harness">
+  <p class="kicker">用来打假 · 2026年9月</p>
+  <h2>HarnessDev</h2>
+  <p class="dek">把「会不会造、进化 harness」本身当基准。进化增益不稳，难跨模型。</p>
+  <p>自造 harness 在代码/搜索上明显落后成熟人工参考。进化有增益但不稳。增益强烈依赖执行该 harness 的模型。</p>
+  <p>我们走人工 seed 加有界进化。模型指纹 refs 对应「增益依赖执行模型」。</p>
+  <ul class="take">
+    <li class="steal">偷：隐藏评测任务；同时报能力与 token 成本。</li>
+    <li class="deny">拒：把 Creation 当成产品路径。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.01437">arXiv</a><a href="corpus/2609.01437-harness-dev.md">卡片</a><a href="originals/2609.01437.pdf">PDF</a></p>
+</article>
+
+<article id="a-rsi-hacking" data-track="eval" data-pri="P1" data-q="reward hacking held-out proxy">
+  <p class="kicker">用来打假 · ICLR RSI 2026</p>
+  <h2>Reward hacking in self-improving code agents</h2>
+  <p class="dek">代理指标涨、真任务不涨。held-out 的存在理由。无 arXiv，走 OpenReview。</p>
+  <p>agent 只看见公开 proxy，作者握有 held 真任务。步数从 10 到 100，hacking 从 26.4% 升到 57.8%。自我批评不是银弹。</p>
+  <p>不要靠 <code>--rounds 100</code> 堆分数。门必须是真任务。evolve UI 应同时显示 held-in 与 held-out。</p>
+  <ul class="take">
+    <li class="done">已对齐：ShouldPromote 看 held-out；safety 一票否决。</li>
+    <li class="deny">拒：用「模型说自己没 hacking」当门。</li>
+  </ul>
+  <p class="links"><a href="https://openreview.net/forum?id=ikrQWGgxYg">OpenReview</a><a href="corpus/iclr2026-rsi-reward-hacking.md">卡片</a></p>
+</article>
+
+<article id="a-simple-baselines" data-track="eval" data-pri="P1" data-q="gideoni iid scs 随机">
+  <p class="kicker">用来打假 · ICLR RSI 2026</p>
+  <h2>Simple baselines vs code evolution</h2>
+  <p class="dek">IID / SCS 打平复杂进化。evolve 必须先赢随机采样。</p>
+  <p>搜索空间和 prompt 里的领域知识往往比进化算法本身更决定上限。高方差加小数据集，手写 majority-vote 反而最好。</p>
+  <p>和 Wang 一起要求evolve 实验室先画匹配预算图。不要用「我们有 archive」当成已经赢过随机采样。</p>
+  <ul class="take">
+    <li class="steal">偷：IID / SCS 对照；重复评测降方差。</li>
+    <li class="deny">拒：为了更像进化算法去改 Go。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2602.16805">arXiv</a><a href="corpus/2602.16805-simple-baselines.md">卡片</a><a href="originals/2602.16805.pdf">PDF</a></p>
+</article>
+
+<article id="a-rhb" data-track="eval" data-pri="P2" data-q="rhb 捷径 篡改">
+  <p class="kicker">用来打假 · ICML 2026</p>
+  <h2>Reward Hacking Benchmark</h2>
+  <p class="dek">工具链路上的捷径和篡改评测。安全套件的下一刀。</p>
+  <p>跳过验证、从元数据猜答案、篡改评测相关函数。exploit 率 0% 到 13.9%。简单环境加固相对降 87.7%，且不伤任务成功。</p>
+  <p><code>no-escape</code> 不够。行为探针：声称完成前必须跑测试；proposer 不得看到 <code>test.sh</code>。</p>
+  <ul class="take">
+    <li class="steal">偷：捷径分类；加固环境而不是靠 prompt 说教。</li>
+    <li class="done">已有：held-out 对 proposer 不可见。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2605.02964">arXiv</a><a href="corpus/2605.02964-rhb.md">卡片</a><a href="originals/2605.02964.pdf">PDF</a></p>
+</article>
+
+<article id="a-agents-md" data-track="eval" data-pri="P2" data-q="agents.md gloaguen 公约">
+  <p class="kicker">用来打假 · 2026年2月</p>
+  <h2>Evaluating AGENTS.md</h2>
+  <p class="dek">仓库针不涨分，成本 +20%。只写非标准惯例。与 Galster 一起读。</p>
+  <p>指令会被遵守，所以成本涨在多探索。仓库概览不帮助导航。人写略好于 LLM 生成，统计上也不稳。</p>
+  <p><code>LoadWorkspaceRules</code> 已有 token 上限。evolve 若往 playbook 里堆仓库导览，会同时踩 ACE 膨胀和这篇的成本税。</p>
+  <ul class="take">
+    <li class="steal">偷：人写、最短、只写非默认惯例；用 Harbor 测这段针。</li>
+    <li class="deny">拒：用 LLM init 自动生成长 AGENTS.md。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2602.11988">arXiv</a><a href="corpus/2602.11988-agents-md.md">卡片</a><a href="originals/2602.11988.pdf">PDF</a></p>
+</article>
+
+<article id="a-anatomy" data-track="prod" data-pri="P1" data-star data-q="barbaste 十一套 解剖 langchain">
+  <p class="kicker">部分对齐 · 2026年7月</p>
+  <h2>十一套源码解剖</h2>
+  <p class="dek">2026 上半年的工业地图。七子系统、29 模式、平台化。没有 LangChain，没有向量检索。</p>
+  <p>SKILL.md 采用率超过 MCP。ACP 长出第三角色：harness hosting。Codex 在抄 Claude 的 hook 词汇。</p>
+  <p>PRODUCT.md 禁止前端第二套 loop，与这篇同构。不要为了兼容去实现 27 个 hook 事件。</p>
+  <ul class="take">
+    <li class="done">已对齐：手写 loop、grep/glob、skills + MCP、多 client 一个 core。</li>
+    <li class="deny">拒：向量记忆；抄全套 Claude hooks。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2609.00006">arXiv</a><a href="corpus/2609.00006-harness-anatomy.md">卡片</a><a href="originals/2609.00006.pdf">PDF</a></p>
+</article>
+
+<article id="a-claude-code-paper" data-track="prod" data-pri="P1" data-star data-q="claude code 设计空间 权限">
+  <p class="kicker">部分对齐 · 2026年4月</p>
+  <h2>Dive into Claude Code</h2>
+  <p class="dek">设计空间：权限、五层压缩、四种扩展、subagent。对照，不是模仿。</p>
+  <p>Loop 本身是 while。代码量在周围：七种权限模式加 ML 分类器、分层 compaction、MCP / skills / hooks、隔离 subagent。</p>
+  <p>Once / Session / Always，没有隐藏分类器。Shape 替代五层 compaction。depth-1 <code>task</code>。人的决策权画在 transcript 里。</p>
+  <ul class="take">
+    <li class="steal">偷：把价值观写成可测试的实现选择。</li>
+    <li class="deny">拒：ML 审批分类器；27 个 hook 的兼容层。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2604.14228">arXiv</a><a href="corpus/2604.14228-claude-code.md">卡片</a><a href="originals/2604.14228.pdf">PDF</a></p>
+</article>
+
+<article id="a-codex" data-track="prod" data-pri="P1" data-q="codex app server json-rpc">
+  <p class="kicker">已经在用 · 2026</p>
+  <h2>Codex loop / App Server</h2>
+  <p class="dek">我们 JSON-RPC 的直接模板。一个 core，多个 client。</p>
+  <p>Harness 是 loop：最终 assistant message，或执行工具再采样。App Server 双向 JSON-RPC；需要 approval 时 server 反向请求并暂停 turn。</p>
+  <p><code>internal/api/rpc.go</code>、<code>yoyo serve</code>、Wails 都是 client。窗口进程不跑第二套 loop。我们改的一处：compaction 走 spill，不是不可逆压缩。</p>
+  <ul class="take">
+    <li class="done">已偷：单 harness、多 client、双向 RPC、approval 暂停。</li>
+    <li class="deny">拒：不可逆丢掉工具字节；桌面再写一套 loop。</li>
+  </ul>
+  <p class="links"><a href="https://openai.com/index/unrolling-the-codex-agent-loop/">Loop</a><a href="https://openai.com/index/unlocking-the-codex-harness/">App Server</a><a href="products/openai-codex.md">卡片</a></p>
+</article>
+
+<article id="a-long-running" data-track="prod" data-pri="P1" data-q="anthropic 长程 sprint 评测器">
+  <p class="kicker">可以偷 · 2026年3月</p>
+  <h2>Anthropic 长程 harness</h2>
+  <p class="dek">冲刺合同、生成器/评测器拆开。脚手架随模型变强而可删。</p>
+  <p>窗口填满后失焦，模型给自己打高分。planner → generator → evaluator。交接走文件。Context reset 不等于 compaction。Opus 4.6 上 sprint 分解可以删。</p>
+  <p>Plan mode 已经是提案、不写盘。缺独立 QA 人格。不要默认开 context reset，那会丢掉 journal 链。</p>
+  <ul class="take">
+    <li class="steal">偷：生成与评判拆开；sprint 合同先于写代码；脚手架随能力收缩。</li>
+    <li class="deny">拒：无界无人值守改用户机器；用 LLM 自评当 Harbor。</li>
+  </ul>
+  <p class="links"><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">原文</a><a href="products/anthropic-long-running.md">卡片</a></p>
+</article>
+
+<article id="a-google" data-track="prod" data-pri="P1" data-q="google 行为评测">
+  <p class="kicker">可以偷 · 2026年9月</p>
+  <h2>Google 行为评测</h2>
+  <p class="dek">微观行为断言加宏观基准。Harbor 的本地快测层。</p>
+  <p>端到端复合分涨跌几个点，往往不知道为什么。行为评测断言中间动作：含糊时有没有提问，声称完成前有没有跑校验。</p>
+  <p>我们只有 Harbor 终局。evolve 实验室缺一层便宜的行为套件。</p>
+  <ul class="take">
+    <li class="steal">偷：微观断言；批量看趋势；宏观加微观互补。</li>
+    <li class="deny">拒：用 LLM-as-judge 替换 Harbor 的确定性测试。</li>
+  </ul>
+  <p class="links"><a href="https://developers.googleblog.com/the-anatomy-of-harness-engineering-how-to-evaluate-iterate-and-guard-ai-coding-agents/">原文</a><a href="products/google-harness-engineering.md">卡片</a></p>
+</article>
+
+<article id="a-config-study" data-track="prod" data-pri="P2" data-q="galster agents.md 2853">
+  <p class="kicker">已经在用 · 2026年2月</p>
+  <h2>配置机制 2853 仓</h2>
+  <p class="dek">AGENTS.md 是跨工具公约。skills / subagents 实际很少被仓库用好。</p>
+  <p>八种仓库级旋钮里，Context Files 一家独大。用户不会主动写 skills。</p>
+  <p><code>LoadWorkspaceRules</code> 读 YOYO.md / AGENTS.md / CLAUDE.md 并加预算。Skills 进 CAS，不是再丢一个 markdown 碰运气。</p>
+  <ul class="take">
+    <li class="done">已落地：跨工具针，有上限。</li>
+    <li class="deny">拒：把八种机制做成八个设置页。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2602.14690">arXiv</a><a href="corpus/2602.14690-harness-config.md">卡片</a><a href="originals/2602.14690.pdf">PDF</a></p>
+</article>
+
+<article id="a-composer-2" data-track="prod" data-pri="P2" data-q="composer 2 cursor 共训">
+  <p class="kicker">先读着 · 2026年3月</p>
+  <h2>Composer 2</h2>
+  <p class="dek">在部署用的同一套 harness 里训练。我们不训模型。trace 质量是 RHI 命题。</p>
+  <p>工具与结构等价，减小 train–test mismatch。第三方数字用「我们的 harness / 官方自报」双列，承认 harness 会改分数。</p>
+  <p><code>yoyo eval</code> 已绑定 snapshot hash。journal 与 spill 保持无损，是我们能为那条未来付的最大成本。</p>
+  <ul class="take">
+    <li class="steal">偷：数字带 harness 身份；eval 用与聊天同一套 loop。</li>
+    <li class="deny">拒：为了追 SWE 榜去做模型训练。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2603.24477">arXiv</a><a href="corpus/2603.24477-composer-2.md">卡片</a><a href="originals/2603.24477.pdf">PDF</a></p>
+</article>
+
+<article id="a-grok-build" data-track="prod" data-pri="P2" data-q="grok build rust acp">
+  <p class="kicker">先读着 · 2026年7月</p>
+  <h2>Grok Build</h2>
+  <p class="dek">xAI 开源的是 harness 和 TUI，不是权重。对照，不要移植。</p>
+  <p>Rust 源码含 loop、工具、全屏 TUI、skills / hooks / MCP / subagents。可指到自有 OpenAI 兼容推理。也支持 ACP。</p>
+  <p>又一个 harness 与模型解耦的证据。他们没有 CAS/refs、没有 Harbor、没有 L4。不要为了对齐再做第三套 IPC。</p>
+  <ul class="take">
+    <li class="steal">偷：harness 与权重解耦。</li>
+    <li class="deny">拒：把 TUI 做成第二套 loop；重写 Go 内核。</li>
+  </ul>
+  <p class="links"><a href="https://x.ai/news/grok-build-open-source">公告</a><a href="https://github.com/xai-org/grok-build">GitHub</a><a href="products/xai-grok-build.md">卡片</a></p>
+</article>
+
+<article id="a-claude-docs" data-track="prod" data-pri="P1" data-q="claude docs agent sdk">
+  <p class="kicker">部分对齐 · 2026</p>
+  <h2>Claude Code 官方 loop</h2>
+  <p class="dek">gather context → take action → verify。Transcript 语法刻意靠近操作员看着智能体工作。</p>
+  <p>没有工具就只是聊天。Agent SDK 暴露同一套 loop。周边是权限、压缩、CLAUDE.md、skills、MCP、hooks、subagents。</p>
+  <p>权限更硬、更少魔法。身份动作不能 Always。进化仍然只发生在 Yoyo 的 CAS 里。</p>
+  <ul class="take">
+    <li class="steal">偷：loop 的对外叙事；审批可拦截。</li>
+    <li class="deny">拒：把 Claude 的 hook 词汇当成兼容性目标。</li>
+  </ul>
+  <p class="links"><a href="https://code.claude.com/docs/en/how-claude-code-works">文档</a><a href="products/anthropic-claude-code.md">卡片</a></p>
+</article>
+
+<article id="a-harbor" data-track="prod" data-pri="P1" data-q="harbor framework 布局">
+  <p class="kicker">部分对齐 · 2026</p>
+  <h2>Harbor</h2>
+  <p class="dek">布局兼容，门在本地。晋升逻辑是我们自己的 ShouldPromote。</p>
+  <p>同一任务布局评任意 agent。Adapter 要求 parity。2026-09 的 Index 用独立 verifier sandbox 防止偷看 grader。</p>
+  <p>任务目录形状见 <code>docs/architecture/harbor.md</code>。将来跑 Index 或 TB 不必改 evolve，只要换 suite 对象。</p>
+  <ul class="take">
+    <li class="steal">偷：parity；独立 grader；任务即代码。</li>
+    <li class="deny">拒：把晋升权交给云端排行榜。</li>
+  </ul>
+  <p class="links"><a href="https://www.harborframework.com">Harbor</a><a href="products/harbor.md">卡片</a></p>
+</article>
+
+<article id="a-wails" data-track="prod" data-pri="P2" data-q="wails 桌面壳">
+  <p class="kicker">已经在用</p>
+  <h2>Wails v3</h2>
+  <p class="dek">原生窗口、菜单、托盘。不是第二套 runtime。GUI 是 Go loop 的客户端。</p>
+  <p>Go 做桌面壳，前端是普通 Web 资产。</p>
+  <p>绑定只转发 JSON-RPC。隔离徽章必须诚实：OS job object 是 opt-in。</p>
+  <ul class="take">
+    <li class="done">已用：壳与 core 分离。</li>
+    <li class="deny">拒：在 WebView 里跑模型调用。</li>
+  </ul>
+  <p class="links"><a href="https://v3.wails.io">Wails</a><a href="products/wails-v3.md">卡片</a></p>
+</article>
+
+<article id="a-rsi-ws" data-track="prod" data-pri="P3" data-q="iclr workshop rsi">
+  <p class="kicker">先读着 · 2026年4月</p>
+  <h2>ICLR RSI workshop</h2>
+  <p class="dek">当年 RSI 会场入口。按改什么、何时改、拿什么当证据组织投稿。</p>
+  <p>欢迎改权重、改 prompt、改控制器，以及评测基础设施。邀请报告含 Finn、Clune、Levine。</p>
+  <p>本库已收 AutoHarness、reward hacking、Evaluating AGENTS.md、Simple Baselines。其余 VLA / 分子海报不对齐，不进 catalog。</p>
+  <ul class="take">
+    <li class="steal">偷：把改什么 / 何时改 / 证据写成 evolve 实验元数据。</li>
+    <li class="deny">拒：会场上的权重更新、Godel-agent 改源码。</li>
+  </ul>
+  <p class="links"><a href="https://iclr.cc/virtual/2026/workshop/10000796">会场</a><a href="products/iclr2026-rsi-workshop.md">卡片</a></p>
+</article>
+
+<article id="a-sok-skills" data-track="skill" data-pri="P1" data-q="sok skills clawhavoc 供应链">
+  <p class="kicker">部分对齐 · 2026年2月</p>
+  <h2>SoK: Agentic Skills</h2>
+  <p class="dek">技能生命周期。ClawHavoc：约 1200 个恶意技能进入市场。自生成技能可能降低成功率。</p>
+  <p>Skill 不是一次性计划和原子 tool call。它是带适用条件、执行策略、终止条件的程序能力。</p>
+  <p>渐进披露已做。WASM 无 WASI FS、未签名不能上 active。新 skill 必须过 Harbor。</p>
+  <ul class="take">
+    <li class="steal">偷：信任分层；市场默认有毒；自生成技能强制评测。</li>
+    <li class="deny">拒：开放未审计的 marketplace 写进 active。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2602.20867">arXiv</a><a href="corpus/2602.20867-sok-skills.md">卡片</a><a href="originals/2602.20867.pdf">PDF</a></p>
+</article>
+
+<article id="a-skill-reducer" data-track="skill" data-pri="P1" data-q="skillreducer 压缩 routing">
+  <p class="kicker">可以偷 · 2026年3月</p>
+  <h2>SkillReducer</h2>
+  <p class="dek">公开技能 26% 没有 routing 描述。压缩后质量反而升。</p>
+  <p>两阶段：routing 压到 1-minimal；body 渐进披露并做忠实性检查。功能质量 +2.8%。</p>
+  <p>注入 catalog 已经便宜。质量门可以把「非可执行内容占比」当成确定性检查。反 brevity bias 反的是丢掉领域细节，不是保留营销段落。</p>
+  <ul class="take">
+    <li class="steal">偷：routing 描述强制存在；压缩后跑 Harbor。</li>
+    <li class="deny">拒：用优化器自动改用户手写的 YOYO.md。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2603.29919">arXiv</a><a href="corpus/2603.29919-skill-reducer.md">卡片</a><a href="originals/2603.29919.pdf">PDF</a></p>
+</article>
+
+<article id="a-skill-state" data-track="skill" data-pri="P2" data-q="skill.state 可变状态">
+  <p class="kicker">可以偷 · 2026年8月</p>
+  <h2>SKILL.state</h2>
+  <p class="dek">丢掉 append-only 对话，改用可变执行状态。下一步里的「先别动」。不要先上。</p>
+  <p>每步只给模型三样东西：不可变规格、当前结构化状态、最新观察。中间推理写出合法更新后立刻丢掉。</p>
+  <p>Shape 已经 stub 工具正文，skill 执行仍是主对话里的散文。这是 runtime 变更，风险高于 evolve 的证据格式变更。</p>
+  <ul class="take">
+    <li class="steal">偷：状态与规格分离；丢掉中间思维。</li>
+    <li class="deny">拒：把 playbook 也变成可变 state 随便改。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2608.26263">arXiv</a><a href="corpus/2608.26263-skill-state.md">卡片</a><a href="originals/2608.26263.pdf">PDF</a></p>
+</article>
+
+<article id="a-ace" data-track="lineage" data-pri="L" data-q="ace playbook curator iclr">
+  <p class="kicker">谱系 · 已经在用 · ICLR 2026 · 首发 2025年10月</p>
+  <h2>ACE</h2>
+  <p class="dek">Playbook 增量。禁止整页重写。不是 2026-first 前沿。</p>
+  <p>上下文是会生长的 playbook。Generator / Reflector / Curator。对抗 brevity bias 与 context collapse。</p>
+  <p><code>curate.go</code> 只 ADD 与 Helpful/Harmful。<code>StageACE</code> 只写 staging。Shape 绝不摘要 playbook。</p>
+  <ul class="take">
+    <li class="done">已偷：delta、在线/离线两条路径。</li>
+    <li class="deny">拒：把 curator 做成整份 prompt 重写器。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2510.04618">arXiv</a><a href="corpus/2510.04618-ace.md">卡片</a><a href="originals/2510.04618.pdf">PDF</a></p>
+</article>
+
+<article id="a-dgm" data-track="lineage" data-pri="L" data-q="dgm archive parentweight">
+  <p class="kicker">谱系 · 已经在用 · 2025年5月</p>
+  <h2>Darwin Gödel Machine</h2>
+  <p class="dek">档案采样。经验验证替代可证有益。我们拒绝进化智能体代码本身。</p>
+  <p>维护 archive，按质量与开放度采样父代，长出多样的改进树。</p>
+  <p><code>ParentWeight = score/(1+children)</code>。档案里的节点是 harness 快照，不是 Go。评测器不能当父代。</p>
+  <ul class="take">
+    <li class="done">已偷：archive、按开放度采样。</li>
+    <li class="deny">拒：让 agent 改自己的实现代码。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2505.22954">arXiv</a><a href="corpus/2505.22954-dgm.md">卡片</a><a href="originals/2505.22954.pdf">PDF</a></p>
+</article>
+
+<article id="a-hgm" data-track="lineage" data-pri="L" data-q="hgm cmp 后代">
+  <p class="kicker">谱系 · ICLR 2026 · 首发 2025年10月</p>
+  <h2>Huxley-Gödel Machine</h2>
+  <p class="dek">看后代质量，不只当前分。改 agent 源码仍然禁止。</p>
+  <p>只按当前 SWE 分数扩树，会错过后代其实更会自我改进的分支。CMP 指导搜索。</p>
+  <p>是 <code>ParentWeight</code> 的亲戚。transfer 失败降权已经是弱 CMP。ICLR 接收不改变 L4。</p>
+  <ul class="take">
+    <li class="steal">可看：后代质量，不只当前分。</li>
+    <li class="deny">拒：自改 Go。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2510.21614">arXiv</a><a href="corpus/2510.21614-hgm.md">卡片</a><a href="originals/2510.21614.pdf">PDF</a></p>
+</article>
+
+<article id="a-feedback-descent" data-track="lineage" data-pri="L" data-q="feedback descent 成对 文字">
+  <p class="kicker">谱系 · ICLR 2026 · 首发 2025年11月</p>
+  <h2>Feedback Descent</h2>
+  <p class="dek">成对比较带文字理由。不要把评价压成一个 bit。Harbor 仍是门。</p>
+  <p>评测器把当前最优和候选做成对比较，同时给出改哪里。优化发生在文本空间，不更新权重。</p>
+  <p>与 ACE、Meta-Harness 同族。<code>Mine</code> 已聚类失败原因；还没有把同一任务的成败成对加文字理由送给 proposer。</p>
+  <ul class="take">
+    <li class="steal">偷：成对比较带文字理由。</li>
+    <li class="deny">拒：用偏好模型替换 Harbor。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2511.07919">arXiv</a><a href="corpus/2511.07919-feedback-descent.md">卡片</a><a href="originals/2511.07919.pdf">PDF</a></p>
+</article>
+</template>
+<script>
+(function () {
+  var TRACK = { rsi: "自我改进", eval: "怎么评", prod: "生产上", skill: "技能", lineage: "从哪来" };
+  var SECS = ["brief", "agenda", "reject", "library"];
+  var state = { track: "all", q: "", id: null };
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var src = document.getElementById("articles");
+  var listEl = document.getElementById("list");
+
+  function prettyKicker(s) {
+    var drop = { P0: 1, P1: 1, P2: 1, P3: 1, RSI: 1, "评测": 1, "生产": 1, "技能": 1 };
+    var status = { "已落地": "已经在用", "候选": "可以偷", "否证": "用来打假", "部分": "部分对齐", "观察": "先读着" };
+    var out = [];
+    s.split("·").forEach(function (raw) {
+      var p = raw.trim();
+      if (!p || drop[p]) return;
+      if (status[p]) { out.push(status[p]); return; }
+      var m = p.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+      if (m) { out.push(m[1] + "年" + Number(m[2]) + "月"); return; }
+      m = p.match(/^首发 (\d{4})-(\d{2})$/);
+      if (m) { out.push("首发 " + m[1] + "年" + Number(m[2]) + "月"); return; }
+      out.push(p);
+    });
+    return out.join(" · ");
+  }
+
+  var items = [].map.call(src.content.querySelectorAll("article"), function (a) {
+    var kick = a.querySelector(".kicker");
+    var ul = a.querySelector("ul");
+    if (ul) ul.classList.add("take");
+    return {
+      id: a.id,
+      track: a.dataset.track,
+      star: a.hasAttribute("data-star"),
+      q: ((a.dataset.q || "") + " " + a.querySelector("h2").textContent + " " + a.querySelector(".dek").textContent).toLowerCase(),
+      title: a.querySelector("h2").textContent,
+      dek: a.querySelector(".dek").textContent,
+      kick: kick ? prettyKicker(kick.textContent) : "",
+      html: a.outerHTML
+    };
+  });
+  var navCount = document.getElementById("nav-libn");
+  if (navCount) navCount.textContent = String(items.length);
+
+  function filtered() {
+    var q = state.q.trim().toLowerCase();
+    return items.filter(function (it) {
+      if (state.track !== "all" && it.track !== state.track) return false;
+      if (q && it.q.indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c];
+    });
+  }
+
+  function dump(html, label, group) {
+    if (!group.length) return html;
+    html += '<p class="lab">' + label + "</p>";
+    group.forEach(function (it) {
+      var on = state.id === it.id;
+      html += '<div class="paper' + (on ? " on" : "") + '" id="row-' + it.id + '">';
+      html += '<button type="button" class="head" data-id="' + it.id + '" aria-expanded="' + (on ? "true" : "false") + '">';
+      html += "<span><span class=\"name\">" + esc(it.title) + "</span>";
+      html += '<span class="one">' + esc(it.dek) + "</span></span>";
+      html += '<span class="meta">' + esc(it.kick) + "</span></button>";
+      if (on) html += '<div class="body">' + it.html + "</div>";
+      html += "</div>";
+    });
+    return html;
+  }
+
+  function renderList() {
+    var rows = filtered();
+    var shown = document.getElementById("shown");
+    if (shown) shown.textContent = rows.length === items.length ? "" : rows.length + " / " + items.length;
+    if (!rows.length) {
+      listEl.innerHTML = '<p class="empty">没有这篇。</p>';
+      return;
+    }
+    var html = "";
+    var quiet = state.track === "all" && !state.q.trim();
+    if (quiet) {
+      html = dump(html, "先读", rows.filter(function (it) { return it.star; }));
+      var rest = rows.filter(function (it) { return !it.star; });
+      ["rsi", "eval", "prod", "skill", "lineage"].forEach(function (tr) {
+        html = dump(html, TRACK[tr], rest.filter(function (it) { return it.track === tr; }));
+      });
+    } else {
+      ["rsi", "eval", "prod", "skill", "lineage"].forEach(function (tr) {
+        html = dump(html, TRACK[tr], rows.filter(function (it) { return it.track === tr; }));
+      });
+    }
+    listEl.innerHTML = html;
+  }
+
+  function openId(id, opts) {
+    opts = opts || {};
+    if (id && id.indexOf("a-") !== 0) id = "a-" + id;
+    if (!id) state.id = null;
+    else if (!opts.force && state.id === id) state.id = null;
+    else state.id = id;
+    renderList();
+    var h = state.id ? "#library/" + state.id.replace(/^a-/, "") : "#library";
+    if (location.hash !== h) history.replaceState(null, "", h);
+    if (opts.scroll && state.id) {
+      var el = document.getElementById("row-" + state.id);
+      if (el) el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
+  }
+
+  function markNav(id) {
+    document.querySelectorAll("nav [data-sec]").forEach(function (b) {
+      b.setAttribute("aria-current", b.getAttribute("data-sec") === id ? "true" : "false");
+    });
+  }
+
+  function go(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    markNav(id);
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    if (id !== "library") {
+      if (location.hash !== "#" + id) history.replaceState(null, "", "#" + id);
+    } else if (!state.id && location.hash !== "#library") {
+      history.replaceState(null, "", "#library");
+    }
+  }
+
+  document.querySelector("nav").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-sec]");
+    if (b) go(b.getAttribute("data-sec"));
+  });
+  document.querySelector(".lanes").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-track]");
+    if (!b) return;
+    state.track = b.getAttribute("data-track");
+    document.querySelectorAll(".lanes [data-track]").forEach(function (x) {
+      x.setAttribute("aria-pressed", x === b ? "true" : "false");
+    });
+    if (state.id && !filtered().some(function (r) { return r.id === state.id; })) state.id = null;
+    renderList();
+  });
+  document.getElementById("q").addEventListener("input", function (e) {
+    state.q = e.target.value;
+    if (state.id && !filtered().some(function (r) { return r.id === state.id; })) state.id = null;
+    renderList();
+  });
+  listEl.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-id]");
+    if (b) openId(b.getAttribute("data-id"));
+  });
+
+  document.getElementById("theme").addEventListener("click", function () {
+    var dark = document.documentElement.classList.toggle("dark");
+    document.documentElement.classList.toggle("light", !dark);
+    this.textContent = dark ? "浅色" : "深色";
+    try { localStorage.setItem("yoyo-research-theme", dark ? "dark" : "light"); } catch (err) {}
+  });
+  try {
+    if (localStorage.getItem("yoyo-research-theme") === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+      document.getElementById("theme").textContent = "浅色";
+    }
+  } catch (err) {}
+
+  var ticking = false;
+  window.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      var y = window.scrollY + 72;
+      var cur = SECS[0];
+      SECS.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && el.offsetTop <= y) cur = id;
+      });
+      markNav(cur);
+      ticking = false;
+    });
+  }, { passive: true });
+
+  function boot() {
+    var raw = (location.hash || "").slice(1);
+    var parts = raw.split("/");
+    renderList();
+    if (!raw) { markNav("brief"); return; }
+    if (parts[0] === "library") {
+      markNav("library");
+      if (parts[1]) openId(parts[1], { force: true, scroll: true });
+      else document.getElementById("library").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      return;
+    }
+    if (SECS.indexOf(parts[0]) >= 0) {
+      markNav(parts[0]);
+      document.getElementById(parts[0]).scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
+  }
+  window.addEventListener("hashchange", boot);
+  boot();
+})();
+</script>
+</body>
+</html>
