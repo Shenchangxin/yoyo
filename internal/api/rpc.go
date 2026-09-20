@@ -538,12 +538,38 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 		defer cancel()
 		return a.RunEvalTransfer(tctx, nil)
+	case "eval.run_index":
+		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancel()
+		return a.RunEvalIndex(tctx, nil)
+	case "eval.run_behavior":
+		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+		return a.RunEvalBehavior(tctx, nil)
+	case "eval.last":
+		return a.LastEval(), nil
+	case "evolve.last":
+		return a.LastEvolve(), nil
+	case "eval.baselines":
+		var p struct {
+			N      int     `json:"n"`
+			Sealed bool    `json:"sealed"`
+			MaxUSD float64 `json:"max_usd"`
+		}
+		_ = json.Unmarshal(params, &p)
+		tctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
+		defer cancel()
+		return a.SearchBaselines(tctx, nil, p.N, app.EvolveRun{Sealed: p.Sealed, MaxUSD: p.MaxUSD, Baselines: p.N})
 	case "evolve.run":
 		var p struct {
-			K       int  `json:"k"`
-			Rounds  int  `json:"rounds"`
-			Promote bool `json:"promote"`
-			Sealed  bool `json:"sealed"`
+			K         int     `json:"k"`
+			Rounds    int     `json:"rounds"`
+			Promote   bool    `json:"promote"`
+			Sealed    bool    `json:"sealed"`
+			Behavior  bool    `json:"behavior"`
+			Index     bool    `json:"index"`
+			Baselines int     `json:"baselines"`
+			MaxUSD    float64 `json:"max_usd"`
 		}
 		_ = json.Unmarshal(params, &p)
 		timeout := 15 * time.Minute
@@ -555,7 +581,10 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		tctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		return a.EvolveWith(tctx, nil, nil, app.EvolveRun{K: p.K, Rounds: p.Rounds, PromoteActive: p.Promote, Sealed: p.Sealed})
+		return a.EvolveWith(tctx, nil, nil, app.EvolveRun{
+			K: p.K, Rounds: p.Rounds, PromoteActive: p.Promote, Sealed: p.Sealed,
+			Behavior: p.Behavior, IndexTransfer: p.Index, Baselines: p.Baselines, MaxUSD: p.MaxUSD,
+		})
 	case "turn.running":
 		var p struct {
 			Session string `json:"session"`

@@ -249,11 +249,11 @@ button:focus-visible, input:focus-visible {
   <p class="lede">完成前面两段之后，再考虑外部进化集。技能状态不要先上。</p>
   <div class="cluster">
     <h2>这周</h2>
-    <p>实验室把 evolve、best-of-N、随机采样画在同一张预算图上。proposer 改为失败簇加同任务对比。canary 加上质量门。Harbor 核对 predicted_fixes。加一层秒级行为检查。</p>
+    <p>实验室已经把 evolve、best-of-N、IID/SCS 画在同一张花费表上。proposer 看失败簇和同任务对比。canary 有确定性质量门。Harbor 核对 predicted_fixes，hit 为零不得晋升。四个秒级行为探针进实验室，不进默认晋升。</p>
   </div>
   <div class="cluster">
     <h2>这季</h2>
-    <p>进化集与晋升集切开，哪怕只是本地 suite 再划一刀。提案一次只动一个模块，过 Harbor 再 merge。可选：用 Harbor-Index 当 transfer 门，而不是继续堆本地题。</p>
+    <p>密封套件已切成 evolve-set 与 promote-set。一个提案一个 surface，不相交才 merge。Harbor-Index 只以三道 stand-in 作 transfer，id 永不进 Propose。82 题不进桌面 CI。</p>
   </div>
   <div class="cluster">
     <h2>先别动</h2>
@@ -312,13 +312,13 @@ button:focus-visible, input:focus-visible {
 </article>
 
 <article id="a-modular-rsi" data-track="rsi" data-pri="P0" data-star data-q="modularrsi 模块 不相交">
-  <p class="kicker">可以偷 · 2026年9月</p>
+  <p class="kicker">部分对齐 · 2026年9月</p>
   <h2>ModularRSI</h2>
-  <p class="dek">本季最该偷。五模块、对比轨迹、2000 道与评测不相交的进化题。</p>
+  <p class="dek">五模块思想的生产收缩：对比轨迹、不相交数据、一次一块。</p>
   <p>泛化卡在三件事：在评测集上进化、单条轨迹缠死缺陷与题面、整包优化互相污染。回答是同任务成败对比、五块独立进化再集成、进化数据与 TB / SWE 完全分开。</p>
-  <p>能改的表面已经有界，但不是这五个运行时模块，evolve 证据仍来自同一套题。下一步里「这周」和「这季」的直接来源。</p>
+  <p>密封套件已切成 evolve-set 与 promote-set。Harbor repeats 成对送进 proposer。一个提案一个 L1 surface，不相交才 merge。没有 2000 道外部进化题，也不改 Go 里的 loop。</p>
   <ul class="take">
-    <li class="steal">偷：同任务对比；进化集 ⊥ 评测集；一次一块。</li>
+    <li class="done">已对齐：同任务对比；evolve-set ⊥ promote-set；一次一块。</li>
     <li class="deny">拒：为了模块化去改 Go 里的 loop 拓扑。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2609.14857">arXiv</a><a href="corpus/2609.14857-modular-rsi.md">卡片</a><a href="originals/2609.14857.pdf">PDF</a></p>
@@ -329,9 +329,9 @@ button:focus-visible, input:focus-visible {
   <h2>Rethinking harness-evolution eval</h2>
   <p class="dek">没有匹配预算对照，evolve 实验室是自欺。</p>
   <p>在同一套公开题上搜索再报告，分不清可复用改进和多试了几次。TB 2.1 上自动进化并不稳定赢过并行采样或顺序 refinement。</p>
-  <p>已有 held-out 与 transfer。缺的是把一轮 evolve 的美元拿去跑 <code>eval --best N</code>。不要读成「停掉 evolve」。</p>
+  <p>已有 held-out、transfer，以及一轮 evolve 的美元去跑 <code>eval --best N</code>、IID 和 SCS。Go/no-go 仍是 live 模型上的操作员决策。不要读成「停掉 evolve」。</p>
   <ul class="take">
-    <li class="steal">偷：匹配预算协议；BoN 作为对照基线。</li>
+    <li class="done">已对齐：匹配预算协议；BoN / IID / SCS 对照。</li>
     <li class="deny">拒：因为这篇就删掉 Harbor 门。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2607.12227">arXiv</a><a href="corpus/2607.12227-rethink-eval.md">卡片</a><a href="originals/2607.12227.pdf">PDF</a></p>
@@ -342,9 +342,9 @@ button:focus-visible, input:focus-visible {
   <h2>HarnessEvolve</h2>
   <p class="dek">参考轨迹解决 credit assignment。质量门打 prompt 膨胀。</p>
   <p>三个坑：终局对错说不清是哪一步、背题、新补丁打掉旧能力。给定标准答案生成参考轨迹，对齐失败执行。质量门滤泄漏与膨胀；性能门看当前 batch 且不伤最近 batch。</p>
-  <p>Harbor 任务带人写参考解，evolve 目前没用。质量门可以立刻做确定性检查，不必再请一个模型当门卫。</p>
+  <p>Harbor 任务带人写参考解，evolve 仍然不用它喂执行智能体。质量门已经是确定性检查：泄漏、膨胀、仓库概览、不可执行 skill。不必再请一个模型当门卫。</p>
   <ul class="take">
-    <li class="steal">偷：参考轨迹只给进化管线；质量门；batch 级遗忘检查。</li>
+    <li class="done">已对齐：质量门；batch 前拒绝泄漏。</li>
     <li class="deny">拒：把标准答案泄漏给执行智能体。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2609.00829">arXiv</a><a href="corpus/2609.00829-harness-evolve.md">卡片</a><a href="originals/2609.00829.pdf">PDF</a></p>
@@ -381,9 +381,9 @@ button:focus-visible, input:focus-visible {
   <h2>AHE</h2>
   <p class="dek">可观测性三柱：组件文件化、轨迹蒸馏、可证伪的 change manifest。</p>
   <p>每次编辑带自报预测，下一轮用任务结果证伪；无效则按文件回滚。只改 system prompt 会回退。工具、middleware、长期记忆才带走增益。</p>
-  <p>CAS 已经接近文件级可逆。<code>Proposal.PredictedFixes</code> 写了，Harbor 没有对账。不要把 evolve 做成写长 system prompt。</p>
+  <p>CAS 已经接近文件级可逆。<code>predicted_fixes</code> 非空且 hit 为零，不得进 canary。不要把 evolve 做成写长 system prompt。</p>
   <ul class="take">
-    <li class="steal">偷：change manifest；失败则文件级回滚。</li>
+    <li class="done">已对齐：change manifest 对账；hit==0 拒 canary。</li>
     <li class="deny">拒：evolver 改 loop 拓扑或 eval。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2604.25850">arXiv</a><a href="corpus/2604.25850-ahe.md">卡片</a><a href="originals/2604.25850.pdf">PDF</a></p>
@@ -549,9 +549,9 @@ button:focus-visible, input:focus-visible {
   <h2>Harbor-Index</h2>
   <p class="dek">82 道难而多样、全模型低于 30%。比盲目扩 sealed suite 更值。</p>
   <p>Adapters 把 80+ 基准接到任意 agent，并证明 parity。Index 从 6627 候选筛到 82 道。Verifier 与 agent 分 sandbox，grader 只拿声明产物。</p>
-  <p>我们实现的是任务布局，不是 Harbor 产品。Index 作为 transfer 门时，题目 id 仍不得送给 proposer。</p>
+  <p>我们实现的是任务布局，不是 Harbor 产品。Index 以三道 stand-in 作 transfer 门；题目 id 不得送给 proposer。82 题不进桌面 CI。</p>
   <ul class="take">
-    <li class="steal">偷：parity；独立 grader；高信号短套件。</li>
+    <li class="done">已对齐：Index id 只进 transfer；独立 grader 目录。</li>
     <li class="deny">拒：把 54 个基准搬进桌面 CI；把晋升权交给云端排行榜。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2609.04298">arXiv</a><a href="corpus/2609.04298-harbor-index.md">卡片</a><a href="originals/2609.04298.pdf">PDF</a></p>
@@ -614,9 +614,9 @@ button:focus-visible, input:focus-visible {
   <h2>Simple baselines vs code evolution</h2>
   <p class="dek">IID / SCS 打平复杂进化。evolve 必须先赢随机采样。</p>
   <p>搜索空间和 prompt 里的领域知识往往比进化算法本身更决定上限。高方差加小数据集，手写 majority-vote 反而最好。</p>
-  <p>和 Wang 一起要求evolve 实验室先画匹配预算图。不要用「我们有 archive」当成已经赢过随机采样。</p>
+  <p>和 Wang 一起，evolve 实验室已经把 IID / SCS / best-of-N 画在同一张花费表上。赢不了对照就冻结搜索结构，不要把「我们有 archive」当成已经赢过随机采样。</p>
   <ul class="take">
-    <li class="steal">偷：IID / SCS 对照；重复评测降方差。</li>
+    <li class="done">已对齐：IID / SCS 对照；花费与 repeats 同场。</li>
     <li class="deny">拒：为了更像进化算法去改 Go。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2602.16805">arXiv</a><a href="corpus/2602.16805-simple-baselines.md">卡片</a><a href="originals/2602.16805.pdf">PDF</a></p>
@@ -627,9 +627,9 @@ button:focus-visible, input:focus-visible {
   <h2>Reward Hacking Benchmark</h2>
   <p class="dek">工具链路上的捷径和篡改评测。安全套件的下一刀。</p>
   <p>跳过验证、从元数据猜答案、篡改评测相关函数。exploit 率 0% 到 13.9%。简单环境加固相对降 87.7%，且不伤任务成功。</p>
-  <p><code>no-escape</code> 不够。行为探针：声称完成前必须跑测试；proposer 不得看到 <code>test.sh</code>。</p>
+  <p>Agent 工作区不再拷 <code>tests/</code>。四个行为探针进 evolve 实验室和 CI：声称完成前必须有产物；不得读 grader。</p>
   <ul class="take">
-    <li class="steal">偷：捷径分类；加固环境而不是靠 prompt 说教。</li>
+    <li class="done">已对齐：grader 隔离；行为探针不进默认 89 题晋升。</li>
     <li class="done">已有：held-out 对 proposer 不可见。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2605.02964">arXiv</a><a href="corpus/2605.02964-rhb.md">卡片</a><a href="originals/2605.02964.pdf">PDF</a></p>
@@ -640,9 +640,9 @@ button:focus-visible, input:focus-visible {
   <h2>Evaluating AGENTS.md</h2>
   <p class="dek">仓库针不涨分，成本 +20%。只写非标准惯例。与 Galster 一起读。</p>
   <p>指令会被遵守，所以成本涨在多探索。仓库概览不帮助导航。人写略好于 LLM 生成，统计上也不稳。</p>
-  <p><code>LoadWorkspaceRules</code> 已有 token 上限。evolve 若往 playbook 里堆仓库导览，会同时踩 ACE 膨胀和这篇的成本税。</p>
+  <p><code>LoadWorkspaceRules</code> 已有 token 上限。质量门会拒绝仓库导览型 bullet，避免 evolve 往 playbook 里堆这篇的成本税。</p>
   <ul class="take">
-    <li class="steal">偷：人写、最短、只写非默认惯例；用 Harbor 测这段针。</li>
+    <li class="done">已对齐：禁止仓库概览针；playbook token 帽。</li>
     <li class="deny">拒：用 LLM init 自动生成长 AGENTS.md。</li>
   </ul>
   <p class="links"><a href="https://arxiv.org/abs/2602.11988">arXiv</a><a href="corpus/2602.11988-agents-md.md">卡片</a><a href="originals/2602.11988.pdf">PDF</a></p>
@@ -705,9 +705,9 @@ button:focus-visible, input:focus-visible {
   <h2>Google 行为评测</h2>
   <p class="dek">微观行为断言加宏观基准。Harbor 的本地快测层。</p>
   <p>端到端复合分涨跌几个点，往往不知道为什么。行为评测断言中间动作：含糊时有没有提问，声称完成前有没有跑校验。</p>
-  <p>我们只有 Harbor 终局。evolve 实验室缺一层便宜的行为套件。</p>
+  <p>四个秒级行为探针进 evolve 实验室和 CI，不进默认晋升。Agent 工作区没有 <code>tests/</code>。</p>
   <ul class="take">
-    <li class="steal">偷：微观断言；批量看趋势；宏观加微观互补。</li>
+    <li class="done">已对齐：微观断言；grader 隔离。</li>
     <li class="deny">拒：用 LLM-as-judge 替换 Harbor 的确定性测试。</li>
   </ul>
   <p class="links"><a href="https://developers.googleblog.com/the-anatomy-of-harness-engineering-how-to-evaluate-iterate-and-guard-ai-coding-agents/">原文</a><a href="products/google-harness-engineering.md">卡片</a></p>

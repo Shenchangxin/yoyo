@@ -26,24 +26,43 @@ type Task struct {
 	VerifierCmd []string
 }
 
+type RepeatAttempt struct {
+	Pass      bool    `json:"pass"`
+	SessionID string  `json:"session_id,omitempty"`
+	TokensIn  int     `json:"tokens_in,omitempty"`
+	TokensOut int     `json:"tokens_out,omitempty"`
+	USD       float64 `json:"usd,omitempty"`
+	WallMs    int64   `json:"wall_ms,omitempty"`
+}
+
 type TaskResult struct {
-	ID          string `json:"id"`
-	Pass        bool   `json:"pass"`
-	Output      string `json:"output"`
-	Error       string `json:"error,omitempty"`
-	Repeats     int    `json:"repeats,omitempty"`
-	RepeatsPass int    `json:"repeats_pass,omitempty"`
-	Isolate     string `json:"isolate,omitempty"`
-	Kind        string `json:"kind,omitempty"` // held_in | held_out | safety
+	ID          string          `json:"id"`
+	Pass        bool            `json:"pass"`
+	Output      string          `json:"output"`
+	Error       string          `json:"error,omitempty"`
+	Repeats     int             `json:"repeats,omitempty"`
+	RepeatsPass int             `json:"repeats_pass,omitempty"`
+	Isolate     string          `json:"isolate,omitempty"`
+	Kind        string          `json:"kind,omitempty"` // held_in | held_out | safety
+	TokensIn    int             `json:"tokens_in,omitempty"`
+	TokensOut   int             `json:"tokens_out,omitempty"`
+	USD         float64         `json:"usd,omitempty"`
+	WallMs      int64           `json:"wall_ms,omitempty"`
+	Attempts    []RepeatAttempt `json:"attempts,omitempty"`
 }
 
 type RunReport struct {
-	Suite    string          `json:"suite"`
-	Snapshot string          `json:"snapshot"`
-	Metrics  Metrics         `json:"metrics"`
-	Results  []TaskResult    `json:"results"`
-	HeldIn   map[string]bool `json:"held_in"`
-	HeldOut  map[string]bool `json:"held_out"`
+	Suite            string          `json:"suite"`
+	Snapshot         string          `json:"snapshot"`
+	ModelFingerprint string          `json:"model_fingerprint,omitempty"`
+	Metrics          Metrics         `json:"metrics"`
+	Results          []TaskResult    `json:"results"`
+	HeldIn           map[string]bool `json:"held_in"`
+	HeldOut          map[string]bool `json:"held_out"`
+	TokensIn         int             `json:"tokens_in,omitempty"`
+	TokensOut        int             `json:"tokens_out,omitempty"`
+	USD              float64         `json:"usd,omitempty"`
+	WallMs           int64           `json:"wall_ms,omitempty"`
 }
 
 type Engine struct {
@@ -72,15 +91,21 @@ type RunOpts struct {
 	// worktree of that repo with the Harbor task overlaid. Eval copies
 	// remain the default when this is empty.
 	IsolateRoot string
+	Meter       *rt.Meter
 }
 
 func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 	rep := RunReport{
-		Suite:    opts.Suite.ID,
-		Snapshot: opts.Hash,
-		HeldIn:   map[string]bool{},
-		HeldOut:  map[string]bool{},
+		Suite:            opts.Suite.ID,
+		Snapshot:         opts.Hash,
+		ModelFingerprint: opts.Snapshot.ModelFingerprint,
+		HeldIn:           map[string]bool{},
+		HeldOut:          map[string]bool{},
 	}
+	if opts.Meter == nil {
+		opts.Meter = &rt.Meter{}
+	}
+	runStart := time.Now()
 	heldOutSet := map[string]bool{}
 	for _, id := range opts.Suite.HeldOut {
 		heldOutSet[id] = true
@@ -124,8 +149,23 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		}
 		passCount := 0
 		var last TaskResult
+		var attempts []RepeatAttempt
 		for i := 0; i < repeats; i++ {
-			last = e.runTask(ctx, task, timeout, opts)
+			beforeIn, beforeOut, beforeUSD := opts.Meter.Totals()
+			t0 := time.Now()
+			sid := repeatSession(opts.SessionID, id, i)
+			last = e.runTask(ctx, task, timeout, opts, sid)
+			in, out, usd := opts.Meter.Totals()
+			att := RepeatAttempt{
+				Pass: last.Pass, SessionID: sid,
+				TokensIn: in - beforeIn, TokensOut: out - beforeOut, USD: usd - beforeUSD,
+				WallMs: time.Since(t0).Milliseconds(),
+			}
+			attempts = append(attempts, att)
+			last.TokensIn += att.TokensIn
+			last.TokensOut += att.TokensOut
+			last.USD += att.USD
+			last.WallMs += att.WallMs
 			if last.Pass {
 				passCount++
 			}
@@ -134,7 +174,11 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 		last.Repeats = repeats
 		last.RepeatsPass = passCount
 		last.Kind = taskKind(id, heldOutSet, safetySet, opts.Suite.HeldIn)
+		last.Attempts = attempts
 		rep.Results = append(rep.Results, last)
+		rep.TokensIn += last.TokensIn
+		rep.TokensOut += last.TokensOut
+		rep.USD += last.USD
 		if safetySet[id] && !last.Pass {
 			rep.Metrics.SafetyFail++
 		}
@@ -152,10 +196,18 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 			}
 		}
 	}
+	rep.WallMs = time.Since(runStart).Milliseconds()
 	return rep, nil
 }
 
-func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts) TaskResult {
+func repeatSession(base, taskID string, i int) string {
+	if base == "" {
+		base = "eval"
+	}
+	return fmt.Sprintf("%s~%s~r%d", base, taskID, i)
+}
+
+func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts, sessionID string) TaskResult {
 	work, cleanup, isolate, err := prepareWork(task.Dir, opts.IsolateRoot)
 	if err != nil {
 		return TaskResult{ID: task.ID, Error: err.Error()}
@@ -177,13 +229,13 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		advertised = append([]string(nil), opts.Snapshot.EvalTools...)
 	}
 	tools := &rt.WorkspaceTools{
-		Workspace: work, SessionID: opts.SessionID, Caps: caps, Skills: skillBodies,
+		Workspace: work, SessionID: sessionID, Caps: caps, Skills: skillBodies,
 		Advertised: advertised,
 	}
 	loop := opts.Loop
 	loop.AllowLLMCompact = false
 	_, runErr := rt.Run(tctx, rt.RunRequest{
-		SessionID:        opts.SessionID,
+		SessionID:        sessionID,
 		TaskID:           task.ID,
 		User:             task.Instruction,
 		Workspace:        work,
@@ -198,6 +250,7 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		Tools:            tools,
 		Client:           opts.Client,
 		Trace:            opts.Trace,
+		Meter:            opts.Meter,
 	})
 	res := TaskResult{ID: task.ID, Output: "", Isolate: isolate}
 	if runErr != nil {
@@ -249,14 +302,9 @@ func runVerifier(work string, task Task) (bool, string, error) {
 	}
 	var script string
 	for _, name := range order {
-		for _, root := range []string{filepath.Join(work, "tests"), filepath.Join(task.Dir, "tests")} {
-			c := filepath.Join(root, name)
-			if _, err := os.Stat(c); err == nil {
-				script = c
-				break
-			}
-		}
-		if script != "" {
+		c := filepath.Join(task.Dir, "tests", name)
+		if _, err := os.Stat(c); err == nil {
+			script = c
 			break
 		}
 	}
@@ -343,6 +391,12 @@ func copyDir(src, dst string) error {
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
+		}
+		if rel == "tests" || strings.HasPrefix(rel, "tests"+string(os.PathSeparator)) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {

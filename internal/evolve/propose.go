@@ -42,7 +42,7 @@ type PriorTrial struct {
 
 const proposerSystem = `You propose bounded L1 harness edits. Reply with JSON array of 1-3 objects:
 [{"surface":"prompt_fragment|playbook|skill|instruction|middleware","slot":"verification|failure_recovery|runtime|bootstrap","text":"...","expected":"...","risk":"...","audit":"...","predicted_fixes":["task-id"],"at_risk":["task-id"]}]
-Rules: minimal, diverse, do not rewrite the control loop, do not touch evaluator/secrets/kernel, do not mention held-out task ids.`
+Rules: one surface per object; predicted_fixes must come from repeated fail-vs-pass behavior across tasks, not from copying a task instruction; do not rewrite the control loop; do not touch evaluator/secrets/kernel; do not mention held-out task ids.`
 
 func Propose(ctx context.Context, client runtime.Client, model string, bundle EvidenceBundle, k int) ([]Proposal, error) {
 	if k <= 0 {

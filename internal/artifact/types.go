@@ -132,6 +132,9 @@ type EvalSuite struct {
 	Repeats    int      `json:"repeats"`
 	TimeoutSec int      `json:"timeout_sec"`
 	Sealed     bool     `json:"sealed"`
+	// EvolveIn is the proposer-visible split. Mine/Propose and inner trials
+	// use this list. Empty means HeldIn is both evolve-set and promote-set.
+	EvolveIn []string `json:"evolve_in,omitempty"`
 	// Transfer task ids are never shown to the proposer and are not part of
 	// ShouldPromote. They are a post-canary migration check only.
 	Transfer []string `json:"transfer,omitempty"`

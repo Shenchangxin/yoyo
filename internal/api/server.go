@@ -654,12 +654,58 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, rep)
 	})
+	mux.HandleFunc("/api/eval/index", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		defer cancel()
+		rep, err := a.RunEvalIndex(ctx, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, rep)
+	})
+	mux.HandleFunc("/api/eval/behavior", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		defer cancel()
+		rep, err := a.RunEvalBehavior(ctx, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, rep)
+	})
+	mux.HandleFunc("/api/eval/last", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.LastEval())
+	})
+	mux.HandleFunc("/api/evolve/last", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.LastEvolve())
+	})
+	mux.HandleFunc("/api/eval/baselines", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			N      int     `json:"n"`
+			Sealed bool    `json:"sealed"`
+			MaxUSD float64 `json:"max_usd"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Minute)
+		defer cancel()
+		rep, err := a.SearchBaselines(ctx, nil, body.N, app.EvolveRun{Sealed: body.Sealed, MaxUSD: body.MaxUSD, Baselines: body.N})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, rep)
+	})
 	mux.HandleFunc("/api/evolve", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			K       int  `json:"k"`
-			Rounds  int  `json:"rounds"`
-			Promote bool `json:"promote"`
-			Sealed  bool `json:"sealed"`
+			K         int     `json:"k"`
+			Rounds    int     `json:"rounds"`
+			Promote   bool    `json:"promote"`
+			Sealed    bool    `json:"sealed"`
+			Behavior  bool    `json:"behavior"`
+			Index     bool    `json:"index"`
+			Baselines int     `json:"baselines"`
+			MaxUSD    float64 `json:"max_usd"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		timeout := 15 * time.Minute
@@ -671,7 +717,10 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
-		res, err := a.EvolveWith(ctx, nil, nil, app.EvolveRun{K: body.K, Rounds: body.Rounds, PromoteActive: body.Promote, Sealed: body.Sealed})
+		res, err := a.EvolveWith(ctx, nil, nil, app.EvolveRun{
+			K: body.K, Rounds: body.Rounds, PromoteActive: body.Promote, Sealed: body.Sealed,
+			Behavior: body.Behavior, IndexTransfer: body.Index, Baselines: body.Baselines, MaxUSD: body.MaxUSD,
+		})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

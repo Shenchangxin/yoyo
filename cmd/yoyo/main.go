@@ -14,6 +14,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/version"
@@ -269,13 +270,22 @@ func harnessCmd() *cobra.Command {
 	return cmd
 }
 
+func labClient(solver string) runtime.Client {
+	switch strings.ToLower(strings.TrimSpace(solver)) {
+	case "heuristic", "fixture":
+		return runtime.HeuristicSolver{}
+	case "prompt-sensitive", "prompt_sensitive":
+		return runtime.PromptSensitiveSolver{}
+	default:
+		return nil
+	}
+}
+
 func evalCmd() *cobra.Command {
 	var best int
-	var safety bool
-	var tb bool
-	var sealed bool
-	var transfer bool
+	var safety, tb, sealed, transfer, index, behavior bool
 	var models []string
+	var solver string
 	cmd := &cobra.Command{
 		Use:   "eval",
 		Short: "Run the active harness against the smoke or sealed eval suite",
@@ -287,78 +297,119 @@ func evalCmd() *cobra.Command {
 			defer a.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 			defer cancel()
+			client := labClient(solver)
 			if len(models) > 0 {
-				rep, err := a.BestOfModels(ctx, models, map[string]runtime.Client{"*": runtime.HeuristicSolver{}})
+				clients := map[string]runtime.Client{}
+				if client != nil {
+					clients["*"] = client
+				}
+				rep, err := a.BestOfModels(ctx, models, clients)
 				if err != nil {
 					return err
 				}
-				fmt.Printf("best-of-models winner=%s in %d/%d out %d/%d\n", rep.BestModel, rep.Best.Metrics.HeldInPass, rep.Best.Metrics.HeldInTotal, rep.Best.Metrics.HeldOutPass, rep.Best.Metrics.HeldOutTotal)
+				fmt.Printf("best-of-models winner=%s in %d/%d out %d/%d usd=%.4f\n", rep.BestModel, rep.Best.Metrics.HeldInPass, rep.Best.Metrics.HeldInTotal, rep.Best.Metrics.HeldOutPass, rep.Best.Metrics.HeldOutTotal, rep.Best.USD)
 				return nil
 			}
+			kind, mut := labEvalMut(index, transfer, sealed, tb, safety, behavior)
 			if best > 1 {
-				rep, err := a.BestOfN(ctx, best, runtime.HeuristicSolver{})
+				rep, err := a.BestOfNMut(ctx, best, client, mut)
 				if err != nil {
 					return err
 				}
-				fmt.Printf("best-of-%d held-in %d/%d held-out %d/%d\n", rep.N, rep.Best.Metrics.HeldInPass, rep.Best.Metrics.HeldInTotal, rep.Best.Metrics.HeldOutPass, rep.Best.Metrics.HeldOutTotal)
+				printEval(fmt.Sprintf("best-of-%d %s", best, kind), rep.Best)
 				for i, r := range rep.Reports {
-					fmt.Printf("  run %d in=%d/%d out=%d/%d\n", i+1, r.Metrics.HeldInPass, r.Metrics.HeldInTotal, r.Metrics.HeldOutPass, r.Metrics.HeldOutTotal)
+					fmt.Printf("  run %d in=%d/%d out=%d/%d usd=%.4f\n", i+1, r.Metrics.HeldInPass, r.Metrics.HeldInTotal, r.Metrics.HeldOutPass, r.Metrics.HeldOutTotal, r.USD)
 				}
 				return nil
 			}
-			if tb {
-				rep, err := a.RunEvalTB(ctx, runtime.HeuristicSolver{})
-				if err != nil {
-					return err
-				}
-				fmt.Printf("tb held-in %d/%d held-out %d/%d repeats=%d\n", rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, 2)
-				for _, r := range rep.Results {
-					fmt.Printf("  %s pass=%v repeats=%d/%d isolate=%s %s\n", r.ID, r.Pass, r.RepeatsPass, r.Repeats, r.Isolate, r.Error)
-				}
-				return nil
-			}
-			if transfer {
-				out, err := a.RunEvalTransfer(ctx, runtime.HeuristicSolver{})
-				if err != nil {
-					return err
-				}
-				printEval("transfer", out)
-				return nil
-			}
-			if sealed {
-				out, err := a.RunEvalSealed(ctx, runtime.HeuristicSolver{})
-				if err != nil {
-					return err
-				}
-				printEval("sealed", out)
-				return nil
-			}
-			out, err := a.RunEvalOpts(ctx, runtime.HeuristicSolver{}, safety)
+			out, err := a.RunEvalMut(ctx, client, mut)
 			if err != nil {
 				return err
 			}
-			printEval("smoke", out)
+			printEval(kind, out)
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&best, "best", 0, "repeat the suite N times and keep the best score")
 	cmd.Flags().BoolVar(&safety, "safety", false, "also run the no-escape safety task if the suite omitted it")
 	cmd.Flags().BoolVar(&tb, "tb", false, "opt-in Terminal-Bench-style subset (mkdir-note, copy-seed) with repeats=2")
-	cmd.Flags().BoolVar(&sealed, "sealed", false, "private 20/10/5 catalog (repeats=2); identities stay on the suite object")
+	cmd.Flags().BoolVar(&sealed, "sealed", false, "private 12/8/10 catalog (repeats=2); evolve-set stays off the promote gate")
 	cmd.Flags().BoolVar(&transfer, "transfer", false, "run the sealed transfer split only (never fed to Propose)")
+	cmd.Flags().BoolVar(&index, "index", false, "Harbor-Index stand-in as transfer only; ids never enter Propose")
+	cmd.Flags().BoolVar(&behavior, "behavior", false, "cheap behavior probes (not the default promote gate)")
 	cmd.Flags().StringSliceVar(&models, "models", nil, "parallel-model best-of-N (does not change the sealed seed suite)")
+	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or heuristic/prompt-sensitive for fixtures")
 	return cmd
 }
 
+func labEvalMut(index, transfer, sealed, tb, safety, behavior bool) (string, func(*artifact.EvalSuite)) {
+	switch {
+	case index:
+		return "index-transfer", eval.ApplyIndexTransferOnly
+	case transfer:
+		return "transfer", func(suite *artifact.EvalSuite) {
+			eval.ApplySealed(suite)
+			suite.HeldIn = nil
+			suite.HeldOut = append([]string{}, suite.Transfer...)
+			suite.Transfer = nil
+			suite.Safety = nil
+		}
+	case sealed:
+		return "sealed", eval.ApplySealed
+	case tb:
+		return "tb", func(suite *artifact.EvalSuite) {
+			suite.HeldIn = append(append([]string{}, suite.HeldIn...), "mkdir-note")
+			suite.HeldOut = append(append([]string{}, suite.HeldOut...), "copy-seed")
+			if suite.Repeats < 2 {
+				suite.Repeats = 2
+			}
+		}
+	case behavior:
+		return "behavior", func(suite *artifact.EvalSuite) {
+			suite.ID = "behavior-probes"
+			suite.HeldIn = append([]string{}, eval.BehaviorIDs...)
+			suite.HeldOut = nil
+			suite.Transfer = nil
+			suite.Safety = nil
+			suite.EvolveIn = nil
+			suite.Repeats = 1
+		}
+	case safety:
+		return "safety", func(suite *artifact.EvalSuite) {
+			already := false
+			for _, id := range suite.Safety {
+				if id == "no-escape" {
+					already = true
+					break
+				}
+			}
+			if !already {
+				suite.Safety = append(append([]string{}, suite.Safety...), "no-escape")
+			}
+		}
+	default:
+		return "smoke", nil
+	}
+}
+
 func printEval(kind string, rep eval.RunReport) {
-	fmt.Printf("%s held-in %d/%d held-out %d/%d safety_fail=%d\n", kind, rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail)
+	fmt.Printf("%s held-in %d/%d held-out %d/%d safety_fail=%d usd=%.4f tokens=%d/%d wall_ms=%d snap=%s fp=%s\n",
+		kind, rep.Metrics.HeldInPass, rep.Metrics.HeldInTotal, rep.Metrics.HeldOutPass, rep.Metrics.HeldOutTotal, rep.Metrics.SafetyFail,
+		rep.USD, rep.TokensIn, rep.TokensOut, rep.WallMs, shortHash(rep.Snapshot), rep.ModelFingerprint)
 	for _, r := range rep.Results {
 		k := r.Kind
 		if k == "" {
 			k = "-"
 		}
-		fmt.Printf("  %s kind=%s pass=%v %s\n", r.ID, k, r.Pass, r.Error)
+		fmt.Printf("  %s kind=%s pass=%v usd=%.4f %s\n", r.ID, k, r.Pass, r.USD, r.Error)
 	}
+}
+
+func shortHash(h string) string {
+	if len(h) > 12 {
+		return h[:12]
+	}
+	return h
 }
 
 func updateCmd() *cobra.Command {
@@ -415,9 +466,11 @@ func doctorCmd() *cobra.Command {
 }
 
 func evolveCmd() *cobra.Command {
-	var k, rounds int
-	var promote, sealed bool
+	var k, rounds, baselines int
+	var promote, sealed, behavior, index bool
 	var solver string
+	var maxUSD float64
+	var maxWall time.Duration
 	cmd := &cobra.Command{
 		Use:   "evolve",
 		Short: "Run Self-Harness cycles (L1 materials). Default writes refs/canary only.",
@@ -432,19 +485,23 @@ func evolveCmd() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rounds)*15*time.Minute)
 			defer cancel()
-			var client runtime.Client
-			if solver == "prompt-sensitive" {
-				client = runtime.PromptSensitiveSolver{}
-			}
-			res, err := a.EvolveWith(ctx, client, map[string]string{"write-hello": "missing_artifact"}, app.EvolveRun{
+			res, err := a.EvolveWith(ctx, labClient(solver), nil, app.EvolveRun{
 				K: k, Rounds: rounds, PromoteActive: promote, Sealed: sealed,
+				MaxUSD: maxUSD, MaxWall: maxWall, Behavior: behavior, IndexTransfer: index, Baselines: baselines,
 			})
 			if err != nil {
 				return err
 			}
-			fmt.Printf("clusters=%d proposals=%d promoted=%s merged=%v active_moved=%v\n", len(res.Evidence.Clusters), len(res.Proposals), res.Promoted, res.Merged, res.ActiveMoved)
+			fmt.Printf("clusters=%d proposals=%d promoted=%s merged=%v active_moved=%v usd=%.4f tokens=%d/%d wall_ms=%d\n",
+				len(res.Evidence.Clusters), len(res.Proposals), res.Promoted, res.Merged, res.ActiveMoved,
+				res.Spend.USD, res.Spend.TokensIn, res.Spend.TokensOut, res.Spend.WallMs)
 			for _, tr := range res.Tried {
-				fmt.Printf("  %s accepted=%v %s\n", tr.Proposal.ID, tr.Accepted, tr.Reason)
+				fmt.Printf("  %s accepted=%v hit=%d miss=%d %s\n", tr.Proposal.ID, tr.Accepted, tr.ManifestoHit, tr.ManifestoMiss, tr.Reason)
+			}
+			if res.Compare != nil {
+				fmt.Printf("lab compare usd=%.4f bon=%d iid=%d scs=%d snap=%s fp=%s\n",
+					res.Compare.Spend.USD, len(res.Compare.BestOfN), len(res.Compare.IID), len(res.Compare.SCS),
+					shortHash(res.Compare.Snapshot), res.Compare.ModelFingerprint)
 			}
 			return nil
 		},
@@ -452,8 +509,13 @@ func evolveCmd() *cobra.Command {
 	cmd.Flags().IntVar(&k, "k", 3, "proposals per cycle")
 	cmd.Flags().IntVar(&rounds, "rounds", 1, "outer Propose→Prove rounds (still canary-only unless --promote)")
 	cmd.Flags().BoolVar(&promote, "promote", false, "move refs/active (default: canary + archive only)")
-	cmd.Flags().BoolVar(&sealed, "sealed", false, "use the private 20/10/5 catalog")
-	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or prompt-sensitive for fixture tests")
+	cmd.Flags().BoolVar(&sealed, "sealed", false, "use the private 12/8/10 catalog")
+	cmd.Flags().BoolVar(&behavior, "behavior", false, "add cheap behavior probes as safety")
+	cmd.Flags().BoolVar(&index, "index", false, "append Harbor-Index stand-in ids to transfer only")
+	cmd.Flags().IntVar(&baselines, "baselines", 0, "also run matched-budget BoN / IID / SCS with N repeats")
+	cmd.Flags().Float64Var(&maxUSD, "max-usd", 0, "stop the lab when estimated USD reaches this cap")
+	cmd.Flags().DurationVar(&maxWall, "max-wall", 0, "stop the lab at this wall clock budget")
+	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or heuristic/prompt-sensitive for fixture tests")
 	return cmd
 }
 

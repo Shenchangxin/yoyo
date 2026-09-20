@@ -34,7 +34,13 @@ func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent s
 	if len(props) == 0 {
 		return next, "", fmt.Errorf("nothing to merge")
 	}
+	seen := map[string]bool{}
 	for _, p := range props {
+		key := surfaceKey(p)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		if err := applyOne(cas, &next, p); err != nil {
 			return next, "", err
 		}
@@ -44,6 +50,9 @@ func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent s
 }
 
 func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) error {
+	if payloadCount(p) > 1 {
+		return fmt.Errorf("multiple L1 surfaces")
+	}
 	switch {
 	case p.Fragment != nil:
 		h, err := cas.Put(artifact.KindPromptFragment, p.Fragment.ID, *p.Fragment)
@@ -76,24 +85,32 @@ func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) e
 			return err
 		}
 		next.Skills = append(next.Skills, h)
-	case p.InstructionText != "" || p.MiddlewareText != "":
+	case p.InstructionText != "":
 		loop := artifact.LoopPreset{ID: "evolved"}
 		if next.LoopPreset != "" {
 			if v, _, err := artifact.Decode[artifact.LoopPreset](cas, next.LoopPreset); err == nil {
 				loop = v
 			}
 		}
-		if p.InstructionText != "" {
-			loop = loop.SetInstructionSlot(or(p.InstructionSlot, "verification"), p.InstructionText)
+		loop = loop.SetInstructionSlot(or(p.InstructionSlot, "verification"), p.InstructionText)
+		h, err := cas.Put(artifact.KindLoopPreset, loop.ID, loop)
+		if err != nil {
+			return err
 		}
-		if p.MiddlewareText != "" {
-			n := p.MiddlewareN
-			if n <= 0 {
-				n = 2
+		next.LoopPreset = h
+	case p.MiddlewareText != "":
+		loop := artifact.LoopPreset{ID: "evolved"}
+		if next.LoopPreset != "" {
+			if v, _, err := artifact.Decode[artifact.LoopPreset](cas, next.LoopPreset); err == nil {
+				loop = v
 			}
-			loop.MaxRecentToolErrors = n
-			loop.ToolErrorInstruction = p.MiddlewareText
 		}
+		n := p.MiddlewareN
+		if n <= 0 {
+			n = 2
+		}
+		loop.MaxRecentToolErrors = n
+		loop.ToolErrorInstruction = p.MiddlewareText
 		h, err := cas.Put(artifact.KindLoopPreset, loop.ID, loop)
 		if err != nil {
 			return err

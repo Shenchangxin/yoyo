@@ -48,8 +48,8 @@ entries:
     url: https://arxiv.org/abs/2609.14857
     pdf: https://arxiv.org/pdf/2609.14857.pdf
     layer: frontier
-    status: candidate
-    yoyo: "L1 surfaces are bounded but not the five-module RSI split; evolution is not benchmark-disjoint"
+    status: partial
+    yoyo: "evolve-set ⊥ promote-set on sealed 12/8/10; contrastive pairs; one L1 surface per proposal; not the five runtime modules and not 2000 external tasks"
     card: corpus/2609.14857-modular-rsi.md
 
   - id: "2608.08466"
@@ -78,8 +78,8 @@ entries:
     url: https://arxiv.org/abs/2609.00829
     pdf: https://arxiv.org/pdf/2609.00829.pdf
     layer: frontier
-    status: candidate
-    yoyo: "credit assignment is cluster-level; no ground-truth reference trajectories; no quality gate vs prompt bloat"
+    status: partial
+    yoyo: "AdmitQuality is a deterministic pre-Harbor gate; no ground-truth reference trajectories for the execution agent"
     card: corpus/2609.00829-harness-evolve.md
 
   - id: "2607.13683"
@@ -108,8 +108,8 @@ entries:
     url: https://arxiv.org/abs/2607.12227
     pdf: https://arxiv.org/pdf/2607.12227.pdf
     layer: frontier
-    status: critique
-    yoyo: "ShouldPromote exists; matched-budget vs test-time scaling is not logged"
+    status: implemented
+    yoyo: "SearchBaselines runs evolve vs --best N vs IID/SCS on the same suite, model, and USD/wall cap; go/no-go is an operator decision"
     card: corpus/2607.12227-rethink-eval.md
 
   - id: "2609.14858"
@@ -168,8 +168,8 @@ entries:
     url: https://arxiv.org/abs/2609.04298
     pdf: https://arxiv.org/pdf/2609.04298.pdf
     layer: frontier
-    status: candidate
-    yoyo: "local Harbor adapter + sealed splits; no Harbor-Index 82-task gate"
+    status: partial
+    yoyo: "three stand-in Index tasks as transfer-only; ids never enter Propose; 82-task Index is not in desktop CI"
     card: corpus/2609.04298-harbor-index.md
 
   - id: "2609.00006"
@@ -273,8 +273,8 @@ entries:
     url: https://arxiv.org/abs/2603.29919
     pdf: https://arxiv.org/pdf/2603.29919.pdf
     layer: frontier
-    status: candidate
-    yoyo: "catalog-only injection exists; no adversarial compression of skill bodies"
+    status: partial
+    yoyo: "AdmitQuality rejects non-actionable skill bodies; no adversarial compression pass"
     card: corpus/2603.29919-skill-reducer.md
 
   - id: "2608.26263"
@@ -356,8 +356,8 @@ entries:
       hf: https://huggingface.co/papers/2604.25850
       code: https://github.com/china-qijizhifeng/agentic-harness-engineering
     layer: frontier
-    status: candidate
-    yoyo: "Proposal.PredictedFixes is a weak change manifest; journal is the evidence plane. System-prompt-only evolution is warned against."
+    status: implemented
+    yoyo: "predicted_fixes is a canary contract: non-empty and hit==0 rejects. Journal remains the evidence plane."
     card: corpus/2604.25850-ahe.md
 
   - id: "2603.03329"
@@ -585,7 +585,7 @@ entries:
       code: https://github.com/YonatanGideoni/code_evo_simple_baselines
     layer: frontier
     status: critique
-    yoyo: "evolve lab must beat IID/SCS and eval --best N under the same budget. Search space (L1 surfaces) matters more than a fancier proposer."
+    yoyo: "evolve lab runs IID/SCS and eval --best N under the same budget. Search structure freezes if it cannot beat them."
     card: corpus/2602.16805-simple-baselines.md
 
   - id: "2511.07919"
@@ -645,7 +645,7 @@ products:
     title: "The Anatomy of Harness Engineering (Google Developers Blog)"
     year: 2026
     url: https://developers.googleblog.com/the-anatomy-of-harness-engineering-how-to-evaluate-iterate-and-guard-ai-coding-agents/
-    status: candidate
+    status: implemented
     card: products/google-harness-engineering.md
   - id: xai-grok-build
     title: "Grok Build is Now Open Source"

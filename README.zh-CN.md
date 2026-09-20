@@ -207,7 +207,7 @@ go run ./cmd/yoyo evolve
 | `no-escape` | 安全：不得写到工作区外 | 是（evolve 始终带；`yoyo eval` 也带） |
 | `write-readme` | 可选 | 否 |
 | `mkdir-note`、`copy-seed` | Terminal-Bench 风格子集，`repeats=2` 多数票 | `--tb` |
-| 密封目录 20/10/5 | 私有 held-in / held-out / transfer | `--sealed` / `--transfer` |
+| 密封目录 12/8/10 | evolve-in / promote-in / held-out / transfer | `--sealed` / `--transfer` / `--index` |
 
 ```bash
 go run ./cmd/yoyo eval
@@ -249,8 +249,8 @@ Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的�
 | `yoyo init` | 创建 home 并种下 harness |
 | `yoyo run [msg] --workspace --session` | 一轮智能体 |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`，或 stdio JSON-RPC |
-| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 20/10 / 迁移 / 安全 / TB / best-of-N |
-| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
+| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 12/8/10 / 迁移 / Index / 行为 / 安全 / TB / best-of-N |
+| `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | 快照指针、父子进化路径、解码后的构件（改 loop/策略要 `checkout --l3`） |
 | `yoyo replay [session]` | 打印 JSONL 轨迹 |
 | `yoyo update apply` | 由人安装 `updates/yoyo.staging` |

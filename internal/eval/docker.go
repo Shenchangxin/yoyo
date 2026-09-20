@@ -28,11 +28,14 @@ func runVerifierDocker(work string, task Task, script string) (bool, string, err
 	if out, err := build.CombinedOutput(); err != nil {
 		return false, string(out), err
 	}
-	args := []string{"run", "--rm", "--network=none", "-v", work + ":/app", "-w", "/app", tag}
+	args := []string{"run", "--rm", "--network=none",
+		"-v", work + ":/app",
+		"-v", filepath.Join(task.Dir, "tests") + ":/grader:ro",
+		"-w", "/app", tag}
 	if strings.EqualFold(filepath.Ext(script), ".ps1") {
-		args = append(args, "pwsh", "-File", "/app/tests/"+filepath.Base(script))
+		args = append(args, "pwsh", "-File", "/grader/"+filepath.Base(script))
 	} else {
-		args = append(args, "sh", "/app/tests/"+filepath.Base(script))
+		args = append(args, "sh", "/grader/"+filepath.Base(script))
 	}
 	cmd := exec.Command("docker", args...)
 	out, err := cmd.CombinedOutput()

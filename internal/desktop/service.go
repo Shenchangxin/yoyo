@@ -289,6 +289,38 @@ func (s *Service) RunEvalTransfer() (any, error) {
 	return s.App.RunEvalTransfer(ctx, nil)
 }
 
+func (s *Service) RunEvalIndex() (any, error) {
+	if s.RPC != nil {
+		return s.call("eval.run_index", nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	return s.App.RunEvalIndex(ctx, nil)
+}
+
+func (s *Service) RunEvalBehavior() (any, error) {
+	if s.RPC != nil {
+		return s.call("eval.run_behavior", nil)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	return s.App.RunEvalBehavior(ctx, nil)
+}
+
+func (s *Service) LastEval() (any, error) {
+	if s.RPC != nil {
+		return s.call("eval.last", nil)
+	}
+	return s.App.LastEval(), nil
+}
+
+func (s *Service) LastEvolve() (any, error) {
+	if s.RPC != nil {
+		return s.call("evolve.last", nil)
+	}
+	return s.App.LastEvolve(), nil
+}
+
 func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 	if s.RPC != nil {
 		return decode[[]trace.Event](s.call("trajectory.get", map[string]any{"session": id}))
@@ -532,8 +564,15 @@ func (s *Service) EvolveK(k int) (evolve.CycleResult, error) {
 }
 
 func (s *Service) EvolveRun(k, rounds int, sealed, promote bool) (evolve.CycleResult, error) {
+	return s.EvolveLab(k, rounds, sealed, promote, false, false, 0, 0)
+}
+
+func (s *Service) EvolveLab(k, rounds int, sealed, promote, behavior, index bool, baselines int, maxUSD float64) (evolve.CycleResult, error) {
 	if s.RPC != nil {
-		return decode[evolve.CycleResult](s.call("evolve.run", map[string]any{"k": k, "rounds": rounds, "sealed": sealed, "promote": promote}))
+		return decode[evolve.CycleResult](s.call("evolve.run", map[string]any{
+			"k": k, "rounds": rounds, "sealed": sealed, "promote": promote,
+			"behavior": behavior, "index": index, "baselines": baselines, "max_usd": maxUSD,
+		}))
 	}
 	timeout := 15 * time.Minute
 	if rounds > 1 {
@@ -544,7 +583,10 @@ func (s *Service) EvolveRun(k, rounds int, sealed, promote bool) (evolve.CycleRe
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return s.App.EvolveWith(ctx, nil, nil, app.EvolveRun{K: k, Rounds: rounds, Sealed: sealed, PromoteActive: promote})
+	return s.App.EvolveWith(ctx, nil, nil, app.EvolveRun{
+		K: k, Rounds: rounds, Sealed: sealed, PromoteActive: promote,
+		Behavior: behavior, IndexTransfer: index, Baselines: baselines, MaxUSD: maxUSD,
+	})
 }
 
 func (s *Service) Archive() []evolve.Node {

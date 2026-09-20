@@ -1,6 +1,10 @@
 package evolve
 
-import "github.com/Shenchangxin/yoyo/internal/artifact"
+import (
+	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/artifact"
+)
 
 // Curate applies ACE delta updates. It never rewrites the playbook in place
 // as a blob — only ADD (via ApplyDelta) and Helpful/Harmful counters.
@@ -25,7 +29,7 @@ func Curate(pb artifact.Playbook, ref Reflection) artifact.Playbook {
 		add = append(add, delta)
 	}
 	for _, insight := range ref.Insights {
-		if insight == "" {
+		if insight == "" || looksLikeRepoOverview(strings.ToLower(insight)) {
 			continue
 		}
 		add = append(add, artifact.PlaybookBullet{

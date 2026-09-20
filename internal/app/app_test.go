@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -323,6 +324,90 @@ func TestEvalAndSelfHarnessPromote(t *testing.T) {
 				t.Fatal("held-out task leaked into proposer evidence")
 			}
 		}
+	}
+}
+
+func TestMineUsesBaselineTraceNotAllMissingArtifact(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	res, err := a.EvolveWith(context.Background(), runtime.WrongHelloSolver{}, nil, app.EvolveRun{K: 1, PromoteRepeats: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Evidence.Clusters) == 0 {
+		t.Fatal("expected mined failures from baseline harbor")
+	}
+	allMissing := true
+	for _, c := range res.Evidence.Clusters {
+		if c.Signature.AgentMechanism != "missing_artifact" {
+			allMissing = false
+		}
+		for _, id := range c.TaskIDs {
+			if id == "write-answer" {
+				t.Fatal("held-out leaked")
+			}
+		}
+	}
+	if allMissing {
+		t.Fatalf("expected a non-missing_artifact cluster: %+v", res.Evidence.Clusters)
+	}
+}
+
+func TestPassingTaskNotMinedFromFixture(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	res, err := a.EvolveWith(context.Background(), runtime.HeuristicSolver{}, map[string]string{
+		"write-hello": "missing_artifact",
+	}, app.EvolveRun{K: 1, PromoteRepeats: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range res.Evidence.Clusters {
+		for _, id := range c.TaskIDs {
+			if id == "write-hello" {
+				t.Fatal("passed write-hello still mined")
+			}
+		}
+	}
+}
+
+func TestIndexIdsNeverEnterEvidence(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	res, err := a.EvolveWith(context.Background(), runtime.HeuristicSolver{}, nil, app.EvolveRun{
+		K: 1, PromoteRepeats: 1, IndexTransfer: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, _ := json.Marshal(res.Evidence)
+	if strings.Contains(string(blob), "hi-01-index") || strings.Contains(string(blob), "hi-02-index") {
+		t.Fatalf("index id leaked into evidence: %s", blob)
+	}
+}
+
+func TestLastEvalPersists(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	rep, err := a.RunEval(context.Background(), runtime.HeuristicSolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := a.LastEval()
+	if got.Suite != rep.Suite || len(got.Results) != len(rep.Results) {
+		t.Fatalf("persist %+v vs %+v", got, rep)
 	}
 }
 

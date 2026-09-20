@@ -128,6 +128,11 @@ type App struct {
 	Computer   *computeruse.Host
 	Observe    *observe.Tracer
 	schedStop  chan struct{}
+
+	evalMu     sync.Mutex
+	lastEval   eval.RunReport
+	evolveMu   sync.Mutex
+	lastEvolve evolve.CycleResult
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -421,6 +426,8 @@ func (a *App) Health() map[string]any {
 		"update_channel":  a.Config.UpdateChannel,
 		"isolation":       a.IsolationReport(),
 		"gate_mode":       capability.ParseGateMode(a.Config.GateMode),
+		"last_eval":       a.LastEval(),
+		"last_evolve":     a.LastEvolve(),
 	}
 }
 

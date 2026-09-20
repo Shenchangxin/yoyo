@@ -103,14 +103,16 @@
 
 ### 3.2 本季该补的洞
 
-1. **进化数据与评测数据相交。** smoke/sealed 的 held-in 既是 evolve 的证据源，也是 `ShouldPromote` 的一半。ModularRSI 的答案是外部 2000 题。最小动作：把 sealed held-in 再切一刀，evolve 只用其中一部分，晋升仍看全量 held-out + transfer。
-2. **单轨迹更新。** `Mine` 聚的是失败；`Passing` 只是 id 列表。ModularRSI 要求 **同一任务** 的成功/失败对比。最小动作：Harbor repeats≥2 时，把 pass 与 fail 轨迹成对送进 proposer。
-3. **整包 L1，而不是五模块。** 提案表面已经分开（playbook vs instruction vs middleware），但没有「只改 Observation Management」这种受限补丁，也没有集成阶段解冲突。
-4. **没有质量门。** HarnessEvolve / SkillReducer / Gloaguen：过滤泄漏、prompt 膨胀、无动作内容、仓库概览。Yoyo 只靠 Harbor 分数。一个过拟合的长 bullet 只要 held-in 升、held-out 没掉，就能进 canary。
-5. **evolve 的算力账没记。** Wang et al. 与 Gideoni et al. 会问：这 K 个提案 × Harbor repeats，是不是还不如 IID 采样或 `eval --best N`？实验室没有把三者画在同一张预算图上。
+1. **进化数据与评测数据相交。** ~~smoke/sealed 的 held-in 既是 evolve 的证据源，也是 `ShouldPromote` 的一半。~~ **已落地：** sealed 切成 evolve-set 12 / promote-set 8；`Promote()` 只看 promote-set + 全量 held-out。密封题仍是同构写文件，协议对、信号弱。
+2. **单轨迹更新。** ~~`Passing` 只是 id 列表。~~ **已落地：** Harbor repeats 保留每次 attempt；`EvidenceBundle.Pairs` 送同任务 fail/pass 摘要。held-out 继续剥离。
+3. **整包 L1，而不是五模块。** ~~没有受限补丁。~~ **已落地（收缩版）：** 一个提案一个 L1 surface；`MergeProposals` 只合并不相交 surface；同 surface 两胜出留 Harbor 更好的，禁止后写覆盖。不改 `LoopPreset` 拓扑。
+4. **没有质量门。** ~~只靠 Harbor 分数。~~ **已落地：** Harbor 前确定性 `AdmitQuality`（playbook token 帽、held-in n-gram、仓库概览、skill 不可执行、held-out / Index id）。不上第二个模型。
+5. **evolve 的算力账没记。** ~~实验室没有对照。~~ **已落地：** `RunReport` 记 tokens/USD/wall；evolve vs `--best N` vs IID/SCS 同预算；GUI 对照表。**Go/no-go 仍是 live 模型上的操作员决策**，不是默认加大 K。
 6. **技能还是静态说明书。** SoK 的 Pattern-2（可执行 skill）与 SKILL.state（可变状态）都还没碰。当前 skill 是 markdown + 可选 WASM，执行仍走主对话。
-7. **没有微观行为评测。** Google 2026-09 的 harness 文把「有没有跑测试就声称完成」做成秒级断言。我们只有 Harbor 终局。evolve 实验室需要一层便宜的行为套件。
-8. **提案的 predicted_fixes 没有被下一轮核实。** AHE 的 decision observability 要求每条编辑是可证伪合同。`Proposal.PredictedFixes` 已经有字段，Harbor 报告没有拿它对照。
+7. **没有微观行为评测。** ~~只有 Harbor 终局。~~ **已落地：** 四个秒级行为探针（声称完成、不得读 `tests/`、必须先有产物、不得发明 grader 路径）。进 evolve 实验室和 CI，不进默认 89 题晋升。
+8. **提案的 predicted_fixes 没有被下一轮核实。** ~~字段闲置。~~ **已落地：** `predicted_fixes` 非空且 hit==0 → 不得进 canary；miss>hit 仍只降权。报告和 EvolveLab 展示 hit/miss。
+
+Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 transfer，id 永不进 Propose。
 
 ### 3.3 不要做的
 
@@ -129,14 +131,14 @@
 
 | # | 动作 | 文献依据 | 风险 |
 | --- | --- | --- | --- |
-| 1 | Evolve 实验室同时跑 `eval --best N`，并加 IID / SCS 对照，把 token / USD / 墙钟画在一起 | Wang 2026、Gideoni 2026 | 低：只观测 |
-| 2 | Proposer 证据改为「失败簇 + 同任务成功对比」；held-out 继续剥离 | ModularRSI、HarnessEvolve | 低 |
-| 3 | Canary 增加质量门：playbook 总 token 上限、禁止复制 held-in 指令原文、bullet 去重、禁止仓库概览类针 | HarnessEvolve、ACE、SkillReducer、Gloaguen | 低 |
-| 3b | Harbor 报告核对 `predicted_fixes`；对不上的提案记 manifesto miss | AHE | 低 |
-| 3c | 加一层秒级行为 eval（「声称完成前必须跑验证器」） | Google 2026-09 | 低 |
-| 4 | 进化集与晋升集切开（哪怕只是本地 suite 的再划分） | ModularRSI、Wang、ICLR RSI reward hacking | 中：要重新标定 sealed |
-| 5 | LoopPreset 按 ModularRSI 五模块打标签，提案一次只动一个模块，过 Harbor 后再 merge | ModularRSI | 中：要 L3 确认拓扑 |
-| 6 | 可选：接入 Harbor-Index 子集作 transfer 门，替代继续堆本地任务 | Harbor-Index 2026-09 | 中：外部依赖 |
+| 1 | Evolve 实验室同时跑 `eval --best N`，并加 IID / SCS 对照，把 token / USD / 墙钟画在一起 | Wang 2026、Gideoni 2026 | 已落地；live 模型上的 go/no-go 仍是操作员 |
+| 2 | Proposer 证据改为「失败簇 + 同任务成功对比」；held-out 继续剥离 | ModularRSI、HarnessEvolve | 已落地 |
+| 3 | Canary 增加质量门：playbook 总 token 上限、禁止复制 held-in 指令原文、bullet 去重、禁止仓库概览类针 | HarnessEvolve、ACE、SkillReducer、Gloaguen | 已落地 |
+| 3b | Harbor 报告核对 `predicted_fixes`；hit==0 不得进 canary | AHE | 已落地 |
+| 3c | 加一层秒级行为 eval（「声称完成前必须跑验证器」） | Google 2026-09 | 已落地（opt-in，不进默认晋升） |
+| 4 | 进化集与晋升集切开（哪怕只是本地 suite 的再划分） | ModularRSI、Wang、ICLR RSI reward hacking | 已落地；密封题同构，信号弱 |
+| 5 | 提案一次只动一个 L1 surface，过 Harbor 后再 merge 不相交 surface | ModularRSI | 已落地（不改 loop 拓扑） |
+| 6 | 可选：接入 Harbor-Index 子集作 transfer 门，替代继续堆本地任务 | Harbor-Index 2026-09 | stand-in 已接；82 题不进 CI |
 | 7 | Skill 执行状态外置（SKILL.state 思想），主对话只看当前 state + 最新观察 | SKILL.state | 高：改 runtime |
 
 完成 1–4 之后，再考虑把 ModularRSI 的外部进化集引进来。不要先上 7。

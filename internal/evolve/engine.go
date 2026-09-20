@@ -3,6 +3,7 @@ package evolve
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/eval"
@@ -32,6 +33,8 @@ type CycleResult struct {
 	Promoted       string         `json:"promoted,omitempty"`
 	Merged         bool           `json:"merged,omitempty"`
 	ActiveMoved    bool           `json:"active_moved,omitempty"`
+	Spend          Spend          `json:"spend"`
+	Compare        *LabCompare    `json:"compare,omitempty"`
 }
 
 type Trial struct {
@@ -42,6 +45,7 @@ type Trial struct {
 	Reason        string       `json:"reason"`
 	ManifestoHit  int          `json:"manifesto_hit,omitempty"`
 	ManifestoMiss int          `json:"manifesto_miss,omitempty"`
+	Spend         Spend        `json:"spend,omitempty"`
 }
 
 type CycleOpts struct {
@@ -60,6 +64,11 @@ type CycleOpts struct {
 	StagingHash    string
 	IsolateRoot    string
 	PromoteRepeats int
+	MaxUSD         float64
+	MaxWall        time.Duration
+	Behavior       bool
+	IndexTransfer  bool
+	USDPerMTok     float64
 }
 
 func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error) {
@@ -79,6 +88,12 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		opts.Suite.Repeats = opts.PromoteRepeats
 	}
 	opts.Suite.Safety = uniqueSafety(opts.Suite.Safety, "no-escape")
+	if opts.Behavior {
+		eval.ApplyBehavior(&opts.Suite)
+	}
+	if opts.IndexTransfer {
+		eval.ApplyIndexTransfer(&opts.Suite)
+	}
 	res.ParentSelected = parent.Hash
 	if opts.IsolateRoot == "" {
 		if root, stop, err := ScratchGit(); err == nil {
@@ -87,54 +102,72 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		}
 	}
 
-	var events []trace.Event
-	if opts.Trace != nil {
-		events, _ = opts.Trace.Read(opts.SessionID)
-	}
-	held := map[string]bool{}
-	for _, id := range opts.HeldOut {
-		held[id] = true
-	}
-	if len(opts.HeldOut) == 0 {
-		for _, id := range opts.Suite.HeldOut {
-			held[id] = true
-		}
-	}
-	for _, id := range opts.Suite.Transfer {
-		held[id] = true
-	}
+	held := heldSet(opts)
+	mineOpts, promoteOpts := splitCycleSuites(opts)
 
-	baseReport, err := e.evalMats(ctx, opts, baseline, "-base")
+	baseReport, err := e.evalMats(ctx, mineOpts, baseline, "-base")
 	if err != nil {
 		return res, err
 	}
+	AddSpend(&res.Spend, baseReport)
 
+	var promoteBase eval.RunReport
+	if promoteOpts.Suite.ID != mineOpts.Suite.ID || !sameIDs(promoteOpts.Suite.HeldIn, mineOpts.Suite.HeldIn) {
+		promoteBase, err = e.evalMats(ctx, promoteOpts, baseline, "-promote-base")
+		if err != nil {
+			return res, err
+		}
+		AddSpend(&res.Spend, promoteBase)
+	} else {
+		promoteBase = baseReport
+	}
+
+	events := e.collectEvents(opts.Trace, baseReport)
+	passed := map[string]bool{}
 	safeFailed := map[string]string{}
+	for _, r := range baseReport.Results {
+		if r.Pass {
+			passed[r.ID] = true
+			continue
+		}
+		if held[r.ID] || r.Kind == "safety" {
+			continue
+		}
+		safeFailed[r.ID] = r.Error
+		if safeFailed[r.ID] == "" {
+			safeFailed[r.ID] = "verifier_fail"
+		}
+	}
 	for k, v := range opts.FailedTasks {
-		if held[k] {
+		if held[k] || passed[k] {
+			continue
+		}
+		if _, ok := safeFailed[k]; ok {
 			continue
 		}
 		safeFailed[k] = v
 	}
-	if len(safeFailed) == 0 {
-		for _, r := range baseReport.Results {
-			if r.Pass || held[r.ID] || r.Kind == "safety" {
-				continue
-			}
-			safeFailed[r.ID] = r.Error
-			if safeFailed[r.ID] == "" {
-				safeFailed[r.ID] = "verifier_fail"
-			}
-		}
-	}
 
 	res.Evidence = Mine(events, safeFailed)
+	outcomes := map[string]repeatOutcome{}
 	for _, r := range baseReport.Results {
-		if !r.Pass || held[r.ID] || r.Kind == "safety" {
+		if held[r.ID] || r.Kind == "safety" {
 			continue
 		}
-		res.Evidence.Passing = append(res.Evidence.Passing, PassSummary{TaskID: r.ID, Note: "held-in pass"})
+		oc := repeatOutcome{PassCount: r.RepeatsPass, FailCount: r.Repeats - r.RepeatsPass}
+		if r.Repeats <= 1 {
+			if r.Pass {
+				oc = repeatOutcome{PassCount: 1}
+			} else {
+				oc = repeatOutcome{FailCount: 1}
+			}
+		}
+		outcomes[r.ID] = oc
+		if r.Pass {
+			res.Evidence.Passing = append(res.Evidence.Passing, PassSummary{TaskID: r.ID, Note: "held-in pass"})
+		}
 	}
+	res.Evidence = AttachPairs(res.Evidence, events, outcomes, held)
 	if e.Archive != nil {
 		for _, n := range lastNodes(e.Archive.List(), 12) {
 			res.Evidence.Prior = append(res.Evidence.Prior, PriorTrial{
@@ -154,8 +187,12 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 	if err != nil {
 		return res, err
 	}
+	heldInText := loadHeldInInstructions(e.Eval, mineOpts.Suite)
 	for i := range props {
 		props[i] = sanitizeHeldOut(props[i], held)
+		if props[i].Surface == "" {
+			props[i].Surface = "prompt_fragment"
+		}
 	}
 	for _, b := range curated.Bullets {
 		if playbookHas(parent.Playbook, b) {
@@ -181,9 +218,20 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 		return res, err
 	}
 
+	cycleStart := time.Now()
+	overBudget := func() bool {
+		if opts.MaxUSD > 0 && res.Spend.USD >= opts.MaxUSD {
+			return true
+		}
+		if opts.MaxWall > 0 && time.Since(cycleStart) >= opts.MaxWall {
+			return true
+		}
+		return false
+	}
+
 	var accepted []Trial
 	if opts.StagingHash != "" && opts.StagingHash != baseline.Hash {
-		trial := e.trialSnapshot(ctx, opts, baseline, baseReport, opts.StagingHash, Proposal{
+		trial := e.trialSnapshot(ctx, mineOpts, baseline, baseReport, opts.StagingHash, Proposal{
 			ID:      "online-ace-stage",
 			Surface: "playbook",
 			Audit:   "online ACE staging (Harbor gate)",
@@ -196,29 +244,50 @@ func (e *Engine) Cycle(ctx context.Context, opts CycleOpts) (CycleResult, error)
 	}
 
 	for _, p := range props {
+		if overBudget() {
+			res.Tried = append(res.Tried, Trial{Proposal: p, Reason: "budget"})
+			continue
+		}
+		if err := AdmitQuality(p, parent.Playbook, parent.Loop.PlaybookTokens, held, heldInText); err != nil {
+			res.Tried = append(res.Tried, Trial{Proposal: p, Reason: err.Error()})
+			continue
+		}
 		candSnap, hash, err := ApplyProposal(e.CAS, parent.Snap, parent.Hash, p)
 		if err != nil {
 			res.Tried = append(res.Tried, Trial{Proposal: p, Reason: err.Error()})
 			continue
 		}
 		mats := matsFrom(parent, candSnap, hash, p)
-		trial := e.trialMats(ctx, opts, baseline, baseReport, mats, p, held)
+		trial := e.trialMats(ctx, mineOpts, baseline, baseReport, mats, p, held)
+		AddSpend(&res.Spend, eval.RunReport{TokensIn: trial.Spend.TokensIn, TokensOut: trial.Spend.TokensOut, USD: trial.Spend.USD, WallMs: trial.Spend.WallMs})
 		res.Tried = append(res.Tried, trial)
 		if trial.Accepted {
 			accepted = append(accepted, trial)
 		}
 	}
 
-	winner, merged := e.pickWinner(ctx, opts, parent, baseline, baseReport, accepted, held)
+	winner, merged := e.pickWinner(ctx, mineOpts, parent, baseline, baseReport, accepted, held)
+	if winner.Hash != "" && !sameIDs(promoteOpts.Suite.HeldIn, mineOpts.Suite.HeldIn) {
+		promoMats, err := e.matsOfHash(winner.Hash, parent)
+		if err == nil {
+			promo := e.trialMats(ctx, promoteOpts, baseline, promoteBase, promoMats, winner.Proposal, held)
+			AddSpend(&res.Spend, eval.RunReport{TokensIn: promo.Spend.TokensIn, TokensOut: promo.Spend.TokensOut, USD: promo.Spend.USD, WallMs: promo.Spend.WallMs})
+			winner.Accepted = promo.Accepted
+			winner.Reason = promo.Reason
+			winner.Metrics = promo.Metrics
+			winner.ManifestoHit = promo.ManifestoHit
+			winner.ManifestoMiss = promo.ManifestoMiss
+			if !promo.Accepted {
+				winner.Hash = ""
+			}
+		}
+	}
 	if winner.Hash != "" {
 		res.Promoted = winner.Hash
 		res.Merged = merged
 		res.ActiveMoved = e.publishCanary(opts, baseline, winner.Hash)
 	}
 	_ = e.Journal.Commit(intent.Seq)
-	if res.Promoted == "" && len(res.Tried) == 0 {
-		return res, fmt.Errorf("no proposals evaluated")
-	}
 	return res, nil
 }
 
@@ -273,6 +342,10 @@ func (e *Engine) pickWinner(ctx context.Context, opts CycleOpts, parent, baselin
 	if len(props) < 2 {
 		return bestTrial(accepted), false
 	}
+	props = exclusiveSurfaces(accepted)
+	if len(props) < 2 {
+		return bestTrial(accepted), false
+	}
 	snap, hash, err := MergeProposals(e.CAS, parent.Snap, parent.Hash, props)
 	if err != nil {
 		return bestTrial(accepted), false
@@ -318,6 +391,7 @@ func (e *Engine) publishCanary(opts CycleOpts, baseline MaterialSet, hash string
 }
 
 func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet, suffix string) (eval.RunReport, error) {
+	meter := &runtime.Meter{USDPerMTok: opts.USDPerMTok}
 	return e.Eval.Run(ctx, eval.RunOpts{
 		Suite:       opts.Suite,
 		Snapshot:    mats.Snap,
@@ -331,6 +405,7 @@ func (e *Engine) evalMats(ctx context.Context, opts CycleOpts, mats MaterialSet,
 		SessionID:   opts.SessionID + suffix,
 		Model:       opts.Model,
 		IsolateRoot: opts.IsolateRoot,
+		Meter:       meter,
 	})
 }
 
@@ -376,6 +451,7 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 	}
 	report, rerr := e.evalMats(ctx, opts, mats, "-cand-"+p.ID)
 	trial.Metrics = report.Metrics
+	trial.Spend = Spend{TokensIn: report.TokensIn, TokensOut: report.TokensOut, USD: report.USD, WallMs: report.WallMs}
 	hit, miss := scoreManifesto(p, report, held)
 	trial.ManifestoHit, trial.ManifestoMiss = hit, miss
 	e.logTrial(mats.Hash, report, p, held)
@@ -386,6 +462,10 @@ func (e *Engine) trialMats(ctx context.Context, opts CycleOpts, baseline Materia
 		return trial
 	}
 	ok, reason := eval.Promote(baseReport.Metrics, report.Metrics)
+	if ok && len(p.PredictedFixes) > 0 && hit == 0 {
+		ok = false
+		reason = "manifesto_miss"
+	}
 	trial.Accepted = ok
 	trial.Reason = reason
 	if !ok {
@@ -450,6 +530,98 @@ func lastNodes(nodes []Node, n int) []Node {
 		return nodes
 	}
 	return nodes[len(nodes)-n:]
+}
+
+func exclusiveSurfaces(accepted []Trial) []Proposal {
+	best := map[string]Trial{}
+	var order []string
+	for _, t := range accepted {
+		if t.Proposal.ID == "online-ace-stage" {
+			continue
+		}
+		s := surfaceKey(t.Proposal)
+		prev, ok := best[s]
+		if !ok {
+			order = append(order, s)
+			best[s] = t
+			continue
+		}
+		if trialScore(t) > trialScore(prev) {
+			best[s] = t
+		}
+	}
+	var props []Proposal
+	for _, s := range order {
+		props = append(props, best[s].Proposal)
+	}
+	return props
+}
+
+func trialScore(t Trial) int {
+	return t.Metrics.HeldInPass + t.Metrics.HeldOutPass
+}
+
+func splitCycleSuites(opts CycleOpts) (mine, promote CycleOpts) {
+	mine, promote = opts, opts
+	if len(opts.Suite.EvolveIn) == 0 {
+		return opts, opts
+	}
+	ms, ps := opts.Suite, opts.Suite
+	ms.HeldIn = append([]string{}, opts.Suite.EvolveIn...)
+	ms.HeldOut = nil
+	ms.Transfer = nil
+	ps.HeldIn = append([]string{}, opts.Suite.HeldIn...)
+	mine.Suite = ms
+	promote.Suite = ps
+	return mine, promote
+}
+
+func sameIDs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *Engine) collectEvents(st *trace.Store, report eval.RunReport) []trace.Event {
+	if st == nil {
+		return nil
+	}
+	var events []trace.Event
+	seen := map[string]bool{}
+	for _, r := range report.Results {
+		for _, a := range r.Attempts {
+			if a.SessionID == "" || seen[a.SessionID] {
+				continue
+			}
+			seen[a.SessionID] = true
+			more, _ := st.Read(a.SessionID)
+			events = append(events, more...)
+		}
+	}
+	return events
+}
+
+func loadHeldInInstructions(eng *eval.Engine, suite artifact.EvalSuite) []string {
+	if eng == nil {
+		return nil
+	}
+	ids := suite.HeldIn
+	if len(suite.EvolveIn) > 0 {
+		ids = suite.EvolveIn
+	}
+	var out []string
+	for _, id := range ids {
+		if s := eng.ReadInstruction(suite, id); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 type specTool struct{ s artifact.ToolSpec }

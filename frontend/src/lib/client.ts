@@ -515,9 +515,29 @@ export async function bestOfN(n: number): Promise<any> {
   return http("/api/eval/best", { method: "POST", body: JSON.stringify({ n }) });
 }
 
-export async function evolve(k = 3, opts?: { rounds?: number; sealed?: boolean; promote?: boolean }): Promise<any> {
-  const body = { k, rounds: opts?.rounds ?? 0, sealed: !!opts?.sealed, promote: !!opts?.promote };
+export async function evolve(k = 3, opts?: {
+  rounds?: number;
+  sealed?: boolean;
+  promote?: boolean;
+  behavior?: boolean;
+  index?: boolean;
+  baselines?: number;
+  maxUsd?: number;
+}): Promise<any> {
+  const body = {
+    k,
+    rounds: opts?.rounds ?? 0,
+    sealed: !!opts?.sealed,
+    promote: !!opts?.promote,
+    behavior: !!opts?.behavior,
+    index: !!opts?.index,
+    baselines: opts?.baselines ?? 0,
+    max_usd: opts?.maxUsd ?? 0,
+  };
   const s = await wailsService();
+  if (s?.EvolveLab) {
+    return s.EvolveLab(body.k, body.rounds, body.sealed, body.promote, body.behavior, body.index, body.baselines, body.max_usd);
+  }
   if (s?.EvolveRun) return s.EvolveRun(body.k, body.rounds, body.sealed, body.promote);
   if (s?.EvolveK && !body.rounds && !body.sealed && !body.promote) return s.EvolveK(k);
   if (s?.Evolve && k === 3 && !body.rounds && !body.sealed && !body.promote) return s.Evolve();
@@ -616,6 +636,30 @@ export async function runEvalTransfer(): Promise<any> {
   const s = await wailsService();
   if (s?.RunEvalTransfer) return s.RunEvalTransfer();
   return http("/api/eval/transfer", { method: "POST" });
+}
+
+export async function runEvalIndex(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RunEvalIndex) return s.RunEvalIndex();
+  return http("/api/eval/index", { method: "POST" });
+}
+
+export async function runEvalBehavior(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RunEvalBehavior) return s.RunEvalBehavior();
+  return http("/api/eval/behavior", { method: "POST" });
+}
+
+export async function lastEval(): Promise<any> {
+  const s = await wailsService();
+  if (s?.LastEval) return s.LastEval();
+  return http("/api/eval/last");
+}
+
+export async function lastEvolve(): Promise<any> {
+  const s = await wailsService();
+  if (s?.LastEvolve) return s.LastEvolve();
+  return http("/api/evolve/last");
 }
 
 export async function bestOfModels(models: string[]): Promise<any> {

@@ -24,10 +24,17 @@ type Cluster struct {
 	Symptoms  []string  `json:"symptoms"`
 }
 
+type ContrastivePair struct {
+	TaskID string `json:"task_id"`
+	Fail   string `json:"fail,omitempty"`
+	Pass   string `json:"pass,omitempty"`
+}
+
 type EvidenceBundle struct {
-	Clusters []Cluster     `json:"clusters"`
-	Passing  []PassSummary `json:"passing,omitempty"`
-	Prior    []PriorTrial  `json:"prior,omitempty"`
+	Clusters []Cluster         `json:"clusters"`
+	Passing  []PassSummary     `json:"passing,omitempty"`
+	Prior    []PriorTrial      `json:"prior,omitempty"`
+	Pairs    []ContrastivePair `json:"pairs,omitempty"`
 }
 
 func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
@@ -64,6 +71,41 @@ func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 	}
 	sort.Slice(clusters, func(i, j int) bool { return clusters[i].Size > clusters[j].Size })
 	return EvidenceBundle{Clusters: clusters}
+}
+
+func AttachPairs(bundle EvidenceBundle, events []trace.Event, reportHeld map[string]repeatOutcome, held map[string]bool) EvidenceBundle {
+	byTask := map[string][]trace.Event{}
+	for _, ev := range events {
+		if ev.TaskID != "" && !held[ev.TaskID] {
+			byTask[ev.TaskID] = append(byTask[ev.TaskID], ev)
+		}
+	}
+	var pairs []ContrastivePair
+	for id, oc := range reportHeld {
+		if held[id] {
+			continue
+		}
+		if oc.PassCount == 0 || oc.FailCount == 0 {
+			continue
+		}
+		pairs = append(pairs, ContrastivePair{
+			TaskID: id,
+			Fail:   summarize(byTask[id]) + " fail_repeats=" + itoa(oc.FailCount),
+			Pass:   "pass_repeats=" + itoa(oc.PassCount),
+		})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].TaskID < pairs[j].TaskID })
+	bundle.Pairs = pairs
+	return bundle
+}
+
+type repeatOutcome struct {
+	PassCount int
+	FailCount int
+}
+
+func itoa(n int) string {
+	return fmt.Sprintf("%d", n)
 }
 
 func classify(evs []trace.Event, cause string) Signature {
