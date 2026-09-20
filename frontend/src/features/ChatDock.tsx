@@ -43,13 +43,13 @@ export function ChatDock(props: {
   const copy = useCopy();
   return (
     <aside className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="flex h-9 shrink-0 items-center border-b border-border/80 px-3">
-        <span className="text-[13px] font-medium">{copy.dock.chat}</span>
-        <button type="button" className="ml-auto rounded-md px-2 py-1 text-[11px] text-muted hover:bg-lift hover:text-foreground" onClick={props.onOpenAgent}>
+      <div className="flex h-10 shrink-0 items-center border-b border-border/70 px-3">
+        <span className="text-[12.5px] font-medium tracking-[-0.005em]">{copy.dock.chat}</span>
+        <button type="button" className="ml-auto h-6 cursor-pointer rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground" onClick={props.onOpenAgent}>
           {copy.dock.expand}
         </button>
       </div>
-      <Transcript items={lastUserTurns(props.items, 3)} approvals={props.approvals} running={props.running} compact onResolve={props.onResolve} onRetry={props.onRetry} />
+      <Transcript items={lastUserTurns(props.items, 3)} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
       <Composer
         draftKey={props.draftKey}
         running={props.running}

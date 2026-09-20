@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
+import { LabCard, LabChip, LabFrame, LabStrip, LabTable } from "./LabFrame";
 import type { HarborKind } from "../../lib/protocol";
 
 export function HarborLab(props: {
@@ -38,7 +38,7 @@ export function HarborLab(props: {
 
   return (
     <LabFrame>
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border/80 bg-card p-2">
+      <LabStrip>
         <Button disabled={!!props.busy} onClick={() => props.onRun("suite")}>{copy.harbor.runSuite}</Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -64,7 +64,7 @@ export function HarborLab(props: {
             <Button variant="lift" disabled={!!props.busy} onClick={() => props.onRun("models")}>{copy.harbor.runModels}</Button>
           </>
         ) : null}
-      </div>
+      </LabStrip>
       {props.busy ? <p className="mb-4 text-[13px] text-muted">{props.busy}</p> : null}
       {!props.busy && props.error ? (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
@@ -74,7 +74,7 @@ export function HarborLab(props: {
       ) : null}
       {props.report ? (
         <>
-          <div className="mb-4 overflow-hidden rounded-[10px] border border-border/80 bg-card">
+          <div className="mb-4 overflow-hidden rounded-[12px] border border-border/80 bg-card surface-inset">
             <StoryRow
               step="1"
               label={copy.harbor.heldIn}

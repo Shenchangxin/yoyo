@@ -3,6 +3,7 @@ import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEv
 import { layoutRows } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
+import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
 import type { Item } from "../src/lib/protocol";
 
 function liveUser(text: string, extra?: Record<string, any>): Item {
@@ -156,6 +157,8 @@ test("tool detail prefers path over raw json", () => {
   expect(toolDetail(item)).toBe("src/main.go");
   expect(isArtifactTool("office_create")).toBe(true);
   expect(isArtifactTool("read_file")).toBe(false);
+  expect(isArtifactTool("write_file")).toBe(true);
+  expect(isArtifactTool("str_replace")).toBe(true);
 });
 
 test("ERROR: content marks a tool result as failed", () => {
@@ -290,4 +293,59 @@ test("steer stays inside the running agent turn", () => {
   ]);
   const rows = layoutRows(items);
   expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+});
+
+test("write_file and str_replace land as artifacts with a rendered diff", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "edit it" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: "{\"path\":\"web/index.html\",\"content\":\"<!doctype html><html><body>hi</body></html>\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote web/index.html" } },
+    { type: "tool_call", session_id: "s", payload: { id: "e1", name: "str_replace", arguments: "{\"path\":\"src/main.go\",\"old_str\":\"old\",\"new_str\":\"new\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  const view = artifactView(items.find((it) => it.type === "tool_call" && it.name === "write_file"), items.find((it) => it.type === "tool_result" && it.name === "write_file"));
+  expect(view.kind).toBe("html");
+  expect(view.path).toBe("web/index.html");
+  const diff = artifactView(items.find((it) => it.type === "tool_call" && it.name === "str_replace"));
+  expect(diff.kind).toBe("diff");
+  expect(diff.diff).toContain("-old");
+  expect(diff.diff).toContain("+new");
+  expect(artifactPreviewOpen(view)).toBe(true);
+  expect(artifactPreviewOpen(diff)).toBe(true);
+  const code = artifactView({
+    type: "tool_call",
+    name: "write_file",
+    payload: { name: "write_file", arguments: JSON.stringify({ path: "webui/src/pages/Users.tsx", content: "export function Users() { return null }" }) },
+  } as Item);
+  expect(code.kind).toBe("code");
+  expect(artifactPreviewOpen(code)).toBe(false);
+  expect(artifactShouldShow(code)).toBe(false);
+});
+
+test("unchanged source dumps stay in the process rail, not preview cards", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "dump the page" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: JSON.stringify({ path: "webui/src/pages/Users.tsx", content: "export function Users() { return null }" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote webui/src/pages/Users.tsx" } },
+    { type: "tool_call", session_id: "s", payload: { id: "e1", name: "str_replace", arguments: JSON.stringify({ path: "src/main.go", old_str: "old", new_str: "old" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "e1", name: "str_replace", content: "unchanged src/main.go" } },
+    { type: "tool_call", session_id: "s", payload: { id: "e2", name: "str_replace", arguments: JSON.stringify({ path: "src/main.go", old_str: "old", new_str: "new" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "e2", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact"]);
+  const dump = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "w1"));
+  const noop = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e1"));
+  const edit = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e2"));
+  expect(artifactShouldShow(dump)).toBe(false);
+  expect(artifactShouldShow(noop)).toBe(false);
+  expect(artifactShouldShow(edit)).toBe(true);
 });

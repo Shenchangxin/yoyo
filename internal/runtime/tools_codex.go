@@ -17,6 +17,18 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+func planLanguageMismatch(voice string, steps []string) error {
+	if !looksCJK(voice) {
+		return nil
+	}
+	for _, s := range steps {
+		if looksCJK(s) {
+			return nil
+		}
+	}
+	return fmt.Errorf("update_plan: 操作者用中文下达任务，步骤正文必须用中文")
+}
+
 func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	var p struct {
 		Explanation string `json:"explanation"`
@@ -30,6 +42,15 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	}
 	if len(p.Plan) == 0 {
 		return ToolResult{Err: fmt.Errorf("update_plan: empty plan")}
+	}
+	if t != nil && t.ChatOverlay {
+		steps := make([]string, 0, len(p.Plan))
+		for _, s := range p.Plan {
+			steps = append(steps, s.Step)
+		}
+		if err := planLanguageMismatch(t.OperatorVoice, steps); err != nil {
+			return ToolResult{Err: err}
+		}
 	}
 	var b strings.Builder
 	if p.Explanation != "" {

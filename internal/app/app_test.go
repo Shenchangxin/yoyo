@@ -541,6 +541,35 @@ func TestCheckUpdateNoURL(t *testing.T) {
 	}
 }
 
+func TestAppearancePaletteDefaults(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Config.Theme != "system" || a.Config.PaletteDark != "ink" || a.Config.PaletteLight != "neutral" {
+		t.Fatalf("%+v", a.Config)
+	}
+	a.Config.PaletteDark = ""
+	a.Config.PaletteLight = "banana"
+	a.Config.Theme = "sepia"
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if a.Config.Theme != "system" || a.Config.PaletteDark != "ink" || a.Config.PaletteLight != "neutral" {
+		t.Fatalf("NormalizeAppearance: %+v", a.Config)
+	}
+	a.Config.PaletteLight = "paper"
+	a.Config.PaletteDark = "slate"
+	a.Config.Theme = "light"
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if a.Config.Theme != "light" || a.Config.PaletteDark != "slate" || a.Config.PaletteLight != "paper" {
+		t.Fatalf("valid palettes must stick: %+v", a.Config)
+	}
+}
+
 func TestSaveConfigWritesKeymap(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

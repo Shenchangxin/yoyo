@@ -1,5 +1,5 @@
 import type { Item } from "./protocol";
-import { looksLikeHTML, looksLikePDF } from "./html-preview";
+import { looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "./html-preview";
 
 export function parseMaybeJSON(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -64,11 +64,21 @@ export function toolDetail(item: Item): string {
 }
 
 export function isArtifactTool(name: string): boolean {
-  return name === "apply_patch" || name === "cite_sources" || name.startsWith("office_");
+  switch (name) {
+    case "apply_patch":
+    case "cite_sources":
+    case "write_file":
+    case "str_replace":
+    case "edit_file":
+    case "create_file":
+      return true;
+    default:
+      return name.startsWith("office_");
+  }
 }
 
 export function isRichResult(name: string, body: string, path = ""): boolean {
-  if (looksLikeHTML(body) || looksLikePDF(path)) return true;
+  if (looksLikeHTML(body) || looksLikePDF(path) || looksLikeHTMLFile(path)) return true;
   const n = name.toLowerCase();
   return n.includes("mcp") && looksLikeHTML(body);
 }

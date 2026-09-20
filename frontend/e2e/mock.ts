@@ -155,6 +155,25 @@ export async function mockApi(
     if (path.includes("/api/skills") || path.includes("/api/logs") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
       return route.fulfill({ json: [] });
     }
+    if (path.includes("/api/workspace/file")) {
+      const u = new URL(route.request().url());
+      const p = u.searchParams.get("path") || "";
+      const html = /\.html?$/i.test(p);
+      return route.fulfill({
+        json: {
+          path: p,
+          text: html ? "<!doctype html><html><body><h1>preview</h1></body></html>" : "package main\n",
+          lang: html ? "html" : "go",
+          html,
+          binary: false,
+          truncated: false,
+          bytes: 32,
+        },
+      });
+    }
+    if (path.includes("/api/workspace/hunks")) {
+      return route.fulfill({ json: { diff: "", hunks: [] } });
+    }
     if (path.includes("/api/approvals")) {
       return route.fulfill({ json: extra?.approvals ?? [] });
     }

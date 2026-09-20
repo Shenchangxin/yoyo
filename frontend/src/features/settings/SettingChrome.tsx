@@ -23,7 +23,7 @@ export function SettingsPageHeader({
   return (
     <header className="mb-7 flex items-start justify-between gap-6">
       <div className="min-w-0">
-        <h1 className="text-[21px] font-semibold tracking-[-0.02em] text-foreground">{title}</h1>
+        <h1 className="text-[21px] font-semibold tracking-[-0.02em] text-pretty text-foreground">{title}</h1>
         {description ? (
           <p className="mt-1.5 max-w-[46ch] text-[12.5px] leading-[1.55] text-muted">{description}</p>
         ) : null}

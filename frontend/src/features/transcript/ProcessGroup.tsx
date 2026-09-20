@@ -11,12 +11,15 @@ import {
   formatSpan,
   formatToolBody,
   isToolFailed,
+  toolArgs,
   toolDetail,
   toolElapsedMs,
   toolKind,
   toolName,
   type ToolKind,
 } from "../../lib/tool-summary";
+import { langFromPath } from "../../lib/artifact-preview";
+import { CodePreview } from "./FilePreview";
 import type { Item } from "../../lib/protocol";
 import {
   pairState,
@@ -322,18 +325,23 @@ function StepRow({
   );
 }
 
-function CodeSurface({ text, cap = 4000, dim }: { text: string; cap?: number; dim?: boolean }) {
-  if (!text.trim()) return null;
+function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: number; dim?: boolean; lang?: string }) {
   return (
-    <pre
-      className={cn(
-        "max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.55]",
-        dim ? "text-muted/70" : "text-muted",
-      )}
-    >
-      {text.slice(0, cap)}
-    </pre>
+    <CodePreview
+      lang={lang || guessLang(text)}
+      text={text}
+      cap={cap}
+      dim={dim}
+      className="mt-0 max-h-56"
+    />
   );
+}
+
+function guessLang(text: string): string {
+  const t = text.trim();
+  if (t.startsWith("{") || t.startsWith("[")) return "json";
+  if (t.startsWith("diff ") || t.startsWith("--- ") || t.startsWith("*** Begin Patch")) return "diff";
+  return "text";
 }
 
 function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
@@ -354,7 +362,7 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
         onToggle={() => setOpen((v) => !v)}
       >
         {body ? (
-          <div className="max-w-[72ch] text-[13px] leading-6 text-muted">
+          <div className="min-w-0 max-w-full text-[13px] leading-6 text-muted">
             <Markdown text={body} />
           </div>
         ) : null}
@@ -371,7 +379,7 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
       >
-        {body ? <div className="max-w-[72ch] whitespace-pre-wrap text-[13px] leading-6 text-muted">{body}</div> : null}
+        {body ? <div className="min-w-0 max-w-full whitespace-pre-wrap break-words text-[13px] leading-6 text-muted">{body}</div> : null}
       </StepRow>
     );
   }
@@ -466,6 +474,10 @@ export function ToolLine({
   const input = argsPreview(call);
   const output = result ? formatToolBody(result) : "";
   const hasBody = !!(input || output);
+  const path = String(toolArgs(call || item).path || toolArgs(result || item).path || "");
+  const pathLang = langFromPath(path);
+  const outLang = name === "read_file" || name === "write_file" ? pathLang : guessLang(output);
+  const inLang = name === "write_file" || name === "str_replace" || name === "apply_patch" ? (name === "apply_patch" ? "diff" : pathLang || "json") : "json";
   return (
     <StepRow
       testId="tool-row"
@@ -498,8 +510,8 @@ export function ToolLine({
       onToggle={() => setOpen((v) => !v)}
     >
       <div className="space-y-1">
-        {input ? <CodeSurface text={input} cap={800} dim={!!output} /> : null}
-        {output ? <CodeSurface text={output} /> : null}
+        {input ? <CodeSurface text={input} cap={800} dim={!!output} lang={inLang} /> : null}
+        {output ? <CodeSurface text={output} lang={outLang} /> : null}
       </div>
     </StepRow>
   );

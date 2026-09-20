@@ -23,7 +23,7 @@ export function SheetContent({
       {overlay ? <Dialog.Overlay className="fixed inset-0 z-40 bg-background/40" /> : null}
       <Dialog.Content
         className={cn(
-          "fixed z-50 border-border bg-sidebar shadow-[var(--shadow-popover)] outline-none",
+          "fixed z-50 overscroll-contain border-border bg-sidebar shadow-[var(--shadow-popover)] outline-none",
           side === "right" && "top-2 right-2 bottom-2 w-[min(380px,92%)] rounded-[10px] border",
           side === "left" && "top-2 left-2 bottom-2 w-[min(280px,88%)] rounded-[10px] border",
           side === "bottom" && "right-2 bottom-2 left-2 h-[min(70vh,520px)] rounded-[10px] border",

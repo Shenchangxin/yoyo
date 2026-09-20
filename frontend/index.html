@@ -14,7 +14,17 @@
               : p === "dark"
                 ? true
                 : !window.matchMedia || window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var darkPal = localStorage.getItem("yoyo-palette-dark");
+          var lightPal = localStorage.getItem("yoyo-palette-light");
+          var pal = dark
+            ? darkPal === "dim" || darkPal === "slate" || darkPal === "ink"
+              ? darkPal
+              : "ink"
+            : lightPal === "paper" || lightPal === "mist" || lightPal === "neutral"
+              ? lightPal
+              : "neutral";
           document.documentElement.classList.add(dark ? "dark" : "light");
+          document.documentElement.setAttribute("data-palette", pal);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
           var scale = parseFloat(localStorage.getItem("yoyo-ui-scale") || "1");
           if (scale > 0 && isFinite(scale)) {
@@ -22,6 +32,7 @@
           }
         } catch (e) {
           document.documentElement.classList.add("dark");
+          document.documentElement.setAttribute("data-palette", "ink");
         }
       })();
     </script>

@@ -72,6 +72,8 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		}
 		cp.PlanMode = parent.Tools.PlanMode
 		cp.MaxParallel = parent.Tools.MaxParallel
+		cp.ChatOverlay = false
+		cp.VerifyHint = false
 		childTools = &cp
 	}
 	user := prompt

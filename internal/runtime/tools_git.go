@@ -25,6 +25,9 @@ func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 	if err != nil {
+		if gitNotRepo(text, err) {
+			return ToolResult{Content: "not a git repository"}
+		}
 		if text == "" {
 			text = err.Error()
 		}
@@ -34,4 +37,12 @@ func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 		return ToolResult{Content: "ok"}
 	}
 	return ToolResult{Content: text}
+}
+
+func gitNotRepo(text string, err error) bool {
+	blob := text
+	if err != nil {
+		blob += " " + err.Error()
+	}
+	return strings.Contains(blob, "not a git repository")
 }

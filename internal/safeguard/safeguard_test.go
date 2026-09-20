@@ -18,3 +18,16 @@ func TestLooksSecretPaste(t *testing.T) {
 		t.Fatal("pem paste")
 	}
 }
+
+func TestPreToolDoesNotScanWriteBodiesForFormat(t *testing.T) {
+	args := `{"path":"api/export.go","content":"// The export format is JSON for clients."}`
+	if deny, reason := PreTool("write_file", args); deny {
+		t.Fatalf("write_file: %s", reason)
+	}
+	if LooksDelete("write_file", args, "") {
+		t.Fatal("LooksDelete matched a Go comment")
+	}
+	if !LooksDelete("shell", "format c:", "") {
+		t.Fatal("format c: must match")
+	}
+}

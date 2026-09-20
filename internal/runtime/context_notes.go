@@ -8,6 +8,15 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+const toolBudgetNudge = "Stop using tools and produce the final answer now."
+const planContinueNudge = "The plan still has unfinished steps. Continue the next in_progress or pending step now. Do not ask the operator to confirm. Do not stop to summarize."
+const planContinueNudgeZH = "计划里还有未完成步骤。现在继续 in_progress 或 pending 的下一步，不要请用户确认，不要停下来写总结。"
+
+const (
+	mentionUserPrefix = "Attached context (user @mentions, untrusted working memory):"
+	steerUserPrefix   = "User steering (apply now):"
+)
+
 // SessionNotes is task working memory. It is not the ACE playbook.
 type SessionNotes struct {
 	Objective string   `json:"objective,omitempty"`
@@ -66,6 +75,38 @@ func (n SessionNotes) Markdown() string {
 	return b.String()
 }
 
+func isControlUser(text string) bool {
+	s := strings.TrimSpace(text)
+	if s == "" {
+		return true
+	}
+	if s == toolBudgetNudge || strings.HasPrefix(s, toolBudgetNudge) {
+		return true
+	}
+	if s == planContinueNudge || strings.HasPrefix(s, planContinueNudge) {
+		return true
+	}
+	if s == planContinueNudgeZH || strings.HasPrefix(s, planContinueNudgeZH) {
+		return true
+	}
+	if strings.HasPrefix(s, rewriteStallPrefixEN) || strings.HasPrefix(s, rewriteStallPrefixZH) {
+		return true
+	}
+	if strings.Contains(s, "Context checkpoint") {
+		return true
+	}
+	if strings.HasPrefix(s, "[elided ") {
+		return true
+	}
+	if strings.HasPrefix(s, mentionUserPrefix) {
+		return true
+	}
+	if strings.HasPrefix(s, steerUserPrefix) {
+		return true
+	}
+	return false
+}
+
 func ExtractNotes(evs []trace.Event) SessionNotes {
 	n := SessionNotes{}
 	files := map[string]bool{}
@@ -74,7 +115,10 @@ func ExtractNotes(evs []trace.Event) SessionNotes {
 	for _, ev := range evs {
 		switch ev.Type {
 		case trace.TypeUser:
-			if t, _ := ev.Payload["text"].(string); t != "" {
+			if ev.Source == "steer" {
+				continue
+			}
+			if t, _ := ev.Payload["text"].(string); t != "" && !isControlUser(t) {
 				n.Objective = capRunes(strings.TrimSpace(t), 400)
 			}
 		case trace.TypeToolCall:
@@ -122,7 +166,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 	for _, m := range msgs {
 		switch m.Role {
 		case RoleUser:
-			if strings.TrimSpace(m.Content) != "" && !strings.HasPrefix(m.Content, "[elided ") {
+			if strings.TrimSpace(m.Content) != "" && !isControlUser(m.Content) {
 				n.Objective = capRunes(strings.TrimSpace(m.Content), 400)
 			}
 		case RoleAssistant:
@@ -151,10 +195,74 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 	return n
 }
 
+func mergeNotes(prev, next SessionNotes) SessionNotes {
+	if strings.TrimSpace(next.Objective) == "" {
+		next.Objective = prev.Objective
+	}
+	next.Files = unionCap(prev.Files, next.Files, 24)
+	next.Tools = unionCap(prev.Tools, next.Tools, 24)
+	next.Errors = unionCap(prev.Errors, next.Errors, 12)
+	next.SpillIDs = unionCap(prev.SpillIDs, next.SpillIDs, 32)
+	if strings.TrimSpace(next.Next) == "" {
+		next.Next = prev.Next
+	}
+	next.Decisions = unionCap(prev.Decisions, next.Decisions, 12)
+	return next
+}
+
+func ParseNotes(md string) SessionNotes {
+	n := SessionNotes{}
+	section := ""
+	var obj []string
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			section = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "## ")))
+			continue
+		}
+		item := strings.TrimSpace(strings.TrimPrefix(line, "- "))
+		switch section {
+		case "objective":
+			if s := strings.TrimSpace(line); s != "" {
+				obj = append(obj, s)
+			}
+		case "files":
+			if strings.HasPrefix(strings.TrimSpace(line), "- ") && item != "" {
+				n.Files = appendUnique(n.Files, item)
+			}
+		case "decisions":
+			if strings.HasPrefix(strings.TrimSpace(line), "- ") && item != "" {
+				n.Decisions = appendUnique(n.Decisions, item)
+			}
+		case "errors":
+			if strings.HasPrefix(strings.TrimSpace(line), "- ") && item != "" {
+				n.Errors = appendUnique(n.Errors, item)
+			}
+		case "tools":
+			if strings.HasPrefix(strings.TrimSpace(line), "- ") && item != "" {
+				n.Tools = appendUnique(n.Tools, item)
+			}
+		case "spill ids":
+			if strings.HasPrefix(strings.TrimSpace(line), "- ") && item != "" {
+				n.SpillIDs = appendUnique(n.SpillIDs, item)
+			}
+		case "next":
+			if s := strings.TrimSpace(line); s != "" {
+				if n.Next != "" {
+					n.Next += "\n"
+				}
+				n.Next += s
+			}
+		}
+	}
+	n.Objective = strings.Join(obj, "\n")
+	return n
+}
+
 func WriteNotes(spill *Spill, notes SessionNotes) {
 	if spill == nil {
 		return
 	}
+	notes = mergeNotes(ParseNotes(ReadNotes(spill)), notes)
 	_ = spill.Put("notes", notes.Markdown())
 }
 
@@ -208,4 +316,22 @@ func appendUnique(in []string, v string) []string {
 		}
 	}
 	return append(in, v)
+}
+
+func unionCap(a, b []string, n int) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range append(append([]string{}, a...), b...) {
+		x = strings.TrimSpace(x)
+		if x == "" || seen[x] {
+			continue
+		}
+		seen[x] = true
+		out = append(out, x)
+	}
+	sort.Strings(out)
+	if n > 0 && len(out) > n {
+		out = out[:n]
+	}
+	return out
 }

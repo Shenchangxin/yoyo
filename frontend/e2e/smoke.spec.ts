@@ -15,6 +15,17 @@ test("new chat is available on first launch", async ({ page }) => {
   await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
 });
 
+test("skip link focuses the main stage", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await page.keyboard.press("Tab");
+  const skip = page.getByRole("link", { name: "Skip to conversation" });
+  await expect(skip).toBeFocused();
+  await skip.press("Enter");
+  await expect(page.locator("#main-stage")).toBeFocused();
+});
+
 test("command palette opens", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
@@ -358,7 +369,7 @@ test("approval is asked in the transcript", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
 });
 
-test("conversation uses the pane while composer stays a reading column", async ({ page }) => {
+test("conversation and composer share a fluid stage column", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
@@ -374,13 +385,26 @@ test("conversation uses the pane while composer stays a reading column", async (
   }
   const thread = page.getByTestId("conversation-column");
   const composer = page.getByTestId("composer-column");
+  const turn = page.getByTestId("agent-turn");
   await expect(thread).toBeVisible();
   await expect(composer).toBeVisible();
-  const a = await thread.boundingBox();
-  const b = await composer.boundingBox();
-  expect(a && b).toBeTruthy();
-  expect(a!.width).toBeGreaterThan(b!.width + 24);
-  expect(b!.width).toBeLessThanOrEqual(768);
+  await expect(turn).toBeVisible();
+
+  await page.setViewportSize({ width: 1200, height: 900 });
+  const narrowPane = await thread.boundingBox();
+  const narrowComposer = await composer.boundingBox();
+  const narrowTurn = await turn.boundingBox();
+  expect(narrowPane && narrowComposer && narrowTurn).toBeTruthy();
+  expect(narrowComposer!.width).toBeGreaterThan(narrowPane!.width * 0.8);
+  expect(narrowComposer!.width).toBeLessThanOrEqual(narrowPane!.width + 1);
+  expect(narrowTurn!.width).toBeGreaterThan(narrowComposer!.width * 0.9);
+
+  await page.setViewportSize({ width: 1680, height: 900 });
+  const wideComposer = await composer.boundingBox();
+  const wideTurn = await turn.boundingBox();
+  expect(wideComposer && wideTurn).toBeTruthy();
+  expect(wideComposer!.width).toBeGreaterThan(narrowComposer!.width + 40);
+  expect(wideTurn!.width).toBeGreaterThan(narrowTurn!.width + 40);
 });
 
 test("insert mention keeps the popup open and pins a file token", async ({ page }) => {
@@ -506,9 +530,125 @@ test("office artifacts land as review cards", async ({ page }) => {
   await page.goto("/");
   const card = page.getByTestId("artifact-card");
   await expect(card).toBeVisible();
-  await expect(card.getByText("Artifact")).toBeVisible();
+  await expect(card.getByText("week.docx", { exact: true })).toBeVisible();
   await expect(card.getByText("reports/week.docx")).toBeVisible();
   await expect(card.getByRole("button", { name: "Open in Review" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Preview" })).toHaveCount(0);
+});
+
+test("write_file html and str_replace render as previewable artifacts", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "build the page" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "w1",
+          name: "write_file",
+          arguments: JSON.stringify({
+            path: "web/index.html",
+            content: "<!doctype html><html><body><h1>Hello RBAC</h1></body></html>",
+          }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "w1", name: "write_file", content: "wrote web/index.html" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:03Z",
+        payload: {
+          id: "e1",
+          name: "str_replace",
+          arguments: JSON.stringify({ path: "src/main.go", old_str: "oldFn", new_str: "newFn" }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("artifact-card")).toHaveCount(2);
+  await expect(page.getByTestId("html-preview")).toBeVisible();
+  const diff = page.getByTestId("artifact-diff");
+  await expect(diff).toBeVisible();
+  await expect(diff).toContainText("oldFn");
+  await expect(diff).toContainText("newFn");
+  await expect(page.getByTestId("artifact-card").first()).toContainText("index.html");
+});
+
+test("write_file of source stays in the process rail without a preview card", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "add main" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "w1",
+          name: "write_file",
+          arguments: JSON.stringify({
+            path: "src/main.go",
+            content: "package main\n\nfunc main() {\n\tprintln(\"ok\")\n}\n",
+          }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "w1", name: "write_file", content: "wrote src/main.go" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:03Z",
+        payload: {
+          id: "e1",
+          name: "str_replace",
+          arguments: JSON.stringify({ path: "src/main.go", old_str: "println", new_str: "fmt.Println" }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("artifact-card")).toHaveCount(1);
+  await expect(page.getByTestId("artifact-card")).toContainText("main.go");
+  await expect(page.getByTestId("artifact-diff")).toBeVisible();
+  await expect(page.getByTestId("artifact-diff")).toContainText("println");
+  await expect(page.getByTestId("artifact-code")).toHaveCount(0);
+  const summary = page.getByTestId("process-summary");
+  await expect(summary).toBeVisible();
+  await summary.click();
+  await expect(page.getByTestId("tool-row").filter({ hasText: "write_file" })).toBeVisible();
+});
+
+test("assistant fenced code stays inside the letter", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "show the snippet" } },
+      {
+        type: "assistant",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "s1:r1",
+          text: "Here:\n\n```go\npackage main\n\nfunc Hello() string {\n\treturn \"yoyo\"\n}\n```\n",
+        },
+      },
+    ],
+  });
+  await page.goto("/");
+  const letter = page.getByTestId("agent-turn");
+  const block = letter.locator('[data-streamdown="code-block"]');
+  await expect(block).toBeVisible();
+  await expect(block).toContainText("func Hello()");
+  const blockBox = await block.boundingBox();
+  const letterBox = await letter.boundingBox();
+  expect(blockBox && letterBox).toBeTruthy();
+  expect(blockBox!.width).toBeLessThanOrEqual(letterBox!.width + 1);
+  expect(blockBox!.height).toBeGreaterThan(40);
+  expect(blockBox!.height).toBeLessThan(280);
 });
 
 test("task plan sits above the composer instead of the letter", async ({ page }) => {
@@ -570,4 +710,29 @@ test("task plan sits above the composer instead of the letter", async ({ page })
   await expect(chip.getByText("Cover with a test")).toHaveCount(0);
   await page.getByRole("button", { name: "Show plan" }).click();
   await expect(chip.getByText("Cover with a test")).toBeVisible();
+});
+
+test("appearance palettes keep light off paper yellow by default", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await expect(page.getByRole("button", { name: /Neutral/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Paper/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Mist/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ink/ })).toBeVisible();
+  await page.getByRole("button", { name: "Light", exact: true }).click();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "neutral");
+  await page.getByRole("button", { name: /Paper/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "paper");
+  await page.getByRole("button", { name: /Neutral/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "neutral");
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "ink");
+  await expect(page.getByRole("button", { name: /Neutral/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /Slate/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "slate");
+  await expect(page.locator("html")).toHaveClass(/dark/);
 });

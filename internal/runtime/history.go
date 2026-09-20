@@ -40,6 +40,8 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 	}
 	var out []Message
 	var pending Message
+	seenCall := map[string]bool{}
+	seenResult := map[string]int{}
 	flush := func() {
 		if pending.Role == "" {
 			return
@@ -79,20 +81,37 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 			text, _ := ev.Payload["text"].(string)
 			pending = Message{Role: RoleAssistant, Content: text}
 		case trace.TypeToolCall:
+			id, _ := ev.Payload["id"].(string)
+			if id != "" && seenCall[id] {
+				break
+			}
 			if pending.Role != RoleAssistant {
 				flush()
 				pending = Message{Role: RoleAssistant}
 			}
-			id, _ := ev.Payload["id"].(string)
 			name, _ := ev.Payload["name"].(string)
 			args := payloadString(ev.Payload["arguments"])
 			pending.ToolCalls = append(pending.ToolCalls, ToolCall{ID: id, Name: name, Arguments: args})
+			if id != "" {
+				seenCall[id] = true
+			}
 		case trace.TypeToolResult:
 			flush()
 			id, _ := ev.Payload["id"].(string)
 			name, _ := ev.Payload["name"].(string)
 			content, _ := ev.Payload["content"].(string)
+			if id != "" {
+				if idx, ok := seenResult[id]; ok {
+					if strings.TrimSpace(out[idx].Content) == "" && strings.TrimSpace(content) != "" {
+						out[idx].Content = content
+					}
+					break
+				}
+			}
 			out = append(out, Message{Role: RoleTool, ToolCallID: id, Name: name, Content: content})
+			if id != "" {
+				seenResult[id] = len(out) - 1
+			}
 		}
 	}
 	flush()

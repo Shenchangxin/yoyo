@@ -35,6 +35,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "general-notifications", tab: "general", titleKey: "generalNotifications", keywords: "notifications toast" },
   { id: "general-desktop", tab: "general", titleKey: "generalDesktop", keywords: "tray login always on top" },
   { id: "appearance-theme", tab: "appearance", titleKey: "appearanceTheme", keywords: "theme dark light color mode" },
+  { id: "appearance-palette", tab: "appearance", titleKey: "appearancePalette", keywords: "palette yellow paper ivory warm gray mist ink dim slate neutral" },
   { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "language locale scale zoom" },
   { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },

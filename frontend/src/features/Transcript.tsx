@@ -9,21 +9,21 @@ import { writeClipboard } from "../lib/clipboard";
 import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import {
   formatToolBody,
-  isArtifactTool,
-  isRichResult,
   itemTimeMs,
   patchFileCount,
   toolArgs,
   toolDetail,
   toolName,
 } from "../lib/tool-summary";
-import { extractHTML, looksLikeHTML, looksLikePDF } from "../lib/html-preview";
+import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../lib/artifact-preview";
+import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
-import { layoutRows, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
+import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
-import { YoyoMark } from "./shell/YoyoMark";
+import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
 import * as api from "../lib/client";
 
@@ -163,7 +163,7 @@ export function Transcript(props: {
                   key={part.key}
                   className={cn(
                     partSpace(row.parts, pi),
-                    part.kind === "item" && part.item.type === "assistant" && "assistant-block",
+                    part.kind === "item" && part.item.type === "assistant" && "assistant-block min-w-0",
                     (part.kind === "process" || part.kind === "artifact") && "u-chrome",
                   )}
                 >
@@ -175,7 +175,7 @@ export function Transcript(props: {
                       compact={props.compact}
                     />
                   ) : part.kind === "artifact" ? (
-                    <ArtifactTimeline items={part.items} running={props.running} onOpenReview={props.onOpenReview} />
+                    <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
                   ) : (
                     <ItemRow
                       item={part.item}
@@ -280,11 +280,11 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   ].filter(Boolean) as { key: string; node: ReactNode }[];
   return (
     <div className="empty-rise" data-testid="empty-turn">
-      <YoyoMark className="size-4 text-foreground/70" />
-      <h1 className="mt-4 text-[21px] font-semibold tracking-[-0.03em] text-foreground">
+      <MarkWell />
+      <h1 className="mt-5 max-w-[18ch] text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">
         {copy.transcript.ready}
       </h1>
-      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] leading-[1.6] text-muted">
+      <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] leading-[1.6] text-muted">
         {hints.map((h, i) => (
           <span key={h.key} className="inline-flex items-center">
             {i > 0 ? <span className="mr-3 text-muted/40" aria-hidden>·</span> : null}
@@ -297,7 +297,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           <button
             type="button"
             key={s.label}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/40 py-1.5 pl-3 pr-2.5 text-[12.5px] text-foreground/90 transition-[border-color,background-color,color] duration-150 hover:border-border hover:bg-lift/60 hover:text-foreground"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-card/50 py-1.5 pl-3 pr-2.5 text-[12.5px] text-foreground/90 transition-[border-color,background-color,color] duration-150 hover:border-border hover:bg-lift/60 hover:text-foreground"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}
           >
@@ -320,7 +320,7 @@ function JumpLatest() {
   return (
     <button
       type="button"
-      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-popover/95 py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-md transition-colors hover:bg-lift"
+      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover/95 py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-md transition-colors hover:bg-lift"
       onClick={() => {
         void ctx.scrollToBottom();
       }}
@@ -527,7 +527,7 @@ const ItemRow = memo(function ItemRow({
     }
     return (
       <div className="flex justify-end">
-        <div className="group/msg max-w-[min(85%,36rem)]">
+        <div className="group/msg w-fit max-w-[80%]">
           <div className="whitespace-pre-wrap break-words rounded-[18px] bg-lift px-3.5 py-[9px] text-[14.5px] leading-[1.55] tracking-[-0.012em]">
             {item.text}
           </div>
@@ -568,25 +568,31 @@ const ItemRow = memo(function ItemRow({
   return null;
 });
 
-function ArtifactTimeline({ items, running, onOpenReview }: { items: Item[]; running: boolean; onOpenReview?: () => void }) {
-  const pairs = pairTools(items);
+function ArtifactTimeline({
+  items,
+  running,
+  workspace,
+  onOpenReview,
+}: {
+  items: Item[];
+  running: boolean;
+  workspace?: string;
+  onOpenReview?: () => void;
+}) {
+  const pairs = pairTools(items).filter(pairShowsArtifact);
+  if (!pairs.length) return null;
   return (
     <div className="u-chrome min-w-0 space-y-1" data-testid="tool-timeline">
-      {pairs.map((p) => {
-        const name = toolName(p.call || p.result || p.extra[0] || ({ name: "tool", payload: {} } as Item));
-        if (isArtifactTool(name) || isRichResult(name, formatToolBody(p.result || p.call || ({ payload: {} } as Item)), String(toolArgs(p.call || p.result || ({ payload: {} } as Item)).path || ""))) {
-          return (
-            <ArtifactCard
-              key={p.key}
-              call={p.call}
-              result={p.result}
-              running={running}
-              onOpenReview={onOpenReview}
-            />
-          );
-        }
-        return null;
-      })}
+      {pairs.map((p) => (
+        <ArtifactCard
+          key={p.key}
+          call={p.call}
+          result={p.result}
+          running={running}
+          workspace={workspace}
+          onOpenReview={onOpenReview}
+        />
+      ))}
     </div>
   );
 }
@@ -595,58 +601,88 @@ function ArtifactCard({
   call,
   result,
   running,
+  workspace,
   onOpenReview,
 }: {
   call?: Item;
   result?: Item;
   running: boolean;
+  workspace?: string;
   onOpenReview?: () => void;
 }) {
   const copy = useCopy();
+  const [source, setSource] = useState(false);
   const item = result || call!;
   const name = toolName(item);
-  const open = !!call && !result;
-  const pending = open && running;
-  const interrupted = open && !running;
+  const view = artifactView(call, result);
+  const [open, setOpen] = useState(() => artifactPreviewOpen(view));
+  const openCall = !!call && !result;
+  const pending = openCall && running;
+  const interrupted = openCall && !running;
   const detail = toolDetail(result || call || item);
   const body = result ? formatToolBody(result) : formatToolBody(call || item);
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
   const args = toolArgs(call || result || item);
-  const path = String(args.path || args.file || "");
-  const html = result ? extractHTML(body) : "";
+  const path = view.path || String(args.path || args.file || "");
+  const mcpHtml = result ? extractHTML(body) : "";
   const pdf = looksLikePDF(path);
-  const title = name === "apply_patch"
-    ? copy.transcript.patch
-    : name === "cite_sources"
-      ? copy.transcript.citations
-      : html
-        ? copy.transcript.mcpApp
-        : copy.transcript.artifact;
+  const office = name.startsWith("office_");
+  const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || looksLikeHTML(mcpHtml);
+  const hasPreview = !office && !pdf && (artifactShouldShow(view) || !!mcpHtml);
+  if (!office && !pdf && name !== "cite_sources" && !hasPreview) return null;
+  const title = view.path
+    ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
+    : name === "apply_patch"
+      ? copy.transcript.patch
+      : name === "cite_sources"
+        ? copy.transcript.citations
+        : htmlish
+          ? copy.transcript.mcpApp
+          : copy.transcript.artifact;
   const meta = name === "apply_patch" && files > 0
     ? copy.transcript.filesCount.replace("{n}", String(files))
-    : (detail || name);
+    : (path || detail || name);
   return (
     <div
       className={cn(
-        "surface-inset rounded-xl border bg-card/60 px-3.5 py-2.5 transition-colors duration-200",
+        "surface-inset min-w-0 overflow-hidden rounded-xl border bg-card/60 px-3.5 py-2.5 transition-colors duration-200",
         pending ? "border-foreground/15" : "border-border/80",
       )}
       data-testid="artifact-card"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lift/70 text-muted" aria-hidden>
           {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-3.5" />}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-40">
           <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
-            <span className={cn(pending && "shimmer-text")}>{title}</span>
+            <span className={cn("truncate", pending && "shimmer-text")}>{title}</span>
             {interrupted ? (
               <span className="rounded-md bg-warning/12 px-1.5 py-px text-[10.5px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
           </div>
           <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
         </div>
-        <div className="flex shrink-0 gap-1.5">
+        <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
+          {hasPreview ? (
+            <button
+              type="button"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+            >
+              {open ? copy.transcript.hidePreview : copy.transcript.preview}
+            </button>
+          ) : null}
+          {htmlish && open ? (
+            <button
+              type="button"
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
+              onClick={() => setSource((v) => !v)}
+            >
+              {source ? copy.transcript.preview : copy.transcript.source}
+            </button>
+          ) : null}
           {path ? (
             <button
               type="button"
@@ -667,7 +703,15 @@ function ArtifactCard({
           ) : null}
         </div>
       </div>
-      {html && looksLikeHTML(html) ? <SandboxedFrame html={html} title={title} /> : null}
+      {open ? (
+        <>
+          {mcpHtml && looksLikeHTML(mcpHtml) && !view.diff && !view.code && !view.html ? (
+            <SandboxedFrame html={mcpHtml} title={title} />
+          ) : (
+            <ArtifactBody view={view} workspace={workspace} source={source} />
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

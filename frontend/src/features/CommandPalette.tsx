@@ -36,17 +36,17 @@ export function CommandPalette(props: {
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
-        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl border border-border/80 bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
+        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden overscroll-contain rounded-2xl border border-border/80 bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
           <Dialog.Title className="sr-only">{copy.palette.title}</Dialog.Title>
           <Dialog.Description className="sr-only">{copy.palette.desc}</Dialog.Description>
           <Command label={copy.palette.title}>
             <div className="relative flex h-12 items-center gap-2.5 px-3.5">
               <Search className="size-4 shrink-0 text-muted" aria-hidden />
-              <Command.Input placeholder={copy.palette.placeholder} />
+              <Command.Input placeholder={copy.palette.placeholder} autoComplete="off" />
               <Kbd>Esc</Kbd>
               <span className="command-menu-input-underline pointer-events-none absolute inset-x-3.5 bottom-0 h-px bg-border/70" />
             </div>
-            <Command.List>
+            <Command.List className="overscroll-contain">
               <Command.Empty>{copy.palette.empty}</Command.Empty>
               <Command.Group heading={copy.palette.actions}>
                 <Command.Item value={`${copy.palette.newChat} new chat`} onSelect={() => { props.onNew(); props.onClose(); }}>

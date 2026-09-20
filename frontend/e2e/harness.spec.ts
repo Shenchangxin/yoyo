@@ -12,7 +12,7 @@ test("harness is a single rail entry with an overview", async ({ page }) => {
   await page.getByRole("button", { name: /^Harness/ }).click();
   await expect(page.getByTestId("harness-workspace")).toBeVisible();
   await expect(page.getByTestId("harness-overview")).toBeVisible();
-  await expect(page.getByText("Staging differs from active")).toBeVisible();
+  await expect(page.getByText("Harbor evidence is clean. Checkout staging onto active.")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
 });
 

@@ -19,6 +19,7 @@ import { DiffBlock, type DiffMode } from "../lib/split-diff";
 import type { Hunk, SessionTrace, SpillBlob, Thread } from "../lib/protocol";
 import type { InspTab } from "../lib/store";
 import { TracePanel } from "./TracePanel";
+import { WorkspaceFileView } from "./transcript/FilePreview";
 import * as api from "../lib/client";
 import { asArray, asBool, str } from "../lib/normalize";
 
@@ -44,6 +45,7 @@ export function Inspector(props: {
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string) => void;
   onOpenPath?: (path: string) => void;
+  workspace?: string;
 }) {
   const copy = useCopy();
   const files = fileNames(props.diff);
@@ -118,7 +120,7 @@ export function Inspector(props: {
         ) : active === "diff" ? (
           <DiffPane {...props} files={files} />
         ) : (
-          <FilesPane files={files} onQuote={props.onQuote} onOpenPath={props.onOpenPath} />
+          <FilesPane files={files} workspace={props.workspace} onQuote={props.onQuote} onOpenPath={props.onOpenPath} />
         )}
       </div>
     </aside>
@@ -130,7 +132,7 @@ export function Inspector(props: {
 export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string; icon?: ReactNode }) {
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">
-      {icon ? <span className="mb-3 grid size-8 place-items-center rounded-lg bg-lift/60 text-muted" aria-hidden>{icon}</span> : null}
+      {icon ? <span className="mark-well mb-3 text-muted" aria-hidden>{icon}</span> : null}
       <p className="text-[12.5px] font-medium text-foreground/85">{title}</p>
       {hint ? <p className="mt-1 max-w-[22rem] text-[11.5px] leading-[1.55] text-muted">{hint}</p> : null}
     </div>
@@ -326,31 +328,58 @@ function fileNames(diff: string): string[] {
 
 /* ---------- Files ---------- */
 
-function FilesPane({ files, onQuote, onOpenPath }: { files: string[]; onQuote?: (t: string) => void; onOpenPath?: (p: string) => void }) {
+function FilesPane({
+  files,
+  workspace,
+  onQuote,
+  onOpenPath,
+}: {
+  files: string[];
+  workspace?: string;
+  onQuote?: (t: string) => void;
+  onOpenPath?: (p: string) => void;
+}) {
   const copy = useCopy();
+  const [open, setOpen] = useState("");
   if (!files.length) {
     return <PaneEmpty title={copy.review.noFiles} hint={copy.review.noHunksHint} icon={<FileText className="size-4" />} />;
   }
   return (
     <ul className="h-full min-h-0 overflow-auto py-1">
-      {files.map((f) => (
-        <li key={f} className="group/file flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-lift/40">
-          <FileText className="size-3.5 shrink-0 text-muted/60" aria-hidden />
-          <FilePath path={f} className="flex-1" />
-          <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
-            {onQuote ? (
-              <IconAction label={copy.review.quote} onClick={() => onQuote(`@file:${f}`)}>
-                <TextQuote className="size-3.5" aria-hidden />
-              </IconAction>
+      {files.map((f) => {
+        const shown = open === f;
+        return (
+          <li key={f} className="border-b border-border/40 last:border-b-0">
+            <div className="group/file flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-lift/40">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                onClick={() => setOpen(shown ? "" : f)}
+              >
+                <FileText className="size-3.5 shrink-0 text-muted/60" aria-hidden />
+                <FilePath path={f} className="flex-1" />
+              </button>
+              <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
+                {onQuote ? (
+                  <IconAction label={copy.review.quote} onClick={() => onQuote(`@file:${f}`)}>
+                    <TextQuote className="size-3.5" aria-hidden />
+                  </IconAction>
+                ) : null}
+                {onOpenPath ? (
+                  <IconAction label={copy.review.open} onClick={() => onOpenPath(f)}>
+                    <ExternalLink className="size-3.5" aria-hidden />
+                  </IconAction>
+                ) : null}
+              </span>
+            </div>
+            {shown ? (
+              <div className="px-3 pb-3">
+                <WorkspaceFileView workspace={workspace} path={f} />
+              </div>
             ) : null}
-            {onOpenPath ? (
-              <IconAction label={copy.review.open} onClick={() => onOpenPath(f)}>
-                <ExternalLink className="size-3.5" aria-hidden />
-              </IconAction>
-            ) : null}
-          </span>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }

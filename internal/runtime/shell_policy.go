@@ -93,8 +93,119 @@ func looksSimpleArgv(argv []string) bool {
 	return !strings.ContainsAny(argv[0], `&|;<>`)
 }
 
+func shellNeedsWrapper(command string, argv []string) bool {
+	if len(argv) == 0 {
+		return true
+	}
+	if strings.ContainsAny(command, "&|;<>\n") {
+		return true
+	}
+	if isShellBuiltin(argv[0]) {
+		return true
+	}
+	return !looksSimpleArgv(argv)
+}
+
+func looksPosixUnix(command string) bool {
+	if strings.Contains(command, "/dev/null") || strings.Contains(command, "$(") {
+		return true
+	}
+	for _, stage := range splitShellStages(command) {
+		argv := SplitShellArgv(stage)
+		if len(argv) == 0 {
+			continue
+		}
+		name := strings.ToLower(filepath.Base(argv[0]))
+		if name == "find" && isWindowsFindStage(argv) {
+			continue
+		}
+		if isUnixUtil(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func isUnixUtil(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "ls", "cat", "head", "tail", "find", "pwd", "which", "true", "false",
+		"chmod", "chown", "rm", "cp", "mv", "touch", "wc", "tr", "cut", "uniq",
+		"xargs", "tee", "basename", "dirname", "realpath", "readlink", "uname",
+		"sed", "awk", "test":
+		return true
+	default:
+		return false
+	}
+}
+
+func isWindowsFindStage(argv []string) bool {
+	for _, a := range argv[1:] {
+		al := strings.ToLower(strings.TrimSpace(a))
+		if al == "/c" || al == "/v" || al == "/n" || al == "/i" || strings.HasPrefix(al, "/off") {
+			return true
+		}
+		if strings.HasPrefix(a, "-") {
+			return false
+		}
+	}
+	return false
+}
+
+func splitShellStages(command string) []string {
+	var out []string
+	var cur strings.Builder
+	quote := byte(0)
+	flush := func() {
+		if s := strings.TrimSpace(cur.String()); s != "" {
+			out = append(out, s)
+		}
+		cur.Reset()
+	}
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+		if quote != 0 {
+			cur.WriteByte(c)
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == '"' || c == '\'' {
+			quote = c
+			cur.WriteByte(c)
+			continue
+		}
+		if (c == '&' || c == '|') && i+1 < len(command) && command[i+1] == c {
+			flush()
+			i++
+			continue
+		}
+		if c == '|' || c == ';' || c == '\n' {
+			flush()
+			continue
+		}
+		cur.WriteByte(c)
+	}
+	flush()
+	return out
+}
+
+func isShellBuiltin(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "cd", "chdir", "set", "export", "unset", "alias", "source", ".",
+		"echo", "dir", "copy", "del", "erase", "md", "mkdir", "rd", "rmdir",
+		"type", "call", "start", "move", "ren", "rename", "pushd", "popd",
+		"cls", "ver", "path", "prompt", "assoc", "ftype", "exit",
+		"if", "for", "goto", "shift", "setlocal", "endlocal",
+		"eval", "readonly", "wait", "umask", "ulimit", "hash", "command", "builtin":
+		return true
+	default:
+		return false
+	}
+}
+
 var destructiveShell = []string{
-	"rm -rf /", "rm -rf /*", "format ", "mkfs", "diskpart",
+	"rm -rf /", "rm -rf /*", "format c:", "format d:", "mkfs", "diskpart",
 	"shutdown", "reboot", "bcdedit", "reg delete",
 	":(){:|:&};:", "fork bomb",
 	"remove-item -recurse c:\\", "del /s /q c:\\",

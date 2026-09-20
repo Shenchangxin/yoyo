@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,6 +42,17 @@ type FileChange struct {
 	Patch string
 }
 
+// prefetchHit is a stream-time readonly execution that must not be traced
+// until the final dispatchTools path emits once.
+type prefetchHit struct {
+	content   string
+	elapsedMs int
+	spillID   string
+	ok        bool
+	change    *FileChange
+	parts     []ContentPart
+}
+
 // ExtraTool is a host-bridged tool (MCP, WASM) sharing the same capability gate.
 type ExtraTool struct {
 	JSON        ToolJSON
@@ -60,6 +73,14 @@ type WorkspaceTools struct {
 	ExtraEnabled []string
 	Policy       artifact.PolicyPack
 	PlanMode     bool
+	// ChatOverlay is desktop/CLI personal chat (I6). Harbor eval leaves it
+	// false so shell, plan language, and the tool menu stay eval-stable.
+	ChatOverlay bool
+	// OperatorVoice is the latest real operator utterance for chat overlays.
+	OperatorVoice string
+	// VerifyHint is set when chat tries to end_turn with an open plan so
+	// verify-artifact is re-injected into working memory (I2/I5).
+	VerifyHint   bool
 	Ctx          context.Context
 	Extra        map[string]ExtraTool
 	Spill        *Spill
@@ -70,7 +91,7 @@ type WorkspaceTools struct {
 	AllowedTools []string
 	AskUser      func(question string) (string, error)
 	SkillMeta    map[string]artifact.Skill
-	prefetch     map[string]Message
+	prefetch     map[string]prefetchHit
 	mu           sync.Mutex
 	MaxParallel  int
 	SearchAPI    func(query string) (string, error)
@@ -109,7 +130,8 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	if t == nil {
 		return out
 	}
-	if len(t.Advertised) > 0 || len(t.AllowedTools) > 0 {
+	advertised := t.advertisedCopy()
+	if len(advertised) > 0 || len(t.AllowedTools) > 0 {
 		allow := map[string]bool{}
 		for _, n := range t.AllowedTools {
 			for _, part := range strings.Fields(n) {
@@ -117,13 +139,13 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 			}
 		}
 		want := map[string]bool{}
-		for _, n := range t.Advertised {
+		for _, n := range advertised {
 			want[n] = true
 		}
 		var filtered []ToolJSON
 		for _, j := range out {
 			name, _ := j.Function["name"].(string)
-			if len(want) > 0 && !want[name] {
+			if len(want) > 0 && !want[name] && !alwaysAdvertise(name) {
 				continue
 			}
 			if len(allow) > 0 && !allow[name] && !alwaysAdvertise(name) {
@@ -145,20 +167,32 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 		enabled[n] = true
 	}
 	t.mu.Unlock()
+	var deferred []string
 	if len(names) <= schemaCap {
 		for _, name := range names {
 			out = append(out, t.Extra[name].JSON)
 		}
-		WriteMCPCatalog(t.Workspace, t.Extra)
-		return out
-	}
-	deferred := make([]string, 0, len(names))
-	for _, name := range names {
-		if enabled[name] {
-			out = append(out, t.Extra[name].JSON)
-			continue
+	} else {
+		for _, name := range names {
+			if enabled[name] {
+				out = append(out, t.Extra[name].JSON)
+				continue
+			}
+			deferred = append(deferred, name)
 		}
-		deferred = append(deferred, name)
+		if t.Spill != nil {
+			for _, name := range deferred {
+				extra, ok := t.Extra[name]
+				if !ok {
+					continue
+				}
+				raw, _ := json.Marshal(extra.JSON)
+				t.Spill.Put("mcp-"+sanitizeID(name), string(raw))
+			}
+		}
+	}
+	if t.ChatOverlay {
+		deferred = append(deferred, deferredHostTools(advertised)...)
 	}
 	if len(deferred) > 0 {
 		for i := range out {
@@ -174,12 +208,6 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 			cp["description"] = desc + " Deferred extra tools: " + strings.Join(deferred, ", ") + "."
 			out[i].Function = cp
 			break
-		}
-		if t.Spill != nil {
-			for _, name := range deferred {
-				raw, _ := json.Marshal(t.Extra[name].JSON)
-				t.Spill.Put("mcp-"+sanitizeID(name), string(raw))
-			}
 		}
 	}
 	WriteMCPCatalog(t.Workspace, t.Extra)
@@ -231,32 +259,41 @@ func (t *WorkspaceTools) toolAllowed(name string) bool {
 			return true
 		}
 	}
-	if len(t.Advertised) > 0 {
-		ok := false
-		for _, n := range t.Advertised {
-			if n == name {
-				ok = true
-				break
-			}
-		}
-		if !ok && !alwaysAdvertise(name) {
-			return false
-		}
-	}
-	if len(t.AllowedTools) == 0 {
-		return true
-	}
 	if alwaysAdvertise(name) {
 		return true
 	}
-	for _, n := range t.AllowedTools {
-		for _, part := range strings.Fields(n) {
-			if part == name {
+	if len(t.AllowedTools) > 0 {
+		for _, n := range t.AllowedTools {
+			for _, part := range strings.Fields(n) {
+				if part == name {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if t.ChatOverlay {
+		return hostToolKnown(name)
+	}
+	advertised := t.advertisedCopy()
+	if len(advertised) > 0 {
+		for _, n := range advertised {
+			if n == name {
 				return true
 			}
 		}
+		return false
 	}
-	return false
+	return true
+}
+
+func (t *WorkspaceTools) advertisedCopy() []string {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.Advertised...)
 }
 
 func alwaysAdvertise(name string) bool {
@@ -303,25 +340,15 @@ func (t *WorkspaceTools) check(level capability.Level, action, path, cmd string)
 }
 
 func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
-	for _, s := range p.RequireApproval {
-		if s == string(level) {
-			return true
-		}
+	if p.Mode == "bypass" {
+		return false
 	}
 	if p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk || level == capability.SendAsYou || level == capability.ComputerUse) {
 		return true
 	}
-	if p.Mode == "bypass" {
-		return false
-	}
-	for _, s := range p.DefaultAllow {
-		if s == string(level) {
-			return false
-		}
-	}
-	return level == capability.Shell || level == capability.Network || level == capability.HighRisk ||
-		level == capability.SendAsYou || level == capability.ComputerUse || level == capability.WriteConnector ||
-		level == capability.Browser || level == capability.Schedule || level == capability.MemoryWrite
+	// RequireApproval means the first call must enter the gate. It is not
+	// ForceAsk: Session/Once/Always grants on the broker must stick.
+	return false
 }
 
 func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
@@ -391,13 +418,17 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if err := t.check(capability.WriteWorkspace, "write_file", p, ""); err != nil {
 		return ToolResult{Err: err}
 	}
+	want := []byte(content)
+	if prev, err := os.ReadFile(p); err == nil && bytes.Equal(prev, want) {
+		return ToolResult{Content: "unchanged " + rel}
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return ToolResult{Err: err}
 	}
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(p, want, 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: "wrote " + rel}
+	return ToolResult{Content: "wrote " + rel, FileChange: &FileChange{Paths: []string{rel}}}
 }
 
 func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
@@ -415,7 +446,7 @@ func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	text := string(b)
 	n := strings.Count(text, old)
 	if n == 0 {
-		return ToolResult{Err: fmt.Errorf("old_str not found")}
+		return ToolResult{Err: fmt.Errorf("old_str not found in %s\n%s", rel, fileContextHint(text, old))}
 	}
 	if n > 1 && !all {
 		return ToolResult{Err: fmt.Errorf("old_str matched %d times; pass replace_all=true or include more context", n)}
@@ -426,10 +457,13 @@ func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	} else {
 		next = strings.Replace(text, old, new, 1)
 	}
+	if next == text {
+		return ToolResult{Content: "unchanged " + rel}
+	}
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: fmt.Sprintf("replaced %d occurrence(s) in %s", n, rel)}
+	return ToolResult{Content: fmt.Sprintf("replaced %d occurrence(s) in %s", n, rel), FileChange: &FileChange{Paths: []string{rel}}}
 }
 
 func (t *WorkspaceTools) listDir(rel string) ToolResult {
@@ -510,6 +544,18 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 }
 
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
+	if t != nil && t.ChatOverlay {
+		if rel, offset, limit, ok := parseShellRead(command); ok {
+			res := t.readFile(rel, offset, limit)
+			if res.Err != nil {
+				res.Content = "read source with read_file/grep/glob, not shell cat/sed. path=" + rel
+				return res
+			}
+			prefix := "redirected shell read to read_file (do not cat source) path=" + rel + "\n"
+			res.Content = prefix + res.Content
+			return res
+		}
+	}
 	argv := SplitShellArgv(command)
 	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow); err != nil {
 		return ToolResult{Err: err}
@@ -531,13 +577,19 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	defer cancel()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		if looksSimpleArgv(argv) {
+		if looksPosixUnix(command) {
+			sh := windowsPosixShell()
+			if sh == "" {
+				return ToolResult{Err: fmt.Errorf("unix shell syntax on Windows and bash is not on PATH; use list_dir/glob/grep or cmd builtins")}
+			}
+			cmd = exec.CommandContext(ctx, sh, "-lc", command)
+		} else if !shellNeedsWrapper(command, argv) {
 			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
 		} else {
 			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		}
 	} else {
-		if looksSimpleArgv(argv) {
+		if !shellNeedsWrapper(command, argv) {
 			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", "-lc", command)
@@ -545,10 +597,44 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	}
 	cmd.Dir = t.Workspace
 	out, err := isolation.Run(ctx, cmd)
+	if err != nil && runtime.GOOS == "windows" && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(err) {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+		cmd.Dir = t.Workspace
+		out, err = isolation.Run(ctx, cmd)
+	}
 	if err != nil {
 		return ToolResult{Content: string(out), Err: err}
 	}
 	return ToolResult{Content: string(out)}
+}
+
+func isExecNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return true
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "executable file not found") || strings.Contains(s, "file not found") || strings.Contains(s, "not recognized as an internal")
+}
+
+func windowsPosixShell() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	for _, n := range []string{"bash.exe", "bash"} {
+		p, err := exec.LookPath(n)
+		if err != nil {
+			continue
+		}
+		low := strings.ToLower(p)
+		if strings.Contains(low, `\system32\`) || strings.Contains(low, `/system32/`) {
+			continue
+		}
+		return p
+	}
+	return ""
 }
 
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {
@@ -588,42 +674,67 @@ func (t *WorkspaceTools) recall(id string) ToolResult {
 }
 
 func (t *WorkspaceTools) toolSearch(q string) ToolResult {
-	if t.Extra == nil {
-		return ToolResult{Content: "no extra tools"}
-	}
-	q = strings.ToLower(q)
+	q = strings.ToLower(strings.TrimSpace(q))
 	var b strings.Builder
 	var matched []string
-	for name, extra := range t.Extra {
-		blob := strings.ToLower(name)
-		if d, _ := extra.JSON.Function["description"].(string); d != "" {
-			blob += " " + strings.ToLower(d)
+	if t != nil && t.Extra != nil {
+		for name, extra := range t.Extra {
+			blob := strings.ToLower(name)
+			if d, _ := extra.JSON.Function["description"].(string); d != "" {
+				blob += " " + strings.ToLower(d)
+			}
+			if q != "" && !strings.Contains(blob, q) {
+				continue
+			}
+			matched = append(matched, name)
+			raw, _ := json.Marshal(extra.JSON)
+			b.Write(raw)
+			b.WriteByte('\n')
 		}
-		if q != "" && !strings.Contains(blob, q) {
-			continue
+	}
+	var hostHits []string
+	if t != nil && t.ChatOverlay {
+		want := map[string]bool{}
+		for _, n := range t.advertisedCopy() {
+			want[n] = true
 		}
-		matched = append(matched, name)
-		raw, _ := json.Marshal(extra.JSON)
-		b.Write(raw)
-		b.WriteByte('\n')
+		for _, name := range searchHostSpecs(q) {
+			if want[name] || alwaysAdvertise(name) {
+				continue
+			}
+			js, ok := hostSpecJSON(name)
+			if !ok {
+				continue
+			}
+			hostHits = append(hostHits, name)
+			raw, _ := json.Marshal(js)
+			b.Write(raw)
+			b.WriteByte('\n')
+		}
 	}
 	if b.Len() == 0 {
+		if t == nil || (t.Extra == nil && !t.ChatOverlay) {
+			return ToolResult{Content: "no extra tools"}
+		}
 		return ToolResult{Content: "no matches"}
 	}
-	t.mu.Lock()
-	for _, name := range matched {
-		seen := false
-		for _, n := range t.ExtraEnabled {
-			if n == name {
-				seen = true
-				break
+	if t != nil && t.Extra != nil {
+		t.mu.Lock()
+		for _, name := range matched {
+			seen := false
+			for _, n := range t.ExtraEnabled {
+				if n == name {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				t.ExtraEnabled = append(t.ExtraEnabled, name)
 			}
 		}
-		if !seen {
-			t.ExtraEnabled = append(t.ExtraEnabled, name)
-		}
+		t.mu.Unlock()
 	}
-	t.mu.Unlock()
+	t.unlockAdvertised(hostHits)
 	return ToolResult{Content: b.String()}
 }
 

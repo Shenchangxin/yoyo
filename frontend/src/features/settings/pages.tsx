@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
-import { useTheme, type ThemePref } from "../../lib/theme";
+import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
 import { applyUiScale } from "../../lib/scale";
 import { chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
@@ -103,7 +103,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
 
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
-  const { pref, setPref, resolved } = useTheme();
+  const { pref, setPref, resolved, darkPalette, lightPalette, setDarkPalette, setLightPalette } = useTheme();
   const locale = (host.cfg.locale === "zh-CN" ? "zh-CN" : host.cfg.locale === "en" ? "en" : getLocale()) as Locale;
   const scale = host.cfg.uiScale && host.cfg.uiScale > 0 ? host.cfg.uiScale : 1;
   const modes: { id: ThemePref; label: string }[] = [
@@ -130,7 +130,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 key={m.id}
                 aria-pressed={active}
                 className={cn(
-                  "group rounded-[12px] border bg-card p-2 text-left transition-colors",
+                  "group cursor-pointer rounded-[12px] border bg-card p-2 text-left transition-colors",
                   active ? "border-accent/70 ring-2 ring-accent/25" : "border-border hover:border-muted/50",
                 )}
                 onClick={() => {
@@ -138,7 +138,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                   void host.patch({ theme: m.id });
                 }}
               >
-                <ThemePreview mode={m.id} />
+                <ThemePreview mode={m.id} dark={darkPalette} light={lightPalette} />
                 <div className="mt-2 flex items-center justify-center gap-1 text-[12px] font-medium text-foreground">
                   {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                   {m.label}
@@ -147,6 +147,33 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             );
           })}
         </div>
+      </SettingSection>
+
+      <SettingSection
+        id="appearance-palette"
+        title={copy.settings.sections.appearancePalette}
+        footnote={copy.settings.palettesDesc}
+        bare
+      >
+        <PaletteGroup
+          label={copy.settings.paletteGroupDark}
+          ids={DARK_PALETTES}
+          selected={darkPalette}
+          onPick={(id) => {
+            setDarkPalette(id);
+            void host.patch({ paletteDark: id });
+          }}
+        />
+        <PaletteGroup
+          label={copy.settings.paletteGroupLight}
+          ids={LIGHT_PALETTES}
+          selected={lightPalette}
+          className="mt-4"
+          onPick={(id) => {
+            setLightPalette(id);
+            void host.patch({ paletteLight: id });
+          }}
+        />
       </SettingSection>
 
       <SettingSection id="appearance-display" title={copy.settings.sections.appearanceDisplay}>
@@ -479,29 +506,89 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-function ThemePreview({ mode }: { mode: ThemePref }) {
+function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settings"]["palettes"]) {
+  switch (id) {
+    case "ink": return { name: palettes.ink, hint: palettes.inkHint };
+    case "dim": return { name: palettes.dim, hint: palettes.dimHint };
+    case "slate": return { name: palettes.slate, hint: palettes.slateHint };
+    case "neutral": return { name: palettes.neutral, hint: palettes.neutralHint };
+    case "paper": return { name: palettes.paper, hint: palettes.paperHint };
+    case "mist": return { name: palettes.mist, hint: palettes.mistHint };
+  }
+}
+
+function PaletteGroup<T extends DarkPalette | LightPalette>({
+  label,
+  ids,
+  selected,
+  onPick,
+  className,
+}: {
+  label: string;
+  ids: readonly T[];
+  selected: T;
+  onPick: (id: T) => void;
+  className?: string;
+}) {
+  const copy = useCopy();
+  return (
+    <div className={className}>
+      <div className="mb-2 px-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{label}</div>
+      <div className="grid grid-cols-3 gap-3">
+        {ids.map((id) => {
+          const meta = paletteCopy(id, copy.settings.palettes);
+          const active = selected === id;
+          return (
+            <button
+              type="button"
+              key={id}
+              aria-pressed={active}
+              aria-label={`${meta.name}. ${meta.hint}`}
+              className={cn(
+                "group cursor-pointer rounded-[12px] border bg-card p-2 text-left transition-colors",
+                active ? "border-accent/70 ring-2 ring-accent/25" : "border-border hover:border-muted/50",
+              )}
+              onClick={() => onPick(id)}
+            >
+              <div className="h-[52px] overflow-hidden rounded-[7px] border border-border">
+                <PreviewPane palette={id} />
+              </div>
+              <div className="mt-2 flex items-center justify-center gap-1 text-[12px] font-medium text-foreground">
+                {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
+                {meta.name}
+              </div>
+              <p className="mt-0.5 text-center text-[11px] leading-[1.4] text-muted">{meta.hint}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalette; light: LightPalette }) {
   if (mode === "system") {
     return (
       <div className="flex h-[52px] overflow-hidden rounded-[7px] border border-border">
         <div className="w-1/2 overflow-hidden">
-          <PreviewPane variant="dark" />
+          <PreviewPane palette={dark} />
         </div>
         <div className="w-1/2 overflow-hidden border-l border-border">
-          <PreviewPane variant="light" />
+          <PreviewPane palette={light} />
         </div>
       </div>
     );
   }
   return (
     <div className="h-[52px] overflow-hidden rounded-[7px] border border-border">
-      <PreviewPane variant={mode === "dark" ? "dark" : "light"} />
+      <PreviewPane palette={mode === "dark" ? dark : light} />
     </div>
   );
 }
 
-function PreviewPane({ variant }: { variant: "dark" | "light" }) {
+function PreviewPane({ palette }: { palette: PaletteId }) {
   return (
-    <div className={cn("flex h-full w-full", variant === "dark" ? "theme-preview-dark" : "theme-preview-light")}>
+    <div className="flex h-full w-full" data-theme-preview={palette}>
       <div className="theme-preview-rail h-full w-[28%] border-r" />
       <div className="flex-1 space-y-[3px] p-[6px]">
         <div className="theme-preview-line h-[3px] w-4/5 rounded-full" />

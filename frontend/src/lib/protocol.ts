@@ -177,7 +177,9 @@ export type AppConfig = {
   notifyWhenUnfocusedOnly?: boolean;
   uiScale?: number;
   updateChannel?: string;
-  theme?: string;
+	theme?: string;
+  paletteDark?: string;
+  paletteLight?: string;
   gateMode?: string;
   crashResume?: boolean;
   searchUrl?: string;

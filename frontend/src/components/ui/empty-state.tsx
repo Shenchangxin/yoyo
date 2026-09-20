@@ -10,9 +10,9 @@ export function EmptyState(props: {
 }) {
   return (
     <div className={cn("flex flex-col items-center justify-center px-4 py-10 text-center", props.className)}>
-      {props.icon ? <div className="mb-2 text-muted">{props.icon}</div> : null}
-      <p className="text-[13px] font-medium text-foreground">{props.title}</p>
-      {props.body ? <p className="mt-1 max-w-xs text-[11px] text-muted">{props.body}</p> : null}
+      {props.icon ? <div className="mb-3 text-muted">{props.icon}</div> : null}
+      <p className="text-[13px] font-medium text-pretty text-foreground">{props.title}</p>
+      {props.body ? <p className="mt-1 max-w-xs text-[11.5px] leading-[1.55] text-muted">{props.body}</p> : null}
       {props.action ? <div className="mt-3">{props.action}</div> : null}
     </div>
   );

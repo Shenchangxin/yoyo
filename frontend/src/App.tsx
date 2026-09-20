@@ -7,7 +7,7 @@ import * as api from "./lib/client";
 import { readLayout, writeLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
 import { useUI } from "./lib/store";
-import { AppFrame, MainColumn } from "./features/shell/AppFrame";
+import { AppFrame, MainColumn, SidebarCard } from "./features/shell/AppFrame";
 import { PageHeader } from "./features/shell/PageHeader";
 import { CommandPalette } from "./features/CommandPalette";
 import { ResizeHandle } from "./features/ResizeHandle";
@@ -169,6 +169,7 @@ export default function App() {
       running={ws.threadRunning}
       trace={ws.trace}
       thread={ws.active}
+      workspace={sessionWs}
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
       onResolve={ws.onResolve}
@@ -188,7 +189,7 @@ export default function App() {
   );
 
   const agentPane = (
-    <section className="relative flex h-full min-h-0 min-w-0 flex-col">
+    <section className="@container relative flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
           items={ws.items}
@@ -444,33 +445,36 @@ export default function App() {
           );
 
   const skillsPane = (
-    <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
-      <SkillsWorkspace
-        installed={ws.skills}
-        pinned={ws.active?.pinnedSkills || []}
-        loaded={ws.active?.loadedSkills || []}
-        threadId={ws.activeId}
-        onPinSkills={async (names) => {
-          if (!ws.activeId) return;
-          const t = await api.setSessionPinnedSkills(ws.activeId, names);
-          ws.setActive(t);
-          ws.setThreads((list) => patchThread(list, t.id, t));
-        }}
-        onRefreshInstalled={() => { void ws.reloadSkills(); }}
-      />
-    </div>
+    <SkillsWorkspace
+      installed={ws.skills}
+      pinned={ws.active?.pinnedSkills || []}
+      loaded={ws.active?.loadedSkills || []}
+      threadId={ws.activeId}
+      onPinSkills={async (names) => {
+        if (!ws.activeId) return;
+        const t = await api.setSessionPinnedSkills(ws.activeId, names);
+        ws.setActive(t);
+        ws.setThreads((list) => patchThread(list, t.id, t));
+      }}
+      onRefreshInstalled={() => { void ws.reloadSkills(); }}
+    />
   );
 
   const workspace = settings ? (
-    <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
+    <SidebarCard>
       <SettingsSurface ws={ws} />
-    </div>
-  ) : skills ? skillsPane : agent ? agentPane : labPane;
+    </SidebarCard>
+  ) : skills ? (
+    <SidebarCard>{skillsPane}</SidebarCard>
+  ) : harnessing ? (
+    <SidebarCard>{labPane}</SidebarCard>
+  ) : agentPane;
 
   return (
     <AppFrame
       overlay={(
         <>
+          <a href="#main-stage" className="skip-to-content no-drag">{copy.app.skipToContent}</a>
           {!ws.booted ? <div className="absolute inset-0 z-30"><BootSkeleton /></div> : null}
           <CommandPalette
             open={ws.palette}
@@ -589,7 +593,7 @@ export default function App() {
           <MainColumn>
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
-              <div data-testid="app-error" className="flex items-start gap-3 border-b border-danger/30 bg-danger/10 px-4 py-1.5 text-[13px] text-danger">
+              <div data-testid="app-error" className="mx-2 mb-1 flex items-start gap-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-1.5 text-[13px] text-danger">
                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{ws.err}</span>
                 <button type="button" className="ml-auto shrink-0 text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>

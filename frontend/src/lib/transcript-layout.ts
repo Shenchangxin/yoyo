@@ -1,6 +1,6 @@
 import type { Item } from "./protocol";
 import {
-  isOutcomeToolName,
+  isRichResult,
   isToolFailed,
   itemTimeMs,
   toolArgs,
@@ -9,6 +9,7 @@ import {
   toolName,
   type ToolKind,
 } from "./tool-summary";
+import { artifactShouldShow, artifactView } from "./artifact-preview";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
@@ -38,10 +39,23 @@ export function isTranscriptDuplicate(it: Item): boolean {
 /** Artifacts the operator acts on. `update_plan` stays in the process rail. */
 export function isOutcomeTool(it: Item): boolean {
   if (!isToolish(it)) return false;
-  const name = toolName(it);
-  const body = it.type === "tool_result" ? String(it.payload?.content || it.text || "") : "";
-  const path = String(toolArgs(it).path || "");
-  return isOutcomeToolName(name, body, path);
+  return pairShowsArtifact({
+    key: String(it.payload?.id || it.key),
+    call: it.type === "tool_call" ? it : undefined,
+    result: it.type === "tool_result" ? it : undefined,
+    extra: [],
+  });
+}
+
+export function pairShowsArtifact(pair: ToolPair): boolean {
+  const item = pair.call || pair.result || pair.extra[0];
+  if (!item) return false;
+  const name = toolName(item);
+  if (name.startsWith("office_") || name === "cite_sources") return true;
+  if (artifactShouldShow(artifactView(pair.call, pair.result))) return true;
+  const body = String((pair.result || item).payload?.content || (pair.result || item).text || "");
+  const path = String(toolArgs(pair.call || pair.result || item).path || "");
+  return isRichResult(name, body, path);
 }
 
 export function isProcessItem(it: Item): boolean {
@@ -168,6 +182,10 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
   let artifacts: Item[] = [];
+  const pairKind = new Map<string, "artifact" | "process">();
+  for (const p of pairTools(items.filter(isToolish))) {
+    pairKind.set(p.key, pairShowsArtifact(p) ? "artifact" : "process");
+  }
   const flushProcess = () => {
     if (!process.length) return;
     parts.push({
@@ -185,14 +203,20 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
   };
   for (const it of items) {
     if (isTranscriptDuplicate(it)) continue;
+    if (isToolish(it)) {
+      const id = String(it.payload?.id || it.key);
+      if (pairKind.get(id) === "artifact") {
+        flushProcess();
+        artifacts.push(it);
+      } else {
+        flushArtifacts();
+        process.push(it);
+      }
+      continue;
+    }
     if (isProcessItem(it)) {
       flushArtifacts();
       process.push(it);
-      continue;
-    }
-    if (isOutcomeTool(it)) {
-      flushProcess();
-      artifacts.push(it);
       continue;
     }
     flushProcess();

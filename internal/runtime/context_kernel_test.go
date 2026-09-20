@@ -63,7 +63,7 @@ func TestSpillBeforeCapIsLossless(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
 	full := strings.Repeat("TAIL", 20_000)
-	preview, _ := ingestToolResult(sp, "big", "shell", full)
+	preview, _ := ingestToolResult(sp, "big", "shell", full, 0, false)
 	if !strings.Contains(preview, "elided") {
 		t.Fatalf("expected preview stub, got %s", preview[:min(120, len(preview))])
 	}
@@ -181,5 +181,78 @@ func TestHarborIgnoresModelWindow(t *testing.T) {
 	chat := effectiveBudget(ShapeOpts{Loop: loop, ModelWindow: 128_000})
 	if chat <= b || chat >= 128_000 {
 		t.Fatalf("chat budget %d", chat)
+	}
+}
+
+func TestShapeStubsHeavyWriteCalls(t *testing.T) {
+	body := strings.Repeat("x", 4000)
+	origArgs := `{"path":"a.ts","content":"` + body + `"}`
+	orig := []Message{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: "u"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "w1", Name: "write_file", Arguments: origArgs}}},
+		{Role: RoleTool, ToolCallID: "w1", Name: "write_file", Content: "wrote a.ts"},
+	}
+	out, rep := Shape(orig, ShapeOpts{Loop: DefaultLoop()})
+	if orig[2].ToolCalls[0].Arguments != origArgs {
+		t.Fatal("live transcript must keep full write")
+	}
+	shaped := out[2].ToolCalls[0].Arguments
+	if shaped == origArgs || strings.Contains(shaped, body) {
+		t.Fatalf("shaped prompt still has full write body: %s", shaped[:min(180, len(shaped))])
+	}
+	if !strings.Contains(shaped, "read_file") || !strings.Contains(shaped, "a.ts") {
+		t.Fatalf("%s", shaped)
+	}
+	if !strings.Contains(rep.Note, "calls") {
+		t.Fatalf("layers %s", rep.Note)
+	}
+}
+
+func TestForceFitStubsCallArgsBeforeResults(t *testing.T) {
+	body := strings.Repeat("y", 500)
+	origArgs := make([]string, 6)
+	msgs := []Message{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: "u"},
+	}
+	for i := 0; i < 6; i++ {
+		id := "w" + itoa(i)
+		args := `{"path":"f` + itoa(i) + `.ts","content":"` + body + `"}`
+		origArgs[i] = args
+		msgs = append(msgs,
+			Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: id, Name: "write_file", Arguments: args}}},
+			Message{Role: RoleTool, ToolCallID: id, Name: "write_file", Content: strings.Repeat("z", 2000)},
+		)
+	}
+	loop := DefaultLoop()
+	loop.CompactionTokens = 2500
+	out, rep := Shape(msgs, ShapeOpts{Loop: loop})
+	if msgs[2].ToolCalls[0].Arguments != origArgs[0] {
+		t.Fatal("live transcript must keep mid-size writes")
+	}
+	if !strings.Contains(rep.Note, "calls") {
+		t.Fatalf("force path must stub remaining write args first, layers %s", rep.Note)
+	}
+	shaped := ""
+	for _, m := range out {
+		if m.Role != RoleAssistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.Name == "write_file" {
+				shaped = tc.Arguments
+				break
+			}
+		}
+		if shaped != "" {
+			break
+		}
+	}
+	if shaped == "" || strings.Count(shaped, "y") >= 500 {
+		t.Fatalf("write args still full after force: %s", shaped)
+	}
+	if !strings.Contains(shaped, "read_file") {
+		t.Fatalf("stub lost read_file hint: %s", shaped)
 	}
 }

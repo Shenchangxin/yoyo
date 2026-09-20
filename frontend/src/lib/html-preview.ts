@@ -5,6 +5,10 @@ export function looksLikeHTML(raw: string): boolean {
   return lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.includes("<html") || lower.includes("mcp-ui");
 }
 
+export function looksLikeHTMLFile(path: string): boolean {
+  return /\.(html?|xhtml)$/i.test(path || "");
+}
+
 export function looksLikePDF(path: string, mime = ""): boolean {
   return /\.pdf$/i.test(path) || mime.toLowerCase() === "application/pdf";
 }
