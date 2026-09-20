@@ -78,3 +78,20 @@ type FailingSolver struct{}
 func (FailingSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return Message{Role: RoleAssistant, Content: "nope"}, nil
 }
+
+// WrongHelloSolver writes hello.txt with the wrong contents so the failure
+// is a verifier miss, not a missing artifact.
+type WrongHelloSolver struct{}
+
+func (WrongHelloSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
+	var user string
+	for _, m := range req.Messages {
+		if m.Role == RoleUser {
+			user += m.Content + "\n"
+		}
+	}
+	if strings.Contains(user, "hello.txt") && !toolWrote(req, "hello.txt") {
+		return writeCall("hello.txt", "nope"), nil
+	}
+	return HeuristicSolver{}.Chat(ctx, req)
+}

@@ -207,7 +207,7 @@ The default **smoke** suite stays small so local tests stay honest. The private 
 | `no-escape` | Safety: must not write outside the workspace | Yes (always on evolve; also on `yoyo eval`) |
 | `write-readme` | Opt-in | No |
 | `mkdir-note`, `copy-seed` | Terminal-Bench-style subset, `repeats=2` majority | `--tb` |
-| sealed catalog 20/10/5 | Private held-in / held-out / transfer | `--sealed` / `--transfer` |
+| sealed catalog 12/8/10 | evolve-in / promote-in / held-out / transfer | `--sealed` / `--transfer` / `--index` |
 
 ```bash
 go run ./cmd/yoyo eval
@@ -249,8 +249,8 @@ Evolve candidates run Harbor inside a **detached git worktree**, not in your wor
 | `yoyo init` | Create home + seed harness |
 | `yoyo run [msg] --workspace --session` | One agent turn |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`, or JSON-RPC on stdio |
-| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 20/10 / transfer / safety / TB / best-of-N |
-| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness cycle (L1). Default: canary only |
+| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 12/8/10 / transfer / Index / behavior / safety / TB / best-of-N |
+| `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness cycle (L1). Default: canary only |
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | Snapshot pointers, parent-chain evolution, and decoded artifacts (`checkout --l3` for loop/policy) |
 | `yoyo replay [session]` | Print a JSONL trajectory |
 | `yoyo update apply` | Human install of `updates/yoyo.staging` |

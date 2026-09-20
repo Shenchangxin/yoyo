@@ -242,7 +242,7 @@ Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あ�
 | `yoyo init` | ホーム作成とハーネス初期化 |
 | `yoyo run [msg] --workspace --session` | エージェント 1 ターン |
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`、または stdio JSON-RPC |
-| `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | スモーク / 密封 20/10 / transfer / 安全 / TB / best-of-N |
+| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | スモーク / 密封 12/8/10 / transfer / Index / behavior / 安全 / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。既定は canary のみ |
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | スナップショット、親チェーン、デコード済み成果物（loop/ポリシーは `checkout --l3`） |
 | `yoyo replay [session]` | JSONL 軌跡を表示 |

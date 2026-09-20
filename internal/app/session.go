@@ -668,6 +668,22 @@ func (a *App) RunEvalTransfer(ctx context.Context, client runtime.Client) (eval.
 	})
 }
 
+func (a *App) RunEvalIndex(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, eval.ApplyIndexTransferOnly)
+}
+
+func (a *App) RunEvalBehavior(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
+	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
+		suite.ID = "behavior-probes"
+		suite.HeldIn = append([]string{}, eval.BehaviorIDs...)
+		suite.HeldOut = nil
+		suite.Transfer = nil
+		suite.Safety = nil
+		suite.EvolveIn = nil
+		suite.Repeats = 1
+	})
+}
+
 func (a *App) RunEvalMut(ctx context.Context, client runtime.Client, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	return a.runEval(ctx, client, "", mut)
 }
@@ -694,7 +710,8 @@ func (a *App) runEval(ctx context.Context, client runtime.Client, model string, 
 	if model == "" {
 		model = a.Config.Model
 	}
-	return a.Eval.Run(ctx, eval.RunOpts{
+	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
+	rep, err := a.Eval.Run(ctx, eval.RunOpts{
 		Suite:     suite,
 		Snapshot:  snap,
 		Hash:      hash,
@@ -706,7 +723,13 @@ func (a *App) runEval(ctx context.Context, client runtime.Client, model string, 
 		Trace:     a.Traces,
 		SessionID: "eval-" + newID()[:8],
 		Model:     model,
+		Meter:     meter,
 	})
+	if err != nil {
+		return rep, err
+	}
+	a.rememberEval(rep)
+	return rep, nil
 }
 
 func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[string]string) (evolve.CycleResult, error) {
@@ -727,6 +750,9 @@ type EvolveRun struct {
 	MaxWall        time.Duration
 	MaxUSD         float64
 	PromoteRepeats int
+	Behavior       bool
+	IndexTransfer  bool
+	Baselines      int
 }
 
 func (a *App) EvolveWith(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) (evolve.CycleResult, error) {
@@ -813,12 +839,15 @@ func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[
 	if run.Sealed {
 		eval.ApplySealed(&suite)
 	}
+	if run.IndexTransfer {
+		eval.ApplyIndexTransfer(&suite)
+	}
 	k := run.K
 	if k <= 0 {
 		k = 3
 	}
 	sid := "evolve-" + newID()[:8]
-	res, err := a.Evolve.Cycle(ctx, evolve.CycleOpts{
+	opts := evolve.CycleOpts{
 		Parent:         parentSet,
 		Baseline:       baseSet,
 		Suite:          suite,
@@ -832,14 +861,89 @@ func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[
 		HeldOut:        suite.HeldOut,
 		StagingHash:    a.Refs.GetOrEmpty(artifact.RefStaging),
 		PromoteRepeats: run.PromoteRepeats,
-	})
+		MaxUSD:         run.MaxUSD,
+		MaxWall:        run.MaxWall,
+		Behavior:       run.Behavior,
+		IndexTransfer:  run.IndexTransfer,
+		USDPerMTok:     a.Config.USDPerMTok,
+	}
+	res, err := a.Evolve.Cycle(ctx, opts)
 	if err != nil {
+		a.rememberEvolve(res)
 		return res, err
 	}
 	if res.Promoted != "" && len(suite.Transfer) > 0 {
 		a.markTransfer(ctx, client, activeHash, res.Promoted, suite)
 	}
+	if run.Baselines > 0 {
+		bopts := opts
+		bopts.SessionID = sid + "-lab"
+		if run.MaxUSD > 0 {
+			left := run.MaxUSD - res.Spend.USD
+			if left < 0 {
+				left = 0
+			}
+			bopts.MaxUSD = left
+		}
+		cmp, berr := a.Evolve.SearchBaselines(ctx, bopts, run.Baselines)
+		if berr != nil {
+			a.rememberEvolve(res)
+			return res, berr
+		}
+		res.Compare = &cmp
+	}
+	a.addSpendUsage(res.Spend)
+	if res.Compare != nil {
+		a.addSpendUsage(res.Compare.Spend)
+	}
+	a.rememberEvolve(res)
 	return res, nil
+}
+
+func (a *App) SearchBaselines(ctx context.Context, client runtime.Client, n int, run EvolveRun) (evolve.LabCompare, error) {
+	activeHash := a.ActiveHash()
+	baseSet, err := a.materialSet(activeHash)
+	if err != nil {
+		return evolve.LabCompare{}, err
+	}
+	if client == nil {
+		client, err = a.Client()
+		if err != nil {
+			return evolve.LabCompare{}, err
+		}
+	}
+	_, _, _, _, suite, _, err := a.Materials(activeHash)
+	if err != nil {
+		return evolve.LabCompare{}, err
+	}
+	if run.Sealed {
+		eval.ApplySealed(&suite)
+	}
+	if run.IndexTransfer {
+		eval.ApplyIndexTransfer(&suite)
+	}
+	opts := evolve.CycleOpts{
+		Parent:         baseSet,
+		Baseline:       baseSet,
+		Suite:          suite,
+		Client:         client,
+		Trace:          a.Traces,
+		SessionID:      "lab-" + newID()[:8],
+		Model:          a.Config.Model,
+		HeldOut:        suite.HeldOut,
+		PromoteRepeats: run.PromoteRepeats,
+		MaxUSD:         run.MaxUSD,
+		MaxWall:        run.MaxWall,
+		Behavior:       run.Behavior,
+		USDPerMTok:     a.Config.USDPerMTok,
+	}
+	cmp, err := a.Evolve.SearchBaselines(ctx, opts, n)
+	if err != nil {
+		return cmp, err
+	}
+	a.addSpendUsage(cmp.Spend)
+	a.rememberEvolve(evolve.CycleResult{Compare: &cmp, Spend: cmp.Spend})
+	return cmp, nil
 }
 
 func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash, canary string, suite artifact.EvalSuite) {
@@ -859,7 +963,7 @@ func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash,
 	baseRep, err := a.Eval.Run(ctx, eval.RunOpts{
 		Suite: xfer, Snapshot: baseSet.Snap, Hash: baseSet.Hash, Client: client,
 		Loop: baseSet.Loop, Fragments: baseSet.Fragments, Playbook: baseSet.Playbook, Skills: baseSet.Skills,
-		SessionID: "xfer-base", Model: a.Config.Model,
+		SessionID: "xfer-base", Model: a.Config.Model, Meter: &runtime.Meter{USDPerMTok: a.Config.USDPerMTok},
 	})
 	if err != nil {
 		return
@@ -867,7 +971,7 @@ func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash,
 	candRep, err := a.Eval.Run(ctx, eval.RunOpts{
 		Suite: xfer, Snapshot: candSet.Snap, Hash: candSet.Hash, Client: client,
 		Loop: candSet.Loop, Fragments: candSet.Fragments, Playbook: candSet.Playbook, Skills: candSet.Skills,
-		SessionID: "xfer-cand", Model: a.Config.Model,
+		SessionID: "xfer-cand", Model: a.Config.Model, Meter: &runtime.Meter{USDPerMTok: a.Config.USDPerMTok},
 	})
 	if err != nil {
 		return
@@ -1006,12 +1110,16 @@ func (a *App) ListHarnesses() (map[string]string, error) {
 }
 
 func (a *App) BestOfN(ctx context.Context, n int, client runtime.Client) (BestOfNReport, error) {
+	return a.BestOfNMut(ctx, n, client, nil)
+}
+
+func (a *App) BestOfNMut(ctx context.Context, n int, client runtime.Client, mut func(*artifact.EvalSuite)) (BestOfNReport, error) {
 	if n < 1 {
 		n = 3
 	}
 	rep := BestOfNReport{N: n, Kind: "repeat"}
 	for i := 0; i < n; i++ {
-		r, err := a.RunEval(ctx, client)
+		r, err := a.runEval(ctx, client, "", mut)
 		if err != nil {
 			return rep, err
 		}
@@ -1121,6 +1229,101 @@ func (a *App) Diff(aHash, bHash string) (string, error) {
 	}
 	text, _ := d["text"].(string)
 	return text, nil
+}
+
+func (a *App) rememberEval(rep eval.RunReport) {
+	a.evalMu.Lock()
+	a.lastEval = rep
+	a.evalMu.Unlock()
+	b, err := json.MarshalIndent(rep, "", "  ")
+	if err == nil && a.Home != nil {
+		_ = os.WriteFile(filepath.Join(a.Home.EvalRuns(), "last.json"), b, 0o644)
+	}
+	a.RememberUsage(map[string]any{
+		"usd":           rep.USD,
+		"input_tokens":  rep.TokensIn,
+		"output_tokens": rep.TokensOut,
+		"wall_ms":       rep.WallMs,
+	})
+}
+
+func (a *App) LastEval() eval.RunReport {
+	a.evalMu.Lock()
+	rep := a.lastEval
+	a.evalMu.Unlock()
+	if rep.Suite != "" || len(rep.Results) > 0 {
+		return rep
+	}
+	if a.Home == nil {
+		return eval.RunReport{}
+	}
+	b, err := os.ReadFile(filepath.Join(a.Home.EvalRuns(), "last.json"))
+	if err != nil {
+		return eval.RunReport{}
+	}
+	_ = json.Unmarshal(b, &rep)
+	a.evalMu.Lock()
+	a.lastEval = rep
+	a.evalMu.Unlock()
+	return rep
+}
+
+func (a *App) rememberEvolve(res evolve.CycleResult) {
+	a.evolveMu.Lock()
+	a.lastEvolve = res
+	a.evolveMu.Unlock()
+	b, err := json.MarshalIndent(res, "", "  ")
+	if err == nil && a.Home != nil {
+		_ = os.WriteFile(filepath.Join(a.Home.EvalRuns(), "last-evolve.json"), b, 0o644)
+	}
+}
+
+func (a *App) LastEvolve() evolve.CycleResult {
+	a.evolveMu.Lock()
+	res := a.lastEvolve
+	a.evolveMu.Unlock()
+	if len(res.Tried) > 0 || res.Promoted != "" || res.Compare != nil {
+		return res
+	}
+	if a.Home == nil {
+		return evolve.CycleResult{}
+	}
+	b, err := os.ReadFile(filepath.Join(a.Home.EvalRuns(), "last-evolve.json"))
+	if err != nil {
+		return evolve.CycleResult{}
+	}
+	_ = json.Unmarshal(b, &res)
+	a.evolveMu.Lock()
+	a.lastEvolve = res
+	a.evolveMu.Unlock()
+	return res
+}
+
+func (a *App) addSpendUsage(s evolve.Spend) {
+	prev := a.LastUsage()
+	usd, _ := prev["usd"].(float64)
+	in := intFromAny(prev["input_tokens"])
+	out := intFromAny(prev["output_tokens"])
+	wall := int64(intFromAny(prev["wall_ms"]))
+	a.RememberUsage(map[string]any{
+		"usd":           usd + s.USD,
+		"input_tokens":  in + s.TokensIn,
+		"output_tokens": out + s.TokensOut,
+		"wall_ms":       wall + s.WallMs,
+	})
+}
+
+func intFromAny(v any) int {
+	switch t := v.(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	default:
+		return 0
+	}
 }
 
 func newID() string {

@@ -51,6 +51,8 @@ export function HarborLab(props: {
             <DropdownMenuItem onSelect={() => props.onRun("safety")}>{copy.harbor.runSafety}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("sealed")}>{copy.harbor.runSealed}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("transfer")}>{copy.harbor.runTransfer}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => props.onRun("index")}>{copy.harbor.runIndex}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => props.onRun("behavior")}>{copy.harbor.runBehavior}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("tb")}>{copy.harbor.runTb}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("bon")}>{copy.harbor.runBon}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setModelsOpen(true)}>{copy.harbor.runModels}</DropdownMenuItem>
@@ -96,6 +98,11 @@ export function HarborLab(props: {
               last
             />
           </div>
+          <p className="mb-4 font-mono text-[12px] text-muted">
+            {str(pick(props.report, "snapshot", "Snapshot")).slice(0, 16) || "—"}
+            {str(pick(props.report, "model_fingerprint", "ModelFingerprint")) ? ` · ${str(pick(props.report, "model_fingerprint", "ModelFingerprint"))}` : ""}
+            {` · ${copy.labs.usd} ${num(pick(props.report, "usd", "USD")).toFixed(4)} · ${copy.labs.tokens} ${num(pick(props.report, "tokens_in", "TokensIn"))}/${num(pick(props.report, "tokens_out", "TokensOut"))} · ${copy.labs.wall} ${num(pick(props.report, "wall_ms", "WallMs"))}ms`}
+          </p>
           <p className="mb-4 text-[13px] text-muted">
             <span className="font-medium text-foreground">{copy.harbor.verdict}. </span>
             {safety > 0 ? copy.harbor.verdictBlock : props.report ? (inT && outT && inP === inT && outP === outT ? copy.harbor.verdictPromote : copy.harbor.whyEvidence) : copy.harbor.verdictIdle}

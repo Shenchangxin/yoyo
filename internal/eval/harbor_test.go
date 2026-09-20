@@ -131,6 +131,9 @@ func TestRepeatsAndTBSubset(t *testing.T) {
 		if r.Isolate != "copy" {
 			t.Fatalf("isolate %q", r.Isolate)
 		}
+		if len(r.Attempts) != 2 {
+			t.Fatalf("attempts %+v", r)
+		}
 	}
 }
 
@@ -204,14 +207,32 @@ func TestHarborShapeOnlyEvenIfAllowLLMCompact(t *testing.T) {
 	if rep.Metrics.HeldInPass != 1 || rep.Metrics.HeldOutPass != 1 {
 		t.Fatalf("%+v", rep)
 	}
-	evs, err := st.Read("h")
-	if err != nil {
-		t.Fatal(err)
+	seen := map[string]bool{}
+	for _, r := range rep.Results {
+		for _, a := range r.Attempts {
+			if a.SessionID == "" {
+				t.Fatalf("missing attempt session %+v", r)
+			}
+			if seen[a.SessionID] {
+				t.Fatalf("duplicate session %s", a.SessionID)
+			}
+			seen[a.SessionID] = true
+			evs, err := st.Read(a.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, ev := range evs {
+				kind, _ := ev.Payload["kind"].(string)
+				if kind == "checkpoint" {
+					t.Fatal("harbor persisted a chat checkpoint")
+				}
+			}
+		}
 	}
-	for _, ev := range evs {
-		kind, _ := ev.Payload["kind"].(string)
-		if kind == "checkpoint" {
-			t.Fatal("harbor persisted a chat checkpoint")
+	if _, err := st.Read("h"); err == nil {
+		evs, _ := st.Read("h")
+		if len(evs) > 0 {
+			t.Fatal("legacy session id should not receive task traces")
 		}
 	}
 }
@@ -238,5 +259,72 @@ func TestHarborPromptSensitiveUnchanged(t *testing.T) {
 	}
 	if rep.Metrics.HeldInPass != 0 || rep.Metrics.HeldOutPass != 0 {
 		t.Fatalf("PromptSensitiveSolver must stay unarmed without placeholder pin: %+v", rep)
+	}
+}
+
+func TestPrepareWorkOmitsTests(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "instruction.md"), []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(src, "tests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "tests", "secret.txt"), []byte("leak"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work, cleanup, _, err := prepareWork(src, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(work, "tests")); err == nil {
+		t.Fatal("grader leaked into agent worktree")
+	}
+	if _, err := os.Stat(filepath.Join(work, "instruction.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBehaviorProbesPassHeuristic(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
+	e := NewEngine(root)
+	rep, err := e.Run(context.Background(), RunOpts{
+		Suite: artifact.EvalSuite{
+			ID:         "behavior",
+			TaskDir:    root,
+			HeldIn:     BehaviorIDs,
+			Repeats:    1,
+			TimeoutSec: 30,
+		},
+		Client: rt.HeuristicSolver{},
+		Loop:   rt.DefaultLoop(),
+		Model:  "fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Metrics.HeldInPass != len(BehaviorIDs) {
+		t.Fatalf("%+v", rep)
+	}
+}
+
+func TestHarborSpendFields(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
+	e := NewEngine(root)
+	meter := &rt.Meter{USDPerMTok: 1}
+	rep, err := e.Run(context.Background(), RunOpts{
+		Suite: artifact.EvalSuite{
+			ID: "spend", TaskDir: root, HeldIn: []string{"write-hello"}, Repeats: 1, TimeoutSec: 30,
+		},
+		Client: rt.HeuristicSolver{}, Loop: rt.DefaultLoop(), Model: "fixture", Meter: meter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.WallMs <= 0 || len(rep.Results) != 1 || rep.Results[0].WallMs <= 0 {
+		t.Fatalf("wall %+v", rep)
 	}
 }

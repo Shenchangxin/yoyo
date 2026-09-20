@@ -157,19 +157,20 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 | Mine → Propose → Harbor | Self-Harness 2026 | `internal/evolve`, `internal/eval` | implemented |
 | Playbook delta / 在线 staging | ACE ICLR 2026 | `curate.go`, `StageACE` | implemented |
 | Archive 父代采样 | DGM 2025 | `select.go` | implemented |
-| held-in / held-out / safety / transfer | Self-Harness + Harbor | `promote.go`, sealed suite | implemented |
+| held-in / held-out / safety / transfer / evolve-set | Self-Harness + Harbor + ModularRSI | `promote.go`, sealed 12/8/10 | implemented |
 | CAS + refs | Git 内容寻址（工程，非论文） | `internal/artifact` | implemented |
 | 只读 Shape + spill | Claude compaction 的反设计 | `context_shape.go` | implemented |
 | JSON-RPC App Server | Codex 2026 | `internal/api/rpc.go` | implemented |
 | Skills catalog | Claude + SoK Skills 2026 | `artifact.Skill`, `load_skill` | partial |
-| 模块化 RSI（五模块独立进化） | ModularRSI 2026-09 | — | candidate |
-| 参考轨迹对齐 | HarnessEvolve 2026-09 | — | candidate |
-| 与 test-time scaling 的匹配预算对照 | Wang et al. 2026-07；Gideoni et al. 2026-02 | — | critique |
-| Harbor-Index 门 | Shi et al. 2026-09 | — | candidate |
+| 模块化 RSI（五模块独立进化） | ModularRSI 2026-09 | 单 surface 提案 + 不相交 merge；不改 loop 拓扑 | implemented |
+| 同任务对比轨迹 | ModularRSI、HarnessEvolve | `EvidenceBundle.Pairs`、Harbor attempts | implemented |
+| 确定性质量门 | HarnessEvolve、SkillReducer、Gloaguen | `AdmitQuality` | implemented |
+| 与 test-time scaling 的匹配预算对照 | Wang et al. 2026-07；Gideoni et al. 2026-02 | `SearchBaselines`、Harbor spend、`--best --sealed` | implemented |
+| Harbor-Index 门 | Shi et al. 2026-09 | 三道 stand-in transfer；id 不进 Propose；82 题不进 CI | partial |
 | 技能可变执行状态 | SKILL.state 2026-08 | — | candidate |
-| 文件系统证据 / 可证伪 change manifest | Meta-Harness ICML 2026；AHE 2026-04 | journal + `PredictedFixes` 字段已有，未对账 | candidate |
+| 文件系统证据 / 可证伪 change manifest | Meta-Harness ICML 2026；AHE 2026-04 | `predicted_fixes` hit==0 拒 canary | implemented |
 | 规则裁剪先于 LLM 摘要 | Fan et al. 2026-09 | `context_shape.go` | partial |
-| 微观行为评测 | Google 2026-09；RHB ICML 2026 | — | candidate |
+| 微观行为评测 | Google 2026-09；RHB ICML 2026 | `evals/behavior-*`、`--behavior` | implemented |
 | 长程 generator/evaluator 拆分 | Anthropic 2026-03 | Plan mode 有；独立 QA 人格无 | candidate |
 
 Git 式 CAS/refs 没有 2026 年论文可引，它是工程类比（Git objects / refs）。学术上对应的是「harness 必须是声明的、可差分的状态」，Self-Harness 与 Barbaste 都把 harness 定义成这份状态。

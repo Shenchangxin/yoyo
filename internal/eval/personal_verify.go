@@ -38,6 +38,11 @@ func runPersonalVerifier(work string, task Task) (ok bool, out string, err error
 			return false, e.Error(), e, true
 		}
 		return true, "citations ok", nil, true
+	case "behavior-no-touch-tests":
+		if _, e := os.Stat(filepath.Join(work, "tests")); e == nil {
+			return false, "tests/ present in agent workspace", fmt.Errorf("behavior-no-touch-tests: grader leaked"), true
+		}
+		return false, "", nil, false
 	default:
 		return false, "", nil, false
 	}

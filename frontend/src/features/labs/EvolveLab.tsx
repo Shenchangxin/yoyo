@@ -13,6 +13,14 @@ export function EvolveLab(props: {
   onRounds: (n: number) => void;
   sealed: boolean;
   onSealed: (v: boolean) => void;
+  behavior: boolean;
+  onBehavior: (v: boolean) => void;
+  index: boolean;
+  onIndex: (v: boolean) => void;
+  baselines: boolean;
+  onBaselines: (v: boolean) => void;
+  maxUsd: number;
+  onMaxUsd: (n: number) => void;
   onRun: () => void;
   evolve: any;
   playbook: any;
@@ -45,6 +53,22 @@ export function EvolveLab(props: {
           <input type="checkbox" checked={props.sealed} onChange={(e) => props.onSealed(e.target.checked)} />
           {copy.labs.sealed}
         </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={props.behavior} onChange={(e) => props.onBehavior(e.target.checked)} />
+          {copy.labs.behavior}
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={props.index} onChange={(e) => props.onIndex(e.target.checked)} />
+          {copy.labs.index}
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={props.baselines} onChange={(e) => props.onBaselines(e.target.checked)} />
+          {copy.labs.baselines}
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-muted">
+          {copy.labs.maxUsd}
+          <Input type="number" min={0} step={0.1} className="h-8 w-20" value={props.maxUsd || ""} onChange={(e) => props.onMaxUsd(Number(e.target.value) || 0)} />
+        </label>
         <Button disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
       </div>
       {props.evolve ? (
@@ -54,6 +78,8 @@ export function EvolveLab(props: {
           <LabStat label={copy.labs.activeMoved} value={bool(pick(props.evolve, "active_moved", "ActiveMoved")) ? copy.rsi.active : copy.rsi.canary} />
         </div>
       ) : <p className="mb-4 text-[13px] text-muted">{copy.labs.noCycle}</p>}
+      {props.evolve ? <SpendBlock spend={pick(props.evolve, "spend", "Spend")} copy={copy} /> : null}
+      <p className="mb-5 text-[12.5px] text-muted">{copy.labs.goNoGo}</p>
       {deltas.length ? (
         <div className="mb-5 overflow-hidden rounded-[10px] border border-border/80 bg-card">
           <div className="border-b border-border/70 px-4 py-2 text-[12px] font-medium">{copy.labs.thisCycle} · {copy.labs.playbookDelta}</div>
@@ -72,6 +98,8 @@ export function EvolveLab(props: {
                 <th className="font-medium">{copy.labs.reason}</th>
                 <th className="font-medium">{copy.labs.in}</th>
                 <th className="font-medium">{copy.labs.out}</th>
+                <th className="font-medium">{copy.labs.hit}</th>
+                <th className="font-medium">{copy.labs.miss}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/80">
@@ -85,6 +113,8 @@ export function EvolveLab(props: {
                     <td className="text-muted">{str(pick(t, "reason", "Reason"))}</td>
                     <td className="tabular-nums">{num(pick(m, "held_in_pass", "HeldInPass"))}/{num(pick(m, "held_in_total", "HeldInTotal"))}</td>
                     <td className="tabular-nums">{num(pick(m, "held_out_pass", "HeldOutPass"))}/{num(pick(m, "held_out_total", "HeldOutTotal"))}</td>
+                    <td className="tabular-nums">{num(pick(t, "manifesto_hit", "ManifestoHit"))}</td>
+                    <td className="tabular-nums">{num(pick(t, "manifesto_miss", "ManifestoMiss"))}</td>
                   </tr>
                 );
               })}
@@ -92,6 +122,7 @@ export function EvolveLab(props: {
           </LabTable>
         </div>
       ) : null}
+      <CompareBlock evolve={props.evolve} copy={copy} />
       <h3 className="mb-3 text-[13px] font-medium">{copy.labs.playbook}</h3>
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         {bullets.map((b: any) => (
@@ -136,4 +167,73 @@ export function EvolveLab(props: {
 function slice(v: any): string {
   const s = str(v);
   return s.length > 16 ? s.slice(0, 16) : s || "—";
+}
+
+function SpendBlock(props: { spend: any; copy: ReturnType<typeof useCopy> }) {
+  const s = props.spend || {};
+  const usd = num(pick(s, "usd", "USD"));
+  const tin = num(pick(s, "tokens_in", "TokensIn"));
+  const tout = num(pick(s, "tokens_out", "TokensOut"));
+  const wall = num(pick(s, "wall_ms", "WallMs"));
+  if (!usd && !tin && !tout && !wall) return null;
+  return (
+    <p className="mb-4 text-[12.5px] text-muted">
+      {props.copy.labs.spend} · {props.copy.labs.usd} {usd.toFixed(4)} · {props.copy.labs.tokens} {tin}/{tout} · {props.copy.labs.wall} {wall}ms
+    </p>
+  );
+}
+
+function CompareBlock(props: { evolve: any; copy: ReturnType<typeof useCopy> }) {
+  const cmp = pick(props.evolve, "compare", "Compare");
+  if (!cmp) return null;
+  const copy = props.copy;
+  const rows = [
+    { name: copy.labs.bon, reports: asArray(pick(cmp, "best_of_n", "BestOfN")) },
+    { name: copy.labs.iid, trials: asArray(pick(cmp, "iid", "IID")) },
+    { name: copy.labs.scs, trials: asArray(pick(cmp, "scs", "SCS")) },
+  ];
+  return (
+    <div className="mb-6">
+      <h3 className="mb-3 text-[13px] font-medium">{copy.labs.labCompare}</h3>
+      <p className="mb-3 font-mono text-[12px] text-muted">
+        {slice(pick(cmp, "snapshot", "Snapshot"))} · {str(pick(cmp, "model_fingerprint", "ModelFingerprint")) || "—"}
+      </p>
+      <SpendBlock spend={pick(cmp, "spend", "Spend")} copy={copy} />
+      <LabTable>
+        <thead className="text-[11px] text-muted">
+          <tr>
+            <th className="px-4 py-2 font-medium">{copy.labs.labCompare}</th>
+            <th className="font-medium">{copy.labs.in}</th>
+            <th className="font-medium">{copy.labs.out}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/80">
+          {rows.flatMap((row) => {
+            if (row.reports) {
+              return row.reports.map((r: any, i: number) => {
+                const m = pick(r, "metrics", "Metrics") || {};
+                return (
+                  <tr key={`${row.name}-${i}`}>
+                    <td className="px-4 py-2">{row.name} {i + 1}</td>
+                    <td className="tabular-nums">{num(pick(m, "held_in_pass", "HeldInPass"))}/{num(pick(m, "held_in_total", "HeldInTotal"))}</td>
+                    <td className="tabular-nums">{num(pick(m, "held_out_pass", "HeldOutPass"))}/{num(pick(m, "held_out_total", "HeldOutTotal"))}</td>
+                  </tr>
+                );
+              });
+            }
+            return (row.trials || []).map((t: any, i: number) => {
+              const m = pick(t, "metrics", "Metrics") || {};
+              return (
+                <tr key={`${row.name}-${i}`}>
+                  <td className="px-4 py-2">{row.name} {str(pick(pick(t, "proposal", "Proposal") || {}, "id", "ID"), String(i + 1))}</td>
+                  <td className="tabular-nums">{num(pick(m, "held_in_pass", "HeldInPass"))}/{num(pick(m, "held_in_total", "HeldInTotal"))}</td>
+                  <td className="tabular-nums">{num(pick(m, "held_out_pass", "HeldOutPass"))}/{num(pick(m, "held_out_total", "HeldOutTotal"))}</td>
+                </tr>
+              );
+            });
+          })}
+        </tbody>
+      </LabTable>
+    </div>
+  );
 }

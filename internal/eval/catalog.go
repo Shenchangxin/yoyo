@@ -1,10 +1,15 @@
 package eval
 
-import "github.com/Shenchangxin/yoyo/internal/artifact"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/Shenchangxin/yoyo/internal/artifact"
+)
 
 // TaskSpec is a Harbor-layout task that can be materialized on demand.
 // Smoke tasks (write-hello, write-answer, …) live on disk under evals/.
-// Sealed tasks are derived from this catalog so the 20/10/5 split stays
+// Sealed tasks are derived from this catalog so the 12/8/10 split stays
 // the source of truth rather than a pile of copy-pasted fixtures.
 type TaskSpec struct {
 	ID       string
@@ -16,8 +21,8 @@ func spec(id, file, word string) TaskSpec {
 	return TaskSpec{ID: id, File: file, Contains: word}
 }
 
-// SealedHeldIn is the proposer-visible split (≥20). Identities stay on the
-// suite object; Mine/Propose must never receive SealedHeldOut or SealedTransfer.
+// SealedHeldIn is the full sealed held-in family. ApplySealed splits it into
+// EvolveIn (proposer / inner trials) and HeldIn (promote-set).
 var SealedHeldIn = []TaskSpec{
 	spec("si-01-alpha", "alpha.txt", "alpha"),
 	spec("si-02-bravo", "bravo.txt", "bravo"),
@@ -62,6 +67,37 @@ var SealedTransfer = []TaskSpec{
 	spec("st-05-ivory", "ivory.txt", "ivory"),
 }
 
+// IndexTransfer is a Harbor-Index stand-in used only as post-canary transfer.
+// Real Index adapters replace these files; ids never enter EvolveIn or Propose.
+var IndexTransfer = []TaskSpec{
+	spec("hi-01-index", "index-alpha.txt", "index-alpha"),
+	spec("hi-02-index", "index-bravo.txt", "index-bravo"),
+	spec("hi-03-index", "index-charlie.txt", "index-charlie"),
+}
+
+// BehaviorIDs are cheap probes for the evolve lab and CI. They are not the
+// default 89-task promote gate.
+var BehaviorIDs = []string{
+	"behavior-claim-complete",
+	"behavior-no-touch-tests",
+	"behavior-must-verify",
+	"behavior-no-invent-path",
+}
+
+const sealedEvolveN = 12
+
+func (e *Engine) ReadInstruction(suite artifact.EvalSuite, id string) string {
+	root := suite.TaskDir
+	if root == "" {
+		root = e.SuitesRoot
+	}
+	b, err := os.ReadFile(filepath.Join(e.resolveTaskDir(root, id), "instruction.md"))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 func idsOf(specs []TaskSpec) []string {
 	out := make([]string, len(specs))
 	for i, s := range specs {
@@ -86,6 +122,11 @@ func lookupSpec(id string) (TaskSpec, bool) {
 			return s, true
 		}
 	}
+	for _, s := range IndexTransfer {
+		if s.ID == id {
+			return s, true
+		}
+	}
 	return TaskSpec{}, false
 }
 
@@ -96,7 +137,14 @@ func ApplySealed(suite *artifact.EvalSuite) {
 		return
 	}
 	suite.ID = "sealed-v1"
-	suite.HeldIn = idsOf(SealedHeldIn)
+	ids := idsOf(SealedHeldIn)
+	if len(ids) > sealedEvolveN {
+		suite.EvolveIn = append([]string{}, ids[:sealedEvolveN]...)
+		suite.HeldIn = append([]string{}, ids[sealedEvolveN:]...)
+	} else {
+		suite.EvolveIn = append([]string{}, ids...)
+		suite.HeldIn = append([]string{}, ids...)
+	}
 	suite.HeldOut = idsOf(SealedHeldOut)
 	suite.Transfer = idsOf(SealedTransfer)
 	suite.Safety = uniqueAppend(suite.Safety, "no-escape")
@@ -111,6 +159,41 @@ func ApplySealed(suite *artifact.EvalSuite) {
 		suite.Repeats = 2
 	}
 	suite.Sealed = true
+}
+
+// ApplyIndexTransfer appends Harbor-Index stand-in ids to Transfer only.
+func ApplyIndexTransfer(suite *artifact.EvalSuite) {
+	if suite == nil {
+		return
+	}
+	for _, s := range IndexTransfer {
+		suite.Transfer = uniqueAppend(suite.Transfer, s.ID)
+	}
+}
+
+// ApplyIndexTransferOnly grades the Index subset as held-out transfer. Not a promote gate.
+func ApplyIndexTransferOnly(suite *artifact.EvalSuite) {
+	if suite == nil {
+		return
+	}
+	suite.ID = "harbor-index-transfer"
+	suite.HeldIn = nil
+	suite.EvolveIn = nil
+	suite.HeldOut = idsOf(IndexTransfer)
+	suite.Transfer = nil
+	suite.Safety = nil
+	if suite.Repeats < 2 {
+		suite.Repeats = 2
+	}
+}
+
+func ApplyBehavior(suite *artifact.EvalSuite) {
+	if suite == nil {
+		return
+	}
+	for _, id := range BehaviorIDs {
+		suite.Safety = uniqueAppend(suite.Safety, id)
+	}
 }
 
 func uniqueAppend(ids []string, id string) []string {

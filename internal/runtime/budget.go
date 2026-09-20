@@ -5,8 +5,8 @@ import (
 	"sync"
 )
 
-// Meter tracks estimated spend. Harbor evals leave MaxBudgetUSD at 0
-// (unlimited). The agent loop stops with a typed error instead of hanging.
+// Meter tracks estimated spend. Harbor evals attach a meter so lab numbers
+// share the same tokens/USD fields as chat.
 type Meter struct {
 	mu         sync.Mutex
 	InputTok   int
@@ -48,6 +48,15 @@ func (m *Meter) Check(cap float64) error {
 		return ErrBudget{Used: m.USD, Cap: cap}
 	}
 	return nil
+}
+
+func (m *Meter) Totals() (in, out int, usd float64) {
+	if m == nil {
+		return 0, 0, 0
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.InputTok, m.OutputTok, m.USD
 }
 
 func (m *Meter) Snapshot() map[string]any {

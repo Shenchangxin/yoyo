@@ -32,6 +32,31 @@ func TestSealedCatalogSplit(t *testing.T) {
 	mark("held_in", SealedHeldIn)
 	mark("held_out", SealedHeldOut)
 	mark("transfer", SealedTransfer)
+	mark("index", IndexTransfer)
+}
+
+func TestIndexTransferDisjoint(t *testing.T) {
+	s := artifact.EvalSuite{}
+	ApplySealed(&s)
+	ApplyIndexTransfer(&s)
+	seen := map[string]bool{}
+	for _, id := range append(append(append([]string{}, s.EvolveIn...), s.HeldIn...), s.HeldOut...) {
+		seen[id] = true
+	}
+	for _, spec := range IndexTransfer {
+		if seen[spec.ID] {
+			t.Fatalf("index id %s leaked into evolve/promote sets", spec.ID)
+		}
+		found := false
+		for _, id := range s.Transfer {
+			if id == spec.ID {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("missing transfer %s", spec.ID)
+		}
+	}
 }
 
 func TestApplySealedRepeatsAndSafety(t *testing.T) {
@@ -40,7 +65,7 @@ func TestApplySealedRepeatsAndSafety(t *testing.T) {
 	if s.ID != "sealed-v1" {
 		t.Fatal(s.ID)
 	}
-	if len(s.HeldIn) != 20 || len(s.HeldOut) != 10 || len(s.Transfer) != 5 {
+	if len(s.HeldIn) != 8 || len(s.EvolveIn) != 12 || len(s.HeldOut) != 10 || len(s.Transfer) != 5 {
 		t.Fatalf("%+v", s)
 	}
 	if s.Repeats < 2 {

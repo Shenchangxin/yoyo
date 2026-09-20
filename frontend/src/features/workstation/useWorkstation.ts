@@ -163,6 +163,10 @@ export function useWorkstation() {
   const [evolveK, setEvolveK] = useState(3);
   const [evolveRounds, setEvolveRounds] = useState(1);
   const [evolveSealed, setEvolveSealed] = useState(false);
+  const [evolveBehavior, setEvolveBehavior] = useState(false);
+  const [evolveIndex, setEvolveIndex] = useState(false);
+  const [evolveBaselines, setEvolveBaselines] = useState(false);
+  const [evolveMaxUsd, setEvolveMaxUsd] = useState(0);
   const [bonModels, setBonModels] = useState("");
   const [diffA, setDiffA] = useState("");
   const [diffB, setDiffB] = useState("");
@@ -271,6 +275,14 @@ export function useWorkstation() {
       try { setPlaybook(await api.playbook()); } catch { /* optional */ }
       try { setTree(await api.archive()); } catch { /* optional */ }
       try { setVault(await api.keyStatus()); } catch { /* optional */ }
+      try {
+        const last = await api.lastEval();
+        if (last && (last.suite || last.Suite || last.results || last.Results)) setEvalReport(last);
+      } catch { /* optional */ }
+      try {
+        const last = await api.lastEvolve();
+        if (last && (last.tried || last.Tried || last.compare || last.Compare || last.promoted || last.Promoted)) setEvolve(last);
+      } catch { /* optional */ }
       await syncRunning();
     } catch (e) {
       fail(e);
@@ -744,6 +756,8 @@ export function useWorkstation() {
       if (kind === "safety") { setEvalReport(await api.runEvalSafety()); setBestReport(null); }
       if (kind === "sealed") { setEvalReport(await api.runEvalSealed()); setBestReport(null); }
       if (kind === "transfer") { setEvalReport(await api.runEvalTransfer()); setBestReport(null); }
+      if (kind === "index") { setEvalReport(await api.runEvalIndex()); setBestReport(null); }
+      if (kind === "behavior") { setEvalReport(await api.runEvalBehavior()); setBestReport(null); }
       if (kind === "tb") { setEvalReport(await api.runEvalTB()); setBestReport(null); }
       if (kind === "bon") {
         const r = await api.bestOfN(3);
@@ -767,7 +781,14 @@ export function useWorkstation() {
     setLabBusy(copy.labs.busyEvolve);
     openHarness("propose");
     try {
-      setEvolve(await api.evolve(evolveK, { rounds: evolveRounds, sealed: evolveSealed }));
+      setEvolve(await api.evolve(evolveK, {
+        rounds: evolveRounds,
+        sealed: evolveSealed,
+        behavior: evolveBehavior,
+        index: evolveIndex,
+        baselines: evolveBaselines ? 3 : 0,
+        maxUsd: evolveMaxUsd,
+      }));
       setTree(await api.archive());
       await refresh();
     } catch (e) {
@@ -921,7 +942,7 @@ export function useWorkstation() {
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, runStatus, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
-    evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
+    evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,

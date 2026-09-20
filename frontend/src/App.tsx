@@ -242,6 +242,14 @@ export default function App() {
             onRounds={ws.setEvolveRounds}
             sealed={ws.evolveSealed}
             onSealed={ws.setEvolveSealed}
+            behavior={ws.evolveBehavior}
+            onBehavior={ws.setEvolveBehavior}
+            index={ws.evolveIndex}
+            onIndex={ws.setEvolveIndex}
+            baselines={ws.evolveBaselines}
+            onBaselines={ws.setEvolveBaselines}
+            maxUsd={ws.evolveMaxUsd}
+            onMaxUsd={ws.setEvolveMaxUsd}
             evolve={ws.evolve}
             playbook={ws.playbook}
             archive={ws.tree}
