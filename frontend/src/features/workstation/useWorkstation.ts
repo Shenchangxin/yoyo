@@ -801,6 +801,15 @@ export function useWorkstation() {
     toast.success(copy.app.rolledBack);
   }
 
+  async function revealHarness(hash?: string) {
+    try {
+      await api.revealHarness(hash || "");
+    } catch (e) {
+      fail(e);
+      throw e;
+    }
+  }
+
   async function patchConfig(partial: Partial<AppConfig>) {
     const next = { ...savedCfg, ...partial };
     setSavedCfg(next);
@@ -918,6 +927,6 @@ export function useWorkstation() {
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
-    runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness,
+    runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };
 }

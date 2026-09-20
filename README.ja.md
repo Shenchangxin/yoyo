@@ -32,9 +32,9 @@ Yoyo はハーネスを、Git がソースを扱うように扱います。
 
 **本物のエージェントループ** — 複数ターン履歴、OpenAI 互換 SSE、Stop、glob/grep、`apply_patch`、git ツール、Plan モード、Once/Session/Always 承認、USD 予算のハードストップ。
 
-**デスクトップ（またはブラウザ）** — チャットタイムライン、セッション検索 / fork / 改名、`@file` / `@folder` / `@harness`（予算付き注入。リポジトリ丸ごとではない）、hunk 単位の git apply、プレイブックの親指、構造化された Eval / Evolve / Diff。Wails 実行時はネイティブメニュー、トレイ、通知。
+**デスクトップ（またはブラウザ）** — チャットタイムライン、セッション検索 / fork / 改名、`@file` / `@folder` / `@harness`（予算付き注入。リポジトリ丸ごとではない）、hunk 単位の git apply、プレイブックの親指、構造化された Eval / Evolve / Diff。Harness Overview は親チェーンと、各スナップショットが実際に何を変えたか（プレイブック、loop フィールド、スキル）を示し、デコードした成果物フォルダを OS のファイルマネージャで開けます。Wails 実行時はネイティブメニュー、トレイ、通知。
 
-**セルフハーネス** — ACE 風のプレイブック差分（全文書き換え禁止）。オンラインの親指は `refs/staging` のみ。`refs/active` の所有者は Harbor。深さ 1 の `task` サブエージェント。WASM は HighRisk + ForceAsk。WASI ファイルシステムは無い。
+**セルフハーネス** — ACE 風のプレイブック差分（全文書き換え禁止）。オンラインの親指は `refs/staging` のみ。`refs/active` の所有者は Harbor。深さ 1 の `task` サブエージェント。WASM は HighRisk + ForceAsk。WASI ファイルシステムは無い。スナップショットは `parent` を持ち、系譜は refs とその鎖から再構成されます。黒箱の版リストではありません。
 
 **ひとつのプロトコル、複数クライアント** — HTTP + SSE、stdio の JSON-RPC（`yoyo serve --stdio`）、`/api/ws` の双方向 WebSocket。`YOYO_ISOLATE=1` ではデスクトップ UI はクライアントに徹し、loop は子プロセス。固まってもウィンドウは死なない。
 
@@ -229,6 +229,8 @@ evals/<id>/
 
 **ShouldPromote:** held-in と held-out が悪化してはならない。少なくとも一方は良くなる。安全失敗は昇格を止める。オンライン ACE と親指は **`refs/staging` だけ**。Evolve の既定は **`refs/canary` だけ**（`--promote` 以外）。`refs/active` への扉は Harbor + Checkout です。
 
+**Harness** はハッシュの一覧ではありません。Overview は `refs/active` / `staging` / `canary`、archive refs、evolve archive から `parent` を辿り、CAS をデコードして何が変わったかを見せます。**Show artifacts** はそのスナップショットを home の tmp に展開してファイルマネージャで開き、**Show store** は `cas/objects` を開きます。CLI: `yoyo harness lineage`、`yoyo harness reveal [hash]`、`yoyo harness show`。
+
 Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あなたの作業ツリーを汚しません。
 
 ---
@@ -242,7 +244,7 @@ Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あ�
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`、または stdio JSON-RPC |
 | `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | スモーク / 密封 20/10 / transfer / 安全 / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。既定は canary のみ |
-| `yoyo harness list\|show\|checkout\|rollback\|diff` | スナップショット（loop/ポリシーは `checkout --l3`） |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | スナップショット、親チェーン、デコード済み成果物（loop/ポリシーは `checkout --l3`） |
 | `yoyo replay [session]` | JSONL 軌跡を表示 |
 | `yoyo update apply` | 人間が `updates/yoyo.staging` を適用 |
 | `yoyo version` | `0.3.0` |

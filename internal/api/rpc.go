@@ -253,12 +253,15 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.ResolveApprovalAnswer(p.ID, p.Decision, p.Answer)
 	case "harness.get":
-		refs, err := a.ListHarnesses()
-		if err != nil {
-			return nil, err
+		return a.HarnessState()
+	case "harness.lineage":
+		return a.HarnessLineage()
+	case "harness.reveal":
+		var p struct {
+			Hash string `json:"hash"`
 		}
-		snap, _ := a.LoadSnapshot(a.ActiveHash())
-		return map[string]any{"active": a.ActiveHash(), "refs": refs, "snapshot": snap}, nil
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.RevealHarness(p.Hash)
 	case "harness.checkout":
 		var p struct {
 			Hash string `json:"hash"`

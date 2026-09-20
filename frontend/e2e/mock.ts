@@ -134,6 +134,9 @@ export async function mockApi(
     if (path.endsWith("/api/harness")) {
       return route.fulfill({ json: extra?.harness ?? { active: "deadbeef", refs: { active: "deadbeef", staging: "" } } });
     }
+    if (path.endsWith("/api/harness/reveal") || path.endsWith("/api/harness/lineage")) {
+      return route.fulfill({ json: { ok: true, nodes: extra?.harness?.lineage || [] } });
+    }
     if (path.endsWith("/api/playbook") || path.endsWith("/api/archive")) {
       return route.fulfill({ json: {} });
     }

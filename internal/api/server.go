@@ -461,9 +461,35 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, a.Vault.Status())
 	})
 	mux.HandleFunc("/api/harness", func(w http.ResponseWriter, r *http.Request) {
-		refs, _ := a.ListHarnesses()
-		snap, _ := a.LoadSnapshot(a.ActiveHash())
-		writeJSON(w, map[string]any{"active": a.ActiveHash(), "refs": refs, "snapshot": snap})
+		st, err := a.HarnessState()
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, st)
+	})
+	mux.HandleFunc("/api/harness/lineage", func(w http.ResponseWriter, r *http.Request) {
+		lin, err := a.HarnessLineage()
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, lin)
+	})
+	mux.HandleFunc("/api/harness/reveal", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Hash string `json:"hash"`
+		}
+		if r.Method == http.MethodPost {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		} else {
+			body.Hash = r.URL.Query().Get("hash")
+		}
+		if err := a.RevealHarness(body.Hash); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/api/harness/checkout", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

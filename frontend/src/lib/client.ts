@@ -491,6 +491,12 @@ export async function rollback(): Promise<void> {
   await http("/api/harness/rollback", { method: "POST" });
 }
 
+export async function revealHarness(hash = ""): Promise<void> {
+  const s = await wailsService();
+  if (s?.RevealHarness) return s.RevealHarness(hash);
+  await http("/api/harness/reveal", { method: "POST", body: JSON.stringify({ hash }) });
+}
+
 export async function diff(a: string, b: string): Promise<any> {
   const s = await wailsService();
   if (s?.DiffDetail) return s.DiffDetail(a, b);

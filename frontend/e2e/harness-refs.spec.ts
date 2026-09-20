@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { canaryDirty, harnessNext, parseHarnessRefs, readHarborMetrics, shortHash, stagingDirty } from "../src/lib/harness-refs";
+import { canaryDirty, harnessNext, parseHarnessRefs, parseLineage, readHarborMetrics, shortHash, stagingDirty } from "../src/lib/harness-refs";
 import { labFromTab, surfaceForLab, tabFromLab } from "../src/lib/surface";
 
 test("shortHash trims prefixes and length", () => {
@@ -19,6 +19,27 @@ test("parseHarnessRefs reads active/staging and leftover names", () => {
   expect(refs.extra).toEqual([{ name: "archive_1", hash: "ddd" }]);
   expect(stagingDirty(refs)).toBe(true);
   expect(canaryDirty(refs)).toBe(true);
+});
+
+test("parseLineage reads parent chain and material changes", () => {
+  const nodes = parseLineage({
+    lineage: [
+      {
+        hash: "bbb",
+        parent: "aaa",
+        note: "ace stage",
+        refs: ["staging"],
+        changes: [{ surface: "playbook", op: "added", detail: "write output first", l3: false }],
+      },
+      { Hash: "aaa", Note: "seeded", Refs: ["active"], Seed: true },
+    ],
+  });
+  expect(nodes).toHaveLength(2);
+  expect(nodes[0].hash).toBe("bbb");
+  expect(nodes[0].parent).toBe("aaa");
+  expect(nodes[0].changes[0].surface).toBe("playbook");
+  expect(nodes[0].changes[0].op).toBe("added");
+  expect(nodes[1].seed).toBe(true);
 });
 
 test("harnessNext treats canary like a candidate", () => {
