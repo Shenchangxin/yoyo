@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -160,7 +161,66 @@ func harnessCmd() *cobra.Command {
 				return err
 			}
 			fmt.Printf("%s model=%s parent=%s note=%s\n", hash, snap.ModelFingerprint, snap.Parent, snap.Note)
+			if snap.Parent == "" {
+				return nil
+			}
+			d, err := a.Diff(snap.Parent, hash)
+			if err != nil {
+				return err
+			}
+			fmt.Print(d)
 			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "lineage",
+		Short: "Print reachable snapshots and what each evolved vs its parent",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			lin, err := a.HarnessLineage()
+			if err != nil {
+				return err
+			}
+			if len(lin.Nodes) == 0 {
+				fmt.Println("no snapshots")
+				return nil
+			}
+			for _, n := range lin.Nodes {
+				fmt.Printf("%s\tparent=%s\trefs=%s\tnote=%s\n", n.Hash, n.Parent, strings.Join(n.Refs, ","), n.Note)
+				for _, c := range n.Changes {
+					detail := c.Detail
+					if detail == "" && (c.From != "" || c.To != "") {
+						detail = c.From + " -> " + c.To
+					}
+					l3 := ""
+					if c.L3 {
+						l3 = "\tL3"
+					}
+					fmt.Printf("  %s\t%s\t%s\t%s%s\n", c.Surface, c.Op, c.ID, detail, l3)
+				}
+			}
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "reveal [hash]",
+		Short: "Open the harness CAS store, or a snapshot's decoded artifacts, in the file manager",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			hash := ""
+			if len(args) == 1 {
+				hash = args[0]
+			}
+			return a.RevealHarness(hash)
 		},
 	})
 	checkout := &cobra.Command{

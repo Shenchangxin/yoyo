@@ -778,3 +778,106 @@ func TestSessionWorkspace(t *testing.T) {
 		t.Fatalf("fork workspace %q", fork.Workspace)
 	}
 }
+
+func TestHarnessLineageAndMaterialize(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	h1 := a.ActiveHash()
+	if h1 == "" {
+		t.Fatal("no active")
+	}
+	pb, err := a.CAS.Put(artifact.KindPlaybook, "main", artifact.Playbook{
+		ID: "main",
+		Bullets: []artifact.PlaybookBullet{
+			{ID: "b1", Text: "Prefer verifier-grounded checks over claiming success.", Helpful: 1},
+			{ID: "b2", Text: "Write the output file before exploring."},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := a.LoadSnapshot(h1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.Parent = h1
+	snap.Playbook = pb
+	snap.Note = "add playbook bullet"
+	h2, err := a.CAS.PutSnapshot(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Refs.Set(artifact.RefStaging, h2); err != nil {
+		t.Fatal(err)
+	}
+	lin, err := a.HarnessLineage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lin.Active != h1 {
+		t.Fatalf("active %s", lin.Active)
+	}
+	if lin.Dirs.CAS == "" || lin.Dirs.Home == "" {
+		t.Fatalf("dirs %+v", lin.Dirs)
+	}
+	var child app.LineageNode
+	for _, n := range lin.Nodes {
+		if n.Hash == h2 {
+			child = n
+		}
+	}
+	if child.Hash == "" || child.Parent != h1 {
+		t.Fatalf("child %+v nodes=%d", child, len(lin.Nodes))
+	}
+	text := artifact.MaterialDiffText(child.Changes)
+	if !strings.Contains(text, "playbook added b2") {
+		t.Fatalf("changes:\n%s", text)
+	}
+	foundStaging := false
+	for _, r := range child.Refs {
+		if r == artifact.RefStaging {
+			foundStaging = true
+		}
+	}
+	if !foundStaging {
+		t.Fatalf("refs %v", child.Refs)
+	}
+	d, err := a.DiffDetail(h1, h2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diffText, _ := d["text"].(string)
+	if !strings.Contains(diffText, "playbook added b2") {
+		t.Fatalf("diff text %s", diffText)
+	}
+	dir, err := a.MaterializeSnapshot(h2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "snapshot.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "playbook.json")); err != nil {
+		t.Fatal(err)
+	}
+	man, err := os.ReadFile(filepath.Join(dir, "MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(man), h2) || !strings.Contains(string(man), "playbook") {
+		t.Fatalf("manifest %s", man)
+	}
+	st, err := a.HarnessState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st["active"] != h1 {
+		t.Fatalf("state %+v", st)
+	}
+	if _, ok := st["lineage"]; !ok {
+		t.Fatal("missing lineage")
+	}
+}

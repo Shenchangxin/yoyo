@@ -44,6 +44,29 @@ func TestRPCHealthAndUnknown(t *testing.T) {
 	}
 }
 
+func TestRPCHarnessLineage(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: "harness.get"})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	m, _ := got.Result.(map[string]any)
+	if m["active"] == "" || m["active"] == nil {
+		t.Fatalf("active %+v", m)
+	}
+	nodes, ok := m["lineage"].([]app.LineageNode)
+	if !ok || len(nodes) == 0 {
+		t.Fatalf("lineage %+v", m["lineage"])
+	}
+	if nodes[0].Hash == "" {
+		t.Fatalf("node %+v", nodes[0])
+	}
+}
+
 func TestRPCThreadLifecycle(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

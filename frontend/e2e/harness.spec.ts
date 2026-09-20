@@ -16,6 +16,32 @@ test("harness is a single rail entry with an overview", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
 });
 
+test("harness overview shows evolution path and artifact actions", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    harness: {
+      active: "aaa1111",
+      refs: { active: "aaa1111", staging: "bbb2222" },
+      lineage: [
+        {
+          hash: "bbb2222",
+          parent: "aaa1111",
+          note: "ace stage",
+          refs: ["staging"],
+          changes: [{ surface: "playbook", op: "added", detail: "Write the output file before exploring." }],
+        },
+        { hash: "aaa1111", note: "seeded default harness", refs: ["active"], seed: true },
+      ],
+    },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Harness/ }).click();
+  await expect(page.getByTestId("harness-lineage")).toBeVisible();
+  await expect(page.getByText("Write the output file before exploring.")).toBeVisible();
+  await expect(page.getByText("Evolution path")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show artifacts" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show store" })).toBeVisible();
+});
+
 test("harness chat dock is off until toggled", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");

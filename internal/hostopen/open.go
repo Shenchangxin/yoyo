@@ -86,6 +86,29 @@ func Terminal(dir string) error {
 	}
 }
 
+func Reveal(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return os.ErrInvalid
+	}
+	path = filepath.Clean(path)
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return openDir(path)
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("explorer", "/select,", path).Start()
+	case "darwin":
+		return exec.Command("open", "-R", path).Start()
+	default:
+		return exec.Command("xdg-open", filepath.Dir(path)).Start()
+	}
+}
+
 func openDir(path string) error {
 	switch runtime.GOOS {
 	case "windows":

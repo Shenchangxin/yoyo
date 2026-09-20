@@ -5,18 +5,22 @@ import { useCopy } from "../../lib/i18n";
 import { writeClipboard } from "../../lib/clipboard";
 import {
   canaryDirty,
+  formatStamp,
   harnessNext,
   parseHarnessRefs,
+  parseLineage,
   readHarborMetrics,
   shortHash,
   stagingDirty,
   type HarnessNext,
   type HarnessRefs,
+  type LineageNode,
 } from "../../lib/harness-refs";
 import type { HarnessTab } from "../../lib/protocol";
 import { HARNESS_TABS } from "../../lib/surface";
 import { cn } from "../../lib/utils";
 import { LabCard, LabFrame, LabStat } from "../labs/LabFrame";
+import { MaterialChangeList } from "./Changes";
 
 export function HarnessWorkspace(props: {
   tab: HarnessTab;
@@ -24,6 +28,7 @@ export function HarnessWorkspace(props: {
   harness: unknown;
   fallbackActive?: string;
   report: unknown;
+  onReveal?: (hash?: string) => Promise<void> | void;
   children: Record<Exclude<HarnessTab, "overview">, ReactNode>;
 }) {
   const copy = useCopy();
@@ -58,7 +63,7 @@ export function HarnessWorkspace(props: {
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {props.tab === "overview" ? (
-          <HarnessOverview refs={refs} report={props.report} next={next} onTab={props.onTab} />
+          <HarnessOverview refs={refs} harness={props.harness} report={props.report} next={next} onTab={props.onTab} onReveal={props.onReveal} />
         ) : props.tab === "propose" ? (
           props.children.propose
         ) : props.tab === "prove" ? (
@@ -73,14 +78,17 @@ export function HarnessWorkspace(props: {
 
 function HarnessOverview(props: {
   refs: HarnessRefs;
+  harness: unknown;
   report: unknown;
   next: HarnessNext;
   onTab: (tab: HarnessTab) => void;
+  onReveal?: (hash?: string) => Promise<void> | void;
 }) {
   const copy = useCopy();
   const metrics = readHarborMetrics(props.report);
   const dirty = stagingDirty(props.refs);
   const canary = canaryDirty(props.refs);
+  const lineage = parseLineage(props.harness);
   const reason =
     props.next.action === "blocked" ? copy.rsi.nextBlocked
       : props.next.action === "checkout" ? (dirty ? copy.rsi.nextCheckout : copy.rsi.nextCanaryCheckout)
@@ -96,7 +104,6 @@ function HarnessOverview(props: {
     { name: copy.rsi.staging, hash: props.refs.staging, kind: "staging" as const },
     { name: copy.rsi.canary, hash: props.refs.canary, kind: "canary" as const },
     { name: copy.rsi.head, hash: props.refs.head, kind: "head" as const },
-    ...props.refs.extra.map((x) => ({ name: x.name, hash: x.hash, kind: "extra" as const })),
   ].filter((c) => c.hash);
 
   return (
@@ -107,7 +114,14 @@ function HarnessOverview(props: {
             <div className="text-[11px] text-muted">{copy.rsi.next}</div>
             <p className="mt-0.5 text-[13px] text-foreground">{reason}</p>
           </div>
-          <Button onClick={() => props.onTab(props.next.tab)}>{copy.rsi.go} {goLabel}</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {props.onReveal ? (
+              <Button variant="lift" onClick={() => void reveal(props.onReveal, props.refs.active)}>
+                {copy.rsi.openArtifacts}
+              </Button>
+            ) : null}
+            <Button onClick={() => props.onTab(props.next.tab)}>{copy.rsi.go} {goLabel}</Button>
+          </div>
         </div>
         {cards.length === 0 ? (
           <p className="text-[13px] text-muted">{copy.rsi.noRefs}</p>
@@ -136,6 +150,24 @@ function HarnessOverview(props: {
             ))}
           </div>
         )}
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h3 className="text-[13px] font-medium">{copy.rsi.lineage}</h3>
+            <p className="mt-0.5 max-w-[62ch] text-[12px] text-muted">{copy.rsi.lineageHint}</p>
+          </div>
+          {props.onReveal ? (
+            <Button size="sm" variant="ghost" onClick={() => void reveal(props.onReveal, "")}>{copy.rsi.openStore}</Button>
+          ) : null}
+        </div>
+        {lineage.length === 0 ? (
+          <p className="mb-6 text-[13px] text-muted">{copy.rsi.noLineage}</p>
+        ) : (
+          <div className="mb-6 overflow-hidden rounded-[10px] border border-border/80 bg-card" data-testid="harness-lineage">
+            {lineage.map((n, i) => (
+              <LineageRow key={n.hash} node={n} first={i === 0} onReveal={props.onReveal} />
+            ))}
+          </div>
+        )}
         {metrics ? (
           <>
             <h3 className="mb-3 text-[13px] font-medium">{copy.rsi.lastEval}</h3>
@@ -151,12 +183,47 @@ function HarnessOverview(props: {
   );
 }
 
-function HashLine({ hash }: { hash: string }) {
+function LineageRow({ node, first, onReveal }: { node: LineageNode; first: boolean; onReveal?: (hash?: string) => Promise<void> | void }) {
+  const copy = useCopy();
+  const stamp = formatStamp(node.createdAt);
+  return (
+    <div className={cn("px-4 py-3", !first && "border-t border-border/70")} data-testid="harness-lineage-node">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <HashLine hash={node.hash} compact />
+            {node.seed ? <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">{copy.rsi.seed}</span> : null}
+            {node.refs.map((r) => (
+              <span key={r} className="rounded-full bg-lift px-2 py-0.5 font-mono text-[11px] text-muted">{r}</span>
+            ))}
+            {node.fromArchive ? (
+              <span className="text-[11px] text-muted">{node.accepted ? copy.labs.accepted : copy.labs.rejected}</span>
+            ) : null}
+          </div>
+          <div className="mt-0.5 text-[12px] text-muted">
+            {node.note || node.proposalId || (node.parent ? `${copy.rsi.vsParent} ${shortHash(node.parent, 12)}` : copy.rsi.seed)}
+            {stamp ? ` · ${stamp}` : ""}
+          </div>
+        </div>
+        {onReveal ? (
+          <Button size="sm" variant="ghost" onClick={() => void reveal(onReveal, node.hash)}>{copy.rsi.openArtifacts}</Button>
+        ) : null}
+      </div>
+      <div className="mt-2">
+        {node.seed && !node.changes.length ? null : (
+          <MaterialChangeList changes={node.changes} empty={node.parent ? copy.rsi.noChanges : undefined} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   const copy = useCopy();
   return (
     <button
       type="button"
-      className="mt-2 block max-w-full truncate font-mono text-[11px] text-muted hover:text-foreground"
+      className={cn("block max-w-full truncate font-mono text-[11px] text-muted hover:text-foreground", !compact && "mt-2")}
       title={copy.rsi.copyHash}
       onClick={async () => {
         const ok = await writeClipboard(hash);
@@ -166,4 +233,13 @@ function HashLine({ hash }: { hash: string }) {
       {shortHash(hash, 12)}
     </button>
   );
+}
+
+async function reveal(fn: ((hash?: string) => Promise<void> | void) | undefined, hash: string) {
+  if (!fn) return;
+  try {
+    await fn(hash);
+  } catch {
+    /* caller toasts */
+  }
 }

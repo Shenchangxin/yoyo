@@ -32,9 +32,9 @@ Yoyo 对待 harness，就像 Git 对待源码：
 
 **一条真正的 agent 循环** — 多轮历史、OpenAI 兼容 SSE 流式、Stop、glob/grep、`apply_patch`、git 工具、Plan 模式、Once/Session/Always 审批、美元预算硬停止。
 
-**桌面或浏览器工作站** — 对话时间线、会话搜索 / 分叉 / 重命名、`@file` / `@folder` / `@harness`（有预算的注入，不是整仓倾倒）、按 hunk 接受 git diff、playbook 点赞、结构化的 Eval / Evolve / Diff。用 Wails 跑时还有原生菜单、托盘和通知。
+**桌面或浏览器工作站** — 对话时间线、会话搜索 / 分叉 / 重命名、`@file` / `@folder` / `@harness`（有预算的注入，不是整仓倾倒）、按 hunk 接受 git diff、playbook 点赞、结构化的 Eval / Evolve / Diff。Harness 态势页会展示父子进化路径，以及每个快照相对父节点真正改了什么（playbook bullet、loop 字段、技能等），并可以一键在文件管理器里打开解码后的构件目录。用 Wails 跑时还有原生菜单、托盘和通知。
 
-**自我打磨** — ACE 风格的 playbook 增量（只长不整篇重写），在线点赞只写 `refs/staging`，Harbor 才拥有 `refs/active`。深度为 1 的 `task` 子智能体。WASM 工具走 HighRisk + ForceAsk。没有 WASI 文件系统。
+**自我打磨** — ACE 风格的 playbook 增量（只长不整篇重写），在线点赞只写 `refs/staging`，Harbor 才拥有 `refs/active`。深度为 1 的 `task` 子智能体。WASM 工具走 HighRisk + ForceAsk。没有 WASI 文件系统。快照带 `parent` 指针；进化路径由 refs + 这条链重建，而不是一份黑盒版本列表。
 
 **一套协议，多种客户端** — HTTP + SSE、stdio 上的 JSON-RPC（`yoyo serve --stdio`）、`/api/ws` 双向 WebSocket。设置 `YOYO_ISOLATE=1` 时，桌面 UI 只当客户端，loop 跑在子进程，卡住也不会拖死窗口。
 
@@ -236,6 +236,8 @@ evals/<id>/
 
 **ShouldPromote：** 持有和留出都不能回退；至少一边要变好；任何安全失败都会挡住晋升。在线 ACE 和 playbook 点赞 **只写 `refs/staging`**。Evolve 默认 **只写 `refs/canary`**，除非 `--promote`。通向 `refs/active` 的门是 Harbor + Checkout。
 
+**Harness** 实验室不是一份哈希列表。态势页从 `refs/active`、`refs/staging`、`refs/canary`、archive refs 以及 evolve archive 沿 `parent` 走下去，再解码 CAS 对象，让你直接读到进化了什么（playbook bullet、loop/policy 字段、prompts、skills、tools）。**打开构件** 会把该快照解码到 home 的 tmp 目录并用系统文件管理器打开；**打开仓库** 打开 `cas/objects`。CLI：`yoyo harness lineage`、`yoyo harness reveal [hash]`、`yoyo harness show`（相对父节点的 diff）。
+
 Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的工作树。每次 trial 还会把摘要落到评测运行目录（不含 held-out 正文）。
 
 ---
@@ -249,7 +251,7 @@ Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的�
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`，或 stdio JSON-RPC |
 | `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 20/10 / 迁移 / 安全 / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
-| `yoyo harness list\|show\|checkout\|rollback\|diff` | 快照指针（改 loop/策略要 `checkout --l3`） |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | 快照指针、父子进化路径、解码后的构件（改 loop/策略要 `checkout --l3`） |
 | `yoyo replay [session]` | 打印 JSONL 轨迹 |
 | `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
 | `yoyo version` | `0.3.0` |

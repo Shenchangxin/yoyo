@@ -32,9 +32,9 @@ The scarce resource is the **context window**. Trusted pins (YOYO.md, ACE playbo
 
 **A real agent loop** — multi-turn history, OpenAI-compatible SSE streaming, Stop, glob/grep, `apply_patch`, git tools, plan mode, Once/Session/Always approvals, USD budget hard-stop.
 
-**A desktop (or browser) workstation** — chat timeline, session search / fork / rename, `@file` / `@folder` / `@harness` mentions (bounded inject, not a repo dump), hunk-level git apply, playbook thumbs, structured Eval / Evolve / Diff labs. Native menus, tray, and notifications when you run the Wails app.
+**A desktop (or browser) workstation** — chat timeline, session search / fork / rename, `@file` / `@folder` / `@harness` mentions (bounded inject, not a repo dump), hunk-level git apply, playbook thumbs, structured Eval / Evolve / Diff labs. Harness Overview shows the parent chain and what each snapshot actually changed (playbook bullets, loop fields, skills), and can open a decoded artifact folder in the OS file manager. Native menus, tray, and notifications when you run the Wails app.
 
-**A self-harness** — ACE-style playbook deltas (grow-and-refine, never a full rewrite), online thumbs write `refs/staging` only, Harbor owns `refs/active`. Depth-1 `task` subagents. Optional WASM tools behind HighRisk + ForceAsk. No WASI filesystem.
+**A self-harness** — ACE-style playbook deltas (grow-and-refine, never a full rewrite), online thumbs write `refs/staging` only, Harbor owns `refs/active`. Depth-1 `task` subagents. Optional WASM tools behind HighRisk + ForceAsk. No WASI filesystem. Snapshots keep a `parent` pointer; lineage is reconstructed from refs + that chain, not from a black-box version list.
 
 **One protocol, many clients** — HTTP + SSE, JSON-RPC on stdio (`yoyo serve --stdio`), WebSocket duplex at `/api/ws`. Set `YOYO_ISOLATE=1` and the desktop UI talks to a worker process so a wedged loop cannot stall the window.
 
@@ -236,6 +236,8 @@ evals/<id>/
 
 **ShouldPromote:** held-in and held-out must not regress; at least one split must improve; any safety fail blocks promotion. Online ACE and playbook thumbs write **`refs/staging` only**. Evolve writes **`refs/canary` only** unless `--promote`. Harbor + Checkout is the door to `refs/active`.
 
+The **Harness** lab is not a hash list. Overview walks `parent` from `refs/active`, `refs/staging`, `refs/canary`, archive refs, and the evolve archive, then decodes CAS objects so you can read *what* changed (playbook bullets, loop/policy fields, prompts, skills, tools). **Show artifacts** writes a decoded checkout of that snapshot under the home tmp dir and opens it in the file manager; **Show store** opens `cas/objects`. CLI: `yoyo harness lineage`, `yoyo harness reveal [hash]`, `yoyo harness show` (diff vs parent).
+
 Evolve candidates run Harbor inside a **detached git worktree**, not in your working tree. Each trial also logs metrics under the eval-runs directory (held-out bodies omitted).
 
 ---
@@ -249,7 +251,7 @@ Evolve candidates run Harbor inside a **detached git worktree**, not in your wor
 | `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`, or JSON-RPC on stdio |
 | `yoyo eval [--sealed] [--transfer] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 20/10 / transfer / safety / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness cycle (L1). Default: canary only |
-| `yoyo harness list\|show\|checkout\|rollback\|diff` | Snapshot pointers (`checkout --l3` for loop/policy) |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | Snapshot pointers, parent-chain evolution, and decoded artifacts (`checkout --l3` for loop/policy) |
 | `yoyo replay [session]` | Print a JSONL trajectory |
 | `yoyo update apply` | Human install of `updates/yoyo.staging` |
 | `yoyo version` | `0.3.0` |
