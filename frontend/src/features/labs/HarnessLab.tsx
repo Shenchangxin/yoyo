@@ -5,7 +5,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LabFrame, LabTable } from "./LabFrame";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { parseHarnessRefs, shortHash } from "../../lib/harness-refs";
+import { parseHarnessRefs, parseMaterialChanges, shortHash } from "../../lib/harness-refs";
+import { MaterialChangeList } from "../harness/Changes";
 
 export function HarnessLab(props: {
   harness: any;
@@ -20,9 +21,11 @@ export function HarnessLab(props: {
 }) {
   const copy = useCopy();
   const refs = parseHarnessRefs(props.harness);
-  const fields = (pick(props.diffOut, "fields") || []) as any[];
+  const fields = (pick(props.diffOut, "fields", "Fields") || []) as any[];
+  const changes = parseMaterialChanges(pick(props.diffOut, "changes", "Changes"));
   const [pending, setPending] = useState<{ hash: string; surfaces: string } | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const [showHashes, setShowHashes] = useState(false);
 
   useEffect(() => {
     if (refs.active && refs.staging) {
@@ -75,7 +78,17 @@ export function HarnessLab(props: {
         </div>
       ) : null}
       <h3 className="mb-3 text-[13px] font-medium">{copy.labs.fieldDiff}</h3>
+      {props.diffOut ? (
+        <div className="mb-4">
+          <MaterialChangeList changes={changes} empty={copy.rsi.noChanges} />
+        </div>
+      ) : null}
       {fields.length ? (
+        <button type="button" className="mb-3 text-[12px] text-muted hover:text-foreground" onClick={() => setShowHashes((v) => !v)}>
+          {copy.labs.hashFields}
+        </button>
+      ) : null}
+      {showHashes && fields.length ? (
         <LabTable>
           <thead className="text-[11px] text-muted">
             <tr>

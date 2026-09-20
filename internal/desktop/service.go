@@ -434,12 +434,22 @@ func (s *Service) Harness() (map[string]any, error) {
 	if s.RPC != nil {
 		return decode[map[string]any](s.call("harness.get", nil))
 	}
-	refs, err := s.App.ListHarnesses()
-	if err != nil {
-		return nil, err
+	return s.App.HarnessState()
+}
+
+func (s *Service) HarnessLineage() (app.HarnessLineage, error) {
+	if s.RPC != nil {
+		return decode[app.HarnessLineage](s.call("harness.lineage", nil))
 	}
-	snap, _ := s.App.LoadSnapshot(s.App.ActiveHash())
-	return map[string]any{"active": s.App.ActiveHash(), "refs": refs, "snapshot": snap}, nil
+	return s.App.HarnessLineage()
+}
+
+func (s *Service) RevealHarness(hash string) error {
+	if s.RPC != nil {
+		_, err := s.call("harness.reveal", map[string]any{"hash": hash})
+		return err
+	}
+	return s.App.RevealHarness(hash)
 }
 
 func (s *Service) Checkout(hash string) error {

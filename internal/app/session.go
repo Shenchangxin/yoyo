@@ -1100,11 +1100,17 @@ func (a *App) DiffDetail(aHash, bHash string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	changes := artifact.MaterialDiff(a.CAS, left, right)
+	text := artifact.MaterialDiffText(changes)
+	if text == "" {
+		text = artifact.SnapshotDiff(left, right)
+	}
 	return map[string]any{
-		"text":   artifact.SnapshotDiff(left, right),
-		"fields": artifact.SnapshotDiffFields(left, right),
-		"a":      left,
-		"b":      right,
+		"text":    text,
+		"fields":  artifact.SnapshotDiffFields(left, right),
+		"changes": changes,
+		"a":       left,
+		"b":       right,
 	}, nil
 }
 

@@ -225,7 +225,10 @@ type errString string
 
 func (e errString) Error() string { return string(e) }
 
-const errNoParent errString = "no parent snapshot to roll back to"
+const (
+	errNoParent   errString = "no parent snapshot to roll back to"
+	errNoSnapshot errString = "no harness snapshot to materialize"
+)
 
 func (a *App) Materials(hash string) (artifact.LoopPreset, []artifact.PromptFragment, artifact.Playbook, []artifact.Skill, artifact.EvalSuite, artifact.PolicyPack, error) {
 	snap, err := a.LoadSnapshot(hash)

@@ -33,6 +33,11 @@ func (s *Store) pathFor(hash string) string {
 	return filepath.Join(s.Root, hash[:2], hash)
 }
 
+// Path is the on-disk location of a CAS object. The file may not exist yet.
+func (s *Store) Path(hash string) string {
+	return s.pathFor(strings.TrimSpace(hash))
+}
+
 func (s *Store) Put(kind Kind, id string, payload any) (string, error) {
 	env := Envelope{
 		Kind:      kind,

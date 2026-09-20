@@ -218,6 +218,7 @@ export default function App() {
       harness={ws.harness}
       fallbackActive={ws.health.harness}
       report={ws.evalReport}
+      onReveal={ws.revealHarness}
     >
       {{
         prove: (

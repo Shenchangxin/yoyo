@@ -2,24 +2,16 @@ package desktop
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
+
+	"github.com/Shenchangxin/yoyo/internal/hostopen"
 )
 
 func RevealPath(path string) error {
 	if path == "" {
 		return nil
 	}
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("explorer", "/select,", filepath.Clean(path)).Start()
-	case "darwin":
-		return exec.Command("open", "-R", path).Start()
-	default:
-		dir := filepath.Dir(path)
-		return exec.Command("xdg-open", dir).Start()
-	}
+	return hostopen.Reveal(path)
 }
 
 func executablePath() string {
