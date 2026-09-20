@@ -11,9 +11,7 @@
 
 # Frontend
 frontend/node_modules/
-frontend/dist/**
-!frontend/dist/
-!frontend/dist/.gitkeep
+frontend/dist/
 frontend/bindings/
 frontend/playwright-report/
 frontend/test-results/
