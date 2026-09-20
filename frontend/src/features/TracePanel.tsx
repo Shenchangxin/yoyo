@@ -80,6 +80,21 @@ export function TracePanel(props: {
           ) : null}
         </dl>
         {props.running ? <span className="pulse-dot mr-1.5" aria-label={copy.rail.running} /> : null}
+        {props.sessionId ? (
+          <Tooltip content={copied === "session-id" ? copy.trace.copied : copy.trace.copyId}>
+            <button
+              type="button"
+              aria-label={copy.trace.copyId}
+              title={props.sessionId}
+              className="mr-0.5 max-w-[9.5rem] shrink truncate rounded-md px-1 font-mono text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+              onClick={async () => {
+                if (await writeClipboard(props.sessionId)) markCopied("session-id");
+              }}
+            >
+              {props.sessionId}
+            </button>
+          </Tooltip>
+        ) : null}
         <Tooltip content={copy.trace.refresh}>
           <button
             type="button"

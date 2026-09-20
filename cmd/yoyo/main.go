@@ -55,7 +55,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd())
 	return cmd
 }
 
@@ -519,6 +519,93 @@ func evolveCmd() *cobra.Command {
 	return cmd
 }
 
+func sessionCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "session",
+		Short: "Look up a session by id (full trajectory + artifacts)",
+	}
+	cmd.AddCommand(sessionListCmd(), sessionDumpCmd())
+	return cmd
+}
+
+func sessionListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List session ids and on-disk trajectory/spill paths",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			for _, e := range a.ListSessionIndex() {
+				title := e.Title
+				if title == "" {
+					title = "-"
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%d\t%d\t%s\t%s\n", e.ID, e.Events, e.SpillArtifacts, title, e.TrajectoryPath)
+			}
+			return nil
+		},
+	}
+}
+
+func sessionDumpCmd() *cobra.Command {
+	var asJSON bool
+	var outPath string
+	cmd := &cobra.Command{
+		Use:   "dump [session]",
+		Short: "Write the full trajectory and artifact bodies for a session id",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			dump, err := a.DumpSession(args[0])
+			if err != nil {
+				return err
+			}
+			if outPath != "" {
+				b, err := json.MarshalIndent(dump, "", "  ")
+				if err != nil {
+					return err
+				}
+				if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(outPath, b, 0o644); err != nil {
+					return err
+				}
+			}
+			if asJSON {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				enc.SetEscapeHTML(false)
+				return enc.Encode(dump)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "session_id: %s\n", dump.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "home: %s\n", dump.Home)
+			fmt.Fprintf(cmd.OutOrStdout(), "dump: %s\n", dump.Paths.Dump)
+			fmt.Fprintf(cmd.OutOrStdout(), "trajectory: %s\n", dump.Paths.Trajectory)
+			if dump.Paths.Meta != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "meta: %s\n", dump.Paths.Meta)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "spill_dir: %s\n", dump.Paths.SpillDir)
+			if dump.Paths.ContextDir != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "context_dir: %s\n", dump.Paths.ContextDir)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "events: %d\n", len(dump.Trajectory))
+			fmt.Fprintf(cmd.OutOrStdout(), "artifacts: %d\n", len(dump.Artifacts))
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the full dump on stdout")
+	cmd.Flags().StringVar(&outPath, "out", "", "also write the dump JSON to this path")
+	return cmd
+}
+
 func replayCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "replay [session]",
@@ -530,7 +617,11 @@ func replayCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			evs, err := a.Trajectory(args[0])
+			id, err := a.ResolveSessionID(args[0])
+			if err != nil {
+				return err
+			}
+			evs, err := a.Trajectory(id)
 			if err != nil {
 				return err
 			}
@@ -553,7 +644,11 @@ func traceCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
-			tr, err := a.SessionTrace(args[0])
+			id, err := a.ResolveSessionID(args[0])
+			if err != nil {
+				return err
+			}
+			tr, err := a.SessionTrace(id)
 			if err != nil {
 				return err
 			}

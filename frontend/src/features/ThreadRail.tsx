@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   BookOpen,
@@ -24,6 +25,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
+import { writeClipboard } from "../lib/clipboard";
 import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
@@ -343,11 +345,39 @@ function ThreadRow(props: {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t.title || "");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false);
   const skipBlur = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const openMetaT = useRef(0);
+  const closeMetaT = useRef(0);
 
   useEffect(() => {
     if (!editing) setDraft(t.title || "");
   }, [t.title, editing]);
+
+  useEffect(() => () => {
+    window.clearTimeout(openMetaT.current);
+    window.clearTimeout(closeMetaT.current);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    window.clearTimeout(openMetaT.current);
+    window.clearTimeout(closeMetaT.current);
+    setMetaOpen(false);
+  }, [menuOpen]);
+
+  function scheduleMetaOpen() {
+    if (menuOpen) return;
+    window.clearTimeout(closeMetaT.current);
+    window.clearTimeout(openMetaT.current);
+    openMetaT.current = window.setTimeout(() => setMetaOpen(true), 280);
+  }
+
+  function scheduleMetaClose() {
+    window.clearTimeout(openMetaT.current);
+    closeMetaT.current = window.setTimeout(() => setMetaOpen(false), 160);
+  }
 
   function startRename() {
     skipBlur.current = false;
@@ -403,10 +433,13 @@ function ThreadRow(props: {
   return (
     <DropdownMenu modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
       <div
+        ref={rowRef}
         className={cn(
           "group mb-px flex w-full items-start rounded-lg transition-colors duration-150",
           active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
         )}
+        onMouseEnter={scheduleMetaOpen}
+        onMouseLeave={scheduleMetaClose}
       >
         <button
           type="button"
@@ -475,6 +508,139 @@ function ThreadRow(props: {
           {copy.rail.delete}
         </DropdownMenuItem>
       </DropdownMenuContent>
+      {metaOpen && !menuOpen ? (
+        <SessionMetaCard
+          thread={t}
+          running={run}
+          anchorRef={rowRef}
+          onMouseEnter={scheduleMetaOpen}
+          onMouseLeave={scheduleMetaClose}
+        />
+      ) : null}
     </DropdownMenu>
+  );
+}
+
+function formatCreated(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(t);
+}
+
+function SessionMetaCard(props: {
+  thread: Thread;
+  running: boolean;
+  anchorRef: RefObject<HTMLDivElement | null>;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const copy = useCopy();
+  const t = props.thread;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: 0, top: 0, ready: false });
+  const [copied, setCopied] = useState(false);
+  const title = displayTitle(t.title, copy.rail.untitled);
+  const created = formatCreated(t.createdAt);
+  const harness = shortHash(t.harness);
+  const workspace = t.originWorkspace || t.workspace;
+  const chips = [
+    props.running ? copy.rail.running : "",
+    t.pinned ? copy.rail.pinned : "",
+    t.archived ? copy.rail.archived : "",
+    t.isolate ? copy.rail.isolated : "",
+  ].filter(Boolean);
+
+  const place = useCallback(() => {
+    const anchor = props.anchorRef.current;
+    const card = cardRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    if (r.bottom < 8 || r.top > window.innerHeight - 8) return;
+    const w = card?.offsetWidth || 272;
+    const h = card?.offsetHeight || 200;
+    let left = r.right + 8;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - 8 - w);
+    let top = r.top;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - h);
+    setPos({ left, top, ready: true });
+  }, [props.anchorRef]);
+
+  useLayoutEffect(() => {
+    place();
+  }, [place, copied, chips.length]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [place]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      role="complementary"
+      aria-label={copy.rail.meta}
+      data-testid="session-meta-card"
+      className="fixed z-[60] w-[272px] overflow-hidden rounded-[10px] border border-border bg-card shadow-[var(--shadow-popover)]"
+      style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}
+      onMouseEnter={props.onMouseEnter}
+      onMouseLeave={props.onMouseLeave}
+    >
+      <div className="px-3 py-2.5">
+        <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.meta}</div>
+        <div className="mt-1 truncate text-[13px] font-medium text-foreground">{title}</div>
+        {chips.length ? (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {chips.map((c) => (
+              <span key={c} className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{c}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="border-t border-border/50 px-3 py-2">
+        <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.sessionId}</div>
+        <div className="mt-1 flex items-center gap-1">
+          <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground" title={t.id}>{t.id}</span>
+          <button
+            type="button"
+            className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+            aria-label={copy.rail.copyId}
+            onClick={async () => {
+              if (!(await writeClipboard(t.id))) return;
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1200);
+            }}
+          >
+            {copied ? copy.rail.copied : copy.rail.copy}
+          </button>
+        </div>
+      </div>
+      {workspace ? (
+        <MetaLine label={copy.rail.workspace} value={workspace} title={workspace} />
+      ) : null}
+      {created ? <MetaLine label={copy.rail.created} value={created} /> : null}
+      {t.model ? <MetaLine label={copy.rail.model} value={t.model} /> : null}
+      {harness ? <MetaLine label={copy.rail.harness} value={harness} mono title={t.harness} /> : null}
+    </div>,
+    document.body,
+  );
+}
+
+function MetaLine(props: { label: string; value: string; title?: string; mono?: boolean }) {
+  return (
+    <div className="border-t border-border/50 px-3 py-2">
+      <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{props.label}</div>
+      <div
+        className={cn("mt-1 truncate text-[12px] text-foreground", props.mono && "font-mono text-[11.5px]")}
+        title={props.title || props.value}
+      >
+        {props.value}
+      </div>
+    </div>
   );
 }

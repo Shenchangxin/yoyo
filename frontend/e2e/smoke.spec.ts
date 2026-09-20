@@ -78,6 +78,19 @@ test("thread context menu can pin a chat", async ({ page }) => {
   await expect(page.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
 });
 
+test("session hover card shows copyable session id", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "sess-demo-id", title: "Demo thread", workspace: "C:/tmp/ws", created_at: "2026-09-20T09:00:00Z" }],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Demo thread/ }).hover();
+  const card = page.getByRole("complementary", { name: "Session" });
+  await expect(card).toBeVisible();
+  await expect(card.getByText("sess-demo-id")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy session ID" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy session ID" })).toHaveCount(0);
+});
+
 test("provider preset fills a compatible base URL", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");

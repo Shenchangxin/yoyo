@@ -3,6 +3,7 @@ import { Inbox, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
+import { writeClipboard } from "../lib/clipboard";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import type { RunStatus, Thread } from "../lib/protocol";
@@ -14,6 +15,7 @@ export function Titlebar(props: {
   onToggleInspector: () => void;
   inspector: boolean;
   title: string;
+  sessionId?: string;
   onRename: (title: string) => void;
   runningCount?: number;
   runningThreads?: Thread[];
@@ -89,6 +91,7 @@ export function Titlebar(props: {
           {props.title}
         </button>
       )}
+      {props.sessionId ? <SessionIdChip id={props.sessionId} /> : null}
       <div className="h-full min-w-4 flex-1" aria-hidden />
       <div className="no-drag flex shrink-0 items-center gap-1">
         {props.runningThreads && props.onSelectRunning ? (
@@ -111,6 +114,28 @@ export function Titlebar(props: {
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+function SessionIdChip(props: { id: string }) {
+  const copy = useCopy();
+  const [copied, setCopied] = useState(false);
+  return (
+    <Tooltip content={copied ? copy.titlebar.copiedId : copy.titlebar.copyId}>
+      <button
+        type="button"
+        className="no-drag max-w-[11rem] shrink truncate rounded-md px-1 py-0.5 font-mono text-[11px] text-muted hover:bg-lift/70 hover:text-foreground"
+        aria-label={copy.titlebar.copyId}
+        title={props.id}
+        onClick={async () => {
+          if (!(await writeClipboard(props.id))) return;
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        }}
+      >
+        {props.id}
+      </button>
+    </Tooltip>
   );
 }
 
