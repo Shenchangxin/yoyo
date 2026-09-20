@@ -1,0 +1,23 @@
+---
+description: Research literature and the owner HTML report stay in lockstep. Never regenerate report.html from a script.
+globs: docs/research/**,yoyo/docs/research/**
+alwaysApply: false
+---
+
+# Research report contract
+
+`docs/research/report.html` is **hand-authored**. It is the owner briefing, not a dump of Markdown. Do not write or revive `scripts/build-research-report.ps1` or `report.data.js`.
+
+## Same turn
+
+If you add, edit, or remove anything in `docs/research/` (catalog, corpus cards, product cards, FRONTIER, REFERENCES, SOURCES), **update `report.html` in the same turn**. A literature change without a report change is unfinished.
+
+## What to sync
+
+- New paper or product → a library row **and** a short typeset note (claim, implication, steal/reject as prose). Link card, arXiv, local PDF.
+- Status, priority, or steal/reject changed → the matching note and any 判断 / 下一步 / 不做 line that cites it.
+- FRONTIER 判断、议程、该补的洞、不要做的 → the scrolling sections in the report, not a Markdown paste.
+
+## How it should look
+
+Follow `docs/DESIGN.md`: one reading column, hairlines not boxes, color is evidence, headlines ≤ 21px, no gradients, no emoji, no nested cards. A letter, not an app: one scroll, whitespace between thoughts, no ticket tables, no split-pane library. Typeset copy. Do not innerHTML a card file into the page.

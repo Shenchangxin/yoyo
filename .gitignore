@@ -44,3 +44,6 @@ Thumbs.db
 /tmp/
 testdata/tmp/
 evals/.materialized/
+
+# Research PDF cache (fetch with scripts/fetch-research-originals.ps1)
+docs/research/originals/*.pdf
