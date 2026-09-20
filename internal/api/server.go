@@ -194,9 +194,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				writeJSON(w, map[string]any{"ok": true, "async": true})
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
-			defer cancel()
-			out, err := a.SendOpts(ctx, id, body.Text, nil, a.Hub.Publish, body.Plan)
+			out, err := a.SendOpts(r.Context(), id, body.Text, nil, a.Hub.Publish, body.Plan)
 			if err != nil {
 				writeAppErr(w, err)
 				return
@@ -591,6 +589,16 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		writeJSON(w, h)
+	})
+	mux.HandleFunc("/api/workspace/file", func(w http.ResponseWriter, r *http.Request) {
+		ws := r.URL.Query().Get("workspace")
+		path := r.URL.Query().Get("path")
+		prev, err := a.PreviewWorkspaceFile(ws, path)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, prev)
 	})
 	mux.HandleFunc("/api/eval/safety", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)

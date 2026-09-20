@@ -172,7 +172,7 @@ func projectTraceEvent(i int, ev trace.Event) TraceEvent {
 		label := firstNonEmpty(name, "tool")
 		if row.Error {
 			row.Summary = label + " · error"
-		} else if row.Bytes > ingestPreviewRunes {
+		} else if row.Bytes > defaultIngestBudget {
 			row.Summary = label + " · " + strconv.Itoa(row.Bytes) + " bytes"
 		} else {
 			row.Summary = label + " · result"

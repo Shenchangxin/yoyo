@@ -39,9 +39,11 @@ func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
 
 // Shape is a read-time projection. The live transcript is not mutated.
 // Order is cheapest-first and lossless where possible: legalize-prep →
-// budget (spill+preview) → microcompact stubs → forceFit stubs → snip old
-// turns into a spill pointer. User/assistant text is never rewritten; tool
-// bodies are stubbed with recall ids. LLM summarization is not part of Shape.
+// budget (spill+preview) → stub heavy write args → microcompact stubs →
+// if still over budget, stub remaining write args more tightly then
+// forceFit results, then snip old turns into a spill pointer.
+// User/assistant text is never rewritten; tool bodies are stubbed with
+// recall ids. LLM summarization is not part of Shape.
 func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	rep := ShapeReport{}
 	if len(msgs) == 0 {
@@ -77,11 +79,23 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Layers = append(rep.Layers, "budget")
 		rep.Elided += n
 	}
+	if n := stubHeavyCalls(out, per, opts.Spill); n > 0 {
+		rep.Layers = append(rep.Layers, "calls")
+		rep.Elided += n
+	}
 	if n := microcompact(out, microKeep, opts.Spill); n > 0 {
 		rep.Layers = append(rep.Layers, "microcompact")
 		rep.Elided += n
 	}
 	if messagesTokens(out)+opts.Overhead > budget {
+		callLimit := forceCallRunes
+		if opts.Aggressive {
+			callLimit = aggressiveCallRunes
+		}
+		if n := stubHeavyCalls(out, callLimit, opts.Spill); n > 0 {
+			rep.Layers = appendLayer(rep.Layers, "calls")
+			rep.Elided += n
+		}
 		if n := forceFit(out, budget-opts.Overhead, opts.Spill); n > 0 {
 			rep.Layers = append(rep.Layers, "force")
 			rep.Elided += n
@@ -154,6 +168,9 @@ func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 			"[elided %d earlier messages id=%s — call recall_context with this id; original transcript is intact on disk]",
 			len(dropped), id,
 		),
+	}
+	if paths := writePathsFromMessages(dropped); len(paths) > 0 {
+		marker.Content += "\nRecent writes still on disk (read_file, do not rewrite from memory): " + strings.Join(paths, ", ")
 	}
 	out := make([]Message, 0, head+1+len(msgs)-cut)
 	out = append(out, msgs[:head]...)
@@ -240,4 +257,133 @@ func stubTool(id, name string, bytes int) string {
 		name = "tool"
 	}
 	return fmt.Sprintf("[elided tool_result id=%s name=%s bytes=%d — call recall_context with this id]", id, name, bytes)
+}
+
+const heavyCallRunes = 800
+const forceCallRunes = 240
+const aggressiveCallRunes = 80
+
+func appendLayer(layers []string, name string) []string {
+	for _, l := range layers {
+		if l == name {
+			return layers
+		}
+	}
+	return append(layers, name)
+}
+
+func heavyCallName(name string) bool {
+	switch name {
+	case "write_file", "create_file", "apply_patch", "str_replace", "edit_file",
+		"office_create", "office_edit", "cite_sources":
+		return true
+	default:
+		return false
+	}
+}
+
+// stubHeavyCalls is a Shape projection: write_file/apply_patch bodies live on
+// disk (I1 via read_file). Keeping every full write in the prompt makes the
+// model go blind on results and rewrite the tree from memory.
+func stubHeavyCalls(msgs []Message, per int, spill *Spill) int {
+	limit := heavyCallRunes
+	if per > 0 && per < limit {
+		limit = per
+	}
+	n := 0
+	for i := range msgs {
+		if msgs[i].Role != RoleAssistant {
+			continue
+		}
+		for j := range msgs[i].ToolCalls {
+			tc := &msgs[i].ToolCalls[j]
+			if !heavyCallName(tc.Name) || alreadyStubbed(tc.Arguments) {
+				continue
+			}
+			compact := compactCallArgs(tc.Name, tc.Arguments, limit)
+			if compact == tc.Arguments || len(compact) >= len(tc.Arguments) {
+				continue
+			}
+			if spill != nil && tc.ID != "" {
+				_ = spill.Put(tc.ID+":args", tc.Arguments)
+			}
+			tc.Arguments = compact
+			n++
+		}
+	}
+	return n
+}
+
+func compactCallArgs(name, args string, limit int) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(args), &m); err != nil {
+		return args
+	}
+	path, _ := m["path"].(string)
+	changed := false
+	keys := []string{"content", "patch", "body"}
+	if name == "str_replace" || name == "edit_file" || name == "office_edit" {
+		keys = append(keys, "old_str", "new_str")
+	}
+	for _, key := range keys {
+		s, ok := m[key].(string)
+		if !ok {
+			continue
+		}
+		if len([]rune(s)) <= limit {
+			continue
+		}
+		head := callArgHead(s, 120)
+		label := path
+		if label == "" {
+			label = name
+		}
+		m[key] = fmt.Sprintf("[elided %s %d chars path=%s — on disk, read_file that path; do not rewrite from memory]\n%s", key, len(s), label, head)
+		changed = true
+	}
+	if !changed {
+		return args
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return args
+	}
+	return string(b)
+}
+
+func callArgHead(s string, keep int) string {
+	if keep <= 0 {
+		keep = 120
+	}
+	r := []rune(s)
+	if len(r) <= keep {
+		return s
+	}
+	return string(r[:keep])
+}
+
+func writePathsFromMessages(msgs []Message) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range msgs {
+		if m.Role != RoleAssistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.Name != "write_file" && tc.Name != "str_replace" && tc.Name != "apply_patch" {
+				continue
+			}
+			for _, p := range extractJSONPaths(tc.Arguments) {
+				if seen[p] {
+					continue
+				}
+				seen[p] = true
+				out = append(out, p)
+				if len(out) >= 16 {
+					return out
+				}
+			}
+		}
+	}
+	return out
 }

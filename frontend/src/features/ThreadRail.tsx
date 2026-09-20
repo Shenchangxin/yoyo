@@ -148,29 +148,19 @@ export function ThreadRail(props: {
   const skillsOn = props.surface === "skills";
   return (
     <SidebarCard>
-      <div className={cn("chrome drag flex h-11 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
+      <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
         <span className="relative grid size-2 place-items-center" title={props.connected ? copy.rail.connected : copy.rail.disconnected}>
           <span className={cn("size-1.5 rounded-full", props.connected ? "bg-foreground" : "bg-muted")} />
         </span>
         <YoyoMark className="size-3.5 shrink-0" />
-        <span className="text-[13px] font-semibold tracking-[-0.02em]">Yoyo</span>
-        {activeShort ? (
-          <button
-            type="button"
-            className="no-drag truncate rounded-md bg-lift/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted hover:bg-lift hover:text-foreground"
-            title={refs.active || props.fallbackActive}
-            onClick={props.onHarness}
-          >
-            {activeShort}
-          </button>
-        ) : null}
+        <span className="text-[13px] font-semibold tracking-[-0.022em]">Yoyo</span>
         {props.isolated ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
           <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
         ) : null}
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
             type="button"
-            className="no-drag ml-auto grid size-7 place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground"
+            className="no-drag ml-auto grid size-7 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground"
             aria-label={copy.rail.collapse}
             onClick={props.onCollapse}
           >
@@ -179,24 +169,27 @@ export function ThreadRail(props: {
         </Tooltip>
       </div>
       <div className="px-2.5 pb-2">
-        <Button className="h-9 w-full justify-start gap-2 rounded-lg text-[13px]" variant="lift" onClick={props.onNew}>
+        <Button className="h-9 w-full justify-start gap-2 rounded-lg text-[13px] surface-inset" variant="lift" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
         <div className="relative mt-2">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
-            className="h-8 rounded-lg border-transparent bg-lift/40 pl-8 text-[13px]"
+            className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-[13px]"
             placeholder={copy.rail.search}
             aria-label={copy.rail.search}
             value={props.query}
             onChange={(e) => props.onQuery(e.target.value)}
+            autoComplete="off"
+            name="thread-search"
+            spellCheck={false}
           />
         </div>
       </div>
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {list.length === 0 ? (
-          <EmptyState title={copy.rail.noChats} />
+          <EmptyState icon={<YoyoMark className="size-4 text-muted" />} title={copy.rail.noChats} />
         ) : virtual ? (
           <VList className="h-full">
             {railEntries(list, copy).map((e) =>
@@ -220,13 +213,14 @@ export function ThreadRail(props: {
         )}
       </nav>
       <div className="border-t border-border/80 px-1.5 py-1.5">
+        <div className="px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.labs}</div>
         <button
           type="button"
           title={copy.rail.skillsHint}
           aria-label={copy.rail.skills}
           aria-current={skillsOn ? "page" : undefined}
           className={cn(
-            "mb-0.5 flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
+            "mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
             skillsOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
           )}
           onClick={props.onSkills}
@@ -240,13 +234,14 @@ export function ThreadRail(props: {
           aria-label={copy.rail.harness}
           aria-current={harnessOn ? "page" : undefined}
           className={cn(
-            "flex w-full items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
+            "flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
             harnessOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
           )}
           onClick={props.onHarness}
         >
           <GitBranch className="size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{copy.rail.harness}</span>
+          {activeShort ? <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted/70">{activeShort}</span> : null}
           {dirty ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span> : canary ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span> : null}
         </button>
       </div>
@@ -316,7 +311,7 @@ export function ThreadRail(props: {
 
 function RailLabel({ label }: { label: string }) {
   return (
-    <div className="px-2.5 pb-1 pt-2.5 text-[11px] font-medium text-muted first:pt-1">
+    <div className="px-2.5 pb-1 pt-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80 first:pt-1.5">
       {label}
     </div>
   );

@@ -33,12 +33,24 @@ func LooksExfil(action, command, path, args string) (bool, string) {
 
 func LooksDelete(action, command, args string) bool {
 	blob := strings.ToLower(action + " " + command + " " + args)
-	for _, tok := range []string{"rm -rf /", "del /s /q", "format ", "rmdir /s", "remove-item -recurse"} {
+	for _, tok := range []string{
+		"rm -rf /", "rm -rf /*", "del /s /q c:", "format c:", "format d:",
+		"rmdir /s /q c:", "remove-item -recurse -force c:",
+	} {
 		if strings.Contains(blob, tok) {
 			return true
 		}
 	}
 	return false
+}
+
+func isShellTool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "shell", "bash", "sh", "cmd", "powershell", "pwsh", "run_command", "execute_command", "exec":
+		return true
+	default:
+		return false
+	}
 }
 
 func LooksSecretPaste(args string) bool {
@@ -47,7 +59,9 @@ func LooksSecretPaste(args string) bool {
 }
 
 func PreTool(name, arguments string) (deny bool, reason string) {
-	if LooksDelete(name, arguments, "") {
+	// File bodies are not shell commands. Scanning write_file/apply_patch
+	// arguments for "format " blocked ordinary Go ("export format is").
+	if isShellTool(name) && LooksDelete(name, arguments, "") {
 		return true, "destructive delete requires an explicit operator path"
 	}
 	if ok, why := LooksExfil(name, "", "", arguments); ok {
@@ -62,7 +76,7 @@ func PreTool(name, arguments string) (deny bool, reason string) {
 }
 
 func RequestUnsafe(req capability.Request) (bool, string) {
-	if LooksDelete(req.Action, req.Command, "") {
+	if isShellTool(req.Action) && LooksDelete(req.Action, req.Command, "") {
 		return true, "destructive delete"
 	}
 	return LooksExfil(req.Action, req.Command, req.Path, "")

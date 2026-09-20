@@ -10,7 +10,7 @@ import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { useUI } from "../../lib/store";
 import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
-import { useTheme } from "../../lib/theme";
+import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
 
@@ -35,6 +35,8 @@ export const emptyCfg: AppConfig = {
   uiScale: 1,
   updateChannel: "nightly",
   theme: "system",
+  paletteDark: "ink",
+  paletteLight: "neutral",
   gateMode: "manual",
   crashResume: true,
   searchUrl: "",
@@ -98,7 +100,7 @@ function readInspTab(id: string) {
 
 export function useWorkstation() {
   const copy = useCopy();
-  const { setPref } = useTheme();
+  const { setPref, setDarkPalette, setLightPalette } = useTheme();
   const lab = useUI((s) => s.lab);
   const setLab = useUI((s) => s.setLab);
   const surface = useUI((s) => s.surface);
@@ -294,10 +296,11 @@ export function useWorkstation() {
   useEffect(() => {
     if (savedCfg.locale) applyLocale(savedCfg.locale);
     applyUiScale(savedCfg.uiScale);
-    if (savedCfg.theme === "dark" || savedCfg.theme === "light" || savedCfg.theme === "system") {
-      setPref(savedCfg.theme);
-    }
-  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, setPref]);
+    const theme = parseThemePref(savedCfg.theme);
+    if (theme) setPref(theme);
+    setDarkPalette(parseDarkPalette(savedCfg.paletteDark));
+    setLightPalette(parseLightPalette(savedCfg.paletteLight));
+  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.paletteDark, savedCfg.paletteLight, setPref, setDarkPalette, setLightPalette]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => subscribeSessions(refresh), [refresh]);

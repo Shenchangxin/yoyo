@@ -86,3 +86,35 @@ func TestIndexRebuildFile(t *testing.T) {
 		t.Fatal("rebuild failed")
 	}
 }
+
+func TestSetApprovalsClearsAwaiting(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.SetApprovals("s", []PendingApproval{{ID: "o1", Action: "shell"}})
+	st := m.Load("s")
+	if st.Status != StatusAwaitingApproval || len(st.PendingApprovals) != 1 {
+		t.Fatalf("%+v", st)
+	}
+	m.SetApprovals("s", nil)
+	st = m.Load("s")
+	if st.Status != StatusIdle {
+		t.Fatalf("status %s", st.Status)
+	}
+	if len(st.PendingApprovals) != 0 {
+		t.Fatalf("pending %+v", st.PendingApprovals)
+	}
+}
+
+func TestSetApprovalsRunningWhenActorLive(t *testing.T) {
+	m := NewManager(t.TempDir())
+	_, release, err := m.Acquire("s", context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	m.SetApprovals("s", []PendingApproval{{ID: "o1"}})
+	m.SetApprovals("s", nil)
+	st := m.Load("s")
+	if st.Status != StatusRunning {
+		t.Fatalf("status %s", st.Status)
+	}
+}

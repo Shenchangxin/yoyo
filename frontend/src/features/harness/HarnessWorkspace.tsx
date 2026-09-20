@@ -19,8 +19,14 @@ import {
 import type { HarnessTab } from "../../lib/protocol";
 import { HARNESS_TABS } from "../../lib/surface";
 import { cn } from "../../lib/utils";
-import { LabCard, LabFrame, LabStat } from "../labs/LabFrame";
+import { LabEyebrow, LabFrame, LabStat } from "../labs/LabFrame";
 import { MaterialChangeList } from "./Changes";
+
+const STEP_INDEX: Partial<Record<HarnessTab, string>> = {
+  propose: "01",
+  prove: "02",
+  promote: "03",
+};
 
 export function HarnessWorkspace(props: {
   tab: HarnessTab;
@@ -43,23 +49,44 @@ export function HarnessWorkspace(props: {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="harness-workspace">
-      <div className="flex shrink-0 gap-0.5 border-b border-border/80 px-3 py-1.5" role="tablist" aria-label={copy.rsi.title}>
-        {HARNESS_TABS.map((id) => (
-          <button
-            type="button"
-            key={id}
-            role="tab"
-            title={labels[id].hint}
-            aria-selected={props.tab === id}
-            className={cn(
-              "rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors",
-              props.tab === id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/60 hover:text-foreground",
-            )}
-            onClick={() => props.onTab(id)}
-          >
-            {labels[id].label}
-          </button>
-        ))}
+      <div
+        className="process-tabs flex h-10 shrink-0 items-stretch gap-0.5 px-2"
+        role="tablist"
+        aria-label={copy.rsi.title}
+      >
+        {HARNESS_TABS.map((id) => {
+          const on = props.tab === id;
+          const n = STEP_INDEX[id];
+          return (
+            <button
+              type="button"
+              key={id}
+              role="tab"
+              title={labels[id].hint}
+              aria-label={labels[id].label}
+              aria-selected={on}
+              className={cn(
+                "relative flex h-full items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium transition-colors",
+                on ? "text-foreground" : "text-muted hover:text-foreground",
+              )}
+              onClick={() => props.onTab(id)}
+            >
+              {n ? (
+                <span className="font-mono text-[10px] tabular-nums text-muted/70" aria-hidden>
+                  {n}
+                </span>
+              ) : null}
+              {labels[id].label}
+              <span
+                className={cn(
+                  "absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150",
+                  on ? "opacity-100" : "opacity-0",
+                )}
+                aria-hidden
+              />
+            </button>
+          );
+        })}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {props.tab === "overview" ? (
@@ -99,7 +126,7 @@ function HarnessOverview(props: {
     props.next.action === "checkout" ? copy.rsi.promote
       : props.next.action === "eval" || props.next.action === "blocked" ? copy.rsi.prove
         : copy.rsi.propose;
-  const cards = [
+  const pointers = [
     { name: copy.rsi.active, hash: props.refs.active, kind: "active" as const },
     { name: copy.rsi.staging, hash: props.refs.staging, kind: "staging" as const },
     { name: copy.rsi.canary, hash: props.refs.canary, kind: "canary" as const },
@@ -109,10 +136,15 @@ function HarnessOverview(props: {
   return (
     <LabFrame>
       <div data-testid="harness-overview">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 surface-inset">
+        <div
+          className={cn(
+            "mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border bg-card px-5 py-4 surface-inset",
+            props.next.action === "blocked" ? "border-danger/30" : "border-border/80",
+          )}
+        >
           <div className="min-w-0">
-            <div className="text-[11px] text-muted">{copy.rsi.next}</div>
-            <p className="mt-0.5 text-[13px] text-foreground">{reason}</p>
+            <LabEyebrow>{copy.rsi.next}</LabEyebrow>
+            <p className="mt-1 max-w-[46ch] text-[15px] font-medium leading-snug tracking-[-0.02em] text-pretty text-foreground">{reason}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {props.onReveal ? (
@@ -123,30 +155,32 @@ function HarnessOverview(props: {
             <Button onClick={() => props.onTab(props.next.tab)}>{copy.rsi.go} {goLabel}</Button>
           </div>
         </div>
-        {cards.length === 0 ? (
-          <p className="text-[13px] text-muted">{copy.rsi.noRefs}</p>
+        {pointers.length === 0 ? (
+          <p className="mb-6 text-[13px] text-muted">{copy.rsi.noRefs}</p>
         ) : (
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
-            {cards.map((c) => (
-              <LabCard key={c.name + c.hash}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-medium">{c.name}</div>
-                  {c.kind === "active" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
-                  ) : null}
-                  {c.kind === "staging" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
-                      {dirty ? copy.rail.stagingDirty : copy.labs.notTrusted}
-                    </span>
-                  ) : null}
-                  {c.kind === "canary" ? (
-                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
-                      {canary ? copy.rsi.canaryDirty : copy.labs.notTrusted}
-                    </span>
-                  ) : null}
+          <div className="mb-6 overflow-hidden rounded-[12px] border border-border/80 bg-card surface-inset">
+            {pointers.map((c, i) => (
+              <div key={c.name + c.hash} className={cn("grid grid-cols-[7rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5", i > 0 && "border-t border-border/70")}>
+                <div className="text-[13px] font-medium">{c.name}</div>
+                <div className="min-w-0">
+                  <HashLine hash={c.hash} compact />
                 </div>
-                <HashLine hash={c.hash} />
-              </LabCard>
+                <div className="shrink-0">
+                    {c.kind === "active" ? (
+                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
+                    ) : null}
+                    {c.kind === "staging" ? (
+                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                        {dirty ? copy.rail.stagingDirty : copy.labs.notTrusted}
+                      </span>
+                    ) : null}
+                    {c.kind === "canary" ? (
+                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                        {canary ? copy.rsi.canaryDirty : copy.labs.notTrusted}
+                      </span>
+                    ) : null}
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -162,7 +196,7 @@ function HarnessOverview(props: {
         {lineage.length === 0 ? (
           <p className="mb-6 text-[13px] text-muted">{copy.rsi.noLineage}</p>
         ) : (
-          <div className="mb-6 overflow-hidden rounded-[10px] border border-border/80 bg-card" data-testid="harness-lineage">
+          <div className="lineage-rail mb-6 overflow-hidden rounded-[12px] border border-border/80 bg-card pl-1" data-testid="harness-lineage">
             {lineage.map((n, i) => (
               <LineageRow key={n.hash} node={n} first={i === 0} onReveal={props.onReveal} />
             ))}
@@ -187,7 +221,8 @@ function LineageRow({ node, first, onReveal }: { node: LineageNode; first: boole
   const copy = useCopy();
   const stamp = formatStamp(node.createdAt);
   return (
-    <div className={cn("px-4 py-3", !first && "border-t border-border/70")} data-testid="harness-lineage-node">
+    <div className={cn("relative px-4 py-3 pl-8", !first && "border-t border-border/70")} data-testid="harness-lineage-node">
+      <span className="absolute left-[10px] top-[18px] size-1.5 rounded-full bg-foreground/80" aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +258,7 @@ function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   return (
     <button
       type="button"
-      className={cn("block max-w-full truncate font-mono text-[11px] text-muted hover:text-foreground", !compact && "mt-2")}
+      className={cn("block max-w-full cursor-pointer truncate font-mono text-[11px] text-muted hover:text-foreground", !compact && "mt-1")}
       title={copy.rsi.copyHash}
       onClick={async () => {
         const ok = await writeClipboard(hash);

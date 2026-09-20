@@ -1,10 +1,12 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/home"
 )
 
@@ -57,4 +59,97 @@ func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 	}
 	cfg.Workspace = fallback
 	return true
+}
+
+const previewFileBytes = 80_000
+
+// PreviewWorkspaceFile returns a bounded text preview of a workspace file
+// for the session inspector and artifact cards.
+func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error) {
+	if a != nil && strings.TrimSpace(workspace) == "" {
+		workspace = a.Workspace()
+	}
+	rel = strings.TrimSpace(rel)
+	if workspace == "" || rel == "" {
+		return nil, fmt.Errorf("empty path")
+	}
+	p := rel
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(workspace, rel)
+	}
+	p = filepath.Clean(p)
+	if !capability.WithinWorkspace(workspace, p) {
+		return nil, fmt.Errorf("path escapes workspace")
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+	truncated := false
+	if len(raw) > previewFileBytes {
+		raw = raw[:previewFileBytes]
+		truncated = true
+	}
+	if looksBinary(raw) {
+		return map[string]any{
+			"path":      filepath.ToSlash(rel),
+			"bytes":     len(raw),
+			"binary":    true,
+			"truncated": truncated,
+		}, nil
+	}
+	ext := strings.ToLower(filepath.Ext(p))
+	html := ext == ".html" || ext == ".htm" || ext == ".xhtml"
+	return map[string]any{
+		"path":      filepath.ToSlash(rel),
+		"text":      string(raw),
+		"lang":      langFromExt(ext),
+		"html":      html,
+		"bytes":     len(raw),
+		"truncated": truncated,
+	}, nil
+}
+
+func looksBinary(b []byte) bool {
+	n := len(b)
+	if n > 800 {
+		n = 800
+	}
+	for i := 0; i < n; i++ {
+		if b[i] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func langFromExt(ext string) string {
+	switch ext {
+	case ".go":
+		return "go"
+	case ".ts", ".tsx":
+		return "ts"
+	case ".js", ".jsx", ".mjs", ".cjs":
+		return "js"
+	case ".json":
+		return "json"
+	case ".css":
+		return "css"
+	case ".html", ".htm", ".xhtml":
+		return "html"
+	case ".md":
+		return "md"
+	case ".py":
+		return "python"
+	case ".rs":
+		return "rust"
+	case ".yml", ".yaml":
+		return "yaml"
+	case ".toml":
+		return "toml"
+	case ".sh":
+		return "bash"
+	default:
+		return strings.TrimPrefix(ext, ".")
+	}
 }

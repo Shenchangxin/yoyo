@@ -48,6 +48,11 @@ type RunRequest struct {
 	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
 	// with bubbles still on screen after a checkpoint rebuild.
 	RoundSeq int
+	// SoftHorizon is desktop/CLI chat only (I6). Harbor eval and subagents
+	// leave it false so MaxTurns / MaxToolMessages stay hard bounds.
+	// Chat stops on end_turn (with an open-plan continue), cancel, budget,
+	// or overflow — not because a counter ran out while work was progressing.
+	SoftHorizon bool
 }
 
 var emitSeq atomic.Int64
@@ -60,6 +65,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		req.Tools.Ctx = ctx
 		req.Tools.Policy = req.Policy
 		req.Tools.PlanMode = req.Loop.PlanMode || req.Policy.Mode == "plan"
+		if req.Tools.OperatorVoice == "" {
+			req.Tools.OperatorVoice = OperatorVoice(req.User, req.History)
+		}
 		if req.Tools.Spill == nil {
 			req.Tools.Spill = BindSpill(req.Home, req.Workspace, req.SessionID)
 		}
@@ -118,8 +126,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	}
 	var last string
 	toolCount := 0
+	planContinues := 0
+	toolsAtPlanContinue := -1
 	overflowFails := 0
 	roundSeq := req.RoundSeq
+	writeHits := map[string]int{}
+	lastPlan := planTextOf(req.Tools)
 	if roundSeq <= 0 {
 		for _, m := range req.History {
 			if m.Role == RoleAssistant {
@@ -127,7 +139,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 	}
-	for turn := 0; turn < loop.MaxTurns; turn++ {
+	turnLimit := loop.MaxTurns
+	if turnLimit <= 0 {
+		turnLimit = 24
+	}
+	for turn := 0; req.SoftHorizon || turn < turnLimit; turn++ {
 		if err := ctx.Err(); err != nil {
 			// Interrupt landed between a tool batch and the next model call.
 			// The UI only learns a turn is over from a terminal event, so do
@@ -142,8 +158,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 			}
 		}
-		if loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
-			messages = append(messages, Message{Role: RoleUser, Content: "Stop using tools and produce the final answer now."})
+		if !req.SoftHorizon && loop.MaxToolMessages > 0 && toolCount >= loop.MaxToolMessages {
+			nudge := toolBudgetNudge
+			if !loop.PlanMode && PlanOpen(planTextOf(req.Tools)) {
+				nudge = planContinueNudge
+			}
+			if !lastUserIs(messages, nudge) {
+				messages = append(messages, Message{Role: RoleUser, Content: nudge})
+			}
 		}
 		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
 		messages = setDynamic(messages, dyn)
@@ -216,14 +238,16 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			msg, err = chat(ctx, req, chatReq, roundID)
 		}
 		if err != nil {
-			emit(req, trace.TypeError, "model", ClassifyError(err).Payload())
 			reason := StopModelError
+			classErr := err
 			if IsContextOverflow(err) {
 				reason = StopOverflow
 			}
 			if ctx.Err() != nil {
 				reason = StopCancelled
+				classErr = ctx.Err()
 			}
+			emit(req, trace.TypeError, "model", ClassifyError(classErr).Payload())
 			setStop(&req, reason)
 			return last, stopErr(reason, "", err)
 		}
@@ -254,11 +278,18 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
 		}
 		if len(msg.ToolCalls) == 0 {
-			if spill != nil {
-				merged := NotesFromMessages(messages)
-				WriteNotes(spill, merged)
-				WriteDiscoverIndex(req.Workspace, req.SessionID, spill)
-				notes = merged.Markdown()
+			notes = persistWorkingMemory(req, messages, notes)
+			if extra := planContinueIfOpen(req, loop.PlanMode, toolCount, &planContinues, &toolsAtPlanContinue); extra != "" {
+				if req.Tools != nil {
+					req.Tools.VerifyHint = true
+				}
+				if strings.TrimSpace(msg.Content) != "" || len(msg.ToolCalls) > 0 {
+					messages = append(messages, msg)
+				}
+				if !lastUserIs(messages, extra) {
+					messages = append(messages, Message{Role: RoleUser, Content: extra})
+				}
+				continue
 			}
 			if req.Events != nil {
 				req.Events.Emit(HookTurnEnd, last)
@@ -289,9 +320,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			return strings.TrimSpace(msg.Content), nil
 		}
 		messages = append(messages, msg)
-		results := dispatchTools(ctx, req, msg.ToolCalls, roundID)
+		results := dispatchTools(ctx, req, msg.ToolCalls, roundID, true)
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
+		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
+		notes = persistWorkingMemory(req, messages, notes)
+		if stall := rewriteStallNudge(req, writeHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
 		if inj := middlewareNudge(loop, results); inj != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: inj})
 		}
@@ -337,15 +373,7 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					out := dispatchTools(ctx, req, []ToolCall{tc}, roundID)
-					if len(out) == 1 && req.Tools != nil {
-						req.Tools.mu.Lock()
-						if req.Tools.prefetch == nil {
-							req.Tools.prefetch = map[string]Message{}
-						}
-						req.Tools.prefetch[tc.ID] = out[0]
-						req.Tools.mu.Unlock()
-					}
+					_ = dispatchTools(ctx, req, []ToolCall{tc}, roundID, false)
 				}()
 			}
 			return nil
@@ -356,7 +384,7 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 	return req.Client.Chat(ctx, chatReq)
 }
 
-func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundID string) []Message {
+func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundID string, recordTrace bool) []Message {
 	n := len(calls)
 	out := make([]Message, n)
 	type job struct {
@@ -397,18 +425,28 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			args = hook.Arguments
 		}
 		jobs[i] = job{tc: tc, deny: hook.Deny, reason: hook.Reason, args: args}
-		emit(req, trace.TypeToolCall, "agent", map[string]any{
-			"name": tc.Name, "arguments": tc.Arguments, "id": tc.ID, "round": roundID,
-		})
+		if recordTrace {
+			emit(req, trace.TypeToolCall, "agent", map[string]any{
+				"name": tc.Name, "arguments": tc.Arguments, "id": tc.ID, "round": roundID,
+			})
+		}
 	}
 	runExec := func(i int) {
 		if req.Tools != nil {
 			req.Tools.mu.Lock()
 			pre, ok := req.Tools.prefetch[jobs[i].tc.ID]
+			if ok {
+				delete(req.Tools.prefetch, jobs[i].tc.ID)
+			}
 			req.Tools.mu.Unlock()
 			if ok {
-				jobs[i].content = pre.Content
-				jobs[i].ok = !strings.HasPrefix(pre.Content, "ERROR:")
+				jobs[i].content = pre.content
+				jobs[i].ok = pre.ok
+				jobs[i].spillID = pre.spillID
+				jobs[i].elapsedMs = pre.elapsedMs
+				jobs[i].change = pre.change
+				jobs[i].parts = pre.parts
+				jobs[i].bytes = len(pre.content)
 				return
 			}
 		}
@@ -430,7 +468,7 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			}
 		}
 		jobs[i].bytes = len(content)
-		preview, spillID := ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content)
+		preview, spillID := ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content, ingestBudget(req.Loop), j.tc.Name == "recall_context")
 		post := applyPostTool(req.Events, ToolHook{Name: j.tc.Name, Arguments: j.tc.Arguments, SessionID: req.SessionID, Result: preview})
 		if post.Result != "" {
 			preview = post.Result
@@ -456,6 +494,8 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 		wg.Wait()
 	} else if exclusive {
+		// Exclusive means serial (cwd/env races), not a transaction.
+		// A failed shell must not cancel a sibling write in the same batch.
 		for i := range jobs {
 			if err := ctx.Err(); err != nil {
 				for j := i; j < n; j++ {
@@ -464,12 +504,6 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 				break
 			}
 			runExec(i)
-			if !jobs[i].ok {
-				for j := i + 1; j < n; j++ {
-					jobs[j].content = "ERROR: aborted after exclusive tool failure"
-				}
-				break
-			}
 		}
 	} else {
 		for i := range jobs {
@@ -483,6 +517,25 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 	}
 	for i, j := range jobs {
+		if !recordTrace {
+			if req.Tools != nil {
+				req.Tools.mu.Lock()
+				if req.Tools.prefetch == nil {
+					req.Tools.prefetch = map[string]prefetchHit{}
+				}
+				req.Tools.prefetch[j.tc.ID] = prefetchHit{
+					content:   j.content,
+					elapsedMs: j.elapsedMs,
+					spillID:   j.spillID,
+					ok:        j.ok,
+					change:    j.change,
+					parts:     j.parts,
+				}
+				req.Tools.mu.Unlock()
+			}
+			out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content, Parts: j.parts}
+			continue
+		}
 		if j.tc.Name == "load_skill" && j.ok {
 			emit(req, trace.TypeInject, "skill", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID})
 		}
@@ -527,7 +580,14 @@ func loadedFrom(t *WorkspaceTools) []string {
 	if t == nil {
 		return nil
 	}
-	return t.loadedBodies()
+	out := t.loadedBodies()
+	if body := planFirstOverlay(t); body != "" {
+		out = append(out, body)
+	}
+	if body := verifyArtifactOverlay(t); body != "" {
+		out = append(out, body)
+	}
+	return out
 }
 
 func planTextOf(t *WorkspaceTools) string {
@@ -604,6 +664,89 @@ func applyStopHook(req RunRequest) (bool, string) {
 		return true, msg
 	}
 	return false, ""
+}
+
+const maxPlanContinues = 6
+
+func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues *int, toolsAt *int) string {
+	if planMode || req.Tools == nil {
+		return ""
+	}
+	if !PlanOpen(planTextOf(req.Tools)) {
+		return ""
+	}
+	if continues != nil && *continues >= maxPlanContinues {
+		return ""
+	}
+	if continues != nil && *continues > 0 && toolsAt != nil && toolCount == *toolsAt {
+		return ""
+	}
+	if continues != nil {
+		*continues++
+	}
+	if toolsAt != nil {
+		*toolsAt = toolCount
+	}
+	return planContinueNudgeFor(req)
+}
+
+func planContinueNudgeFor(req RunRequest) string {
+	if looksCJK(req.User) || looksCJK(planTextOf(req.Tools)) {
+		return planContinueNudgeZH
+	}
+	return planContinueNudge
+}
+
+func PlanOpen(plan string) bool {
+	n, open := 0, 0
+	for _, line := range strings.Split(plan, "\n") {
+		st, ok := planLineStatus(line)
+		if !ok {
+			continue
+		}
+		n++
+		if !planStatusDone(st) {
+			open++
+		}
+	}
+	return n > 0 && open > 0
+}
+
+func planLineStatus(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	dot := strings.IndexByte(line, '.')
+	if dot < 0 || dot > 3 {
+		return "", false
+	}
+	rest := strings.TrimSpace(line[dot+1:])
+	if !strings.HasPrefix(rest, "[") {
+		return "", false
+	}
+	end := strings.IndexByte(rest, ']')
+	if end < 1 {
+		return "", false
+	}
+	return rest[1:end], true
+}
+
+func planStatusDone(raw string) bool {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.ReplaceAll(s, " ", "_")
+	s = strings.ReplaceAll(s, "-", "_")
+	switch s {
+	case "complete", "completed", "done", "finished":
+		return true
+	default:
+		return false
+	}
+}
+
+func lastUserIs(msgs []Message, text string) bool {
+	if len(msgs) == 0 || strings.TrimSpace(text) == "" {
+		return false
+	}
+	last := msgs[len(msgs)-1]
+	return last.Role == RoleUser && last.Content == text
 }
 
 type lastStopPayload struct{}

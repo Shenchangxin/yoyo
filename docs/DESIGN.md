@@ -7,6 +7,11 @@ not a chat product and not an IDE. Every rule below serves one sentence:
 
 > **Show the work, hide the chrome. Color is evidence. Motion is state.**
 
+Visual direction is Swiss Modernism 2.0 applied to a Mac utility: Inter, a
+4pt grid, one sage accent, mathematical spacing. Beauty is instrument craft
+(CAS mark, pointer maps, paper grain) — not personality marketing. Skill-layer
+notes live in `design-system/yoyo/MASTER.md`; this file still wins on grammar.
+
 The source of truth for tokens is `frontend/src/styles.css`. This document
 explains how to spend them.
 
@@ -14,9 +19,11 @@ explains how to spend them.
 
 ## 1. Principles
 
-1. **One reading column.** Prose, bubbles, process rows and the composer share
-   a single centred measure (`THREAD_COL`, 46rem). Left edges align. The scroll
-   container stays pane-wide so the scrollbar hugs the pane edge.
+1. **One conversation column.** Prose, bubbles, process rows and the composer
+   share a single centred measure (`THREAD_COL`). It tracks the stage width
+   (`min(100%, var(--thread-measure))`, ceiling 72rem) so the session is
+   responsive; left edges still align. The scroll container stays pane-wide
+   so the scrollbar hugs the pane edge.
 2. **Hairlines, not boxes.** Lists are separated by `border-border/50` lines.
    Cards are reserved for objects the operator acts on (approvals, artifacts,
    errors). Never nest a card inside a card.
@@ -41,17 +48,26 @@ explains how to spend them.
 
 ### Color (semantic only — no raw hex in feature files)
 
-| Token | Dark | Light | Use |
+Mode (`system | dark | light`) is orthogonal to named palettes. The document
+element carries `class="dark|light"` and `data-palette`. Accent, success,
+danger, and warning stay put so Harbor and diffs still mean the same thing.
+
+Dark palettes: **Ink** (default, `#0c0d0e`), Dim (lifted charcoal), Slate
+(cool blue-black). Light palettes: **Neutral** (default, true gray `#f4f4f5`),
+Paper (warm ivory `#f1f0ea`, opt-in), Mist (cool daylight). Do not ship a
+yellow light as the only option.
+
+| Token | Dark (Ink) | Light (Neutral) | Use |
 |---|---|---|---|
-| `background` | `#0f1011` | `#f3f3f0` | app canvas, transcript |
-| `sidebar` | `#161718` | `#e9e9e4` | rail, review panel, code surfaces |
-| `card` | `#1a1b1c` | `#fafaf8` | actionable cards |
-| `popover` | `#1f2021` | `#ffffff` | menus, tooltips, jump pill |
+| `background` | `#0c0d0e` | `#f4f4f5` | app canvas, transcript |
+| `sidebar` | `#141516` | `#e8e8ea` | rail, review panel, code surfaces |
+| `card` | `#1a1b1c` | `#ffffff` | actionable cards |
+| `popover` | `#222324` | `#ffffff` | menus, tooltips, jump pill |
 | `input-bar` | `#1c1d1e` | `#ffffff` | composer |
-| `lift` | `#252627` | `#e2e2dc` | hover, selected, chips, kbd |
+| `lift` | `#262728` | `#e4e4e7` | hover, selected, chips, kbd |
 | `border` | white 9% | black 8.5% | every hairline |
-| `foreground` | `#ececea` | `#1b1b1b` | primary text, primary button fill |
-| `muted` | `#8c8e8d` | `#6b6b66` | secondary text, icons |
+| `foreground` | `#ececea` | `#18181b` | primary text, primary button fill |
+| `muted` | `#8c8e8d` | `#5f5f66` | secondary text, icons |
 | `accent` | `#6d8a7e` | `#5d7368` | primary selection, Harbor pass |
 | `success` | `#6fae82` | `#3f8a58` | diff add, healthy |
 | `warning` | `#d1a24a` | `#a97a1f` | interrupted, needs approval |
@@ -70,7 +86,8 @@ with the same hue — colour lives in **either** the marker **or** the fill.
 - **UI:** Inter Variable, `cv11 ss03 calt`, optical sizing on. Body 13px,
   labels 12.5px, meta 11.5px, eyebrow 10.5px uppercase `tracking-[0.08em]`.
   Headlines: 21px/600/`tracking-[-0.03em]` (empty state), 13px/500 (pane
-  titles). Prose 15.5px/1.7 with `-0.011em` tracking, max 72ch.
+  titles). Prose 15.5px/1.7 with `-0.011em` tracking, filling the column.
+  Headings use `text-wrap: pretty` / `balance` so widows do not sit alone.
 - **Code:** `--font-mono` (system mono ladder). 11.5px/1.6 in diffs and tool
   payloads, 12px for tool names inline. `font-variant-ligatures: none`
   everywhere code is shown — a diff must show the bytes on disk.
@@ -91,8 +108,15 @@ surfaces), 10px (`--radius`, panes and cards), 16px (`--radius-composer`),
 
 Flat. Depth comes from an inset top highlight (`--shadow-card`,
 `--shadow-composer`) on cards and the composer, and a single soft drop shadow
-(`--shadow-popover`) on floating layers only. No glows, no blur beyond
-`backdrop-blur-sm` on sticky headers.
+(`--shadow-popover`) on floating layers only. The app canvas may carry a 2–5%
+film grain (material, not a glow). No glows, no blur beyond `backdrop-blur-sm`
+on sticky headers.
+
+### Mark
+
+The four-cell CAS square is the only brand glyph. On empty still-lifes it sits
+in a 40px inset well (`MarkWell`). Never replace it with Sparkles, a wordmark
+illustration, or an avatar.
 
 ### Motion
 
@@ -116,14 +140,18 @@ foreground text and removes pulse, rise and caret animations.
 ┌ rail ─┐┌──────────── stage ────────────┐┌── review ──┐
 │ Yoyo  ││ PageHeader (drag region)      ││ tabs       │
 │ New   ││                               ││ toolbar    │
-│ chats ││   [ reading column 46rem ]    ││ list/diff  │
+│ chats ││   [ fluid column ≤72rem ]     ││ list/diff  │
 │       ││   transcript … composer       ││            │
 │ Skills││                               ││ footer CTA │
 │ Harn. │└───────────────────────────────┘└────────────┘
 ```
 
-- App frame padding 8px; rail and review are rounded cards on `sidebar` with
-  the inset highlight; the stage is bare `background`.
+- App frame padding 8px; rail, review, Settings, Skills, and Harness are
+  rounded cards on `sidebar` with the inset highlight; the agent stage is
+  bare `background` so the transcript reads as a document.
+- **Harness process rail** — Overview is the unnumbered origin. Propose /
+  Prove / Promote carry `01 02 03` and share the Review underline tab
+  grammar. They are one RSI sequence, not four sibling labs.
 - Default split 19 / 51 / 30. Review collapses to a right sheet under 1100px;
   the rail becomes a hover overlay under 800px. Panes are user-resizable and
   persisted (`yoyo-layout-v1`).
@@ -133,7 +161,8 @@ foreground text and removes pulse, rise and caret animations.
 
 ## 4. Transcript grammar
 
-- **User** — right-aligned bubble on `lift`, 18px radius, ≤34rem. No avatar.
+- **User** — right-aligned bubble on `lift`, 18px radius, ≤80% of the column.
+  No avatar.
 - **Assistant** — left prose, no bubble, no avatar. One turn is one
   `assistant-letter`; copy/review actions sit at the foot and appear on hover
   once the turn is settled. Turns are separated by whitespace (40px), not rules.
@@ -209,7 +238,8 @@ mirrors the same structure — no added politeness particles.
 
 ## 8. Accessibility
 
-Visible focus rings (`--ring`) on all controls; `aria-expanded` on every
+Visible focus rings (`--ring`) on all controls; a skip link to `#main-stage`;
+`aria-expanded` on every
 disclosure; `aria-live="polite"` on the single live status line per turn;
 `role="tab"`/`tablist` with stable `aria-label`s; kbd hints are `aria-hidden`
 so button names stay exact. Contrast: body text ≥ 7:1 on `background`, muted ≥

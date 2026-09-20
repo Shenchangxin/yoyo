@@ -85,6 +85,9 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 	tail := stripSystem(shaped)
 	notes := NotesFromMessages(tail)
 	WriteNotes(spill, notes)
+	if spill != nil {
+		notes = ParseNotes(ReadNotes(spill))
+	}
 	summary := notes.Markdown()
 	lossless := true
 	if loop.AllowLLMCompact && client != nil && model != "" {

@@ -11,3 +11,12 @@ export function YoyoMark({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** Inset well for empty still-lifes. Decorative — hide from the tree. */
+export function MarkWell({ className, markClassName }: { className?: string; markClassName?: string }) {
+  return (
+    <span className={cn("mark-well", className)} aria-hidden>
+      <YoyoMark className={cn("size-4", markClassName)} />
+    </span>
+  );
+}

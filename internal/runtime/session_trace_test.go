@@ -77,7 +77,7 @@ func TestProjectTraceRecoversSpillIDFromStub(t *testing.T) {
 func TestIngestReturnsSpillID(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	full := strings.Repeat("TAIL", 20_000)
-	preview, id := ingestToolResult(sp, "call-1", "shell", full)
+	preview, id := ingestToolResult(sp, "call-1", "shell", full, 0, false)
 	if id != "call-1" {
 		t.Fatalf("id %q", id)
 	}

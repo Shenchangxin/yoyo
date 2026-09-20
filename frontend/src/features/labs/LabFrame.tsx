@@ -5,10 +5,23 @@ export function LabFrame({ children }: { title?: string; hint?: string; children
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl px-6 py-5">{children}</div>
+        <div className="mx-auto w-full max-w-6xl px-6 py-6">{children}</div>
       </div>
     </div>
   );
+}
+
+/** One instrument strip: primary verb + overflow, not a form dump. */
+export function LabStrip({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn("mb-6 flex flex-wrap items-center gap-2 rounded-[12px] border border-border/80 bg-card/80 px-3 py-2.5 surface-inset", className)}>
+      {children}
+    </div>
+  );
+}
+
+export function LabEyebrow({ children }: { children: ReactNode }) {
+  return <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{children}</div>;
 }
 
 export function LabStat({ label, value, bad }: { label: string; value: string; bad?: boolean }) {

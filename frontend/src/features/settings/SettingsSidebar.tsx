@@ -92,6 +92,9 @@ export function SettingsSidebar(props: {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={copy.settings.search}
             aria-label={copy.settings.search}
+            autoComplete="off"
+            name="settings-search"
+            spellCheck={false}
             className="no-drag h-8 w-full rounded-[9px] border border-border bg-background pl-8 pr-7 text-[12.5px] text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
           />
           {query ? (
@@ -132,7 +135,7 @@ export function SettingsSidebar(props: {
         ) : (
           SETTINGS_GROUPS.map((group) => (
             <div key={group} className="pt-2.5 first:pt-1">
-              <div className="px-2.5 pb-1 text-[11px] font-semibold tracking-[0.01em] text-muted/85">
+              <div className="px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">
                 {copy.settings.groups[group]}
               </div>
               {tabsInGroup(group).map((t) => (

@@ -79,7 +79,7 @@ func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	}
 	n := strings.Count(text, old)
 	if n == 0 {
-		return ToolResult{Err: fmt.Errorf("hunk not found in %s", rel)}
+		return ToolResult{Err: fmt.Errorf("hunk not found in %s\n%s", rel, fileContextHint(text, old))}
 	}
 	if n > 1 {
 		return ToolResult{Err: fmt.Errorf("hunk matched %d times in %s; add more context", n, rel)}
@@ -169,4 +169,37 @@ func hunkReplace(body string) (old, new string, err error) {
 		}
 	}
 	return strings.TrimSuffix(oldB.String(), "\n"), strings.TrimSuffix(newB.String(), "\n"), nil
+}
+
+func fileContextHint(text, old string) string {
+	needle := firstNonEmptyLine(old)
+	lines := strings.Split(text, "\n")
+	if needle != "" {
+		for i, ln := range lines {
+			if strings.Contains(ln, needle) {
+				start := i - 4
+				if start < 0 {
+					start = 0
+				}
+				end := i + 5
+				if end > len(lines) {
+					end = len(lines)
+				}
+				return "closest existing lines:\n" + strings.Join(lines[start:end], "\n")
+			}
+		}
+	}
+	if len(lines) > 16 {
+		lines = lines[:16]
+	}
+	return "file starts with:\n" + strings.Join(lines, "\n")
+}
+
+func firstNonEmptyLine(s string) string {
+	for _, ln := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(ln); t != "" {
+			return t
+		}
+	}
+	return ""
 }

@@ -120,11 +120,12 @@ export function Titlebar(props: {
 function SessionIdChip(props: { id: string }) {
   const copy = useCopy();
   const [copied, setCopied] = useState(false);
+  const shown = props.id.length > 14 ? `${props.id.slice(0, 6)}…${props.id.slice(-4)}` : props.id;
   return (
     <Tooltip content={copied ? copy.titlebar.copiedId : copy.titlebar.copyId}>
       <button
         type="button"
-        className="no-drag max-w-[11rem] shrink truncate rounded-md px-1 py-0.5 font-mono text-[11px] text-muted hover:bg-lift/70 hover:text-foreground"
+        className="no-drag max-w-[11rem] shrink truncate rounded-md px-1 py-0.5 font-mono text-[11px] tabular-nums text-muted hover:bg-lift/70 hover:text-foreground"
         aria-label={copy.titlebar.copyId}
         title={props.id}
         onClick={async () => {
@@ -133,7 +134,7 @@ function SessionIdChip(props: { id: string }) {
           window.setTimeout(() => setCopied(false), 1200);
         }}
       >
-        {props.id}
+        {shown}
       </button>
     </Tooltip>
   );

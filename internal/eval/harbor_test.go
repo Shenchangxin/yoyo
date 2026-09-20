@@ -33,6 +33,9 @@ func TestHarborTaskPass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if rt.DefaultLoop().MaxTurns != 32 || rt.DefaultLoop().MaxToolMessages != 40 {
+		t.Fatalf("harbor loop overlay leaked: %+v", rt.DefaultLoop())
+	}
 	if rep.Metrics.HeldInPass != 1 || rep.Metrics.HeldOutPass != 1 {
 		t.Fatalf("%+v", rep)
 	}

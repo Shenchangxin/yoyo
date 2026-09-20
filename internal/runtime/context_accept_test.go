@@ -145,7 +145,7 @@ func TestC2RecallKeepsTailOfHugeDump(t *testing.T) {
 	sp := NewSpill(filepath.Join(dir, "spill"))
 	tools := &WorkspaceTools{Workspace: dir, Spill: sp}
 	full := strings.Repeat("HEAD", 2000) + strings.Repeat("x", 2<<20) + "UNIQUE_TAIL_MARKER"
-	preview, _ := ingestToolResult(sp, "big", "shell", full)
+	preview, _ := ingestToolResult(sp, "big", "shell", full, 0, false)
 	if !strings.Contains(preview, "elided") {
 		t.Fatalf("expected preview stub")
 	}
@@ -155,6 +155,51 @@ func TestC2RecallKeepsTailOfHugeDump(t *testing.T) {
 	}
 	if !strings.Contains(res.Content, "UNIQUE_TAIL_MARKER") {
 		t.Fatalf("recall lost tail, len=%d", len(res.Content))
+	}
+	st := trace.NewStore(t.TempDir())
+	req := RunRequest{SessionID: "s", Tools: tools, Trace: st, Loop: DefaultLoop()}
+	out := dispatchTools(context.Background(), req, []ToolCall{{
+		ID: "r1", Name: "recall_context", Arguments: `{"id":"big"}`,
+	}}, "s:r1", true)
+	if len(out) != 1 {
+		t.Fatalf("dispatch %d", len(out))
+	}
+	if strings.HasPrefix(out[0].Content, "[elided") {
+		t.Fatalf("recall restubbed: %s", out[0].Content[:min(120, len(out[0].Content))])
+	}
+	if !strings.Contains(out[0].Content, "UNIQUE_TAIL_MARKER") {
+		t.Fatalf("dispatch recall lost tail, len=%d", len(out[0].Content))
+	}
+	evs, err := st.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jsonl string
+	for _, ev := range evs {
+		if ev.Type != trace.TypeToolResult {
+			continue
+		}
+		jsonl, _ = ev.Payload["content"].(string)
+	}
+	if jsonl != out[0].Content {
+		t.Fatalf("jsonl diverged from live")
+	}
+}
+
+func TestIngestStubsOnlyOverBudget(t *testing.T) {
+	sp := NewSpill(t.TempDir())
+	small := strings.Repeat("a", 400)
+	got, _ := ingestToolResult(sp, "s", "read_file", small, 8000, false)
+	if got != small || strings.Contains(got, "elided") {
+		t.Fatalf("small result stubbed: %q", got[:min(80, len(got))])
+	}
+	big := strings.Repeat("b", 12_000) + "TAIL_MARK"
+	preview, _ := ingestToolResult(sp, "b", "read_file", big, 8000, false)
+	if !strings.HasPrefix(preview, "[elided") {
+		t.Fatalf("expected stub, got %s", preview[:min(80, len(preview))])
+	}
+	if !strings.Contains(preview, "TAIL_MARK") {
+		t.Fatal("over-budget preview lost tail")
 	}
 }
 

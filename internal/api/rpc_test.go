@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
@@ -109,6 +110,34 @@ func TestRPCThreadLifecycle(t *testing.T) {
 }
 
 func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
+
+func TestRPCWorkspacePreview(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	if err := os.WriteFile(filepath.Join(ws, "n.go"), []byte("package n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	params, err := json.Marshal(map[string]string{"workspace": ws, "path": "n.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 9, Method: "workspace.preview", Params: params})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	m, _ := got.Result.(map[string]any)
+	if m["lang"] != "go" {
+		t.Fatalf("%+v", got.Result)
+	}
+	text, _ := m["text"].(string)
+	if !strings.Contains(text, "package n") {
+		t.Fatalf("text %+v", m)
+	}
+}
 
 func TestLineClientHealth(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))

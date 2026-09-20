@@ -78,10 +78,12 @@ export function DiffBlock({
   src,
   mode,
   onLineClick,
+  className,
 }: {
   src: string;
   mode: DiffMode;
   onLineClick?: (text: string) => void;
+  className?: string;
 }) {
   const rows = linesOf(src);
   const click = (text: string) => {
@@ -89,9 +91,10 @@ export function DiffBlock({
     onLineClick(text);
   };
   const clickable = onLineClick ? "cursor-pointer hover:brightness-110" : "";
+  const wrap = cn("max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]", className);
   if (mode === "unified") {
     return (
-      <div className="max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]" style={{ tabSize: 2 }}>
+      <div className={wrap} style={{ tabSize: 2 }}>
         {rows.map((row, i) => {
           const m = marker(row.kind);
           return (
@@ -110,7 +113,7 @@ export function DiffBlock({
   }
   const pairs = pair(rows);
   return (
-    <div className="max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]" style={{ tabSize: 2 }}>
+    <div className={wrap} style={{ tabSize: 2 }}>
       {pairs.map((p, i) => (
         <div key={i} className="grid grid-cols-2 divide-x divide-border/50">
           <div

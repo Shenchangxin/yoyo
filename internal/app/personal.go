@@ -24,7 +24,6 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
-	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
 func (a *App) mountFiber(name string, setup func() (func() error, error)) error {
@@ -134,26 +133,8 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	tools.Computer = a.Computer
 	tools.Inbox = a.Inbox
 	tools.SearchAPI = a.searchAPI
-	tools.Advertised = unionHostTools(tools.Advertised)
-}
-
-func unionHostTools(have []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, n := range have {
-		if n == "" || seen[n] {
-			continue
-		}
-		seen[n] = true
-		out = append(out, n)
-	}
-	for _, s := range tool.HostSpecs() {
-		if !seen[s.Name] {
-			out = append(out, s.Name)
-			seen[s.Name] = true
-		}
-	}
-	return out
+	tools.ChatOverlay = true
+	tools.Advertised = runtime.ApplyChatToolMenu(tools.Advertised)
 }
 
 func (a *App) searchAPI(query string) (string, error) {

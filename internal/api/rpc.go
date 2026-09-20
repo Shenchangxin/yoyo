@@ -201,9 +201,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			}
 			return map[string]any{"ok": true, "async": true}, nil
 		}
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-		defer cancel()
-		out, err := a.SendOpts(tctx, p.Session, p.Text, nil, a.Hub.Publish, p.Plan)
+		out, err := a.SendOpts(ctx, p.Session, p.Text, nil, a.Hub.Publish, p.Plan)
 		if err != nil {
 			return nil, err
 		}
@@ -678,6 +676,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.WorkspaceHunks(p.Workspace)
+	case "workspace.preview":
+		var p struct {
+			Workspace string `json:"workspace"`
+			Path      string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PreviewWorkspaceFile(p.Workspace, p.Path)
 	case "workspace.apply_hunks":
 		var p struct {
 			Workspace string   `json:"workspace"`

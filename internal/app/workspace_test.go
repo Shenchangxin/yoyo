@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +75,42 @@ func TestDefaultWorkspaceReplacesPlaceholder(t *testing.T) {
 	}
 	if a.Config.Workspace != a.Home.Workspace() {
 		t.Fatalf("got %q want %q", a.Config.Workspace, a.Home.Workspace())
+	}
+}
+
+func TestPreviewWorkspaceFile(t *testing.T) {
+	dir := t.TempDir()
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := "<!doctype html><html><body>hi</body></html>"
+	if err := os.WriteFile(filepath.Join(abs, "index.html"), []byte(html), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abs, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{Config: Config{Workspace: abs}}
+	got, err := a.PreviewWorkspaceFile(abs, "index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["html"] != true || got["text"] != html {
+		t.Fatalf("html %+v", got)
+	}
+	goFile, err := a.PreviewWorkspaceFile(abs, "main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goFile["lang"] != "go" || goFile["html"] != false {
+		t.Fatalf("go %+v", goFile)
+	}
+	if !strings.Contains(goFile["text"].(string), "package main") {
+		t.Fatalf("go text %+v", goFile)
+	}
+	outside := filepath.Join(abs, "..", "outside.txt")
+	if _, err := a.PreviewWorkspaceFile(abs, outside); err == nil {
+		t.Fatal("escaped workspace")
 	}
 }

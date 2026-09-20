@@ -225,6 +225,9 @@ func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context
 		a.mu.Lock()
 		delete(a.runs, sessionID)
 		a.mu.Unlock()
+		if a.Threads != nil {
+			a.Threads.SetApprovals(sessionID, nil)
+		}
 	}, nil
 }
 
@@ -272,8 +275,17 @@ func takeResume(message string, atts []Attachment) ([]Attachment, bool) {
 	return kept, resume
 }
 
+// chatTurnContext is the envelope for an async desktop/CLI turn.
+// There is no wall-clock deadline: long tasks run until the model
+// end_turns, the operator interrupts, budget, or overflow. A 10-minute
+// deadline aborted in-progress work and was shown as "the model did not
+// respond in time".
+func chatTurnContext() (context.Context, context.CancelFunc) {
+	return context.WithCancel(context.Background())
+}
+
 func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment, resume bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := chatTurnContext()
 	ctx, release, err := a.acquireRun(sessionID, ctx)
 	if err != nil {
 		cancel()
@@ -346,6 +358,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		loop.PlanMode = true
 		pol.Mode = "plan"
 	}
+	loop = runtime.ApplyChatHorizon(loop)
 	if a.Config.MaxBudgetUSD > 0 {
 		if loop.MaxBudgetUSD <= 0 || a.Config.MaxBudgetUSD < loop.MaxBudgetUSD {
 			loop.MaxBudgetUSD = a.Config.MaxBudgetUSD
@@ -455,6 +468,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if a.Memory != nil {
 		profile = a.Memory.ProfilePin(800)
 	}
+	voice := runtime.OperatorVoice(message, hist)
+	tools.OperatorVoice = voice
+	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(voice, a.Config.Locale, loop.PlanMode)...)
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,
@@ -484,8 +500,12 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
 		Meter:            meter,
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
+		SoftHorizon:      true,
 	})
 	a.markRunDone(sessionID)
+	if a.Threads != nil {
+		a.Threads.SetApprovals(sessionID, nil)
+	}
 	loaded, planText := tools.Pins()
 	meta.LoadedSkills = loaded
 	meta.PlanText = planText

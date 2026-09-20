@@ -163,6 +163,8 @@ export function configOf(v: any): AppConfig {
     uiScale: num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1,
     updateChannel: str(pick(v, "update_channel", "UpdateChannel", "updateChannel"), "nightly"),
     theme: str(pick(v, "theme", "Theme"), "system"),
+    paletteDark: str(pick(v, "palette_dark", "PaletteDark", "paletteDark"), "ink"),
+    paletteLight: str(pick(v, "palette_light", "PaletteLight", "paletteLight"), "neutral"),
     gateMode: str(pick(v, "gate_mode", "GateMode", "gateMode"), "manual"),
     crashResume: boolOr(pick(v, "crash_resume", "CrashResume", "crashResume"), true),
     searchUrl: str(pick(v, "search_url", "SearchURL", "searchUrl")),
@@ -238,6 +240,8 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     ui_scale: cfg.uiScale || 1,
     update_channel: cfg.updateChannel || "nightly",
     theme: cfg.theme || "system",
+    palette_dark: cfg.paletteDark || "ink",
+    palette_light: cfg.paletteLight || "neutral",
   };
   const s = await wailsService();
   if (s?.SetConfig) {
@@ -599,6 +603,32 @@ export async function workspaceHunks(workspace: string): Promise<{ diff: string;
   return {
     diff: str(pick(raw, "diff", "Diff")),
     hunks: asArray(pick(raw, "hunks", "Hunks")).map(hunkOf).filter((h) => h.id),
+  };
+}
+
+export type FilePreview = {
+  path: string;
+  text: string;
+  lang: string;
+  html: boolean;
+  binary: boolean;
+  truncated: boolean;
+  bytes: number;
+};
+
+export async function previewWorkspaceFile(workspace: string, path: string): Promise<FilePreview> {
+  const s = await wailsService();
+  const raw = s?.PreviewWorkspaceFile
+    ? await s.PreviewWorkspaceFile(workspace, path)
+    : await http(`/api/workspace/file?workspace=${encodeURIComponent(workspace || "")}&path=${encodeURIComponent(path || "")}`);
+  return {
+    path: str(pick(raw, "path", "Path")),
+    text: str(pick(raw, "text", "Text")),
+    lang: str(pick(raw, "lang", "Lang")),
+    html: bool(pick(raw, "html", "HTML")),
+    binary: bool(pick(raw, "binary", "Binary")),
+    truncated: bool(pick(raw, "truncated", "Truncated")),
+    bytes: num(pick(raw, "bytes", "Bytes")),
   };
 }
 

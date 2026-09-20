@@ -34,7 +34,7 @@ Steal, do not clone:
 
 The full system lives in `docs/DESIGN.md` — read it before touching any surface. The one-line version: **show the work, hide the chrome; color is evidence; motion is state.**
 
-- One 46rem reading column shared by transcript and composer (`lib/thread.ts`). Scroll container stays pane-wide.
+- One conversation column shared by transcript and composer (`lib/thread.ts`). It tracks the stage (`min(100%, --thread-measure)`); scroll container stays pane-wide.
 - Hairline lists, not bordered cards. Cards only for objects the operator acts on (approval, artifact, error).
 - Semantic tokens only (`styles.css`): zinc chrome; `success`/`danger` for diff and step state, `warning` for interrupted/needs-approval, `accent` for primary selection. Step opacity for greys.
 - Live grammar: shimmer verb + pulse dot + `Worked for` clock while running; past tense and a static glyph the instant it stops. A call without a result on a finished turn is *interrupted*, never spinning.

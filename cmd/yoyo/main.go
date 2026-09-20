@@ -108,9 +108,7 @@ func runCmd() *cobra.Command {
 				}
 				session = m.ID
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-			out, err := a.Send(ctx, session, args[0], nil, nil)
+			out, err := a.Send(cmd.Context(), session, args[0], nil, nil)
 			if err != nil {
 				return err
 			}

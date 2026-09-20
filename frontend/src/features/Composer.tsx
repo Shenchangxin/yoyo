@@ -270,7 +270,7 @@ export function Composer(props: {
           className={cn(
             "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
             popupWelded ? "rounded-b-[var(--radius-composer)] rounded-t-none" : "rounded-[var(--radius-composer)]",
-            focused ? "border-foreground/20" : "border-border",
+            focused ? "border-foreground/25" : "border-border",
             props.disabled && "opacity-55",
           )}
           onDragOver={(e) => {
@@ -440,7 +440,8 @@ export function Composer(props: {
               }
             }}
           />
-          <div className="flex flex-nowrap items-center gap-x-1 px-2 pb-1.5 pt-0.5">
+          <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-1.5 pt-0.5">
+            <div className="flex min-w-0 items-center gap-x-0.5">
             <Tooltip content={copy.composer.mention}>
               <button
                 type="button"
@@ -586,6 +587,7 @@ export function Composer(props: {
                 </button>
               </Tooltip>
             ) : null}
+            </div>
             <span className="ml-auto" />
             {props.running ? (
               <button
@@ -616,7 +618,7 @@ export function Composer(props: {
             <button
               type="button"
               className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full transition-[background-color,color] duration-150",
+                "grid size-7 shrink-0 place-items-center rounded-full transition-[background-color,color,transform] duration-150 active:scale-[0.96]",
                 props.running || canSend
                   ? "bg-foreground text-background"
                   : "bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] text-muted",
@@ -650,7 +652,7 @@ export function Composer(props: {
 }
 
 function toolClass() {
-  return "flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30";
+  return "flex size-6 cursor-pointer items-center justify-center rounded-md text-muted transition-[background-color,color,transform] duration-150 hover:bg-lift hover:text-foreground active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30";
 }
 
 function parseComposerAuth(mode?: string): AuthMode {

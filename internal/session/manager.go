@@ -186,6 +186,12 @@ func (m *Manager) SetApprovals(id string, offers []PendingApproval) {
 	st.PendingApprovals = offers
 	if len(offers) > 0 {
 		st.Status = StatusAwaitingApproval
+	} else if st.Status == StatusAwaitingApproval {
+		if m.actors[id] != nil {
+			st.Status = StatusRunning
+		} else {
+			st.Status = StatusIdle
+		}
 	}
 	m.runs[id] = st
 	m.persist(id)

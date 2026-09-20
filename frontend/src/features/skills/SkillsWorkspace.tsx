@@ -8,6 +8,7 @@ import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import type { SkillInfo } from "../../lib/protocol";
 import type { Copy } from "../../lib/copy";
+import { YoyoMark } from "../shell/YoyoMark";
 
 type Pane = "installed" | "market";
 
@@ -94,10 +95,10 @@ export function SkillsWorkspace(props: {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="skills-workspace">
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-5xl px-6 py-5">
-          <p className="mb-4 max-w-[62ch] text-[13px] leading-5 text-muted">{copy.skills.hint}</p>
-          <div className="mb-5 flex flex-wrap items-center gap-3">
-            <div className="flex rounded-lg border border-border/80 bg-lift/30 p-0.5" role="tablist" aria-label={copy.skills.title}>
+        <div className="mx-auto w-full max-w-5xl px-6 py-6">
+          <p className="mb-4 max-w-[46ch] text-[12.5px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
+          <div className="mb-5 flex h-10 items-stretch gap-3">
+            <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
               {(["installed", "market"] as Pane[]).map((id) => (
                 <button
                   type="button"
@@ -105,32 +106,42 @@ export function SkillsWorkspace(props: {
                   role="tab"
                   aria-selected={pane === id}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-                    pane === id ? "bg-panel text-foreground" : "text-muted hover:text-foreground",
+                    "relative flex h-full cursor-pointer items-center px-2.5 text-[12.5px] font-medium transition-colors",
+                    pane === id ? "text-foreground" : "text-muted hover:text-foreground",
                   )}
                   onClick={() => setPane(id)}
                 >
                   {id === "installed" ? copy.skills.installed : copy.skills.market}
+                  <span
+                    className={cn(
+                      "absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150",
+                      pane === id ? "opacity-100" : "opacity-0",
+                    )}
+                    aria-hidden
+                  />
                 </button>
               ))}
             </div>
             {pane === "market" ? (
-              <>
-                <div className="relative min-w-[12rem] flex-1">
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                <div className="relative min-w-[10rem] max-w-[18rem] flex-1">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
                   <Input
-                    className="h-8 rounded-lg border-border/80 bg-transparent pl-8 text-[13px]"
+                    className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-[13px]"
                     placeholder={copy.skills.search}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     aria-label={copy.skills.search}
+                    autoComplete="off"
+                    name="skill-catalog-search"
+                    spellCheck={false}
                   />
                 </div>
                 <Button size="sm" variant="outline" onClick={() => loadMarket(true)}>
                   <RefreshCw className="size-3.5" aria-hidden />
                   {copy.skills.refresh}
                 </Button>
-              </>
+              </div>
             ) : null}
           </div>
           {err ? <p className="mb-4 text-[12.5px] text-danger">{err}</p> : null}
@@ -180,7 +191,7 @@ function InstalledList(props: {
 }) {
   const copy = useCopy();
   if (!props.skills.length) {
-    return <EmptyState title={copy.skills.emptyInstalled} />;
+    return <EmptyState icon={<YoyoMark className="size-4" />} title={copy.skills.emptyInstalled} />;
   }
   const groups = new Map<string, SkillInfo[]>();
   for (const s of props.skills) {
@@ -261,7 +272,7 @@ function MarketList(props: {
 }) {
   const copy = useCopy();
   if (!props.grouped.length) {
-    return <EmptyState title={copy.skills.emptyMarket} />;
+    return <EmptyState icon={<YoyoMark className="size-4" />} title={copy.skills.emptyMarket} />;
   }
   return (
     <div>

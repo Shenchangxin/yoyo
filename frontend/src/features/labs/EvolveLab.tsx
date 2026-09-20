@@ -3,7 +3,7 @@ import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { LabCard, LabChip, LabFrame, LabStat, LabTable } from "./LabFrame";
+import { LabCard, LabChip, LabFrame, LabStat, LabStrip, LabTable } from "./LabFrame";
 
 export function EvolveLab(props: {
   busy: boolean;
@@ -40,37 +40,25 @@ export function EvolveLab(props: {
   });
   return (
     <LabFrame>
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-[13px] text-muted">
+      <LabStrip>
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
           {copy.labs.k}
           <Input type="number" min={1} max={8} className="h-8 w-16" value={props.k} onChange={(e) => props.onK(Number(e.target.value) || 3)} />
         </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
           {copy.labs.rounds}
           <Input type="number" min={1} max={20} className="h-8 w-16" value={props.rounds} onChange={(e) => props.onRounds(Number(e.target.value) || 1)} />
         </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
-          <input type="checkbox" checked={props.sealed} onChange={(e) => props.onSealed(e.target.checked)} />
-          {copy.labs.sealed}
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
-          <input type="checkbox" checked={props.behavior} onChange={(e) => props.onBehavior(e.target.checked)} />
-          {copy.labs.behavior}
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
-          <input type="checkbox" checked={props.index} onChange={(e) => props.onIndex(e.target.checked)} />
-          {copy.labs.index}
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
-          <input type="checkbox" checked={props.baselines} onChange={(e) => props.onBaselines(e.target.checked)} />
-          {copy.labs.baselines}
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
+        <Gate on={props.sealed} onClick={() => props.onSealed(!props.sealed)}>{copy.labs.sealed}</Gate>
+        <Gate on={props.behavior} onClick={() => props.onBehavior(!props.behavior)}>{copy.labs.behavior}</Gate>
+        <Gate on={props.index} onClick={() => props.onIndex(!props.index)}>{copy.labs.index}</Gate>
+        <Gate on={props.baselines} onClick={() => props.onBaselines(!props.baselines)}>{copy.labs.baselines}</Gate>
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
           {copy.labs.maxUsd}
           <Input type="number" min={0} step={0.1} className="h-8 w-20" value={props.maxUsd || ""} onChange={(e) => props.onMaxUsd(Number(e.target.value) || 0)} />
         </label>
-        <Button disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
-      </div>
+        <Button className="ml-auto" disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
+      </LabStrip>
       {props.evolve ? (
         <div className="mb-5 grid grid-cols-3 gap-3">
           <LabStat label={copy.labs.promoted} value={slice(pick(props.evolve, "promoted", "Promoted") || "none")} />
@@ -235,5 +223,21 @@ function CompareBlock(props: { evolve: any; copy: ReturnType<typeof useCopy> }) 
         </tbody>
       </LabTable>
     </div>
+  );
+}
+
+function Gate(props: { on: boolean; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={props.on}
+      className={cn(
+        "h-8 cursor-pointer rounded-md px-2.5 text-[12px] font-medium transition-colors",
+        props.on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
+      )}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </button>
   );
 }

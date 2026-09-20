@@ -77,6 +77,8 @@ type Config struct {
 	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
 	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
 	Theme                   string            `yaml:"theme" json:"theme"`
+	PaletteDark             string            `yaml:"palette_dark" json:"palette_dark"`
+	PaletteLight            string            `yaml:"palette_light" json:"palette_light"`
 	GateMode                string            `yaml:"gate_mode" json:"gate_mode"`
 	CrashResume             bool              `yaml:"crash_resume" json:"crash_resume"`
 	SearchURL               string            `yaml:"search_url" json:"search_url"`
@@ -174,9 +176,6 @@ func Open(root, bundledEvals string) (*App, error) {
 		if cfg.UpdateChannel == "" {
 			cfg.UpdateChannel = "nightly"
 		}
-		if cfg.Theme == "" {
-			cfg.Theme = "system"
-		}
 		if cfg.GateMode == "" {
 			cfg.GateMode = capability.GateManual
 		}
@@ -184,6 +183,7 @@ func Open(root, bundledEvals string) (*App, error) {
 			cfg.CrashResume = true
 		}
 	}
+	cfg.NormalizeAppearance()
 	filledDefault := applyDefaultWorkspace(h, &cfg)
 	k := kernel.New()
 	allow := []capability.Level{capability.ReadWorkspace, capability.WriteWorkspace}
@@ -483,7 +483,31 @@ func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	return nil
 }
 
+// NormalizeAppearance fills theme/palette zeros and rejects unknown ids.
+// Mode (system|dark|light) is orthogonal to the two palettes.
+func (c *Config) NormalizeAppearance() {
+	if c == nil {
+		return
+	}
+	switch c.Theme {
+	case "dark", "light", "system":
+	default:
+		c.Theme = "system"
+	}
+	switch c.PaletteDark {
+	case "ink", "dim", "slate":
+	default:
+		c.PaletteDark = "ink"
+	}
+	switch c.PaletteLight {
+	case "neutral", "paper", "mist":
+	default:
+		c.PaletteLight = "neutral"
+	}
+}
+
 func (a *App) SaveConfig() error {
+	a.Config.NormalizeAppearance()
 	b, err := yaml.Marshal(a.Config)
 	if err != nil {
 		return err

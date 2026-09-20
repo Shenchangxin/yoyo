@@ -237,6 +237,13 @@ func (s *Service) WorkspaceHunks(workspace string) (any, error) {
 	return s.App.WorkspaceHunks(workspace)
 }
 
+func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {
+	if s.RPC != nil {
+		return s.call("workspace.preview", map[string]any{"workspace": workspace, "path": path})
+	}
+	return s.App.PreviewWorkspaceFile(workspace, path)
+}
+
 func (s *Service) ApplyHunks(workspace string, ids []string) error {
 	if s.RPC != nil {
 		_, err := s.call("workspace.apply_hunks", map[string]any{"workspace": workspace, "ids": ids})
@@ -399,9 +406,7 @@ func (s *Service) Send(sessionID, text string) (string, error) {
 		}
 		return "", nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	return s.App.Send(ctx, sessionID, text, nil, s.App.Hub.Publish)
+	return s.App.Send(context.Background(), sessionID, text, nil, s.App.Hub.Publish)
 }
 
 func (s *Service) StartSend(sessionID, text string, plan bool) error {

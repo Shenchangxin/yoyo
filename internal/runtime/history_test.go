@@ -91,3 +91,30 @@ func TestMaxAssistantRound(t *testing.T) {
 		t.Fatalf("got %d", n)
 	}
 }
+
+func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "read it"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "", "id": "s:r1"}},
+		{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c1", "name": "read_file", "arguments": `{"path":"a.go"}`}},
+		{Type: trace.TypeToolResult, Payload: map[string]any{"id": "c1", "name": "read_file", "content": "package a", "elapsed_ms": 4}},
+		{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c1", "name": "read_file", "arguments": `{"path":"a.go"}`}},
+		{Type: trace.TypeToolResult, Payload: map[string]any{"id": "c1", "name": "read_file", "content": "package a"}},
+	}
+	msgs := MessagesFromEvents(evs)
+	calls, results := 0, 0
+	for _, m := range msgs {
+		if m.Role == RoleAssistant {
+			calls += len(m.ToolCalls)
+		}
+		if m.Role == RoleTool {
+			results++
+			if m.Content != "package a" {
+				t.Fatalf("content %q", m.Content)
+			}
+		}
+	}
+	if calls != 1 || results != 1 {
+		t.Fatalf("calls=%d results=%d msgs=%+v", calls, results, msgs)
+	}
+}
