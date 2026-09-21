@@ -1217,3 +1217,69 @@ export async function quit(): Promise<void> {
 }
 
 export { errMessage };
+
+export async function videoCall(method: string, params: Record<string, any> = {}): Promise<any> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "VideoCall", "videoCall");
+  if (fn) return fn(method, params);
+  let res: Response;
+  try {
+    res = await fetch("/api/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: AbortSignal.timeout(120000),
+    });
+  } catch (e) {
+    throw new Error(`${method}: ${errMessage(e)}`);
+  }
+  const text = await res.text();
+  let body: any = text;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    /* keep */
+  }
+  if (!res.ok) throw new ApiError(res.status, body, `${method}: ${typeof body === "object" && body?.error ? body.error : text || res.statusText}`);
+  if (body?.error) throw new ApiError(500, body, String(body.error.message || body.error));
+  return body?.result ?? body;
+}
+
+export const video = {
+  status: () => videoCall("video.status"),
+  modes: () => videoCall("video.modes"),
+  templates: () => videoCall("video.templates"),
+  providers: (serviceType = "") => videoCall("video.providers.list", { service_type: serviceType }),
+  upsertProvider: (provider: any, apiKey = "") => videoCall("video.providers.upsert", { provider, api_key: apiKey }),
+  deleteProvider: (id: string) => videoCall("video.providers.delete", { id }),
+  testProvider: (id: string) => videoCall("video.providers.test", { id }),
+  styles: () => videoCall("video.styles"),
+  settings: () => videoCall("video.settings.get"),
+  setSetting: (key: string, value: string) => videoCall("video.settings.set", { key, value }),
+  jobs: (episodeId = "") => videoCall("video.jobs.list", { episode_id: episodeId }),
+  cancelJob: (id: string) => videoCall("video.jobs.cancel", { id }),
+  retryJob: (id: string) => videoCall("video.jobs.retry", { id }),
+  listDramas: () => videoCall("drama.list"),
+  createDrama: (d: Record<string, any>) => videoCall("drama.create", d),
+  getDrama: (id: string) => videoCall("drama.get", { id }),
+  updateDrama: (d: Record<string, any>) => videoCall("drama.update", d),
+  deleteDrama: (id: string) => videoCall("drama.delete", { id }),
+  episodes: (dramaId: string) => videoCall("drama.episodes", { drama_id: dramaId }),
+  createEpisode: (dramaId: string, title: string, content: string) => videoCall("drama.episode.create", { drama_id: dramaId, title, content }),
+  updateEpisode: (ep: Record<string, any>) => videoCall("drama.episode.update", ep),
+  deleteEpisode: (id: string) => videoCall("drama.episode.delete", { id }),
+  bundle: (episodeId: string) => videoCall("drama.bundle", { episode_id: episodeId }),
+  bind: (sessionId: string, episodeId: string) => videoCall("drama.bind", { session_id: sessionId, episode_id: episodeId }),
+  stage: (sessionId: string, episodeId: string, stage: string) => videoCall("drama.stage.run", { session_id: sessionId, episode_id: episodeId, stage }),
+  saveAsset: (kind: string, id: string, fields: Record<string, any>) => videoCall("drama.assets.save", { kind, id, ...fields }),
+  generateAsset: (kind: string, id: string, episodeId = "") => videoCall("drama.assets.generate", { kind, id, episode_id: episodeId }),
+  generateMissingAssets: (episodeId: string) => videoCall("drama.assets.generate_missing", { episode_id: episodeId }),
+  uploadAsset: (kind: string, id: string, dataB64: string) => videoCall("drama.assets.upload", { kind, id, data_b64: dataB64 }),
+  saveShots: (episodeId: string, shots: any[], replace = false) => videoCall("drama.shots.save", { episode_id: episodeId, shots, replace }),
+  updateShot: (s: Record<string, any>) => videoCall("drama.shots.update", s),
+  deleteShot: (id: string) => videoCall("drama.shots.delete", { id }),
+  generateShot: (id: string) => videoCall("drama.shots.generate", { id }),
+  generateMissingShots: (episodeId: string) => videoCall("drama.shots.generate_missing", { episode_id: episodeId }),
+  merge: (episodeId: string, shotIds: string[]) => videoCall("drama.merge", { episode_id: episodeId, shot_ids: shotIds }),
+  importHuobao: (dbPath: string, staticDir = "") => videoCall("drama.import", { db_path: dbPath, static_dir: staticDir }),
+};

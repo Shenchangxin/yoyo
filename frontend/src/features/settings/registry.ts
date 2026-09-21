@@ -40,6 +40,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
+  { id: "provider-video", tab: "provider", titleKey: "providerVideo", keywords: "video seedance minimax wan ffmpeg drama" },
   { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow" },
   { id: "policy-budget", tab: "policy", titleKey: "policyBudget", keywords: "budget usd cost mtok" },
   { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature" },

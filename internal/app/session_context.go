@@ -55,6 +55,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		PlanText:  meta.PlanText,
 	}
 	a.attachPersonal(tools)
+	a.attachDramaTools(tools, sessionID)
 	rep := runtime.MeasureContext(runtime.MeasureOpts{
 		Loop:        loop,
 		Fragments:   frags,

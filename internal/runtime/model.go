@@ -131,6 +131,27 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	if req.CacheKey != "" {
 		payload["prompt_cache_key"] = req.CacheKey
 	}
+	disableThinking(payload)
+	msg, err := c.postChat(ctx, payload, stream, emit)
+	if err != nil && thinkingRejected(err.Error()) {
+		delete(payload, "thinking")
+		delete(payload, "enable_thinking")
+		return c.postChat(ctx, payload, stream, emit)
+	}
+	return msg, err
+}
+
+func disableThinking(payload map[string]any) {
+	payload["thinking"] = map[string]any{"type": "disabled"}
+	payload["enable_thinking"] = false
+}
+
+func thinkingRejected(msg string) bool {
+	s := strings.ToLower(msg)
+	return strings.Contains(s, "thinking") || strings.Contains(s, "enable_thinking") || strings.Contains(s, "reasoning_effort")
+}
+
+func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, stream bool, emit func(StreamDelta) error) (Message, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return Message{}, err
@@ -146,8 +167,8 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	if c.APIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
-	if req.CacheKey != "" {
-		httpReq.Header.Set("X-Prompt-Cache-Key", req.CacheKey)
+	if key, _ := payload["prompt_cache_key"].(string); key != "" {
+		httpReq.Header.Set("X-Prompt-Cache-Key", key)
 	}
 	res, err := c.HTTPClient.Do(httpReq)
 	if err != nil {

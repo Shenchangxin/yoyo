@@ -144,10 +144,11 @@ foreground text and removes pulse, rise and caret animations.
 │ chats ││   [ fluid column ≤72rem ]     ││ list/diff  │
 │       ││   transcript … composer       ││            │
 │ Skills││                               ││ footer CTA │
+│ Video ││                               ││            │
 │ Harn. │└───────────────────────────────┘└────────────┘
 ```
 
-- App frame padding 8px; rail, review, Settings, Skills, and Harness are
+- App frame padding 8px; rail, review, Settings, Skills, Video, and Harness are
   rounded cards on `sidebar` with the inset highlight; the agent stage is
   bare `background` so the transcript reads as a document.
 - **Harness process rail** — Overview is the unnumbered origin. Propose /

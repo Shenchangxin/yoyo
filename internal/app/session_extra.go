@@ -408,6 +408,7 @@ func (a *App) Doctor() map[string]any {
 		"isolated":        isolated(),
 		"mcp":             a.MCP.List(),
 		"isolation":       a.IsolationReport(),
+		"video":           a.VideoStatus(),
 	}
 	if a.Log != nil {
 		_, diskErr := os.Stat(a.Log.Dir())

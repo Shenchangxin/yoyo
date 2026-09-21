@@ -38,6 +38,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/vault"
 	"github.com/Shenchangxin/yoyo/internal/version"
+	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
 type runSlot struct {
@@ -143,6 +144,7 @@ type App struct {
 	Computer   *computeruse.Host
 	Observe    *observe.Tracer
 	Log        *diaglog.Logger
+	Video      *video.Engine
 	schedStop  chan struct{}
 
 	evalMu     sync.Mutex
@@ -326,6 +328,9 @@ func Open(root, bundledEvals string) (*App, error) {
 	if err := a.openPersonal(); err != nil {
 		return nil, err
 	}
+	if err := a.openVideo(); err != nil {
+		return nil, err
+	}
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
 			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {
@@ -455,6 +460,7 @@ func (a *App) Health() map[string]any {
 		"gate_mode":       capability.ParseGateMode(a.Config.GateMode),
 		"last_eval":       a.LastEval(),
 		"last_evolve":     a.LastEvolve(),
+		"video":           a.VideoStatus(),
 	}
 }
 
@@ -564,6 +570,9 @@ func (a *App) Close() error {
 		}
 	}
 	diaglog.Info("app close", "component", "boot")
+	if a.Video != nil {
+		_ = a.Video.Close()
+	}
 	_ = a.MCP.Close()
 	_ = a.WASM.Close()
 	if a.Log != nil {
