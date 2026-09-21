@@ -715,10 +715,7 @@ export function useWorkstation() {
       setDiff(h.diff);
       setHunks(h.hunks);
       setHunkSel({});
-      if (h.hunks.length) {
-        setInspector(true);
-        setInspTab("diff");
-      }
+      if (h.hunks.length) setInspector(true);
     } catch (e) {
       fail(e);
     }

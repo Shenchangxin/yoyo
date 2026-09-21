@@ -144,7 +144,7 @@ export function ProcessGroup({
                 animate={{ opacity: 1, y: 0 }}
                 transition={swap}
               >
-                {settledLabel ? <span className="text-foreground/85">{settledLabel}</span> : null}
+                {settledLabel ? <span>{settledLabel}</span> : null}
                 {settledLabel && summary ? <span className="text-muted/50">·</span> : null}
                 {summary ? <span className="truncate">{summary}</span> : null}
                 {failed > 0 ? (
@@ -362,8 +362,8 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
         onToggle={() => setOpen((v) => !v)}
       >
         {body ? (
-          <div className="min-w-0 max-w-full text-[13px] leading-6 text-muted">
-            <Markdown text={body} />
+          <div className="min-w-0 max-w-full text-muted">
+            <Markdown text={body} quiet />
           </div>
         ) : null}
       </StepRow>

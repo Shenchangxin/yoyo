@@ -25,7 +25,6 @@ import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
-import * as api from "../lib/client";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -102,12 +101,11 @@ function partSpace(parts: AgentPart[], i: number): string {
   if (i === 0) return "";
   const prev = parts[i - 1];
   const cur = parts[i];
-  if (cur.kind === "process") return "pt-1.5";
+  if (cur.kind === "process") return prev.kind === "item" ? "pt-2.5" : "pt-1.5";
   if (cur.kind === "artifact") return "pt-2";
   if (cur.kind === "item" && cur.item.type === "assistant") {
-    if (prev.kind === "process") return "pt-1.5";
-    if (prev.kind === "artifact") return "pt-2.5";
-    return "pt-1";
+    if (prev.kind === "process" || prev.kind === "artifact") return "pt-3";
+    return "pt-2";
   }
   return "pt-2";
 }
@@ -121,7 +119,7 @@ export function Transcript(props: {
   workspace?: string;
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
-  onOpenReview?: () => void;
+  onOpenReview?: (path?: string) => void;
   onRetry?: () => void;
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
@@ -342,7 +340,7 @@ function TurnActions({
   live?: boolean;
   pinned?: boolean;
   showReview?: boolean;
-  onOpenReview?: () => void;
+  onOpenReview?: (path?: string) => void;
 }) {
   const copy = useCopy();
   if (live) return <div className="h-8" aria-hidden />;
@@ -360,7 +358,7 @@ function TurnActions({
         <button
           type="button"
           className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
-          onClick={onOpenReview}
+          onClick={() => onOpenReview()}
         >
           <FileText className="size-3.5" aria-hidden />
           {copy.review.openReview}
@@ -528,7 +526,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <div className="whitespace-pre-wrap break-words rounded-[18px] bg-lift px-3.5 py-[9px] text-[14.5px] leading-[1.55] tracking-[-0.012em]">
+          <div className="whitespace-pre-wrap break-words rounded-[18px] bg-lift px-3.5 py-[9px] text-[13px] leading-[1.5] tracking-[-0.011em]">
             {item.text}
           </div>
           {copyText ? (
@@ -542,7 +540,7 @@ const ItemRow = memo(function ItemRow({
   }
   if (item.type === "assistant") {
     return (
-      <div className="assistant-prose w-full min-w-0 text-[15.5px] leading-[1.7] tracking-[-0.011em] text-foreground/95">
+      <div className="assistant-prose w-full min-w-0">
         <div className={cn(streaming && "assistant-live")}>
           <Markdown text={item.text} streaming={streaming} />
         </div>
@@ -577,7 +575,7 @@ function ArtifactTimeline({
   items: Item[];
   running: boolean;
   workspace?: string;
-  onOpenReview?: () => void;
+  onOpenReview?: (path?: string) => void;
 }) {
   const pairs = pairTools(items).filter(pairShowsArtifact);
   if (!pairs.length) return null;
@@ -608,7 +606,7 @@ function ArtifactCard({
   result?: Item;
   running: boolean;
   workspace?: string;
-  onOpenReview?: () => void;
+  onOpenReview?: (path?: string) => void;
 }) {
   const copy = useCopy();
   const [source, setSource] = useState(false);
@@ -683,20 +681,11 @@ function ArtifactCard({
               {source ? copy.transcript.preview : copy.transcript.source}
             </button>
           ) : null}
-          {path ? (
-            <button
-              type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
-              onClick={() => { void api.openPath(path); }}
-            >
-              {pdf ? copy.transcript.openPdf : copy.transcript.openFile}
-            </button>
-          ) : null}
           {onOpenReview ? (
             <button
               type="button"
               className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
-              onClick={onOpenReview}
+              onClick={() => onOpenReview(path || undefined)}
             >
               {copy.review.openReview}
             </button>

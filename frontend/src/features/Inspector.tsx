@@ -46,9 +46,10 @@ export function Inspector(props: {
   onResolve?: (id: string, decision: string) => void;
   onOpenPath?: (path: string) => void;
   workspace?: string;
+  focusFile?: string;
 }) {
   const copy = useCopy();
-  const files = fileNames(props.diff);
+  const files = withFocus(fileNames(props.diff), props.focusFile);
   const allowed: InspTab[] = ["diff", "files", "queue", "memory", "trace"];
   const active: InspTab = allowed.includes(props.tab) ? props.tab : "diff";
   const tabs: { id: InspTab; label: string; icon: typeof GitCompare; count?: number }[] = [
@@ -120,7 +121,7 @@ export function Inspector(props: {
         ) : active === "diff" ? (
           <DiffPane {...props} files={files} />
         ) : (
-          <FilesPane files={files} workspace={props.workspace} onQuote={props.onQuote} onOpenPath={props.onOpenPath} />
+          <FilesPane files={files} workspace={props.workspace} focusFile={props.focusFile} onQuote={props.onQuote} onOpenPath={props.onOpenPath} />
         )}
       </div>
     </aside>
@@ -326,61 +327,82 @@ function fileNames(diff: string): string[] {
   return [...out];
 }
 
+function normPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function withFocus(files: string[], focus?: string): string[] {
+  const f = (focus || "").trim();
+  if (!f) return files;
+  const n = normPath(f);
+  if (files.some((x) => normPath(x) === n)) return files;
+  return [f, ...files];
+}
+
 /* ---------- Files ---------- */
 
 function FilesPane({
   files,
   workspace,
+  focusFile,
   onQuote,
   onOpenPath,
 }: {
   files: string[];
   workspace?: string;
+  focusFile?: string;
   onQuote?: (t: string) => void;
   onOpenPath?: (p: string) => void;
 }) {
   const copy = useCopy();
-  const [open, setOpen] = useState("");
+  const [open, setOpen] = useState(focusFile || "");
+  useEffect(() => {
+    if (focusFile) setOpen(focusFile);
+  }, [focusFile]);
   if (!files.length) {
     return <PaneEmpty title={copy.review.noFiles} hint={copy.review.noHunksHint} icon={<FileText className="size-4" />} />;
   }
+  const shown = files.find((f) => normPath(open) === normPath(f));
   return (
-    <ul className="h-full min-h-0 overflow-auto py-1">
-      {files.map((f) => {
-        const shown = open === f;
-        return (
-          <li key={f} className="border-b border-border/40 last:border-b-0">
-            <div className="group/file flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-lift/40">
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onClick={() => setOpen(shown ? "" : f)}
-              >
-                <FileText className="size-3.5 shrink-0 text-muted/60" aria-hidden />
-                <FilePath path={f} className="flex-1" />
-              </button>
-              <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
-                {onQuote ? (
-                  <IconAction label={copy.review.quote} onClick={() => onQuote(`@file:${f}`)}>
-                    <TextQuote className="size-3.5" aria-hidden />
-                  </IconAction>
-                ) : null}
-                {onOpenPath ? (
-                  <IconAction label={copy.review.open} onClick={() => onOpenPath(f)}>
-                    <ExternalLink className="size-3.5" aria-hidden />
-                  </IconAction>
-                ) : null}
-              </span>
-            </div>
-            {shown ? (
-              <div className="px-3 pb-3">
-                <WorkspaceFileView workspace={workspace} path={f} />
+    <div className="flex h-full min-h-0 flex-col" data-testid="review-files">
+      <ul className={cn("overflow-auto", shown ? "max-h-36 shrink-0" : "min-h-0 flex-1")}>
+        {files.map((f) => {
+          const on = normPath(open) === normPath(f);
+          return (
+            <li key={f} className="border-b border-border/40 last:border-b-0">
+              <div className={cn("group/file flex h-8 items-center gap-2 pl-3 pr-1.5 transition-colors hover:bg-lift/40", on && "bg-lift/50")}>
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  aria-expanded={on}
+                  onClick={() => setOpen(on ? "" : f)}
+                >
+                  <FileText className="size-3.5 shrink-0 text-muted/60" aria-hidden />
+                  <FilePath path={f} className="flex-1" />
+                </button>
+                <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
+                  {onQuote ? (
+                    <IconAction label={copy.review.quote} onClick={() => onQuote(`@file:${f}`)}>
+                      <TextQuote className="size-3.5" aria-hidden />
+                    </IconAction>
+                  ) : null}
+                  {onOpenPath ? (
+                    <IconAction label={copy.review.open} onClick={() => onOpenPath(f)}>
+                      <ExternalLink className="size-3.5" aria-hidden />
+                    </IconAction>
+                  ) : null}
+                </span>
               </div>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+            </li>
+          );
+        })}
+      </ul>
+      {shown ? (
+        <div className="min-h-0 flex-1 overflow-hidden border-t border-border/50 bg-sidebar/40" data-testid="review-file-preview">
+          <WorkspaceFileView workspace={workspace} path={shown} fill />
+        </div>
+      ) : null}
+    </div>
   );
 }
 

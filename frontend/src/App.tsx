@@ -54,6 +54,7 @@ export default function App() {
   const popoutId = readPopoutId();
   const popout = !!popoutId;
   const [layout, setLayout] = useState(readLayout);
+  const [reviewFile, setReviewFile] = useState("");
   const sheetInspect = useMedia("(max-width: 1099px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
@@ -170,6 +171,7 @@ export default function App() {
       trace={ws.trace}
       thread={ws.active}
       workspace={sessionWs}
+      focusFile={reviewFile}
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
       onResolve={ws.onResolve}
@@ -199,9 +201,14 @@ export default function App() {
           onResolve={ws.onResolve}
           onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
           onRetry={() => { void ws.onRetryLast(); }}
-          onOpenReview={() => {
+          onOpenReview={(path) => {
             ws.setInspector(true);
-            ws.setInspTab("diff");
+            if (path) {
+              setReviewFile(path);
+              ws.setInspTab("files");
+            } else {
+              ws.setInspTab("diff");
+            }
             void ws.refreshDiff();
           }}
         />

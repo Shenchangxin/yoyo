@@ -18,7 +18,7 @@ export function PlanChip({
   const copy = useCopy();
   const reduced = useMotionReduced();
   const stepsId = useId();
-  const [open, setOpen] = useState(!compact);
+  const [open, setOpen] = useState(false);
   const done = planDoneCount(plan);
   const total = plan.steps.length;
   const focus = planFocus(plan);
