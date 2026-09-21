@@ -1,6 +1,11 @@
 package runtime
 
-import "testing"
+import (
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
 
 func TestShellNeedsWrapper(t *testing.T) {
 	cases := []struct {
@@ -57,5 +62,51 @@ func TestShellDeniedDoesNotMatchExportFormat(t *testing.T) {
 	}
 	if err := ShellDenied(`format c:`, t.TempDir(), nil); err == nil {
 		t.Fatal("format c: must deny")
+	}
+}
+
+func TestShellDeniedAllowsLoopbackCurl(t *testing.T) {
+	ws := t.TempDir()
+	allow := []string{
+		`curl -s localhost:18099/`,
+		`curl -s -D - -o /dev/null localhost:18099/console/`,
+		`curl http://127.0.0.1:8080/console/`,
+		`curl -s http://[::1]:8080/`,
+	}
+	for _, cmd := range allow {
+		if err := ShellDenied(cmd, ws, nil); err != nil {
+			t.Fatalf("loopback must pass: %s: %v", cmd, err)
+		}
+	}
+	if err := ShellDenied(`curl -s https://example.com/`, ws, nil); err == nil {
+		t.Fatal("remote curl must deny")
+	}
+	if err := ShellDenied(`curl`, ws, nil); err == nil {
+		t.Fatal("curl with no host must deny")
+	}
+}
+
+func TestShellDeniedMsysWorkspaceRoot(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip()
+	}
+	ws := t.TempDir()
+	p := filepath.ToSlash(ws)
+	msys := "/" + strings.ToLower(p[:1]) + p[2:]
+	if err := ShellDenied("cd "+msys+" && pwd", ws, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShellDeniedIgnoresWindowsSwitches(t *testing.T) {
+	ws := t.TempDir()
+	cmds := []string{
+		`taskkill //F //IM permserver.exe`,
+		`tasklist //FI "IMAGENAME eq permserver.exe"`,
+	}
+	for _, cmd := range cmds {
+		if err := ShellDenied(cmd, ws, nil); err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
 	}
 }

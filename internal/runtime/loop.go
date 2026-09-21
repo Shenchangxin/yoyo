@@ -650,13 +650,6 @@ func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues 
 	if toolsAt != nil {
 		*toolsAt = toolCount
 	}
-	return planContinueNudgeFor(req)
-}
-
-func planContinueNudgeFor(req RunRequest) string {
-	if looksCJK(req.User) || looksCJK(planTextOf(req.Tools)) {
-		return planContinueNudgeZH
-	}
 	return planContinueNudge
 }
 
@@ -750,7 +743,13 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 		TaskID:           req.TaskID,
 		Payload:          payload,
 	}
-	if req.Trace != nil {
+	persist := req.Trace != nil
+	if persist && typ == trace.TypeAssistant {
+		if delta, _ := payload["delta"].(bool); delta {
+			persist = false
+		}
+	}
+	if persist {
 		_ = req.Trace.Append(ev)
 	}
 	if req.OnEvent != nil {

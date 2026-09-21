@@ -59,20 +59,13 @@ func TestPlanContinueIfOpen(t *testing.T) {
 	}
 }
 
-func TestPlanContinueNudgeMatchesOperatorLanguage(t *testing.T) {
+func TestPlanContinueNudgeIsLanguageNeutral(t *testing.T) {
 	tools := &WorkspaceTools{}
 	if res := tools.Call("update_plan", `{"plan":[{"step":"勘察现状","status":"in_progress"}]}`); res.Err != nil {
 		t.Fatal(res.Err)
 	}
-	got := planContinueNudgeFor(RunRequest{User: "完善该项目", Tools: tools})
-	if got != planContinueNudgeZH {
-		t.Fatalf("%q", got)
-	}
-	enTools := &WorkspaceTools{}
-	if res := enTools.Call("update_plan", `{"plan":[{"step":"inspect","status":"in_progress"}]}`); res.Err != nil {
-		t.Fatal(res.Err)
-	}
-	got = planContinueNudgeFor(RunRequest{User: "fix the build", Tools: enTools})
+	req := RunRequest{User: "完善该项目", Tools: tools}
+	got := planContinueIfOpen(req, false, 1, nil, nil)
 	if got != planContinueNudge {
 		t.Fatalf("%q", got)
 	}

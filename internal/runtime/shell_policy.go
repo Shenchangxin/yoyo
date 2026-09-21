@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -23,7 +24,7 @@ func ShellDenied(command, workspace string, networkAllow []string) error {
 			return fmt.Errorf("shell policy denied destructive command")
 		}
 	}
-	if looksLikeNetwork(lower) && !networkPermitted(networkAllow) {
+	if looksLikeRemoteNetwork(lower) && !networkPermitted(networkAllow) {
 		return fmt.Errorf("shell policy denied network; set policy.network_allow or use MCP")
 	}
 	if err := denyEscapingAbsPaths(cmd, workspace); err != nil {
@@ -72,6 +73,10 @@ func DenyArgvPaths(argv []string, workspace string) error {
 	}
 	for _, f := range argv {
 		f = strings.Trim(f, `"'`)
+		if capability.LooksLikeWindowsSwitch(f) {
+			continue
+		}
+		f = capability.CanonicalizeToolPath(f)
 		if !filepath.IsAbs(f) {
 			continue
 		}
@@ -213,8 +218,75 @@ var destructiveShell = []string{
 
 var networkCmd = regexp.MustCompile(`\b(curl|wget|nc |ncat|ssh |scp |sftp |invoke-webrequest|iwr |start-bitstransfer|certutil\s+-urlcache)\b`)
 
-func looksLikeNetwork(lower string) bool {
-	return networkCmd.MatchString(lower)
+func looksLikeRemoteNetwork(lower string) bool {
+	if !networkCmd.MatchString(lower) {
+		return false
+	}
+	return !networkTargetsAreLoopback(lower)
+}
+
+var (
+	reURLHost      = regexp.MustCompile(`(?i)https?://(\[[0-9a-f:]+\]|[^/\s:?#]+)`)
+	reBareLoopback = regexp.MustCompile(`(?i)\b(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\]|::1)(?::\d+)?\b`)
+	reBareDNS      = regexp.MustCompile(`(?i)\b(?:https?://)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?::\d+)?\b`)
+)
+
+func networkTargetsAreLoopback(lower string) bool {
+	hosts := collectNetworkHosts(lower)
+	if len(hosts) == 0 {
+		return false
+	}
+	for _, h := range hosts {
+		if !isLoopbackHost(h) {
+			return false
+		}
+	}
+	return true
+}
+
+func collectNetworkHosts(lower string) []string {
+	var out []string
+	add := func(h string) {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			return
+		}
+		out = append(out, h)
+	}
+	for _, m := range reURLHost.FindAllStringSubmatch(lower, -1) {
+		if len(m) > 1 {
+			add(m[1])
+		}
+	}
+	for _, m := range reBareLoopback.FindAllStringSubmatch(lower, -1) {
+		if len(m) > 1 {
+			add(m[1])
+		}
+	}
+	for _, m := range reBareDNS.FindAllStringSubmatch(lower, -1) {
+		if len(m) > 1 {
+			add(m[1])
+		}
+	}
+	return out
+}
+
+func isLoopbackHost(h string) bool {
+	h = strings.TrimSpace(h)
+	h = strings.Trim(h, "[]")
+	h = strings.ToLower(h)
+	if host, _, err := net.SplitHostPort(h); err == nil {
+		h = host
+		h = strings.Trim(h, "[]")
+	}
+	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsUnspecified()
 }
 
 func networkPermitted(allow []string) bool {
@@ -241,6 +313,10 @@ func denyEscapingAbsPaths(command, workspace string) error {
 	fields := strings.Fields(command)
 	for _, f := range fields {
 		f = strings.Trim(f, `"'`)
+		if capability.LooksLikeWindowsSwitch(f) {
+			continue
+		}
+		f = capability.CanonicalizeToolPath(f)
 		if !filepath.IsAbs(f) {
 			continue
 		}

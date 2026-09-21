@@ -11,7 +11,6 @@ const rewriteStallPrefixEN = "You have rewritten "
 const rewriteStallPrefixZH = "你已经反复整文件覆盖 "
 
 const rewriteStallNudgeEN = "You have rewritten %s %d times without updating the plan. Call read_file on that path, mark the finished plan step complete with update_plan, and use str_replace. Do not rewrite the tree from memory."
-const rewriteStallNudgeZH = "你已经反复整文件覆盖 %s %d 次，且计划没有推进。用 read_file 读回该路径，立刻 update_plan 把完成的步骤标 complete，再用 str_replace 小改。禁止凭记忆整树重写。"
 
 func persistWorkingMemory(req RunRequest, messages []Message, notes string) string {
 	spill := spillOf(req)
@@ -86,9 +85,6 @@ func rewriteStallNudge(req RunRequest, hits map[string]int) string {
 	}
 	if path == "" {
 		return ""
-	}
-	if looksCJK(req.User) || looksCJK(planTextOf(req.Tools)) {
-		return fmt.Sprintf(rewriteStallNudgeZH, path, n)
 	}
 	return fmt.Sprintf(rewriteStallNudgeEN, path, n)
 }

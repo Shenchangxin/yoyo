@@ -61,30 +61,26 @@ func TestApplyChatHorizon(t *testing.T) {
 
 func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	base := DefaultLoop()
-	frags := ChatConductFragments("完善该项目，前端用 react+ts", "zh-CN", false)
-	if len(frags) != 1 || !strings.Contains(frags[0].Text, "中文") {
+	frags := ChatConductFragments(false)
+	if len(frags) != 1 || !strings.Contains(frags[0].Text, "same language") {
 		t.Fatalf("%+v", frags)
 	}
-	if !strings.Contains(frags[0].Text, "不要先写长篇评估") {
+	if !strings.Contains(frags[0].Text, "start writing workspace artifacts") {
 		t.Fatal("missing start-work")
 	}
-	if !strings.Contains(frags[0].Text, "步骤") || !strings.Contains(frags[0].Text, "整树重写") {
+	if !strings.Contains(frags[0].Text, "plan step") || !strings.Contains(frags[0].Text, "rewrite the tree") {
 		t.Fatal("missing plan-language and no-blind-rewrite")
 	}
 	got := DefaultLoop()
 	if got.Execution != base.Execution || got.Bootstrap != base.Bootstrap || got.MaxTurns != 32 {
 		t.Fatalf("harbor loop mutated: %+v", got)
 	}
-	plan := ChatConductFragments("完善该项目", "zh-CN", true)
-	if strings.Contains(plan[0].Text, "不要先写长篇评估") {
+	plan := ChatConductFragments(true)
+	if strings.Contains(plan[0].Text, "start writing workspace artifacts") {
 		t.Fatal("plan mode must not force writes")
 	}
-	if !strings.Contains(plan[0].Text, "计划步骤") {
+	if !strings.Contains(plan[0].Text, "same language") {
 		t.Fatal("plan mode must still match language")
-	}
-	en := ChatConductFragments("fix the build", "en", false)
-	if !strings.Contains(en[0].Text, "same language") {
-		t.Fatalf("%q", en[0].Text)
 	}
 }
 
@@ -159,32 +155,44 @@ func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	}
 }
 
-func TestChatVoicePinsChineseOnSoftHorizon(t *testing.T) {
+func TestChatDoesNotPinALanguage(t *testing.T) {
 	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "", "")
-	got := withChatVoice(RunRequest{SoftHorizon: true, User: "继续", Tools: &WorkspaceTools{OperatorVoice: "完善前端"}}, dyn, "完善前端")
-	if !strings.Contains(got, "用中文回复") || !strings.Contains(got, "继续") {
-		t.Fatalf("%s", got)
-	}
-	harbor := withChatVoice(RunRequest{User: "完善前端"}, dyn, "完善前端")
-	if strings.Contains(harbor, "## Voice") {
-		t.Fatal("harbor must not grow a voice pin")
+	if strings.Contains(dyn, "## Voice") || strings.Contains(dyn, "用中文回复") {
+		t.Fatalf("language must follow the user message, not a voice pin: %s", dyn)
 	}
 }
 
 func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	loop := DefaultLoop()
 	plain := AssembleIdentity(loop, nil)
-	if strings.Contains(plain, "不要先写长篇评估") {
+	if strings.Contains(plain, "start writing workspace artifacts") {
 		t.Fatal("harbor identity picked up chat conduct")
 	}
-	s := AssembleIdentity(loop, ChatConductFragments("完善该项目", "zh-CN", false))
-	if !strings.Contains(s, "不要先写长篇评估") {
+	s := AssembleIdentity(loop, ChatConductFragments(false))
+	if !strings.Contains(s, "start writing workspace artifacts") {
 		t.Fatal("chat conduct dropped")
 	}
-	if !strings.Contains(s, "整树重写") {
+	if !strings.Contains(s, "rewrite the tree") {
 		t.Fatal("blind-rewrite pin dropped")
 	}
 	if !strings.Contains(s, "## runtime") {
 		t.Fatalf("runtime heading missing\n%s", s)
+	}
+}
+
+func TestAssembleEnvironmentIsFacts(t *testing.T) {
+	ws := t.TempDir()
+	got := AssembleEnvironment(ws)
+	if !strings.HasPrefix(got, "os: ") {
+		t.Fatalf("%s", got)
+	}
+	if !strings.Contains(got, "workspace: "+ws) {
+		t.Fatalf("%s", got)
+	}
+	if !strings.Contains(got, "shell:") {
+		t.Fatalf("%s", got)
+	}
+	if strings.Contains(got, "Start-Process") || strings.Contains(got, "用中文") {
+		t.Fatalf("instructions leaked into env: %s", got)
 	}
 }

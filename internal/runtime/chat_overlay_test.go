@@ -122,22 +122,24 @@ func TestParseShellRead(t *testing.T) {
 	if _, _, _, ok = parseShellRead(`cd webui && cat a.ts b.ts`); ok {
 		t.Fatal("multi-file cat must stay in shell")
 	}
+	rel, _, _, ok = parseShellRead(`cd /c/Users/scx/proj && cat server.log`)
+	if !ok {
+		t.Fatal("msys cd+cat")
+	}
+	slash := filepath.ToSlash(rel)
+	if !strings.HasSuffix(slash, "server.log") {
+		t.Fatalf("msys join %s", rel)
+	}
+	if strings.Contains(slash, "proj/c/Users") || strings.Contains(slash, "proj\\c\\Users") {
+		t.Fatalf("doubled msys path %s", rel)
+	}
 }
 
-func TestChatRejectsEnglishPlanForChineseOperator(t *testing.T) {
+func TestChatAllowsPlanInAnyLanguage(t *testing.T) {
 	tools := &WorkspaceTools{ChatOverlay: true, OperatorVoice: "完善该项目"}
 	res := tools.Call("update_plan", `{"plan":[{"step":"Recon backend","status":"in_progress"}]}`)
-	if res.Err == nil || !strings.Contains(res.Err.Error(), "中文") {
-		t.Fatalf("%+v", res)
-	}
-	ok := tools.Call("update_plan", `{"plan":[{"step":"勘察后端现状","status":"in_progress"}]}`)
-	if ok.Err != nil {
-		t.Fatal(ok.Err)
-	}
-	harbor := &WorkspaceTools{OperatorVoice: "完善该项目"}
-	en := harbor.Call("update_plan", `{"plan":[{"step":"Recon backend","status":"in_progress"}]}`)
-	if en.Err != nil {
-		t.Fatalf("harbor identity must stay language-agnostic: %v", en.Err)
+	if res.Err != nil {
+		t.Fatalf("must not special-case Chinese: %v", res.Err)
 	}
 }
 
@@ -212,7 +214,7 @@ func TestRewriteStallNudgeOnSoftHorizon(t *testing.T) {
 	}
 	found := false
 	for _, msgs := range client.seen {
-		if strings.Contains(messagesBlob(msgs), "App.tsx") && strings.Contains(messagesBlob(msgs), rewriteStallPrefixZH) {
+		if strings.Contains(messagesBlob(msgs), "App.tsx") && strings.Contains(messagesBlob(msgs), rewriteStallPrefixEN) {
 			found = true
 		}
 	}

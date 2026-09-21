@@ -20,7 +20,7 @@ func probe() Report {
 		Kind:      "job_object",
 		Sandbox:   false,
 		Available: true,
-		Note:      "shell children join a kill-on-close job object. this is process-tree containment, not AppContainer.",
+		Note:      "shell children join a job object. cancel terminates the tree; a finished tool call leaves background children. not AppContainer.",
 	}
 }
 
@@ -35,7 +35,7 @@ func assign(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	job, err := createKillJob()
+	job, err := createJob()
 	if err != nil || job == 0 {
 		return
 	}
@@ -49,23 +49,29 @@ func assign(cmd *exec.Cmd) {
 	jobByPID.Store(cmd.Process.Pid, job)
 }
 
-func release(cmd *exec.Cmd) {
+func release(cmd *exec.Cmd, kill bool) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	if h, ok := jobByPID.LoadAndDelete(cmd.Process.Pid); ok {
-		_ = windows.CloseHandle(h.(windows.Handle))
+	h, ok := jobByPID.LoadAndDelete(cmd.Process.Pid)
+	if !ok {
+		return
 	}
+	job := h.(windows.Handle)
+	if kill {
+		_ = windows.TerminateJobObject(job, 1)
+	}
+	_ = windows.CloseHandle(job)
 }
 
-func createKillJob() (windows.Handle, error) {
+func createJob() (windows.Handle, error) {
 	h, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return 0, err
 	}
 	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
 		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
-			LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+			LimitFlags: windows.JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
 		},
 	}
 	if _, err := windows.SetInformationJobObject(h, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {

@@ -81,3 +81,27 @@ func TestObjectiveStickyAcrossFollowUps(t *testing.T) {
 		t.Fatalf("decisions %+v", n.Decisions)
 	}
 }
+
+func TestCollapseDoubledObjective(t *testing.T) {
+	once := "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端界面。"
+	n := NotesFromMessages([]Message{{Role: RoleUser, Content: once + once}})
+	if n.Objective != once {
+		t.Fatalf("objective %q", n.Objective)
+	}
+	if got := collapseDoubledText("haha"); got != "haha" {
+		t.Fatalf("short %q", got)
+	}
+}
+
+func TestNotePathsSkipGlobs(t *testing.T) {
+	n := NotesFromMessages([]Message{
+		{Role: RoleAssistant, ToolCalls: []ToolCall{
+			{Name: "glob", Arguments: `{"glob":"**/*.go"}`},
+			{Name: "read_file", Arguments: `{"path":"api/api.go"}`},
+			{Name: "list_dir", Arguments: `{"path":"."}`},
+		}},
+	})
+	if len(n.Files) != 1 || n.Files[0] != "api/api.go" {
+		t.Fatalf("files %+v", n.Files)
+	}
+}

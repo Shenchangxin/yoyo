@@ -188,6 +188,8 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 }
 
 func WithinWorkspace(root, p string) bool {
+	root = CanonicalizeToolPath(root)
+	p = CanonicalizeToolPath(p)
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return false

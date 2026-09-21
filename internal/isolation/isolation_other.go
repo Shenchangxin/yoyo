@@ -10,7 +10,7 @@ func probe() Report {
 
 func assign(cmd *exec.Cmd) {}
 
-func release(cmd *exec.Cmd) {}
+func release(cmd *exec.Cmd, kill bool) {}
 
 func apply(cmd *exec.Cmd) {}
 

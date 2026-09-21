@@ -5,8 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
 func TestUniqueReplace(t *testing.T) {
@@ -125,4 +128,56 @@ func TestFileHookDeniesTool(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "x.txt")); err == nil {
 		t.Fatal("write should have been denied")
 	}
+}
+
+func TestResolveGitBashDrivePath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("msys drive paths are a Windows Git-Bash jail bug")
+	}
+	dir := t.TempDir()
+	inner := filepath.Join(dir, "server.log")
+	if err := os.WriteFile(inner, []byte("listening"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir, ChatOverlay: true}
+	msys := gitBashPath(dir)
+	got, err := tools.resolve(msys + "/server.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capability.WithinWorkspace(dir, got) {
+		t.Fatalf("escaped %s", got)
+	}
+	res := tools.Call("shell", `{"command":"cd `+msys+` && cat server.log"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !strings.Contains(res.Content, "listening") {
+		t.Fatalf("%q", res.Content)
+	}
+	if strings.Contains(res.Content, dir+string(filepath.Separator)+"c"+string(filepath.Separator)+"Users") {
+		t.Fatalf("doubled path %q", res.Content)
+	}
+}
+
+func TestWindowsPosixShellPrefersGit(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip()
+	}
+	sh := windowsPosixShell()
+	if sh == "" {
+		t.Skip("no Git bash installed")
+	}
+	low := strings.ToLower(sh)
+	if strings.Contains(low, `\windowsapps\`) || strings.Contains(low, `\system32\`) {
+		t.Fatalf("wsl stub %s", sh)
+	}
+}
+
+func gitBashPath(p string) string {
+	p = filepath.ToSlash(p)
+	if len(p) >= 2 && p[1] == ':' {
+		return "/" + strings.ToLower(p[:1]) + p[2:]
+	}
+	return p
 }

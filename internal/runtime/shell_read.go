@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
 // parseShellRead maps a cat/sed/head/type invocation onto read_file.
@@ -98,13 +100,26 @@ func splitCdAnd(cmd string) (dir, rest string, ok bool) {
 }
 
 func joinReadPath(dir, rel string) string {
+	rel = strings.TrimSpace(rel)
+	if rel == "" {
+		return rel
+	}
+	if cap := capability.CanonicalizeToolPath(rel); filepath.IsAbs(cap) {
+		return cap
+	}
 	if dir == "" {
 		return rel
 	}
-	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") {
+	dir = capability.CanonicalizeToolPath(strings.TrimSpace(dir))
+	if filepath.IsAbs(rel) || (strings.HasPrefix(rel, "/") && !msysDriveRel(rel)) {
 		return rel
 	}
 	return filepath.ToSlash(filepath.Join(dir, rel))
+}
+
+func msysDriveRel(p string) bool {
+	_, ok := capability.MSYSToWindowsPath(p)
+	return ok
 }
 
 func lastNonFlag(argv []string) string {
