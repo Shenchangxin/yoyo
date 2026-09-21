@@ -16,13 +16,16 @@ import (
 const (
 	DefaultBase = "https://raw.githubusercontent.com/infometa/workbuddyskills/main"
 	CacheTTL    = 6 * time.Hour
-	MaxBody     = 2 << 20
+	MaxBody     = 8 << 20
+	cacheName   = "catalog-v2.json"
 )
 
 var (
 	// Base is the catalog origin. Tests may override.
 	Base = DefaultBase
-	Get  = defaultGet
+	// ContentsBase lists pack files (GitHub Contents API shape). Empty derives from Base.
+	ContentsBase = ""
+	Get          = defaultGet
 )
 
 type Item struct {
@@ -32,6 +35,10 @@ type Item struct {
 	Prerequisites string `json:"prerequisites"`
 	Category      string `json:"category"`
 	Featured      bool   `json:"featured"`
+	Icon          string `json:"icon,omitempty"`
+	DisplayName   string `json:"display_name,omitempty"`
+	Version       string `json:"version,omitempty"`
+	HasScripts    bool   `json:"has_scripts,omitempty"`
 }
 
 type Catalog struct {
@@ -47,17 +54,19 @@ func SkillURL(slug string) string {
 }
 
 func Load(cacheDir string, refresh bool) (Catalog, error) {
-	cachePath := filepath.Join(cacheDir, "catalog.json")
-	if !refresh {
-		if c, ok := readCache(cachePath); ok {
-			return c, nil
+	cachePath := filepath.Join(cacheDir, cacheName)
+	var previous Catalog
+	if prev, ok := readCache(cachePath); ok {
+		previous = prev
+		if !refresh {
+			return prev, nil
 		}
 	}
 	raw, err := Get(CatalogURL())
 	if err != nil {
-		if c, ok := readCache(cachePath); ok {
-			c.Source = c.Source + " (stale)"
-			return c, nil
+		if previous.Items != nil {
+			previous.Source = previous.Source + " (stale)"
+			return previous, nil
 		}
 		return Catalog{}, err
 	}
@@ -65,6 +74,9 @@ func Load(cacheDir string, refresh bool) (Catalog, error) {
 	c.Source = "infometa/workbuddyskills"
 	c.FetchedAt = time.Now().UTC()
 	markFeatured(c.Items)
+	mergeCachedMeta(c.Items, previous.Items)
+	enrichFromTree(c.Items)
+	enrichFrontmatter(c.Items)
 	if err := os.MkdirAll(cacheDir, 0o755); err == nil {
 		if b, err := json.MarshalIndent(c, "", "  "); err == nil {
 			_ = os.WriteFile(cachePath, b, 0o644)
@@ -154,7 +166,12 @@ func defaultGet(url string) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Yoyo-Workstation")
-	req.Header.Set("Accept", "text/plain, text/markdown, */*")
+	if strings.Contains(url, "api.github.com") {
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	} else {
+		req.Header.Set("Accept", "text/plain, text/markdown, application/json, */*")
+	}
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

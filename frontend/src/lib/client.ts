@@ -835,6 +835,11 @@ export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
     body: str(pick(v, "body", "Body")),
     dir: str(pick(v, "dir", "Dir")),
     source: str(pick(v, "source", "Source")),
+    icon: str(pick(v, "icon", "Icon")),
+    displayName: str(pick(v, "display_name", "DisplayName", "displayName")),
+    files: str(pick(v, "files", "Files")),
+    slug: str(pick(v, "slug", "Slug")),
+    incomplete: str(pick(v, "incomplete", "Incomplete")) === "1" || bool(pick(v, "incomplete", "Incomplete")),
   })).filter((x) => x.name);
 }
 
@@ -849,6 +854,11 @@ export async function getSkill(workspace: string, name: string): Promise<SkillIn
     body: str(pick(raw, "body", "Body")),
     dir: str(pick(raw, "dir", "Dir")),
     source: str(pick(raw, "source", "Source")),
+    icon: str(pick(raw, "icon", "Icon")),
+    displayName: str(pick(raw, "display_name", "DisplayName", "displayName")),
+    files: str(pick(raw, "files", "Files")),
+    slug: str(pick(raw, "slug", "Slug")),
+    incomplete: str(pick(raw, "incomplete", "Incomplete")) === "1" || bool(pick(raw, "incomplete", "Incomplete")),
   };
   return info.name ? info : null;
 }
@@ -860,6 +870,10 @@ export type SkillMarketItem = {
   prerequisites: string;
   category: string;
   featured: boolean;
+  icon?: string;
+  displayName?: string;
+  version?: string;
+  hasScripts?: boolean;
 };
 
 export type SkillMarketCatalog = {
@@ -883,17 +897,30 @@ export async function skillMarket(refresh = false): Promise<SkillMarketCatalog> 
       prerequisites: str(pick(v, "prerequisites", "Prerequisites")),
       category: str(pick(v, "category", "Category")),
       featured: bool(pick(v, "featured", "Featured")),
+      icon: str(pick(v, "icon", "Icon")),
+      displayName: str(pick(v, "display_name", "DisplayName", "displayName")),
+      version: str(pick(v, "version", "Version")),
+      hasScripts: bool(pick(v, "has_scripts", "HasScripts", "hasScripts")),
     })).filter((x) => x.slug),
   };
 }
 
-export async function installMarketSkill(slug: string): Promise<void> {
+export type SkillInstallResult = {
+  ok: boolean;
+  warning?: string;
+  files?: string[];
+};
+
+export async function installMarketSkill(slug: string): Promise<SkillInstallResult> {
   const s = await wailsService();
-  if (s?.InstallMarketSkill) {
-    await s.InstallMarketSkill(slug);
-    return;
-  }
-  await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug }) });
+  const raw = s?.InstallMarketSkill
+    ? await s.InstallMarketSkill(slug)
+    : await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug }) });
+  return {
+    ok: bool(pick(raw, "ok", "OK")) || raw == null,
+    warning: str(pick(raw, "warning", "Warning")),
+    files: asArray(pick(raw, "files", "Files")).map((v) => str(v)).filter(Boolean),
+  };
 }
 
 export async function uninstallMarketSkill(slug: string): Promise<void> {

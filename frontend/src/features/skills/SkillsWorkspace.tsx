@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pin, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -27,16 +28,38 @@ export function SkillsWorkspace(props: {
   const [open, setOpen] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState<api.SkillMarketCatalog>({ source: "", fetchedAt: "", items: [] });
 
   const loadMarket = (refresh = false) => {
     setErr("");
-    void api.skillMarket(refresh).then(setCatalog).catch((e) => setErr(api.errMessage(e)));
+    setLoading(true);
+    void api.skillMarket(refresh)
+      .then(setCatalog)
+      .catch((e) => setErr(api.errMessage(e)))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { loadMarket(false); }, []);
 
-  const installedNames = useMemo(() => new Set(props.installed.map((s) => s.name)), [props.installed]);
+  const installedNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of props.installed) {
+      set.add(s.name);
+      if (s.slug) set.add(s.slug);
+      if (s.displayName) set.add(s.displayName);
+    }
+    return set;
+  }, [props.installed]);
+  const incomplete = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of props.installed) {
+      if (!s.incomplete) continue;
+      set.add(s.name);
+      if (s.slug) set.add(s.slug);
+    }
+    return set;
+  }, [props.installed]);
   const pinned = new Set(props.pinned);
   const loaded = new Set(props.loaded);
   const categories = useMemo(() => {
@@ -50,7 +73,7 @@ export function SkillsWorkspace(props: {
     return catalog.items.filter((it) => {
       if (cat && it.category !== cat) return false;
       if (!needle) return true;
-      return (it.slug + it.name + it.purpose + it.category).toLowerCase().includes(needle);
+      return (it.slug + it.name + (it.displayName || "") + it.purpose + it.category).toLowerCase().includes(needle);
     });
   }, [catalog.items, q, cat]);
 
@@ -66,12 +89,14 @@ export function SkillsWorkspace(props: {
     return [...map.entries()];
   }, [filtered, copy.skills.market]);
 
-  async function install(slug: string) {
+  async function install(slug: string, repairing = false) {
     setBusy(slug);
     setErr("");
     try {
-      await api.installMarketSkill(slug);
+      const out = await api.installMarketSkill(slug);
       props.onRefreshInstalled();
+      if (out.warning) toast.message(copy.skills.installPartial);
+      else if (repairing) toast.success(copy.skills.repaired);
     } catch (e) {
       setErr(api.errMessage(e));
     } finally {
@@ -144,7 +169,7 @@ export function SkillsWorkspace(props: {
               </div>
             ) : null}
           </div>
-          {err ? <p className="mb-4 text-[12.5px] text-danger">{err}</p> : null}
+          {err ? <p className="mb-4 text-[12.5px] text-danger" role="alert">{err}</p> : null}
           {pane === "installed" ? (
             <InstalledList
               skills={props.installed}
@@ -157,6 +182,7 @@ export function SkillsWorkspace(props: {
               pinNames={props.pinned}
               busy={busy}
               onUninstall={uninstall}
+              onRepair={(slug) => install(slug, true)}
             />
           ) : (
             <MarketList
@@ -166,9 +192,11 @@ export function SkillsWorkspace(props: {
               cat={cat}
               onCat={setCat}
               installed={installedNames}
+              incomplete={incomplete}
               busy={busy}
               onInstall={install}
               query={q}
+              loading={loading}
             />
           )}
         </div>
@@ -188,6 +216,7 @@ function InstalledList(props: {
   pinNames: string[];
   busy: string;
   onUninstall: (slug: string) => void;
+  onRepair: (slug: string) => void;
 }) {
   const copy = useCopy();
   if (!props.skills.length) {
@@ -213,18 +242,27 @@ function InstalledList(props: {
               const isPinned = props.pinned.has(s.name);
               const isLoaded = props.loaded.has(s.name);
               const expanded = props.open === s.name;
+              const slug = packSlug(s);
+              const fileCount = s.files ? s.files.split(",").filter(Boolean).length : 0;
               return (
                 <div key={s.name} className={cn("px-3.5 py-3", i > 0 && "border-t border-border/70")}>
                   <div className="flex items-start gap-3">
+                    <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-foreground">{s.name}</span>
+                        <span className="text-[13px] font-medium text-foreground">{s.displayName || s.name}</span>
                         {isLoaded ? <span className="text-[11px] text-muted">{copy.skills.loaded}</span> : null}
                         {isPinned ? <span className="text-[11px] text-muted">{copy.review.pinned}</span> : null}
+                        {s.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
                       </div>
                       <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{s.description || copy.skills.none}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                      {s.incomplete && s.source === "market" ? (
+                        <Button size="sm" variant="outline" disabled={props.busy === slug} onClick={() => props.onRepair(slug)}>
+                          {props.busy === slug ? copy.skills.repairing : copy.skills.repair}
+                        </Button>
+                      ) : null}
                       <Button
                         size="sm"
                         variant={isPinned ? "lift" : "ghost"}
@@ -240,14 +278,21 @@ function InstalledList(props: {
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => props.onOpen(expanded ? "" : s.name)}>{copy.skills.inspect}</Button>
                       {s.source === "market" ? (
-                        <Button size="sm" variant="ghost" disabled={props.busy === s.name} onClick={() => props.onUninstall(s.name)}>
+                        <Button size="sm" variant="ghost" disabled={props.busy === slug} onClick={() => props.onUninstall(slug)}>
                           {copy.skills.uninstall}
                         </Button>
                       ) : null}
                     </div>
                   </div>
-                  {expanded && s.body ? (
-                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-lift/30 p-2.5 font-mono text-[11px] leading-4 text-muted">{s.body}</pre>
+                  {expanded ? (
+                    <div className="mt-2 space-y-2">
+                      {fileCount ? (
+                        <p className="text-[11px] tabular-nums text-muted">{copy.skills.files.replace("{n}", String(fileCount))}</p>
+                      ) : null}
+                      {s.body ? (
+                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border/60 bg-lift/30 p-2.5 font-mono text-[11px] leading-4 text-muted">{s.body}</pre>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               );
@@ -266,11 +311,28 @@ function MarketList(props: {
   cat: string;
   onCat: (v: string) => void;
   installed: Set<string>;
+  incomplete: Set<string>;
   busy: string;
-  onInstall: (slug: string) => void;
+  onInstall: (slug: string, repairing?: boolean) => void;
   query: string;
+  loading: boolean;
 }) {
   const copy = useCopy();
+  if (props.loading && !props.grouped.length) {
+    return (
+      <div className="space-y-2" aria-busy="true" aria-live="polite">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="flex items-start gap-3 px-1 py-2">
+            <div className="size-8 animate-pulse rounded-md bg-lift motion-reduce:animate-none" />
+            <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+              <div className="h-3 w-32 animate-pulse rounded bg-lift motion-reduce:animate-none" />
+              <div className="h-3 w-full max-w-md animate-pulse rounded bg-lift/70 motion-reduce:animate-none" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (!props.grouped.length) {
     return <EmptyState icon={<YoyoMark className="size-4" />} title={copy.skills.emptyMarket} />;
   }
@@ -296,6 +358,7 @@ function MarketList(props: {
                 key={it.slug}
                 item={it}
                 installed={props.installed.has(it.slug) || props.installed.has(it.name)}
+                incomplete={props.incomplete.has(it.slug) || props.incomplete.has(it.name)}
                 busy={props.busy === it.slug}
                 onInstall={props.onInstall}
                 className={cn(i > 0 && "border-t border-border/70 sm:border-t-0", i % 2 === 1 && "sm:border-l sm:border-border/70", i > 1 && "sm:border-t sm:border-border/70")}
@@ -316,6 +379,7 @@ function MarketList(props: {
                 key={it.slug}
                 item={it}
                 installed={props.installed.has(it.slug) || props.installed.has(it.name)}
+                incomplete={props.incomplete.has(it.slug) || props.incomplete.has(it.name)}
                 busy={props.busy === it.slug}
                 onInstall={props.onInstall}
                 className={i > 0 ? "border-t border-border/70" : undefined}
@@ -332,22 +396,33 @@ function MarketList(props: {
 function MarketRow(props: {
   item: api.SkillMarketItem;
   installed: boolean;
+  incomplete: boolean;
   busy: boolean;
-  onInstall: (slug: string) => void;
+  onInstall: (slug: string, repairing?: boolean) => void;
   className?: string;
 }) {
   const copy = useCopy();
   const it = props.item;
+  const title = it.displayName || it.name || it.slug;
   return (
     <div className={cn("flex items-start gap-3 px-3.5 py-3", props.className)}>
+      <SkillAvatar name={title} icon={it.icon} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-foreground">{it.name || it.slug}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-[13px] font-medium text-foreground">{title}</div>
+          {it.hasScripts ? <span className="text-[11px] text-muted">{copy.skills.hasScripts}</span> : null}
+          {props.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
+        </div>
         <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{it.purpose || it.slug}</p>
         {it.prerequisites && it.prerequisites !== "无" ? (
           <p className="mt-1 text-[11px] leading-4 text-muted">{it.prerequisites}</p>
         ) : null}
       </div>
-      {props.installed ? (
+      {props.incomplete ? (
+        <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(it.slug, true)}>
+          {props.busy ? copy.skills.repairing : copy.skills.repair}
+        </Button>
+      ) : props.installed ? (
         <span className="mt-0.5 shrink-0 text-[11px] text-muted">{copy.skills.installedBadge}</span>
       ) : (
         <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(it.slug)}>
@@ -358,12 +433,51 @@ function MarketRow(props: {
   );
 }
 
+function SkillAvatar(props: { name: string; icon?: string }) {
+  const [failed, setFailed] = useState(false);
+  const showImg = Boolean(props.icon) && !failed;
+  const initials = skillInitials(props.name);
+  return (
+    <span
+      className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-lift text-[11px] font-medium text-foreground/85"
+      aria-hidden
+    >
+      {showImg ? (
+        <img
+          src={props.icon}
+          alt=""
+          referrerPolicy="no-referrer"
+          decoding="async"
+          className="size-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : initials}
+    </span>
+  );
+}
+
+function skillInitials(name: string): string {
+  const parts = name.trim().split(/[\s/_-]+/).filter(Boolean);
+  if (!parts.length) return "S";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function packSlug(s: SkillInfo): string {
+  if (s.slug) return s.slug;
+  if (s.dir) {
+    const parts = s.dir.replace(/\\/g, "/").split("/").filter(Boolean);
+    return parts[parts.length - 1] || s.name;
+  }
+  return s.name;
+}
+
 function Chip(props: { on: boolean; onClick: () => void; children: string }) {
   return (
     <button
       type="button"
       className={cn(
-        "rounded-md border px-2 py-1 text-[11.5px] transition-colors",
+        "rounded-md border px-2 py-1 text-[11.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         props.on ? "border-border bg-lift text-foreground" : "border-transparent text-muted hover:bg-lift/50 hover:text-foreground",
       )}
       aria-pressed={props.on}

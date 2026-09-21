@@ -214,6 +214,11 @@ export type SkillInfo = {
   body?: string;
   dir?: string;
   source?: string;
+  icon?: string;
+  displayName?: string;
+  files?: string;
+  incomplete?: boolean;
+  slug?: string;
 };
 
 export type RunStatus = {

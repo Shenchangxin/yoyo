@@ -53,24 +53,47 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	dir := ""
 	if t.SkillDirs != nil {
 		dir = t.SkillDirs[skill]
+		if dir == "" {
+			for name, d := range t.SkillDirs {
+				if strings.EqualFold(name, skill) {
+					dir = d
+					skill = name
+					break
+				}
+			}
+		}
 	}
 	if dir == "" {
 		return ToolResult{Err: fmt.Errorf("skill %s has no on-disk directory", skill)}
 	}
-	rel := filepath.Join("scripts", script)
-	p := filepath.Join(dir, rel)
-	p = filepath.Clean(p)
+	relSlash, err := normalizeSkillScript(script)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	rel := filepath.FromSlash(relSlash)
+	p := filepath.Clean(filepath.Join(dir, rel))
 	if !capability.WithinWorkspace(dir, p) {
 		return ToolResult{Err: fmt.Errorf("script escapes skill directory")}
 	}
 	if _, err := os.Stat(p); err != nil {
-		return ToolResult{Err: fmt.Errorf("missing script %s", rel)}
+		avail := SkillPackFiles(filepath.Join(dir, "scripts"))
+		msg := fmt.Sprintf("missing script %s", relSlash)
+		if len(avail) > 0 {
+			msg += "; available: " + strings.Join(avail, ", ")
+		}
+		return ToolResult{Err: fmt.Errorf("%s", msg)}
 	}
-	cmdLine := p
+	if err := requireScriptInterpreter(p); err != nil {
+		return ToolResult{Err: err}
+	}
+	argv := []string{p}
+	if wrap := scriptInterpreter(p); wrap != "" {
+		argv = []string{wrap, p}
+	}
 	if args != "" {
-		cmdLine += " " + args
+		argv = append(argv, SplitShellArgv(args)...)
 	}
-	return t.shell(cmdLine, 60)
+	return t.shell(joinShellArgv(argv), 60)
 }
 
 func (t *WorkspaceTools) applyAllowedFromSkills() {

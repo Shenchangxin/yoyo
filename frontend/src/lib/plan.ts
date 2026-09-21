@@ -84,19 +84,29 @@ function isPlanEvent(it: Item): boolean {
   return it.type === "plan" || (isPlanTool(toolName(it)) && (it.type === "tool_call" || it.type === "tool_result"));
 }
 
+function lastOperatorIndex(items: Item[]): number {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].type === "user" && items[i].source !== "steer") return i;
+  }
+  return -1;
+}
+
 /**
- * Current session plan: last successful update_plan (or in-flight call).
+ * Current-turn plan: last successful update_plan (or in-flight call) after
+ * the latest operator message. Steer notes do not start a turn.
  * Prefers structured tool arguments; falls back to the formatted tool body.
  */
 export function latestTaskPlan(items: Item[]): TaskPlan | null {
+  const start = lastOperatorIndex(items) + 1;
   const failed = new Set<string>();
-  for (const it of items) {
+  for (let i = start; i < items.length; i++) {
+    const it = items[i];
     if (it.type === "tool_result" && isPlanTool(toolName(it)) && isToolFailed(it)) {
       failed.add(String(it.payload?.id || it.key));
     }
   }
   let hit: Item | undefined;
-  for (let i = items.length - 1; i >= 0; i--) {
+  for (let i = items.length - 1; i >= start; i--) {
     const it = items[i];
     if (!isPlanEvent(it)) continue;
     const id = String(it.payload?.id || it.key);
@@ -108,7 +118,8 @@ export function latestTaskPlan(items: Item[]): TaskPlan | null {
   const id = String(hit.payload?.id || hit.key);
   let args: Record<string, unknown> = {};
   let text = "";
-  for (const it of items) {
+  for (let i = start; i < items.length; i++) {
+    const it = items[i];
     if (String(it.payload?.id || it.key) !== id && String(it.payload?.id || "") !== id) continue;
     if (it.type === "tool_call" && isPlanTool(toolName(it))) args = toolArgs(it);
     const body = planTextOf(it);

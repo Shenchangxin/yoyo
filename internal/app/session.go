@@ -437,7 +437,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Ctx:        ctx,
 		Extra:      a.extraTools(sessionID),
 		Spill:      runtime.BindSpill(a.Home.Root, toolRoot, sessionID),
-		PlanText:   meta.PlanText,
+		PlanText:   "", // a new operator turn starts without the previous checklist
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
 	}

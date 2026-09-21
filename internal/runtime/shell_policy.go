@@ -13,7 +13,7 @@ import (
 // ShellDenied is a deterministic policy jail, not an OS sandbox. Seatbelt /
 // bubblewrap are OS-specific; lying about them on Windows is worse than a
 // named deny-list plus the existing workspace path jail.
-func ShellDenied(command, workspace string, networkAllow []string) error {
+func ShellDenied(command, workspace string, networkAllow []string, extraRoots ...string) error {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
 		return fmt.Errorf("empty command")
@@ -27,11 +27,11 @@ func ShellDenied(command, workspace string, networkAllow []string) error {
 	if looksLikeRemoteNetwork(lower) && !networkPermitted(networkAllow) {
 		return fmt.Errorf("shell policy denied network; set policy.network_allow or use MCP")
 	}
-	if err := denyEscapingAbsPaths(cmd, workspace); err != nil {
+	if err := denyEscapingAbsPaths(cmd, workspace, extraRoots...); err != nil {
 		return err
 	}
 	if argv := SplitShellArgv(cmd); len(argv) > 0 {
-		if err := DenyArgvPaths(argv, workspace); err != nil {
+		if err := DenyArgvPaths(argv, workspace, extraRoots...); err != nil {
 			return err
 		}
 	}
@@ -67,10 +67,11 @@ func SplitShellArgv(command string) []string {
 	return out
 }
 
-func DenyArgvPaths(argv []string, workspace string) error {
-	if workspace == "" {
+func DenyArgvPaths(argv []string, workspace string, extraRoots ...string) error {
+	if workspace == "" && len(extraRoots) == 0 {
 		return nil
 	}
+	roots := append([]string{workspace}, extraRoots...)
 	for _, f := range argv {
 		f = strings.Trim(f, `"'`)
 		if capability.LooksLikeWindowsSwitch(f) {
@@ -80,7 +81,7 @@ func DenyArgvPaths(argv []string, workspace string) error {
 		if !filepath.IsAbs(f) {
 			continue
 		}
-		if !capability.WithinWorkspace(workspace, f) {
+		if !pathInRoots(f, roots) {
 			return fmt.Errorf("shell policy denied path outside workspace")
 		}
 	}
@@ -323,13 +324,14 @@ func networkPermitted(allow []string) bool {
 
 var absPath = regexp.MustCompile(`(?i)(?:[a-z]:\\|/)(?:windows|etc|usr|system32)[\\/]`)
 
-func denyEscapingAbsPaths(command, workspace string) error {
-	if workspace == "" {
+func denyEscapingAbsPaths(command, workspace string, extraRoots ...string) error {
+	if workspace == "" && len(extraRoots) == 0 {
 		return nil
 	}
 	if !absPath.MatchString(command) {
 		return nil
 	}
+	roots := append([]string{workspace}, extraRoots...)
 	fields := strings.Fields(command)
 	for _, f := range fields {
 		f = strings.Trim(f, `"'`)
@@ -340,9 +342,21 @@ func denyEscapingAbsPaths(command, workspace string) error {
 		if !filepath.IsAbs(f) {
 			continue
 		}
-		if !capability.WithinWorkspace(workspace, f) {
+		if !pathInRoots(f, roots) {
 			return fmt.Errorf("shell policy denied path outside workspace")
 		}
 	}
 	return nil
+}
+
+func pathInRoots(p string, roots []string) bool {
+	for _, root := range roots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		if capability.WithinWorkspace(root, p) {
+			return true
+		}
+	}
+	return false
 }
