@@ -112,6 +112,22 @@ type LoopPreset struct {
 	ToolErrorInstruction string `json:"tool_error_instruction,omitempty"`
 	// TaskInstruction is prepended to depth-1 subagent prompts (L1).
 	TaskInstruction string `json:"task_instruction,omitempty"`
+	// KeepTokens is the chat checkpoint retained-tail budget (L3). Harbor
+	// still uses CompactionKeep. Zero means the runtime chat floor.
+	KeepTokens int `json:"keep_tokens,omitempty"`
+	// ContextBuffer is subtracted from the model window before checkpoint
+	// (OpenCode-style). Harbor ignores this; ModelWindow stays 0.
+	ContextBuffer int `json:"context_buffer,omitempty"`
+	// OutputReserve overrides the proportional output reserve. Zero means
+	// max(8k, 10%) capped at 32k.
+	OutputReserve int `json:"output_reserve,omitempty"`
+	// TaskMaxTurns / TaskMaxToolMessages size depth-1 subagents (L3).
+	// Zero means runtime defaults (24 / 60).
+	TaskMaxTurns         int `json:"task_max_turns,omitempty"`
+	TaskMaxToolMessages  int `json:"task_max_tool_messages,omitempty"`
+	// StackAgentsMD concatenates AGENTS.md from git root to cwd (Codex
+	// 32KiB cap). Default off so pins stay first-hit.
+	StackAgentsMD bool `json:"stack_agents_md,omitempty"`
 }
 
 type PolicyPack struct {

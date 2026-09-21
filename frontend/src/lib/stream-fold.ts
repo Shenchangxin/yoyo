@@ -102,6 +102,7 @@ export function isTranscriptNoise(ev: Item): boolean {
   if (ev.type !== "compaction") return false;
   const kind = str(ev.payload?.kind);
   if (kind === "checkpoint") return false;
+  if (kind === "checkpoint_start") return true;
   const layers = ev.payload?.layers;
   if (Array.isArray(layers) && layers.some((x) => String(x) === "overflow")) return false;
   return true;

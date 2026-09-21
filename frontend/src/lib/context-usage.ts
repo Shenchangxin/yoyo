@@ -18,6 +18,11 @@ export type CtxBreakdown = {
   chat: number;
   free: number;
   providerPrompt: number;
+  cachedTokens: number;
+  cacheReported: boolean;
+  cacheStable: boolean;
+  trigger: string;
+  hydrated: number;
   elided: number;
   layers: string[];
   note: string;
@@ -53,6 +58,11 @@ export function contextBreakdown(ctx: ContextUsage | undefined, fallbackWindow =
     chat,
     free,
     providerPrompt: Math.max(0, ctx?.providerPrompt || 0),
+    cachedTokens: Math.max(0, ctx?.cachedTokens || 0),
+    cacheReported: !!ctx?.cacheReported,
+    cacheStable: !!ctx?.cacheStable,
+    trigger: ctx?.trigger || "",
+    hydrated: Math.max(0, ctx?.hydrated || 0),
     elided: Math.max(0, ctx?.elided || 0),
     layers: ctx?.layers || [],
     note: ctx?.note || "",

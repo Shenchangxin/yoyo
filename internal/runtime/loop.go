@@ -43,6 +43,7 @@ type RunRequest struct {
 	Checkpoint       string
 	Stop             *StopReason
 	StopHooks        []FileHook
+	PreCompactHooks  []FileHook
 	ProfileMemory    string
 	// RoundSeq is the highest assistant round already on this session's
 	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
@@ -84,45 +85,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	loop := req.Loop
 	if req.Policy.Mode == "plan" {
 		loop.PlanMode = true
+		req.Loop = loop
 	}
-	rules, rulesSrc := LoadWorkspaceRules(req.Workspace, loop.RulesTokens)
-	identity := AssembleIdentity(loop, req.Fragments)
-	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, rulesSrc)
-	if strings.TrimSpace(req.ProfileMemory) != "" {
-		pins += "\n## Profile memory\n" + req.ProfileMemory
-	}
-	prefix := identity + pins
-	spill := spillOf(req)
-	notes := capRunes(ReadNotes(spill), 2000)
-	if mem := ReadWorkspaceMemory(req.Workspace); mem != "" {
-		if notes != "" {
-			notes += "\n"
-		}
-		notes += mem
-	}
-	checkpoint := req.Checkpoint
-	if checkpoint == "" {
-		checkpoint = lastCheckpoint(req.History)
-	}
-	dyn := AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
-	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": prefix + dyn})
+	kernel := newContextKernel(&req)
+	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": kernel.prefix})
 
-	messages := []Message{{Role: RoleSystem, Content: identity}}
-	if strings.TrimSpace(pins) != "" {
-		messages = append(messages, Message{Role: RoleDeveloper, Content: pins})
-	}
-	if len(req.History) > 0 {
-		messages = append(messages, stripSystem(req.History)...)
-	}
-	if strings.TrimSpace(req.Inject) != "" {
-		emit(req, trace.TypeInject, "mention", map[string]any{"text": req.Inject})
-		messages = append(messages, Message{Role: RoleUser, Content: "Attached context (user @mentions, untrusted working memory):\n" + req.Inject})
-	}
-	if user := strings.TrimSpace(req.User); user != "" {
-		emit(req, trace.TypeUser, "user", map[string]any{"text": req.User})
-		messages = append(messages, Message{Role: RoleUser, Content: req.User})
-	} else if len(stripSystem(req.History)) == 0 {
-		return "", fmt.Errorf("nothing to continue")
+	messages, err := kernel.seed()
+	if err != nil {
+		return "", err
 	}
 	var last string
 	toolCount := 0
@@ -167,76 +137,50 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				messages = append(messages, Message{Role: RoleUser, Content: nudge})
 			}
 		}
-		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
-		dyn = withChatVoice(req, dyn, notes)
-		messages = setDynamic(messages, dyn)
-		toolsJSON := AllToolJSON(req.Tools)
-		overhead := toolsJSONTokens(toolsJSON)
-		compacted, report := Shape(messages, ShapeOpts{
-			Loop: loop, Spill: spill, ModelWindow: req.ModelWindow, Overhead: overhead,
-		})
-		compacted = Legalize(compacted)
-		fillLedger(&report, prefix, dyn, toolsJSON, req.ModelWindow)
-		report.Tokens = messagesTokens(compacted) + overhead
+		compacted, toolsJSON, report := kernel.prompt(messages, false)
+		if kernel.shouldCheckpoint(report) {
+			messages = kernel.checkpoint(messages, "budget", "")
+			compacted, toolsJSON, report = kernel.prompt(messages, false)
+			report.Trigger = "budget"
+		}
 		if req.OnShape != nil {
 			req.OnShape(report)
 		}
 		if report.Note != "" {
-			emit(req, trace.TypeCompact, "runtime", map[string]any{
-				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
-				"window": report.Window, "prefix_tokens": report.PrefixTokens, "dynamic_tokens": report.DynamicTokens,
-				"schema_tokens": report.SchemaTokens, "layers": report.Layers, "elided": report.Elided,
-			})
+			emit(req, trace.TypeCompact, "runtime", reportPayload(report, nil))
 			if req.Events != nil {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, prefix, toolsJSON)}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		msg, err := chat(ctx, req, chatReq, roundID)
 		if err != nil && isStreamErr(err) {
 			msg, err = req.Client.Chat(ctx, chatReq)
 		}
-		for err != nil && IsContextOverflow(err) {
+		if err != nil && IsContextOverflow(err) {
 			overflowFails++
-			if overflowFails >= 3 {
+			if overflowFails >= 2 {
 				err = stopErr(StopOverflow, "context overflow circuit breaker", err)
-				break
-			}
-			tight := loop
-			if tight.CompactionKeep > 8 {
-				tight.CompactionKeep = 8 / overflowFails
-				if tight.CompactionKeep < 4 {
-					tight.CompactionKeep = 4
+			} else {
+				messages = kernel.checkpoint(messages, "overflow", "")
+				compacted, toolsJSON, report = kernel.prompt(messages, true)
+				report.Layers = appendLayer(report.Layers, "overflow")
+				report.Note = strings.Join(report.Layers, "+")
+				report.Trigger = "overflow"
+				emit(req, trace.TypeCompact, "runtime", reportPayload(report, map[string]any{"overflow": overflowFails}))
+				if req.OnShape != nil {
+					req.OnShape(report)
+				}
+				chatReq.Messages = compacted
+				chatReq.Tools = toolsJSON
+				chatReq.CacheKey = PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)
+				msg, err = chat(ctx, req, chatReq, roundID)
+				if err != nil && IsContextOverflow(err) {
+					err = stopErr(StopOverflow, "context overflow circuit breaker", err)
 				}
 			}
-			tight.MicroKeep = 1
-			tight.ToolResultBudget = 1_500
-			compacted, report = Shape(messages, ShapeOpts{
-				Loop: tight, Spill: spill, ModelWindow: req.ModelWindow, Overhead: overhead, Aggressive: true,
-			})
-			compacted = Legalize(compacted)
-			fillLedger(&report, prefix, dyn, toolsJSON, req.ModelWindow)
-			report.Tokens = messagesTokens(compacted) + overhead
-			report.Layers = append(report.Layers, "overflow")
-			report.Note = strings.Join(report.Layers, "+")
-			if req.Trace != nil && req.SessionID != "" {
-				n := NotesFromMessages(stripSystem(compacted))
-				WriteNotes(spill, n)
-				_ = PersistCheckpoint(req.Trace, req.SessionID, "overflow", n.Markdown(), stripSystem(compacted), true)
-				WriteDiscoverIndex(req.Workspace, req.SessionID, spill)
-			}
-			emit(req, trace.TypeCompact, "runtime", map[string]any{
-				"kind": "shape", "note": report.Note, "tokens": report.Tokens, "budget": report.Budget,
-				"window": report.Window, "prefix_tokens": report.PrefixTokens, "dynamic_tokens": report.DynamicTokens,
-				"schema_tokens": report.SchemaTokens, "layers": report.Layers, "elided": report.Elided, "overflow": overflowFails,
-			})
-			if req.OnShape != nil {
-				req.OnShape(report)
-			}
-			chatReq.Messages = compacted
-			msg, err = chat(ctx, req, chatReq, roundID)
 		}
 		if err != nil {
 			reason := StopModelError
@@ -255,12 +199,18 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		overflowFails = 0
 		if msg.PromptTokens > 0 {
 			report.ProviderPrompt = msg.PromptTokens
+			if msg.CachedTokens > 0 {
+				report.CachedTokens = msg.CachedTokens
+				report.CacheReported = true
+			} else if msg.CacheReported {
+				report.CacheReported = true
+			}
 			if req.OnShape != nil {
 				req.OnShape(report)
 			}
 		}
 		if req.Meter != nil {
-			in, out := messagesTokens(compacted)+overhead, messageTokens(msg)
+			in, out := messagesTokens(compacted)+toolsJSONTokens(toolsJSON), messageTokens(msg)
 			if msg.PromptTokens > 0 {
 				in = msg.PromptTokens
 			}
@@ -279,7 +229,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
 		}
 		if len(msg.ToolCalls) == 0 {
-			notes = persistWorkingMemory(req, messages, notes)
+			kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
 			if extra := planContinueIfOpen(req, loop.PlanMode, toolCount, &planContinues, &toolsAtPlanContinue); extra != "" {
 				if req.Tools != nil {
 					req.Tools.VerifyHint = true
@@ -308,6 +258,13 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if report.ProviderPrompt > 0 {
 				end["provider_prompt"] = report.ProviderPrompt
 			}
+			if report.CachedTokens > 0 || report.CacheReported {
+				end["cached_tokens"] = report.CachedTokens
+				end["cache_reported"] = report.CacheReported
+			}
+			end["cache_stable"] = report.CacheStable
+			end["prefix_hash"] = report.PrefixHash
+			end["dynamic_at"] = report.DynamicAt
 			if len(report.Layers) > 0 {
 				end["layers"] = report.Layers
 			}
@@ -318,6 +275,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				continue
 			}
 			emit(req, trace.TypeTurnEnd, "runtime", end)
+			consolidateMemory(req, ParseNotes(kernel.notes))
 			return strings.TrimSpace(msg.Content), nil
 		}
 		messages = append(messages, msg)
@@ -325,7 +283,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
 		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
-		notes = persistWorkingMemory(req, messages, notes)
+		kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
 		if stall := rewriteStallNudge(req, writeHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
@@ -469,7 +427,10 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			}
 		}
 		jobs[i].bytes = len(content)
-		preview, spillID := ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content, ingestBudget(req.Loop), j.tc.Name == "recall_context")
+		preview, spillID := ingestToolResult(spillOf(req), j.tc.ID, j.tc.Name, content, ingestBudget(req.Loop), recallNoStub(j.tc.Name, content))
+		if j.tc.Name == "shell" {
+			writeTerminalFile(req.Workspace, req.SessionID, j.tc.ID, content)
+		}
 		post := applyPostTool(req.Events, ToolHook{Name: j.tc.Name, Arguments: j.tc.Arguments, SessionID: req.SessionID, Result: preview})
 		if post.Result != "" {
 			preview = post.Result
@@ -570,7 +531,8 @@ func isReadonlyTool(name string) bool {
 		"git_status", "git_diff", "recall_context", "tool_search",
 		"list_skills", "view_image", "update_plan", "wait", "ask_user",
 		"office_query", "office_render", "memory_search", "schedule_list",
-		"browser_snapshot", "clipboard_read", "project_list", "connector_read":
+		"browser_snapshot", "clipboard_read", "project_list", "connector_read",
+		"read_thread":
 		return true
 	default:
 		return false

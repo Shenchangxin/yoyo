@@ -571,7 +571,7 @@ func TestOverflowCircuitBreaker(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "circuit breaker") {
 		t.Fatalf("err=%v", err)
 	}
-	if client.n != 3 {
+	if client.n != 2 {
 		t.Fatalf("attempts %d", client.n)
 	}
 }

@@ -16,7 +16,7 @@ func AssembleSystem(loop artifact.LoopPreset, fragments []artifact.PromptFragmen
 }
 
 func Assemble(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string, loaded []string) string {
-	return AssemblePrefix(loop, fragments, playbook, skills, rules, rulesSrc) + AssembleDynamic("", loaded, "", "")
+	return AssemblePrefix(loop, fragments, playbook, skills, rules, rulesSrc) + AssembleDynamic("", loaded, "", "", "")
 }
 
 func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragment) string {
@@ -118,7 +118,7 @@ func AssemblePrefix(loop artifact.LoopPreset, fragments []artifact.PromptFragmen
 	return AssembleIdentity(loop, fragments) + AssemblePins(loop, playbook, skills, rules, rulesSrc)
 }
 
-func AssembleDynamic(planText string, loaded []string, notes, checkpoint string) string {
+func AssembleDynamic(planText string, loaded []string, notes, checkpoint, today string) string {
 	var b strings.Builder
 	if len(loaded) > 0 {
 		b.WriteString("\n## Loaded skills (re-injected after compaction)\n")
@@ -148,29 +148,29 @@ func AssembleDynamic(planText string, loaded []string, notes, checkpoint string)
 			b.WriteByte('\n')
 		}
 	}
+	if strings.TrimSpace(today) != "" {
+		b.WriteString("\n## Today\n")
+		b.WriteString(capRunes(today, 1600))
+		if !strings.HasSuffix(today, "\n") {
+			b.WriteByte('\n')
+		}
+	}
 	return b.String()
 }
 
 func setDynamic(msgs []Message, dyn string) []Message {
-	body := dynMarker + "\nWorking memory (untrusted):\n" + dyn
-	for i := range msgs {
-		if strings.HasPrefix(msgs[i].Content, dynMarker) {
-			if strings.TrimSpace(dyn) == "" {
-				return append(msgs[:i], msgs[i+1:]...)
-			}
-			msgs[i] = Message{Role: RoleMemory, Content: body}
-			return msgs
+	out := make([]Message, 0, len(msgs)+1)
+	for _, m := range msgs {
+		if strings.HasPrefix(m.Content, dynMarker) {
+			continue
 		}
+		out = append(out, m)
 	}
 	if strings.TrimSpace(dyn) == "" {
-		return msgs
+		return out
 	}
-	head := pinnedPrefix(msgs)
-	out := make([]Message, 0, len(msgs)+1)
-	out = append(out, msgs[:head]...)
-	out = append(out, Message{Role: RoleMemory, Content: body})
-	out = append(out, msgs[head:]...)
-	return out
+	body := dynMarker + "\nWorking memory (untrusted):\n" + dyn
+	return append(out, Message{Role: RoleMemory, Content: body})
 }
 
 func ReadWorkspaceMemory(workspace string) string {
@@ -186,7 +186,7 @@ func ReadWorkspaceMemory(workspace string) string {
 		if s == "" {
 			continue
 		}
-		return capRunes(s, 2200)
+		return capRunes(s, 4000)
 	}
 	return ""
 }

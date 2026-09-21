@@ -7,6 +7,11 @@ const (
 	ChatMaxToolMessages = 160
 	ChatMicroKeep       = 32
 	ChatCompactionKeep  = 96
+	ChatRulesTokens     = 8_000
+	ChatKeepTokens      = 16_000
+	ChatContextBuffer   = 20_000
+	ChatTaskMaxTurns    = 24
+	ChatTaskMaxTools    = 60
 )
 
 // ApplyChatHorizon is a floor for callers that still use a hard loop.
@@ -25,6 +30,21 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	}
 	if loop.CompactionKeep < ChatCompactionKeep {
 		loop.CompactionKeep = ChatCompactionKeep
+	}
+	if loop.RulesTokens < ChatRulesTokens {
+		loop.RulesTokens = ChatRulesTokens
+	}
+	if loop.KeepTokens < ChatKeepTokens {
+		loop.KeepTokens = ChatKeepTokens
+	}
+	if loop.ContextBuffer <= 0 {
+		loop.ContextBuffer = ChatContextBuffer
+	}
+	if loop.TaskMaxTurns < ChatTaskMaxTurns {
+		loop.TaskMaxTurns = ChatTaskMaxTurns
+	}
+	if loop.TaskMaxToolMessages < ChatTaskMaxTools {
+		loop.TaskMaxToolMessages = ChatTaskMaxTools
 	}
 	return loop
 }

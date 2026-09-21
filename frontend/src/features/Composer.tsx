@@ -855,6 +855,17 @@ function ContextMeter(props: {
           <span className="text-foreground">{formatTokens(br.providerPrompt)}</span>
         </div>
       ) : null}
+      {br.cacheReported ? (
+        <div className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
+          <span className="text-muted">{copy.composer.ctxCache}</span>
+          <span className="text-foreground">{formatTokens(br.cachedTokens)}</span>
+        </div>
+      ) : br.providerPrompt > 0 ? (
+        <div className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
+          <span className="text-muted">{copy.composer.ctxCache}</span>
+          <span className="text-foreground">{copy.composer.ctxCacheUnknown}</span>
+        </div>
+      ) : null}
       {br.elided > 0 ? (
         <div className="flex items-center justify-between gap-6 text-[11px] tabular-nums">
           <span className="text-muted">{copy.composer.ctxElided}</span>

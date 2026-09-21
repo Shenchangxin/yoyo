@@ -63,16 +63,24 @@ func init() {
 		return t.git([]string{"commit", "-m", msg}, true)
 	}
 	hostFns["recall_context"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.recall(str(args["id"]))
+		return t.recall(str(args["id"]), intArg(args["offset"]), intArg(args["limit"]))
 	}
 	hostFns["tool_search"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.toolSearch(str(args["query"]))
 	}
 	hostFns["task"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		if t != nil {
+			t.mu.Lock()
+			t.taskProfile = str(args["profile"])
+			t.mu.Unlock()
+		}
 		if prompts := anyStrings(args["prompts"]); len(prompts) > 1 {
 			return t.taskFanout(prompts, boolArg(args["isolate"]))
 		}
 		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
+	}
+	hostFns["read_thread"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.readThread(str(args["session_id"]), str(args["query"]))
 	}
 	hostFns["update_plan"] = func(t *WorkspaceTools, _ map[string]any, raw string) ToolResult {
 		return t.updatePlan(raw)

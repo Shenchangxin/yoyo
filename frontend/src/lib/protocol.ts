@@ -80,6 +80,13 @@ export type ContextUsage = {
   dynamicTokens?: number;
   schemaTokens?: number;
   providerPrompt?: number;
+  cachedTokens?: number;
+  cacheReported?: boolean;
+  cacheStable?: boolean;
+  prefixHash?: string;
+  dynamicAt?: string;
+  trigger?: string;
+  hydrated?: number;
   note: string;
   layers: string[];
   elided: number;

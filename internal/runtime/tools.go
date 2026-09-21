@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/browser"
@@ -71,6 +72,9 @@ type WorkspaceTools struct {
 	SkillDirs    map[string]string
 	Loaded       []string
 	ExtraEnabled []string
+	ExtraLive    []string
+	pendingHost  []string
+	taskProfile  string
 	Policy       artifact.PolicyPack
 	PlanMode     bool
 	// ChatOverlay is desktop/CLI personal chat (I6). Harbor eval leaves it
@@ -95,6 +99,7 @@ type WorkspaceTools struct {
 	mu           sync.Mutex
 	MaxParallel  int
 	SearchAPI    func(query string) (string, error)
+	Sessions     func(id string) []Message
 	Memory       *memory.Store
 	Schedule     *schedule.Service
 	Projects     *project.Store
@@ -168,27 +173,26 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	}
 	t.mu.Unlock()
 	var deferred []string
-	if len(names) <= schemaCap {
-		for _, name := range names {
-			out = append(out, t.Extra[name].JSON)
-		}
-	} else {
-		for _, name := range names {
+	freezeExtra := t.ChatOverlay
+	for _, name := range names {
+		if freezeExtra || len(names) > schemaCap {
 			if enabled[name] {
 				out = append(out, t.Extra[name].JSON)
 				continue
 			}
 			deferred = append(deferred, name)
+			continue
 		}
-		if t.Spill != nil {
-			for _, name := range deferred {
-				extra, ok := t.Extra[name]
-				if !ok {
-					continue
-				}
-				raw, _ := json.Marshal(extra.JSON)
-				t.Spill.Put("mcp-"+sanitizeID(name), string(raw))
+		out = append(out, t.Extra[name].JSON)
+	}
+	if t.Spill != nil {
+		for _, name := range deferred {
+			extra, ok := t.Extra[name]
+			if !ok {
+				continue
 			}
+			raw, _ := json.Marshal(extra.JSON)
+			t.Spill.Put("mcp-"+sanitizeID(name), string(raw))
 		}
 	}
 	if t.ChatOverlay {
@@ -298,11 +302,34 @@ func (t *WorkspaceTools) advertisedCopy() []string {
 
 func alwaysAdvertise(name string) bool {
 	switch name {
-	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user":
+	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread":
 		return true
 	default:
 		return false
 	}
+}
+
+func (t *WorkspaceTools) CommitToolUnlocks() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	have := map[string]bool{}
+	for _, n := range t.ExtraEnabled {
+		have[n] = true
+	}
+	for _, n := range t.ExtraLive {
+		if n == "" || have[n] {
+			continue
+		}
+		t.ExtraEnabled = append(t.ExtraEnabled, n)
+		have[n] = true
+	}
+	t.ExtraLive = nil
+	host := append([]string(nil), t.pendingHost...)
+	t.pendingHost = nil
+	t.mu.Unlock()
+	t.unlockAdvertised(host)
 }
 
 func (t *WorkspaceTools) resolve(rel string) (string, error) {
@@ -661,7 +688,7 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	return ToolResult{Content: body}
 }
 
-func (t *WorkspaceTools) recall(id string) ToolResult {
+func (t *WorkspaceTools) recall(id string, offset, limit int) ToolResult {
 	if t.Spill == nil {
 		return ToolResult{Err: fmt.Errorf("no spill store")}
 	}
@@ -669,8 +696,44 @@ func (t *WorkspaceTools) recall(id string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: fmt.Errorf("unknown context id %s", id)}
 	}
-	capped, _ := capText(s, defaultToolResultRunes)
-	return ToolResult{Content: capped}
+	return ToolResult{Content: pageSpill(id, s, offset, limit)}
+}
+
+const defaultRecallLines = 200
+const defaultRecallRunes = 4_000
+
+func pageSpill(id, s string, offset, limit int) string {
+	lines := strings.Split(s, "\n")
+	if offset <= 0 {
+		offset = 1
+	}
+	if limit <= 0 {
+		limit = defaultRecallLines
+	}
+	start := offset - 1
+	if start > len(lines) {
+		start = len(lines)
+	}
+	end := start + limit
+	if end > len(lines) {
+		end = len(lines)
+	}
+	page := strings.Join(lines[start:end], "\n")
+	capped, trunc := capText(page, defaultRecallRunes)
+	var b strings.Builder
+	fmt.Fprintf(&b, "recall id=%s lines=%d-%d of %d\n", id, start+1, end, len(lines))
+	b.WriteString(capped)
+	if trunc {
+		b.WriteString("\n[page capped — pass offset/limit to page further]")
+	}
+	return b.String()
+}
+
+func recallNoStub(name, content string) bool {
+	if name != "recall_context" {
+		return false
+	}
+	return utf8.RuneCountInString(content) <= 2000
 }
 
 func (t *WorkspaceTools) toolSearch(q string) ToolResult {
@@ -721,20 +784,49 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	if t != nil && t.Extra != nil {
 		t.mu.Lock()
 		for _, name := range matched {
-			seen := false
-			for _, n := range t.ExtraEnabled {
-				if n == name {
-					seen = true
-					break
+			if t.ChatOverlay {
+				seen := false
+				for _, n := range t.ExtraLive {
+					if n == name {
+						seen = true
+						break
+					}
 				}
-			}
-			if !seen {
-				t.ExtraEnabled = append(t.ExtraEnabled, name)
+				if !seen {
+					t.ExtraLive = append(t.ExtraLive, name)
+				}
+			} else {
+				seen := false
+				for _, n := range t.ExtraEnabled {
+					if n == name {
+						seen = true
+						break
+					}
+				}
+				if !seen {
+					t.ExtraEnabled = append(t.ExtraEnabled, name)
+				}
 			}
 		}
 		t.mu.Unlock()
 	}
-	t.unlockAdvertised(hostHits)
+	if t != nil && t.ChatOverlay && len(hostHits) > 0 {
+		t.mu.Lock()
+		have := map[string]bool{}
+		for _, n := range t.pendingHost {
+			have[n] = true
+		}
+		for _, n := range hostHits {
+			if n == "" || have[n] {
+				continue
+			}
+			t.pendingHost = append(t.pendingHost, n)
+			have[n] = true
+		}
+		t.mu.Unlock()
+	} else {
+		t.unlockAdvertised(hostHits)
+	}
 	return ToolResult{Content: b.String()}
 }
 

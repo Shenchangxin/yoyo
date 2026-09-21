@@ -293,6 +293,10 @@ func (a *App) ExportSession(id string) (string, error) {
 }
 
 func (a *App) CompactSession(id string) (string, error) {
+	return a.CompactSessionFocus(id, "")
+}
+
+func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 	evs, err := a.Trajectory(id)
 	if err != nil {
 		return "", err
@@ -309,22 +313,29 @@ func (a *App) CompactSession(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	msgs := runtime.MessagesFromEvents(evs)
+	msgs := runtime.MessagesFromEventsOpts(evs, runtime.BindSpill(a.Home.Root, meta.ToolRoot(), id))
 	spill := runtime.BindSpill(a.Home.Root, meta.ToolRoot(), id)
 	model := a.Config.Model
 	if meta.Model != "" {
 		model = meta.Model
 	}
-	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
+	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	client, _ := a.Client()
-	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window, frags)
+	loop = runtime.ApplyChatHorizon(loop)
+	opt := runtime.CompactOpts{Trigger: "user", Focus: focus}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(focus)), "from ") {
+		opt.Trigger = "rewind"
+		opt.From = strings.TrimSpace(focus[5:])
+		opt.Focus = ""
+	}
+	note := runtime.CompactHistoryOpts(a.Traces, id, msgs, loop, spill, client, model, window, frags, opt)
 	runtime.WriteDiscoverIndex(meta.ToolRoot(), id, spill)
 	if a.Hub != nil {
 		a.Hub.Publish(trace.Event{
 			Type:      trace.TypeCompact,
 			Source:    "user",
 			SessionID: id,
-			Payload:   map[string]any{"note": note, "kind": "checkpoint"},
+			Payload:   map[string]any{"note": note, "kind": "checkpoint", "trigger": opt.Trigger, "focus": focus},
 		})
 	}
 	return note, nil

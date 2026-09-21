@@ -83,6 +83,7 @@ type Config struct {
 	CrashResume             bool              `yaml:"crash_resume" json:"crash_resume"`
 	SearchURL               string            `yaml:"search_url" json:"search_url"`
 	SearchKey               string            `yaml:"search_key" json:"search_key"`
+	ContextWindow           int               `yaml:"context_window" json:"context_window"`
 }
 
 type App struct {

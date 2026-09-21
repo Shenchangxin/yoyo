@@ -108,7 +108,7 @@ func (r *Registry) Filter(advertise, allowed []string) []artifact.ToolSpec {
 
 func alwaysAllowed(name string) bool {
 	switch name {
-	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user":
+	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread":
 		return true
 	default:
 		return false

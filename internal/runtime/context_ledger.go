@@ -21,4 +21,7 @@ func fillLedger(rep *ShapeReport, prefix, dynamic string, tools []ToolJSON, wind
 	rep.DynamicTokens = estimateTokens(dynamic)
 	rep.SchemaTokens = toolsJSONTokens(tools)
 	rep.Window = window
+	if rep.DynamicAt == "" {
+		rep.DynamicAt = "tail"
+	}
 }

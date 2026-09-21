@@ -48,9 +48,9 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("git_status", "Show git status of the workspace.", "read_workspace", obj(map[string]any{}), read),
 		spec("git_diff", "Show git diff. Optional staged=true for --cached.", "read_workspace", obj(map[string]any{"staged": boolP()}), read),
 		spec("git_commit", "Stage all and commit with a message. Prefer this over shell git.", "write_workspace", obj(map[string]any{"message": strP()}, "message"), write),
-		spec("recall_context", "Retrieve a previously elided tool result by id from the context spill store.", "", obj(map[string]any{"id": strP()}, "id"), read),
+		spec("recall_context", "Retrieve a previously elided tool result by id. Always pass offset/limit (1-based lines, default 200). Full bytes stay in spill.", "", obj(map[string]any{"id": strP(), "offset": intP(), "limit": intP()}, "id"), read),
 		spec("tool_search", "Look up extra (MCP/WASM) tool schemas by substring. Use when extra tools were deferred.", "", obj(map[string]any{"query": strP()}, "query"), read),
-		spec("task", "Run a subagent on a prompt. Returns a summary only (child transcript is isolated). Set isolate=true to copy/worktree the workspace. prompts[] fans out up to max_parallel (L3, default 4).", "", obj(map[string]any{"prompt": strP(), "isolate": boolP(), "prompts": map[string]any{"type": "array", "items": strP()}}, "prompt"), Annotations{}),
+		spec("task", "Run a subagent on a prompt. Returns a summary only (child transcript is isolated). Set isolate=true to copy/worktree the workspace. prompts[] fans out up to max_parallel (L3, default 4). profile is explore | implement | qa (qa is opt-in).", "", obj(map[string]any{"prompt": strP(), "isolate": boolP(), "profile": strP(), "prompts": map[string]any{"type": "array", "items": strP()}}, "prompt"), Annotations{}),
 		spec("update_plan", "Replace the current task plan with a list of steps and statuses (pending, in_progress, complete).", "", obj(map[string]any{
 			"explanation": strP(),
 			"plan": map[string]any{
@@ -99,6 +99,7 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("computer_act", "Issue a virtual-display action against an allowlisted app. Never the operator desktop.", "computer_use", obj(map[string]any{"app": strP(), "op": strP(), "detail": strP()}, "op"), Annotations{Exclusive: true, OpenWorld: true, Destructive: true}),
 		spec("project_list", "List personal-OS projects (not git repos).", "", obj(map[string]any{}), read),
 		spec("notify_actionable", "Push an Inbox item the operator can act on. Does not send mail.", "", obj(map[string]any{"title": strP(), "body": strP()}, "title"), write),
+		spec("read_thread", "Extract matching snippets from another session transcript. Pass session_id and query. Does not dump the full thread.", "", obj(map[string]any{"session_id": strP(), "query": strP()}, "session_id"), read),
 	}
 }
 

@@ -409,9 +409,10 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	case "thread.compact":
 		var p struct {
 			Session string `json:"session"`
+			Focus   string `json:"focus"`
 		}
 		_ = json.Unmarshal(params, &p)
-		note, err := a.CompactSession(p.Session)
+		note, err := a.CompactSessionFocus(p.Session, p.Focus)
 		return map[string]any{"note": note}, err
 	case "thread.queue.list":
 		var p struct {

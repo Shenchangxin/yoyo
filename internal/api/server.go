@@ -266,7 +266,11 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		if len(parts) > 1 && parts[1] == "compact" && r.Method == http.MethodPost {
-			note, err := a.CompactSession(id)
+			var body struct {
+				Focus string `json:"focus"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			note, err := a.CompactSessionFocus(id, body.Focus)
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return

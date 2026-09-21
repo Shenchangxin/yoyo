@@ -6,6 +6,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// Ingest truncates tool results by runes (ToolResultBudget, default 8_000).
+// Token-accurate truncation is a follow-up; see docs/architecture/context.md.
 const defaultIngestBudget = 8_000
 
 func ingestBudget(loop artifact.LoopPreset) int {

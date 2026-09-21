@@ -554,10 +554,10 @@ const ItemRow = memo(function ItemRow({
   }
   if (item.type === "compaction") {
     const kind = String(item.payload?.kind || "");
-    const label = kind === "checkpoint"
-      ? copy.transcript.checkpoint
-      : (item.payload.note || item.text || copy.app.compacted);
-    return <div className="text-center text-[11px] text-muted/80">{String(label)}</div>;
+    if (kind === "checkpoint_start") return null;
+    const note = String(item.payload?.note || item.text || "");
+    const label = note || (kind === "checkpoint" ? copy.transcript.checkpoint : copy.app.compacted);
+    return <div className="text-center text-[11px] text-muted/80">{label}</div>;
   }
   if (item.type === "tool_call" || item.type === "tool_result") {
     return <ToolLine item={item} />;
