@@ -7,11 +7,17 @@ import (
 )
 
 // parseShellRead maps a cat/sed/head/type invocation onto read_file.
-// Pipelines and compound commands stay in the real shell.
+// Pipelines stay in the real shell. A single `cd dir && <read>` is rewritten
+// so chat does not dump source through bash (I1).
 func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
 		return "", 0, 0, false
+	}
+	prefixDir := ""
+	if dir, rest, stripped := splitCdAnd(cmd); stripped {
+		prefixDir = dir
+		cmd = rest
 	}
 	if strings.ContainsAny(cmd, "|&;><") {
 		return "", 0, 0, false
@@ -24,11 +30,17 @@ func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 	bin = strings.TrimSuffix(bin, ".exe")
 	switch bin {
 	case "cat", "type":
-		rel = lastNonFlag(argv[1:])
-		return rel, 0, 0, rel != "" && !strings.HasPrefix(rel, "-")
+		files := nonFlagFiles(argv[1:])
+		if len(files) != 1 {
+			return "", 0, 0, false
+		}
+		rel, ok = files[0], true
 	case "get-content":
-		rel = lastNonFlag(argv[1:])
-		return rel, 0, 0, rel != "" && !strings.HasPrefix(rel, "-")
+		files := nonFlagFiles(argv[1:])
+		if len(files) != 1 {
+			return "", 0, 0, false
+		}
+		rel, ok = files[0], true
 	case "head":
 		limit = 10
 		rest := argv[1:]
@@ -37,7 +49,7 @@ func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 			rest = rest[consumed:]
 		}
 		rel = lastNonFlag(rest)
-		return rel, 1, limit, rel != ""
+		offset, ok = 1, rel != ""
 	case "sed":
 		start, end, rest, okSed := parseSedPrint(argv[1:])
 		if !okSed {
@@ -47,21 +59,72 @@ func parseShellRead(command string) (rel string, offset, limit int, ok bool) {
 		if rel == "" {
 			return "", 0, 0, false
 		}
-		return rel, start, end - start + 1, true
+		return joinReadPath(prefixDir, rel), start, end - start + 1, true
 	default:
 		return "", 0, 0, false
 	}
+	if !ok {
+		return "", 0, 0, false
+	}
+	return joinReadPath(prefixDir, rel), offset, limit, true
+}
+
+func splitCdAnd(cmd string) (dir, rest string, ok bool) {
+	if strings.Count(cmd, "&&") != 1 {
+		return "", "", false
+	}
+	left, right, _ := strings.Cut(cmd, "&&")
+	if strings.ContainsAny(left, "|&;><") || strings.ContainsAny(right, "|&;><") {
+		return "", "", false
+	}
+	argv := SplitShellArgv(strings.TrimSpace(left))
+	if len(argv) < 2 {
+		return "", "", false
+	}
+	bin := strings.ToLower(filepath.Base(argv[0]))
+	bin = strings.TrimSuffix(bin, ".exe")
+	if bin != "cd" {
+		return "", "", false
+	}
+	dir = argv[len(argv)-1]
+	if dir == "/d" || dir == "-d" {
+		return "", "", false
+	}
+	rest = strings.TrimSpace(right)
+	if dir == "" || rest == "" {
+		return "", "", false
+	}
+	return dir, rest, true
+}
+
+func joinReadPath(dir, rel string) string {
+	if dir == "" {
+		return rel
+	}
+	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") {
+		return rel
+	}
+	return filepath.ToSlash(filepath.Join(dir, rel))
 }
 
 func lastNonFlag(argv []string) string {
-	for i := len(argv) - 1; i >= 0; i-- {
-		a := strings.TrimSpace(argv[i])
+	files := nonFlagFiles(argv)
+	if len(files) == 0 {
+		return ""
+	}
+	return files[len(files)-1]
+}
+
+func nonFlagFiles(argv []string) []string {
+	var out []string
+	for _, a := range argv {
+		a = strings.TrimSpace(a)
 		if a == "" || strings.HasPrefix(a, "-") {
 			continue
 		}
-		return a
+		out = append(out, a)
 	}
-	return ""
+	return out
 }
 
 func parseDashN(argv []string) (n int, consumed int) {

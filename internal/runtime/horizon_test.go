@@ -15,6 +15,9 @@ func TestDefaultLoopHorizonUnchanged(t *testing.T) {
 	if loop.MicroKeep != 4 {
 		t.Fatalf("harbor microkeep %d", loop.MicroKeep)
 	}
+	if loop.CompactionKeep != 24 {
+		t.Fatalf("harbor compaction keep %d", loop.CompactionKeep)
+	}
 	if loop.CompactionTokens != 24_000 {
 		t.Fatalf("compaction %d", loop.CompactionTokens)
 	}
@@ -22,7 +25,7 @@ func TestDefaultLoopHorizonUnchanged(t *testing.T) {
 
 func TestApplyChatHorizon(t *testing.T) {
 	got := ApplyChatHorizon(DefaultLoop())
-	if got.MaxTurns < 64 || got.MaxToolMessages < 160 || got.MicroKeep < 16 {
+	if got.MaxTurns < 64 || got.MaxToolMessages < 160 || got.MicroKeep < 32 || got.CompactionKeep < 96 {
 		t.Fatalf("%+v", got)
 	}
 	wide := DefaultLoop()
@@ -36,9 +39,10 @@ func TestApplyChatHorizon(t *testing.T) {
 		t.Fatalf("chat tool floor %+v", got)
 	}
 	wide.MaxToolMessages = 200
-	wide.MicroKeep = 24
+	wide.MicroKeep = 48
+	wide.CompactionKeep = 120
 	got = ApplyChatHorizon(wide)
-	if got.MaxToolMessages != 200 || got.MicroKeep != 24 {
+	if got.MaxToolMessages != 200 || got.MicroKeep != 48 || got.CompactionKeep != 120 {
 		t.Fatalf("must not shrink large CAS: %+v", got)
 	}
 	if DefaultLoop().MaxTurns != 32 {
@@ -46,6 +50,9 @@ func TestApplyChatHorizon(t *testing.T) {
 	}
 	if DefaultLoop().MaxToolMessages != 40 {
 		t.Fatal("ApplyChatHorizon mutated Harbor tool cap")
+	}
+	if DefaultLoop().MicroKeep != 4 || DefaultLoop().CompactionKeep != 24 {
+		t.Fatal("ApplyChatHorizon mutated Harbor keep")
 	}
 }
 
@@ -88,6 +95,16 @@ func TestOperatorVoiceSkipsControl(t *testing.T) {
 	}
 }
 
+func TestOperatorVoiceSkipsResume(t *testing.T) {
+	got := OperatorVoice("继续", []Message{
+		{Role: RoleUser, Content: "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端"},
+		{Role: RoleUser, Content: "继续"},
+	})
+	if !strings.Contains(got, "RBAC") {
+		t.Fatalf("%q", got)
+	}
+}
+
 func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	loop := DefaultLoop()
 	dup := loop.Bootstrap
@@ -117,6 +134,18 @@ func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 	}
 	if !strings.Contains(s, "runtime pin") {
 		t.Fatal("runtime fragment dropped")
+	}
+}
+
+func TestChatVoicePinsChineseOnSoftHorizon(t *testing.T) {
+	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "")
+	got := withChatVoice(RunRequest{SoftHorizon: true, User: "继续", Tools: &WorkspaceTools{OperatorVoice: "完善前端"}}, dyn, "完善前端")
+	if !strings.Contains(got, "用中文回复") || !strings.Contains(got, "继续") {
+		t.Fatalf("%s", got)
+	}
+	harbor := withChatVoice(RunRequest{User: "完善前端"}, dyn, "完善前端")
+	if strings.Contains(harbor, "## Voice") {
+		t.Fatal("harbor must not grow a voice pin")
 	}
 }
 

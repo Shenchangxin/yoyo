@@ -33,15 +33,34 @@ func ChatConductFragments(voice, locale string, plan bool) []artifact.PromptFrag
 
 // OperatorVoice is the latest real operator utterance, skipping steer/nudge.
 func OperatorVoice(user string, hist []Message) string {
-	if t := strings.TrimSpace(user); t != "" && !isControlUser(t) {
+	if t := strings.TrimSpace(user); t != "" && !isControlUser(t) && !isResumeUser(t) {
 		return t
 	}
 	for i := len(hist) - 1; i >= 0; i-- {
-		if hist[i].Role == RoleUser && !isControlUser(hist[i].Content) {
+		if hist[i].Role == RoleUser && !isControlUser(hist[i].Content) && !isResumeUser(hist[i].Content) {
 			return hist[i].Content
 		}
 	}
 	return user
+}
+
+const chatVoiceZH = "用中文回复操作者，计划步骤用中文。用户说「继续」是接着原任务，不是新任务。"
+
+func withChatVoice(req RunRequest, dyn, notes string) string {
+	if !req.SoftHorizon {
+		return dyn
+	}
+	voice := req.User
+	if req.Tools != nil && strings.TrimSpace(req.Tools.OperatorVoice) != "" {
+		voice = req.Tools.OperatorVoice
+	}
+	if !looksCJK(voice) && !looksCJK(notes) && !looksCJK(planTextOf(req.Tools)) {
+		return dyn
+	}
+	if strings.Contains(dyn, "## Voice\n") {
+		return dyn
+	}
+	return dyn + "\n## Voice\n" + chatVoiceZH + "\n"
 }
 
 func looksCJK(s string) bool {

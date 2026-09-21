@@ -5,13 +5,14 @@ import "github.com/Shenchangxin/yoyo/internal/artifact"
 const (
 	ChatMaxTurns        = 64
 	ChatMaxToolMessages = 160
-	ChatMicroKeep       = 16
+	ChatMicroKeep       = 32
+	ChatCompactionKeep  = 96
 )
 
 // ApplyChatHorizon is a floor for callers that still use a hard loop.
 // Desktop/CLI chat sets RunRequest.SoftHorizon, so MaxTurns / MaxToolMessages
-// are not a kill switch. MicroKeep is raised so the model can still see
-// recent reads instead of going blind and rewriting the tree (I1).
+// are not a kill switch. MicroKeep / CompactionKeep are raised so snip cannot
+// drop the operator goal and the last read of each hot path (I1, I2).
 func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	if loop.MaxTurns < ChatMaxTurns {
 		loop.MaxTurns = ChatMaxTurns
@@ -21,6 +22,9 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	}
 	if loop.MicroKeep < ChatMicroKeep {
 		loop.MicroKeep = ChatMicroKeep
+	}
+	if loop.CompactionKeep < ChatCompactionKeep {
+		loop.CompactionKeep = ChatCompactionKeep
 	}
 	return loop
 }

@@ -168,6 +168,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 		dyn = AssembleDynamic(planTextOf(req.Tools), loadedFrom(req.Tools), notes, checkpoint)
+		dyn = withChatVoice(req, dyn, notes)
 		messages = setDynamic(messages, dyn)
 		toolsJSON := AllToolJSON(req.Tools)
 		overhead := toolsJSONTokens(toolsJSON)
