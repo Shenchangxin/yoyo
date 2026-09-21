@@ -86,8 +86,9 @@ with the same hue — colour lives in **either** the marker **or** the fill.
 - **UI:** Inter Variable, `cv11 ss03 calt`, optical sizing on. Body 13px,
   labels 12.5px, meta 11.5px, eyebrow 10.5px uppercase `tracking-[0.08em]`.
   Headlines: 21px/600/`tracking-[-0.03em]` (empty state), 13px/500 (pane
-  titles). Prose 15.5px/1.7 with `-0.011em` tracking, filling the column.
-  Headings use `text-wrap: pretty` / `balance` so widows do not sit alone.
+  titles). Transcript prose is a three-step ramp, not one size: answer 13.5px/1.6,
+  headings 16 / 14.5 / 13.5px, process 12.5px, code 12px. Headings use
+  `text-wrap: pretty` so widows do not sit alone.
 - **Code:** `--font-mono` (system mono ladder). 11.5px/1.6 in diffs and tool
   payloads, 12px for tool names inline. `font-variant-ligatures: none`
   everywhere code is shown — a diff must show the bytes on disk.
@@ -161,11 +162,16 @@ foreground text and removes pulse, rise and caret animations.
 
 ## 4. Transcript grammar
 
-- **User** — right-aligned bubble on `lift`, 18px radius, ≤80% of the column.
-  No avatar.
+- **User** — right-aligned bubble on `lift`, 18px radius, ≤80% of the column,
+  13px. No avatar.
 - **Assistant** — left prose, no bubble, no avatar. One turn is one
-  `assistant-letter`; copy/review actions sit at the foot and appear on hover
-  once the turn is settled. Turns are separated by whitespace (40px), not rules.
+  `assistant-letter`. The answer is the scan target (13.5px); headings step
+  16 / 14.5 / 13.5px — never Streamdown's stock `text-3xl`. Process rows and
+  fenced code sit a step quieter (12.5px / 12px). A circle caret marks live
+  tokens; the process row (pulse + shimmer verb) is status. The letter stays
+  at answer contrast so it remains readable while it grows. Copy/review
+  actions sit at the foot and appear on hover once the turn is settled.
+  Turns are separated by whitespace (40px), not rules.
 - **Process** — one disclosure row per model round. Live: pulse dot + shimmer
   verb (`Reading`, `Running`, `Thinking`) + mono detail + clock. Settled:
   `Worked for 20s · Ran 1 command · Read 2 files` with a dot / ✕ / dashed-ring
@@ -174,7 +180,9 @@ foreground text and removes pulse, rise and caret animations.
   output code surfaces beneath. A call without a result is **interrupted** the
   moment the turn ends — never a spinner on a finished turn.
 - **Artifacts** (patch, office file, MCP view) — card on `card/60` with icon
-  tile, title, mono meta and pill actions. Pending shows shimmer on the title.
+  tile, title, mono meta and pill actions (`Preview`, `Open in Review`).
+  Host-open is Review's job, not a second button on the card. Pending shows
+  shimmer on the title.
 - **Approval** — card with a `warning` left bar and icon tile, eyebrow, action
   title, the command in a code surface, then `Allow once` (primary) · `This
   chat` · `Always` · `Reject` with kbd hints `1 2 3 Esc`.
@@ -203,7 +211,9 @@ foreground text and removes pulse, rise and caret animations.
   14px marker gutter. Footer appears only with a selection: `Apply n` · `Clear`.
 - **Files / Queue / Memory** — `divide-y` hairline lists under uppercase
   eyebrows with counts. Row actions are icon buttons revealed on hover or
-  small text actions (`Once` primary, `Deny` danger-on-hover).
+  small text actions (`Once` primary, `Deny` danger-on-hover). Files preview
+  fills the remaining Review column; source is Shiki-highlighted, HTML is
+  sandboxed, binary is a one-line note.
 - **Trace** — one stats line (`10 events · 3 tools · 0 errors · 2.1s · 12k
   tokens`), filter chips, then rows: time · mono type · summary · elapsed.
   Expanded rows show a code surface and a Copy action.

@@ -15,7 +15,8 @@ GUI is a **client of one Go harness**. Do not add a second agent loop, LangChain
 ```
 
 - Thread is an object: create, rename, fork, search, running indicator.
-- Plan is a composer chip, not a page.
+- Plan is a composer chip, not a page. The chip starts collapsed; the
+  in-progress step stays on the header.
 - Approvals render **in the stream** (Claude grammar). Inspector is review, not the only place to click Once/Deny.
 - Harbor / Evolve / Harness are laboratory workspaces, not chat siblings of equal weight.
 - Skills is a left-rail module (installed + market), not a Review tab and not a settings page.
@@ -39,7 +40,7 @@ The full system lives in `docs/DESIGN.md` — read it before touching any surfac
 - Semantic tokens only (`styles.css`): zinc chrome; `success`/`danger` for diff and step state, `warning` for interrupted/needs-approval, `accent` for primary selection. Step opacity for greys.
 - Live grammar: shimmer verb + pulse dot + `Worked for` clock while running; past tense and a static glyph the instant it stops. A call without a result on a finished turn is *interrupted*, never spinning.
 - Composer: Enter sends, Shift+Enter newline. Context meter appears only once tokens exist.
-- Review panel: text tabs with underline, 36px icon toolbars, file-grouped diff with a footer CTA only when something is selected.
+- Review panel: text tabs with underline, 36px icon toolbars, file-grouped diff with a footer CTA only when something is selected. Selected file preview fills the remaining pane (not a 28rem island); source is Shiki-highlighted.
 - Code and diffs in `--font-mono` with ligatures off; counts in `tabular-nums`.
 
 ## Engineering

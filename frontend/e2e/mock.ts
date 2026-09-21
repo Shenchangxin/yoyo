@@ -159,13 +159,15 @@ export async function mockApi(
       const u = new URL(route.request().url());
       const p = u.searchParams.get("path") || "";
       const html = /\.html?$/i.test(p);
+      const office = /\.(docx|xlsx|pptx|pdf)$/i.test(p);
+      const go = /\.go$/i.test(p);
       return route.fulfill({
         json: {
           path: p,
-          text: html ? "<!doctype html><html><body><h1>preview</h1></body></html>" : "package main\n",
-          lang: html ? "html" : "go",
+          text: office ? "" : html ? "<!doctype html><html><body><h1>preview</h1></body></html>" : go ? "package main\n\nfunc Hello() string {\n\treturn \"yoyo\"\n}\n" : "package main\n",
+          lang: html ? "html" : go ? "go" : "text",
           html,
-          binary: false,
+          binary: office,
           truncated: false,
           bytes: 32,
         },

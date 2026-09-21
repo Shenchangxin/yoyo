@@ -154,6 +154,59 @@ test("second-turn markdown keeps headings and lists", async ({ page }) => {
   await expect(page.getByText("first answer")).toBeVisible();
 });
 
+test("assistant letter uses a dense type ramp", async ({ page }) => {
+  const body = [
+    "# Findings",
+    "",
+    "Opening sentence that should read as the scan target.",
+    "",
+    "## Next step",
+    "",
+    "A supporting paragraph with `inline` code.",
+    "",
+    "- first item",
+    "- second item",
+    "",
+    "```ts",
+    "export const n = 1;",
+    "```",
+    "",
+  ].join("\n");
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "summarize the workspace" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "I'll look around.", id: "s1:r1" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", arguments: JSON.stringify({ path: "README.md" }), round: "s1:r1" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { id: "c1", name: "read_file", content: "ok", round: "s1:r1" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { text: body, id: "s1:r2" } },
+    ],
+  });
+  await page.goto("/");
+  const turn = page.getByTestId("agent-turn").filter({ hasText: "Findings" });
+  await expect(turn.getByRole("heading", { name: "Findings" })).toBeVisible();
+  const sizeOf = (locator: ReturnType<typeof turn.locator>) =>
+    locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  const h1 = await sizeOf(turn.getByRole("heading", { name: "Findings" }));
+  const h2 = await sizeOf(turn.getByRole("heading", { name: "Next step" }));
+  const prose = await sizeOf(turn.locator(".md-body p").filter({ hasText: "Opening sentence" }));
+  const process = await sizeOf(turn.getByTestId("process-summary"));
+  const code = await sizeOf(turn.locator('[data-streamdown="code-block"] code').first());
+  expect(h1).toBeGreaterThanOrEqual(15);
+  expect(h1).toBeLessThan(18);
+  expect(h2).toBeGreaterThanOrEqual(13.5);
+  expect(h2).toBeLessThan(h1);
+  expect(prose).toBeGreaterThanOrEqual(12.5);
+  expect(prose).toBeLessThanOrEqual(14.5);
+  expect(process).toBeGreaterThanOrEqual(11.5);
+  expect(process).toBeLessThanOrEqual(13.5);
+  expect(process).toBeLessThan(prose);
+  expect(code).toBeGreaterThanOrEqual(11);
+  expect(code).toBeLessThanOrEqual(13);
+  const headingGap = await turn.getByRole("heading", { name: "Next step" }).evaluate((el) => parseFloat(getComputedStyle(el).marginTop));
+  expect(headingGap).toBeLessThan(20);
+});
+
 test("copy sits under the message, not the column corner", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
@@ -533,7 +586,46 @@ test("office artifacts land as review cards", async ({ page }) => {
   await expect(card.getByText("week.docx", { exact: true })).toBeVisible();
   await expect(card.getByText("reports/week.docx")).toBeVisible();
   await expect(card.getByRole("button", { name: "Open in Review" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Open", exact: true })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Preview" })).toHaveCount(0);
+  await card.getByRole("button", { name: "Open in Review" }).click();
+  await expect(page.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("review file preview fills the pane and highlights source", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "fix the name" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "e1",
+          name: "str_replace",
+          arguments: JSON.stringify({ path: "src/main.go", old_str: "oldFn", new_str: "newFn" }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "renamed", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  const card = page.getByTestId("artifact-card").filter({ hasText: "main.go" });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Open in Review" }).click();
+  const pane = page.getByTestId("review-files");
+  const preview = page.getByTestId("review-file-preview");
+  await expect(preview).toBeVisible();
+  const paneBox = await pane.boundingBox();
+  const prevBox = await preview.boundingBox();
+  expect(paneBox && prevBox).toBeTruthy();
+  expect(prevBox!.height).toBeGreaterThan(paneBox!.height * 0.55);
+  const code = preview.getByTestId("artifact-code");
+  await expect(code).toContainText("package main");
+  await expect(code).toContainText("func Hello()");
+  await expect(code.locator("span[style*='color']").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("write_file html and str_replace render as previewable artifacts", async ({ page }) => {
@@ -700,16 +792,18 @@ test("task plan sits above the composer instead of the letter", async ({ page })
   await page.goto("/");
   const chip = page.getByTestId("task-plan");
   await expect(chip).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show plan" })).toBeVisible();
   await expect(chip).toContainText("Move the checklist");
   await expect(chip).toContainText("1/3");
   await expect(page.getByTestId("artifact-card")).toHaveCount(0);
   await expect(page.getByTestId("process-summary")).toContainText("Updated the plan");
+  await expect(chip.getByText("Cover with a test")).toHaveCount(0);
   await expect(page.getByTestId("conversation-column").getByText("Ship the composer chip")).toHaveCount(0);
+  await page.getByRole("button", { name: "Show plan" }).click();
+  await expect(chip.getByText("Cover with a test")).toBeVisible();
   await page.getByRole("button", { name: "Hide plan" }).click();
   await expect(page.getByRole("button", { name: "Show plan" })).toBeVisible();
   await expect(chip.getByText("Cover with a test")).toHaveCount(0);
-  await page.getByRole("button", { name: "Show plan" }).click();
-  await expect(chip.getByText("Cover with a test")).toBeVisible();
 });
 
 test("appearance palettes keep light off paper yellow by default", async ({ page }) => {
