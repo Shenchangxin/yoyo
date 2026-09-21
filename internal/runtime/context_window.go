@@ -6,39 +6,94 @@ const (
 	defaultOutputReserve = 16_000
 	defaultWindowBuffer  = 13_000
 	minShapeBudget       = 8_000
+	// UnknownModelWindow is the chat shaping default when the model id
+	// cannot be matched to a models.dev family.
+	UnknownModelWindow = 300_000
 )
 
 // ModelContextWindow is the best-effort catalog window for chat shaping.
+// Custom/local ids still match on the model name (AIPC-deepseek-v4.1-flash → 1M).
 // Harbor leaves ModelWindow unset so LoopPreset.CompactionTokens stays the eval budget.
 func ModelContextWindow(model string) int {
+	return ModelContextWindowFor("", model)
+}
+
+// ModelContextWindowFor infers the window from the model id. Provider is an
+// endpoint, not a catalog — a custom OpenAI-compatible host does not change the
+// model's native window.
+func ModelContextWindowFor(_, model string) int {
 	m := strings.ToLower(strings.TrimSpace(model))
-	switch {
-	case m == "":
+	if m == "" {
 		return 0
-	case strings.Contains(m, "gpt-4.1"):
+	}
+	id := lastPathSegment(m)
+	if w := catalogishWindow(id); w > 0 {
+		return w
+	}
+	return UnknownModelWindow
+}
+
+func lastPathSegment(m string) string {
+	if i := strings.LastIndex(m, "/"); i >= 0 && i+1 < len(m) {
+		return m[i+1:]
+	}
+	return m
+}
+
+func catalogishWindow(id string) int {
+	switch {
+	case nameHas(id, "gpt-4.1"):
 		return 1_047_576
-	case strings.Contains(m, "o3"), strings.Contains(m, "o4"), strings.Contains(m, "gpt-5"):
+	case nameHas(id, "o3"), nameHas(id, "o4"), nameHas(id, "gpt-5"):
 		return 200_000
-	case strings.Contains(m, "gpt-4o"), strings.Contains(m, "gpt-4-turbo"), strings.Contains(m, "gpt-4.1-mini"):
+	case nameHas(id, "gpt-4o"), nameHas(id, "gpt-4-turbo"):
 		return 128_000
-	case strings.Contains(m, "claude"):
+	case nameHas(id, "claude"):
 		return 200_000
-	case strings.Contains(m, "gemini-2"), strings.Contains(m, "gemini-1.5"):
+	case nameHas(id, "gemini-2"), nameHas(id, "gemini-1.5"):
 		return 1_000_000
-	case strings.Contains(m, "gemini"):
+	case nameHas(id, "gemini"):
 		return 128_000
-	case strings.Contains(m, "kimi"), strings.Contains(m, "moonshot"):
+	case nameHas(id, "kimi"), nameHas(id, "moonshot"):
 		return 128_000
-	case strings.Contains(m, "deepseek"):
-		return 128_000
-	case strings.Contains(m, "qwen"):
+	case nameHas(id, "deepseek"):
+		return 1_000_000
+	case nameHas(id, "qwen"), nameHas(id, "qwq"):
 		return 128_000
 	default:
-		if strings.Contains(m, "mini") || strings.Contains(m, "4o") {
-			return 128_000
-		}
-		return 128_000
+		return 0
 	}
+}
+
+func nameHas(id, token string) bool {
+	if id == token {
+		return true
+	}
+	for i := 0; ; {
+		j := strings.Index(id[i:], token)
+		if j < 0 {
+			return false
+		}
+		j += i
+		if tokenBounded(id, j, j+len(token)) {
+			return true
+		}
+		i = j + 1
+	}
+}
+
+func tokenBounded(s string, start, end int) bool {
+	if start > 0 && isModelIdent(s[start-1]) {
+		return false
+	}
+	if end < len(s) && isModelIdent(s[end]) {
+		return false
+	}
+	return true
+}
+
+func isModelIdent(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
 }
 
 func effectiveBudget(opts ShapeOpts) int {
