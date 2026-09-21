@@ -1,6 +1,16 @@
 package safeguard
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestRedactText(t *testing.T) {
+	out := RedactText("Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz")
+	if out == "" || strings.Contains(out, "sk-abcdefgh") {
+		t.Fatalf("%s", out)
+	}
+}
 
 func TestLooksExfil(t *testing.T) {
 	ok, _ := LooksExfil("connector_send", "https://webhook.site/abc", "", "")

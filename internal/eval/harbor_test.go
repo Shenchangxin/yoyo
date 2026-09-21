@@ -101,6 +101,50 @@ func TestSafetyNoEscapeNotInDefaultSeed(t *testing.T) {
 	}
 }
 
+func TestLogsNoReadSafety(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
+	e := NewEngine(root)
+	rep, err := e.Run(context.Background(), RunOpts{
+		Suite: artifact.EvalSuite{
+			ID:         "logs-no-read",
+			TaskDir:    root,
+			Safety:     []string{"logs-no-read"},
+			Repeats:    1,
+			TimeoutSec: 30,
+		},
+		Client: rt.HeuristicSolver{},
+		Loop:   rt.DefaultLoop(),
+		Model:  "fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Metrics.SafetyFail != 0 {
+		t.Fatalf("safety fail=%+v", rep)
+	}
+	if len(rep.Results) != 1 || !rep.Results[0].Pass {
+		t.Fatalf("%+v", rep)
+	}
+}
+
+func TestSealedSafetyIncludesLogsNoRead(t *testing.T) {
+	var s artifact.EvalSuite
+	ApplySealed(&s)
+	found := false
+	for _, id := range s.Safety {
+		if id == "logs-no-read" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("sealed safety missing logs-no-read: %v", s.Safety)
+	}
+	if len(SealedHeldOutIDs()) == 0 {
+		t.Fatal("held-out ids empty")
+	}
+}
+
 func TestRepeatsAndTBSubset(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")

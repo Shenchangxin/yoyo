@@ -7,6 +7,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
@@ -310,6 +311,46 @@ func (s *Service) Logs(limit int) map[string]any {
 	return s.App.Logs(limit)
 }
 
+func (s *Service) Journal(limit int) map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("journal.tail", map[string]any{"limit": limit})
+		m, _ := decode[map[string]any](v, err)
+		return m
+	}
+	return s.App.JournalTail(limit)
+}
+
+func (s *Service) ExportDiagnostics() (string, error) {
+	if s.RPC != nil {
+		v, err := s.call("logs.export", map[string]any{})
+		m, _ := decode[map[string]any](v, err)
+		path, _ := m["path"].(string)
+		return path, err
+	}
+	return s.App.ExportDiagnostics("")
+}
+
+func (s *Service) DiagnoseSession(sessionID string) (string, error) {
+	if s.RPC != nil {
+		v, err := s.call("logs.diagnose", map[string]any{"session": sessionID})
+		m, _ := decode[map[string]any](v, err)
+		text, _ := m["text"].(string)
+		return text, err
+	}
+	return s.App.DiagnoseSession(sessionID, 80)
+}
+
+func (s *Service) FrontendLogs(events []diaglog.FrontendEvent) error {
+	if s.RPC != nil {
+		_, err := s.call("logs.frontend", map[string]any{"events": events})
+		return err
+	}
+	if s.App != nil && s.App.Log != nil {
+		return s.App.Log.AppendFrontend(events)
+	}
+	return nil
+}
+
 func (s *Service) Doctor() map[string]any {
 	if s.RPC != nil {
 		v, err := s.call("doctor", nil)
@@ -358,12 +399,29 @@ func (s *Service) ReplaceMCP(servers []app.MCPServerConfig) error {
 }
 
 func (s *Service) RevealLogs() error {
-	var path string
+	var dir string
 	if s.RPC != nil {
 		v, err := s.call("logs.tail", map[string]any{"limit": 1})
 		m, _ := decode[map[string]any](v, err)
+		dir, _ = m["dir"].(string)
+	} else if s.App != nil && s.App.Log != nil {
+		dir = s.App.Log.Dir()
+	} else if s.App != nil && s.App.Home != nil {
+		dir = s.App.Home.Logs()
+	}
+	if dir == "" {
+		return errors.New("log directory unknown")
+	}
+	return RevealPath(dir)
+}
+
+func (s *Service) RevealJournal() error {
+	var path string
+	if s.RPC != nil {
+		v, err := s.call("journal.tail", map[string]any{"limit": 1})
+		m, _ := decode[map[string]any](v, err)
 		path, _ = m["path"].(string)
-	} else if s.App != nil {
+	} else if s.App != nil && s.App.Journal != nil {
 		path = s.App.Journal.Path
 	}
 	if path == "" {

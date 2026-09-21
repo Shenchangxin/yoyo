@@ -49,7 +49,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "personal-memory", tab: "personal", titleKey: "personalMemory", keywords: "memory profile staging" },
   { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job" },
   { id: "advanced-updates", tab: "advanced", titleKey: "advancedUpdates", keywords: "update channel version release" },
-  { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs journal" },
+  { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support" },
+  { id: "advanced-journal", tab: "advanced", titleKey: "advancedJournal", keywords: "journal audit chain" },
   { id: "advanced-doctor", tab: "advanced", titleKey: "advancedDoctor", keywords: "doctor diagnostics health" },
   { id: "advanced-danger", tab: "advanced", titleKey: "advancedDanger", keywords: "danger irreversible apply update" },
 ];
@@ -80,7 +81,7 @@ const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
   "mcp-json": "extensions-mcp",
   "plugins-fibers": "extensions-fibers",
   "updates-channel": "advanced-updates",
-  "logs-journal": "advanced-logs",
+  "logs-journal": "advanced-journal",
   "logs-doctor": "advanced-doctor",
   "danger-zone": "advanced-danger",
 };

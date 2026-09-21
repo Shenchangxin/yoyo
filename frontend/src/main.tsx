@@ -3,9 +3,12 @@ import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 import App from "./App";
 import { AppErrorBoundary } from "./features/AppErrorBoundary";
+import { installFrontendLogBridge } from "./lib/diag-bridge";
 import { ThemeProvider, useTheme } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
 import "./styles.css";
+
+installFrontendLogBridge();
 
 function ThemedToaster() {
   const { resolved } = useTheme();

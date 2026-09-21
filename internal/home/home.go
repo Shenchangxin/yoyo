@@ -45,6 +45,9 @@ func Open(root string) (*Dir, error) {
 		d.Computer(),
 		d.Observe(),
 		d.Worktrees(),
+		d.Logs(),
+		filepath.Join(d.Logs(), "crash"),
+		filepath.Join(d.Logs(), "mcp"),
 	} {
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			return nil, err
@@ -87,6 +90,12 @@ func (d *Dir) Browser() string    { return filepath.Join(d.Root, "browser") }
 func (d *Dir) Computer() string   { return filepath.Join(d.Root, "computer") }
 func (d *Dir) Observe() string    { return filepath.Join(d.Root, "observe") }
 func (d *Dir) Worktrees() string  { return filepath.Join(d.Root, "worktrees") }
+func (d *Dir) Logs() string {
+	if v := os.Getenv("YOYO_LOG_DIR"); v != "" {
+		return v
+	}
+	return filepath.Join(d.Root, "logs")
+}
 func (d *Dir) SessionSpill(id string) string {
 	return filepath.Join(d.Sessions(), id, "spill")
 }

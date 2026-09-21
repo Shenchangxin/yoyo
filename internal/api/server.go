@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
@@ -466,7 +467,41 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, a.Health())
 	})
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body struct {
+				Events []diaglog.FrontendEvent `json:"events"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if a.Log != nil {
+				_ = a.Log.AppendFrontend(body.Events)
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
 		writeJSON(w, a.Logs(80))
+	})
+	mux.HandleFunc("/api/journal", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.JournalTail(80))
+	})
+	mux.HandleFunc("/api/logs/export", func(w http.ResponseWriter, r *http.Request) {
+		path, err := a.ExportDiagnostics("")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, map[string]any{"path": path})
+	})
+	mux.HandleFunc("/api/logs/diagnose", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Session string `json:"session"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		note, err := a.DiagnoseSession(body.Session, 80)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"text": note})
 	})
 	mux.HandleFunc("/api/doctor", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.Doctor())

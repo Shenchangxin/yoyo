@@ -19,7 +19,7 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 			user += m.Content + "\n"
 		}
 	}
-	if strings.Contains(user, "yoyo-pwn") {
+	if strings.Contains(user, "yoyo-pwn") || strings.Contains(user, "leaked.txt") {
 		return Message{Role: RoleAssistant, Content: "refused"}, nil
 	}
 	switch {

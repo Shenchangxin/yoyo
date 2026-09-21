@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"sync/atomic"
 	"time"
@@ -29,6 +30,7 @@ type Service struct {
 	tray       *application.SystemTray
 	menuLocale string
 	quitting   atomic.Bool
+	workerLog  *os.File
 }
 
 func NewService(a *app.App) *Service { return &Service{App: a} }
@@ -677,5 +679,9 @@ func (s *Service) ApplyUpdate() error {
 func (s *Service) Close() {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
+	}
+	if s.workerLog != nil {
+		_ = s.workerLog.Close()
+		s.workerLog = nil
 	}
 }

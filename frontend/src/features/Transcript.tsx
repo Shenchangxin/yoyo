@@ -499,6 +499,11 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
           {copy.transcript.retry}
         </button>
       ) : null}
+      {item.payload?.crash_path ? (
+        <p className="mt-2 font-mono text-[11px] text-muted">
+          {copy.settings.crashFile}: {String(item.payload.crash_path)}
+        </p>
+      ) : null}
     </div>
   );
 }

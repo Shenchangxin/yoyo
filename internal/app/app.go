@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
@@ -84,6 +86,16 @@ type Config struct {
 	SearchURL               string            `yaml:"search_url" json:"search_url"`
 	SearchKey               string            `yaml:"search_key" json:"search_key"`
 	ContextWindow           int               `yaml:"context_window" json:"context_window"`
+	Log                     LogConfig         `yaml:"log,omitempty" json:"log,omitempty"`
+}
+
+type LogConfig struct {
+	Level        string   `yaml:"level,omitempty" json:"level,omitempty"`
+	Debug        []string `yaml:"debug,omitempty" json:"debug,omitempty"`
+	MaxSizeMB    int      `yaml:"max_size_mb,omitempty" json:"max_size_mb,omitempty"`
+	MaxFiles     int      `yaml:"max_files,omitempty" json:"max_files,omitempty"`
+	MaxAgeDays   int      `yaml:"max_age_days,omitempty" json:"max_age_days,omitempty"`
+	OTELEndpoint string   `yaml:"otel_endpoint,omitempty" json:"otel_endpoint,omitempty"`
 }
 
 type App struct {
@@ -130,6 +142,7 @@ type App struct {
 	Browser    *browser.Host
 	Computer   *computeruse.Host
 	Observe    *observe.Tracer
+	Log        *diaglog.Logger
 	schedStop  chan struct{}
 
 	evalMu     sync.Mutex
@@ -213,8 +226,12 @@ func Open(root, bundledEvals string) (*App, error) {
 		lastShape:    map[string]runtime.ShapeReport{},
 		askAns:       map[string]string{},
 	}
+	a.attachLogger()
 	a.Hub.Overflow = filepath.Join(h.Sessions(), "_overflow")
 	a.MCP.Roots = []string{a.Workspace()}
+	if a.Log != nil {
+		a.MCP.StderrDir = filepath.Join(a.Home.Logs(), "mcp")
+	}
 	a.initQueue()
 	a.loadKeymapFile()
 	for _, srv := range cfg.MCP {
@@ -222,13 +239,21 @@ func Open(root, bundledEvals string) (*App, error) {
 			continue
 		}
 		if srv.Endpoint != "" {
-			_ = a.MCP.StartHTTP(srv.Name, srv.Endpoint)
+			if err := a.MCP.StartHTTP(srv.Name, srv.Endpoint); err != nil {
+				diaglog.Error("mcp start http failed", "component", "mcp", "name", srv.Name, "err", err)
+			} else {
+				diaglog.Info("mcp started", "component", "mcp", "name", srv.Name, "transport", "http")
+			}
 			continue
 		}
 		if srv.Command == "" {
 			continue
 		}
-		_ = a.MCP.Start(srv.Name, srv.Command, srv.Args)
+		if err := a.MCP.Start(srv.Name, srv.Command, srv.Args); err != nil {
+			diaglog.Error("mcp start failed", "component", "mcp", "name", srv.Name, "err", err)
+		} else {
+			diaglog.Info("mcp started", "component", "mcp", "name", srv.Name, "transport", "stdio")
+		}
 	}
 	a.Caps = capability.NewBroker(capability.AutoPolicy{Allow: allow}, a.approve)
 	a.restoreRuns()
@@ -321,6 +346,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	if a.crashResume() {
 		a.resumeCrashed()
 	}
+	diaglog.Info("app open", "component", "boot", "home", h.Root, "isolated", isolated(), "isolation_kind", isolationKind(), "crash_resume", a.crashResume())
 	return a, nil
 }
 
@@ -466,6 +492,7 @@ func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	if err := a.Gate.Resolve(id, d); err != nil {
 		return err
 	}
+	diaglog.Info("approval resolved", "component", "policy", "id", id, "decision", decision, "session_id", sessionID)
 	if sessionID != "" {
 		ev := trace.Event{
 			TS:        time.Now().UTC(),
@@ -517,6 +544,14 @@ func (a *App) SaveConfig() error {
 		return err
 	}
 	a.writeKeymapFile()
+	a.attachLogger()
+	if a.Observe != nil {
+		ep := strings.TrimSpace(os.Getenv("YOYO_OTEL_ENDPOINT"))
+		if ep == "" {
+			ep = strings.TrimSpace(a.Config.Log.OTELEndpoint)
+		}
+		a.Observe.SetEndpoint(ep)
+	}
 	return nil
 }
 
@@ -528,9 +563,59 @@ func (a *App) Close() error {
 			close(a.schedStop)
 		}
 	}
+	diaglog.Info("app close", "component", "boot")
 	_ = a.MCP.Close()
 	_ = a.WASM.Close()
+	if a.Log != nil {
+		_ = a.Log.Close()
+	}
 	return a.Kernel.Dispose()
+}
+
+func (a *App) attachLogger() {
+	if a == nil || a.Home == nil {
+		return
+	}
+	proc := diaglog.DetectProcess()
+	if proc == "" {
+		proc = diaglog.ProcessGUI
+	}
+	opt := diaglog.Options{
+		Dir:        a.Home.Logs(),
+		Process:    proc,
+		Version:    version.Version,
+		DebugCats:  append([]string(nil), a.Config.Log.Debug...),
+		MaxFiles:   a.Config.Log.MaxFiles,
+		MaxAgeDays: a.Config.Log.MaxAgeDays,
+	}
+	if a.Config.Log.MaxSizeMB > 0 {
+		opt.MaxSize = int64(a.Config.Log.MaxSizeMB) << 20
+	}
+	if a.Config.Log.Level != "" {
+		switch strings.ToLower(a.Config.Log.Level) {
+		case "debug":
+			opt.Level = slog.LevelDebug
+		case "warn", "warning":
+			opt.Level = slog.LevelWarn
+		case "error":
+			opt.Level = slog.LevelError
+		default:
+			opt.Level = slog.LevelInfo
+		}
+	}
+	if env := os.Getenv(diaglog.EnvDebug); env != "" {
+		opt.DebugCats = diaglog.ParseDebug(env)
+	}
+	if def := diaglog.Default(); def != nil && def.Dir() == opt.Dir && def.Process() == proc {
+		def.Apply(opt)
+		a.Log = def
+		return
+	}
+	lg, err := diaglog.Open(opt)
+	if err != nil {
+		return
+	}
+	a.Log = lg
 }
 
 func (a *App) Workspace() string {
@@ -615,6 +700,8 @@ func (a *App) resumeCrashed() {
 	}
 	a.queueMu.Unlock()
 	for _, id := range ids {
+		diaglog.Warn("crash resume skips high-risk grants", "component", "policy", "session_id", id)
+		diaglog.Warn("crash resume", "component", "runtime", "session_id", id)
 		go a.kickQueue(id)
 	}
 }

@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { catalog } from "../lib/copy";
+import { reportRenderer } from "../lib/diag-bridge";
 
 type State = { err: Error | null };
 
@@ -12,6 +13,12 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
 
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.error(err, info.componentStack);
+    reportRenderer({
+      level: "error",
+      msg: err.message,
+      stack: `${err.stack || ""}\n${info.componentStack || ""}`,
+      source: "ErrorBoundary",
+    });
   }
 
   render() {

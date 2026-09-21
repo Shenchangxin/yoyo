@@ -15,12 +15,16 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
 func main() {
+	if os.Getenv(diaglog.EnvProcess) == "" && os.Getenv(diaglog.EnvWorker) != "1" {
+		_ = os.Setenv(diaglog.EnvProcess, string(diaglog.ProcessCLI))
+	}
 	if err := root().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -55,7 +59,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd(), logsCmd())
 	return cmd
 }
 
@@ -447,7 +451,8 @@ func updateCmd() *cobra.Command {
 }
 
 func doctorCmd() *cobra.Command {
-	return &cobra.Command{
+	var dest string
+	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Print workstation health for humans (vault, workspace, harness)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -456,11 +461,62 @@ func doctorCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			if dest != "" {
+				path, err := a.ExportDiagnostics(dest)
+				if err != nil {
+					return err
+				}
+				fmt.Println(path)
+				return nil
+			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			return enc.Encode(a.Doctor())
 		},
 	}
+	cmd.Flags().StringVar(&dest, "export", "", "write a redacted support zip")
+	return cmd
+}
+
+func logsCmd() *cobra.Command {
+	var level, component, session string
+	var limit int
+	cmd := &cobra.Command{
+		Use:   "logs [path|tail]",
+		Short: "Diagnostic log path or tail (not the journal)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := openApp()
+			if err != nil {
+				return err
+			}
+			defer a.Close()
+			op := "tail"
+			if len(args) > 0 {
+				op = strings.ToLower(args[0])
+			}
+			if op == "path" {
+				if a.Log == nil {
+					return fmt.Errorf("logger unavailable")
+				}
+				fmt.Println(a.Log.Path())
+				return nil
+			}
+			if a.Log == nil {
+				return fmt.Errorf("logger unavailable")
+			}
+			recs, err := a.Log.Tail(limit, diaglog.Filter{Level: level, Component: component, SessionID: session})
+			if err != nil {
+				return err
+			}
+			fmt.Println(diaglog.FormatRecords(recs))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&level, "level", "", "filter level")
+	cmd.Flags().StringVar(&component, "component", "", "filter component")
+	cmd.Flags().StringVar(&session, "session", "", "filter session_id")
+	cmd.Flags().IntVar(&limit, "limit", 80, "lines")
+	return cmd
 }
 
 func evolveCmd() *cobra.Command {

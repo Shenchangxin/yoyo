@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -101,8 +102,11 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		PreCompactHooks:  parent.PreCompactHooks,
 		OnEvent:          nil,
 		Meter:            parent.Meter,
+	Observe: parent.Observe,
 		Home:             parent.Home,
 		ModelWindow:      parent.ModelWindow,
+		TurnID:           diaglog.NewTurnID(),
+		TraceID:          parent.TraceID,
 	})
 	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID}
 	if err != nil {

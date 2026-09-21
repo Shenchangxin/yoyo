@@ -7,11 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
 
 const ProtocolVersion = "2025-11-25"
@@ -19,10 +24,11 @@ const ProtocolVersion = "2025-11-25"
 // Host speaks MCP JSON-RPC over stdio or Streamable HTTP. Yoyo's loop stays
 // the only runtime; MCP tools register into the same Tool surface.
 type Host struct {
-	mu      sync.Mutex
-	servers map[string]*Server
-	Timeout time.Duration
-	Roots   []string
+	mu        sync.Mutex
+	servers   map[string]*Server
+	Timeout   time.Duration
+	Roots     []string
+	StderrDir string
 }
 
 type Server struct {
@@ -36,12 +42,14 @@ type Server struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	stdout    *bufio.Reader
-	stderr    *ringBuf
-	http      *http.Client
+	stderr     *ringBuf
+	stderrFile string
+	http       *http.Client
 	mu        sync.Mutex
 	nextID    int
 	timeout   time.Duration
 	roots     []string
+	stopping  atomic.Bool
 }
 
 type Tool struct {
@@ -85,6 +93,10 @@ func (h *Host) Start(name, command string, args []string) error {
 		timeout: h.Timeout,
 		roots:   append([]string(nil), h.Roots...),
 		stderr:  newRing(16 << 10),
+	}
+	if h.StderrDir != "" {
+		_ = os.MkdirAll(h.StderrDir, 0o755)
+		s.stderrFile = filepath.Join(h.StderrDir, sanitizeMCPName(name)+".stderr.log")
 	}
 	if s.timeout <= 0 {
 		s.timeout = 30 * time.Second
@@ -274,16 +286,30 @@ func (s *Server) startStdio() error {
 	s.cmd = cmd
 	s.stdin = stdin
 	s.stdout = bufio.NewReader(stdout)
+	s.stopping.Store(false)
 	go s.drainStderr(stderr)
+	go s.watchExit(cmd)
 	return nil
 }
 
 func (s *Server) drainStderr(r io.Reader) {
+	var file *os.File
+	if s.stderrFile != "" {
+		file, _ = os.OpenFile(s.stderrFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if file != nil {
+			defer file.Close()
+		}
+	}
 	buf := make([]byte, 1024)
 	for {
 		n, err := r.Read(buf)
-		if n > 0 && s.stderr != nil {
-			s.stderr.Write(buf[:n])
+		if n > 0 {
+			if s.stderr != nil {
+				s.stderr.Write(buf[:n])
+			}
+			if file != nil {
+				_, _ = file.Write(buf[:n])
+			}
 		}
 		if err != nil {
 			return
@@ -291,10 +317,41 @@ func (s *Server) drainStderr(r io.Reader) {
 	}
 }
 
+func sanitizeMCPName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range name {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "unknown"
+	}
+	return b.String()
+}
+
+func (s *Server) watchExit(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	err := cmd.Wait()
+	if s.stopping.Load() {
+		diaglog.Info("mcp process exited", "component", "mcp", "name", s.Name)
+		return
+	}
+	diaglog.Error("mcp crashed", "component", "mcp", "name", s.Name, "err", err)
+}
+
 func (s *Server) kill() {
+	s.stopping.Store(true)
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
-		_, _ = s.cmd.Process.Wait()
 	}
 	s.cmd = nil
 	s.stdin = nil

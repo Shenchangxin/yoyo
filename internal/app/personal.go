@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
 	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
@@ -118,6 +120,13 @@ func (a *App) openPersonal() error {
 	a.Inbox = box
 	a.Computer = cu
 	a.Observe = observe.Open(a.Home.Observe())
+	ep := strings.TrimSpace(os.Getenv("YOYO_OTEL_ENDPOINT"))
+	if ep == "" {
+		ep = strings.TrimSpace(a.Config.Log.OTELEndpoint)
+	}
+	if ep != "" {
+		a.Observe.SetEndpoint(ep)
+	}
 	return nil
 }
 
@@ -347,8 +356,10 @@ func (a *App) scheduleLoop() {
 
 func (a *App) StartMCPHTTP(name, endpoint string) error {
 	if err := a.MCP.StartHTTP(name, endpoint); err != nil {
+		diaglog.Error("mcp start http failed", "component", "mcp", "name", name, "err", err)
 		return err
 	}
+	diaglog.Info("mcp started", "component", "mcp", "name", name, "transport", "http")
 	a.persistMCP()
 	return nil
 }

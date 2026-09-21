@@ -229,7 +229,7 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 		advertised = append([]string(nil), opts.Snapshot.EvalTools...)
 	}
 	tools := &rt.WorkspaceTools{
-		Workspace: work, SessionID: sessionID, Caps: caps, Skills: skillBodies,
+		Workspace: work, Home: work, SessionID: sessionID, Caps: caps, Skills: skillBodies,
 		Advertised: advertised,
 	}
 	loop := opts.Loop

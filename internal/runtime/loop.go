@@ -10,11 +10,14 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
+	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 type RunRequest struct {
 	SessionID        string
+	TurnID           string
+	TraceID          string
 	TaskID           string
 	User             string
 	Workspace        string
@@ -38,6 +41,7 @@ type RunRequest struct {
 	OnEvent          func(trace.Event)
 	OnShape          func(ShapeReport)
 	Meter            *Meter
+	Observe          *observe.Tracer
 	Inject           string
 	PullSteer        func() string
 	Checkpoint       string
@@ -320,10 +324,31 @@ func spillOf(req RunRequest) *Spill {
 	return nil
 }
 
-func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (Message, error) {
+func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (msg Message, err error) {
+	var sp observe.Span
+	if req.Observe != nil {
+		parent := observe.SpanFrom(ctx)
+		sp = req.Observe.StartChild(parent, "model.complete", req.SessionID, map[string]any{"round": roundID, "model": req.Model})
+		sp.TurnID = req.TurnID
+		defer func() {
+			if sp.Attrs == nil {
+				sp.Attrs = map[string]any{}
+			}
+			if msg.PromptTokens > 0 {
+				sp.Attrs["gen_ai.usage.input_tokens"] = msg.PromptTokens
+			}
+			if msg.CompletionTokens > 0 {
+				sp.Attrs["gen_ai.usage.output_tokens"] = msg.CompletionTokens
+			}
+			if msg.CachedTokens > 0 || msg.CacheReported {
+				sp.Attrs["gen_ai.usage.cache_read_tokens"] = msg.CachedTokens
+			}
+			req.Observe.End(sp, err)
+		}()
+	}
 	if s, ok := req.Client.(Streamer); ok {
 		var wg sync.WaitGroup
-		msg, err := s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
+		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" {
 				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
 			}
@@ -412,12 +437,21 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		started := time.Now()
 		j := jobs[i]
 		var res ToolResult
+		var toolSpan observe.Span
+		if req.Observe != nil {
+			parent := observe.SpanFrom(ctx)
+			toolSpan = req.Observe.StartChild(parent, "tool.exec", req.SessionID, map[string]any{"tool": j.tc.Name})
+			toolSpan.TurnID = req.TurnID
+		}
 		if j.deny {
 			res = ToolResult{Content: "ERROR: blocked by hook: " + j.reason, Err: fmt.Errorf("blocked")}
 		} else if req.Tools == nil {
 			res = ToolResult{Err: fmt.Errorf("no tools")}
 		} else {
 			res = req.Tools.Call(j.tc.Name, j.args)
+		}
+		if req.Observe != nil {
+			req.Observe.End(toolSpan, res.Err)
 		}
 		content := res.Content
 		if res.Err != nil {
@@ -738,10 +772,16 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 		Type:             typ,
 		Source:           source,
 		SessionID:        req.SessionID,
+		TurnID:           req.TurnID,
 		HarnessSnapshot:  req.HarnessHash,
 		ModelFingerprint: req.ModelFingerprint,
 		TaskID:           req.TaskID,
 		Payload:          payload,
+	}
+	if req.TurnID != "" {
+		if _, ok := payload["turn_id"]; !ok {
+			payload["turn_id"] = req.TurnID
+		}
 	}
 	persist := req.Trace != nil
 	if persist && typ == trace.TypeAssistant {

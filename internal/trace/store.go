@@ -73,6 +73,7 @@ type Event struct {
 	HarnessSnapshot  string         `json:"harness_snapshot,omitempty"`
 	ModelFingerprint string         `json:"model_fingerprint,omitempty"`
 	TaskID           string         `json:"task_id,omitempty"`
+	TurnID           string         `json:"turn_id,omitempty"`
 	ItemKind         string         `json:"item_kind,omitempty"`
 	Payload          map[string]any `json:"payload,omitempty"`
 }

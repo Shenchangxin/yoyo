@@ -5,8 +5,10 @@ export type SettingsHost = {
   health: Health;
   plugins: any;
   logs: any;
+  journal: any;
   doctor: any;
   vault: any;
+  sessionId?: string;
   patch: (partial: Partial<AppConfig>) => Promise<void>;
   saveProvider: (next: Partial<AppConfig>, apiKey: string) => Promise<void>;
   onBrowse: () => Promise<string>;
@@ -19,4 +21,8 @@ export type SettingsHost = {
   onApplyUpdate: () => Promise<void>;
   onTestProvider: () => Promise<any>;
   onRevealLogs: () => Promise<void>;
+  onRevealJournal?: () => Promise<void>;
+  onCopyLogPath?: () => Promise<void>;
+  onExportDiagnostics?: () => Promise<void>;
+  onDiagnose?: () => Promise<void>;
 };

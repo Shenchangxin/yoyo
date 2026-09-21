@@ -66,6 +66,7 @@ type ExtraTool struct {
 
 type WorkspaceTools struct {
 	Workspace    string
+	Home         string
 	SessionID    string
 	Caps         *capability.Broker
 	Skills       map[string]string
@@ -344,6 +345,9 @@ func (t *WorkspaceTools) resolve(rel string) (string, error) {
 	if !capability.WithinWorkspace(t.Workspace, p) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
+	if capability.ForbiddenDiagPath(t.Home, p) {
+		return "", fmt.Errorf("path denied: diagnostic plane")
+	}
 	return p, nil
 }
 
@@ -588,6 +592,9 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		return ToolResult{Err: err}
 	}
 	if err := DenyArgvPaths(argv, t.Workspace); err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := DenyHomePlanes(argv, t.Home); err != nil {
 		return ToolResult{Err: err}
 	}
 	if err := t.check(capability.Shell, "shell", t.Workspace, command); err != nil {

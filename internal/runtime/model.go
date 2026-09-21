@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
 
 type Role string
@@ -149,10 +151,17 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	}
 	res, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
+		diaglog.ErrorContext(ctx, "provider request failed", "component", "model", "err", err)
 		return Message{}, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusTooManyRequests {
+		diaglog.WarnContext(ctx, "provider rate limited", "component", "model", "status", res.StatusCode)
+	}
 	if res.StatusCode >= 300 {
+		if res.StatusCode != http.StatusTooManyRequests {
+			diaglog.ErrorContext(ctx, "provider error", "component", "model", "status", res.StatusCode)
+		}
 		raw, _ := io.ReadAll(res.Body)
 		return Message{}, fmt.Errorf("openai: %s: %s", res.Status, truncate(string(raw), 800))
 	}

@@ -56,3 +56,24 @@ func TestWithinWorkspaceGitBashPath(t *testing.T) {
 		t.Fatalf("msys %s not in %s", msys, root)
 	}
 }
+
+func TestForbiddenDiagPath(t *testing.T) {
+	home := t.TempDir()
+	for _, p := range []string{
+		filepath.Join(home, "logs"),
+		filepath.Join(home, "logs", "yoyo.log"),
+		filepath.Join(home, "journal", "chain.jsonl"),
+		filepath.Join(home, "observe", "spans.jsonl"),
+		filepath.Join(home, "vault.json"),
+	} {
+		if !ForbiddenDiagPath(home, p) {
+			t.Fatalf("want deny %s", p)
+		}
+	}
+	if ForbiddenDiagPath(home, filepath.Join(home, "workspace", "readme.md")) {
+		t.Fatal("workspace file must be allowed")
+	}
+	if ForbiddenDiagPath("", filepath.Join(home, "logs")) {
+		t.Fatal("empty home must not deny")
+	}
+}

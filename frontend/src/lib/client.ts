@@ -1108,6 +1108,39 @@ export async function logs(limit = 80): Promise<any> {
   return http("/api/logs");
 }
 
+export async function journal(limit = 80): Promise<any> {
+  const s = await wailsService();
+  if (s?.Journal) return s.Journal(limit);
+  return http("/api/journal");
+}
+
+export async function exportDiagnostics(): Promise<string> {
+  const s = await wailsService();
+  if (s?.ExportDiagnostics) {
+    const path = await s.ExportDiagnostics();
+    return String(path || "");
+  }
+  const r = await http<{ path?: string }>("/api/logs/export", { method: "POST", body: "{}" });
+  return String(r?.path || "");
+}
+
+export async function diagnoseSession(session: string): Promise<string> {
+  const s = await wailsService();
+  if (s?.DiagnoseSession) return String((await s.DiagnoseSession(session)) || "");
+  const r = await http<{ text?: string }>("/api/logs/diagnose", { method: "POST", body: JSON.stringify({ session }) });
+  return String(r?.text || "");
+}
+
+export async function reportFrontend(events: { ts?: string; level: string; msg: string; stack?: string; source?: string; session_id?: string }[]): Promise<void> {
+  if (!events.length) return;
+  const s = await wailsService();
+  if (s?.FrontendLogs) {
+    await s.FrontendLogs(events);
+    return;
+  }
+  await http("/api/logs", { method: "POST", body: JSON.stringify({ events }) });
+}
+
 export async function checkUpdate(): Promise<any> {
   const s = await wailsService();
   if (s?.CheckUpdate) return s.CheckUpdate();
@@ -1129,6 +1162,11 @@ export async function replaceMCP(servers: { name: string; command: string; args:
 export async function revealLogs(): Promise<void> {
   const s = await wailsService();
   if (s?.RevealLogs) return s.RevealLogs();
+}
+
+export async function revealJournal(): Promise<void> {
+  const s = await wailsService();
+  if (s?.RevealJournal) return s.RevealJournal();
 }
 
 export async function keyStatus(): Promise<any> {

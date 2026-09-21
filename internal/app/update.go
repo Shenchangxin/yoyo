@@ -8,6 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/update"
 )
@@ -78,9 +79,11 @@ func (a *App) CheckUpdate() map[string]any {
 	defer cancel()
 	res, err := update.Check(ctx, a.Config.UpdateURL, nil, nil, pub)
 	if err != nil {
+		diaglog.Error("update check failed", "component", "update", "err", err)
 		out["error"] = err.Error()
 		return out
 	}
+	diaglog.Info("update check", "component", "update", "verified", res.Verified, "newer", res.Newer)
 	out["verified"] = res.Verified
 	out["newer"] = res.Newer
 	out["manifest"] = res.Manifest

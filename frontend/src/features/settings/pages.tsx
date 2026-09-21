@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Check, FolderOpen } from "lucide-react";
+import { Check, Copy, Download, FolderOpen, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
+import { writeClipboard } from "../../lib/clipboard";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
 import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
@@ -394,11 +395,19 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [url, setUrl] = useState(host.cfg.updateUrl);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [level, setLevel] = useState("all");
   useEffect(() => setUrl(host.cfg.updateUrl), [host.cfg.updateUrl]);
   const channel = host.cfg.updateChannel || "nightly";
-  const records = asArray(host.logs?.journal || host.logs);
-  const journal = records.length
-    ? records
+  const lines = asArray(host.logs?.lines);
+  const diagnostic = lines.length
+    ? lines
+        .filter((r: any) => level === "all" || String(r.level || "").toLowerCase() === level)
+        .map((r: any) => r.raw || `${r.ts || ""} ${r.level || ""} ${r.component || ""} ${r.msg || ""}`)
+        .join("\n")
+    : String(host.logs?.text || "");
+  const journalRecords = asArray(host.journal?.journal);
+  const journal = journalRecords.length
+    ? journalRecords
         .map(
           (r: any) =>
             `${r.time || r.Time || ""} ${r.type || r.Type || ""} ${
@@ -406,9 +415,8 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
             }`,
         )
         .join("\n")
-    : host.logs
-      ? JSON.stringify(host.logs, null, 2).slice(0, 12000)
-      : copy.settings.emptyLogs;
+    : "";
+  const logPath = String(host.logs?.path || host.logs?.dir || "");
 
   return (
     <>
@@ -466,12 +474,96 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
         title={copy.settings.sections.advancedLogs}
         footnote={copy.settings.logsHint}
         actions={
-          <Button size="sm" variant="ghost" onClick={() => void host.onRevealLogs()}>
-            {copy.settings.reveal}
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                if (logPath && (await writeClipboard(logPath))) toast.success(copy.settings.pathCopied);
+              }}
+            >
+              <Copy aria-hidden />
+              {copy.settings.copyPath}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void host.onRevealLogs()}>
+              {copy.settings.reveal}
+            </Button>
+            {host.onExportDiagnostics ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await host.onExportDiagnostics?.();
+                    toast.success(copy.settings.exportedBundle);
+                  } catch (e) {
+                    toast.error(String(e));
+                  }
+                }}
+              >
+                <Download aria-hidden />
+                {copy.settings.exportBundle}
+              </Button>
+            ) : null}
+            {host.onDiagnose ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  try {
+                    await host.onDiagnose?.();
+                    toast.success(copy.settings.diagnoseTurn);
+                  } catch (e) {
+                    toast.error(String(e));
+                  }
+                }}
+              >
+                <Stethoscope aria-hidden />
+                {copy.settings.diagnoseTurn}
+              </Button>
+            ) : null}
+          </div>
         }
       >
-        <SettingCodePanel className="max-h-[360px] min-h-[96px]">{journal}</SettingCodePanel>
+        <SettingRow title={copy.settings.filterLevel} border={false}>
+          <SettingSegmented
+            id="log-level"
+            ariaLabel="Level"
+            value={level}
+            options={[
+              { value: "all", label: "All" },
+              { value: "info", label: "Info" },
+              { value: "warn", label: "Warn" },
+              { value: "error", label: "Error" },
+            ]}
+            onChange={setLevel}
+          />
+        </SettingRow>
+        {logPath ? <SettingValueRow title={copy.settings.copyPath} value={logPath} mono /> : null}
+        <div data-testid="diagnostics-tail">
+          <SettingCodePanel className="max-h-[360px] min-h-[96px]">
+            {diagnostic || copy.settings.emptyLogs}
+          </SettingCodePanel>
+        </div>
+      </SettingSection>
+
+      <SettingSection
+        id="advanced-journal"
+        title={copy.settings.sections.advancedJournal}
+        footnote={copy.settings.journalHint}
+        actions={
+          host.onRevealJournal ? (
+            <Button size="sm" variant="ghost" onClick={() => void host.onRevealJournal?.()}>
+              {copy.settings.reveal}
+            </Button>
+          ) : null
+        }
+      >
+        <div data-testid="journal-tail">
+          <SettingCodePanel className="max-h-[240px] min-h-[72px]">
+            {journal || copy.settings.emptyJournal}
+          </SettingCodePanel>
+        </div>
       </SettingSection>
 
       <SettingSection id="advanced-doctor" title={copy.settings.sections.advancedDoctor}>
