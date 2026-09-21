@@ -477,7 +477,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	voice := runtime.OperatorVoice(message, hist)
 	tools.OperatorVoice = voice
-	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(voice, a.Config.Locale, loop.PlanMode)...)
+	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(loop.PlanMode)...)
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		User:             message,

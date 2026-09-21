@@ -336,9 +336,9 @@ func (t *WorkspaceTools) resolve(rel string) (string, error) {
 	if rel == "" {
 		return "", fmt.Errorf("empty path")
 	}
-	p := rel
+	p := capability.CanonicalizeToolPath(rel)
 	if !filepath.IsAbs(p) {
-		p = filepath.Join(t.Workspace, rel)
+		p = filepath.Join(t.Workspace, p)
 	}
 	p = filepath.Clean(p)
 	if !capability.WithinWorkspace(t.Workspace, p) {
@@ -593,46 +593,108 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if err := t.check(capability.Shell, "shell", t.Workspace, command); err != nil {
 		return ToolResult{Err: err}
 	}
+	posix := looksPosixUnix(command)
+	rewriteNote := ""
+	if runtime.GOOS == "windows" && cmdStartWouldHang(command) {
+		if next, ok := rewriteCmdStart(command); ok {
+			rewriteNote = "rewrote cmd start to Start-Process (captured stdout would hang)\n"
+			command = next
+			argv = SplitShellArgv(command)
+		} else {
+			return ToolResult{Err: cmdStartHangError()}
+		}
+	}
 	if timeoutSec <= 0 {
 		timeoutSec = 60
 	}
-	ctx := t.Ctx
-	if ctx == nil {
-		ctx = context.Background()
+	parent := t.Ctx
+	if parent == nil {
+		parent = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
-	defer cancel()
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		if looksPosixUnix(command) {
-			sh := windowsPosixShell()
-			if sh == "" {
-				return ToolResult{Err: fmt.Errorf("unix shell syntax on Windows and bash is not on PATH; use list_dir/glob/grep or cmd builtins")}
-			}
-			cmd = exec.CommandContext(ctx, sh, "-lc", command)
-		} else if !shellNeedsWrapper(command, argv) {
-			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
+	timeout := time.Duration(timeoutSec) * time.Second
+	idle, block, fuse := chatShellFuse(t != nil && t.ChatOverlay, timeout)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if fuse {
+		ctx = parent
+	} else {
+		ctx, cancel = context.WithTimeout(parent, timeout)
+		defer cancel()
+	}
+	bindCtx := ctx
+	if fuse {
+		bindCtx = nil
+	}
+	cmd, err := bindShell(bindCtx, command, argv, posix)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	cmd.Dir = t.Workspace
+	out := runShell(ctx, cmd, idle, block)
+	if out.Err != nil && runtime.GOOS == "windows" && !posix && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(out.Err) {
+		if fuse {
+			cmd = exec.Command("cmd", "/C", command)
 		} else {
 			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		}
-	} else {
-		if !shellNeedsWrapper(command, argv) {
-			cmd = exec.CommandContext(ctx, argv[0], argv[1:]...)
-		} else {
-			cmd = exec.CommandContext(ctx, "sh", "-lc", command)
-		}
-	}
-	cmd.Dir = t.Workspace
-	out, err := isolation.Run(ctx, cmd)
-	if err != nil && runtime.GOOS == "windows" && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(err) {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		cmd.Dir = t.Workspace
-		out, err = isolation.Run(ctx, cmd)
+		out = runShell(ctx, cmd, idle, block)
 	}
-	if err != nil {
-		return ToolResult{Content: string(out), Err: err}
+	content := rewriteNote + string(out.Output)
+	if out.Background {
+		content = fmt.Sprintf("still running pid=%d; not killed (idle/block fuse)\n%s", out.PID, content)
+		return ToolResult{Content: content}
 	}
-	return ToolResult{Content: string(out)}
+	if out.Err != nil {
+		return ToolResult{Content: content, Err: out.Err}
+	}
+	return ToolResult{Content: content}
+}
+
+const (
+	chatShellBlock = 30 * time.Second
+	chatShellIdle  = 10 * time.Second
+)
+
+func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Duration, fuse bool) {
+	if !overlay || timeout <= chatShellBlock {
+		return 0, 0, false
+	}
+	return chatShellIdle, chatShellBlock, true
+}
+
+func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration) isolation.Outcome {
+	if idle > 0 || block > 0 {
+		return isolation.Wait(ctx, cmd, idle, block)
+	}
+	out, err := isolation.Run(ctx, cmd)
+	return isolation.Outcome{Output: out, Err: err}
+}
+
+func bindShell(ctx context.Context, command string, argv []string, posix bool) (*exec.Cmd, error) {
+	newCmd := func(name string, args ...string) *exec.Cmd {
+		if ctx != nil {
+			return exec.CommandContext(ctx, name, args...)
+		}
+		return exec.Command(name, args...)
+	}
+	if runtime.GOOS == "windows" {
+		if posix || looksPosixUnix(command) {
+			sh := windowsPosixShell()
+			if sh == "" {
+				return nil, fmt.Errorf("unix shell syntax on Windows and bash is not on PATH; use list_dir/glob/grep or cmd builtins")
+			}
+			return newCmd(sh, "-lc", "set +m; trap '' HUP; "+command), nil
+		}
+		if !shellNeedsWrapper(command, argv) {
+			return newCmd(argv[0], argv[1:]...), nil
+		}
+		return newCmd("cmd", "/C", command), nil
+	}
+	if !shellNeedsWrapper(command, argv) {
+		return newCmd(argv[0], argv[1:]...), nil
+	}
+	return newCmd("sh", "-lc", command), nil
 }
 
 func isExecNotFound(err error) bool {
@@ -650,18 +712,46 @@ func windowsPosixShell() string {
 	if runtime.GOOS != "windows" {
 		return ""
 	}
+	var candidates []string
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		candidates = append(candidates,
+			filepath.Join(pf, "Git", "bin", "bash.exe"),
+			filepath.Join(pf, "Git", "usr", "bin", "bash.exe"),
+		)
+	}
+	if pf86 := os.Getenv("ProgramFiles(x86)"); pf86 != "" {
+		candidates = append(candidates, filepath.Join(pf86, "Git", "bin", "bash.exe"))
+	}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		candidates = append(candidates, filepath.Join(local, "Programs", "Git", "bin", "bash.exe"))
+	}
+	candidates = append(candidates, `C:\msys64\usr\bin\bash.exe`)
 	for _, n := range []string{"bash.exe", "bash"} {
-		p, err := exec.LookPath(n)
-		if err != nil {
-			continue
+		if p, err := exec.LookPath(n); err == nil {
+			candidates = append(candidates, p)
 		}
-		low := strings.ToLower(p)
-		if strings.Contains(low, `\system32\`) || strings.Contains(low, `/system32/`) {
-			continue
+	}
+	for _, p := range candidates {
+		if usableWindowsPosixShell(p) {
+			return p
 		}
-		return p
 	}
 	return ""
+}
+
+func usableWindowsPosixShell(p string) bool {
+	if strings.TrimSpace(p) == "" {
+		return false
+	}
+	low := strings.ToLower(filepath.Clean(p))
+	if strings.Contains(low, `\system32\`) || strings.Contains(low, `/system32/`) {
+		return false
+	}
+	if strings.Contains(low, `\windowsapps\`) || strings.Contains(low, `\windows\system32`) {
+		return false
+	}
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }
 
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {

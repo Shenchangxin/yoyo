@@ -211,7 +211,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 }
 
 func stickObjective(n *SessionNotes, text string) {
-	t := capRunes(strings.TrimSpace(text), 400)
+	t := capRunes(collapseDoubledText(strings.TrimSpace(text)), 400)
 	if t == "" {
 		return
 	}
@@ -324,11 +324,39 @@ func extractJSONPaths(args string) []string {
 	}
 	var out []string
 	for _, k := range []string{"path", "file", "glob"} {
-		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
+		if s, ok := m[k].(string); ok && keepNotePath(s) {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+func keepNotePath(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "." || p == "./" || p == ".." {
+		return false
+	}
+	if strings.ContainsAny(p, "*?[]") {
+		return false
+	}
+	return true
+}
+
+// collapseDoubledText drops an accidental exact concatenation of the same
+// operator paragraph (IME/paste). Short strings are left alone so "haha"
+// does not collapse.
+func collapseDoubledText(s string) string {
+	s = strings.TrimSpace(s)
+	rs := []rune(s)
+	n := len(rs)
+	if n < 24 || n%2 != 0 {
+		return s
+	}
+	mid := n / 2
+	if string(rs[:mid]) == string(rs[mid:]) {
+		return string(rs[:mid])
+	}
+	return s
 }
 
 func keys(m map[string]bool) []string {

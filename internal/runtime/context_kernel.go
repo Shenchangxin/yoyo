@@ -38,6 +38,9 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 		}
 	}
 	identity := AssembleIdentity(loop, req.Fragments)
+	if env := AssembleEnvironment(req.Workspace); env != "" {
+		identity += "\n## Environment\n" + env
+	}
 	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, src)
 	if strings.TrimSpace(req.ProfileMemory) != "" {
 		pins += "\n## Profile memory\n" + req.ProfileMemory
@@ -68,9 +71,9 @@ func (k *ContextKernel) seed() ([]Message, error) {
 		emit(*k.req, trace.TypeInject, "mention", map[string]any{"text": k.req.Inject})
 		messages = append(messages, Message{Role: RoleUser, Content: mentionUserPrefix + "\n" + k.req.Inject})
 	}
-	if user := strings.TrimSpace(k.req.User); user != "" {
-		emit(*k.req, trace.TypeUser, "user", map[string]any{"text": k.req.User})
-		messages = append(messages, Message{Role: RoleUser, Content: k.req.User})
+	if user := collapseDoubledText(strings.TrimSpace(k.req.User)); user != "" {
+		emit(*k.req, trace.TypeUser, "user", map[string]any{"text": user})
+		messages = append(messages, Message{Role: RoleUser, Content: user})
 	} else if len(stripSystem(k.req.History)) == 0 {
 		return nil, fmt.Errorf("nothing to continue")
 	}
@@ -96,7 +99,6 @@ func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 	}
 	loaded := capLoadedSkills(loadedFrom(k.req.Tools))
 	k.dyn = AssembleDynamic(planTextOf(k.req.Tools), loaded, k.notes, ckpt, AssembleToday(k.req.Tools))
-	k.dyn = withChatVoice(*k.req, k.dyn, k.notes)
 	return setDynamic(messages, k.dyn)
 }
 
@@ -202,23 +204,23 @@ func hotPrefixBytes(msgs []Message) string {
 
 func reportPayload(report ShapeReport, extra map[string]any) map[string]any {
 	p := map[string]any{
-		"kind":            "shape",
-		"note":            report.Note,
-		"tokens":          report.Tokens,
-		"budget":          report.Budget,
-		"window":          report.Window,
-		"prefix_tokens":   report.PrefixTokens,
-		"dynamic_tokens":  report.DynamicTokens,
-		"schema_tokens":   report.SchemaTokens,
-		"layers":          report.Layers,
-		"elided":          report.Elided,
-		"cache_stable":    report.CacheStable,
-		"prefix_hash":     report.PrefixHash,
-		"dynamic_at":      report.DynamicAt,
-		"cached_tokens":   report.CachedTokens,
-		"cache_reported":  report.CacheReported,
-		"trigger":         report.Trigger,
-		"hydrated":        report.Hydrated,
+		"kind":           "shape",
+		"note":           report.Note,
+		"tokens":         report.Tokens,
+		"budget":         report.Budget,
+		"window":         report.Window,
+		"prefix_tokens":  report.PrefixTokens,
+		"dynamic_tokens": report.DynamicTokens,
+		"schema_tokens":  report.SchemaTokens,
+		"layers":         report.Layers,
+		"elided":         report.Elided,
+		"cache_stable":   report.CacheStable,
+		"prefix_hash":    report.PrefixHash,
+		"dynamic_at":     report.DynamicAt,
+		"cached_tokens":  report.CachedTokens,
+		"cache_reported": report.CacheReported,
+		"trigger":        report.Trigger,
+		"hydrated":       report.Hydrated,
 	}
 	if report.ProviderPrompt > 0 {
 		p["provider_prompt"] = report.ProviderPrompt
