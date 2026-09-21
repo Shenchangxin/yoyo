@@ -3,6 +3,7 @@ package runtime
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
@@ -53,6 +54,29 @@ func LoadSkillDirs(roots ...string) []artifact.Skill {
 	for _, name := range order {
 		out = append(out, seen[name])
 	}
+	return out
+}
+
+func SkillPackFiles(dir string) []string {
+	if dir == "" {
+		return nil
+	}
+	var out []string
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasPrefix(info.Name(), ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return nil
+		}
+		out = append(out, filepath.ToSlash(rel))
+		return nil
+	})
+	sort.Strings(out)
 	return out
 }
 

@@ -20,29 +20,71 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("invalid skill slug")
 	}
-	raw, err := skillmarket.Get(skillmarket.SkillURL(slug))
+	files, warn, err := skillmarket.FetchPack(slug)
 	if err != nil {
 		return nil, err
 	}
-	_, scan := skillmarket.ScanSkillMD(raw, slug)
+	raw := packSkillMD(files)
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("pack missing SKILL.md")
+	}
+	skParsed, scan := skillmarket.ScanSkillMD(raw, slug)
 	if !scan.OK {
 		return map[string]any{"scan": scan, "ok": false}, fmt.Errorf("scan blocked: %s", strings.Join(scan.Reasons, "; "))
 	}
-	dir, err := skillmarket.Install(a.Home.Skills(), slug, scan, raw)
+	scan.Files = len(files)
+	if skillmarket.MentionsScripts(skParsed.Body) && !packHasScripts(files) {
+		if warn == "" {
+			warn = "skill references scripts/ but the downloaded pack has none"
+		}
+	}
+	dir, err := skillmarket.Install(a.Home.Skills(), slug, scan, files)
 	if err != nil {
 		return nil, err
 	}
-	sk := a.GetSkill("", slug)
+	sk := a.GetSkill("", scan.Name)
+	if sk == nil {
+		sk = a.GetSkill("", slug)
+	}
 	return map[string]any{
-		"ok":   true,
-		"dir":  dir,
-		"scan": scan,
-		"skill": sk,
+		"ok":      true,
+		"dir":     dir,
+		"scan":    scan,
+		"skill":   sk,
+		"files":   skillmarketFiles(files),
+		"warning": warn,
 	}, nil
 }
 
 func (a *App) UninstallMarketSkill(slug string) error {
 	return skillmarket.Uninstall(a.Home.Skills(), slug)
+}
+
+func packSkillMD(files []skillmarket.PackFile) []byte {
+	for _, f := range files {
+		if strings.EqualFold(f.Rel, "SKILL.md") {
+			return f.Data
+		}
+	}
+	return nil
+}
+
+func packHasScripts(files []skillmarket.PackFile) bool {
+	for _, f := range files {
+		rel := strings.ToLower(strings.ReplaceAll(f.Rel, "\\", "/"))
+		if strings.HasPrefix(rel, "scripts/") {
+			return true
+		}
+	}
+	return false
+}
+
+func skillmarketFiles(files []skillmarket.PackFile) []string {
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, f.Rel)
+	}
+	return out
 }
 
 func skillOrigin(dir, home, bundled string) string {

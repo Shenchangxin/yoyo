@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/skillmarket"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
@@ -182,13 +184,21 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 		if len(body) > 400 {
 			body = body[:400]
 		}
-		out = append(out, map[string]string{
-			"name":        item.Name,
-			"description": item.Description,
-			"dir":         item.Dir,
-			"body":        body,
-			"source":      skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
-		})
+		row := map[string]string{
+			"name":         item.Name,
+			"description":  item.Description,
+			"dir":          item.Dir,
+			"body":         body,
+			"source":       skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
+			"icon":         skillIcon(item),
+			"display_name": item.DisplayName,
+			"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
+			"slug":         filepath.Base(item.Dir),
+		}
+		if skillmarket.PackIncomplete(item.Dir, item.Body) {
+			row["incomplete"] = "1"
+		}
+		out = append(out, row)
 	}
 	return out
 }
@@ -196,17 +206,57 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 func (a *App) GetSkill(workspace, name string) map[string]string {
 	name = strings.TrimSpace(name)
 	for _, item := range a.collectSkills(workspace) {
-		if item.Name == name {
-			return map[string]string{
-				"name":        item.Name,
-				"description": item.Description,
-				"dir":         item.Dir,
-				"body":        item.Body,
-				"source":      skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
+		if item.Name == name || filepath.Base(item.Dir) == name {
+			row := map[string]string{
+				"name":         item.Name,
+				"description":  item.Description,
+				"dir":          item.Dir,
+				"body":         item.Body,
+				"source":       skillOrigin(item.Dir, a.Home.Root, bundledSkillsDir(a.BundledEvals)),
+				"icon":         skillIcon(item),
+				"display_name": item.DisplayName,
+				"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
+				"slug":         filepath.Base(item.Dir),
 			}
+			if skillmarket.PackIncomplete(item.Dir, item.Body) {
+				row["incomplete"] = "1"
+			}
+			return row
 		}
 	}
 	return nil
+}
+
+func skillIcon(item artifact.Skill) string {
+	if item.Icon != "" {
+		return item.Icon
+	}
+	if rec, ok := skillmarket.ReadRecord(item.Dir); ok {
+		if rec.Icon != "" {
+			return rec.Icon
+		}
+	}
+	if item.Dir == "" {
+		return ""
+	}
+	for _, name := range []string{"icon.png", "icon.svg", "icon.webp", "icon.jpg", "icon.jpeg", "avatar.png"} {
+		p := filepath.Join(item.Dir, name)
+		b, err := os.ReadFile(p)
+		if err != nil || len(b) == 0 || len(b) > 96<<10 {
+			continue
+		}
+		mime := "image/png"
+		switch strings.ToLower(filepath.Ext(name)) {
+		case ".svg":
+			mime = "image/svg+xml"
+		case ".webp":
+			mime = "image/webp"
+		case ".jpg", ".jpeg":
+			mime = "image/jpeg"
+		}
+		return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
+	}
+	return ""
 }
 
 func (a *App) SearchSessions(q string, includeArchived bool) ([]SessionMeta, error) {

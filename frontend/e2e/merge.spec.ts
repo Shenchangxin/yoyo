@@ -216,6 +216,34 @@ test("plan text parses statuses and explanation", () => {
   ]);
 });
 
+test("composer chip drops the previous turn's plan", () => {
+  const prior = [
+    { type: "user", session_id: "s", payload: { text: "first" } },
+    { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"old\",\"status\":\"in_progress\"}]}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "p1", name: "update_plan", content: "1. [in_progress] old" } },
+    { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. [in_progress] old", id: "p1" } },
+  ];
+  expect(latestTaskPlan(replayEvents(prior))?.steps).toEqual([{ step: "old", status: "in_progress" }]);
+  expect(latestTaskPlan(replayEvents([...prior, { type: "user", session_id: "s", payload: { text: "second" } }]))).toBeNull();
+  const next = replayEvents([
+    ...prior,
+    { type: "user", session_id: "s", payload: { text: "second" } },
+    { type: "tool_call", session_id: "s", payload: { id: "p2", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"new\",\"status\":\"pending\"}]}" } },
+    { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. [pending] new", id: "p2" } },
+  ]);
+  expect(latestTaskPlan(next)?.steps).toEqual([{ step: "new", status: "pending" }]);
+});
+
+test("steer does not clear the current turn plan", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "do it" } },
+    { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"keep\",\"status\":\"in_progress\"}]}" } },
+    { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. [in_progress] keep", id: "p1" } },
+    { type: "user", session_id: "s", source: "steer", payload: { text: "User steering (apply now): hurry" } },
+  ]);
+  expect(latestTaskPlan(items)?.steps).toEqual([{ step: "keep", status: "in_progress" }]);
+});
+
 test("failed update_plan is skipped for the composer chip", () => {
   const items = replayEvents([
     { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"old\",\"status\":\"pending\"}]}" } },

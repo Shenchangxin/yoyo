@@ -575,6 +575,7 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 }
 
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
+	command = t.expandSkillScripts(command)
 	if t != nil && t.ChatOverlay {
 		if rel, offset, limit, ok := parseShellRead(command); ok {
 			res := t.readFile(rel, offset, limit)
@@ -588,10 +589,11 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		}
 	}
 	argv := SplitShellArgv(command)
-	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow); err != nil {
+	extra := t.skillDirRoots()
+	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow, extra...); err != nil {
 		return ToolResult{Err: err}
 	}
-	if err := DenyArgvPaths(argv, t.Workspace); err != nil {
+	if err := DenyArgvPaths(argv, t.Workspace, extra...); err != nil {
 		return ToolResult{Err: err}
 	}
 	if err := DenyHomePlanes(argv, t.Home); err != nil {
@@ -769,11 +771,12 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	if !ok {
 		return ToolResult{Err: fmt.Errorf("unknown skill %s", name)}
 	}
+	content := t.decorateSkillBody(name, body)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, n := range t.Loaded {
 		if n == name {
-			return ToolResult{Content: body}
+			return ToolResult{Content: content}
 		}
 	}
 	t.Loaded = append(t.Loaded, name)
@@ -782,7 +785,7 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 			t.AllowedTools = strings.Fields(sk.AllowedTools)
 		}
 	}
-	return ToolResult{Content: body}
+	return ToolResult{Content: content}
 }
 
 func (t *WorkspaceTools) recall(id string, offset, limit int) ToolResult {

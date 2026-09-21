@@ -806,6 +806,35 @@ test("task plan sits above the composer instead of the letter", async ({ page })
   await expect(chip.getByText("Cover with a test")).toHaveCount(0);
 });
 
+test("task plan leaves the composer when the next user turn starts", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "first" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "p1",
+          name: "update_plan",
+          arguments: JSON.stringify({ plan: [{ step: "Old work", status: "in_progress" }] }),
+        },
+      },
+      {
+        type: "plan",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:02Z",
+        payload: { name: "update_plan", id: "p1", text: "1. [in_progress] Old work\n" },
+      },
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:10Z", payload: { text: "second" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("task-plan")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column").getByText("second")).toBeVisible();
+});
+
 test("appearance palettes keep light off paper yellow by default", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
