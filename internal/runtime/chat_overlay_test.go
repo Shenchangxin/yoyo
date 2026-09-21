@@ -105,6 +105,17 @@ func TestParseShellRead(t *testing.T) {
 	if _, _, _, ok = parseShellRead(`cat a.go | wc -l`); ok {
 		t.Fatal("pipeline must stay in shell")
 	}
+	rel, off, lim, ok = parseShellRead(`cd webui/src && sed -n '1,140p' types.ts`)
+	if !ok || rel != "webui/src/types.ts" || off != 1 || lim != 140 {
+		t.Fatalf("cd+sed %s %d %d %v", rel, off, lim, ok)
+	}
+	rel, _, _, ok = parseShellRead(`cd webui && cat package.json`)
+	if !ok || rel != "webui/package.json" {
+		t.Fatalf("cd+cat %s %v", rel, ok)
+	}
+	if _, _, _, ok = parseShellRead(`cd webui && cat a.ts b.ts`); ok {
+		t.Fatal("multi-file cat must stay in shell")
+	}
 }
 
 func TestChatRejectsEnglishPlanForChineseOperator(t *testing.T) {
@@ -256,6 +267,35 @@ func TestSnipMarkerKeepsWritePaths(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("snip lost write paths: %+v", out)
+	}
+}
+
+func TestSnipPreservesOperatorGoal(t *testing.T) {
+	goal := "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端"
+	msgs := []Message{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: goal},
+	}
+	for i := 0; i < 8; i++ {
+		id := "r" + itoa(i)
+		msgs = append(msgs,
+			Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: id, Name: "read_file", Arguments: `{"path":"a.go"}`}}},
+			Message{Role: RoleTool, ToolCallID: id, Name: "read_file", Content: "package a"},
+		)
+	}
+	msgs = append(msgs, Message{Role: RoleUser, Content: "继续"})
+	out, n := snipWindow(msgs, 2, nil)
+	if n == 0 || out == nil {
+		t.Fatal("expected snip")
+	}
+	found := false
+	for _, m := range out {
+		if m.Role == RoleUser && strings.Contains(m.Content, "RBAC") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("snip dropped the operator goal: %+v", out)
 	}
 }
 

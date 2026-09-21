@@ -156,27 +156,52 @@ func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 	if cut <= head {
 		return nil, 0
 	}
-	dropped := msgs[head:cut]
+	var saved, rest []Message
+	for _, m := range msgs[head:cut] {
+		if keepThroughSnip(m) {
+			saved = append(saved, m)
+		} else {
+			rest = append(rest, m)
+		}
+	}
+	if len(saved) > 8 {
+		saved = append(saved[:2], saved[len(saved)-6:]...)
+	}
+	if len(rest) == 0 {
+		return nil, 0
+	}
 	id := "snip"
 	if spill != nil {
-		raw, _ := json.Marshal(dropped)
+		raw, _ := json.Marshal(rest)
 		id = spill.Put("", string(raw))
 	}
 	marker := Message{
 		Role: RoleUser,
 		Content: fmt.Sprintf(
 			"[elided %d earlier messages id=%s — call recall_context with this id; original transcript is intact on disk]",
-			len(dropped), id,
+			len(rest), id,
 		),
 	}
-	if paths := writePathsFromMessages(dropped); len(paths) > 0 {
+	if paths := writePathsFromMessages(rest); len(paths) > 0 {
 		marker.Content += "\nRecent writes still on disk (read_file, do not rewrite from memory): " + strings.Join(paths, ", ")
 	}
-	out := make([]Message, 0, head+1+len(msgs)-cut)
+	out := make([]Message, 0, head+len(saved)+1+len(msgs)-cut)
 	out = append(out, msgs[:head]...)
+	out = append(out, saved...)
 	out = append(out, marker)
 	out = append(out, msgs[cut:]...)
-	return out, len(dropped)
+	return out, len(rest)
+}
+
+func keepThroughSnip(m Message) bool {
+	if m.Role != RoleUser {
+		return false
+	}
+	c := strings.TrimSpace(m.Content)
+	if c == "" || alreadyStubbed(c) || isControlUser(c) {
+		return false
+	}
+	return true
 }
 
 func pinnedPrefix(msgs []Message) int {
@@ -195,11 +220,20 @@ func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 	if len(ids) <= keepLast {
 		return 0
 	}
+	hot := map[int]bool{}
+	if keepLast >= 16 {
+		for idx := range lastPathToolIndexes(msgs, ids, 12) {
+			hot[idx] = true
+		}
+	}
 	n := 0
 	cutoff := ids[len(ids)-keepLast]
 	start := pinnedPrefix(msgs)
 	for i := start; i < cutoff; i++ {
 		if msgs[i].Role != RoleTool || alreadyStubbed(msgs[i].Content) {
+			continue
+		}
+		if hot[i] {
 			continue
 		}
 		if len(msgs[i].Content) < 400 {
@@ -213,6 +247,51 @@ func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 		n++
 	}
 	return n
+}
+
+func lastPathToolIndexes(msgs []Message, ids []int, capPaths int) map[int]bool {
+	keep := map[int]bool{}
+	if capPaths <= 0 {
+		return keep
+	}
+	seen := map[string]bool{}
+	for i := len(ids) - 1; i >= 0; i-- {
+		idx := ids[i]
+		p := toolResultPath(msgs, idx)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		keep[idx] = true
+		if len(seen) >= capPaths {
+			break
+		}
+	}
+	return keep
+}
+
+func toolResultPath(msgs []Message, toolIdx int) string {
+	if toolIdx < 0 || toolIdx >= len(msgs) {
+		return ""
+	}
+	id := msgs[toolIdx].ToolCallID
+	name := msgs[toolIdx].Name
+	for i := toolIdx - 1; i >= 0; i-- {
+		if msgs[i].Role != RoleAssistant {
+			continue
+		}
+		for _, tc := range msgs[i].ToolCalls {
+			if (id != "" && tc.ID == id) || (id == "" && tc.Name == name) {
+				if paths := extractJSONPaths(tc.Arguments); len(paths) > 0 {
+					return paths[0]
+				}
+			}
+		}
+		if id != "" {
+			break
+		}
+	}
+	return ""
 }
 
 func forceFit(msgs []Message, budget int, spill *Spill) int {

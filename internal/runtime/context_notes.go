@@ -75,6 +75,18 @@ func (n SessionNotes) Markdown() string {
 	return b.String()
 }
 
+func isResumeUser(text string) bool {
+	s := strings.TrimSpace(text)
+	s = strings.Trim(s, "。.!！…")
+	switch strings.ToLower(s) {
+	case "继续", "接着", "接着做", "请继续", "往下", "继续吧", "继续干",
+		"continue", "go on", "keep going", "resume", "go ahead":
+		return true
+	default:
+		return false
+	}
+}
+
 func isControlUser(text string) bool {
 	s := strings.TrimSpace(text)
 	if s == "" {
@@ -118,7 +130,7 @@ func ExtractNotes(evs []trace.Event) SessionNotes {
 			if ev.Source == "steer" {
 				continue
 			}
-			if t, _ := ev.Payload["text"].(string); t != "" && !isControlUser(t) {
+			if t, _ := ev.Payload["text"].(string); t != "" && !isControlUser(t) && !isResumeUser(t) {
 				n.Objective = capRunes(strings.TrimSpace(t), 400)
 			}
 		case trace.TypeToolCall:
@@ -166,7 +178,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 	for _, m := range msgs {
 		switch m.Role {
 		case RoleUser:
-			if strings.TrimSpace(m.Content) != "" && !isControlUser(m.Content) {
+			if strings.TrimSpace(m.Content) != "" && !isControlUser(m.Content) && !isResumeUser(m.Content) {
 				n.Objective = capRunes(strings.TrimSpace(m.Content), 400)
 			}
 		case RoleAssistant:
@@ -196,7 +208,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 }
 
 func mergeNotes(prev, next SessionNotes) SessionNotes {
-	if strings.TrimSpace(next.Objective) == "" {
+	if strings.TrimSpace(next.Objective) == "" || isResumeUser(next.Objective) {
 		next.Objective = prev.Objective
 	}
 	next.Files = unionCap(prev.Files, next.Files, 24)

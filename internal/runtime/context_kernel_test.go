@@ -256,3 +256,43 @@ func TestForceFitStubsCallArgsBeforeResults(t *testing.T) {
 		t.Fatalf("stub lost read_file hint: %s", shaped)
 	}
 }
+
+func TestMicrocompactKeepsLastPathOnChatKeep(t *testing.T) {
+	aBody := strings.Repeat("A", 800)
+	bBody := strings.Repeat("B", 800)
+	msgs := []Message{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: "u"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a1", Name: "read_file", Arguments: `{"path":"api.go"}`}}},
+		{Role: RoleTool, ToolCallID: "a1", Name: "read_file", Content: aBody},
+	}
+	for i := 0; i < 20; i++ {
+		id := "b" + itoa(i)
+		msgs = append(msgs,
+			Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: id, Name: "read_file", Arguments: `{"path":"other.go"}`}}},
+			Message{Role: RoleTool, ToolCallID: id, Name: "read_file", Content: bBody},
+		)
+	}
+	chat := copyMessages(msgs)
+	microcompact(chat, 16, nil)
+	got := ""
+	for _, m := range chat {
+		if m.ToolCallID == "a1" {
+			got = m.Content
+		}
+	}
+	if alreadyStubbed(got) || !strings.Contains(got, "AAA") {
+		t.Fatalf("chat must keep last read of api.go, got %q", capRunes(got, 80))
+	}
+	harbor := copyMessages(msgs)
+	microcompact(harbor, 4, nil)
+	got = ""
+	for _, m := range harbor {
+		if m.ToolCallID == "a1" {
+			got = m.Content
+		}
+	}
+	if !alreadyStubbed(got) {
+		t.Fatalf("harbor microkeep 4 must still stub the old read")
+	}
+}

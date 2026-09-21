@@ -47,3 +47,23 @@ func TestWriteNotesKeepsOldObjective(t *testing.T) {
 		t.Fatalf("files %+v", got.Files)
 	}
 }
+
+func TestResumeDoesNotReplaceObjective(t *testing.T) {
+	sp := NewSpill(t.TempDir())
+	WriteNotes(sp, SessionNotes{Objective: "完善 RBAC 控制台"})
+	WriteNotes(sp, NotesFromMessages([]Message{
+		{Role: RoleUser, Content: "完善 RBAC 控制台"},
+		{Role: RoleUser, Content: "继续"},
+	}))
+	got := ParseNotes(ReadNotes(sp))
+	if got.Objective != "完善 RBAC 控制台" {
+		t.Fatalf("objective %q", got.Objective)
+	}
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "完善 RBAC 控制台"}},
+		{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "继续"}},
+	}
+	if ExtractNotes(evs).Objective != "完善 RBAC 控制台" {
+		t.Fatalf("extract %q", ExtractNotes(evs).Objective)
+	}
+}
