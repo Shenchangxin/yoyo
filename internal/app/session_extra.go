@@ -315,7 +315,7 @@ func (a *App) CompactSession(id string) (string, error) {
 	if meta.Model != "" {
 		model = meta.Model
 	}
-	window := runtime.ModelContextWindow(model)
+	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
 	client, _ := a.Client()
 	note := runtime.CompactHistory(a.Traces, id, msgs, loop, spill, client, model, window, frags)
 	runtime.WriteDiscoverIndex(meta.ToolRoot(), id, spill)

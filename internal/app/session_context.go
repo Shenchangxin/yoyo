@@ -18,7 +18,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	if model == "" {
 		model = a.Config.Model
 	}
-	window := runtime.ModelContextWindow(model)
+	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
 	hash := session.ResolveHarness(session.NormalizePolicy(meta.HarnessPolicy), meta.Harness, a.ActiveHash())
 	if hash == "" {
 		hash = a.ActiveHash()

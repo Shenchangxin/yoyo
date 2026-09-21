@@ -426,7 +426,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		hist = runtime.MessagesFromEvents(evs)
 		roundSeq = runtime.MaxAssistantRound(evs)
 	}
-	window := runtime.ModelContextWindow(model)
+	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
 	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
 	wrapped := onEvent
 	if a.Hub != nil {

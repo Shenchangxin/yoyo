@@ -6,7 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { applyProviderPreset, PROVIDER_PRESETS } from "../../lib/providers";
-import { formatTokens, formatUsd, lookupCatalogModel, mergeModelIds, modelsForProvider } from "../../lib/models-dev";
+import { formatTokens, formatUsd, lookupCatalogModel, mergeModelIds, modelsForProvider, resolveContextWindow } from "../../lib/models-dev";
 import { MODELS_DEV_SNAPSHOT } from "../../lib/models-dev.snapshot";
 import {
   CONTROL_LG,
@@ -29,6 +29,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   const vaultSource = String(host.vault?.source || host.doctor?.vault?.source || "");
   const catalog = useMemo(() => modelsForProvider(MODELS_DEV_SNAPSHOT, provider), [provider]);
   const selected = lookupCatalogModel(MODELS_DEV_SNAPSHOT, provider, model)?.model;
+  const inferredWindow = resolveContextWindow(MODELS_DEV_SNAPSHOT, provider, model);
 
   function hydrate() {
     const id = host.cfg.provider === "anthropic" ? "claude" : host.cfg.provider || "openai";
@@ -166,7 +167,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
         title={copy.settings.sections.providerModels}
         footnote={copy.settings.catalogHint}
       >
-        <SettingRow title={copy.settings.selectedModel} border={!!selected || catalog.length > 0}>
+        <SettingRow title={copy.settings.selectedModel} border={!!selected || catalog.length > 0 || !!model.trim()}>
           <Input
             aria-label={copy.settings.model}
             className={cn(CONTROL_MD, "font-mono")}
@@ -186,6 +187,11 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                 value={`${formatUsd(selected.cost.input)} → ${formatUsd(selected.cost.output)}`}
               />
             ) : null}
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" />
+          </div>
+        ) : model.trim() ? (
+          <div className="relative flex flex-wrap gap-1.5 px-4 py-3">
+            <MetaChip label={copy.settings.ctxWindow} value={formatTokens(inferredWindow)} />
             <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" />
           </div>
         ) : null}

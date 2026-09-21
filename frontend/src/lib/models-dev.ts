@@ -23,6 +23,62 @@ export type ModelsDevCatalog = {
   providers: Record<string, Record<string, CatalogEntry>>;
 };
 
+/** Chat default when models.dev has no entry for the current model id. */
+export const UNKNOWN_MODEL_WINDOW = 300_000;
+
+export function resolveContextWindow(
+  catalog: ModelsDevCatalog | null | undefined,
+  presetId: string,
+  modelId: string,
+): number {
+  const id = (modelId || "").trim();
+  if (!id) return 0;
+  const listed = lookupExactCatalogModel(catalog, (presetId || "").trim(), id);
+  if (listed?.model.contextWindow) return listed.model.contextWindow;
+  return inferCatalogWindow(catalog, id) || UNKNOWN_MODEL_WINDOW;
+}
+
+/** Fold dotted generations so AIPC-deepseek-v4.1-flash hits deepseek-v4-flash. */
+function foldModelId(id: string): string {
+  return id.toLowerCase().replace(/v(\d+)\.(\d+)/g, "v$1");
+}
+
+function inferCatalogWindow(catalog: ModelsDevCatalog | null | undefined, modelId: string): number | undefined {
+  if (!catalog) return undefined;
+  const needle = foldModelId(stripOpenrouter(modelId));
+  let bestLen = 0;
+  let best: number | undefined;
+  for (const models of Object.values(catalog.providers)) {
+    for (const [key, entry] of Object.entries(models)) {
+      const k = foldModelId(key);
+      const win = entry.model.contextWindow;
+      if (!win || k.length <= bestLen) continue;
+      if (needle === k || needle.includes(k)) {
+        best = win;
+        bestLen = k.length;
+      }
+    }
+  }
+  return best;
+}
+
+function lookupExactCatalogModel(
+  catalog: ModelsDevCatalog | null | undefined,
+  presetId: string,
+  modelId: string,
+): CatalogEntry | undefined {
+  const id = (modelId || "").trim();
+  if (!catalog || !id) return undefined;
+  const mapped = presetId === "azure" ? "openai" : presetId === "openrouter" ? openrouterPreset(id) : presetId;
+  const models = catalog.providers[mapped];
+  if (!models) return undefined;
+  const exact = models[id] || models[stripOpenrouter(id)];
+  if (exact) return exact;
+  const undated = id.replace(/-\d{8}$/, "");
+  if (undated !== id && models[undated]) return models[undated];
+  return undefined;
+}
+
 export function lookupCatalogModel(
   catalog: ModelsDevCatalog | null | undefined,
   presetId: string,

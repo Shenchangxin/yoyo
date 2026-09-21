@@ -13,7 +13,7 @@ import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Attachment, AuthMode, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
 import type { TaskPlan } from "../lib/plan";
 import { PlanChip } from "./PlanChip";
-import { formatTokens, lookupCatalogModel, composerModelIds } from "../lib/models-dev";
+import { formatTokens, lookupCatalogModel, composerModelIds, resolveContextWindow } from "../lib/models-dev";
 import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
@@ -81,7 +81,7 @@ export function Composer(props: {
   const modelOptions = composerModelIds(MODELS_DEV_SNAPSHOT, props.provider, currentModel, props.models);
   const slashOpen = hint === "slash";
   const meta = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "openai", currentModel);
-  const fallbackWindow = meta?.model.contextWindow || 0;
+  const fallbackWindow = resolveContextWindow(MODELS_DEV_SNAPSHOT, props.provider || "", currentModel);
   const modelLabel = meta?.model.name || currentModel;
 
   const slashPrefix = slashQuery(value);
