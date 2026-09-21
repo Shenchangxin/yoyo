@@ -33,6 +33,8 @@ type UIState = {
   closeSettings: () => void;
   openSkills: () => void;
   closeSkills: () => void;
+  openVideo: () => void;
+  closeVideo: () => void;
   setSettingsTab: (tab: SettingsTab) => void;
   setInspector: (v: boolean | ((p: boolean) => boolean)) => void;
   setChatDock: (v: boolean | ((p: boolean) => boolean)) => void;
@@ -145,6 +147,8 @@ export const useUI = create<UIState>((set) => ({
   closeSettings: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
   openSkills: () => set({ surface: "skills" }),
   closeSkills: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
+  openVideo: () => set({ surface: "video" }),
+  closeVideo: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
   setChatDock: (v) =>

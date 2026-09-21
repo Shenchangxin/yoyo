@@ -111,6 +111,8 @@ export function useWorkstation() {
   const closeSettings = useUI((s) => s.closeSettings);
   const openSkills = useUI((s) => s.openSkills);
   const closeSkills = useUI((s) => s.closeSkills);
+  const openVideo = useUI((s) => s.openVideo);
+  const closeVideo = useUI((s) => s.closeVideo);
   const inspector = useUI((s) => s.inspector);
   const setInspector = useUI((s) => s.setInspector);
   const chatDock = useUI((s) => s.chatDock);
@@ -872,7 +874,7 @@ export function useWorkstation() {
       }
       if (matchKey(e, km.toggleReview)) {
         e.preventDefault();
-        if (useUI.getState().surface === "harness") setChatDock((v) => !v);
+        if (useUI.getState().surface === "harness" || useUI.getState().surface === "video") setChatDock((v) => !v);
         else setInspector((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !typing && useUI.getState().surface === "harness") {
@@ -932,6 +934,7 @@ export function useWorkstation() {
     else if (c === "sidebar") setSidebarCollapsed((v) => !v);
     else if (c === "dock") setChatDock((v) => !v);
     else if (c === "harness") openHarness("overview");
+    else if (c === "video") openVideo();
     else if (c === "run-eval") void runHarbor("suite");
     else if (c === "run-evolve") void runEvolve();
     else if (c === "palette") setPalette(true);
@@ -951,7 +954,7 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,

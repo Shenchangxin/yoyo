@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	goruntime "runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,6 +170,9 @@ func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 func callMethod(ctx context.Context, a *app.App, method string, params json.RawMessage) (any, error) {
 	if method == "" {
 		return map[string]any{"ok": true}, nil
+	}
+	if strings.HasPrefix(method, "video.") || strings.HasPrefix(method, "drama.") || strings.HasPrefix(method, "media.") {
+		return a.VideoCall(method, asMap(params))
 	}
 	switch method {
 	case "health":
@@ -903,3 +907,15 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 type errMethod string
 
 func (e errMethod) Error() string { return "method not found: " + string(e) }
+
+func asMap(params json.RawMessage) map[string]any {
+	m := map[string]any{}
+	if len(params) == 0 {
+		return m
+	}
+	_ = json.Unmarshal(params, &m)
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
+}

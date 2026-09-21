@@ -168,6 +168,9 @@ func (s *Service) rebuildMenusNow() {
 	view.Add(n.OpenHarness).OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "harness")
 	})
+	view.Add(n.OpenVideo).OnClick(func(ctx *application.Context) {
+		gui.Event.Emit("yoyo:command", "video")
+	})
 	view.AddSeparator()
 	view.Add(n.Palette).SetAccelerator("CmdOrCtrl+K").OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "palette")

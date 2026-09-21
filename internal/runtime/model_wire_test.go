@@ -51,6 +51,18 @@ func TestWireMessagesNestsFunction(t *testing.T) {
 	}
 }
 
+func TestDisableThinkingPayload(t *testing.T) {
+	p := map[string]any{"model": "x"}
+	disableThinking(p)
+	th, _ := p["thinking"].(map[string]any)
+	if th["type"] != "disabled" || p["enable_thinking"] != false {
+		t.Fatalf("%+v", p)
+	}
+	if !thinkingRejected("unknown field: enable_thinking") {
+		t.Fatal("rejected")
+	}
+}
+
 func TestClassifyInvalidToolCalls(t *testing.T) {
 	err := fmtError(`openai: 500 Internal Server Error: {"code":500,"msg":"Model call failed. Please try again later: invalid_parameter_error: \u003c400\u003e InternalError.Algo.InvalidParameter: Field required: input.messages.4.tool_calls.0.function","error_key":"error.all_channel_models_failed"}`)
 	info := ClassifyError(err)

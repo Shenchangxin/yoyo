@@ -1,6 +1,6 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
-export type Surface = "agent" | "harness" | "settings" | "skills";
+export type Surface = "agent" | "harness" | "settings" | "skills" | "video";
 export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer" | "index" | "behavior";
 export type SettingsTab =
   | "general"

@@ -28,6 +28,7 @@ import { HarnessWorkspace } from "./features/harness/HarnessWorkspace";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
+import { VideoHub } from "./features/video/VideoHub";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
 import { readPopoutId } from "./lib/popout";
@@ -60,10 +61,11 @@ export default function App() {
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
+  const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const agent = popout || ws.surface === "agent";
   const three = agent && !popout && ws.inspector && !sheetInspect;
-  const dock = harnessing && ws.chatDock && !sheetInspect;
+  const dock = (harnessing || videoing) && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
   const showRail = !popout && !settings && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !settings && !showRail && ws.sidebarHover;
@@ -71,7 +73,7 @@ export default function App() {
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
-  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
+  const sheetRight = sheetInspect && ((agent && ws.inspector) || ((harnessing || videoing) && ws.chatDock));
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = ws.active?.toolRoot || sessionWs;
@@ -308,6 +310,7 @@ export default function App() {
       onLab={ws.setLab}
       onHarness={() => ws.openHarness("overview")}
       onSkills={() => ws.openSkills()}
+      onVideo={() => ws.openVideo()}
       onSettings={() => ws.openSettings()}
       onCollapse={() => ws.setSidebarCollapsed(true)}
       onToggleArchived={() => ws.setShowArchived((v) => !v)}
@@ -383,6 +386,8 @@ export default function App() {
     <Button size="sm" variant="ghost" onClick={ws.closeSettings}>{copy.settings.back}</Button>
   ) : skills ? (
     <Button size="sm" variant="ghost" onClick={ws.closeSkills}>{copy.skills.close}</Button>
+  ) : videoing ? (
+    <Button size="sm" variant="ghost" onClick={ws.closeVideo}>{copy.video.close}</Button>
   ) : ws.sidebarCollapsed || railNarrow ? (
     <Button size="icon" variant="ghost" aria-label={copy.rail.expand} onClick={() => { ws.setSidebarCollapsed(false); ws.setSidebarHover(true); }}>
       <PanelLeft />
@@ -391,7 +396,7 @@ export default function App() {
 
   const headerRight = (
     <>
-      {harnessing ? (
+      {harnessing || videoing ? (
         <Button
           size="sm"
           variant="ghost"
@@ -419,6 +424,8 @@ export default function App() {
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
+    : videoing
+      ? <span className="text-[13px] font-medium">{copy.video.title}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -468,12 +475,24 @@ export default function App() {
     />
   );
 
+  const videoPane = (
+    <VideoHub
+      sessionId={ws.activeId}
+      onNeedSession={() => {
+        ws.setChatDock(true);
+        if (!ws.activeId) void ws.onNew();
+      }}
+    />
+  );
+
   const workspace = settings ? (
     <SidebarCard>
       <SettingsSurface ws={ws} />
     </SidebarCard>
   ) : skills ? (
     <SidebarCard>{skillsPane}</SidebarCard>
+  ) : videoing ? (
+    <SidebarCard>{videoPane}</SidebarCard>
   ) : harnessing ? (
     <SidebarCard>{labPane}</SidebarCard>
   ) : agentPane;

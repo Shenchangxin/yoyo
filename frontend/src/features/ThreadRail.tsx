@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   ChevronLeft,
+  Clapperboard,
   GitBranch,
   MessageSquarePlus,
   MoreHorizontal,
@@ -116,6 +117,7 @@ export function ThreadRail(props: {
   onLab: (lab: Lab) => void;
   onHarness: () => void;
   onSkills: () => void;
+  onVideo: () => void;
   onSettings: () => void;
   onCollapse: () => void;
   onPin?: (t: Thread, pinned: boolean) => void;
@@ -146,6 +148,7 @@ export function ThreadRail(props: {
   const virtual = list.length > 24;
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
+  const videoOn = props.surface === "video";
   return (
     <SidebarCard>
       <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
@@ -227,6 +230,20 @@ export function ThreadRail(props: {
         >
           <BookOpen className="size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{copy.rail.skills}</span>
+        </button>
+        <button
+          type="button"
+          title={copy.rail.videoHint}
+          aria-label={copy.rail.video}
+          aria-current={videoOn ? "page" : undefined}
+          className={cn(
+            "mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
+            videoOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
+          )}
+          onClick={props.onVideo}
+        >
+          <Clapperboard className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{copy.rail.video}</span>
         </button>
         <button
           type="button"

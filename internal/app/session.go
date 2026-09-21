@@ -442,6 +442,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		AskUser:    a.askUserFn(ctx, sessionID),
 	}
 	a.attachPersonal(tools)
+	a.attachDramaTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.Read(id)
 		if err != nil {
