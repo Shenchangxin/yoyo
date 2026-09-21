@@ -14,8 +14,10 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -306,9 +308,14 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 		defer release()
 		defer func() {
 			if rec := recover(); rec != nil {
+				path := diaglog.WriteCrash(fmt.Sprintf("loop panic: %v", rec), rec)
+				payload := map[string]any{"error": fmt.Sprintf("loop panic: %v", rec)}
+				if path != "" {
+					payload["crash_path"] = path
+				}
 				a.Hub.Publish(trace.Event{
 					Type: trace.TypeError, Source: "runtime", SessionID: sessionID,
-					Payload: map[string]any{"error": fmt.Sprintf("loop panic: %v", rec)},
+					Payload: payload,
 				})
 			}
 		}()
@@ -328,10 +335,24 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 }
 
 func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (out string, runErr error) {
+	turnID := diaglog.NewTurnID()
+	ctx = diaglog.With(ctx, diaglog.Fields{SessionID: sessionID, TurnID: turnID, Component: "runtime"})
+	var turnSpan observe.Span
 	if a.Observe != nil {
-		sp := a.Observe.Start("turn", sessionID, map[string]any{"plan": plan, "resume": resume})
-		defer func() { a.Observe.End(sp, runErr) }()
+		turnSpan = a.Observe.Start("turn", sessionID, map[string]any{"plan": plan, "resume": resume, "turn_id": turnID})
+		turnSpan.TurnID = turnID
+		ctx = observe.ContextWithSpan(ctx, turnSpan)
+		ctx = diaglog.With(ctx, diaglog.Fields{TraceID: turnSpan.TraceID, SpanID: turnSpan.SpanID})
+		defer func() { a.Observe.End(turnSpan, runErr) }()
 	}
+	diaglog.InfoContext(ctx, "turn start", "component", "runtime", "plan", plan, "resume", resume)
+	defer func() {
+		if runErr != nil {
+			diaglog.ErrorContext(ctx, "turn end", "component", "runtime", "err", runErr)
+		} else {
+			diaglog.InfoContext(ctx, "turn end", "component", "runtime")
+		}
+	}()
 	if strings.TrimSpace(sessionID) == "" {
 		return "", fmt.Errorf("empty session id")
 	}
@@ -404,6 +425,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	preHooks, stopHooks, preCompact := runtime.LoadHookFile(toolRoot)
 	tools := &runtime.WorkspaceTools{
 		Workspace:  toolRoot,
+		Home:       a.Home.Root,
 		SessionID:  sessionID,
 		Caps:       a.Caps,
 		Skills:     skillBodies,
@@ -480,6 +502,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(loop.PlanMode)...)
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
+		TurnID:           turnID,
+		TraceID:          turnSpan.TraceID,
+		Observe:          a.Observe,
 		User:             message,
 		Inject:           inject,
 		Workspace:        toolRoot,

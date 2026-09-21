@@ -1,6 +1,8 @@
 package capability
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -84,4 +86,43 @@ func LooksLikeWindowsSwitch(s string) bool {
 		}
 	}
 	return true
+}
+
+var diagPlaneNames = []string{"logs", "journal", "observe"}
+
+// ForbiddenDiagPath is true when p is under YOYO_HOME diagnostic planes
+// (logs, journal, observe) or the vault file. Agent tools must not read them.
+func ForbiddenDiagPath(homeRoot, p string) bool {
+	if strings.TrimSpace(homeRoot) == "" || strings.TrimSpace(p) == "" {
+		return false
+	}
+	homeAbs, err := filepath.Abs(CanonicalizeToolPath(homeRoot))
+	if err != nil {
+		return false
+	}
+	pathAbs, err := filepath.Abs(CanonicalizeToolPath(p))
+	if err != nil {
+		return false
+	}
+	vault := filepath.Join(homeAbs, "vault.json")
+	if samePath(pathAbs, vault) {
+		return true
+	}
+	for _, name := range diagPlaneNames {
+		root := filepath.Join(homeAbs, name)
+		if samePath(pathAbs, root) || WithinWorkspace(root, pathAbs) {
+			return true
+		}
+	}
+	return false
+}
+
+func samePath(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err == nil {
+		if bi, err2 := os.Stat(b); err2 == nil {
+			return os.SameFile(ai, bi)
+		}
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }

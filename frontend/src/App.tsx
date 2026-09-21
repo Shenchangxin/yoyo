@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { cn } from "./lib/utils";
 import { THREAD_COL, THREAD_GUTTER } from "./lib/thread";
 import * as api from "./lib/client";
+import { writeClipboard } from "./lib/clipboard";
 import { readLayout, writeLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
 import { useUI } from "./lib/store";
@@ -688,8 +689,10 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
         health: ws.health,
         plugins: ws.plugins,
         logs: ws.logs,
+        journal: ws.journal,
         doctor: ws.doctor,
         vault: ws.vault,
+        sessionId: ws.activeId,
         patch: ws.patchConfig,
         saveProvider: async (next, key) => {
           if (key.trim()) await api.setAPIKey(key.trim());
@@ -709,6 +712,18 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
         },
         onTestProvider: () => api.testProvider(),
         onRevealLogs: () => api.revealLogs(),
+        onRevealJournal: () => api.revealJournal(),
+        onCopyLogPath: async () => {
+          const path = String(ws.logs?.path || "");
+          if (path) await writeClipboard(path);
+        },
+        onExportDiagnostics: async () => {
+          await api.exportDiagnostics();
+        },
+        onDiagnose: async () => {
+          if (!ws.activeId) return;
+          await api.diagnoseSession(ws.activeId);
+        },
       }}
     />
   );

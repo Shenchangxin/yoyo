@@ -6,7 +6,13 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
+
+// RedactText is the shared redactor used by diagnostic logs and support bundles.
+func RedactText(s string) string {
+	return diaglog.Redact(s)
+}
 
 // LooksExfil is a conservative heuristic for connector/browser data leaving
 // the machine via an unexpected channel. False positives pause the loop;

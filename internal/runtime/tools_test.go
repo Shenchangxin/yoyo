@@ -181,3 +181,23 @@ func gitBashPath(p string) string {
 	}
 	return p
 }
+
+func TestReadFileDeniesDiagPlane(t *testing.T) {
+	home := t.TempDir()
+	logDir := filepath.Join(home, "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(logDir, "yoyo.log")
+	if err := os.WriteFile(secret, []byte("sk-live-secretvalue"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: home, Home: home}
+	res := tools.Call("read_file", `{"path":"logs/yoyo.log"}`)
+	if res.Err == nil {
+		t.Fatal("expected diagnostic plane deny")
+	}
+	if strings.Contains(res.Content, "sk-live") {
+		t.Fatalf("secret leaked: %s", res.Content)
+	}
+}

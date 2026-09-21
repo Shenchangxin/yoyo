@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"embed"
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,11 +15,21 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/desktop"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+func fail(err error) {
+	if err == nil {
+		return
+	}
+	diaglog.Error("fatal", "component", "boot", "err", err)
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
 
 func main() {
 	evals := resolveEvals()
@@ -26,18 +37,19 @@ func main() {
 	if os.Getenv("YOYO_WORKER") == "1" {
 		core, err := app.Open(home, evals)
 		if err != nil {
-			log.Fatal(err)
+			fail(err)
 		}
 		defer core.Close()
 		if err := api.ServeRPC(context.Background(), core, os.Stdin, os.Stdout); err != nil {
-			log.Fatal(err)
+			fail(err)
 		}
 		return
 	}
 
+	lg, _ := diaglog.Boot(diaglog.ProcessGUI)
 	svc, core, err := openDesktop(home, evals)
 	if err != nil {
-		log.Fatal(err)
+		fail(err)
 	}
 	if core != nil {
 		defer core.Close()
@@ -46,10 +58,17 @@ func main() {
 
 	var win application.Window
 	ns := notifications.New()
+	var wailsLog *slog.Logger
+	if lg != nil {
+		wailsLog = lg.WailsLogger()
+	} else if core != nil && core.Log != nil {
+		wailsLog = core.Log.WailsLogger()
+	}
 	gui := application.New(application.Options{
 		Name:                        "Yoyo",
 		Description:                 "Self-harnessing local agent workstation",
 		DisableDefaultSignalHandler: true,
+		Logger:                      wailsLog,
 		Services: []application.Service{
 			application.NewService(svc),
 			application.NewService(ns),
@@ -110,7 +129,7 @@ func main() {
 	desktop.WatchSignals(gui, svc, win)
 
 	if err := gui.Run(); err != nil {
-		log.Fatal(err)
+		fail(err)
 	}
 }
 

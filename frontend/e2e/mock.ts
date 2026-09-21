@@ -152,7 +152,27 @@ export async function mockApi(
         ],
       });
     }
-    if (path.includes("/api/skills") || path.includes("/api/logs") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
+    if (path.endsWith("/api/logs") && method === "POST") {
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (path.endsWith("/api/logs")) {
+      return route.fulfill({
+        json: {
+          dir: "C:/tmp/yoyo/logs",
+          path: "C:/tmp/yoyo/logs/yoyo.log",
+          process: "gui",
+          text: '{"ts":"2026-09-21T00:00:00Z","level":"info","msg":"boot","component":"boot"}',
+          lines: [{ ts: "2026-09-21T00:00:00Z", level: "info", msg: "boot", component: "boot", raw: '{"msg":"boot","component":"boot"}' }],
+        },
+      });
+    }
+    if (path.endsWith("/api/journal")) {
+      return route.fulfill({ json: { journal: [{ Time: "2026-09-21T00:00:00Z", Type: "checkout", Payload: "hash" }], path: "C:/tmp/yoyo/journal/chain.jsonl" } });
+    }
+    if (path.endsWith("/api/logs/export") || path.endsWith("/api/logs/diagnose")) {
+      return route.fulfill({ json: { path: "C:/tmp/support.zip", text: "redacted tail" } });
+    }
+    if (path.includes("/api/skills") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
       return route.fulfill({ json: [] });
     }
     if (path.includes("/api/workspace/file")) {

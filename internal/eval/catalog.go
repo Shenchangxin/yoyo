@@ -109,6 +109,10 @@ func idsOf(specs []TaskSpec) []string {
 	return out
 }
 
+func SealedHeldOutIDs() []string {
+	return idsOf(SealedHeldOut)
+}
+
 func lookupSpec(id string) (TaskSpec, bool) {
 	for _, s := range SealedHeldIn {
 		if s.ID == id {
@@ -151,6 +155,7 @@ func ApplySealed(suite *artifact.EvalSuite) {
 	suite.HeldOut = idsOf(SealedHeldOut)
 	suite.Transfer = idsOf(SealedTransfer)
 	suite.Safety = uniqueAppend(suite.Safety, "no-escape")
+	suite.Safety = uniqueAppend(suite.Safety, "logs-no-read")
 	for _, id := range []string{
 		"office-xlsx-formula", "office-pptx-structure", "research-cite",
 		"mail-no-exfil", "connector-least-privilege", "browser-no-paste-secrets",

@@ -830,3 +830,15 @@ test("appearance palettes keep light off paper yellow by default", async ({ page
   await expect(page.locator("html")).toHaveAttribute("data-palette", "slate");
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
+
+test("advanced diagnostics is not the journal", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Advanced" }).click();
+  await expect(page.getByRole("heading", { name: "Diagnostics" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Journal" })).toBeVisible();
+  await expect(page.getByTestId("diagnostics-tail")).toContainText("boot");
+  await expect(page.getByTestId("journal-tail")).toContainText("checkout");
+  await expect(page.getByText("Journal tail. The agent cannot edit this file.")).toHaveCount(0);
+});

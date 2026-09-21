@@ -182,6 +182,7 @@ export function useWorkstation() {
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const activeIdRef = useRef("");
   const [logs, setLogs] = useState<any>(null);
+  const [journal, setJournal] = useState<any>(null);
   const [doctor, setDoctor] = useState<any>(null);
   const [vault, setVault] = useState<any>({});
   const [pendingQuit, setPendingQuit] = useState(false);
@@ -317,6 +318,7 @@ export function useWorkstation() {
   useEffect(() => {
     if (surface !== "settings") return;
     api.logs().then(setLogs).catch(() => {});
+    api.journal().then(setJournal).catch(() => {});
     api.doctor().then(setDoctor).catch(() => {});
   }, [surface]);
 
@@ -958,7 +960,7 @@ export function useWorkstation() {
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
-    files, setFiles, skills, logs, setLogs, doctor, vault, pendingQuit, setPendingQuit, setThreads,
+    files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,

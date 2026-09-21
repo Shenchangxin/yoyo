@@ -2,12 +2,15 @@ package desktop
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
 
 // SpawnWorker starts this executable as a JSON-RPC stdio worker so the GUI
@@ -36,8 +39,15 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.Discard
+	logf := openWorkerLog(home)
+	if logf != nil {
+		cmd.Stderr = logf
+	}
 	if err := cmd.Start(); err != nil {
+		if logf != nil {
+			_ = logf.Close()
+		}
 		return nil, err
 	}
 	cli := api.NewLineClient(stdout, stdin)
@@ -50,13 +60,31 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 	case err := <-done:
 		if err != nil {
 			_ = cmd.Process.Kill()
+			if logf != nil {
+				_ = logf.Close()
+			}
 			return nil, err
 		}
 	case <-time.After(8 * time.Second):
 		_ = cmd.Process.Kill()
+		if logf != nil {
+			_ = logf.Close()
+		}
 		return nil, fmt.Errorf("worker health timeout")
 	}
-	return &Service{RPC: cli, cmd: cmd}, nil
+	return &Service{RPC: cli, cmd: cmd, workerLog: logf}, nil
+}
+
+func openWorkerLog(home string) *os.File {
+	dir := diaglog.DefaultLogDir(home)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil
+	}
+	f, err := os.OpenFile(filepath.Join(dir, diaglog.FileName(diaglog.ProcessWorker)), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil
+	}
+	return f
 }
 
 func OpenIsolated(home, evals string) (*Service, *app.App, error) {

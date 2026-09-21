@@ -87,6 +87,26 @@ func DenyArgvPaths(argv []string, workspace string) error {
 	return nil
 }
 
+func DenyHomePlanes(argv []string, home string) error {
+	if home == "" {
+		return nil
+	}
+	for _, f := range argv {
+		f = strings.Trim(f, `"'`)
+		if capability.LooksLikeWindowsSwitch(f) {
+			continue
+		}
+		f = capability.CanonicalizeToolPath(f)
+		if !filepath.IsAbs(f) {
+			f = filepath.Join(home, f)
+		}
+		if capability.ForbiddenDiagPath(home, f) {
+			return fmt.Errorf("shell policy denied diagnostic plane")
+		}
+	}
+	return nil
+}
+
 func looksSimpleArgv(argv []string) bool {
 	if len(argv) == 0 {
 		return false

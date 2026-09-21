@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -219,6 +221,16 @@ func emitCheckpointPhase(store *trace.Store, req *RunRequest, sessionID, source,
 
 func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message, loop artifact.LoopPreset, spill *Spill, client Client, model string, window int, source string, fragments []artifact.PromptFragment, opt CompactOpts) []Message {
 	req := opt.Req
+	before := messagesTokens(withSystem)
+	var sp observe.Span
+	started := false
+	if req != nil && req.Observe != nil {
+		sp = req.Observe.Start("checkpoint", sessionID, map[string]any{"trigger": opt.Trigger, "focus": opt.Focus})
+		sp.TurnID = req.TurnID
+		started = true
+		defer func() { req.Observe.End(sp, nil) }()
+	}
+	diaglog.Warn("checkpoint", "component", "context", "session_id", sessionID, "trigger", opt.Trigger)
 	emitCheckpointPhase(store, req, sessionID, source, "checkpoint_start", opt, nil)
 	if req != nil && req.Events != nil {
 		payload := map[string]any{"trigger": opt.Trigger, "session": sessionID, "focus": opt.Focus}
@@ -268,6 +280,15 @@ func forceCheckpoint(store *trace.Store, sessionID string, withSystem []Message,
 	note := fmt.Sprintf("Checkpoint · kept %d · elided %d · hydrated %d files", messagesTokens(tail), rep.Elided, hydrated)
 	if opt.Trigger != "" {
 		note = note + " · " + opt.Trigger
+	}
+	if started {
+		if sp.Attrs == nil {
+			sp.Attrs = map[string]any{}
+		}
+		sp.Attrs["tokens_before"] = before
+		sp.Attrs["tokens_after"] = messagesTokens(tail)
+		sp.Attrs["elided"] = rep.Elided
+		sp.Attrs["hydrated"] = hydrated
 	}
 	_ = persistCheckpoint(store, sessionID, source, summary, tail, lossless, spill, opt.Trigger, hydrated, note)
 	emitCheckpointPhase(store, req, sessionID, source, "checkpoint", opt, map[string]any{

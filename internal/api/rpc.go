@@ -14,6 +14,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/connector"
+	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
@@ -141,8 +142,12 @@ func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 	if len(params) == 0 {
 		params = []byte("{}")
 	}
+	rid := diaglog.NewRequestID()
+	ctx = diaglog.With(ctx, diaglog.Fields{RequestID: rid, Component: "rpc", Cat: "rpc"})
+	diaglog.DebugContext(ctx, "rpc", "component", "rpc", "cat", "rpc", "method", req.Method)
 	result, err := callMethod(ctx, a, req.Method, params)
 	if err != nil {
+		diaglog.ErrorContext(ctx, "rpc failed", "component", "rpc", "cat", "rpc", "method", req.Method, "err", err)
 		code := -32000
 		var data any
 		if e, ok := app.AsL3(err); ok {
@@ -500,10 +505,55 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return map[string]any{"servers": a.MCP.Info(), "tools": a.MCP.Tools()}, nil
 	case "logs.tail":
 		var p struct {
+			Limit     int    `json:"limit"`
+			Level     string `json:"level"`
+			Component string `json:"component"`
+			Session   string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		out := a.Logs(p.Limit)
+		if a.Log != nil && (p.Level != "" || p.Component != "" || p.Session != "") {
+			recs, _ := a.Log.Tail(p.Limit, diaglog.Filter{Level: p.Level, Component: p.Component, SessionID: p.Session})
+			out["lines"] = recs
+			out["text"] = diaglog.FormatRecords(recs)
+		}
+		return out, nil
+	case "journal.tail":
+		var p struct {
 			Limit int `json:"limit"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.Logs(p.Limit), nil
+		return a.JournalTail(p.Limit), nil
+	case "logs.frontend":
+		var p struct {
+			Events []diaglog.FrontendEvent `json:"events"`
+		}
+		_ = json.Unmarshal(params, &p)
+		if a.Log != nil {
+			_ = a.Log.AppendFrontend(p.Events)
+		}
+		return map[string]any{"ok": true}, nil
+	case "logs.export":
+		var p struct {
+			Dest string `json:"dest"`
+		}
+		_ = json.Unmarshal(params, &p)
+		path, err := a.ExportDiagnostics(p.Dest)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"path": path}, nil
+	case "logs.diagnose":
+		var p struct {
+			Session string `json:"session"`
+			Limit   int    `json:"limit"`
+		}
+		_ = json.Unmarshal(params, &p)
+		note, err := a.DiagnoseSession(p.Session, p.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"text": note}, nil
 	case "doctor":
 		return a.Doctor(), nil
 	case "about":
