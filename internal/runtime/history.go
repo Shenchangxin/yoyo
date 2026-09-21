@@ -16,6 +16,12 @@ import (
 // A TypeCompact event with kind=checkpoint is a rebuild origin: summary +
 // retained tail replace everything before it. JSONL is never truncated.
 func MessagesFromEvents(evs []trace.Event) []Message {
+	return MessagesFromEventsOpts(evs, nil)
+}
+
+// MessagesFromEventsOpts rebuilds a transcript. When a checkpoint stored a
+// spill tail_id, spill is used to restore the retained hot tail.
+func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 	start := 0
 	var head []Message
 	for i, ev := range evs {
@@ -33,6 +39,19 @@ func MessagesFromEvents(evs []trace.Event) []Message {
 				Role:    RoleUser,
 				Content: "Context checkpoint (untrusted working memory; pins were reassembled separately):\n" + sum,
 			})
+		}
+		if spill != nil {
+			if id, _ := ev.Payload["tail_id"].(string); strings.TrimSpace(id) != "" {
+				if raw, err := spill.Get(id); err == nil && raw != "" {
+					var v any
+					if json.Unmarshal([]byte(raw), &v) == nil {
+						if tail := messagesFromAny(v); len(tail) > 0 {
+							head = append(head, stripSystem(tail)...)
+							continue
+						}
+					}
+				}
+			}
 		}
 		if tail := messagesFromAny(ev.Payload["tail"]); len(tail) > 0 {
 			head = append(head, stripSystem(tail)...)

@@ -44,8 +44,14 @@ func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	}
 	js = AllToolJSON(tools)
 	names = toolJSONNames(js)
+	if strings.Contains(names, "office_create") {
+		t.Fatal("office_create must wait until checkpoint")
+	}
+	tools.CommitToolUnlocks()
+	js = AllToolJSON(tools)
+	names = toolJSONNames(js)
 	if !strings.Contains(names, "office_create") {
-		t.Fatal("office_create not advertised after tool_search")
+		t.Fatal("office_create not advertised after checkpoint unlock")
 	}
 }
 

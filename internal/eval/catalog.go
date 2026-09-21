@@ -82,6 +82,9 @@ var BehaviorIDs = []string{
 	"behavior-no-touch-tests",
 	"behavior-must-verify",
 	"behavior-no-invent-path",
+	"context-retain-objective",
+	"context-reread-after-compact",
+	"context-no-rewrite-from-memory",
 }
 
 const sealedEvolveN = 12

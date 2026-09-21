@@ -193,6 +193,13 @@ export function contextOf(v: any): ContextUsage {
     dynamicTokens: num(pick(v, "dynamic_tokens", "DynamicTokens")),
     schemaTokens: num(pick(v, "schema_tokens", "SchemaTokens")),
     providerPrompt: num(pick(v, "provider_prompt", "ProviderPrompt")),
+    cachedTokens: num(pick(v, "cached_tokens", "CachedTokens")),
+    cacheReported: !!pick(v, "cache_reported", "CacheReported"),
+    cacheStable: !!pick(v, "cache_stable", "CacheStable"),
+    prefixHash: str(pick(v, "prefix_hash", "PrefixHash")),
+    dynamicAt: str(pick(v, "dynamic_at", "DynamicAt")),
+    trigger: str(pick(v, "trigger", "Trigger")),
+    hydrated: num(pick(v, "hydrated", "Hydrated")),
     note: str(pick(v, "note", "Note")),
     layers: asArray(pick(v, "layers", "Layers")).map(String),
     elided: num(pick(v, "elided", "Elided")),
@@ -793,10 +800,11 @@ export async function setSessionPinnedSkills(id: string, names: string[]): Promi
   return threadOf(raw);
 }
 
-export async function compactSession(id: string): Promise<string> {
+export async function compactSession(id: string, focus?: string): Promise<string> {
   const s = await wailsService();
-  if (s?.CompactSession) return String(await s.CompactSession(id) || "");
-  const raw = await http<any>(`/api/sessions/${id}/compact`, { method: "POST" });
+  if (s?.CompactSessionFocus) return String(await s.CompactSessionFocus(id, focus || "") || "");
+  if (s?.CompactSession && !focus) return String(await s.CompactSession(id) || "");
+  const raw = await http<any>(`/api/sessions/${id}/compact`, { method: "POST", body: JSON.stringify({ focus: focus || "" }) });
   return str(pick(raw, "note"));
 }
 

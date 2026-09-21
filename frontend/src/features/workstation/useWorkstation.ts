@@ -437,6 +437,11 @@ export function useWorkstation() {
             dynamicTokens: num(p.dynamic_tokens ?? p.dynamicTokens, prev.dynamicTokens || 0) || prev.dynamicTokens,
             schemaTokens: num(p.schema_tokens ?? p.schemaTokens, prev.schemaTokens || 0) || prev.schemaTokens,
             providerPrompt: num(p.provider_prompt ?? p.providerPrompt, prev.providerPrompt || 0) || prev.providerPrompt,
+            cachedTokens: num(p.cached_tokens ?? p.cachedTokens, prev.cachedTokens || 0),
+            cacheReported: !!(p.cache_reported ?? p.cacheReported ?? prev.cacheReported),
+            cacheStable: !!(p.cache_stable ?? p.cacheStable ?? prev.cacheStable),
+            trigger: str(p.trigger, prev.trigger || ""),
+            hydrated: num(p.hydrated, prev.hydrated || 0),
             note: str(p.note, prev.note),
             layers: Array.isArray(p.layers) ? p.layers.map(String) : prev.layers,
             elided: num(p.elided, prev.elided),
@@ -650,7 +655,16 @@ export function useWorkstation() {
       return;
     }
     if (raw === "compact") {
-      const note = await api.compactSession(activeId);
+      if (!activeId) return;
+      const note = await api.compactSession(activeId, rest.trim());
+      toast.success(note || copy.app.compacted);
+      refreshCtx();
+      return;
+    }
+    if (raw === "rewind") {
+      if (!activeId) return;
+      const focus = rest.trim() ? "from " + rest.trim() : "from ";
+      const note = await api.compactSession(activeId, focus);
       toast.success(note || copy.app.compacted);
       refreshCtx();
       return;

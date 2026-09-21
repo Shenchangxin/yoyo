@@ -15,6 +15,15 @@ func TestModelContextWindowUnknownDefaults300k(t *testing.T) {
 	if got := ModelContextWindow("anthropic/claude-sonnet-4-5"); got != 200_000 {
 		t.Fatalf("openrouter claude: %d", got)
 	}
+	if got := ModelContextWindow("claude-sonnet-4-6"); got != 1_000_000 {
+		t.Fatalf("claude 4.6: %d", got)
+	}
+	if got := ModelContextWindow("gpt-5.5"); got != 1_000_000 {
+		t.Fatalf("gpt-5.5: %d", got)
+	}
+	if got := ModelContextWindow("gpt-5"); got != 200_000 {
+		t.Fatalf("gpt-5: %d", got)
+	}
 }
 
 func TestModelContextWindowDeepSeekV4Is1M(t *testing.T) {

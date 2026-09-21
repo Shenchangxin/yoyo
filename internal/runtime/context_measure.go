@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"strings"
+
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
@@ -35,17 +37,31 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	if plan == "" {
 		plan = planTextOf(opts.Tools)
 	}
-	dyn := AssembleDynamic(plan, loadedFrom(opts.Tools), notes, "")
-	msgs := []Message{{Role: RoleSystem, Content: prefix + dyn}}
+	dyn := AssembleDynamic(plan, loadedFrom(opts.Tools), notes, "", AssembleToday(opts.Tools))
+	msgs := []Message{{Role: RoleSystem, Content: AssembleIdentity(loop, opts.Fragments)}}
+	pins := AssemblePins(loop, opts.Playbook, opts.Skills, rules, src)
+	if strings.TrimSpace(pins) != "" {
+		msgs = append(msgs, Message{Role: RoleDeveloper, Content: pins})
+	}
 	msgs = append(msgs, stripSystem(opts.History)...)
+	msgs = setDynamic(msgs, dyn)
 	toolsJSON := AllToolJSON(opts.Tools)
 	overhead := toolsJSONTokens(toolsJSON)
-	compacted, report := Shape(msgs, ShapeOpts{
-		Loop: loop, Spill: opts.Spill, ModelWindow: opts.ModelWindow, Overhead: overhead,
-	})
-	compacted = Legalize(compacted)
+	var compacted []Message
+	var report ShapeReport
+	if opts.ModelWindow > 0 {
+		compacted = Legalize(copyMessages(msgs))
+		report.Budget = effectiveBudget(ShapeOpts{Loop: loop, ModelWindow: opts.ModelWindow, Overhead: overhead})
+	} else {
+		compacted, report = Shape(msgs, ShapeOpts{
+			Loop: loop, Spill: opts.Spill, ModelWindow: opts.ModelWindow, Overhead: overhead,
+		})
+		compacted = Legalize(compacted)
+	}
 	fillLedger(&report, prefix, dyn, toolsJSON, opts.ModelWindow)
 	report.Tokens = messagesTokens(compacted) + overhead
+	report.PrefixHash = hotPrefixHash(compacted)
+	report.CacheStable = true
 	return report
 }
 
@@ -75,6 +91,13 @@ func ShapeFromEvents(evs []trace.Event, window int) ShapeReport {
 			DynamicTokens:  payloadInt(p, "dynamic_tokens"),
 			SchemaTokens:   payloadInt(p, "schema_tokens"),
 			ProviderPrompt: payloadInt(p, "provider_prompt"),
+			CachedTokens:   payloadInt(p, "cached_tokens"),
+			CacheReported:  payloadInt(p, "cached_tokens") > 0 || payloadBool(p, "cache_reported"),
+			CacheStable:    payloadBool(p, "cache_stable"),
+			PrefixHash:     payloadStr(p, "prefix_hash"),
+			DynamicAt:      payloadStr(p, "dynamic_at"),
+			Trigger:        payloadStr(p, "trigger"),
+			Hydrated:       payloadInt(p, "hydrated"),
 			Elided:         payloadInt(p, "elided"),
 			Layers:         payloadStrings(p, "layers"),
 		}

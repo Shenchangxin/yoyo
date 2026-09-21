@@ -28,6 +28,9 @@ func TestApplyChatHorizon(t *testing.T) {
 	if got.MaxTurns < 64 || got.MaxToolMessages < 160 || got.MicroKeep < 32 || got.CompactionKeep < 96 {
 		t.Fatalf("%+v", got)
 	}
+	if got.RulesTokens < 8000 || got.KeepTokens < 16000 || got.TaskMaxTurns < 24 {
+		t.Fatalf("chat context floors %+v", got)
+	}
 	wide := DefaultLoop()
 	wide.MaxTurns = 99
 	wide.MaxToolMessages = 120
@@ -85,6 +88,25 @@ func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	}
 }
 
+func TestChildLoopProfiles(t *testing.T) {
+	parent := RunRequest{Loop: DefaultLoop(), SoftHorizon: true}
+	explore := childLoopFor(parent, "explore")
+	if !explore.PlanMode || explore.MaxTurns < 24 || !strings.Contains(explore.TaskInstruction, "explore") {
+		t.Fatalf("explore %+v", explore)
+	}
+	qa := childLoopFor(parent, "qa")
+	if !qa.PlanMode || !strings.Contains(qa.TaskInstruction, "evaluator") {
+		t.Fatalf("qa %+v", qa)
+	}
+	impl := childLoopFor(parent, "implement")
+	if impl.PlanMode {
+		t.Fatal("implement must not force plan mode")
+	}
+	if DefaultLoop().MaxTurns != 32 || DefaultLoop().PlanMode {
+		t.Fatal("childLoopFor mutated DefaultLoop")
+	}
+}
+
 func TestOperatorVoiceSkipsControl(t *testing.T) {
 	got := OperatorVoice(toolBudgetNudge, []Message{
 		{Role: RoleUser, Content: "完善前端"},
@@ -138,7 +160,7 @@ func TestAssembleIdentitySingleBootstrap(t *testing.T) {
 }
 
 func TestChatVoicePinsChineseOnSoftHorizon(t *testing.T) {
-	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "")
+	dyn := AssembleDynamic("", nil, "## Objective\n完善前端\n", "", "")
 	got := withChatVoice(RunRequest{SoftHorizon: true, User: "继续", Tools: &WorkspaceTools{OperatorVoice: "完善前端"}}, dyn, "完善前端")
 	if !strings.Contains(got, "用中文回复") || !strings.Contains(got, "继续") {
 		t.Fatalf("%s", got)

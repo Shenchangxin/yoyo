@@ -22,14 +22,7 @@ func persistWorkingMemory(req RunRequest, messages []Message, notes string) stri
 	n.Next = firstOpenPlanStep(planTextOf(req.Tools))
 	WriteNotes(spill, n)
 	WriteDiscoverIndex(req.Workspace, req.SessionID, spill)
-	out := n.Markdown()
-	if mem := ReadWorkspaceMemory(req.Workspace); mem != "" {
-		if out != "" && !strings.HasSuffix(out, "\n") {
-			out += "\n"
-		}
-		out += mem
-	}
-	return capRunes(out, 2000)
+	return n.Markdown()
 }
 
 func firstOpenPlanStep(plan string) string {

@@ -401,7 +401,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if meta.Model != "" {
 		model = meta.Model
 	}
-	preHooks, stopHooks := runtime.LoadHookFile(toolRoot)
+	preHooks, stopHooks, preCompact := runtime.LoadHookFile(toolRoot)
 	tools := &runtime.WorkspaceTools{
 		Workspace:  toolRoot,
 		SessionID:  sessionID,
@@ -420,13 +420,20 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		AskUser:    a.askUserFn(ctx, sessionID),
 	}
 	a.attachPersonal(tools)
+	tools.Sessions = func(id string) []runtime.Message {
+		evs, err := a.Traces.Read(id)
+		if err != nil {
+			return nil
+		}
+		return runtime.MessagesFromEventsOpts(evs, runtime.BindSpill(a.Home.Root, toolRoot, id))
+	}
 	hist := []runtime.Message{}
 	roundSeq := 0
 	if evs, err := a.Traces.Read(sessionID); err == nil {
-		hist = runtime.MessagesFromEvents(evs)
+		hist = runtime.MessagesFromEventsOpts(evs, tools.Spill)
 		roundSeq = runtime.MaxAssistantRound(evs)
 	}
-	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
+	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
 	wrapped := onEvent
 	if a.Hub != nil {
@@ -495,6 +502,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Events:           a.Kernel.Events(),
 		FileHooks:        preHooks,
 		StopHooks:        stopHooks,
+		PreCompactHooks:  preCompact,
 		ProfileMemory:    profile,
 		OnEvent:          wrapped,
 		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },

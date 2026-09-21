@@ -116,6 +116,9 @@ func isControlUser(text string) bool {
 	if strings.HasPrefix(s, steerUserPrefix) {
 		return true
 	}
+	if strings.HasPrefix(s, hydratePrefix) {
+		return true
+	}
 	return false
 }
 
@@ -131,7 +134,7 @@ func ExtractNotes(evs []trace.Event) SessionNotes {
 				continue
 			}
 			if t, _ := ev.Payload["text"].(string); t != "" && !isControlUser(t) && !isResumeUser(t) {
-				n.Objective = capRunes(strings.TrimSpace(t), 400)
+				stickObjective(&n, t)
 			}
 		case trace.TypeToolCall:
 			name, _ := ev.Payload["name"].(string)
@@ -179,7 +182,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 		switch m.Role {
 		case RoleUser:
 			if strings.TrimSpace(m.Content) != "" && !isControlUser(m.Content) && !isResumeUser(m.Content) {
-				n.Objective = capRunes(strings.TrimSpace(m.Content), 400)
+				stickObjective(&n, m.Content)
 			}
 		case RoleAssistant:
 			for _, tc := range m.ToolCalls {
@@ -207,8 +210,30 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 	return n
 }
 
+func stickObjective(n *SessionNotes, text string) {
+	t := capRunes(strings.TrimSpace(text), 400)
+	if t == "" {
+		return
+	}
+	if n.Objective == "" {
+		n.Objective = t
+		return
+	}
+	if t != n.Objective {
+		n.Decisions = appendUnique(n.Decisions, capRunes(t, 200))
+		if len(n.Decisions) > 12 {
+			n.Decisions = n.Decisions[len(n.Decisions)-12:]
+		}
+	}
+}
+
 func mergeNotes(prev, next SessionNotes) SessionNotes {
-	if strings.TrimSpace(next.Objective) == "" || isResumeUser(next.Objective) {
+	if prev.Objective != "" {
+		if next.Objective != "" && next.Objective != prev.Objective && !isResumeUser(next.Objective) {
+			next.Decisions = appendUnique(next.Decisions, capRunes(next.Objective, 200))
+		}
+		next.Objective = prev.Objective
+	} else if strings.TrimSpace(next.Objective) == "" || isResumeUser(next.Objective) {
 		next.Objective = prev.Objective
 	}
 	next.Files = unionCap(prev.Files, next.Files, 24)

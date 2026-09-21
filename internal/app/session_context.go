@@ -18,7 +18,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	if model == "" {
 		model = a.Config.Model
 	}
-	window := runtime.ModelContextWindowFor(a.Config.Provider, model)
+	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	hash := session.ResolveHarness(session.NormalizePolicy(meta.HarnessPolicy), meta.Harness, a.ActiveHash())
 	if hash == "" {
 		hash = a.ActiveHash()
@@ -31,6 +31,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	if err != nil {
 		return overlayPrompt(runtime.ShapeFromEvents(evs, window), a.liveShape(sessionID))
 	}
+	loop = runtime.ApplyChatHorizon(loop)
 	skillBodies := map[string]string{}
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
@@ -53,13 +54,14 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		Spill:     spill,
 		PlanText:  meta.PlanText,
 	}
+	a.attachPersonal(tools)
 	rep := runtime.MeasureContext(runtime.MeasureOpts{
 		Loop:        loop,
 		Fragments:   frags,
 		Playbook:    pb,
 		Skills:      skills,
 		Workspace:   ws,
-		History:     runtime.MessagesFromEvents(evs),
+		History:     runtime.MessagesFromEventsOpts(evs, spill),
 		Tools:       tools,
 		Spill:       spill,
 		ModelWindow: window,

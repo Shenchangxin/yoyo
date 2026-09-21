@@ -67,3 +67,17 @@ func TestResumeDoesNotReplaceObjective(t *testing.T) {
 		t.Fatalf("extract %q", ExtractNotes(evs).Objective)
 	}
 }
+
+func TestObjectiveStickyAcrossFollowUps(t *testing.T) {
+	n := NotesFromMessages([]Message{
+		{Role: RoleUser, Content: "ship the parser"},
+		{Role: RoleUser, Content: "also fix the tests"},
+	})
+	if n.Objective != "ship the parser" {
+		t.Fatalf("objective %q", n.Objective)
+	}
+	joined := strings.Join(n.Decisions, " ")
+	if !strings.Contains(joined, "also fix the tests") {
+		t.Fatalf("decisions %+v", n.Decisions)
+	}
+}

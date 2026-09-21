@@ -3,9 +3,10 @@ package runtime
 import "strings"
 
 const (
-	defaultOutputReserve = 16_000
-	defaultWindowBuffer  = 13_000
-	minShapeBudget       = 8_000
+	defaultWindowBuffer = 20_000
+	minOutputReserve    = 8_000
+	maxOutputReserve    = 32_000
+	minShapeBudget      = 8_000
 	// UnknownModelWindow is the chat shaping default when the model id
 	// cannot be matched to a models.dev family.
 	UnknownModelWindow = 300_000
@@ -33,6 +34,15 @@ func ModelContextWindowFor(_, model string) int {
 	return UnknownModelWindow
 }
 
+// EffectiveModelWindow applies an operator override (config.context_window)
+// on top of the catalog. Harbor leaves both unset.
+func EffectiveModelWindow(model string, override int) int {
+	if override > 0 {
+		return override
+	}
+	return ModelContextWindow(model)
+}
+
 func lastPathSegment(m string) string {
 	if i := strings.LastIndex(m, "/"); i >= 0 && i+1 < len(m) {
 		return m[i+1:]
@@ -44,13 +54,17 @@ func catalogishWindow(id string) int {
 	switch {
 	case nameHas(id, "gpt-4.1"):
 		return 1_047_576
+	case nameHas(id, "gpt-5.5"), nameHas(id, "gpt-5.6"), nameHas(id, "gpt-5.4"), nameHas(id, "gpt-5.2"):
+		return 1_000_000
 	case nameHas(id, "o3"), nameHas(id, "o4"), nameHas(id, "gpt-5"):
 		return 200_000
 	case nameHas(id, "gpt-4o"), nameHas(id, "gpt-4-turbo"):
 		return 128_000
+	case claudeMillion(id):
+		return 1_000_000
 	case nameHas(id, "claude"):
 		return 200_000
-	case nameHas(id, "gemini-2"), nameHas(id, "gemini-1.5"):
+	case nameHas(id, "gemini-2"), nameHas(id, "gemini-1.5"), nameHas(id, "gemini-3"):
 		return 1_000_000
 	case nameHas(id, "gemini"):
 		return 128_000
@@ -63,6 +77,18 @@ func catalogishWindow(id string) int {
 	default:
 		return 0
 	}
+}
+
+func claudeMillion(id string) bool {
+	if !strings.Contains(id, "claude") {
+		return false
+	}
+	for _, m := range []string{"4-6", "4.6", "sonnet-5", "opus-5", "opus-4-6", "sonnet-4-6", "1m"} {
+		if strings.Contains(id, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func nameHas(id, token string) bool {
@@ -100,10 +126,22 @@ func effectiveBudget(opts ShapeOpts) int {
 	if opts.ModelWindow > 0 {
 		reserve := opts.OutputReserve
 		if reserve <= 0 {
-			reserve = defaultOutputReserve
+			reserve = opts.Loop.OutputReserve
 		}
-		buf := defaultWindowBuffer
-		b := opts.ModelWindow - reserve - buf
+		if reserve <= 0 {
+			reserve = opts.ModelWindow / 10
+			if reserve < minOutputReserve {
+				reserve = minOutputReserve
+			}
+			if reserve > maxOutputReserve {
+				reserve = maxOutputReserve
+			}
+		}
+		buf := opts.Loop.ContextBuffer
+		if buf <= 0 {
+			buf = defaultWindowBuffer
+		}
+		b := opts.ModelWindow - max(reserve, buf)
 		if b < minShapeBudget {
 			b = minShapeBudget
 		}

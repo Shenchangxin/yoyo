@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -54,10 +55,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		}
 		defer cleanup()
 	}
-	childLoop := parent.Loop
-	childLoop.MaxTurns = 8
-	childLoop.MaxToolMessages = 12
-	childLoop.AllowLLMCompact = false
+	childLoop := childLoopFor(parent, profileOf(parent.Tools))
 	childID := parent.SessionID + "/tasks/" + shortID()
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
@@ -100,6 +98,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		Events:           parent.Events,
 		FileHooks:        parent.FileHooks,
 		StopHooks:        parent.StopHooks,
+		PreCompactHooks:  parent.PreCompactHooks,
 		OnEvent:          nil,
 		Meter:            parent.Meter,
 		Home:             parent.Home,
@@ -165,6 +164,57 @@ func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool) ToolResult {
 		b.WriteString("\n\n")
 	}
 	return ToolResult{Content: "SUBAGENT_FANOUT:\n" + b.String()}
+}
+
+func profileOf(t *WorkspaceTools) string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.taskProfile
+}
+
+const exploreInstruction = "You are an explore subagent. Return structured findings: paths, symbols, and risks. Do not copy file bodies back to the parent. Read-only."
+const qaInstruction = "You are an independent evaluator. Check whether the required artifacts exist and match the spec. Do not implement new features."
+
+func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
+	loop := parent.Loop
+	loop.AllowLLMCompact = false
+	turns, tools := 24, 60
+	if loop.TaskMaxTurns > 0 {
+		turns = loop.TaskMaxTurns
+	}
+	if loop.TaskMaxToolMessages > 0 {
+		tools = loop.TaskMaxToolMessages
+	}
+	if parent.SoftHorizon {
+		if turns < ChatMaxTurns/2 {
+			turns = ChatMaxTurns / 2
+		}
+		if tools < ChatMaxToolMessages/2 {
+			tools = ChatMaxToolMessages / 2
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "explore":
+		loop.PlanMode = true
+		if strings.TrimSpace(loop.TaskInstruction) == "" {
+			loop.TaskInstruction = exploreInstruction
+		} else {
+			loop.TaskInstruction = exploreInstruction + "\n\n" + loop.TaskInstruction
+		}
+	case "qa":
+		loop.PlanMode = true
+		if strings.TrimSpace(loop.TaskInstruction) == "" {
+			loop.TaskInstruction = qaInstruction
+		} else {
+			loop.TaskInstruction = qaInstruction + "\n\n" + loop.TaskInstruction
+		}
+	}
+	loop.MaxTurns = turns
+	loop.MaxToolMessages = tools
+	return loop
 }
 
 func shortID() string {

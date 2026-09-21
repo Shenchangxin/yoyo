@@ -18,6 +18,13 @@ type ShapeReport struct {
 	DynamicTokens  int      `json:"dynamic_tokens,omitempty"`
 	SchemaTokens   int      `json:"schema_tokens,omitempty"`
 	ProviderPrompt int      `json:"provider_prompt,omitempty"`
+	CachedTokens   int      `json:"cached_tokens,omitempty"`
+	CacheReported  bool     `json:"cache_reported,omitempty"`
+	CacheStable    bool     `json:"cache_stable,omitempty"`
+	PrefixHash     string   `json:"prefix_hash,omitempty"`
+	DynamicAt      string   `json:"dynamic_at,omitempty"`
+	Trigger        string   `json:"trigger,omitempty"`
+	Hydrated       int      `json:"hydrated,omitempty"`
 	Layers         []string `json:"layers,omitempty"`
 	Elided         int      `json:"elided,omitempty"`
 }
@@ -206,7 +213,7 @@ func keepThroughSnip(m Message) bool {
 
 func pinnedPrefix(msgs []Message) int {
 	n := 0
-	for n < len(msgs) && (msgs[n].Role == RoleSystem || msgs[n].Role == RoleDeveloper || msgs[n].Role == RoleMemory) {
+	for n < len(msgs) && (msgs[n].Role == RoleSystem || msgs[n].Role == RoleDeveloper) {
 		n++
 	}
 	if n == 0 {

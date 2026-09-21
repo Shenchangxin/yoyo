@@ -6,11 +6,12 @@ import "github.com/Shenchangxin/yoyo/internal/kernel"
 // Waterfall (rewrite). The TCB must never register listeners that can
 // disable eval, vault, or the journal.
 const (
-	HookPreTool  = "agent.pre_tool"
-	HookPostTool = "agent.post_tool"
-	HookCompact  = "agent.compact"
-	HookTurnEnd  = "agent.turn_end"
-	HookStop     = "agent.stop"
+	HookPreTool     = "agent.pre_tool"
+	HookPostTool    = "agent.post_tool"
+	HookCompact     = "agent.compact"
+	HookPreCompact  = "agent.pre_compact"
+	HookTurnEnd     = "agent.turn_end"
+	HookStop        = "agent.stop"
 )
 
 // ToolHook is the payload for pre/post tool hooks.

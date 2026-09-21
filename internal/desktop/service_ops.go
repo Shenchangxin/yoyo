@@ -151,8 +151,12 @@ func (s *Service) SetSessionPinnedSkills(id string, names []string) (app.Session
 }
 
 func (s *Service) CompactSession(id string) (string, error) {
+	return s.CompactSessionFocus(id, "")
+}
+
+func (s *Service) CompactSessionFocus(id, focus string) (string, error) {
 	if s.RPC != nil {
-		v, err := s.call("thread.compact", map[string]any{"session": id})
+		v, err := s.call("thread.compact", map[string]any{"session": id, "focus": focus})
 		m, err2 := decode[map[string]any](v, err)
 		if err2 != nil {
 			return "", err2
@@ -160,7 +164,7 @@ func (s *Service) CompactSession(id string) (string, error) {
 		t, _ := m["note"].(string)
 		return t, nil
 	}
-	return s.App.CompactSession(id)
+	return s.App.CompactSessionFocus(id, focus)
 }
 
 func (s *Service) QueueList(id string) []app.QueuedTurn {
