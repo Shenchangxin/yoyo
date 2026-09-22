@@ -1,6 +1,7 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
 export type Surface = "agent" | "harness" | "settings" | "skills" | "video";
+export type VideoMode = "drama" | "canvas" | "creative";
 export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer" | "index" | "behavior";
 export type SettingsTab =
   | "general"
@@ -13,6 +14,8 @@ export type SettingsTab =
   | "advanced";
 
 export type AuthMode = "default" | "auto_edit" | "full" | "ask";
+
+export type ThreadChannel = "agent" | "video";
 
 export type Thread = {
   id: string;
@@ -30,7 +33,16 @@ export type Thread = {
   authMode?: AuthMode;
   pinnedSkills?: string[];
   loadedSkills?: string[];
+  channel?: ThreadChannel;
 };
+
+export function threadChannel(t: { channel?: string } | null | undefined): ThreadChannel {
+  return t?.channel === "video" ? "video" : "agent";
+}
+
+export function channelForSurface(surface: Surface): ThreadChannel {
+  return surface === "video" ? "video" : "agent";
+}
 
 export type ItemType =
   | "user"

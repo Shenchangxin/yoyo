@@ -180,9 +180,17 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	case "thread.start":
 		var p struct {
 			Workspace string `json:"workspace"`
+			Channel   string `json:"channel"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.NewSession(p.Workspace)
+		return a.NewSessionOn(p.Workspace, p.Channel)
+	case "thread.channel.set":
+		var p struct {
+			Session string `json:"session"`
+			Channel string `json:"channel"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionChannel(p.Session, p.Channel)
 	case "turn.start":
 		var p struct {
 			Session     string `json:"session"`

@@ -29,6 +29,9 @@ type SessionMeta struct {
 	// live at sessions/{id}/spill. DumpSession(id) returns both in full.
 	ID               string    `json:"id"`
 	CreatedAt        time.Time `json:"created_at"`
+	// Channel is the conversation lane: agent (default) or video.
+	// Video chats never share an identity with Agent chats.
+	Channel          string    `json:"channel,omitempty"`
 	Workspace        string    `json:"workspace"`
 	OriginWorkspace  string    `json:"origin_workspace,omitempty"`
 	Worktree         string    `json:"worktree,omitempty"`
@@ -61,18 +64,28 @@ func (m SessionMeta) ToolRoot() string {
 }
 
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
+	return a.NewSessionOn(workspace, session.ChannelAgent)
+}
+
+func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 	if workspace == "" {
 		workspace = a.Workspace()
 	}
 	id := newID()
+	ch := session.NormalizeChannel(channel)
+	title := "session"
+	if ch == session.ChannelVideo {
+		title = "video"
+	}
 	meta := SessionMeta{
 		ID:               id,
 		CreatedAt:        time.Now().UTC(),
+		Channel:          ch,
 		Workspace:        workspace,
 		Harness:          a.ActiveHash(),
 		HarnessPolicy:    session.FollowActive,
 		ModelFingerprint: Fingerprint(a.Config),
-		Title:            "session",
+		Title:            title,
 	}
 	b, _ := json.MarshalIndent(meta, "", "  ")
 	path := filepath.Join(a.Home.Sessions(), id+".meta.json")
@@ -81,6 +94,18 @@ func (a *App) NewSession(workspace string) (SessionMeta, error) {
 	}
 	a.applySessionAuth(id, capability.AuthDefault)
 	return a.attachAuthMode(meta), nil
+}
+
+func (a *App) SetSessionChannel(id, channel string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	m.Channel = session.NormalizeChannel(channel)
+	if err := a.writeSession(m); err != nil {
+		return m, err
+	}
+	return a.attachAuthMode(m), nil
 }
 
 func (a *App) GetSession(id string) (SessionMeta, error) {

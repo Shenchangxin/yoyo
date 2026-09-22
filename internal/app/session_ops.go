@@ -34,10 +34,11 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 		return SessionMeta{}, err
 	}
 	ws := src.ProjectRoot()
-	dst, err := a.NewSession(ws)
+	dst, err := a.NewSessionOn(ws, src.Channel)
 	if err != nil {
 		return SessionMeta{}, err
 	}
+	dst.Channel = session.NormalizeChannel(src.Channel)
 	dst.Title = "fork of " + titleFrom(src.Title)
 	dst.Harness = session.ResolveHarness(session.NormalizePolicy(src.HarnessPolicy), src.Harness, a.ActiveHash())
 	dst.HarnessPolicy = session.Pin

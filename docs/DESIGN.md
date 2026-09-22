@@ -148,9 +148,17 @@ foreground text and removes pulse, rise and caret animations.
 │ Harn. │└───────────────────────────────┘└────────────┘
 ```
 
-- App frame padding 8px; rail, review, Settings, Skills, Video, and Harness are
-  rounded cards on `sidebar` with the inset highlight; the agent stage is
-  bare `background` so the transcript reads as a document.
+- App frame padding 8px; rail, review, Settings, Skills, and Harness are
+  rounded cards on `sidebar` with the inset highlight; the agent and Video
+  stages are bare `background` so the transcript reads as a document.
+- **Video** is a conversation surface. Generation mode (short drama / canvas /
+  creative) is the leftmost composer control; the bound episode sits next to
+  it. Video chats live on their own session channel — they never share an
+  identity with Agent chats (LibTV session vs project; OiiOii chat vs canvas).
+  The stage is transcript + composer only — no Review column. The episode
+  board is an overlay the operator opens from the composer, then returns to
+  chat. Binding a chat to an episode does not create either. Chat dock is not
+  used on Video; clicking Video in the rail toggles the surface.
 - **Harness process rail** — Overview is the unnumbered origin. Propose /
   Prove / Promote carry `01 02 03` and share the Review underline tab
   grammar. They are one RSI sequence, not four sibling labs.
@@ -190,13 +198,13 @@ foreground text and removes pulse, rise and caret animations.
 - **Error** — `danger` bar and tint for provider failures; neutral card for
   soft stops (`Stopped`, `Reached the turn limit`) with a `Continue this turn`
   CTA when retryable. Details behind a disclosure.
-- **Empty thread** — bottom-anchored above the composer: mark, `Ready when you
-  are.`, one hint line (`Working in ws · ↵ sends · @ pins context · ⇧⇥
-  toggles Plan`), three starter pills. No headline larger than 21px, no
-  marketing copy.
+- **Empty thread** — bottom-anchored above the composer: mark, greeting
+  (`Ready when you are.` / Video: `Paste a chapter.`), one hint line, three
+  starter pills. No headline larger than 21px, no marketing copy.
 - **Composer** — brightest object on the stage. Toolbar is ghost controls;
   send is a filled circle that flips to a stop square while running. The
   context meter appears only once tokens exist or a turn is running or queued.
+  On Video, the leftmost control is generation mode; Agent/Plan is hidden.
 
 ---
 
@@ -263,4 +271,5 @@ so button names stay exact. Contrast: body text ≥ 7:1 on `background`, muted �
 Avatars in the transcript · spinners on text · cards inside cards · bordered
 list items · labelled buttons in toolbars · colour on chrome · ligatures in
 code · headlines over 21px · “Sparkles”, gradients, glows · daisyUI · marketing
-empty states · fake sandbox badges · a second agent loop in the client.
+empty states · fake sandbox badges · a second agent loop in the client · Video
+as a lab page that replaces the conversation · a Chat dock on Video.

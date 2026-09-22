@@ -31,6 +31,7 @@ import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Notice, Surface, Thread } from "../lib/protocol";
+import { threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
 import type { Copy } from "../lib/copy";
@@ -142,6 +143,7 @@ export function ThreadRail(props: {
   const q = props.query.toLowerCase();
   const list = props.threads.filter((t) => {
     if (!props.showArchived && t.archived) return false;
+    if (threadChannel(t) !== (props.surface === "video" ? "video" : "agent")) return false;
     if (!q) return true;
     return (t.title + t.id + t.workspace).toLowerCase().includes(q);
   });
@@ -353,7 +355,7 @@ function ThreadRow(props: {
   const copy = useCopy();
   const t = props.thread;
   const run = !!props.running[t.id];
-  const active = t.id === props.activeId && props.surface === "agent";
+  const active = t.id === props.activeId && threadChannel(t) === (props.surface === "video" ? "video" : "agent");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t.title || "");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -459,7 +461,6 @@ function ThreadRow(props: {
           className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left"
           onClick={() => {
             props.onSelect(t);
-            props.onLab("agent");
             setMenuOpen(false);
           }}
           onDoubleClick={(e) => {

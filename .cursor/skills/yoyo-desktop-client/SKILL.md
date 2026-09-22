@@ -20,6 +20,7 @@ GUI is a **client of one Go harness**. Do not add a second agent loop, LangChain
 - Approvals render **in the stream** (Claude grammar). Inspector is review, not the only place to click Once/Deny.
 - Harbor / Evolve / Harness are laboratory workspaces, not chat siblings of equal weight.
 - Skills is a left-rail module (installed + market), not a Review tab and not a settings page.
+- Video is transcript + composer only — no Review column. Mode and episode sit on the composer; the episode board is an overlay, not a right pane.
 - Control/settings is a gear surface (Work Buddy), not a fifth primary lab.
 
 Steal, do not clone:

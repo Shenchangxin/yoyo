@@ -17,6 +17,8 @@ import { formatTokens, lookupCatalogModel, composerModelIds, resolveContextWindo
 import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
+import { VideoModeSwitch } from "./video/VideoModeSwitch";
+import { DramaProjectChip } from "./video/DramaProjectChip";
 import {
   composeDraft,
   isCompleteMention,
@@ -75,6 +77,14 @@ export function Composer(props: {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const copy = useCopy();
+  const surface = useUI((s) => s.surface);
+  const videoMode = useUI((s) => s.videoMode);
+  const videoing = surface === "video" && !props.compact;
+  const placeholder = props.disabled
+    ? (props.disabledReason || copy.composer.disabled)
+    : videoing
+      ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
+      : copy.composer.placeholder;
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
   const canSend = !props.disabled && hasPayload;
   const currentModel = (props.model || "").trim();
@@ -336,7 +346,7 @@ export function Composer(props: {
             rows={1}
             value={value}
             disabled={props.disabled}
-            placeholder={props.disabled ? (props.disabledReason || copy.composer.disabled) : copy.composer.placeholder}
+            placeholder={placeholder}
             className="prose-select min-h-[1.35rem] px-3.5 pt-2.5 pb-0.5 text-[13px] leading-[1.55] placeholder:text-muted/45"
             aria-label={copy.composer.message}
             onFocus={() => {
@@ -442,6 +452,13 @@ export function Composer(props: {
           />
           <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-1.5 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
+            {videoing ? (
+              <>
+                <VideoModeSwitch disabled={props.disabled} />
+                {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
+                <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
+              </>
+            ) : null}
             <Tooltip content={copy.composer.mention}>
               <button
                 type="button"
@@ -481,6 +498,8 @@ export function Composer(props: {
                 e.target.value = "";
               }}
             />
+            {videoing ? null : (
+            <>
             <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -521,6 +540,8 @@ export function Composer(props: {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </>
+            )}
             {props.onAuthMode ? (
               <Select
                 value={parseComposerAuth(props.authMode)}

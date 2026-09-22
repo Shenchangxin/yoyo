@@ -4,11 +4,13 @@ import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input, Textarea } from "../../components/ui/input";
 import { EmptyState } from "../../components/ui/empty-state";
+import { Tooltip } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import { subscribeItems } from "../../lib/stream";
 import { DramaMentionField, type MentionAsset } from "./DramaMentionField";
+import { useDramaSelection } from "./workshop-store";
 
 type Drama = {
   id: string;
@@ -83,14 +85,6 @@ function pipeStatus(raw: string, stage: string) {
   }
 }
 
-function persist(key: string, v: string) {
-  try {
-    localStorage.setItem(key, v);
-  } catch {
-    /* ignore */
-  }
-}
-
 function selectedClipIds(shots: Shot[], sel: Record<string, boolean>) {
   return shots.filter((s) => s.video_url && sel[s.id] !== false).map((s) => s.id);
 }
@@ -113,10 +107,12 @@ function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
 
 export function DramaStudio(props: { sessionId?: string; onNeedSession: () => void }) {
   const copy = useCopy();
+  const dramaId = useDramaSelection((s) => s.dramaId);
+  const episodeId = useDramaSelection((s) => s.episodeId);
+  const setDramaId = useDramaSelection((s) => s.setDramaId);
+  const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [dramaId, setDramaId] = useState(() => localStorage.getItem("yoyo-drama-id") || "");
-  const [episodeId, setEpisodeId] = useState(() => localStorage.getItem("yoyo-episode-id") || "");
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [pane, setPane] = useState<Pane>("script");
   const [busy, setBusy] = useState("");
@@ -155,7 +151,6 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
       setEpisodes([]);
       return;
     }
-    persist("yoyo-drama-id", dramaId);
     void api.video.episodes(dramaId).then((list) => {
       const eps = Array.isArray(list) ? list : [];
       setEpisodes(eps);
@@ -168,7 +163,6 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
       setBundle(null);
       return;
     }
-    persist("yoyo-episode-id", episodeId);
     void loadBundle(episodeId).catch((e) => setErr(api.errMessage(e)));
   }, [episodeId, loadBundle]);
 
@@ -293,187 +287,187 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     { id: "cut", label: copy.video.cut },
   ];
 
+  const iconBtn =
+    "grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30";
+
   return (
-    <div className="flex h-full min-h-0">
-      <aside className="flex w-[220px] shrink-0 flex-col border-r border-border/80">
-        <div className="flex items-center gap-1 border-b border-border/70 px-2 py-2">
-          <Button size="sm" variant="lift" className="min-w-0 flex-1 justify-start" onClick={() => void createDrama()}>
-            <Plus className="size-3.5" /> {copy.video.newDrama}
-          </Button>
-          <div className="flex rounded-md bg-lift p-0.5">
-            {["16:9", "9:16"].map((r) => (
-              <button
-                key={r}
-                type="button"
-                title={copy.video.locked}
-                className={cn("rounded px-1.5 py-1 font-mono text-[10px] tabular-nums", ratio === r ? "bg-panel text-foreground" : "text-muted")}
-                onClick={() => setRatio(r)}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto px-1.5 py-1">
-          {dramas.length === 0 ? (
-            <EmptyState className="py-8" icon={<Clapperboard className="size-4" />} title={copy.video.empty} body={copy.video.emptyHint} />
-          ) : dramas.map((d) => (
+    <div className="flex h-full min-h-0 flex-col">
+      {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
+      <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 px-2 py-1.5">
+        <select
+          className={cn(field, "min-w-0 max-w-[9.5rem] flex-1")}
+          value={dramaId}
+          aria-label={copy.video.pickSeries}
+          onChange={(e) => { setDramaId(e.target.value); setEpisodeId(""); setKill(""); }}
+        >
+          <option value="">{copy.video.pickSeries}</option>
+          {dramas.map((d) => (
+            <option key={d.id} value={d.id}>{d.title || copy.video.untitled}</option>
+          ))}
+        </select>
+        <select
+          className={cn(field, "min-w-0 max-w-[8.5rem] flex-1")}
+          value={episodeId}
+          disabled={!dramaId}
+          aria-label={copy.video.pickEpisode}
+          onChange={(e) => setEpisodeId(e.target.value)}
+        >
+          <option value="">{copy.video.pickEpisode}</option>
+          {episodes.map((e) => (
+            <option key={e.id} value={e.id}>{e.title || copy.video.untitledEp}</option>
+          ))}
+        </select>
+        <Tooltip content={copy.video.newDrama}>
+          <button type="button" className={iconBtn} aria-label={copy.video.newDrama} onClick={() => void createDrama()}>
+            <Plus className="size-3.5" />
+          </button>
+        </Tooltip>
+        <Tooltip content={copy.video.newEpisode}>
+          <button type="button" className={iconBtn} aria-label={copy.video.newEpisode} disabled={!dramaId} onClick={() => void createEpisode()}>
+            <Film className="size-3.5" />
+          </button>
+        </Tooltip>
+        <div className="flex rounded-md bg-lift p-0.5">
+          {["16:9", "9:16"].map((r) => (
             <button
-              key={d.id}
+              key={r}
               type="button"
-              className={cn("mb-0.5 w-full rounded-lg px-2.5 py-2 text-left transition-colors", dramaId === d.id ? "bg-lift" : "hover:bg-lift/50")}
-              onClick={() => { setDramaId(d.id); setEpisodeId(""); setKill(""); }}
+              title={copy.video.locked}
+              className={cn("rounded px-1.5 py-1 font-mono text-[10px] tabular-nums", (drama?.aspect_ratio || ratio) === r ? "bg-panel text-foreground" : "text-muted")}
+              onClick={() => setRatio(r)}
             >
-              <div className="truncate text-[13px] font-medium">{d.title || copy.video.untitled}</div>
-              <div className="mt-0.5 font-mono text-[11px] tabular-nums text-muted">{d.style} · {d.aspect_ratio} · {d.episode_count}</div>
+              {r}
             </button>
           ))}
-          {dramaId ? (
-            <>
-              <div className="mt-3 flex items-center px-2 pb-1">
-                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.video.episodes}</span>
-                <button type="button" className="ml-auto text-[11px] text-muted hover:text-foreground" onClick={() => void createEpisode()}>
-                  + {copy.video.newEpisode}
-                </button>
-              </div>
-              {episodes.map((e) => (
+        </div>
+        <Tooltip content={copy.video.importHint}>
+          <button type="button" className={iconBtn} aria-label={copy.video.import} onClick={() => void importHuobao()}>
+            <Upload className="size-3.5" />
+          </button>
+        </Tooltip>
+      </header>
+      {!episodeId || !bundle ? (
+        <EmptyState
+          className="flex-1"
+          icon={<Clapperboard className="size-5" />}
+          title={copy.video.empty}
+          body={copy.video.emptyHint}
+          action={<Button size="sm" onClick={() => void createDrama()}>{copy.video.newDrama}</Button>}
+        />
+      ) : (
+        <>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 px-2 py-1.5">
+            <Input
+              className="h-7 max-w-[7.5rem] text-[12.5px] font-medium"
+              value={drama?.title || ""}
+              aria-label={copy.video.title}
+              onChange={(e) => {
+                const title = e.target.value;
+                setDramas((list) => list.map((d) => d.id === dramaId ? { ...d, title } : d));
+              }}
+              onBlur={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, title: e.target.value }); }}
+            />
+            <Input
+              className="h-7 max-w-[7rem] text-[12px]"
+              value={ep?.title || ""}
+              aria-label={copy.video.untitledEp}
+              onChange={(e) => {
+                const title = e.target.value;
+                setBundle((b) => b ? { ...b, episode: { ...b.episode, title } } : b);
+                setEpisodes((list) => list.map((x) => x.id === ep?.id ? { ...x, title } : x));
+              }}
+              onBlur={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, title: e.target.value }); }}
+            />
+            <select className={cn(field, "h-7")} value={drama?.style || "3d"} aria-label={copy.video.style} onChange={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style: e.target.value }).then(loadList); }}>
+              {styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
+            </select>
+            {providers.some((p) => p.service_type === "image") ? (
+              <select className={cn(field, "h-7 max-w-[7.5rem]")} value={ep?.image_provider_id || ""} aria-label={copy.video.imageProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
+                <option value="">{copy.video.imageProvider}</option>
+                {providers.filter((p) => p.service_type === "image").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
+              </select>
+            ) : null}
+            {providers.some((p) => p.service_type === "video") ? (
+              <select className={cn(field, "h-7 max-w-[7.5rem]")} value={ep?.video_provider_id || ""} aria-label={copy.video.videoProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
+                <option value="">{copy.video.videoProvider}</option>
+                {providers.filter((p) => p.service_type === "video").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
+              </select>
+            ) : null}
+            <select className={cn(field, "h-7")} value={ep?.resolution || "720p"} aria-label={copy.video.resolution} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, resolution: e.target.value }).then(() => loadBundle(ep.id)); }}>
+              {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button
+              type="button"
+              className={cn("ml-auto h-6 rounded-md px-2 text-[11px] font-medium", kill === "episode" + episodeId ? "text-danger" : "text-muted hover:bg-lift hover:text-foreground")}
+              onClick={() => void remove("episode", episodeId)}
+            >
+              {kill === "episode" + episodeId ? copy.video.confirmDelete : copy.video.delete}
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1 border-b border-border/70 px-2 py-1.5">
+            {pipe.map((s) => {
+              const st = pipeStatus(ep?.pipeline || "", s.id);
+              const live = st === "running" || busy === s.id;
+              return (
                 <button
-                  key={e.id}
+                  key={s.id}
                   type="button"
-                  className={cn("mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-[12.5px]", episodeId === e.id ? "bg-lift font-medium" : "text-muted hover:bg-lift/50 hover:text-foreground")}
-                  onClick={() => setEpisodeId(e.id)}
+                  disabled={!!busy}
+                  onClick={() => {
+                    setPane(s.pane);
+                    if (s.id === "assets") void run("stills", () => api.video.generateMissingAssets(episodeId));
+                    else if (s.id === "gen") void run("clips", () => api.video.generateMissingShots(episodeId));
+                    else if (s.id === "merge") setPane("cut");
+                    else void stage(s.id === "prompts" ? "prompts" : s.id);
+                  }}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+                    st === "done" ? "bg-lift text-foreground" : live ? "bg-accent/[0.11] text-foreground" : "text-muted hover:bg-lift/60 hover:text-foreground",
+                  )}
                 >
-                  {e.title || copy.video.untitledEp}
+                  {live ? <span className="pulse-dot" /> : <span className={cn("size-1.5 rounded-full", st === "done" ? "bg-success" : "bg-muted/50")} />}
+                  {s.label}
+                </button>
+              );
+            })}
+            {busy ? <span className="ml-1 text-[11px] text-muted">{copy.video.stageBusy}</span> : null}
+          </div>
+          <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-2">
+            <div className="process-tabs flex h-9 items-stretch gap-0.5" role="tablist" aria-label={copy.video.workshop}>
+              {panes.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={pane === p.id}
+                  className={cn(
+                    "relative flex h-full cursor-pointer items-center px-2 text-[12px] font-medium transition-colors",
+                    pane === p.id ? "text-foreground" : "text-muted hover:text-foreground",
+                  )}
+                  onClick={() => setPane(p.id)}
+                >
+                  {p.label}
+                  <span className={cn("absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150", pane === p.id ? "opacity-100" : "opacity-0")} aria-hidden />
                 </button>
               ))}
-            </>
-          ) : null}
-        </div>
-        <div className="border-t border-border/70 p-2">
-          <Button size="sm" variant="ghost" className="w-full justify-start text-muted" title={copy.video.importHint} onClick={() => void importHuobao()}>
-            <Upload className="size-3.5" /> {copy.video.import}
-          </Button>
-        </div>
-      </aside>
-      <section className="flex min-w-0 flex-1 flex-col">
-        {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-4 py-1.5 text-[12px] text-danger">{err}</div> : null}
-        {!episodeId || !bundle ? (
-          <EmptyState icon={<Film className="size-5" />} title={copy.video.empty} body={copy.video.emptyHint} action={<Button onClick={() => void createDrama()}>{copy.video.newDrama}</Button>} />
-        ) : (
-          <>
-            <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b border-border/70 px-3 py-1.5">
-              <Input
-                className="h-8 max-w-[168px] text-[13px] font-medium"
-                value={drama?.title || ""}
-                aria-label={copy.video.title}
-                onChange={(e) => {
-                  const title = e.target.value;
-                  setDramas((list) => list.map((d) => d.id === dramaId ? { ...d, title } : d));
-                }}
-                onBlur={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, title: e.target.value }); }}
-              />
-              <Input
-                className="h-8 max-w-[140px] text-[12.5px]"
-                value={ep?.title || ""}
-                aria-label={copy.video.untitledEp}
-                onChange={(e) => {
-                  const title = e.target.value;
-                  setBundle((b) => b ? { ...b, episode: { ...b.episode, title } } : b);
-                  setEpisodes((list) => list.map((x) => x.id === ep?.id ? { ...x, title } : x));
-                }}
-                onBlur={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, title: e.target.value }); }}
-              />
-              <select className={field} value={drama?.style || "3d"} aria-label={copy.video.style} onChange={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style: e.target.value }).then(loadList); }}>
-                {styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
-              </select>
-              <span className="rounded-md bg-lift px-2 py-0.5 font-mono text-[11px] tabular-nums text-muted" title={copy.video.locked}>{drama?.aspect_ratio}</span>
-              {providers.some((p) => p.service_type === "image") ? (
-                <select className={cn(field, "max-w-[132px]")} value={ep?.image_provider_id || ""} aria-label={copy.video.imageProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
-                  <option value="">{copy.video.imageProvider}</option>
-                  {providers.filter((p) => p.service_type === "image").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
-                </select>
-              ) : null}
-              {providers.some((p) => p.service_type === "video") ? (
-                <select className={cn(field, "max-w-[132px]")} value={ep?.video_provider_id || ""} aria-label={copy.video.videoProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
-                  <option value="">{copy.video.videoProvider}</option>
-                  {providers.filter((p) => p.service_type === "video").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
-                </select>
-              ) : null}
-              <select className={field} value={ep?.resolution || "720p"} aria-label={copy.video.resolution} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, resolution: e.target.value }).then(() => loadBundle(ep.id)); }}>
-                {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <Button size="sm" variant="ghost" className="ml-auto" title={copy.video.dockHint} disabled={!props.sessionId} onClick={() => props.sessionId && episodeId && void api.video.bind(props.sessionId, episodeId)}>
-                {props.sessionId ? copy.video.bound : copy.video.bindChat}
-              </Button>
-              <Button size="sm" variant="ghost" className={kill === "episode" + episodeId ? "text-danger" : undefined} onClick={() => void remove("episode", episodeId)}>
-                {kill === "episode" + episodeId ? copy.video.confirmDelete : copy.video.delete}
-              </Button>
-            </header>
-            <div className="flex flex-wrap items-center gap-1 border-b border-border/70 px-3 py-1.5">
-              {pipe.map((s) => {
-                const st = pipeStatus(ep?.pipeline || "", s.id);
-                const live = st === "running" || busy === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => {
-                      setPane(s.pane);
-                      if (s.id === "assets") void run("stills", () => api.video.generateMissingAssets(episodeId));
-                      else if (s.id === "gen") void run("clips", () => api.video.generateMissingShots(episodeId));
-                      else if (s.id === "merge") setPane("cut");
-                      else void stage(s.id === "prompts" ? "prompts" : s.id);
-                    }}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors",
-                      st === "done" ? "bg-lift text-foreground" : live ? "bg-accent/[0.11] text-foreground" : "text-muted hover:bg-lift/60 hover:text-foreground",
-                    )}
-                  >
-                    {live ? <span className="pulse-dot" /> : <span className={cn("size-1.5 rounded-full", st === "done" ? "bg-success" : "bg-muted/50")} />}
-                    {s.label}
-                  </button>
-                );
-              })}
-              {busy ? <span className="ml-1 text-[11px] text-muted">{copy.video.stageBusy}</span> : null}
             </div>
-            <div className="flex h-10 shrink-0 items-center border-b border-border/70 px-3">
-              <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist">
-                {panes.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={pane === p.id}
-                    className={cn(
-                      "relative flex h-full cursor-pointer items-center px-2.5 text-[12.5px] font-medium transition-colors",
-                      pane === p.id ? "text-foreground" : "text-muted hover:text-foreground",
-                    )}
-                    onClick={() => setPane(p.id)}
-                  >
-                    {p.label}
-                    <span className={cn("absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150", pane === p.id ? "opacity-100" : "opacity-0")} aria-hidden />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-              {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} /> : null}
-              {pane === "cast" ? <CastPane bundle={bundle} copy={copy} onExtract={() => void stage("extract")} onPrompts={() => void stage("prompts")} onStills={() => void run("stills", () => api.video.generateMissingAssets(episodeId))} onGen={(kind, id) => void run("gen", () => api.video.generateAsset(kind, id, episodeId))} onUpload={(kind, id, b64) => void run("up", () => api.video.uploadAsset(kind, id, b64))} /> : null}
-              {pane === "board" ? <BoardPane bundle={bundle} copy={copy} onBoard={() => void stage("storyboard")} onVprompts={() => void stage("video_prompts")} onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))} onGen={(id) => void run("clip", () => api.video.generateShot(id))} onPatch={(s) => void run("shot", () => api.video.updateShot(s))} /> : null}
-              {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} onMerge={() => {
-                const ids = selectedClipIds(bundle.shots || [], selShots);
-                if (!ids.length) {
-                  toast.message(copy.video.needClips);
-                  return;
-                }
-                void run("merge", () => api.video.merge(episodeId, ids));
-              }} /> : null}
-            </div>
-            <JobStrip jobs={bundle.jobs || []} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
-          </>
-        )}
-      </section>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-3 py-2.5">
+            {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} /> : null}
+            {pane === "cast" ? <CastPane bundle={bundle} copy={copy} onExtract={() => void stage("extract")} onPrompts={() => void stage("prompts")} onStills={() => void run("stills", () => api.video.generateMissingAssets(episodeId))} onGen={(kind, id) => void run("gen", () => api.video.generateAsset(kind, id, episodeId))} onUpload={(kind, id, b64) => void run("up", () => api.video.uploadAsset(kind, id, b64))} /> : null}
+            {pane === "board" ? <BoardPane bundle={bundle} copy={copy} onBoard={() => void stage("storyboard")} onVprompts={() => void stage("video_prompts")} onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))} onGen={(id) => void run("clip", () => api.video.generateShot(id))} onPatch={(s) => void run("shot", () => api.video.updateShot(s))} /> : null}
+            {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} onMerge={() => {
+              const ids = selectedClipIds(bundle.shots || [], selShots);
+              if (!ids.length) {
+                toast.message(copy.video.needClips);
+                return;
+              }
+              void run("merge", () => api.video.merge(episodeId, ids));
+            }} /> : null}
+          </div>
+          <JobStrip jobs={bundle.jobs || []} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+        </>
+      )}
     </div>
   );
 }
@@ -483,19 +477,19 @@ function ScriptPane({ ep, plan, copy, onSave, onRewrite }: { ep: Episode; plan: 
   const [script, setScript] = useState(ep.script_content);
   useEffect(() => { setContent(ep.content); setScript(ep.script_content); }, [ep.id, ep.content, ep.script_content]);
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid gap-3">
       <label className="block">
         <div className="mb-1.5 text-[11px] text-muted">{copy.video.novel}</div>
-        <Textarea className="min-h-[280px] rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-5" value={content} onChange={(e) => setContent(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
+        <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-5" value={content} onChange={(e) => setContent(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
       </label>
       <label className="block">
         <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted">
           <span>{copy.video.screenplay}</span>
           <Button size="sm" onClick={onRewrite}>{copy.video.rewrite}</Button>
         </div>
-        <Textarea className="min-h-[280px] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[12.5px] leading-5" value={script} onChange={(e) => setScript(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
+        <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[12.5px] leading-5" value={script} onChange={(e) => setScript(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
       </label>
-      <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted lg:col-span-2">
+      <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
         <span className="rounded-md bg-lift px-2 py-1">{copy.video.duration}</span>
         <span className="tabular-nums">{plan.chars} {copy.video.chars}</span>
         <span className="tabular-nums">{plan.target_seconds}{copy.video.seconds}</span>
@@ -518,7 +512,7 @@ function CastPane(props: {
         <Button size="sm" variant="lift" onClick={props.onPrompts}>{c.prompts}</Button>
         <Button size="sm" variant="lift" onClick={props.onStills}>{c.generateAll}</Button>
       </div>
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-4">
         <AssetCol title={c.characters} items={props.bundle.characters} name={(a) => a.name || ""} kind="character" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
         <AssetCol title={c.scenes} items={props.bundle.scenes} name={(a) => a.location || ""} kind="scene" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
         <AssetCol title={c.props} items={props.bundle.props} name={(a) => a.name || ""} kind="prop" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
@@ -590,7 +584,7 @@ function BoardPane(props: {
       ) : (
         <div className="space-y-0">
           {shots.map((s, i) => (
-            <article key={s.id} className={cn("grid gap-3 py-3 md:grid-cols-[160px_1fr]", i ? "border-t border-border/50" : "")}>
+            <article key={s.id} className={cn("grid gap-3 py-3", i ? "border-t border-border/50" : "")}>
               {s.video_url ? (
                 <video src={s.video_url} poster={s.poster_url} controls className="aspect-video w-full rounded-lg bg-background" />
               ) : s.poster_url ? (
@@ -635,7 +629,7 @@ function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: 
         <span className="text-[12px] tabular-nums text-muted">{n} {c.clipCount}</span>
         <span className="text-[12px] text-muted">{c.selectAll}</span>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-2">
         {shots.map((s) => (
           <label key={s.id} className={cn("cursor-pointer overflow-hidden rounded-[10px] border bg-card", props.sel[s.id] !== false && s.video_url ? "border-foreground/40" : "border-border/80")}>
             {s.video_url ? <video src={s.video_url} poster={s.poster_url} className="aspect-video w-full object-cover" /> : <div className="grid aspect-video place-items-center bg-lift text-[11px] text-muted">{c.noClip}</div>}

@@ -1,6 +1,24 @@
 package session
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+// Channel is the conversation lane. Agent chats and video chats are
+// independent identities — same pattern as LibTV session vs project, and
+// OiiOii's per-canvas chats vs the canvas itself.
+const (
+	ChannelAgent = "agent"
+	ChannelVideo = "video"
+)
+
+func NormalizeChannel(s string) string {
+	if strings.EqualFold(strings.TrimSpace(s), ChannelVideo) {
+		return ChannelVideo
+	}
+	return ChannelAgent
+}
 
 // HarnessPolicy controls which snapshot a session executes against.
 const (

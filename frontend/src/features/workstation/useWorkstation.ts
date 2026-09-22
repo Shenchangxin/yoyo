@@ -12,7 +12,9 @@ import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread } from "../../lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel } from "../../lib/protocol";
+import { channelForSurface, threadChannel } from "../../lib/protocol";
+import { bindVideoThread } from "../video/bind";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -43,6 +45,19 @@ export const emptyCfg: AppConfig = {
   searchKey: "",
 };
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
+
+function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: string, cur: Thread | null): Thread | null {
+  if (cur && threadChannel(cur) === channel && list.some((t) => t.id === cur.id)) {
+    return list.find((t) => t.id === cur.id) || cur;
+  }
+  if (preferred) {
+    const hit = list.find((t) => t.id === preferred && threadChannel(t) === channel);
+    if (hit) return hit;
+  }
+  return list.find((t) => threadChannel(t) === channel && !t.archived)
+    || list.find((t) => threadChannel(t) === channel)
+    || null;
+}
 
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
   const next: Record<string, boolean> = {};
@@ -113,6 +128,8 @@ export function useWorkstation() {
   const closeSkills = useUI((s) => s.closeSkills);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
+  const videoBoard = useUI((s) => s.videoBoard);
+  const setVideoBoard = useUI((s) => s.setVideoBoard);
   const inspector = useUI((s) => s.inspector);
   const setInspector = useUI((s) => s.setInspector);
   const chatDock = useUI((s) => s.chatDock);
@@ -273,8 +290,9 @@ export function useWorkstation() {
       setActive((cur) => {
         const pop = readPopoutId();
         if (pop) return list.find((t) => t.id === pop) || cur || list[0] || null;
-        if (cur && list.some((t) => t.id === cur.id)) return list.find((t) => t.id === cur.id) || cur;
-        return list[0] || null;
+        const ch = channelForSurface(useUI.getState().surface);
+        const preferred = useUI.getState().lastThreadId(ch);
+        return pickChannelThread(list, ch, preferred, cur);
       });
       setBooted(true);
       try { setPlaybook(await api.playbook()); } catch { /* optional */ }
@@ -307,6 +325,14 @@ export function useWorkstation() {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => subscribeSessions(refresh), [refresh]);
+  useEffect(() => {
+    if (active) useUI.getState().rememberThread(active);
+  }, [active?.id]);
+  useEffect(() => {
+    const ch = channelForSurface(surface);
+    const preferred = useUI.getState().lastThreadId(ch);
+    setActive((cur) => pickChannelThread(threads, ch, preferred, cur));
+  }, [surface]);
   useEffect(() => {
     if (!booted) return;
     const path = active?.workspace || savedCfg.workspace;
@@ -494,10 +520,14 @@ export function useWorkstation() {
     };
   }, [anyRun, activeId, syncRunning]);
 
+  async function currentChannel(): Promise<ThreadChannel> {
+    return channelForSurface(useUI.getState().surface);
+  }
+
   async function ensureThread(): Promise<Thread> {
-    if (active) return active;
-    const t = await api.createSession(savedCfg.workspace);
-    setThreads((prev) => [t, ...prev]);
+    if (active && threadChannel(active) === channelForSurface(useUI.getState().surface)) return active;
+    const t = await api.createSession(savedCfg.workspace, await currentChannel());
+    setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
     return t;
   }
@@ -514,6 +544,9 @@ export function useWorkstation() {
     setErr("");
     try {
       const t = await ensureThread();
+      if (useUI.getState().surface === "video" && useUI.getState().videoMode === "drama") {
+        await bindVideoThread(t.id).catch(() => {});
+      }
       if (opts?.steer && running[t.id]) {
         await api.steer(t.id, text);
         useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
@@ -755,13 +788,19 @@ export function useWorkstation() {
   }
 
   async function onNew() {
-    const t = await api.createSession(savedCfg.workspace);
-    setThreads((prev) => [t, ...prev]);
+    const t = await api.createSession(savedCfg.workspace, channelForSurface(useUI.getState().surface));
+    setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
-    setLab("agent");
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);
+  }
+
+  function openThread(t: Thread) {
+    useUI.getState().rememberThread(t);
+    if (threadChannel(t) === "video") openVideo();
+    else if (useUI.getState().surface === "video") closeVideo();
+    setActive(t);
   }
 
   async function runHarbor(kind: HarborKind) {
@@ -874,7 +913,8 @@ export function useWorkstation() {
       }
       if (matchKey(e, km.toggleReview)) {
         e.preventDefault();
-        if (useUI.getState().surface === "harness" || useUI.getState().surface === "video") setChatDock((v) => !v);
+        if (useUI.getState().surface === "video") return;
+        if (useUI.getState().surface === "harness") setChatDock((v) => !v);
         else setInspector((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !typing && useUI.getState().surface === "harness") {
@@ -891,6 +931,10 @@ export function useWorkstation() {
       if (e.key === "Escape") {
         if (useUI.getState().palette) {
           setPalette(false);
+          return;
+        }
+        if (useUI.getState().videoBoard) {
+          setVideoBoard(false);
           return;
         }
         if (useUI.getState().surface === "settings") {
@@ -926,11 +970,14 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, closeSettings, closeSkills, setInspector, setPalette, setLab]);
+  }, [savedCfg.keymap, approvals, openSettings, closeSettings, closeSkills, setInspector, setPalette, setLab, setVideoBoard]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
-    if (c === "review") setInspector((v) => !v);
+    if (c === "review") {
+      if (useUI.getState().surface === "video") return;
+      setInspector((v) => !v);
+    }
     else if (c === "sidebar") setSidebarCollapsed((v) => !v);
     else if (c === "dock") setChatDock((v) => !v);
     else if (c === "harness") openHarness("overview");
@@ -947,14 +994,11 @@ export function useWorkstation() {
   handlers.current.focus = (id) => {
     if (!id) return;
     const t = threads.find((x) => x.id === id);
-    if (t) {
-      setActive(t);
-      setLab("agent");
-    }
+    if (t) openThread(t);
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, videoBoard, setVideoBoard, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
@@ -965,7 +1009,7 @@ export function useWorkstation() {
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, openThread, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

@@ -19,6 +19,7 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Plan** is a composer chip, not a page. It proposes; it does not write.
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
+- **Video** is a conversation surface. Mode and episode live on the composer. There is no Review pane — the stage is transcript + composer, like the Agent. The episode board is an on-demand overlay, not a right column. Video chats and Agent chats are separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
 
 ## Distinctive, not decorative

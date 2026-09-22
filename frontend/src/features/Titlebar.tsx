@@ -14,6 +14,9 @@ import { useUI } from "../lib/store";
 export function Titlebar(props: {
   onToggleInspector: () => void;
   inspector: boolean;
+  inspectLabel?: string;
+  hideInspector?: boolean;
+  hideInbox?: boolean;
   title: string;
   sessionId?: string;
   onRename: (title: string) => void;
@@ -99,19 +102,21 @@ export function Titlebar(props: {
         ) : props.runningCount ? (
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
         ) : null}
-        <InboxButton />
-        <Tooltip content={copy.review.toggle}>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={props.onToggleInspector}
-            aria-label={copy.review.toggle}
-            aria-pressed={props.inspector}
-            className={cn("shrink-0", props.inspector && "bg-lift text-foreground")}
-          >
-            <PanelRight />
-          </Button>
-        </Tooltip>
+        {props.hideInbox ? null : <InboxButton />}
+        {props.hideInspector ? null : (
+          <Tooltip content={props.inspectLabel || copy.review.toggle}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={props.onToggleInspector}
+              aria-label={props.inspectLabel || copy.review.toggle}
+              aria-pressed={props.inspector}
+              className={cn("shrink-0", props.inspector && "bg-lift text-foreground")}
+            >
+              <PanelRight />
+            </Button>
+          </Tooltip>
+        )}
       </div>
     </div>
   );

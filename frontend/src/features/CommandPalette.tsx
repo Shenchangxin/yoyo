@@ -9,6 +9,7 @@ import {
   Square,
 } from "lucide-react";
 import type { Lab, Thread } from "../lib/protocol";
+import { threadChannel } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
 import { displayTitle } from "../lib/display-title";
 import { chrome } from "../lib/chrome";
@@ -136,11 +137,13 @@ export function CommandPalette(props: {
                       value={displayTitle(t.title, copy.rail.untitled) + " " + t.id}
                       onSelect={() => {
                         props.onSelectThread(t);
-                        props.onLab("agent");
                         props.onClose();
                       }}
                     >
                       {displayTitle(t.title, copy.rail.untitled)}
+                      {threadChannel(t) === "video" ? (
+                        <span className="ml-auto text-[11px] text-muted">{copy.rail.video}</span>
+                      ) : null}
                     </Command.Item>
                   ))}
                 </Command.Group>

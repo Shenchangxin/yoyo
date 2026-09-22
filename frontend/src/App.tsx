@@ -28,7 +28,7 @@ import { HarnessWorkspace } from "./features/harness/HarnessWorkspace";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
-import { VideoHub } from "./features/video/VideoHub";
+import { VideoWorkshop } from "./features/video/VideoWorkshop";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
 import { readPopoutId } from "./lib/popout";
@@ -65,7 +65,7 @@ export default function App() {
   const harnessing = !popout && ws.surface === "harness";
   const agent = popout || ws.surface === "agent";
   const three = agent && !popout && ws.inspector && !sheetInspect;
-  const dock = (harnessing || videoing) && ws.chatDock && !sheetInspect;
+  const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
   const showRail = !popout && !settings && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !settings && !showRail && ws.sidebarHover;
@@ -73,14 +73,14 @@ export default function App() {
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
-  const sheetRight = sheetInspect && ((agent && ws.inspector) || ((harnessing || videoing) && ws.chatDock));
+  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = ws.active?.toolRoot || sessionWs;
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
-      const t = await api.createSession(path);
+      const t = await api.createSession(path, videoing ? "video" : "agent");
       ws.setActive(t);
       ws.setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
       return;
@@ -178,13 +178,10 @@ export default function App() {
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
       onResolve={ws.onResolve}
-      onOpenThread={(id) => {
-        const t = ws.threads.find((x) => x.id === id);
-        if (t) {
-          ws.setActive(t);
-          ws.setLab("agent");
-        }
-      }}
+          onOpenThread={(id) => {
+            const t = ws.threads.find((x) => x.id === id);
+            if (t) ws.openThread(t);
+          }}
       onOpenPath={(rel) => {
         const root = ws.active?.workspace || ws.savedCfg.workspace;
         const path = joinWorkspace(root, rel);
@@ -305,12 +302,15 @@ export default function App() {
       isolated={ws.health.isolated}
       isolationKind={ws.health.isolationKind}
       onQuery={ws.setQuery}
-      onSelect={ws.setActive}
+      onSelect={ws.openThread}
       onNew={ws.onNew}
       onLab={ws.setLab}
       onHarness={() => ws.openHarness("overview")}
       onSkills={() => ws.openSkills()}
-      onVideo={() => ws.openVideo()}
+      onVideo={() => {
+        if (ws.surface === "video") ws.closeVideo();
+        else ws.openVideo();
+      }}
       onSettings={() => ws.openSettings()}
       onCollapse={() => ws.setSidebarCollapsed(true)}
       onToggleArchived={() => ws.setShowArchived((v) => !v)}
@@ -319,10 +319,7 @@ export default function App() {
       onNotice={(n) => {
         if (n.sessionId) {
           const t = ws.threads.find((x) => x.id === n.sessionId);
-          if (t) {
-            ws.setActive(t);
-            ws.setLab("agent");
-          }
+          if (t) ws.openThread(t);
         }
         ws.setNoticesOpen(false);
       }}
@@ -353,8 +350,7 @@ export default function App() {
         try {
           const next = await api.forkSession(t.id);
           ws.setThreads((prev) => [next, ...prev]);
-          ws.setActive(next);
-          ws.setLab("agent");
+          ws.openThread(next);
           toast.success(copy.app.forked);
         } catch (e) {
           ws.fail(e);
@@ -386,8 +382,6 @@ export default function App() {
     <Button size="sm" variant="ghost" onClick={ws.closeSettings}>{copy.settings.back}</Button>
   ) : skills ? (
     <Button size="sm" variant="ghost" onClick={ws.closeSkills}>{copy.skills.close}</Button>
-  ) : videoing ? (
-    <Button size="sm" variant="ghost" onClick={ws.closeVideo}>{copy.video.close}</Button>
   ) : ws.sidebarCollapsed || railNarrow ? (
     <Button size="icon" variant="ghost" aria-label={copy.rail.expand} onClick={() => { ws.setSidebarCollapsed(false); ws.setSidebarHover(true); }}>
       <PanelLeft />
@@ -396,7 +390,7 @@ export default function App() {
 
   const headerRight = (
     <>
-      {harnessing || videoing ? (
+      {harnessing ? (
         <Button
           size="sm"
           variant="ghost"
@@ -424,8 +418,6 @@ export default function App() {
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
-    : videoing
-      ? <span className="text-[13px] font-medium">{copy.video.title}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -443,12 +435,14 @@ export default function App() {
       : (
             <Titlebar
               inspector={ws.inspector}
+              hideInspector={videoing}
+              hideInbox={videoing}
               title={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat}
               sessionId={ws.active?.id || ""}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}
-              onSelectRunning={(t) => { ws.setActive(t); ws.setLab("agent"); }}
+              onSelectRunning={(t) => ws.openThread(t)}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
               onRename={async (title) => {
@@ -475,11 +469,10 @@ export default function App() {
     />
   );
 
-  const videoPane = (
-    <VideoHub
+  const workshop = (
+    <VideoWorkshop
       sessionId={ws.activeId}
       onNeedSession={() => {
-        ws.setChatDock(true);
         if (!ws.activeId) void ws.onNew();
       }}
     />
@@ -491,8 +484,6 @@ export default function App() {
     </SidebarCard>
   ) : skills ? (
     <SidebarCard>{skillsPane}</SidebarCard>
-  ) : videoing ? (
-    <SidebarCard>{videoPane}</SidebarCard>
   ) : harnessing ? (
     <SidebarCard>{labPane}</SidebarCard>
   ) : agentPane;
@@ -510,7 +501,7 @@ export default function App() {
             onNew={ws.onNew}
             onLab={ws.setLab}
             onOpenHarness={() => ws.openHarness("overview")}
-            onSelectThread={ws.setActive}
+            onSelectThread={ws.openThread}
             onDiff={ws.refreshDiff}
             onAbout={async () => { ws.setAboutInfo(await api.about().catch(() => ({}))); ws.setAboutOpen(true); }}
             onQuit={ws.requestQuit}
@@ -626,7 +617,24 @@ export default function App() {
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
               </div>
             ) : null}
-            {inspectOpen ? (
+            {videoing && ws.videoBoard ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
+                <div className="flex h-9 shrink-0 items-center px-3">
+                  <button
+                    type="button"
+                    className="rounded-md px-1.5 py-1 text-[12px] font-medium text-muted hover:bg-lift hover:text-foreground"
+                    onClick={() => ws.setVideoBoard(false)}
+                  >
+                    {copy.video.closeBoard}
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
+                  <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
+                    {workshop}
+                  </div>
+                </div>
+              </div>
+            ) : inspectOpen ? (
               <Group
                 key={three ? "agent-inspect" : "lab-dock"}
                 className="min-h-0 min-w-0 flex-1"
