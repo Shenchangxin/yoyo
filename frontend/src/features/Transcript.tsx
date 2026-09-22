@@ -5,6 +5,7 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
+import { useUI } from "../lib/store";
 import { writeClipboard } from "../lib/clipboard";
 import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import {
@@ -269,18 +270,37 @@ export function Transcript(props: {
  */
 function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (text: string) => void }) {
   const copy = useCopy();
+  const surface = useUI((s) => s.surface);
+  const videoMode = useUI((s) => s.videoMode);
+  const videoing = surface === "video";
+  const ready = !videoing
+    ? copy.transcript.ready
+    : videoMode === "canvas"
+      ? copy.transcript.canvasReady
+      : videoMode === "creative"
+        ? copy.transcript.creativeReady
+        : copy.transcript.videoReady;
+  const starters = !videoing
+    ? copy.transcript.starters
+    : videoMode === "canvas"
+      ? copy.transcript.canvasStarters
+      : videoMode === "creative"
+        ? copy.transcript.creativeStarters
+        : copy.transcript.videoStarters;
   const ws = displayWorkspace(workspace, "");
   const hints = [
     ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
     { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
-    { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
-    { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
+    videoing
+      ? { key: "mode", node: copy.transcript.hintVideoMode }
+      : { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
+    videoing ? null : { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
   ].filter(Boolean) as { key: string; node: ReactNode }[];
   return (
     <div className="empty-rise" data-testid="empty-turn">
       <MarkWell />
       <h1 className="mt-5 max-w-[18ch] text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">
-        {copy.transcript.ready}
+        {ready}
       </h1>
       <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] leading-[1.6] text-muted">
         {hints.map((h, i) => (
@@ -291,7 +311,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         ))}
       </p>
       <div className="mt-6 flex flex-wrap gap-1.5">
-        {copy.transcript.starters.map((s, i) => (
+        {starters.map((s, i) => (
           <button
             type="button"
             key={s.label}

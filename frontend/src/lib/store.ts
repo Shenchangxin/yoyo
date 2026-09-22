@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { HarnessTab, Lab, Notice, SettingsTab, Surface } from "./protocol";
+import type { HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode } from "./protocol";
+import { threadChannel } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 
 export type InspTab = "diff" | "files" | "trace" | "queue" | "memory";
@@ -35,6 +36,14 @@ type UIState = {
   closeSkills: () => void;
   openVideo: () => void;
   closeVideo: () => void;
+  videoMode: VideoMode;
+  setVideoMode: (m: VideoMode) => void;
+  videoBoard: boolean;
+  setVideoBoard: (v: boolean | ((p: boolean) => boolean)) => void;
+  agentThreadId: string;
+  videoThreadId: string;
+  rememberThread: (t: Thread | null) => void;
+  lastThreadId: (ch: ThreadChannel) => string;
   setSettingsTab: (tab: SettingsTab) => void;
   setInspector: (v: boolean | ((p: boolean) => boolean)) => void;
   setChatDock: (v: boolean | ((p: boolean) => boolean)) => void;
@@ -76,6 +85,41 @@ function readChatDock(): boolean {
   }
 }
 
+function readVideoMode(): VideoMode {
+  try {
+    const v = localStorage.getItem("yoyo-video-mode");
+    if (v === "drama" || v === "canvas" || v === "creative") return v;
+  } catch {
+    /* ignore */
+  }
+  return "drama";
+}
+
+function writeVideoMode(mode: VideoMode) {
+  try {
+    localStorage.setItem("yoyo-video-mode", mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readThreadId(key: string): string {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeThreadId(key: string, id: string) {
+  try {
+    if (id) localStorage.setItem(key, id);
+    else localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
 function readHarnessTab(): HarnessTab {
   try {
     const v = localStorage.getItem("yoyo-harness-tab");
@@ -102,7 +146,7 @@ function writeHarnessTab(tab: HarnessTab) {
   }
 }
 
-export const useUI = create<UIState>((set) => ({
+export const useUI = create<UIState>((set, get) => ({
   lab: "agent",
   surface: "agent",
   harnessTab: readHarnessTab(),
@@ -147,8 +191,25 @@ export const useUI = create<UIState>((set) => ({
   closeSettings: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
   openSkills: () => set({ surface: "skills" }),
   closeSkills: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
-  openVideo: () => set({ surface: "video" }),
-  closeVideo: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
+  videoMode: readVideoMode(),
+  agentThreadId: readThreadId("yoyo-agent-thread"),
+  videoThreadId: readThreadId("yoyo-video-thread"),
+  rememberThread: (t) => {
+    if (!t?.id) return;
+    const ch = threadChannel(t);
+    const key = ch === "video" ? "yoyo-video-thread" : "yoyo-agent-thread";
+    writeThreadId(key, t.id);
+    set(ch === "video" ? { videoThreadId: t.id } : { agentThreadId: t.id });
+  },
+  lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
+  videoBoard: false,
+  openVideo: () => set({ surface: "video", videoBoard: false }),
+  closeVideo: () => set((s) => ({ surface: surfaceForLab(s.lab), videoBoard: false })),
+  setVideoBoard: (v) => set((s) => ({ videoBoard: typeof v === "function" ? v(s.videoBoard) : v })),
+  setVideoMode: (videoMode) => {
+    writeVideoMode(videoMode);
+    set((s) => ({ videoMode, videoBoard: videoMode === "drama" ? s.videoBoard : false }));
+  },
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),
   setChatDock: (v) =>

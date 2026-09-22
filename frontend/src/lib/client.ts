@@ -1,6 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
-import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 
 export class ApiError extends Error {
   status: number;
@@ -124,6 +124,7 @@ export function threadOf(v: any): Thread {
     authMode: parseAuthMode(pick(v, "auth_mode", "AuthMode", "authMode")),
     pinnedSkills: asArray(pick(v, "pinned_skills", "PinnedSkills")).map(String).filter(Boolean),
     loadedSkills: asArray(pick(v, "loaded_skills", "LoadedSkills")).map(String).filter(Boolean),
+    channel: str(pick(v, "channel", "Channel")) === "video" ? "video" : "agent",
   };
 }
 
@@ -266,11 +267,19 @@ export async function setAPIKey(value: string): Promise<void> {
   await http("/api/key", { method: "POST", body: JSON.stringify({ value }) });
 }
 
-export async function createSession(workspace: string): Promise<Thread> {
+export async function createSession(workspace: string, channel: ThreadChannel = "agent"): Promise<Thread> {
   const s = await wailsService();
-  const raw = s?.CreateSession
-    ? await s.CreateSession(workspace)
-    : await http("/api/sessions", { method: "POST", body: JSON.stringify({ workspace }) });
+  if (s?.CreateSessionOn) {
+    return threadOf(await s.CreateSessionOn(workspace, channel));
+  }
+  if (s?.CreateSession) {
+    const t = threadOf(await s.CreateSession(workspace));
+    if (channel === "video" && s.SetSessionChannel) {
+      return threadOf(await s.SetSessionChannel(t.id, "video"));
+    }
+    if (channel === "agent") return t;
+  }
+  const raw = await http("/api/sessions", { method: "POST", body: JSON.stringify({ workspace, channel }) });
   return threadOf(raw);
 }
 

@@ -136,12 +136,30 @@ func (s *Service) SetAPIKey(value string) {
 }
 
 func (s *Service) CreateSession(workspace string) (app.SessionMeta, error) {
+	return s.CreateSessionOn(workspace, "agent")
+}
+
+func (s *Service) CreateSessionOn(workspace, channel string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
 	if s.RPC != nil {
-		m, err = decode[app.SessionMeta](s.call("thread.start", map[string]any{"workspace": workspace}))
+		m, err = decode[app.SessionMeta](s.call("thread.start", map[string]any{"workspace": workspace, "channel": channel}))
 	} else {
-		m, err = s.App.NewSession(workspace)
+		m, err = s.App.NewSessionOn(workspace, channel)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
+}
+
+func (s *Service) SetSessionChannel(id, channel string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("thread.channel.set", map[string]any{"session": id, "channel": channel}))
+	} else {
+		m, err = s.App.SetSessionChannel(id, channel)
 	}
 	if err == nil {
 		s.emitSessions(m)

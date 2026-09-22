@@ -56,9 +56,10 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		if r.Method == http.MethodPost {
 			var body struct {
 				Workspace string `json:"workspace"`
+				Channel   string `json:"channel"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			m, err := a.NewSession(body.Workspace)
+			m, err := a.NewSessionOn(body.Workspace, body.Channel)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
