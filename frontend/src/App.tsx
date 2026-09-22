@@ -8,7 +8,7 @@ import { writeClipboard } from "./lib/clipboard";
 import { readLayout, writeLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
 import { useUI } from "./lib/store";
-import { AppFrame, MainColumn, SidebarCard } from "./features/shell/AppFrame";
+import { AppFrame, MainColumn } from "./features/shell/AppFrame";
 import { PageHeader } from "./features/shell/PageHeader";
 import { CommandPalette } from "./features/CommandPalette";
 import { ResizeHandle } from "./features/ResizeHandle";
@@ -479,13 +479,13 @@ export default function App() {
   );
 
   const workspace = settings ? (
-    <SidebarCard>
+    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <SettingsSurface ws={ws} />
-    </SidebarCard>
+    </div>
   ) : skills ? (
-    <SidebarCard>{skillsPane}</SidebarCard>
+    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{skillsPane}</div>
   ) : harnessing ? (
-    <SidebarCard>{labPane}</SidebarCard>
+    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{labPane}</div>
   ) : agentPane;
 
   return (
@@ -611,7 +611,7 @@ export default function App() {
           <MainColumn>
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
-              <div data-testid="app-error" className="mx-2 mb-1 flex items-start gap-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-1.5 text-[13px] text-danger">
+              <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-md bg-danger/8 px-3 py-2 text-[13px] text-danger">
                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{ws.err}</span>
                 <button type="button" className="ml-auto shrink-0 text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
@@ -628,8 +628,8 @@ export default function App() {
                     {copy.video.closeBoard}
                   </button>
                 </div>
-                <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
-                  <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <div className="h-full min-h-0 overflow-hidden bg-sidebar">
                     {workshop}
                   </div>
                 </div>
@@ -653,8 +653,8 @@ export default function App() {
                   {workspace}
                 </Panel>
                 <ResizeHandle />
-                <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0 pl-2">
-                  <div className="h-full min-h-0 overflow-hidden rounded-[10px] border border-border bg-sidebar surface-inset">
+                <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0">
+                  <div className="h-full min-h-0 overflow-hidden bg-sidebar">
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}
@@ -695,12 +695,12 @@ export default function App() {
       {!showRail && !settings && !popout ? (
         <div
           className={overlayRail
-            ? "absolute top-2 bottom-2 left-0 z-20 w-[min(288px,90%)]"
-            : "absolute top-2 bottom-2 left-0 z-20 w-2"}
+            ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
+            : "absolute inset-y-0 left-0 z-20 w-2"}
           onMouseEnter={() => ws.setSidebarHover(true)}
           onMouseLeave={() => ws.setSidebarHover(false)}
         >
-          {overlayRail ? <div className="h-full pl-2">{rail}</div> : null}
+          {overlayRail ? <div className="h-full">{rail}</div> : null}
         </div>
       ) : null}
     </AppFrame>

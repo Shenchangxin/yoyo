@@ -37,7 +37,7 @@ export function CommandPalette(props: {
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
-        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden overscroll-contain rounded-2xl border border-border/80 bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100%-2rem))] -translate-x-1/2 overflow-hidden overscroll-contain rounded-md border border-border bg-popover shadow-[var(--shadow-popover)] focus:outline-none">
           <Dialog.Title className="sr-only">{copy.palette.title}</Dialog.Title>
           <Dialog.Description className="sr-only">{copy.palette.desc}</Dialog.Description>
           <Command label={copy.palette.title}>

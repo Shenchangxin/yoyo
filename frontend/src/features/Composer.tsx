@@ -272,15 +272,12 @@ export function Composer(props: {
 
   return (
     <div className="relative no-drag w-full shrink-0" data-testid={props.compact ? undefined : "composer-column"}>
-      {props.compact ? null : (
-        <div className="pointer-events-none absolute inset-x-0 -top-8 h-8 bg-gradient-to-t from-background to-transparent" />
-      )}
       <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : "pb-3 pt-1")}>
         <div
           className={cn(
             "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
             popupWelded ? "rounded-b-[var(--radius-composer)] rounded-t-none" : "rounded-[var(--radius-composer)]",
-            focused ? "border-foreground/25" : "border-border",
+            focused ? "border-accent/45" : "border-border",
             props.disabled && "opacity-55",
           )}
           onDragOver={(e) => {
@@ -639,10 +636,10 @@ export function Composer(props: {
             <button
               type="button"
               className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full transition-[background-color,color,transform] duration-150 active:scale-[0.96]",
+                "grid size-7 shrink-0 place-items-center rounded-full transition-colors duration-150 disabled:cursor-default",
                 props.running || canSend
-                  ? "bg-foreground text-background"
-                  : "bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] text-muted",
+                  ? "bg-accent text-accent-fg hover:bg-accent/90"
+                  : "bg-lift text-muted",
               )}
               disabled={props.running ? false : !canSend}
               onClick={() => {

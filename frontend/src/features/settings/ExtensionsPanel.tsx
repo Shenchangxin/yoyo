@@ -17,6 +17,15 @@ import {
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+      <span>{label}</span>
+      <Input className="h-8 w-full text-[12.5px] font-normal" value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
 export function ExtensionsSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   return (
@@ -111,7 +120,7 @@ function McpSection({ host }: { host: SettingsHost }) {
               const n = str(row?.name || row?.Name || row);
               const cmd = str(row?.command || row?.Command) || str(row?.endpoint || row?.Endpoint);
               return (
-                <SettingRow key={n || i} title={n} description={cmd || undefined}>
+                <SettingRow key={n || i} list title={n} description={cmd || undefined}>
                   <Button size="sm" variant="ghost" onClick={() => void host.onStopMcp(n)}>
                     {copy.settings.mcpStop}
                   </Button>
@@ -121,42 +130,37 @@ function McpSection({ host }: { host: SettingsHost }) {
           )}
           {adding ? (
             <SettingRow stack border={false}>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Input className="h-8 text-[12.5px]" placeholder={copy.settings.mcpName} value={name} onChange={(e) => setName(e.target.value)} />
-                <Input className="h-8 text-[12.5px]" placeholder={copy.settings.mcpCommand} value={command} onChange={(e) => setCommand(e.target.value)} />
-                <Input className="h-8 text-[12.5px]" placeholder={copy.settings.mcpArgs} value={args} onChange={(e) => setArgs(e.target.value)} />
-              </div>
-              <Input
-                className="mt-2 h-8 text-[12.5px]"
-                placeholder={copy.settings.mcpEndpoint}
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
-              />
-              <div className="mt-2.5 flex items-center justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={reset}>
-                  {copy.settings.discard}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="lift"
-                  disabled={!name.trim() || !endpoint.trim()}
-                  onClick={async () => {
-                    await host.onStartMcpHttp?.(name.trim(), endpoint.trim());
-                    reset();
-                  }}
-                >
-                  {copy.settings.mcpHttp}
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!name.trim() || !command.trim()}
-                  onClick={async () => {
-                    await host.onStartMcp(name.trim(), command.trim(), args.split(/\s+/).filter(Boolean));
-                    reset();
-                  }}
-                >
-                  {copy.settings.mcpStart}
-                </Button>
+              <div className="flex w-full flex-col gap-[var(--space-group)]">
+                <Field label={copy.settings.mcpName} value={name} onChange={setName} />
+                <Field label={copy.settings.mcpCommand} value={command} onChange={setCommand} />
+                <Field label={copy.settings.mcpArgs} value={args} onChange={setArgs} />
+                <Field label={copy.settings.mcpEndpoint} value={endpoint} onChange={setEndpoint} />
+                <div className="flex items-center justify-end gap-2">
+                  <Button size="sm" variant="ghost" onClick={reset}>
+                    {copy.settings.discard}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!name.trim() || !endpoint.trim()}
+                    onClick={async () => {
+                      await host.onStartMcpHttp?.(name.trim(), endpoint.trim());
+                      reset();
+                    }}
+                  >
+                    {copy.settings.mcpHttp}
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!name.trim() || !command.trim()}
+                    onClick={async () => {
+                      await host.onStartMcp(name.trim(), command.trim(), args.split(/\s+/).filter(Boolean));
+                      reset();
+                    }}
+                  >
+                    {copy.settings.mcpStart}
+                  </Button>
+                </div>
               </div>
             </SettingRow>
           ) : (
@@ -184,7 +188,7 @@ function FiberSection({ host }: { host: SettingsHost }) {
         <SettingEmpty>{copy.settings.noFibers}</SettingEmpty>
       ) : (
         fibers.map((name: any, i: number) => (
-          <SettingRow key={str(name)} title={str(name)} border={i < fibers.length - 1}>
+          <SettingRow key={str(name)} list title={str(name)}>
             <Button size="sm" variant="danger" onClick={() => setPending(str(name))}>
               {copy.settings.unload}
             </Button>
@@ -232,15 +236,16 @@ function ConnectorSection() {
         accounts.map((a: any, i: number) => (
           <SettingRow
             key={str(a.id || a.ID || i)}
+            list
             title={str(a.label || a.Label || a.provider)}
             description={str(a.kind || a.Kind) || undefined}
           />
         ))
       )}
-      <SettingRow stack border={false}>
-        <div className="flex items-center gap-2">
+      <SettingRow title={copy.settings.provider} stack border={false}>
+        <div className="flex w-full flex-col gap-[var(--space-group)]">
           <Select value={provider} onValueChange={setProvider}>
-            <SelectTrigger className="w-40" aria-label={copy.settings.provider}>
+            <SelectTrigger className="h-8 w-full" aria-label={copy.settings.provider}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -251,27 +256,29 @@ function ConnectorSection() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            size="sm"
-            onClick={async () => {
-              await api.connectorConnect({ provider, kind: "mail", label: provider });
-              refresh();
-            }}
-          >
-            {copy.settings.connect}
-          </Button>
-          <Button
-            size="sm"
-            variant="lift"
-            onClick={async () => {
-              const r = await api.connectorAuthURL(provider, "", "http://127.0.0.1:3080/oauth");
-              const url = str(r?.url || r?.URL);
-              if (url) window.open(url, "_blank", "noopener");
-            }}
-          >
-            <ExternalLink aria-hidden />
-            {copy.settings.oauth}
-          </Button>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                const r = await api.connectorAuthURL(provider, "", "http://127.0.0.1:3080/oauth");
+                const url = str(r?.url || r?.URL);
+                if (url) window.open(url, "_blank", "noopener");
+              }}
+            >
+              <ExternalLink aria-hidden />
+              {copy.settings.oauth}
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await api.connectorConnect({ provider, kind: "mail", label: provider });
+                refresh();
+              }}
+            >
+              {copy.settings.connect}
+            </Button>
+          </div>
         </div>
       </SettingRow>
     </SettingSection>

@@ -3,7 +3,7 @@ import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { LabCard, LabChip, LabFrame, LabStat, LabStrip, LabTable } from "./LabFrame";
+import { LabCard, LabChip, LabFrame, LabStat, LabTable } from "./LabFrame";
 
 export function EvolveLab(props: {
   busy: boolean;
@@ -40,25 +40,34 @@ export function EvolveLab(props: {
   });
   return (
     <LabFrame>
-      <LabStrip>
-        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+      <div className="mb-[var(--space-section)] flex max-w-sm flex-col gap-[var(--space-group)]">
+        <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
           {copy.labs.k}
-          <Input type="number" min={1} max={8} className="h-8 w-16" value={props.k} onChange={(e) => props.onK(Number(e.target.value) || 3)} />
+          <Input type="number" min={1} max={8} className="h-8 w-full font-normal" value={props.k} onChange={(e) => props.onK(Number(e.target.value) || 3)} />
         </label>
-        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+        <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
           {copy.labs.rounds}
-          <Input type="number" min={1} max={20} className="h-8 w-16" value={props.rounds} onChange={(e) => props.onRounds(Number(e.target.value) || 1)} />
+          <Input type="number" min={1} max={20} className="h-8 w-full font-normal" value={props.rounds} onChange={(e) => props.onRounds(Number(e.target.value) || 1)} />
         </label>
-        <Gate on={props.sealed} onClick={() => props.onSealed(!props.sealed)}>{copy.labs.sealed}</Gate>
-        <Gate on={props.behavior} onClick={() => props.onBehavior(!props.behavior)}>{copy.labs.behavior}</Gate>
-        <Gate on={props.index} onClick={() => props.onIndex(!props.index)}>{copy.labs.index}</Gate>
-        <Gate on={props.baselines} onClick={() => props.onBaselines(!props.baselines)}>{copy.labs.baselines}</Gate>
-        <label className="flex items-center gap-2 text-[12.5px] text-muted">
-          {copy.labs.maxUsd}
-          <Input type="number" min={0} step={0.1} className="h-8 w-20" value={props.maxUsd || ""} onChange={(e) => props.onMaxUsd(Number(e.target.value) || 0)} />
-        </label>
-        <Button className="ml-auto" disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
-      </LabStrip>
+        <details>
+          <summary className="fold-summary">{copy.settings.tabs.advanced}</summary>
+          <div className="mt-[var(--space-group)] flex flex-col gap-[var(--space-group)]">
+            <div className="flex flex-wrap gap-2">
+              <Gate on={props.sealed} onClick={() => props.onSealed(!props.sealed)}>{copy.labs.sealed}</Gate>
+              <Gate on={props.behavior} onClick={() => props.onBehavior(!props.behavior)}>{copy.labs.behavior}</Gate>
+              <Gate on={props.index} onClick={() => props.onIndex(!props.index)}>{copy.labs.index}</Gate>
+              <Gate on={props.baselines} onClick={() => props.onBaselines(!props.baselines)}>{copy.labs.baselines}</Gate>
+            </div>
+            <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+              {copy.labs.maxUsd}
+              <Input type="number" min={0} step={0.1} className="h-8 w-full font-normal" value={props.maxUsd || ""} onChange={(e) => props.onMaxUsd(Number(e.target.value) || 0)} />
+            </label>
+          </div>
+        </details>
+        <div className="flex justify-end">
+          <Button disabled={props.busy} onClick={props.onRun}>{copy.labs.runCycle}</Button>
+        </div>
+      </div>
       {props.evolve ? (
         <div className="mb-5 grid grid-cols-3 gap-3">
           <LabStat label={copy.labs.promoted} value={slice(pick(props.evolve, "promoted", "Promoted") || "none")} />
@@ -69,7 +78,7 @@ export function EvolveLab(props: {
       {props.evolve ? <SpendBlock spend={pick(props.evolve, "spend", "Spend")} copy={copy} /> : null}
       <p className="mb-5 text-[12.5px] text-muted">{copy.labs.goNoGo}</p>
       {deltas.length ? (
-        <div className="mb-5 overflow-hidden rounded-[10px] border border-border/80 bg-card">
+        <div className="mb-5 overflow-hidden rounded-md bg-sidebar/40">
           <div className="border-b border-border/70 px-4 py-2 text-[12px] font-medium">{copy.labs.thisCycle} · {copy.labs.playbookDelta}</div>
           {deltas.map((d, i) => (
             <div key={d.id || i} className={cn("px-4 py-2.5 text-[13px]", i > 0 && "border-t border-border/70")}>{d.text}</div>
@@ -129,7 +138,7 @@ export function EvolveLab(props: {
         {props.archive.length === 0 ? (
           <p className="text-[13px] text-muted">{copy.labs.noCycle}</p>
         ) : (
-          <div className="overflow-hidden rounded-[10px] border border-border/80 bg-card">
+          <div className="overflow-hidden rounded-md bg-sidebar/40">
             {props.archive.map((n: any, i: number) => (
               <div key={str(pick(n, "id", "ID"), String(i))} className={cn("flex gap-3 px-4 py-3", i > 0 && "border-t border-border/70")}>
                 <div className="mt-1 size-1.5 shrink-0 rounded-full bg-foreground/70" aria-hidden />

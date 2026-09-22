@@ -174,14 +174,14 @@ export function ThreadRail(props: {
         </Tooltip>
       </div>
       <div className="px-2.5 pb-2">
-        <Button className="h-9 w-full justify-start gap-2 rounded-lg text-[13px] surface-inset" variant="lift" onClick={props.onNew}>
+        <Button className="h-8 w-full justify-start gap-2 rounded-md text-[13px]" variant="ghost" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
         <div className="relative mt-2">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
-            className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-[13px]"
+            className="h-8 rounded-md border-transparent bg-lift/70 pl-8 text-[13px]"
             placeholder={copy.rail.search}
             aria-label={copy.rail.search}
             value={props.query}
@@ -217,7 +217,7 @@ export function ThreadRail(props: {
           </div>
         )}
       </nav>
-      <div className="border-t border-border/80 px-1.5 py-1.5">
+      <div className="px-1.5 pb-1.5 pt-2">
         <div className="px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.labs}</div>
         <button
           type="button"
@@ -264,7 +264,7 @@ export function ThreadRail(props: {
           {dirty ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span> : canary ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span> : null}
         </button>
       </div>
-      <div className="flex items-center gap-1 border-t border-border/80 px-2 py-1.5">
+      <div className="flex items-center gap-1 px-2 py-1.5">
         <button
           type="button"
           className="rounded-md px-2 py-1 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
@@ -449,7 +449,7 @@ function ThreadRow(props: {
       <div
         ref={rowRef}
         className={cn(
-          "group mb-px flex w-full items-start rounded-lg transition-colors duration-150",
+          "group mb-0.5 flex min-h-10 w-full items-center rounded-md transition-colors duration-150",
           active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
         )}
         onMouseEnter={scheduleMetaOpen}

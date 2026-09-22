@@ -43,10 +43,10 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
       <SettingSection
         id="general-workspace"
         title={copy.settings.sections.generalWorkspace}
-        footnote={copy.settings.workspaceDesc}
+        description={copy.settings.workspaceDesc}
       >
         <SettingRow stack border={false}>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2">
             <Input
               aria-label={copy.settings.workspace}
               className="h-8 flex-1 font-mono text-[12px]"
@@ -131,8 +131,8 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 key={m.id}
                 aria-pressed={active}
                 className={cn(
-                  "group cursor-pointer rounded-[12px] border bg-card p-2 text-left transition-colors",
-                  active ? "border-accent/70 ring-2 ring-accent/25" : "border-border hover:border-muted/50",
+                  "group cursor-pointer rounded-md border bg-card p-2 text-left transition-colors",
+                  active ? "border-accent/60 bg-lift" : "border-transparent hover:bg-lift/70",
                 )}
                 onClick={() => {
                   setPref(m.id);
@@ -140,7 +140,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
                 }}
               >
                 <ThemePreview mode={m.id} dark={darkPalette} light={lightPalette} />
-                <div className="mt-2 flex items-center justify-center gap-1 text-[12px] font-medium text-foreground">
+                <div className="mt-2 flex items-center gap-1 text-[12px] font-medium text-foreground">
                   {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                   {m.label}
                 </div>
@@ -194,7 +194,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
           />
         </SettingRow>
         <SettingRow title={copy.settings.uiScale} description={copy.settings.uiScaleDesc} border={false}>
-          <div className="flex w-[208px] items-center gap-3">
+          <div className="flex w-full items-center gap-3">
             <Slider
               min={0.85}
               max={1.25}
@@ -229,12 +229,12 @@ export function ShortcutsSettings({ host }: { host: SettingsHost }) {
         footnote={copy.settings.recordHint}
       >
         {ids.map((id, i) => (
-          <SettingRow key={id} title={copy.settings.keys[id] || id} border={i < ids.length - 1}>
+          <SettingRow key={id} list title={copy.settings.keys[id] || id}>
             <button
               type="button"
               aria-label={id}
               className={cn(
-                "h-8 min-w-[7.5rem] rounded-[9px] border px-3 text-[12px] tabular-nums transition-colors",
+                "h-8 min-w-[7.5rem] rounded-md border px-3 text-[12px] tabular-nums transition-colors",
                 armed === id
                   ? "border-accent/70 bg-accent/10 text-foreground"
                   : "border-border bg-background text-foreground hover:bg-lift/60",
@@ -297,38 +297,46 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
             onCheckedChange={(v) => void host.patch({ crashResume: v })}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.searchUrl} description={copy.settings.searchUrlDesc} border={false}>
-          <Input
-            aria-label={copy.settings.searchUrl}
-            className={CONTROL_LG}
-            value={host.cfg.searchUrl || ""}
-            onChange={(e) => void host.patch({ searchUrl: e.target.value })}
-          />
-        </SettingRow>
       </SettingSection>
 
-      <SettingSection id="policy-budget" title={copy.settings.sections.policyBudget}>
-        <SettingRow title={copy.settings.maxBudget}>
-          <Input
-            aria-label={copy.settings.maxBudget}
-            className={CONTROL_SM}
-            type="number"
-            value={budget}
-            onChange={(e) => setBudget(e.target.value)}
-          />
-        </SettingRow>
-        <SettingRow title={copy.settings.usdPerMtok} border={false}>
-          <Input
-            aria-label={copy.settings.usdPerMtok}
-            className={CONTROL_SM}
-            type="number"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-          />
-        </SettingRow>
-      </SettingSection>
+      <details className="mb-[var(--space-section)]">
+        <summary className="fold-summary">{copy.settings.sections.policyBudget}</summary>
+        <div className="mt-[var(--space-group)] flex flex-col gap-[var(--space-group)]">
+          <SettingRow title={copy.settings.searchUrl} description={copy.settings.searchUrlDesc}>
+            <Input
+              aria-label={copy.settings.searchUrl}
+              className={CONTROL_LG}
+              value={host.cfg.searchUrl || ""}
+              onChange={(e) => void host.patch({ searchUrl: e.target.value })}
+            />
+          </SettingRow>
+          <SettingRow title={copy.settings.maxBudget}>
+            <Input
+              aria-label={copy.settings.maxBudget}
+              className={CONTROL_SM}
+              type="number"
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+            />
+          </SettingRow>
+          <SettingRow title={copy.settings.usdPerMtok}>
+            <Input
+              aria-label={copy.settings.usdPerMtok}
+              className={CONTROL_SM}
+              type="number"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+            />
+          </SettingRow>
+        </div>
+      </details>
 
-      <IsolationSection host={host} />
+      <details className="mb-[var(--space-section)]">
+        <summary className="fold-summary">{copy.settings.sections.policyIsolation}</summary>
+        <div className="mt-[var(--space-group)]">
+          <IsolationSection host={host} />
+        </div>
+      </details>
 
       <SettingsSaveBar
         open={dirty}
@@ -358,7 +366,7 @@ function IsolationSection({ host }: { host: SettingsHost }) {
   return (
     <SettingSection
       id="policy-isolation"
-      title={copy.settings.sections.policyIsolation}
+      compact
       footnote={`${copy.settings.isolationHint} ${copy.settings.isolationSleep}`}
     >
       <SettingValueRow title={copy.settings.isolationKind} value={str(os.kind || os.Kind, "none")} mono />
@@ -637,19 +645,19 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
               aria-pressed={active}
               aria-label={`${meta.name}. ${meta.hint}`}
               className={cn(
-                "group cursor-pointer rounded-[12px] border bg-card p-2 text-left transition-colors",
-                active ? "border-accent/70 ring-2 ring-accent/25" : "border-border hover:border-muted/50",
+                "group cursor-pointer rounded-md border bg-card p-2 text-left transition-colors",
+                active ? "border-accent/60 bg-lift" : "border-transparent hover:bg-lift/70",
               )}
               onClick={() => onPick(id)}
             >
               <div className="h-[52px] overflow-hidden rounded-[7px] border border-border">
                 <PreviewPane palette={id} />
               </div>
-              <div className="mt-2 flex items-center justify-center gap-1 text-[12px] font-medium text-foreground">
+              <div className="mt-2 flex items-center gap-1 text-[12px] font-medium text-foreground">
                 {active ? <Check className="size-3.5 text-accent" aria-hidden /> : null}
                 {meta.name}
               </div>
-              <p className="mt-0.5 text-center text-[11px] leading-[1.4] text-muted">{meta.hint}</p>
+              <p className="mt-0.5 text-left text-[11px] leading-[1.4] text-muted">{meta.hint}</p>
             </button>
           );
         })}

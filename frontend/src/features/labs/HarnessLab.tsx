@@ -58,7 +58,7 @@ export function HarnessLab(props: {
   return (
     <LabFrame>
       <p className="mb-4 max-w-[62ch] text-[13px] leading-5 text-muted">{copy.labs.ceremony}</p>
-      <div className="mb-6 overflow-hidden rounded-[10px] border border-border/80 bg-card">
+      <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40">
         {pointers.map((p, i) => (
           <div key={p.id} className={"flex items-center gap-3 px-4 py-3" + (i > 0 ? " border-t border-border/70" : "")}>
             <div className="min-w-0 flex-1">

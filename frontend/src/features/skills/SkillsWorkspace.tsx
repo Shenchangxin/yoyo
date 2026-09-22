@@ -237,16 +237,16 @@ function InstalledList(props: {
             <h3 className="text-[13px] font-medium text-foreground">{sourceLabel(source, copy)}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
-          <div className="overflow-hidden rounded-[10px] border border-border/80 bg-card">
-            {items.map((s, i) => {
+          <div className="flex flex-col gap-1">
+            {items.map((s) => {
               const isPinned = props.pinned.has(s.name);
               const isLoaded = props.loaded.has(s.name);
               const expanded = props.open === s.name;
               const slug = packSlug(s);
               const fileCount = s.files ? s.files.split(",").filter(Boolean).length : 0;
               return (
-                <div key={s.name} className={cn("px-3.5 py-3", i > 0 && "border-t border-border/70")}>
-                  <div className="flex items-start gap-3">
+                <div key={s.name} className="rounded-md px-3 py-2.5 hover:bg-sidebar/50">
+                  <div className="flex min-h-10 items-center gap-3">
                     <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -255,7 +255,7 @@ function InstalledList(props: {
                         {isPinned ? <span className="text-[11px] text-muted">{copy.review.pinned}</span> : null}
                         {s.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
                       </div>
-                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{s.description || copy.skills.none}</p>
+                      <p className="mt-0.5 truncate text-[12px] leading-5 text-muted">{s.description || copy.skills.none}</p>
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                       {s.incomplete && s.source === "market" ? (
@@ -352,7 +352,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
           </div>
-          <div className="grid overflow-hidden rounded-[10px] border border-border/80 bg-card sm:grid-cols-2">
+          <div className="grid overflow-hidden rounded-md bg-sidebar/40 sm:grid-cols-2">
             {props.featured.map((it, i) => (
               <MarketRow
                 key={it.slug}
@@ -373,7 +373,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{category}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
-          <div className="overflow-hidden rounded-[10px] border border-border/80 bg-card">
+          <div className="overflow-hidden rounded-md bg-sidebar/40">
             {items.map((it, i) => (
               <MarketRow
                 key={it.slug}

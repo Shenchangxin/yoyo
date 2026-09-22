@@ -51,9 +51,8 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
         onSection={(t, id) => openSettings(t, id)}
         compact={compact}
       />
-      <div className="w-px self-stretch bg-border" aria-hidden />
       <ScrollFade className="min-w-0 flex-1 bg-background">
-        <div ref={scroller} className="mx-auto max-w-[720px] px-9 py-9">
+        <div ref={scroller} className="mx-auto max-w-[40rem] px-8 py-8">
           {tab === "general" ? <GeneralSettings host={host} /> : null}
           {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
           {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}

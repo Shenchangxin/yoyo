@@ -234,7 +234,7 @@ function DiffPane(props: DiffPaneProps) {
                 aria-label={label}
                 className={cn(
                   "grid size-6 place-items-center rounded-[5px] transition-colors",
-                  props.mode === m ? "bg-panel text-foreground shadow-[var(--shadow-card)]" : "text-muted hover:text-foreground",
+                  props.mode === m ? "bg-background text-foreground" : "text-muted hover:text-foreground",
                 )}
                 onClick={() => props.onMode(m)}
               >
@@ -256,7 +256,7 @@ function DiffPane(props: DiffPaneProps) {
             const on = ids.filter((id) => props.selected[id]).length;
             return (
               <section key={g.file} className="border-b border-border/50 last:border-b-0">
-                <header className="sticky top-0 z-[1] flex h-8 items-center gap-2 border-b border-border/50 bg-sidebar/95 px-3 backdrop-blur-sm">
+                <header className="sticky top-0 z-[1] flex h-8 items-center gap-2 bg-sidebar px-3">
                   <input
                     type="checkbox"
                     aria-label={copy.review.selectFile}

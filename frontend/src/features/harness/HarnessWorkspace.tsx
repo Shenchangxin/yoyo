@@ -138,7 +138,7 @@ function HarnessOverview(props: {
       <div data-testid="harness-overview">
         <div
           className={cn(
-            "mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border bg-card px-5 py-4 surface-inset",
+            "mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md bg-sidebar/40 px-4 py-3",
             props.next.action === "blocked" ? "border-danger/30" : "border-border/80",
           )}
         >
@@ -158,7 +158,7 @@ function HarnessOverview(props: {
         {pointers.length === 0 ? (
           <p className="mb-6 text-[13px] text-muted">{copy.rsi.noRefs}</p>
         ) : (
-          <div className="mb-6 overflow-hidden rounded-[12px] border border-border/80 bg-card surface-inset">
+          <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40">
             {pointers.map((c, i) => (
               <div key={c.name + c.hash} className={cn("grid grid-cols-[7rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5", i > 0 && "border-t border-border/70")}>
                 <div className="text-[13px] font-medium">{c.name}</div>
@@ -196,7 +196,7 @@ function HarnessOverview(props: {
         {lineage.length === 0 ? (
           <p className="mb-6 text-[13px] text-muted">{copy.rsi.noLineage}</p>
         ) : (
-          <div className="lineage-rail mb-6 overflow-hidden rounded-[12px] border border-border/80 bg-card pl-1" data-testid="harness-lineage">
+          <div className="lineage-rail mb-6 overflow-hidden rounded-md bg-sidebar/40 pl-1" data-testid="harness-lineage">
             {lineage.map((n, i) => (
               <LineageRow key={n.hash} node={n} first={i === 0} onReveal={props.onReveal} />
             ))}

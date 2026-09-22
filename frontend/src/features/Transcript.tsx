@@ -315,7 +315,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           <button
             type="button"
             key={s.label}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-card/50 py-1.5 pl-3 pr-2.5 text-[12.5px] text-foreground/90 transition-[border-color,background-color,color] duration-150 hover:border-border hover:bg-lift/60 hover:text-foreground"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-transparent py-1.5 pl-2.5 pr-2 text-[12.5px] text-muted transition-colors duration-150 hover:bg-lift hover:text-foreground"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}
           >
@@ -338,7 +338,7 @@ function JumpLatest() {
   return (
     <button
       type="button"
-      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover/95 py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] backdrop-blur-md transition-colors hover:bg-lift"
+      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-colors hover:bg-lift"
       onClick={() => {
         void ctx.scrollToBottom();
       }}
@@ -393,7 +393,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   const subject = item.command || item.path || item.level;
   return (
     <div
-      className="surface-inset relative overflow-hidden rounded-2xl border border-border bg-card/90 px-4 py-3.5"
+      className="relative overflow-hidden rounded-md border border-border bg-card px-4 py-3.5"
       role="status"
       data-testid="approval-card"
     >
@@ -415,7 +415,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-[12px] font-medium text-accent-fg transition-colors hover:bg-accent/90 disabled:opacity-40"
               onClick={() => onResolve(item.id, "once")}
             >
               {copy.transcript.allow}
@@ -492,7 +492,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   return (
     <div
       className={cn(
-        "surface-inset relative overflow-hidden rounded-2xl border px-4 py-3.5",
+        "relative overflow-hidden rounded-md border px-4 py-3.5",
         soft ? "border-border bg-card/80" : "border-danger/25 bg-danger/8",
       )}
       role="alert"
@@ -512,7 +512,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-opacity hover:opacity-90"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-[12px] font-medium text-accent-fg transition-colors hover:bg-accent/90 disabled:opacity-40"
           onClick={onRetry}
         >
           <RotateCcw className="size-3" aria-hidden />
@@ -551,7 +551,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <div className="whitespace-pre-wrap break-words rounded-[18px] bg-lift px-3.5 py-[9px] text-[13px] leading-[1.5] tracking-[-0.011em]">
+          <div className="whitespace-pre-wrap break-words rounded-md bg-lift px-3 py-2 text-[13px] leading-[1.55] tracking-[-0.011em]">
             {item.text}
           </div>
           {copyText ? (
@@ -668,7 +668,7 @@ function ArtifactCard({
   return (
     <div
       className={cn(
-        "surface-inset min-w-0 overflow-hidden rounded-xl border bg-card/60 px-3.5 py-2.5 transition-colors duration-200",
+        "min-w-0 overflow-hidden rounded-md border bg-sidebar/40 px-3.5 py-2.5 transition-colors duration-150",
         pending ? "border-foreground/15" : "border-border/80",
       )}
       data-testid="artifact-card"
