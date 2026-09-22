@@ -6,10 +6,10 @@ import { useCopy } from "../../lib/i18n";
 import { DURATION, EASE } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
-/** One width vocabulary for every inline control, so rows line up down the page. */
-export const CONTROL_SM = "h-8 w-[132px] text-[12.5px]";
-export const CONTROL_MD = "h-8 w-[208px] text-[12.5px]";
-export const CONTROL_LG = "h-8 w-[268px] text-[12.5px]";
+/** One control width inside a group, so fields in the same section share a left edge and a measure. */
+export const CONTROL_SM = "h-8 w-full text-[12.5px]";
+export const CONTROL_MD = "h-8 w-full text-[12.5px]";
+export const CONTROL_LG = "h-8 w-full text-[12.5px]";
 
 export function SettingsPageHeader({
   title,
@@ -21,14 +21,12 @@ export function SettingsPageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="mb-7 flex items-start justify-between gap-6">
-      <div className="min-w-0">
-        <h1 className="text-[21px] font-semibold tracking-[-0.02em] text-pretty text-foreground">{title}</h1>
-        {description ? (
-          <p className="mt-1.5 max-w-[46ch] text-[12.5px] leading-[1.55] text-muted">{description}</p>
-        ) : null}
-      </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2 pt-1">{actions}</div> : null}
+    <header className="mb-[var(--space-section)]">
+      <h1 className="text-[21px] font-semibold tracking-[-0.02em] text-pretty text-foreground">{title}</h1>
+      {description ? (
+        <p className="mt-[var(--space-item)] max-w-[46ch] text-[13px] leading-[1.55] text-muted">{description}</p>
+      ) : null}
+      {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
     </header>
   );
 }
@@ -41,6 +39,7 @@ export function SettingSection({
   actions,
   children,
   bare,
+  compact,
 }: {
   id: string;
   title?: string;
@@ -50,73 +49,78 @@ export function SettingSection({
   children: ReactNode;
   /** Drop the card shell when the section owns its own surface (code panels, grids). */
   bare?: boolean;
+  /** Inside a disclosure: no extra module gap. */
+  compact?: boolean;
 }) {
   return (
-    <section className="mb-7 scroll-mt-6" data-setting-section-highlight-target={id}>
+    <section className={cn(!compact && "mb-[var(--space-section)]", "scroll-mt-6")} data-setting-section-highlight-target={id}>
       {title ? (
-        <div className="mb-2 flex items-end justify-between gap-4 px-1">
-          <h2 id={id} className="text-[12.5px] font-semibold tracking-[-0.005em] text-foreground/75">
-            {title}
-          </h2>
-          {actions ? <div className="flex items-center gap-1.5">{actions}</div> : null}
-        </div>
+        <h2 id={id} className="mb-[var(--space-item)] text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+          {title}
+        </h2>
       ) : null}
-      {description ? <p className="mb-2 px-1 text-[12px] leading-[1.55] text-muted">{description}</p> : null}
+      {description ? <p className="mb-[var(--space-group)] text-[12.5px] leading-[1.55] text-muted">{description}</p> : null}
       <div
         id={title ? undefined : id}
         data-setting-section-id={id}
         className={cn(
-          "overflow-hidden rounded-[12px]",
-          !bare && "surface-inset border border-border bg-card",
+          "flex flex-col gap-[var(--space-group)]",
+          !bare && "rounded-md bg-sidebar/40 px-4 py-4",
         )}
       >
         {children}
       </div>
-      {footnote ? <p className="mt-2 px-1 text-[11.5px] leading-[1.55] text-muted">{footnote}</p> : null}
+      {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
+      {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
     </section>
   );
 }
 
 /**
- * Inset-grouped row: label column on the left, one control on the right, and a
- * hairline that starts where the label starts instead of running edge to edge.
+ * Form field: label above the control, left aligned, full measure of the group.
+ * Pass `list` for a list row (title leading, trailing control, one row height).
  */
 export function SettingRow({
   title,
   description,
   children,
-  border = true,
-  stack,
-  align = "center",
+  border: _border = true,
+  stack: _stack,
+  align: _align = "center",
+  list = false,
 }: {
   title?: string;
   description?: string;
   children?: ReactNode;
   border?: boolean;
-  /** Put the control on its own line — for textareas, grids, and long inputs. */
+  /** Kept so existing call sites stay valid. Form rows always stack. */
   stack?: boolean;
   align?: "center" | "start";
+  /** List row: primary text first, auxiliary control on the right, vertically centered. */
+  list?: boolean;
 }) {
+  if (list) {
+    return (
+      <div className="flex min-h-10 items-center gap-4">
+        {title ? (
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
+            {description ? <div className="mt-0.5 truncate text-[12px] leading-[1.45] text-muted">{description}</div> : null}
+          </div>
+        ) : null}
+        {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
+      </div>
+    );
+  }
   return (
-    <div
-      className={cn(
-        "relative px-4",
-        stack ? "py-3.5" : "flex min-h-[46px] gap-6 py-2.5",
-        !stack && (align === "start" ? "items-start" : "items-center"),
-      )}
-    >
+    <div className="flex flex-col items-stretch gap-[var(--space-item)]">
       {title ? (
-        <div className={cn("min-w-0", stack ? "mb-2.5" : "flex-1 basis-0")}>
+        <div className="min-w-0">
           <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
-          {description ? (
-            <div className="mt-0.5 text-[11.5px] leading-[1.5] text-muted">{description}</div>
-          ) : null}
+          {description ? <div className="mt-1 text-[12.5px] leading-[1.5] text-muted">{description}</div> : null}
         </div>
       ) : null}
-      {children ? (
-        <div className={cn(stack ? "w-full" : "flex shrink-0 items-center justify-end gap-2")}>{children}</div>
-      ) : null}
-      {border ? <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" /> : null}
+      {children ? <div className="flex w-full flex-wrap items-center justify-start gap-2">{children}</div> : null}
     </div>
   );
 }
@@ -126,7 +130,7 @@ export function SettingValueRow({
   title,
   value,
   mono,
-  border = true,
+  border: _border = true,
 }: {
   title: string;
   value: ReactNode;
@@ -134,7 +138,7 @@ export function SettingValueRow({
   border?: boolean;
 }) {
   return (
-    <SettingRow title={title} border={border}>
+    <SettingRow title={title} list>
       <span className={cn("text-[12.5px] text-muted", mono && "font-mono tabular-nums")}>{value}</span>
     </SettingRow>
   );
@@ -146,7 +150,7 @@ export function SettingActionRow({
   description,
   onClick,
   trailing,
-  border = true,
+  border: _border = true,
   danger,
   chevron = true,
 }: {
@@ -163,7 +167,7 @@ export function SettingActionRow({
     <button
       type="button"
       onClick={onClick}
-      className="relative flex min-h-[46px] w-full items-center gap-4 px-4 py-2.5 text-left transition-colors hover:bg-lift/55"
+      className="flex min-h-10 w-full items-center gap-4 rounded-md px-1 text-left transition-colors hover:bg-lift/70"
     >
       <span className="min-w-0 flex-1">
         <span className={cn("block text-[13px] font-medium leading-[1.4]", danger ? "text-danger" : "text-foreground")}>
@@ -173,19 +177,13 @@ export function SettingActionRow({
       </span>
       {trailing ? <span className="flex shrink-0 items-center text-[12px] text-muted">{trailing}</span> : null}
       {chevron ? <ChevronRight className="size-4 shrink-0 text-muted/70" aria-hidden /> : null}
-      {border ? <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" /> : null}
     </button>
   );
 }
 
 /** Empty copy inside a card, kept on the same rhythm as a row. */
-export function SettingEmpty({ children, border }: { children: ReactNode; border?: boolean }) {
-  return (
-    <div className="relative">
-      <p className="px-4 py-6 text-center text-[12.5px] text-muted">{children}</p>
-      {border ? <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" /> : null}
-    </div>
-  );
+export function SettingEmpty({ children, border: _border }: { children: ReactNode; border?: boolean }) {
+  return <p className="py-6 text-left text-[13px] text-muted">{children}</p>;
 }
 
 /** Monospace output block with an optional toolbar — journal, doctor, JSON. */
@@ -200,20 +198,15 @@ export function SettingCodePanel({
 }) {
   return (
     <div>
-      {actions ? (
-        <div className="relative flex items-center justify-end gap-2 px-3 py-2">
-          {actions}
-          <span aria-hidden className="pointer-events-none absolute bottom-0 left-4 right-0 h-px bg-border" />
-        </div>
-      ) : null}
       <pre
         className={cn(
-          "overflow-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[11px] leading-[1.65] text-muted",
+          "overflow-auto whitespace-pre-wrap break-words py-1 font-mono text-[11.5px] leading-[1.65] text-muted",
           className,
         )}
       >
         {children}
       </pre>
+      {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -291,7 +284,7 @@ export function SettingsSaveBar({
           transition={{ duration: DURATION, ease: EASE }}
           className="sticky bottom-3 z-20 mt-8"
         >
-          <div className="flex items-center gap-2 rounded-[12px] border border-border bg-popover/90 py-2 pl-4 pr-2 shadow-[var(--shadow-popover)] backdrop-blur-xl">
+          <div className="flex items-center gap-2 rounded-md border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
             <span className="flex-1 truncate text-[12.5px] text-muted">{label || copy.settings.unsaved}</span>
             {onDiscard ? (
               <Button size="sm" variant="ghost" onClick={onDiscard}>

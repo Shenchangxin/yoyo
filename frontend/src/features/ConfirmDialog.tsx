@@ -52,7 +52,7 @@ export function ConfirmDialog(props: {
   if (!props.open || typeof document === "undefined") return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] grid place-items-center bg-background/70"
+      className="fixed inset-0 z-[200] grid place-items-center bg-foreground/10"
       role="presentation"
       onClick={() => {
         if (armed && !busy) props.onCancel();
@@ -62,13 +62,13 @@ export function ConfirmDialog(props: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="yoyo-confirm-title"
-        className="command-menu-sheen w-[min(420px,calc(100%-2rem))] rounded-2xl border border-border/80 bg-popover p-5 shadow-[var(--shadow-popover)]"
+        className="dialog-sheet w-[min(420px,calc(100%-2rem))] rounded-md border border-border bg-popover p-5 shadow-[var(--shadow-popover)]"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <h2 id="yoyo-confirm-title" className="text-[15px] font-semibold">{props.title}</h2>
-        <p className="mt-2 text-[13px] text-muted">{props.body}</p>
-        <div className="mt-5 flex justify-end gap-2">
+        <p className="text-[13px] leading-[1.55] text-muted">{props.body}</p>
+        <div className="dialog-actions">
           <Button
             variant="lift"
             disabled={busy}

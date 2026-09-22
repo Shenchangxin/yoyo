@@ -115,8 +115,8 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                 key={p.id}
                 onClick={() => pickProvider(p.id)}
                 className={cn(
-                  "surface-inset relative flex items-center gap-2.5 rounded-[11px] border px-3 py-2.5 text-left transition-colors",
-                  active ? "border-accent/70 bg-lift ring-1 ring-accent/25" : "border-border bg-card hover:bg-lift/55",
+                  "relative flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-left transition-colors",
+                  active ? "border-accent/50 bg-lift" : "border-transparent bg-transparent hover:bg-lift/70",
                 )}
               >
                 <ProviderMark id={p.id} />

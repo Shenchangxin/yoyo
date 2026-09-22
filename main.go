@@ -95,7 +95,7 @@ func main() {
 		Height:             geom.H,
 		MinWidth:           1080,
 		MinHeight:          680,
-		BackgroundColour:   application.NewRGB(14, 14, 14),
+		BackgroundColour:   application.NewRGB(28, 29, 31),
 		URL:                "/",
 		Frameless:          runtime.GOOS != "darwin",
 		AlwaysOnTop:        cfg.AlwaysOnTop,

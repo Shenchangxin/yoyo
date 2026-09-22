@@ -21,23 +21,21 @@ export function About(props: {
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
-        <Dialog.Content className="command-menu-sheen fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border/80 bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none">
-          <div className="flex items-start gap-3">
-            <MarkWell className="size-9 shrink-0" markClassName="size-3.5" />
-            <div className="min-w-0">
-              <Dialog.Title className="text-[15px] font-semibold tracking-[-0.02em]">{copy.about.title}</Dialog.Title>
-              <Dialog.Description className="mt-1.5 text-[13px] leading-[1.55] text-muted">{copy.about.body}</Dialog.Description>
-            </div>
+        <Dialog.Content className="dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none">
+          <MarkWell className="size-9" markClassName="size-3.5" />
+          <div>
+            <Dialog.Title className="text-[15px] font-semibold tracking-[-0.02em]">{copy.about.title}</Dialog.Title>
+            <Dialog.Description className="mt-[var(--space-item)] text-[13px] leading-[1.55] text-muted">{copy.about.body}</Dialog.Description>
           </div>
-          <dl className="mt-4 overflow-hidden rounded-[10px] border border-border/70 bg-card">
-            {rows.map(([k, v], i) => (
-              <div key={k} className={"flex justify-between gap-4 px-3 py-2 text-[12px]" + (i > 0 ? " border-t border-border/60" : "")}>
-                <dt className="text-muted">{k}</dt>
-                <dd className="truncate font-mono text-[11.5px] tabular-nums text-foreground">{v || "—"}</dd>
+          <dl className="flex flex-col gap-[var(--space-item)]">
+            {rows.map(([k, v]) => (
+              <div key={k} className="flex min-h-8 items-center justify-between gap-4 text-[13px]">
+                <dt className="text-foreground">{k}</dt>
+                <dd className="truncate font-mono text-[12px] tabular-nums text-muted">{v || "—"}</dd>
               </div>
             ))}
           </dl>
-          <div className="mt-5 flex justify-end">
+          <div className="dialog-actions">
             <Button onClick={props.onClose}>{copy.about.close}</Button>
           </div>
         </Dialog.Content>

@@ -12,7 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { LabCard, LabChip, LabFrame, LabStrip, LabTable } from "./LabFrame";
+import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
 import type { HarborKind } from "../../lib/protocol";
 
 export function HarborLab(props: {
@@ -38,16 +38,16 @@ export function HarborLab(props: {
 
   return (
     <LabFrame>
-      <LabStrip>
-        <Button disabled={!!props.busy} onClick={() => props.onRun("suite")}>{copy.harbor.runSuite}</Button>
+      <div className="mb-[var(--space-section)] flex max-w-sm flex-col items-stretch gap-[var(--space-group)]">
+        <div className="flex items-center justify-end gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="lift" disabled={!!props.busy}>
+            <Button variant="outline" disabled={!!props.busy}>
               {copy.rsi.moreEvals}
               <ChevronDown className="size-3.5" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => props.onRun("safety")}>{copy.harbor.runSafety}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("sealed")}>{copy.harbor.runSealed}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => props.onRun("transfer")}>{copy.harbor.runTransfer}</DropdownMenuItem>
@@ -58,23 +58,28 @@ export function HarborLab(props: {
             <DropdownMenuItem onSelect={() => setModelsOpen(true)}>{copy.harbor.runModels}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button disabled={!!props.busy} onClick={() => props.onRun("suite")}>{copy.harbor.runSuite}</Button>
+        </div>
         {modelsOpen ? (
-          <>
-            <Input className="h-8 max-w-xs" placeholder={copy.harbor.modelsPh} value={props.models} onChange={(e) => props.onModels(e.target.value)} />
-            <Button variant="lift" disabled={!!props.busy} onClick={() => props.onRun("models")}>{copy.harbor.runModels}</Button>
-          </>
+          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+            {copy.harbor.runModels}
+            <Input className="h-8 w-full font-normal" placeholder={copy.harbor.modelsPh} value={props.models} onChange={(e) => props.onModels(e.target.value)} />
+            <span className="mt-[var(--space-item)] flex justify-end">
+              <Button variant="outline" disabled={!!props.busy} onClick={() => props.onRun("models")}>{copy.harbor.runModels}</Button>
+            </span>
+          </label>
         ) : null}
-      </LabStrip>
+      </div>
       {props.busy ? <p className="mb-4 text-[13px] text-muted">{props.busy}</p> : null}
       {!props.busy && props.error ? (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
+        <div className="mb-4 flex items-center gap-3 rounded-md bg-danger/8 px-4 py-3 text-[13px] text-danger">
           <span>{props.error}</span>
           <Button size="sm" variant="lift" onClick={() => props.onRun(props.lastKind || "suite")}>{copy.harbor.retry}</Button>
         </div>
       ) : null}
       {props.report ? (
         <>
-          <div className="mb-4 overflow-hidden rounded-[12px] border border-border/80 bg-card surface-inset">
+          <div className="mb-4 overflow-hidden rounded-md bg-sidebar/40">
             <StoryRow
               step="1"
               label={copy.harbor.heldIn}

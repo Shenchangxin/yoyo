@@ -29,15 +29,15 @@ function MemorySection() {
   }, []);
   return (
     <SettingSection id="personal-memory" title={copy.settings.sections.personalMemory} footnote={copy.settings.memoryHint}>
-      <SettingRow stack>
-        <div className="flex items-center gap-2">
-          <Input
-            aria-label={copy.settings.sections.personalMemory}
-            className="h-8 flex-1 text-[12.5px]"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={copy.settings.memoryPlaceholder}
-          />
+      <SettingRow title={copy.settings.sections.personalMemory} stack>
+        <Input
+          aria-label={copy.settings.sections.personalMemory}
+          className="h-8 w-full text-[12.5px]"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={copy.settings.memoryPlaceholder}
+        />
+        <div className="flex w-full justify-end">
           <Button
             size="sm"
             disabled={!text.trim()}
@@ -58,22 +58,10 @@ function MemorySection() {
         items.map((it: any, i: number) => (
           <SettingRow
             key={str(it.id || i)}
+            list
             title={str(it.text).slice(0, 96)}
             description={str(it.kind) + (it.staging ? " · staging" : "")}
-            border={i < items.length - 1}
           >
-            {it.staging ? (
-              <Button
-                size="sm"
-                variant="lift"
-                onClick={async () => {
-                  await api.memoryPromote(it.id);
-                  refresh();
-                }}
-              >
-                {copy.settings.promote}
-              </Button>
-            ) : null}
             <Button
               size="sm"
               variant="ghost"
@@ -84,6 +72,17 @@ function MemorySection() {
             >
               {copy.settings.forget}
             </Button>
+            {it.staging ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.memoryPromote(it.id);
+                  refresh();
+                }}
+              >
+                {copy.settings.promote}
+              </Button>
+            ) : null}
           </SettingRow>
         ))
       )}
@@ -105,32 +104,28 @@ function JobSection() {
   return (
     <SettingSection id="personal-jobs" title={copy.settings.sections.personalJobs} footnote={copy.settings.automationsHint}>
       <SettingRow stack>
-        <div className="grid gap-2 sm:grid-cols-[132px_1fr_auto]">
-          <Input
-            className="h-8 text-[12.5px]"
-            aria-label={copy.settings.scheduleSpec}
-            placeholder={copy.settings.scheduleSpec}
-            value={spec}
-            onChange={(e) => setSpec(e.target.value)}
-          />
-          <Input
-            className="h-8 text-[12.5px]"
-            aria-label={copy.settings.schedulePrompt}
-            placeholder={copy.settings.schedulePrompt}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-          <Button
-            size="sm"
-            disabled={!prompt.trim()}
-            onClick={async () => {
-              await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
-              setPrompt("");
-              refresh();
-            }}
-          >
-            {copy.settings.addJob}
-          </Button>
+        <div className="flex w-full flex-col gap-[var(--space-group)]">
+          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+            <span>{copy.settings.scheduleSpec}</span>
+            <Input className="h-8 w-full text-[12.5px] font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
+            <span>{copy.settings.schedulePrompt}</span>
+            <Input className="h-8 w-full text-[12.5px] font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+          </label>
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              disabled={!prompt.trim()}
+              onClick={async () => {
+                await api.scheduleCreate({ kind: "heartbeat", spec, prompt, isolate: true });
+                setPrompt("");
+                refresh();
+              }}
+            >
+              {copy.settings.addJob}
+            </Button>
+          </div>
         </div>
       </SettingRow>
       {jobs.length === 0 ? (
@@ -139,9 +134,9 @@ function JobSection() {
         jobs.map((j: any, i: number) => (
           <SettingRow
             key={str(j.id || i)}
+            list
             title={str(j.prompt).slice(0, 96)}
             description={`${str(j.kind)} · ${str(j.spec)}`}
-            border={i < jobs.length - 1}
           >
             <Button
               size="sm"

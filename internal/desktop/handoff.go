@@ -57,7 +57,7 @@ func (s *Service) PopOutThread(id string) error {
 		Height:           880,
 		MinWidth:         480,
 		MinHeight:        560,
-		BackgroundColour: application.NewRGB(14, 14, 14),
+		BackgroundColour: application.NewRGB(28, 29, 31),
 		URL:              "/?popout=" + url.QueryEscape(id) + "#popout=" + url.QueryEscape(id),
 		Frameless:        runtime.GOOS != "darwin",
 		InitialPosition:  application.WindowCentered,
