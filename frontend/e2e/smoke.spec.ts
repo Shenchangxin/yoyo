@@ -78,17 +78,65 @@ test("thread context menu can delete a chat", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Demo thread/ })).toHaveCount(0);
 });
 
-test("thread context menu can pin a chat", async ({ page }) => {
+test("clicking a session leaves skills for that chat", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "hello from demo" } },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to chat" })).toHaveCount(0);
+  await page.getByRole("button", { name: /Demo thread/ }).click();
+  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column").getByText("hello from demo")).toBeVisible();
+});
+
+test("clicking a session leaves harness for that chat", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "hello from demo" } },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Harness/ }).click();
+  await expect(page.getByTestId("harness-workspace")).toBeVisible();
+  await page.getByRole("button", { name: /Demo thread/ }).click();
+  await expect(page.getByTestId("harness-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column").getByText("hello from demo")).toBeVisible();
+});
+
+test("module docks toggle back to chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: /Demo thread/ }).hover();
-  await page.getByRole("button", { name: "Chat actions" }).click();
-  await page.getByRole("menuitem", { name: "Pin" }).click();
-  await expect(page.getByRole("button", { name: /Demo thread/ })).toBeVisible();
-  await page.getByRole("button", { name: "Chat actions" }).click();
-  await expect(page.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toBeVisible();
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
+  await page.getByRole("button", { name: /^Harness/ }).click();
+  await expect(page.getByTestId("harness-workspace")).toBeVisible();
+  await page.getByRole("button", { name: /^Harness/ }).click();
+  await expect(page.getByTestId("harness-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
+});
+
+test("new chat from skills opens the conversation", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toBeVisible();
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 });
 
 test("session hover card shows copyable session id", async ({ page }) => {

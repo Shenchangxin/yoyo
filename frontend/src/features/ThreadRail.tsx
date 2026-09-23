@@ -436,7 +436,8 @@ function ThreadRow(props: {
   const copy = useCopy();
   const t = props.thread;
   const run = !!props.running[t.id];
-  const active = t.id === props.activeId && threadChannel(t) === (props.surface === "video" ? "video" : "agent");
+  const onChat = props.surface === "agent" || props.surface === "video";
+  const active = onChat && t.id === props.activeId && threadChannel(t) === (props.surface === "video" ? "video" : "agent");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t.title || "");
   const [menuOpen, setMenuOpen] = useState(false);

@@ -69,8 +69,8 @@ export default function App() {
   const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
-  const showRail = !popout && !settings && !ws.sidebarCollapsed && !railNarrow;
-  const overlayRail = !popout && !settings && !showRail && ws.sidebarHover;
+  const showRail = !popout && !ws.sidebarCollapsed && !railNarrow;
+  const overlayRail = !popout && !showRail && ws.sidebarHover;
   const mac = isMac();
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
@@ -316,13 +316,22 @@ export default function App() {
       onNewIn={(path) => { void ws.onNewIn(path); }}
       workspace={ws.savedCfg.workspace}
       onLab={ws.setLab}
-      onHarness={() => ws.openHarness("overview")}
-      onSkills={() => ws.openSkills()}
+      onHarness={() => {
+        if (ws.surface === "harness") ws.showConversation();
+        else ws.openHarness("overview");
+      }}
+      onSkills={() => {
+        if (ws.surface === "skills") ws.closeSkills();
+        else ws.openSkills();
+      }}
       onVideo={() => {
         if (ws.surface === "video") ws.closeVideo();
         else ws.openVideo();
       }}
-      onSettings={() => ws.openSettings()}
+      onSettings={() => {
+        if (ws.surface === "settings") ws.closeSettings();
+        else ws.openSettings();
+      }}
       onCollapse={() => ws.setSidebarCollapsed(true)}
       onToggleArchived={() => ws.setShowArchived((v) => !v)}
       onToggleNotices={() => ws.setNoticesOpen((v) => !v)}
@@ -389,11 +398,7 @@ export default function App() {
     />
   );
 
-  const headerLeft = settings ? (
-    <Button size="sm" variant="ghost" onClick={ws.closeSettings}>{copy.settings.back}</Button>
-  ) : skills ? (
-    <Button size="sm" variant="ghost" onClick={ws.closeSkills}>{copy.skills.close}</Button>
-  ) : ws.sidebarCollapsed || railNarrow ? (
+  const headerLeft = ws.sidebarCollapsed || railNarrow ? (
     <Button size="icon" variant="ghost" aria-label={copy.rail.expand} onClick={() => { ws.setSidebarCollapsed(false); ws.setSidebarHover(true); }}>
       <PanelLeft />
     </Button>
@@ -579,7 +584,7 @@ export default function App() {
                   onStop={ws.onStop}
                   onResolve={ws.onResolve}
                   onRetry={() => { void ws.onRetryLast(); }}
-                  onOpenAgent={() => ws.setLab("agent")}
+                  onOpenAgent={() => ws.showConversation()}
                   onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
                   onModel={async (model) => {
                     if (!ws.activeId) return;
@@ -629,19 +634,8 @@ export default function App() {
             ) : null}
             {videoing && ws.videoBoard ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
-                <div className="flex h-9 shrink-0 items-center px-3">
-                  <button
-                    type="button"
-                    className="rounded-md px-1.5 py-1 text-[12px] font-medium text-muted hover:bg-lift hover:text-foreground"
-                    onClick={() => ws.setVideoBoard(false)}
-                  >
-                    {copy.video.closeBoard}
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <div className="h-full min-h-0 overflow-hidden bg-sidebar">
-                    {workshop}
-                  </div>
+                <div className="h-full min-h-0 overflow-hidden bg-sidebar">
+                  {workshop}
                 </div>
               </div>
             ) : inspectOpen ? (
@@ -682,7 +676,7 @@ export default function App() {
                         onStop={ws.onStop}
                         onResolve={ws.onResolve}
                         onRetry={() => { void ws.onRetryLast(); }}
-                        onOpenAgent={() => ws.setLab("agent")}
+                        onOpenAgent={() => ws.showConversation()}
                         onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
                         onModel={async (model) => {
                           if (!ws.activeId) return;
@@ -702,7 +696,7 @@ export default function App() {
           </MainColumn>
         </Panel>
       </Group>
-      {!showRail && !settings && !popout ? (
+      {!showRail && !popout ? (
         <div
           className={overlayRail
             ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
