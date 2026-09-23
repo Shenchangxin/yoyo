@@ -55,7 +55,7 @@ export function CommandPalette(props: {
                   {copy.palette.newChat}
                   <Kbd className="ml-auto">{displayShortcut(DEFAULT_KEYMAP.newChat)}</Kbd>
                 </Command.Item>
-                <Command.Item value={`${copy.palette.agent} agent`} onSelect={() => { props.onLab("agent"); props.onClose(); }}>
+                <Command.Item value={`${copy.palette.agent} agent`} onSelect={() => { useUI.getState().showConversation(); props.onClose(); }}>
                   <Square className="size-4 text-muted" />
                   {copy.palette.agent}
                 </Command.Item>

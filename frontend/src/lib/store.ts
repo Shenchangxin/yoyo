@@ -30,6 +30,7 @@ type UIState = {
   openHarness: (tab?: HarnessTab) => void;
   setHarnessTab: (tab: HarnessTab) => void;
   requestRename: () => void;
+  showConversation: () => void;
   openSettings: (tab?: SettingsTab, section?: string) => void;
   closeSettings: () => void;
   openSkills: () => void;
@@ -181,6 +182,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
   },
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
+  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false }),
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -188,9 +190,9 @@ export const useUI = create<UIState>((set, get) => ({
       settingsSection: section || "",
       settingsNav: Date.now(),
     })),
-  closeSettings: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
+  closeSettings: () => get().showConversation(),
   openSkills: () => set({ surface: "skills" }),
-  closeSkills: () => set((s) => ({ surface: surfaceForLab(s.lab) })),
+  closeSkills: () => get().showConversation(),
   videoMode: readVideoMode(),
   agentThreadId: readThreadId("yoyo-agent-thread"),
   videoThreadId: readThreadId("yoyo-video-thread"),
@@ -204,7 +206,7 @@ export const useUI = create<UIState>((set, get) => ({
   lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
   videoBoard: false,
   openVideo: () => set({ surface: "video", videoBoard: false }),
-  closeVideo: () => set((s) => ({ surface: surfaceForLab(s.lab), videoBoard: false })),
+  closeVideo: () => get().showConversation(),
   setVideoBoard: (v) => set((s) => ({ videoBoard: typeof v === "function" ? v(s.videoBoard) : v })),
   setVideoMode: (videoMode) => {
     writeVideoMode(videoMode);

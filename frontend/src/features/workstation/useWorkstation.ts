@@ -128,6 +128,7 @@ export function useWorkstation() {
   const closeSkills = useUI((s) => s.closeSkills);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
+  const showConversation = useUI((s) => s.showConversation);
   const videoBoard = useUI((s) => s.videoBoard);
   const setVideoBoard = useUI((s) => s.setVideoBoard);
   const inspector = useUI((s) => s.inspector);
@@ -790,10 +791,10 @@ export function useWorkstation() {
   async function onNewIn(workspace?: string) {
     const t = await api.createSession(workspace || savedCfg.workspace, channelForSurface(useUI.getState().surface));
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
-    setActive(t);
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);
+    openThread(t);
   }
 
   async function onNew() {
@@ -801,9 +802,10 @@ export function useWorkstation() {
   }
 
   function openThread(t: Thread) {
-    useUI.getState().rememberThread(t);
-    if (threadChannel(t) === "video") openVideo();
-    else if (useUI.getState().surface === "video") closeVideo();
+    const ui = useUI.getState();
+    ui.rememberThread(t);
+    if (threadChannel(t) === "video") ui.openVideo();
+    else ui.showConversation();
     setActive(t);
   }
 
@@ -941,12 +943,8 @@ export function useWorkstation() {
           setVideoBoard(false);
           return;
         }
-        if (useUI.getState().surface === "settings") {
-          closeSettings();
-          return;
-        }
-        if (useUI.getState().surface === "skills") {
-          closeSkills();
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness") {
+          showConversation();
           return;
         }
         const firstAsk = approvals[0];
@@ -974,7 +972,7 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, closeSettings, closeSkills, setInspector, setPalette, setLab, setVideoBoard]);
+  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, setVideoBoard]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
@@ -1002,7 +1000,7 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, videoBoard, setVideoBoard, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
