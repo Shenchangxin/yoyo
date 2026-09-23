@@ -33,19 +33,20 @@ type HTTPDoer interface {
 }
 
 type Engine struct {
-	DB     *sql.DB
-	Dir    string
-	CAS    Blobs
-	Vault  Secrets
-	HTTP   HTTPDoer
-	FFMPEG string
-	FFProbe string
+	DB        *sql.DB
+	Dir       string
+	CAS       Blobs
+	Vault     Secrets
+	HTTP      HTTPDoer
+	FFMPEG    string
+	FFProbe   string
 	MediaBase string
 
-	mu     sync.Mutex
-	binds  map[string]Bind
-	cancel context.CancelFunc
-	OnJob  func(Job)
+	mu       sync.Mutex
+	binds    map[string]Bind
+	inflight sync.Map // job id -> context.CancelFunc
+	cancel   context.CancelFunc
+	OnJob    func(Job)
 }
 
 type Bind struct {
@@ -109,8 +110,43 @@ func (e *Engine) migrate() error {
 	if _, err := e.DB.Exec(schemaV1); err != nil {
 		return err
 	}
-	_, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)`)
-	return err
+	if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)`); err != nil {
+		return err
+	}
+	return e.ensureEpisodeAdapterColumns()
+}
+
+func (e *Engine) ensureEpisodeAdapterColumns() error {
+	for _, col := range []string{"image_model", "video_model", "tts_provider_id", "tts_model"} {
+		if e.hasColumn("episodes", col) {
+			continue
+		}
+		if _, err := e.DB.Exec(`ALTER TABLE episodes ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Engine) hasColumn(table, col string) bool {
+	rows, err := e.DB.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false
+		}
+		if name == col {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) Setting(key, fallback string) string {

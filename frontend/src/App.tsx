@@ -490,6 +490,7 @@ export default function App() {
       onNeedSession={() => {
         if (!ws.activeId) void ws.onNew();
       }}
+      onClose={() => ws.setVideoBoard(false)}
     />
   );
 

@@ -221,18 +221,86 @@ func (e *Engine) SaveProps(episodeID string, items []Prop) ([]Prop, error) {
 
 func (e *Engine) UpdateAsset(kind, id string, fields map[string]any) error {
 	now := Now()
+	has := func(k string) bool { _, ok := fields[k]; return ok }
+	set := func(k string) string { return strMap(fields, k) }
 	switch kind {
 	case "character":
-		_, err := e.DB.Exec(`UPDATE characters SET appearance=COALESCE(NULLIF(?,''), appearance), styling=COALESCE(NULLIF(?,''), styling), final_prompt=COALESCE(NULLIF(?,''), final_prompt), image_hash=COALESCE(NULLIF(?,''), image_hash), updated_at=? WHERE id=?`,
-			strMap(fields, "appearance"), strMap(fields, "styling"), strMap(fields, "final_prompt"), strMap(fields, "image_hash"), now, id)
+		var name, role, appearance, styling, prompt, hash string
+		if err := e.DB.QueryRow(`SELECT name, role, appearance, styling, final_prompt, image_hash FROM characters WHERE id=?`, id).
+			Scan(&name, &role, &appearance, &styling, &prompt, &hash); err != nil {
+			return err
+		}
+		if has("name") {
+			name = set("name")
+		}
+		if has("role") {
+			role = set("role")
+		}
+		if has("appearance") {
+			appearance = set("appearance")
+		}
+		if has("styling") {
+			styling = set("styling")
+		}
+		if has("final_prompt") {
+			prompt = set("final_prompt")
+		}
+		if has("image_hash") {
+			hash = set("image_hash")
+		}
+		_, err := e.DB.Exec(`UPDATE characters SET name=?, role=?, appearance=?, styling=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
+			name, role, appearance, styling, prompt, hash, now, id)
 		return err
 	case "scene":
-		_, err := e.DB.Exec(`UPDATE scenes SET prompt=COALESCE(NULLIF(?,''), prompt), lighting=COALESCE(NULLIF(?,''), lighting), final_prompt=COALESCE(NULLIF(?,''), final_prompt), image_hash=COALESCE(NULLIF(?,''), image_hash), updated_at=? WHERE id=?`,
-			strMap(fields, "prompt"), strMap(fields, "lighting"), strMap(fields, "final_prompt"), strMap(fields, "image_hash"), now, id)
+		var loc, tod, prompt, lighting, final, hash string
+		if err := e.DB.QueryRow(`SELECT location, time_of_day, prompt, lighting, final_prompt, image_hash FROM scenes WHERE id=?`, id).
+			Scan(&loc, &tod, &prompt, &lighting, &final, &hash); err != nil {
+			return err
+		}
+		if has("location") {
+			loc = set("location")
+		}
+		if has("time_of_day") {
+			tod = set("time_of_day")
+		}
+		if has("prompt") {
+			prompt = set("prompt")
+		}
+		if has("lighting") {
+			lighting = set("lighting")
+		}
+		if has("final_prompt") {
+			final = set("final_prompt")
+		}
+		if has("image_hash") {
+			hash = set("image_hash")
+		}
+		_, err := e.DB.Exec(`UPDATE scenes SET location=?, time_of_day=?, prompt=?, lighting=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
+			loc, tod, prompt, lighting, final, hash, now, id)
 		return err
 	case "prop":
-		_, err := e.DB.Exec(`UPDATE props SET description=COALESCE(NULLIF(?,''), description), final_prompt=COALESCE(NULLIF(?,''), final_prompt), image_hash=COALESCE(NULLIF(?,''), image_hash), updated_at=? WHERE id=?`,
-			strMap(fields, "description"), strMap(fields, "final_prompt"), strMap(fields, "image_hash"), now, id)
+		var name, typ, desc, final, hash string
+		if err := e.DB.QueryRow(`SELECT name, type, description, final_prompt, image_hash FROM props WHERE id=?`, id).
+			Scan(&name, &typ, &desc, &final, &hash); err != nil {
+			return err
+		}
+		if has("name") {
+			name = set("name")
+		}
+		if has("type") {
+			typ = set("type")
+		}
+		if has("description") {
+			desc = set("description")
+		}
+		if has("final_prompt") {
+			final = set("final_prompt")
+		}
+		if has("image_hash") {
+			hash = set("image_hash")
+		}
+		_, err := e.DB.Exec(`UPDATE props SET name=?, type=?, description=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
+			name, typ, desc, final, hash, now, id)
 		return err
 	}
 	return fmt.Errorf("unknown asset")
@@ -361,28 +429,75 @@ func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot
 }
 
 func (e *Engine) UpdateShot(s Shot) (Shot, error) {
-	now := Now()
-	if s.Duration > 0 {
-		s.Duration = ClampSegment(s.Duration, "narrative")
-	}
-	_, err := e.DB.Exec(`UPDATE storyboards SET title=COALESCE(NULLIF(?,''), title), atmosphere=COALESCE(NULLIF(?,''), atmosphere), description=COALESCE(NULLIF(?,''), description), video_prompt=COALESCE(NULLIF(?,''), video_prompt), duration=CASE WHEN ? > 0 THEN ? ELSE duration END, scene_id=COALESCE(NULLIF(?,''), scene_id), updated_at=? WHERE id=?`,
-		s.Title, s.Atmosphere, s.Description, s.VideoPrompt, s.Duration, s.Duration, s.SceneID, now, s.ID)
-	if err != nil {
-		return s, err
+	fields := map[string]any{
+		"title": s.Title, "atmosphere": s.Atmosphere, "description": s.Description,
+		"video_prompt": s.VideoPrompt, "duration": s.Duration, "scene_id": s.SceneID,
 	}
 	if s.CharacterIDs != nil {
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, s.ID)
-		for _, id := range s.CharacterIDs {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_characters(storyboard_id, character_id) VALUES(?,?)`, s.ID, id)
-		}
+		fields["character_ids"] = s.CharacterIDs
 	}
 	if s.PropIDs != nil {
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, s.ID)
-		for _, id := range s.PropIDs {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_props(storyboard_id, prop_id) VALUES(?,?)`, s.ID, id)
+		fields["prop_ids"] = s.PropIDs
+	}
+	return e.PatchShot(s.ID, fields)
+}
+
+func (e *Engine) PatchShot(id string, fields map[string]any) (Shot, error) {
+	cur, err := e.GetShot(id)
+	if err != nil {
+		return cur, err
+	}
+	has := func(k string) bool { _, ok := fields[k]; return ok }
+	if has("title") {
+		cur.Title = strMap(fields, "title")
+	}
+	if has("atmosphere") {
+		cur.Atmosphere = strMap(fields, "atmosphere")
+	}
+	if has("description") {
+		cur.Description = strMap(fields, "description")
+	}
+	if has("video_prompt") {
+		cur.VideoPrompt = strMap(fields, "video_prompt")
+	}
+	if has("scene_id") {
+		cur.SceneID = strMap(fields, "scene_id")
+	}
+	if has("duration") {
+		n := intArg(fields["duration"])
+		if n > 0 {
+			provider := "volcengine"
+			if ep, err := e.GetEpisode(cur.EpisodeID); err == nil {
+				if p, err := e.GetProvider(ep.VideoProviderID); err == nil {
+					provider = p.Provider
+				}
+			}
+			cur.Duration = ClampProviderDuration(n, provider)
 		}
 	}
-	return s, nil
+	now := Now()
+	_, err = e.DB.Exec(`UPDATE storyboards SET title=?, atmosphere=?, description=?, video_prompt=?, duration=?, scene_id=?, updated_at=? WHERE id=?`,
+		cur.Title, cur.Atmosphere, cur.Description, cur.VideoPrompt, cur.Duration, cur.SceneID, now, cur.ID)
+	if err != nil {
+		return cur, err
+	}
+	if has("character_ids") {
+		ids := decodeStringSlice(fields["character_ids"])
+		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, cur.ID)
+		for _, cid := range ids {
+			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_characters(storyboard_id, character_id) VALUES(?,?)`, cur.ID, cid)
+		}
+	}
+	if has("prop_ids") {
+		ids := decodeStringSlice(fields["prop_ids"])
+		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, cur.ID)
+		for _, pid := range ids {
+			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_props(storyboard_id, prop_id) VALUES(?,?)`, cur.ID, pid)
+		}
+	}
+	cur.CharacterIDs = e.shotChars(cur.ID)
+	cur.PropIDs = e.shotProps(cur.ID)
+	return cur, nil
 }
 
 func (e *Engine) GetShot(id string) (Shot, error) {
@@ -469,33 +584,40 @@ func (e *Engine) GenerateShot(shotID string) (Job, error) {
 		urls = urls[:lim]
 	}
 	j, err := e.EnqueueVideo(EnqueueVideo{
-		Prompt: prompt, ProviderID: ep.VideoProviderID, Duration: s.Duration,
+		Prompt: prompt, ProviderID: ep.VideoProviderID, Model: ep.VideoModel, Duration: s.Duration,
 		AspectRatio: d.AspectRatio, Resolution: ep.Resolution, Audio: true, Refs: urls,
 		DramaID: d.ID, EpisodeID: ep.ID, ShotID: s.ID,
 	})
 	if err == nil {
 		_, _ = e.DB.Exec(`UPDATE storyboards SET status = 'generating', updated_at = ? WHERE id = ?`, Now(), s.ID)
+		_ = e.patchPipeline(ep.ID, "gen", "running", "")
 	}
 	return j, err
 }
 
 func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	var prompt, dramaID string
-	in := EnqueueImage{Size: "1920x1080"}
+	in := EnqueueImage{}
 	switch kind {
 	case "character":
 		var c Character
-		err := e.DB.QueryRow(`SELECT id, drama_id, final_prompt, appearance, styling FROM characters WHERE id = ?`, id).
-			Scan(&c.ID, &c.DramaID, &c.FinalPrompt, &c.Appearance, &c.Styling)
+		err := e.DB.QueryRow(`SELECT id, drama_id, name, role, final_prompt, appearance, styling FROM characters WHERE id = ?`, id).
+			Scan(&c.ID, &c.DramaID, &c.Name, &c.Role, &c.FinalPrompt, &c.Appearance, &c.Styling)
 		if err != nil {
 			return Job{}, err
 		}
+		if IsNarrator(c.Name, c.Role) {
+			return Job{}, fmt.Errorf("narrator has no still")
+		}
 		d, _ := e.GetDrama(c.DramaID)
-		prompt = c.FinalPrompt
+		prompt = strings.TrimSpace(c.FinalPrompt)
 		if prompt == "" {
-			prompt = e.PrefixStyle(d.Style, "character design sheet, left a tight front portrait, right a three-view turnaround, "+c.Appearance+". Costume: "+c.Styling+". Empty background.")
+			prompt = e.stillFallback("character", d, c.Appearance, c.Styling, "", "", c.Name, "")
+			_ = e.UpdateAsset("character", id, map[string]any{"final_prompt": prompt})
 		}
 		in.CharacterID = id
+		in.Size = ImageSizeFor("character", d.AspectRatio)
+		in.AspectRatio = d.AspectRatio
 		dramaID = c.DramaID
 	case "scene":
 		var s Scene
@@ -505,11 +627,14 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 			return Job{}, err
 		}
 		d, _ := e.GetDrama(s.DramaID)
-		prompt = s.FinalPrompt
+		prompt = strings.TrimSpace(s.FinalPrompt)
 		if prompt == "" {
-			prompt = e.PrefixStyle(d.Style, "establishing wide shot, no people, "+s.Location+". "+s.Prompt+". Light: "+s.Lighting+".")
+			prompt = e.stillFallback("scene", d, "", "", s.Location, s.Lighting, "", s.Prompt)
+			_ = e.UpdateAsset("scene", id, map[string]any{"final_prompt": prompt})
 		}
 		in.SceneID = id
+		in.Size = ImageSizeFor("scene", d.AspectRatio)
+		in.AspectRatio = d.AspectRatio
 		dramaID = s.DramaID
 	case "prop":
 		var p Prop
@@ -519,11 +644,14 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 			return Job{}, err
 		}
 		d, _ := e.GetDrama(p.DramaID)
-		prompt = p.FinalPrompt
+		prompt = strings.TrimSpace(p.FinalPrompt)
 		if prompt == "" {
-			prompt = e.PrefixStyle(d.Style, "product still of "+p.Name+" on a white seamless background, "+p.Description+", no hands, no scene.")
+			prompt = e.stillFallback("prop", d, "", "", "", "", p.Name, p.Description)
+			_ = e.UpdateAsset("prop", id, map[string]any{"final_prompt": prompt})
 		}
 		in.PropID = id
+		in.Size = ImageSizeFor("prop", d.AspectRatio)
+		in.AspectRatio = d.AspectRatio
 		dramaID = p.DramaID
 	default:
 		return Job{}, fmt.Errorf("unknown asset")
@@ -537,9 +665,150 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	if episodeID != "" {
 		if ep, err := e.GetEpisode(episodeID); err == nil {
 			in.ProviderID = ep.ImageProviderID
+			in.Model = ep.ImageModel
 		}
 	}
-	return e.EnqueueImage(in)
+	j, err := e.EnqueueImage(in)
+	if err == nil && episodeID != "" {
+		_ = e.patchPipeline(episodeID, "assets", "running", "")
+	}
+	return j, err
+}
+
+func (e *Engine) stillFallback(kind string, d Drama, appearance, styling, location, lighting, name, extra string) string {
+	zh := chineseContent(e.ContentLanguage())
+	var body string
+	switch kind {
+	case "character":
+		if zh {
+			body = "角色设定图，左为正脸特写，右为三视图，空背景。" + appearance + "。服装：" + styling + "。"
+		} else {
+			body = "character design sheet, left a tight front portrait, right a three-view turnaround, " + appearance + ". Costume: " + styling + ". Empty background."
+		}
+	case "scene":
+		if zh {
+			body = "空镜建立镜头，画面中不能出现任何人。" + location + "。" + extra + "。光线：" + lighting + "。"
+		} else {
+			body = "establishing wide shot, no people, " + location + ". " + extra + ". Light: " + lighting + "."
+		}
+	default:
+		if zh {
+			body = "白底单品质感静物，" + name + "，" + extra + "，无手，无场景。"
+		} else {
+			body = "product still of " + name + " on a white seamless background, " + extra + ", no hands, no scene."
+		}
+	}
+	return e.PrefixStyle(d.Style, body)
+}
+
+func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any, error) {
+	ep, err := e.GetEpisode(episodeID)
+	if err != nil {
+		return nil, err
+	}
+	now := Now()
+	switch kind {
+	case "character":
+		c := Character{
+			ID: NewID(), DramaID: ep.DramaID, Name: strMap(fields, "name"), Role: strMap(fields, "role"),
+			Appearance: strMap(fields, "appearance"), Styling: strMap(fields, "styling"),
+			FinalPrompt: strMap(fields, "final_prompt"),
+		}
+		if strings.TrimSpace(c.Name) == "" {
+			return nil, fmt.Errorf("name required")
+		}
+		_, err := e.DB.Exec(`INSERT INTO characters(id, drama_id, name, role, appearance, styling, final_prompt, image_hash, sort_order, created_at, updated_at, deleted_at)
+			VALUES(?,?,?,?,?,?,?,?,0,?,?, '')`, c.ID, c.DramaID, c.Name, c.Role, c.Appearance, c.Styling, c.FinalPrompt, c.ImageHash, now, now)
+		if err != nil {
+			return nil, err
+		}
+		e.linkCharacter(episodeID, c.ID)
+		c.Linked = true
+		return c, nil
+	case "scene":
+		s := Scene{
+			ID: NewID(), DramaID: ep.DramaID, Location: strMap(fields, "location"), TimeOfDay: strMap(fields, "time_of_day"),
+			Prompt: strMap(fields, "prompt"), Lighting: strMap(fields, "lighting"), FinalPrompt: strMap(fields, "final_prompt"),
+		}
+		if strings.TrimSpace(s.Location) == "" {
+			return nil, fmt.Errorf("location required")
+		}
+		_, err := e.DB.Exec(`INSERT INTO scenes(id, drama_id, location, time_of_day, prompt, lighting, final_prompt, image_hash, created_at, updated_at, deleted_at)
+			VALUES(?,?,?,?,?,?,?,?,?,?, '')`, s.ID, s.DramaID, s.Location, s.TimeOfDay, s.Prompt, s.Lighting, s.FinalPrompt, s.ImageHash, now, now)
+		if err != nil {
+			return nil, err
+		}
+		e.linkScene(episodeID, s.ID)
+		s.Linked = true
+		return s, nil
+	case "prop":
+		p := Prop{
+			ID: NewID(), DramaID: ep.DramaID, Name: strMap(fields, "name"), Type: strMap(fields, "type"),
+			Description: strMap(fields, "description"), FinalPrompt: strMap(fields, "final_prompt"),
+		}
+		if strings.TrimSpace(p.Name) == "" {
+			return nil, fmt.Errorf("name required")
+		}
+		_, err := e.DB.Exec(`INSERT INTO props(id, drama_id, name, type, description, final_prompt, image_hash, created_at, updated_at, deleted_at)
+			VALUES(?,?,?,?,?,?,?,?,?, '')`, p.ID, p.DramaID, p.Name, p.Type, p.Description, p.FinalPrompt, p.ImageHash, now, now)
+		if err != nil {
+			return nil, err
+		}
+		e.linkProp(episodeID, p.ID)
+		p.Linked = true
+		return p, nil
+	}
+	return nil, fmt.Errorf("unknown asset")
+}
+
+func (e *Engine) DeleteAsset(kind, id string) error {
+	now := Now()
+	switch kind {
+	case "character":
+		_, err := e.DB.Exec(`UPDATE characters SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
+		_, _ = e.DB.Exec(`DELETE FROM episode_characters WHERE character_id = ?`, id)
+		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE character_id = ?`, id)
+		return err
+	case "scene":
+		_, err := e.DB.Exec(`UPDATE scenes SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
+		_, _ = e.DB.Exec(`DELETE FROM episode_scenes WHERE scene_id = ?`, id)
+		_, _ = e.DB.Exec(`UPDATE storyboards SET scene_id = '' WHERE scene_id = ?`, id)
+		return err
+	case "prop":
+		_, err := e.DB.Exec(`UPDATE props SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
+		_, _ = e.DB.Exec(`DELETE FROM episode_props WHERE prop_id = ?`, id)
+		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE prop_id = ?`, id)
+		return err
+	}
+	return fmt.Errorf("unknown asset")
+}
+
+func (e *Engine) ApplyJob(id string) (Job, error) {
+	j, err := e.GetJob(id)
+	if err != nil {
+		return j, err
+	}
+	if j.Status != "succeeded" || j.ResultHash == "" {
+		return j, fmt.Errorf("job has no media")
+	}
+	return j, e.writeBack(j)
+}
+
+func decodeStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		var out []string
+		for _, x := range t {
+			s := strings.TrimSpace(fmt.Sprint(x))
+			if s != "" && s != "<nil>" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func (e *Engine) MergeEpisode(episodeID string, shotIDs []string) (Job, error) {

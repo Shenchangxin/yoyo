@@ -15,11 +15,11 @@ const (
 )
 
 type DurationPlan struct {
-	Chars          int
-	TargetSeconds  int
-	SegmentCount   int
-	MinTotal       int
-	MaxTotal       int
+	Chars         int
+	TargetSeconds int
+	SegmentCount  int
+	MinTotal      int
+	MaxTotal      int
 }
 
 func PlanDuration(script string) DurationPlan {

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
-import * as api from "../../lib/client";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
@@ -261,7 +260,6 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
           toast.success(copy.app.controlSaved);
         }}
       />
-      <VideoGenSettings />
     </>
   );
 }
@@ -272,64 +270,5 @@ function MetaChip({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <span className="font-medium tabular-nums text-foreground">{value}</span>
     </span>
-  );
-}
-
-function VideoGenSettings() {
-  const copy = useCopy();
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [providers, setProviders] = useState<any[]>([]);
-  const [keys, setKeys] = useState<Record<string, string>>({});
-  const [lang, setLang] = useState("zh");
-  const [ffmpeg, setFfmpeg] = useState(true);
-
-  const refresh = () => {
-    void api.video.templates().then((t) => setTemplates(Array.isArray(t) ? t : [])).catch(() => {});
-    void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
-    void api.video.settings().then((s) => setLang(s?.content_language || "zh")).catch(() => {});
-    void api.video.status().then((s) => setFfmpeg(!!s?.ffmpeg)).catch(() => {});
-  };
-  useEffect(refresh, []);
-
-  return (
-    <SettingSection id="provider-video" title={copy.settings.sections.providerVideo} footnote={copy.video.missingKey}>
-      <SettingRow title={copy.video.language} description={copy.video.dramaHint}>
-        <Input className="h-8 w-28" value={lang} onChange={(e) => setLang(e.target.value)} onBlur={() => void api.video.setSetting("content_language", lang)} />
-      </SettingRow>
-      <SettingRow title={copy.video.ffmpeg} border={false}>
-        <span className={cn("text-[12px]", ffmpeg ? "text-foreground" : "text-danger")}>{ffmpeg ? copy.video.succeeded : copy.video.ffmpegMissing}</span>
-      </SettingRow>
-      <div className="space-y-2 px-1 pb-3">
-        {templates.map((t) => {
-          const existing = providers.find((p) => p.provider === t.provider && p.service_type === t.service_type);
-          const id = existing?.id || t.provider + t.service_type;
-          return (
-            <div key={id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 px-3 py-2">
-              <div className="min-w-[140px] text-[12.5px] font-medium">{t.name}</div>
-              <div className="font-mono text-[11px] text-muted">{t.service_type} · {t.model}</div>
-              <Input
-                type="password"
-                className="h-8 min-w-[160px] flex-1 font-mono text-[12px]"
-                placeholder={existing?.has_key ? "••••" : copy.video.apiKey}
-                value={keys[id] || ""}
-                onChange={(e) => setKeys((m) => ({ ...m, [id]: e.target.value }))}
-              />
-              <Button
-                size="sm"
-                variant="lift"
-                onClick={async () => {
-                  await api.video.upsertProvider({ ...t, id: existing?.id }, keys[id] || "");
-                  setKeys((m) => ({ ...m, [id]: "" }));
-                  refresh();
-                  toast.success(copy.app.controlSaved);
-                }}
-              >
-                {copy.settings.saveChanges}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    </SettingSection>
   );
 }

@@ -30,6 +30,15 @@ func LookFFmpeg() (ffmpeg, ffprobe string) {
 	if home, err := os.UserHomeDir(); err == nil {
 		cands = append(cands, filepath.Join(home, ".yoyo", "video", "bin"))
 	}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		cands = append(cands, filepath.Join(local, "yoyo", "video", "bin"))
+	}
+	cands = append(cands,
+		`C:\ffmpeg\bin`,
+		`C:\Program Files\ffmpeg\bin`,
+		`/usr/local/bin`,
+		`/opt/homebrew/bin`,
+	)
 	name, probe := "ffmpeg", "ffprobe"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
@@ -85,10 +94,18 @@ func (e *Engine) Concat(paths []string) ([]byte, error) {
 		return nil, err
 	}
 	out := filepath.Join(tmp, "out.mp4")
-	cmd := exec.Command(e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list, "-c:v", "libx264", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out)
+	cmd := exec.Command(e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+		"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+		"-c:a", "aac", "-ar", "48000", "-b:a", "192k", "-movflags", "+faststart", out)
 	cmd.Dir = tmp
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg concat failed")
+		cmd = exec.Command(e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+			"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+			"-an", "-movflags", "+faststart", out)
+		cmd.Dir = tmp
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("ffmpeg concat failed")
+		}
 	}
 	return os.ReadFile(out)
 }

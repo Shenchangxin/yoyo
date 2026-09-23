@@ -12,6 +12,7 @@ import {
   type SettingsHost,
   PolicySettings,
   ProviderSettings,
+  GenerationSettings,
   ShortcutsSettings,
 } from "./pages";
 import { ExtensionsSettings } from "./ExtensionsPanel";
@@ -57,6 +58,7 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
           {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
           {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}
           {tab === "provider" ? <ProviderSettings host={host} /> : null}
+          {tab === "generation" ? <GenerationSettings /> : null}
           {tab === "policy" ? <PolicySettings host={host} /> : null}
           {tab === "extensions" ? <ExtensionsSettings host={host} /> : null}
           {tab === "personal" ? <PersonalSettings /> : null}

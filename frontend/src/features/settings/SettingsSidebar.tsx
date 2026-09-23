@@ -9,6 +9,7 @@ import {
   Search,
   Shield,
   SlidersHorizontal,
+  Sparkles,
   Wrench,
   X,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const ICONS = {
   palette: Palette,
   keyboard: Keyboard,
   cpu: Cpu,
+  sparkles: Sparkles,
   shield: Shield,
   blocks: Blocks,
   brain: Brain,

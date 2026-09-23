@@ -73,6 +73,23 @@ const GLYPH: Record<string, { bg: string; svg: JSX.Element }> = {
       <path d="M10.4 4 4 20h5.2l1.8-4.4h6.4L10.4 4Zm3.2 3.6 5.4 12.4H22L16.4 7.6h-2.8Z" />
     </svg>
   ) },
+  volcengine: { bg: "#1664FF", svg: (
+    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
+      <path d="M12 3.2 4.8 16.8h4.1L12 10.6l3.1 6.2h4.1L12 3.2Zm-5.4 15.1L12 20.8l5.4-2.5H6.6Z" />
+    </svg>
+  ) },
+  minimax: { bg: "#FF5A36", svg: (
+    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M4.5 14.5c2-4 4.2-6.5 7.5-6.5s5.5 2.5 7.5 6.5" />
+      <path d="M7 17c1.4-2.4 2.8-3.6 5-3.6s3.6 1.2 5 3.6" />
+      <circle cx="12" cy="7.2" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  ) },
+  aliyun: { bg: "#FF6A00", svg: (
+    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
+      <path d="M7.2 16.2h9.6c2.2 0 4-1.8 4-4 0-1.9-1.3-3.5-3.1-3.9A5.1 5.1 0 0 0 7.4 9.2 3.7 3.7 0 0 0 4 12.8c0 1.9 1.5 3.4 3.2 3.4Z" />
+    </svg>
+  ) },
   custom: { bg: "#52525B", svg: (
     <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
       <path d="M8 4h4l2 3h6v5l-3 2 3 2v4H14l-2 3H8l-2-3H4v-4l3-2-3-2V7h2L8 4Z" />

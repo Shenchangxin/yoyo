@@ -12,7 +12,7 @@ Call `drama_read_storyboard_context`. Honor the duration plan: total seconds ≈
 Each saved row is one video job:
 
 - 8–15 seconds. Transitions 8–10, narrative 10–15, peak beats 12–15.
-- Two to four subshots inside `description`.
+- Two to four subshots inside `description`, labeled 【镜头1】【镜头2】… Picture (who + action + body + face) first; spoken lines as `角色名说：「…」`; voice-over as `旁白：…`.
 - Dialogue floor: spoken characters / 4.5 + 2 seconds, then clamp.
 - Bind `scene_id` and `character_ids` / `prop_ids` by name or id from the context.
 - `video_prompt` may stay empty; a later pass fills @name references.

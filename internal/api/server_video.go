@@ -58,6 +58,12 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "video.providers.delete"
 	case "styles":
 		return "video.styles"
+	case "styles/all":
+		return "video.styles.all"
+	case "styles/upsert":
+		return "video.styles.upsert"
+	case "styles/delete":
+		return "video.styles.delete"
 	case "settings":
 		if httpMethod == http.MethodPost {
 			return "video.settings.set"
@@ -69,6 +75,8 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "video.jobs.cancel"
 	case "jobs/retry":
 		return "video.jobs.retry"
+	case "jobs/apply":
+		return "video.jobs.apply"
 	case "dramas":
 		if httpMethod == http.MethodPost {
 			return "drama.create"
@@ -99,6 +107,10 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "drama.stage.run"
 	case "assets/save":
 		return "drama.assets.save"
+	case "assets/create":
+		return "drama.assets.create"
+	case "assets/delete":
+		return "drama.assets.delete"
 	case "assets/generate":
 		return "drama.assets.generate"
 	case "assets/generate-missing":
@@ -119,6 +131,8 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "drama.merge"
 	case "import":
 		return "drama.import"
+	case "skip-rewrite":
+		return "drama.skip_rewrite"
 	}
 	return ""
 }

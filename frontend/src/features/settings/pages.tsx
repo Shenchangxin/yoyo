@@ -31,6 +31,7 @@ import type { SettingsHost } from "./host";
 
 export type { SettingsHost } from "./host";
 export { ProviderSettings } from "./ProviderPanel";
+export { GenerationSettings } from "./GenerationSettings";
 
 export function GeneralSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();

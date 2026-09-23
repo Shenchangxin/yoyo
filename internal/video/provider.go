@@ -2,6 +2,7 @@ package video
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -67,8 +68,7 @@ func (e *Engine) GetProvider(id string) (Provider, error) {
 
 func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 	if id != "" {
-		p, err := e.GetProvider(id)
-		if err == nil && p.IsActive {
+		if p, err := e.GetProvider(id); err == nil {
 			return p, nil
 		}
 	}
@@ -76,23 +76,114 @@ func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 	if err != nil {
 		return Provider{}, err
 	}
+	var keyed, anyActive Provider
+	var hasKeyed, hasAny bool
 	for _, p := range list {
-		if p.IsActive {
-			return p, nil
+		if !p.IsActive {
+			continue
 		}
+		if !hasAny {
+			anyActive = p
+			hasAny = true
+		}
+		if p.HasKey {
+			if p.IsDefault {
+				return p, nil
+			}
+			if !hasKeyed {
+				keyed = p
+				hasKeyed = true
+			}
+		}
+	}
+	if hasKeyed {
+		return keyed, nil
+	}
+	if hasAny {
+		return anyActive, nil
 	}
 	return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
 }
 
+func ProviderModels(p Provider) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	add(p.Model)
+	raw := strings.TrimSpace(p.Models)
+	if strings.HasPrefix(raw, "[") {
+		var arr []string
+		if json.Unmarshal([]byte(raw), &arr) == nil {
+			for _, m := range arr {
+				add(m)
+			}
+		}
+	} else if raw != "" {
+		for _, m := range strings.Split(raw, ",") {
+			add(m)
+		}
+	}
+	return out
+}
+
+func ResolveProviderModel(p Provider, want string) string {
+	want = strings.TrimSpace(want)
+	if want != "" {
+		return want
+	}
+	if p.Model != "" {
+		return p.Model
+	}
+	if ms := ProviderModels(p); len(ms) > 0 {
+		return ms[0]
+	}
+	return ""
+}
+
+func (e *Engine) uniqueProviderName(serviceType, name, skipID string) string {
+	base := strings.TrimSpace(name)
+	if base == "" {
+		return base
+	}
+	candidate := base
+	for n := 2; n < 100; n++ {
+		var id string
+		err := e.DB.QueryRow(`SELECT id FROM providers WHERE service_type = ? AND name = ? AND id != ? LIMIT 1`, serviceType, candidate, skipID).Scan(&id)
+		if err != nil {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s %d", base, n)
+	}
+	return candidate
+}
+
 func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 	now := Now()
+	if p.ID != "" {
+		if cur, err := e.GetProvider(p.ID); err == nil {
+			if p.VaultKey == "" {
+				p.VaultKey = cur.VaultKey
+			}
+			if p.CreatedAt == "" {
+				p.CreatedAt = cur.CreatedAt
+			}
+		}
+	}
 	if p.ID == "" {
 		p.ID = NewID()
 		p.CreatedAt = now
+		p.Name = e.uniqueProviderName(p.ServiceType, p.Name, p.ID)
 	}
 	p.UpdatedAt = now
 	if p.VaultKey == "" {
-		p.VaultKey = "video." + p.ServiceType + "." + p.Provider
+		p.VaultKey = "video." + p.ServiceType + "." + p.ID
 	}
 	if p.Settings == "" {
 		p.Settings = "{}"
@@ -106,6 +197,9 @@ func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 	}
 	if p.IsActive {
 		active = 1
+	}
+	if p.IsDefault {
+		_, _ = e.DB.Exec(`UPDATE providers SET is_default = 0 WHERE service_type = ? AND id != ?`, p.ServiceType, p.ID)
 	}
 	_, err := e.DB.Exec(`INSERT INTO providers(id, service_type, provider, name, base_url, vault_key, model, models, priority, is_default, is_active, settings, created_at, updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
