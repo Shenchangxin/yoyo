@@ -3,7 +3,6 @@ import { Inbox, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
-import { writeClipboard } from "../lib/clipboard";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import type { RunStatus, Thread } from "../lib/protocol";
@@ -18,7 +17,6 @@ export function Titlebar(props: {
   hideInspector?: boolean;
   hideInbox?: boolean;
   title: string;
-  sessionId?: string;
   onRename: (title: string) => void;
   runningCount?: number;
   runningThreads?: Thread[];
@@ -81,10 +79,10 @@ export function Titlebar(props: {
             }
           }}
         />
-      ) : (
+      ) : props.title ? (
         <button
           type="button"
-          className="min-w-0 max-w-[46%] shrink truncate rounded-md px-1 py-0.5 text-left text-[13px] font-medium text-foreground hover:bg-lift/70"
+          className="min-w-0 max-w-[46%] shrink truncate rounded-lg px-1.5 py-0.5 text-left text-[13.5px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
           onClick={() => {
             setDraft(props.title);
             setEditing(true);
@@ -93,8 +91,7 @@ export function Titlebar(props: {
         >
           {props.title}
         </button>
-      )}
-      {props.sessionId ? <SessionIdChip id={props.sessionId} /> : null}
+      ) : null}
       <div className="h-full min-w-4 flex-1" aria-hidden />
       <div className="no-drag flex shrink-0 items-center gap-1">
         {props.runningThreads && props.onSelectRunning ? (
@@ -119,29 +116,6 @@ export function Titlebar(props: {
         )}
       </div>
     </div>
-  );
-}
-
-function SessionIdChip(props: { id: string }) {
-  const copy = useCopy();
-  const [copied, setCopied] = useState(false);
-  const shown = props.id.length > 14 ? `${props.id.slice(0, 6)}…${props.id.slice(-4)}` : props.id;
-  return (
-    <Tooltip content={copied ? copy.titlebar.copiedId : copy.titlebar.copyId}>
-      <button
-        type="button"
-        className="no-drag max-w-[11rem] shrink truncate rounded-md px-1 py-0.5 font-mono text-[11px] tabular-nums text-muted hover:bg-lift/70 hover:text-foreground"
-        aria-label={copy.titlebar.copyId}
-        title={props.id}
-        onClick={async () => {
-          if (!(await writeClipboard(props.id))) return;
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1200);
-        }}
-      >
-        {shown}
-      </button>
-    </Tooltip>
   );
 }
 

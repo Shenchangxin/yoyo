@@ -829,28 +829,28 @@ func TestSessionAuthMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.AuthMode != capability.AuthDefault {
+	if sess.AuthMode != capability.AuthFull {
 		t.Fatalf("new session auth %q", sess.AuthMode)
-	}
-	got, err := a.SetSessionAuthMode(sess.ID, capability.AuthFull)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.AuthMode != capability.AuthFull {
-		t.Fatalf("set %q", got.AuthMode)
-	}
-	reload, err := a.GetSession(sess.ID)
-	if err != nil || reload.AuthMode != capability.AuthFull {
-		t.Fatalf("persist %+v %v", reload, err)
 	}
 	if err := a.Caps.Check(capability.Request{Level: capability.Shell, SessionID: sess.ID}); err != nil {
 		t.Fatalf("full access should grant shell: %v", err)
+	}
+	got, err := a.SetSessionAuthMode(sess.ID, capability.AuthAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AuthMode != capability.AuthAsk {
+		t.Fatalf("set %q", got.AuthMode)
+	}
+	reload, err := a.GetSession(sess.ID)
+	if err != nil || reload.AuthMode != capability.AuthAsk {
+		t.Fatalf("persist %+v %v", reload, err)
 	}
 	fork, err := a.ForkSession(sess.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fork.AuthMode != capability.AuthFull {
+	if fork.AuthMode != capability.AuthAsk {
 		t.Fatalf("fork auth %q", fork.AuthMode)
 	}
 }

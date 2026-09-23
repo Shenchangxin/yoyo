@@ -239,14 +239,14 @@ export function Transcript(props: {
       {empty && !props.compact ? (
         <StickToBottom.Content
           scrollClassName="transcript-scroll"
-          className={cn(col, "flex min-h-full flex-col justify-end pb-7 pt-8")}
+          className={cn(col, "flex min-h-full flex-col justify-end pb-8 pt-10")}
         >
           <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
         </StickToBottom.Content>
       ) : (
         <StickToBottom.Content
           scrollClassName="transcript-scroll"
-          className={cn(col, "flex flex-col pb-3 pt-4")}
+          className={cn(col, "flex flex-col pb-4 pt-5")}
         >
           {rows.map((row) => (
             <div
@@ -299,23 +299,23 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   return (
     <div className="empty-rise" data-testid="empty-turn">
       <MarkWell />
-      <h1 className="mt-5 max-w-[18ch] text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">
+      <h1 className="mt-6 max-w-[16ch] text-[26px] font-semibold leading-[1.15] tracking-[-0.042em] text-pretty text-foreground">
         {ready}
       </h1>
-      <p className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px] leading-[1.6] text-muted">
+      <p className="mt-3 flex max-w-[46ch] flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] leading-[1.6] text-muted">
         {hints.map((h, i) => (
           <span key={h.key} className="inline-flex items-center">
-            {i > 0 ? <span className="mr-3 text-muted/40" aria-hidden>·</span> : null}
+            {i > 0 ? <span className="mr-3 text-muted/35" aria-hidden>·</span> : null}
             {h.node}
           </span>
         ))}
       </p>
-      <div className="mt-6 flex flex-wrap gap-1.5">
+      <div className="mt-7 flex flex-wrap gap-2">
         {starters.map((s, i) => (
           <button
             type="button"
             key={s.label}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-transparent py-1.5 pl-2.5 pr-2 text-[12.5px] text-muted transition-colors duration-150 hover:bg-lift hover:text-foreground"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[12.5px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}
           >
@@ -338,7 +338,7 @@ function JumpLatest() {
   return (
     <button
       type="button"
-      className="absolute bottom-3 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-colors hover:bg-lift"
+      className="absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]"
       onClick={() => {
         void ctx.scrollToBottom();
       }}
@@ -393,7 +393,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   const subject = item.command || item.path || item.level;
   return (
     <div
-      className="relative overflow-hidden rounded-md border border-border bg-card px-4 py-3.5"
+      className="relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
       role="status"
       data-testid="approval-card"
     >
@@ -403,7 +403,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           <ShieldAlert className="size-3.5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+          <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
             {copy.transcript.needsApproval}
           </div>
           <div className="mt-0.5 text-[13.5px] font-medium tracking-[-0.015em] text-foreground">{item.action || "action"}</div>
@@ -415,7 +415,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-[12px] font-medium text-accent-fg transition-colors hover:bg-accent/90 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-[filter,transform] duration-200 ease-[var(--ease-out)] hover:brightness-[1.04] active:scale-[0.98] disabled:opacity-40"
               onClick={() => onResolve(item.id, "once")}
             >
               {copy.transcript.allow}
@@ -492,7 +492,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-md border px-4 py-3.5",
+        "relative overflow-hidden rounded-2xl border px-4 py-3.5",
         soft ? "border-border bg-card/80" : "border-danger/25 bg-danger/8",
       )}
       role="alert"
@@ -512,7 +512,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-[12px] font-medium text-accent-fg transition-colors hover:bg-accent/90 disabled:opacity-40"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-[filter,transform] duration-200 ease-[var(--ease-out)] hover:brightness-[1.04] active:scale-[0.98] disabled:opacity-40"
           onClick={onRetry}
         >
           <RotateCcw className="size-3" aria-hidden />
@@ -551,7 +551,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <div className="whitespace-pre-wrap break-words rounded-md bg-lift px-3 py-2 text-[13px] leading-[1.55] tracking-[-0.011em]">
+          <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[13.5px] leading-[1.55] tracking-[-0.014em]">
             {item.text}
           </div>
           {copyText ? (

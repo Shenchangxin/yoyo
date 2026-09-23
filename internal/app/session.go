@@ -86,13 +86,14 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 		HarnessPolicy:    session.FollowActive,
 		ModelFingerprint: Fingerprint(a.Config),
 		Title:            title,
+		AuthMode:         capability.AuthFull,
 	}
 	b, _ := json.MarshalIndent(meta, "", "  ")
 	path := filepath.Join(a.Home.Sessions(), id+".meta.json")
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return meta, err
 	}
-	a.applySessionAuth(id, capability.AuthDefault)
+	a.applySessionAuth(id, capability.AuthFull)
 	return a.attachAuthMode(meta), nil
 }
 
@@ -121,7 +122,7 @@ func (a *App) GetSession(id string) (SessionMeta, error) {
 }
 
 func (a *App) attachAuthMode(m SessionMeta) SessionMeta {
-	mode := capability.AuthDefault
+	mode := capability.AuthFull
 	if a != nil && a.Threads != nil && m.ID != "" {
 		if st := a.Threads.Load(m.ID); strings.TrimSpace(st.AuthMode) != "" {
 			mode = capability.ParseAuthMode(st.AuthMode)

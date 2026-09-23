@@ -31,7 +31,7 @@ function Cap({
     <button
       type="button"
       className={cn(
-        "grid size-8 place-items-center rounded-md text-muted transition-colors duration-150 hover:bg-lift hover:text-foreground",
+        "grid size-8 place-items-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]",
         danger && "hover:bg-danger hover:text-white",
       )}
       {...props}

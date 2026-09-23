@@ -20,11 +20,11 @@ export function About(props: {
   return (
     <Dialog.Root open={props.open} onOpenChange={(v) => { if (!v) props.onClose(); }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/70" />
-        <Dialog.Content className="dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border bg-popover p-5 shadow-[var(--shadow-popover)] focus:outline-none">
-          <MarkWell className="size-9" markClassName="size-3.5" />
+        <Dialog.Overlay className="overlay-scrim fixed inset-0 z-50" />
+        <Dialog.Content className="dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)] focus:outline-none">
+          <MarkWell markClassName="h-7 w-[3.2rem] rounded-md" />
           <div>
-            <Dialog.Title className="text-[15px] font-semibold tracking-[-0.02em]">{copy.about.title}</Dialog.Title>
+            <Dialog.Title className="text-[17px] font-semibold tracking-[-0.03em]">{copy.about.title}</Dialog.Title>
             <Dialog.Description className="mt-[var(--space-item)] text-[13px] leading-[1.55] text-muted">{copy.about.body}</Dialog.Description>
           </div>
           <dl className="flex flex-col gap-[var(--space-item)]">

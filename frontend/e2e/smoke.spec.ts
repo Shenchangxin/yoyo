@@ -34,14 +34,16 @@ test("command palette opens", async ({ page }) => {
   await expect(page.getByPlaceholder("Jump to a thread or action…")).toBeVisible();
 });
 
-test("review sheet appears on a narrow viewport", async ({ page }) => {
+test("review sheet stays closed on a narrow viewport until opened", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await expect(page.getByRole("dialog", { name: /Set up this workstation/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Toggle review" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("tablist", { name: "Review" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle review" }).click();
   await expect(page.getByRole("tablist", { name: "Review" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Toggle review" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("slash plan toggles the plan chip", async ({ page }) => {
@@ -332,6 +334,7 @@ test("continue this turn posts retry instead of a new user message", async ({ pa
 test("review pane has diff files and trace", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle review" }).click();
   await expect(page.getByRole("tablist", { name: "Review" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Diff/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Files/ })).toBeVisible();
@@ -352,6 +355,7 @@ test("trace tab shows trajectory and artifacts", async ({ page }) => {
     spill: { c1: { id: "c1", bytes: 5, text: "a.txt", truncated: false } },
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "Toggle review" }).click();
   await page.getByRole("tab", { name: /^Trace/ }).click();
   await expect(page.getByTestId("trace-panel")).toBeVisible();
   await expect(page.getByTestId("trace-event").filter({ hasText: "list files" })).toBeVisible();
@@ -467,7 +471,8 @@ test("insert mention keeps the popup open and pins a file token", async ({ page 
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Message" });
   await expect(box).toBeEnabled({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Insert mention" }).click();
+  await box.click();
+  await box.pressSequentially("@");
   await expect(page.getByRole("listbox", { name: "Mentions" })).toBeVisible();
   await page.getByRole("option", { name: /@file:/ }).first().click();
   await expect(page.getByRole("option", { name: /@file:src\/main.go/ })).toBeVisible();

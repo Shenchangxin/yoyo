@@ -153,7 +153,7 @@ export const useUI = create<UIState>((set, get) => ({
   settingsTab: "general",
   settingsSection: "",
   settingsNav: 0,
-  inspector: true,
+  inspector: false,
   chatDock: readChatDock(),
   palette: false,
   query: "",

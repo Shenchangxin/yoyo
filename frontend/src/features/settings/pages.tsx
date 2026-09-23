@@ -633,7 +633,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
   const copy = useCopy();
   return (
     <div className={className}>
-      <div className="mb-2 px-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{label}</div>
+      <div className="mb-2 px-1 text-[11px] font-medium text-muted">{label}</div>
       <div className="grid grid-cols-3 gap-3">
         {ids.map((id) => {
           const meta = paletteCopy(id, copy.settings.palettes);
@@ -645,12 +645,12 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
               aria-pressed={active}
               aria-label={`${meta.name}. ${meta.hint}`}
               className={cn(
-                "group cursor-pointer rounded-md border bg-card p-2 text-left transition-colors",
-                active ? "border-accent/60 bg-lift" : "border-transparent hover:bg-lift/70",
+                "group cursor-pointer rounded-2xl border bg-card p-2 text-left transition-[background-color,border-color,transform] duration-200 ease-[var(--ease-out)]",
+                active ? "border-accent/70 bg-lift" : "border-transparent hover:bg-lift/70",
               )}
               onClick={() => onPick(id)}
             >
-              <div className="h-[52px] overflow-hidden rounded-[7px] border border-border">
+              <div className="h-[56px] overflow-hidden rounded-xl border border-border">
                 <PreviewPane palette={id} />
               </div>
               <div className="mt-2 flex items-center gap-1 text-[12px] font-medium text-foreground">
@@ -669,7 +669,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
 function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalette; light: LightPalette }) {
   if (mode === "system") {
     return (
-      <div className="flex h-[52px] overflow-hidden rounded-[7px] border border-border">
+      <div className="flex h-[56px] overflow-hidden rounded-xl border border-border">
         <div className="w-1/2 overflow-hidden">
           <PreviewPane palette={dark} />
         </div>
@@ -680,7 +680,7 @@ function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalett
     );
   }
   return (
-    <div className="h-[52px] overflow-hidden rounded-[7px] border border-border">
+    <div className="h-[56px] overflow-hidden rounded-xl border border-border">
       <PreviewPane palette={mode === "dark" ? dark : light} />
     </div>
   );
@@ -693,7 +693,8 @@ function PreviewPane({ palette }: { palette: PaletteId }) {
       <div className="flex-1 space-y-[3px] p-[6px]">
         <div className="theme-preview-line h-[3px] w-4/5 rounded-full" />
         <div className="theme-preview-line h-[3px] w-3/5 rounded-full" />
-        <div className="theme-preview-bubble mt-[5px] h-[14px] w-full rounded-[3px]" />
+        <div className="theme-preview-bubble mt-[5px] h-[14px] w-full rounded-[6px]" />
+        <div className="theme-preview-accent mt-[4px] h-[4px] w-8 rounded-full" />
       </div>
     </div>
   );

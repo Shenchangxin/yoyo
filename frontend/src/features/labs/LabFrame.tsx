@@ -21,7 +21,7 @@ export function LabStrip({ children, className }: { children: ReactNode; classNa
 }
 
 export function LabEyebrow({ children }: { children: ReactNode }) {
-  return <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{children}</div>;
+  return <div className="text-[11px] font-medium text-muted">{children}</div>;
 }
 
 export function LabStat({ label, value, bad }: { label: string; value: string; bad?: boolean }) {
@@ -43,12 +43,12 @@ export function LabChip({ ok, children }: { ok: boolean; children: string }) {
 
 export function LabTable({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-md bg-sidebar/50">
+    <div className="overflow-hidden rounded-2xl bg-sidebar/50">
       <table className="w-full text-left text-[13px]">{children}</table>
     </div>
   );
 }
 
 export function LabCard({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-md bg-sidebar/40 p-4", className)}>{children}</div>;
+  return <div className={cn("rounded-2xl bg-sidebar/50 p-4 shadow-[var(--shadow-card)]", className)}>{children}</div>;
 }

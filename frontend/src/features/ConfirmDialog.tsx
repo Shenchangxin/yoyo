@@ -52,7 +52,7 @@ export function ConfirmDialog(props: {
   if (!props.open || typeof document === "undefined") return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] grid place-items-center bg-foreground/10"
+      className="overlay-scrim fixed inset-0 z-[200] grid place-items-center"
       role="presentation"
       onClick={() => {
         if (armed && !busy) props.onCancel();
@@ -62,7 +62,7 @@ export function ConfirmDialog(props: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="yoyo-confirm-title"
-        className="dialog-sheet w-[min(420px,calc(100%-2rem))] rounded-md border border-border bg-popover p-5 shadow-[var(--shadow-popover)]"
+        className="dialog-sheet w-[min(420px,calc(100%-2rem))] rounded-2xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)]"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
