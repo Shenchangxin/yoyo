@@ -529,7 +529,7 @@ function AssetCol(props: {
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between px-0.5">
-        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{props.title}</span>
+        <span className="text-[11px] font-medium text-muted">{props.title}</span>
         <span className="font-mono text-[11px] tabular-nums text-muted/70">{rows.length}</span>
       </div>
       {rows.length === 0 ? (

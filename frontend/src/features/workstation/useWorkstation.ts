@@ -787,13 +787,17 @@ export function useWorkstation() {
     }
   }
 
-  async function onNew() {
-    const t = await api.createSession(savedCfg.workspace, channelForSurface(useUI.getState().surface));
+  async function onNewIn(workspace?: string) {
+    const t = await api.createSession(workspace || savedCfg.workspace, channelForSurface(useUI.getState().surface));
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);
+  }
+
+  async function onNew() {
+    await onNewIn();
   }
 
   function openThread(t: Thread) {
@@ -1009,7 +1013,7 @@ export function useWorkstation() {
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, openThread, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, openThread, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

@@ -22,9 +22,9 @@ export function SettingsPageHeader({
 }) {
   return (
     <header className="mb-[var(--space-section)]">
-      <h1 className="text-[21px] font-semibold tracking-[-0.02em] text-pretty text-foreground">{title}</h1>
+      <h1 className="text-[24px] font-semibold tracking-[-0.036em] text-pretty text-foreground">{title}</h1>
       {description ? (
-        <p className="mt-[var(--space-item)] max-w-[46ch] text-[13px] leading-[1.55] text-muted">{description}</p>
+        <p className="mt-[var(--space-item)] max-w-[46ch] text-[13.5px] leading-[1.6] text-muted">{description}</p>
       ) : null}
       {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
     </header>
@@ -65,7 +65,7 @@ export function SettingSection({
         data-setting-section-id={id}
         className={cn(
           "flex flex-col gap-[var(--space-group)]",
-          !bare && "rounded-md bg-sidebar/40 px-4 py-4",
+          !bare && "rounded-2xl bg-sidebar/50 px-4 py-4 shadow-[var(--shadow-card)]",
         )}
       >
         {children}
@@ -284,7 +284,7 @@ export function SettingsSaveBar({
           transition={{ duration: DURATION, ease: EASE }}
           className="sticky bottom-3 z-20 mt-8"
         >
-          <div className="flex items-center gap-2 rounded-md border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
             <span className="flex-1 truncate text-[12.5px] text-muted">{label || copy.settings.unsaved}</span>
             {onDiscard ? (
               <Button size="sm" variant="ghost" onClick={onDiscard}>

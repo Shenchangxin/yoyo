@@ -62,7 +62,7 @@ export function Inspector(props: {
   return (
     <aside className="@container flex h-full min-h-0 flex-col overflow-hidden bg-transparent">
       <div
-        className="flex h-10 shrink-0 items-stretch gap-0.5 border-b border-border/70 px-1.5"
+        className="flex h-11 shrink-0 items-stretch gap-0.5 border-b border-border/50 px-2"
         role="tablist"
         aria-label={copy.review.tabs}
       >
@@ -78,7 +78,7 @@ export function Inspector(props: {
               aria-label={t.count ? `${t.label} ${t.count}` : t.label}
               title={t.label}
               className={cn(
-                "relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 text-[11.5px] font-medium transition-colors duration-150",
+                "relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-1.5 text-[12px] font-medium transition-colors duration-200 ease-[var(--ease-out)]",
                 on ? "text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => props.onTab(t.id)}
@@ -90,7 +90,7 @@ export function Inspector(props: {
               ) : null}
               <span
                 className={cn(
-                  "absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150",
+                  "absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-200 ease-[var(--ease-out)]",
                   on ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden
@@ -142,7 +142,7 @@ export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string;
 
 function SectionLabel({ children, count }: { children: ReactNode; count?: number }) {
   return (
-    <div className="flex h-8 items-center gap-2 px-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">
+    <div className="flex h-8 items-center gap-2 px-3 text-[11px] font-medium text-muted">
       <span>{children}</span>
       {count ? <span className="tabular-nums normal-case tracking-normal text-muted/60">{count}</span> : null}
     </div>

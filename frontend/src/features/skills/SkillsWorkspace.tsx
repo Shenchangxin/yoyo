@@ -139,7 +139,7 @@ export function SkillsWorkspace(props: {
                   {id === "installed" ? copy.skills.installed : copy.skills.market}
                   <span
                     className={cn(
-                      "absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150",
+                      "absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-200 ease-[var(--ease-out)]",
                       pane === id ? "opacity-100" : "opacity-0",
                     )}
                     aria-hidden
@@ -220,7 +220,7 @@ function InstalledList(props: {
 }) {
   const copy = useCopy();
   if (!props.skills.length) {
-    return <EmptyState icon={<YoyoMark className="size-4" />} title={copy.skills.emptyInstalled} />;
+    return <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyInstalled} />;
   }
   const groups = new Map<string, SkillInfo[]>();
   for (const s of props.skills) {
@@ -245,7 +245,7 @@ function InstalledList(props: {
               const slug = packSlug(s);
               const fileCount = s.files ? s.files.split(",").filter(Boolean).length : 0;
               return (
-                <div key={s.name} className="rounded-md px-3 py-2.5 hover:bg-sidebar/50">
+                <div key={s.name} className="rounded-xl px-3 py-2.5 hover:bg-sidebar/50">
                   <div className="flex min-h-10 items-center gap-3">
                     <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
@@ -334,7 +334,7 @@ function MarketList(props: {
     );
   }
   if (!props.grouped.length) {
-    return <EmptyState icon={<YoyoMark className="size-4" />} title={copy.skills.emptyMarket} />;
+    return <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyMarket} />;
   }
   return (
     <div>
@@ -352,7 +352,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
           </div>
-          <div className="grid overflow-hidden rounded-md bg-sidebar/40 sm:grid-cols-2">
+          <div className="grid overflow-hidden rounded-2xl bg-sidebar/50 sm:grid-cols-2">
             {props.featured.map((it, i) => (
               <MarketRow
                 key={it.slug}
@@ -373,7 +373,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{category}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
-          <div className="overflow-hidden rounded-md bg-sidebar/40">
+          <div className="overflow-hidden rounded-2xl bg-sidebar/50">
             {items.map((it, i) => (
               <MarketRow
                 key={it.slug}
@@ -439,7 +439,7 @@ function SkillAvatar(props: { name: string; icon?: string }) {
   const initials = skillInitials(props.name);
   return (
     <span
-      className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-lift text-[11px] font-medium text-foreground/85"
+      className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-lift text-[11px] font-medium text-foreground/85"
       aria-hidden
     >
       {showImg ? (

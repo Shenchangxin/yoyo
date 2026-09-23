@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { ArrowUp, AtSign, BookOpen, Boxes, Camera, Check, ChevronDown, FileText, Folder, GitBranch, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, Clipboard, FileText, Folder, GitBranch, Paperclip, Plus, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -52,6 +52,7 @@ export function Composer(props: {
   onScreenshot?: () => Promise<string>;
   compact?: boolean;
   flush?: boolean;
+  hero?: boolean;
   authMode?: AuthMode | string;
   onAuthMode?: (mode: AuthMode) => void;
   workspace?: string;
@@ -148,8 +149,8 @@ export function Composer(props: {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 112) + "px";
-  }, [value, chips, atts]);
+    el.style.height = Math.min(el.scrollHeight, props.hero ? 200 : 112) + "px";
+  }, [value, chips, atts, props.hero]);
 
   function placeCaret(pos: number) {
     setCaret(pos);
@@ -159,19 +160,6 @@ export function Composer(props: {
       el.focus();
       el.setSelectionRange(pos, pos);
     });
-  }
-
-  function insertAtTrigger() {
-    const el = ref.current;
-    const pos = el?.selectionStart ?? value.length;
-    const before = value.slice(0, pos);
-    const after = value.slice(pos);
-    const needsSpace = before.length > 0 && !/\s$/.test(before);
-    const ins = needsSpace ? " @" : "@";
-    onChange(before + ins + after);
-    setHint("mention");
-    setHi(0);
-    placeCaret(before.length + ins.length);
   }
 
   function insertMention(token: string) {
@@ -268,16 +256,20 @@ export function Composer(props: {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const ghostSelect =
-    "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
+    "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
   return (
     <div className="relative no-drag w-full shrink-0" data-testid={props.compact ? undefined : "composer-column"}>
-      <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : "pb-3 pt-1")}>
+      <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : props.hero ? "pb-0 pt-0" : "pb-4 pt-1")}>
+        <div
+          className="composer-bezel"
+          data-focused={focused ? "true" : "false"}
+          data-welded={popupWelded ? "true" : "false"}
+          data-hero={props.hero ? "true" : "false"}
+        >
         <div
           className={cn(
-            "relative z-10 overflow-visible border bg-input-bar shadow-[var(--shadow-composer)] transition-[border-color,box-shadow] duration-200",
-            popupWelded ? "rounded-b-[var(--radius-composer)] rounded-t-none" : "rounded-[var(--radius-composer)]",
-            focused ? "border-accent/45" : "border-border",
+            "composer-core",
             props.disabled && "opacity-55",
           )}
           onDragOver={(e) => {
@@ -344,7 +336,10 @@ export function Composer(props: {
             value={value}
             disabled={props.disabled}
             placeholder={placeholder}
-            className="prose-select min-h-[1.35rem] px-3.5 pt-2.5 pb-0.5 text-[13px] leading-[1.55] placeholder:text-muted/45"
+            className={cn(
+              "prose-select min-h-[1.5rem] px-3.5 pt-3 pb-1 text-[14px] leading-[1.55] placeholder:text-muted/55",
+              props.hero && "min-h-[4.5rem] px-4 pt-3.5 text-[15px] placeholder:text-muted/60",
+            )}
             aria-label={copy.composer.message}
             onFocus={() => {
               setFocused(true);
@@ -447,7 +442,7 @@ export function Composer(props: {
               }
             }}
           />
-          <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-1.5 pt-0.5">
+          <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-2 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
             {videoing ? (
               <>
@@ -456,35 +451,61 @@ export function Composer(props: {
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}
-            <Tooltip content={copy.composer.mention}>
-              <button
-                type="button"
-                className={toolClass()}
-                aria-label={copy.composer.mention}
-                disabled={props.disabled}
-                onClick={insertAtTrigger}
-              >
-                <AtSign className="size-3.5" />
-              </button>
-            </Tooltip>
-            <Tooltip content={copy.composer.attach}>
-              <button
-                type="button"
-                className={toolClass()}
-                aria-label={copy.composer.attach}
-                disabled={props.disabled}
-                onClick={async () => {
-                  if (props.onPickFiles) {
-                    const picked = await props.onPickFiles();
-                    if (picked.length) setAtts((prev) => [...prev, ...picked]);
-                    return;
-                  }
-                  fileRef.current?.click();
-                }}
-              >
-                <Paperclip className="size-3.5" />
-              </button>
-            </Tooltip>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={toolClass()}
+                  aria-label={copy.composer.add}
+                  disabled={props.disabled}
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-60">
+                <DropdownMenuItem
+                  disabled={props.disabled}
+                  onSelect={() => {
+                    void (async () => {
+                      if (props.onPickFiles) {
+                        const picked = await props.onPickFiles();
+                        if (picked.length) setAtts((prev) => [...prev, ...picked]);
+                        return;
+                      }
+                      fileRef.current?.click();
+                    })();
+                  }}
+                >
+                  <Paperclip className="size-3.5" />
+                  {copy.composer.attach}
+                </DropdownMenuItem>
+                {props.onClipboard ? (
+                  <DropdownMenuItem disabled={props.disabled} onSelect={() => { void pasteOsClipboard(); }}>
+                    <Clipboard className="size-3.5" />
+                    {copy.composer.clipboard}
+                  </DropdownMenuItem>
+                ) : null}
+                {props.onScreenshot ? (
+                  <DropdownMenuItem disabled={props.disabled} onSelect={() => { void grabScreenshot(); }}>
+                    <Camera className="size-3.5" />
+                    {copy.composer.screenshot}
+                  </DropdownMenuItem>
+                ) : null}
+                {props.onIsolate ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={props.disabled || props.running}
+                      onSelect={() => props.onIsolate?.(!props.isolate)}
+                    >
+                      <GitBranch className="size-3.5" />
+                      <span className="min-w-0 flex-1 truncate">{props.isolate ? copy.composer.isolateOn : copy.composer.isolate}</span>
+                      {props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <input
               ref={fileRef}
               type="file"
@@ -495,9 +516,41 @@ export function Composer(props: {
                 e.target.value = "";
               }}
             />
+            {props.onWorkspace ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(ghostSelect, "inline-flex max-w-[9.5rem] items-center")}
+                    aria-label={copy.composer.workspace}
+                    title={props.workspace || copy.composer.workspaceHint}
+                    disabled={props.disabled}
+                  >
+                    <Folder className="size-3 shrink-0 opacity-70" />
+                    <span className="truncate">{displayWorkspace(props.workspace, copy.composer.workspace)}</span>
+                    <ChevronDown className="size-3 shrink-0 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-64">
+                  {(props.workspaces || []).map((p) => (
+                    <DropdownMenuItem key={p} onSelect={() => props.onWorkspace?.(p)}>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">{displayWorkspace(p, p)}</span>
+                        <span className="truncate text-[11px] text-muted">{p}</span>
+                      </span>
+                      {p === props.workspace ? <Check className="size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                  {(props.workspaces?.length && props.onBrowseWorkspace) ? <DropdownMenuSeparator /> : null}
+                  {props.onBrowseWorkspace ? (
+                    <DropdownMenuItem onSelect={() => props.onBrowseWorkspace?.()}>
+                      {copy.composer.browseWorkspace}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             {videoing ? null : (
-            <>
-            <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -537,74 +590,7 @@ export function Composer(props: {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            </>
             )}
-            {props.onAuthMode ? (
-              <Select
-                value={parseComposerAuth(props.authMode)}
-                onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
-                disabled={props.disabled}
-              >
-                <SelectTrigger className={ghostSelect} aria-label={copy.composer.authMode}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">{copy.composer.authDefault}</SelectItem>
-                  <SelectItem value="auto_edit">{copy.composer.authAutoEdit}</SelectItem>
-                  <SelectItem value="full">{copy.composer.authFull}</SelectItem>
-                  <SelectItem value="ask">{copy.composer.authAsk}</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : null}
-            {props.onWorkspace ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(ghostSelect, "inline-flex max-w-[7.5rem] items-center")}
-                    aria-label={copy.composer.workspace}
-                    title={props.workspace || copy.composer.workspaceHint}
-                    disabled={props.disabled || props.running}
-                  >
-                    <Folder className="size-3 shrink-0 opacity-70" />
-                    <span className="truncate">{displayWorkspace(props.workspace, copy.composer.workspace)}</span>
-                    <ChevronDown className="size-3 shrink-0 opacity-70" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-64">
-                  {(props.workspaces || []).map((p) => (
-                    <DropdownMenuItem key={p} onSelect={() => props.onWorkspace?.(p)}>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">{displayWorkspace(p, p)}</span>
-                        <span className="truncate text-[11px] text-muted">{p}</span>
-                      </span>
-                      {p === props.workspace ? <Check className="size-3.5 shrink-0" /> : null}
-                    </DropdownMenuItem>
-                  ))}
-                  {(props.workspaces?.length && props.onBrowseWorkspace) ? <DropdownMenuSeparator /> : null}
-                  {props.onBrowseWorkspace ? (
-                    <DropdownMenuItem onSelect={() => props.onBrowseWorkspace?.()}>
-                      {copy.composer.browseWorkspace}
-                    </DropdownMenuItem>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            {props.onIsolate ? (
-              <Tooltip content={props.isolate ? copy.composer.isolateOn : copy.composer.isolateHint}>
-                <button
-                  type="button"
-                  className={cn(ghostSelect, "inline-flex items-center", props.isolate && "bg-lift text-foreground")}
-                  aria-pressed={!!props.isolate}
-                  aria-label={copy.composer.isolate}
-                  disabled={props.disabled || props.running}
-                  onClick={() => props.onIsolate?.(!props.isolate)}
-                >
-                  <GitBranch className="size-3 shrink-0 opacity-70" />
-                  <span className="truncate">{copy.composer.isolate}</span>
-                </button>
-              </Tooltip>
-            ) : null}
             </div>
             <span className="ml-auto" />
             {props.running ? (
@@ -633,14 +619,27 @@ export function Composer(props: {
             ) : currentModel ? (
               <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[11px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
             ) : null}
+            {props.onAuthMode ? (
+              <Select
+                value={parseComposerAuth(props.authMode)}
+                onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
+                disabled={props.disabled}
+              >
+                <SelectTrigger className={cn(ghostSelect, "max-w-[7.5rem]")} aria-label={copy.composer.authMode}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">{copy.composer.authDefault}</SelectItem>
+                  <SelectItem value="auto_edit">{copy.composer.authAutoEdit}</SelectItem>
+                  <SelectItem value="full">{copy.composer.authFull}</SelectItem>
+                  <SelectItem value="ask">{copy.composer.authAsk}</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
             <button
               type="button"
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full transition-colors duration-150 disabled:cursor-default",
-                props.running || canSend
-                  ? "bg-accent text-accent-fg hover:bg-accent/90"
-                  : "bg-lift text-muted",
-              )}
+              className="send-orb shrink-0 disabled:cursor-default"
+              data-live={props.running || canSend ? "true" : "false"}
               disabled={props.running ? false : !canSend}
               onClick={() => {
                 if (props.running) {
@@ -654,6 +653,7 @@ export function Composer(props: {
               {props.running ? <Square className="size-2.5 fill-current" /> : <ArrowUp className="size-3.5" />}
             </button>
           </div>
+        </div>
         </div>
         <ContextMeter
           ctx={props.ctx}
@@ -670,7 +670,7 @@ export function Composer(props: {
 }
 
 function toolClass() {
-  return "flex size-6 cursor-pointer items-center justify-center rounded-md text-muted transition-[background-color,color,transform] duration-150 hover:bg-lift hover:text-foreground active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30";
+  return "flex size-7 cursor-pointer items-center justify-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96] disabled:pointer-events-none disabled:opacity-30";
 }
 
 function parseComposerAuth(mode?: string): AuthMode {

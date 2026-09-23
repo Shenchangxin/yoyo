@@ -50,7 +50,7 @@ export function HarnessWorkspace(props: {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="harness-workspace">
       <div
-        className="process-tabs flex h-10 shrink-0 items-stretch gap-0.5 px-2"
+        className="process-tabs flex h-11 shrink-0 items-stretch gap-0.5 px-2"
         role="tablist"
         aria-label={copy.rsi.title}
       >
@@ -79,7 +79,7 @@ export function HarnessWorkspace(props: {
               {labels[id].label}
               <span
                 className={cn(
-                  "absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150",
+                  "absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-200 ease-[var(--ease-out)]",
                   on ? "opacity-100" : "opacity-0",
                 )}
                 aria-hidden

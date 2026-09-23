@@ -20,7 +20,7 @@ export function SheetContent({
 }: ComponentProps<typeof Dialog.Content> & { side?: "right" | "left" | "bottom"; overlay?: boolean; children?: ReactNode }) {
   return (
     <Dialog.Portal>
-      {overlay ? <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/10" /> : null}
+      {overlay ? <Dialog.Overlay className="overlay-scrim fixed inset-0 z-40" /> : null}
       <Dialog.Content
         className={cn(
           "fixed z-50 overscroll-contain bg-sidebar outline-none",

@@ -15,6 +15,7 @@ import { ResizeHandle } from "./features/ResizeHandle";
 import { Titlebar } from "./features/Titlebar";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
+import { HomeStage } from "./features/HomeStage";
 import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
 import { ChatDock } from "./features/ChatDock";
@@ -64,6 +65,7 @@ export default function App() {
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const agent = popout || ws.surface === "agent";
+  const home = (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
   const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
@@ -92,7 +94,7 @@ export default function App() {
   const bindComposer = {
     files: ws.files,
     skills: ws.skills,
-    authMode: ws.active?.authMode || "default",
+    authMode: ws.active?.authMode || "full",
     workspace: sessionWs,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
@@ -144,6 +146,7 @@ export default function App() {
         ws.refreshCtx();
       }}
       flush
+      hero={home}
       {...bindComposer}
     />
   );
@@ -190,7 +193,13 @@ export default function App() {
     />
   );
 
-  const agentPane = (
+  const agentPane = home ? (
+    <HomeStage
+      onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+    >
+      {composer}
+    </HomeStage>
+  ) : (
     <section className="@container relative flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
@@ -304,6 +313,8 @@ export default function App() {
       onQuery={ws.setQuery}
       onSelect={ws.openThread}
       onNew={ws.onNew}
+      onNewIn={(path) => { void ws.onNewIn(path); }}
+      workspace={ws.savedCfg.workspace}
       onLab={ws.setLab}
       onHarness={() => ws.openHarness("overview")}
       onSkills={() => ws.openSkills()}
@@ -404,7 +415,7 @@ export default function App() {
       ) : null}
       <button
         type="button"
-        className="mr-0.5 hidden items-center rounded-lg px-1.5 py-1 text-muted transition-colors hover:bg-lift hover:text-foreground sm:inline-flex"
+        className="mr-0.5 hidden items-center rounded-lg px-1.5 py-1 text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground sm:inline-flex"
         onClick={() => ws.setPalette(true)}
         aria-label={copy.rail.jump}
         title={copy.rail.jump}
@@ -437,8 +448,7 @@ export default function App() {
               inspector={ws.inspector}
               hideInspector={videoing}
               hideInbox={videoing}
-              title={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat}
-              sessionId={ws.active?.id || ""}
+              title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}
@@ -611,7 +621,7 @@ export default function App() {
           <MainColumn>
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
-              <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-md bg-danger/8 px-3 py-2 text-[13px] text-danger">
+              <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-xl bg-danger/10 px-3.5 py-2.5 text-[13px] text-danger">
                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{ws.err}</span>
                 <button type="button" className="ml-auto shrink-0 text-[11px] underline" onClick={() => ws.setErr("")}>{copy.app.dismiss}</button>
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>

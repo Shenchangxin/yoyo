@@ -135,7 +135,7 @@ export function SettingsSidebar(props: {
         ) : (
           SETTINGS_GROUPS.map((group) => (
             <div key={group} className="pt-2.5 first:pt-1">
-              <div className="px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">
+              <div className="px-2.5 pb-1 text-[11px] font-medium text-muted">
                 {copy.settings.groups[group]}
               </div>
               {tabsInGroup(group).map((t) => (

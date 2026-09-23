@@ -109,7 +109,7 @@ export function TracePanel(props: {
 
       {(t?.artifacts || []).length ? (
         <section>
-          <div className="flex h-8 items-center px-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">
+          <div className="flex h-8 items-center px-3 text-[11px] font-medium text-muted">
             {copy.trace.artifacts}
             <span className="ml-2 tabular-nums normal-case tracking-normal text-muted/60">{t!.artifacts.length}</span>
           </div>

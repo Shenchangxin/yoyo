@@ -52,7 +52,7 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
         compact={compact}
       />
       <ScrollFade className="min-w-0 flex-1 bg-background">
-        <div ref={scroller} className="mx-auto max-w-[40rem] px-8 py-8">
+        <div ref={scroller} className="mx-auto max-w-[42rem] px-8 py-10">
           {tab === "general" ? <GeneralSettings host={host} /> : null}
           {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
           {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}

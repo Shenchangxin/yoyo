@@ -100,6 +100,7 @@ export function parseAuthMode(v: any): AuthMode {
   if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
   if (s === "auto_edit" || s === "autoedit") return "auto_edit";
   if (s === "full" || s === "full_access") return "full";
+  if (!s) return "full";
   return "default";
 }
 

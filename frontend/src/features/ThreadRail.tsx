@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
+  Archive,
   Bell,
   BookOpen,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Clapperboard,
+  Folder,
   GitBranch,
   MessageSquarePlus,
   MoreHorizontal,
   Pin,
+  Plus,
   Search,
   Settings,
 } from "lucide-react";
@@ -36,63 +41,77 @@ import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
 import type { Copy } from "../lib/copy";
 
-type DayBucket = "today" | "yesterday" | "earlier";
-
-function dayBucket(iso: string, now = Date.now()): DayBucket {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "earlier";
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const midnight = start.getTime();
-  if (t >= midnight) return "today";
-  if (t >= midnight - 86_400_000) return "yesterday";
-  return "earlier";
-}
-
 type RailEntry =
   | { kind: "label"; id: string; label: string }
+  | { kind: "space"; id: string; label: string; path: string }
   | { kind: "thread"; thread: Thread };
 
-function railEntries(threads: Thread[], copy: Copy): RailEntry[] {
+function workspaceKey(t: Thread): string {
+  return (t.originWorkspace || t.workspace || "").replace(/\\/g, "/");
+}
+
+function railEntries(threads: Thread[], copy: Copy, opts: { groupSpaces: boolean; homeWorkspace?: string }): RailEntry[] {
   const pinned: Thread[] = [];
   const rest: Thread[] = [];
   for (const t of threads) {
     if (t.pinned) pinned.push(t);
     else rest.push(t);
   }
-  const projects = new Map<string, Thread[]>();
-  for (const t of rest) {
-    const key = displayWorkspace(t.originWorkspace || t.workspace, copy.rail.project);
-    const list = projects.get(key) || [];
-    list.push(t);
-    projects.set(key, list);
-  }
-  const useProjects = projects.size > 1;
   const out: RailEntry[] = [];
   if (pinned.length) {
     out.push({ kind: "label", id: "pinned", label: copy.rail.pinned });
     for (const thread of pinned) out.push({ kind: "thread", thread });
   }
-  if (useProjects) {
-    const names = [...projects.keys()].sort((a, b) => a.localeCompare(b));
-    for (const name of names) {
-      const items = (projects.get(name) || []).slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-      out.push({ kind: "label", id: "p-" + name, label: name });
-      for (const thread of items) out.push({ kind: "thread", thread });
-    }
+  if (!opts.groupSpaces) {
+    for (const thread of rest) out.push({ kind: "thread", thread });
     return out;
   }
-  const buckets: Record<DayBucket, Thread[]> = { today: [], yesterday: [], earlier: [] };
-  for (const t of rest) buckets[dayBucket(t.createdAt)].push(t);
-  const groups: { id: string; label: string; items: Thread[] }[] = [
-    { id: "today", label: copy.rail.today, items: buckets.today },
-    { id: "yesterday", label: copy.rail.yesterday, items: buckets.yesterday },
-    { id: "earlier", label: copy.rail.earlier, items: buckets.earlier },
-  ].filter((g) => g.items.length);
-  const label = pinned.length > 0 || groups.length > 1;
-  for (const g of groups) {
-    if (label) out.push({ kind: "label", id: g.id, label: g.label });
-    for (const thread of g.items) out.push({ kind: "thread", thread });
+  const projects = new Map<string, { path: string; label: string; items: Thread[] }>();
+  const addPath = (path: string) => {
+    const key = path.replace(/\\/g, "/") || "__none__";
+    if (projects.has(key)) return;
+    projects.set(key, {
+      path,
+      label: displayWorkspace(path, copy.rail.project),
+      items: [],
+    });
+  };
+  if (opts.homeWorkspace) addPath(opts.homeWorkspace);
+  for (const t of rest) {
+    const path = t.originWorkspace || t.workspace || opts.homeWorkspace || "";
+    addPath(path);
+    const key = path.replace(/\\/g, "/") || "__none__";
+    projects.get(key)!.items.push(t);
+  }
+  const home = (opts.homeWorkspace || "").replace(/\\/g, "/");
+  const names = [...projects.values()].sort((a, b) => {
+    const ap = a.path.replace(/\\/g, "/");
+    const bp = b.path.replace(/\\/g, "/");
+    if (ap === home) return -1;
+    if (bp === home) return 1;
+    return a.label.localeCompare(b.label);
+  });
+  for (const p of names) {
+    const items = p.items.slice().sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    out.push({ kind: "space", id: "p-" + (p.path || p.label), label: p.label, path: p.path });
+    for (const thread of items) out.push({ kind: "thread", thread });
+  }
+  return out;
+}
+
+function visibleEntries(entries: RailEntry[], collapsed: Record<string, boolean>): RailEntry[] {
+  const out: RailEntry[] = [];
+  let hidePath: string | null = null;
+  for (const e of entries) {
+    if (e.kind === "space") {
+      hidePath = collapsed[e.path] ? e.path.replace(/\\/g, "/") : null;
+      out.push(e);
+      continue;
+    }
+    if (e.kind === "thread" && hidePath) {
+      if (workspaceKey(e.thread) === hidePath) continue;
+    }
+    out.push(e);
   }
   return out;
 }
@@ -115,6 +134,8 @@ export function ThreadRail(props: {
   onQuery: (q: string) => void;
   onSelect: (t: Thread) => void;
   onNew: () => void;
+  onNewIn?: (path: string) => void;
+  workspace?: string;
   onLab: (lab: Lab) => void;
   onHarness: () => void;
   onSkills: () => void;
@@ -151,21 +172,39 @@ export function ThreadRail(props: {
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
   const videoOn = props.surface === "video";
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const entries = visibleEntries(
+    railEntries(list, copy, { groupSpaces: !q, homeWorkspace: props.workspace }),
+    collapsed,
+  );
+  const empty = list.length === 0 && !props.workspace;
+  function renderEntry(e: RailEntry) {
+    if (e.kind === "label") return <RailLabel key={e.id} label={e.label} />;
+    if (e.kind === "space") {
+      return (
+        <SpaceHeader
+          key={e.id}
+          label={e.label}
+          path={e.path}
+          collapsed={!!collapsed[e.path]}
+          onToggle={() => setCollapsed((c) => ({ ...c, [e.path]: !c[e.path] }))}
+          onNew={props.onNewIn ? () => props.onNewIn?.(e.path) : undefined}
+        />
+      );
+    }
+    return <ThreadRow key={e.thread.id} thread={e.thread} nested={!q && !e.thread.pinned} {...props} />;
+  }
   return (
     <SidebarCard>
       <div className={cn("chrome drag flex h-12 shrink-0 items-center gap-2 px-3", mac && "pl-[76px]")}>
-        <span className="relative grid size-2 place-items-center" title={props.connected ? copy.rail.connected : copy.rail.disconnected}>
-          <span className={cn("size-1.5 rounded-full", props.connected ? "bg-foreground" : "bg-muted")} />
-        </span>
-        <YoyoMark className="size-3.5 shrink-0" />
-        <span className="text-[13px] font-semibold tracking-[-0.022em]">Yoyo</span>
-        {props.isolated ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
-          <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
+        <YoyoMark compact />
+        {props.isolated ? <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.isolated}</span> : props.isolationKind && props.isolationKind !== "none" ? (
+          <span className="rounded-full bg-lift px-1.5 py-0.5 text-[10px] text-muted" title={copy.rail.isolator}>{props.isolationKind.replace(/_/g, " ")}</span>
         ) : null}
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
             type="button"
-            className="no-drag ml-auto grid size-7 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground"
+            className="no-drag ml-auto grid size-7 cursor-pointer place-items-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]"
             aria-label={copy.rail.collapse}
             onClick={props.onCollapse}
           >
@@ -174,14 +213,14 @@ export function ThreadRail(props: {
         </Tooltip>
       </div>
       <div className="px-2.5 pb-2">
-        <Button className="h-8 w-full justify-start gap-2 rounded-md text-[13px]" variant="ghost" onClick={props.onNew}>
+        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" variant="accent" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
-        <div className="relative mt-2">
+        <div className="relative mt-2.5">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <Input
-            className="h-8 rounded-md border-transparent bg-lift/70 pl-8 text-[13px]"
+            className="h-8 rounded-xl border-transparent bg-lift/80 pl-8 text-[13px]"
             placeholder={copy.rail.search}
             aria-label={copy.rail.search}
             value={props.query}
@@ -193,91 +232,64 @@ export function ThreadRail(props: {
         </div>
       </div>
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
-        {list.length === 0 ? (
-          <EmptyState icon={<YoyoMark className="size-4 text-muted" />} title={copy.rail.noChats} />
+        {empty ? (
+          <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />
         ) : virtual ? (
           <VList className="h-full">
-            {railEntries(list, copy).map((e) =>
-              e.kind === "label" ? (
-                <RailLabel key={e.id} label={e.label} />
-              ) : (
-                <ThreadRow key={e.thread.id} thread={e.thread} {...props} />
-              ),
-            )}
+            {entries.map(renderEntry)}
           </VList>
         ) : (
           <div className="h-full overflow-auto">
-            {railEntries(list, copy).map((e) =>
-              e.kind === "label" ? (
-                <RailLabel key={e.id} label={e.label} />
-              ) : (
-                <ThreadRow key={e.thread.id} thread={e.thread} {...props} />
-              ),
-            )}
+            {entries.map(renderEntry)}
           </div>
         )}
       </nav>
-      <div className="px-1.5 pb-1.5 pt-2">
-        <div className="px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.labs}</div>
-        <button
-          type="button"
-          title={copy.rail.skillsHint}
-          aria-label={copy.rail.skills}
-          aria-current={skillsOn ? "page" : undefined}
-          className={cn(
-            "mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
-            skillsOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
-          )}
+      <div className="rail-dock">
+        <DockIcon
+          label={copy.rail.skills}
+          hint={copy.rail.skillsHint}
+          on={skillsOn}
           onClick={props.onSkills}
         >
-          <BookOpen className="size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{copy.rail.skills}</span>
-        </button>
-        <button
-          type="button"
-          title={copy.rail.videoHint}
-          aria-label={copy.rail.video}
-          aria-current={videoOn ? "page" : undefined}
-          className={cn(
-            "mb-0.5 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
-            videoOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
-          )}
+          <BookOpen className="size-4" aria-hidden />
+        </DockIcon>
+        <DockIcon
+          label={copy.rail.video}
+          hint={copy.rail.videoHint}
+          on={videoOn}
           onClick={props.onVideo}
         >
-          <Clapperboard className="size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{copy.rail.video}</span>
-        </button>
-        <button
-          type="button"
-          title={copy.rail.harnessHint}
-          aria-label={copy.rail.harness}
-          aria-current={harnessOn ? "page" : undefined}
-          className={cn(
-            "flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium transition-colors",
-            harnessOn ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
-          )}
+          <Clapperboard className="size-4" aria-hidden />
+        </DockIcon>
+        <DockIcon
+          label={copy.rail.harness}
+          hint={activeShort ? `${copy.rail.harness} · ${activeShort}` : copy.rail.harnessHint}
+          on={harnessOn}
           onClick={props.onHarness}
+          mark={dirty || canary}
         >
-          <GitBranch className="size-3.5 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{copy.rail.harness}</span>
-          {activeShort ? <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted/70">{activeShort}</span> : null}
-          {dirty ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.stagingDirty}</span> : canary ? <span className="rounded-md bg-lift px-1.5 py-0.5 text-[10px] text-muted">{copy.rail.canaryDirty}</span> : null}
-        </button>
-      </div>
-      <div className="flex items-center gap-1 px-2 py-1.5">
-        <button
-          type="button"
-          className="rounded-md px-2 py-1 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
-          onClick={props.onToggleArchived}
-        >
-          {props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
-        </button>
+          <GitBranch className="size-4" aria-hidden />
+        </DockIcon>
         <div className="ml-auto flex items-center gap-0.5">
+          <Tooltip content={props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}>
+            <button
+              type="button"
+              className={cn(
+                "grid size-8 place-items-center rounded-xl transition-colors",
+                props.showArchived ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
+              )}
+              aria-label={props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
+              aria-pressed={!!props.showArchived}
+              onClick={props.onToggleArchived}
+            >
+              <Archive className="size-4" />
+            </button>
+          </Tooltip>
           <DropdownMenu open={props.noticesOpen} onOpenChange={(v) => { if (v !== props.noticesOpen) props.onToggleNotices(); }}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="relative grid size-8 place-items-center rounded-lg text-muted transition-colors hover:bg-lift hover:text-foreground"
+                className="relative grid size-8 place-items-center rounded-xl text-muted transition-colors hover:bg-lift hover:text-foreground"
                 aria-label={copy.rail.notifications}
                 title={copy.rail.notifications}
               >
@@ -314,8 +326,8 @@ export function ThreadRail(props: {
               aria-current={props.surface === "settings" ? "page" : undefined}
               aria-label={copy.rail.settings}
               className={cn(
-                "grid size-8 place-items-center rounded-lg transition-colors",
-                props.surface === "settings" ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground",
+                "grid size-8 place-items-center rounded-xl transition-colors",
+                props.surface === "settings" ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
               )}
               onClick={props.onSettings}
             >
@@ -330,9 +342,77 @@ export function ThreadRail(props: {
 
 function RailLabel({ label }: { label: string }) {
   return (
-    <div className="px-2.5 pb-1 pt-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80 first:pt-1.5">
+    <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium text-muted first:pt-1.5">
       {label}
     </div>
+  );
+}
+
+function SpaceHeader(props: {
+  label: string;
+  path: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  onNew?: () => void;
+}) {
+  const copy = useCopy();
+  return (
+    <div className="group/space flex items-center gap-0.5 px-1.5 pb-0.5 pt-3 first:pt-1.5">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12px] font-medium tracking-[-0.01em] text-foreground/80 transition-colors hover:bg-lift/55 hover:text-foreground"
+        onClick={props.onToggle}
+        aria-expanded={!props.collapsed}
+        title={props.path}
+      >
+        {props.collapsed ? <ChevronRight className="size-3.5 shrink-0 text-muted" aria-hidden /> : <ChevronDown className="size-3.5 shrink-0 text-muted" aria-hidden />}
+        <Folder className="size-3.5 shrink-0 text-muted" aria-hidden />
+        <span className="truncate">{props.label}</span>
+      </button>
+      {props.onNew ? (
+        <Tooltip content={copy.rail.newInSpace}>
+          <button
+            type="button"
+            className="grid size-6 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-lift hover:text-foreground group-hover/space:opacity-100 focus-visible:opacity-100"
+            aria-label={copy.rail.newInSpace}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onNew?.();
+            }}
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </Tooltip>
+      ) : null}
+    </div>
+  );
+}
+
+function DockIcon(props: {
+  label: string;
+  hint?: string;
+  on?: boolean;
+  mark?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip content={props.hint || props.label} side="top">
+      <button
+        type="button"
+        title={props.hint || props.label}
+        aria-label={props.label}
+        aria-current={props.on ? "page" : undefined}
+        className={cn(
+          "relative grid size-8 place-items-center rounded-xl transition-colors",
+          props.on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
+        )}
+        onClick={props.onClick}
+      >
+        {props.children}
+        {props.mark ? <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-accent" /> : null}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -341,6 +421,7 @@ function ThreadRow(props: {
   activeId: string;
   running: Record<string, boolean>;
   surface: Surface;
+  nested?: boolean;
   onSelect: (t: Thread) => void;
   onLab: (lab: Lab) => void;
   onPin?: (t: Thread, pinned: boolean) => void;
@@ -418,8 +499,8 @@ function ThreadRow(props: {
 
   if (editing) {
     return (
-      <div className="mb-px flex w-full items-center gap-2 rounded-lg bg-lift px-2.5 py-[7px]">
-        <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-foreground" : "bg-muted/35")} aria-hidden />
+      <div className={cn("mb-px flex w-full items-center gap-2 rounded-lg bg-lift px-2.5 py-[6px]", props.nested && "ml-2 w-[calc(100%-0.5rem)]")}>
+        {run ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden /> : null}
         <input
           autoFocus
           aria-label={copy.rail.rename}
@@ -449,8 +530,9 @@ function ThreadRow(props: {
       <div
         ref={rowRef}
         className={cn(
-          "group mb-0.5 flex min-h-10 w-full items-center rounded-md transition-colors duration-150",
-          active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/55 hover:text-foreground",
+          "group relative mb-px flex min-h-8 w-full items-center rounded-lg transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+          props.nested && "ml-2 w-[calc(100%-0.5rem)]",
+          active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
         )}
         onMouseEnter={scheduleMetaOpen}
         onMouseLeave={scheduleMetaClose}
@@ -458,7 +540,7 @@ function ThreadRow(props: {
         <button
           type="button"
           aria-current={active ? "page" : undefined}
-          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[6px] text-left"
           onClick={() => {
             props.onSelect(t);
             setMenuOpen(false);
@@ -474,15 +556,18 @@ function ThreadRow(props: {
             setMenuOpen(true);
           }}
         >
-          <span className={cn("size-1.5 shrink-0 rounded-full", run ? "animate-pulse bg-foreground" : "bg-muted/35")} aria-hidden />
+          {active ? <span className="absolute left-1 top-2 bottom-2 w-[2px] rounded-full bg-accent" aria-hidden /> : null}
+          {run ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden /> : null}
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1">
               {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
-              <span className="block truncate text-[13px] font-medium text-foreground">{displayTitle(t.title, copy.rail.untitled)}</span>
+              <span className={cn("block truncate text-[13px]", active ? "font-medium text-foreground" : "font-normal")}>{displayTitle(t.title, copy.rail.untitled)}</span>
             </span>
-            <span className="block truncate text-[11px] text-muted">
-              {run ? copy.rail.running : t.archived ? copy.rail.archived : t.isolate ? copy.rail.isolated : displayWorkspace(t.originWorkspace || t.workspace, copy.rail.idle)}
-            </span>
+            {run || t.archived || t.isolate ? (
+              <span className="block truncate text-[11px] text-muted">
+                {run ? copy.rail.running : t.archived ? copy.rail.archived : copy.rail.isolated}
+              </span>
+            ) : null}
           </span>
         </button>
         <DropdownMenuTrigger asChild>
@@ -599,13 +684,13 @@ function SessionMetaCard(props: {
       role="complementary"
       aria-label={copy.rail.meta}
       data-testid="session-meta-card"
-      className="fixed z-[60] w-[272px] overflow-hidden rounded-[10px] border border-border bg-card shadow-[var(--shadow-popover)]"
+      className="fixed z-[60] w-[272px] overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-popover)]"
       style={{ left: pos.left, top: pos.top, visibility: pos.ready ? "visible" : "hidden" }}
       onMouseEnter={props.onMouseEnter}
       onMouseLeave={props.onMouseLeave}
     >
       <div className="px-3 py-2.5">
-        <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.meta}</div>
+        <div className="text-[11px] font-medium text-muted">{copy.rail.meta}</div>
         <div className="mt-1 truncate text-[13px] font-medium text-foreground">{title}</div>
         {chips.length ? (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -616,7 +701,7 @@ function SessionMetaCard(props: {
         ) : null}
       </div>
       <div className="border-t border-border/50 px-3 py-2">
-        <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{copy.rail.sessionId}</div>
+        <div className="text-[11px] font-medium text-muted">{copy.rail.sessionId}</div>
         <div className="mt-1 flex items-center gap-1">
           <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground" title={t.id}>{t.id}</span>
           <button
@@ -647,7 +732,7 @@ function SessionMetaCard(props: {
 function MetaLine(props: { label: string; value: string; title?: string; mono?: boolean }) {
   return (
     <div className="border-t border-border/50 px-3 py-2">
-      <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{props.label}</div>
+      <div className="text-[11px] font-medium text-muted">{props.label}</div>
       <div
         className={cn("mt-1 truncate text-[12px] text-foreground", props.mono && "font-mono text-[11.5px]")}
         title={props.title || props.value}
