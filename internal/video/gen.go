@@ -121,6 +121,13 @@ func (e *Engine) providerForJob(j Job, kind string) (Provider, error) {
 	if err != nil {
 		return Provider{}, err
 	}
+	if j.VaultKey != "" {
+		for _, p := range list {
+			if p.VaultKey == j.VaultKey && p.IsActive {
+				return p, nil
+			}
+		}
+	}
 	for _, p := range list {
 		if p.Provider == j.Provider && p.IsActive {
 			return p, nil
@@ -134,7 +141,7 @@ func (e *Engine) openaiImage(ctx context.Context, p Provider, key string, j *Job
 	if len(params.ReferenceImages) > 0 {
 		return e.openaiEdit(ctx, p, key, j, params, model)
 	}
-	body := map[string]any{"model": model, "prompt": j.Prompt, "n": 1, "size": first(params.Size, "1024x1024")}
+	body := map[string]any{"model": model, "prompt": j.Prompt, "n": 1, "size": OpenAIImageSize(first(params.Size, "1024x1024"))}
 	req, err := jsonReq(http.MethodPost, joinURL(p.BaseURL, "/v1", "/images/generations"), key, body)
 	if err != nil {
 		return err
@@ -151,7 +158,7 @@ func (e *Engine) openaiEdit(ctx context.Context, p Provider, key string, j *Job,
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("model", model)
 	_ = w.WriteField("prompt", j.Prompt)
-	_ = w.WriteField("size", first(params.Size, "1024x1024"))
+	_ = w.WriteField("size", OpenAIImageSize(first(params.Size, "1024x1024")))
 	for i, ref := range params.ReferenceImages {
 		raw, err := e.refBytes(ref)
 		if err != nil {
@@ -182,9 +189,9 @@ func (e *Engine) geminiImage(ctx context.Context, p Provider, key string, j *Job
 	official := strings.Contains(p.BaseURL, "generativelanguage.googleapis.com")
 	if official && strings.Contains(model, "image") && strings.Contains(model, "gemini-3") {
 		body := map[string]any{
-			"model": strings.TrimPrefix(model, "models/"),
-			"input": j.Prompt,
-			"response_format": map[string]any{"type": "image", "aspect_ratio": "16:9", "image_size": "2K"},
+			"model":           strings.TrimPrefix(model, "models/"),
+			"input":           j.Prompt,
+			"response_format": map[string]any{"type": "image", "aspect_ratio": GeminiAspectFromSize(params.Size, params.AspectRatio), "image_size": "2K"},
 		}
 		req, err := jsonReq(http.MethodPost, joinURL(p.BaseURL, "/v1beta", "/interactions"), key, body)
 		if err != nil {
@@ -306,9 +313,9 @@ func (e *Engine) seedanceSubmit(ctx context.Context, p Provider, key string, j *
 	body := map[string]any{
 		"model": model, "content": content,
 		"generate_audio": params.GenerateAudio, "ratio": first(params.AspectRatio, "16:9"),
-		"duration": ClampProviderDuration(params.Duration, "volcengine"),
+		"duration":   ClampProviderDuration(params.Duration, "volcengine"),
 		"resolution": NormalizeVideoResolution(params.Resolution, "volcengine"),
-		"watermark": false,
+		"watermark":  false,
 	}
 	req, err := jsonReq(http.MethodPost, joinURL(p.BaseURL, "/api/v3", "/contents/generations/tasks"), key, body)
 	if err != nil {
@@ -357,8 +364,9 @@ func (e *Engine) minimaxSubmit(ctx context.Context, p Provider, key string, j *J
 	}
 	body := map[string]any{
 		"model": model, "content": content,
-		"duration": ClampProviderDuration(params.Duration, "minimax"),
-		"resolution": NormalizeVideoResolution(params.Resolution, "minimax"),
+		"duration":       ClampProviderDuration(params.Duration, "minimax"),
+		"resolution":     NormalizeVideoResolution(params.Resolution, "minimax"),
+		"generate_audio": params.GenerateAudio,
 	}
 	if params.FirstFrameURL == "" {
 		ratio := first(params.AspectRatio, "16:9")
@@ -527,4 +535,3 @@ func splitSize(s string) (int, int, bool) {
 	_, err2 := fmt.Sscanf(parts[1], "%d", &h)
 	return w, h, err1 == nil && err2 == nil && w > 0 && h > 0
 }
-

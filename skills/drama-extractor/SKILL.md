@@ -9,7 +9,7 @@ allowed-tools: drama_read_episode drama_read_assets drama_save_characters drama_
 
 Call `drama_read_episode` and `drama_read_assets`. Merge with existing rows by normalized name. Do not duplicate 「林小雨」and「林小雨（主角）」.
 
-Characters: name, role, appearance, costume. Only people who appear on screen.
+Characters: name, role, appearance, costume. Only people who appear on screen. Keep narrator/voice-over as a character row if they speak, but do not invent a face for them.
 
 Scenes: location + time of day. Establishing places, not every hallway beat.
 

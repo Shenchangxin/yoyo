@@ -160,6 +160,32 @@ func (e *Engine) StagePrompt(stage, episodeID string) (string, []string, error) 
 			"Load the drama-extractor skill.",
 			"Read the screenplay, dedupe against existing assets, then save characters, scenes, and props with the drama_save_* tools.",
 			"Props: only plot-critical objects that deserve their own still. Usually 0–3.",
+			"Keep narrator/voice-over as a character row if they speak, but do not invent a face.",
+			"Do not narrate. Tool calls only.",
+			langLine,
+		}, "\n"), []string{"drama-extractor"}, nil
+	case "extract_characters":
+		_ = e.patchPipeline(episodeID, "extract", "running", "")
+		return strings.Join([]string{
+			"Load the drama-extractor skill.",
+			"Extract only on-screen characters. Save with drama_save_characters. Do not save scenes or props.",
+			"Keep narrator/voice-over as a character if they speak, without inventing a face.",
+			"Do not narrate. Tool calls only.",
+			langLine,
+		}, "\n"), []string{"drama-extractor"}, nil
+	case "extract_scenes":
+		_ = e.patchPipeline(episodeID, "extract", "running", "")
+		return strings.Join([]string{
+			"Load the drama-extractor skill.",
+			"Extract only establishing locations. Save with drama_save_scenes. Do not save characters or props.",
+			"Do not narrate. Tool calls only.",
+			langLine,
+		}, "\n"), []string{"drama-extractor"}, nil
+	case "extract_props":
+		_ = e.patchPipeline(episodeID, "extract", "running", "")
+		return strings.Join([]string{
+			"Load the drama-extractor skill.",
+			"Extract only plot-critical props that need their own still. At most three. Save with drama_save_props. Do not save characters or scenes.",
 			"Do not narrate. Tool calls only.",
 			langLine,
 		}, "\n"), []string{"drama-extractor"}, nil
@@ -181,9 +207,12 @@ func (e *Engine) StagePrompt(stage, episodeID string) (string, []string, error) 
 			langLine,
 		}, "\n"), []string{"drama-storyboard"}, nil
 	case "video_prompts":
+		_ = e.patchPipeline(episodeID, "video_prompts", "running", "")
 		return strings.Join([]string{
 			"Load drama-prompt-video.",
-			"For shots missing video_prompt, write the 3-second-line prompt and drama_update_storyboard with only storyboard_id and video_prompt.",
+			"For shots missing video_prompt, write the prompt and drama_update_storyboard with only storyboard_id and video_prompt.",
+			"First line is an info header listing on-screen people and the scene with @Name.",
+			"Then one line per ~3 seconds. Align cuts with 【镜头N】 in description. Do not invent dialogue.",
 			langLine,
 		}, "\n"), []string{"drama-prompt-video"}, nil
 	default:

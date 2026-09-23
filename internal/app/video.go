@@ -185,6 +185,15 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return eng.TestProvider(str("id")), nil
 	case "video.styles":
 		return eng.ListStyles()
+	case "video.styles.all":
+		return eng.ListAllStyles()
+	case "video.styles.upsert":
+		var s video.Style
+		b, _ := json.Marshal(params)
+		_ = json.Unmarshal(b, &s)
+		return eng.UpsertStyle(s)
+	case "video.styles.delete":
+		return map[string]any{"ok": true}, eng.DeleteStyle(str("id"))
 	case "video.settings.get":
 		return eng.SettingsMap(), nil
 	case "video.settings.set":
@@ -197,6 +206,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, eng.CancelJob(str("id"))
 	case "video.jobs.retry":
 		return eng.RetryJob(str("id"))
+	case "video.jobs.apply":
+		return eng.ApplyJob(str("id"))
 	case "drama.list":
 		return eng.ListDramas()
 	case "drama.create":
@@ -220,10 +231,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "drama.episode.get":
 		return eng.GetEpisode(str("id"))
 	case "drama.episode.update":
-		var ep video.Episode
-		b, _ := json.Marshal(params)
-		_ = json.Unmarshal(b, &ep)
-		return eng.UpdateEpisode(ep)
+		return eng.PatchEpisode(str("id"), params)
 	case "drama.episode.delete":
 		return map[string]any{"ok": true}, eng.DeleteEpisode(str("id"))
 	case "drama.bundle":
@@ -238,6 +246,10 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, a.RunDramaStage(str("session_id"), str("episode_id"), str("stage"))
 	case "drama.assets.save":
 		return map[string]any{"ok": true}, eng.UpdateAsset(str("kind"), str("id"), params)
+	case "drama.assets.create":
+		return eng.CreateAsset(str("kind"), str("episode_id"), params)
+	case "drama.assets.delete":
+		return map[string]any{"ok": true}, eng.DeleteAsset(str("kind"), str("id"))
 	case "drama.assets.generate":
 		j, err := eng.GenerateAsset(str("kind"), str("id"), str("episode_id"))
 		a.journalVideo("video.generate", map[string]any{"kind": "image", "asset": str("kind"), "id": str("id")})
@@ -265,10 +277,11 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		return eng.SaveShots(str("episode_id"), shots, replace)
 	case "drama.shots.update":
-		var s video.Shot
-		b, _ := json.Marshal(params)
-		_ = json.Unmarshal(b, &s)
-		return eng.UpdateShot(s)
+		id := str("id")
+		if id == "" {
+			id = str("storyboard_id")
+		}
+		return eng.PatchShot(id, params)
 	case "drama.shots.delete":
 		return map[string]any{"ok": true}, eng.DeleteShot(str("id"))
 	case "drama.shots.generate":
@@ -288,6 +301,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return j, err
 	case "drama.import":
 		return eng.ImportHuobao(str("db_path"), str("static_dir"))
+	case "drama.skip_rewrite":
+		return map[string]any{"ok": true}, eng.SkipRewrite(str("episode_id"))
 	case "media.url":
 		return map[string]any{"url": a.mediaURL(str("hash"))}, nil
 	default:

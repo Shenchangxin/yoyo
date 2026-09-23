@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { resolveSettingsTarget } from "./registry";
 import { useUI } from "../../lib/store";
 
-/** Accepts links minted before the eight-tab regroup; they resolve onto the new layout. */
+/** Accepts links minted before the nine-tab regroup; they resolve onto the new layout. */
 function parseSettingsHash() {
   const h = location.hash.slice(1);
   const [path, query] = h.split("?");

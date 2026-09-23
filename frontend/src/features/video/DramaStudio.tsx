@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clapperboard, Film, ImagePlus, Plus, Upload } from "lucide-react";
+import { Clapperboard, Film, ImagePlus, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input, Textarea } from "../../components/ui/input";
@@ -7,6 +7,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { Tooltip } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
+import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
 import { subscribeItems } from "../../lib/stream";
 import { DramaMentionField, type MentionAsset } from "./DramaMentionField";
@@ -29,6 +30,10 @@ type Episode = {
   pipeline: string;
   image_provider_id: string;
   video_provider_id: string;
+  image_model?: string;
+  video_model?: string;
+  tts_provider_id?: string;
+  tts_model?: string;
   video_url?: string;
   poster_url?: string;
 };
@@ -36,13 +41,17 @@ type Asset = {
   id: string;
   name?: string;
   location?: string;
+  role?: string;
   image_url?: string;
   image_hash?: string;
   linked?: boolean;
   final_prompt?: string;
   appearance?: string;
+  styling?: string;
   prompt?: string;
+  lighting?: string;
   description?: string;
+  time_of_day?: string;
 };
 type Shot = {
   id: string;
@@ -58,7 +67,19 @@ type Shot = {
   scene_id?: string;
   prop_ids?: string[];
 };
-type Job = { id: string; type: string; status: string; error?: string; episode_id?: string };
+type Job = {
+  id: string;
+  type: string;
+  status: string;
+  error?: string;
+  episode_id?: string;
+  storyboard_id?: string;
+  character_id?: string;
+  scene_id?: string;
+  prop_id?: string;
+  media_url?: string;
+  poster_url?: string;
+};
 type Bundle = {
   drama: Drama;
   episode: Episode;
@@ -68,7 +89,7 @@ type Bundle = {
   shots: Shot[];
   jobs: Job[];
   plan: { chars: number; target_seconds: number; segment_count: number };
-  status?: { ffmpeg?: boolean; media_base?: string };
+  status?: { ffmpeg?: boolean; missing?: string[] };
 };
 type Pane = "script" | "cast" | "board" | "cut";
 type CopyT = ReturnType<typeof useCopy>;
@@ -89,6 +110,82 @@ function selectedClipIds(shots: Shot[], sel: Record<string, boolean>) {
   return shots.filter((s) => s.video_url && sel[s.id] !== false).map((s) => s.id);
 }
 
+function parseModels(raw: string): string[] {
+  const s = (raw || "").trim();
+  if (!s) return [];
+  if (s.startsWith("[")) {
+    try {
+      const v = JSON.parse(s);
+      if (Array.isArray(v)) return v.map(String).filter(Boolean);
+    } catch {
+      /* fall through */
+    }
+  }
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+function catalogOf(p: { model?: string; models?: string } | undefined, selected = ""): string[] {
+  const out: string[] = [];
+  const add = (v: string) => {
+    const s = (v || "").trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  add(String(p?.model || ""));
+  add(selected);
+  for (const m of parseModels(String(p?.models || ""))) add(m);
+  return out;
+}
+
+function ProviderModelSelect(props: {
+  kind: string;
+  label: string;
+  providers: any[];
+  providerId: string;
+  model: string;
+  onChange: (providerId: string, model: string) => void;
+}) {
+  const rows = props.providers.filter((p) => p.service_type === props.kind && (p.is_active !== false || p.id === props.providerId));
+  if (rows.length === 0) return null;
+  const current = rows.find((p) => p.id === props.providerId);
+  const models = catalogOf(current, props.model);
+  const model = props.model && models.includes(props.model) ? props.model : (current?.model || models[0] || "");
+  const value = props.providerId ? `${props.providerId}::${model}` : "";
+  return (
+    <select
+      className={cn(field, "h-7 max-w-[14rem]")}
+      value={value}
+      aria-label={props.label}
+      onChange={(e) => {
+        const raw = e.target.value;
+        const i = raw.indexOf("::");
+        if (i < 0) {
+          props.onChange("", "");
+          return;
+        }
+        props.onChange(raw.slice(0, i), raw.slice(i + 2));
+      }}
+    >
+      <option value="">{props.label}</option>
+      {rows.map((p) => {
+        const models = catalogOf(p, p.id === props.providerId ? props.model : "");
+        const ids = models.length ? models : [""];
+        return (
+          <optgroup key={p.id} label={`${p.name || p.provider}${p.has_key ? "" : " · —"}`}>
+            {ids.map((m) => (
+              <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{m || p.name || p.provider}</option>
+            ))}
+          </optgroup>
+        );
+      })}
+    </select>
+  );
+}
+
+function isNarrator(a: Asset) {
+  const t = `${a.name || ""} ${a.role || ""}`.toLowerCase();
+  return ["旁白", "画外音", "narrator", "voice-over", "voiceover"].some((k) => t.includes(k));
+}
+
 function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
   const out: MentionAsset[] = [];
   const chars = new Set(s.character_ids || []);
@@ -105,8 +202,9 @@ function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
   return out.sort((a, b) => b.name.length - a.name.length);
 }
 
-export function DramaStudio(props: { sessionId?: string; onNeedSession: () => void }) {
+export function DramaStudio(props: { sessionId?: string; onNeedSession: () => void; onClose?: () => void }) {
   const copy = useCopy();
+  const openSettings = useUI((s) => s.openSettings);
   const dramaId = useDramaSelection((s) => s.dramaId);
   const episodeId = useDramaSelection((s) => s.episodeId);
   const setDramaId = useDramaSelection((s) => s.setDramaId);
@@ -121,6 +219,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const [styles, setStyles] = useState<{ value: string; name: string }[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
   const [ffmpeg, setFfmpeg] = useState(true);
+  const [missing, setMissing] = useState<string[]>([]);
   const [ratio, setRatio] = useState("16:9");
   const [kill, setKill] = useState("");
 
@@ -137,13 +236,17 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     const b = (await api.video.bundle(id)) as Bundle;
     setBundle(b);
     setFfmpeg(b?.status?.ffmpeg !== false);
+    if (Array.isArray(b?.status?.missing)) setMissing(b.status.missing);
   }, []);
 
   useEffect(() => {
     void loadList().catch((e) => setErr(api.errMessage(e)));
     void api.video.styles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {});
     void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
-    void api.video.status().then((s) => setFfmpeg(!!s?.ffmpeg)).catch(() => {});
+    void api.video.status().then((s) => {
+      setFfmpeg(!!s?.ffmpeg);
+      if (Array.isArray(s?.missing)) setMissing(s.missing);
+    }).catch(() => {});
   }, [loadList]);
 
   useEffect(() => {
@@ -276,6 +379,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     { id: "prompts", label: copy.video.prompts, pane: "cast" as Pane },
     { id: "assets", label: copy.video.stills, pane: "cast" as Pane },
     { id: "storyboard", label: copy.video.storyboard, pane: "board" as Pane },
+    { id: "video_prompts", label: copy.video.vprompts, pane: "board" as Pane },
     { id: "gen", label: copy.video.clips, pane: "board" as Pane },
     { id: "merge", label: copy.video.stitch, pane: "cut" as Pane },
   ];
@@ -290,9 +394,17 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const iconBtn =
     "grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30";
 
+  const showMissing = missing.includes("image") || missing.includes("video");
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
+      {showMissing ? (
+        <div className="flex items-center gap-2 border-b border-border/70 bg-lift/60 px-3 py-1.5 text-[12px] text-muted">
+          <span className="min-w-0 flex-1">{copy.video.missingProviders}</span>
+          <button type="button" className="underline" onClick={() => openSettings("generation", "generation-image")}>{copy.video.openSettings}</button>
+        </div>
+      ) : null}
       <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 px-2 py-1.5">
         <select
           className={cn(field, "min-w-0 max-w-[9.5rem] flex-1")}
@@ -328,13 +440,16 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           </button>
         </Tooltip>
         <div className="flex rounded-md bg-lift p-0.5">
-          {["16:9", "9:16"].map((r) => (
+          {["16:9", "9:16", "1:1"].map((r) => (
             <button
               key={r}
               type="button"
-              title={copy.video.locked}
+              title={copy.video.ratio}
               className={cn("rounded px-1.5 py-1 font-mono text-[10px] tabular-nums", (drama?.aspect_ratio || ratio) === r ? "bg-panel text-foreground" : "text-muted")}
-              onClick={() => setRatio(r)}
+              onClick={() => {
+                setRatio(r);
+                if (dramaId) void api.video.updateDrama({ id: dramaId, aspect_ratio: r }).then(loadList);
+              }}
             >
               {r}
             </button>
@@ -345,6 +460,13 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <Upload className="size-3.5" />
           </button>
         </Tooltip>
+        {props.onClose ? (
+          <Tooltip content={copy.video.closeBoard}>
+            <button type="button" className={cn(iconBtn, "ml-auto")} aria-label={copy.video.closeBoard} onClick={props.onClose}>
+              <X className="size-3.5" />
+            </button>
+          </Tooltip>
+        ) : null}
       </header>
       {!episodeId || !bundle ? (
         <EmptyState
@@ -381,18 +503,30 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <select className={cn(field, "h-7")} value={drama?.style || "3d"} aria-label={copy.video.style} onChange={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style: e.target.value }).then(loadList); }}>
               {styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
             </select>
-            {providers.some((p) => p.service_type === "image") ? (
-              <select className={cn(field, "h-7 max-w-[7.5rem]")} value={ep?.image_provider_id || ""} aria-label={copy.video.imageProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
-                <option value="">{copy.video.imageProvider}</option>
-                {providers.filter((p) => p.service_type === "image").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
-              </select>
-            ) : null}
-            {providers.some((p) => p.service_type === "video") ? (
-              <select className={cn(field, "h-7 max-w-[7.5rem]")} value={ep?.video_provider_id || ""} aria-label={copy.video.videoProvider} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: e.target.value }).then(() => loadBundle(ep.id)); }}>
-                <option value="">{copy.video.videoProvider}</option>
-                {providers.filter((p) => p.service_type === "video").map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.has_key ? "" : " · —"}</option>)}
-              </select>
-            ) : null}
+            <ProviderModelSelect
+              kind="image"
+              label={copy.video.imageProvider}
+              providers={providers}
+              providerId={ep?.image_provider_id || ""}
+              model={ep?.image_model || ""}
+              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: id, image_model: model }).then(() => loadBundle(ep.id)); }}
+            />
+            <ProviderModelSelect
+              kind="video"
+              label={copy.video.videoProvider}
+              providers={providers}
+              providerId={ep?.video_provider_id || ""}
+              model={ep?.video_model || ""}
+              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: id, video_model: model }).then(() => loadBundle(ep.id)); }}
+            />
+            <ProviderModelSelect
+              kind="tts"
+              label={copy.video.kindSpeech}
+              providers={providers}
+              providerId={ep?.tts_provider_id || ""}
+              model={ep?.tts_model || ""}
+              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, tts_provider_id: id, tts_model: model }).then(() => loadBundle(ep.id)); }}
+            />
             <select className={cn(field, "h-7")} value={ep?.resolution || "720p"} aria-label={copy.video.resolution} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, resolution: e.target.value }).then(() => loadBundle(ep.id)); }}>
               {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
@@ -418,7 +552,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                     if (s.id === "assets") void run("stills", () => api.video.generateMissingAssets(episodeId));
                     else if (s.id === "gen") void run("clips", () => api.video.generateMissingShots(episodeId));
                     else if (s.id === "merge") setPane("cut");
-                    else void stage(s.id === "prompts" ? "prompts" : s.id);
+                    else void stage(s.id);
                   }}
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
@@ -453,9 +587,34 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-3 py-2.5">
-            {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} /> : null}
-            {pane === "cast" ? <CastPane bundle={bundle} copy={copy} onExtract={() => void stage("extract")} onPrompts={() => void stage("prompts")} onStills={() => void run("stills", () => api.video.generateMissingAssets(episodeId))} onGen={(kind, id) => void run("gen", () => api.video.generateAsset(kind, id, episodeId))} onUpload={(kind, id, b64) => void run("up", () => api.video.uploadAsset(kind, id, b64))} /> : null}
-            {pane === "board" ? <BoardPane bundle={bundle} copy={copy} onBoard={() => void stage("storyboard")} onVprompts={() => void stage("video_prompts")} onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))} onGen={(id) => void run("clip", () => api.video.generateShot(id))} onPatch={(s) => void run("shot", () => api.video.updateShot(s))} /> : null}
+            {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} onSkip={() => void run("skip", () => api.video.skipRewrite(episodeId))} /> : null}
+            {pane === "cast" ? (
+              <CastPane
+                bundle={bundle}
+                copy={copy}
+                onExtract={() => void stage("extract")}
+                onExtractKind={(k) => void stage(k)}
+                onPrompts={() => void stage("prompts")}
+                onStills={() => void run("stills", () => api.video.generateMissingAssets(episodeId))}
+                onGen={(kind, id) => void run("gen", () => api.video.generateAsset(kind, id, episodeId))}
+                onUpload={(kind, id, b64) => void run("up", () => api.video.uploadAsset(kind, id, b64))}
+                onSave={(kind, id, fields) => void run("asset", () => api.video.saveAsset(kind, id, fields))}
+                onCreate={(kind, fields) => void run("new", () => api.video.createAsset(kind, episodeId, fields))}
+                onDelete={(kind, id) => void run("del", () => api.video.deleteAsset(kind, id))}
+              />
+            ) : null}
+            {pane === "board" ? (
+              <BoardPane
+                bundle={bundle}
+                copy={copy}
+                onBoard={() => void stage("storyboard")}
+                onVprompts={() => void stage("video_prompts")}
+                onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))}
+                onGen={(id) => void run("clip", () => api.video.generateShot(id))}
+                onPatch={(s) => void run("shot", () => api.video.updateShot(s))}
+                onApply={(id) => void run("apply", () => api.video.applyJob(id))}
+              />
+            ) : null}
             {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} onMerge={() => {
               const ids = selectedClipIds(bundle.shots || [], selShots);
               if (!ids.length) {
@@ -472,7 +631,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   );
 }
 
-function ScriptPane({ ep, plan, copy, onSave, onRewrite }: { ep: Episode; plan: Bundle["plan"]; copy: CopyT; onSave: (p: Partial<Episode>) => void; onRewrite: () => void }) {
+function ScriptPane({ ep, plan, copy, onSave, onRewrite, onSkip }: { ep: Episode; plan: Bundle["plan"]; copy: CopyT; onSave: (p: Partial<Episode>) => void; onRewrite: () => void; onSkip: () => void }) {
   const [content, setContent] = useState(ep.content);
   const [script, setScript] = useState(ep.script_content);
   useEffect(() => { setContent(ep.content); setScript(ep.script_content); }, [ep.id, ep.content, ep.script_content]);
@@ -483,9 +642,12 @@ function ScriptPane({ ep, plan, copy, onSave, onRewrite }: { ep: Episode; plan: 
         <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-5" value={content} onChange={(e) => setContent(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
       </label>
       <label className="block">
-        <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted">
+        <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] text-muted">
           <span>{copy.video.screenplay}</span>
-          <Button size="sm" onClick={onRewrite}>{copy.video.rewrite}</Button>
+          <span className="flex gap-1">
+            <Button size="sm" variant="lift" onClick={onSkip} disabled={!content.trim()}>{copy.video.skipRewrite}</Button>
+            <Button size="sm" onClick={onRewrite}>{copy.video.rewrite}</Button>
+          </span>
         </div>
         <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[12.5px] leading-5" value={script} onChange={(e) => setScript(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
       </label>
@@ -501,65 +663,110 @@ function ScriptPane({ ep, plan, copy, onSave, onRewrite }: { ep: Episode; plan: 
 
 function CastPane(props: {
   bundle: Bundle; copy: CopyT;
-  onExtract: () => void; onPrompts: () => void; onStills: () => void;
+  onExtract: () => void; onExtractKind: (k: string) => void; onPrompts: () => void; onStills: () => void;
   onGen: (kind: string, id: string) => void; onUpload: (kind: string, id: string, b64: string) => void;
+  onSave: (kind: string, id: string, fields: Record<string, string>) => void;
+  onCreate: (kind: string, fields: Record<string, string>) => void;
+  onDelete: (kind: string, id: string) => void;
 }) {
   const c = props.copy.video;
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-2">
         <Button size="sm" onClick={props.onExtract}>{c.extract}</Button>
+        <Button size="sm" variant="lift" onClick={() => props.onExtractKind("extract_characters")}>{c.extractChars}</Button>
+        <Button size="sm" variant="lift" onClick={() => props.onExtractKind("extract_scenes")}>{c.extractScenes}</Button>
+        <Button size="sm" variant="lift" onClick={() => props.onExtractKind("extract_props")}>{c.extractProps}</Button>
         <Button size="sm" variant="lift" onClick={props.onPrompts}>{c.prompts}</Button>
         <Button size="sm" variant="lift" onClick={props.onStills}>{c.generateAll}</Button>
       </div>
       <div className="grid gap-4">
-        <AssetCol title={c.characters} items={props.bundle.characters} name={(a) => a.name || ""} kind="character" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
-        <AssetCol title={c.scenes} items={props.bundle.scenes} name={(a) => a.location || ""} kind="scene" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
-        <AssetCol title={c.props} items={props.bundle.props} name={(a) => a.name || ""} kind="prop" copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} />
+        <AssetCol title={c.characters} items={props.bundle.characters} name={(a) => a.name || ""} kind="character" createLabel={c.addCharacter} copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} onSave={props.onSave} onCreate={props.onCreate} onDelete={props.onDelete} />
+        <AssetCol title={c.scenes} items={props.bundle.scenes} name={(a) => a.location || ""} kind="scene" createLabel={c.addScene} copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} onSave={props.onSave} onCreate={props.onCreate} onDelete={props.onDelete} />
+        <AssetCol title={c.props} items={props.bundle.props} name={(a) => a.name || ""} kind="prop" createLabel={c.addProp} copy={props.copy} onGen={props.onGen} onUpload={props.onUpload} onSave={props.onSave} onCreate={props.onCreate} onDelete={props.onDelete} />
       </div>
     </div>
   );
 }
 
 function AssetCol(props: {
-  title: string; items: Asset[]; name: (a: Asset) => string; kind: string;
+  title: string; items: Asset[]; name: (a: Asset) => string; kind: string; createLabel: string;
   copy: CopyT; onGen: (kind: string, id: string) => void; onUpload: (kind: string, id: string, b64: string) => void;
+  onSave: (kind: string, id: string, fields: Record<string, string>) => void;
+  onCreate: (kind: string, fields: Record<string, string>) => void;
+  onDelete: (kind: string, id: string) => void;
 }) {
   const rows = props.items.filter((a) => a.linked !== false);
+  const [open, setOpen] = useState("");
+  const [draft, setDraft] = useState("");
+  const c = props.copy.video;
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between px-0.5">
         <span className="text-[11px] font-medium text-muted">{props.title}</span>
-        <span className="font-mono text-[11px] tabular-nums text-muted/70">{rows.length}</span>
+        <button type="button" className="text-[11px] text-muted hover:text-foreground" onClick={() => {
+          const name = window.prompt(props.createLabel);
+          if (!name?.trim()) return;
+          if (props.kind === "scene") props.onCreate("scene", { location: name.trim() });
+          else props.onCreate(props.kind, { name: name.trim() });
+        }}>{props.createLabel}</button>
       </div>
       {rows.length === 0 ? (
-        <p className="px-0.5 py-3 text-[12px] text-muted">{props.copy.video.noStills}</p>
+        <p className="px-0.5 py-3 text-[12px] text-muted">{c.noStills}</p>
       ) : (
         <ul>
-          {rows.map((a, i) => (
-            <li key={a.id} className={cn("flex items-center gap-2 py-2", i ? "border-t border-border/50" : "")}>
-              {a.image_url ? (
-                <img src={a.image_url} alt="" className="size-10 shrink-0 rounded-md object-cover" />
-              ) : (
-                <div className="grid size-10 shrink-0 place-items-center rounded-md bg-lift text-[10px] text-muted">—</div>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[12.5px] font-medium">{props.name(a)}</div>
-                <div className="truncate text-[11px] text-muted">{a.final_prompt || a.appearance || a.description || a.prompt || ""}</div>
-              </div>
-              <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={props.copy.video.upload}>
-                <ImagePlus className="size-3.5" />
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const r = new FileReader();
-                  r.onload = () => props.onUpload(props.kind, a.id, String(r.result || ""));
-                  r.readAsDataURL(f);
-                }} />
-              </label>
-              <Button size="sm" variant="ghost" onClick={() => props.onGen(props.kind, a.id)}>{props.copy.video.generate}</Button>
-            </li>
-          ))}
+          {rows.map((a, i) => {
+            const narrator = props.kind === "character" && isNarrator(a);
+            return (
+              <li key={a.id} className={cn("py-2", i ? "border-t border-border/50" : "")}>
+                <div className="flex items-center gap-2">
+                  {a.image_url ? (
+                    <img src={a.image_url} alt="" className="size-10 shrink-0 rounded-md object-cover" />
+                  ) : (
+                    <div className="grid size-10 shrink-0 place-items-center rounded-md bg-lift text-[10px] text-muted">—</div>
+                  )}
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setOpen(open === a.id ? "" : a.id); setDraft(""); }}>
+                    <div className="truncate text-[12.5px] font-medium">{props.name(a)}</div>
+                    <div className="truncate text-[11px] text-muted">{narrator ? c.narrator : (a.final_prompt || a.appearance || a.description || a.prompt || "")}</div>
+                  </button>
+                  <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={c.upload}>
+                    <ImagePlus className="size-3.5" />
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      const r = new FileReader();
+                      r.onload = () => props.onUpload(props.kind, a.id, String(r.result || ""));
+                      r.readAsDataURL(f);
+                    }} />
+                  </label>
+                  {narrator ? null : <Button size="sm" variant="ghost" onClick={() => props.onGen(props.kind, a.id)}>{c.generate}</Button>}
+                </div>
+                {open === a.id ? (
+                  <div className="mt-2 grid gap-2 rounded-lg bg-lift/50 p-2">
+                    {props.kind === "character" ? (
+                      <>
+                        <Input className="h-7 text-[12px]" defaultValue={a.appearance || ""} placeholder={c.appearance} onBlur={(e) => props.onSave("character", a.id, { appearance: e.target.value })} />
+                        <Input className="h-7 text-[12px]" defaultValue={a.styling || ""} placeholder={c.styling} onBlur={(e) => props.onSave("character", a.id, { styling: e.target.value })} />
+                      </>
+                    ) : null}
+                    {props.kind === "scene" ? (
+                      <Input className="h-7 text-[12px]" defaultValue={a.lighting || ""} placeholder={c.lighting} onBlur={(e) => props.onSave("scene", a.id, { lighting: e.target.value })} />
+                    ) : null}
+                    {props.kind === "prop" ? (
+                      <Input className="h-7 text-[12px]" defaultValue={a.description || ""} placeholder={c.finalPrompt} onBlur={(e) => props.onSave("prop", a.id, { description: e.target.value })} />
+                    ) : null}
+                    <Textarea className="min-h-[72px] text-[12px]" defaultValue={a.final_prompt || ""} placeholder={c.finalPrompt} onBlur={(e) => props.onSave(props.kind, a.id, { final_prompt: e.target.value })} />
+                    <div className="flex justify-end">
+                      <button type="button" className="text-[11px] text-danger" onClick={() => {
+                        if (draft !== a.id) { setDraft(a.id); return; }
+                        props.onDelete(props.kind, a.id);
+                      }}>{draft === a.id ? c.confirmDelete : c.delete}</button>
+                    </div>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -568,10 +775,12 @@ function AssetCol(props: {
 
 function BoardPane(props: {
   bundle: Bundle; copy: CopyT;
-  onBoard: () => void; onVprompts: () => void; onGenAll: () => void; onGen: (id: string) => void; onPatch: (s: Partial<Shot> & { id: string }) => void;
+  onBoard: () => void; onVprompts: () => void; onGenAll: () => void; onGen: (id: string) => void;
+  onPatch: (s: Record<string, any>) => void; onApply: (id: string) => void;
 }) {
   const c = props.copy.video;
   const shots = props.bundle.shots || [];
+  const [focus, setFocus] = useState("");
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-2">
@@ -583,32 +792,106 @@ function BoardPane(props: {
         <EmptyState icon={<Film className="size-4" />} title={c.noClip} body={c.emptyHint} />
       ) : (
         <div className="space-y-0">
-          {shots.map((s, i) => (
-            <article key={s.id} className={cn("grid gap-3 py-3", i ? "border-t border-border/50" : "")}>
-              {s.video_url ? (
-                <video src={s.video_url} poster={s.poster_url} controls className="aspect-video w-full rounded-lg bg-background" />
-              ) : s.poster_url ? (
-                <img src={s.poster_url} alt="" className="aspect-video w-full rounded-lg object-cover" />
-              ) : (
-                <div className="grid aspect-video place-items-center rounded-lg bg-lift text-[11px] text-muted">{c.noClip}</div>
-              )}
-              <div className="min-w-0">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="font-mono text-[11px] tabular-nums text-muted">{String(s.shot_number).padStart(2, "0")}</span>
-                  <Input className="h-7 flex-1 text-[13px]" defaultValue={s.title} onBlur={(e) => props.onPatch({ id: s.id, title: e.target.value })} />
-                  <span className="font-mono text-[11px] tabular-nums text-muted">{s.duration}{c.seconds}</span>
-                  <Button size="sm" variant="lift" onClick={() => props.onGen(s.id)}>{c.generate}</Button>
+          {shots.map((s, i) => {
+            const takes = (props.bundle.jobs || []).filter((j) => j.storyboard_id === s.id && j.type === "video" && j.status === "succeeded");
+            const open = focus === s.id;
+            return (
+              <article key={s.id} className={cn("grid gap-3 py-3", i ? "border-t border-border/50" : "")}>
+                {s.video_url ? (
+                  <video src={s.video_url} poster={s.poster_url} controls className="aspect-video w-full rounded-lg bg-background" />
+                ) : s.poster_url ? (
+                  <img src={s.poster_url} alt="" className="aspect-video w-full rounded-lg object-cover" />
+                ) : (
+                  <div className="grid aspect-video place-items-center rounded-lg bg-lift text-[11px] text-muted">{c.noClip}</div>
+                )}
+                <div className="min-w-0">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="font-mono text-[11px] tabular-nums text-muted">{String(s.shot_number).padStart(2, "0")}</span>
+                    <Input className="h-7 flex-1 text-[13px]" defaultValue={s.title} onBlur={(e) => props.onPatch({ id: s.id, title: e.target.value })} />
+                    <Input
+                      className="h-7 w-14 font-mono text-[12px] tabular-nums"
+                      type="number"
+                      min={2}
+                      max={30}
+                      defaultValue={s.duration}
+                      aria-label={c.durationLabel}
+                      onBlur={(e) => props.onPatch({ id: s.id, duration: Number(e.target.value) || s.duration })}
+                    />
+                    <span className="text-[11px] text-muted">{c.seconds}</span>
+                    {s.video_url ? <a className="text-[11px] underline" href={s.video_url} download>{c.download}</a> : null}
+                    <Button size="sm" variant="lift" onClick={() => props.onGen(s.id)}>{c.generate}</Button>
+                  </div>
+                  <p className="mb-2 text-[12.5px] leading-5 text-muted">{s.description}</p>
+                  <DramaMentionField
+                    assets={shotMentions(s, props.bundle)}
+                    defaultValue={s.video_prompt}
+                    placeholder={c.mention}
+                    onBlur={(e) => props.onPatch({ id: s.id, video_prompt: e.target.value })}
+                  />
+                  <button type="button" className="mt-2 text-[11px] text-muted hover:text-foreground" onClick={() => setFocus(open ? "" : s.id)}>{c.bindRefs}</button>
+                  {open ? (
+                    <div className="mt-2 grid gap-2 rounded-lg bg-lift/50 p-2 text-[12px]">
+                      <label className="flex items-center gap-2">
+                        <span className="w-16 text-muted">{c.scenes}</span>
+                        <select className={cn(field, "h-7 flex-1")} value={s.scene_id || ""} onChange={(e) => props.onPatch({ id: s.id, scene_id: e.target.value })}>
+                          <option value="">{c.unbind}</option>
+                          {(props.bundle.scenes || []).map((sc) => <option key={sc.id} value={sc.id}>{sc.location}</option>)}
+                        </select>
+                      </label>
+                      <div>
+                        <div className="mb-1 text-muted">{c.characters}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(props.bundle.characters || []).filter((ch) => ch.linked !== false && !isNarrator(ch)).map((ch) => {
+                            const on = (s.character_ids || []).includes(ch.id);
+                            return (
+                              <button
+                                key={ch.id}
+                                type="button"
+                                className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
+                                onClick={() => {
+                                  const next = on ? (s.character_ids || []).filter((id) => id !== ch.id) : [...(s.character_ids || []), ch.id];
+                                  props.onPatch({ id: s.id, character_ids: next });
+                                }}
+                              >{ch.name}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-muted">{c.props}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(props.bundle.props || []).filter((p) => p.linked !== false).map((p) => {
+                            const on = (s.prop_ids || []).includes(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
+                                onClick={() => {
+                                  const next = on ? (s.prop_ids || []).filter((id) => id !== p.id) : [...(s.prop_ids || []), p.id];
+                                  props.onPatch({ id: s.id, prop_ids: next });
+                                }}
+                              >{p.name}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-muted">{c.history}</div>
+                        {takes.length === 0 ? <p className="text-[11px] text-muted">{c.noHistory}</p> : takes.map((j) => (
+                          <div key={j.id} className="flex items-center gap-2 py-1">
+                            {j.poster_url ? <img src={j.poster_url} alt="" className="h-8 w-12 rounded object-cover" /> : <div className="h-8 w-12 rounded bg-lift" />}
+                            {j.media_url ? <a className="text-[11px] underline" href={j.media_url} download>{c.download}</a> : null}
+                            <button type="button" className="text-[11px] underline" onClick={() => props.onApply(j.id)}>{c.setMain}</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-                <p className="mb-2 text-[12.5px] leading-5 text-muted">{s.description}</p>
-                <DramaMentionField
-                  assets={shotMentions(s, props.bundle)}
-                  defaultValue={s.video_prompt}
-                  placeholder={c.mention}
-                  onBlur={(e) => props.onPatch({ id: s.id, video_prompt: e.target.value })}
-                />
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
@@ -624,10 +907,19 @@ function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: 
     <div>
       {!props.ffmpeg ? <p className="mb-3 text-[12.5px] text-danger">{c.ffmpegMissing}</p> : null}
       {ep.video_url ? <video src={ep.video_url} poster={ep.poster_url} controls className="mb-4 max-h-[360px] w-full rounded-[10px] bg-background" /> : null}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button onClick={props.onMerge} disabled={!props.ffmpeg || n === 0}>{c.export}</Button>
         <span className="text-[12px] tabular-nums text-muted">{n} {c.clipCount}</span>
-        <span className="text-[12px] text-muted">{c.selectAll}</span>
+        <button type="button" className="text-[12px] text-muted underline" onClick={() => {
+          const next: Record<string, boolean> = {};
+          for (const s of shots) next[s.id] = !!s.video_url;
+          props.setSel(next);
+        }}>{c.selectAll}</button>
+        <button type="button" className="text-[12px] text-muted underline" onClick={() => {
+          const next: Record<string, boolean> = {};
+          for (const s of shots) next[s.id] = false;
+          props.setSel(next);
+        }}>{c.selectNone}</button>
       </div>
       <div className="grid gap-2">
         {shots.map((s) => (

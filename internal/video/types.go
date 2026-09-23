@@ -1,10 +1,10 @@
 package video
 
 type Mode struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Hint   string `json:"hint"`
-	Ready  bool   `json:"ready"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Hint  string `json:"hint"`
+	Ready bool   `json:"ready"`
 }
 
 func Modes() []Mode {
@@ -93,6 +93,10 @@ type Episode struct {
 	PosterHash      string `json:"poster_hash"`
 	ImageProviderID string `json:"image_provider_id"`
 	VideoProviderID string `json:"video_provider_id"`
+	ImageModel      string `json:"image_model"`
+	VideoModel      string `json:"video_model"`
+	TTSProviderID   string `json:"tts_provider_id"`
+	TTSModel        string `json:"tts_model"`
 	Resolution      string `json:"resolution"`
 	Pipeline        string `json:"pipeline"`
 	CreatedAt       string `json:"created_at"`
@@ -156,13 +160,13 @@ type Shot struct {
 }
 
 type EpisodeBundle struct {
-	Drama      Drama       `json:"drama"`
-	Episode    Episode     `json:"episode"`
-	Characters []Character `json:"characters"`
-	Scenes     []Scene     `json:"scenes"`
-	Props      []Prop      `json:"props"`
-	Shots      []Shot      `json:"shots"`
-	Jobs       []Job       `json:"jobs"`
+	Drama      Drama        `json:"drama"`
+	Episode    Episode      `json:"episode"`
+	Characters []Character  `json:"characters"`
+	Scenes     []Scene      `json:"scenes"`
+	Props      []Prop       `json:"props"`
+	Shots      []Shot       `json:"shots"`
+	Jobs       []Job        `json:"jobs"`
 	Plan       DurationPlan `json:"plan"`
 }
 
@@ -185,6 +189,7 @@ type EnqueueImage struct {
 	Model       string
 	ProviderID  string
 	Size        string
+	AspectRatio string
 	Refs        []string
 	DramaID     string
 	EpisodeID   string

@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const maxJobWorkers = 8
+
 func (e *Engine) GetJob(id string) (Job, error) {
 	return e.scanJob(e.DB.QueryRow(`SELECT id, type, status, provider, model, vault_key, remote_id, prompt, params, result_hash, poster_hash, error, drama_id, episode_id, storyboard_id, character_id, scene_id, prop_id, created_at, updated_at, completed_at FROM jobs WHERE id = ?`, id))
 }
@@ -76,8 +78,8 @@ func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 	now := Now()
 	j := Job{
 		ID: NewID(), Type: "image", Status: "queued",
-		Provider: p.Provider, Model: first(in.Model, p.Model), VaultKey: p.VaultKey,
-		Prompt: in.Prompt, Params: marshalJSON(JobParams{Size: first(in.Size, "1920x1080"), ReferenceImages: in.Refs}),
+		Provider: p.Provider, Model: ResolveProviderModel(p, in.Model), VaultKey: p.VaultKey,
+		Prompt: in.Prompt, Params: marshalJSON(JobParams{Size: first(in.Size, "1920x1080"), AspectRatio: in.AspectRatio, ReferenceImages: in.Refs}),
 		DramaID: in.DramaID, EpisodeID: in.EpisodeID, CharacterID: in.CharacterID, SceneID: in.SceneID, PropID: in.PropID,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -97,11 +99,11 @@ func (e *Engine) EnqueueVideo(in EnqueueVideo) (Job, error) {
 	dur := ClampProviderDuration(in.Duration, p.Provider)
 	j := Job{
 		ID: NewID(), Type: "video", Status: "queued",
-		Provider: p.Provider, Model: first(in.Model, p.Model), VaultKey: p.VaultKey,
+		Provider: p.Provider, Model: ResolveProviderModel(p, in.Model), VaultKey: p.VaultKey,
 		Prompt: in.Prompt,
 		Params: marshalJSON(JobParams{
 			Duration: dur, AspectRatio: first(in.AspectRatio, "16:9"),
-			Resolution: NormalizeVideoResolution(in.Resolution, p.Provider),
+			Resolution:    NormalizeVideoResolution(in.Resolution, p.Provider),
 			GenerateAudio: in.Audio, ReferenceImageURLs: in.Refs,
 		}),
 		DramaID: in.DramaID, EpisodeID: in.EpisodeID, StoryboardID: in.ShotID,
@@ -118,13 +120,14 @@ func (e *Engine) EnqueueMerge(episodeID, dramaID string, paths []string, shotIDs
 	now := Now()
 	j := Job{
 		ID: NewID(), Type: "merge", Status: "queued", Provider: "ffmpeg", Model: "concat-h264",
-		Params: marshalJSON(JobParams{ShotIDs: shotIDs, ReferenceVideoURLs: paths}),
+		Params:  marshalJSON(JobParams{ShotIDs: shotIDs, ReferenceVideoURLs: paths}),
 		DramaID: dramaID, EpisodeID: episodeID, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := e.insertJob(j); err != nil {
 		return j, err
 	}
 	e.emit(j)
+	_ = e.patchPipeline(episodeID, "merge", "running", "")
 	return j, nil
 }
 
@@ -138,6 +141,11 @@ func (e *Engine) CancelJob(id string) error {
 	}
 	j.Status = "cancelled"
 	j.CompletedAt = Now()
+	if v, ok := e.inflight.Load(id); ok {
+		if cancel, ok := v.(context.CancelFunc); ok {
+			cancel()
+		}
+	}
 	return e.saveJob(j)
 }
 
@@ -196,8 +204,21 @@ func (e *Engine) loop(ctx context.Context) {
 	}
 }
 
+func (e *Engine) inflightN() int {
+	n := 0
+	e.inflight.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	return n
+}
+
 func (e *Engine) pump(ctx context.Context) {
-	rows, err := e.DB.Query(`SELECT id FROM jobs WHERE status IN ('queued','polling') ORDER BY created_at ASC LIMIT 8`)
+	slots := maxJobWorkers - e.inflightN()
+	if slots <= 0 {
+		return
+	}
+	rows, err := e.DB.Query(`SELECT id FROM jobs WHERE status IN ('queued','polling') ORDER BY created_at ASC LIMIT ?`, slots)
 	if err != nil {
 		return
 	}
@@ -210,20 +231,41 @@ func (e *Engine) pump(ctx context.Context) {
 	}
 	rows.Close()
 	for _, id := range ids {
-		j, err := e.GetJob(id)
-		if err != nil || j.Status == "cancelled" {
+		jobCtx, cancel := context.WithTimeout(ctx, 12*time.Minute)
+		if _, loaded := e.inflight.LoadOrStore(id, cancel); loaded {
+			cancel()
 			continue
 		}
-		switch j.Status {
-		case "queued":
-			_ = e.runSubmit(ctx, j)
-		case "polling":
-			_ = e.runPoll(ctx, j)
-		}
+		go e.runJob(jobCtx, id, cancel)
 	}
 }
 
+func (e *Engine) runJob(ctx context.Context, id string, cancel context.CancelFunc) {
+	defer func() {
+		cancel()
+		e.inflight.Delete(id)
+	}()
+	j, err := e.GetJob(id)
+	if err != nil || j.Status == "cancelled" {
+		return
+	}
+	switch j.Status {
+	case "queued":
+		_ = e.runSubmit(ctx, j)
+	case "polling":
+		_ = e.runPoll(ctx, j)
+	}
+}
+
+func (e *Engine) abandoned(id string) bool {
+	j, err := e.GetJob(id)
+	return err != nil || j.Status == "cancelled"
+}
+
 func (e *Engine) runSubmit(ctx context.Context, j Job) error {
+	if ctx.Err() != nil || e.abandoned(j.ID) {
+		return nil
+	}
 	j.Status = "running"
 	_ = e.saveJob(j)
 	var err error
@@ -237,6 +279,9 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 	default:
 		err = fmt.Errorf("unknown job type")
 	}
+	if e.abandoned(j.ID) {
+		return nil
+	}
 	if err != nil {
 		j.Status = "failed"
 		j.Error = err.Error()
@@ -247,6 +292,9 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 }
 
 func (e *Engine) runPoll(ctx context.Context, j Job) error {
+	if ctx.Err() != nil || e.abandoned(j.ID) {
+		return nil
+	}
 	var err error
 	switch j.Type {
 	case "image":
@@ -256,6 +304,9 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 	default:
 		j.Status = "failed"
 		j.Error = "nothing to poll"
+	}
+	if e.abandoned(j.ID) {
+		return nil
 	}
 	if err != nil {
 		j.Status = "failed"

@@ -114,5 +114,27 @@ func (e *Engine) Snapshot() map[string]any {
 		"dramas":           n,
 		"content_language": e.ContentLanguage(),
 		"modes":            Modes(),
+		"missing":          e.missingProviderKinds(),
 	}
+}
+
+func (e *Engine) missingProviderKinds() []string {
+	var out []string
+	for _, kind := range []string{"image", "video"} {
+		list, _ := e.ListProviders(kind)
+		ok := false
+		for _, p := range list {
+			if p.IsActive && p.HasKey {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			out = append(out, kind)
+		}
+	}
+	if out == nil {
+		out = []string{}
+	}
+	return out
 }

@@ -8,6 +8,7 @@ export type SettingsTab =
   | "appearance"
   | "shortcuts"
   | "provider"
+  | "generation"
   | "policy"
   | "extensions"
   | "personal"

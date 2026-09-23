@@ -96,7 +96,59 @@ func (e *Engine) AttachImage(kind, id string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	return e.UpdateAsset(kind, id, map[string]any{"image_hash": hash})
+	if err := e.UpdateAsset(kind, id, map[string]any{"image_hash": hash}); err != nil {
+		return err
+	}
+	var episodeID string
+	switch kind {
+	case "character":
+		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_characters WHERE character_id = ? LIMIT 1`, id).Scan(&episodeID)
+	case "scene":
+		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_scenes WHERE scene_id = ? LIMIT 1`, id).Scan(&episodeID)
+	case "prop":
+		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_props WHERE prop_id = ? LIMIT 1`, id).Scan(&episodeID)
+	}
+	if episodeID != "" && e.missingStills(episodeID) == 0 {
+		_ = e.patchPipeline(episodeID, "assets", "done", "")
+	}
+	return nil
+}
+
+func (e *Engine) missingStills(episodeID string) int {
+	n := 0
+	chars, _ := e.EpisodeCharacters(episodeID)
+	for _, c := range chars {
+		if c.Linked && c.ImageHash == "" && !IsNarrator(c.Name, c.Role) {
+			n++
+		}
+	}
+	scenes, _ := e.EpisodeScenes(episodeID)
+	for _, s := range scenes {
+		if s.Linked && s.ImageHash == "" {
+			n++
+		}
+	}
+	props, _ := e.EpisodeProps(episodeID)
+	for _, p := range props {
+		if p.Linked && p.ImageHash == "" {
+			n++
+		}
+	}
+	return n
+}
+
+func (e *Engine) missingClips(episodeID string) int {
+	shots, err := e.ListShots(episodeID)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, s := range shots {
+		if s.VideoHash == "" {
+			n++
+		}
+	}
+	return n
 }
 
 func (e *Engine) GenerateMissingAssets(episodeID string) ([]Job, error) {
@@ -104,38 +156,44 @@ func (e *Engine) GenerateMissingAssets(episodeID string) ([]Job, error) {
 	scenes, _ := e.EpisodeScenes(episodeID)
 	props, _ := e.EpisodeProps(episodeID)
 	var out []Job
-	for _, c := range chars {
-		if !c.Linked || c.ImageHash != "" {
-			continue
-		}
-		j, err := e.GenerateAsset("character", c.ID, episodeID)
+	var first error
+	enqueue := func(kind, id string) {
+		j, err := e.GenerateAsset(kind, id, episodeID)
 		if err != nil {
-			return out, err
+			if first == nil {
+				first = err
+			}
+			return
 		}
 		out = append(out, j)
+	}
+	for _, c := range chars {
+		if !c.Linked || c.ImageHash != "" || IsNarrator(c.Name, c.Role) {
+			continue
+		}
+		enqueue("character", c.ID)
 	}
 	for _, s := range scenes {
 		if !s.Linked || s.ImageHash != "" {
 			continue
 		}
-		j, err := e.GenerateAsset("scene", s.ID, episodeID)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, j)
+		enqueue("scene", s.ID)
 	}
 	for _, p := range props {
 		if !p.Linked || p.ImageHash != "" {
 			continue
 		}
-		j, err := e.GenerateAsset("prop", p.ID, episodeID)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, j)
+		enqueue("prop", p.ID)
 	}
 	if len(out) > 0 {
 		_ = e.patchPipeline(episodeID, "assets", "running", "")
+		return out, nil
+	}
+	if first != nil {
+		return out, first
+	}
+	if e.missingStills(episodeID) == 0 {
+		_ = e.patchPipeline(episodeID, "assets", "done", "")
 	}
 	return out, nil
 }
@@ -146,18 +204,29 @@ func (e *Engine) GenerateMissingShots(episodeID string) ([]Job, error) {
 		return nil, err
 	}
 	var out []Job
+	var first error
 	for _, s := range shots {
 		if s.VideoHash != "" || s.Status == "generating" {
 			continue
 		}
 		j, err := e.GenerateShot(s.ID)
 		if err != nil {
-			return out, err
+			if first == nil {
+				first = err
+			}
+			continue
 		}
 		out = append(out, j)
 	}
 	if len(out) > 0 {
 		_ = e.patchPipeline(episodeID, "gen", "running", "")
+		return out, nil
+	}
+	if first != nil {
+		return out, first
+	}
+	if e.missingClips(episodeID) == 0 {
+		_ = e.patchPipeline(episodeID, "gen", "done", "")
 	}
 	return out, nil
 }
