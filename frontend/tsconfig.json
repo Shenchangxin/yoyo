@@ -22,7 +22,10 @@
     "noFallthroughCasesInSwitch": true,
     "allowJs": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      "@yingce/*": ["src/vendor/yingce-canvas/*"]
+    }
   },
   "include": ["src", "bindings"],
 }

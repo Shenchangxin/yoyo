@@ -11,10 +11,18 @@ const wailsReady = existsSync("./bindings/github.com/wailsapp/wails");
 
 export default defineConfig({
   resolve: {
-    alias: { "@": path.join(dir, "src") },
+    alias: {
+      "@": path.join(dir, "src"),
+      "@yingce": path.join(dir, "src/vendor/yingce-canvas"),
+    },
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    exclude: ["@ffmpeg/core", "@ffmpeg/ffmpeg"],
   },
   define: {
     "import.meta.env.VITE_E2E": JSON.stringify(process.env.VITE_E2E || ""),
+    "import.meta.env.VITE_CANVAS_BACKEND_URL": JSON.stringify("/api"),
   },
   server: {
     // Wails loads http://localhost:9245. Binding only 127.0.0.1 leaves ::1

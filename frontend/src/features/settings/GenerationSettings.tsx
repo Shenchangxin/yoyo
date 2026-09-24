@@ -238,6 +238,8 @@ export function GenerationSettings() {
         </SettingRow>
       </SettingSection>
 
+      <CanvasChannelsSection copy={copy} />
+
       <AdapterSection
         id="generation-image"
         title={copy.settings.sections.generationImage}
@@ -712,6 +714,124 @@ function StylesSection({
           onChanged();
         }}
       />
+    </SettingSection>
+  );
+}
+
+function envelopeData(env: any) {
+  return env?.data ?? env ?? {};
+}
+
+function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
+  const copy = props.copy;
+  const [channels, setChannels] = useState<any[]>([]);
+  const [plugins, setPlugins] = useState<any[]>([]);
+  const [draft, setDraft] = useState({ pluginId: "", name: "", baseUrl: "", apiKey: "", capability: "image" });
+  const [busy, setBusy] = useState(false);
+  const [exposeMcp, setExposeMcp] = useState(false);
+
+  async function load() {
+    try {
+      const ch = envelopeData(await api.video.canvasHttp("GET", "channels"));
+      setChannels(Array.isArray(ch.channels) ? ch.channels : []);
+    } catch {
+      setChannels([]);
+    }
+    try {
+      const cat = envelopeData(await api.video.canvasHttp("GET", "plugins/catalog"));
+      const list = cat.providers || cat.plugins || cat.catalog || cat.items || [];
+      setPlugins(Array.isArray(list) ? list : []);
+    } catch {
+      setPlugins([]);
+    }
+    try {
+      const s = await api.video.settings();
+      const v = String(s?.canvas_expose_mcp || "").toLowerCase();
+      setExposeMcp(v === "1" || v === "true" || v === "on");
+    } catch {
+      setExposeMcp(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.video.canvasHttp("POST", "channels", {
+        body: {
+          pluginId: draft.pluginId,
+          name: draft.name || draft.pluginId || "Channel",
+          baseUrl: draft.baseUrl,
+          capability: draft.capability,
+        },
+        api_key: draft.apiKey,
+      });
+      setDraft({ pluginId: "", name: "", baseUrl: "", apiKey: "", capability: "image" });
+      await load();
+      toast.success(copy.app.controlSaved);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test(id: string) {
+    try {
+      await api.video.canvasHttp("POST", `channels/${id}/test`);
+      toast.success(copy.video.ffmpegReady);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    }
+  }
+
+  return (
+    <SettingSection id="generation-canvas" title={copy.settings.sections.generationCanvas} footnote={copy.video.canvasHint}>
+      {channels.length === 0 ? (
+        <SettingEmpty>{copy.video.noProject}</SettingEmpty>
+      ) : (
+        channels.map((ch) => (
+          <SettingRow key={ch.id} title={ch.name || ch.pluginId || ch.id} list>
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+              <span className="truncate text-[12px] text-muted">{ch.pluginId} · {ch.capability} · {ch.baseUrl}</span>
+              <Button size="sm" variant="ghost" onClick={() => void test(ch.id)}>Test</Button>
+            </div>
+          </SettingRow>
+        ))
+      )}
+      <SettingRow title={copy.video.canvasMcp}>
+        <Switch
+          checked={exposeMcp}
+          onCheckedChange={(on) => {
+            setExposeMcp(on);
+            void api.video.setSetting("canvas_expose_mcp", on ? "1" : "0");
+          }}
+        />
+      </SettingRow>
+      <SettingRow title="Plugin">
+        <Select value={draft.pluginId || "__none__"} onValueChange={(v) => setDraft((d) => ({ ...d, pluginId: v === "__none__" ? "" : v }))}>
+          <SelectTrigger className={CONTROL_LG}><SelectValue placeholder="plugin" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">—</SelectItem>
+            {plugins.slice(0, 80).map((p) => {
+              const id = String(p.id || p.pluginId || p.name || "");
+              return id ? <SelectItem key={id} value={id}>{p.name || id}</SelectItem> : null;
+            })}
+          </SelectContent>
+        </Select>
+      </SettingRow>
+      <SettingRow title="Base URL">
+        <Input className={CONTROL_LG} value={draft.baseUrl} onChange={(e) => setDraft((d) => ({ ...d, baseUrl: e.target.value }))} />
+      </SettingRow>
+      <SettingRow title="API key" border={false}>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Input className={CONTROL_LG} type="password" value={draft.apiKey} onChange={(e) => setDraft((d) => ({ ...d, apiKey: e.target.value }))} />
+          <Button size="sm" disabled={busy} onClick={() => void save()}>Save</Button>
+        </div>
+      </SettingRow>
     </SettingSection>
   );
 }

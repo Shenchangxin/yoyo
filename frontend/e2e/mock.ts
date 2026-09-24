@@ -33,6 +33,71 @@ export async function mockApi(
       }
     };
 
+    if (path.endsWith("/api/rpc")) {
+      const b = body();
+      const rpcMethod = String(b.method || "");
+      const params = b.params || {};
+      const ok = (result: any) => route.fulfill({ json: { jsonrpc: "2.0", id: b.id ?? 1, result } });
+      if (rpcMethod === "canvas.http") {
+        const p = String(params.path || "").replace(/^\/api\/?/, "").replace(/^\//, "");
+        const m = String(params.method || "GET").toUpperCase();
+        if (p === "auth/session") {
+          return ok({
+            code: 0,
+            data: {
+              user: { id: "local", username: "yoyo", displayName: "Yoyo", role: "admin", status: "active" },
+              features: { shortDramaEnabled: true, taskCenterEnabled: true, pluginCenterEnabled: true, creditsEnabled: false, customChannelsEnabled: true, frontendModelsEnabled: true },
+              runtimeLimits: { activeTaskLimit: 8 },
+            },
+          });
+        }
+        if (p === "public/appearance") {
+          return ok({
+            code: 0,
+            data: {
+              appearance: {
+                brandName: "Yoyo",
+                brandSlug: "yoyo",
+                seoTitle: "Yoyo",
+                canvas: { agentName: "Yoyo" },
+              },
+            },
+          });
+        }
+        if (p === "features") {
+          return ok({ code: 0, data: { features: { shortDramaEnabled: true, pluginCenterEnabled: true, taskCenterEnabled: true } } });
+        }
+        if (p === "canvas-projects" && m === "GET") {
+          return ok({ code: 0, data: { projects: [], total: 0, page: 1, pageSize: 40, hasMore: false } });
+        }
+        if (p === "canvas-projects" && m === "POST") {
+          return ok({ code: 0, data: { project: { id: "c1", title: params.body?.title || "Board", nodes: [], connections: [], revision: 1 } } });
+        }
+        if (p.startsWith("canvas-projects/") && (m === "GET" || m === "PUT")) {
+          const id = p.split("/")[1] || "c1";
+          return ok({ code: 0, data: { project: { id, title: "Board", nodes: [], connections: [], revision: 1 } } });
+        }
+        if (p === "model-catalog" || p === "channels/system") {
+          return ok({ code: 0, data: { source: "system", channels: [], models: [] } });
+        }
+        return ok({ code: 0, data: {} });
+      }
+      if (rpcMethod === "video.modes") {
+        return ok([
+          { id: "drama", title: "Short drama", ready: true },
+          { id: "canvas", title: "Infinite canvas", ready: true },
+          { id: "creative", title: "Creative", ready: false },
+        ]);
+      }
+      if (rpcMethod === "video.status") {
+        return ok({ ffmpeg: true, media_base: "" });
+      }
+      if (rpcMethod === "canvas.bind") {
+        return ok({ ok: true });
+      }
+      return ok({});
+    }
+
     if (path.endsWith("/api/health")) {
       return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace } });
     }
@@ -44,7 +109,8 @@ export async function mockApi(
       return route.fulfill({ json: cfg });
     }
     if (path.endsWith("/api/sessions") && method === "POST") {
-      const t = { id: `s${sessions.length + 1}`, title: "New chat", workspace };
+      const ch = String(body().channel || "agent") === "video" ? "video" : "agent";
+      const t = { id: `s${sessions.length + 1}`, title: "New chat", workspace, channel: ch };
       sessions = [t, ...sessions];
       return route.fulfill({ json: t });
     }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -25,8 +26,18 @@ func (a *App) openVideo() error {
 		diaglog.Warn("video media server failed", "component", "video", "err", err)
 	}
 	eng.OnJob = a.onVideoJob
+	eng.OnHub = a.onCanvasHub
 	a.Video = eng
 	return nil
+}
+
+func (a *App) onCanvasHub(kind string, payload map[string]any) {
+	if a.Hub == nil {
+		return
+	}
+	a.Hub.Publish(trace.Event{
+		TS: time.Now().UTC(), Type: trace.TypeSystem, Source: "video", ItemKind: kind, Payload: payload,
+	})
 }
 
 func (a *App) onVideoJob(j video.Job) {
@@ -119,6 +130,90 @@ func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) 
 		}
 	}
 	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.DramaToolNames())
+}
+
+func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || a.Video == nil {
+		return
+	}
+	if _, ok := a.Video.CanvasSessionBind(sessionID); !ok {
+		return
+	}
+	if tools.Extra == nil {
+		tools.Extra = map[string]runtime.ExtraTool{}
+	}
+	mediaAsk := map[string]bool{
+		"generate_media": true, "image_layer_split": true, "image_annotation_render": true,
+	}
+	for _, spec := range video.CanvasToolSpecs() {
+		spec := spec
+		openWorld := mediaAsk[spec.Name]
+		tools.Extra[spec.Name] = runtime.ExtraTool{
+			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
+			}},
+			ReadOnly:  spec.ReadOnly,
+			OpenWorld: openWorld,
+			Exclusive: openWorld,
+			Call: func(argsJSON string) runtime.ToolResult {
+				if spec.Name == "plan_update" {
+					return tools.Call("update_plan", argsJSON)
+				}
+				if spec.Name == "ask_user" {
+					return tools.Call("ask_user", argsJSON)
+				}
+				if mediaAsk[spec.Name] && a.Caps != nil {
+					if err := a.Caps.Check(capability.Request{
+						Level: capability.Network, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
+					}); err != nil {
+						return runtime.ToolResult{Err: err}
+					}
+				}
+				var args map[string]any
+				if argsJSON != "" {
+					_ = json.Unmarshal([]byte(argsJSON), &args)
+				}
+				out, err := a.Video.CanvasTool(sessionID, spec.Name, args)
+				return runtime.ToolResult{Content: out, Err: err}
+			},
+		}
+	}
+	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.CanvasToolNames())
+	if !canvasExposeMCP(a.Video) {
+		stripCanvasMCP(tools)
+	}
+}
+
+func canvasExposeMCP(eng *video.Engine) bool {
+	if eng == nil {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(eng.Setting("canvas_expose_mcp", "")))
+	return v == "1" || v == "true" || v == "on"
+}
+
+func stripCanvasMCP(tools *runtime.WorkspaceTools) {
+	if tools == nil {
+		return
+	}
+	if tools.Extra != nil {
+		next := map[string]runtime.ExtraTool{}
+		for k, v := range tools.Extra {
+			if strings.HasPrefix(k, "mcp__") {
+				continue
+			}
+			next[k] = v
+		}
+		tools.Extra = next
+	}
+	enabled := make([]string, 0, len(tools.ExtraEnabled))
+	for _, n := range tools.ExtraEnabled {
+		if strings.HasPrefix(n, "mcp__") {
+			continue
+		}
+		enabled = append(enabled, n)
+	}
+	tools.ExtraEnabled = enabled
 }
 
 func (a *App) RunDramaStage(sessionID, episodeID, stage string) error {
@@ -305,9 +400,31 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, eng.SkipRewrite(str("episode_id"))
 	case "media.url":
 		return map[string]any{"url": a.mediaURL(str("hash"))}, nil
+	case "canvas.bind":
+		return map[string]any{"ok": true}, a.CanvasBind(str("session_id"), firstNonEmptyApp(str("project_id"), str("canvas_id")))
 	default:
+		if strings.HasPrefix(method, "canvas.") {
+			return eng.CanvasCall(method, params)
+		}
 		return nil, fmt.Errorf("unknown video method %s", method)
 	}
+}
+
+func (a *App) CanvasBind(sessionID, canvasID string) error {
+	eng, err := a.requireVideo()
+	if err != nil {
+		return err
+	}
+	return eng.BindCanvasSession(sessionID, canvasID)
+}
+
+func firstNonEmptyApp(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (a *App) enrichBundle(b video.EpisodeBundle) map[string]any {

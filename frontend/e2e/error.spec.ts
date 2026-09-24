@@ -32,6 +32,6 @@ test("boot failure shows the backend reason in the top banner", async ({ page })
 test("successful boot does not show the unknown-error banner", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(page.getByText("Something went wrong")).toHaveCount(0);
 });

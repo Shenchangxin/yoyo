@@ -6,7 +6,7 @@ test("harness is a single rail entry with an overview", async ({ page }) => {
     harness: { active: "aaa1111", refs: { active: "aaa1111", staging: "bbb2222" } },
   });
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Harbor", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Evolve", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /^Harness/ }).click();

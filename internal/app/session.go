@@ -469,6 +469,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
+	a.attachCanvasTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.Read(id)
 		if err != nil {

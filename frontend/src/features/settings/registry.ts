@@ -42,6 +42,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
   { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama" },
+  { id: "generation-canvas", tab: "generation", titleKey: "generationCanvas", keywords: "canvas protocol plugin channel kling veo seedream" },
   { id: "generation-image", tab: "generation", titleKey: "generationImage", keywords: "image still seedream gemini openai gpt-image" },
   { id: "generation-video", tab: "generation", titleKey: "generationVideo", keywords: "video clip seedance minimax wan hailuo aliyun" },
   { id: "generation-speech", tab: "generation", titleKey: "generationSpeech", keywords: "tts speech voice openai minimax volcengine" },

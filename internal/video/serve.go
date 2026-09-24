@@ -17,12 +17,48 @@ func (e *Engine) StartMediaServer() error {
 	}
 	e.MediaBase = "http://" + ln.Addr().String()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/media/", func(w http.ResponseWriter, r *http.Request) {
+	cors := func(w http.ResponseWriter, r *http.Request) bool {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Range")
 		w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(204)
+			return true
+		}
+		return false
+	}
+	mux.HandleFunc("/resource/", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/resource/")
+		id = strings.TrimSpace(strings.Split(id, "?")[0])
+		if id == "" {
+			http.NotFound(w, r)
+			return
+		}
+		path, raw, mime, err := e.ServeResourceFile(id)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		if mime != "" {
+			w.Header().Set("Content-Type", mime)
+		}
+		if path != "" {
+			f, err := os.Open(path)
+			if err == nil {
+				defer f.Close()
+				st, _ := f.Stat()
+				http.ServeContent(w, r, id, st.ModTime(), f)
+				return
+			}
+		}
+		http.ServeContent(w, r, id, time.Time{}, bytes.NewReader(raw))
+	})
+	mux.HandleFunc("/media/", func(w http.ResponseWriter, r *http.Request) {
+		if cors(w, r) {
 			return
 		}
 		hash := strings.TrimPrefix(r.URL.Path, "/media/")

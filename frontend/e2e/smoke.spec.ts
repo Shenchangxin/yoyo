@@ -5,20 +5,20 @@ test("opens the agent without a setup dialog", async ({ page }) => {
   await mockApi(page, "");
   await page.goto("/");
   await expect(page.getByRole("dialog", { name: /Set up this workstation/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 });
 
 test("new chat is available on first launch", async ({ page }) => {
   await mockApi(page, "");
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
 });
 
 test("skip link focuses the main stage", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await page.keyboard.press("Tab");
   const skip = page.getByRole("link", { name: "Skip to conversation" });
   await expect(skip).toBeFocused();
@@ -29,7 +29,7 @@ test("skip link focuses the main stage", async ({ page }) => {
 test("command palette opens", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await page.keyboard.press("Control+k");
   await expect(page.getByPlaceholder("Jump to a thread or action…")).toBeVisible();
 });
@@ -39,7 +39,7 @@ test("review sheet stays closed on a narrow viewport until opened", async ({ pag
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await expect(page.getByRole("dialog", { name: /Set up this workstation/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Toggle review" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("tablist", { name: "Review" })).toHaveCount(0);
   await page.getByRole("button", { name: "Toggle review" }).click();

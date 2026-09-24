@@ -276,6 +276,15 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 		err = e.submitVideo(ctx, &j)
 	case "merge":
 		err = e.runMerge(&j)
+	case "canvas":
+		err = e.submitCanvas(ctx, &j)
+	case "canvas_text":
+		err = nil
+		j.Status = "text_replay"
+	case "canvas_timeline":
+		err = e.runCanvasTimeline(&j)
+	case "canvas_transcribe":
+		err = e.runCanvasTranscribe(&j)
 	default:
 		err = fmt.Errorf("unknown job type")
 	}
@@ -301,6 +310,8 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 		err = e.pollImage(ctx, &j)
 	case "video":
 		err = e.pollVideo(ctx, &j)
+	case "canvas":
+		err = e.pollCanvas(ctx, &j)
 	default:
 		j.Status = "failed"
 		j.Error = "nothing to poll"
@@ -331,6 +342,11 @@ func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 		}
 	} else if th, err := e.Thumb(h); err == nil {
 		j.PosterHash = th
+	}
+	if p := parseParams(j.Params); p.CanvasProjectID != "" || j.Type == "canvas" {
+		if err := e.finishCanvasMedia(j, raw, video); err != nil {
+			return err
+		}
 	}
 	j.Status = "succeeded"
 	j.CompletedAt = Now()

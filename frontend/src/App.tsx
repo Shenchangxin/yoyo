@@ -30,6 +30,8 @@ import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/ha
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
 import { VideoWorkshop } from "./features/video/VideoWorkshop";
+import { CanvasStudio } from "./features/video/CanvasStudio";
+import { useCanvasHost } from "./features/video/canvas-host/session";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
 import { readPopoutId } from "./lib/popout";
@@ -64,10 +66,13 @@ export default function App() {
   const skills = !popout && ws.surface === "skills";
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
+  const videoMode = useUI((s) => s.videoMode);
+  const canvasing = videoing && videoMode === "canvas";
+  const canvasTitle = useCanvasHost((s) => s.title);
   const agent = popout || ws.surface === "agent";
-  const home = (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
+  const home = !canvasing && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
   const three = agent && !popout && ws.inspector && !sheetInspect;
-  const dock = harnessing && ws.chatDock && !sheetInspect;
+  const dock = (harnessing || canvasing) && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
   const showRail = !popout && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !showRail && ws.sidebarHover;
@@ -75,7 +80,7 @@ export default function App() {
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
-  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
+  const sheetRight = sheetInspect && ((agent && ws.inspector) || ((harnessing || canvasing) && ws.chatDock));
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = ws.active?.toolRoot || sessionWs;
@@ -406,7 +411,7 @@ export default function App() {
 
   const headerRight = (
     <>
-      {harnessing ? (
+      {harnessing || canvasing ? (
         <Button
           size="sm"
           variant="ghost"
@@ -434,6 +439,8 @@ export default function App() {
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
+    : canvasing
+      ? <span className="truncate text-[13px] font-medium">{canvasTitle || copy.video.canvas}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -500,6 +507,15 @@ export default function App() {
     </div>
   ) : skills ? (
     <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{skillsPane}</div>
+  ) : canvasing ? (
+    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-sidebar" data-testid="video-board">
+      <CanvasStudio
+        sessionId={ws.activeId}
+        onNeedSession={() => {
+          if (!ws.activeId) void ws.ensureThread();
+        }}
+      />
+    </div>
   ) : harnessing ? (
     <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{labPane}</div>
   ) : agentPane;
@@ -633,7 +649,7 @@ export default function App() {
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
               </div>
             ) : null}
-            {videoing && ws.videoBoard ? (
+            {videoing && ws.videoBoard && !canvasing ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
                 <div className="h-full min-h-0 overflow-hidden bg-sidebar">
                   {workshop}
