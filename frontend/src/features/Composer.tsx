@@ -19,6 +19,7 @@ import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/contex
 import type { Copy } from "../lib/copy";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
 import { DramaProjectChip } from "./video/DramaProjectChip";
+import { CanvasProjectChip } from "./video/CanvasProjectChip";
 import {
   composeDraft,
   isCompleteMention,
@@ -80,10 +81,11 @@ export function Composer(props: {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
-  const videoing = surface === "video" && !props.compact;
+  const videoSurface = surface === "video";
+  const videoing = videoSurface && !props.compact;
   const placeholder = props.disabled
     ? (props.disabledReason || copy.composer.disabled)
-    : videoing
+    : videoSurface
       ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
       : copy.composer.placeholder;
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
@@ -444,10 +446,11 @@ export function Composer(props: {
           />
           <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-2 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
-            {videoing ? (
+            {videoSurface ? (
               <>
                 <VideoModeSwitch disabled={props.disabled} />
                 {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
+                {videoMode === "canvas" ? <CanvasProjectChip disabled={props.disabled} /> : null}
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}

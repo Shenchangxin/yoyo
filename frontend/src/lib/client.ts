@@ -1299,4 +1299,6 @@ export const video = {
   merge: (episodeId: string, shotIds: string[]) => videoCall("drama.merge", { episode_id: episodeId, shot_ids: shotIds }),
   importHuobao: (dbPath: string, staticDir = "") => videoCall("drama.import", { db_path: dbPath, static_dir: staticDir }),
   skipRewrite: (episodeId: string) => videoCall("drama.skip_rewrite", { episode_id: episodeId }),
+  canvasHttp: (method: string, path: string, extra: Record<string, any> = {}) => videoCall("canvas.http", { method, path, ...extra }),
+  canvasBind: (sessionId: string, projectId: string) => videoCall("canvas.bind", { session_id: sessionId, project_id: projectId }),
 };

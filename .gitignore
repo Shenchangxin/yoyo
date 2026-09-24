@@ -22,8 +22,8 @@ frontend/playwright/.cache/
 build/bin/
 *.syso
 
-# Go
-vendor/
+# Go modules (repo root only; frontend/src/vendor is committed source)
+/vendor/
 coverage.out
 *.test
 

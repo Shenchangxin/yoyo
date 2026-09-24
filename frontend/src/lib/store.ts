@@ -41,6 +41,8 @@ type UIState = {
   setVideoMode: (m: VideoMode) => void;
   videoBoard: boolean;
   setVideoBoard: (v: boolean | ((p: boolean) => boolean)) => void;
+  canvasStage: boolean;
+  setCanvasStage: (v: boolean | ((p: boolean) => boolean)) => void;
   agentThreadId: string;
   videoThreadId: string;
   rememberThread: (t: Thread | null) => void;
@@ -182,7 +184,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
   },
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
-  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false }),
+  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false }),
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -205,12 +207,23 @@ export const useUI = create<UIState>((set, get) => ({
   },
   lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
   videoBoard: false,
-  openVideo: () => set({ surface: "video", videoBoard: false }),
+  canvasStage: false,
+  openVideo: () =>
+    set((s) => {
+      const canvas = s.videoMode === "canvas";
+      return { surface: "video", videoBoard: false, canvasStage: canvas, chatDock: canvas ? true : s.chatDock };
+    }),
   closeVideo: () => get().showConversation(),
   setVideoBoard: (v) => set((s) => ({ videoBoard: typeof v === "function" ? v(s.videoBoard) : v })),
+  setCanvasStage: (v) => set((s) => ({ canvasStage: typeof v === "function" ? v(s.canvasStage) : v })),
   setVideoMode: (videoMode) => {
     writeVideoMode(videoMode);
-    set((s) => ({ videoMode, videoBoard: videoMode === "drama" ? s.videoBoard : false }));
+    set((s) => ({
+      videoMode,
+      videoBoard: videoMode === "drama" ? s.videoBoard : false,
+      canvasStage: videoMode === "canvas",
+      chatDock: videoMode === "canvas" ? true : s.chatDock,
+    }));
   },
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),

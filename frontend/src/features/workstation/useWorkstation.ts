@@ -526,10 +526,13 @@ export function useWorkstation() {
   }
 
   async function ensureThread(): Promise<Thread> {
-    if (active && threadChannel(active) === channelForSurface(useUI.getState().surface)) return active;
-    const t = await api.createSession(savedCfg.workspace, await currentChannel());
+    const ch = await currentChannel();
+    if (active && threadChannel(active) === ch) return active;
+    const created = await api.createSession(savedCfg.workspace, ch);
+    const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
+    useUI.getState().rememberThread(t);
     return t;
   }
 
@@ -789,7 +792,9 @@ export function useWorkstation() {
   }
 
   async function onNewIn(workspace?: string) {
-    const t = await api.createSession(workspace || savedCfg.workspace, channelForSurface(useUI.getState().surface));
+    const ch = channelForSurface(useUI.getState().surface);
+    const created = await api.createSession(workspace || savedCfg.workspace, ch);
+    const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
     setItems([]);
@@ -1011,7 +1016,7 @@ export function useWorkstation() {
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, openThread, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

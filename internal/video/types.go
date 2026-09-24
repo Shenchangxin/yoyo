@@ -1,5 +1,7 @@
 package video
 
+import "encoding/json"
+
 type Mode struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
@@ -10,7 +12,7 @@ type Mode struct {
 func Modes() []Mode {
 	return []Mode{
 		{ID: "drama", Title: "Short drama", Hint: "Novel to episode: script, assets, shots, stitch.", Ready: true},
-		{ID: "canvas", Title: "Infinite canvas", Hint: "Spatial generation. Not wired yet.", Ready: false},
+		{ID: "canvas", Title: "Infinite canvas", Hint: "Spatial generation workspace: nodes, tools, timeline, director.", Ready: true},
 		{ID: "creative", Title: "Creative", Hint: "Single-clip play. Not wired yet.", Ready: false},
 	}
 }
@@ -179,9 +181,29 @@ type JobParams struct {
 	LastFrameURL       string   `json:"last_frame_url,omitempty"`
 	GenerateAudio      bool     `json:"generate_audio,omitempty"`
 	Duration           int      `json:"duration,omitempty"`
-	AspectRatio        string   `json:"aspect_ratio,omitempty"`
-	Resolution         string   `json:"resolution,omitempty"`
-	ShotIDs            []string `json:"shot_ids,omitempty"`
+	AspectRatio        string          `json:"aspect_ratio,omitempty"`
+	Resolution         string          `json:"resolution,omitempty"`
+	ShotIDs            []string        `json:"shot_ids,omitempty"`
+	CanvasProjectID    string          `json:"canvas_project_id,omitempty"`
+	NodeID             string          `json:"node_id,omitempty"`
+	Mode               string          `json:"mode,omitempty"`
+	ChannelID          string          `json:"channel_id,omitempty"`
+	PluginID           string          `json:"plugin_id,omitempty"`
+	ResourceID         string          `json:"resource_id,omitempty"`
+	GenerationSpec     json.RawMessage `json:"generation_spec,omitempty"`
+	RecoverAttempts    int             `json:"recover_attempts,omitempty"`
+	ClientContext      json.RawMessage `json:"client_context,omitempty"`
+	TaskType           string          `json:"task_type,omitempty"`
+	InputJSON          string          `json:"input_json,omitempty"`
+	ResultJSON         string          `json:"result_json,omitempty"`
+	ResultState        string          `json:"result_state,omitempty"`
+	TextDraft          string          `json:"text_draft,omitempty"`
+	MediaStage         string          `json:"media_stage,omitempty"`
+	Operation          string          `json:"operation,omitempty"`
+	AttemptGroupID     string          `json:"attempt_group_id,omitempty"`
+	ClientOperationID  string          `json:"client_operation_id,omitempty"`
+	RetryOf            string          `json:"retry_of,omitempty"`
+	RemotePayload      json.RawMessage `json:"remote_payload,omitempty"`
 }
 
 type EnqueueImage struct {

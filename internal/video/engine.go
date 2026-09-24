@@ -13,6 +13,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/vault"
+	"github.com/Shenchangxin/yoyo/internal/video/protocol"
 	_ "modernc.org/sqlite"
 )
 
@@ -45,8 +46,14 @@ type Engine struct {
 	mu       sync.Mutex
 	binds    map[string]Bind
 	inflight sync.Map // job id -> context.CancelFunc
+	uploads  sync.Map // upload id -> *canvasUpload
 	cancel   context.CancelFunc
 	OnJob    func(Job)
+	OnHub    func(kind string, payload map[string]any)
+
+	Proto     *protocol.Registry
+	PluginDir string
+	WHISPER   string
 }
 
 type Bind struct {
@@ -77,6 +84,7 @@ func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 		binds: map[string]Bind{},
 	}
 	e.FFMPEG, e.FFProbe = LookFFmpeg()
+	e.WHISPER = LookWhisper()
 	if err := e.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -85,6 +93,9 @@ func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	e.PluginDir = findYingcePluginDir(dir)
+	_ = e.loadCanvasPlugins()
+	_ = e.seedCanvasChannels()
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
 	e.resumeJobs()
@@ -113,7 +124,20 @@ func (e *Engine) migrate() error {
 	if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)`); err != nil {
 		return err
 	}
-	return e.ensureEpisodeAdapterColumns()
+	if err := e.ensureEpisodeAdapterColumns(); err != nil {
+		return err
+	}
+	var ver int
+	_ = e.DB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&ver)
+	if ver < 2 {
+		if _, err := e.DB.Exec(schemaV2); err != nil {
+			return err
+		}
+		if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (2)`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *Engine) ensureEpisodeAdapterColumns() error {

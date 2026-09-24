@@ -14,7 +14,7 @@ export function VideoModeSwitch(props: { disabled?: boolean }) {
   const setMode = useUI((s) => s.setVideoMode);
   const modes: { id: VideoMode; label: string; hint: string; icon: typeof Clapperboard; ready: boolean }[] = [
     { id: "drama", label: copy.video.drama, hint: copy.video.dramaHint, icon: Clapperboard, ready: true },
-    { id: "canvas", label: copy.video.canvas, hint: copy.video.canvasHint, icon: LayoutGrid, ready: false },
+    { id: "canvas", label: copy.video.canvas, hint: copy.video.canvasHint, icon: LayoutGrid, ready: true },
     { id: "creative", label: copy.video.creative, hint: copy.video.creativeHint, icon: PenLine, ready: false },
   ];
   const current = modes.find((m) => m.id === mode) || modes[0];
@@ -40,6 +40,7 @@ export function VideoModeSwitch(props: { disabled?: boolean }) {
           <DropdownMenuItem
             key={m.id}
             className="items-start"
+            data-testid={`video-mode-${m.id}`}
             onSelect={() => setMode(m.id)}
           >
             <m.icon className="mt-0.5 size-3.5 shrink-0 opacity-70" aria-hidden />
