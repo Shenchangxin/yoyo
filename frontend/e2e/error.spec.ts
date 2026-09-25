@@ -19,6 +19,9 @@ test("errMessage unwraps nested causes", () => {
 test("boot failure shows the backend reason in the top banner", async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (!path.startsWith("/api/") && path !== "/api") {
+      return route.continue();
+    }
     if (path.endsWith("/api/health")) {
       return route.fulfill({ status: 500, json: { error: "vault: missing key \"default\"" } });
     }

@@ -61,6 +61,32 @@ func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 	return true
 }
 
+// applyDefaultVideoWorkspace gives Video its own folder, independent of the
+// Agent workspace, so video chats and file tools never share the coding repo.
+func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
+	if h == nil || cfg == nil {
+		return false
+	}
+	if WorkspaceReady(cfg.VideoWorkspace) {
+		return false
+	}
+	p := strings.TrimSpace(cfg.VideoWorkspace)
+	if filepath.IsAbs(p) && !unsetWorkspace(p) {
+		if err := os.MkdirAll(p, 0o755); err == nil && WorkspaceReady(p) {
+			return true
+		}
+	}
+	fallback := h.VideoWorkspace()
+	if err := os.MkdirAll(fallback, 0o755); err != nil {
+		return false
+	}
+	if cfg.VideoWorkspace == fallback {
+		return false
+	}
+	cfg.VideoWorkspace = fallback
+	return true
+}
+
 const previewFileBytes = 80_000
 
 // PreviewWorkspaceFile returns a bounded text preview of a workspace file

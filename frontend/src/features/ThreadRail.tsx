@@ -9,7 +9,9 @@ import {
   ChevronRight,
   Clapperboard,
   Folder,
+  Film,
   GitBranch,
+  LayoutGrid,
   MessageSquarePlus,
   MoreHorizontal,
   Pin,
@@ -35,16 +37,18 @@ import { writeClipboard } from "../lib/clipboard";
 import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
-import type { Lab, Notice, Surface, Thread } from "../lib/protocol";
+import type { Lab, Notice, Surface, Thread, VideoProject } from "../lib/protocol";
 import { threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
+import { VideoShellNav } from "./video/VideoShellNav";
 import type { Copy } from "../lib/copy";
 
 type RailEntry =
   | { kind: "label"; id: string; label: string }
   | { kind: "space"; id: string; label: string; path: string }
-  | { kind: "thread"; thread: Thread };
+  | { kind: "thread"; thread: Thread }
+  | { kind: "project"; project: VideoProject };
 
 function workspaceKey(t: Thread): string {
   return (t.originWorkspace || t.workspace || "").replace(/\\/g, "/");
@@ -108,11 +112,31 @@ function visibleEntries(entries: RailEntry[], collapsed: Record<string, boolean>
       out.push(e);
       continue;
     }
-    if (e.kind === "thread" && hidePath) {
-      if (workspaceKey(e.thread) === hidePath) continue;
+    if (hidePath) {
+      if (e.kind === "thread" && (workspaceKey(e.thread) === hidePath || hidePath === "chats")) continue;
+      if (e.kind === "project" && e.project.kind === hidePath) continue;
     }
     out.push(e);
   }
+  return out;
+}
+
+function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Copy, q: string): RailEntry[] {
+  const query = q.toLowerCase();
+  const match = (title: string, id: string) => !query || `${title} ${id}`.toLowerCase().includes(query);
+  const bound = new Set(projects.map((p) => p.sessionId).filter(Boolean));
+  const canvases = projects.filter((p) => p.kind === "canvas" && match(p.title || "", p.id));
+  const dramas = projects.filter((p) => p.kind === "drama" && match(p.title || "", p.id));
+  const chats = threads.filter((t) => !bound.has(t.id) && match(t.title || "", t.id));
+  const out: RailEntry[] = [];
+  const push = (path: string, label: string, items: RailEntry[]) => {
+    if (!items.length) return;
+    out.push({ kind: "space", id: "g-" + path, label, path });
+    for (const item of items) out.push(item);
+  };
+  push("canvas", copy.video.canvas, canvases.map((project) => ({ kind: "project", project })));
+  push("drama", copy.video.drama, dramas.map((project) => ({ kind: "project", project })));
+  push("chats", copy.rail.chats, chats.map((thread) => ({ kind: "thread", thread })));
   return out;
 }
 
@@ -133,6 +157,10 @@ export function ThreadRail(props: {
   isolationKind?: string;
   onQuery: (q: string) => void;
   onSelect: (t: Thread) => void;
+  onSelectProject?: (p: VideoProject) => void;
+  videoProjects?: VideoProject[];
+  canvasProjectId?: string;
+  dramaId?: string;
   onNew: () => void;
   onNewIn?: (path: string) => void;
   workspace?: string;
@@ -168,16 +196,20 @@ export function ThreadRail(props: {
     if (!q) return true;
     return (t.title + t.id + t.workspace).toLowerCase().includes(q);
   });
-  const virtual = list.length > 24;
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
   const videoOn = props.surface === "video";
+  const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const entries = visibleEntries(
-    railEntries(list, copy, { groupSpaces: !q, homeWorkspace: props.workspace }),
+    videoOn
+      ? videoRailEntries(list, props.videoProjects || [], copy, q)
+      : railEntries(list, copy, { groupSpaces: !q, homeWorkspace: props.workspace }),
     collapsed,
   );
-  const empty = list.length === 0 && !props.workspace;
+  const empty = videoOn
+    ? list.length === 0 && !(props.videoProjects || []).length
+    : list.length === 0 && !props.workspace;
   function renderEntry(e: RailEntry) {
     if (e.kind === "label") return <RailLabel key={e.id} label={e.label} />;
     if (e.kind === "space") {
@@ -188,11 +220,25 @@ export function ThreadRail(props: {
           path={e.path}
           collapsed={!!collapsed[e.path]}
           onToggle={() => setCollapsed((c) => ({ ...c, [e.path]: !c[e.path] }))}
-          onNew={props.onNewIn ? () => props.onNewIn?.(e.path) : undefined}
+          onNew={!videoOn && props.onNewIn ? () => props.onNewIn?.(e.path) : undefined}
         />
       );
     }
-    return <ThreadRow key={e.thread.id} thread={e.thread} nested={!q && !e.thread.pinned} {...props} />;
+    if (e.kind === "project") {
+      const p = e.project;
+      const active = (p.sessionId && p.sessionId === props.activeId)
+        || (p.kind === "canvas" && p.id === props.canvasProjectId)
+        || (p.kind === "drama" && p.id === props.dramaId);
+      return (
+        <ProjectRow
+          key={`${p.kind}-${p.id}`}
+          project={p}
+          active={!!active}
+          onSelect={() => props.onSelectProject?.(p)}
+        />
+      );
+    }
+    return <ThreadRow key={e.thread.id} thread={e.thread} nested={!q && !e.thread.pinned && !videoOn} {...props} />;
   }
   return (
     <SidebarCard>
@@ -230,6 +276,7 @@ export function ThreadRail(props: {
             spellCheck={false}
           />
         </div>
+        {videoOn ? <VideoShellNav /> : null}
       </div>
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {empty ? (
@@ -345,6 +392,28 @@ function RailLabel({ label }: { label: string }) {
     <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium text-muted first:pt-1.5">
       {label}
     </div>
+  );
+}
+
+function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: () => void }) {
+  const copy = useCopy();
+  const p = props.project;
+  const Icon = p.kind === "drama" ? Film : LayoutGrid;
+  const fallback = p.kind === "drama" ? copy.video.untitled : copy.video.canvas;
+  return (
+    <button
+      type="button"
+      data-testid={`video-project-${p.kind}-${p.id}`}
+      aria-current={props.active ? "page" : undefined}
+      className={cn(
+        "mb-px ml-2 flex min-h-8 w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+        props.active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
+      )}
+      onClick={props.onSelect}
+    >
+      <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+      <span className="truncate">{displayTitle(p.title, fallback)}</span>
+    </button>
   );
 }
 

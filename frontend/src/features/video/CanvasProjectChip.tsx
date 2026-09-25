@@ -18,6 +18,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
   const projectId = useCanvasHost((s) => s.projectId);
   const title = useCanvasHost((s) => s.title);
   const sessionId = useUI((s) => s.videoThreadId);
+  const openVideoPane = useUI((s) => s.openVideoPane);
   const [list, setList] = useState<CanvasSummary[]>([]);
 
   const load = useCallback(async () => {
@@ -31,7 +32,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
   }, [load]);
 
   const current = list.find((p) => p.id === projectId);
-  const label = current?.title || title || copy.video.canvas;
+  const label = current?.title || (projectId ? title : copy.video.noCanvas);
 
   async function createBoard() {
     try {
@@ -55,25 +56,29 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" data-testid="canvas-project-chip" className={cn(ghost, "inline-flex items-center text-foreground")} disabled={props.disabled}>
+        <button type="button" data-testid="canvas-project-chip" className={cn(ghost, "inline-flex items-center", projectId && "text-foreground")} disabled={props.disabled}>
           <LayoutGrid className="size-3 shrink-0" aria-hidden />
           <span className="truncate">{label}</span>
           <ChevronDown className="size-3 shrink-0 opacity-70" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-64">
-        <DropdownMenuLabel>{copy.video.canvas}</DropdownMenuLabel>
+        <DropdownMenuItem data-testid="canvas-open-board" onSelect={() => openVideoPane("canvas", { canvasFocus: projectId ? "editor" : "library" })}>
+          <LayoutGrid className="size-3.5 shrink-0 opacity-70" aria-hidden />
+          {copy.video.openCanvas}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void createBoard()}>
+          <Plus className="size-3.5" />
+          {copy.video.newCanvas}
+        </DropdownMenuItem>
+        {list.length ? <DropdownMenuSeparator /> : null}
+        {list.length ? <DropdownMenuLabel>{copy.video.canvas}</DropdownMenuLabel> : null}
         {list.map((p) => (
           <DropdownMenuItem key={p.id} onSelect={() => void pick(p)}>
             <span className="min-w-0 flex-1 truncate">{p.title || p.id}</span>
             {p.id === projectId ? <Check className="size-3.5 shrink-0" /> : null}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void createBoard()}>
-          <Plus className="size-3.5" />
-          {copy.video.newDrama}
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

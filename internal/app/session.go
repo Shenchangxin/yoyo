@@ -27,26 +27,26 @@ type SessionMeta struct {
 	// ID is the durable session identity. It is assigned at create time and
 	// never changes. Trajectory lives at sessions/{id}.jsonl; spill artifacts
 	// live at sessions/{id}/spill. DumpSession(id) returns both in full.
-	ID               string    `json:"id"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
 	// Channel is the conversation lane: agent (default) or video.
 	// Video chats never share an identity with Agent chats.
-	Channel          string    `json:"channel,omitempty"`
-	Workspace        string    `json:"workspace"`
-	OriginWorkspace  string    `json:"origin_workspace,omitempty"`
-	Worktree         string    `json:"worktree,omitempty"`
-	Isolate          bool      `json:"isolate,omitempty"`
-	Harness          string    `json:"harness"`
-	HarnessPolicy    string    `json:"harness_policy,omitempty"`
-	ModelFingerprint string    `json:"model_fingerprint"`
-	Title            string    `json:"title,omitempty"`
-	Archived         bool      `json:"archived"`
-	Pinned           bool      `json:"pinned"`
-	Model            string    `json:"model,omitempty"`
-	LoadedSkills     []string  `json:"loaded_skills,omitempty"`
-	PinnedSkills     []string  `json:"pinned_skills,omitempty"`
-	PlanText         string    `json:"plan_text,omitempty"`
-	AuthMode         string    `json:"auth_mode,omitempty"`
+	Channel          string   `json:"channel,omitempty"`
+	Workspace        string   `json:"workspace"`
+	OriginWorkspace  string   `json:"origin_workspace,omitempty"`
+	Worktree         string   `json:"worktree,omitempty"`
+	Isolate          bool     `json:"isolate,omitempty"`
+	Harness          string   `json:"harness"`
+	HarnessPolicy    string   `json:"harness_policy,omitempty"`
+	ModelFingerprint string   `json:"model_fingerprint"`
+	Title            string   `json:"title,omitempty"`
+	Archived         bool     `json:"archived"`
+	Pinned           bool     `json:"pinned"`
+	Model            string   `json:"model,omitempty"`
+	LoadedSkills     []string `json:"loaded_skills,omitempty"`
+	PinnedSkills     []string `json:"pinned_skills,omitempty"`
+	PlanText         string   `json:"plan_text,omitempty"`
+	AuthMode         string   `json:"auth_mode,omitempty"`
 }
 
 func (m SessionMeta) ProjectRoot() string {
@@ -68,11 +68,15 @@ func (a *App) NewSession(workspace string) (SessionMeta, error) {
 }
 
 func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
+	ch := session.NormalizeChannel(channel)
 	if workspace == "" {
-		workspace = a.Workspace()
+		if ch == session.ChannelVideo {
+			workspace = a.VideoWorkspace()
+		} else {
+			workspace = a.Workspace()
+		}
 	}
 	id := newID()
-	ch := session.NormalizeChannel(channel)
 	title := "session"
 	if ch == session.ChannelVideo {
 		title = "video"

@@ -64,6 +64,7 @@ type Config struct {
 	Model                   string            `yaml:"model" json:"model"`
 	BaseURL                 string            `yaml:"base_url" json:"base_url"`
 	Workspace               string            `yaml:"workspace" json:"workspace"`
+	VideoWorkspace          string            `yaml:"video_workspace" json:"video_workspace"`
 	AutoAllow               bool              `yaml:"auto_allow" json:"auto_allow"`
 	MaxBudgetUSD            float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
 	USDPerMTok              float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
@@ -201,6 +202,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	}
 	cfg.NormalizeAppearance()
 	filledDefault := applyDefaultWorkspace(h, &cfg)
+	filledVideo := applyDefaultVideoWorkspace(h, &cfg)
 	k := kernel.New()
 	allow := []capability.Level{capability.ReadWorkspace, capability.WriteWorkspace}
 	if cfg.AutoAllow {
@@ -322,7 +324,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	if err := a.Seed(); err != nil {
 		return nil, err
 	}
-	if filledDefault {
+	if filledDefault || filledVideo {
 		_ = a.SaveConfig()
 	}
 	if err := a.openPersonal(); err != nil {
@@ -443,24 +445,26 @@ func (a *App) LastUsage() map[string]any {
 
 func (a *App) Health() map[string]any {
 	return map[string]any{
-		"ok":              true,
-		"harness":         a.ActiveHash(),
-		"model":           a.Config.Model,
-		"version":         version.Version,
-		"usage":           a.LastUsage(),
-		"budget_usd":      a.Config.MaxBudgetUSD,
-		"update":          update.Current(""),
-		"isolated":        isolated(),
-		"isolation_kind":  isolationKind(),
-		"models":          a.Config.Models,
-		"workspace_ready": WorkspaceReady(a.Config.Workspace),
-		"vault":           a.Vault.Status(),
-		"update_channel":  a.Config.UpdateChannel,
-		"isolation":       a.IsolationReport(),
-		"gate_mode":       capability.ParseGateMode(a.Config.GateMode),
-		"last_eval":       a.LastEval(),
-		"last_evolve":     a.LastEvolve(),
-		"video":           a.VideoStatus(),
+		"ok":                    true,
+		"harness":               a.ActiveHash(),
+		"model":                 a.Config.Model,
+		"version":               version.Version,
+		"usage":                 a.LastUsage(),
+		"budget_usd":            a.Config.MaxBudgetUSD,
+		"update":                update.Current(""),
+		"isolated":              isolated(),
+		"isolation_kind":        isolationKind(),
+		"models":                a.Config.Models,
+		"workspace_ready":       WorkspaceReady(a.Config.Workspace),
+		"video_workspace":       a.VideoWorkspace(),
+		"video_workspace_ready": WorkspaceReady(a.VideoWorkspace()),
+		"vault":                 a.Vault.Status(),
+		"update_channel":        a.Config.UpdateChannel,
+		"isolation":             a.IsolationReport(),
+		"gate_mode":             capability.ParseGateMode(a.Config.GateMode),
+		"last_eval":             a.LastEval(),
+		"last_evolve":           a.LastEvolve(),
+		"video":                 a.VideoStatus(),
 	}
 }
 
@@ -640,6 +644,21 @@ func (a *App) Workspace() string {
 	}
 	wd, _ := os.Getwd()
 	return wd
+}
+
+func (a *App) VideoWorkspace() string {
+	if a != nil && strings.TrimSpace(a.Config.VideoWorkspace) != "" {
+		if p, err := filepath.Abs(a.Config.VideoWorkspace); err == nil {
+			_ = os.MkdirAll(p, 0o755)
+			return p
+		}
+	}
+	if a != nil && a.Home != nil {
+		p := a.Home.VideoWorkspace()
+		_ = os.MkdirAll(p, 0o755)
+		return p
+	}
+	return a.Workspace()
 }
 
 func (a *App) StagingPath() string {

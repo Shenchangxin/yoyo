@@ -46,7 +46,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
         title={copy.settings.sections.generalWorkspace}
         description={copy.settings.workspaceDesc}
       >
-        <SettingRow stack border={false}>
+        <SettingRow stack>
           <div className="flex w-full items-center gap-2">
             <Input
               aria-label={copy.settings.workspace}
@@ -60,6 +60,27 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
               onClick={async () => {
                 const p = await host.onBrowse();
                 if (p) await host.patch({ workspace: p });
+              }}
+            >
+              <FolderOpen aria-hidden />
+              {copy.settings.browse}
+            </Button>
+          </div>
+        </SettingRow>
+        <SettingRow stack title={copy.settings.videoWorkspace} description={copy.settings.videoWorkspaceDesc} border={false}>
+          <div className="flex w-full items-center gap-2">
+            <Input
+              aria-label={copy.settings.videoWorkspace}
+              className="h-8 flex-1 font-mono text-[12px]"
+              value={cfg.videoWorkspace || ""}
+              onChange={(e) => void host.patch({ videoWorkspace: e.target.value })}
+            />
+            <Button
+              size="sm"
+              variant="lift"
+              onClick={async () => {
+                const p = await host.onBrowse();
+                if (p) await host.patch({ videoWorkspace: p });
               }}
             >
               <FolderOpen aria-hidden />

@@ -52,6 +52,31 @@ func TestDefaultWorkspaceOnOpen(t *testing.T) {
 	}
 }
 
+func TestDefaultVideoWorkspaceOnOpen(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	evals, err := filepath.Abs(filepath.Join(wd, "..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := Open(t.TempDir(), evals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	if !WorkspaceReady(a.VideoWorkspace()) {
+		t.Fatalf("video workspace not ready: %q", a.VideoWorkspace())
+	}
+	if a.Config.VideoWorkspace != a.Home.VideoWorkspace() {
+		t.Fatalf("got %q want %q", a.Config.VideoWorkspace, a.Home.VideoWorkspace())
+	}
+	if a.VideoWorkspace() == a.Workspace() {
+		t.Fatalf("video workspace must not share the agent folder: %q", a.Workspace())
+	}
+}
+
 func TestDefaultWorkspaceReplacesPlaceholder(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {

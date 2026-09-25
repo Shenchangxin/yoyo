@@ -139,6 +139,25 @@ func TestRPCWorkspacePreview(t *testing.T) {
 	}
 }
 
+func TestRPCCanvasHTTP(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 11, Method: "canvas.http", Params: jsonRaw(`{"method":"GET","path":"canvas-projects"}`)})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	if got.Result == nil {
+		t.Fatal("canvas.http empty result")
+	}
+	created := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 12, Method: "canvas.http", Params: jsonRaw(`{"method":"POST","path":"canvas-projects","body":{"title":"Board"}}`)})
+	if created.Error != nil {
+		t.Fatalf("create canvas: %v", created.Error)
+	}
+}
+
 func TestLineClientHealth(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

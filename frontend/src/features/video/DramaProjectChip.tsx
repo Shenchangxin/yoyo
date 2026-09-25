@@ -97,12 +97,10 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-72 max-h-80 overflow-y-auto">
-        {episodeId ? (
-          <DropdownMenuItem onSelect={() => setVideoBoard(true)}>
-            <LayoutGrid className="size-3.5 shrink-0 opacity-70" aria-hidden />
-            {copy.video.openBoard}
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem data-testid="drama-open-board" onSelect={() => setVideoBoard(true)}>
+          <LayoutGrid className="size-3.5 shrink-0 opacity-70" aria-hidden />
+          {copy.video.openBoard}
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void createDrama()}>
           <Plus className="size-3.5 shrink-0 opacity-70" aria-hidden />
           {copy.video.newDrama}

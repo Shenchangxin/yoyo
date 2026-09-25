@@ -46,6 +46,7 @@ func Open(root string) (*Dir, error) {
 		d.Observe(),
 		d.Worktrees(),
 		d.Video(),
+		d.VideoWorkspace(),
 		d.Logs(),
 		filepath.Join(d.Logs(), "crash"),
 		filepath.Join(d.Logs(), "mcp"),
@@ -92,6 +93,9 @@ func (d *Dir) Computer() string   { return filepath.Join(d.Root, "computer") }
 func (d *Dir) Observe() string    { return filepath.Join(d.Root, "observe") }
 func (d *Dir) Worktrees() string  { return filepath.Join(d.Root, "worktrees") }
 func (d *Dir) Video() string      { return filepath.Join(d.Root, "video") }
+func (d *Dir) VideoWorkspace() string {
+	return filepath.Join(d.Video(), "workspace")
+}
 func (d *Dir) Logs() string {
 	if v := os.Getenv("YOYO_LOG_DIR"); v != "" {
 		return v

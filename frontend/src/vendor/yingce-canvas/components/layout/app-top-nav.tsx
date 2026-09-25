@@ -21,10 +21,11 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(readWorkspaceSidebarCollapsed);
     const [paletteOpen, setPaletteOpen] = useState(false);
 
-    const hideChrome = pathname.startsWith("/admin") || /^\/canvas\/[^/]+/.test(pathname);
-    const showGlobalTopBar = !hideChrome;
+    const hosted = typeof window !== "undefined" && !!(window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__;
+    const hideChrome = hosted || pathname.startsWith("/admin") || /^\/canvas\/[^/]+/.test(pathname);
+    const showGlobalTopBar = !hideChrome && !hosted;
     const spatialWorkbench = isSpatialWorkbenchPath(pathname);
-    const creationWorkspace = pathname === "/";
+    const creationWorkspace = pathname === "/" || pathname === "/create" || pathname === "/drama";
 
     const isMobileViewport = () => window.innerWidth < 1024;
 
@@ -54,8 +55,9 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
         if (isMobileViewport()) setMobileSidebarExpanded(false);
     };
 
-    // ⌘K / Ctrl+K 全局呼出搜索面板。
+    // ⌘K / Ctrl+K 全局呼出搜索面板。嵌在 Yoyo 里时让出快捷键，避免和宿主面板抢。
     useEffect(() => {
+        if (hosted) return;
         const handler = (event: KeyboardEvent) => {
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
                 event.preventDefault();
@@ -64,7 +66,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, []);
+    }, [hosted]);
 
     useEffect(() => {
         const handleWorkspaceNavigation = (rawEvent: Event) => {
@@ -80,7 +82,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
     return (
         <>
             <WorkspaceTopBarExtensionProvider>
-                <div className={cn("app-workspace-shell flex h-dvh min-h-0 w-full flex-col overflow-hidden", spatialWorkbench && "is-spatial", creationWorkspace && "is-creation-workspace")}>
+                <div className={cn("app-workspace-shell flex min-h-0 w-full flex-col overflow-hidden", hosted ? "h-full" : "h-dvh", spatialWorkbench && "is-spatial", creationWorkspace && "is-creation-workspace")}>
                     {!hideChrome && mobileSidebarExpanded ? <button type="button" className="app-workspace-sidebar-scrim lg:hidden" aria-label="收起侧栏" onClick={() => setMobileSidebarExpanded(false)} /> : null}
 
                     {showGlobalTopBar ? <BannerAnnouncementsSlider /> : null}
@@ -114,7 +116,7 @@ export function AppWorkspaceShell({ children }: { children: ReactNode }) {
                 </div>
             </WorkspaceTopBarExtensionProvider>
             <WorkspaceWalletHost />
-            <ModelSetupGuide hidden={pathname === "/login" || pathname === "/register" || pathname.startsWith("/admin")} />
+            <ModelSetupGuide hidden={hosted || pathname === "/login" || pathname === "/register" || pathname.startsWith("/admin")} />
         </>
     );
 }

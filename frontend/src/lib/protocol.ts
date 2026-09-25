@@ -2,6 +2,27 @@ export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
 export type Surface = "agent" | "harness" | "settings" | "skills" | "video";
 export type VideoMode = "drama" | "canvas" | "creative";
+export type VideoPane = "chat" | "create" | "drama" | "canvas" | "assets" | "skills" | "plugins" | "tasks";
+export type CanvasFocus = "library" | "editor";
+
+export function isYingcePane(pane: VideoPane): boolean {
+  return pane !== "chat";
+}
+
+export function isCanvasWorldPane(pane: VideoPane): boolean {
+  return pane === "canvas" || pane === "assets" || pane === "skills" || pane === "plugins" || pane === "tasks";
+}
+
+export function yingcePathForPane(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus): string {
+  if (pane === "create") return "/create";
+  if (pane === "drama") return "/drama";
+  if (pane === "assets") return "/assets";
+  if (pane === "skills") return "/skills";
+  if (pane === "plugins") return "/plugins";
+  if (pane === "tasks") return "/tasks";
+  if (pane === "canvas" && canvasFocus === "editor" && projectId) return `/canvas/${projectId}`;
+  return "/canvas";
+}
 export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer" | "index" | "behavior";
 export type SettingsTab =
   | "general"
@@ -17,6 +38,15 @@ export type SettingsTab =
 export type AuthMode = "default" | "auto_edit" | "full" | "ask";
 
 export type ThreadChannel = "agent" | "video";
+
+export type VideoProject = {
+  kind: "canvas" | "drama";
+  id: string;
+  title: string;
+  sessionId?: string;
+  episodeId?: string;
+  updatedAt?: string;
+};
 
 export type Thread = {
   id: string;
@@ -176,6 +206,8 @@ export type Health = {
   budgetUsd: number;
   usageUsd: number;
   workspaceReady: boolean;
+  videoWorkspace?: string;
+  videoWorkspaceReady?: boolean;
 };
 
 export type AppConfig = {
@@ -183,6 +215,7 @@ export type AppConfig = {
   model: string;
   baseUrl: string;
   workspace: string;
+  videoWorkspace?: string;
   autoAllow: boolean;
   maxBudgetUsd: number;
   usdPerMtok: number;

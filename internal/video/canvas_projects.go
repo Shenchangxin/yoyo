@@ -6,6 +6,37 @@ import (
 	"strings"
 )
 
+func dramaProjectRecord(p map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range p {
+		if k == "units" {
+			continue
+		}
+		out[k] = v
+	}
+	if out["status"] == nil {
+		out["status"] = "active"
+	}
+	if strAnyMap(out, "name") == "" {
+		out["name"] = firstNonEmpty(strAnyMap(out, "title"), "Untitled project")
+	}
+	return out
+}
+
+func dramaProjectSummaries(list []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(list))
+	for _, p := range list {
+		out = append(out, map[string]any{
+			"project":            dramaProjectRecord(p),
+			"canvasCount":        0,
+			"assetCount":         0,
+			"unitCount":          0,
+			"completedUnitCount": 0,
+		})
+	}
+	return out
+}
+
 func (e *Engine) listDramaProjects() []map[string]any {
 	rows, err := e.DB.Query(`SELECT id, title, payload_json, created_at, updated_at FROM canvas_project_units WHERE kind = 'project' AND deleted_at = '' ORDER BY updated_at DESC`)
 	if err != nil {

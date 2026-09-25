@@ -397,7 +397,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const showMissing = missing.includes("image") || missing.includes("video");
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-testid="drama-studio">
       {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
       {showMissing ? (
         <div className="flex items-center gap-2 border-b border-border/70 bg-lift/60 px-3 py-1.5 text-[12px] text-muted">

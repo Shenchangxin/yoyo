@@ -500,11 +500,16 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	}
 
 	if path == "projects" && method == "GET" {
-		list := e.listDramaProjects()
-		if strAnyMap(query, "page") != "" {
-			return canvasOK(map[string]any{"projects": list, "page": intAny(query["page"]), "pageSize": intAny(query["pageSize"]), "total": len(list), "hasMore": false})
+		list := dramaProjectSummaries(e.listDramaProjects())
+		page := intAny(query["page"])
+		if page <= 0 {
+			page = 1
 		}
-		return canvasOK(map[string]any{"projects": list})
+		pageSize := intAny(query["pageSize"])
+		if pageSize <= 0 {
+			pageSize = 50
+		}
+		return canvasOK(map[string]any{"projects": list, "page": page, "pageSize": pageSize, "total": len(list), "hasMore": false})
 	}
 	if path == "projects" && method == "POST" {
 		return canvasOK(map[string]any{"project": e.upsertDramaProject(bodyMap)})
@@ -529,14 +534,28 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		if err != nil {
 			return canvasFail(404, err.Error(), "not_found")
 		}
-		return canvasOK(proj)
+		return canvasOK(map[string]any{"project": dramaProjectRecord(proj)})
 	}
 	if p, ok := match("projects/:id/overview"); ok && method == "GET" {
 		proj, err := e.getDramaProject(p["id"])
 		if err != nil {
 			return canvasFail(404, err.Error(), "not_found")
 		}
-		return canvasOK(proj)
+		units := e.listProjectUnits(p["id"])
+		overviewUnits := make([]map[string]any, 0, len(units))
+		for _, u := range units {
+			overviewUnits = append(overviewUnits, map[string]any{"unit": u, "shotCount": 0, "candidateCount": 0, "canvasCount": 0})
+		}
+		return canvasOK(map[string]any{
+			"metrics": map[string]any{
+				"unitCount": len(units), "completedUnitCount": 0, "totalWordCount": 0,
+				"unitsWithoutText": 0, "unitsWithoutShots": 0, "canvasCount": 0, "assetCount": 0, "shotCount": 0,
+				"pendingCandidateCount": 0, "readyStoryboardCount": 0, "readyPrevizCount": 0, "readyVideoCount": 0,
+				"renderSucceededCount": 0, "staleArtifactCount": 0,
+			},
+			"units":   overviewUnits,
+			"project": dramaProjectRecord(proj),
+		})
 	}
 	if p, ok := match("projects/:id/units"); ok && method == "GET" {
 		return canvasOK(map[string]any{"units": e.listProjectUnits(p["id"]), "canvasCounts": map[string]int{}})
@@ -606,7 +625,7 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	}
 	if path == "skills" || strings.HasPrefix(path, "skills/") {
 		if path == "skills" && method == "GET" {
-			return canvasOK(map[string]any{"skills": []any{}, "total": 0})
+			return canvasOK(map[string]any{"skills": []any{}, "total": 0, "totalCount": 0, "hasMore": false, "categories": []any{}})
 		}
 		if path == "skills/presets" {
 			return canvasOK(map[string]any{"presets": []any{}})
