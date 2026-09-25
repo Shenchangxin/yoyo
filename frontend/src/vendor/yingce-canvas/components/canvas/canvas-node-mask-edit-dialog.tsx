@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button, Input, Modal, Slider } from "antd";
-import { Brush, ChevronDown, Eraser, RotateCcw, WandSparkles, X } from "lucide-react";
+import { Brush, ChevronDown, Eraser, RotateCcw, Settings2, X } from "lucide-react";
 
 import { readImageMeta } from "@yingce/lib/image-utils";
 import { ImageSettingsPanel } from "@yingce/components/image-settings-panel";
@@ -219,7 +219,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, config, onClose, onCon
                             <Button icon={<X className="size-4" />} onClick={onClose}>
                                 取消
                             </Button>
-                            <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={submit}>
+                            <Button type="primary" icon={<Settings2 className="size-4" />} onClick={submit}>
                                 AI 修改
                             </Button>
                         </div>

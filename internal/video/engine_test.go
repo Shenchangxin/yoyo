@@ -523,3 +523,79 @@ func TestSecondAdapterKeepsOwnName(t *testing.T) {
 		t.Fatalf("shared vault %s", a.VaultKey)
 	}
 }
+
+func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.UpsertProvider(Provider{
+		ServiceType: "image",
+		Provider:    "openai",
+		Name:        "Studio DALL-E",
+		BaseURL:     "https://api.openai.com/v1",
+		Model:       "dall-e-3",
+		IsActive:    true,
+	}, "sk-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chID := "ch-" + p.ID
+	ch, err := e.getCanvasChannel(chID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.VaultKey != p.VaultKey || ch.Model != "dall-e-3" || !ch.HasKey || ch.Name != "Studio DALL-E" {
+		t.Fatalf("channel %+v provider %+v", ch, p)
+	}
+	cat := e.modelCatalog()
+	channels, _ := cat["channels"].([]map[string]any)
+	found := false
+	for _, c := range channels {
+		if fmt.Sprint(c["id"]) == chID {
+			found = true
+			models, _ := c["models"].([]map[string]any)
+			if len(models) == 0 || fmt.Sprint(models[0]["modelKey"]) != "dall-e-3" {
+				t.Fatalf("catalog models %+v", c["models"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("catalog missing provider: %+v", cat)
+	}
+
+	p.Name = "Studio DALL-E renamed"
+	p.Model = "gpt-image-1"
+	if _, err := e.UpsertProvider(p, ""); err != nil {
+		t.Fatal(err)
+	}
+	ch, err = e.getCanvasChannel(chID)
+	if err != nil || ch.Name != "Studio DALL-E renamed" || ch.Model != "gpt-image-1" {
+		t.Fatalf("resync %+v %v", ch, err)
+	}
+
+	if _, err := e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, chID); err != nil {
+		t.Fatal(err)
+	}
+	ch, err = e.getCanvasChannel(chID)
+	if err != nil || ch.Model != "gpt-image-1" {
+		t.Fatalf("fallback %+v %v", ch, err)
+	}
+
+	if _, err := e.upsertCanvasChannel(map[string]any{"id": "extra-1", "name": "Yingce extra", "capability": "image", "pluginId": "openai-images"}, "k-extra"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.syncAllProviderChannels(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.getCanvasChannel("extra-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := e.DeleteProvider(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.getCanvasChannel(chID); err == nil {
+		t.Fatal("expected mirrored channel gone")
+	}
+	if _, err := e.getCanvasChannel("extra-1"); err != nil {
+		t.Fatal("extra channel should survive adapter delete")
+	}
+}

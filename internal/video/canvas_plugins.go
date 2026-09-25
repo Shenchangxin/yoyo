@@ -144,14 +144,14 @@ func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]an
 		manifest["description"] = desc
 	}
 	return map[string]any{
-		"manifest": manifest,
-		"source":     source,
-		"fileName":   fileName,
-		"package":    fileName,
-		"sha256":     "",
+		"manifest":    manifest,
+		"source":      source,
+		"fileName":    fileName,
+		"package":     fileName,
+		"sha256":      "",
 		"installedAt": Now(),
-		"updatedAt":  Now(),
-		"status":     status,
+		"updatedAt":   Now(),
+		"status":      status,
 		"management": map[string]any{
 			"origin":             sourceOrigin(source),
 			"kind":               "protocol",
@@ -181,13 +181,13 @@ func (e *Engine) listPluginPayload() map[string]any {
 			rec := e.pluginRecord(meta.ID, "bundled", meta.ID+".yingce-plugin", "enabled")
 			plugins = append(plugins, rec)
 			states[meta.ID] = map[string]any{
-				"pluginId":           meta.ID,
-				"platformAvailable":  true,
-				"userEnabled":        true,
-				"userConfigured":     true,
-				"effectiveEnabled":   true,
-				"canToggle":          true,
-				"canConfigure":       true,
+				"pluginId":          meta.ID,
+				"platformAvailable": true,
+				"userEnabled":       true,
+				"userConfigured":    true,
+				"effectiveEnabled":  true,
+				"canToggle":         true,
+				"canConfigure":      true,
 			}
 		}
 	}
@@ -240,25 +240,92 @@ type canvasChannel struct {
 	HasKey     bool   `json:"hasKey"`
 }
 
-func (e *Engine) seedCanvasChannels() error {
-	var n int
-	_ = e.DB.QueryRow(`SELECT COUNT(*) FROM canvas_channels`).Scan(&n)
-	if n > 0 {
+func providerChannelID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || strings.HasPrefix(id, "ch-") {
+		return id
+	}
+	return "ch-" + id
+}
+
+func providerIDFromChannel(id string) string {
+	return strings.TrimPrefix(strings.TrimSpace(id), "ch-")
+}
+
+func (e *Engine) channelFromProvider(p Provider) canvasChannel {
+	return canvasChannel{
+		ID:         providerChannelID(p.ID),
+		PluginID:   mapProviderPlugin(p.ServiceType, p.Provider),
+		Name:       p.Name,
+		Capability: p.ServiceType,
+		BaseURL:    p.BaseURL,
+		VaultKey:   p.VaultKey,
+		Model:      p.Model,
+		Models:     p.Models,
+		Settings:   p.Settings,
+		Enabled:    p.IsActive,
+		HasKey:     p.HasKey,
+		CreatedAt:  p.CreatedAt,
+		UpdatedAt:  p.UpdatedAt,
+	}
+}
+
+func (e *Engine) syncProviderChannel(p Provider) error {
+	if strings.TrimSpace(p.ID) == "" {
 		return nil
 	}
+	now := Now()
+	id := providerChannelID(p.ID)
+	plugin := mapProviderPlugin(p.ServiceType, p.Provider)
+	enabled := 1
+	if !p.IsActive {
+		enabled = 0
+	}
+	models := p.Models
+	if models == "" {
+		models = "[]"
+	}
+	settings := p.Settings
+	if settings == "" {
+		settings = "{}"
+	}
+	_, err := e.DB.Exec(`INSERT INTO canvas_channels(id, plugin_id, name, capability, base_url, vault_key, model, models, settings, sort_order, enabled, created_at, updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET plugin_id=excluded.plugin_id, name=excluded.name, capability=excluded.capability, base_url=excluded.base_url, vault_key=excluded.vault_key, model=excluded.model, models=excluded.models, settings=excluded.settings, enabled=excluded.enabled, updated_at=excluded.updated_at`,
+		id, plugin, p.Name, p.ServiceType, p.BaseURL, p.VaultKey, p.Model, models, settings, 0, enabled, coalesce(p.CreatedAt, now), now)
+	return err
+}
+
+func (e *Engine) deleteProviderChannel(id string) {
+	chID := providerChannelID(id)
+	if chID == "" {
+		return
+	}
+	_, _ = e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, chID)
+}
+
+func (e *Engine) syncAllProviderChannels() error {
 	providers, err := e.ListProviders("")
 	if err != nil {
 		return err
 	}
-	for i, p := range providers {
-		plugin := mapProviderPlugin(p.ServiceType, p.Provider)
-		now := Now()
-		id := "ch-" + p.ID
-		_, _ = e.DB.Exec(`INSERT OR IGNORE INTO canvas_channels(id, plugin_id, name, capability, base_url, vault_key, model, models, settings, sort_order, enabled, created_at, updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			id, plugin, p.Name, p.ServiceType, p.BaseURL, p.VaultKey, p.Model, p.Models, p.Settings, i, 1, now, now)
+	keep := map[string]bool{}
+	for _, p := range providers {
+		if err := e.syncProviderChannel(p); err != nil {
+			return err
+		}
+		keep[providerChannelID(p.ID)] = true
+	}
+	for _, c := range e.listCanvasChannels() {
+		if strings.HasPrefix(c.ID, "ch-") && !keep[c.ID] {
+			_, _ = e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, c.ID)
+		}
 	}
 	return nil
+}
+
+func (e *Engine) seedCanvasChannels() error {
+	return e.syncAllProviderChannels()
 }
 
 func mapProviderPlugin(serviceType, vendor string) string {
@@ -325,19 +392,19 @@ func (e *Engine) listCanvasChannels() []canvasChannel {
 }
 
 func (e *Engine) getCanvasChannel(id string) (canvasChannel, error) {
+	id = strings.TrimSpace(id)
 	for _, c := range e.listCanvasChannels() {
 		if c.ID == id {
 			return c, nil
 		}
 	}
-	// fall back to drama providers as channels
 	if p, err := e.GetProvider(id); err == nil {
-		return canvasChannel{
-			ID: p.ID, PluginID: mapProviderPlugin(p.ServiceType, p.Provider), Name: p.Name,
-			Capability: p.ServiceType, BaseURL: p.BaseURL, VaultKey: p.VaultKey, Model: p.Model,
-			Models: p.Models, Settings: p.Settings, Enabled: p.IsActive, HasKey: p.HasKey,
-			CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
-		}, nil
+		return e.channelFromProvider(p), nil
+	}
+	if pid := providerIDFromChannel(id); pid != "" && pid != id {
+		if p, err := e.GetProvider(pid); err == nil {
+			return e.channelFromProvider(p), nil
+		}
 	}
 	return canvasChannel{}, fmt.Errorf("channel not found")
 }
@@ -375,47 +442,61 @@ func (e *Engine) upsertCanvasChannel(in map[string]any, apiKey string) (canvasCh
 	return e.getCanvasChannel(id)
 }
 
-func (e *Engine) modelCatalog() map[string]any {
-	channels := []map[string]any{}
-	for _, c := range e.listCanvasChannels() {
-		if !c.Enabled {
+func catalogModels(c canvasChannel) []map[string]any {
+	keys := []string{}
+	if c.Models != "" && c.Models != "[]" {
+		_ = json.Unmarshal([]byte(c.Models), &keys)
+	}
+	if c.Model != "" {
+		found := false
+		for _, k := range keys {
+			if k == c.Model {
+				found = true
+				break
+			}
+		}
+		if !found {
+			keys = append([]string{c.Model}, keys...)
+		}
+	}
+	models := []map[string]any{}
+	for i, key := range keys {
+		if strings.TrimSpace(key) == "" {
 			continue
 		}
-		keys := []string{}
-		if c.Models != "" && c.Models != "[]" {
-			_ = json.Unmarshal([]byte(c.Models), &keys)
+		cap := c.Capability
+		if cap == "tts" {
+			cap = "audio"
 		}
-		if c.Model != "" {
-			found := false
-			for _, k := range keys {
-				if k == c.Model {
-					found = true
-					break
-				}
-			}
-			if !found {
-				keys = append([]string{c.Model}, keys...)
-			}
-		}
-		models := []map[string]any{}
-		for i, key := range keys {
-			if strings.TrimSpace(key) == "" {
-				continue
-			}
-			cap := c.Capability
-			if cap == "tts" {
-				cap = "audio"
-			}
-			models = append(models, map[string]any{
-				"id": c.ID + ":" + key, "modelKey": key, "name": key, "displayName": key,
-				"capability": cap, "available": c.HasKey, "sortOrder": i,
-				"pricingMode": "info", "priceLabel": "",
-				"capabilitySpec": map[string]any{"version": 1, "capability": cap, "operations": defaultOps(cap)},
-			})
-		}
-		channels = append(channels, map[string]any{
-			"id": c.ID, "name": c.Name, "displayName": c.Name, "sortOrder": c.SortOrder, "models": models,
+		models = append(models, map[string]any{
+			"id": c.ID + ":" + key, "modelKey": key, "name": key, "displayName": key,
+			"capability": cap, "available": c.HasKey, "sortOrder": i,
+			"pricingMode": "info", "priceLabel": "",
+			"capabilitySpec": map[string]any{"version": 1, "capability": cap, "operations": defaultOps(cap)},
 		})
+	}
+	return models
+}
+
+func (e *Engine) modelCatalog() map[string]any {
+	channels := []map[string]any{}
+	seen := map[string]bool{}
+	add := func(c canvasChannel) {
+		if !c.Enabled || seen[c.ID] {
+			return
+		}
+		seen[c.ID] = true
+		channels = append(channels, map[string]any{
+			"id": c.ID, "name": c.Name, "displayName": c.Name, "sortOrder": c.SortOrder, "models": catalogModels(c),
+		})
+	}
+	for _, c := range e.listCanvasChannels() {
+		add(c)
+	}
+	if providers, err := e.ListProviders(""); err == nil {
+		for _, p := range providers {
+			add(e.channelFromProvider(p))
+		}
 	}
 	return map[string]any{"source": "system", "channels": channels, "models": []any{}}
 }

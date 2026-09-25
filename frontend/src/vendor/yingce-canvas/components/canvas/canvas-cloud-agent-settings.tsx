@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Checkbox, Input } from "antd";
-import { ArrowLeft, BookMarked, Check, ChevronRight, Cpu, Gauge, LockKeyhole, PlugZap, Search, ShieldCheck, Sparkles, Wrench } from "lucide-react";
+import { ArrowLeft, BookMarked, Check, ChevronRight, Cpu, Gauge, LockKeyhole, PlugZap, Search, ShieldCheck, Clapperboard, Wrench } from "lucide-react";
 
 import { ModelPicker } from "@yingce/components/model-picker";
 import type { CanvasTheme } from "@yingce/lib/canvas-theme";
@@ -55,7 +55,7 @@ type AgentSettingsProps = {
 const permissionOptions: Array<{ value: AgentPermissionMode; label: string; description: string; icon: typeof ShieldCheck; color: string }> = [
     { value: "read_only", label: "只读", description: "只分析和建议", icon: LockKeyhole, color: "#4f7cff" },
     { value: "request_approval", label: "请求审批", description: "写入和生成前确认", icon: ShieldCheck, color: "#b58336" },
-    { value: "auto", label: "自动执行", description: "预算内执行已授权工具", icon: Sparkles, color: "#429477" },
+    { value: "auto", label: "自动执行", description: "预算内执行已授权工具", icon: Clapperboard, color: "#429477" },
 ];
 
 const contextOptions: Array<{ value: AgentContextKey; label: string; description: string }> = [
@@ -128,9 +128,9 @@ function SettingsHome({ props, theme, onOpen }: { props: AgentSettingsProps; the
                 <SettingLabel label="能力与范围" />
                 <div className="space-y-1">
                     <SettingRow theme={theme} icon={<Cpu className="size-4" />} title="上下文" summary={`${props.nodeCount} 个节点 · ${props.contextScope.length} 个范围`} onClick={() => onOpen("context")} />
-                    <SettingRow theme={theme} icon={<Sparkles className="size-4" />} title="长期偏好" summary={profileSummary(props.profileView)} onClick={() => onOpen("profile")} />
+                    <SettingRow theme={theme} icon={<Clapperboard className="size-4" />} title="长期偏好" summary={profileSummary(props.profileView)} onClick={() => onOpen("profile")} />
                     <SettingRow theme={theme} icon={<BookMarked className="size-4" />} title="个人记忆" summary="批准、添加、导出导入；只影响你的会话" onClick={() => onOpen("memories")} />
-                    <SettingRow theme={theme} icon={<Sparkles className="size-4" />} title="Skills · 用户技能库" summary={`${props.installedSkills.length} 个已安装 · 本轮启用 ${props.selectedSkillIds.length} 个`} onClick={() => onOpen("skills")} />
+                    <SettingRow theme={theme} icon={<Clapperboard className="size-4" />} title="Skills · 用户技能库" summary={`${props.installedSkills.length} 个已安装 · 本轮启用 ${props.selectedSkillIds.length} 个`} onClick={() => onOpen("skills")} />
                     <SettingRow theme={theme} icon={<Wrench className="size-4" />} title="工具与连接" summary="画布、技能参考文件、生成任务" onClick={() => onOpen("mcp")} />
                     <SettingRow theme={theme} icon={<Gauge className="size-4" />} title="预算" summary={`每轮最多 ${props.maxCredits || "未设置"} 积分 · 固定计价模型`} onClick={() => onOpen("budget")} />
                 </div>
@@ -276,7 +276,7 @@ function ProfileError({ message, onRetry, theme }: { message: string; onRetry: (
 function SkillRow({ skill, theme, selected, installed, selectable, onToggle, onInstall }: { skill: Skill; theme: CanvasTheme; selected: boolean; installed: boolean; selectable: boolean; onToggle: () => void; onInstall: () => void }) {
     return (
         <div className="canvas-agent-skill-row flex min-w-0 items-start gap-3 rounded-xl p-3 transition-colors">
-            {selectable ? <Checkbox className="mt-0.5 shrink-0" checked={selected} onChange={onToggle} aria-label={`启用 ${skill.skillName}`} /> : <span className="grid size-8 shrink-0 place-items-center rounded-lg" style={{ background: theme.node.fill, color: theme.node.muted }}><Sparkles className="size-4" /></span>}
+            {selectable ? <Checkbox className="mt-0.5 shrink-0" checked={selected} onChange={onToggle} aria-label={`启用 ${skill.skillName}`} /> : <span className="grid size-8 shrink-0 place-items-center rounded-lg" style={{ background: theme.node.fill, color: theme.node.muted }}><Clapperboard className="size-4" /></span>}
             <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-baseline gap-2"><span className="min-w-0 flex-1 break-words text-[13px] font-medium [overflow-wrap:anywhere]">{skill.skillName}</span>{skill.version ? <span className="shrink-0 text-[10px]" style={{ color: theme.node.muted }}>v{skill.version}</span> : null}</div>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 [overflow-wrap:anywhere]" style={{ color: theme.node.muted }} title={skill.description || undefined}>{skill.description || "暂无技能说明"}</p>

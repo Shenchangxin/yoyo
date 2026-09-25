@@ -212,10 +212,18 @@ func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 		e.Vault.Set(p.VaultKey, apiKey)
 		p.HasKey = true
 	}
-	return e.GetProvider(p.ID)
+	out, err := e.GetProvider(p.ID)
+	if err != nil {
+		return p, err
+	}
+	if err := e.syncProviderChannel(out); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 func (e *Engine) DeleteProvider(id string) error {
+	e.deleteProviderChannel(id)
 	_, err := e.DB.Exec(`DELETE FROM providers WHERE id = ?`, id)
 	return err
 }

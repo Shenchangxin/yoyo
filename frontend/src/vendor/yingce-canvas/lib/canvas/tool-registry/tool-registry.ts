@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { ScanSearch, Sparkles } from "lucide-react";
+import { ScanSearch, Settings2 } from "lucide-react";
 import { createElement } from "react";
 
 import type { FloatingDockEntry } from "@yingce/components/ui/aceternity/floating-dock";
@@ -46,7 +46,7 @@ function getPluginNodeMenuCommands(): AddNodeMenuCommand[] {
         .filter((definition) => Boolean(definition.plugin))
         .map((definition, index) => {
             const pluginId = definition.plugin!.pluginId;
-            const FallbackIcon = definition.type === ART_CRITIQUE_NODE_TYPE ? ScanSearch : Sparkles;
+            const FallbackIcon = definition.type === ART_CRITIQUE_NODE_TYPE ? ScanSearch : Settings2;
             return {
                 id: definition.type,
                 label: definition.label,

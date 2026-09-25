@@ -258,6 +258,7 @@ export function ThreadRail(props: {
           </button>
         </Tooltip>
       </div>
+      {videoOn ? <VideoShellNav /> : (
       <div className="px-2.5 pb-2">
         <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" variant="accent" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
@@ -276,8 +277,9 @@ export function ThreadRail(props: {
             spellCheck={false}
           />
         </div>
-        {videoOn ? <VideoShellNav /> : null}
       </div>
+      )}
+      {videoOn ? null : (
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {empty ? (
           <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />
@@ -291,6 +293,8 @@ export function ThreadRail(props: {
           </div>
         )}
       </nav>
+      )}
+      {videoOn ? <div className="min-h-0 flex-1" /> : null}
       <div className="rail-dock">
         <DockIcon
           label={copy.rail.skills}

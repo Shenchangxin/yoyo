@@ -8,11 +8,11 @@ import zhCN from "antd/locale/zh_CN";
 import { AuthSessionHydrator } from "@yingce/components/auth/auth-session-hydrator";
 import { FullScreenLoader } from "@yingce/components/ui/aceternity/full-screen-loader";
 import { getAntThemeConfig } from "@yingce/lib/app-theme";
-import { applySkinTheme } from "@yingce/lib/skin-themes";
+import { yoyoHostAntTheme } from "@/features/video/canvas-host/yoyo-ant-theme";
 import { appQueryClient } from "@yingce/lib/query-client";
 import { isIsolatedDirectorRepro } from "@yingce/lib/dev-repro";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
-import { applyAppearanceMetadata, useAppearanceStore } from "@yingce/stores/use-appearance-store";
+import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 
 const ClientRootInit = lazy(() => import("@yingce/components/layout/client-root-init").then((module) => ({ default: module.ClientRootInit })));
@@ -43,7 +43,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const isolateDevRepro = typeof window !== "undefined" && isIsolatedDirectorRepro(import.meta.env.DEV, window.location.pathname);
 
     return (
-        <ConfigProvider locale={zhCN} prefixCls="yc" theme={getAntThemeConfig(dark, appearance.activeSkin)} wave={{ disabled: true }}>
+        <ConfigProvider locale={zhCN} prefixCls="yc" theme={typeof window !== "undefined" && (window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__ ? yoyoHostAntTheme(dark) : getAntThemeConfig(dark, appearance.activeSkin)} wave={{ disabled: true }}>
             <App message={{ duration: 3, maxCount: 3 }} notification={{ duration: 4.5, maxCount: 3, placement: "topRight" }}>
                 <QueryClientProvider client={appQueryClient}>
                     {isolateDevRepro ? (

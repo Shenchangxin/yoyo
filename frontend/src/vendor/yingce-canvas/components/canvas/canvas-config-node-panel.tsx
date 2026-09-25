@@ -2,7 +2,7 @@
 import { Button, Input, InputNumber, Segmented, Select, Slider } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronDown, Dice5, Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Sparkles, Video, Workflow as WorkflowIcon } from "lucide-react";
+import { ChevronDown, Dice5, Image as ImageIcon, LoaderCircle, MessageSquare, Music2, Play, Clapperboard, Video, Workflow as WorkflowIcon } from "lucide-react";
 
 import { Switch } from "@yingce/components/ui/base/switch";
 
@@ -203,7 +203,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, onConfigC
 
             <button type="button" className="canvas-config-prompt-button group flex min-h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 text-left" style={{ background: theme.node.fill, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onComposerToggle}>
                 <span className="grid size-7 shrink-0 place-items-center rounded-md" style={{ background: theme.node.panel }}>
-                    {simpleMode ? <MessageSquare className="size-3.5" /> : <Sparkles className="size-3.5" />}
+                    {simpleMode ? <MessageSquare className="size-3.5" /> : <Clapperboard className="size-3.5" />}
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block text-[var(--fs-label)] font-semibold">{simpleMode ? "编辑生成内容" : "组装提示词"}</span>
@@ -439,7 +439,7 @@ function WorkflowOptionGroupLabel({ label, count }: { label: string; count: numb
 
 function WorkflowOptionLabel({ kind, label, title }: { kind: "app" | "workflow"; label: string; title: string }) {
     return <div className="canvas-workflow-option" title={title}>
-        {kind === "app" ? <Sparkles /> : <WorkflowIcon />}
+        {kind === "app" ? <Clapperboard /> : <WorkflowIcon />}
         <span>{label}</span>
         <i aria-hidden="true" />
     </div>;
@@ -447,7 +447,7 @@ function WorkflowOptionLabel({ kind, label, title }: { kind: "app" | "workflow";
 
 function WorkflowSelectedLabel({ kind, label }: { kind: "app" | "workflow"; label: string }) {
     return <span className="canvas-workflow-selected-label">
-        {kind === "app" ? <Sparkles /> : <WorkflowIcon />}
+        {kind === "app" ? <Clapperboard /> : <WorkflowIcon />}
         <span>{label}</span>
     </span>;
 }

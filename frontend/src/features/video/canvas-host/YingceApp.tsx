@@ -15,6 +15,7 @@ import "@yingce/styles/globals.css";
 import "@yingce/styles/shared/model-picker.css";
 import "@yingce/styles/shared/overlays.css";
 import "@yingce/styles/shared/scrollbars.css";
+import "./apple-skin.css";
 
 const CanvasPage = lazy(() => import("@yingce/pages/canvas"));
 const CanvasProjectPage = lazy(() => import("@yingce/pages/canvas/project"));

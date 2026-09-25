@@ -1,8 +1,4 @@
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
-import { X } from "lucide-react";
-import { Tooltip } from "../../components/ui/tooltip";
-import { cn } from "../../lib/utils";
-import { useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import { yingcePathForPane } from "../../lib/protocol";
 import { useCanvasHost } from "./canvas-host/session";
@@ -18,9 +14,6 @@ const YingceApp = lazy(() =>
     },
   })),
 );
-
-const iconBtn =
-  "inline-flex size-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-lift hover:text-foreground";
 
 class IslandBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
   state = { err: null as Error | null };
@@ -43,7 +36,6 @@ class IslandBoundary extends Component<{ children: ReactNode }, { err: Error | n
 }
 
 export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void; onClose?: () => void }) {
-  const copy = useCopy();
   const pane = useUI((s) => s.videoPane);
   const canvasFocus = useUI((s) => s.canvasFocus);
   const projectId = useCanvasHost((s) => s.projectId);
@@ -59,15 +51,6 @@ export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => 
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="canvas-studio-shell" data-pane={pane}>
-      {props.onClose ? (
-        <header className="flex h-9 shrink-0 items-center border-b border-border/70 px-2">
-          <Tooltip content={copy.video.closeBoard}>
-            <button type="button" className={cn(iconBtn, "ml-auto")} aria-label={copy.video.closeBoard} onClick={props.onClose}>
-              <X className="size-3.5" />
-            </button>
-          </Tooltip>
-        </header>
-      ) : null}
       <div className="min-h-0 flex-1">
         <IslandBoundary>
           <Suspense

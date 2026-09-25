@@ -454,11 +454,31 @@ export default function App() {
           ) : null}
         </div>
       )
+      : videoing
+        ? (
+            <Titlebar
+              inspector={ws.inspector}
+              hideInspector
+              hideInbox
+              title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
+              runningCount={Object.values(ws.running).filter(Boolean).length}
+              runningThreads={ws.threads.filter((t) => ws.running[t.id])}
+              runningStatus={ws.runStatus}
+              onSelectRunning={(t) => ws.openThread(t)}
+              renameTick={ws.renameTick}
+              onToggleInspector={() => ws.setInspector((v) => !v)}
+              onRename={async (title) => {
+                if (!ws.activeId) return;
+                await api.renameSession(ws.activeId, title);
+                await ws.refresh();
+              }}
+            />
+        )
       : (
             <Titlebar
               inspector={ws.inspector}
-              hideInspector={videoing}
-              hideInbox={videoing}
+              hideInspector={false}
+              hideInbox={false}
               title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
@@ -493,6 +513,11 @@ export default function App() {
   const workshop = (
     <VideoWorkshop
       sessionId={ws.activeId}
+      projects={ws.videoProjects}
+      canvasProjectId={ws.canvasProjectId}
+      dramaId={ws.dramaId}
+      onOpenProject={(p) => { void ws.openVideoProject(p); }}
+      onRefreshHistory={ws.loadVideoHistory}
       onNeedSession={() => {
         if (!ws.activeId) void ws.ensureThread();
       }}
@@ -521,11 +546,13 @@ export default function App() {
           <CommandPalette
             open={ws.palette}
             threads={ws.threads}
+            videoProjects={ws.videoProjects}
             onClose={() => ws.setPalette(false)}
             onNew={ws.onNew}
             onLab={ws.setLab}
             onOpenHarness={() => ws.openHarness("overview")}
             onSelectThread={ws.openThread}
+            onSelectProject={(p) => { void ws.openVideoProject(p); }}
             onDiff={ws.refreshDiff}
             onAbout={async () => { ws.setAboutInfo(await api.about().catch(() => ({}))); ws.setAboutOpen(true); }}
             onQuit={ws.requestQuit}
@@ -643,7 +670,7 @@ export default function App() {
             ) : null}
             {staged ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
-                <div className="h-full min-h-0 overflow-hidden bg-sidebar">
+                <div className="h-full min-h-0 overflow-hidden bg-background">
                   {workshop}
                 </div>
               </div>
@@ -667,7 +694,7 @@ export default function App() {
                 </Panel>
                 <ResizeHandle />
                 <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0">
-                  <div className="h-full min-h-0 overflow-hidden bg-sidebar">
+                  <div className="glass-chrome h-full min-h-0 overflow-hidden">
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}

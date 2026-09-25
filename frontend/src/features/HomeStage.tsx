@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { ArrowUpRight } from "lucide-react";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";
@@ -44,13 +43,13 @@ export function HomeStage(props: {
           <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
             {hello(copy)}
           </p>
-          <h1 className="mt-1.5 text-center text-[28px] font-semibold leading-[1.15] tracking-[-0.048em] text-pretty text-foreground">
+          <h1 className="mt-1.5 text-center text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground">
             {readyOf(copy, videoing, videoMode)}
           </h1>
           <div className="mt-8 w-full">
             {props.children}
           </div>
-          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
             {starters.map((s, i) => (
               <button
                 type="button"
@@ -59,13 +58,7 @@ export function HomeStage(props: {
                 style={{ animationDelay: `${80 + i * 50}ms` }}
                 onClick={() => props.onPrompt?.(s.text)}
               >
-                <span className="flex w-full items-start justify-between gap-2">
-                  <span className="text-[13px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
-                  <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted/55" aria-hidden />
-                </span>
-                {s.hint ? (
-                  <span className="text-[12px] leading-[1.45] text-muted">{s.hint}</span>
-                ) : null}
+                <span className="text-[12.5px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
               </button>
             ))}
           </div>

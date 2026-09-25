@@ -2,7 +2,7 @@
 import { Button, Image as AntImage, InputNumber, Modal, Popover } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, WandSparkles, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, Settings2, X } from "lucide-react";
 
 import { ModelPicker } from "@yingce/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@yingce/stores/use-config-store";
@@ -341,7 +341,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                     <CanvasChooseImageStylePicker open={expanded ? expandedStyleToolOpen : styleToolOpen} onOpenChange={expanded ? setExpandedStyleToolOpen : setStyleToolOpen} activeToolId={activeStyleTool?.toolId} activeLabel={activeStyleTool?.label} onSelect={(id,label) => updatePromptFromCurrent((currentPrompt) => applyToolMention(currentPrompt,{id,label,type:"style"},"Palette"))} onClear={() => updatePromptFromCurrent((currentPrompt) => removeToolMentions(currentPrompt,"style"))} />
                     <CanvasNineGridPicker open={expanded ? expandedNineGridOpen : nineGridOpen} onOpenChange={expanded ? setExpandedNineGridOpen : setNineGridOpen} icon={activeNineGridIcon} onSelect={(id,label,icon) => updatePromptFromCurrent((currentPrompt) => applyToolMention(currentPrompt,{id,label,type:"nine_grid"},icon))} />
                 </> : <>
-                    <CanvasChooseEffectPicker open={expanded ? expandedEffectToolOpen : effectToolOpen} onOpenChange={expanded ? setExpandedEffectToolOpen : setEffectToolOpen} activeToolId={activeEffectTool?.toolId} activeLabel={activeEffectTool?.label} onSelect={(id,label) => updatePromptFromCurrent((currentPrompt) => applyToolMention(currentPrompt,{id,label,type:"effect"},"Sparkles"))} onClear={() => updatePromptFromCurrent((currentPrompt) => removeToolMentions(currentPrompt,"effect"))} />
+                    <CanvasChooseEffectPicker open={expanded ? expandedEffectToolOpen : effectToolOpen} onOpenChange={expanded ? setExpandedEffectToolOpen : setEffectToolOpen} activeToolId={activeEffectTool?.toolId} activeLabel={activeEffectTool?.label} onSelect={(id,label) => updatePromptFromCurrent((currentPrompt) => applyToolMention(currentPrompt,{id,label,type:"effect"},"Clapperboard"))} onClear={() => updatePromptFromCurrent((currentPrompt) => removeToolMentions(currentPrompt,"effect"))} />
                     <CanvasChooseMotionPicker open={expanded ? expandedMotionToolOpen : motionToolOpen} onOpenChange={expanded ? setExpandedMotionToolOpen : setMotionToolOpen} activeToolIds={activeMotionTools.map(t => t.toolId)} activeLabel={activeMotionTool?.label} onSelect={(id,label) => updatePromptFromCurrent((currentPrompt) => applyToolMention(currentPrompt,{id,label,type:"motion"},"Camera"))} onClear={removeMotionToolMention} />
                 </>}
             </div> : null}
@@ -354,7 +354,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                         onClick={() => setPromptOptimizerOpen(true)}
                         aria-label="润色提示词"
                     >
-                        <WandSparkles className="size-3" />
+                        <Settings2 className="size-3" />
                         <span className="text-[var(--fs-tiny)] font-medium">润色</span>
                     </button>
                 </Tooltip>

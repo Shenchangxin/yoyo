@@ -2,7 +2,7 @@
 import { App, Button, Input, InputNumber, Progress, Select } from "antd";
 import { Switch } from "@yingce/components/ui/base/switch";
 import { EmptyState } from "@yingce/components/ui/product/empty-state";
-import { FileAudio, FileImage, Film, Grip, Play, RotateCcw, Square, Upload, WandSparkles } from "lucide-react";
+import { FileAudio, FileImage, Film, Grip, Play, RotateCcw, Square, Upload, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { generationErrorMessage } from "@yingce/lib/generation-error";
@@ -222,7 +222,7 @@ export function WorkflowTestWorkbench({ provider, workflowId, workflowKind = "wo
                         <WorkflowLine from={positions.workflow} to={positions.output} fromWidth={324} fromOffsetY={84} toOffsetY={70} />
                     </svg>
 
-                    <WorkflowNode id="prompt" title="提示词" icon={<WandSparkles />} position={positions.prompt} onMove={(point) => setPositions((current) => ({ ...current, prompt: point }))}>
+                    <WorkflowNode id="prompt" title="提示词" icon={<Settings2 />} position={positions.prompt} onMove={(point) => setPositions((current) => ({ ...current, prompt: point }))}>
                         <Input.TextArea value={prompt} autoSize={{ minRows: 4, maxRows: 7 }} placeholder="输入本次测试提示词" onChange={(event) => setPrompt(event.target.value)} />
                     </WorkflowNode>
 

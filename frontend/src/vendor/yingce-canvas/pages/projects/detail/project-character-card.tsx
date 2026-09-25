@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { Button, Dropdown, Popconfirm } from "antd";
-import { Image as ImageIcon, MoveRight, Pencil, Sparkles, Trash2, UserRound, Volume2 } from "lucide-react";
+import { Image as ImageIcon, MoveRight, Pencil, Clapperboard, Trash2, UserRound, Volume2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { CachedResourceImage } from "@yingce/components/cached-resource-image";
@@ -50,7 +50,7 @@ export function ProjectCharacterCard({ asset, folderItems, generating, removing,
                     <StatusLine icon={<Volume2 className="size-3.5" />} ready={character?.voiceStatus === "ready"} label={voiceStatus} action={character?.voiceStatus === "ready" ? "调整" : "选择"} onClick={onBindVoice} />
                 </div>
                 <div className="mt-3 flex min-w-0 gap-2 border-t border-border/60 pt-2">
-                    <Button size="small" className="min-w-0 flex-1" icon={<Sparkles className="size-3.5" />} loading={generating} disabled={removing} onClick={onGenerate}>{character?.visualStatus === "missing" ? "初始化三视图" : "重新生成三视图"}</Button><Dropdown trigger={["click"]} menu={{ selectedKeys: [asset.folderId || ""], items: folderItems, onClick: ({ key }) => onMove(key) }}><Button type="text" size="small" disabled={generating || removing} icon={<MoveRight className="size-3.5" />} aria-label={`移动 ${asset.title}`} /></Dropdown><Popconfirm title="移出项目角色？" description="已有画布或镜头引用时将无法移出。" okText="移出" cancelText="取消" onConfirm={onRemove}><Button type="text" danger size="small" loading={removing} disabled={generating} icon={<Trash2 className="size-3.5" />} aria-label={`移出 ${asset.title}`} /></Popconfirm>
+                    <Button size="small" className="min-w-0 flex-1" icon={<Clapperboard className="size-3.5" />} loading={generating} disabled={removing} onClick={onGenerate}>{character?.visualStatus === "missing" ? "初始化三视图" : "重新生成三视图"}</Button><Dropdown trigger={["click"]} menu={{ selectedKeys: [asset.folderId || ""], items: folderItems, onClick: ({ key }) => onMove(key) }}><Button type="text" size="small" disabled={generating || removing} icon={<MoveRight className="size-3.5" />} aria-label={`移动 ${asset.title}`} /></Dropdown><Popconfirm title="移出项目角色？" description="已有画布或镜头引用时将无法移出。" okText="移出" cancelText="取消" onConfirm={onRemove}><Button type="text" danger size="small" loading={removing} disabled={generating} icon={<Trash2 className="size-3.5" />} aria-label={`移出 ${asset.title}`} /></Popconfirm>
                 </div>
             </div>
         </AssetLibraryCard>

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "antd";
-import { Check, LoaderCircle, Plus, Search, Sparkles, Users } from "lucide-react";
+import { Check, LoaderCircle, Plus, Search, Clapperboard, Users } from "lucide-react";
 
 import { AppModal } from "@yingce/components/ui/product/app-modal";
 import type { CanvasTheme } from "@yingce/lib/canvas-theme";
@@ -191,7 +191,7 @@ export function CanvasAgentSkillLibraryModal({
                         ) : null}
                         {!loading && visibleSkills.length === 0 ? (
                             <div className="canvas-agent-skill-library-state" style={{ color: theme.node.muted }}>
-                                <Sparkles className="size-6" aria-hidden="true" />
+                                <Clapperboard className="size-6" aria-hidden="true" />
                                 <span>{emptyText}</span>
                                 {tab !== "market" ? <Button size="small" onClick={() => changeTab("market")}>浏览公开技能</Button> : null}
                             </div>
@@ -259,7 +259,7 @@ function SkillLibraryCard({ skill, theme, categories, selected, canSelect, onTog
                         : <img src={coverUrl} alt="" loading="lazy" onError={() => setCoverFailed(true)} />
                 ) : (
                     <div className="canvas-agent-skill-card-placeholder" aria-hidden="true">
-                        <Sparkles className="size-7" />
+                        <Clapperboard className="size-7" />
                     </div>
                 )}
                 <span className="canvas-agent-skill-card-category">{categoryLabel}</span>

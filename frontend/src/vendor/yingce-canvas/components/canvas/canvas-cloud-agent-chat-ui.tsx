@@ -5,7 +5,7 @@ import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, ArrowUp, AtSign, Bookmark, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleDot, Clapperboard, Eye, HelpCircle, ImagePlus, Layers3, ListChecks, LoaderCircle, Palette, Pencil, Plus, RotateCcw, Shapes, Share2, ShoppingBag, Sparkles, Square, X, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowUp, AtSign, Bookmark, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, CircleDot, Clapperboard, Eye, HelpCircle, ImagePlus, Layers3, ListChecks, LoaderCircle, Palette, Pencil, Plus, RotateCcw, Shapes, Share2, ShoppingBag, Square, X, XCircle } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
@@ -109,7 +109,7 @@ export function AgentChatMessage({
                 <details className={`agent-reasoning-card${item.streaming ? " is-streaming" : ""}`} open={item.streaming || undefined}>
                     <summary className="agent-reasoning-summary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/20">
                         <span className="agent-reasoning-icon" aria-hidden="true">
-                            <Sparkles className="size-3.5" />
+                            <Clapperboard className="size-3.5" />
                         </span>
                         <span className="agent-reasoning-copy">
                             <span className="agent-reasoning-title">{item.streaming ? "模型正在思考" : "模型思考"}</span>
@@ -131,7 +131,7 @@ export function AgentChatMessage({
     if (isSystem) {
         return (
             <div className="flex items-start gap-3 text-xs">
-                <AgentTimelineMarker theme={theme} tone="muted" icon={<Sparkles className="size-3" />} />
+                <AgentTimelineMarker theme={theme} tone="muted" icon={<Clapperboard className="size-3" />} />
                 <div className="min-w-0 flex-1 py-0.5 leading-5" style={{ color: theme.node.muted }}>
                     {item.text}
                     {item.meta ? <span className="ml-2 opacity-60">{item.meta}</span> : null}
@@ -596,7 +596,7 @@ export type AgentSceneBucket = {
 };
 
 /** 场景分类：与 presets.json 的 scene 字段、技能的 tag 字段共用同一套 key。 */
-export const AGENT_SCENE_DEFS: Array<{ key: string; label: string; icon: typeof Sparkles }> = [
+export const AGENT_SCENE_DEFS: Array<{ key: string; label: string; icon: typeof Clapperboard }> = [
     { key: "frequent", label: "我的常用", icon: Bookmark },
     { key: "drama", label: "短剧故事", icon: Clapperboard },
     { key: "ecommerce", label: "广告电商", icon: ShoppingBag },
@@ -626,7 +626,7 @@ export function AgentSceneCapsules({ buckets, installedIds, theme, disabled = fa
     return (
         <div className="agent-scene-capsules mx-3 mb-2 min-w-0" style={{ color: theme.node.text }}>
             <div className="agent-scene-capsules-heading">
-                <Sparkles aria-hidden="true" />
+                <Clapperboard aria-hidden="true" />
                 <span>{active ? active.label : "技能组合推荐"}</span>
             </div>
             <div className="agent-scene-capsules-scroll thin-scrollbar flex gap-2 overflow-x-auto px-1 py-2">
@@ -685,7 +685,7 @@ export function AgentSceneCapsules({ buckets, installedIds, theme, disabled = fa
                                         onPickSkill(skill);
                                     }}
                                 >
-                                    <Sparkles aria-hidden="true" />
+                                    <Clapperboard aria-hidden="true" />
                                     <span className="agent-scene-capsule-label">{skill.skillName}</span>
                                     <span className="agent-scene-capsule-meta">{owned}</span>
                                 </button>
@@ -982,7 +982,7 @@ export function AgentChatComposer({
                                     onMouseEnter={() => setSlashIndex(index)}
                                     onClick={() => applySlashSkill(skill)}
                                 >
-                                    <Sparkles className="size-3.5 shrink-0 opacity-70" />
+                                    <Clapperboard className="size-3.5 shrink-0 opacity-70" />
                                     <span className="min-w-0 truncate font-medium">{skill.skillName}</span>
                                     {skill.description ? <span className="min-w-0 flex-1 truncate opacity-50">{skill.description}</span> : null}
                                 </button>

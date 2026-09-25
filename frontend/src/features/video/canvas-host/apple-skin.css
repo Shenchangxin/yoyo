@@ -1,0 +1,586 @@
+/* Host skin: 影策 island → Yoyo tokens + Apple HIG materials. */
+
+.yingce-island {
+  --font-sans: inherit;
+  --font-heading: inherit;
+  --font-mono: inherit;
+  --radius: var(--radius-control, 0.5rem);
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 14px;
+  --r-2xl: 16px;
+  --r-full: 999px;
+  --fs-display: 21px;
+  --fs-title: 16px;
+  --fs-heading-lg: 15px;
+  --fs-heading: 13px;
+  --fs-body-lg: 13.5px;
+  --fs-body: 13px;
+  --fs-tiny: 11px;
+  --fs-micro: 10.5px;
+  --typ-display-mega: 21px;
+  --typ-display-xl: 21px;
+  --typ-display-lg: 21px;
+  --typ-display-md: 16px;
+  --typ-display-sm: 15px;
+  --workspace-canvas: var(--background);
+  --workspace-page: var(--background);
+  --workspace-navigation: var(--sidebar);
+  --workspace-content: var(--background);
+  --workspace-surface: var(--card);
+  --workspace-surface-strong: var(--card);
+  --workspace-border: var(--border);
+  --workspace-border-strong: var(--border);
+  --workspace-accent: var(--accent);
+  --workspace-accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --workspace-text-body: var(--foreground);
+  --workspace-text-muted: var(--muted);
+  --workspace-text-faint: color-mix(in srgb, var(--muted) 80%, transparent);
+  --workspace-glass-surface: var(--glass-bg, var(--sidebar));
+  --user-ink: var(--foreground);
+  --user-ink-muted: var(--muted);
+  --user-ink-soft: color-mix(in srgb, var(--muted) 80%, transparent);
+  --user-surface: var(--card);
+  --user-surface-muted: var(--lift);
+  --user-surface-hover: var(--lift);
+  --user-accent: var(--accent);
+  --user-accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --user-radius-card: 12px;
+  --user-radius-control: 8px;
+  --button-primary-bg: var(--foreground);
+  --button-primary-fg: var(--background);
+  --button-primary-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
+  --button-primary-active-bg: var(--foreground);
+  --cn-text: var(--foreground);
+  --cn-muted: var(--muted);
+  --cn-faint: color-mix(in srgb, var(--muted) 75%, transparent);
+  --cn-stroke: var(--border);
+  --cn-fill: var(--card);
+  --cn-active-stroke: var(--accent);
+  --cn-active-stroke-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --cn-spatial-surface: var(--glass-bg, var(--card));
+  --cn-spatial-surface-strong: var(--card);
+  --cn-spatial-shadow: none;
+  --cn-spatial-glow: transparent;
+  --cn-spatial-glow-strong: transparent;
+  --cn-spatial-elevated: var(--popover);
+  --cn-spatial-toolbar-border: var(--border);
+  --canvas-composer-surface: var(--input-bar);
+  --canvas-composer-control-hover: var(--lift);
+  --canvas-composer-shadow: var(--shadow-card);
+  --canvas-composer-radius: var(--radius-control);
+  --status-success: var(--success);
+  --status-error: var(--danger);
+  --status-loading: var(--accent);
+  --status-warning: var(--warning);
+  --palette-node-image: var(--muted);
+  --palette-node-video: var(--muted);
+  --palette-node-text: var(--muted);
+  --palette-node-audio: var(--muted);
+  --palette-node-config: var(--muted);
+  --palette-node-script: var(--muted);
+  --palette-node-drawing: var(--muted);
+  --palette-node-frame: var(--muted);
+  --palette-node-character: var(--muted);
+  --palette-node-skill: var(--muted);
+  --cn-type-image: var(--muted);
+  --cn-type-video: var(--muted);
+  --cn-type-text: var(--muted);
+  --cn-type-audio: var(--muted);
+  --cn-type-config: var(--muted);
+  --cn-type-script: var(--muted);
+  --cn-type-drawing: var(--muted);
+  --cn-type-frame: var(--muted);
+  --cn-type-character: var(--muted);
+  --cn-type-skill: var(--muted);
+  --dock-surface: var(--glass-bg, var(--popover));
+  --dock-border: var(--border);
+  --dock-blur: var(--glass-blur, 20px);
+  --dock-radius: 16px;
+  --dock-radius-tight: 14px;
+  --dock-radius-compact: 12px;
+  --dock-item-radius: 8px;
+  --panel-radius: 12px;
+  --node-radius: 12px;
+  --glass-saturate: 180%;
+  --elevation-overlay: var(--shadow-popover);
+  color: var(--foreground);
+  background: var(--background);
+  font-family: inherit;
+  font-feature-settings: "ss01" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* —— Nodes: iOS media tile, hairline, terracotta only when live —— */
+.yingce-island .canvas-node-shell {
+  overflow: hidden;
+  border-radius: var(--node-radius);
+  background: var(--card);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+}
+
+.yingce-island .canvas-node-shell[data-state="loading"],
+.yingce-island .canvas-node-shell[data-node-state="loading"] {
+  outline: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+
+.yingce-island .canvas-node-shell[data-state="active"],
+.yingce-island .node-element:has(.canvas-node-shell) {
+  /* selection ring is drawn by theme.activeStroke; keep it quiet */
+}
+
+.yingce-island .canvas-node-external-header {
+  height: 22px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+}
+
+.yingce-island .canvas-node-inline-action,
+.yingce-island .canvas-node-tool-button {
+  height: 28px;
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--glass-bg, var(--popover)) !important;
+  color: var(--foreground) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.yingce-island .node-type-badge,
+.yingce-island [class*="node-type-badge"],
+.yingce-island .canvas-node-type-mark {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  box-shadow: none !important;
+  border-radius: 6px !important;
+}
+
+/* —— Hide SaaS costume —— */
+.yingce-island .creation-mode-spark,
+.yingce-island .aceternity-comet-card,
+.yingce-island [class*="spotlight-blob"],
+.yingce-island .working-glow,
+.yingce-island .creation-submit-cost,
+.yingce-island [class*="wallet"],
+.yingce-island .workspace-credit,
+.yingce-island .app-credit-chip,
+.yingce-island .creation-agent-orb {
+  display: none !important;
+}
+
+.yingce-island .creation-agent-entry {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 14px !important;
+  padding: 22px !important;
+}
+
+.yingce-island .creation-agent-copy h2 {
+  font-size: 21px !important;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.yingce-island .creation-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.yingce-island .creation-agent-actions .yc-btn,
+.yingce-island .creation-agent-actions .ant-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding-inline: 14px !important;
+  border-radius: 10px !important;
+}
+
+.yingce-island .creation-home-heading {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.yingce-island .creation-home-heading h1,
+.yingce-island .creation-home h1,
+.yingce-island .app-page-header-title {
+  font-size: 21px !important;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.yingce-island .creation-home-heading p {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* —— Composer = Messages-style glass field —— */
+.yingce-island .creation-composer-shell,
+.yingce-island .creation-composer-shell-inner,
+.yingce-island .creation-chat-composer {
+  background: var(--input-bar) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--shadow-composer) !important;
+}
+
+.yingce-island .creation-mode-tabs {
+  width: min(456px, 100%);
+  margin: 0 auto 16px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--lift);
+  min-height: 44px;
+}
+
+.yingce-island .creation-mode-button {
+  height: 40px;
+  min-height: 40px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 6px;
+}
+
+.yingce-island .creation-mode-indicator {
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 1px 0 color-mix(in srgb, white 8%, transparent), 0 1px 3px color-mix(in srgb, black 18%, transparent);
+}
+
+.yingce-island .creation-submit-action {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px !important;
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.yingce-island .creation-submit.yc-btn,
+.yingce-island .creation-submit.ant-btn,
+.yingce-island .creation-submit {
+  height: auto !important;
+  min-height: 36px !important;
+  width: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 999px !important;
+}
+
+.yingce-island .creation-submit:disabled .creation-submit-action,
+.yingce-island .creation-submit.yc-btn-disabled .creation-submit-action,
+.yingce-island .creation-submit.ant-btn-disabled .creation-submit-action {
+  background: var(--lift) !important;
+  color: var(--muted) !important;
+}
+
+.yingce-island .creation-floating-prompt {
+  display: none !important;
+}
+
+/* —— Glass chrome: dock, menus, inspectors —— */
+.yingce-island .canvas-floating-toolbar,
+.yingce-island .canvas-node-toolbar,
+.yingce-island .canvas-floating-dock,
+.yingce-island .aceternity-floating-dock,
+.yingce-island .aceternity-floating-panel,
+.yingce-island [class*="floating-dock"],
+.yingce-island .canvas-topbar-cluster {
+  background: var(--glass-bg, var(--popover)) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-popover) !important;
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.yingce-island .aceternity-floating-dock {
+  padding: 4px 6px !important;
+}
+
+.yingce-island .library-page,
+.yingce-island .studio-collection-page,
+.yingce-island .creation-home,
+.yingce-island .app-user-content,
+.yingce-island .app-workspace-scroll {
+  background: var(--background);
+}
+
+.yingce-island .app-page-header p {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.yingce-island .product-collection-card,
+.yingce-island .skill-library-card,
+.yingce-island .story-launcher-panel,
+.yingce-island .canvas-project-card,
+.yingce-island [class*="collection-card"] {
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: var(--card) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+/* iOS grouped list: library / assets / skills / tasks */
+.yingce-island .app-workspace-grid,
+.yingce-island [class*="collection-grid"] {
+  gap: 8px;
+}
+
+.yingce-island .yc-list,
+.yingce-island .ant-list,
+.yingce-island [class*="library-list"] {
+  background: var(--card);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* —— Ant / yc controls: iOS segmented + macOS buttons —— */
+.yingce-island .yc-btn:not(.creation-submit),
+.yingce-island .ant-btn:not(.creation-submit),
+.yingce-island .product-icon-button,
+.yingce-island .creation-chat-control {
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .yc-btn-default,
+.yingce-island .ant-btn-default,
+.yingce-island .product-icon-button,
+.yingce-island .creation-chat-control {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island .yc-btn-primary,
+.yingce-island .ant-btn-primary,
+.yingce-island .yc-btn-primary.yc-btn-circle,
+.yingce-island .ant-btn-primary.ant-btn-circle {
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island .yc-btn-primary.yc-btn-circle,
+.yingce-island .ant-btn-primary.ant-btn-circle {
+  border-radius: 999px !important;
+}
+
+.yingce-island .yc-input,
+.yingce-island .yc-input-affix-wrapper,
+.yingce-island .yc-select-selector,
+.yingce-island .ant-input,
+.yingce-island .ant-input-affix-wrapper,
+.yingce-island .ant-select-selector,
+.yingce-island .ant-input-outlined {
+  border-radius: 8px !important;
+  background: var(--input-bar) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .yc-input:focus,
+.yingce-island .yc-input-affix-wrapper-focused,
+.yingce-island .yc-select-focused .yc-select-selector,
+.yingce-island .ant-input:focus,
+.yingce-island .ant-input-affix-wrapper-focused {
+  border-color: color-mix(in srgb, var(--foreground) 25%, var(--border)) !important;
+}
+
+.yingce-island .yc-modal .yc-modal-content,
+.yingce-island .ant-modal .ant-modal-content,
+.yingce-island .yc-drawer .yc-drawer-content,
+.yingce-island .ant-drawer .ant-drawer-content {
+  border-radius: 14px !important;
+  background: var(--popover) !important;
+  box-shadow: var(--shadow-popover) !important;
+  overflow: hidden;
+}
+
+.yingce-island .yc-modal .yc-modal-header,
+.yingce-island .ant-modal .ant-modal-header,
+.yingce-island .yc-drawer .yc-drawer-header,
+.yingce-island .ant-drawer .ant-drawer-header {
+  border-bottom-color: var(--border) !important;
+  background: transparent !important;
+}
+
+.yingce-island .yc-modal .yc-modal-title,
+.yingce-island .ant-modal .ant-modal-title {
+  font-size: 16px !important;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.yingce-island .yc-dropdown .yc-dropdown-menu,
+.yingce-island .ant-dropdown .ant-dropdown-menu,
+.yingce-island .yc-select-dropdown,
+.yingce-island .ant-select-dropdown,
+.yingce-island .yc-popover .yc-popover-inner,
+.yingce-island .ant-popover .ant-popover-inner,
+.yingce-island .yc-menu,
+.yingce-island [role="menu"] {
+  border-radius: 12px !important;
+  background: var(--glass-bg, var(--popover)) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-popover) !important;
+  padding: 4px !important;
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.yingce-island .yc-dropdown-menu-item,
+.yingce-island .ant-dropdown-menu-item,
+.yingce-island .yc-select-item,
+.yingce-island .ant-select-item,
+.yingce-island .yc-menu-item {
+  border-radius: 6px !important;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.yingce-island .yc-dropdown-menu-item-divider,
+.yingce-island .ant-dropdown-menu-item-divider {
+  margin: 4px 8px !important;
+  background: var(--border) !important;
+}
+
+.yingce-island .yc-switch.yc-switch-checked .yc-switch-inner,
+.yingce-island .ant-switch.ant-switch-checked {
+  background: var(--success) !important;
+}
+
+.yingce-island .yc-segmented,
+.yingce-island .ant-segmented {
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--lift) !important;
+}
+
+.yingce-island .yc-segmented-item-selected,
+.yingce-island .ant-segmented-item-selected {
+  border-radius: 8px !important;
+  background: var(--card) !important;
+  box-shadow: 0 1px 2px color-mix(in srgb, black 16%, transparent);
+}
+
+.yingce-island .yc-tabs .yc-tabs-ink-bar,
+.yingce-island .ant-tabs .ant-tabs-ink-bar {
+  background: var(--foreground) !important;
+  height: 1.5px;
+  border-radius: 999px;
+}
+
+.yingce-island .yc-tabs .yc-tabs-tab,
+.yingce-island .ant-tabs .ant-tabs-tab {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Prompt inspector / node hover tools */
+.yingce-island .canvas-node-prompt-panel,
+.yingce-island [class*="prompt-panel"],
+.yingce-island [class*="inspector-panel"] {
+  border-radius: 12px;
+  background: var(--glass-bg, var(--popover));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.yingce-island textarea,
+.yingce-island .canvas-resource-mention-textarea,
+.yingce-island [class*="mention-textarea"] {
+  border-radius: 10px;
+  background: var(--input-bar);
+  color: var(--foreground);
+}
+
+/* Timeline: FCP-quiet, not rainbow */
+.yingce-island [class*="timeline-clip"],
+.yingce-island [data-clip-kind] {
+  border-radius: 4px;
+}
+
+.yingce-island .creation-featured-card,
+.yingce-island .creation-suggest-card,
+.yingce-island .suggest-card {
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  border: 0;
+}
+
+.yingce-island .creation-featured-media img,
+.yingce-island .assets-empty-banner-frame img,
+.yingce-island .creation-empty-art-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.yingce-island .creation-featured-copy em svg {
+  display: none;
+}
+
+/* Context / hover toolbars on the canvas */
+.yingce-island [data-canvas-no-zoom] button,
+.yingce-island .canvas-create-menu button {
+  border-radius: 8px;
+}
+
+.yingce-island .canvas-create-menu {
+  display: grid;
+  gap: 2px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .yingce-island .canvas-floating-toolbar,
+  .yingce-island .canvas-node-toolbar,
+  .yingce-island .canvas-floating-dock,
+  .yingce-island .aceternity-floating-dock,
+  .yingce-island .aceternity-floating-panel,
+  .yingce-island [class*="floating-dock"],
+  .yingce-island .canvas-node-inline-action,
+  .yingce-island .canvas-node-tool-button,
+  .yingce-island .yc-dropdown .yc-dropdown-menu,
+  .yingce-island .ant-dropdown .ant-dropdown-menu,
+  .yingce-island .canvas-node-prompt-panel {
+    background: var(--popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yingce-island *,
+  .yingce-island *::before,
+  .yingce-island *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

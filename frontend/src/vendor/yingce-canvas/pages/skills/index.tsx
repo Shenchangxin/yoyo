@@ -3,7 +3,7 @@ import { CollectionToolbar } from "@yingce/components/layout/collection-toolbar"
 import { App, Button, Dropdown, Input, Select } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 
-import { Boxes, Check, Clapperboard, Heart, Library, LoaderCircle, Megaphone, MoreHorizontal, Palette, Plus, Puzzle, Search, ShoppingBag, Sparkles, UserRound } from "lucide-react";
+import { Boxes, Check, Clapperboard, Heart, Library, LoaderCircle, Megaphone, MoreHorizontal, Palette, Plus, Puzzle, Search, ShoppingBag, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
@@ -17,7 +17,7 @@ import { SkillInstallModal } from "@yingce/pages/skills/skill-install-modal";
 import { addSkill, deleteSkill, getSkill, likeSkill, listSkills, removeSkill, syncSkill, unlikeSkill, type Skill, type SkillCategory, type SkillScope, type SkillSort } from "@yingce/services/api/skills";
 
 const scopeOptions = [
-    { label: "技能广场", value: "public", icon: Sparkles },
+    { label: "技能广场", value: "public", icon: Clapperboard },
     { label: "我的技能", value: "mine", icon: Library },
     { label: "我创建的", value: "created", icon: UserRound },
     { label: "我的收藏", value: "favorites", icon: Heart },

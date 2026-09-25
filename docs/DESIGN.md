@@ -2,18 +2,23 @@
 
 Yoyo is a harness workstation: an operator watches an agent work, reviews what
 it changed, and decides what survives. The interface should feel like a quiet
-Mac utility — Xcode's inspector, Linear's density, Codex's transcript grammar —
-not a chat product and not an IDE. Every rule below serves one sentence:
+Mac utility — Xcode's inspector, Linear's density, Messages' composer, Final
+Cut's viewer — not a chat product and not an IDE. Every rule below serves one
+sentence:
 
 > **Show the work, hide the chrome. Color is evidence. Motion is state.**
 
-Visual direction is Swiss Modernism 2.0 applied to a Mac utility: Inter, a
-4pt grid, one sage accent, mathematical spacing. Beauty is instrument craft
-(CAS mark, pointer maps, paper grain) — not personality marketing. Skill-layer
-notes live in `design-system/yoyo/MASTER.md`; this file still wins on grammar.
+Visual direction is a warm night studio: Plus Jakarta Sans, terracotta on
+charcoal, Apple HIG materials (glass chrome, concentric radii, grouped Form).
+Beauty is instrument craft — not personality marketing. Skill-layer notes live
+in `design-system/yoyo/MASTER.md`; this file still wins on grammar.
 
 The source of truth for tokens is `frontend/src/styles.css`. This document
-explains how to spend them.
+explains how to spend them. Do not follow stale Inter / sage / zinc recipes.
+
+Hosted 影策 (`.yingce-island`) maps onto these tokens via
+`frontend/src/features/video/canvas-host/apple-skin.css`. Yingce is an engine,
+not a costume.
 
 ---
 
@@ -27,10 +32,11 @@ explains how to spend them.
 2. **Hairlines, not boxes.** Lists are separated by `border-border/50` lines.
    Cards are reserved for objects the operator acts on (approvals, artifacts,
    errors). Never nest a card inside a card.
-3. **Color is evidence.** Zinc chrome. `success` and `danger` appear only where
-   they carry meaning: diff adds/deletes, failed steps, destructive actions.
-   `warning` marks incomplete state (interrupted, needs approval). `accent`
-   is for primary selection in the composer and Harbor verdicts.
+3. **Color is evidence.** Warm charcoal chrome. Terracotta (`accent`) is for
+   primary selection and live generation. `success` and `danger` appear only
+   where they carry meaning: diff adds/deletes, failed steps, destructive
+   actions. `warning` marks incomplete state. Do not spend hue on node-type
+   rainbows.
 4. **Motion is state.** Something moves only while something is happening
    (shimmer verb, pulse dot, ticking clock). The instant work ends the motion
    stops and the row settles into past tense. Decorative motion is limited to
@@ -41,6 +47,10 @@ explains how to spend them.
 6. **Truth in the audit trail.** Narration (“Read 3 files”) lives in summaries;
    raw tool names, paths and commands stay visible in expanded rows and diffs
    in monospace with ligatures off.
+7. **One chrome.** PageHeader is the only toolbar. Video is Create | Drama |
+   Canvas in that header. The rail on Video is projects, not a second product
+   nav. Assets, plugins, and creation history jump from the command palette.
+   Skills is the Yoyo Skills surface.
 
 ---
 
@@ -52,26 +62,26 @@ Mode (`system | dark | light`) is orthogonal to named palettes. The document
 element carries `class="dark|light"` and `data-palette`. Accent, success,
 danger, and warning stay put so Harbor and diffs still mean the same thing.
 
-Dark palettes: **Ink** (default, `#0c0d0e`), Dim (lifted charcoal), Slate
-(cool blue-black). Light palettes: **Neutral** (default, true gray `#f4f4f5`),
-Paper (warm ivory `#f1f0ea`, opt-in), Mist (cool daylight). Do not ship a
-yellow light as the only option.
+Default dark is the warm night studio. Mist (cool daylight) is an opt-in light
+palette — not the brand.
 
-| Token | Dark (Ink) | Light (Neutral) | Use |
+| Token | Dark (studio) | Light | Use |
 |---|---|---|---|
-| `background` | `#0c0d0e` | `#f4f4f5` | app canvas, transcript |
-| `sidebar` | `#141516` | `#e8e8ea` | rail, review panel, code surfaces |
-| `card` | `#1a1b1c` | `#ffffff` | actionable cards |
-| `popover` | `#222324` | `#ffffff` | menus, tooltips, jump pill |
-| `input-bar` | `#1c1d1e` | `#ffffff` | composer |
-| `lift` | `#262728` | `#e4e4e7` | hover, selected, chips, kbd |
-| `border` | white 9% | black 8.5% | every hairline |
-| `foreground` | `#ececea` | `#18181b` | primary text, primary button fill |
-| `muted` | `#8c8e8d` | `#5f5f66` | secondary text, icons |
-| `accent` | `#6d8a7e` | `#5d7368` | primary selection, Harbor pass |
-| `success` | `#6fae82` | `#3f8a58` | diff add, healthy |
-| `warning` | `#d1a24a` | `#a97a1f` | interrupted, needs approval |
-| `danger` | `#dc3d3d` | `#c43333` | failed, destructive |
+| `background` | `#161310` | `#f5f5f3` | app canvas, transcript |
+| `sidebar` | `#100e0c` | cool/warm rail | rail, review panel, code surfaces |
+| `card` | `#1e1a17` | paper | actionable cards, grouped Form |
+| `popover` | `#25201c` | white | menus, tooltips, jump pill |
+| `input-bar` | `#1c1916` | white | composer |
+| `lift` | `#2c2621` | hover wash | hover, selected, chips, kbd |
+| `border` | foreground 10% | ink 10% | every hairline |
+| `foreground` | `#f2ede6` | `#1c1916` | primary text, primary button fill |
+| `muted` | `#9a9086` | `#6f675f` | secondary text, icons |
+| `accent` | `#e08a6a` terracotta | terracotta | selection, live generation |
+| `success` | `#7eae8c` | green | diff add, healthy, iOS switch |
+| `warning` | `#c4a15a` | gold | interrupted, needs approval |
+| `danger` | `#d16a64` | red | failed, destructive |
+| `media-surface` | `#0b0d10` | near-black | Drama viewer, canvas stage |
+| `glass-bg` | sidebar 72% | sidebar 72% | chrome only (header, rail, inspector) |
 
 Opacity steps for text: `foreground` (primary) · `foreground/85` (labels) ·
 `muted` (secondary) · `muted/70` (tertiary, meta) · `muted/50` (separators
@@ -83,35 +93,42 @@ with the same hue — colour lives in **either** the marker **or** the fill.
 
 ### Typography
 
-- **UI:** Inter Variable, `cv11 ss03 calt`, optical sizing on. Body 13px,
-  labels 12.5px, meta 11.5px, eyebrow 10.5px uppercase `tracking-[0.08em]`.
-  Headlines: 21px/600/`tracking-[-0.03em]` (empty state), 13px/500 (pane
-  titles). Transcript prose is a three-step ramp, not one size: answer 13.5px/1.6,
-  headings 16 / 14.5 / 13.5px, process 12.5px, code 12px. Headings use
-  `text-wrap: pretty` so widows do not sit alone.
-- **Code:** `--font-mono` (system mono ladder). 11.5px/1.6 in diffs and tool
-  payloads, 12px for tool names inline. `font-variant-ligatures: none`
-  everywhere code is shown — a diff must show the bytes on disk.
-- **Numbers:** `tabular-nums` on every count, duration and size so columns do
-  not jitter while live.
+- **UI:** Plus Jakarta Sans Variable. Body 13px, labels 12.5px, meta 11.5px,
+  eyebrow 10.5px uppercase `tracking-[0.08em]`. Headlines cap at **21px**/600/
+  `tracking-[-0.03em]`. Pane titles 13px/500. Transcript prose is a three-step
+  ramp: answer 13.5px/1.6, headings 16 / 14.5 / 13.5px, process 12.5px, code
+  12px. Headings use `text-wrap: pretty`.
+- **Code:** `--font-mono` (JetBrains Mono, then system mono). 11.5px/1.6 in
+  diffs and tool payloads, 12px for tool names inline.
+  `font-variant-ligatures: none` everywhere code is shown.
+- **Numbers:** `tabular-nums` on every count, duration and size.
+
+Do not use Inter. Do not use `fs-display` 36 / 72. Yingce island `--fs-display`
+is remapped to 21px.
 
 ### Spacing & radius
 
 4pt grid. Row heights: 28px (transcript process rows), 32px (list rows,
-section labels), 36px (pane toolbars), 40px (tab strips, pane headers), 44px
-(footers with a primary action). Gutters: 24/32px transcript, 12px panels.
+section labels), 36px (pane toolbars), 40px (tab strips), 44px (footers with a
+primary action), 48px (PageHeader). Gutters: 24/32px transcript, 12px panels.
 
-Radius: 5px (segmented buttons), 6px (icon buttons, kbd, chips), 8px (code
-surfaces), 10px (`--radius`, panes and cards), 16px (`--radius-composer`),
-18px (user bubble), full (pills, jump-to-latest, primary CTAs).
+Concentric radii (Apple): 5px segmented inset, 6px icon buttons / kbd / chips,
+8px (`--radius-control`) fields and default buttons, 10px inner panels,
+12px nodes / grouped cards, 16px (`--radius-composer`) composer and docks,
+18px user bubble, full pills and primary send.
 
-### Elevation
+### Elevation & glass
 
-Flat. Depth comes from an inset top highlight (`--shadow-card`,
-`--shadow-composer`) on cards and the composer, and a single soft drop shadow
-(`--shadow-popover`) on floating layers only. The app canvas may carry a 2–5%
-film grain (material, not a glow). No glows, no blur beyond `backdrop-blur-sm`
-on sticky headers.
+Depth comes from an inset top highlight (`--shadow-card`, `--shadow-composer`)
+on cards and the composer, and a single soft drop shadow (`--shadow-popover`)
+on floating layers. Glass (`backdrop-filter: blur(20px) saturate(160%)` on
+`--glass-bg`) is for **chrome only**: PageHeader, SidebarCard, inspector,
+canvas dock, menus. The stage and media surface stay opaque. Honour
+`prefers-reduced-transparency` (solid `--sidebar` / `--popover`) and
+`prefers-reduced-motion`.
+
+The app canvas may carry a 2–5% film grain. No glows, no Spotlight blobs, no
+HoverBorderGradient, no WorkingGlow.
 
 ### Mark
 
@@ -123,15 +140,14 @@ illustration, or an avatar.
 
 | Token | Value | Use |
 |---|---|---|
-| `--duration-fast` | 120ms | hover, chevron rotate, row swap |
-| `--duration` | 180ms | disclosure height, tab underline |
+| `--duration-fast` | 140ms | hover, chevron rotate, row swap |
+| `--duration` | 200ms | disclosure height, tab underline |
 | `--duration-shell` | 240ms | pane resize, sheet |
-| `--ease-out` | `cubic-bezier(.22,.61,.36,1)` | everything |
+| `--ease-out` | `cubic-bezier(.32,.72,0,1)` | everything |
 
 Live grammar (see `ProcessGroup`): `.shimmer-text` sweeps the verb, `.pulse-dot`
 breathes on the rail, `useNow` ticks a `Worked for` clock. All three stop the
-moment `running` is false. `prefers-reduced-motion` freezes shimmer to plain
-foreground text and removes pulse, rise and caret animations.
+moment `running` is false.
 
 ---
 
@@ -140,28 +156,31 @@ foreground text and removes pulse, rise and caret animations.
 ```
 ┌ rail ─┐┌──────────── stage ────────────┐┌── review ──┐
 │ Yoyo  ││ PageHeader (drag region)      ││ tabs       │
-│ New   ││                               ││ toolbar    │
-│ chats ││   [ fluid column ≤72rem ]     ││ list/diff  │
-│       ││   transcript … composer       ││            │
-│ Skills││                               ││ footer CTA │
+│ New   ││ Create | Drama | Canvas       ││ toolbar    │
+│ chats ││                               ││ list/diff  │
+│ /proj ││   [ fluid column / studio ]   ││            │
+│       ││   transcript … composer       ││ footer CTA │
+│ Skills││   or canvas / drama split     ││            │
 │ Video ││                               ││            │
 │ Harn. │└───────────────────────────────┘└────────────┘
 ```
 
 - App frame padding 8px; rail, review, Settings, Skills, and Harness are
-  rounded cards on `sidebar` with the inset highlight; the agent and Video
-  stages are bare `background` so the transcript reads as a document.
-- **Video** is a conversation surface. Generation mode (short drama / canvas /
-  creative) is the leftmost composer control; the bound episode sits next to
-  it. Video chats live on their own session channel — they never share an
-  identity with Agent chats (LibTV session vs project; OiiOii chat vs canvas).
-  The stage is transcript + composer only — no Review column. The episode
-  board is an overlay the operator opens from the composer, then returns to
-  chat. Binding a chat to an episode does not create either. Chat dock is not
-  used on Video; clicking Video in the rail toggles the surface.
+  glass cards on `sidebar`; Agent and Video stages are bare `background`.
+- **Video** is one chrome. Create / Drama / Canvas plus Assets / Skills /
+  Plugins / History live in the left rail (`VideoShellNav`). Drama series and
+  canvas boards live in Creation history, not a second workspace list under
+  the rail. Yoyo Skills in the dock is the skill market; Video → Skills is
+  the hosted island library. Studio image / video / speech adapters in
+  Settings are the same providers Create and Canvas pick from.
+- **Drama** is a Final Cut split: browser (cast/scenes/props) | viewer + film
+  strip | inspector. Pipeline verbs sit on the viewer. Tasks open a drawer.
+- **Canvas** keeps the Yingce renderer. Nodes are monochrome media tiles with
+  a 1-letter type mark; terracotta only while generating. Floating tools are
+  glass docks. Agent pins to the right inspector — no second chat product.
 - **Harness process rail** — Overview is the unnumbered origin. Propose /
   Prove / Promote carry `01 02 03` and share the Review underline tab
-  grammar. They are one RSI sequence, not four sibling labs.
+  grammar.
 - Default split 19 / 51 / 30. Review collapses to a right sheet under 1100px;
   the rail becomes a hover overlay under 800px. Panes are user-resizable and
   persisted (`yoyo-layout-v1`).
@@ -177,34 +196,25 @@ foreground text and removes pulse, rise and caret animations.
   `assistant-letter`. The answer is the scan target (13.5px); headings step
   16 / 14.5 / 13.5px — never Streamdown's stock `text-3xl`. Process rows and
   fenced code sit a step quieter (12.5px / 12px). A circle caret marks live
-  tokens; the process row (pulse + shimmer verb) is status. The letter stays
-  at answer contrast so it remains readable while it grows. Copy/review
+  tokens; the process row (pulse + shimmer verb) is status. Copy/review
   actions sit at the foot and appear on hover once the turn is settled.
   Turns are separated by whitespace (40px), not rules.
 - **Process** — one disclosure row per model round. Live: pulse dot + shimmer
   verb (`Reading`, `Running`, `Thinking`) + mono detail + clock. Settled:
   `Worked for 20s · Ran 1 command · Read 2 files` with a dot / ✕ / dashed-ring
-  glyph for done / failed / interrupted. Expanded: a hairline step rail; each
-  row is glyph · mono tool name · mono detail · elapsed · state, with input and
-  output code surfaces beneath. A call without a result is **interrupted** the
-  moment the turn ends — never a spinner on a finished turn.
+  glyph for done / failed / interrupted. Expanded: a hairline step rail.
 - **Artifacts** (patch, office file, MCP view) — card on `card/60` with icon
   tile, title, mono meta and pill actions (`Preview`, `Open in Review`).
-  Host-open is Review's job, not a second button on the card. Pending shows
-  shimmer on the title.
 - **Approval** — card with a `warning` left bar and icon tile, eyebrow, action
   title, the command in a code surface, then `Allow once` (primary) · `This
   chat` · `Always` · `Reject` with kbd hints `1 2 3 Esc`.
 - **Error** — `danger` bar and tint for provider failures; neutral card for
-  soft stops (`Stopped`, `Reached the turn limit`) with a `Continue this turn`
-  CTA when retryable. Details behind a disclosure.
+  soft stops with a `Continue this turn` CTA when retryable.
 - **Empty thread** — bottom-anchored above the composer: mark, greeting
-  (`Ready when you are.` / Video: `Paste a chapter.`), one hint line, three
-  starter pills. No headline larger than 21px, no marketing copy.
+  (`Ready when you are.` / Video: `Paste a chapter.`), one hint line, starter
+  **pills** (not a 3-column marketing grid). No headline larger than 21px.
 - **Composer** — brightest object on the stage. Toolbar is ghost controls;
-  send is a filled circle that flips to a stop square while running. The
-  context meter appears only once tokens exist or a turn is running or queued.
-  On Video, the leftmost control is generation mode; Agent/Plan is hidden.
+  send is a filled circle that flips to a stop square while running.
 
 ---
 
@@ -216,18 +226,10 @@ foreground text and removes pulse, rise and caret animations.
   segmented control and icon buttons. No labelled buttons in toolbars.
 - **Diff** — grouped by file. Sticky file header with a tri-state checkbox,
   path (directory dimmed, basename strong, truncated from the left), hunk
-  count. Each hunk: checkbox + `@@` header row, then tinted diff rows with a
-  14px marker gutter. Footer appears only with a selection: `Apply n` · `Clear`.
+  count. Footer appears only with a selection: `Apply n` · `Clear`.
 - **Files / Queue / Memory** — `divide-y` hairline lists under uppercase
-  eyebrows with counts. Row actions are icon buttons revealed on hover or
-  small text actions (`Once` primary, `Deny` danger-on-hover). Files preview
-  fills the remaining Review column; source is Shiki-highlighted, HTML is
-  sandboxed, binary is a one-line note.
-- **Trace** — one stats line (`10 events · 3 tools · 0 errors · 2.1s · 12k
-  tokens`), filter chips, then rows: time · mono type · summary · elapsed.
-  Expanded rows show a code surface and a Copy action.
-- **Empty** — centred icon tile, one sentence, one hint. Never instructions
-  longer than a line.
+  eyebrows with counts.
+- **Empty** — centred icon tile, one sentence, one hint.
 
 ---
 
@@ -237,11 +239,14 @@ foreground text and removes pulse, rise and caret animations.
 |---|---|
 | Icon button | `size-6 rounded-md text-muted hover:bg-lift hover:text-foreground`, always with `aria-label` and a tooltip |
 | Text action | `h-6 px-2 rounded-md text-[11px] font-medium`; primary = `bg-foreground text-background`; danger only on hover |
-| Segmented | `bg-lift/70 p-0.5 rounded-md`; active segment `bg-panel shadow-[var(--shadow-card)]` |
-| Code surface | `rounded-lg border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.55]`, `max-h` capped, scrolls |
+| Segmented | `bg-lift/80 p-0.5 rounded-[10px]`; active segment `bg-card` 8px radius (iOS) |
+| Code surface | `rounded-lg border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11px] leading-[1.55]` |
 | Section eyebrow | `h-8 px-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80` + tabular count |
+| Grouped Form | macOS Settings: 12px card, 13px labels, trailing controls, hairlines between rows |
 | kbd | 20px tall, `lift` fill, `border`, 10px/500 |
-| Pill CTA | `rounded-full px-3 py-1.5 text-[12px] font-medium`; filled `foreground` for primary, `border-border` for secondary |
+| Pill CTA | `rounded-full px-3 py-1.5 text-[12px] font-medium`; filled `foreground` for primary |
+| Canvas node | 12px radius, hairline, monochrome type glyph, terracotta outline only while generating |
+| Floating dock | glass pill, 16px radius, 28px tools, macOS magnification |
 
 ---
 
@@ -251,18 +256,19 @@ Short, declarative, present tense for live (`Reading …`), past tense for
 settled (`Read 2 files`). Sentences end with a period; labels do not. Prefer
 the operator's vocabulary (turn, hunk, harness, workspace) over product
 marketing. Avoid “loading”, “please”, exclamation marks and emoji. Chinese copy
-mirrors the same structure — no added politeness particles.
+mirrors the same structure — no 请 / 您 / extra particles. Video empty: “Paste
+a chapter.” or “Drop a still.” One hint. One action.
 
 ---
 
 ## 8. Accessibility
 
 Visible focus rings (`--ring`) on all controls; a skip link to `#main-stage`;
-`aria-expanded` on every
-disclosure; `aria-live="polite"` on the single live status line per turn;
-`role="tab"`/`tablist` with stable `aria-label`s; kbd hints are `aria-hidden`
-so button names stay exact. Contrast: body text ≥ 7:1 on `background`, muted ≥
-4.5:1. Reduced motion is honoured for every animation in this document.
+`aria-expanded` on every disclosure; `aria-live="polite"` on the single live
+status line per turn; `role="tab"`/`tablist` with stable `aria-label`s; kbd
+hints are `aria-hidden` so button names stay exact. Contrast: body text ≥ 7:1
+on `background`, muted ≥ 4.5:1. `prefers-reduced-motion` and
+`prefers-reduced-transparency` are honoured.
 
 ---
 
@@ -270,6 +276,9 @@ so button names stay exact. Contrast: body text ≥ 7:1 on `background`, muted �
 
 Avatars in the transcript · spinners on text · cards inside cards · bordered
 list items · labelled buttons in toolbars · colour on chrome · ligatures in
-code · headlines over 21px · “Sparkles”, gradients, glows · daisyUI · marketing
-empty states · fake sandbox badges · a second agent loop in the client · Video
-as a lab page that replaces the conversation · a Chat dock on Video.
+code · headlines over 21px · Sparkles / WandSparkles · gradients · glows ·
+HoverBorderGradient · SpotlightSurface · WorkingGlow · daisyUI · marketing
+empty states · fake sandbox badges · a second agent loop in the client · a
+7-item Video shell · Inter / sage / zinc as the live system · Apple-blue + SF
+Pro as the default brand · credit-cost chips in the hosted island · a Chat
+dock on Video.

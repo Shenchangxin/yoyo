@@ -9,7 +9,7 @@ import {
   Search,
   Shield,
   SlidersHorizontal,
-  Sparkles,
+  Clapperboard,
   Wrench,
   X,
 } from "lucide-react";
@@ -24,7 +24,7 @@ const ICONS = {
   palette: Palette,
   keyboard: Keyboard,
   cpu: Cpu,
-  sparkles: Sparkles,
+  film: Clapperboard,
   shield: Shield,
   blocks: Blocks,
   brain: Brain,
@@ -84,7 +84,7 @@ export function SettingsSidebar(props: {
   }
 
   return (
-    <nav className="flex w-[228px] shrink-0 flex-col bg-sidebar" aria-label={copy.settings.title}>
+    <nav className="glass-chrome flex w-[228px] shrink-0 flex-col" aria-label={copy.settings.title}>
       <div className="px-3 pb-1.5 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />

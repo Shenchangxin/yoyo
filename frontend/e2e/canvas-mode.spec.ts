@@ -63,6 +63,10 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(island(page)).toHaveAttribute("data-pane", "create");
   await expect(page.getByText("创作工作台")).toHaveCount(0);
   await expect(page.getByText(/聊聊创作想法/)).toBeVisible({ timeout: 30_000 });
+  const featuredCover = page.locator(".creation-featured-media img").first();
+  await expect(featuredCover).toHaveAttribute("src", /\/short-drama-styles\//);
+  await expect.poll(async () => featuredCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
+  await expect(page.getByRole("button", { name: "New chat" })).toHaveCount(0);
 
   await page.getByTestId("video-shell-drama").click();
   await expect(island(page)).toBeVisible();
@@ -82,32 +86,51 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(page.getByText("创作工作台")).toHaveCount(0);
 });
 
-test("assets skills plugins and history open inside the hosted canvas island", async ({ page }) => {
+test("assets skills plugins and history open from the video rail", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Video" }).click();
-  for (const pane of ["assets", "skills", "plugins", "tasks"] as const) {
-    await page.getByTestId(`video-shell-${pane}`).click();
+  await expect(page.getByTestId("video-shell-nav")).toBeVisible();
+  await expect(page.getByTestId("video-shell-create")).toBeVisible();
+  await expect(page.getByTestId("video-shell-assets")).toBeVisible();
+  await expect(page.getByTestId("video-shell-skills")).toBeVisible();
+  await expect(page.getByTestId("video-shell-plugins")).toBeVisible();
+  await expect(page.getByTestId("video-shell-tasks")).toBeVisible();
+  await page.getByTestId("video-shell-assets").click();
+  const assetsCover = page.locator(".assets-empty-banner-frame img").first();
+  await expect(assetsCover).toHaveAttribute("src", /\/short-drama-styles\//);
+  await expect.poll(async () => assetsCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
+
+  for (const [testid, pane] of [
+    ["video-shell-assets", "assets"],
+    ["video-shell-skills", "skills"],
+    ["video-shell-plugins", "plugins"],
+    ["video-shell-tasks", "tasks"],
+  ] as const) {
+    await page.getByTestId(testid).click();
     await expect(island(page)).toBeVisible();
     await expect(island(page)).toHaveAttribute("data-pane", pane);
     await expect(page.getByText("创作工作台")).toHaveCount(0);
   }
-  await page.keyboard.press("Escape");
-  await expect(island(page)).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-video-assets").click();
+  await expect(island(page)).toHaveAttribute("data-pane", "assets");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("option", { name: "Open Skills" }).click();
+  await expect(page.getByTestId("video-shell-nav")).toHaveCount(0);
 });
 
-test("new canvas appears in the video rail and can be switched", async ({ page }) => {
+test("new canvas appears in creation history and can be opened", async ({ page }) => {
+  test.setTimeout(60_000);
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await openVideoChat(page);
-  await page.getByTestId("video-mode-switch").click();
-  await page.getByTestId("video-mode-canvas").click();
-  await page.getByTestId("canvas-project-chip").click();
-  await page.getByRole("menuitem").filter({ hasText: /New board|新建画布/i }).click();
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-tasks").click();
+  await expect(page.getByTestId("video-history")).toBeVisible();
+  await page.getByTestId("video-history-new-canvas").click();
   await expect(page.getByTestId("video-project-canvas-c1")).toBeVisible();
-  await page.getByTestId("canvas-project-chip").click();
-  await page.getByRole("menuitem").filter({ hasText: /New board|新建画布/i }).click();
-  await expect(page.getByTestId("video-project-canvas-c2")).toBeVisible();
   await page.getByTestId("video-project-canvas-c1").click();
-  await expect(page.getByTestId("canvas-project-chip")).toContainText(/Infinite canvas|无限画布|Board/i);
+  await expect(island(page)).toHaveAttribute("data-pane", "canvas");
 });

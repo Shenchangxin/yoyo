@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Select } from "antd";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Clapperboard, FileText, Film, LayoutGrid, Plus, Users } from "lucide-react";
-import { HoverBorderGradient } from "@yingce/components/ui/aceternity/hover-border-gradient";
-import { SpotlightSurface } from "@yingce/components/ui/aceternity/spotlight-surface";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { aceternityMotion } from "@yingce/lib/aceternity-motion";
 import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
@@ -145,8 +143,8 @@ export default function DramaAgentPage() {
   }
 
   const composer = (
-    <HoverBorderGradient as="div" duration={2.2} containerClassName="creation-composer-shell" className="creation-composer-shell-inner">
-      <SpotlightSurface className={`creation-chat-composer is-${isEmpty ? "empty" : "thread"}`} contentClassName="contents" spotlightColor="color-mix(in srgb, var(--user-ink) 12%, transparent)" spotlightRadius={280}>
+    <div className="creation-composer-shell">
+      <div className={`creation-chat-composer is-${isEmpty ? "empty" : "thread"}`}>
         <div className="creation-chat-writing-surface">
           <div className="creation-chat-editor">
             <textarea
@@ -216,8 +214,8 @@ export default function DramaAgentPage() {
             </span>
           </Button>
         </footer>
-      </SpotlightSurface>
-    </HoverBorderGradient>
+      </div>
+    </div>
   );
 
   return (

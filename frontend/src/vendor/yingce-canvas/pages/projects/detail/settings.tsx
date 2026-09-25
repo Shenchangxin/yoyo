@@ -12,6 +12,7 @@ import { createStyleProfileSnapshot, parseStyleProfile, resolveStyleExecutionPla
 import { resourceFileUrl, resourceIdFromStorageKey } from "@yingce/services/api/resources";
 import { listProjectAssetsPage, updateProject } from "@yingce/services/api/projects";
 import { uploadImage } from "@yingce/services/image-storage";
+import { styleCoverSrc } from "@yingce/lib/style-cover";
 import { useAssetStore } from "@yingce/stores/use-asset-store";
 import { modelDisplayName, resolveModelRequestConfig, useEffectiveConfig } from "@yingce/stores/use-config-store";
 
@@ -144,7 +145,7 @@ export default function ProjectSettingsView({ detail, refreshProject }: ProjectD
             <section className="border-t border-border/70 py-5">
                 <div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">项目画风</h3><p className="mt-0.5 text-[var(--fs-label)] text-foreground/45">项目保存当前版本快照；修改“我的风格”不会自动改写历史项目</p></div>{styleProfile ? <span className="text-[var(--fs-label)] text-foreground/52">{styleProfile.source === "user" ? "来自我的风格" : styleProfile.source === "external" ? "外部导入" : "系统预设"}</span> : <span className="text-[var(--fs-label)] text-foreground/40">未设置</span>}</div>
                 <div className="flex flex-col gap-3 rounded-lg bg-surface-active p-3 lg:flex-row lg:items-center">
-                    {selectedStyle ? <img src={selectedStyle.imageUrl} width="160" height="90" alt={`${selectedStyle.title}画风示意`} className="aspect-video w-40 shrink-0 rounded-md object-cover" /> : <span className="grid aspect-video w-40 shrink-0 place-items-center rounded-md bg-foreground/5 text-foreground/35"><Palette className="size-5" /></span>}
+                    {selectedStyle ? <img src={styleCoverSrc(selectedStyle.imageUrl)} width="160" height="90" alt={`${selectedStyle.title}画风示意`} className="aspect-video w-40 shrink-0 rounded-md object-cover" /> : <span className="grid aspect-video w-40 shrink-0 place-items-center rounded-md bg-foreground/5 text-foreground/35"><Palette className="size-5" /></span>}
                     <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold">{styleProfile?.title || selectedStyle?.title || "尚未设置项目画风"}</div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-foreground/48">{styleProfile?.description || selectedStyle?.description || "从系统风格开始，或创建可自由编辑的项目视觉规范。"}</p>

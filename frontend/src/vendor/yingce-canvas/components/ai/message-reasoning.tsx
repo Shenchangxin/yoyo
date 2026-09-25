@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, Clapperboard } from "lucide-react";
 
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
 
@@ -42,7 +42,7 @@ export function MessageReasoning({ reasoning, isStreaming }: { reasoning: string
 
     return <div className="mb-2 text-xs text-foreground/55">
         <button type="button" className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-surface-hover hover:text-foreground" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-            <Sparkles className="size-3.5" />
+            <Clapperboard className="size-3.5" />
             <span>{isStreaming ? <>正在思考<LiveReasoningCount /></> : durationSeconds ? <>已思考 <span className="font-mono tabular-nums">{durationSeconds}</span> 秒</> : "思考过程"}</span>
             <ChevronDown className={`size-3.5 transition-transform${open ? " rotate-180" : ""}`} />
         </button>

@@ -3,7 +3,7 @@ import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { Button, Tag } from "antd";
 import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { EmptyState } from "@yingce/components/ui/product/empty-state";
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Copy, FileText, Image as ImageIcon, LoaderCircle, RefreshCw, Sparkles, Target, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Copy, FileText, Image as ImageIcon, LoaderCircle, RefreshCw, Clapperboard, Target, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -305,7 +305,7 @@ export function AiArtCritiqueModal({ node, upstreamNodes, open, onClose, onUpdat
             <div className="flex h-[min(820px,calc(100dvh-32px))] max-h-[calc(100dvh-32px)] min-h-0 flex-col overflow-hidden rounded-[var(--r-lg)]" style={{ background: theme.canvas.background, color: theme.node.text }}>
                 <header className="flex shrink-0 items-center gap-3 border-b px-5 py-3.5" style={{ borderColor: theme.node.edge }}>
                     <span className="grid size-9 shrink-0 place-items-center rounded-[var(--r-md)]" style={{ background: theme.accent.primarySoft, color: theme.accent.primary }}>
-                        <Sparkles className="size-4" aria-hidden="true" />
+                        <Clapperboard className="size-4" aria-hidden="true" />
                     </span>
                     <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-2">
@@ -798,7 +798,7 @@ function OptionCard({ option, theme }: { option: ArtCritiqueOption; theme: Canva
     return (
         <article className="rounded-[var(--r-lg)] border px-3 py-3" style={{ borderColor: theme.node.edge, background: theme.node.fill }}>
             <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="size-4" style={{ color: ART_CRITIQUE_CATEGORY_COLORS[option.category] }} aria-hidden="true" />
+                <Clapperboard className="size-4" style={{ color: ART_CRITIQUE_CATEGORY_COLORS[option.category] }} aria-hidden="true" />
                 <span className="min-w-0 flex-1">{option.title}</span>
                 <span className="shrink-0 text-[11px] font-normal" style={{ color: theme.node.muted }}>
                     {Math.round(option.confidence * 100)}% 参考把握

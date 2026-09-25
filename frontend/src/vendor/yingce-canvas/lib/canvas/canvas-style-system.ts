@@ -341,7 +341,7 @@ function stylePreviewImage(selection: ProjectStyleSelection) {
     }
     if (selection.world === "suspense") return "/short-drama-styles/suspense-noir.jpg";
     if (selection.world === "science-fiction") return "/short-drama-styles/future-tech.jpg";
-    if (selection.world === "pastoral") return "/short-drama-styles/nature-healing.jpg";
+    if (selection.world === "pastoral") return selection.medium === "3d-cartoon" ? "/short-drama-styles/three-d-cartoon.jpg" : "/short-drama-styles/nature-healing.jpg";
     if (selection.world === "historical") return selection.medium === "2d-guoman" ? "/short-drama-styles/chinese-2d.jpg" : "/short-drama-styles/period-live-action.jpg";
     return selection.medium === "3d-cartoon" ? "/short-drama-styles/three-d-cartoon.jpg" : "/short-drama-styles/urban-live-action.jpg";
 }
