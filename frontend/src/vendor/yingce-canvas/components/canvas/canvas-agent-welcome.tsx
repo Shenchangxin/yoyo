@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { ArrowUpRight, Clapperboard, Layers3, Sparkles } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Layers3 } from "lucide-react";
 import { agentCopy, type CanvasAppearance } from "@yingce/lib/canvas/agent-appearance";
 
 type AgentWelcomeProps = {
@@ -19,7 +19,7 @@ export function AgentWelcome({ appearance, nodeCount, onChooseSkill, onDraftProm
             </div>
             <div className="agent-welcome-actions">
                 <button type="button" onClick={onChooseSkill}>
-                    <Sparkles aria-hidden="true" />
+                    <Clapperboard aria-hidden="true" />
                     <span>
                         <strong>选择技能，开始创作</strong>
                         <small>为这次创作找到合适的帮手</small>

@@ -13,6 +13,7 @@ import { CollectionGrid, PageHeader, PaginationBar, WorkspacePage } from "@yingc
 import { WorkspaceState } from "@yingce/components/layout/workspace-state";
 import { AssetMediaPreview } from "@yingce/components/asset-media-preview";
 import { AssetLibraryCard, AssetLibraryCardMedia } from "@yingce/components/assets/asset-library-card";
+import { styleCoverSrc } from "@yingce/lib/style-cover";
 import { Switch } from "@yingce/components/ui/base/switch";
 import { cn } from "@yingce/lib/utils";
 
@@ -1243,9 +1244,9 @@ function AssetsBatchBar({
 }
 
 const assetsEmptyBannerFrames = [
-    { src: "/short-drama-styles/retro-hong-kong.jpg", caption: "ASSET.01 · 天台重逢" },
-    { src: "/short-drama-styles/cyberpunk-neon.jpg", caption: "ASSET.02 · 雨夜霓虹" },
-    { src: "/short-drama-styles/suspense-noir.jpg", caption: "ASSET.03 · 暗巷追逐" },
+    { src: "/short-drama-styles/retro-hong-kong.jpg", caption: "ASSET.01 · 天台晾衣绳" },
+    { src: "/short-drama-styles/cyberpunk-neon.jpg", caption: "ASSET.02 · 雨港记忆诊所" },
+    { src: "/short-drama-styles/suspense-noir.jpg", caption: "ASSET.03 · 巷口证人" },
 ];
 
 function AssetsEmptyState({ onNew, onImport, onGoCanvas }: { onNew: () => void; onImport: () => void; onGoCanvas: () => void }) {
@@ -1255,7 +1256,7 @@ function AssetsEmptyState({ onNew, onImport, onGoCanvas }: { onNew: () => void; 
             <div className="assets-empty-banner" aria-hidden="true">
                 {assetsEmptyBannerFrames.map((frame, index) => (
                     <figure key={frame.caption} className={`assets-empty-banner-frame ${index === 1 ? "is-main" : index === 0 ? "is-back" : "is-front"}`}>
-                        <img src={frame.src} alt="" loading="lazy" decoding="async" />
+                        <img src={styleCoverSrc(frame.src)} alt="" loading="lazy" decoding="async" />
                         <span>{frame.caption}</span>
                     </figure>
                 ))}

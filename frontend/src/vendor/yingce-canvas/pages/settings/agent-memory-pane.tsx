@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { App, Button, Form, Input, Select, Space } from "antd";
-import { Check, Download, Pencil, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Check, Download, Pencil, Plus, Clapperboard, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { WorkspaceState } from "@yingce/components/layout/workspace-state";
@@ -196,7 +196,7 @@ function AgentMemoryCompactCard({ compact = false, onApplied }: { compact?: bool
                     <h3 className="text-sm font-medium text-foreground">压缩优化</h3>
                     {compact ? null : <p className="mt-0.5 text-caption leading-5 text-muted-foreground">按文本模型计费，合并相近条目、改写含糊内容。</p>}
                 </div>
-                <Button size="small" icon={<Sparkles className="size-3.5" />} loading={compacting || busy} disabled={!model.trim()} onClick={() => void runCompact()}>
+                <Button size="small" icon={<Clapperboard className="size-3.5" />} loading={compacting || busy} disabled={!model.trim()} onClick={() => void runCompact()}>
                     {busy ? "压缩中" : "立即压缩"}
                 </Button>
             </div>

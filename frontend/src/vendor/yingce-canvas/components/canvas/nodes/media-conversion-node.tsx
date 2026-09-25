@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Download, Image as ImageIcon, LoaderCircle, RefreshCw, Video, WandSparkles } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Download, Image as ImageIcon, LoaderCircle, RefreshCw, Video, Settings2 } from "lucide-react";
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -287,7 +287,7 @@ export function MediaConversionNodeContent({ node, theme }: MediaConversionNodeC
         >
             <div className="flex min-w-0 items-center gap-2">
                 <span className="grid size-8 shrink-0 place-items-center rounded-[var(--r-md)]" style={{ background: theme.toolbar.itemHover, color: theme.accent.primary }}>
-                    <WandSparkles className="size-4" aria-hidden="true" />
+                    <Settings2 className="size-4" aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="truncate text-[var(--fs-label)] font-semibold">{node.title || "转换"}</div>

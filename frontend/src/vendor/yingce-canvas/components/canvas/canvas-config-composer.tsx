@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { Button, Image } from "antd";
-import { FileText, Image as ImageIcon, Music2, Pencil, Sparkles, Video, X } from "lucide-react";
+import { FileText, Image as ImageIcon, Music2, Pencil, Clapperboard, Video, X } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { isCanvasWorkflowProvider } from "@yingce/lib/canvas/canvas-workflow";
@@ -319,7 +319,7 @@ function ResourcePreview({ candidate }: { candidate: ComposerCandidate }) {
     if (candidate.kind === "skill") {
         return (
             <span className="grid size-9 shrink-0 place-items-center rounded-md bg-cyan-500/12 text-cyan-600 dark:text-cyan-200">
-                <Sparkles className="size-4" />
+                <Clapperboard className="size-4" />
             </span>
         );
     }

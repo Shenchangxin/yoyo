@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { keepPreviousData, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Dropdown, Form, Input, Modal, Popconfirm, Tabs, type FormInstance } from "antd";
-import { Box, Check, ChevronDown, Download, FileText, FolderOpen, FolderPlus, Image as ImageIcon, Link2, MoreHorizontal, MoveRight, Music2, Pencil, Plus, RefreshCw, Search, Sparkles, Trash2, Upload, UserRound, Video, VolumeX } from "lucide-react";
+import { Box, Check, ChevronDown, Download, FileText, FolderOpen, FolderPlus, Image as ImageIcon, Link2, MoreHorizontal, MoveRight, Music2, Pencil, Plus, RefreshCw, Search, Clapperboard, Trash2, Upload, UserRound, Video, VolumeX } from "lucide-react";
 
 import { WorkspaceState } from "@yingce/components/layout/workspace-state";
 import { PaginationBar } from "@yingce/components/layout/workspace-page";
@@ -409,7 +409,7 @@ export default function ProjectAssetsView({ detail, refreshProject }: ProjectDet
                         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[var(--fs-label)] text-foreground/48">
                             <span className="inline-flex items-center gap-1.5"><UserRound className="size-3.5" />{characterAssetCount} 个角色</span>
                             <span className="inline-flex items-center gap-1.5"><Box className="size-3.5" />{mediaAssetCount} 项媒体</span>
-                            {(candidatesQuery.data?.total || 0) ? <span className="inline-flex items-center gap-1.5 text-foreground/55"><Sparkles className="size-3.5" />{candidatesQuery.data?.total || 0} 个待确认</span> : null}
+                            {(candidatesQuery.data?.total || 0) ? <span className="inline-flex items-center gap-1.5 text-foreground/55"><Clapperboard className="size-3.5" />{candidatesQuery.data?.total || 0} 个待确认</span> : null}
                         </div>
                     </div>
                 </div>
@@ -443,7 +443,7 @@ export default function ProjectAssetsView({ detail, refreshProject }: ProjectDet
                     {showPendingCandidates && pendingCandidates.length ? (
                         <section className="mb-4" aria-label={`待确认${candidateLabel}`}>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 text-xs font-medium"><Sparkles className="size-3.5 text-foreground/50" />剧情识别出的{candidateLabel}</div>
+                                <div className="flex items-center gap-1.5 text-xs font-medium"><Clapperboard className="size-3.5 text-foreground/50" />剧情识别出的{candidateLabel}</div>
                                 <span className="text-[var(--fs-tiny)] tabular-nums text-foreground/42">剩余 {candidatesQuery.data?.total || 0} 个待确认</span>
                             </div>
                             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

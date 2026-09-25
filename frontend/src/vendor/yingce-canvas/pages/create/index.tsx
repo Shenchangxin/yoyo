@@ -2,7 +2,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { App, Spin } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
-import { History, Sparkles, Maximize2 } from "lucide-react";
+import { History, Clapperboard, Maximize2 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useNavigate } from "react-router";
 
@@ -1022,7 +1022,7 @@ export default function CreatePage() {
                         style={{ x: "-50%" }}
                         initial={{ opacity: 0, y: -12, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .98 }}
                         transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 32, mass: .8 }}>
-                        <Sparkles aria-hidden="true" />
+                        <Clapperboard aria-hidden="true" />
                         <input aria-label="快捷编辑提示词" placeholder="继续描述你的创作想法…" value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
                         <Tooltip title="展开完整创作区"><button type="button" aria-label="展开完整创作区" onClick={() => {
                             threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });

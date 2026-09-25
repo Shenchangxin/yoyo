@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
 
 /**
  * WorkingDots: diagonal wave dot-matrix "busy" indicator.
@@ -64,20 +64,7 @@ export function WorkingDots({
  * work. Disabled under prefers-reduced-motion. Caller positions it: wrap the
  * control in a `relative` container and pass the matching border radius.
  */
-export function WorkingGlow({ active, color, radius = 0, className }: { active: boolean; color: string; radius?: number | string; className?: string }) {
-    const reducedMotion = useReducedMotion();
-    if (!active || reducedMotion) return null;
-    const soft = `color-mix(in srgb, ${color} 55%, transparent)`;
-    return (
-        <motion.div
-            aria-hidden
-            className={className}
-            style={{ position: "absolute", inset: 0, borderRadius: radius, pointerEvents: "none", boxShadow: `0 0 0 1px ${color}` }}
-            animate={{
-                opacity: [0.35, 1, 0.35],
-                boxShadow: [`0 0 0 1px ${color}`, `0 0 16px 1px ${soft}, 0 0 0 1px ${color}`, `0 0 0 1px ${color}`],
-            }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-        />
-    );
+export function WorkingGlow({ active }: { active: boolean; color: string; radius?: number | string; className?: string }) {
+    if (!active) return null;
+    return null;
 }

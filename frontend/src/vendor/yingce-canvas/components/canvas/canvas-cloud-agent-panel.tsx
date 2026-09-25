@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import { Button, Dropdown, Input } from "antd";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, MoveDiagonal2, RotateCcw, Settings2, ShieldCheck, Trash2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, MoveDiagonal2, RotateCcw, Settings2, ShieldCheck, Trash2, Clapperboard, X } from "lucide-react";
 import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@yingce/lib/canvas/agent-debug-export";
 import { markdownPlainText } from "@yingce/lib/markdown-plain-text";
@@ -1169,7 +1169,7 @@ function ComposerControls({
             />
             {reasoningSupported ? <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: reasoningMenuItems(reasoningMode, onReasoningModeChange) }}>
                 <button type="button" aria-label="选择 Agent 推理模式" title="推理模式：只用于规划和工具选择" className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25" style={{ color: reasoningMode === "off" ? theme.node.muted : theme.accent.primary, background: reasoningMode === "off" ? "transparent" : theme.node.fill }}>
-                    <Sparkles className="size-3.5" />{reasoningModeLabel(reasoningMode)}
+                    <Clapperboard className="size-3.5" />{reasoningModeLabel(reasoningMode)}
                 </button>
             </Dropdown> : null}
             <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: agentPermissionMenuItems(permissionMode, onPermissionChange) }}>
@@ -1193,7 +1193,7 @@ function ComposerControls({
                 title="打开 Skills 技能库"
                 onClick={() => onSkillsOpenChange(true)}
             >
-                <Sparkles className="size-3.5" />
+                <Clapperboard className="size-3.5" />
                 <span className="max-w-28 truncate">Skills({selectedSkillCount})</span>
             </button>
         </div>

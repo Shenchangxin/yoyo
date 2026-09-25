@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "antd";
 import { AppModal } from "@yingce/components/ui/product/app-modal";
-import { WandSparkles, X } from "lucide-react";
+import { Settings2, X } from "lucide-react";
 
 import { ImageSettingsPanel } from "@yingce/components/image-settings-panel";
 import { ModelPicker } from "@yingce/components/model-picker";
@@ -99,7 +99,7 @@ export function BatchGenerationSettingsDialog({ open, config, rowCount, concurre
                     <Button icon={<X className="size-4" />} onClick={onClose}>取消</Button>
                     <Button
                         type="primary"
-                        icon={<WandSparkles className="size-4" />}
+                        icon={<Settings2 className="size-4" />}
                         onClick={() => onConfirm({
                             model: generationConfig.model,
                             imageModel: generationConfig.imageModel,

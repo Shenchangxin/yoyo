@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { AudioLines, Check, Film, Flame, Image, MessageSquareText, Network, Settings2, Sparkles } from "lucide-react";
+import { AudioLines, Check, Film, Flame, Image, MessageSquareText, Network, Settings2, Clapperboard } from "lucide-react";
 import { Button, Modal } from "antd";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -188,7 +188,7 @@ function ProtocolBrandMark({ protocol, compact = false }: { protocol: ModelProto
     if (vendor.includes("jimeng") || vendor.includes("即梦"))
         return (
             <span className={cn("grid shrink-0 place-items-center rounded-md bg-muted text-foreground/65", iconSize)}>
-                <Sparkles className={compact ? "size-3" : "size-4"} />
+                <Clapperboard className={compact ? "size-3" : "size-4"} />
             </span>
         );
     if (vendor.includes("volcengine") || vendor.includes("火山方舟"))

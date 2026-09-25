@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useMemo, useState } from "react";
 import { Input, Popover } from "antd";
-import { LayoutTemplate, Search, WandSparkles } from "lucide-react";
+import { LayoutTemplate, Search, Settings2 } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { CANVAS_BUILTIN_PRESETS, type CanvasPromptPreset } from "@yingce/lib/prompts";
@@ -83,7 +83,7 @@ export function CanvasPresetPicker({
                             }}
                         >
                             <span className="canvas-preset-picker-option-icon" style={{ background: theme.accent.primarySoft, color: theme.accent.primary }}>
-                                <WandSparkles className="size-3.5" />
+                                <Settings2 className="size-3.5" />
                             </span>
                             <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: theme.node.text }}>
@@ -125,7 +125,7 @@ export function CanvasPresetPicker({
                 aria-label={appearance === "quiet" ? "提示词模板" : "打开提示词预设"}
                 aria-expanded={actualOpen}
             >
-                {appearance === "quiet" ? <LayoutTemplate className="size-3" /> : <WandSparkles className={dense ? "size-3" : "size-3.5"} />}
+                {appearance === "quiet" ? <LayoutTemplate className="size-3" /> : <Settings2 className={dense ? "size-3" : "size-3.5"} />}
                 {compact ? null : <span className="text-[var(--fs-tiny)] font-medium">{appearance === "quiet" ? "提示词模板" : "预设"}</span>}
             </button>
         </Popover>

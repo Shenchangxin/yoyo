@@ -40,7 +40,7 @@ export function SidebarCard({ children, className }: { children: ReactNode; clas
   return (
     <div
       className={cn(
-        "no-drag flex h-full min-h-0 flex-col overflow-hidden bg-sidebar",
+        "glass-chrome no-drag flex h-full min-h-0 flex-col overflow-hidden",
         className,
       )}
     >

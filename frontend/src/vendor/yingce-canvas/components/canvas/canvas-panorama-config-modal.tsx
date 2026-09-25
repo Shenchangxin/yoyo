@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Input, Switch } from "antd";
-import { Check, Compass, Copy, Globe, Image as ImageIcon, Info, Plus, Search, Sparkles, X } from "lucide-react";
+import { Check, Compass, Copy, Globe, Image as ImageIcon, Info, Plus, Search, Clapperboard, X } from "lucide-react";
 
 import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { CanvasNodeType, type CanvasNodeData } from "@yingce/types/canvas";
@@ -305,7 +305,7 @@ const PanoramaSetupForm = memo(
                                                 : "bg-foreground/5 text-foreground hover:bg-foreground/10"
                                         }`}
                                     >
-                                        <Sparkles className="size-4 shrink-0" />
+                                        <Clapperboard className="size-4 shrink-0" />
                                         <div className="min-w-0">
                                             <div className="text-[11px] font-semibold">AI 生成</div>
                                             <div className="text-[9px] leading-tight opacity-75">补全环境</div>
@@ -425,7 +425,7 @@ const PanoramaSetupForm = memo(
                             <Button size="small" onClick={onCancel}>
                                 取消
                             </Button>
-                            <Button size="small" type="primary" icon={sourceMode === "image" ? <ImageIcon className="size-3.5" /> : <Sparkles className="size-3.5" />} disabled={!canSubmit} onClick={handleSubmit}>
+                            <Button size="small" type="primary" icon={sourceMode === "image" ? <ImageIcon className="size-3.5" /> : <Clapperboard className="size-3.5" />} disabled={!canSubmit} onClick={handleSubmit}>
                                 {sourceMode === "image" ? "创建全景图" : "生成全景图"}
                             </Button>
                         </div>

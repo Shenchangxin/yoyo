@@ -5,7 +5,6 @@ import { Switch } from "@yingce/components/ui/base/switch";
 import { Palette, Info } from "lucide-react";
 
 import { FloatingDock } from "@yingce/components/ui/aceternity/floating-dock";
-import { SpotlightSurface } from "@yingce/components/ui/aceternity/spotlight-surface";
 import { CanvasAppearanceControls } from "@yingce/components/canvas/canvas-appearance-controls";
 import { useCanvasOverlayLayer } from "@yingce/components/canvas/canvas-overlay-layer";
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@yingce/components/canvas/canvas-create-menu";
@@ -212,14 +211,14 @@ export function CanvasToolbar({
             <AnimatePresence>
                 {appearanceOpen ? (
                     <motion.div initial={{ opacity: 0, scaleY: 0.9, y: 8 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.92, y: 6 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[var(--canvas-dock-popover-offset)] z-[var(--dock-z-popover)] w-[320px] max-w-[calc(100vw-24px)]" style={{ left: panelX || "50%", transformOrigin: "bottom center", x: "-50%" }}>
-                        <SpotlightSurface spotlightColor={theme.toolbar.itemHover} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97, transition: { duration: 0 } }} transition={{ duration: aceternityMotion.duration.instant, ease: aceternityMotion.easing.enter }} className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2.5 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.toolbar.item }} onWheel={(event) => event.stopPropagation()}>
+                        <motion.div className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2.5 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.toolbar.item }} onWheel={(event) => event.stopPropagation()}>
                             <PanelHeading icon={<Palette className="size-4" />} title="画布外观" subtitle="调整整个创作空间" theme={theme} />
                             <CanvasAppearanceControls appearance={appearance} backgroundMode={backgroundMode} colorTheme={colorTheme} theme={theme} onAppearanceChange={onAppearanceChange} onSaveAppearanceDefault={onSaveAppearanceDefault} onBackgroundModeChange={onBackgroundModeChange} />
                             <div className="mt-2.5 flex items-center justify-between gap-2 rounded-[var(--dock-item-radius-labeled)] border px-2.5 py-2" style={{ background: theme.spatial.surface, borderColor: theme.toolbar.border }}>
                                 <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--fs-tiny)] font-semibold"><Info className="size-3" />媒体信息</span>
                                 <Switch size="sm" checked={showImageInfo} onChange={onShowImageInfoChange} />
                             </div>
-                        </SpotlightSurface>
+                        </motion.div>
                     </motion.div>
                 ) : null}
             </AnimatePresence>
@@ -236,9 +235,9 @@ function AddNodeMenu({ x, theme, commands }: {
 }) {
     return (
         <motion.div initial={{ opacity: 0, scaleY: 0.9, y: 8 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.92, y: 6 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[var(--canvas-dock-popover-offset)] z-[var(--dock-z-popover)] w-[420px] max-w-[calc(100vw-24px)]" style={{ left: x || "50%", transformOrigin: "bottom center", x: "-50%" }}>
-            <SpotlightSurface spotlightColor={theme.toolbar.itemHover} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97, transition: { duration: 0 } }} transition={{ duration: aceternityMotion.duration.instant, ease: aceternityMotion.easing.enter }} className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
+            <motion.div className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
                 <CanvasCreateMenu commands={commands} />
-            </SpotlightSurface>
+            </motion.div>
         </motion.div>
     );
 }

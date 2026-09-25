@@ -8,7 +8,7 @@ import { SegmentedControl } from "@yingce/components/ui/base/segmented-control";
 import { EmptyState } from "@yingce/components/ui/product/empty-state";
 import { StatusBadge } from "@yingce/components/ui/base/badges";
 import { AppModal } from "@yingce/components/ui/product/app-modal/app-modal";
-import { Box, ChevronDown, ChevronLeft, ChevronRight, Download, Film, Image as ImageIcon, Layers3, List, Maximize2, Play, Plus, RefreshCcw, Save, Search, SlidersHorizontal, Trash2, UsersRound, WandSparkles, X } from "lucide-react";
+import { Box, ChevronDown, ChevronLeft, ChevronRight, Download, Film, Image as ImageIcon, Layers3, List, Maximize2, Play, Plus, RefreshCcw, Save, Search, SlidersHorizontal, Trash2, UsersRound, Settings2, X } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 
 import { CanvasResourceMentionTextarea } from "@yingce/components/canvas/canvas-resource-mention-textarea";
@@ -532,7 +532,7 @@ export default function WorkflowProductionWorkbench(props: Props) {
                             </WorkflowDisclosure>
                             <WorkflowDisclosure
                                 className="is-advanced"
-                                icon={<WandSparkles />}
+                                icon={<Settings2 />}
                                 title="生成补充"
                                 description="仅在模型需要额外约束时填写"
                                 summary={<span>提示词 · 排除内容 · 接戏</span>}

@@ -1,11 +1,11 @@
 // @ts-nocheck
-import { Blocks, CircleDollarSign, Clapperboard, Images, LibraryBig, ListTodo, PanelsTopLeft, Settings, WandSparkles } from "lucide-react";
+import { Blocks, CircleDollarSign, Clapperboard, Images, LibraryBig, ListTodo, PanelsTopLeft, Settings, Settings2 } from "lucide-react";
 
 export const navigationTools = [
     {
         slug: "create",
         label: "创作",
-        icon: WandSparkles,
+        icon: Settings2,
         section: "创作空间",
     },
     {

@@ -6,6 +6,7 @@ import { ArrowUpRight, BookOpenText, ChevronLeft, ChevronRight, Crosshair, Folde
 import { Link } from "react-router";
 
 import { resolveProjectCanvasStyle } from "@yingce/components/canvas/canvas-style-picker-modal";
+import { styleCoverSrc } from "@yingce/lib/style-cover";
 import { getProject, getProjectUnit, type ProjectDetail, type ProjectUnit } from "@yingce/services/api/projects";
 
 export const CANVAS_PROJECT_CHAPTER_DND_TYPE = "application/x-infinite-canvas-project-chapter";
@@ -144,7 +145,7 @@ export function CanvasProjectSidebar({ projectId, detail, onAddChapter, onLocate
                     title={style ? "定位画布中的项目画风节点" : "项目尚未设置画风"}
                 >
                     {style ? (
-                        <img src={style.imageUrl} alt="" width={48} height={32} className="h-8 w-12 shrink-0 rounded object-cover" />
+                        <img src={styleCoverSrc(style.imageUrl)} alt="" width={48} height={32} className="h-8 w-12 shrink-0 rounded object-cover" />
                     ) : (
                         <span className="grid h-8 w-12 shrink-0 place-items-center rounded border border-dashed border-border text-foreground/30">
                             <Palette className="size-3.5" />

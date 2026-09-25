@@ -222,6 +222,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const [missing, setMissing] = useState<string[]>([]);
   const [ratio, setRatio] = useState("16:9");
   const [kill, setKill] = useState("");
+  const [focusShot, setFocusShot] = useState("");
+  const [tasksOpen, setTasksOpen] = useState(false);
 
   const loadList = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
@@ -395,9 +397,12 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     "grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30";
 
   const showMissing = missing.includes("image") || missing.includes("video");
+  const shots = bundle?.shots || [];
+  const focused = shots.find((s) => s.id === focusShot) || shots[0];
+  const liveCount = (bundle?.jobs || []).filter((j) => j.status === "queued" || j.status === "running" || j.status === "polling" || j.status === "failed").length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="drama-studio">
+    <div className="drama-studio flex h-full min-h-0 flex-col" data-testid="drama-studio">
       {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
       {showMissing ? (
         <div className="flex items-center gap-2 border-b border-border/70 bg-lift/60 px-3 py-1.5 text-[12px] text-muted">
@@ -405,9 +410,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           <button type="button" className="underline" onClick={() => openSettings("generation", "generation-image")}>{copy.video.openSettings}</button>
         </div>
       ) : null}
-      <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 px-2 py-1.5">
+      <header className="drama-toolbar glass-chrome">
         <select
-          className={cn(field, "min-w-0 max-w-[9.5rem] flex-1")}
+          className={cn(field, "min-w-0 max-w-[9.5rem]")}
           value={dramaId}
           aria-label={copy.video.pickSeries}
           onChange={(e) => { setDramaId(e.target.value); setEpisodeId(""); setKill(""); }}
@@ -418,7 +423,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           ))}
         </select>
         <select
-          className={cn(field, "min-w-0 max-w-[8.5rem] flex-1")}
+          className={cn(field, "min-w-0 max-w-[8.5rem]")}
           value={episodeId}
           disabled={!dramaId}
           aria-label={copy.video.pickEpisode}
@@ -439,13 +444,13 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <Film className="size-3.5" />
           </button>
         </Tooltip>
-        <div className="flex rounded-md bg-lift p-0.5">
+        <div className="flex rounded-[8px] bg-lift p-0.5">
           {["16:9", "9:16", "1:1"].map((r) => (
             <button
               key={r}
               type="button"
               title={copy.video.ratio}
-              className={cn("rounded px-1.5 py-1 font-mono text-[10px] tabular-nums", (drama?.aspect_ratio || ratio) === r ? "bg-panel text-foreground" : "text-muted")}
+              className={cn("rounded-[6px] px-1.5 py-1 font-mono text-[10px] tabular-nums", (drama?.aspect_ratio || ratio) === r ? "bg-card text-foreground" : "text-muted")}
               onClick={() => {
                 setRatio(r);
                 if (dramaId) void api.video.updateDrama({ id: dramaId, aspect_ratio: r }).then(loadList);
@@ -455,14 +460,40 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             </button>
           ))}
         </div>
+        <div className="process-tabs ml-1 flex h-8 items-stretch gap-0.5" role="tablist" aria-label={copy.video.workshop}>
+          {panes.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={pane === p.id}
+              className={cn(
+                "relative flex h-full cursor-pointer items-center px-2 text-[12px] font-medium transition-colors",
+                pane === p.id ? "text-foreground" : "text-muted hover:text-foreground",
+              )}
+              onClick={() => setPane(p.id)}
+            >
+              {p.label}
+              <span className={cn("absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150", pane === p.id ? "opacity-100" : "opacity-0")} aria-hidden />
+            </button>
+          ))}
+        </div>
         <Tooltip content={copy.video.importHint}>
           <button type="button" className={iconBtn} aria-label={copy.video.import} onClick={() => void importHuobao()}>
             <Upload className="size-3.5" />
           </button>
         </Tooltip>
+        <button
+          type="button"
+          className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
+          onClick={() => setTasksOpen((v) => !v)}
+        >
+          {copy.video.jobs}
+          {liveCount ? <span className="tabular-nums">{liveCount}</span> : null}
+        </button>
         {props.onClose ? (
           <Tooltip content={copy.video.closeBoard}>
-            <button type="button" className={cn(iconBtn, "ml-auto")} aria-label={copy.video.closeBoard} onClick={props.onClose}>
+            <button type="button" className={iconBtn} aria-label={copy.video.closeBoard} onClick={props.onClose}>
               <X className="size-3.5" />
             </button>
           </Tooltip>
@@ -478,117 +509,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         />
       ) : (
         <>
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 px-2 py-1.5">
-            <Input
-              className="h-7 max-w-[7.5rem] text-[12.5px] font-medium"
-              value={drama?.title || ""}
-              aria-label={copy.video.title}
-              onChange={(e) => {
-                const title = e.target.value;
-                setDramas((list) => list.map((d) => d.id === dramaId ? { ...d, title } : d));
-              }}
-              onBlur={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, title: e.target.value }); }}
-            />
-            <Input
-              className="h-7 max-w-[7rem] text-[12px]"
-              value={ep?.title || ""}
-              aria-label={copy.video.untitledEp}
-              onChange={(e) => {
-                const title = e.target.value;
-                setBundle((b) => b ? { ...b, episode: { ...b.episode, title } } : b);
-                setEpisodes((list) => list.map((x) => x.id === ep?.id ? { ...x, title } : x));
-              }}
-              onBlur={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, title: e.target.value }); }}
-            />
-            <select className={cn(field, "h-7")} value={drama?.style || "3d"} aria-label={copy.video.style} onChange={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style: e.target.value }).then(loadList); }}>
-              {styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
-            </select>
-            <ProviderModelSelect
-              kind="image"
-              label={copy.video.imageProvider}
-              providers={providers}
-              providerId={ep?.image_provider_id || ""}
-              model={ep?.image_model || ""}
-              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: id, image_model: model }).then(() => loadBundle(ep.id)); }}
-            />
-            <ProviderModelSelect
-              kind="video"
-              label={copy.video.videoProvider}
-              providers={providers}
-              providerId={ep?.video_provider_id || ""}
-              model={ep?.video_model || ""}
-              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: id, video_model: model }).then(() => loadBundle(ep.id)); }}
-            />
-            <ProviderModelSelect
-              kind="tts"
-              label={copy.video.kindSpeech}
-              providers={providers}
-              providerId={ep?.tts_provider_id || ""}
-              model={ep?.tts_model || ""}
-              onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, tts_provider_id: id, tts_model: model }).then(() => loadBundle(ep.id)); }}
-            />
-            <select className={cn(field, "h-7")} value={ep?.resolution || "720p"} aria-label={copy.video.resolution} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, resolution: e.target.value }).then(() => loadBundle(ep.id)); }}>
-              {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <button
-              type="button"
-              className={cn("ml-auto h-6 rounded-md px-2 text-[11px] font-medium", kill === "episode" + episodeId ? "text-danger" : "text-muted hover:bg-lift hover:text-foreground")}
-              onClick={() => void remove("episode", episodeId)}
-            >
-              {kill === "episode" + episodeId ? copy.video.confirmDelete : copy.video.delete}
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1 border-b border-border/70 px-2 py-1.5">
-            {pipe.map((s) => {
-              const st = pipeStatus(ep?.pipeline || "", s.id);
-              const live = st === "running" || busy === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => {
-                    setPane(s.pane);
-                    if (s.id === "assets") void run("stills", () => api.video.generateMissingAssets(episodeId));
-                    else if (s.id === "gen") void run("clips", () => api.video.generateMissingShots(episodeId));
-                    else if (s.id === "merge") setPane("cut");
-                    else void stage(s.id);
-                  }}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
-                    st === "done" ? "bg-lift text-foreground" : live ? "bg-accent/[0.11] text-foreground" : "text-muted hover:bg-lift/60 hover:text-foreground",
-                  )}
-                >
-                  {live ? <span className="pulse-dot" /> : <span className={cn("size-1.5 rounded-full", st === "done" ? "bg-success" : "bg-muted/50")} />}
-                  {s.label}
-                </button>
-              );
-            })}
-            {busy ? <span className="ml-1 text-[11px] text-muted">{copy.video.stageBusy}</span> : null}
-          </div>
-          <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-2">
-            <div className="process-tabs flex h-9 items-stretch gap-0.5" role="tablist" aria-label={copy.video.workshop}>
-              {panes.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={pane === p.id}
-                  className={cn(
-                    "relative flex h-full cursor-pointer items-center px-2 text-[12px] font-medium transition-colors",
-                    pane === p.id ? "text-foreground" : "text-muted hover:text-foreground",
-                  )}
-                  onClick={() => setPane(p.id)}
-                >
-                  {p.label}
-                  <span className={cn("absolute inset-x-2 -bottom-px h-[1.5px] rounded-full bg-foreground transition-opacity duration-150", pane === p.id ? "opacity-100" : "opacity-0")} aria-hidden />
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto px-3 py-2.5">
-            {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} onSkip={() => void run("skip", () => api.video.skipRewrite(episodeId))} /> : null}
-            {pane === "cast" ? (
+          <div className="drama-body">
+            <aside className="drama-browser">
               <CastPane
                 bundle={bundle}
                 copy={copy}
@@ -602,29 +524,167 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                 onCreate={(kind, fields) => void run("new", () => api.video.createAsset(kind, episodeId, fields))}
                 onDelete={(kind, id) => void run("del", () => api.video.deleteAsset(kind, id))}
               />
-            ) : null}
-            {pane === "board" ? (
-              <BoardPane
-                bundle={bundle}
-                copy={copy}
-                onBoard={() => void stage("storyboard")}
-                onVprompts={() => void stage("video_prompts")}
-                onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))}
-                onGen={(id) => void run("clip", () => api.video.generateShot(id))}
-                onPatch={(s) => void run("shot", () => api.video.updateShot(s))}
-                onApply={(id) => void run("apply", () => api.video.applyJob(id))}
-              />
-            ) : null}
-            {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} onMerge={() => {
-              const ids = selectedClipIds(bundle.shots || [], selShots);
-              if (!ids.length) {
-                toast.message(copy.video.needClips);
-                return;
-              }
-              void run("merge", () => api.video.merge(episodeId, ids));
-            }} /> : null}
+            </aside>
+            <section className="drama-viewer" aria-label={copy.video.play}>
+              <div className="drama-viewer-stage">
+                {pane === "script" ? (
+                  <div className="w-full max-w-[42rem] text-[13px] leading-6 text-[#f2ede6]/80">
+                    {(ep?.script_content || ep?.content || copy.video.emptyHint).slice(0, 900)}
+                  </div>
+                ) : pane === "cut" && ep?.video_url ? (
+                  <video src={ep.video_url} poster={ep.poster_url} controls />
+                ) : focused?.video_url ? (
+                  <video src={focused.video_url} poster={focused.poster_url} controls />
+                ) : focused?.poster_url ? (
+                  <img src={focused.poster_url} alt="" />
+                ) : (
+                  <div className="grid aspect-video w-full max-w-xl place-items-center rounded-[10px] bg-black/40 text-[12px] text-[#f2ede6]/55">{copy.video.noClip}</div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1 border-t border-white/5 px-2 py-1.5">
+                {pipe.map((s) => {
+                  const st = pipeStatus(ep?.pipeline || "", s.id);
+                  const live = st === "running" || busy === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      disabled={!!busy}
+                      onClick={() => {
+                        setPane(s.pane);
+                        if (s.id === "assets") void run("stills", () => api.video.generateMissingAssets(episodeId));
+                        else if (s.id === "gen") void run("clips", () => api.video.generateMissingShots(episodeId));
+                        else if (s.id === "merge") setPane("cut");
+                        else void stage(s.id);
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                        st === "done" ? "bg-white/10 text-[#f2ede6]" : live ? "bg-accent/20 text-[#f2ede6]" : "text-[#f2ede6]/55 hover:bg-white/8 hover:text-[#f2ede6]",
+                      )}
+                    >
+                      {live ? <span className="pulse-dot" /> : <span className={cn("size-1.5 rounded-full", st === "done" ? "bg-success" : "bg-white/25")} />}
+                      {s.label}
+                    </button>
+                  );
+                })}
+                {busy ? <span className="ml-1 text-[11px] text-[#f2ede6]/55">{copy.video.stageBusy}</span> : null}
+              </div>
+            </section>
+            <aside className="drama-inspector">
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <Input
+                  className="h-7 max-w-[7.5rem] text-[12.5px] font-medium"
+                  value={drama?.title || ""}
+                  aria-label={copy.video.pickSeries}
+                  onChange={(e) => {
+                    const title = e.target.value;
+                    setDramas((list) => list.map((d) => d.id === dramaId ? { ...d, title } : d));
+                  }}
+                  onBlur={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, title: e.target.value }); }}
+                />
+                <Input
+                  className="h-7 max-w-[7rem] text-[12px]"
+                  value={ep?.title || ""}
+                  aria-label={copy.video.untitledEp}
+                  onChange={(e) => {
+                    const title = e.target.value;
+                    setBundle((b) => b ? { ...b, episode: { ...b.episode, title } } : b);
+                    setEpisodes((list) => list.map((x) => x.id === ep?.id ? { ...x, title } : x));
+                  }}
+                  onBlur={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, title: e.target.value }); }}
+                />
+                <select className={cn(field, "h-7")} value={drama?.style || "3d"} aria-label={copy.video.style} onChange={(e) => { if (dramaId) void api.video.updateDrama({ id: dramaId, style: e.target.value }).then(loadList); }}>
+                  {styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="mb-3 grid gap-1.5">
+                <ProviderModelSelect
+                  kind="image"
+                  label={copy.video.imageProvider}
+                  providers={providers}
+                  providerId={ep?.image_provider_id || ""}
+                  model={ep?.image_model || ""}
+                  onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, image_provider_id: id, image_model: model }).then(() => loadBundle(ep.id)); }}
+                />
+                <ProviderModelSelect
+                  kind="video"
+                  label={copy.video.videoProvider}
+                  providers={providers}
+                  providerId={ep?.video_provider_id || ""}
+                  model={ep?.video_model || ""}
+                  onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, video_provider_id: id, video_model: model }).then(() => loadBundle(ep.id)); }}
+                />
+                <ProviderModelSelect
+                  kind="tts"
+                  label={copy.video.kindSpeech}
+                  providers={providers}
+                  providerId={ep?.tts_provider_id || ""}
+                  model={ep?.tts_model || ""}
+                  onChange={(id, model) => { if (ep) void api.video.updateEpisode({ id: ep.id, tts_provider_id: id, tts_model: model }).then(() => loadBundle(ep.id)); }}
+                />
+                <select className={cn(field, "h-7")} value={ep?.resolution || "720p"} aria-label={copy.video.resolution} onChange={(e) => { if (ep) void api.video.updateEpisode({ id: ep.id, resolution: e.target.value }).then(() => loadBundle(ep.id)); }}>
+                  {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              {pane === "script" ? <ScriptPane ep={ep!} plan={bundle.plan} copy={copy} onSave={(patch) => void run("save", () => api.video.updateEpisode({ id: ep!.id, ...patch }))} onRewrite={() => void stage("rewrite")} onSkip={() => void run("skip", () => api.video.skipRewrite(episodeId))} /> : null}
+              {pane === "board" ? (
+                <BoardPane
+                  bundle={bundle}
+                  copy={copy}
+                  focusId={focused?.id}
+                  onFocus={setFocusShot}
+                  onBoard={() => void stage("storyboard")}
+                  onVprompts={() => void stage("video_prompts")}
+                  onGenAll={() => void run("clips", () => api.video.generateMissingShots(episodeId))}
+                  onGen={(id) => void run("clip", () => api.video.generateShot(id))}
+                  onPatch={(s) => void run("shot", () => api.video.updateShot(s))}
+                  onApply={(id) => void run("apply", () => api.video.applyJob(id))}
+                />
+              ) : null}
+              {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} compact onMerge={() => {
+                const ids = selectedClipIds(bundle.shots || [], selShots);
+                if (!ids.length) {
+                  toast.message(copy.video.needClips);
+                  return;
+                }
+                void run("merge", () => api.video.merge(episodeId, ids));
+              }} /> : null}
+              {pane === "cast" ? (
+                <p className="text-[12px] leading-5 text-muted">{copy.video.workshopHint}</p>
+              ) : null}
+              <button
+                type="button"
+                className={cn("mt-3 h-6 rounded-md px-2 text-[11px] font-medium", kill === "episode" + episodeId ? "text-danger" : "text-muted hover:bg-lift hover:text-foreground")}
+                onClick={() => void remove("episode", episodeId)}
+              >
+                {kill === "episode" + episodeId ? copy.video.confirmDelete : copy.video.delete}
+              </button>
+            </aside>
           </div>
-          <JobStrip jobs={bundle.jobs || []} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+          {shots.length ? (
+            <div className="drama-timeline" aria-label={copy.video.board}>
+              {shots.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={cn("drama-shot", focused?.id === s.id && "is-on")}
+                  onClick={() => { setFocusShot(s.id); setPane("board"); }}
+                >
+                  {s.poster_url || s.video_url ? (
+                    <img src={s.poster_url || ""} alt="" />
+                  ) : (
+                    <span className="drama-shot-empty grid place-items-center text-[10px]">{String(s.shot_number).padStart(2, "0")}</span>
+                  )}
+                  <span className="truncate font-mono text-[10px] tabular-nums">{String(s.shot_number).padStart(2, "0")} {s.title}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {tasksOpen ? (
+            <div className="drama-task-drawer">
+              <JobStrip jobs={bundle.jobs || []} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+            </div>
+          ) : null}
         </>
       )}
     </div>
@@ -775,12 +835,15 @@ function AssetCol(props: {
 
 function BoardPane(props: {
   bundle: Bundle; copy: CopyT;
+  focusId?: string;
+  onFocus?: (id: string) => void;
   onBoard: () => void; onVprompts: () => void; onGenAll: () => void; onGen: (id: string) => void;
   onPatch: (s: Record<string, any>) => void; onApply: (id: string) => void;
 }) {
   const c = props.copy.video;
   const shots = props.bundle.shots || [];
-  const [focus, setFocus] = useState("");
+  const [focus, setFocus] = useState(props.focusId || "");
+  useEffect(() => { if (props.focusId) setFocus(props.focusId); }, [props.focusId]);
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-2">
@@ -795,19 +858,15 @@ function BoardPane(props: {
           {shots.map((s, i) => {
             const takes = (props.bundle.jobs || []).filter((j) => j.storyboard_id === s.id && j.type === "video" && j.status === "succeeded");
             const open = focus === s.id;
+            const selected = (props.focusId || focus) === s.id;
             return (
-              <article key={s.id} className={cn("grid gap-3 py-3", i ? "border-t border-border/50" : "")}>
-                {s.video_url ? (
-                  <video src={s.video_url} poster={s.poster_url} controls className="aspect-video w-full rounded-lg bg-background" />
-                ) : s.poster_url ? (
-                  <img src={s.poster_url} alt="" className="aspect-video w-full rounded-lg object-cover" />
-                ) : (
-                  <div className="grid aspect-video place-items-center rounded-lg bg-lift text-[11px] text-muted">{c.noClip}</div>
-                )}
+              <article key={s.id} className={cn("grid gap-2 py-2", i ? "border-t border-border/50" : "", selected && "bg-lift/40")}>
                 <div className="min-w-0">
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="font-mono text-[11px] tabular-nums text-muted">{String(s.shot_number).padStart(2, "0")}</span>
-                    <Input className="h-7 flex-1 text-[13px]" defaultValue={s.title} onBlur={(e) => props.onPatch({ id: s.id, title: e.target.value })} />
+                    <button type="button" className="font-mono text-[11px] tabular-nums text-muted" onClick={() => { setFocus(s.id); props.onFocus?.(s.id); }}>
+                      {String(s.shot_number).padStart(2, "0")}
+                    </button>
+                    <Input className="h-7 flex-1 text-[13px]" defaultValue={s.title} onFocus={() => { setFocus(s.id); props.onFocus?.(s.id); }} onBlur={(e) => props.onPatch({ id: s.id, title: e.target.value })} />
                     <Input
                       className="h-7 w-14 font-mono text-[12px] tabular-nums"
                       type="number"
@@ -898,7 +957,7 @@ function BoardPane(props: {
   );
 }
 
-function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: (v: Record<string, boolean>) => void; copy: CopyT; ffmpeg: boolean; onMerge: () => void }) {
+function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: (v: Record<string, boolean>) => void; copy: CopyT; ffmpeg: boolean; compact?: boolean; onMerge: () => void }) {
   const c = props.copy.video;
   const shots = props.bundle.shots || [];
   const ep = props.bundle.episode;
@@ -906,7 +965,7 @@ function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: 
   return (
     <div>
       {!props.ffmpeg ? <p className="mb-3 text-[12.5px] text-danger">{c.ffmpegMissing}</p> : null}
-      {ep.video_url ? <video src={ep.video_url} poster={ep.poster_url} controls className="mb-4 max-h-[360px] w-full rounded-[10px] bg-background" /> : null}
+      {!props.compact && ep.video_url ? <video src={ep.video_url} poster={ep.poster_url} controls className="mb-4 max-h-[360px] w-full rounded-[10px] bg-background" /> : null}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button onClick={props.onMerge} disabled={!props.ffmpeg || n === 0}>{c.export}</Button>
         <span className="text-[12px] tabular-nums text-muted">{n} {c.clipCount}</span>

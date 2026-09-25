@@ -24,7 +24,7 @@ export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "appearance", group: "app", icon: "palette" },
   { key: "shortcuts", group: "app", icon: "keyboard" },
   { key: "provider", group: "agent", icon: "cpu" },
-  { key: "generation", group: "agent", icon: "sparkles" },
+  { key: "generation", group: "agent", icon: "film" },
   { key: "policy", group: "agent", icon: "shield" },
   { key: "extensions", group: "agent", icon: "blocks" },
   { key: "personal", group: "agent", icon: "brain" },

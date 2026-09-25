@@ -13,7 +13,7 @@ export function PageHeader(props: {
   return (
     <header
       className={cn(
-        "chrome drag flex h-12 min-w-0 shrink-0 items-center gap-2 border-b border-border/40 px-3",
+        "glass-chrome chrome drag flex h-12 min-w-0 shrink-0 items-center gap-2 px-3",
         props.macPad && "pl-[76px]",
         props.className,
       )}

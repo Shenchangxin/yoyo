@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Fragment, useId, useState, type CSSProperties } from "react";
 import { Popover } from "antd";
-import { AlignLeft, ArrowUpRight, Check, ChevronUp, Clapperboard, FolderKanban, Images, Palette, Pencil, Plus, Sparkles, Type, Upload, X } from "lucide-react";
+import { AlignLeft, ArrowUpRight, Check, ChevronUp, Clapperboard, FolderKanban, Images, Palette, Pencil, Plus, Type, Upload, X } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@yingce/components/canvas/canvas-create-menu";
@@ -204,7 +204,7 @@ export function CanvasStylePlaceholderNodeContent({ onChoose }: { onChoose: () =
             <span className="grid size-10 place-items-center rounded-md" style={{ background: `${theme.accent.primary}16`, color: theme.accent.primary }}><Palette className="size-5" /></span>
             <div className="mt-3 text-sm font-semibold">项目画风</div>
             <div className="mt-1 text-xs" style={{ color: theme.node.muted }}>待选择</div>
-            <button type="button" className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium outline-none transition hover:brightness-105 focus-visible:ring-2" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, "--tw-ring-color": theme.accent.primary } as CSSProperties} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onChoose(); }}><Sparkles className="size-3.5" />选择画风</button>
+            <button type="button" className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium outline-none transition hover:brightness-105 focus-visible:ring-2" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, "--tw-ring-color": theme.accent.primary } as CSSProperties} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onChoose(); }}><Clapperboard className="size-3.5" />选择画风</button>
         </div>
     );
 }

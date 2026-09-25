@@ -22,7 +22,7 @@ export function SettingsPageHeader({
 }) {
   return (
     <header className="mb-[var(--space-section)]">
-      <h1 className="text-[24px] font-semibold tracking-[-0.036em] text-pretty text-foreground">{title}</h1>
+      <h1 className="text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">{title}</h1>
       {description ? (
         <p className="mt-[var(--space-item)] max-w-[46ch] text-[13.5px] leading-[1.6] text-muted">{description}</p>
       ) : null}
@@ -65,7 +65,7 @@ export function SettingSection({
         data-setting-section-id={id}
         className={cn(
           "flex flex-col gap-[var(--space-group)]",
-          !bare && "rounded-2xl bg-sidebar/50 px-4 py-4 shadow-[var(--shadow-card)]",
+          !bare && "rounded-[12px] bg-card px-4 py-1 shadow-[var(--shadow-card)]",
         )}
       >
         {children}
@@ -167,7 +167,7 @@ export function SettingActionRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-10 w-full items-center gap-4 rounded-md px-1 text-left transition-colors hover:bg-lift/70"
+          className="flex min-h-11 w-full items-center gap-4 px-1 text-left transition-colors hover:bg-lift/70"
     >
       <span className="min-w-0 flex-1">
         <span className={cn("block text-[13px] font-medium leading-[1.4]", danger ? "text-danger" : "text-foreground")}>

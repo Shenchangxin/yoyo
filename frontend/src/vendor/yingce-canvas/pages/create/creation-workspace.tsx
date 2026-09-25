@@ -9,11 +9,11 @@ import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { useWorkspaceTopBarMount } from "@yingce/components/layout/workspace-top-bar-extension";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { Reorder, LayoutGroup, motion, useReducedMotion } from "motion/react";
-import { ArrowDown, ArrowUp, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, Trash2, UserRound, WandSparkles, Waves, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, Brain, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, Download, FileText, Film, History, Image as ImageIcon, LoaderCircle, Maximize2, MessageSquareText, Minimize2, MoreHorizontal, Music2, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, UserRound, Waves, X } from "lucide-react";
 
 import { AIMessageMarkdown } from "@yingce/components/ai/ai-message-markdown";
 import { GenerationToolCard, type GenerationToolStatus } from "@yingce/components/ai/generation-tool-card";
-import { WorkingDots, WorkingGlow } from "@yingce/components/ai/working-indicator";
+import { WorkingDots } from "@yingce/components/ai/working-indicator";
 import { MessageReasoning } from "@yingce/components/ai/message-reasoning";
 import { creationResultAssetIds } from "@yingce/lib/canvas/canvas-asset-handoff";
 import { generationErrorMessage } from "@yingce/lib/generation-error";
@@ -23,8 +23,6 @@ import { CachedResourceImage } from "@yingce/components/cached-resource-image";
 import { CanvasImagePreview } from "@yingce/components/canvas/canvas-image-preview";
 import { CanvasResourceMentionTextarea } from "@yingce/components/canvas/canvas-resource-mention-textarea";
 import { VoiceRecordingButton } from "@yingce/components/conversation/voice-recording-button";
-import { HoverBorderGradient } from "@yingce/components/ui/aceternity/hover-border-gradient";
-import { SpotlightSurface } from "@yingce/components/ui/aceternity/spotlight-surface";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { aceternityMotion } from "@yingce/lib/aceternity-motion";
 import { CreditSymbol, requestCreditCost } from "@yingce/constant/credits";
@@ -49,6 +47,7 @@ import { conversationTimeFormatter, countOptions, historyDayFormatter, messageTi
 import "./creation-product.css";
 import "./creation-scrollbars.css";
 import { creationFeaturedWorks, inspirationSource } from "./creation-inspirations";
+import { styleCoverSrc } from "@yingce/lib/style-cover";
 
 const CanvasPromptOptimizerDrawer = lazy(() => import("@yingce/components/canvas/canvas-prompt-optimizer-drawer").then((module) => ({ default: module.CanvasPromptOptimizerDrawer })));
 
@@ -140,7 +139,7 @@ export function CreationHistoryDrawer({ open, conversations, activeId, onNew, on
                     const showGroupHead = !keyword.trim() && (index === 0 || creationConversationBucket(conversation.updatedAt) !== creationConversationBucket(visibleConversations[index - 1].updatedAt));
                     const latest = conversationPreviewMessage(conversation);
                     const active = conversation.id === activeId;
-                    const HistoryTypeIcon = latest?.mode === "video" ? Clapperboard : latest?.mode === "image" ? ImageIcon : latest?.mode === "text" ? MessageSquareText : Sparkles;
+                    const HistoryTypeIcon = latest?.mode === "video" ? Clapperboard : latest?.mode === "image" ? ImageIcon : latest?.mode === "text" ? MessageSquareText : BookOpen;
                     return [
                         showGroupHead ? <li key={`${conversation.id}-group`} className="creation-history-group-head"><h4>{creationBucketLabels[creationConversationBucket(conversation.updatedAt)]}</h4></li> : null,
                         <li key={conversation.id} className={active ? "is-active" : undefined}>
@@ -217,9 +216,9 @@ export function CreationMessageView({ item, shotNumber, onRetryFailure, onCreate
     const stateLabel = item.status === "pending" ? "生成中" : item.status === "cancelled" ? "已停止" : item.status === "error" ? "生成失败" : "";
     const heading =
         mode !== "text" ? (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Sparkles /></span><strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         ) : (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Sparkles /></span><strong>{brandName}</strong>{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{brandName}</strong>{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         );
     const toolStatus: GenerationToolStatus = item.status === "pending" ? "running" : item.status === "error" ? "error" : item.status === "cancelled" ? "cancelled" : "completed";
     return <article className={`creation-assistant-message is-${mode}`}>
@@ -277,7 +276,7 @@ function CreationMediaPending({ mode, ratio }: { mode: CreationMode; ratio?: str
 
 function CreationMessageReferences({ references }: { references: CreationReference[] }) {
     return <div className="creation-user-message-references" aria-label="本次引用">{references.map((reference) => {
-        const Icon = reference.kind === "skill" ? Sparkles : reference.kind === "image" ? ImageIcon : reference.kind === "video" ? Film : reference.kind === "audio" ? Music2 : FileText;
+        const Icon = reference.kind === "skill" ? BookOpen : reference.kind === "image" ? ImageIcon : reference.kind === "video" ? Film : reference.kind === "audio" ? Music2 : FileText;
         const imageUrl = reference.kind === "image" ? resolveResourceUrl(reference.storageKey, reference.previewUrl) : reference.previewUrl;
         return <span key={reference.id} className="creation-user-message-reference">{imageUrl && reference.kind === "video" ? <video src={imageUrl} muted playsInline preload="metadata" aria-label={reference.label} /> : imageUrl && reference.kind === "image" ? <CachedResourceImage storageKey={reference.storageKey} src={imageUrl} alt="" loading="lazy" decoding="async" /> : <Icon />}<span>{reference.label}</span></span>;
     })}</div>;
@@ -410,7 +409,6 @@ export function CreationComposer(props: ComposerProps) {
     // the composer is empty; typing a next prompt returns the arrow so the
     // user knows a new send is possible.
     const showWorkingSpinner = interactionBusy || (props.generationActive && !canSubmit);
-    const showWorkingGlow = props.generationActive && !canSubmit;
     const placeholder = props.mode === "text"
         ? "描述你的故事、角色或想继续讨论的创意"
         : props.mode === "image"
@@ -517,13 +515,8 @@ export function CreationComposer(props: ComposerProps) {
         }
         return undefined;
     };
-    const composer = <HoverBorderGradient as="div" duration={2.2} containerClassName="creation-composer-shell" className="creation-composer-shell-inner">
-        <SpotlightSurface
-            className={`creation-chat-composer is-${props.variant}`}
-            contentClassName="contents"
-            spotlightColor="color-mix(in srgb, var(--user-ink) 12%, transparent)"
-            spotlightRadius={280}
-        >
+    const composer = <div className="creation-composer-shell">
+        <div className={`creation-chat-composer is-${props.variant}`}>
         <div className="creation-chat-writing-surface">
             <div className="creation-chat-editor">
                 <CanvasResourceMentionTextarea ref={props.composerFocusRef} value={props.prompt} references={props.references} mentionMenuWidth={400} sendOnEnter onFocus={props.onPromptFocus} onChange={props.setPrompt} onSubmit={props.onSubmit} containerClassName="creation-chat-mention-container" className="creation-chat-mention-editor creation-scrollbar" style={{ color: "var(--creation-text)" }} placeholder={props.placeholderOverride || (props.variant === "empty" ? emptyPlaceholder : placeholder)} aria-label="创作提示词，可使用 @ 引用当前参考内容或技能；回车发送，Shift+回车换行" spellCheck disabled={interactionBusy} activeDropReferenceId={dropTargetReferenceId} onReferenceFilesDrop={(reference, files) => { const target = props.references.find((item) => item.id === reference.id); if (target?.attachmentId) props.onReplaceReferenceFiles(target.attachmentId, files); }} />
@@ -610,7 +603,7 @@ export function CreationComposer(props: ComposerProps) {
                         aria-expanded={promptOptimizerOpen}
                         aria-haspopup="dialog"
                     >
-                        <WandSparkles />
+                        <SlidersHorizontal />
                         <span>优化</span>
                     </button>
                 </Tooltip> : null}
@@ -635,14 +628,13 @@ export function CreationComposer(props: ComposerProps) {
                 aria-label={actionLabel}
                 title={!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
             >
-                {showWorkingGlow ? <WorkingGlow active color="var(--creation-text)" radius="999px" /> : null}
                 {showCost ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
                 <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}<span>{showWorkingSpinner ? "生成中" : "开始创作"}</span></span>
             </Button>
         </footer>
         <CreationMediaPreviewModal url={previewUrl} type={previewType} onClose={() => setPreviewUrl("")} />
-        </SpotlightSurface>
-    </HoverBorderGradient>;
+        </div>
+    </div>;
 
     if (!promptOptimizerOpen) return composer;
 
@@ -761,16 +753,16 @@ function DurationMenu({ profile, seconds, onChange }: { profile: VideoCapability
 }
 
 const creationEmptyBannerFrames = [
-    { src: "/short-drama-styles/cyberpunk-neon.jpg", caption: "镜头01 · 雨夜霓虹" },
-    { src: "/short-drama-styles/suspense-noir.jpg", caption: "镜头02 · 暗巷追逐" },
-    { src: "/short-drama-styles/retro-hong-kong.jpg", caption: "镜头03 · 天台重逢" },
+    { src: "/short-drama-styles/cyberpunk-neon.jpg", caption: "镜头01 · 雨港记忆诊所" },
+    { src: "/short-drama-styles/suspense-noir.jpg", caption: "镜头02 · 巷口证人" },
+    { src: "/short-drama-styles/retro-hong-kong.jpg", caption: "镜头03 · 天台晾衣绳" },
 ];
 
 export function CreationEmptyBanner() {
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     return <div className="creation-empty-art" aria-hidden="true">
         {creationEmptyBannerFrames.map((frame, index) => <figure key={frame.caption} className={`creation-empty-art-frame ${index === 1 ? "is-main" : index === 0 ? "is-back" : "is-front"}`}>
-            <img src={frame.src} alt="" />
+            <img src={styleCoverSrc(frame.src)} alt="" />
             <span>{frame.caption}</span>
         </figure>)}
         <span className="creation-empty-art-caption"><span>{brandName}</span>把每一帧，交给镜头导演</span>
@@ -778,10 +770,10 @@ export function CreationEmptyBanner() {
 }
 
 const creationEmptySuggestions: Array<{ mode: CreationMode; icon: typeof Clapperboard; title: string; hint: string; prompt: string; openLibrary?: boolean }> = [
-    { mode: "video", icon: Clapperboard, title: "生成第一个镜头", hint: "描述画面、镜头运动与光线", prompt: "雨夜天台，镜头缓缓推近霓虹灯牌下的主角，她回眸看向镜头，强对比电影感布光" },
+    { mode: "video", icon: Clapperboard, title: "生成第一个镜头", hint: "描述画面、镜头运动与光线", prompt: "雨夜十字路口，镜头从湿沥青上的霓虹倒影缓缓推到撑伞年轻人的侧脸，电影感布光，无字幕" },
     { mode: "image", icon: ImageIcon, title: "从参考图开始", hint: "上传风格图，生成同风格画面", prompt: "", openLibrary: true },
     { mode: "text", icon: FileText, title: "续写故事", hint: "和 AI 讨论剧情、角色与对白", prompt: "帮我续写一个短剧故事，先聊聊剧情走向：" },
-    { mode: "video", icon: Sparkles, title: "引用技能增强", hint: "@技能 调用分镜、配音等专业能力", prompt: "调用分镜技能，帮我规划这个镜头的拍摄方案：" },
+    { mode: "video", icon: BookOpen, title: "引用技能增强", hint: "@技能 调用分镜、配音等专业能力", prompt: "调用分镜技能，帮我规划这个镜头的拍摄方案：" },
 ];
 
 export function CreationEmptySuggest({ onStartPrompt, onOpenLibrary }: { onStartPrompt: (mode: CreationMode, prompt: string) => void; onOpenLibrary: () => void }) {
@@ -839,11 +831,11 @@ export function CreationFeaturedWorks({ onStartPrompt }: { onStartPrompt: (mode:
         </div>
         <div className="creation-featured-layout">
                 {filtered.slice(0, limit).map((item, index) => <button key={item.title} type="button" className={`product-collection-card creation-featured-card ${index === 0 ? "is-featured-hero" : ""}`} onClick={() => onStartPrompt(item.mode, item.prompt)}>
-                    <span className="creation-featured-media"><img src={item.image} alt="" loading="lazy" /><span className="creation-inspiration-overlay"><ArrowUp />使用这个创意</span></span>
-                    <span className="creation-featured-copy"><strong>{item.title}</strong><span>{item.description}</span><em><Sparkles />{item.source ? "开源改编 · CC0" : "原创提示词"} · {modeLabels[item.mode]}</em></span>
+                    <span className="creation-featured-media"><img src={styleCoverSrc(item.image)} alt="" loading="lazy" /><span className="creation-inspiration-overlay"><ArrowUp />使用这个创意</span></span>
+                    <span className="creation-featured-copy"><strong>{item.title}</strong><span>{item.description}</span><em>Yoyo 工作室案例 · {modeLabels[item.mode]}</em></span>
                 </button>)}
         </div>
-        <footer className="creation-inspiration-footer">{limit < filtered.length ? <Button onClick={() => setLimit((count) => count + 12)}>展开更多灵感<ChevronDown /></Button> : <span>已展示全部 {filtered.length} 个创意</span>}<details><summary>模板与封面来源</summary><p>{inspirationSource.notice}</p><a href={inspirationSource.repository} target="_blank" rel="noreferrer">awesome-chatgpt-prompts · CC0</a></details></footer>
+        <footer className="creation-inspiration-footer">{limit < filtered.length ? <Button onClick={() => setLimit((count) => count + 12)}>展开更多灵感<ChevronDown /></Button> : <span>已展示全部 {filtered.length} 个创意</span>}<details><summary>封面与案例说明</summary><p>{inspirationSource.notice}</p></details></footer>
     </section>;
 }
 

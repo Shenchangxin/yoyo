@@ -238,8 +238,6 @@ export function GenerationSettings() {
         </SettingRow>
       </SettingSection>
 
-      <CanvasChannelsSection copy={copy} />
-
       <AdapterSection
         id="generation-image"
         title={copy.settings.sections.generationImage}
@@ -268,6 +266,8 @@ export function GenerationSettings() {
         onChanged={refresh}
         footnote={v.speechHint}
       />
+
+      <CanvasChannelsSection copy={copy} />
 
       <StylesSection styles={styles} copy={copy} onChanged={refresh} />
     </>
@@ -788,12 +788,14 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
     }
   }
 
+  const extras = channels.filter((ch) => !String(ch.id || "").startsWith("ch-"));
+
   return (
-    <SettingSection id="generation-canvas" title={copy.settings.sections.generationCanvas} footnote={copy.video.canvasHint}>
-      {channels.length === 0 ? (
-        <SettingEmpty>{copy.video.noProject}</SettingEmpty>
+    <SettingSection id="generation-canvas" title={copy.settings.sections.generationCanvas} footnote={copy.video.canvasChannelsHint}>
+      {extras.length === 0 ? (
+        <SettingEmpty>{copy.video.canvasChannelsEmpty}</SettingEmpty>
       ) : (
-        channels.map((ch) => (
+        extras.map((ch) => (
           <SettingRow key={ch.id} title={ch.name || ch.pluginId || ch.id} list>
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <span className="truncate text-[12px] text-muted">{ch.pluginId} · {ch.capability} · {ch.baseUrl}</span>

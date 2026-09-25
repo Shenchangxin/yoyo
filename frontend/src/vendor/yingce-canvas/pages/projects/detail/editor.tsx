@@ -1,20 +1,6 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-    AlertTriangle,
-    Check,
-    CircleDot,
-    Download,
-    Loader2,
-    Maximize,
-    Minimize,
-    PanelRightClose,
-    PanelRightOpen,
-    Redo2,
-    Sparkles,
-    Undo2,
-    X,
-} from "lucide-react";
+import { AlertTriangle, Check, CircleDot, Download, Loader2, Maximize, Minimize, PanelRightClose, PanelRightOpen, Redo2, Clapperboard, Undo2, X } from "lucide-react";
 
 import type { ProjectAsset, ProjectDetail, ShotArtifact } from "@yingce/services/api/projects";
 import { linkProjectAsset, listProjectAssets } from "@yingce/services/api/projects";
@@ -182,7 +168,7 @@ function EditorTopBar({
                             : "text-[var(--director-dock-fg)] hover:bg-[var(--director-control-hover)]"
                     }`}
                 >
-                    <Sparkles className="size-4" />
+                    <Clapperboard className="size-4" />
                 </button>
                 <button
                     type="button"
@@ -447,7 +433,7 @@ export default function ProjectEditorView({ detail }: { detail: ProjectDetail })
                     />
                     <div className="absolute right-2 top-14 z-40 flex h-[640px] max-h-[calc(100%-3.75rem)] w-[460px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-[var(--director-sequencer-border)] bg-[var(--director-sequencer-surface)] shadow-[0_12px_40px_rgba(0,0,0,0.5)]">
                         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--director-sequencer-border)] px-3">
-                            <Sparkles className="size-4 text-[var(--director-dock-fg)]/80" />
+                            <Clapperboard className="size-4 text-[var(--director-dock-fg)]/80" />
                             <span className="text-xs font-medium text-[var(--director-dock-fg-strong)]">AI 剪辑助手</span>
                             <span className="hidden truncate text-[10px] text-[var(--director-dock-fg)]/45 sm:inline">
                                 编辑意图 → 时间线指令（宿主校验）

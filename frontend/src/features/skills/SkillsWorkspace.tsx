@@ -352,7 +352,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
           </div>
-          <div className="grid overflow-hidden rounded-2xl bg-sidebar/50 sm:grid-cols-2">
+          <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
             {props.featured.map((it, i) => (
               <MarketRow
                 key={it.slug}
@@ -361,7 +361,7 @@ function MarketList(props: {
                 incomplete={props.incomplete.has(it.slug) || props.incomplete.has(it.name)}
                 busy={props.busy === it.slug}
                 onInstall={props.onInstall}
-                className={cn(i > 0 && "border-t border-border/70 sm:border-t-0", i % 2 === 1 && "sm:border-l sm:border-border/70", i > 1 && "sm:border-t sm:border-border/70")}
+                className={i > 0 ? "border-t border-border/70" : undefined}
               />
             ))}
           </div>
@@ -373,7 +373,7 @@ function MarketList(props: {
             <h3 className="text-[13px] font-medium">{category}</h3>
             <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
           </div>
-          <div className="overflow-hidden rounded-2xl bg-sidebar/50">
+          <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
             {items.map((it, i) => (
               <MarketRow
                 key={it.slug}

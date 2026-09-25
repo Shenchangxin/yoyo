@@ -6,13 +6,14 @@ import { MediaPlaceholder } from "@yingce/components/ui/product/media-placeholde
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, Modal, Select } from "antd";
-import { ArrowRight, BookOpenText, FileText, FolderKanban, Images, LayoutGrid, Palette, Plus, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpenText, FileText, FolderKanban, Images, LayoutGrid, Palette, Plus, Search, Clapperboard } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { CollectionGrid, PageHeader, WorkspacePage } from "@yingce/components/layout/workspace-page";
 import { WorkspaceErrorState, WorkspaceLoadingState, WorkspaceState } from "@yingce/components/layout/workspace-state";
 import { CanvasStylePickerModal, resolveCanvasStylePreset, resolveProjectCanvasStyle, type CanvasStylePreset } from "@yingce/components/canvas/canvas-style-picker-modal";
 import { resourceFileUrl } from "@yingce/services/api/resources";
+import { styleCoverSrc } from "@yingce/lib/style-cover";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { createStyleProfileSnapshot, parseStyleProfile, serializeStyleProfile } from "@yingce/lib/canvas/style-profile";
 import { projectSummaryCompletion, projectSummaryStage } from "@yingce/lib/project-workbench";
@@ -188,7 +189,7 @@ export default function ProjectsPage() {
             <details className="story-launcher-panel" aria-label="开始一部新短剧">
                 <summary className="story-launcher-head">
                     <div className="story-launcher-title">
-                        <span className="story-launcher-mark"><Sparkles className="size-4" /></span>
+                        <span className="story-launcher-mark"><Clapperboard className="size-4" /></span>
                         <div>
                             <h2>开始一部新短剧</h2>
                             <p>一句话生成章节，也可以导入小说或从空白开始</p>
@@ -206,7 +207,7 @@ export default function ProjectsPage() {
                         aria-label="一句话故事"
                     />
                     {selectedStyle ? <button type="button" className="story-launcher-style-chip" onClick={() => setStylePickerOpen(true)} title={selectedStyle.title}>
-                        <img src={selectedStyle.imageUrl} alt="" />
+                        <img src={styleCoverSrc(selectedStyle.imageUrl)} alt="" />
                         <span>{selectedStyle.title}</span>
                     </button> : null}
                 </div>
@@ -225,7 +226,7 @@ export default function ProjectsPage() {
                             showOptionPrices
                             popoverClassName="agent-model-picker-popover"
                         />
-                        <Button type="default" icon={<Sparkles className="size-3.5" />} disabled={!storyDraft.trim() || generating} loading={generating} onClick={() => void generateStory()}>AI 生成章节</Button>
+                        <Button type="default" icon={<Clapperboard className="size-3.5" />} disabled={!storyDraft.trim() || generating} loading={generating} onClick={() => void generateStory()}>AI 生成章节</Button>
                         <Button type="primary" icon={<Plus className="size-3.5" />} onClick={() => openCreate(createSource)}>开始创作</Button>
                     </div>
                 <details className="story-launcher-options">
@@ -278,7 +279,7 @@ export default function ProjectsPage() {
                         <Form.Item name="aspectRatio" label="默认画幅"><Select options={[{ label: "9:16 竖屏", value: "9:16" }, { label: "16:9 横屏", value: "16:9" }, { label: "1:1 方形", value: "1:1" }]} /></Form.Item>
                         <Form.Item name="sourceType" label="内容来源"><Select options={[{ label: "空白开始", value: "blank" }, { label: "导入小说", value: "novel" }, { label: "粘贴文本", value: "text" }]} /></Form.Item>
                     </div>
-                    <Form.Item label="项目画风"><button type="button" className="app-story-modal-style" onClick={() => setStylePickerOpen(true)}>{selectedStyle ? <><img src={selectedStyle.imageUrl} alt="" /><span>{selectedStyle.title}</span><em>更换</em></> : <><Palette className="size-4" /><span>选择项目画风（可选）</span></>}</button></Form.Item>
+                    <Form.Item label="项目画风"><button type="button" className="app-story-modal-style" onClick={() => setStylePickerOpen(true)}>{selectedStyle ? <><img src={styleCoverSrc(selectedStyle.imageUrl)} alt="" /><span>{selectedStyle.title}</span><em>更换</em></> : <><Palette className="size-4" /><span>选择项目画风（可选）</span></>}</button></Form.Item>
                     <p className="-mt-1 mb-5 text-xs leading-5 text-foreground/48">创建后先进入项目概览。章节、画风和参考资产可以逐步补充。</p>
                     <div className="flex justify-end gap-2"><Button onClick={() => setCreateOpen(false)}>取消</Button><Button type="primary" htmlType="submit" loading={mutation.isPending}>创建项目</Button></div>
                 </Form>
@@ -292,7 +293,7 @@ export default function ProjectsPage() {
             <Modal className="library-modal" title="AI 生成章节" open={generating} footer={null} closable={false} mask={{ closable: false }} keyboard={false} width={760}>
                 <div className="app-story-generating">
                     <div className="app-story-generating-head">
-                        <span className="app-story-generating-mark"><Sparkles className="size-4" /></span>
+                        <span className="app-story-generating-mark"><Clapperboard className="size-4" /></span>
                         <div className="min-w-0">
                             <p>AI 正在创作</p>
                             <span className="block text-[var(--fs-tiny)] text-foreground/45">正在生成剧名、简介与章节</span>
@@ -305,7 +306,7 @@ export default function ProjectsPage() {
                             <span className="app-story-generating-caption">故事起点</span>
                             <p>{storyDraft.trim() || "等待故事输入"}</p>
                             <span className="app-story-generating-meta">{generateChapterCount} 章 · 每章约 {generateWordCount} 字 · {generateStructure} · {generatePerspective}</span>
-                            {selectedStyle ? <span className="app-story-generating-style"><img src={selectedStyle.imageUrl} alt="" /><span>{selectedStyle.title}</span></span> : null}
+                            {selectedStyle ? <span className="app-story-generating-style"><img src={styleCoverSrc(selectedStyle.imageUrl)} alt="" /><span>{selectedStyle.title}</span></span> : null}
                         </div>
                         <ol className="app-story-generating-steps">
                             {generationSteps.map((step) => {
@@ -364,7 +365,7 @@ function ProjectRow({ row, onDelete }: { row: ProjectSummary; onDelete: () => Pr
     const stage = projectSummaryStage(row);
     const projectStyle = resolveProjectCanvasStyle(row.project.stylePresetId, row.project.styleProfileJson);
     const styleTitle = projectStyle?.title || parseStyleProfile(row.project.styleProfileJson)?.title || resolveCanvasStylePreset(row.project.stylePresetId)?.title || (row.project.stylePresetId ? "自定义画风" : "未设置画风");
-    const coverUrl = row.project.coverResourceId ? resourceFileUrl(row.project.coverResourceId) : projectStyle?.imageUrl;
+    const coverUrl = row.project.coverResourceId ? resourceFileUrl(row.project.coverResourceId) : (projectStyle?.imageUrl ? styleCoverSrc(projectStyle.imageUrl) : "");
     return (
         <Link to={`/projects/${row.project.id}/overview`} className="product-collection-card library-card project-library-card group">
             <span className="project-library-cover">

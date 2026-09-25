@@ -1,14 +1,19 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
+  Clapperboard,
   GitCompare,
+  History,
+  Images,
   Info,
   MessageSquarePlus,
+  PanelsTopLeft,
+  Puzzle,
   Search,
   Settings,
   Square,
 } from "lucide-react";
-import type { Lab, Thread } from "../lib/protocol";
+import type { Lab, Thread, VideoProject } from "../lib/protocol";
 import { threadChannel } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
 import { displayTitle } from "../lib/display-title";
@@ -21,11 +26,13 @@ import { Kbd } from "../components/ui/kbd";
 export function CommandPalette(props: {
   open: boolean;
   threads: Thread[];
+  videoProjects?: VideoProject[];
   onClose: () => void;
   onNew: () => void;
   onLab: (lab: Lab) => void;
   onOpenHarness: () => void;
   onSelectThread: (t: Thread) => void;
+  onSelectProject?: (p: VideoProject) => void;
   onDiff: () => void;
   onAbout?: () => void;
   onQuit?: () => void;
@@ -99,6 +106,46 @@ export function CommandPalette(props: {
                 <Command.Item value={`${copy.palette.runCycle} run evolve cycle`} onSelect={() => { props.onRunCycle?.(); props.onClose(); }}>
                   {copy.palette.runCycle}
                 </Command.Item>
+              </Command.Group>
+              <Command.Group heading={copy.palette.videoGroup}>
+                <Command.Item data-testid="palette-video-create" value={`${copy.palette.videoCreate} create generation`} onSelect={() => { useUI.getState().openVideoPane("create"); props.onClose(); }}>
+                  <Images className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoCreate}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-drama" value={`${copy.palette.videoDrama} drama studio episode`} onSelect={() => { useUI.getState().openVideoPane("drama"); props.onClose(); }}>
+                  <Clapperboard className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoDrama}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-canvas" value={`${copy.palette.videoCanvas} infinite canvas board`} onSelect={() => { useUI.getState().openVideoPane("canvas"); props.onClose(); }}>
+                  <PanelsTopLeft className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoCanvas}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-assets" value={`${copy.palette.videoAssets} library stills`} onSelect={() => { useUI.getState().openVideoPane("assets"); props.onClose(); }}>
+                  <Images className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoAssets}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-plugins" value={`${copy.palette.videoPlugins} wasm fibers`} onSelect={() => { useUI.getState().openVideoPane("plugins"); props.onClose(); }}>
+                  <Puzzle className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoPlugins}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-tasks" value={`${copy.palette.videoTasks} history jobs`} onSelect={() => { useUI.getState().openVideoPane("tasks"); props.onClose(); }}>
+                  <History className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoTasks}
+                </Command.Item>
+                {(props.videoProjects || []).slice(0, 12).map((p) => (
+                  <Command.Item
+                    key={`${p.kind}-${p.id}`}
+                    value={`${p.title || p.id} ${p.kind} video project`}
+                    onSelect={() => {
+                      props.onSelectProject?.(p);
+                      props.onClose();
+                    }}
+                  >
+                    {p.kind === "drama" ? <Clapperboard className="size-4 text-muted" aria-hidden /> : <PanelsTopLeft className="size-4 text-muted" aria-hidden />}
+                    {p.title || p.id}
+                    <span className="ml-auto text-[11px] text-muted">{p.kind === "drama" ? copy.video.drama : copy.video.canvas}</span>
+                  </Command.Item>
+                ))}
               </Command.Group>
               <Command.Group heading={copy.palette.settings}>
                 {SETTINGS_TABS.map((t) => (
