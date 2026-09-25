@@ -497,15 +497,7 @@ export default function App() {
   const skillsPane = (
     <SkillsWorkspace
       installed={ws.skills}
-      pinned={ws.active?.pinnedSkills || []}
       loaded={ws.active?.loadedSkills || []}
-      threadId={ws.activeId}
-      onPinSkills={async (names) => {
-        if (!ws.activeId) return;
-        const t = await api.setSessionPinnedSkills(ws.activeId, names);
-        ws.setActive(t);
-        ws.setThreads((list) => patchThread(list, t.id, t));
-      }}
       onRefreshInstalled={() => { void ws.reloadSkills(); }}
     />
   );

@@ -13,6 +13,7 @@ import {
   TextQuote,
 } from "lucide-react";
 import { Tooltip } from "../components/ui/tooltip";
+import { Checkbox } from "../components/ui/checkbox";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { DiffBlock, type DiffMode } from "../lib/split-diff";
@@ -257,11 +258,10 @@ function DiffPane(props: DiffPaneProps) {
             return (
               <section key={g.file} className="border-b border-border/50 last:border-b-0">
                 <header className="sticky top-0 z-[1] flex h-8 items-center gap-2 bg-sidebar px-3">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label={copy.review.selectFile}
                     checked={on === ids.length}
-                    ref={(el) => { if (el) el.indeterminate = on > 0 && on < ids.length; }}
+                    indeterminate={on > 0 && on < ids.length}
                     onChange={() => setMany(ids, on !== ids.length)}
                   />
                   <FilePath path={g.file} className="flex-1 font-medium" />
@@ -272,7 +272,7 @@ function DiffPane(props: DiffPaneProps) {
                 {g.hunks.map((h) => (
                   <div key={h.id} className="border-b border-border/40 last:border-b-0">
                     <label className="flex h-7 cursor-pointer items-center gap-2 px-3 text-[11px] transition-colors hover:bg-lift/40">
-                      <input type="checkbox" checked={!!props.selected[h.id]} onChange={() => props.onToggle(h.id)} />
+                      <Checkbox checked={!!props.selected[h.id]} onChange={() => props.onToggle(h.id)} />
                       <span className="min-w-0 flex-1 truncate font-mono text-muted/75">{h.header || h.id}</span>
                     </label>
                     <div className="pb-1">
@@ -434,7 +434,7 @@ function ReviewQueue(props: {
               const req = o.request || o.Request || {};
               const session = str(req.session_id || req.SessionID);
               return (
-                <li key={id} className="px-3 py-2.5">
+                <li key={id} className="u-row-hover px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-[12.5px] font-medium text-foreground">{str(req.action || req.Action, "approval")}</div>
@@ -466,7 +466,7 @@ function ReviewQueue(props: {
               const offer = offers.find((o: any) => str((o.request || o.Request || {}).session_id || (o.request || o.Request || {}).SessionID) === session);
               const offerId = str(offer?.id || offer?.ID);
               return (
-                <li key={id} className="px-3 py-2.5">
+                <li key={id} className="u-row-hover px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-[12.5px] font-medium text-foreground">{str(it.title || it.Title)}</div>
@@ -499,7 +499,7 @@ function ReviewQueue(props: {
           <SectionLabel count={drafts.length}>{copy.review.drafts}</SectionLabel>
           <ul className="divide-y divide-border/50 border-y border-border/50">
             {drafts.map((d: any, i: number) => (
-              <li key={str(d.id || i)} className="px-3 py-2.5">
+              <li key={str(d.id || i)} className="u-row-hover px-3 py-2.5">
                 <div className="text-[12.5px] font-medium text-foreground">{str(d.to)}</div>
                 <div className="mt-0.5 text-[11.5px] text-muted">{str(d.subject)}</div>
               </li>
@@ -512,7 +512,7 @@ function ReviewQueue(props: {
           <SectionLabel count={browser.length}>{copy.review.browserActions}</SectionLabel>
           <ul className="divide-y divide-border/50 border-y border-border/50">
             {browser.map((b: any, i: number) => (
-              <li key={i} className="px-3 py-2 font-mono text-[11px] text-muted">
+              <li key={i} className="u-row-hover px-3 py-2 font-mono text-[11px] text-muted">
                 <span className="text-foreground/80">{str(b.op)}</span> {str(b.detail)}
               </li>
             ))}

@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Clapperboard, LayoutGrid, Plus } from "lucide-react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import * as api from "../../lib/client";
 import { displayTitle } from "../../lib/display-title";
 import { useCopy } from "../../lib/i18n";
+import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
 import type { VideoProject } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
@@ -21,6 +24,8 @@ export function VideoHistory(props: {
   onRefresh?: () => void;
 }) {
   const copy = useCopy();
+  const reduced = useMotionReduced();
+  const tabMotion = motionTransition(reduced, DURATION_SHELL);
   const [tab, setTab] = useState<"projects" | "jobs">("projects");
   const [busy, setBusy] = useState("");
   const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
@@ -66,30 +71,57 @@ export function VideoHistory(props: {
           <h1 className="text-[16px] font-semibold tracking-[-0.03em]">{copy.video.shellTasks}</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">{copy.video.historyHint}</p>
         </div>
-        <div className="flex rounded-lg bg-lift p-0.5 text-[12.5px]">
-          <button type="button" className={cn("rounded-md px-2.5 py-1", tab === "projects" ? "bg-card text-foreground" : "text-muted")} aria-pressed={tab === "projects"} onClick={() => setTab("projects")}>
-            {copy.video.historyProjects}
-          </button>
-          <button type="button" className={cn("rounded-md px-2.5 py-1", tab === "jobs" ? "bg-card text-foreground" : "text-muted")} aria-pressed={tab === "jobs"} onClick={() => setTab("jobs")}>
-            {copy.video.historyJobs}
-          </button>
+        <div className="relative flex rounded-lg bg-lift p-0.5 text-[12.5px]">
+          {(["projects", "jobs"] as const).map((id) => {
+            const on = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                className="relative rounded-md px-2.5 py-1"
+                aria-pressed={on}
+                onClick={() => setTab(id)}
+              >
+                {on ? (
+                  <motion.span
+                    layoutId="video-history-tab"
+                    className="absolute inset-0 rounded-md bg-card"
+                    transition={tabMotion}
+                    aria-hidden
+                  />
+                ) : null}
+                <span className={cn("relative z-10", on ? "text-foreground" : "text-muted")}>
+                  {id === "projects" ? copy.video.historyProjects : copy.video.historyJobs}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
       {tab === "jobs" ? (
         <div className="min-h-0 flex-1">
-          <Suspense fallback={<div className="flex h-full items-center justify-center text-[13px] text-muted">{copy.video.shellTasks}…</div>}>
+          <Suspense
+            fallback={
+              <div className="flex h-full flex-col gap-3 p-5" aria-busy="true">
+                <span className="sr-only">{copy.video.shellTasks}</span>
+                <div className="skeleton-sweep h-10 w-48 rounded-xl" />
+                <div className="skeleton-sweep is-soft min-h-0 flex-1 rounded-2xl" />
+              </div>
+            }
+          >
             <YingceApp initialPath="/tasks" />
           </Suspense>
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-6">
           <section className="mb-6">
-            <div className="mb-2 flex items-center gap-2">
+            <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellDrama}</h2>
               <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "drama"} data-testid="video-history-new-drama" onClick={() => void newDrama()}>
                 <Plus className="size-3.5" aria-hidden />
                 {copy.video.newDrama}
               </Button>
+              {busy === "drama" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
             </div>
             {dramas.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -102,12 +134,13 @@ export function VideoHistory(props: {
             )}
           </section>
           <section>
-            <div className="mb-2 flex items-center gap-2">
+            <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellCanvas}</h2>
               <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "canvas"} data-testid="video-history-new-canvas" onClick={() => void newCanvas()}>
                 <Plus className="size-3.5" aria-hidden />
                 {copy.video.newCanvas}
               </Button>
+              {busy === "canvas" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
             </div>
             {canvases.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -135,8 +168,8 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
         data-testid={`video-project-${p.kind}-${p.id}`}
         aria-current={props.active ? "page" : undefined}
         className={cn(
-          "flex w-full items-center gap-3 px-3.5 py-3 text-left text-[13px] transition-colors",
-          props.active ? "bg-lift text-foreground" : "text-foreground hover:bg-lift/60",
+          "flex w-full items-center gap-3 px-3.5 py-3 text-left text-[13px]",
+          props.active ? "bg-lift text-foreground" : "u-row-hover text-foreground",
         )}
         onClick={props.onSelect}
       >

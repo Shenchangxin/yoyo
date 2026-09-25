@@ -773,6 +773,9 @@ html.dark .code-hl span {
   background: var(--foreground);
   flex: none;
 }
+.pulse-dot.is-accent {
+  background: var(--accent);
+}
 .pulse-dot::after {
   content: "";
   position: absolute;
@@ -782,9 +785,206 @@ html.dark .code-hl span {
   opacity: 0;
   animation: yoyo-pulse 1.4s var(--ease-out) infinite;
 }
+.pulse-dot.is-accent::after {
+  border-color: var(--accent);
+}
 @keyframes yoyo-pulse {
   0% { transform: scale(0.6); opacity: 0.55; }
   100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* Loading surfaces — sweep is state (aria-busy), not decoration. */
+.skeleton-sweep {
+  background-color: var(--lift);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--foreground) 8%, transparent) 46%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  animation: yoyo-skeleton 1.8s var(--ease-out) infinite;
+}
+.skeleton-sweep.is-accent {
+  background-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 46%,
+    transparent 100%
+  );
+}
+.skeleton-sweep.is-soft {
+  background-color: color-mix(in srgb, var(--lift) 70%, transparent);
+}
+@keyframes yoyo-skeleton {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+.progress-hairline {
+  display: block;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 85%, transparent);
+}
+.progress-hairline > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: width var(--duration) var(--ease-out);
+}
+.progress-hairline > span.is-indeterminate {
+  width: 38%;
+  animation: yoyo-progress-slide 1.35s var(--ease-out) infinite;
+}
+@keyframes yoyo-progress-slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+
+.yoyo-check {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+.yoyo-check-box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
+  background: transparent;
+  color: var(--accent-fg);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.yoyo-check-box svg {
+  width: 12px;
+  height: 12px;
+  overflow: visible;
+}
+.yoyo-check-tick,
+.yoyo-check-minus {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.yoyo-check-tick {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+}
+.yoyo-check-minus {
+  opacity: 0;
+}
+.yoyo-check[data-state="checked"] .yoyo-check-box,
+.yoyo-check[data-state="mixed"] .yoyo-check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.yoyo-check[data-state="checked"] .yoyo-check-tick {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--duration-fast) var(--ease-out);
+}
+.yoyo-check[data-state="mixed"] .yoyo-check-tick {
+  opacity: 0;
+}
+.yoyo-check[data-state="mixed"] .yoyo-check-minus {
+  opacity: 1;
+}
+.yoyo-check:focus-within .yoyo-check-box {
+  outline: 2px solid color-mix(in srgb, var(--ring) 50%, transparent);
+  outline-offset: 2px;
+}
+.yoyo-check:has(input:disabled) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.yoyo-check[data-state="unchecked"]:hover .yoyo-check-box {
+  border-color: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+
+.yoyo-switch-thumb {
+  scale: 1 1;
+}
+.yoyo-switch[data-state="checked"] .yoyo-switch-thumb {
+  animation: yoyo-switch-squash var(--duration) var(--ease-out);
+}
+.yoyo-switch[data-state="unchecked"] .yoyo-switch-thumb {
+  animation: yoyo-switch-squash-back var(--duration) var(--ease-out);
+}
+@keyframes yoyo-switch-squash {
+  0%, 100% { scale: 1 1; }
+  40% { scale: 0.88 1.08; }
+}
+@keyframes yoyo-switch-squash-back {
+  0%, 100% { scale: 1 1; }
+  40% { scale: 0.88 1.08; }
+}
+
+.yoyo-tooltip-in {
+  display: block;
+  transform-origin: var(--radix-tooltip-content-transform-origin, center top);
+  animation: yoyo-tooltip-in var(--duration-fast) var(--ease-out) both;
+}
+@keyframes yoyo-tooltip-in {
+  from { opacity: 0; transform: scale(0.96) translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.u-card-hover {
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.u-card-hover:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background-color: color-mix(in srgb, var(--sidebar) 78%, transparent);
+}
+.u-card-hover.is-warn:hover {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+.u-card-hover.is-danger:hover {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+.u-row-hover {
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.u-row-hover:hover {
+  background-color: color-mix(in srgb, var(--sidebar) 55%, transparent);
+}
+
+.dock-hit {
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.dock-hit:active {
+  transform: scale(0.96);
+}
+
+/* Sonner: 8px rise, 240ms --ease-out. Stacking still uses --y from the library. */
+[data-sonner-toast].yoyo-toast {
+  transition:
+    transform var(--duration-shell) var(--ease-out),
+    opacity var(--duration-shell) var(--ease-out),
+    height var(--duration-shell) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+[data-sonner-toast].yoyo-toast:not([data-mounted="true"]) {
+  --y: translateY(8px);
 }
 
 .empty-rise {
@@ -885,6 +1085,23 @@ html.dark .code-hl span {
   .pulse-dot::after { animation: none; opacity: 0; }
   .empty-rise { animation: none; }
   .starter-tile { animation: none; }
+  .skeleton-sweep {
+    animation: none;
+    background-image: none;
+  }
+  .progress-hairline > span.is-indeterminate {
+    animation: none;
+    width: 42%;
+  }
+  .yoyo-check-tick { transition: none; }
+  .yoyo-switch[data-state="checked"] .yoyo-switch-thumb,
+  .yoyo-switch[data-state="unchecked"] .yoyo-switch-thumb { animation: none; }
+  .yoyo-tooltip-in { animation: none; }
+  .dock-hit:active { transform: none; }
+  [data-sonner-toast].yoyo-toast {
+    transition: none;
+    --y: translateY(0);
+  }
 }
 
 [cmdk-root] {
@@ -1115,6 +1332,7 @@ html.light .app-grain {
   border-radius: 999px;
   background: var(--lift);
   color: var(--muted);
+  overflow: hidden;
   transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .send-orb[data-live="true"] {

@@ -530,6 +530,60 @@ test("insert mention keeps the popup open and pins a file token", async ({ page 
   await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
 });
 
+test("installed skills appear in @skill and keyboard highlight stays in view", async ({ page }) => {
+  const skills = [
+    ...Array.from({ length: 14 }, (_, i) => ({
+      name: `bundled-${String(i).padStart(2, "0")}`,
+      description: "bundled pack",
+      source: "bundled",
+    })),
+    { name: "arxiv-watcher", description: "watch papers", source: "market", display_name: "Arxiv Watcher" },
+    ...Array.from({ length: 18 }, (_, i) => ({
+      name: `pack-${String(i).padStart(2, "0")}`,
+      description: `installed ${i}`,
+      source: "market",
+    })),
+  ];
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    skills,
+  });
+  await page.goto("/");
+  const box = page.getByRole("textbox", { name: "Message" });
+  await expect(box).toBeEnabled({ timeout: 15_000 });
+  await box.click();
+  await box.pressSequentially("@");
+  await page.getByRole("option", { name: /@skill:/ }).click();
+  await expect(page.getByRole("option", { name: /@skill:arxiv-watcher/ })).toBeVisible();
+  await box.pressSequentially("pack-17");
+  const list = page.getByRole("listbox", { name: "Mentions" });
+  await expect(list.getByRole("option", { name: /@skill:pack-17/ })).toBeVisible();
+  await box.fill("");
+  await box.pressSequentially("@skill:");
+  for (let i = 0; i < 16; i++) await box.press("ArrowDown");
+  const selected = list.getByRole("option", { selected: true });
+  await expect(selected).toBeVisible();
+  const listBox = await list.boundingBox();
+  const selBox = await selected.boundingBox();
+  expect(listBox && selBox).toBeTruthy();
+  expect(selBox!.y).toBeGreaterThanOrEqual(listBox!.y - 2);
+  expect(selBox!.y + selBox!.height).toBeLessThanOrEqual(listBox!.y + listBox!.height + 2);
+});
+
+test("installed skills do not need pinning to a chat", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    skills: [{ name: "arxiv-watcher", description: "watch papers", source: "market" }],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toBeVisible();
+  await page.getByRole("tab", { name: "Installed" }).click();
+  await expect(page.getByText("arxiv-watcher")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pin to chat" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "钉到对话" })).toHaveCount(0);
+});
+
 test("session authorization mode is on the composer", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws", auth_mode: "default" }],

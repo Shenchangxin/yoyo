@@ -39,12 +39,12 @@ export function RunningHub(props: {
     <div className="relative hidden sm:block">
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 rounded-full bg-lift px-2 py-0.5 text-[11px] tabular-nums text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-full bg-lift px-2 py-0.5 text-[11px] tabular-nums text-foreground transition-[background-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift/80 active:scale-[0.98]"
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="size-1.5 animate-pulse rounded-full bg-foreground" aria-hidden />
+        <span className="pulse-dot" aria-hidden />
         {props.threads.length} {copy.titlebar.live}
       </button>
       {open ? (
@@ -61,7 +61,7 @@ export function RunningHub(props: {
                 type="button"
                 key={t.id}
                 role="option"
-                className="block w-full px-3 py-1.5 text-left hover:bg-lift"
+                className="u-row-hover block w-full px-3 py-1.5 text-left"
                 onClick={() => {
                   props.onSelect(t);
                   setOpen(false);

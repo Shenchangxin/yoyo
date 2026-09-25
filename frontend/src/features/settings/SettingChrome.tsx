@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { useCopy } from "../../lib/i18n";
-import { DURATION, EASE } from "../../lib/motion";
+import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
 /** One control width inside a group, so fields in the same section share a left edge and a measure. */
@@ -224,6 +224,8 @@ export function SettingSegmented<T extends string>({
   onChange: (next: T) => void;
   ariaLabel: string;
 }) {
+  const reduced = useMotionReduced();
+  const pill = motionTransition(reduced, DURATION);
   return (
     <div
       role="radiogroup"
@@ -248,7 +250,7 @@ export function SettingSegmented<T extends string>({
               <motion.span
                 layoutId={`segmented-${id}`}
                 className="absolute inset-0 rounded-[7px] bg-lift"
-                transition={{ duration: DURATION, ease: EASE }}
+                transition={pill}
               />
             ) : null}
             <span className="relative z-10">{o.label}</span>
@@ -274,14 +276,15 @@ export function SettingsSaveBar({
   saveLabel?: string;
 }) {
   const copy = useCopy();
+  const reduced = useMotionReduced();
   return (
     <AnimatePresence>
       {open ? (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={reduced ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 12 }}
-          transition={{ duration: DURATION, ease: EASE }}
+          exit={reduced ? undefined : { opacity: 0, y: 12 }}
+          transition={motionTransition(reduced, DURATION)}
           className="sticky bottom-3 z-20 mt-8"
         >
           <div className="flex items-center gap-2 rounded-2xl border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">

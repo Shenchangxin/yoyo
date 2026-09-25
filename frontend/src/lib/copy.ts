@@ -835,7 +835,7 @@ export const en = {
   },
   skills: {
     title: "Skills",
-    hint: "Installed packs load into the loop. Market installs the full folder — SKILL.md plus scripts, references, and assets — into ~/.yoyo/skills.",
+    hint: "Installed packs are available in chat with @skill. Market installs the full folder — SKILL.md plus scripts, references, and assets — into ~/.yoyo/skills.",
     installed: "Installed",
     market: "Market",
     search: "Search catalog…",

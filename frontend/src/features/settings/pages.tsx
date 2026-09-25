@@ -10,6 +10,7 @@ import { applyUiScale } from "../../lib/scale";
 import { chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
+import { IconSwap } from "../../components/ui/icon-swap";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { Slider } from "../../components/ui/slider";
@@ -426,6 +427,7 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const [url, setUrl] = useState(host.cfg.updateUrl);
   const [applyOpen, setApplyOpen] = useState(false);
   const [level, setLevel] = useState("all");
+  const [copiedPath, setCopiedPath] = useState(false);
   useEffect(() => setUrl(host.cfg.updateUrl), [host.cfg.updateUrl]);
   const channel = host.cfg.updateChannel || "nightly";
   const lines = asArray(host.logs?.lines);
@@ -509,10 +511,19 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
               size="sm"
               variant="ghost"
               onClick={async () => {
-                if (logPath && (await writeClipboard(logPath))) toast.success(copy.settings.pathCopied);
+                if (logPath && (await writeClipboard(logPath))) {
+                  setCopiedPath(true);
+                  window.setTimeout(() => setCopiedPath(false), 1200);
+                  toast.success(copy.settings.pathCopied);
+                }
               }}
             >
-              <Copy aria-hidden />
+              <IconSwap
+                on={copiedPath}
+                className="size-4"
+                off={<Copy aria-hidden />}
+                live={<Check aria-hidden />}
+              />
               {copy.settings.copyPath}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => void host.onRevealLogs()}>

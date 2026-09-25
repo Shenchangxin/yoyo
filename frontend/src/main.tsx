@@ -19,7 +19,7 @@ function ThemedToaster() {
       closeButton
       toastOptions={{
         classNames: {
-          toast: "rounded-xl border-border bg-popover text-foreground shadow-[var(--shadow-popover)]",
+          toast: "yoyo-toast rounded-xl border-border bg-popover text-foreground shadow-[var(--shadow-popover)]",
         },
       }}
     />

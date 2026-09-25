@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Ref } from "react";
 import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, Clipboard, FileText, Folder, GitBranch, Paperclip, Plus, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
+import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
@@ -25,6 +26,7 @@ import {
   isCompleteMention,
   keepMentionOpen,
   mentionTokenAt,
+  mentionableSkills,
   peelCompletedMentions,
   pinFromToken,
   type MentionKind,
@@ -113,15 +115,13 @@ export function Composer(props: {
         }));
     }
     if (token.startsWith("@skill:")) {
-      const q = token.slice("@skill:".length).toLowerCase();
-      return (props.skills || [])
-        .filter((s) => !q || s.name.toLowerCase().includes(q))
-        .map((s) => ({
-          token: `@skill:${s.name}`,
-          label: s.name,
-          hint: s.description,
-          kind: "skill" as MentionKind,
-        }));
+      const q = token.slice("@skill:".length);
+      return mentionableSkills(props.skills || [], q).map((s) => ({
+        token: `@skill:${s.name}`,
+        label: s.displayName || s.name,
+        hint: s.description,
+        kind: "skill" as MentionKind,
+      }));
     }
     const mentions = [
       { token: "@file:", label: copy.composer.mentionKindFile, hint: copy.composer.mentionFile, kind: "file" as MentionKind },
@@ -146,6 +146,10 @@ export function Composer(props: {
     setChips([]);
     setFileQ(null);
   }, [props.draftKey]);
+
+  useEffect(() => {
+    if (popup.length && hi >= popup.length) setHi(0);
+  }, [hi, popup.length]);
 
   useEffect(() => {
     const el = ref.current;
@@ -653,7 +657,12 @@ export function Composer(props: {
               }}
               aria-label={props.running ? copy.composer.stop : copy.composer.send}
             >
-              {props.running ? <Square className="size-2.5 fill-current" /> : <ArrowUp className="size-3.5" />}
+              <IconSwap
+                on={props.running}
+                className="size-3.5"
+                off={<ArrowUp className="size-3.5" />}
+                live={<Square className="size-2.5 fill-current" />}
+              />
             </button>
           </div>
         </div>
@@ -729,6 +738,10 @@ function CommandWeld(props: {
   empty?: string;
   onPick: (token: string) => void;
 }) {
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [props.hi]);
   return (
     <div
       role="listbox"
@@ -738,8 +751,14 @@ function CommandWeld(props: {
         props.focused ? "border-foreground/20" : "border-border",
       )}
     >
-      {props.items.length ? props.items.slice(0, 12).map((m, i) => (
-        <PopupRow key={m.token + i} item={m} active={i === props.hi} onPick={() => props.onPick(m.token)} />
+      {props.items.length ? props.items.map((m, i) => (
+        <PopupRow
+          key={m.token + i}
+          item={m}
+          active={i === props.hi}
+          rowRef={i === props.hi ? activeRef : undefined}
+          onPick={() => props.onPick(m.token)}
+        />
       )) : props.empty ? (
         <div className="px-3 py-2 text-[11px] text-muted">{props.empty}</div>
       ) : null}
@@ -750,10 +769,12 @@ function CommandWeld(props: {
 function PopupRow(props: {
   item: { token: string; hint: string; label?: string; kind?: MentionKind };
   active: boolean;
+  rowRef?: Ref<HTMLButtonElement>;
   onPick: () => void;
 }) {
   return (
     <button
+      ref={props.rowRef}
       type="button"
       role="option"
       aria-selected={props.active}

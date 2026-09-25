@@ -1,6 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
+import { IconSwap } from "../../components/ui/icon-swap";
+import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
 import { useCopy } from "../../lib/i18n";
 import { writeClipboard } from "../../lib/clipboard";
 import {
@@ -38,6 +42,8 @@ export function HarnessWorkspace(props: {
   children: Record<Exclude<HarnessTab, "overview">, ReactNode>;
 }) {
   const copy = useCopy();
+  const reduced = useMotionReduced();
+  const underline = motionTransition(reduced, DURATION_SHELL);
   const refs = parseHarnessRefs(props.harness, props.fallbackActive);
   const next = harnessNext(refs, props.report);
   const labels: Record<HarnessTab, { label: string; hint: string }> = {
@@ -77,13 +83,14 @@ export function HarnessWorkspace(props: {
                 </span>
               ) : null}
               {labels[id].label}
-              <span
-                className={cn(
-                  "absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-200 ease-[var(--ease-out)]",
-                  on ? "opacity-100" : "opacity-0",
-                )}
-                aria-hidden
-              />
+              {on ? (
+                <motion.span
+                  layoutId="harness-tab-underline"
+                  className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent"
+                  transition={underline}
+                  aria-hidden
+                />
+              ) : null}
             </button>
           );
         })}
@@ -255,17 +262,31 @@ function LineageRow({ node, first, onReveal }: { node: LineageNode; first: boole
 
 function HashLine({ hash, compact }: { hash: string; compact?: boolean }) {
   const copy = useCopy();
+  const [done, setDone] = useState(false);
   return (
     <button
       type="button"
-      className={cn("block max-w-full cursor-pointer truncate font-mono text-[11px] text-muted hover:text-foreground", !compact && "mt-1")}
+      className={cn(
+        "group inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 font-mono text-[11px] text-muted hover:text-foreground",
+        !compact && "mt-1",
+      )}
       title={copy.rsi.copyHash}
       onClick={async () => {
         const ok = await writeClipboard(hash);
+        if (ok) {
+          setDone(true);
+          window.setTimeout(() => setDone(false), 1200);
+        }
         toast.success(ok ? copy.rsi.copied : copy.transcript.copyFailed);
       }}
     >
-      {shortHash(hash, 12)}
+      <span className="truncate">{shortHash(hash, 12)}</span>
+      <IconSwap
+        on={done}
+        className={cn("size-3 shrink-0 transition-opacity duration-[var(--duration-fast)] ease-[var(--ease-out)]", done ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")}
+        off={<Copy className="size-3" aria-hidden />}
+        live={<Check className="size-3" aria-hidden />}
+      />
     </button>
   );
 }

@@ -55,8 +55,14 @@ export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => 
         <IslandBoundary>
           <Suspense
             fallback={
-              <div className="flex h-full items-center justify-center text-[13px] text-muted" data-testid="canvas-studio-loading">
-                Opening infinite canvas…
+              <div className="flex h-full flex-col gap-3 p-5" data-testid="canvas-studio-loading" aria-busy="true">
+                <span className="sr-only">Opening infinite canvas…</span>
+                <div className="flex items-center gap-2">
+                  <div className="skeleton-sweep h-8 w-8 rounded-lg" />
+                  <div className="skeleton-sweep h-4 w-36 rounded-md" />
+                  <div className="skeleton-sweep ml-auto h-8 w-24 rounded-lg" />
+                </div>
+                <div className="skeleton-sweep is-soft min-h-0 flex-1 rounded-2xl" />
               </div>
             }
           >
