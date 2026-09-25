@@ -402,6 +402,10 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"url": a.mediaURL(str("hash"))}, nil
 	case "canvas.bind":
 		return map[string]any{"ok": true}, a.CanvasBind(str("session_id"), firstNonEmptyApp(str("project_id"), str("canvas_id")))
+	case "video.history":
+		return eng.ProjectHistory()
+	case "video.session.project":
+		return eng.SessionProject(str("session_id")), nil
 	default:
 		if strings.HasPrefix(method, "canvas.") {
 			return eng.CanvasCall(method, params)

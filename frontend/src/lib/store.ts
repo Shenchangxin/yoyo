@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode } from "./protocol";
-import { threadChannel } from "./protocol";
+import type { CanvasFocus, HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode, VideoPane } from "./protocol";
+import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 
 export type InspTab = "diff" | "files" | "trace" | "queue" | "memory";
@@ -39,6 +39,9 @@ type UIState = {
   closeVideo: () => void;
   videoMode: VideoMode;
   setVideoMode: (m: VideoMode) => void;
+  videoPane: VideoPane;
+  canvasFocus: CanvasFocus;
+  openVideoPane: (pane: VideoPane, opts?: { canvasFocus?: CanvasFocus }) => void;
   videoBoard: boolean;
   setVideoBoard: (v: boolean | ((p: boolean) => boolean)) => void;
   canvasStage: boolean;
@@ -184,7 +187,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
   },
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
-  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false }),
+  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, videoPane: "chat" }),
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -208,22 +211,76 @@ export const useUI = create<UIState>((set, get) => ({
   lastThreadId: (ch) => (ch === "video" ? get().videoThreadId : get().agentThreadId),
   videoBoard: false,
   canvasStage: false,
-  openVideo: () =>
-    set((s) => {
-      const canvas = s.videoMode === "canvas";
-      return { surface: "video", videoBoard: false, canvasStage: canvas, chatDock: canvas ? true : s.chatDock };
-    }),
+  videoPane: "chat",
+  canvasFocus: "library",
+  openVideo: () => set({ surface: "video", videoBoard: false, canvasStage: true, videoPane: "create" }),
   closeVideo: () => get().showConversation(),
-  setVideoBoard: (v) => set((s) => ({ videoBoard: typeof v === "function" ? v(s.videoBoard) : v })),
-  setCanvasStage: (v) => set((s) => ({ canvasStage: typeof v === "function" ? v(s.canvasStage) : v })),
+  openVideoPane: (pane, opts) => {
+    if (pane === "chat") {
+      set({ videoPane: "chat", videoBoard: false, canvasStage: false });
+      return;
+    }
+    if (pane === "create") {
+      set({ videoPane: "create", videoBoard: false, canvasStage: true });
+      return;
+    }
+    if (pane === "drama") {
+      writeVideoMode("drama");
+      set({ videoPane: "drama", videoMode: "drama", videoBoard: false, canvasStage: true });
+      return;
+    }
+    writeVideoMode("canvas");
+    set((s) => ({
+      videoPane: pane,
+      videoMode: "canvas",
+      videoBoard: false,
+      canvasStage: true,
+      canvasFocus: pane === "canvas" ? (opts?.canvasFocus ?? "library") : s.canvasFocus,
+    }));
+  },
+  setVideoBoard: (v) =>
+    set((s) => {
+      const videoBoard = typeof v === "function" ? v(s.videoBoard) : v;
+      if (videoBoard) {
+        writeVideoMode("drama");
+        return { videoBoard: true, canvasStage: false, videoPane: "drama" as const, videoMode: "drama" as const };
+      }
+      return { videoBoard: false, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const };
+    }),
+  setCanvasStage: (v) =>
+    set((s) => {
+      const canvasStage = typeof v === "function" ? v(s.canvasStage) : v;
+      if (canvasStage) {
+        const videoPane = isYingcePane(s.videoPane) ? s.videoPane : "canvas";
+        if (videoPane === "drama") writeVideoMode("drama");
+        else if (isCanvasWorldPane(videoPane)) writeVideoMode("canvas");
+        return {
+          canvasStage: true,
+          videoBoard: false,
+          videoPane,
+          videoMode: videoPane === "drama" ? ("drama" as const) : isCanvasWorldPane(videoPane) ? ("canvas" as const) : s.videoMode,
+          canvasFocus: videoPane === "canvas" ? s.canvasFocus || "library" : s.canvasFocus,
+        };
+      }
+      return {
+        canvasStage: false,
+        videoBoard: false,
+        videoPane: isYingcePane(s.videoPane) ? ("chat" as const) : s.videoPane,
+      };
+    }),
   setVideoMode: (videoMode) => {
     writeVideoMode(videoMode);
-    set((s) => ({
-      videoMode,
-      videoBoard: videoMode === "drama" ? s.videoBoard : false,
-      canvasStage: videoMode === "canvas",
-      chatDock: videoMode === "canvas" ? true : s.chatDock,
-    }));
+    set((s) => {
+      let videoPane = s.videoPane;
+      if (videoMode !== "drama" && videoPane === "drama") videoPane = "chat";
+      if (videoMode !== "canvas" && isCanvasWorldPane(videoPane)) videoPane = "chat";
+      return {
+        videoMode,
+        videoBoard: false,
+        canvasStage: videoPane === "chat" ? false : isYingcePane(videoPane) ? s.canvasStage : false,
+        videoPane,
+      };
+    });
   },
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),

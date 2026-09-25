@@ -8,7 +8,6 @@ import UserLayout from "@yingce/layouts/user-layout";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { bootstrapAppearance } from "@yingce/services/appearance-bootstrap";
-import "@yingce/lib/plugins/builtin";
 import { bindCanvasSession, setCanvasHostTitle } from "./session";
 import { installCanvasHub } from "./hub";
 import { primeCanvasMediaBase } from "./media";
@@ -22,7 +21,9 @@ const CanvasProjectPage = lazy(() => import("@yingce/pages/canvas/project"));
 const CreatePage = lazy(() => import("@yingce/pages/create"));
 const ProjectsPage = lazy(() => import("@yingce/pages/projects"));
 const ProjectDetailPage = lazy(() => import("@yingce/pages/projects/detail"));
+const DramaAgentPage = lazy(() => import("./DramaAgentPage"));
 const AssetsPage = lazy(() => import("@yingce/pages/assets"));
+const SkillsPage = lazy(() => import("@yingce/pages/skills"));
 const TasksPage = lazy(() => import("@yingce/pages/tasks"));
 const PluginsPage = lazy(() => import("@yingce/pages/plugins"));
 const EaglePage = lazy(() => import("@yingce/pages/plugins/eagle"));
@@ -44,12 +45,20 @@ function BindAndTitle() {
   const id = params.id || params.projectId || "";
 
   useEffect(() => {
-    if (id && sessionId) void bindCanvasSession(sessionId, id);
-  }, [id, sessionId]);
+    if (id && sessionId && location.pathname.startsWith("/canvas/")) void bindCanvasSession(sessionId, id);
+  }, [id, sessionId, location.pathname]);
 
   useEffect(() => {
     const match = projects.find((p) => p.id === id);
-    const title = match?.title || (location.pathname.startsWith("/projects") ? "Chapter workflow" : location.pathname.startsWith("/assets") ? "Assets" : location.pathname.startsWith("/plugins") ? "Plugins" : location.pathname.startsWith("/tasks") ? "Tasks" : "Infinite canvas");
+    const path = location.pathname;
+    const title = match?.title
+      || (path.startsWith("/projects") || path.startsWith("/drama") ? "Drama agent"
+        : path.startsWith("/create") || path === "/" ? "Create"
+          : path.startsWith("/assets") ? "Assets"
+            : path.startsWith("/plugins") ? "Plugins"
+              : path.startsWith("/tasks") ? "Tasks"
+                : path.startsWith("/skills") ? "Skills"
+                  : "Infinite canvas");
     setCanvasHostTitle(title);
   }, [id, location.pathname, projects]);
 
@@ -67,7 +76,7 @@ function WorkspaceLayout() {
   );
 }
 
-export default function YingceApp() {
+export default function YingceApp({ initialPath = "/create" }: { initialPath?: string }) {
   useLayoutEffect(() => {
     void bootstrapAppearance();
   }, []);
@@ -76,6 +85,7 @@ export default function YingceApp() {
     const dark = document.documentElement.classList.contains("dark");
     useCanvasThemeStore.getState().setTheme(dark ? "dark" : "light");
     void primeCanvasMediaBase();
+    void import("@yingce/lib/plugins/builtin");
     return installCanvasHub();
   }, []);
 
@@ -89,6 +99,7 @@ export default function YingceApp() {
             children: [
               { path: "/", element: deferred(<CreatePage />) },
               { path: "/create", element: deferred(<CreatePage />) },
+              { path: "/drama", element: deferred(<DramaAgentPage />) },
               { path: "/canvas", element: deferred(<CanvasPage />) },
               { path: "/canvas/:id", element: deferred(<CanvasProjectPage />, <CanvasRefreshShell />) },
               { path: "/projects", element: deferred(<ProjectsPage />) },
@@ -97,6 +108,7 @@ export default function YingceApp() {
               { path: "/projects/:projectId/chapters/:chapterId", element: deferred(<ProjectDetailPage />) },
               { path: "/projects/:projectId/workflow/:unitId/:stage", element: deferred(<ProjectDetailPage />) },
               { path: "/assets", element: deferred(<AssetsPage />) },
+              { path: "/skills", element: deferred(<SkillsPage />) },
               { path: "/tasks", element: deferred(<TasksPage />) },
               { path: "/plugins", element: deferred(<PluginsPage />) },
               { path: "/plugins/eagle", element: deferred(<EaglePage />) },
@@ -104,9 +116,9 @@ export default function YingceApp() {
             ],
           },
         ],
-        { initialEntries: ["/canvas?mode=new"] },
+        { initialEntries: [initialPath] },
       ),
-    [],
+    [initialPath],
   );
 
   return (

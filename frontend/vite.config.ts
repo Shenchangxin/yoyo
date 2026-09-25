@@ -2,12 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import wails from "@wailsio/runtime/plugins/vite";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const wailsReady = existsSync("./bindings/github.com/wailsapp/wails");
+const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as { version?: string };
+const appVersion = process.env.npm_package_version?.trim() || pkg.version || "0.0.0";
 
 export default defineConfig({
   resolve: {
@@ -21,6 +23,9 @@ export default defineConfig({
     exclude: ["@ffmpeg/core", "@ffmpeg/ffmpeg"],
   },
   define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __APP_CHANGELOG__: JSON.stringify(""),
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
     "import.meta.env.VITE_E2E": JSON.stringify(process.env.VITE_E2E || ""),
     "import.meta.env.VITE_CANVAS_BACKEND_URL": JSON.stringify("/api"),
   },

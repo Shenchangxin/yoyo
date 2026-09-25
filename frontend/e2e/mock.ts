@@ -10,11 +10,13 @@ export async function mockApi(
   extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[] },
 ) {
   let sessions = [...(extra?.sessions || [])];
+  let canvases: { id: string; title: string; session_id?: string }[] = [];
   let cfg: any = {
     provider: "openai",
     model: "gpt-4.1",
     base_url: "https://api.openai.com/v1",
     workspace,
+    video_workspace: workspace ? `${String(workspace).replace(/\\/g, "/")}/video` : "C:/tmp/video",
     auto_allow: false,
     max_budget_usd: 0,
     usd_per_mtok: 0,
@@ -25,6 +27,11 @@ export async function mockApi(
   await page.route("**/api/**", async (route) => {
     const method = route.request().method();
     const path = new URL(route.request().url()).pathname;
+    // Playwright's ** /api/ ** glob also matches Vite modules such as
+    // /src/vendor/yingce-canvas/services/api/request.ts. Only stub the backend.
+    if (!path.startsWith("/api/") && path !== "/api") {
+      return route.continue();
+    }
     const body = () => {
       try {
         return route.request().postDataJSON() || {};
@@ -68,17 +75,43 @@ export async function mockApi(
           return ok({ code: 0, data: { features: { shortDramaEnabled: true, pluginCenterEnabled: true, taskCenterEnabled: true } } });
         }
         if (p === "canvas-projects" && m === "GET") {
-          return ok({ code: 0, data: { projects: [], total: 0, page: 1, pageSize: 40, hasMore: false } });
+          return ok({ code: 0, data: { projects: canvases, total: canvases.length, page: 1, pageSize: 40, hasMore: false } });
         }
         if (p === "canvas-projects" && m === "POST") {
-          return ok({ code: 0, data: { project: { id: "c1", title: params.body?.title || "Board", nodes: [], connections: [], revision: 1 } } });
+          const project = { id: `c${canvases.length + 1}`, title: params.body?.title || "Board", nodes: [], connections: [], revision: 1 };
+          canvases = [...canvases, project];
+          return ok({ code: 0, data: { project } });
         }
         if (p.startsWith("canvas-projects/") && (m === "GET" || m === "PUT")) {
           const id = p.split("/")[1] || "c1";
-          return ok({ code: 0, data: { project: { id, title: "Board", nodes: [], connections: [], revision: 1 } } });
+          const hit = canvases.find((c) => c.id === id);
+          return ok({ code: 0, data: { project: hit || { id, title: "Board", nodes: [], connections: [], revision: 1 } } });
         }
         if (p === "model-catalog" || p === "channels/system") {
           return ok({ code: 0, data: { source: "system", channels: [], models: [] } });
+        }
+        if (p === "assets" || p.startsWith("assets/")) {
+          return ok({ code: 0, data: { assets: [], kindCounts: {}, categoryCounts: {}, folderCounts: {}, page: 1, pageSize: 40, total: 0, hasMore: false } });
+        }
+        if (p === "asset-folders" || p.startsWith("asset-folders")) {
+          return ok({ code: 0, data: { folders: [] } });
+        }
+        if (p === "skills" || p.startsWith("skills/")) {
+          if (p === "skills/presets") return ok({ code: 0, data: { presets: [] } });
+          if (p === "skills/added") return ok({ code: 0, data: { skills: [] } });
+          return ok({ code: 0, data: { skills: [], totalCount: 0, total: 0, hasMore: false, categories: [] } });
+        }
+        if (p === "plugins" || p.startsWith("plugins")) {
+          return ok({ code: 0, data: { plugins: [], states: {}, statuses: {} } });
+        }
+        if (p === "projects" || p.startsWith("projects/")) {
+          if (p === "projects") {
+            return ok({ code: 0, data: { projects: [], page: 1, pageSize: 50, total: 0, hasMore: false } });
+          }
+          return ok({ code: 0, data: { project: { id: "p1", name: "Board", status: "active" }, units: [], metrics: { unitCount: 0 }, canvasCounts: {} } });
+        }
+        if (p === "user-data/snapshot") {
+          return ok({ code: 0, data: { assets: [], projects: [] } });
         }
         return ok({ code: 0, data: {} });
       }
@@ -93,13 +126,33 @@ export async function mockApi(
         return ok({ ffmpeg: true, media_base: "" });
       }
       if (rpcMethod === "canvas.bind") {
+        const cid = String(params.project_id || params.canvas_id || "");
+        const sid = String(params.session_id || "");
+        canvases = canvases.map((c) => (c.id === cid ? { ...c, session_id: sid } : c));
         return ok({ ok: true });
+      }
+      if (rpcMethod === "video.history") {
+        return ok(canvases.map((c) => ({ kind: "canvas", id: c.id, title: c.title, session_id: c.session_id || "" })));
+      }
+      if (rpcMethod === "video.session.project") {
+        const sid = String(params.session_id || "");
+        const hit = canvases.find((c) => c.session_id === sid);
+        return ok(hit ? { session_id: sid, kind: "canvas", id: hit.id, canvas_id: hit.id, title: hit.title } : { session_id: sid });
+      }
+      if (rpcMethod === "drama.list") {
+        return ok([]);
+      }
+      if (rpcMethod === "video.styles") {
+        return ok([]);
+      }
+      if (rpcMethod === "video.providers.list") {
+        return ok([]);
       }
       return ok({});
     }
 
     if (path.endsWith("/api/health")) {
-      return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace } });
+      return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace, video_workspace: cfg.video_workspace, video_workspace_ready: true } });
     }
     if (path.endsWith("/api/config") && method === "GET") {
       return route.fulfill({ json: cfg });

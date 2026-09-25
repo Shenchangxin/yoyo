@@ -49,3 +49,28 @@ func TestVideoChannelIndependentOfAgent(t *testing.T) {
 		t.Fatalf("reload channel %q", got.Channel)
 	}
 }
+
+func TestVideoSessionUsesOwnWorkspace(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	video, err := a.NewSessionOn("", session.ChannelVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := a.NewSessionOn("", session.ChannelAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.Workspace != a.VideoWorkspace() {
+		t.Fatalf("video workspace %q want %q", video.Workspace, a.VideoWorkspace())
+	}
+	if agent.Workspace != a.Workspace() {
+		t.Fatalf("agent workspace %q want %q", agent.Workspace, a.Workspace())
+	}
+	if video.Workspace == agent.Workspace {
+		t.Fatal("channels must not share a default workspace")
+	}
+}

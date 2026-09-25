@@ -141,6 +141,8 @@ export function healthOf(v: any): Health {
     budgetUsd: num(pick(v, "budget_usd", "budgetUsd")),
     usageUsd: num(pick(usage, "usd")),
     workspaceReady: bool(pick(v, "workspace_ready", "workspaceReady")),
+    videoWorkspace: str(pick(v, "video_workspace", "VideoWorkspace", "videoWorkspace")),
+    videoWorkspaceReady: bool(pick(v, "video_workspace_ready", "videoWorkspaceReady")),
   };
 }
 
@@ -150,6 +152,7 @@ export function configOf(v: any): AppConfig {
     model: str(pick(v, "model")),
     baseUrl: str(pick(v, "base_url", "BaseURL", "baseUrl")),
     workspace: str(pick(v, "workspace", "Workspace")),
+    videoWorkspace: str(pick(v, "video_workspace", "VideoWorkspace", "videoWorkspace")),
     autoAllow: bool(pick(v, "auto_allow", "AutoAllow", "autoAllow")),
     maxBudgetUsd: num(pick(v, "max_budget_usd", "MaxBudgetUSD", "maxBudgetUsd")),
     usdPerMtok: num(pick(v, "usd_per_mtok", "USDPerMTok", "usdPerMtok")),
@@ -233,6 +236,7 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     model: cfg.model,
     base_url: cfg.baseUrl,
     workspace: cfg.workspace,
+    video_workspace: cfg.videoWorkspace || "",
     auto_allow: cfg.autoAllow,
     max_budget_usd: cfg.maxBudgetUsd,
     usd_per_mtok: cfg.usdPerMtok,
@@ -1301,4 +1305,6 @@ export const video = {
   skipRewrite: (episodeId: string) => videoCall("drama.skip_rewrite", { episode_id: episodeId }),
   canvasHttp: (method: string, path: string, extra: Record<string, any> = {}) => videoCall("canvas.http", { method, path, ...extra }),
   canvasBind: (sessionId: string, projectId: string) => videoCall("canvas.bind", { session_id: sessionId, project_id: projectId }),
+  history: () => videoCall("video.history"),
+  sessionProject: (sessionId: string) => videoCall("video.session.project", { session_id: sessionId }),
 };

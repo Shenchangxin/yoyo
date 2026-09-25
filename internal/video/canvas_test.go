@@ -28,7 +28,7 @@ func TestCanvasProjectRevisionAndCAS(t *testing.T) {
 
 	doc := map[string]any{
 		"id": "c1", "revision": 0, "title": "Board",
-		"nodes": []any{map[string]any{"id": "n1", "type": "image", "metadata": map[string]any{"storageKey": "resource:res1"}}},
+		"nodes":       []any{map[string]any{"id": "n1", "type": "image", "metadata": map[string]any{"storageKey": "resource:res1"}}},
 		"connections": []any{},
 	}
 	raw, _ := json.Marshal(doc)
@@ -202,6 +202,41 @@ func TestPublicAppearanceBranding(t *testing.T) {
 	}
 	if debrandYingce("接入影策画布") != "接入无限画布" {
 		t.Fatalf("docs debrand")
+	}
+}
+
+func TestProjectHistoryAndSession(t *testing.T) {
+	dir := t.TempDir()
+	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	env := e.canvasHTTP(map[string]any{"method": "POST", "path": "/canvas-projects", "body": map[string]any{"title": "Street"}})
+	proj := asMap(asMap(env.Data)["project"])
+	id := fmt.Sprint(proj["id"])
+	if err := e.BindCanvasSession("s-hist", id); err != nil {
+		t.Fatal(err)
+	}
+	items, err := e.ProjectHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) == 0 {
+		t.Fatal("expected canvas history")
+	}
+	found := false
+	for _, it := range items {
+		if fmt.Sprint(it["id"]) == id && fmt.Sprint(it["kind"]) == "canvas" && fmt.Sprint(it["session_id"]) == "s-hist" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("history %+v", items)
+	}
+	st := e.SessionProject("s-hist")
+	if fmt.Sprint(st["canvas_id"]) != id || fmt.Sprint(st["kind"]) != "canvas" {
+		t.Fatalf("session project %+v", st)
 	}
 }
 

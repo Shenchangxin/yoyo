@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
 import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
-import { num, str } from "../../lib/normalize";
+import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
@@ -12,9 +12,11 @@ import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel } from "../../lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
 import { channelForSurface, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
+import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
+import { useDramaSelection } from "../video/workshop-store";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -22,6 +24,7 @@ export const emptyCfg: AppConfig = {
   model: "",
   baseUrl: "",
   workspace: "",
+  videoWorkspace: "",
   autoAllow: false,
   maxBudgetUsd: 0,
   usdPerMtok: 0,
@@ -57,6 +60,19 @@ function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: st
   return list.find((t) => threadChannel(t) === channel && !t.archived)
     || list.find((t) => threadChannel(t) === channel)
     || null;
+}
+
+function videoProjectOf(v: any): VideoProject | null {
+  const id = str(v?.id);
+  if (!id) return null;
+  return {
+    kind: str(v?.kind) === "drama" ? "drama" : "canvas",
+    id,
+    title: str(v?.title),
+    sessionId: str(v?.session_id || v?.sessionId),
+    episodeId: str(v?.episode_id || v?.episodeId),
+    updatedAt: str(v?.updated_at || v?.updatedAt),
+  };
 }
 
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
@@ -131,6 +147,8 @@ export function useWorkstation() {
   const showConversation = useUI((s) => s.showConversation);
   const videoBoard = useUI((s) => s.videoBoard);
   const setVideoBoard = useUI((s) => s.setVideoBoard);
+  const canvasStage = useUI((s) => s.canvasStage);
+  const setCanvasStage = useUI((s) => s.setCanvasStage);
   const inspector = useUI((s) => s.inspector);
   const setInspector = useUI((s) => s.setInspector);
   const chatDock = useUI((s) => s.chatDock);
@@ -157,6 +175,9 @@ export function useWorkstation() {
   const [health, setHealth] = useState<Health>(emptyHealth);
   const [savedCfg, setSavedCfg] = useState<AppConfig>(emptyCfg);
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [videoProjects, setVideoProjects] = useState<VideoProject[]>([]);
+  const canvasProjectId = useCanvasHost((s) => s.projectId);
+  const dramaId = useDramaSelection((s) => s.dramaId);
   const [active, setActive] = useState<Thread | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
@@ -334,6 +355,23 @@ export function useWorkstation() {
     const preferred = useUI.getState().lastThreadId(ch);
     setActive((cur) => pickChannelThread(threads, ch, preferred, cur));
   }, [surface]);
+  const loadVideoHistory = useCallback(async () => {
+    try {
+      const raw = await api.video.history();
+      const list = Array.isArray(raw) ? raw : raw?.items || raw?.projects || [];
+      setVideoProjects(asArray(list).map(videoProjectOf).filter((p): p is VideoProject => !!p));
+    } catch {
+      setVideoProjects([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (surface !== "video") return;
+    void loadVideoHistory();
+  }, [surface, canvasProjectId, dramaId, loadVideoHistory]);
+  useEffect(() => {
+    if (surface !== "video" || !active?.id || threadChannel(active) !== "video") return;
+    void restoreVideoProject(active.id);
+  }, [surface, active?.id]);
   useEffect(() => {
     if (!booted) return;
     const path = active?.workspace || savedCfg.workspace;
@@ -525,10 +563,79 @@ export function useWorkstation() {
     return channelForSurface(useUI.getState().surface);
   }
 
+  function channelWorkspace(ch: ThreadChannel): string {
+    if (ch === "video") return savedCfg.videoWorkspace || health.videoWorkspace || savedCfg.workspace;
+    return savedCfg.workspace;
+  }
+
+  async function restoreVideoProject(sessionId: string) {
+    if (!sessionId) return;
+    try {
+      const st = await api.video.sessionProject(sessionId);
+      const canvasId = str(st?.canvas_id || (st?.kind === "canvas" ? st?.id : ""));
+      const nextDrama = str(st?.drama_id);
+      const nextEpisode = str(st?.episode_id);
+      const title = str(st?.title || st?.drama_title);
+      if (canvasId) useCanvasHost.setState({ projectId: canvasId, title: title || copy.video.canvas });
+      if (nextDrama) {
+        useDramaSelection.getState().setDramaId(nextDrama);
+        if (nextEpisode) useDramaSelection.getState().setEpisodeId(nextEpisode);
+      }
+      const kind = str(st?.kind);
+      if (kind === "canvas") useUI.getState().setVideoMode("canvas");
+      else if (kind === "drama") useUI.getState().setVideoMode("drama");
+    } catch {
+      /* bind lookup is optional */
+    }
+  }
+
+  async function openVideoProject(p: VideoProject) {
+    const ch: ThreadChannel = "video";
+    const ui = useUI.getState();
+    const staged = ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat";
+    let t = p.sessionId ? threads.find((x) => x.id === p.sessionId) || null : null;
+    if (!t) {
+      const created = await api.createSession(channelWorkspace(ch), ch);
+      t = created.channel ? created : { ...created, channel: ch };
+      setThreads((prev) => [t!, ...prev.filter((x) => x.id !== t!.id)]);
+      if (p.kind === "canvas") {
+        await api.video.canvasBind(t.id, p.id).catch(() => {});
+        useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
+        if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
+        else ui.setVideoMode("canvas");
+      } else {
+        if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
+        useDramaSelection.getState().setDramaId(p.id);
+        if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);
+        if (staged) ui.openVideoPane("drama");
+        else ui.setVideoMode("drama");
+      }
+      if (p.title) await api.renameSession(t.id, p.title).catch(() => {});
+      t = { ...t, title: p.title || t.title };
+      setThreads((prev) => prev.map((x) => (x.id === t!.id ? t! : x)));
+    } else if (p.kind === "canvas") {
+      useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
+      await api.video.canvasBind(t.id, p.id).catch(() => {});
+      if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
+      else ui.setVideoMode("canvas");
+    } else {
+      useDramaSelection.getState().setDramaId(p.id);
+      if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);
+      if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
+      if (staged) ui.openVideoPane("drama");
+      else ui.setVideoMode("drama");
+    }
+    itemsAcc.current = [];
+    setItems([]);
+    setQueued(0);
+    openThread(t, { keepPane: true });
+    void loadVideoHistory();
+  }
+
   async function ensureThread(): Promise<Thread> {
     const ch = await currentChannel();
     if (active && threadChannel(active) === ch) return active;
-    const created = await api.createSession(savedCfg.workspace, ch);
+    const created = await api.createSession(channelWorkspace(ch), ch);
     const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
@@ -539,8 +646,12 @@ export function useWorkstation() {
   async function onSend(opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) {
     const text = (opts?.text !== undefined ? opts.text : (useUI.getState().drafts[draftKey] || "")).trim();
     if (!text && !(opts?.attachments && opts.attachments.length)) return;
-    const turnWs = active?.workspace || savedCfg.workspace;
-    if (!pathReady(turnWs) && !workspaceReady(health.workspaceReady, savedCfg.workspace)) {
+    const turnWs = active?.workspace || channelWorkspace(channelForSurface(useUI.getState().surface));
+    const ch = channelForSurface(useUI.getState().surface);
+    const ready = ch === "video"
+      ? pathReady(turnWs) || workspaceReady(health.videoWorkspaceReady, savedCfg.videoWorkspace || "")
+      : pathReady(turnWs) || workspaceReady(health.workspaceReady, savedCfg.workspace);
+    if (!ready) {
       toast.message(copy.app.setupFirst);
       openSettings("general", "general-workspace");
       return;
@@ -550,6 +661,10 @@ export function useWorkstation() {
       const t = await ensureThread();
       if (useUI.getState().surface === "video" && useUI.getState().videoMode === "drama") {
         await bindVideoThread(t.id).catch(() => {});
+      }
+      if (useUI.getState().surface === "video" && useUI.getState().videoMode === "canvas") {
+        await ensureCanvasProject(t.id).catch(() => {});
+        void loadVideoHistory();
       }
       if (opts?.steer && running[t.id]) {
         await api.steer(t.id, text);
@@ -793,7 +908,7 @@ export function useWorkstation() {
 
   async function onNewIn(workspace?: string) {
     const ch = channelForSurface(useUI.getState().surface);
-    const created = await api.createSession(workspace || savedCfg.workspace, ch);
+    const created = await api.createSession(workspace || channelWorkspace(ch), ch);
     const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
@@ -806,11 +921,18 @@ export function useWorkstation() {
     await onNewIn();
   }
 
-  function openThread(t: Thread) {
+  function openThread(t: Thread, opts?: { keepPane?: boolean }) {
     const ui = useUI.getState();
     ui.rememberThread(t);
-    if (threadChannel(t) === "video") ui.openVideo();
-    else ui.showConversation();
+    if (threadChannel(t) === "video") {
+      if (opts?.keepPane) {
+        if (ui.surface !== "video") useUI.setState({ surface: "video" });
+      } else {
+        useUI.setState({ surface: "video", videoBoard: false, canvasStage: false, videoPane: "chat" });
+      }
+    } else {
+      ui.showConversation();
+    }
     setActive(t);
   }
 
@@ -944,8 +1066,9 @@ export function useWorkstation() {
           setPalette(false);
           return;
         }
-        if (useUI.getState().videoBoard) {
-          setVideoBoard(false);
+        const ui = useUI.getState();
+        if (ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat") {
+          ui.openVideoPane("chat");
           return;
         }
         if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness") {
@@ -977,7 +1100,7 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, setVideoBoard]);
+  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
@@ -1005,18 +1128,18 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, active, setActive, items, approvals, running, runStatus, queued, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, approvals, running, runStatus, queued, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

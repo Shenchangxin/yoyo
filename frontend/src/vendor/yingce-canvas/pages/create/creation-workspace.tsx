@@ -181,6 +181,7 @@ export function CreationWorkspaceToolbar({ shots, onJumpToShot, onNewConversatio
         return () => window.removeEventListener("mousedown", onPointerDown);
     }, [railOpen]);
     const mount = useWorkspaceTopBarMount();
+    const hosted = typeof window !== "undefined" && !!(window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__;
     const toolbar = <header className="creation-thread-toolbar">
         <div className="creation-toolbar-shots" ref={railRef}>
             <button type="button" className="creation-rail-trigger" aria-expanded={railOpen} aria-haspopup="listbox" onClick={() => setRailOpen((open) => !open)}><Clapperboard />镜头时间线{shots.length > 0 ? <em className="creation-rail-count">{shots.length}</em> : null}</button>
@@ -204,6 +205,7 @@ export function CreationWorkspaceToolbar({ shots, onJumpToShot, onNewConversatio
         </div>
     </header>;
     if (mount) return createPortal(toolbar, mount);
+    if (hosted) return toolbar;
     if (mount === null) return null;
     return toolbar;
 }
