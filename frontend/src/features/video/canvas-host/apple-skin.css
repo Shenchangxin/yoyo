@@ -106,11 +106,20 @@
   --node-radius: 12px;
   --glass-saturate: 180%;
   --elevation-overlay: var(--shadow-popover);
+  --plugin-switch-checked-bg: #e08a6a;
+  --plugin-switch-checked-hover-bg: color-mix(in srgb, #e08a6a 86%, black);
+  --plugin-switch-off-bg: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --plugin-switch-off-hover-bg: color-mix(in srgb, var(--foreground) 24%, transparent);
   color: var(--foreground);
   background: var(--background);
   font-family: inherit;
   font-feature-settings: "ss01" 1, "cv11" 1;
   -webkit-font-smoothing: antialiased;
+}
+
+html.light .yingce-island {
+  --plugin-switch-checked-bg: #b45c48;
+  --plugin-switch-checked-hover-bg: color-mix(in srgb, #b45c48 86%, black);
 }
 
 /* —— Nodes: iOS media tile, hairline, terracotta only when live —— */
@@ -221,14 +230,34 @@
   color: var(--muted);
 }
 
-/* —— Composer = Messages-style glass field —— */
-.yingce-island .creation-composer-shell,
-.yingce-island .creation-composer-shell-inner,
-.yingce-island .creation-chat-composer {
+/* —— Composer = one chrome only. Nested shell/composer both drawing
+   radius+border+shadow is what stacked the four overlapping corners. —— */
+.yingce-island .creation-composer-shell {
+  overflow: hidden;
   background: var(--input-bar) !important;
   border: 1px solid var(--border) !important;
-  border-radius: 18px !important;
+  border-radius: 20px !important;
   box-shadow: var(--shadow-composer) !important;
+}
+
+.yingce-island .creation-composer-shell-inner,
+.yingce-island .creation-composer-shell .creation-chat-composer,
+.yingce-island .creation-composer-shell .creation-chat-composer:focus-within {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .creation-chat-composer textarea,
+.yingce-island .creation-chat-composer .canvas-resource-mention-textarea,
+.yingce-island .creation-chat-composer [class*="mention-textarea"],
+.yingce-island .ant-input-affix-wrapper .ant-input,
+.yingce-island .yc-input-affix-wrapper .yc-input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 .yingce-island .creation-mode-tabs {
@@ -341,6 +370,171 @@
   box-shadow: var(--shadow-card) !important;
 }
 
+.yingce-island .asset-library-card {
+  --library-hover-offset: 0px;
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden;
+  isolation: auto;
+  border-radius: 12px !important;
+  background: var(--card) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.yingce-island .asset-library-card:hover,
+.yingce-island .asset-library-card:focus-within {
+  background: var(--card) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.yingce-island .asset-library-card.is-selected {
+  outline: none !important;
+  box-shadow: inset 0 0 0 2px var(--accent) !important;
+}
+
+.yingce-island .asset-library-card > .library-card-media,
+.yingce-island .asset-library-card > div:first-child,
+.yingce-island .asset-library-card .assets-cover {
+  overflow: hidden;
+  border-radius: 0 !important;
+  background: var(--card) !important;
+}
+
+.yingce-island .assets-cover-link,
+.yingce-island .assets-cover .cached-resource-image-shell,
+.yingce-island .assets-cover-media,
+.yingce-island .assets-cover .cached-resource-image-shell > img,
+.yingce-island .assets-cover-link > img,
+.yingce-island .assets-cover-link > video {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+.yingce-island .assets-cover .cached-resource-image-shell {
+  place-items: stretch;
+}
+
+.yingce-island .asset-collection-body {
+  padding: 10px 12px 12px !important;
+}
+
+.yingce-island .asset-library-card h2 {
+  font-size: 13px !important;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.yingce-island .assets-cover-badges {
+  top: auto;
+  bottom: 8px;
+  left: 8px;
+  right: 44px;
+}
+
+.yingce-island .assets-cover-clock {
+  left: auto;
+  right: 8px;
+  bottom: 8px;
+}
+
+.yingce-island .assets-select-check {
+  appearance: none;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  background: rgba(20, 16, 14, 0.38);
+  box-shadow: none !important;
+  color: transparent;
+}
+
+.yingce-island .assets-select-check svg {
+  display: none;
+  width: 12px;
+  height: 12px;
+  color: #fff !important;
+  stroke: #fff !important;
+}
+
+.yingce-island .assets-select-check.is-checked {
+  border-color: #fff !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+  opacity: 1;
+}
+
+.yingce-island .assets-select-check.is-checked svg {
+  display: block;
+  color: #fff !important;
+  stroke: #fff !important;
+}
+
+.yingce-island .assets-cover.is-light .assets-select-check {
+  border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: transparent;
+}
+
+.yingce-island .assets-cover.is-light .assets-select-check.is-checked {
+  border-color: #fff !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.yingce-island .assets-cover.is-light .assets-cover-badge.is-kind,
+.yingce-island .assets-cover.is-light .assets-cover-badge.is-category {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  color: var(--foreground);
+}
+
+.yingce-island .assets-cover.is-light .assets-cover-more {
+  border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  color: var(--foreground);
+}
+
+.yingce-island .assets-cover.is-light .assets-cover-text,
+.yingce-island .assets-cover.is-light .assets-cover-wave,
+.yingce-island .assets-cover.is-light .assets-cover-model {
+  padding-bottom: 36px;
+}
+
+.yingce-island .assets-library-page .canvas-library-frame,
+.yingce-island .assets-library-page .assets-library-frame {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .asset-archive-title {
+  font-size: 21px !important;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.yingce-island .asset-archive-preview,
+.yingce-island .asset-zoom-viewer {
+  background: var(--lift) !important;
+}
+
+.yingce-island .asset-archive-preview-media,
+.yingce-island .asset-zoom-image {
+  background: transparent !important;
+}
+
 /* iOS grouped list: library / assets / skills / tasks */
 .yingce-island .app-workspace-grid,
 .yingce-island [class*="collection-grid"] {
@@ -348,11 +542,9 @@
 }
 
 .yingce-island .yc-list,
-.yingce-island .ant-list,
-.yingce-island [class*="library-list"] {
+.yingce-island .ant-list {
   background: var(--card);
   border-radius: 12px;
-  overflow: hidden;
 }
 
 /* —— Ant / yc controls: iOS segmented + macOS buttons —— */
@@ -469,7 +661,57 @@
 
 .yingce-island .yc-switch.yc-switch-checked .yc-switch-inner,
 .yingce-island .ant-switch.ant-switch-checked {
-  background: var(--success) !important;
+  background: var(--accent) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .plugin-enable {
+  width: auto !important;
+  min-width: 0 !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+  font-weight: 550 !important;
+}
+
+.yingce-island .plugin-enable-track {
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.yingce-island .plugin-enable.is-on .plugin-enable-track {
+  background: var(--plugin-switch-checked-bg);
+}
+
+.yingce-island .plugin-enable:hover:not(:disabled) .plugin-enable-track {
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+
+.yingce-island .plugin-enable.is-on:hover:not(:disabled) .plugin-enable-track {
+  background: var(--plugin-switch-checked-hover-bg);
+}
+
+.yingce-island .plugin-enable-thumb {
+  left: 2px;
+  transform: none !important;
+  background: #fff !important;
+}
+
+.yingce-island .plugin-enable.is-on .plugin-enable-thumb {
+  left: 18px;
+  transform: none !important;
+}
+
+.yingce-island .plugin-enable-copy {
+  color: var(--muted);
+}
+
+.yingce-island .plugin-enable.is-on .plugin-enable-copy {
+  color: var(--foreground);
 }
 
 .yingce-island .yc-segmented,

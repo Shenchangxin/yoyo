@@ -473,11 +473,11 @@ function InfiniteCanvasPage() {
         openAgent();
         setContextMenu(null);
     }, [agentMentionReferences, openAgent]);
-    // 修复素材关联仍遵守当前画布版本，不能替用户确认覆盖云端的新内容。
+    // 修复素材关联仍遵守当前画布版本，不能替用户确认覆盖工作区的新内容。
     const confirmForceSaveCanvas = useCallback(() => {
         modal.confirm({
             title: "修复素材关联并保存？",
-            content: "核对画布媒体与素材库的关联，补齐缺失素材后保存。若云端已有新版本，会保留本地草稿并提示加载最新版。",
+            content: "核对画布媒体与素材库的关联，补齐缺失素材后保存。若工作区已有新版本，会保留本地草稿并提示加载最新版。",
             okText: "修复并保存",
             cancelText: "取消",
             onOk: () => forceSaveCanvasProject(),

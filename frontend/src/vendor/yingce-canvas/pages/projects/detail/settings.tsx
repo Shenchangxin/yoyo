@@ -185,7 +185,7 @@ export default function ProjectSettingsView({ detail, refreshProject }: ProjectD
                     if (!file?.type.startsWith("image/")) throw new Error("请选择图片文件");
                     const uploaded = await uploadImage(file);
                     const resourceId = resourceIdFromStorageKey(uploaded.storageKey);
-                    if (!resourceId) throw new Error("图片上传未同步到服务端资源库，请检查后端连接");
+                    if (!resourceId) throw new Error("图片尚未写入本地资源库，请稍后重试");
                     const id = addAsset({ kind: "image", title: file.name.replace(/\.[^.]+$/, "") || "项目主图", coverUrl: uploaded.url, tags: ["项目主图"], status: "confirmed", source: "项目设置", data: { dataUrl: uploaded.url, storageKey: uploaded.storageKey, width: uploaded.width, height: uploaded.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType } });
                     return [id];
                 } }}
@@ -197,7 +197,7 @@ export default function ProjectSettingsView({ detail, refreshProject }: ProjectD
                         const asset = useAssetStore.getState().assets.find((entry) => entry.id === id);
                         resourceId = asset?.kind === "image" ? resourceIdFromStorageKey(asset.data.storageKey) : "";
                     }
-                    if (!resourceId) throw new Error("所选图片尚未同步到服务端资源库");
+                    if (!resourceId) throw new Error("所选图片尚未写入本地资源库");
                     await coverMutation.mutateAsync(resourceId);
                 }}
             />

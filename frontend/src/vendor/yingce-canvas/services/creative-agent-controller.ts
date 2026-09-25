@@ -26,7 +26,7 @@ export type CreativeCanvasAdapter = { canvasId: string; read: () => CanvasSnapsh
 export type CreativeControllerView = { run?: CreationRun; state: CreativeAgentState; busy: boolean; hasControl: boolean; error?: string; quote?: CreativeQuote };
 type ControllerOptions = { clientKey?: string; config: () => AiConfig; canvas: () => CreativeCanvasAdapter | undefined; onChange: (view: CreativeControllerView) => void; onOpenCanvas: (canvasId: string, runId: string) => void; api?: typeof creationRuns; waitTask?: typeof waitForGenerationTask; queryTask?: typeof queryGenerationTask; ensureAsset?: typeof ensureCanvasNodeAsset };
 
-// 单一浏览器执行器；运行事实和费用批准以服务端记录为准，页面只提供就绪的画布适配器。
+// 单一浏览器执行器；运行事实以本机任务记录为准，页面只提供就绪的画布适配器。
 export class CreativeAgentController {
     private run?: CreationRun;
     private state = initialCreativeState();

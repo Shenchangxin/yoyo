@@ -42,7 +42,7 @@ export default function ProjectCanvasesView({ detail, refreshProject }: ProjectD
     const unlinkProjectMutation = useMutation({
         mutationFn: (canvasId: string) => unlinkCanvasProject(detail.project.id, canvasId),
         onSuccess: (_, canvasId) => {
-            // 服务端解除后立即同步本地画布归属，避免后续自动保存把旧关系重新写回。
+            // 解除后立即同步本地画布归属，避免后续自动保存把旧关系重新写回。
             useCanvasStore.getState().updateProject(canvasId, { projectId: undefined });
             refreshProject();
             message.success("已解除项目关系，画布文档仍保留在创作画布中");

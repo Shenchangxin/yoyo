@@ -2,7 +2,7 @@
 import { AppDrawer } from "@yingce/components/ui/product/app-drawer";
 import { EmptyState } from "@yingce/components/ui/product/empty-state";
 import { App, Button, Grid, Spin } from "antd";
-import { Check, ChevronDown, Cloud, Download, FileClock, History, RefreshCw, X } from "lucide-react";
+import { Check, ChevronDown, Download, FileClock, History, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCanvasHistoryEntry, listCanvasHistory, type CanvasHistoryEntry } from "@yingce/services/api/user-data";
 import { readCanvasSyncDrafts, type CanvasSyncDraft } from "@yingce/services/canvas-sync-drafts";
@@ -136,7 +136,7 @@ export function useCanvasVersionHistory(projectId: string, onRestore: (snapshotI
         setConfirming(true);
         modal.confirm({
             title: `恢复版本 ${selected.revision} 的内容？`,
-            content: "恢复前会备份当前云端内容，并保留本地草稿。恢复后会生成一个新版本，画布的项目归属保持当前设置。",
+            content: "恢复前会备份当前已保存内容，并保留本地草稿。恢复后会生成一个新版本，画布的项目归属保持当前设置。",
             okText: "恢复此版本",
             cancelText: "取消",
             afterClose: () => setConfirming(false),
@@ -271,8 +271,8 @@ export function CanvasVersionHistory({ history }: { history: CanvasVersionHistor
                     disabled={restoring}
                     onClick={() => history.changeTab("cloud")}
                 >
-                    <Cloud size={14} />
-                    云端历史
+                    <History size={14} />
+                    已保存版本
                 </button>
                 <button
                     type="button"
@@ -298,7 +298,7 @@ export function CanvasVersionHistory({ history }: { history: CanvasVersionHistor
                             </span>
                             <span>
                                 <strong>当前画布</strong>
-                                <small>{currentRevision === undefined ? "云端版本待确认" : `打开记录时云端为 v${currentRevision}`}</small>
+                                <small>{currentRevision === undefined ? "已保存版本待确认" : `打开记录时已保存为 v${currentRevision}`}</small>
                             </span>
                             {!preview ? <span className="canvas-version-tag">当前</span> : null}
                         </button>

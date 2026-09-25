@@ -53,7 +53,7 @@ export async function continueCreationConversationOnCanvas(source: SourceConvers
         await flushCanvasStorePersistence();
         assertScope();
         try {
-            if (!hasRemoteUserDataSyncSession()) throw new Error("尚未建立云端同步会话");
+            if (!hasRemoteUserDataSyncSession()) throw new Error("工作区尚未就绪");
             await saveRemoteUserDataNow();
         } catch (cause) { syncError = cause; }
     } else {

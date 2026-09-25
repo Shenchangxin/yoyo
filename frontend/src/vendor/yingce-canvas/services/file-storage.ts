@@ -20,7 +20,7 @@ export type UploadedFile = {
     preview?: UploadedImage;
     /**
      * true 表示直传失败、文件当前只存在于本机 IndexedDB。语义与 UploadedImage 一致：
-     * 云端数据同步会用同一幂等键重传，但在那之前 `url` 是页面级 objectURL，刷新即失效。
+     * 工作区保存会用同一幂等键重传，但在那之前 `url` 是页面级 objectURL，刷新即失效。
      */
     pendingRemoteUpload?: boolean;
     /** 直传失败原因，仅在 pendingRemoteUpload 为 true 时有值。 */
@@ -91,8 +91,8 @@ export async function uploadMediaFile(input: Blob, prefix = "file", onProgress?:
             try {
                 await primeResourceBlobCache(resourceStorageKey(resource.id), blob);
             } catch (error) {
-                // 缓存只影响后续读取性能，服务端资源已经成功落盘，不得把缓存失败误报为上传失败。
-                console.warn("预热媒体缓存失败，服务端资源已保存", { resourceId: resource.id, error });
+                // 缓存只影响后续读取性能，本地资源已经成功落盘，不得把缓存失败误报为上传失败。
+                console.warn("预热媒体缓存失败，本地资源已保存", { resourceId: resource.id, error });
             }
             return { url: resource.publicUrl || resourceFileUrl(resource.id), storageKey: resourceStorageKey(resource.id), bytes: resource.size || blob.size, mimeType: resource.mimeType || blob.type || "application/octet-stream", width: resource.width || meta.width, height: resource.height || meta.height, durationMs: resource.durationMs || meta.durationMs, hasAudio: meta.hasAudio, preview: poster };
         } catch (error) {
@@ -101,7 +101,7 @@ export async function uploadMediaFile(input: Blob, prefix = "file", onProgress?:
             remoteUploadError = error instanceof Error ? error.message : "媒体直传失败";
         }
 
-        // 瞬时失败退回本机：文件仍可用，且云端数据同步会用同一幂等键重传。
+        // 瞬时失败退回本机：文件仍可用，且工作区保存会用同一幂等键重传。
         await store.setItem(storageKey, blob);
         retainPreviewUrl = true;
         objectUrls.set(storageKey, previewUrl);

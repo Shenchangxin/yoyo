@@ -116,6 +116,7 @@ func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]an
 	name := id
 	version := "1"
 	author, docs, desc := "", "", ""
+	caps := []string{}
 	if e.Proto != nil {
 		if ad, ok := e.Proto.Resolve(id); ok {
 			m := ad.Metadata()
@@ -125,14 +126,33 @@ func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]an
 			author = debrandYingce(m.Vendor)
 			docs = debrandYingce(m.Documentation)
 			desc = debrandYingce(m.Description)
+			for _, cap := range m.Categories {
+				if cap != "" {
+					caps = append(caps, string(cap))
+				}
+			}
 		}
 	}
+	providers := []any{}
+	if len(caps) > 0 {
+		providers = append(providers, map[string]any{
+			"id":           id,
+			"label":        name,
+			"capabilities": caps,
+			"scopes":       []string{"canvas", "creation", "agent", "user.custom-channel"},
+			"create":       map[string]any{"method": "POST", "path": "/"},
+			"response":     map[string]any{},
+		})
+	}
 	manifest := map[string]any{
-		"apiVersion": "v1",
-		"id":         id,
-		"name":       name,
-		"version":    version,
-		"enabled":    true,
+		"apiVersion":  "yingce.plugin/v2",
+		"id":          id,
+		"name":        name,
+		"version":     version,
+		"enabled":     true,
+		"trusted":     true,
+		"permissions": []string{"generation.run", "media.read"},
+		"contributes": map[string]any{"providers": providers},
 	}
 	if author != "" {
 		manifest["author"] = author

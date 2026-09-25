@@ -5,7 +5,7 @@ import { WorkspaceState } from "@yingce/components/layout/workspace-state";
 import type { GenerationTask } from "@yingce/services/api/task-center";
 import { TaskListItem } from "./canvas-workspace-task-list-item";
 
-// 任务面板：展示用户直接发起的生成任务；云端 Agent 内部任务由历史面板承载。
+// 任务面板：展示用户直接发起的生成任务；Agent 内部任务由历史面板承载。
 export function CanvasWorkspaceTaskPanel({ tasks, refreshing, onRefresh, onCancelTask }: { tasks: GenerationTask[]; refreshing?: boolean; onRefresh?: () => void; onCancelTask?: (task: GenerationTask) => void }) {
     return (
         <>

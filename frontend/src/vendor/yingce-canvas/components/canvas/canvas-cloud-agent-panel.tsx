@@ -846,7 +846,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
                                     />
                                     {run && connectionStatus !== "connected" ? (
                                         <div role="status" className="flex items-center justify-between gap-2 px-5 py-2 text-xs" style={{ color: theme.node.muted }}>
-                                            <span>{connectionStatus === "disconnected" ? "连接已断开，服务端任务可能仍在执行；运行记录已保留" : "正在连接并校准运行状态…"}</span>
+                                            <span>{connectionStatus === "disconnected" ? "连接已断开，任务可能仍在执行；运行记录已保留" : "正在连接并校准运行状态…"}</span>
                                             {connectionStatus === "disconnected" ? <Button size="small" onClick={() => setConnectionEpoch((value) => value + 1)}>重新连接</Button> : null}
                                         </div>
                                     ) : null}

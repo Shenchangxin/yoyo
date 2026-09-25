@@ -61,9 +61,9 @@ export type Skill = {
 export type SkillCategory = { value: string; label: string };
 
 /**
- * 场景预设：平台只读目录（GET /skills/presets，随二进制内置）。
- * 内容是「一个起步场景 → 一组已上架技能 ID」，不含任何技能正文，也不占用用户配额。
- * 预设目录只读；选中技能作用于当前会话，缺失技能会持久安装到用户技能库。
+ * 场景预设：本机只读目录（GET /skills/presets，随二进制内置）。
+ * 内容是「一个起步场景 → 一组工作室技能 ID」，不含任何技能正文。
+ * 预设目录只读；选中技能作用于当前会话。
  */
 export type SkillPreset = {
     presetId: string;
@@ -160,7 +160,7 @@ export function getSkill(id: string) {
     return http.get<{ skill: Skill }>(`/skills/${encodeURIComponent(id)}`);
 }
 
-/** 场景预设目录：公开只读，与 /skills 同级的市场元数据，无需用户上下文。 */
+/** 场景预设目录：本机只读，与 /skills 同级。 */
 export function listSkillPresets() {
     return http.get<{ presets: SkillPreset[] }>("/skills/presets");
 }

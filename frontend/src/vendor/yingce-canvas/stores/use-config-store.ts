@@ -282,7 +282,7 @@ export function mergeWorkflowFieldMappings(current: unknown, incoming: unknown, 
         if (field.min === undefined && previous.min !== undefined) merged.min = previous.min;
         if (field.max === undefined && previous.max !== undefined) merged.max = previous.max;
         if (field.step === undefined && previous.step !== undefined) merged.step = previous.step;
-        // 首次获得角色信息时采用服务端的内部参数默认值；之后才保留用户明确的启用选择。
+        // 首次获得角色信息时采用本机的内部参数默认值；之后才保留用户明确的启用选择。
         if (field.role === "internal" && previous.role !== "internal") merged.enabled = field.enabled;
         if (field.safeToOverride === false) merged.enabled = false;
         return merged;
@@ -693,7 +693,7 @@ export function normalizeConfigSnapshot(snapshot: ConfigStoreSnapshot | undefine
             audioFormat: config.audioFormat || defaultConfig.audioFormat,
             audioSpeed: config.audioSpeed || defaultConfig.audioSpeed,
             audioInstructions: config.audioInstructions || "",
-            // 旧版全局 systemPrompt 会跨任务污染请求；提示词定制现已按 operation 由服务端编译。
+            // 旧版全局 systemPrompt 会跨任务污染请求；提示词定制现已按 operation 由本机引擎编译。
             systemPrompt: "",
             videoSeconds: normalizeVideoDuration(config.videoSeconds),
             vquality: normalizeVideoResolution(config.vquality),

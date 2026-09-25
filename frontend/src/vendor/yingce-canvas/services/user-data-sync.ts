@@ -78,7 +78,7 @@ export async function loadCanvasProjectForEditing(id: string, options: { latest?
             try {
                 const saved = await restoreRemoteCanvasHistory(id, snapshotId, revision);
                 if (epoch !== sessionEpoch || getActiveUserScope() !== scope) throw new Error("账号已切换，请重新打开画布查看恢复结果");
-                if (saved.project.revision !== revision + 1) throw new Error("恢复结果的版本无效，请重新核对云端内容");
+                if (saved.project.revision !== revision + 1) throw new Error("恢复结果的版本无效，请重新核对本机内容");
             } catch (error) {
                 if (epoch === sessionEpoch && getActiveUserScope() === scope && error instanceof ApiError && (error.status === 409 || error.status === 428)) {
                     useSyncProgressStore.getState().setProjectProgress(id, { phase: "conflict", message: error.message });
@@ -111,13 +111,13 @@ export async function loadCanvasProjectForEditing(id: string, options: { latest?
             useSyncProgressStore.getState().setProjectProgress(id, { draftCount });
             if (!options.latest && !options.historyRestore && local.revision !== undefined) {
                 if (local.revision !== remote.revision) {
-                    useSyncProgressStore.getState().setProjectProgress(id, { phase: "conflict", message: "云端画布已有更新，本地修改已保留为草稿" });
+                    useSyncProgressStore.getState().setProjectProgress(id, { phase: "conflict", message: "工作区已有更新版本，本地修改已保留为草稿" });
                 } else {
                     // A cached draft is not an acknowledged cloud save. Once its
                     // ancestor is verified, retain it as pending against that content.
                     acknowledgedProjects.set(id, { ...remote, remoteContentHash: hash });
                     verifiedProjects.add(id);
-                    useSyncProgressStore.getState().setProjectProgress(id, { phase: "pending", message: "本地草稿等待保存到云端" });
+                    useSyncProgressStore.getState().setProjectProgress(id, { phase: "pending", message: "本地草稿等待写入工作区" });
                     scheduleRemoteUserDataSync();
                 }
                 options.onLoad?.(liveAfterDraft || local);
@@ -135,7 +135,7 @@ export async function loadCanvasProjectForEditing(id: string, options: { latest?
         verifiedProjects.add(id);
         useCanvasStore.setState((state) => ({ projects: local ? state.projects.map((item) => item.id === id ? project : item) : [...state.projects, project] }));
         await flushCanvasStorePersistence();
-        useSyncProgressStore.getState().setProjectProgress(id, { phase: "done", message: "已加载云端最新版本" });
+        useSyncProgressStore.getState().setProjectProgress(id, { phase: "done", message: "已加载工作区最新版本" });
         return project;
     });
     remoteProjectLoadPromises.set(id, request);
@@ -167,12 +167,12 @@ export async function refreshCanvasAfterAgent(id: string) {
             // Replayed events can request a snapshot while local edits await saving.
             // An unchanged, verified ancestor is not a concurrent cloud edit.
             if (!cachedDirty && current.revision === project.revision && baseline?.revision === project.revision && sameCanvasContent(baseline, project)) {
-                useSyncProgressStore.getState().setProjectProgress(id, { phase: "pending", message: "本地修改等待保存到云端" });
+                useSyncProgressStore.getState().setProjectProgress(id, { phase: "pending", message: "本地修改等待写入工作区" });
                 scheduleRemoteUserDataSync();
                 return current;
             }
             await preserveAgentConflict(current);
-            throw new Error("Agent 已更新服务端画布，但本地存在未同步编辑。已保留本地草稿，请加载云端最新版本。");
+            throw new Error("Agent 已更新工作区画布，但本地存在未同步编辑。已保留本地草稿，请加载已保存的最新版本。");
         }
         const projected = { ...project, viewport: current?.viewport || project.viewport, remoteContentHash: await canvasContentHash(project) };
         if (epoch !== sessionEpoch || useCanvasStore.getState().openProject(id) !== (current || null)) throw new Error("画布仍在更新，请重新同步 Agent 结果");
@@ -204,7 +204,7 @@ export async function applyAgentCanvasPatches(id: string, patches: AgentCanvasPa
         let projected = current;
         // A rejected delta requests a snapshot through createAgentCanvasSync.
         // Only that reconciliation can distinguish stale replay from a conflict.
-        if (incrementalSession && !verifiedProjects.has(id) && baseline.remoteContentHash !== await canvasContentHash(baseline)) throw new Error("本地缓存尚未核对，请加载云端最新版本");
+        if (incrementalSession && !verifiedProjects.has(id) && baseline.remoteContentHash !== await canvasContentHash(baseline)) throw new Error("本地缓存尚未核对，请加载已保存的最新版本");
         if (current.revision !== baseline.revision || !Number.isSafeInteger(baseline.revision)) throw new Error("画布同步基线已变化");
         for (const patch of patches) {
             if (!Number.isSafeInteger(patch.revision) || !Number.isSafeInteger(patch.baseRevision)) throw new Error("Agent 增量缺少版本，请重新读取画布");
@@ -232,7 +232,7 @@ export async function applyAgentCanvasPatches(id: string, patches: AgentCanvasPa
 }
 
 async function preserveAgentConflict(project: CanvasProject) {
-    useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "conflict", message: "云端画布已有更新，请保留草稿并加载最新版本" });
+    useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "conflict", message: "工作区已有更新版本，请保留草稿并加载最新版本" });
     const draftCount = await preserveCanvasSyncDraft(project);
     useSyncProgressStore.getState().setProjectProgress(project.id, { draftCount });
 }
@@ -296,8 +296,8 @@ export async function loadAssetsForUse(ids: Iterable<string>) {
 const LOCAL_STORAGE_KEY_PATTERN = /^(image|video|audio|file|video-reference|audio-reference):/;
 
 export async function syncRemoteUserData(userId?: string | null) {
-	// 登录/切换账号时，服务端快照建立新的远端基线；本地 IndexedDB 只负责首屏缓存，
-	// 不能把服务端已经删除或当前用户无权访问的实体重新补回去。后续增量保存必须基于这份基线做冲突校验。
+	// 恢复会话时，工作区快照建立新的远端基线；本地 IndexedDB 只负责首屏缓存，
+	// 不能把工作区已经删除的实体重新补回去。后续增量保存必须基于这份基线做冲突校验。
     await withRemoteUserDataSyncExclusive(async () => {
         incrementalSession = false;
         activeRemoteUserId = userId || "";
@@ -322,7 +322,7 @@ export async function syncRemoteUserData(userId?: string | null) {
             const projects = await Promise.all(snapshot.projects.map(async (project) => {
                 const local = localProjects.find((item) => item.id === project.id);
                 const draftCount = (await readCanvasSyncDrafts(project.id)).length;
-                useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "done", draftCount, message: "已保存到云端" });
+                useSyncProgressStore.getState().setProjectProgress(project.id, { phase: "done", draftCount, message: "已保存到本机" });
                 return { ...project, viewport: local?.viewport || project.viewport || { x: 0, y: 0, k: 1 }, remoteContentHash: await canvasContentHash(project) };
             }));
             if (useCanvasStore.getState().projects !== localProjects) throw new Error("本地画布仍在更新，已保留本地内容，请重新同步");
@@ -407,22 +407,22 @@ export function scheduleRemoteUserDataSync() {
     if (syncTimer) window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(() => {
         syncTimer = null;
-        void saveRemoteUserDataNow().catch((error) => console.warn("云端自动同步失败", error));
+        void saveRemoteUserDataNow().catch((error) => console.warn("工作区自动保存失败", error));
     }, 1200);
 }
 
 export function formatLocalSavedRemotePending(localAction: string, error: unknown): string {
     const detail = error instanceof Error && error.message.trim() ? error.message.trim() : "未知错误";
     if (error instanceof ApiError && error.reason === "canvas_history_resources_missing") {
-        return `${localAction}，云端同步已暂停：${detail}。请修复缺失素材或从有效历史版本恢复。`;
+        return `${localAction}，工作区保存已暂停：${detail}。请修复缺失素材或从有效历史版本恢复。`;
     }
     if (error instanceof ApiError && (error.status === 409 || error.status === 428)) {
-        return `${localAction}，云端同步已暂停：${detail}。请保留草稿并加载最新版本。`;
+        return `${localAction}，工作区保存已暂停：${detail}。请保留草稿并加载最新版本。`;
     }
-    return `${localAction}，云端同步失败：${detail}。将自动重试。`;
+    return `${localAction}，工作区保存失败：${detail}。将自动重试。`;
 }
 
-/** 本地写已成功、云端同步失败：排队同一幂等重试，并返回可直接展示的 warning。不得回滚本地写，也不得说成已保存到云端。 */
+/** 本地写已成功、工作区保存失败：排队同一幂等重试，并返回可直接展示的 warning。不得回滚本地写，也不得说成工作区已写入完成。 */
 export function localSavedRemotePendingMessage(localAction: string, error: unknown): string {
     scheduleRemoteUserDataSync();
     return formatLocalSavedRemotePending(localAction, error);
@@ -431,7 +431,7 @@ export function localSavedRemotePendingMessage(localAction: string, error: unkno
 export async function createCanvasProjectWithRemoteSync(title: string, projectId?: string, initialContent?: Partial<Pick<CanvasProject, "nodes" | "connections" | "chatSessions" | "activeChatId">>) {
     const id = useCanvasStore.getState().createProject(title, projectId);
     if (initialContent) useCanvasStore.getState().updateProject(id, initialContent);
-    if (!activeRemoteUserId) return { id, syncError: new Error("尚未建立云端同步会话") };
+    if (!activeRemoteUserId) return { id, syncError: new Error("工作区尚未就绪") };
     try {
         await saveRemoteUserDataNow(id);
         return { id };
@@ -579,7 +579,7 @@ export async function deleteCanvasProjectsWithRemoteSync(ids: string[]) {
                     await drainRemoteUserDataChanges();
                 } catch (syncErr) {
                     scheduleRemoteUserDataSync();
-                    console.warn("回收站素材云端同步警告:", syncErr);
+                    console.warn("回收站素材工作区保存警告:", syncErr);
                 }
             }
         }
@@ -591,13 +591,13 @@ export async function saveRemoteUserDataNow(input?: string | readonly string[] |
     const projectId = typeof input === "string" || Array.isArray(input) ? input as string | readonly string[] : undefined;
     const options = input && typeof input === "object" && !Array.isArray(input) ? input as { force?: boolean; repairMissingResources?: boolean } : {};
     const epoch = sessionEpoch;
-    if (!activeRemoteUserId) throw new Error("尚未建立云端同步会话，本地内容尚未保存到云端");
+    if (!activeRemoteUserId) throw new Error("工作区尚未就绪，本地内容尚未写入");
     requireRemoteUserDataBaseline();
     const assertNoConflict = () => {
         const ids = projectId === undefined ? useCanvasStore.getState().projects.map((project) => project.id)
             : typeof projectId === "string" ? [projectId] : projectId;
         if (ids.some((id) => useSyncProgressStore.getState().syncingProjects[id]?.phase === "conflict")) {
-            throw new ApiError("云端画布已有更新，请保留本地草稿并加载最新版本", { status: 409 });
+            throw new ApiError("工作区已有更新版本，请保留本地草稿并加载最新版本", { status: 409 });
         }
     };
     if (projectId !== undefined) assertNoConflict();
@@ -633,7 +633,7 @@ export async function saveRemoteUserDataNow(input?: string | readonly string[] |
  */
 export async function forceOverwriteRemoteCanvasSync(): Promise<CanvasAssetRebindResult> {
     const epoch = sessionEpoch;
-    if (!activeRemoteUserId) throw new Error("尚未建立云端同步会话，请登录后重试");
+    if (!activeRemoteUserId) throw new Error("工作区尚未就绪，请稍后重试");
     requireRemoteUserDataBaseline();
     await waitForRemoteProjectLoads();
     const rebind = await withRemoteUserDataSyncExclusive(async () => {
@@ -642,7 +642,7 @@ export async function forceOverwriteRemoteCanvasSync(): Promise<CanvasAssetRebin
         await repairMissingCanvasVideoPreviews();
         if (epoch !== sessionEpoch) throw new Error("账号已切换，已停止修复保存");
         const projects = useCanvasStore.getState().projects;
-        // 服务端素材记录是 guard 实际校验的事实；本地缓存可能落后，须先取回再判定绑定一致性。
+        // 工作区素材记录是校验的事实；本地缓存可能落后，须先取回再判定绑定一致性。
         const claimedIds = [...collectCanvasMediaAssetIds(projects)];
         const remoteAssets: Asset[] = [];
         for (let offset = 0; offset < claimedIds.length; offset += 100) {
@@ -693,7 +693,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
         }
     }
 
-    // 转换后的 resource: 引用只属于发往服务端的 payload，不能反写整份实时 store。
+    // 转换后的 resource: 引用只属于发往本机引擎的 payload，不能反写整份实时 store。
     // 已确认快照记录的是本次上传所依据的本地实体；上传期间的新编辑会在下一轮继续提交。
     // 素材先于画布提交。这样画布中的 resource: 引用一旦成为远端事实，
     // 对应 Asset 已经存在，刷新或换设备不会出现只占容量、不见素材的窗口。
@@ -712,7 +712,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
                 total,
                 completed: 0,
                 phase: total > 0 ? "uploading" : "saving",
-                message: total > 0 ? "正在同步媒体至云端" : "正在保存画布",
+                message: total > 0 ? "正在保存媒体" : "正在保存画布",
             });
         const onMediaUploaded = () => {
             if (total > 0) {
@@ -721,7 +721,7 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
         };
         try {
             if (!Number.isSafeInteger(source.revision) || source.revision! < 0) {
-                throw new ApiError("缺少画布版本，请保留草稿并加载云端最新版本", { status: 428 });
+                throw new ApiError("缺少画布版本，请保留草稿并加载已保存的最新版本", { status: 428 });
             }
             const hash = await canvasContentHash(source);
             const remotePayload = await ensureRemoteResourceReferences(source, uploaded, onMediaUploaded);
@@ -733,11 +733,11 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             }
             const { project: saved } = await upsertRemoteCanvasProject(sanitizeCanvasProjectForRemoteSync(remotePayload), { repairMissingResources: options.repairMissingResources === true });
             if (!Number.isSafeInteger(saved.revision) || saved.revision !== source.revision! + 1) {
-                throw new ApiError("服务端未返回有效画布版本，请加载云端最新版本", { status: 409 });
+                throw new ApiError("引擎未返回有效画布版本，请加载已保存的最新版本", { status: 409 });
             }
             const current = useCanvasStore.getState().openProject(source.id);
             if (current && current.revision !== source.revision) {
-                throw new ApiError("画布基线已变化，请加载云端最新版本", { status: 409 });
+                throw new ApiError("画布基线已变化，请加载已保存的最新版本", { status: 409 });
             }
             const acknowledged = { ...source, revision: saved.revision, remoteContentHash: hash };
             acknowledgedProjects.set(source.id, acknowledged);
@@ -748,13 +748,13 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             }
             await flushCanvasStorePersistence();
             const pending = !sameCanvasContent(source, useCanvasStore.getState().openProject(source.id) || undefined);
-            useSyncProgressStore.getState().setProjectProgress(source.id, { phase: pending ? "pending" : "done", message: pending ? "有新修改等待保存" : "已保存到云端" });
+            useSyncProgressStore.getState().setProjectProgress(source.id, { phase: pending ? "pending" : "done", message: pending ? "有新修改等待保存" : "已保存到本机" });
             if (pending) syncQueued = true;
         } catch (error) {
             const conflict = error instanceof ApiError && error.reason !== "canvas_history_resources_missing" && (error.status === 409 || error.status === 428);
             useSyncProgressStore.getState().setProjectProgress(source.id, {
                 phase: conflict ? "conflict" : "error",
-                message: error instanceof Error ? error.message : "云端同步失败，等待重试",
+                message: error instanceof Error ? error.message : "工作区保存失败，等待重试",
             });
             if (conflict) {
                 try {
@@ -879,7 +879,7 @@ async function uploadLocalStorageKey(storageKey: string, payload: Record<string,
 }
 
 function requireRemoteUserDataBaseline() {
-    if (remoteUserDataPhase !== "ready") throw new Error("云端数据基线尚未建立，已停止写入");
+    if (remoteUserDataPhase !== "ready") throw new Error("工作区基线尚未建立，已停止写入");
 }
 
 function sameEntitySnapshot<T>(acknowledged: T | undefined, current: T) {

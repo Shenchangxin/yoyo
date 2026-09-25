@@ -83,7 +83,7 @@ export type ResourceUploadMeta = {
  * 资源直传失败。
  *
  * `permanent` 是这条边界上唯一重要的信息：媒体直传失败后，调用方默认会把文件留在本机
- * IndexedDB，并由云端数据同步用同一幂等键重传（见 user-data-sync 的 uploadLocalStorageKey）。
+ * IndexedDB，并由工作区保存用同一幂等键重传（见 user-data-sync 的 uploadLocalStorageKey）。
  * 但鉴权失效、越权、请求本身不合法这几类失败重传多少次都是同样结果，把它们也归入
  * "稍后自动同步" 等于向用户撒谎，必须当场抛出。
  */

@@ -5,7 +5,7 @@ import { WorkspaceState } from "@yingce/components/layout/workspace-state";
 import type { GenerationTask } from "@yingce/services/api/task-center";
 import { TaskListItem } from "./canvas-workspace-task-list-item";
 
-// 历史面板：展示项目最近任务（含云端 Agent 根任务与步骤任务），与任务面板互不依赖。
+// 历史面板：展示项目最近任务（含 Agent 根任务与步骤任务），与任务面板互不依赖。
 export function CanvasWorkspaceHistoryPanel({ tasks, refreshing, onRefresh, onCancelTask }: { tasks: GenerationTask[]; refreshing?: boolean; onRefresh?: () => void; onCancelTask?: (task: GenerationTask) => void }) {
     return (
         <>

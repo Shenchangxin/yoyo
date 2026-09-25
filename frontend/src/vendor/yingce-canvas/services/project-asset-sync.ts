@@ -115,7 +115,7 @@ async function persistCanvasNodeAsset(options: EnsureCanvasNodeAssetOptions): Pr
         asset = useAssetStore.getState().assets.find((item) => item.id === asset?.id) || asset;
     }
     if (!options.domainProjectId) {
-        // 个人画布也必须在返回成功前把素材提交到服务端，不能只依赖延迟自动同步。
+        // 个人画布也必须在返回成功前把素材写入本机，不能只依赖延迟自动同步。
         await saveRemoteUserDataNow();
         throwIfAborted(options.signal);
         return { assetId: asset.id, created, linkedToProject: false };
@@ -268,7 +268,7 @@ async function storedGenerationMedia(dataUrl: string, effectKey: string, mediaTy
 }
 
 async function cachedRemoteGenerationVideo(video: NonNullable<BackendGenerationResult["video"]>, signal?: AbortSignal) {
-    if (!video.storageKey) throw new Error("生成视频缺少云端资源标识");
+    if (!video.storageKey) throw new Error("生成视频缺少资源标识");
     throwIfAborted(signal);
     const blob = await getCachedResourceBlob(video.storageKey);
     throwIfAborted(signal);

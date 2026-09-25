@@ -61,7 +61,7 @@ export function CanvasSubtitleDialog({ node, open, projectId, config, onClose, o
         return () => abortRef.current?.abort();
     }, []);
 
-    // 打开弹窗时解析视频地址，用于字幕叠加预览；远端资源统一走稳定的云端地址。
+    // 打开弹窗时解析视频地址，用于字幕叠加预览；远端资源统一走稳定的资源地址。
     useEffect(() => {
         if (!open) return;
         let cancelled = false;

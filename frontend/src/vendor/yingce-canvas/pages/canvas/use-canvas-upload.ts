@@ -213,8 +213,8 @@ export function useCanvasUpload({
             if (domainProjectId) progress.update("写入项目资产", 4);
             const persisted = await persistMediaNode(node);
             const localOnly = metadata.storageKey && !resourceIdFromStorageKey(metadata.storageKey);
-            progress.done(localOnly ? "已保存在本机，尚未上传到服务器" : persisted ? "文件已添加到画布" : "文件已添加，项目资产待重试");
-            if (localOnly) message.warning("文件已保存在本机，尚未上传到服务器");
+            progress.done(localOnly ? "已保存在本机，尚未写入素材库" : persisted ? "文件已添加到画布" : "文件已添加，项目资产待重试");
+            if (localOnly) message.warning("文件已保存在本机，尚未写入素材库");
             return id;
         } catch (error) {
             const details = error instanceof Error ? error.message : "文件上传失败";
@@ -417,7 +417,7 @@ export function useCanvasUpload({
     const createVideoNodeFromBlob = useCallback(async (blob: Blob, title: string): Promise<CanvasNodeData | null> => {
         const progress = startUploadStatus("合成视频片段", "上传合成结果", domainProjectId ? 4 : 3);
         try {
-            progress.update("上传到服务器并同步资源", 2);
+            progress.update("写入本地资源库", 2);
             const video = await uploadMediaFile(blob, "video");
             progress.update("更新画布节点", 3);
             const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);

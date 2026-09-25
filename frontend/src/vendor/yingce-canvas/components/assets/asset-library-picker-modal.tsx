@@ -139,7 +139,7 @@ export function AssetLibraryPickerModal({
     const remoteQueryKind = remoteKind || (mediaKind === "all" ? undefined : mediaKind);
     const remoteQuery = useQuery({
         queryKey: ["asset-picker", userId, remotePage, remotePageSize, category, remoteKeyword, remoteQueryKind],
-        queryFn: ({ signal }) => loadAssetLibraryPage({ page: remotePage, pageSize: remotePageSize, kind: remoteQueryKind, category: category === "all" || category === "archived" || category === remoteQueryKind ? undefined : category, status: category === "archived" ? "archived" : "active", query: remoteKeyword, signal }),
+        queryFn: ({ signal }) => loadAssetLibraryPage({ page: remotePage, pageSize: remotePageSize, kind: remoteQueryKind, category: category === "all" || category === "archived" || category === remoteQueryKind ? undefined : category, status: category === "archived" ? "archived" : "active", query: remoteKeyword, excludeKind: "entity", signal }),
         enabled: remoteEnabled && open && sessionHydrated,
     });
     const remoteItems = useMemo<AssetLibraryPickerItem[]>(() => (remoteQuery.data?.assets || []).filter((asset) => asset.kind !== "entity" && asset.kind !== "model").map((asset) => ({
@@ -519,7 +519,7 @@ export function AssetLibraryPickerModal({
                             </button>
                         </>
                     ) : footerNote || (remoteEnabled && remoteQuery.isError) ? (
-                        <span className="asset-picker-footer-note">{remoteEnabled && remoteQuery.isError ? "云端素材暂时不可用，当前显示本地缓存" : footerNote}</span>
+                        <span className="asset-picker-footer-note">{remoteEnabled && remoteQuery.isError ? "素材库暂时不可用，当前显示本地缓存" : footerNote}</span>
                     ) : (
                         <span />
                     )}

@@ -96,6 +96,7 @@ func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 	e.PluginDir = findYingcePluginDir(dir)
 	_ = e.loadCanvasPlugins()
 	_ = e.seedCanvasChannels()
+	_ = e.seedStudioAssets()
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
 	e.resumeJobs()
@@ -134,6 +135,14 @@ func (e *Engine) migrate() error {
 			return err
 		}
 		if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (2)`); err != nil {
+			return err
+		}
+	}
+	if ver < 3 {
+		if _, err := e.DB.Exec(schemaV3); err != nil {
+			return err
+		}
+		if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (3)`); err != nil {
 			return err
 		}
 	}

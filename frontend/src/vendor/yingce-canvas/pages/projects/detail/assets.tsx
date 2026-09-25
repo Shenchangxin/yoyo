@@ -535,7 +535,7 @@ export default function ProjectAssetsView({ detail, refreshProject }: ProjectDet
                         if (!isSupportedCharacterVoiceFile(file)) throw new Error(`声音素材支持 ${CHARACTER_VOICE_FORMAT_LABEL}`);
                         const uploaded = await uploadMediaFile(file, "character-voice");
                         const resourceId = resourceIdFromStorageKey(uploaded.storageKey);
-                        if (!resourceId) throw new Error("声音上传未同步到服务端资源库，请检查后端连接");
+                        if (!resourceId) throw new Error("声音尚未写入本地资源库，请稍后重试");
                         ids.push(addAsset({ kind: "audio", title: characterVoiceTitleFromFileName(file.name), coverUrl: "", tags: ["角色声音"], status: "confirmed", source: "角色卡", data: { url: uploaded.url, storageKey: uploaded.storageKey, durationMs: uploaded.durationMs, bytes: uploaded.bytes, mimeType: uploaded.mimeType || file.type || "application/octet-stream" } }));
                     }
                     return ids;
@@ -544,7 +544,7 @@ export default function ProjectAssetsView({ detail, refreshProject }: ProjectDet
                 onConfirm={(ids) => {
                     const id = ids[0];
                     const resourceId = id ? audioResourceByItemId.get(id) : "";
-                    if (!resourceId) throw new Error("所选声音素材尚未同步到服务端资源库");
+                    if (!resourceId) throw new Error("所选声音素材尚未写入本地资源库");
                     const item = audioPickerItems.find((entry) => entry.id === id);
                     setVoiceSample({ resourceId, name: item?.title || "角色声音", url: resourceFileUrl(resourceId) });
                     setVoicePickerOpen(false);

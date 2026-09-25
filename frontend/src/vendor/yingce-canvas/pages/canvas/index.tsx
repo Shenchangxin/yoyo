@@ -98,7 +98,7 @@ export default function CanvasPage() {
     );
     const createAndEnter = () => {
         void createCanvasProjectWithRemoteSync(`自由画布 ${projects.length + 1}`).then(({ id, syncError }) => {
-            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，云端同步失败：${syncError.message}` : "画布已在本地创建，云端同步失败");
+            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，工作区保存失败：${syncError.message}` : "画布已在本地创建，工作区保存失败");
             enterProject(id);
         });
     };
@@ -195,7 +195,7 @@ export default function CanvasPage() {
                         total: totalFiles,
                         completed: 0,
                         phase: "uploading",
-                        message: "正在上传媒体至云端",
+                        message: "正在保存媒体",
                     });
                 }
 
@@ -364,7 +364,7 @@ export default function CanvasPage() {
                         } catch (syncError) {
                             remoteSyncWarning ||= syncError;
                             scheduleRemoteUserDataSync();
-                            console.warn("导入画布云端同步失败，等待自动重试", syncError);
+                            console.warn("导入画布工作区保存失败，等待自动重试", syncError);
                         }
                     }
                 } catch (error) {
@@ -380,9 +380,9 @@ export default function CanvasPage() {
 
             await flushCanvasStorePersistence();
             if (remoteSyncWarning) {
-                message.warning(`已导入 ${data.projects.length} 个画布，云端同步未完成，将自动重试`);
+                message.warning(`已导入 ${data.projects.length} 个画布，工作区保存未完成，将自动重试`);
             } else {
-                message.success(remoteSyncEnabled ? `已导入 ${data.projects.length} 个画布并完成云端同步` : `已导入 ${data.projects.length} 个画布并保存到本地`);
+                message.success(remoteSyncEnabled ? `已导入 ${data.projects.length} 个画布并完成本机保存` : `已导入 ${data.projects.length} 个画布并保存到本地`);
             }
         } catch (error) {
             hideLoading();
@@ -401,7 +401,7 @@ export default function CanvasPage() {
             return;
         }
         void createCanvasProjectWithRemoteSync(`自由画布 ${projects.length + 1}`).then(({ id, syncError }) => {
-            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，云端同步失败：${syncError.message}` : "画布已在本地创建，云端同步失败");
+            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，工作区保存失败：${syncError.message}` : "画布已在本地创建，工作区保存失败");
             enterProject(id);
         });
     }, [hydrated, message, mode, projects, sessionHydrated, userId, libraryQuery.isSuccess]);

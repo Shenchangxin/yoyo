@@ -17,7 +17,7 @@ import { SkillInstallModal } from "@yingce/pages/skills/skill-install-modal";
 import { addSkill, deleteSkill, getSkill, likeSkill, listSkills, removeSkill, syncSkill, unlikeSkill, type Skill, type SkillCategory, type SkillScope, type SkillSort } from "@yingce/services/api/skills";
 
 const scopeOptions = [
-    { label: "技能广场", value: "public", icon: Clapperboard },
+    { label: "工作室技能", value: "public", icon: Clapperboard },
     { label: "我的技能", value: "mine", icon: Library },
     { label: "我创建的", value: "created", icon: UserRound },
     { label: "我的收藏", value: "favorites", icon: Heart },
@@ -47,7 +47,7 @@ export default function SkillsPage() {
     const debouncedSearch = useDebouncedValue(search, 250);
     const [tag, setTag] = useState("all");
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(20);
+    const [pageSize, setPageSize] = useState(48);
     const [skills, setSkills] = useState<Skill[]>([]);
     const [categories, setCategories] = useState<SkillCategory[]>(fallbackSkillCategories);
     const [total, setTotal] = useState(0);
@@ -177,7 +177,7 @@ export default function SkillsPage() {
             message.success(result.skill.versionId === skill.versionId ? "已是最新版本" : "已同步最新版本");
             reload();
         } catch (error) {
-            message.error(error instanceof Error ? error.message : "GitHub 技能同步失败");
+            message.error(error instanceof Error ? error.message : "技能同步失败");
         } finally {
             setMutatingID("");
         }
@@ -186,7 +186,7 @@ export default function SkillsPage() {
     const confirmDelete = (skill: Skill) => {
         modal.confirm({
             title: `删除“${skill.skillName}”？`,
-            content: "删除后，其他用户将无法继续使用该技能，已有加入和收藏关系也会一并移除。",
+            content: "删除后，该技能会从本机技能库移除，已加入和收藏关系也会一并清除。",
             okText: "删除技能",
             okButtonProps: { danger: true },
             cancelText: "取消",
@@ -275,8 +275,8 @@ export default function SkillsPage() {
                         compact
                         className="min-h-[188px]"
                         icon="skills"
-                        title={filtersActive ? "没有找到匹配技能" : scope === "created" ? "还没有创建技能" : scope === "public" ? "技能广场还是空的" : "这里还没有技能"}
-                        description={filtersActive ? "换个关键词或分类试试。" : scope === "favorites" ? "收藏的公开技能会显示在这里。" : scope === "mine" ? "从技能广场加入后会显示在这里。" : "创建并公开第一个技能，其他用户就能直接加入使用。"}
+                        title={filtersActive ? "没有找到匹配技能" : scope === "created" ? "还没有创建技能" : scope === "public" ? "工作室技能还是空的" : "这里还没有技能"}
+                        description={filtersActive ? "换个关键词或分类试试。" : scope === "favorites" ? "收藏的技能会显示在这里。" : scope === "mine" ? "加入工作室技能后会显示在这里。" : "在本机创建技能后，可以加入当前创作会话使用。"}
                         action={filtersActive
                             ? <Button onClick={() => { setSearch(""); setTag("all"); setSort("popular"); setPage(1); }}>清除筛选</Button>
                             : (scope === "created" || scope === "public")

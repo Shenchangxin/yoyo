@@ -412,24 +412,25 @@ export default function PluginsPage() {
                                                                         {providerCapabilitiesFor(plugin.manifest).map((capability) => (
                                                                             <span key={capability}>{capabilityLabel(capability)}</span>
                                                                         ))}
-                                                                        {plugin.manifest.contributes.providers?.some((provider) => provider.poll) ? <span>异步轮询</span> : null}
-                                                                        <span>{plugin.manifest.permissions.length} 项能力</span>
+                                                                        {plugin.manifest.contributes?.providers?.some((provider) => provider.poll) ? <span>异步轮询</span> : null}
+                                                                        <span>{(plugin.manifest.permissions || []).length} 项能力</span>
                                                                     </div>
                                                                 </button>
 
                                                                 <div className="plugin-card-actions">
-                                                                    <span role="status" className={`settings-channel-status ${enabled ? "is-ready" : ""}`}>
-                                                                        <i aria-hidden="true" />
-                                                                        {!state?.platformAvailable && state?.blockedReason ? state.blockedReason : enabled ? "已启用" : "已停用"}
-                                                                    </span>
-                                                                    <Switch
-                                                                        className="plugin-state-switch"
-                                                                        disabled={!state?.canToggle}
-                                                                        checked={enabled}
-                                                                        aria-label={`${plugin.manifest.name}，当前${enabled ? "已启用，点击停用" : "已停用，点击启用"}`}
-                                                                        title={state?.blockedReason}
-                                                                        onChange={(checked) => void togglePlugin(plugin, checked)}
-                                                                    />
+                                                                    {!state?.platformAvailable && state?.blockedReason ? (
+                                                                        <span role="status" className="settings-channel-status">
+                                                                            {state.blockedReason}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <PluginEnableSwitch
+                                                                            name={plugin.manifest.name}
+                                                                            checked={enabled}
+                                                                            disabled={!state?.canToggle}
+                                                                            blockedReason={state?.blockedReason}
+                                                                            onChange={(checked) => void togglePlugin(plugin, checked)}
+                                                                        />
+                                                                    )}
                                                                     {canConfigure ? (
                                                                         <Button
                                                                             className="plugin-settings-button"
@@ -628,7 +629,7 @@ function pluginSourceLabel(plugin: RegisteredPlugin, state?: PluginState) {
 }
 
 function contributionKindsFor(manifest: PluginManifest | PluginManifestV2): string[] {
-    const contributions = manifest.contributes;
+    const contributions = manifest.contributes || {};
     const kinds: string[] = [];
     if (contributions.providers?.length) kinds.push("provider");
     if (contributions.paymentProviders?.length) kinds.push("payment-provider");
@@ -644,15 +645,47 @@ function contributionKindsFor(manifest: PluginManifest | PluginManifestV2): stri
 }
 
 function providerCapabilitiesFor(manifest: PluginManifest | PluginManifestV2) {
-    return [...new Set((manifest.contributes.providers || []).flatMap((provider) => provider.capabilities))];
+    return [...new Set((manifest.contributes?.providers || []).flatMap((provider) => provider.capabilities))];
 }
 
 function pluginMatchesCategory(manifest: PluginManifest | PluginManifestV2, category: string) {
     const providerCapabilities = providerCapabilitiesFor(manifest);
-    const isPaymentProtocol = Boolean(manifest.contributes.paymentProviders?.length);
+    const isPaymentProtocol = Boolean(manifest.contributes?.paymentProviders?.length);
     if (category === "payment") return isPaymentProtocol;
     if (category === "other") return !isPaymentProtocol && providerCapabilities.length === 0;
     return providerCapabilities.includes(category as "text" | "image" | "video" | "audio");
+}
+
+function PluginEnableSwitch({
+    name,
+    checked,
+    disabled,
+    blockedReason,
+    onChange,
+}: {
+    name: string;
+    checked: boolean;
+    disabled?: boolean;
+    blockedReason?: string;
+    onChange: (checked: boolean) => void;
+}) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            className={`plugin-enable${checked ? " is-on" : ""}`}
+            aria-checked={checked}
+            aria-label={`${name}，当前${checked ? "已启用，点击停用" : "已停用，点击启用"}`}
+            title={blockedReason}
+            disabled={disabled}
+            onClick={() => onChange(!checked)}
+        >
+            <span className="plugin-enable-track" aria-hidden="true">
+                <span className="plugin-enable-thumb" />
+            </span>
+            <span className="plugin-enable-copy">{checked ? "已启用" : "已停用"}</span>
+        </button>
+    );
 }
 
 function capabilityLabel(value: string) {

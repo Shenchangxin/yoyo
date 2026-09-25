@@ -29,7 +29,7 @@ export type ArtCritiqueRubricSection = {
 };
 
 /**
- * 这些项目只作为方法论来源，不作为运行时依赖。模型仍然通过当前项目的云端渠道调用。
+ * 这些项目只作为方法论来源，不作为运行时依赖。模型仍然通过当前项目已配置的渠道调用。
  */
 export const ART_CRITIQUE_RUBRIC: readonly ArtCritiqueRubricSection[] = [
     {

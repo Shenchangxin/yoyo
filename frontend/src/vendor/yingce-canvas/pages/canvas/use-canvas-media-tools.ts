@@ -221,7 +221,7 @@ export function useCanvasMediaTools({
 
     const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
         if (!node.metadata?.content) return;
-        // 云端图片地址通常不带 CORS 头，直接画到 canvas 会被判定为跨域而无法导出。
+        // 远程图片地址通常不带 CORS 头，直接画到 canvas 会被判定为跨域而无法导出。
         // 优先用本地缓存里的 Blob 构造同源地址，裁剪才能读取像素。
         let releaseSource = () => {};
         try {
@@ -364,7 +364,7 @@ export function useCanvasMediaTools({
             const mp3 = await extractVideoAudio({ url: node.metadata?.content, storageKey: node.metadata?.storageKey }, { startMs: params.startMs, endMs: params.endMs }, node.metadata?.durationMs, (status) => {
                 progress.update(status.phase === "loading" ? "加载 FFmpeg" : status.phase === "reading" ? "读取视频资源" : "正在提取音频", status.phase === "encoding" ? 3 : 2);
             });
-            progress.update("上传音频到服务器", 4);
+            progress.update("写入本地音频资源", 4);
             const uploaded = await uploadMediaFile(mp3, "audio");
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
             const audioNode = createCanvasNode(
@@ -431,7 +431,7 @@ export function useCanvasMediaTools({
                     const mp4 = await trimVideoSegment(trimSource, { startMs: segment.startMs, endMs: segment.endMs }, trimDurationMs, (status) => {
                         progress.update(status.phase === "loading" ? `加载 FFmpeg（${index + 1}/${segments.length}）` : status.phase === "reading" ? `读取视频资源（${index + 1}/${segments.length}）` : `正在截取片段（${index + 1}/${segments.length}）`, status.phase === "encoding" ? index * 4 + 3 : index * 4 + 2);
                     });
-                    progress.update(`上传片段到服务器（${index + 1}/${segments.length}）`, index * 4 + 3);
+                    progress.update(`写入本地片段资源（${index + 1}/${segments.length}）`, index * 4 + 3);
                     const uploaded = await uploadMediaFile(mp4, "video");
                     const size = fitNodeSize(uploaded.width || 1280, uploaded.height || 720, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);
                     const segmentId = nanoid();
@@ -1302,7 +1302,7 @@ export function useCanvasMediaTools({
     };
 }
 
-// 裁剪、切分等像素级操作要求图片同源可读：云端地址若不带 CORS 头，
+// 裁剪、切分等像素级操作要求图片同源可读：远程地址若不带 CORS 头，
 // canvas 会被标记为跨域，toDataURL 直接抛 SecurityError。
 // 这里优先用本地缓存 Blob 构造同源 objectURL，取不到时再回退原始地址。
 async function resolveCroppableImageSource(node: CanvasNodeData): Promise<{ url: string; release: () => void }> {
