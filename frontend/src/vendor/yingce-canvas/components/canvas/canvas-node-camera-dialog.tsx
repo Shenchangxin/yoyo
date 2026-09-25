@@ -3,10 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronUp, ChevronDown, Camera as CameraIcon, RotateCcw, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-
-import { SpotlightSurface } from "@yingce/components/ui/aceternity/spotlight-surface";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
-import { aceternityMotion } from "@yingce/lib/aceternity-motion";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { useCopyText } from "@yingce/hooks/use-copy-text";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
@@ -345,14 +342,10 @@ export function CanvasNodeCameraPanel({
     const secondaryButtonClass = "flex h-8 items-center gap-1.5 rounded-[var(--dock-item-radius)] px-3 text-[var(--fs-label)] font-medium transition hover:bg-black/5 dark:hover:bg-white/10";
 
     return (
-        <SpotlightSurface
+        <div
             data-canvas-no-zoom
-            spotlightColor={theme.toolbar.itemHover}
-            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={reducedMotion ? { duration: 0 } : aceternityMotion.spring.panel}
-            className="w-full overflow-hidden rounded-[var(--r-xl)] border backdrop-blur-2xl"
-            style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text, boxShadow: `0 28px 80px ${theme.spatial.shadow}` }}
+            className="sg-popover w-full overflow-hidden"
+            style={{ color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -483,6 +476,6 @@ export function CanvasNodeCameraPanel({
                     <CameraIcon className="size-3.5" />应用
                 </motion.button>
             </div>
-        </SpotlightSurface>
+        </div>
     );
 }

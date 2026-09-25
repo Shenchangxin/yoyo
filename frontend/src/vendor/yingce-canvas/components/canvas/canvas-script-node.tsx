@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Button, Dropdown, Input, InputNumber, Modal, Segmented, Select, Table } from "antd";
+import { Button, Input, InputNumber, Modal, Segmented, Select, Table } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
@@ -8,6 +8,7 @@ import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ChevronDown, ChevronUp, Clapperboard, Copy, Expand, Film, Grid3X3, Image as ImageIcon, ListTree, Merge, MoreHorizontal, Plus, RefreshCw, Send, Square, Trash2, Video } from "lucide-react";
 
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { CanvasResourceMentionTextarea } from "@yingce/components/canvas/canvas-resource-mention-textarea";
 import { StoryboardAssetsCell } from "@yingce/components/canvas/storyboard-assets-cell";
 import { ModelPicker } from "@yingce/components/model-picker";
@@ -269,7 +270,7 @@ export function CanvasScriptNodeContent({
                         <Expand className="size-3.5" />
                     </button>
                 </Tooltip>
-                <Dropdown open={moreMenuOpen} onOpenChange={setMoreMenuOpen} menu={{ items: moreMenuItems, onClick: () => setMoreMenuOpen(false) }} trigger={["click"]} placement="bottomRight">
+                <CanvasDropdown open={moreMenuOpen} onOpenChange={setMoreMenuOpen} menu={{ items: moreMenuItems, onClick: () => setMoreMenuOpen(false) }} trigger={["click"]} placement="bottomRight">
                     <button
                         type="button"
                         className="grid size-7 place-items-center rounded outline-none transition hover:bg-black/5 focus-visible:ring-2 dark:hover:bg-white/10"
@@ -284,7 +285,7 @@ export function CanvasScriptNodeContent({
                     >
                         <MoreHorizontal className="size-3.5" />
                     </button>
-                </Dropdown>
+                </CanvasDropdown>
             </div>
             {batch ? (
                 <Modal title="批次详情" open={batchDetailsOpen} onCancel={() => setBatchDetailsOpen(false)} footer={null} width={560} centered destroyOnHidden>
@@ -321,7 +322,7 @@ export function CanvasScriptNodeContent({
                             <div className="flex flex-col items-center justify-center gap-0.5 border-r tabular-nums" style={{ color: theme.node.muted, borderColor: theme.node.stroke }}>
                                 <div className="flex items-center gap-0.5">
                                     <span className="text-sm">{row.shotNumber}</span>
-                                    <Dropdown
+                                    <CanvasDropdown
                                         trigger={["click"]}
                                         menu={{ items: [{ key: "delete", label: "删除镜头", icon: <Trash2 className="size-3.5" />, danger: true, disabled: rows.length <= 1, onClick: () => onRemoveRow(row.id) }] }}
                                     >
@@ -335,7 +336,7 @@ export function CanvasScriptNodeContent({
                                         >
                                             <MoreHorizontal className="size-3" />
                                         </button>
-                                    </Dropdown>
+                                    </CanvasDropdown>
                                 </div>
                                 {batchItemByRowId.get(row.id) ? (
                                     <span className="max-w-14 truncate text-[var(--fs-micro)] leading-3" title={generationBatchItemLabel(batchItemByRowId.get(row.id)!)}>

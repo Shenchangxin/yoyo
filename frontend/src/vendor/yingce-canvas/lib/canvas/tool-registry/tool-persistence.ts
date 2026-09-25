@@ -3,7 +3,7 @@ import { scopedLocalStorage } from "@yingce/lib/user-scope";
 
 import type { ToolbarId, ToolbarPrefs } from "./tool-definition";
 
-const STORAGE_VERSION = "v1";
+const STORAGE_VERSION = "v3";
 const storageKey = (toolbar: ToolbarId) => `canvas-toolbar-prefs-${toolbar}-${STORAGE_VERSION}`;
 
 export const CANVAS_MODE_TOOL_ID = "tool-canvas-mode";
@@ -45,21 +45,35 @@ function isPrefsShape(value: unknown): value is Partial<ToolbarPrefs> {
     return typeof value === "object" && value !== null;
 }
 
-/** 把旧的抓手/框选两个独立按钮偏好合并成一个开关项 */
-export function migrateToolbarPrefs(toolbar: ToolbarId, prefs: ToolbarPrefs): ToolbarPrefs {
-    if (toolbar !== "main") return prefs;
-    const legacyIds = new Set<string>(LEGACY_CANVAS_MODE_TOOL_IDS);
-    const hasLegacy = prefs.order.some((id) => legacyIds.has(id)) || prefs.hidden.some((id) => legacyIds.has(id));
-    if (!hasLegacy) return prefs;
+function uniqueIds(ids: string[]): string[] {
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const id of ids) {
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        next.push(id);
+    }
+    return next;
+}
 
-    const order = prefs.order.filter((id) => id !== CANVAS_MODE_TOOL_ID && !legacyIds.has(id));
+/** 把旧的抓手/框选两个独立按钮偏好合并成一个开关项，并去掉重复 id */
+export function migrateToolbarPrefs(toolbar: ToolbarId, prefs: ToolbarPrefs): ToolbarPrefs {
+    let order = uniqueIds(prefs.order);
+    let hidden = uniqueIds(prefs.hidden);
+    if (toolbar !== "main") return { order, hidden };
+
+    const legacyIds = new Set<string>(LEGACY_CANVAS_MODE_TOOL_IDS);
+    const hasLegacy = order.some((id) => legacyIds.has(id)) || hidden.some((id) => legacyIds.has(id));
+    if (!hasLegacy) return { order, hidden };
+
+    order = order.filter((id) => id !== CANVAS_MODE_TOOL_ID && !legacyIds.has(id));
     const firstLegacyIndex = prefs.order.findIndex((id) => legacyIds.has(id));
     const insertAt = firstLegacyIndex >= 0 ? Math.min(firstLegacyIndex, order.length) : 0;
     order.splice(insertAt, 0, CANVAS_MODE_TOOL_ID);
 
-    const hiddenLegacy = LEGACY_CANVAS_MODE_TOOL_IDS.filter((id) => prefs.hidden.includes(id));
-    const hidden = prefs.hidden.filter((id) => id !== CANVAS_MODE_TOOL_ID && !legacyIds.has(id));
+    const hiddenLegacy = LEGACY_CANVAS_MODE_TOOL_IDS.filter((id) => hidden.includes(id));
+    hidden = hidden.filter((id) => id !== CANVAS_MODE_TOOL_ID && !legacyIds.has(id));
     if (hiddenLegacy.length === LEGACY_CANVAS_MODE_TOOL_IDS.length) hidden.push(CANVAS_MODE_TOOL_ID);
 
-    return { order, hidden };
+    return { order: uniqueIds(order), hidden: uniqueIds(hidden) };
 }

@@ -52,7 +52,6 @@ export function ToolbarSettingsModal({ open, onClose, toolbar }: ToolbarSettings
     const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
     const visibleCount = items.filter((item) => item.visible).length;
 
-    // 当 modal 打开或 toolbar 变化时，加载工具列表与偏好
     useEffect(() => {
         if (!open) return;
         setToolbarId(toolbar);
@@ -140,43 +139,44 @@ export function ToolbarSettingsModal({ open, onClose, toolbar }: ToolbarSettings
             onCancel={onClose}
             footer={null}
             closable={false}
-            width={720}
+            width={380}
             centered
             destroyOnClose
+            getContainer={() => document.body}
             styles={{
                 container: { padding: 0, background: theme.spatial.elevated, border: 0, boxShadow: "none" },
                 body: { padding: 0, background: theme.spatial.elevated },
             }}
         >
-            <div className="flex items-start justify-between gap-4 px-5 pb-3 pt-5">
+            <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-3.5">
                 <div className="min-w-0">
-                    <h2 className="text-[var(--fs-heading)] font-semibold leading-none">工具栏设置</h2>
-                    <p className="mt-2 text-[var(--fs-caption)] leading-none" style={{ color: theme.node.muted }}>拖动调整顺序，关闭不常用入口</p>
+                    <h2 className="text-[13px] font-semibold leading-none tracking-tight">工具栏设置</h2>
+                    <p className="mt-1.5 text-[11px] leading-none" style={{ color: theme.node.muted }}>拖动排序，开关控制显示</p>
                 </div>
                 <button
                     type="button"
                     onClick={onClose}
-                    className="grid size-8 shrink-0 place-items-center rounded-[var(--dock-item-radius)] outline-none transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:bg-white/8"
+                    className="grid size-7 shrink-0 place-items-center rounded-[7px] outline-none transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:bg-white/8"
                     style={{ color: theme.node.muted, outlineColor: theme.accent.primary }}
                     aria-label="关闭工具栏设置"
                 >
-                    <X className="size-4" />
+                    <X className="size-3.5" strokeWidth={1.55} />
                 </button>
             </div>
-            <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-1">
-                <span className="text-[var(--fs-tiny)] font-medium" style={{ color: theme.node.muted }}>已显示 {visibleCount}/{items.length}</span>
+            <div className="flex items-center justify-between gap-3 px-4 pb-2">
+                <span className="text-[10.5px] font-medium tabular-nums" style={{ color: theme.node.muted }}>已显示 {visibleCount}/{items.length}</span>
                 <button
                     type="button"
                     onClick={handleReset}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-[var(--dock-item-radius)] px-2 text-[var(--fs-tiny)] font-medium outline-none transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 dark:hover:bg-white/8"
+                    className="inline-flex h-6 items-center gap-1 rounded-[7px] px-1.5 text-[10.5px] font-medium outline-none transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 dark:hover:bg-white/8"
                     style={{ color: theme.node.muted, outlineColor: theme.accent.primary }}
                     aria-label="恢复默认工具栏设置"
                 >
-                    <RotateCcw className="size-3" />
+                    <RotateCcw className="size-3" strokeWidth={1.55} />
                     恢复默认
                 </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 px-5 pb-5 pt-2 md:grid-cols-5" aria-label="主工具栏顺序">
+            <div className="canvas-toolbar-settings-list max-h-[min(52vh,420px)] overflow-y-auto px-2.5 pb-3" aria-label="主工具栏顺序">
                 {items.map((item) => (
                     <ToolbarSettingsItem
                         key={item.id}
@@ -200,34 +200,30 @@ function ToolbarSettingsItem({ item, reducedMotion, theme, dragging, onToggleVis
         <motion.div
             layout={!reducedMotion}
             transition={reducedMotion ? { duration: 0 } : undefined}
-            className={`canvas-toolbar-settings-card flex h-24 min-w-0 flex-col rounded-[var(--r-md)] p-3 ${item.visible ? "" : "is-hidden"} ${dragging ? "is-dragging" : ""}`}
+            className={`canvas-toolbar-settings-row flex h-10 items-center gap-2 rounded-[8px] px-1.5 ${item.visible ? "" : "is-hidden"} ${dragging ? "is-dragging" : ""}`}
             style={{ color: theme.node.text }}
             onDragEnter={() => onDragEnter(item.id)}
             onDragOver={(event) => event.preventDefault()}
         >
-            <div className="flex items-center justify-between gap-2">
-                <button
-                    type="button"
-                    draggable
-                    className="grid size-6 touch-none cursor-grab place-items-center rounded-[var(--r-sm)] outline-none opacity-35 transition-opacity hover:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 active:cursor-grabbing"
-                    style={{ color: theme.node.muted, outlineColor: theme.accent.primary }}
-                    onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        onDragStart(item.id);
-                    }}
-                    onDragEnd={onDragEnd}
-                    aria-label={`拖动调整${item.label}顺序`}
-                >
-                    <GripVertical className="size-4" />
-                </button>
-                <Switch size="sm" checked={item.visible} onChange={(checked) => onToggleVisible(item.id, checked)} aria-label={`${item.visible ? "隐藏" : "显示"}${item.label}`} />
-            </div>
-            <div className="canvas-toolbar-settings-card-content mt-auto flex min-w-0 flex-col items-center gap-1">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[var(--r-md)]" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}>
-                    <span className="grid size-4 place-items-center [&_svg]:size-4">{item.icon}</span>
-                </span>
-                <span className="max-w-full whitespace-nowrap text-[var(--fs-caption)] font-medium leading-5" title={item.label}>{item.label}</span>
-            </div>
+            <button
+                type="button"
+                draggable
+                className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded-[6px] outline-none opacity-35 transition-opacity hover:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 active:cursor-grabbing"
+                style={{ color: theme.node.muted, outlineColor: theme.accent.primary }}
+                onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    onDragStart(item.id);
+                }}
+                onDragEnd={onDragEnd}
+                aria-label={`拖动调整${item.label}顺序`}
+            >
+                <GripVertical className="size-3.5" strokeWidth={1.55} />
+            </button>
+            <span className="grid size-6 shrink-0 place-items-center rounded-[6px]" style={{ color: theme.node.muted }}>
+                <span className="grid size-[15px] place-items-center [&_svg]:size-[15px]">{item.icon}</span>
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-none tracking-tight" title={item.label}>{item.label}</span>
+            <Switch size="sm" checked={item.visible} onChange={(checked) => onToggleVisible(item.id, checked)} aria-label={`${item.visible ? "隐藏" : "显示"}${item.label}`} />
         </motion.div>
     );
 }

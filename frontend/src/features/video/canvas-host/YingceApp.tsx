@@ -10,11 +10,14 @@ import { useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-stor
 import { bootstrapAppearance } from "@yingce/services/appearance-bootstrap";
 import { bindCanvasSession, setCanvasHostTitle } from "./session";
 import { installCanvasHub } from "./hub";
+import { installHostNavigation } from "./host-nav";
 import { primeCanvasMediaBase } from "./media";
 import "@yingce/styles/globals.css";
 import "@yingce/styles/shared/model-picker.css";
 import "@yingce/styles/shared/overlays.css";
 import "@yingce/styles/shared/scrollbars.css";
+import "./design-system/tokens.css";
+import "./design-system/overlays.css";
 import "./apple-skin.css";
 
 const CanvasPage = lazy(() => import("@yingce/pages/canvas"));
@@ -83,11 +86,25 @@ export default function YingceApp({ initialPath = "/create" }: { initialPath?: s
   }, []);
 
   useEffect(() => {
-    const dark = document.documentElement.classList.contains("dark");
-    useCanvasThemeStore.getState().setTheme(dark ? "dark" : "light");
+    const syncTheme = () => {
+      const dark = document.documentElement.classList.contains("dark");
+      useCanvasThemeStore.getState().setTheme(dark ? "dark" : "light");
+      const island = document.querySelector(".yingce-island");
+      island?.classList.toggle("dark", dark);
+      island?.classList.toggle("light", !dark);
+    };
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-palette"] });
     void primeCanvasMediaBase();
     void import("@yingce/lib/plugins/builtin");
-    return installCanvasHub();
+    const uninstallHub = installCanvasHub();
+    const uninstallHostNav = installHostNavigation();
+    return () => {
+      observer.disconnect();
+      uninstallHub?.();
+      uninstallHostNav?.();
+    };
   }, []);
 
   const router = useMemo(

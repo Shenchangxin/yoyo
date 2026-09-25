@@ -1,7 +1,8 @@
 // @ts-nocheck
-import { App, Button, Dropdown, Input, InputNumber, Progress } from "antd";
+import { App, Button, Input, InputNumber, Progress } from "antd";
 import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 // 二期：多轨时间线编辑弹窗。
 // 数据源是项目级 TimelineProject：视频/音频节点自动入轨，字幕条目转字幕片段。
 // 交互：拖拽移动片段（吸附播放头/片段边缘）、左右边缘裁剪、删除、播放头跳转。
@@ -666,7 +667,7 @@ export function CanvasTimelineDialog({
                         适应
                     </Button>
                     {addGroupCollapsed ? (
-                        <Dropdown
+                        <CanvasDropdown
                             trigger={["click"]}
                             placement="bottomLeft"
                             menu={{
@@ -701,10 +702,10 @@ export function CanvasTimelineDialog({
                                     更多
                                 </Button>
                             </span>
-                        </Dropdown>
+                        </CanvasDropdown>
                     ) : (
                         <>
-                            <Dropdown
+                            <CanvasDropdown
                                 trigger={["click"]}
                                 placement="bottomLeft"
                                 disabled={!addableNodes.length}
@@ -724,7 +725,7 @@ export function CanvasTimelineDialog({
                                 <Button size="small" icon={<Plus className="size-3.5" />} disabled={!addableNodes.length}>
                                     添加素材
                                 </Button>
-                            </Dropdown>
+                            </CanvasDropdown>
                             <Button size="small" icon={<Upload className="size-3.5" />} onClick={() => uploadInputRef.current?.click()}>
                                 上传本地
                             </Button>
@@ -737,11 +738,11 @@ export function CanvasTimelineDialog({
                         </>
                     )}
                     <div ref={addGroupProbeRef} aria-hidden="true" className="invisible pointer-events-none absolute left-0 top-0 flex items-center gap-2">
-                        <Dropdown trigger={["click"]} placement="bottomLeft" disabled={!addableNodes.length} menu={{ items: [] }}>
+                        <CanvasDropdown trigger={["click"]} placement="bottomLeft" disabled={!addableNodes.length} menu={{ items: [] }}>
                             <Button size="small" icon={<Plus className="size-3.5" />}>
                                 添加素材
                             </Button>
-                        </Dropdown>
+                        </CanvasDropdown>
                         <Button size="small" icon={<Upload className="size-3.5" />}>
                             上传本地
                         </Button>

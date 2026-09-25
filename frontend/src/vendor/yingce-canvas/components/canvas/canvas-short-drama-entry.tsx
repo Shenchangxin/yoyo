@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { Fragment, useId, useState, type CSSProperties } from "react";
-import { Popover } from "antd";
 import { AlignLeft, ArrowUpRight, Check, ChevronUp, Clapperboard, FolderKanban, Images, Palette, Pencil, Plus, Type, Upload, X } from "lucide-react";
+
+import { CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@yingce/components/canvas/canvas-create-menu";
@@ -113,7 +114,7 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
             <div className="pointer-events-auto flex min-h-[260px] w-full max-w-[520px] flex-col items-center justify-center rounded-2xl border border-dashed px-8 py-10 text-center backdrop-blur" data-canvas-no-zoom style={{ background: theme.node.fill, borderColor: theme.node.edge, boxShadow: theme.node.shadow, color: theme.node.text }}>
                 <h2 className="text-base font-semibold">自由空白画布</h2>
                 <p className="mt-1 text-xs" style={{ color: theme.node.muted }}>不预设流程，从任意一种素材开始创作。</p>
-                <Popover
+                <CanvasPopover
                     arrow={false}
                     open={createOpen}
                     onOpenChange={setCreateOpen}
@@ -129,7 +130,7 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
                     >
                         <Plus className="size-6" />
                     </button>
-                </Popover>
+                </CanvasPopover>
                 <p className="mt-4 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>点击 + 添加文本、图片、视频、音频或导入素材</p>
             </div>
         </div>

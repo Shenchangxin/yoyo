@@ -1,7 +1,9 @@
 // @ts-nocheck
-import { App, Button, Dropdown, Popover } from "antd";
+import { App, Button } from "antd";
 import { CircleAlert, HardDrive, LoaderCircle } from "lucide-react";
 import { useState } from "react";
+
+import { CanvasDropdown, CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { exportCanvasProjects } from "@yingce/lib/canvas/canvas-export";
 import { readAllCanvasSyncDrafts, readCanvasSyncDrafts, type CanvasSyncDraft } from "@yingce/services/canvas-sync-drafts";
 import { getActiveUserScope } from "@yingce/lib/user-scope";
@@ -31,7 +33,7 @@ export function CanvasSyncStatus({ projectId, onLoadLatest, onOpenVersions }: { 
 
     return (
         <>
-            <Popover
+            <CanvasPopover
                 trigger="click"
                 placement="bottom"
                 open={statusOpen}
@@ -82,7 +84,7 @@ export function CanvasSyncStatus({ projectId, onLoadLatest, onOpenVersions }: { 
                 >
                     <span className="canvas-sync-status-label text-xs">{label}</span>
                 </Button>
-            </Popover>
+            </CanvasPopover>
         </>
     );
 }
@@ -94,7 +96,7 @@ export function CanvasSyncDraftMenu({ projectId }: { projectId?: string }) {
     const [loading, setLoading] = useState(false);
     const [exporting, setExporting] = useState(false);
     return (
-        <Dropdown
+        <CanvasDropdown
             trigger={["click"]}
             onOpenChange={(open) => {
                 if (!open) return;
@@ -133,6 +135,6 @@ export function CanvasSyncDraftMenu({ projectId }: { projectId?: string }) {
             <Button size={projectId ? "small" : "middle"} loading={exporting}>
                 本地草稿
             </Button>
-        </Dropdown>
+        </CanvasDropdown>
     );
 }

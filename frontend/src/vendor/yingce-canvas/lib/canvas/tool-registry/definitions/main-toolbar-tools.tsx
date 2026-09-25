@@ -1,16 +1,16 @@
 // @ts-nocheck
-import { PanelsTopLeft, Eraser, FolderOpen, Hand, MousePointer2, Palette, Plus, Redo2, Settings2, Trash2, Undo2 } from "lucide-react";
+import { BrushCleaning, CirclePlus, Hand, Library, MousePointer2, PanelLeft, Redo2, SlidersHorizontal, SwatchBook, Trash2, Undo2 } from "lucide-react";
 
 import { registerToolbarTools, type ToolDefinition } from "@yingce/lib/canvas/tool-registry";
 import type { CanvasToolMode } from "@yingce/types/canvas";
 
 const canvasModeOptions = [
-    { id: "box-select", label: "区域选择", icon: <MousePointer2 />, value: "box-select" },
-    { id: "move", label: "抓手工具", icon: <Hand />, value: "move" },
+    { id: "box-select", label: "区域选择", icon: <MousePointer2 strokeWidth={1.55} />, value: "box-select" },
+    { id: "move", label: "抓手工具", icon: <Hand strokeWidth={1.55} />, value: "move" },
 ];
 
 export const mainToolbarTools: ToolDefinition[] = [
-    { id: "tool-workspace", toolbar: "main", category: "navigation", label: "工作区", icon: <PanelsTopLeft />, defaultVisible: true, defaultOrder: 65, run: ctx => ctx.handlers.onOpenWorkspace?.() },
+    { id: "tool-workspace", toolbar: "main", category: "navigation", label: "工作区", icon: <PanelLeft strokeWidth={1.55} />, defaultVisible: true, defaultOrder: 65, run: ctx => ctx.handlers.onOpenWorkspace?.() },
     {
         id: "tool-canvas-mode",
         toolbar: "main",
@@ -31,7 +31,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "history",
         label: "撤销",
-        icon: <Undo2 />,
+        icon: <Undo2 strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 30,
         disabled: (ctx) => !ctx.canUndo,
@@ -42,7 +42,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "history",
         label: "重做",
-        icon: <Redo2 />,
+        icon: <Redo2 strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 40,
         disabled: (ctx) => !ctx.canRedo,
@@ -53,7 +53,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "create",
         label: "添加节点",
-        icon: <Plus />,
+        icon: <CirclePlus strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 50,
         expands: true,
@@ -65,7 +65,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "resource",
         label: "素材库",
-        icon: <FolderOpen />,
+        icon: <Library strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 60,
         applicable: (ctx) => !ctx.isProjectLinked,
@@ -76,7 +76,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "appearance",
         label: "画布外观",
-        icon: <Palette />,
+        icon: <SwatchBook strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 70,
         expands: true,
@@ -88,7 +88,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "appearance",
         label: "工具栏设置",
-        icon: <Settings2 />,
+        icon: <SlidersHorizontal strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 80,
         expands: true,
@@ -100,7 +100,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "danger",
         label: (ctx) => ctx.selectedCount > 1 ? `删除 ${ctx.selectedCount} 个节点` : "删除选中节点",
-        icon: <Trash2 />,
+        icon: <Trash2 strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 90,
         danger: true,
@@ -112,7 +112,7 @@ export const mainToolbarTools: ToolDefinition[] = [
         toolbar: "main",
         category: "danger",
         label: "清空画布",
-        icon: <Eraser />,
+        icon: <BrushCleaning strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 100,
         danger: true,

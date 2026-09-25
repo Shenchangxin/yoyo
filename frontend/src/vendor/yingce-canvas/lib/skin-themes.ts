@@ -688,6 +688,9 @@ export function getSkinAntOverrides(value: unknown, mode: SkinThemeMode): Partia
 
 export function applySkinTheme(skinValue: unknown, mode: SkinThemeMode, targetDocument: Document | undefined = typeof document === "undefined" ? undefined : document) {
     if (!targetDocument) return;
+    if (typeof window !== "undefined" && (window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__) {
+        return;
+    }
     const skin = normalizeSkinDefinition(skinValue);
     const root = targetDocument.documentElement;
     for (const property of MANAGED_VARIABLES) root.style.removeProperty(property);

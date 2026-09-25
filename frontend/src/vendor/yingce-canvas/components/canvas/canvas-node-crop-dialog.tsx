@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { Check, Lock, LockOpen, X } from "lucide-react";
 
 import { readImageMeta } from "@yingce/lib/image-utils";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageCropRect = {
     x: number;
@@ -30,7 +31,7 @@ const cropAspectPresets: Array<{ value: CropAspectPreset; label: string; ratio?:
     { value: "9:16", label: "9:16", ratio: 9 / 16 },
 ];
 
-export function CanvasNodeCropDialog({ dataUrl, open, onClose, onConfirm }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (crop: CanvasImageCropRect) => void }) {
+export function CanvasNodeCropDialog({ dataUrl, open, onClose, onConfirm, embedded }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (crop: CanvasImageCropRect) => void; embedded?: boolean }) {
     const boxRef = useRef<HTMLDivElement>(null);
     const [crop, setCrop] = useState<CanvasImageCropRect>(defaultCrop);
     const [lockedRatio, setLockedRatio] = useState<number | null>(null);
@@ -102,7 +103,7 @@ export function CanvasNodeCropDialog({ dataUrl, open, onClose, onConfirm }: { da
     };
 
     return (
-        <Modal title="裁剪图片" open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} width={780} centered destroyOnHidden>
+        <ImageEditorShell title="裁剪图片" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="space-y-4">
                 <div className="flex justify-center">
                     <div ref={boxRef} className="relative inline-block max-w-full overflow-hidden rounded-lg bg-black select-none">
@@ -156,7 +157,7 @@ export function CanvasNodeCropDialog({ dataUrl, open, onClose, onConfirm }: { da
                     </Button>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }
 

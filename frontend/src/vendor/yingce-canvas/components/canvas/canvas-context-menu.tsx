@@ -1,12 +1,11 @@
 // @ts-nocheck
 import { AnimatePresence } from "motion/react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, FolderOpen, FolderPlus, Image as ImageIcon, Layers3, LayoutTemplate, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, Folder, FolderPlus, Image as ImageIcon, Layers3, LayoutTemplate, Library, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
 
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@yingce/components/canvas/canvas-create-menu";
 import { ASSET_CATEGORY_OPTIONS } from "@yingce/lib/asset-category";
-import { aceternityMotion } from "@yingce/lib/aceternity-motion";
-import { SpotlightSurface } from "@yingce/components/ui/aceternity/spotlight-surface";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { canvasNodeAssetCategory } from "@yingce/lib/canvas/canvas-node-asset";
 import { isCanvasFolderNode } from "@yingce/lib/canvas/canvas-frame";
@@ -105,7 +104,7 @@ export function CanvasNodeContextMenu({
     useEffect(() => {
         const close = (event: PointerEvent) => {
             const target = event.target;
-            if (target instanceof Element && target.closest(".ant-popover")) return;
+            if (target instanceof Element && target.closest("[data-canvas-context-menu], .ant-popover, .ant-dropdown")) return;
             onClose();
         };
         const closeOnEscape = (event: KeyboardEvent) => {
@@ -113,10 +112,10 @@ export function CanvasNodeContextMenu({
             if (categoryOpen) setCategoryOpen(false);
             else onClose();
         };
-        window.addEventListener("pointerdown", close);
+        window.addEventListener("pointerdown", close, true);
         window.addEventListener("keydown", closeOnEscape);
         return () => {
-            window.removeEventListener("pointerdown", close);
+            window.removeEventListener("pointerdown", close, true);
             window.removeEventListener("keydown", closeOnEscape);
         };
     }, [categoryOpen, onClose]);
@@ -149,20 +148,15 @@ export function CanvasNodeContextMenu({
     const hasMultiSelection = selectedCount >= 2;
     const position = getContextMenuPosition(menu, hasMultiSelection);
 
-    return (
+    return createPortal(
         <>
-            <SpotlightSurface
-                spotlightColor={theme.toolbar.itemHover}
+            <div
                 data-canvas-context-menu
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: aceternityMotion.duration.instant, ease: aceternityMotion.easing.enter }}
-                className="aceternity-floating-panel fixed z-[var(--z-popover)] flex w-[224px] max-h-[calc(100vh-56px)] origin-top-left flex-col overflow-hidden rounded-xl border p-1.5 backdrop-blur-2xl"
-                style={{ left: position.left, top: position.top, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
+                className="sg-menu canvas-context-menu fixed z-[200] flex w-[224px] max-h-[calc(100vh-24px)] origin-top-left flex-col overflow-hidden p-1"
+                style={{ left: position.left, top: position.top, color: theme.node.text }}
                 onContextMenu={(event) => event.preventDefault()}
                 onPointerDown={(event) => event.stopPropagation()}
             >
-                <div className="absolute inset-x-8 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${theme.toolbar.border}, transparent)` }} />
                 <div className="thin-scrollbar min-h-0 overflow-y-auto">
                     {menu.type === "node" && isMedia && categoryOpen ? (
                         <>
@@ -189,7 +183,7 @@ export function CanvasNodeContextMenu({
                             ) : null}
                             <MenuButton icon={<Plus className="size-4" />} label="添加节点" chevron active={addOpen} onClick={() => setAddOpen((value) => !value)} />
                             <MenuButton icon={<Upload className="size-4" />} label="上传到这里" onClick={() => runAction(onUpload)} />
-                            {!isProjectLinked ? <MenuButton icon={<FolderOpen className="size-4" />} label="从素材库插入" onClick={() => runAction(onOpenAssets)} /> : null}
+                            {!isProjectLinked ? <MenuButton icon={<Library className="size-4" strokeWidth={1.55} />} label="从素材库插入" onClick={() => runAction(onOpenAssets)} /> : null}
                             <MenuDivider />
                             <MenuSection label="历史与剪贴板" />
                             <MenuButton icon={<Undo2 className="size-4" />} label="撤销" shortcut="⌘Z" disabled={!canUndo} onClick={() => runAction(onUndo)} />
@@ -241,7 +235,7 @@ export function CanvasNodeContextMenu({
                                 <>
                                     <MenuHeader title={node?.title || nodeTypeLabel(node)} />
                                     <MenuSection label="节点操作" />
-                                    {isFrame ? <MenuButton icon={isFolder ? <FolderOpen /> : <PanelTop />} label={node?.metadata?.frame?.collapsed ? `展开${isFolder ? "文件夹" : "背板"}` : `折叠${isFolder ? "文件夹" : "背板"}`} onClick={() => runAction(onToggleFrame)} /> : <MenuButton icon={<FolderPlus />} label="保存到我的素材" disabled={!canSaveAsset} onClick={() => runAction(onSaveAsset)} />}
+                                    {isFrame ? <MenuButton icon={isFolder ? <Folder strokeWidth={1.55} /> : <PanelTop strokeWidth={1.55} />} label={node?.metadata?.frame?.collapsed ? `展开${isFolder ? "文件夹" : "背板"}` : `折叠${isFolder ? "文件夹" : "背板"}`} onClick={() => runAction(onToggleFrame)} /> : <MenuButton icon={<FolderPlus strokeWidth={1.55} />} label="保存到我的素材" disabled={!canSaveAsset} onClick={() => runAction(onSaveAsset)} />}
                                     {isText ? <MenuButton icon={<Maximize2 />} label="放大编辑" onClick={() => runAction(onEditText)} /> : null}
                                     {isDrawing ? <MenuButton icon={<Pencil />} label="打开绘图" onClick={() => runAction(onOpenDrawing)} /> : null}
                                     {isText ? <MenuButton icon={<ImageIcon />} label="用文本生图" disabled={!canGenerateFromText} onClick={() => runAction(onGenerateImage)} /> : null}
@@ -263,7 +257,7 @@ export function CanvasNodeContextMenu({
                         </>
                     )}
                 </div>
-            </SpotlightSurface>
+            </div>
 
             <AnimatePresence>
                 {menu.type === "canvas" && addOpen ? (
@@ -281,7 +275,8 @@ export function CanvasNodeContextMenu({
                     />
                 ) : null}
             </AnimatePresence>
-        </>
+        </>,
+        document.body,
     );
 }
 
@@ -322,19 +317,14 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
     }));
 
     return (
-        <SpotlightSurface
-            spotlightColor={theme.toolbar.itemHover}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: aceternityMotion.duration.instant, ease: aceternityMotion.easing.enter }}
-            className="aceternity-floating-panel fixed z-[var(--z-popover)] w-[360px] origin-top overflow-hidden rounded-[var(--dock-radius)] border p-2 backdrop-blur-2xl"
-            style={{ left, top: parentPosition.top, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
+        <div
+            className="sg-menu fixed z-[200] w-[280px] max-h-[min(520px,calc(100vh-24px))] origin-top overflow-y-auto overflow-x-hidden p-1"
+            style={{ left, top: parentPosition.top, color: theme.node.text }}
             onContextMenu={(event) => event.preventDefault()}
             onPointerDown={(event) => event.stopPropagation()}
         >
             <CanvasCreateMenu commands={commands} />
-        </SpotlightSurface>
+        </div>
     );
 }
 
@@ -358,14 +348,14 @@ function MenuButton({ icon, label, detail, shortcut, badge, chevron = false, act
     return (
         <button
             type="button"
-            className="canvas-menu-item group flex min-h-9 w-full items-center gap-2 rounded-lg border border-transparent px-1.5 py-1 text-left outline-none enabled:hover:border-black/10 enabled:hover:bg-black/5 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-35 dark:enabled:hover:border-white/10 dark:enabled:hover:bg-white/8"
-            style={{ color, background: active ? theme.toolbar.activeBg : undefined, "--tw-ring-color": theme.node.muted } as CSSProperties}
+            className="sg-menu-item"
+            style={{ color, background: active ? theme.toolbar.activeBg : undefined }}
             disabled={disabled}
             onClick={onClick}
         >
-            <span className="canvas-menu-item-icon grid size-7 shrink-0 place-items-center rounded-md border opacity-75 group-hover:opacity-100 [&_svg]:size-3.5" style={{ background: danger ? `${theme.accent.danger}12` : theme.spatial.surface, borderColor: danger ? `${theme.accent.danger}33` : theme.toolbar.border, color: danger ? theme.accent.danger : theme.node.text }}>{icon}</span>
-            <span className="min-w-0 flex-1"><span className="flex items-center gap-1 text-xs font-medium"><span className="truncate">{label}</span>{badge ? <span className="rounded-full border px-1 py-0.5 text-[var(--fs-nano)] font-bold" style={{ background: theme.toolbar.activeBg, borderColor: theme.toolbar.border, color: theme.node.muted }}>{badge}</span> : null}</span>{detail ? <span className="mt-0.5 block truncate text-[var(--fs-micro)]" style={{ color: theme.node.muted }}>{detail}</span> : null}</span>
-            {shortcut ? <span className="shrink-0 text-[var(--fs-micro)] opacity-38">{shortcut}</span> : null}
+            {icon ? <span className="grid size-4 shrink-0 place-items-center opacity-70 [&_svg]:size-4">{icon}</span> : null}
+            <span className="min-w-0 flex-1 truncate text-[13px]">{label}</span>
+            {shortcut ? <span className="sg-kbd">{shortcut}</span> : null}
             {chevron ? <ChevronRight className="size-3 shrink-0 opacity-45" /> : null}
         </button>
     );
@@ -373,16 +363,18 @@ function MenuButton({ icon, label, detail, shortcut, badge, chevron = false, act
 
 function MenuDivider() {
     const theme = canvasThemes[useActiveTheme()];
-    return <div className="mx-1.5 my-1 h-px" style={{ background: `linear-gradient(90deg, transparent, ${theme.toolbar.border}, transparent)` }} />;
+    return <div className="mx-1.5 my-1 h-px" style={{ background: theme.toolbar.border }} />;
 }
 
 function getContextMenuPosition(menu: ContextMenuState, hasMultiSelection = false) {
     if (typeof window === "undefined") return { left: menu.x, top: menu.y };
     const width = 224;
     const estimatedHeight = menu.type === "node" ? Math.min(hasMultiSelection ? 240 : 360, window.innerHeight - 72) : menu.type === "canvas" ? (hasMultiSelection ? 300 : 250) : 84;
+    const topChrome = 52;
+    const bottomChrome = 56;
     return {
         left: clamp(menu.x, 12, Math.max(12, window.innerWidth - width - 12)),
-        top: clamp(menu.y, 68, Math.max(68, window.innerHeight - estimatedHeight - 12)),
+        top: clamp(menu.y, topChrome, Math.max(topChrome, window.innerHeight - estimatedHeight - bottomChrome)),
     };
 }
 

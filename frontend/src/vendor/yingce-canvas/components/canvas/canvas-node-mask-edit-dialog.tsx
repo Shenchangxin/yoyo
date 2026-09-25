@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Button, Input, Modal, Slider } from "antd";
+import { Button, Input, Slider } from "antd";
 import { Brush, ChevronDown, Eraser, RotateCcw, Settings2, X } from "lucide-react";
 
 import { readImageMeta } from "@yingce/lib/image-utils";
@@ -10,6 +10,7 @@ import { defaultImageParamsForModel } from "@yingce/lib/model-selection";
 import type { AiConfig } from "@yingce/stores/use-config-store";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageMaskEditPayload = {
     prompt: string;
@@ -23,7 +24,7 @@ const defaultBrushSize = 100;
 const maskFillColor = "rgba(37, 99, 235, .38)";
 const maskBorderColor = "rgba(255, 255, 255, .72)";
 
-export function CanvasNodeMaskEditDialog({ dataUrl, open, config, onClose, onConfirm }: { dataUrl: string; open: boolean; config: AiConfig; onClose: () => void; onConfirm: (payload: CanvasImageMaskEditPayload) => void }) {
+export function CanvasNodeMaskEditDialog({ dataUrl, open, config, onClose, onConfirm, embedded }: { dataUrl: string; open: boolean; config: AiConfig; onClose: () => void; onConfirm: (payload: CanvasImageMaskEditPayload) => void; embedded?: boolean }) {
     const maskCanvasRef = useRef<HTMLCanvasElement>(null);
     const previewCanvasRef = useRef<HTMLCanvasElement>(null);
     const drawingRef = useRef<{ active: boolean; last: { x: number; y: number } | null }>({ active: false, last: null });
@@ -112,7 +113,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, config, onClose, onCon
     };
 
     return (
-        <Modal className="workspace-modal workspace-modal-wide" title={null} open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} centered destroyOnHidden>
+        <ImageEditorShell title="局部重绘" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="grid gap-5 lg:grid-cols-[minmax(360px,1fr)_340px]">
                 <div className="flex min-h-[360px] items-center justify-center rounded-lg bg-surface-active p-0">
                     <div className="relative inline-block max-w-full overflow-hidden rounded-lg bg-transparent select-none">
@@ -226,7 +227,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, config, onClose, onCon
                     </div>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }
 

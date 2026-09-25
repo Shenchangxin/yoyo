@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { useState } from "react";
-import { Dropdown, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { Grid3x3 } from "lucide-react";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { TOOL_ICON_MAP } from "./canvas-resource-mention-textarea";
 import { getNineGridMenuItems } from "./canvas-image-toolbar-tools";
@@ -60,7 +62,7 @@ export function CanvasNineGridPicker({
         onOpenChange?.(next);
     };
     return (
-        <Dropdown
+        <CanvasDropdown
             open={actualOpen}
             onOpenChange={setOpen}
             trigger={["click"]}
@@ -88,6 +90,6 @@ export function CanvasNineGridPicker({
                 <NineGridToolIcon iconName={icon} className="size-4 shrink-0" />
                 <span className="truncate">预设</span>
             </button>
-        </Dropdown>
+        </CanvasDropdown>
     );
 }

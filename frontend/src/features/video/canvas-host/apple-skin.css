@@ -98,10 +98,10 @@
   --dock-surface: var(--glass-bg, var(--popover));
   --dock-border: var(--border);
   --dock-blur: var(--glass-blur, 20px);
-  --dock-radius: 16px;
-  --dock-radius-tight: 14px;
+  --dock-radius: 12px;
+  --dock-radius-tight: 12px;
   --dock-radius-compact: 12px;
-  --dock-item-radius: 8px;
+  --dock-item-radius: 7px;
   --panel-radius: 12px;
   --node-radius: 12px;
   --glass-saturate: 180%;
@@ -149,19 +149,7 @@ html.light .yingce-island {
   color: var(--muted);
 }
 
-.yingce-island .canvas-node-inline-action,
-.yingce-island .canvas-node-tool-button {
-  height: 28px;
-  border-radius: 999px !important;
-  border: 1px solid var(--border) !important;
-  background: var(--glass-bg, var(--popover)) !important;
-  color: var(--foreground) !important;
-  font-size: 11px !important;
-  font-weight: 500 !important;
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
+/* Node inline actions: design-system/tokens.css (8px control, not pills). */
 
 .yingce-island .node-type-badge,
 .yingce-island [class*="node-type-badge"],
@@ -326,25 +314,7 @@ html.light .yingce-island {
   display: none !important;
 }
 
-/* —— Glass chrome: dock, menus, inspectors —— */
-.yingce-island .canvas-floating-toolbar,
-.yingce-island .canvas-node-toolbar,
-.yingce-island .canvas-floating-dock,
-.yingce-island .aceternity-floating-dock,
-.yingce-island .aceternity-floating-panel,
-.yingce-island [class*="floating-dock"],
-.yingce-island .canvas-topbar-cluster {
-  background: var(--glass-bg, var(--popover)) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 16px !important;
-  box-shadow: var(--shadow-popover) !important;
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-}
-
-.yingce-island .aceternity-floating-dock {
-  padding: 4px 6px !important;
-}
+/* Glass chrome (islands, docks, menus) is owned by design-system/tokens.css. */
 
 .yingce-island .library-page,
 .yingce-island .studio-collection-page,
@@ -626,22 +596,7 @@ html.light .yingce-island {
   letter-spacing: -0.02em;
 }
 
-.yingce-island .yc-dropdown .yc-dropdown-menu,
-.yingce-island .ant-dropdown .ant-dropdown-menu,
-.yingce-island .yc-select-dropdown,
-.yingce-island .ant-select-dropdown,
-.yingce-island .yc-popover .yc-popover-inner,
-.yingce-island .ant-popover .ant-popover-inner,
-.yingce-island .yc-menu,
-.yingce-island [role="menu"] {
-  border-radius: 12px !important;
-  background: var(--glass-bg, var(--popover)) !important;
-  border: 1px solid var(--border) !important;
-  box-shadow: var(--shadow-popover) !important;
-  padding: 4px !important;
-  backdrop-filter: blur(22px) saturate(180%);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-}
+/* Menus: design-system/overlays.css + tokens.css */
 
 .yingce-island .yc-dropdown-menu-item,
 .yingce-island .ant-dropdown-menu-item,

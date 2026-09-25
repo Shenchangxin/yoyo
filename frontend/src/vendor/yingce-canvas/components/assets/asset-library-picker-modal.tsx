@@ -1,6 +1,7 @@
 // @ts-nocheck
-import { App, Button, Dropdown, Popconfirm } from "antd";
+import { App, Button, Popconfirm } from "antd";
 import type { MenuProps } from "antd";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { Check, ChevronDown, FileText, FolderOpen, HardDrive, Image as ImageIcon, LoaderCircle, Music2, Puzzle, RotateCcw, Search, Trash2, Upload, UserRound, Video } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -407,7 +408,7 @@ export function AssetLibraryPickerModal({
                     <div className="asset-picker-heading">
                         <div className="asset-picker-heading-copy">
                             <span>{eyebrow}</span>
-                            <Dropdown
+                            <CanvasDropdown
                                 trigger={["click"]}
                                 placement="bottomLeft"
                                 rootClassName="asset-picker-source-dropdown"
@@ -424,7 +425,7 @@ export function AssetLibraryPickerModal({
                                     <strong>{isRecycleBin ? "回收站" : title}</strong>
                                     <ChevronDown aria-hidden="true" />
                                 </button>
-                            </Dropdown>
+                            </CanvasDropdown>
                         </div>
                     </div>
                     <label className="asset-picker-search">

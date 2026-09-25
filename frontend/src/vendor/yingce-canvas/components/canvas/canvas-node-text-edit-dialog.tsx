@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Modal, Spin } from "antd";
+import { Alert, Button, Input, Spin } from "antd";
 import { FileText, RefreshCw, Settings2, X } from "lucide-react";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageTextLine = { original: string; text: string; location: string };
 export type CanvasImageTextEditPayload = { lines: CanvasImageTextLine[] };
@@ -17,12 +18,14 @@ export function CanvasNodeTextEditDialog({
     onClose,
     onDetect,
     onConfirm,
+    embedded,
 }: {
     dataUrl: string;
     open: boolean;
     onClose: () => void;
     onDetect: () => Promise<CanvasImageTextLine[]>;
     onConfirm: (payload: CanvasImageTextEditPayload) => void;
+    embedded?: boolean;
 }) {
     const [lines, setLines] = useState<CanvasImageTextLine[]>([]);
     const [loading, setLoading] = useState(false);
@@ -52,7 +55,7 @@ export function CanvasNodeTextEditDialog({
     const changed = lines.some((line) => line.text.trim() && line.text !== line.original);
 
     return (
-        <Modal open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} centered destroyOnHidden width={980} title="图片文字编辑">
+        <ImageEditorShell title="图片文字编辑" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_390px]">
                 <div className="grid min-h-[360px] place-items-center overflow-hidden rounded-xl bg-black/5 p-3 dark:bg-white/[0.04]">
                     <img src={dataUrl} alt="待编辑图片" className="max-h-[64vh] max-w-full object-contain" draggable={false} />
@@ -69,6 +72,6 @@ export function CanvasNodeTextEditDialog({
                     <div className="mt-auto flex justify-end gap-2 border-t pt-3"><Button icon={<X className="size-4" />} onClick={onClose}>取消</Button><Button type="primary" icon={<Settings2 className="size-4" />} disabled={!changed || loading} onClick={() => onConfirm({ lines })}>生成修改结果</Button></div>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }

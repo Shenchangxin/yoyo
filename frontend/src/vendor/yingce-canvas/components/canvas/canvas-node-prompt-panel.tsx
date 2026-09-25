@@ -1,9 +1,10 @@
 // @ts-nocheck
-import { Button, Image as AntImage, InputNumber, Modal, Popover } from "antd";
+import { Button, Image as AntImage, InputNumber, Modal } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeftRight, ArrowUp, AtSign, Boxes, ChevronDown, FileText, GripVertical, ImageIcon, ImagePlus, LayoutList, Link2, LoaderCircle, Maximize2, Music2, Pencil, SlidersHorizontal, UserRound, Video, Settings2, X } from "lucide-react";
 
+import { CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { defaultConfig, modelOptionName, resolveModelChannel, useEffectiveConfig, type AiConfig } from "@yingce/stores/use-config-store";
 import { resolveCanvasGenerationModel } from "@yingce/lib/canvas/canvas-project-generation";
@@ -17,11 +18,10 @@ import { modelRequestOptions, resolveCompatibleModel, resolveModelGenerationDefa
 import { navigateToSettings } from "@yingce/lib/settings-navigation";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
+import { GenerationSettingsPopover } from "./canvas-generation-settings-popover";
 import { CanvasCameraControlPopover } from "./canvas-camera-control-popover";
-import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
-import { CanvasAudioSettingsPopover, type CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
-import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
+import type { CanvasAudioSettingKey } from "./canvas-audio-settings-popover";
 import { CanvasVideoPromptTools } from "./canvas-video-prompt-tools";
 import { CanvasPresetPicker, type CanvasPromptPreset } from "./canvas-preset-picker";
 import { CanvasNineGridPicker } from "./canvas-nine-grid-picker";
@@ -502,26 +502,28 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                                 theme={theme}
                                 compact={!expanded}
                             />
-                            <CanvasImageSettingsPopover
+                            <GenerationSettingsPopover
+                                kind="image"
                                 config={config}
                                 placement={expanded ? "topRight" : "topLeft"}
                                 buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
                                 onConfigChange={(key, value) => onConfigChange(node.id, key === "count" ? { count: Number(value) || 1 } : { [key]: value })}
-                                onMissingConfig={() => navigateToSettings({ continueCreation: true })}
                                 onOpenChange={expanded ? undefined : onImageSettingsOpenChange}
                             />
                         </>
                     ) : mode === "video" ? (
-                        <CanvasVideoSettingsPopover
+                        <GenerationSettingsPopover
+                            kind="video"
                             config={config}
                             buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
                             onConfigChange={(key, value) => onConfigChange(node.id, videoConfigPatch(key, value))}
                         />
                     ) : mode === "audio" ? (
-                        <CanvasAudioSettingsPopover
+                        <GenerationSettingsPopover
+                            kind="audio"
                             config={config}
                             buttonClassName="canvas-node-composer-settings-trigger [&>span]:min-w-0 [&_.lucide]:!size-3"
-                            onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key, value))}
+                            onConfigChange={(key, value) => onConfigChange(node.id, audioConfigPatch(key as CanvasAudioSettingKey, value))}
                         />
                     ) : null}
                     {renderSubmitButton(expanded)}
@@ -664,7 +666,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
 
 function ReferenceToolsPopover({ canAutoMention, autoLinkEnabled, onAutoMention, onAutoLinkEnabledChange, accent, compact }: { canAutoMention: boolean; autoLinkEnabled: boolean; onAutoMention: () => void; onAutoLinkEnabledChange: (enabled: boolean) => void; accent: string; compact: boolean }) {
     return (
-        <Popover
+        <CanvasPopover
             trigger="click"
             placement="topRight"
             rootClassName="canvas-reference-tools-popover"
@@ -712,7 +714,7 @@ function ReferenceToolsPopover({ canAutoMention, autoLinkEnabled, onAutoMention,
                 <SlidersHorizontal className="size-3.5" />
                 {!compact ? <span>引用</span> : null}
             </button>
-        </Popover>
+        </CanvasPopover>
     );
 }
 

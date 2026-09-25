@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from "react";
-import { Button, Modal, Segmented } from "antd";
+import { Button, Segmented } from "antd";
 import { ImagePlus } from "lucide-react";
 
 import { readImageMeta } from "@yingce/lib/image-utils";
 import { MAX_UPSCALE_LONG_EDGE, resolveUpscaleSize, type ImageUpscaleAlgorithm, type ImageUpscaleParams } from "@yingce/lib/canvas/canvas-image-data";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageUpscaleParams = ImageUpscaleParams;
 
@@ -25,7 +26,7 @@ const defaultParams: CanvasImageUpscaleParams = {
     algorithm: "high",
 };
 
-export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (params: CanvasImageUpscaleParams) => void }) {
+export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm, embedded }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (params: CanvasImageUpscaleParams) => void; embedded?: boolean }) {
     const [params, setParams] = useState<CanvasImageUpscaleParams>(defaultParams);
     const [image, setImage] = useState<{ width: number; height: number } | null>(null);
     const sourceLongEdge = image ? Math.max(image.width, image.height) : 0;
@@ -51,7 +52,7 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
     }, [image, sourceLongEdge]);
 
     return (
-        <Modal title={null} open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} width={820} centered destroyOnHidden>
+        <ImageEditorShell title="调整尺寸" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="space-y-5">
                 <div>
                     <h2 className="text-xl font-semibold">调整尺寸</h2>
@@ -109,6 +110,6 @@ export function CanvasNodeUpscaleDialog({ dataUrl, open, onClose, onConfirm }: {
                     </Button>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }

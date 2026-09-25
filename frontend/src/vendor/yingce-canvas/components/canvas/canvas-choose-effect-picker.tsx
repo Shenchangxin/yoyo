@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { useEffect, useState } from "react";
-import { Dropdown } from "antd";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { LoaderCircle, Clapperboard, Wrench, X, XCircle } from "lucide-react";
 
@@ -65,7 +65,7 @@ export function CanvasChooseEffectPicker({
     };
 
     return (
-        <Dropdown
+        <CanvasDropdown
             open={actualOpen}
             onOpenChange={setOpen}
             trigger={["click"]}
@@ -152,7 +152,7 @@ export function CanvasChooseEffectPicker({
                     </button>
                 ) : null}
             </div>
-        </Dropdown>
+        </CanvasDropdown>
     );
 }
 

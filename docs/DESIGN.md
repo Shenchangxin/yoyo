@@ -17,8 +17,10 @@ The source of truth for tokens is `frontend/src/styles.css`. This document
 explains how to spend them. Do not follow stale Inter / sage / zinc recipes.
 
 Hosted 影策 (`.yingce-island`) maps onto these tokens via
-`frontend/src/features/video/canvas-host/apple-skin.css`. Yingce is an engine,
-not a costume.
+`frontend/src/features/video/canvas-host/design-system/` and a thin
+`apple-skin.css`. Yingce is an engine, not a costume. Canvas chrome follows
+**Studio Glass**: Liquid Glass materials with ProKit discipline. Glass is a
+functional layer above opaque media. Do not mix Regular and Clear glass.
 
 ---
 
@@ -176,8 +178,9 @@ moment `running` is false.
 - **Drama** is a Final Cut split: browser (cast/scenes/props) | viewer + film
   strip | inspector. Pipeline verbs sit on the viewer. Tasks open a drawer.
 - **Canvas** keeps the Yingce renderer. Nodes are monochrome media tiles with
-  a 1-letter type mark; terracotta only while generating. Floating tools are
-  glass docks. Agent pins to the right inspector — no second chat product.
+  a 1-letter type mark; terracotta only while generating. Chrome is grouped
+  glass islands on the window edge plus a selection HUD. Agent pins to the
+  right inspector — no second chat product. See **Canvas island**.
 - **Harness process rail** — Overview is the unnumbered origin. Propose /
   Prove / Promote carry `01 02 03` and share the Review underline tab
   grammar.
@@ -245,8 +248,9 @@ moment `running` is false.
 | Grouped Form | macOS Settings: 12px card, 13px labels, trailing controls, hairlines between rows |
 | kbd | 20px tall, `lift` fill, `border`, 10px/500 |
 | Pill CTA | `rounded-full px-3 py-1.5 text-[12px] font-medium`; filled `foreground` for primary |
-| Canvas node | 12px radius, hairline, monochrome type glyph, terracotta outline only while generating |
-| Floating dock | glass pill, 16px radius, 28px tools, macOS magnification |
+| Canvas node | 12px radius, hairline, monochrome type glyph, terracotta outline while generating or selected |
+| Canvas island | grouped glass toolbar, 16px shell / 8px items, no magnification, icon-only |
+| Overlay | Island · Menu · Popover · Dialog · Workbench. No new raw `antd.Modal`. |
 
 ---
 
@@ -281,4 +285,49 @@ HoverBorderGradient · SpotlightSurface · WorkingGlow · daisyUI · marketing
 empty states · fake sandbox badges · a second agent loop in the client · a
 7-item Video shell · Inter / sage / zinc as the live system · Apple-blue + SF
 Pro as the default brand · credit-cost chips in the hosted island · a Chat
-dock on Video.
+dock on Video · Dock magnification · SpotlightSurface on menus · purple agent
+orbs · card-in-card create grids.
+
+---
+
+## 10. Canvas island (Studio Glass)
+
+Hosted infinite canvas (`.yingce-island`) is a media stage, not a second
+product. Tokens live in
+`frontend/src/features/video/canvas-host/design-system/tokens.css`.
+
+### Chrome
+
+- Top bar 44px, transparent. Three glass islands: project (back/title/sync),
+  tools (select/hand, undo/redo, add), trailing (search/version/share/focus).
+- No bottom function dock. Bottom-left is only a zoom capsule (`− 100% +`).
+- View extras (minimap, arrange, hide wires, shortcuts) live in a menu on the
+  zoom capsule, not a second dock.
+- Selection HUD attaches above the node. Primary actions ≤ 4, then More.
+  Multi-select HUD: storyboard · send to Agent · More (alignment inside More).
+- Agent is a right inspector. Launcher is a 32px ghost, never a purple orb.
+
+### Surfaces
+
+1. **Island** — toolbars, zoom, HUD. Glass, no title, no dimming layer.
+2. **Menu** — context, overflow, create. 224–280px, row 32px, 16px glyphs, kbd
+   on the right. No icon wells, no spotlight, no gradient rules.
+3. **Popover** — generation settings and pickers. Anchored to the trigger.
+4. **Dialog** — confirms and small settings. Opaque `popover`, 14px radius.
+5. **Workbench** — timeline, style center, image edit family, drawing. Opaque.
+   Full-height sheets are never glass.
+
+Add morphs from the top-bar `+` into the create **Menu** (one list, grouped by
+node / resource / project). Same menu is used from the canvas context menu.
+
+### Node tile
+
+Media full-bleed. Caption lives in the 22px external header. Selection is a
+2px accent ring with 2px offset — not a drop shadow. Generating uses the same
+ring. One badge at a time (error > lock > batch). Visible 6px corner handles
+when selected.
+
+### Mutex
+
+At most one Menu, one Popover, and one HUD. Opening a Dialog or Workbench
+dismisses HUD popovers. Chrome never raises itself above the node HUD.
