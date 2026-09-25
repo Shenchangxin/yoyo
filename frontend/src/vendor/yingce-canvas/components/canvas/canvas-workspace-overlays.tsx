@@ -41,8 +41,10 @@ export function CanvasSelectionToolbar({ anchorRef, containerRef, count, childre
             const left = Math.min(Math.max(center, 12 + halfWidth), Math.max(12 + halfWidth, containerBounds.width - 12 - halfWidth));
             const boundsTop = bounds.top - containerBounds.top;
             const boundsBottom = bounds.bottom - containerBounds.top;
-            const placement = boundsTop - toolbarHeight - 8 >= 68 ? "above" : "below";
-            const top = placement === "above" ? boundsTop - 8 : Math.min(boundsBottom + 8, containerBounds.height - toolbarHeight - 12);
+            const topChrome = 52;
+            const bottomChrome = 56;
+            const placement = boundsTop - toolbarHeight - 8 >= topChrome ? "above" : "below";
+            const top = placement === "above" ? boundsTop - 8 : Math.min(boundsBottom + 8, containerBounds.height - toolbarHeight - bottomChrome);
             if (toolbarRef.current) {
                 toolbarRef.current.style.left = `${left}px`;
                 toolbarRef.current.style.top = `${top}px`;
@@ -86,13 +88,10 @@ export function CanvasSelectionToolbar({ anchorRef, containerRef, count, childre
                 transition={aceternityMotion.spring.panel}
                 className="flex items-center gap-2"
             >
-                <span
-                    className="aceternity-floating-panel shrink-0 rounded-full border px-2.5 py-1.5 text-[var(--fs-tiny)] font-semibold tabular-nums backdrop-blur-2xl"
-                    style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.accent.primary }}
-                >
+                <span className="canvas-selection-count shrink-0 tabular-nums">
                     已选 {count}
                 </span>
-                <div className="max-w-[min(560px,calc(100vw-90px))]">{children}</div>
+                <div className="max-w-[min(920px,calc(100vw-48px))] overflow-x-auto overflow-y-visible">{children}</div>
             </motion.div>
         </div>
     );
@@ -139,8 +138,9 @@ export function CanvasNodePanelOverlay({
             liveViewport = nextViewport;
             const nextWidth = resolveNodePanelWidth(node, nextViewport, panelWidth);
             panel.style.width = `${nextWidth}px`;
+            const measuredHeight = panel.offsetHeight || panelHeight;
             const nodeElement = container.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(node.id)}"]`);
-            const position = nodeElement ? getAttachedNodePanelPosition(nodeElement, container, nextWidth) : getNodePanelPosition(node, nextViewport, viewportSize, nextWidth, panelHeight, liveDragOffset);
+            const position = nodeElement ? getAttachedNodePanelPosition(nodeElement, container, nextWidth, measuredHeight) : getNodePanelPosition(node, nextViewport, viewportSize, nextWidth, measuredHeight, liveDragOffset);
             panel.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`;
         };
         update(viewport);
@@ -167,7 +167,7 @@ export function CanvasNodePanelOverlay({
             data-canvas-no-zoom
             data-canvas-node-panel
             className={`thin-scrollbar absolute max-w-[calc(100%_-_24px)] ${allowOverflow ? "overflow-visible" : "overflow-y-auto"}`}
-            style={{ left: 0, top: 0, transform: `translate3d(${initialPosition.left}px, ${initialPosition.top}px, 0)`, width: initialWidth, maxHeight: allowOverflow ? "none" : "calc(100% - 84px)", zIndex }}
+            style={{ left: 0, top: 0, transform: `translate3d(${initialPosition.left}px, ${initialPosition.top}px, 0)`, width: initialWidth, maxHeight: allowOverflow ? "none" : "calc(100% - 108px)", zIndex }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDownCapture={bringToFront}
             onFocusCapture={bringToFront}
@@ -253,7 +253,7 @@ export function CanvasConnectionCreateMenu({
                     onClose();
                 }
             }}
-            style={{ width: menuWidth, maxHeight: Math.max(120, viewportSize.height - 84), left: initialPosition.left, top: initialPosition.top, zIndex, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
+            style={{ width: menuWidth, maxHeight: Math.max(120, viewportSize.height - 108), left: initialPosition.left, top: initialPosition.top, zIndex, background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDownCapture={bringToFront}
             onFocusCapture={(event) => {
@@ -424,30 +424,51 @@ function getConnectionMenuPosition(position: Position, viewport: ViewportTransfo
     const screenY = viewport.y + position.y * viewport.k;
     return {
         left: clamp(screenX, gap, Math.max(gap, viewportSize.width - menuWidth - gap)),
-        top: clamp(screenY, 72, Math.max(72, viewportSize.height - menuHeight - gap)),
+        top: clamp(screenY, 52, Math.max(52, viewportSize.height - menuHeight - Math.max(gap, 56))),
     };
 }
 
-function getAttachedNodePanelPosition(nodeElement: HTMLElement, container: HTMLElement, panelWidth: number) {
+function getAttachedNodePanelPosition(nodeElement: HTMLElement, container: HTMLElement, panelWidth: number, panelHeight = 240) {
     const gap = 10;
+    const marginTop = 12;
+    const marginBottom = 56;
+    const marginX = 12;
     const nodeRect = nodeElement.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    return {
-        left: nodeRect.left - containerRect.left + nodeRect.width / 2 - panelWidth / 2,
-        top: nodeRect.bottom - containerRect.top + gap,
-        placement: "below" as const,
-    };
+    const width = Math.min(panelWidth, Math.max(160, containerRect.width - marginX * 2));
+    let left = nodeRect.left - containerRect.left + nodeRect.width / 2 - width / 2;
+    left = clamp(left, marginX, Math.max(marginX, containerRect.width - width - marginX));
+    const belowTop = nodeRect.bottom - containerRect.top + gap;
+    const aboveTop = nodeRect.top - containerRect.top - gap - panelHeight;
+    const spaceBelow = containerRect.height - (nodeRect.bottom - containerRect.top) - gap - marginBottom;
+    const spaceAbove = nodeRect.top - containerRect.top - gap - marginTop;
+    const placeBelow = spaceBelow >= Math.min(panelHeight, 160) || spaceBelow >= spaceAbove;
+    let top = placeBelow ? belowTop : Math.max(marginTop, aboveTop);
+    const maxTop = Math.max(marginTop, containerRect.height - Math.min(panelHeight, containerRect.height - marginBottom) - marginBottom);
+    top = clamp(top, marginTop, maxTop);
+    return { left, top, placement: placeBelow ? "below" as const : "above" as const };
 }
 
-export function getNodePanelPosition(node: CanvasNodeData, viewport: ViewportTransform, _viewportSize: { width: number; height: number }, panelWidth: number, _panelHeight: number, dragOffset?: Position | null) {
+export function getNodePanelPosition(node: CanvasNodeData, viewport: ViewportTransform, viewportSize: { width: number; height: number }, panelWidth: number, panelHeight = 240, dragOffset?: Position | null) {
     const gap = 10;
+    const marginTop = 12;
+    const marginBottom = 56;
+    const marginX = 12;
     const offsetX = dragOffset?.x || 0;
     const offsetY = dragOffset?.y || 0;
+    const width = Math.min(panelWidth, Math.max(160, viewportSize.width - marginX * 2));
     const nodeCenterX = viewport.x + (node.position.x + offsetX + node.width / 2) * viewport.k;
     const nodeBottom = viewport.y + (node.position.y + offsetY + node.height) * viewport.k;
+    const nodeTop = viewport.y + (node.position.y + offsetY) * viewport.k;
+    let left = clamp(nodeCenterX - width / 2, marginX, Math.max(marginX, viewportSize.width - width - marginX));
+    const spaceBelow = viewportSize.height - nodeBottom - gap - marginBottom;
+    const spaceAbove = nodeTop - gap - marginTop;
+    const placeBelow = spaceBelow >= Math.min(panelHeight, 160) || spaceBelow >= spaceAbove;
+    const rawTop = placeBelow ? nodeBottom + gap : nodeTop - gap - panelHeight;
+    const maxTop = Math.max(marginTop, viewportSize.height - Math.min(panelHeight, viewportSize.height - marginBottom) - marginBottom);
     return {
-        left: nodeCenterX - panelWidth / 2,
-        top: nodeBottom + gap,
-        placement: "below" as const,
+        left,
+        top: clamp(rawTop, marginTop, maxTop),
+        placement: placeBelow ? "below" as const : "above" as const,
     };
 }

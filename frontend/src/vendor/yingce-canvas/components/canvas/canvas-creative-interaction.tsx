@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Button, Dropdown } from "antd";
+import { Button } from "antd";
 import localforage from "localforage";
 import type { CanvasAssistantMessage } from "@yingce/types/canvas";
 import type { AiConfig } from "@yingce/stores/use-config-store";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { getActiveUserScope } from "@yingce/lib/user-scope";
 import { assertCreativeBriefSpecifications, initialCreativeState, normalizeCreativeProposal, type CreativeAgentState } from "@yingce/lib/creation/creative-agent-state";
 import type { CreativeAnswers, CreativeQuote } from "@yingce/lib/creation/creative-agent-contract";
@@ -162,11 +163,11 @@ export function CanvasCreativeInteraction(props: Props) {
             return <div className="creative-agent-card" key={item.ref}>
                 <strong>{view.state.proposal?.workflow.nodes.find((node) => node.ref === item.ref)?.title || item.ref}</strong>
                 {!item.error && !hasResource && item.taskId && <p className="creative-agent-muted">{view.busy ? item.status === "running" ? "正在生成，完成后自动显示。" : "已提交，正在等待生成结果。" : "任务已提交。点击下方“继续处理”读取最新结果，无需重复确认费用。"}</p>}
-                {hasResource ? <CreativeAgentMedia storageKey={item.storageKey!} video={video} alt={item.ref} actions={props.active ? <Dropdown trigger={["click"]} disabled={blocked} menu={{ items: [{ key: "adjust", label: "调整作品" }, { key: "redo", label: "重新生成（费用另行确认）" }], onClick: ({ key }) => key === "redo" ? invoke(controller.current?.redo(item.ref)) : modify(`请调整《${view.state.proposal?.workflow.nodes.find((entry) => entry.ref === item.ref)?.title || item.ref}》，保留其他作品：`) }}><Button type="text" disabled={blocked}>更多</Button></Dropdown> : null} /> : null}
+                {hasResource ? <CreativeAgentMedia storageKey={item.storageKey!} video={video} alt={item.ref} actions={props.active ? <CanvasDropdown trigger={["click"]} disabled={blocked} menu={{ items: [{ key: "adjust", label: "调整作品" }, { key: "redo", label: "重新生成（费用另行确认）" }], onClick: ({ key }) => key === "redo" ? invoke(controller.current?.redo(item.ref)) : modify(`请调整《${view.state.proposal?.workflow.nodes.find((entry) => entry.ref === item.ref)?.title || item.ref}》，保留其他作品：`) }}><Button type="text" disabled={blocked}>更多</Button></CanvasDropdown> : null} /> : null}
                 {item.error && <p className="creative-agent-muted">这项作品还需要处理，已有结果会保留。</p>}
                 {item.error && <details className="creative-agent-receipt"><summary>查看失败原因</summary><p>{item.error}</p></details>}
                 {props.active && item.status === "failed" && item.failureKind !== "observation" && <Button type="primary" disabled={blocked} onClick={() => invoke(controller.current?.redo(item.ref))}>重新生成此项 · 先确认费用</Button>}
-                {!hasResource && props.active ? <div className="creative-agent-actions"><Dropdown trigger={["click"]} disabled={blocked} menu={{ items: [{ key: "adjust", label: "调整作品" }, { key: "redo", label: "重新生成（费用另行确认）" }], onClick: ({ key }) => key === "redo" ? invoke(controller.current?.redo(item.ref)) : modify(`请调整《${view.state.proposal?.workflow.nodes.find((entry) => entry.ref === item.ref)?.title || item.ref}》，保留其他作品：`) }}><Button type="text" disabled={blocked}>更多</Button></Dropdown></div> : null}
+                {!hasResource && props.active ? <div className="creative-agent-actions"><CanvasDropdown trigger={["click"]} disabled={blocked} menu={{ items: [{ key: "adjust", label: "调整作品" }, { key: "redo", label: "重新生成（费用另行确认）" }], onClick: ({ key }) => key === "redo" ? invoke(controller.current?.redo(item.ref)) : modify(`请调整《${view.state.proposal?.workflow.nodes.find((entry) => entry.ref === item.ref)?.title || item.ref}》，保留其他作品：`) }}><Button type="text" disabled={blocked}>更多</Button></CanvasDropdown></div> : null}
             </div>;
         })}
         {!props.active && rawError && <details className="creative-agent-receipt"><summary>这一步未完成，后续对话中可继续调整</summary><p>{feedback}</p></details>}

@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { useEffect, useState } from "react";
-import { Dropdown } from "antd";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { LoaderCircle, Palette, Wrench, X } from "lucide-react";
+import { LoaderCircle, SwatchBook, Wrench, X } from "lucide-react";
 
 import { listTools, type ToolScope, type ToolSummary } from "@yingce/services/api/tools";
 import { FEED_TABS, SUB_TAB_TAGS, toAbsoluteUrl } from "@yingce/lib/canvas/canvas-tool-presentation";
@@ -69,7 +69,7 @@ export function CanvasChooseImageStylePicker({
     };
 
     return (
-        <Dropdown
+        <CanvasDropdown
             open={actualOpen}
             onOpenChange={setOpen}
             trigger={["click"]}
@@ -148,7 +148,7 @@ export function CanvasChooseImageStylePicker({
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
             >
-                <Palette className="size-3 shrink-0" />
+                <SwatchBook className="size-3 shrink-0" strokeWidth={1.55} />
                 <span className="truncate">{resolvedLabel || "风格"}</span>
                 {activeToolId != null && onClear ? (
                     <button
@@ -163,7 +163,7 @@ export function CanvasChooseImageStylePicker({
                     </button>
                 ) : null}
             </div>
-        </Dropdown>
+        </CanvasDropdown>
     );
 }
 

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
-import { Dropdown } from "antd";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { FileAudio, FileText, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Clapperboard, Video } from "lucide-react";
 
 import { CanvasVideoPreviewImage } from "@yingce/components/canvas/canvas-video-preview-image";
@@ -150,7 +150,7 @@ export const CanvasFolderPreview = React.memo(function CanvasFolderPreview({
                             <Plus />
                         </button>
                     ) : (
-                        <Dropdown trigger={["click"]} menu={folderMenu}>
+                        <CanvasDropdown trigger={["click"]} menu={folderMenu}>
                             <button
                                 type="button"
                                 className="canvas-folder-action canvas-folder-options"
@@ -161,16 +161,16 @@ export const CanvasFolderPreview = React.memo(function CanvasFolderPreview({
                             >
                                 <MoreHorizontal />
                             </button>
-                        </Dropdown>
+                        </CanvasDropdown>
                     )
                 ) : null}
 
                 {!readOnly && showAdd ? (
-                    <Dropdown trigger={["click"]} menu={folderMenu}>
+                    <CanvasDropdown trigger={["click"]} menu={folderMenu}>
                         <button type="button" className="canvas-folder-style-trigger" aria-label="切换文件夹样式与主题" title="切换文件夹样式与主题" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
                             <MoreHorizontal />
                         </button>
-                    </Dropdown>
+                    </CanvasDropdown>
                 ) : null}
 
                 {readOnly && childNodes.length > 0 ? <span className="canvas-folder-count">{childNodes.length}</span> : null}

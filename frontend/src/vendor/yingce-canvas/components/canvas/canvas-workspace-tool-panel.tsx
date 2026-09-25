@@ -5,10 +5,11 @@ type FeedTab = ToolScope;
 import { memo, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Eye, Loader2, MoreHorizontal, Plus, Star, Trash2, Upload, Wrench, X } from "lucide-react";
-import { App, Button, Dropdown, Form, Input, Radio, Select, Space, type MenuProps } from "antd";
+import { App, Button, Form, Input, Radio, Select, Space, type MenuProps } from "antd";
 
-import { CanvasImagePreview } from "@yingce/components/canvas/canvas-image-preview";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { AppModal } from "@yingce/components/ui/product/app-modal";
+import { CanvasImagePreview } from "@yingce/components/canvas/canvas-image-preview";
 import { VideoPlayer } from "@yingce/components/video-player";
 import { WorkspaceErrorState, WorkspaceState } from "@yingce/components/layout/workspace-state";
 import { uploadMediaFile } from "@yingce/services/file-storage";
@@ -560,7 +561,7 @@ const ToolPresetCard = memo(function ToolPresetCard({
                     >
                         <Star className={tool.favorited ? "size-3 fill-current text-amber-300" : "size-3"} />
                     </button>
-                    <Dropdown trigger={["click"]} menu={{ items: menuItems }} open={menuOpen} onOpenChange={setMenuOpen} autoAdjustOverflow>
+                    <CanvasDropdown trigger={["click"]} menu={{ items: menuItems }} open={menuOpen} onOpenChange={setMenuOpen} autoAdjustOverflow>
                         <button
                             type="button"
                             className="grid size-5 place-items-center rounded-[var(--r-sm)] bg-black/40 text-white backdrop-blur-sm hover:bg-black/55"
@@ -572,7 +573,7 @@ const ToolPresetCard = memo(function ToolPresetCard({
                         >
                             <MoreHorizontal className="size-3" />
                         </button>
-                    </Dropdown>
+                    </CanvasDropdown>
                 </span>
             </div>
             <span className="truncate text-[11px] font-medium leading-4 text-foreground">{tool.label}</span>

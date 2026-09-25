@@ -1,7 +1,9 @@
 // @ts-nocheck
 import { memo, useEffect, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Clock3, Coins, LoaderCircle, MoreHorizontal, XCircle } from "lucide-react";
-import { Dropdown, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { formatCredits } from "@yingce/constant/credits";
 import { canCancelGenerationTask, formatTaskKind, generationTaskShowsProgress, generationTaskStageLabel, generationTaskStatusLabel } from "@yingce/lib/generation-task-display";
@@ -106,11 +108,11 @@ export const TaskListItem = memo(function TaskListItem({ task, onCancelTask }: {
             ) : null}
 
             {menuItems.length > 0 ? (
-                <Dropdown trigger={["click"]} menu={{ items: menuItems }}>
+                <CanvasDropdown trigger={["click"]} menu={{ items: menuItems }}>
                     <button type="button" className="asset-more absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" aria-label="更多操作" title="更多">
                         <MoreHorizontal className="size-3.5" />
                     </button>
-                </Dropdown>
+                </CanvasDropdown>
             ) : null}
         </div>
     );

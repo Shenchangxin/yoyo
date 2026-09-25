@@ -1,0 +1,100 @@
+/* Ant / yc popups that escape the island still inherit Studio Glass. */
+
+body .yc-dropdown,
+body .ant-dropdown,
+body .yc-tooltip,
+body .ant-tooltip,
+body .yc-popover,
+body .ant-popover,
+body .yc-select-dropdown,
+body .ant-select-dropdown,
+body .canvas-generation-settings-popover,
+body .sg-popover,
+body .sg-menu {
+  z-index: 200 !important;
+}
+
+body .yc-dropdown .yc-dropdown-menu,
+body .ant-dropdown .ant-dropdown-menu,
+body .yc-select-dropdown,
+body .ant-select-dropdown,
+body .yc-popover .yc-popover-inner,
+body .ant-popover .ant-popover-inner,
+body .yc-tooltip .yc-tooltip-inner,
+body .ant-tooltip .ant-tooltip-inner,
+body .yc-menu,
+body [data-canvas-context-menu] {
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--popover) 94%, transparent) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-popover) !important;
+  padding: 4px !important;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+}
+
+body .sg-workbench-root,
+body .sg-workbench-root .yc-modal-wrap,
+body .yc-modal-wrap.sg-workbench-root {
+  z-index: 400 !important;
+}
+
+body .sg-dialog-root,
+body .sg-dialog-root .yc-modal-wrap {
+  z-index: 300 !important;
+}
+
+body .yc-modal .yc-modal-content,
+body .ant-modal .ant-modal-content {
+  border-radius: 14px !important;
+  background: var(--popover) !important;
+  box-shadow: var(--shadow-popover) !important;
+  backdrop-filter: none !important;
+}
+
+body .yc-dropdown-menu-item,
+body .ant-dropdown-menu-item,
+body .yc-select-item,
+body .ant-select-item {
+  border-radius: 8px !important;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--foreground) !important;
+}
+
+body .sg-popover,
+body .sg-menu,
+body .canvas-generation-settings-popover {
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--popover) 94%, transparent) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-popover) !important;
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
+body .sg-command-palette .yc-modal-content,
+body .sg-command-palette.yc-modal .yc-modal-content {
+  background: color-mix(in srgb, var(--popover) 94%, transparent) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-popover) !important;
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body .yc-dropdown .yc-dropdown-menu,
+  body .ant-dropdown .ant-dropdown-menu,
+  body .yc-popover .yc-popover-inner,
+  body .ant-popover .ant-popover-inner,
+  body .yc-tooltip .yc-tooltip-inner,
+  body .ant-tooltip .ant-tooltip-inner,
+  body .sg-popover,
+  body .sg-menu,
+  body .canvas-generation-settings-popover,
+  body .sg-command-palette .yc-modal-content {
+    background: var(--popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

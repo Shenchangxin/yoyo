@@ -1,17 +1,18 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { Button, InputNumber, Modal } from "antd";
+import { Button, InputNumber } from "antd";
 import { Grid2x2 } from "lucide-react";
 
 import { readImageMeta } from "@yingce/lib/image-utils";
 import type { ImageSplitParams } from "@yingce/lib/canvas/canvas-image-data";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageSplitParams = ImageSplitParams;
 
 const defaultParams: CanvasImageSplitParams = { rows: 2, columns: 2 };
 const maxGridSize = 12;
 
-export function CanvasNodeSplitDialog({ dataUrl, open, onClose, onConfirm }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (params: CanvasImageSplitParams) => void }) {
+export function CanvasNodeSplitDialog({ dataUrl, open, onClose, onConfirm, embedded }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (params: CanvasImageSplitParams) => void; embedded?: boolean }) {
     const [params, setParams] = useState(defaultParams);
     const [image, setImage] = useState<{ width: number; height: number } | null>(null);
     const total = params.rows * params.columns;
@@ -33,7 +34,7 @@ export function CanvasNodeSplitDialog({ dataUrl, open, onClose, onConfirm }: { d
     };
 
     return (
-        <Modal title={null} open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} width={780} centered destroyOnHidden>
+        <ImageEditorShell title="宫格切分" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="space-y-5">
                 <div>
                     <h2 className="text-xl font-semibold">宫格切分</h2>
@@ -71,7 +72,7 @@ export function CanvasNodeSplitDialog({ dataUrl, open, onClose, onConfirm }: { d
                     </div>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }
 

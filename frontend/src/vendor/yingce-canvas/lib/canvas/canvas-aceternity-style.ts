@@ -16,8 +16,5 @@ export function canvasDockStyle(theme: CanvasTheme, color: string = theme.toolba
         "--dock-command-danger": theme.accent.danger,
         "--dock-tooltip-bg": theme.spatial.elevated,
         "--dock-tooltip-border": theme.toolbar.border,
-        "--dock-switch-track": "#2c2621",
-        "--dock-switch-thumb": "#f2ede6",
-        "--dock-switch-thumb-text": "#1c1916",
     } as CSSProperties;
 }

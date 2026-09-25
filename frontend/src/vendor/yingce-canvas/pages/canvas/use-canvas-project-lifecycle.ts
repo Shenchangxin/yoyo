@@ -3,6 +3,7 @@ import { mergeAgentCanvasEditor } from "@yingce/lib/canvas/agent-canvas-patch";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { App } from "antd";
 import { useNavigate } from "react-router";
+import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
 
 import { canvasAppearanceBaseTheme, canvasAppearanceForTheme, DEFAULT_CANVAS_BACKGROUND_MODE, normalizeCanvasAppearance, type CanvasAppearance } from "@yingce/lib/canvas/canvas-appearance";
 import type { CanvasBackgroundMode } from "@yingce/lib/canvas-theme";
@@ -168,7 +169,9 @@ export function useCanvasProjectLifecycle({
                 historyRestore?.resolve();
             }
             if (!loadedProject) {
-                if (!cachedProject) navigate("/canvas", { replace: true });
+                if (!cachedProject) {
+                    if (!requestHostNavigation("/canvas")) navigate("/canvas", { replace: true });
+                }
                 return;
             }
             const project = useCanvasStore.getState().projects.find((p) => p.id === projectId) || loadedProject;
@@ -305,7 +308,7 @@ export function useCanvasProjectLifecycle({
                 .catch(() => message.warning("项目已删除，但部分本地绘图缓存清理失败"));
         }
         cleanupAssetImages();
-        navigate("/canvas");
+        if (!requestHostNavigation("/canvas")) navigate("/canvas");
     }, [cleanupAssetImages, message, navigate, nodesRef, projectId]);
 
     const renameCurrentProject = useCallback((title: string) => {

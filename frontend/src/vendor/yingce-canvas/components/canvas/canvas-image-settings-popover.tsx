@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
@@ -9,6 +8,7 @@ import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@yingce/lib/model-capabilities";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
 import type { AiConfig } from "@yingce/stores/use-config-store";
+import { GenerationSettingsPortal } from "./canvas-generation-settings-shell";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -73,7 +73,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[180px] !justify-start !rounded-full !px-2.5"}`} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} aria-expanded={open} aria-label={`图像设置：${summary}`} title={`图像设置 · ${summary}`} onClick={() => updateOpen(!open)}>
+                <Button size="small" type="text" className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[180px] !justify-start !rounded-[var(--sg-radius-control,8px)] !px-2.5"}`} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} aria-expanded={open} aria-label={`图像设置：${summary}`} title={`图像设置 · ${summary}`} onClick={() => updateOpen(!open)}>
                     <span className="truncate">{summary}</span>
                 </Button>
             </span>
@@ -99,39 +99,11 @@ function ImageSettingsPortal({
     showCount: boolean;
     onConfigChange: (key: keyof AiConfig, value: string) => void;
 }) {
-    const gap = 8;
-    const margin = 12;
-    const width = Math.min(420, window.innerWidth - margin * 2);
-    const alignRight = placement?.endsWith("Right");
-    const alignCenter = placement === "top" || placement === "bottom";
-    const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
-    const topPlacement = placement?.startsWith("top");
-    const style = {
-        position: "fixed",
-        zIndex: "var(--z-dialog-popover)",
-        width,
-        left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
-        ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap, maxHeight: Math.max(260, buttonRect.top - margin * 2) } : { top: buttonRect.bottom + gap, maxHeight: Math.max(260, window.innerHeight - buttonRect.bottom - margin * 2) }),
-        background: theme.canvas.background,
-        border: `1px solid ${theme.toolbar.border}`,
-        borderRadius: 10,
-        boxShadow: `0 24px 72px ${theme.spatial.shadow}`,
-        padding: 12,
-        overflowY: "auto",
-        color: theme.node.text,
-    } as const;
-
-    return createPortal(
-        <div
-            ref={panelRef}
-            className="canvas-image-settings-popover aceternity-floating-panel backdrop-blur-2xl"
-            style={style}
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-        >
-            <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} showCount={showCount} quickCount={3} className="space-y-3" />
-        </div>,
-        document.body,
+    return (
+        <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} width={Math.min(360, window.innerWidth - 24)}>
+            <div style={{ color: theme.node.text }}>
+                <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} showCount={showCount} quickCount={3} className="space-y-3" />
+            </div>
+        </GenerationSettingsPortal>
     );
 }

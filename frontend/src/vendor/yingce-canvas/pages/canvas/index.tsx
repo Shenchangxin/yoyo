@@ -2,9 +2,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { App, Button, Dropdown, Input, Modal } from "antd";
+import { App, Button, Input, Modal } from "antd";
 import { Select } from "@yingce/components/ui/base/select";
 import { ArrowDownAZ, Clock3, Download, FileUp, History, ListFilter, MoreHorizontal, Plus, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { CollectionGrid, PageHeader, WorkspacePage } from "@yingce/components/layout/workspace-page";
 import { CollectionToolbar } from "@yingce/components/layout/collection-toolbar";
@@ -422,7 +424,7 @@ export default function CanvasPage() {
                                 新建画布
                             </Button>
                             {projects.length ? (
-                                <Dropdown
+                                <CanvasDropdown
                                     menu={{
                                         classNames: { root: "canvas-library-actions-menu", item: "canvas-library-actions-menu-item" },
                                         items: [{ key: "delete-loaded", danger: true, icon: <Trash2 className="size-3.5" />, label: "删除当前已加载画布", onClick: () => setDeleteIds(projects.map((project) => project.id)) }],
@@ -432,7 +434,7 @@ export default function CanvasPage() {
                                     trigger={["click"]}
                                 >
                                     <Button type="text" aria-label="更多画布操作" title="更多操作" icon={<MoreHorizontal />} />
-                                </Dropdown>
+                                </CanvasDropdown>
                             ) : null}
                             <Button disabled={!hydrated} icon={<FileUp />} onClick={() => inputRef.current?.click()}>
                                 导入
@@ -448,12 +450,12 @@ export default function CanvasPage() {
                     trailing={<Button type="text" icon={<History />} onClick={() => setHistoryOpen(true)}>创作历史</Button>}
                 >
                     <Input prefix={<Search />} value={keyword} allowClear placeholder="搜索画布" aria-label="搜索画布" onChange={(event) => setKeyword(event.target.value)} />
-                    <Dropdown trigger={["click"]} placement="bottomLeft" menu={{ items: projectFilterItems, selectedKeys: [projectFilter], onClick: ({ key }) => setProjectFilter(String(key)) }}>
+                    <CanvasDropdown trigger={["click"]} placement="bottomLeft" menu={{ items: projectFilterItems, selectedKeys: [projectFilter], onClick: ({ key }) => setProjectFilter(String(key)) }}>
                         <Button icon={<SlidersHorizontal />} aria-label="按所属项目筛选">{projectFilterLabel}</Button>
-                    </Dropdown>
-                    <Dropdown trigger={["click"]} placement="bottomLeft" menu={{ items: sortItems, selectedKeys: [sort], onClick: ({ key }) => setSort(key as typeof sort) }}>
+                    </CanvasDropdown>
+                    <CanvasDropdown trigger={["click"]} placement="bottomLeft" menu={{ items: sortItems, selectedKeys: [sort], onClick: ({ key }) => setSort(key as typeof sort) }}>
                         <Button icon={sort === "updated" ? <Clock3 /> : sort === "name" ? <ArrowDownAZ /> : <ListFilter />} aria-label="画布排序">{sortLabel}</Button>
-                    </Dropdown>
+                    </CanvasDropdown>
                 </CollectionToolbar>
             </div>
 

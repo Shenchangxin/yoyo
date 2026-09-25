@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { App, Button, Dropdown, Input, Popover, Tag, Typography } from "antd";
+import { App, Button, Input, Tag, Typography } from "antd";
 import { Callout } from "@yingce/components/ui/product/callout";
 import { Bubble, Sender, type BubbleItemType } from "@ant-design/x";
 import { ArrowUp, Check, ChevronDown, FileText, Image as ImageIcon, LoaderCircle, Music2, Clapperboard, UserRound, Video, X } from "lucide-react";
 
+import { CanvasDropdown, CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { ModelPicker } from "@yingce/components/model-picker";
 import type { CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource-references";
 import type { PromptOptimizationMode, PromptOptimizationResult, PromptOptimizerProvider } from "@yingce/lib/plugins/plugin-types";
@@ -693,7 +694,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                     footer={
                         <div className="canvas-prompt-optimizer-composer-toolbar">
                             <div className="canvas-prompt-optimizer-composer-leading">
-                                <Dropdown
+                                <CanvasDropdown
                                     trigger={["click"]}
                                     placement="topLeft"
                                     classNames={{ root: "canvas-prompt-optimizer-mode-dropdown" }}
@@ -707,7 +708,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
                                         <span>{modeOptions.find((option) => option.value === mode)?.label}</span>
                                         <ChevronDown className="size-3" aria-hidden="true" />
                                     </button>
-                                </Dropdown>
+                                </CanvasDropdown>
                             </div>
                             <div className="flex min-w-0 items-center gap-2">
                                 <ModelPicker
@@ -748,7 +749,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
     );
 
     return (
-        <Popover
+        <CanvasPopover
             open={open}
             onOpenChange={(nextOpen) => {
                 if (!nextOpen) onClose();
@@ -763,7 +764,7 @@ export function CanvasPromptOptimizerDrawer({ open, children, prompt, generation
             classNames={{ root: "canvas-prompt-optimizer-popover", container: "canvas-prompt-optimizer-popover-surface", content: "canvas-prompt-optimizer-popover-content" }}
         >
             {children}
-        </Popover>
+        </CanvasPopover>
     );
 }
 

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { AudioLines, Captions, Clapperboard, Download, FolderPlus, Images, Image as ImageIcon, Info, LoaderCircle, Lock, Maximize2, MessageSquare, Minus, Music2, Plus, RefreshCw, Scissors, Settings2, Trash2, Unlock, Upload, UserRound, Video } from "lucide-react";
+import { AudioLines, Captions, Clapperboard, Download, Expand, Film, Image as ImageIcon, Info, Library, LoaderCircle, Lock, MessageSquareText, Minus, Music2, Plus, RefreshCw, Scissors, SlidersHorizontal, Trash2, Unlock, Upload, UserRound } from "lucide-react";
 
 import { CONTENT_MODERATION_ERROR_CODE, isContentModerationError } from "@yingce/lib/generation-error";
 import { registerToolbarTools, type ToolContext, type ToolDefinition } from "@yingce/lib/canvas/tool-registry";
@@ -81,7 +81,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: (ctx) => ctx.extractingVideoFrames ? "正在截取视频画面" : "截取一个或多个视频画面",
         displayLabel: (ctx) => ctx.extractingVideoFrames ? "提取中" : "提取画面",
-        icon: (ctx) => ctx.extractingVideoFrames ? <LoaderCircle className="size-3.5 animate-spin" /> : <Images className="size-3.5" />,
+        icon: (ctx) => ctx.extractingVideoFrames ? <LoaderCircle className="size-3.5 animate-spin" strokeWidth={1.55} /> : <Film className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 40,
         nodeToolbar: { group: "process", order: 10, section: "提取素材", description: "选取画面，保存为图片节点" },
@@ -123,7 +123,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: "加入我的素材",
         displayLabel: "保存到素材库",
-        icon: <FolderPlus className="size-3.5" />,
+        icon: <Library className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 50,
         nodeToolbar: { group: "more", order: 40, section: "素材" },
@@ -139,7 +139,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         icon: <Download className="size-3.5" />,
         defaultVisible: true,
         defaultOrder: 60,
-        nodeToolbar: { group: "utility", order: 20 },
+        nodeToolbar: { group: "primary", order: 10 },
         applicable: (ctx) => hasImage(ctx) || hasVideo(ctx) || hasAudio(ctx),
         run: (ctx) => ctx.handlers.onNodeDownload(ctx.node!),
     },
@@ -149,10 +149,10 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: (ctx) => isEditableText(ctx) ? "调用文本模型生成内容" : "编辑",
         displayLabel: (ctx) => isEditableText(ctx) ? "文本生成" : "生成设置",
-        icon: <MessageSquare className="size-3.5" />,
+        icon: <MessageSquareText className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 70,
-        nodeToolbar: { group: (ctx) => isEditableText(ctx) ? "primary" : "more", order: 20, section: "生成信息" },
+        nodeToolbar: { group: "primary", order: 20, section: "生成信息" },
         applicable: canOpenDialog,
         run: (ctx) => ctx.handlers.onNodeToggleDialog(ctx.node!),
     },
@@ -162,7 +162,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: "放大编辑文本",
         displayLabel: "放大编辑",
-        icon: <Maximize2 className="size-3.5" />,
+        icon: <Expand className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 80,
         nodeToolbar: { group: "primary", order: 30 },
@@ -188,7 +188,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: "生成配置",
         displayLabel: "生成配置",
-        icon: <Settings2 className="size-3.5" />,
+        icon: <SlidersHorizontal className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 100,
         nodeToolbar: { group: "primary", order: 10 },
@@ -240,7 +240,7 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         category: "node-state",
         label: (ctx) => hasVideo(ctx) ? "替换视频" : "上传视频",
         displayLabel: (ctx) => hasVideo(ctx) ? "替换视频" : "上传视频",
-        icon: <Video className="size-3.5" />,
+        icon: <Film className="size-3.5" strokeWidth={1.55} />,
         defaultVisible: true,
         defaultOrder: 140,
         nodeToolbar: { group: (ctx) => hasVideo(ctx) ? "more" : "primary", order: 45, section: "素材" },

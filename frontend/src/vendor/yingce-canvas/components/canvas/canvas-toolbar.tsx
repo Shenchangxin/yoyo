@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Switch } from "@yingce/components/ui/base/switch";
-import { Palette, Info } from "lucide-react";
+import { Info } from "lucide-react";
 
 import { FloatingDock } from "@yingce/components/ui/aceternity/floating-dock";
 import { CanvasAppearanceControls } from "@yingce/components/canvas/canvas-appearance-controls";
@@ -92,7 +92,7 @@ export function CanvasToolbar({
     onOpenProjectCharacters: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
-    const { bringToFront, zIndex } = useCanvasOverlayLayer("main-toolbar", "var(--z-toolbar)");
+    const { bringToFront, zIndex } = useCanvasOverlayLayer("main-toolbar", "var(--z-toolbar)", "chrome");
     const dockRef = useRef<HTMLDivElement>(null);
     const colorTheme = useActiveTheme();
     const theme = canvasThemes[colorTheme];
@@ -100,6 +100,7 @@ export function CanvasToolbar({
     const [appearanceOpen, setAppearanceOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [panelX, setPanelX] = useState(0);
+    const [panelParentWidth, setPanelParentWidth] = useState(() => (typeof window === "undefined" ? 1200 : window.innerWidth));
     const [prefs, setPrefs] = useState<ToolbarPrefs | null>(() => readToolbarPrefs("main"));
 
     useEffect(() => {
@@ -111,7 +112,12 @@ export function CanvasToolbar({
         if (!settingsOpen) setPrefs(readToolbarPrefs("main"));
     }, [settingsOpen]);
 
-    const placePanel = (event: ReactMouseEvent<HTMLElement>) => setPanelX(getPanelX(dockRef.current, event.currentTarget));
+    const placePanel = (event: ReactMouseEvent<HTMLElement>) => {
+        const dock = dockRef.current;
+        const parent = dock?.parentElement;
+        setPanelParentWidth(parent?.clientWidth || (typeof window === "undefined" ? 1200 : window.innerWidth));
+        setPanelX(getPanelX(dock, event.currentTarget));
+    };
     const runAddAction = (action: () => void) => {
         action();
         setAddOpen(false);
@@ -195,24 +201,33 @@ export function CanvasToolbar({
     const createCommands = useCanvasCreateCommands(ctx, runAddAction);
 
     return (
-        <div ref={rootRef} data-canvas-no-zoom className="pointer-events-none absolute inset-x-[var(--canvas-inset-x)] bottom-[var(--canvas-inset-y)] flex justify-center" style={{ zIndex }} onPointerDownCapture={bringToFront} onFocusCapture={bringToFront}>
+        <div
+            ref={rootRef}
+            data-canvas-no-zoom
+            data-canvas-main-dock
+            className="pointer-events-none absolute bottom-[var(--canvas-toolbar-bottom,12px)] left-[var(--canvas-zoom-reserve,228px)] right-[var(--canvas-inset-x,12px)] flex justify-center"
+            style={{ zIndex }}
+            onPointerDownCapture={bringToFront}
+            onFocusCapture={bringToFront}
+        >
+            <FloatingDock ref={dockRef} items={items} className="canvas-floating-dock pointer-events-auto max-w-full" style={canvasDockStyle(theme)} tooltipPlacement="top" />
+
             <AnimatePresence>
                 {addOpen ? (
                     <AddNodeMenu
                         x={panelX}
+                        parentWidth={panelParentWidth}
                         theme={theme}
                         commands={createCommands}
                     />
                 ) : null}
             </AnimatePresence>
 
-            <FloatingDock ref={dockRef} items={items} className="canvas-floating-dock pointer-events-auto max-w-full" style={canvasDockStyle(theme)} />
-
             <AnimatePresence>
                 {appearanceOpen ? (
-                    <motion.div initial={{ opacity: 0, scaleY: 0.9, y: 8 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.92, y: 6 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[var(--canvas-dock-popover-offset)] z-[var(--dock-z-popover)] w-[320px] max-w-[calc(100vw-24px)]" style={{ left: panelX || "50%", transformOrigin: "bottom center", x: "-50%" }}>
-                        <motion.div className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2.5 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.toolbar.item }} onWheel={(event) => event.stopPropagation()}>
-                            <PanelHeading icon={<Palette className="size-4" />} title="画布外观" subtitle="调整整个创作空间" theme={theme} />
+                    <motion.div initial={{ opacity: 0, scaleY: 0.96, y: 6 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.96, y: 4 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[calc(100%+8px)] z-[var(--dock-z-popover)] w-[320px] max-w-[calc(100vw-24px)]" style={{ left: clampPanelX(panelX, 320, panelParentWidth), transformOrigin: "bottom center", x: "-50%" }}>
+                        <motion.div className="sg-popover max-h-[min(420px,calc(100vh-96px))] overflow-y-auto overflow-x-hidden p-2.5" style={{ color: theme.toolbar.item }} onWheel={(event) => event.stopPropagation()}>
+                            <div className="sg-eyebrow px-1">画布外观</div>
                             <CanvasAppearanceControls appearance={appearance} backgroundMode={backgroundMode} colorTheme={colorTheme} theme={theme} onAppearanceChange={onAppearanceChange} onSaveAppearanceDefault={onSaveAppearanceDefault} onBackgroundModeChange={onBackgroundModeChange} />
                             <div className="mt-2.5 flex items-center justify-between gap-2 rounded-[var(--dock-item-radius-labeled)] border px-2.5 py-2" style={{ background: theme.spatial.surface, borderColor: theme.toolbar.border }}>
                                 <span className="inline-flex min-w-0 items-center gap-1.5 text-[var(--fs-tiny)] font-semibold"><Info className="size-3" />媒体信息</span>
@@ -228,26 +243,18 @@ export function CanvasToolbar({
     );
 }
 
-function AddNodeMenu({ x, theme, commands }: {
+function AddNodeMenu({ x, parentWidth, theme, commands }: {
     x: number;
+    parentWidth: number;
     theme: CanvasTheme;
     commands: CanvasCreateCommand[];
 }) {
     return (
-        <motion.div initial={{ opacity: 0, scaleY: 0.9, y: 8 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.92, y: 6 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[var(--canvas-dock-popover-offset)] z-[var(--dock-z-popover)] w-[420px] max-w-[calc(100vw-24px)]" style={{ left: x || "50%", transformOrigin: "bottom center", x: "-50%" }}>
-            <motion.div className="aceternity-floating-panel overflow-hidden rounded-[var(--panel-radius)] border p-2 backdrop-blur-2xl" style={{ background: theme.spatial.elevated, borderColor: theme.toolbar.border, color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
+        <motion.div layoutId="studio-add-morph" initial={{ opacity: 0, scaleY: 0.96, y: 6 }} animate={{ opacity: 1, scaleY: 1, y: 0 }} exit={{ opacity: 0, scaleY: 0.96, y: 4 }} transition={{ duration: aceternityMotion.duration.panel, ease: aceternityMotion.easing.enter }} className="pointer-events-auto absolute bottom-[calc(100%+8px)] z-[var(--dock-z-popover)] w-[280px] max-w-[calc(100vw-24px)]" style={{ left: clampPanelX(x, 280, parentWidth), transformOrigin: "bottom center", x: "-50%" }}>
+            <motion.div className="sg-menu max-h-[min(520px,calc(100vh-96px))] overflow-y-auto overflow-x-hidden p-1.5" style={{ color: theme.node.text }} onWheel={(event) => event.stopPropagation()}>
                 <CanvasCreateMenu commands={commands} />
             </motion.div>
         </motion.div>
-    );
-}
-
-function PanelHeading({ icon, title, subtitle, theme }: { icon: ReactNode; title: string; subtitle: string; theme: CanvasTheme }) {
-    return (
-        <div className="flex items-center gap-2">
-            <span className="grid size-8 shrink-0 place-items-center rounded-[var(--dock-item-radius)] border opacity-75 [&_svg]:size-3.5" style={{ background: theme.spatial.surface, borderColor: theme.toolbar.border }}>{icon}</span>
-            <span className="min-w-0"><span className="block text-xs font-semibold">{title}</span><span className="mt-0.5 block text-[var(--fs-micro)]" style={{ color: theme.node.muted }}>{subtitle}</span></span>
-        </div>
     );
 }
 
@@ -256,4 +263,12 @@ function getPanelX(dock: HTMLDivElement | null, target: HTMLElement) {
     const rootBox = dock.parentElement?.getBoundingClientRect() || dock.getBoundingClientRect();
     const box = target.getBoundingClientRect();
     return box.left - rootBox.left + box.width / 2;
+}
+
+function clampPanelX(x: number, panelWidth: number, parentWidth = typeof window === "undefined" ? 1200 : window.innerWidth) {
+    const half = panelWidth / 2;
+    const min = half + 12;
+    const max = Math.max(min, parentWidth - half - 12);
+    if (!x) return parentWidth / 2;
+    return Math.min(Math.max(x, min), max);
 }

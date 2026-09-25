@@ -9,6 +9,7 @@ import { AuthSessionHydrator } from "@yingce/components/auth/auth-session-hydrat
 import { FullScreenLoader } from "@yingce/components/ui/aceternity/full-screen-loader";
 import { getAntThemeConfig } from "@yingce/lib/app-theme";
 import { yoyoHostAntTheme } from "@/features/video/canvas-host/yoyo-ant-theme";
+import { isYoyoCanvasHost, yoyoCanvasPopupContainer } from "@/features/video/canvas-host/design-system";
 import { appQueryClient } from "@yingce/lib/query-client";
 import { isIsolatedDirectorRepro } from "@yingce/lib/dev-repro";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
@@ -43,7 +44,13 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const isolateDevRepro = typeof window !== "undefined" && isIsolatedDirectorRepro(import.meta.env.DEV, window.location.pathname);
 
     return (
-        <ConfigProvider locale={zhCN} prefixCls="yc" theme={typeof window !== "undefined" && (window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__ ? yoyoHostAntTheme(dark) : getAntThemeConfig(dark, appearance.activeSkin)} wave={{ disabled: true }}>
+        <ConfigProvider
+            locale={zhCN}
+            prefixCls="yc"
+            theme={isYoyoCanvasHost() ? yoyoHostAntTheme(dark) : getAntThemeConfig(dark, appearance.activeSkin)}
+            wave={{ disabled: true }}
+            getPopupContainer={isYoyoCanvasHost() ? (node) => yoyoCanvasPopupContainer(node) : undefined}
+        >
             <App message={{ duration: 3, maxCount: 3 }} notification={{ duration: 4.5, maxCount: 3, placement: "topRight" }}>
                 <QueryClientProvider client={appQueryClient}>
                     {isolateDevRepro ? (

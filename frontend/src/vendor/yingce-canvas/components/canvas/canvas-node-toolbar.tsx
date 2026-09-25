@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { App, Button, Dropdown, Input, Modal, Tag, Tooltip } from "antd";
+import { App, Button, Input, Modal, Tag, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { Camera, Check, ChevronDown, ChevronRight, Ellipsis, Grid3x3, Images, Plus, SlidersHorizontal, UserRound } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Ellipsis, Film, Grid3x3, Plus, SlidersHorizontal, UserRound } from "lucide-react";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { canvasDockStyle } from "@yingce/lib/canvas/canvas-aceternity-style";
 import { ASSET_CATEGORY_OPTIONS } from "@yingce/lib/asset-category";
@@ -87,6 +89,10 @@ type ToolbarTool = {
     disabled?: boolean;
 };
 
+function nodeToolbarTransform(left: number, top: number, placement: "above" | "below") {
+    return `translate3d(${left}px, ${top}px, 0) translate(-50%, ${placement === "above" ? "-100%" : "0"})`;
+}
+
 export function CanvasNodeToolbar({
     node,
     viewport,
@@ -136,7 +142,7 @@ export function CanvasNodeToolbar({
 }: CanvasNodeToolbarProps) {
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [containerWidth, setContainerWidth] = useState(1000);
-    const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
+    const [anchor, setAnchor] = useState<{ left: number; top: number; placement: "above" | "below" } | null>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const { message } = App.useApp();
     const copyText = useCopyText();
@@ -170,25 +176,44 @@ export function CanvasNodeToolbar({
             const halfToolbar = toolbarWidth / 2;
             const canClamp = toolbarWidth > 0 && toolbarWidth <= containerRect.width - 20;
             let left = canClamp ? Math.min(Math.max(preferredLeft, halfToolbar + 10), containerRect.width - halfToolbar - 10) : preferredLeft;
-            const above = nodeRect.top - containerRect.top - 30;
-            let top = Math.max(toolbarHeight + 8, Math.min(above, containerRect.height - 8));
+            const gap = 8;
+            const bottomChrome = 56;
+            const nodeTop = nodeRect.top - containerRect.top;
+            const nodeBottom = nodeRect.bottom - containerRect.top;
+            const spaceAbove = nodeTop - gap;
+            const spaceBelow = containerRect.height - nodeBottom - gap - bottomChrome;
+            let placement: "above" | "below" = spaceAbove >= toolbarHeight || spaceAbove >= spaceBelow ? "above" : "below";
+            let top = placement === "above" ? nodeTop - gap : nodeBottom + gap;
+            if (placement === "below" && top + toolbarHeight > containerRect.height - bottomChrome) {
+                placement = "above";
+                top = nodeTop - gap;
+            }
             for (const panel of container.querySelectorAll<HTMLElement>("[data-canvas-node-panel]")) {
                 const panelRect = panel.getBoundingClientRect();
                 const panelLeft = panelRect.left - containerRect.left;
                 const panelRight = panelRect.right - containerRect.left;
                 const panelTop = panelRect.top - containerRect.top;
                 const panelBottom = panelRect.bottom - containerRect.top;
-                if (left + halfToolbar <= panelLeft || left - halfToolbar >= panelRight || top <= panelTop || top - toolbarHeight >= panelBottom) continue;
+                const toolbarTop = placement === "above" ? top - toolbarHeight : top;
+                const toolbarBottom = toolbarTop + toolbarHeight;
+                if (left + halfToolbar <= panelLeft || left - halfToolbar >= panelRight || toolbarBottom <= panelTop || toolbarTop >= panelBottom) continue;
                 if (panelLeft >= toolbarWidth + 18) left = panelLeft - halfToolbar - 8;
                 else if (containerRect.width - panelRight >= toolbarWidth + 18) left = panelRight + halfToolbar + 8;
-                else if (panelTop >= toolbarHeight + 16) top = panelTop - 8;
-                else if (containerRect.height - panelBottom >= toolbarHeight + 16) top = panelBottom + toolbarHeight + 8;
+                else if (panelTop >= toolbarHeight + 16) {
+                    placement = "above";
+                    top = panelTop - gap;
+                } else if (containerRect.height - panelBottom >= toolbarHeight + 16) {
+                    placement = "below";
+                    top = panelBottom + gap;
+                }
             }
+            const transform = nodeToolbarTransform(left, top, placement);
             if (toolbarRef.current) {
-                toolbarRef.current.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+                toolbarRef.current.style.transform = transform;
+                toolbarRef.current.dataset.placement = placement;
                 return;
             }
-            setAnchor((current) => current?.left === left && current.top === top ? current : { left, top });
+            setAnchor((current) => current?.left === left && current.top === top && current.placement === placement ? current : { left, top, placement });
         };
         const scheduleUpdate = () => {
             if (queued || disposed) return;
@@ -302,6 +327,7 @@ export function CanvasNodeToolbar({
     const utilityTools = inGroup("utility");
     const moreTools = [...(narrow ? [...primary.slice(1), ...inGroup("workspace")] : []), ...inGroup("more")];
     const processMenuLabel = compact ? "工具" : isVideo ? "提取素材" : isImage ? "图片工具" : isAudio ? "音频处理" : "文本调整";
+    const menuPlacement = anchor.placement === "below" ? "bottom" : "top";
     const handleMenuOpenChange = (menuId: string, open: boolean) => {
         setOpenMenuId((current) => open ? menuId : current === menuId ? null : current);
         if (open) onKeep(node.id);
@@ -312,8 +338,9 @@ export function CanvasNodeToolbar({
     return (
         <div
             ref={toolbarRef}
-            className="canvas-node-toolbar absolute z-[var(--z-node-toolbar)] -translate-x-1/2 -translate-y-full"
-            style={{ left: 0, top: 0, transform: `translate3d(${anchor.left}px, ${anchor.top}px, 0)`, width: "max-content", maxWidth: "calc(100% - 20px)", color: theme.node.text }}
+            className="canvas-node-toolbar absolute z-[var(--z-node-toolbar)]"
+            data-placement={anchor.placement}
+            style={{ left: 0, top: 0, transform: nodeToolbarTransform(anchor.left, anchor.top, anchor.placement), width: "max-content", maxWidth: "calc(100% - 20px)", color: theme.node.text }}
             onMouseEnter={() => onKeep(node.id)}
             onMouseLeave={() => { if (!openMenuId) onLeave(); }}
             onMouseDown={(event) => event.stopPropagation()}
@@ -326,40 +353,40 @@ export function CanvasNodeToolbar({
             <div
                 role="toolbar"
                 aria-label="节点快捷工具"
-                className="flex h-11 max-w-full items-center gap-0.5 overflow-visible rounded-[var(--dock-radius-tight)] px-2 backdrop-blur-2xl"
-                style={{ ...dockStyle, border: 0 }}
+                className="sg-glass-group flex max-w-full items-center overflow-visible"
+                style={{ ...dockStyle, border: 0, background: "transparent", boxShadow: "none" }}
             >
-                {primaryTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} />)}
-                {nineGridTools.length ? <NodeDockMenuButton menuId="nine-grid" label="九宫格" icon={<Grid3x3 className="size-3.5" />} tools={nineGridTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
-                {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} />)}
-                {portraitTools.length ? <NodeDockMenuButton menuId="portrait" label="人像调整" icon={<UserRound className="size-3.5" />} tools={portraitTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
-                {viewpointLightingTools.length ? <NodeDockMenuButton menuId="viewpoint-lighting" label="视角" icon={<Camera className="size-3.5" />} tools={viewpointLightingTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} /> : null}
-                {processTools.length ? <NodeDockMenuButton menuId="process" label={processMenuLabel} icon={isVideo ? <Images className="size-3.5" /> : <SlidersHorizontal className="size-3.5" />} tools={processTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} split={hasImage && !simpleMode ? { node, onSplit } : undefined} /> : null}
-                {workspaceTools.length ? <span aria-hidden className="aceternity-dock-separator mx-1 h-5 w-px shrink-0" /> : null}
-                {workspaceTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} />)}
-                {utilityTools.length || moreTools.length ? <span aria-hidden className="aceternity-dock-separator mx-1 h-5 w-px shrink-0" /> : null}
-                {utilityTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly />)}
+                {primaryTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {nineGridTools.length ? <NodeDockMenuButton menuId="nine-grid" label="九宫格" icon={<Grid3x3 strokeWidth={1.55} />} tools={nineGridTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
+                {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {portraitTools.length ? <NodeDockMenuButton menuId="portrait" label="人像调整" icon={<UserRound strokeWidth={1.55} />} tools={portraitTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
+                {viewpointLightingTools.length ? <NodeDockMenuButton menuId="viewpoint-lighting" label="视角" icon={<Camera strokeWidth={1.55} />} tools={viewpointLightingTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
+                {processTools.length ? <NodeDockMenuButton menuId="process" label={processMenuLabel} icon={isVideo ? <Film strokeWidth={1.55} /> : <SlidersHorizontal strokeWidth={1.55} />} tools={processTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly split={hasImage && !simpleMode ? { node, onSplit } : undefined} /> : null}
+                {workspaceTools.length ? <span aria-hidden className="aceternity-dock-separator shrink-0" /> : null}
+                {workspaceTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {utilityTools.length || moreTools.length ? <span aria-hidden className="aceternity-dock-separator shrink-0" /> : null}
+                {utilityTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
                 {moreTools.length ? (
-                    <NodeDockMenuButton menuId="more" label="更多" icon={<Ellipsis className="size-3.5" />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement="topRight" iconOnly />
+                    <NodeDockMenuButton menuId="more" label="更多" icon={<Ellipsis strokeWidth={1.55} />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={anchor.placement === "below" ? "bottomRight" : "topRight"} iconOnly />
                 ) : null}
             </div>
         </div>
     );
 }
 
-function NodeDockToolButton({ tool, iconOnly = false }: { tool: ToolbarTool; iconOnly?: boolean }) {
+function NodeDockToolButton({ tool, iconOnly = false, tooltipPlacement = "top" }: { tool: ToolbarTool; iconOnly?: boolean; tooltipPlacement?: "top" | "bottom" }) {
     return (
-        <Tooltip title={tool.description ? `${tool.label}：${tool.description}` : tool.label}>
+        <Tooltip title={tool.description ? `${tool.label}：${tool.description}` : tool.label} placement={tooltipPlacement} mouseEnterDelay={0.15}>
         <button
             type="button"
-            className={`aceternity-dock-command is-labeled pointer-events-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[var(--dock-item-radius)] px-2.5 outline-none ${tool.active ? "is-active" : ""} ${tool.danger ? "is-danger" : ""}`}
+            className={`aceternity-dock-command pointer-events-auto inline-flex shrink-0 items-center justify-center outline-none ${iconOnly ? "" : "is-labeled gap-1.5 px-2"} ${tool.active ? "is-active" : ""} ${tool.danger ? "is-danger" : ""}`}
             aria-label={tool.label}
             aria-pressed={tool.active}
             disabled={tool.disabled}
             onClick={tool.onClick}
         >
-            <span className="grid size-3.5 shrink-0 place-items-center">{tool.icon}</span>
-            {!iconOnly ? <span className="inline-flex h-4 items-center whitespace-nowrap text-[var(--fs-label)] font-medium leading-none">{tool.label}</span> : null}
+            <span className="grid size-[15px] shrink-0 place-items-center">{tool.icon}</span>
+            {!iconOnly ? <span className="inline-flex h-4 items-center whitespace-nowrap text-[12px] font-medium leading-none tracking-tight">{tool.label}</span> : null}
         </button>
         </Tooltip>
     );
@@ -370,7 +397,7 @@ function compareToolbarTools(left: ToolbarTool, right: ToolbarTool) {
     return left.order - right.order;
 }
 
-function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChange, placement = "top", iconOnly = false, split }: { menuId: string; label: string; icon: ReactNode; tools: ToolbarTool[]; openMenuId: string | null; onOpenChange: (menuId: string, open: boolean) => void; placement?: "top" | "topRight"; iconOnly?: boolean; split?: { node: CanvasNodeData; onSplit: (node: CanvasNodeData, params: ImageSplitParams) => void } }) {
+function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChange, placement = "top", iconOnly = false, split }: { menuId: string; label: string; icon: ReactNode; tools: ToolbarTool[]; openMenuId: string | null; onOpenChange: (menuId: string, open: boolean) => void; placement?: "top" | "topRight" | "bottom" | "bottomRight"; iconOnly?: boolean; split?: { node: CanvasNodeData; onSplit: (node: CanvasNodeData, params: ImageSplitParams) => void } }) {
     const open = openMenuId === menuId;
     const triggerRef = useRef<HTMLButtonElement>(null);
     const [splitPanelOpen, setSplitPanelOpen] = useState(false);
@@ -426,10 +453,12 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
         }),
     }));
     return (
-        <Dropdown
+        <CanvasDropdown
             open={open}
             trigger={["click"]}
             placement={placement}
+            autoAdjustOverflow
+            getPopupContainer={() => document.body}
             onOpenChange={(nextOpen) => {
                 if (!nextOpen && (keepSplitMenuOpenRef.current || document.querySelector(".canvas-node-toolbar-menu-split:hover, .canvas-grid-split-picker:hover"))) {
                     keepSplitMenuOpenRef.current = false;
@@ -438,6 +467,7 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
                 onOpenChange(menuId, nextOpen);
                 if (!nextOpen) setSplitPanelOpen(false);
             }}
+            overlayClassName="sg-menu canvas-node-toolbar-menu-dropdown"
             menu={{ items }}
             autoFocus
             popupRender={(menu) => (
@@ -473,14 +503,14 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
                 </div>
             )}
         >
+            <Tooltip title={label} placement={placement.startsWith("bottom") ? "bottom" : "top"} mouseEnterDelay={0.15}>
             <button
                 ref={triggerRef}
                 type="button"
-                className={`aceternity-dock-command is-labeled pointer-events-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[var(--dock-item-radius)] px-2.5 outline-none ${open ? "is-active" : ""}`}
+                className={`aceternity-dock-command pointer-events-auto inline-flex shrink-0 items-center justify-center outline-none ${iconOnly ? "" : "is-labeled gap-1.5 px-2"} ${open ? "is-active" : ""}`}
                 aria-label={label}
                 aria-expanded={open}
                 aria-haspopup="menu"
-                title={label}
                 onKeyDown={(event) => {
                     if (event.key === "ArrowDown" && open) {
                         event.preventDefault();
@@ -493,10 +523,11 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
                     }
                 }}
             >
-                <span className="grid size-3.5 shrink-0 place-items-center">{icon}</span>
-                {!iconOnly ? <><span className="inline-flex h-4 items-center whitespace-nowrap text-[var(--fs-label)] font-medium leading-none">{label}</span><ChevronDown className="size-3 shrink-0 opacity-55" /></> : null}
+                <span className="grid size-[15px] shrink-0 place-items-center">{icon}</span>
+                {!iconOnly ? <><span className="inline-flex h-4 items-center whitespace-nowrap text-[12px] font-medium leading-none tracking-tight">{label}</span><ChevronDown className="size-3 shrink-0 opacity-55" strokeWidth={1.55} /></> : null}
             </button>
-        </Dropdown>
+            </Tooltip>
+        </CanvasDropdown>
     );
 }
 

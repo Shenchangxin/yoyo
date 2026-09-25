@@ -6,6 +6,7 @@ import type { InsertAssetPayload } from "./asset-picker-modal";
 import { useDeferredValue, useState } from "react";
 import { Button, Grid } from "antd";
 import { Home, PanelLeftClose, PanelLeftOpen, Layers, Images, ListChecks, History, X } from "lucide-react";
+import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
 import { AppDrawer } from "@yingce/components/ui/product/app-drawer";
 import { searchCanvasNodes } from "@yingce/lib/canvas/canvas-node-search";
 import { useEffectiveConfig } from "@yingce/stores/use-config-store";
@@ -54,8 +55,8 @@ export function CanvasWorkspacePanel({
     const tasks = useCanvasWorkspaceTasks(projectId, open && (tab === "tasks" || history));
     const content = (
         <div className="canvas-workspace-panel flex h-full min-h-0 flex-col bg-background text-foreground" data-canvas-no-zoom data-canvas-wheel-scroll onWheel={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-            <header className="flex items-center justify-between border-b border-border p-3">
-                <strong>工作区</strong>
+            <header className="flex h-8 items-center justify-between border-b border-border px-3">
+                <strong className="sg-eyebrow m-0">工作区</strong>
                 <button aria-label="关闭工作区" onClick={onClose}>
                     <X className="size-4" />
                 </button>
@@ -95,7 +96,15 @@ export function CanvasWorkspacePanel({
     return (
         <>
             <nav className="canvas-workspace-rail" style={{ ...canvasDockStyle(theme), boxShadow: "none" }} aria-label="画布左侧菜单" data-canvas-no-zoom onWheel={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                <Link to="/" className="canvas-workspace-rail-button" aria-label="主页" title="返回主页">
+                <Link
+                    to="/"
+                    className="canvas-workspace-rail-button"
+                    aria-label="主页"
+                    title="返回主页"
+                    onClick={(event) => {
+                        if (requestHostNavigation("/")) event.preventDefault();
+                    }}
+                >
                     <Home />
                     <span>主页</span>
                 </Link>

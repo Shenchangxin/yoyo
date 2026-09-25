@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { useEffect, useRef, useState } from "react";
-import { Dropdown } from "antd";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Camera, LoaderCircle, Wrench, X } from "lucide-react";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { listTools, type ToolScope, type ToolSummary } from "@yingce/services/api/tools";
 import { FEED_TABS, SUB_TAB_TAGS, toAbsoluteUrl } from "@yingce/lib/canvas/canvas-tool-presentation";
@@ -70,7 +71,7 @@ export function CanvasChooseMotionPicker({
     };
 
     return (
-        <Dropdown
+        <CanvasDropdown
             open={actualOpen}
             onOpenChange={setOpen}
             trigger={["click"]}
@@ -164,7 +165,7 @@ export function CanvasChooseMotionPicker({
                     </button>
                 ) : null}
             </div>
-        </Dropdown>
+        </CanvasDropdown>
     );
 }
 

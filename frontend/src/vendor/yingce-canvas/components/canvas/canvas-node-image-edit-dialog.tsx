@@ -1,10 +1,11 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import { Button, Input, Modal } from "antd";
+import { Button, Input } from "antd";
 import { Settings2, X } from "lucide-react";
 import { ModelPicker } from "@yingce/components/model-picker";
 import type { AiConfig } from "@yingce/stores/use-config-store";
 import { defaultImageParamsForModel } from "@yingce/lib/model-selection";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageEditPayload = { prompt: string; generationConfig?: Partial<Pick<AiConfig, "model" | "imageModel" | "size" | "quality">> };
 
@@ -15,6 +16,7 @@ export function CanvasNodeImageEditDialog({
     preset,
     onClose,
     onConfirm,
+    embedded,
 }: {
     dataUrl: string;
     open: boolean;
@@ -22,6 +24,7 @@ export function CanvasNodeImageEditDialog({
     onConfirm: (payload: CanvasImageEditPayload) => void;
     config: AiConfig;
     preset?: "remove-background" | null;
+    embedded?: boolean;
 }) {
     const [prompt, setPrompt] = useState(preset === "remove-background" ? "移除图片背景，保留主体完整轮廓、细节和边缘，输出透明背景。" : "");
     const [generationConfig, setGenerationConfig] = useState<AiConfig>(config);
@@ -32,7 +35,7 @@ export function CanvasNodeImageEditDialog({
     }, [config, open, dataUrl]);
 
     return (
-        <Modal open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} centered destroyOnHidden width={860} title={preset === "remove-background" ? "去除背景" : "图片编辑"}>
+        <ImageEditorShell title={preset === "remove-background" ? "去除背景" : "图片编辑"} open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_300px]">
                 <div className="grid min-h-[320px] place-items-center overflow-hidden rounded-xl bg-black/5 p-3 dark:bg-white/[0.04]">
                     <img src={dataUrl} alt="待编辑图片" className="max-h-[58vh] max-w-full object-contain" draggable={false} />
@@ -68,6 +71,6 @@ export function CanvasNodeImageEditDialog({
                     </div>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }

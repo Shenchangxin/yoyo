@@ -1,11 +1,13 @@
 // @ts-nocheck
-import { App, Button, ColorPicker, Dropdown, Input, InputNumber, Select, Slider } from "antd";
+import { App, Button, ColorPicker, Input, InputNumber, Select, Slider } from "antd";
 import { Switch } from "@yingce/components/ui/base/switch";
 import type { MenuProps } from "antd";
 import { Box, BoxSelect, Camera, Circle, Cuboid, FileUp, Focus, Image as ImageIcon, LampDesk, Lightbulb, Plus, Redo2, RotateCcw, Save, Trash2, Undo2, UserRound, Video, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { nanoid } from "nanoid";
 import { Euler, Quaternion } from "three";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import type { AnimationClip } from "three";
 
 import { CanvasDirectorOnboarding } from "@yingce/components/canvas/director/canvas-director-onboarding";
@@ -913,7 +915,7 @@ function SceneRow({ active, icon, label, onClick, onDelete }: { active?: boolean
     </div>;
 }
 function AddMenuButton({ label, items }: { label: string; items: MenuProps["items"] }) {
-    return <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items }}><button type="button" aria-label={label} title={label} className="grid size-8 shrink-0 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10"><Plus className="size-3.5" /></button></Dropdown>;
+    return <CanvasDropdown trigger={["click"]} placement="bottomRight" menu={{ items }}><button type="button" aria-label={label} title={label} className="grid size-8 shrink-0 place-items-center rounded-md transition hover:bg-black/5 dark:hover:bg-white/10"><Plus className="size-3.5" /></button></CanvasDropdown>;
 }
 function QuickAdd({ label, icon, onClick }: { label: string; icon: ReactElement; onClick: () => void }) { return <button type="button" className="flex h-8 items-center gap-1.5 border px-2 text-[var(--fs-tiny)] transition hover:bg-black/5 dark:hover:bg-white/5" onClick={(event) => { onClick(); releaseDirectorFocusAfterPointer(event); }}><span className="[&>svg]:size-3.5">{icon}</span><span className="truncate">{label}</span></button>; }
 function IconButton({ label, disabled, children, onClick }: { label: string; disabled?: boolean; children: ReactNode; onClick: () => void }) { return <button type="button" aria-label={label} title={label} disabled={disabled} className="grid size-8 shrink-0 place-items-center rounded-md transition hover:bg-black/5 disabled:opacity-30 dark:hover:bg-white/10" onClick={(event) => { onClick(); releaseDirectorFocusAfterPointer(event); }}>{children}</button>; }

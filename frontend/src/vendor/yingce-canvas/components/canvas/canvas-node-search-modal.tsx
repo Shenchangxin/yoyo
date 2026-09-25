@@ -42,13 +42,16 @@ export function CanvasNodeSearchModal({ open, nodes, onClose, onFocus }: { open:
 
     return (
         <Modal
-            title="搜索画布节点"
+            title={null}
+            closable={false}
             open={open}
             footer={null}
-            width="min(760px, calc(100vw - 32px))"
+            width="min(520px, calc(100vw - 32px))"
             onCancel={onClose}
             afterClose={() => { setQuery(""); setActiveIndex(0); }}
-            styles={{ body: { paddingTop: 8 } }}
+            className="sg-command-palette"
+            rootClassName="sg-command-palette-root"
+            styles={{ body: { padding: 8 } }}
             centered
         >
             <Input

@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
-import { Button, Dropdown, Input } from "antd";
+import { Button, Input } from "antd";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, History, LoaderCircle, MessageSquarePlus, MoveDiagonal2, RotateCcw, Settings2, ShieldCheck, Trash2, Clapperboard, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, Ellipsis, History, LoaderCircle, MessageSquare, MessageSquarePlus, MoveDiagonal2, RotateCcw, Settings2, ShieldCheck, Trash2, Clapperboard, X } from "lucide-react";
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { saveAs } from "file-saver";
 import { buildAgentDebugExport } from "@yingce/lib/canvas/agent-debug-export";
 import { markdownPlainText } from "@yingce/lib/markdown-plain-text";
@@ -11,7 +12,6 @@ import { agentPlanVisible, latestAgentPlanItems, pendingAgentQuestion } from "@y
 import { nanoid } from "nanoid";
 
 import { ModelPicker } from "@yingce/components/model-picker";
-import { FluidOrb } from "@yingce/components/ui/fluid-orb";
 import { cn } from "@yingce/lib/utils";
 import { modelCapabilityConfigFor } from "@yingce/lib/model-capabilities";
 import type { CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource-references";
@@ -956,8 +956,8 @@ function AgentLauncher({ theme, statusColor, approvalPending, reducedMotion, onO
         window.addEventListener("resize", resize);
         return () => window.removeEventListener("resize", resize);
     }, []);
-    const height = live ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / 0.75)) : 76;
-    const width = live ? Math.round(height * 0.75) : 76;
+    const height = live ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / 0.75)) : 32;
+    const width = live ? Math.round(height * 0.75) : 32;
     const { position, dragging, handlers } = useAgentLauncherPosition(onOpen, width, height);
     return (
         <motion.button
@@ -968,11 +968,11 @@ function AgentLauncher({ theme, statusColor, approvalPending, reducedMotion, onO
             style={{ ...position, width, height, color: theme.node.text, "--canvas-agent-launcher-shadow": theme.spatial.shadow } as CSSProperties}
             data-canvas-no-zoom
             {...handlers}
-            whileHover={reducedMotion || dragging ? undefined : { scale: 1.035 }}
-            whileTap={reducedMotion || dragging ? undefined : { scale: 0.96 }}
+            whileHover={undefined}
+            whileTap={reducedMotion || dragging ? undefined : { scale: 0.97 }}
             transition={{ duration: reducedMotion ? 0 : 0.18 }}
         >
-            {live ? <Live2DAvatar url={live2DModelURL(appearance.live2dResourceId, appearance.live2dEntry)} width={width} height={height} reducedMotion={reducedMotion} fallback={<FluidOrb size={62} color="#7164f6" />} /> : <FluidOrb size={62} color="#7164f6" />}
+            {live ? <Live2DAvatar url={live2DModelURL(appearance.live2dResourceId, appearance.live2dEntry)} width={width} height={height} reducedMotion={reducedMotion} fallback={<MessageSquare className="size-4" />} /> : <MessageSquare className="size-4" />}
             {appearance.launcherLabel ? <span className="canvas-agent-launcher-label">{appearance.launcherLabel}</span> : null}
             <span className={cn("canvas-agent-launcher-status", approvalPending && "is-pending")} style={{ "--canvas-agent-status-color": statusColor } as CSSProperties} />
             {approvalPending ? <span className="canvas-agent-launcher-badge">待审批</span> : null}
@@ -995,12 +995,21 @@ function AgentHeader({ theme, hasMessages, statusLabel, statusColor, nodeCount, 
                 <div className="agent-panel-context">{appearance.agentName} · 当前画布 {nodeCount} 个节点</div>
             </div>
             <div className="agent-header-actions flex items-center gap-0.5" style={{ color: theme.node.muted }}>
-                <Button type="text" shape="circle" icon={<RotateCcw className="size-4" />} onClick={onResetLayout} aria-label="恢复 Agent 紧凑窗口" title="恢复默认窗口大小和位置" className="hidden sm:inline-flex" />
-                <Button type="text" shape="circle" icon={<Download className="size-4" />} loading={exporting} onClick={onExport} aria-label="导出 Agent 调试记录" title="导出对话、工具参数、审批和错误（分享前请检查隐私）" />
-                <Button type="text" shape="circle" icon={<MessageSquarePlus className="size-4" />} onClick={onNew} aria-label="新建对话" title="新建对话" />
-                <Button type="text" shape="circle" icon={<History className="size-4" />} onClick={onHistory} aria-label="历史对话" title="历史对话" />
-                <Button type="text" shape="circle" icon={<Settings2 className="size-4" />} onClick={onSettings} aria-label="Agent 设置" title="Agent 设置" />
-                <Button type="text" shape="circle" icon={<X className="size-4" />} onClick={onCollapse} aria-label="收起 Agent" title="收起" />
+                <CanvasDropdown
+                    trigger={["click"]}
+                    menu={{
+                        items: [
+                            { key: "new", label: "新建对话", icon: <MessageSquarePlus className="size-3.5" />, onClick: onNew },
+                            { key: "history", label: "历史对话", icon: <History className="size-3.5" />, onClick: onHistory },
+                            { key: "settings", label: "Agent 设置", icon: <Settings2 className="size-3.5" />, onClick: onSettings },
+                            { key: "export", label: exporting ? "正在导出…" : "导出调试记录", icon: <Download className="size-3.5" />, disabled: exporting, onClick: onExport },
+                            { key: "reset", label: "恢复默认窗口", icon: <RotateCcw className="size-3.5" />, onClick: onResetLayout },
+                        ],
+                    }}
+                >
+                    <Button type="text" className="sg-ghost" icon={<Ellipsis className="size-4" />} aria-label="更多 Agent 操作" title="更多" />
+                </CanvasDropdown>
+                <Button type="text" className="sg-ghost" icon={<X className="size-4" />} onClick={onCollapse} aria-label="收起 Agent" title="收起" />
             </div>
         </header>
     );
@@ -1167,12 +1176,12 @@ function ComposerControls({
                 showOptionPrices
                 placeholder="选择文本模型"
             />
-            {reasoningSupported ? <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: reasoningMenuItems(reasoningMode, onReasoningModeChange) }}>
+            {reasoningSupported ? <CanvasDropdown trigger={["click"]} placement="topLeft" menu={{ items: reasoningMenuItems(reasoningMode, onReasoningModeChange) }}>
                 <button type="button" aria-label="选择 Agent 推理模式" title="推理模式：只用于规划和工具选择" className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25" style={{ color: reasoningMode === "off" ? theme.node.muted : theme.accent.primary, background: reasoningMode === "off" ? "transparent" : theme.node.fill }}>
                     <Clapperboard className="size-3.5" />{reasoningModeLabel(reasoningMode)}
                 </button>
-            </Dropdown> : null}
-            <Dropdown trigger={["click"]} placement="topLeft" menu={{ items: agentPermissionMenuItems(permissionMode, onPermissionChange) }}>
+            </CanvasDropdown> : null}
+            <CanvasDropdown trigger={["click"]} placement="topLeft" menu={{ items: agentPermissionMenuItems(permissionMode, onPermissionChange) }}>
                 <button
                     type="button"
                     className="grid size-8 shrink-0 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"
@@ -1182,7 +1191,7 @@ function ComposerControls({
                 >
                     <PermissionIcon className="size-3.5" style={{ color: permissionVisual.color }} aria-hidden="true" />
                 </button>
-            </Dropdown>
+            </CanvasDropdown>
             <button
                 type="button"
                 className="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/25"

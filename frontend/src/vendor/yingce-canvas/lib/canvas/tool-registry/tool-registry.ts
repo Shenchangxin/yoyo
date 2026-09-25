@@ -8,55 +8,74 @@ import { listCreatableNodeDefinitions } from "@yingce/lib/canvas/node-registry";
 
 import type { AddNodeMenuCommand, AddNodeMenuContext, NodeToolbarGroup, ToolCategory, ToolContext, ToolDefinition, ToolbarId, ToolbarPrefs } from "./tool-definition";
 
-/** 模块级注册表 */
+/** 模块级注册表。Vite HMR 会重复执行 definition 模块，注册必须按 id 替换而不是追加。 */
 const registry = new Map<ToolbarId, ToolDefinition[]>();
 const addNodeMenuRegistry: AddNodeMenuCommand[] = [];
+
+function uniqueById<T extends { id: string }>(items: T[], mode: "first" | "last" = "last"): T[] {
+    const map = new Map<string, T>();
+    for (const item of items) {
+        if (mode === "first" && map.has(item.id)) continue;
+        map.set(item.id, item);
+    }
+    return [...map.values()];
+}
+
+function sortByDefaultOrder<T extends { defaultOrder?: number }>(items: T[]): T[] {
+    return [...items].sort((a, b) => (a.defaultOrder ?? Number.MAX_SAFE_INTEGER) - (b.defaultOrder ?? Number.MAX_SAFE_INTEGER));
+}
+
+function upsertById<T extends { id: string }>(list: T[], item: T): T[] {
+    const next = [...list];
+    const index = next.findIndex((entry) => entry.id === item.id);
+    if (index >= 0) next[index] = item;
+    else next.push(item);
+    return next;
+}
 
 /** 批量注册工具到指定工具栏 */
 export function registerToolbarTools(tools: ToolDefinition[]) {
     for (const tool of tools) {
-        const list = registry.get(tool.toolbar) ?? [];
-        list.push(tool);
-        registry.set(tool.toolbar, list);
+        registry.set(tool.toolbar, upsertById(registry.get(tool.toolbar) ?? [], tool));
     }
 }
 
 /** 注册添加节点菜单命令 */
 export function registerAddNodeMenuCommands(commands: AddNodeMenuCommand[]) {
-    addNodeMenuRegistry.push(...commands);
+    let next = addNodeMenuRegistry;
+    for (const command of commands) next = upsertById(next, command);
+    addNodeMenuRegistry.length = 0;
+    addNodeMenuRegistry.push(...next);
 }
 
 /** 获取某工具栏全部已注册工具（按 defaultOrder 升序） */
 export function getToolbarTools(toolbar: ToolbarId): ToolDefinition[] {
-    const tools = registry.get(toolbar) ?? [];
-    return [...tools].sort((a, b) => a.defaultOrder - b.defaultOrder);
+    return sortByDefaultOrder(uniqueById(registry.get(toolbar) ?? []));
 }
 
 /** 获取添加节点菜单全部命令（按 defaultOrder 升序） */
 export function getAddNodeMenuCommands(): AddNodeMenuCommand[] {
-    return [...addNodeMenuRegistry].sort((a, b) => a.defaultOrder - b.defaultOrder);
+    return sortByDefaultOrder(uniqueById(addNodeMenuRegistry));
 }
 
 /**
- * 将已注册的插件画布节点转换为添加菜单命令。
- * 这部分按需生成，避免远程/延迟加载的插件必须在工具定义模块初始化前完成注册。
+ * 将已注册、且创建菜单可见的画布节点转为命令。
+ * 内置 curated 命令优先；此处只补齐 Markdown / 图表等扩展节点和插件节点。
  */
-function getPluginNodeMenuCommands(): AddNodeMenuCommand[] {
-    return listCreatableNodeDefinitions()
-        .filter((definition) => Boolean(definition.plugin))
-        .map((definition, index) => {
-            const pluginId = definition.plugin!.pluginId;
-            const FallbackIcon = definition.type === ART_CRITIQUE_NODE_TYPE ? ScanSearch : Settings2;
-            return {
-                id: definition.type,
-                label: definition.label,
-                icon: definition.icon || createElement(FallbackIcon, { "aria-hidden": true }),
-                section: "node",
-                defaultOrder: 1000 + index,
-                applicable: (ctx: AddNodeMenuContext) => !ctx.enabledPluginIds || ctx.enabledPluginIds.has(pluginId),
-                run: (ctx: AddNodeMenuContext) => ctx.handlers.onAddExtensionNode(definition.type),
-            };
-        });
+function getCreatableNodeMenuCommands(): AddNodeMenuCommand[] {
+    return listCreatableNodeDefinitions().map((definition, index) => {
+        const pluginId = definition.plugin?.pluginId;
+        const FallbackIcon = definition.type === ART_CRITIQUE_NODE_TYPE ? ScanSearch : Settings2;
+        return {
+            id: definition.type,
+            label: definition.label,
+            icon: definition.icon || createElement(FallbackIcon, { "aria-hidden": true }),
+            section: "node",
+            defaultOrder: pluginId ? 1000 + index : 200 + index,
+            applicable: pluginId ? (ctx: AddNodeMenuContext) => !ctx.enabledPluginIds || ctx.enabledPluginIds.has(pluginId) : undefined,
+            run: (ctx: AddNodeMenuContext) => ctx.handlers.onAddExtensionNode(definition.type),
+        };
+    });
 }
 
 /** 默认偏好：全部工具按 defaultOrder 排列；defaultVisible 为 false 的进入 hidden */
@@ -84,7 +103,7 @@ export function resolveToolbarEntries(toolbar: ToolbarId, ctx: ToolContext, pref
  */
 export function resolveToolbarTools(toolbar: ToolbarId, ctx: ToolContext, prefs: ToolbarPrefs | null): ToolDefinition[] {
     const allTools = getToolbarTools(toolbar);
-    const applicableTools = allTools.filter((tool) => !tool.applicable || tool.applicable(ctx));
+    const applicableTools = uniqueById(allTools.filter((tool) => !tool.applicable || tool.applicable(ctx)));
     const effectivePrefs = prefs ?? defaultToolbarPrefs(toolbar);
     const hiddenSet = new Set(effectivePrefs.hidden);
     const visibleTools = applicableTools.filter((tool) => !hiddenSet.has(tool.id));
@@ -93,7 +112,7 @@ export function resolveToolbarTools(toolbar: ToolbarId, ctx: ToolContext, prefs:
         const ai = orderIndex.has(a.id) ? orderIndex.get(a.id)! : Number.MAX_SAFE_INTEGER;
         const bi = orderIndex.has(b.id) ? orderIndex.get(b.id)! : Number.MAX_SAFE_INTEGER;
         if (ai !== bi) return ai - bi;
-        return a.defaultOrder - b.defaultOrder;
+        return (a.defaultOrder ?? Number.MAX_SAFE_INTEGER) - (b.defaultOrder ?? Number.MAX_SAFE_INTEGER);
     });
 }
 
@@ -106,9 +125,10 @@ export function resolveNodeToolbarPlacement(tool: ToolDefinition, ctx: ToolConte
     };
 }
 
-/** 解析添加节点菜单命令——合并插件节点后按 applicable 过滤并排序。 */
+/** 解析添加节点菜单命令——合并插件/扩展节点后按 applicable 过滤并排序。 */
 export function resolveAddNodeMenuCommands(ctx: AddNodeMenuContext): AddNodeMenuCommand[] {
-    return [...getAddNodeMenuCommands(), ...getPluginNodeMenuCommands()].filter((command) => !command.applicable || command.applicable(ctx)).sort((a, b) => a.defaultOrder - b.defaultOrder);
+    const merged = uniqueById([...getAddNodeMenuCommands(), ...getCreatableNodeMenuCommands()], "first");
+    return sortByDefaultOrder(merged.filter((command) => !command.applicable || command.applicable(ctx)));
 }
 
 /**
@@ -119,7 +139,7 @@ function buildEntriesWithSeparators(tools: ToolDefinition[], ctx: ToolContext): 
     const entries: FloatingDockEntry[] = [];
     let prevCategory: ToolCategory | null = null;
     let separatorIndex = 0;
-    for (const tool of tools) {
+    for (const tool of uniqueById(tools)) {
         if (prevCategory !== null && prevCategory !== tool.category) {
             entries.push({ kind: "separator", id: `sep-${tool.toolbar}-${separatorIndex}` });
             separatorIndex += 1;

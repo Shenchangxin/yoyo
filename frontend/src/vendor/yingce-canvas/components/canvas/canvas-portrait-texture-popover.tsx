@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Popover } from "antd";
+import { CanvasPopover } from "@yingce/components/ui/canvas-overlay";
 import { SlidersHorizontal } from "lucide-react";
 
 import { canvasThemes } from "@yingce/lib/canvas-theme";
@@ -65,7 +65,7 @@ export function CanvasPortraitTexturePopover({ value, placement = "topLeft", onC
     );
 
     return (
-        <Popover
+        <CanvasPopover
             trigger="click"
             placement={placement}
             arrow={false}
@@ -81,6 +81,6 @@ export function CanvasPortraitTexturePopover({ value, placement = "topLeft", onC
                 <SlidersHorizontal className="size-3 shrink-0" />
                 <span className="truncate text-[var(--fs-tiny)] font-medium">质感调整</span>
             </button>
-        </Popover>
+        </CanvasPopover>
     );
 }

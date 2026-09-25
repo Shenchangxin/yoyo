@@ -7,6 +7,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router";
+import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
 import { loadAssetsForUse } from "@yingce/services/user-data-sync";
 import { canvasAssetHandoffIds } from "@yingce/lib/canvas/canvas-asset-handoff";
 import { useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
@@ -33,7 +34,6 @@ import { useCanvasThemeStore, useCanvasThemeScope } from "@yingce/stores/canvas/
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { App, Button } from "antd";
 import { ArrowLeftRight } from "lucide-react";
-import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { getNodeSpec } from "@yingce/constant/canvas";
 import { CanvasConfigComposer } from "@yingce/components/canvas/canvas-config-composer";
 import { CanvasConfigNodePanel } from "@yingce/components/canvas/canvas-config-node-panel";
@@ -2538,7 +2538,14 @@ function InfiniteCanvasPage() {
             <main className="flex h-full flex-col items-center justify-center gap-4">
                 <p role="alert">{loadError}</p>
                 <Button onClick={retryLoad}>重新加载</Button>
-                <Link to="/canvas">返回画布库</Link>
+                <Link
+                    to="/canvas"
+                    onClick={(event) => {
+                        if (requestHostNavigation("/canvas")) event.preventDefault();
+                    }}
+                >
+                    返回画布库
+                </Link>
             </main>
         );
     if (!projectLoaded) return <CanvasRefreshShell />;
@@ -2639,7 +2646,7 @@ function InfiniteCanvasPage() {
                         <CanvasDirectorTemplateModal open={Boolean(directorTemplateRequest)} onClose={() => setDirectorTemplateRequest(null)} onSelect={(templateId) => createDirectorShot(templateId, directorTemplateRequest?.position)} />
 
                         <div className="relative flex min-h-0 min-w-0 flex-1">
-                            <div className="relative min-w-0 flex-1 overflow-hidden">
+                            <div className="relative min-w-0 flex-1 overflow-hidden" data-canvas-stage="" data-canvas-focus-mode={focusMode ? "true" : undefined}>
                                 <InfiniteCanvas
                                     interactive={!versions.preview}
                                     containerRef={containerRef}
@@ -2852,7 +2859,16 @@ function InfiniteCanvasPage() {
                         ) : null}
 
                         {lightingNode?.metadata?.content ? (
-                            <AppModal flush open centered title={null} closable={false} footer={null} width={720} onCancel={() => setLightingNodeId(null)}>
+                            <CanvasNodePanelOverlay
+                                node={lightingNode}
+                                viewport={viewport}
+                                containerRef={containerRef}
+                                panelWidth={640}
+                                panelHeight={540}
+                                allowOverflow
+                                dragOffset={dragPreview?.nodeIds.has(lightingNode.id) ? { x: dragPreview.x, y: dragPreview.y } : null}
+                                isDragging={isNodeDragging && Boolean(dragPreview?.nodeIds.has(lightingNode.id))}
+                            >
                                 <CanvasNodeLightingPanel
                                     dataUrl={lightingNode.metadata.content}
                                     onClose={() => setLightingNodeId(null)}
@@ -2860,7 +2876,7 @@ function InfiniteCanvasPage() {
                                         generateLightingNode(lightingNode, options, prompt);
                                     }}
                                 />
-                            </AppModal>
+                            </CanvasNodePanelOverlay>
                         ) : null}
 
                         {emotionNode?.metadata?.content && !isCanvasNodeMoving ? (
@@ -3018,9 +3034,10 @@ function InfiniteCanvasPage() {
 
                         {!focusMode ? (
                             <CanvasOverlayLayerContainer
-                                overlayId="asset-tray"
-                                fallbackZIndex="var(--z-panel)"
-                                className="absolute bottom-[calc(var(--canvas-inset-y)+var(--space-16))] left-[var(--canvas-inset-x)] flex items-end gap-2 lg:bottom-[var(--canvas-inset-y)]"
+                                overlayId="zoom-controls"
+                                kind="chrome"
+                                fallbackZIndex="var(--z-toolbar)"
+                                className="absolute bottom-[var(--canvas-inset-y)] left-[var(--canvas-inset-x)] flex items-end gap-2"
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onWheel={(event) => event.stopPropagation()}

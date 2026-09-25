@@ -2,7 +2,9 @@
 import { Check, Clapperboard, Download, FileText, Frame, HardDrive, Image as ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Settings2, Trash2, Video, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { App, Dropdown, Input } from "antd";
+import { App, Input } from "antd";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { useCanvasStore, type CanvasProject } from "@yingce/stores/canvas/use-canvas-store";
 import { useCanvasUiStore } from "@yingce/stores/canvas/use-canvas-ui-store";
@@ -123,7 +125,7 @@ export function CanvasProjectCard({ project, projectName, variant = "library", r
                             <button type="button" onClick={() => startEditing(project.id, project.title)} aria-label={`重命名 ${project.title}`} title="重命名">
                                 <Pencil className="size-3.5" />
                             </button>
-                            <Dropdown
+                            <CanvasDropdown
                                 trigger={["click"]}
                                 menu={{
                                     onClick: ({ domEvent }) => domEvent.stopPropagation(),
@@ -137,7 +139,7 @@ export function CanvasProjectCard({ project, projectName, variant = "library", r
                                 <button type="button" aria-label={`${project.title} 画布操作`} title="更多操作">
                                     <MoreHorizontal className="size-4" />
                                 </button>
-                            </Dropdown>
+                            </CanvasDropdown>
                         </div>
                     ) : null}
                 </div>

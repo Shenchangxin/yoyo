@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { BookOpen, ChartColumn, Clapperboard, Code, Columns2, FileText, Globe, Image as ImageIcon, Music2, PanelTop, Palette, Pencil, RefreshCw, Settings2, Shapes, Table2, Type, Video } from "lucide-react";
+import { ArrowLeftRight, BookOpen, ChartColumn, Clapperboard, Code, Columns2, FileText, Film, Globe, Image as ImageIcon, Music2, PanelTop, PencilLine, Shapes, SlidersHorizontal, SwatchBook, Table2, Type } from "lucide-react";
 
 import { NODE_SPECS } from "@yingce/constant/canvas";
 import { MEDIA_NODE_MIN_SIZE } from "@yingce/lib/canvas/canvas-node-size";
@@ -22,7 +22,7 @@ const DEFAULT_MIN_SIZE = { width: 220, height: 160 } as const;
 const BUILTIN_NODE_TRAITS = {
     [CanvasNodeType.Image]: {
         label: "图片",
-        icon: <ImageIcon />,
+        icon: <ImageIcon strokeWidth={1.55} />,
         minSize: MEDIA_NODE_MIN_SIZE,
         keepAspectRatio: (node: CanvasNodeData) => !node.metadata?.freeResize,
         showInCreateMenu: true,
@@ -32,7 +32,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Text]: {
         label: "文本",
-        icon: <Type />,
+        icon: <Type strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         resourceKind: (node: CanvasNodeData) => (node.metadata?.content || node.metadata?.prompt ? "text" : null),
@@ -41,7 +41,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Drawing]: {
         label: "绘图",
-        icon: <Pencil />,
+        icon: <PencilLine strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         // 绘图产出的是图像，所以作为素材与输入都按图片计。
@@ -50,7 +50,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Script]: {
         label: "分镜脚本",
-        icon: <Clapperboard />,
+        icon: <Clapperboard strokeWidth={1.55} />,
         // 分镜脚本的表格布局需要更宽的下限；高度仍由内容动态撑开（见 canvas-node.tsx）。
         minSize: { width: 800, height: DEFAULT_MIN_SIZE.height },
         showInCreateMenu: true,
@@ -59,7 +59,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Skill]: {
         label: "技能",
-        icon: <BookOpen />,
+        icon: <BookOpen strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         // 技能节点由技能库插入，不占创建菜单格位。
         showInCreateMenu: false,
@@ -69,7 +69,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Config]: {
         label: "生成配置",
-        icon: <Settings2 />,
+        icon: <SlidersHorizontal strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         // 生成配置由连线时自动创建。
         showInCreateMenu: false,
@@ -79,7 +79,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Video]: {
         label: "视频",
-        icon: <Video />,
+        icon: <Film strokeWidth={1.55} />,
         minSize: MEDIA_NODE_MIN_SIZE,
         keepAspectRatio: () => true,
         showInCreateMenu: true,
@@ -89,7 +89,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Audio]: {
         label: "音频",
-        icon: <Music2 />,
+        icon: <Music2 strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         resourceKind: (node: CanvasNodeData) => (node.metadata?.content ? "audio" : null),
@@ -100,14 +100,14 @@ const BUILTIN_NODE_TRAITS = {
         label: "背板",
         // 背板在列表里就叫「背板」，不是「背板节点」——显式钉住，避免被 label 派生改写。
         listLabel: "背板",
-        icon: <PanelTop />,
+        icon: <PanelTop strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         // 背板只是视觉容器，既不是素材也不参与计数。
     },
     [CanvasNodeType.Markdown]: {
         label: "Markdown",
-        icon: <FileText />,
+        icon: <FileText strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         // 渲染的是 Markdown 源码，作为素材与输入都按文本计。
@@ -117,7 +117,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Svg]: {
         label: "SVG",
-        icon: <Shapes />,
+        icon: <Shapes strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         // 内容是 SVG 源码，按文本素材计；渲染成图但不产出图片资源。
@@ -126,7 +126,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Html]: {
         label: "HTML",
-        icon: <Code />,
+        icon: <Code strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         resourceKind: (node: CanvasNodeData) => (node.metadata?.content ? "text" : null),
@@ -134,7 +134,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Panorama]: {
         label: "全景",
-        icon: <Globe />,
+        icon: <Globe strokeWidth={1.55} />,
         minSize: MEDIA_NODE_MIN_SIZE,
         showInCreateMenu: true,
         // 查看器：消费上游图片，自身不作为素材被引用，故不设 resourceKind。
@@ -142,7 +142,7 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Compare]: {
         label: "对比",
-        icon: <Columns2 />,
+        icon: <Columns2 strokeWidth={1.55} />,
         minSize: MEDIA_NODE_MIN_SIZE,
         showInCreateMenu: true,
         // 只看不产出：消费两张上游图片，自身不作为素材。
@@ -150,16 +150,16 @@ const BUILTIN_NODE_TRAITS = {
     },
     [CanvasNodeType.Chart]: {
         label: "图表",
-        icon: <ChartColumn />,
+        icon: <ChartColumn strokeWidth={1.55} />,
         minSize: DEFAULT_MIN_SIZE,
         showInCreateMenu: true,
         inputKind: "text",
     },
-    [CanvasNodeType.BatchTable]: { label: "批量创作表", icon: <Table2 />, minSize: { width: 1080, height: 420 }, showInCreateMenu: true, acceptsInputKind: "image", inputKind: "text", resourceKind: () => null },
-    [CanvasNodeType.MediaConversion]: { label: "转换", icon: <RefreshCw />, minSize: { width: 400, height: 360 }, showInCreateMenu: true, resourceKind: (node: CanvasNodeData) => { const c = node.metadata?.mediaConversion; return c?.status === "completed" && c.resultStorageKey ? (c.outputKind === "video" ? "video" : "image") : null; }, acceptsInputKind: ["image", "video"], maxInputCount: 1, inputKind: "image" },
+    [CanvasNodeType.BatchTable]: { label: "批量创作表", icon: <Table2 strokeWidth={1.55} />, minSize: { width: 1080, height: 420 }, showInCreateMenu: true, acceptsInputKind: "image", inputKind: "text", resourceKind: () => null },
+    [CanvasNodeType.MediaConversion]: { label: "转换", icon: <ArrowLeftRight strokeWidth={1.55} />, minSize: { width: 400, height: 360 }, showInCreateMenu: true, resourceKind: (node: CanvasNodeData) => { const c = node.metadata?.mediaConversion; return c?.status === "completed" && c.resultStorageKey ? (c.outputKind === "video" ? "video" : "image") : null; }, acceptsInputKind: ["image", "video"], maxInputCount: 1, inputKind: "image" },
     [CanvasNodeType.ColorGrade]: {
         label: "调色",
-        icon: <Palette />,
+        icon: <SwatchBook strokeWidth={1.55} />,
         minSize: MEDIA_NODE_MIN_SIZE,
         showInCreateMenu: true,
         // 无条件返回 image：它的图来自上游而不是自身 metadata，用「有没有 content」判断

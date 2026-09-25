@@ -1,11 +1,12 @@
 // @ts-nocheck
-import { Button, Modal, Slider } from "antd";
+import { Button, Slider } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { Brush, Eraser, Redo2, RotateCcw, Save, Undo2 } from "lucide-react";
 
 import { imageToDataUrl } from "@yingce/services/image-storage";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 type Point = { x: number; y: number };
 type Stroke = { color: string; size: number; erase: boolean; points: Point[] };
@@ -13,12 +14,13 @@ export type CanvasImageAnnotationPayload = { sourceDataUrl: string; annotatedDat
 
 const colors = ["#ef4444", "#f59e0b", "#22c55e", "#14b8a6", "#3b82f6", "#a855f7", "#ffffff", "#111827"];
 
-export function CanvasNodeAnnotationDialog({ image, open, onClose, onConfirm, editMode = false }: {
+export function CanvasNodeAnnotationDialog({ image, open, onClose, onConfirm, editMode = false, embedded }: {
     image: { url: string; storageKey?: string };
     open: boolean;
     onClose: () => void;
     onConfirm: (dataUrl: string | CanvasImageAnnotationPayload) => void;
     editMode?: boolean;
+    embedded?: boolean;
 }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const sourceImageRef = useRef<HTMLImageElement | null>(null);
@@ -107,7 +109,7 @@ export function CanvasNodeAnnotationDialog({ image, open, onClose, onConfirm, ed
     };
 
     return (
-        <Modal title={null} open={open} onCancel={onClose} footer={null} width="min(1120px, calc(100vw - 32px))" centered destroyOnHidden>
+        <ImageEditorShell title={editMode ? "标注编辑" : "标注"} open={open} onClose={onClose} embedded={embedded}>
             <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2" style={{ borderColor: "rgba(127,127,127,.22)" }}>
                     <span className="px-1 text-sm font-semibold">{editMode ? "标注编辑" : "标注"}</span>
@@ -134,7 +136,7 @@ export function CanvasNodeAnnotationDialog({ image, open, onClose, onConfirm, ed
                     ) : <span className="text-sm opacity-50">正在读取图片...</span>}
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }
 

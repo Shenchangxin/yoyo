@@ -7005,7 +7005,8 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     }
 
     .canvas-toolbar-settings-modal {
-        max-width: calc(100vw - var(--space-8));
+        width: min(380px, calc(100vw - 32px)) !important;
+        max-width: min(380px, calc(100vw - 32px)) !important;
     }
 
     .canvas-toolbar-settings-modal .ant-modal-container,
@@ -7029,25 +7030,22 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
         padding: 0 !important;
     }
 
-    .canvas-toolbar-settings-card {
-        background: var(--cn-spatial-surface);
+    .canvas-toolbar-settings-row {
+        background: transparent;
         transition: background-color var(--motion-dur-fast) var(--motion-ease-out), opacity var(--motion-dur-fast) var(--motion-ease-out);
     }
 
-    .canvas-toolbar-settings-card:hover {
-        background: color-mix(in srgb, var(--cn-spatial-surface) 72%, var(--cn-spatial-elevated));
+    .canvas-toolbar-settings-row:hover {
+        background: color-mix(in srgb, var(--foreground) 5%, transparent);
     }
 
-    .canvas-toolbar-settings-card.is-hidden {
-        background: color-mix(in srgb, var(--cn-spatial-surface) 52%, transparent);
+    .canvas-toolbar-settings-row.is-hidden {
+        opacity: 0.46;
     }
 
-    .canvas-toolbar-settings-card.is-hidden .canvas-toolbar-settings-card-content {
-        opacity: var(--opa-subtle);
-    }
-
-    .canvas-toolbar-settings-card.is-dragging {
+    .canvas-toolbar-settings-row.is-dragging {
         opacity: var(--opa-muted);
+        background: color-mix(in srgb, var(--foreground) 7%, transparent);
     }
 
     :where(.ant-select-dropdown, .ant-dropdown-menu, .ant-popover-inner) {
@@ -7309,7 +7307,7 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     .aceternity-floating-dock {
         isolation: isolate;
         transform-origin: bottom center;
-        box-shadow: 0 24px 72px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+        box-shadow: var(--shadow-popover, 0 24px 72px rgba(15, 23, 42, 0.18)), var(--glass-highlight, inset 0 1px 0 rgba(255, 255, 255, 0.16));
     }
 
     /* Dock 命令按钮：BottomMenu 式干净状态——透明默认 + hover/active 仅换底色，
@@ -12990,10 +12988,15 @@ html:not(.dark) .creation-history-drawer-root {
     }
 }
 .asset-library-picker-modal { margin: 0 auto !important; }
+.workspace-modal.workspace-modal-wide.asset-library-picker-modal {
+    width: min(640px, calc(100vw - 40px), 88vw) !important;
+    max-width: min(640px, calc(100vw - 40px)) !important;
+}
 .asset-library-picker-modal .ant-modal-container { padding: 0 !important; }
 .asset-library-picker-modal .ant-modal-body { padding: 0 !important; }
 .asset-library-picker-modal .ant-modal-close { top: 12px; right: 12px; }
-.asset-picker-shell { display: flex; height: min(640px, calc(100vh - var(--space-12))); min-height: 460px; flex-direction: column; color: var(--foreground); overscroll-behavior: contain; }
+.asset-picker-shell { display: flex; height: min(520px, calc(100dvh - 88px), 74vh); min-height: min(360px, calc(100dvh - 96px)); max-height: calc(100dvh - 64px); flex-direction: column; color: var(--foreground); overscroll-behavior: contain; }
+.asset-library-picker-modal .asset-picker-shell { height: min(520px, calc(100dvh - 88px), 74vh); min-height: min(360px, calc(100dvh - 96px)); max-height: calc(100dvh - 64px); }
 .asset-picker-toolbar { display: grid; min-height: 64px; flex-shrink: 0; grid-template-columns: minmax(132px, 1fr) minmax(240px, 360px) minmax(132px, 1fr); align-items: center; gap: 16px; padding: 10px 52px 10px 18px; }
 .asset-picker-heading { display: flex; min-width: 0; align-items: center; gap: 10px; overflow: hidden; }
 .asset-picker-heading-copy { display: flex; min-width: 0; flex-shrink: 0; align-items: center; gap: 10px; }
@@ -13067,6 +13070,20 @@ html:not(.dark) .creation-history-drawer-root {
 .asset-picker-categories button:focus-visible, .asset-picker-upload:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 .asset-picker-actions .ant-btn { box-shadow: none; }
 .asset-picker-actions svg { width: 14px; height: 14px; }
+
+@media (max-width: 920px) {
+    .asset-library-picker-modal .asset-picker-body { grid-template-columns: 148px minmax(0, 1fr); }
+    .asset-library-picker-modal .asset-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-height: 720px) {
+    .asset-library-picker-modal .asset-picker-shell { height: calc(100dvh - 48px); min-height: 0; }
+    .asset-library-picker-modal .asset-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+    .asset-library-picker-modal .asset-picker-card-copy { min-height: 48px; padding: 8px; }
+}
+@media (min-width: 1280px) and (min-height: 840px) {
+    .workspace-modal.workspace-modal-wide.asset-library-picker-modal { width: min(720px, calc(100vw - 64px)) !important; }
+    .asset-library-picker-modal .asset-picker-shell { height: min(580px, calc(100dvh - 96px)); }
+}
 
 @media (max-width: 680px) {
     .creation-empty-workspace { width: calc(100% - 28px); padding-top: 28px; }

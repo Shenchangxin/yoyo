@@ -87,7 +87,9 @@ export function CanvasNodeContent(props: CanvasNodeContentProps) {
     if (props.node.type === ART_CRITIQUE_NODE_TYPE) return <ArtCritiqueNodeContent node={props.node} />;
     if (props.node.type === MEDIA_CONVERSION_NODE_TYPE) return <MediaConversionNodeContent node={props.node} theme={props.theme} />;
     if (props.isBatchRoot) return <ImageNodeContent {...props} />;
-    if (props.node.metadata?.status === "loading") return <LoadingContent node={props.node} theme={props.theme} onOpenTaskDetails={props.onOpenTaskDetails} />;
+    if (props.node.metadata?.status === "loading" && !props.node.metadata?.content && !props.node.metadata?.previewContent && !props.node.metadata?.storageKey) {
+        return <LoadingContent node={props.node} theme={props.theme} onOpenTaskDetails={props.onOpenTaskDetails} />;
+    }
     if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} onReloadResource={props.onReloadResource} />;
 
     const pluginDefinition = getNodeDefinition(props.node.type)?.plugin;

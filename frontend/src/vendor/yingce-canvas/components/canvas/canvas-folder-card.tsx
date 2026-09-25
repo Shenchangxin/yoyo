@@ -1,7 +1,9 @@
 // @ts-nocheck
-import { App, Dropdown, Input } from "antd";
+import { App, Input } from "antd";
 import { Download, LoaderCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import type { KeyboardEvent } from "react";
+
+import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
 import { ProjectPreview } from "@yingce/components/canvas/canvas-project-card";
 import { exportCanvasProjects } from "@yingce/lib/canvas/canvas-export";
@@ -119,7 +121,7 @@ export function CanvasFolderCard({ project, projectName, onClick, onPrefetch, op
                     </button>
                 ) : null}
 
-                <Dropdown
+                <CanvasDropdown
                     trigger={["click"]}
                     placement="bottomRight"
                     menu={{
@@ -134,7 +136,7 @@ export function CanvasFolderCard({ project, projectName, onClick, onPrefetch, op
                     <button type="button" className="product-icon-button canvas-collection-more" aria-label={`${project.title} 画布操作`} title="更多操作" onClick={(event) => event.stopPropagation()}>
                         <MoreHorizontal />
                     </button>
-                </Dropdown>
+                </CanvasDropdown>
             </div>
         </article>
     );

@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
@@ -9,6 +8,7 @@ import { audioFormatLabel, audioSpeedLabel, audioVoiceLabel } from "@yingce/lib/
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
 import type { AiConfig } from "@yingce/stores/use-config-store";
+import { GenerationSettingsPortal } from "./canvas-generation-settings-shell";
 
 export type CanvasAudioSettingKey = "audioVoice" | "audioFormat" | "audioSpeed" | "audioInstructions";
 
@@ -53,7 +53,7 @@ export function CanvasAudioSettingsPopover({ config, onConfigChange, buttonClass
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-full !px-2.5"}`} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} aria-expanded={open} aria-label={`音频设置：${summary}`} title={`音频设置 · ${summary}`} onClick={() => setOpen((current) => !current)}>
+                <Button size="small" type="text" className={`canvas-generation-settings-trigger ${buttonClassName || "!h-8 !max-w-[170px] !justify-start !rounded-[var(--sg-radius-control,8px)] !px-2.5"}`} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} aria-expanded={open} aria-label={`音频设置：${summary}`} title={`音频设置 · ${summary}`} onClick={() => setOpen((current) => !current)}>
                     <span className="truncate">{summary}</span>
                 </Button>
             </span>
@@ -77,39 +77,11 @@ function AudioSettingsPortal({
     config: AiConfig;
     onConfigChange: (key: CanvasAudioSettingKey, value: string) => void;
 }) {
-    const width = 356;
-    const gap = 8;
-    const margin = 12;
-    const alignRight = placement?.endsWith("Right");
-    const alignCenter = placement === "top" || placement === "bottom";
-    const left = alignCenter ? buttonRect.left + buttonRect.width / 2 - width / 2 : alignRight ? buttonRect.right - width : buttonRect.left;
-    const topPlacement = placement?.startsWith("top");
-    const style = {
-        position: "fixed",
-        zIndex: "var(--z-dialog-popover)",
-        width,
-        left: Math.max(margin, Math.min(window.innerWidth - width - margin, left)),
-        ...(topPlacement ? { bottom: window.innerHeight - buttonRect.top + gap, maxHeight: Math.max(260, buttonRect.top - margin * 2) } : { top: buttonRect.bottom + gap, maxHeight: Math.max(260, window.innerHeight - buttonRect.bottom - margin * 2) }),
-        background: theme.spatial.elevated,
-        border: `1px solid ${theme.toolbar.border}`,
-        borderRadius: 10,
-        boxShadow: `0 24px 72px ${theme.spatial.shadow}, inset 0 1px 0 rgba(255,255,255,.08)`,
-        padding: 12,
-        overflowY: "auto",
-        color: theme.node.text,
-    } as const;
-
-    return createPortal(
-        <div
-            ref={panelRef}
-            className="canvas-image-settings-popover aceternity-floating-panel backdrop-blur-2xl"
-            style={style}
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-        >
-            <AudioSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
-        </div>,
-        document.body,
+    return (
+        <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} width={Math.min(360, window.innerWidth - 24)}>
+            <div style={{ color: theme.node.text }}>
+                <AudioSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
+            </div>
+        </GenerationSettingsPortal>
     );
 }

@@ -1,11 +1,12 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Button, Input, Modal, Tag } from "antd";
+import { Button, Input, Tag } from "antd";
 import { Layers3, Plus, RotateCcw, X } from "lucide-react";
 
 import { ModelPicker } from "@yingce/components/model-picker";
 import type { AiConfig } from "@yingce/stores/use-config-store";
 import { defaultImageParamsForModel } from "@yingce/lib/model-selection";
+import { ImageEditorShell } from "./canvas-image-workbench";
 
 export type CanvasImageLayerDecompositionPayload = {
     prompt: string;
@@ -21,12 +22,14 @@ export function CanvasNodeLayerDecompositionDialog({
     config,
     onClose,
     onConfirm,
+    embedded,
 }: {
     dataUrl: string;
     open: boolean;
     config: AiConfig;
     onClose: () => void;
     onConfirm: (payload: CanvasImageLayerDecompositionPayload) => void;
+    embedded?: boolean;
 }) {
     const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
     const [generationConfig, setGenerationConfig] = useState<AiConfig>(config);
@@ -82,7 +85,7 @@ export function CanvasNodeLayerDecompositionDialog({
         : prompt.trim();
 
     return (
-        <Modal open={open && Boolean(dataUrl)} onCancel={onClose} footer={null} centered destroyOnHidden width={900} title="AI 图层拆分">
+        <ImageEditorShell title="AI 图层拆分" open={open && Boolean(dataUrl)} onClose={onClose} embedded={embedded}>
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="grid min-h-[340px] place-items-center overflow-hidden rounded-xl bg-black/5 p-3 dark:bg-white/[0.04]">
                     <div ref={imageFrameRef} className="relative inline-block max-h-[60vh] max-w-full select-none" onPointerDown={startBox} onPointerMove={moveBox} onPointerUp={finishBox} onPointerCancel={finishBox}>
@@ -122,7 +125,7 @@ export function CanvasNodeLayerDecompositionDialog({
                     </div>
                 </div>
             </div>
-        </Modal>
+        </ImageEditorShell>
     );
 }
 
