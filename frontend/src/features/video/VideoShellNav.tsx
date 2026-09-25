@@ -1,5 +1,7 @@
 import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle } from "lucide-react";
+import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
+import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
 import { useUI } from "../../lib/store";
 import type { VideoPane } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
@@ -19,6 +21,8 @@ const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks
 
 export function VideoShellNav() {
   const copy = useCopy();
+  const reduced = useMotionReduced();
+  const rail = motionTransition(reduced, DURATION_SHELL);
   const pane = useUI((s) => s.videoPane);
   const videoBoard = useUI((s) => s.videoBoard);
   const openVideoPane = useUI((s) => s.openVideoPane);
@@ -47,12 +51,19 @@ export function VideoShellNav() {
         data-testid={`video-shell-${item.id}`}
         aria-current={on ? "page" : undefined}
         className={cn(
-          "relative mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+          "relative mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
           on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
         )}
         onClick={() => openVideoPane(item.id)}
       >
-        {on ? <span className="absolute left-1 top-2 bottom-2 w-[2px] rounded-full bg-accent" aria-hidden /> : null}
+        {on ? (
+          <motion.span
+            layoutId="video-shell-rail"
+            className="absolute left-1 top-2 bottom-2 w-[2px] rounded-full bg-accent"
+            transition={rail}
+            aria-hidden
+          />
+        ) : null}
         <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
         <span className="truncate">{labels[item.id]}</span>
       </button>

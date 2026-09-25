@@ -836,7 +836,7 @@ export const zhCN = {
   },
   skills: {
     title: "技能",
-    hint: "已安装包进入循环。市场会把完整技能目录（SKILL.md 以及 scripts、references、assets）装进 ~/.yoyo/skills。",
+    hint: "已安装的技能可在对话里用 @skill 调用。市场会把完整技能目录（SKILL.md 以及 scripts、references、assets）装进 ~/.yoyo/skills。",
     installed: "已安装",
     market: "市场",
     search: "搜索目录…",

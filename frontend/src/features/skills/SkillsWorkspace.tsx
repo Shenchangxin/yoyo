@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pin, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -15,10 +15,7 @@ type Pane = "installed" | "market";
 
 export function SkillsWorkspace(props: {
   installed: SkillInfo[];
-  pinned: string[];
   loaded: string[];
-  threadId?: string;
-  onPinSkills?: (names: string[]) => void;
   onRefreshInstalled: () => void;
 }) {
   const copy = useCopy();
@@ -60,7 +57,6 @@ export function SkillsWorkspace(props: {
     }
     return set;
   }, [props.installed]);
-  const pinned = new Set(props.pinned);
   const loaded = new Set(props.loaded);
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -173,13 +169,9 @@ export function SkillsWorkspace(props: {
           {pane === "installed" ? (
             <InstalledList
               skills={props.installed}
-              pinned={pinned}
               loaded={loaded}
               open={open}
               onOpen={setOpen}
-              threadId={props.threadId}
-              onPin={props.onPinSkills}
-              pinNames={props.pinned}
               busy={busy}
               onUninstall={uninstall}
               onRepair={(slug) => install(slug, true)}
@@ -207,13 +199,9 @@ export function SkillsWorkspace(props: {
 
 function InstalledList(props: {
   skills: SkillInfo[];
-  pinned: Set<string>;
   loaded: Set<string>;
   open: string;
   onOpen: (name: string) => void;
-  threadId?: string;
-  onPin?: (names: string[]) => void;
-  pinNames: string[];
   busy: string;
   onUninstall: (slug: string) => void;
   onRepair: (slug: string) => void;
@@ -239,20 +227,18 @@ function InstalledList(props: {
           </div>
           <div className="flex flex-col gap-1">
             {items.map((s) => {
-              const isPinned = props.pinned.has(s.name);
               const isLoaded = props.loaded.has(s.name);
               const expanded = props.open === s.name;
               const slug = packSlug(s);
               const fileCount = s.files ? s.files.split(",").filter(Boolean).length : 0;
               return (
-                <div key={s.name} className="rounded-xl px-3 py-2.5 hover:bg-sidebar/50">
+                <div key={s.name} className="u-row-hover rounded-xl px-3 py-2.5">
                   <div className="flex min-h-10 items-center gap-3">
                     <SkillAvatar name={s.displayName || s.name} icon={s.icon} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[13px] font-medium text-foreground">{s.displayName || s.name}</span>
                         {isLoaded ? <span className="text-[11px] text-muted">{copy.skills.loaded}</span> : null}
-                        {isPinned ? <span className="text-[11px] text-muted">{copy.review.pinned}</span> : null}
                         {s.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
                       </div>
                       <p className="mt-0.5 truncate text-[12px] leading-5 text-muted">{s.description || copy.skills.none}</p>
@@ -263,19 +249,6 @@ function InstalledList(props: {
                           {props.busy === slug ? copy.skills.repairing : copy.skills.repair}
                         </Button>
                       ) : null}
-                      <Button
-                        size="sm"
-                        variant={isPinned ? "lift" : "ghost"}
-                        disabled={!props.threadId}
-                        title={!props.threadId ? copy.skills.noThread : undefined}
-                        onClick={() => {
-                          const next = isPinned ? props.pinNames.filter((n) => n !== s.name) : [...props.pinNames, s.name];
-                          props.onPin?.(next);
-                        }}
-                      >
-                        <Pin className="size-3" aria-hidden />
-                        {isPinned ? copy.skills.unpinThread : copy.skills.pinThread}
-                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => props.onOpen(expanded ? "" : s.name)}>{copy.skills.inspect}</Button>
                       {s.source === "market" ? (
                         <Button size="sm" variant="ghost" disabled={props.busy === slug} onClick={() => props.onUninstall(slug)}>
@@ -323,10 +296,10 @@ function MarketList(props: {
       <div className="space-y-2" aria-busy="true" aria-live="polite">
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="flex items-start gap-3 px-1 py-2">
-            <div className="size-8 animate-pulse rounded-md bg-lift motion-reduce:animate-none" />
+            <div className="skeleton-sweep size-8 rounded-md" />
             <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-              <div className="h-3 w-32 animate-pulse rounded bg-lift motion-reduce:animate-none" />
-              <div className="h-3 w-full max-w-md animate-pulse rounded bg-lift/70 motion-reduce:animate-none" />
+              <div className="skeleton-sweep h-3 w-32 rounded" />
+              <div className="skeleton-sweep is-soft h-3 w-full max-w-md rounded" />
             </div>
           </div>
         ))}
@@ -405,7 +378,7 @@ function MarketRow(props: {
   const it = props.item;
   const title = it.displayName || it.name || it.slug;
   return (
-    <div className={cn("flex items-start gap-3 px-3.5 py-3", props.className)}>
+    <div className={cn("flex items-start gap-3 px-3.5 py-3 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift/40", props.className)}>
       <SkillAvatar name={title} icon={it.icon} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

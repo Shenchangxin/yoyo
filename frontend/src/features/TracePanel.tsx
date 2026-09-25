@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Activity, Check, Copy, RefreshCw } from "lucide-react";
+import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { writeClipboard } from "../lib/clipboard";
 import { useCopy } from "../lib/i18n";
@@ -86,12 +87,18 @@ export function TracePanel(props: {
               type="button"
               aria-label={copy.trace.copyId}
               title={props.sessionId}
-              className="mr-0.5 max-w-[9.5rem] shrink truncate rounded-md px-1 font-mono text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
+              className="mr-0.5 inline-flex max-w-[9.5rem] shrink items-center gap-1 rounded-md px-1 font-mono text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
               onClick={async () => {
                 if (await writeClipboard(props.sessionId)) markCopied("session-id");
               }}
             >
-              {props.sessionId}
+              <span className="truncate">{props.sessionId}</span>
+              <IconSwap
+                on={copied === "session-id"}
+                className="size-3 shrink-0"
+                off={<Copy className="size-3" aria-hidden />}
+                live={<Check className="size-3" aria-hidden />}
+              />
             </button>
           </Tooltip>
         ) : null}
@@ -240,7 +247,12 @@ function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void 
       className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted transition-colors hover:bg-lift hover:text-foreground"
       onClick={onClick}
     >
-      {copied ? <Check className="size-3" aria-hidden /> : <Copy className="size-3" aria-hidden />}
+      <IconSwap
+        on={copied}
+        className="size-3"
+        off={<Copy className="size-3" aria-hidden />}
+        live={<Check className="size-3" aria-hidden />}
+      />
       {copied ? copy.trace.copied : copy.trace.copy}
     </button>
   );

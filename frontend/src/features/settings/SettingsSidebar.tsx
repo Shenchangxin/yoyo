@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
-import { DURATION, EASE } from "../../lib/motion";
+import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import type { SettingsTab } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, SETTINGS_TABS, tabsInGroup } from "./registry";
@@ -167,6 +167,7 @@ function TabButton(props: {
   onClick: () => void;
 }) {
   const Icon = iconFor(props.icon);
+  const reduced = useMotionReduced();
   return (
     <button
       type="button"
@@ -183,7 +184,7 @@ function TabButton(props: {
         <motion.span
           layoutId="settings-nav-pill"
           className="absolute inset-0 rounded-[9px] bg-lift"
-          transition={{ duration: DURATION, ease: EASE }}
+          transition={motionTransition(reduced, DURATION)}
         />
       ) : null}
       <span

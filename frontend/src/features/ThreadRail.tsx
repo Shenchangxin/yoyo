@@ -4,12 +4,14 @@ import {
   Archive,
   Bell,
   BookOpen,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clapperboard,
-  Folder,
+  Copy as CopyIcon,
   Film,
+  Folder,
   GitBranch,
   LayoutGrid,
   MessageSquarePlus,
@@ -23,6 +25,7 @@ import { VList } from "virtua";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
+import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import {
   DropdownMenu,
@@ -326,7 +329,7 @@ export function ThreadRail(props: {
             <button
               type="button"
               className={cn(
-                "grid size-8 place-items-center rounded-xl transition-colors",
+                "dock-hit grid size-8 place-items-center rounded-xl",
                 props.showArchived ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
               )}
               aria-label={props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
@@ -340,7 +343,7 @@ export function ThreadRail(props: {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="relative grid size-8 place-items-center rounded-xl text-muted transition-colors hover:bg-lift hover:text-foreground"
+                className="dock-hit relative grid size-8 place-items-center rounded-xl text-muted hover:bg-lift hover:text-foreground"
                 aria-label={copy.rail.notifications}
                 title={copy.rail.notifications}
               >
@@ -377,7 +380,7 @@ export function ThreadRail(props: {
               aria-current={props.surface === "settings" ? "page" : undefined}
               aria-label={copy.rail.settings}
               className={cn(
-                "grid size-8 place-items-center rounded-xl transition-colors",
+                "dock-hit grid size-8 place-items-center rounded-xl",
                 props.surface === "settings" ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
               )}
               onClick={props.onSettings}
@@ -477,7 +480,7 @@ function DockIcon(props: {
         aria-label={props.label}
         aria-current={props.on ? "page" : undefined}
         className={cn(
-          "relative grid size-8 place-items-center rounded-xl transition-colors",
+          "dock-hit relative grid size-8 place-items-center rounded-xl",
           props.on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
         )}
         onClick={props.onClick}
@@ -574,7 +577,7 @@ function ThreadRow(props: {
   if (editing) {
     return (
       <div className={cn("mb-px flex w-full items-center gap-2 rounded-lg bg-lift px-2.5 py-[6px]", props.nested && "ml-2 w-[calc(100%-0.5rem)]")}>
-        {run ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden /> : null}
+        {run ? <span className="pulse-dot is-accent shrink-0" aria-hidden /> : null}
         <input
           autoFocus
           aria-label={copy.rail.rename}
@@ -604,7 +607,7 @@ function ThreadRow(props: {
       <div
         ref={rowRef}
         className={cn(
-          "group relative mb-px flex min-h-8 w-full items-center rounded-lg transition-[background-color,color] duration-200 ease-[var(--ease-out)]",
+          "group relative mb-px flex min-h-8 w-full items-center rounded-lg transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
           props.nested && "ml-2 w-[calc(100%-0.5rem)]",
           active ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
         )}
@@ -631,7 +634,7 @@ function ThreadRow(props: {
           }}
         >
           {active ? <span className="absolute left-1 top-2 bottom-2 w-[2px] rounded-full bg-accent" aria-hidden /> : null}
-          {run ? <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden /> : null}
+          {run ? <span className="pulse-dot is-accent shrink-0" aria-hidden /> : null}
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1">
               {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
@@ -780,7 +783,7 @@ function SessionMetaCard(props: {
           <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground" title={t.id}>{t.id}</span>
           <button
             type="button"
-            className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
             aria-label={copy.rail.copyId}
             onClick={async () => {
               if (!(await writeClipboard(t.id))) return;
@@ -788,6 +791,12 @@ function SessionMetaCard(props: {
               window.setTimeout(() => setCopied(false), 1200);
             }}
           >
+            <IconSwap
+              on={copied}
+              className="size-3"
+              off={<CopyIcon className="size-3" aria-hidden />}
+              live={<Check className="size-3" aria-hidden />}
+            />
             {copied ? copy.rail.copied : copy.rail.copy}
           </button>
         </div>

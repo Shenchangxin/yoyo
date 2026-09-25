@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronRight } from "lucide-react";
+import { ProgressHairline } from "../components/ui/progress-hairline";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { DURATION, motionTransition, useMotionReduced } from "../lib/motion";
@@ -32,36 +33,45 @@ export function PlanChip({
       role="region"
       aria-label={copy.transcript.plan}
     >
-      <button
-        type="button"
-        className={cn(
-          "group/plan flex w-full min-w-0 items-center gap-2 text-left select-none transition-[background-color,color] duration-150",
-          "rounded-t-[calc(var(--radius-composer)-1px)] hover:bg-lift/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          compact ? "h-7 px-3" : "h-8 px-3.5",
-        )}
-        aria-expanded={open}
-        aria-controls={stepsId}
-        aria-label={toggleLabel}
-        title={toggleLabel}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <ChevronRight
+      <div className="relative">
+        <button
+          type="button"
           className={cn(
-            "size-2.5 shrink-0 text-muted/55 transition-[transform,color] duration-150 group-hover/plan:text-muted",
-            open && "rotate-90",
+            "group/plan flex w-full min-w-0 items-center gap-2 text-left select-none transition-[background-color,color] duration-150",
+            "rounded-t-[calc(var(--radius-composer)-1px)] hover:bg-lift/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            compact ? "h-7 px-3" : "h-8 px-3.5",
           )}
-          aria-hidden
-        />
-        <span className="shrink-0 text-[13px] font-medium tracking-[-0.01em] text-foreground/90">{copy.transcript.plan}</span>
-        {!open && focus ? (
-          <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted" title={focus.step}>
-            {focus.step}
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1" />
-        )}
-        <span className="shrink-0 tabular-nums text-[11px] text-muted/80">{progress}</span>
-      </button>
+          aria-expanded={open}
+          aria-controls={stepsId}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <ChevronRight
+            className={cn(
+              "size-2.5 shrink-0 text-muted/55 transition-[transform,color] duration-150 group-hover/plan:text-muted",
+              open && "rotate-90",
+            )}
+            aria-hidden
+          />
+          <span className="shrink-0 text-[13px] font-medium tracking-[-0.01em] text-foreground/90">{copy.transcript.plan}</span>
+          {!open && focus ? (
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted" title={focus.step}>
+              {focus.step}
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1" />
+          )}
+          <span className="shrink-0 tabular-nums text-[11px] text-muted/80">{progress}</span>
+        </button>
+        {running || (done > 0 && done < total) ? (
+          <ProgressHairline
+            className="absolute inset-x-0 bottom-0 rounded-none"
+            value={total ? (100 * done) / total : 0}
+            indeterminate={running && done === 0}
+          />
+        ) : null}
+      </div>
       <AnimatePresence initial={false}>
         {open ? (
           <motion.div

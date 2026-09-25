@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUpRight, Check, CircleDashed, Copy, FileText, RotateCcw, ShieldAlert } from "lucide-react";
+import { IconSwap } from "../components/ui/icon-swap";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
@@ -393,7 +394,7 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   const subject = item.command || item.path || item.level;
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+      className="u-card-hover is-warn relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
       role="status"
       data-testid="approval-card"
     >
@@ -474,7 +475,12 @@ function CopyAction({ text }: { text: string }) {
         }
       }}
     >
-      {done ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+      <IconSwap
+        on={done}
+        className="size-3.5"
+        off={<Copy className="size-3.5" aria-hidden />}
+        live={<Check className="size-3.5" aria-hidden />}
+      />
       <span>{done ? copy.transcript.copied : copy.transcript.copy}</span>
     </button>
   );
@@ -492,8 +498,8 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border px-4 py-3.5",
-        soft ? "border-border bg-card/80" : "border-danger/25 bg-danger/8",
+        "u-card-hover relative overflow-hidden rounded-2xl border px-4 py-3.5",
+        soft ? "border-border bg-card/80" : "is-danger border-danger/25 bg-danger/8",
       )}
       role="alert"
     >
@@ -668,7 +674,7 @@ function ArtifactCard({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-md border bg-sidebar/40 px-3.5 py-2.5 transition-colors duration-150",
+        "u-card-hover min-w-0 overflow-hidden rounded-md border bg-sidebar/40 px-3.5 py-2.5",
         pending ? "border-foreground/15" : "border-border/80",
       )}
       data-testid="artifact-card"

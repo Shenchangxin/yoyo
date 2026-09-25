@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
 import type { HarborKind } from "../../lib/protocol";
 
@@ -70,7 +71,12 @@ export function HarborLab(props: {
           </label>
         ) : null}
       </div>
-      {props.busy ? <p className="mb-4 text-[13px] text-muted">{props.busy}</p> : null}
+      {props.busy ? (
+        <div className="relative mb-4 overflow-hidden rounded-md bg-sidebar/40 px-4 py-3" aria-busy="true">
+          <p className="text-[13px] text-muted">{props.busy}</p>
+          <ProgressHairline className="absolute inset-x-0 bottom-0 rounded-none" indeterminate />
+        </div>
+      ) : null}
       {!props.busy && props.error ? (
         <div className="mb-4 flex items-center gap-3 rounded-md bg-danger/8 px-4 py-3 text-[13px] text-danger">
           <span>{props.error}</span>

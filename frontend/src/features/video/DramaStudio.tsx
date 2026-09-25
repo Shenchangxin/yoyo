@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Clapperboard, Film, ImagePlus, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Input, Textarea } from "../../components/ui/input";
 import { EmptyState } from "../../components/ui/empty-state";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { Tooltip } from "../../components/ui/tooltip";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
@@ -982,10 +984,10 @@ function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: 
       </div>
       <div className="grid gap-2">
         {shots.map((s) => (
-          <label key={s.id} className={cn("cursor-pointer overflow-hidden rounded-[10px] border bg-card", props.sel[s.id] !== false && s.video_url ? "border-foreground/40" : "border-border/80")}>
+          <label key={s.id} className={cn("u-card-hover cursor-pointer overflow-hidden rounded-[10px] border bg-card", props.sel[s.id] !== false && s.video_url ? "border-foreground/40" : "border-border/80")}>
             {s.video_url ? <video src={s.video_url} poster={s.poster_url} className="aspect-video w-full object-cover" /> : <div className="grid aspect-video place-items-center bg-lift text-[11px] text-muted">{c.noClip}</div>}
             <div className="flex items-center gap-2 px-2.5 py-2 text-[12px]">
-              <input type="checkbox" className="accent-foreground" checked={props.sel[s.id] !== false && !!s.video_url} disabled={!s.video_url} onChange={(e) => props.setSel({ ...props.sel, [s.id]: e.target.checked })} />
+              <Checkbox checked={props.sel[s.id] !== false && !!s.video_url} disabled={!s.video_url} onChange={(e) => props.setSel({ ...props.sel, [s.id]: e.target.checked })} />
               <span className="min-w-0 flex-1 truncate">{s.title || s.shot_number}</span>
               <span className="font-mono text-[11px] tabular-nums text-muted">{s.duration}{c.seconds}</span>
             </div>
@@ -1006,12 +1008,13 @@ function JobStrip(props: { jobs: Job[]; copy: CopyT; onRetry: (id: string) => vo
       {live.map((j) => {
         const moving = j.status === "queued" || j.status === "running" || j.status === "polling";
         return (
-          <div key={j.id} className="flex shrink-0 items-center gap-2 rounded-lg bg-lift px-2 py-1 text-[11px]">
+          <div key={j.id} className="relative flex shrink-0 items-center gap-2 rounded-lg bg-lift px-2 py-1.5 pb-2 text-[11px]">
             {moving ? <span className="pulse-dot" /> : null}
             <span className="font-medium">{j.type}</span>
             <span className={j.status === "failed" ? "text-danger" : "text-muted"}>{label[j.status] || j.status}</span>
             {j.status === "failed" ? <button type="button" className="underline" onClick={() => props.onRetry(j.id)}>{c.retry}</button> : null}
             {moving ? <button type="button" className="underline" onClick={() => props.onCancel(j.id)}>{c.cancel}</button> : null}
+            {moving ? <ProgressHairline className="absolute inset-x-0 bottom-0 rounded-none" indeterminate /> : null}
           </div>
         );
       })}

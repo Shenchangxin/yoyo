@@ -445,9 +445,23 @@ html.light .yingce-island,
 
 .yingce-island .canvas-node-shell[data-node-state="loading"],
 .yingce-island .canvas-node-shell[data-state="loading"] {
+  position: relative;
   outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
   outline-offset: 2px;
   animation: sg-ring-breathe 1.6s ease-in-out infinite;
+}
+.yingce-island .canvas-node-shell[data-node-state="loading"]::after,
+.yingce-island .canvas-node-shell[data-state="loading"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: 7px;
+  width: 38%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+  animation: yoyo-progress-slide 1.35s var(--ease-out) infinite;
 }
 
 @keyframes sg-ring-breathe {

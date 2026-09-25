@@ -90,3 +90,30 @@ export function composeDraft(pins: MentionPin[], prose: string): string {
   if (head && body) return `${head}\n${body}`;
   return head || body;
 }
+
+type MentionSkill = {
+  name: string;
+  description?: string;
+  displayName?: string;
+  slug?: string;
+  source?: string;
+};
+
+function skillHaystack(s: MentionSkill): string {
+  return [s.name, s.displayName, s.slug, s.description].filter(Boolean).join(" ").toLowerCase();
+}
+
+function skillRank(s: MentionSkill): number {
+  const src = s.source || "";
+  if (src === "market" || src === "home" || src === "workspace") return 0;
+  return 1;
+}
+
+/** Installed / workspace packs first. Bundled catalog stays below so @skill is usable. */
+export function mentionableSkills<T extends MentionSkill>(skills: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  return skills
+    .filter((s) => !q || skillHaystack(s).includes(q))
+    .slice()
+    .sort((a, b) => skillRank(a) - skillRank(b) || a.name.localeCompare(b.name));
+}
