@@ -154,3 +154,19 @@ CREATE TABLE IF NOT EXISTS canvas_project_units (
 );
 CREATE INDEX IF NOT EXISTS canvas_project_units_project ON canvas_project_units(project_id);
 `
+
+const schemaV3 = `
+CREATE TABLE IF NOT EXISTS canvas_skill_flags (
+  skill_id TEXT PRIMARY KEY,
+  added INTEGER NOT NULL DEFAULT 0,
+  liked INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS canvas_user_skills (
+  id TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT ''
+);
+`

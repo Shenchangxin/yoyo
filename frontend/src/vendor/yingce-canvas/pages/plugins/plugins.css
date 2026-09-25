@@ -459,8 +459,96 @@
     margin-right: auto;
 }
 
-.plugin-card-actions .ant-switch {
-    flex: 0 0 auto;
+.plugin-enable {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    min-width: 0;
+    height: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    align-items: center;
+    gap: 8px;
+    margin: 0 auto 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.plugin-enable-track {
+    position: relative;
+    display: block;
+    width: 40px;
+    height: 24px;
+    flex: 0 0 40px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 14%, transparent);
+    transition: background-color 180ms ease;
+}
+
+.plugin-enable.is-on .plugin-enable-track {
+    background: var(--plugin-switch-checked-bg, var(--workspace-accent));
+}
+
+.plugin-enable:hover:not(:disabled) .plugin-enable-track {
+    background: color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+
+.plugin-enable.is-on:hover:not(:disabled) .plugin-enable-track {
+    background: var(--plugin-switch-checked-hover-bg, color-mix(in srgb, var(--workspace-accent) 86%, black));
+}
+
+.plugin-enable:focus-visible {
+    outline: none;
+}
+
+.plugin-enable:focus-visible .plugin-enable-track {
+    outline: 2px solid var(--plugin-switch-checked-bg, var(--workspace-accent));
+    outline-offset: 3px;
+}
+
+.plugin-enable:disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
+}
+
+.plugin-enable-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 2px color-mix(in srgb, black 22%, transparent);
+    transform: none;
+    transition: left 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.plugin-enable.is-on .plugin-enable-thumb {
+    left: 18px;
+    transform: none;
+}
+
+.plugin-enable-copy {
+    min-width: 3.2em;
+    color: color-mix(in srgb, var(--foreground) 52%, transparent);
+    font-size: var(--fs-caption);
+    font-weight: 550;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.plugin-enable.is-on .plugin-enable-copy {
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
 }
 
 .plugin-settings-button {
@@ -1094,7 +1182,8 @@
         min-height: 210px;
     }
 
-    .plugin-card-actions .settings-channel-status {
+    .plugin-card-actions .settings-channel-status,
+    .plugin-enable {
         width: 100%;
         margin-right: 0;
     }
@@ -1118,7 +1207,9 @@
 
 @media (prefers-reduced-motion: reduce) {
     .plugin-card,
-    .plugin-icon-tile {
+    .plugin-icon-tile,
+    .plugin-enable-track,
+    .plugin-enable-thumb {
         transition: none;
     }
 }

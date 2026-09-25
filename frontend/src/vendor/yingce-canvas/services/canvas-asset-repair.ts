@@ -211,8 +211,8 @@ const RESOURCE_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 /**
  * 强制对齐画布媒体与素材的绑定：以素材记录实际引用的资源为准校验节点声明的
  * (assetId, 资源) 对，不一致时重绑到引用同一资源的现有素材，缺失则按节点新建。
- * 服务端画布不变式只认「资源被 assetId 对应素材引用」，重绑后按素材先于画布
- * 推送即可在不破坏该不变式的前提下用本地画布覆盖云端。
+ * 工作区画布不变式只认「资源被 assetId 对应素材引用」，重绑后按素材先于画布
+ * 保存即可在不破坏该不变式的前提下用本地画布覆盖工作区。
  */
 export function rebindInconsistentCanvasAssets(records: Asset[], projectIds?: Set<string>): CanvasAssetRebindResult {
     const identitiesByAssetId = new Map<string, Set<string>>();
@@ -278,7 +278,7 @@ export function rebindInconsistentCanvasAssets(records: Asset[], projectIds?: Se
     return { reboundNodes, createdAssets, updatedProjects };
 }
 
-/** 收集画布媒体节点与时间线片段声明过 assetId 的媒体引用，供强制覆盖前批量拉取服务端素材记录。 */
+/** 收集画布媒体节点与时间线片段声明过 assetId 的媒体引用，供强制覆盖前批量拉取工作区素材记录。 */
 export function collectCanvasMediaAssetIds(projects: CanvasProject[]): Set<string> {
     const ids = new Set<string>();
     for (const project of projects) {
@@ -322,7 +322,7 @@ function resourceIdFromIdentity(candidate: string | undefined) {
     return RESOURCE_ID_PATTERN.test(id) ? id : undefined;
 }
 
-/** 镜像服务端 guard 的素材资源定位来源：storageKey、resourceKey 与 URL 形态的资源引用。 */
+/** 镜像工作区校验 的素材资源定位来源：storageKey、resourceKey 与 URL 形态的资源引用。 */
 function assetIdentities(asset: Asset) {
     const identities = new Set<string>();
     const data = asset.kind === "text" || asset.kind === "entity" ? undefined : asset.data;

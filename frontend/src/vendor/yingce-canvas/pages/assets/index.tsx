@@ -2,7 +2,7 @@
 import { CollectionToolbar } from "@yingce/components/layout/collection-toolbar";
 import { assetGridCardMinWidth, assetGridDensityOptions, parseAssetGridDensity, type AssetGridDensity } from "./asset-grid-density";
 import { DeleteButton } from "@yingce/components/ui/base/buttons/delete-button";
-import { AlertTriangle, AudioLines, Box, CheckCheck, Clapperboard, Copy, Download, FileText, FileUp, FolderOpen, FolderPlus, Image as ImageIcon, Images, LayoutGrid, Link2, Maximize2, MoreHorizontal, PencilLine, Play, Plus, RotateCcw, Search, Trash2, Upload, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
+import { AlertTriangle, AudioLines, Box, Check, CheckCheck, Clapperboard, Copy, Download, FileText, FileUp, FolderOpen, FolderPlus, Image as ImageIcon, Images, LayoutGrid, Link2, Maximize2, MoreHorizontal, PencilLine, Play, Plus, RotateCcw, Search, Trash2, Upload, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Drawer, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Tag, Typography } from "antd";
@@ -20,14 +20,13 @@ import { cn } from "@yingce/lib/utils";
 import { useCopyText } from "@yingce/hooks/use-copy-text";
 import { useDebouncedValue } from "@yingce/hooks/use-debounced-value";
 import { ASSET_CATEGORY_OPTIONS, assetCategoryLabel } from "@yingce/lib/asset-category";
-import { resourceStorageLabel, resourceStorageLocation, resourceStorageTitle } from "@yingce/lib/canvas/resource-storage-status";
+import { resourceStorageLabel, resourceStorageTitle } from "@yingce/lib/canvas/resource-storage-status";
 import { formatBytes, readFileAsDataUrl, readImageMeta } from "@yingce/lib/image-utils";
 import { uploadImage } from "@yingce/services/image-storage";
 import { uploadMediaFile } from "@yingce/services/file-storage";
 import { downloadBrowserMedia } from "@yingce/services/browser-download";
 import { flushAssetStorePersistence, useAssetStore, type Asset, type AssetCategory, type AssetKind, type ImageAsset } from "@yingce/stores/use-asset-store";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
-import { AssetStorageUsage, assetStorageUsageQueryKey } from "./asset-storage-usage";
 import { deleteAssetWithRemoteSync, deleteAssetsWithRemoteSync, loadAssetLibraryPage, localSavedRemotePendingMessage, saveRemoteUserDataNow } from "@yingce/services/user-data-sync";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { createAssetFolder, deleteAssetFolder, listAssetFolders, listRemoteAssetsPage, moveRemoteAssetsToFolder, updateAssetFolder, type AssetFolder } from "@yingce/services/api/user-data";
@@ -158,6 +157,7 @@ export default function AssetsPage() {
             folderId: folderFilter !== "all" && folderFilter !== "uncategorized" ? folderFilter : undefined,
             uncategorized: folderFilter === "uncategorized",
             query: debouncedKeyword || undefined,
+            excludeKind: "entity",
             signal,
         }),
         enabled: Boolean(userId),
@@ -183,6 +183,8 @@ export default function AssetsPage() {
     const kindCounts = useMemo(() => assetCountMap(kindOptions, useRemotePage ? assetPageQuery.data?.kindCounts : undefined, viewMode === "trash" ? trashAssets : activeAssets, (asset) => asset.kind), [activeAssets, assetPageQuery.data?.kindCounts, trashAssets, useRemotePage, viewMode]);
     const categoryCounts = useMemo(() => assetCountMap(categoryOptions, useRemotePage ? assetPageQuery.data?.categoryCounts : undefined, viewMode === "trash" ? trashAssets : activeAssets, (asset) => asset.category || "other"), [activeAssets, assetPageQuery.data?.categoryCounts, trashAssets, useRemotePage, viewMode]);
     const folderCounts = assetPageQuery.data?.folderCounts || {};
+    const localFolderSource = viewMode === "trash" ? trashAssets : activeAssets;
+    const folderAllCount = summedFolderCounts(useRemotePage ? folderCounts : undefined, localFolderSource.length);
 
     useEffect(() => {
         const maxPage = Math.max(1, Math.ceil(totalAssets / pageSize));
@@ -305,7 +307,6 @@ export default function AssetsPage() {
                 imageData = { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType };
                 setImageDraft(imageData);
                 setImageFile(null);
-                void queryClient.invalidateQueries({ queryKey: assetStorageUsageQueryKey });
             } catch (error) {
                 message.error(error instanceof Error ? error.message : "图片上传失败，请重试");
                 return;
@@ -377,7 +378,6 @@ export default function AssetsPage() {
     const readModelFile = async (file?: File) => {
         if (!file || !/\.(glb|gltf)$/i.test(file.name)) return;
         const uploaded = await uploadMediaFile(file, "model");
-        void queryClient.invalidateQueries({ queryKey: assetStorageUsageQueryKey });
         addAsset({
             kind: "model",
             title: file.name.replace(/\.(glb|gltf)$/i, ""),
@@ -387,8 +387,8 @@ export default function AssetsPage() {
             data: { url: uploaded.url, storageKey: uploaded.storageKey, bytes: uploaded.bytes, mimeType: uploaded.mimeType, fileName: file.name },
             metadata: { source: "manual" },
         });
-        // 直传失败时文件只落在本机，云端同步会重传；此时不能说成"已保存"。
-        if (uploaded.pendingRemoteUpload) message.warning(`3D 模型已保存在本机，尚未上传到服务器${uploaded.remoteUploadError ? `：${uploaded.remoteUploadError}` : ""}`);
+        // 直传失败时文件只落在本机，工作区保存会重传；此时不能说成"已保存"。
+        if (uploaded.pendingRemoteUpload) message.warning(`3D 模型已保存在本机，尚未写入素材库${uploaded.remoteUploadError ? `：${uploaded.remoteUploadError}` : ""}`);
         else message.success("3D 模型已保存");
     };
 
@@ -531,8 +531,7 @@ export default function AssetsPage() {
 
     return (
         <>
-            <WorkspacePage grid className="library-page assets-library-page canvas-library-page">
-                <div className="studio-band">
+            <WorkspacePage grid className="library-page assets-library-page">
                     <PageHeader
                         title={viewMode === "trash" ? "素材库 / 回收站" : "素材库"}
                         description={viewMode === "trash" ? "已删除画布或手动归档的临时素材，可随时还原或彻底清理。" : "管理文本、图片、视频、音频和 3D 模型素材。"}
@@ -582,7 +581,6 @@ export default function AssetsPage() {
                                         </>
                                     )}
                                 </div>
-                                <AssetStorageUsage />
                             </div>
                         }
                     />
@@ -616,7 +614,6 @@ export default function AssetsPage() {
                                 onChange={(value) => setGridDensity(parseAssetGridDensity(value))}
                             />
                         </CollectionToolbar>
-                </div>
 
                 <div className="collection-content assets-collection-content">
                     <div className="assets-collection-layout">
@@ -651,15 +648,15 @@ export default function AssetsPage() {
                                 </div>
                                 <div className="collection-folder-list">
                                     <button type="button" aria-pressed={folderFilter === "all"} className={`assets-filter-item ${folderFilter === "all" ? "is-active" : ""}`} onClick={() => { setFolderFilter("all"); setPage(1); }}>
-                                        <span className="assets-filter-item-label">全部</span><span className="assets-filter-count">{activeAssets.length}</span>
+                                        <span className="assets-filter-item-label">全部</span><span className="assets-filter-count">{folderAllCount}</span>
                                     </button>
                                     <button type="button" aria-pressed={folderFilter === "uncategorized"} className={`assets-filter-item ${folderFilter === "uncategorized" ? "is-active" : ""}`} onClick={() => { setFolderFilter("uncategorized"); setPage(1); }}>
-                                        <span className="assets-filter-item-label">未分类</span><span className="assets-filter-count">{folderCounts[""] ?? activeAssets.filter((asset) => !asset.folderId).length}</span>
+                                        <span className="assets-filter-item-label">未分类</span><span className="assets-filter-count">{folderCountValue(useRemotePage ? folderCounts : undefined, "", localFolderSource.filter((asset) => !asset.folderId).length)}</span>
                                     </button>
                                     {folders.map((folder) => (
                                         <div key={folder.id} className="assets-folder-row">
                                             <button type="button" aria-pressed={folderFilter === folder.id} className={`assets-filter-item min-w-0 flex-1 ${folderFilter === folder.id ? "is-active" : ""}`} onClick={() => { setFolderFilter(folder.id); setPage(1); }}>
-                                                <span className="assets-filter-item-label min-w-0 truncate">{folder.name}</span><span className="assets-filter-count">{folderCounts[folder.id] ?? activeAssets.filter((asset) => asset.folderId === folder.id).length}</span>
+                                                <span className="assets-filter-item-label min-w-0 truncate">{folder.name}</span><span className="assets-filter-count">{folderCountValue(useRemotePage ? folderCounts : undefined, folder.id, localFolderSource.filter((asset) => asset.folderId === folder.id).length)}</span>
                                             </button>
                                             <button type="button" className="product-icon-button" aria-label={`重命名分类 ${folder.name}`} onClick={() => { setFolderName(folder.name); setFolderEditor(folder); }}><PencilLine /></button>
                                             <DeleteButton label={`删除分类 ${folder.name}`} description="分类删除后，其中的素材会移至未分类，素材文件会保留。" onConfirm={() => removeFolder(folder)} />
@@ -866,7 +863,7 @@ export default function AssetsPage() {
                                     {imageUploading && imageUploadProgress ? (
                                         <div className="asset-preview-uploading-panel">
                                             <div className="asset-preview-uploading-copy">
-                                                <span>{imageUploadProgress.phase === "confirming" ? "正在确认资源" : "正在上传到云端"}</span>
+                                                <span>{imageUploadProgress.phase === "confirming" ? "正在确认资源" : "正在保存到素材库"}</span>
                                                 {typeof imageUploadProgress.percent === "number" ? <strong>{imageUploadProgress.percent}%</strong> : null}
                                             </div>
                                             <Progress percent={imageUploadProgress.percent} showInfo={false} size="small" status="active" />
@@ -986,7 +983,7 @@ export default function AssetsPage() {
                 okButtonProps={{ danger: true }}
                 cancelText="取消"
             >
-                确定彻底删除「{deletingAsset?.title}」吗？未被其他素材复用的服务器文件会直接释放，原画布或任务中的旧引用可能失效，操作不可恢复。
+                确定彻底删除「{deletingAsset?.title}」吗？未被其他素材复用的本地文件会直接释放，原画布或任务中的旧引用可能失效，操作不可恢复。
             </Modal>
             <Modal
                 className="library-modal library-confirm-modal"
@@ -998,7 +995,7 @@ export default function AssetsPage() {
                 okButtonProps={{ danger: true }}
                 cancelText="取消"
             >
-                确定彻底删除已选择的 {selectedAssets.length} 个素材吗？未被其他素材复用的服务器文件会直接释放，原画布或任务中的旧引用可能失效，操作不可恢复。
+                确定彻底删除已选择的 {selectedAssets.length} 个素材吗？未被其他素材复用的本地文件会直接释放，原画布或任务中的旧引用可能失效，操作不可恢复。
             </Modal>
         </>
     );
@@ -1056,6 +1053,7 @@ function AssetCard({
     onMoveToFolder: (folderId: string) => void;
 }) {
     const summary = assetSummary(asset);
+    const projectLabel = assetProjectLabel(asset);
     const menuItems: MenuProps["items"] = isTrash
         ? [{ key: "restore", icon: <RotateCcw className="size-3.5" />, label: "还原到素材库", onClick: onRestore }, { type: "divider" as const }, { key: "delete", danger: true, icon: <Trash2 className="size-3.5" />, label: "彻底删除", onClick: onDelete }]
         : [
@@ -1089,8 +1087,17 @@ function AssetCard({
                 )}
                 <div className="asset-collection-source mt-1 flex min-w-0 items-center gap-1.5">
                     <span className="truncate">{asset.source || "未标注来源"}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="truncate">{assetProjectLabel(asset)}</span>
+                    {projectLabel ? (
+                        <>
+                            <span aria-hidden="true">·</span>
+                            <span className="truncate">{projectLabel}</span>
+                        </>
+                    ) : (
+                        <>
+                            <span aria-hidden="true">·</span>
+                            <span className="truncate">{assetCategoryLabel(asset.category)}</span>
+                        </>
+                    )}
                 </div>
             </button>
         </AssetLibraryCard>
@@ -1144,7 +1151,19 @@ function AssetCover({ asset, selected, isTrash = false, onSelect, onOpen, menuIt
                 {asset.portraitCertified ? <span className="assets-cover-badge is-category">人像认证</span> : null}
             </span>
             {clock ? <span className="assets-cover-clock">{clock}</span> : null}
-            <input type="checkbox" checked={selected} onClick={(event) => event.stopPropagation()} onChange={(event) => onSelect(event.target.checked)} className="assets-select-check" aria-label={`选择 ${asset.title}`} />
+            <button
+                type="button"
+                role="checkbox"
+                aria-checked={selected}
+                aria-label={`选择 ${asset.title}`}
+                className={cn("assets-select-check", selected && "is-checked")}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(!selected);
+                }}
+            >
+                {selected ? <Check strokeWidth={2.5} color="#fff" /> : null}
+            </button>
             <Dropdown trigger={["click"]} menu={{ items: menuItems }}>
                 <button type="button" className="assets-cover-more" aria-label="更多素材操作" title="更多操作">
                     <MoreHorizontal className="size-4" />
@@ -1328,22 +1347,26 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: LibraryAss
     const facts = asset ? assetArchiveFacts(asset) : [];
     const kind = asset && isKnownAssetKind(asset.kind) ? asset.kind : undefined;
     const KindIcon = asset ? (kind ? assetKindIcons[kind] : FileText) : Clapperboard;
+    const projectLabel = asset ? assetProjectLabel(asset) : "";
     return (
-        <Drawer className="library-drawer" title="素材档案" open={Boolean(asset)} size="large" onClose={onClose}>
+        <Drawer className="library-drawer asset-archive-drawer" title="素材档案" open={Boolean(asset)} size="large" onClose={onClose}>
             {asset ? (
-                <div className="space-y-4">
-                    <div className="asset-archive-header">
-                        <span className="asset-archive-header-icon">
+                <div className="asset-archive">
+                    <header className="asset-archive-masthead">
+                        <span className="asset-archive-kicker">
                             <KindIcon />
+                            {kind ? assetKindLabel(kind) : "素材"}
+                            <span aria-hidden="true">·</span>
+                            {assetCategoryLabel(asset.category)}
                         </span>
-                        <div className="min-w-0">
-                            <h2 className="asset-archive-title">{asset.title}</h2>
-                            <p className="asset-archive-subtitle">
-                                {assetCategoryLabel(asset.category)} · {formatAssetDateTime(asset.createdAt)} 创建
-                            </p>
-                        </div>
-                    </div>
-                    <div className="asset-archive-preview">
+                        <h2 className="asset-archive-title">{asset.title}</h2>
+                        <p className="asset-archive-lede">
+                            {asset.source || "未标注来源"}
+                            <span aria-hidden="true"> · </span>
+                            {formatAssetDateTime(asset.updatedAt)} 更新
+                        </p>
+                    </header>
+                    <div className={`asset-archive-preview is-${asset.kind}`}>
                         {asset.kind === "text" ? (
                             <div className="asset-archive-preview-note">{asset.data.content}</div>
                         ) : asset.kind === "audio" ? (
@@ -1363,34 +1386,32 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: LibraryAss
                             <AssetImageZoom asset={asset} />
                         )}
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {(asset.tags || []).map((tag) => (
-                            <Tag key={tag} className="m-0">
-                                {tag}
-                            </Tag>
-                        ))}
-                        {asset.arkAssetId ? (
-                            <Tag className="m-0" color="geekblue" title="火山方舟素材 ID，生成视频时可直接 asset:// 引用">
-                                方舟 {asset.arkAssetId}
-                            </Tag>
-                        ) : null}
-                        <StorageTag asset={asset} />
-                    </div>
-                    <div className="asset-archive-facts">
+                    {(asset.tags || []).length || asset.arkAssetId || asset.kind !== "text" ? (
+                        <div className="asset-archive-chips">
+                            {(asset.tags || []).map((tag) => (
+                                <span key={tag} className="asset-archive-chip">{tag}</span>
+                            ))}
+                            {asset.arkAssetId ? (
+                                <span className="asset-archive-chip" title="生成视频时可直接 asset:// 引用">方舟 {asset.arkAssetId}</span>
+                            ) : null}
+                            <StorageChip asset={asset} />
+                        </div>
+                    ) : null}
+                    <dl className="asset-archive-facts">
                         {facts.map((fact) => (
                             <div key={fact.label} className="asset-archive-fact">
-                                <span className="asset-archive-fact-label">{fact.label}</span>
-                                <span className="asset-archive-fact-value" title={fact.value}>
-                                    {fact.value}
-                                </span>
+                                <dt className="asset-archive-fact-label">{fact.label}</dt>
+                                <dd className="asset-archive-fact-value" title={fact.value}>{fact.value}</dd>
                             </div>
                         ))}
-                    </div>
-                    <div className="asset-archive-link">
-                        <Link2 />
-                        <span>所属项目</span>
-                        <strong>{assetProjectLabel(asset)}</strong>
-                    </div>
+                    </dl>
+                    {projectLabel ? (
+                        <div className="asset-archive-link">
+                            <Link2 />
+                            <span>所属项目</span>
+                            <strong>{projectLabel}</strong>
+                        </div>
+                    ) : null}
                     {asset.note ? (
                         <div className="asset-archive-section">
                             <span className="asset-archive-section-title">备注</span>
@@ -1434,10 +1455,7 @@ function AssetImageZoom({ asset }: { asset: LibraryAsset & { kind: "image" } }) 
 }
 
 function assetArchiveFacts(asset: LibraryAsset) {
-    const facts: Array<{ label: string; value: string }> = [
-        { label: "类型", value: assetKindLabel(asset.kind) },
-        { label: "分类", value: assetCategoryLabel(asset.category) },
-    ];
+    const facts: Array<{ label: string; value: string }> = [];
     if (asset.kind === "image" || asset.kind === "video") {
         facts.push({ label: "尺寸", value: assetSizeLabel(asset.data.width, asset.data.height) });
     }
@@ -1466,14 +1484,12 @@ function assetSizeLabel(width: number, height: number) {
     return width > 0 && height > 0 ? `${width}x${height}` : "未知";
 }
 
-function StorageTag({ asset }: { asset: LibraryAsset }) {
+function StorageChip({ asset }: { asset: LibraryAsset }) {
     if (asset.kind !== "image" && asset.kind !== "video" && asset.kind !== "audio" && asset.kind !== "model") return null;
-    const location = resourceStorageLocation(asset.data.storageKey);
-    const color = location === "oss" ? "green" : location === "local" ? "gold" : "default";
     return (
-        <Tag color={color} className="m-0 text-[var(--fs-label)]" title={resourceStorageTitle(asset.data.storageKey)}>
+        <span className="asset-archive-chip" title={resourceStorageTitle(asset.data.storageKey)}>
             {resourceStorageLabel(asset.data.storageKey)}
-        </Tag>
+        </span>
     );
 }
 
@@ -1483,8 +1499,8 @@ function assetSearchText(asset: LibraryAsset) {
 
 function assetProjectLabel(asset: LibraryAsset) {
     const projectName = asset.metadata?.projectName;
-    if (typeof projectName === "string" && projectName.trim()) return projectName;
-    return Array.isArray(asset.metadata?.projectIds) && asset.metadata.projectIds.length ? "已关联项目" : "未关联项目";
+    if (typeof projectName === "string" && projectName.trim()) return projectName.trim();
+    return Array.isArray(asset.metadata?.projectIds) && asset.metadata.projectIds.length ? "已关联项目" : "";
 }
 
 function assetKindLabel(kind: AssetKind) {
@@ -1512,6 +1528,18 @@ function assetCountMap<T extends { label: string; value: string }>(options: T[],
         else result.set(option.value, option.value === "all" ? fallback.length : fallback.filter((asset) => valueOf(asset) === option.value).length);
     });
     return result;
+}
+
+function folderCountValue(counts: Record<string, number> | undefined, id: string, fallback: number) {
+    if (counts && Object.prototype.hasOwnProperty.call(counts, id)) return counts[id];
+    return fallback;
+}
+
+function summedFolderCounts(counts: Record<string, number> | undefined, fallback: number) {
+    if (!counts) return fallback;
+    const keys = Object.keys(counts);
+    if (!keys.length) return fallback;
+    return keys.reduce((sum, key) => sum + (counts[key] || 0), 0);
 }
 
 function formatAssetDuration(durationMs?: number) {

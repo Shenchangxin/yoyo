@@ -229,7 +229,7 @@ function ProfileWorkspace({ props, theme }: { props: AgentSettingsProps; theme: 
         <div className="canvas-agent-settings-scroll thin-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
             <div className="rounded-xl p-4" style={{ background: theme.node.fill }}>
                 <div className="text-sm font-semibold">长期偏好文档</div>
-                <p className="mt-2 text-xs leading-5" style={{ color: theme.node.muted }}>这里定义 Agent 的长期工作习惯、语气和输出结构。它不会增加工具、节点、预算或审批权限；安全契约始终由服务端代码控制。</p>
+                <p className="mt-2 text-xs leading-5" style={{ color: theme.node.muted }}>这里定义 Agent 的长期工作习惯、语气和输出结构。它不会增加工具、节点、预算或审批权限；安全契约始终由本机引擎控制。</p>
             </div>
             <div className="mt-4 flex gap-1 rounded-xl p-1" style={{ background: theme.node.fill }}>
                 <TabButton theme={theme} active={scope === "user"} label="用户" onClick={() => setScope("user")} />
@@ -290,7 +290,7 @@ function McpWorkspace({ theme }: { theme: CanvasTheme }) {
     return (
         <div className="canvas-agent-settings-scroll thin-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
             <div className="rounded-xl p-4" style={{ background: theme.node.fill }}>
-                <div className="flex items-center gap-2 text-sm font-medium"><PlugZap className="size-4 shrink-0" />服务端内置工具</div>
+                <div className="flex items-center gap-2 text-sm font-medium"><PlugZap className="size-4 shrink-0" />本机内置工具</div>
                 <p className="mt-2 text-xs leading-5" style={{ color: theme.node.muted }}>按本轮权限开放，实际能力在发送前向后端确认。Skills 提供操作知识，不会提升工具权限。</p>
             </div>
             <section>
@@ -315,7 +315,7 @@ function TabButton({ active, label, onClick, theme }: { active: boolean; label: 
 function SettingLabel({ label, hint }: { label: string; hint?: string }) { return <div className="mb-2 flex items-center justify-between text-xs font-semibold"><span>{label}</span>{hint ? <span className="text-[10px] font-normal opacity-40">{hint}</span> : null}</div>; }
 function BudgetInput({ label, hint, value, onChange, theme }: { label: string; hint: string; value: string; onChange: (value: string) => void; theme: CanvasTheme }) { return <label className="block"><span className="flex items-center justify-between text-xs font-medium"><span>{label}</span><span className="text-[10px] opacity-40">{hint}</span></span><Input size="large" value={value} onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="mt-2 !rounded-lg" style={{ background: theme.node.fill }} /></label>; }
 function sectionTitle(section: SettingsSection) { return section === "profile" ? "长期偏好" : section === "memories" ? "个人记忆" : section === "skills" ? "Skills" : section === "mcp" ? "MCP 与工具" : section === "context" ? "上下文" : "预算"; }
-function sectionSubtitle(section: SettingsSection) { return section === "profile" ? "用户、项目和画布的长期行为偏好" : section === "memories" ? "只属于你，批准后才会注入会话" : section === "skills" ? "搜索、安装并选择本轮技能" : section === "mcp" ? "云端工具与连接状态" : section === "context" ? "控制 Agent 能读取的范围" : "控制本轮积分与生成消耗"; }
+function sectionSubtitle(section: SettingsSection) { return section === "profile" ? "用户、项目和画布的长期行为偏好" : section === "memories" ? "只属于你，批准后才会注入会话" : section === "skills" ? "搜索、安装并选择本轮技能" : section === "mcp" ? "本机工具与连接状态" : section === "context" ? "控制 Agent 能读取的范围" : "控制本轮积分与生成消耗"; }
 
 export function agentPermissionLabel(mode: AgentPermissionMode) { return permissionOptions.find((option) => option.value === mode)?.label || "请求审批"; }
 export function agentPermissionVisual(mode: AgentPermissionMode) { const option = permissionOptions.find((item) => item.value === mode) || permissionOptions[0]; return { color: option.color, soft: `${option.color}1f`, icon: option.icon }; }

@@ -16,7 +16,7 @@ export type UploadedImage = {
     mimeType: string;
     /**
      * true 表示直传失败、文件当前只存在于本机 IndexedDB。
-     * 云端数据同步会用同一幂等键重传，但在那之前它不是一份已持久化的服务端资源：
+     * 工作区保存会用同一幂等键重传，但在那之前它还不是一份已持久化的本地资源：
      * `url` 是页面级 objectURL，刷新即失效。UI 不得把这种结果说成"已保存"。
      */
     pendingRemoteUpload?: boolean;
@@ -28,7 +28,7 @@ const store = localforage.createInstance({ name: "infinite-canvas", storeName: "
 const objectUrls = new Map<string, string>();
 
 export async function uploadImage(input: string | Blob, onProgress?: (uploadedBytes: number, totalBytes: number) => void): Promise<UploadedImage> {
-    // 同一个逻辑上传在直传失败后会退回 IndexedDB，并由云端数据同步再次提交。
+    // 同一个逻辑上传在直传失败后会退回 IndexedDB，并由工作区保存再次提交。
     // 提前生成本地 key，确保两条路径向后端发送相同的幂等标识。
     const storageKey = `image:${getActiveUserScope()}:${nanoid()}`;
     if (typeof input === "string" && shouldImportRemoteImage(input)) {
@@ -67,7 +67,7 @@ export async function uploadImage(input: string | Blob, onProgress?: (uploadedBy
         if (error instanceof ResourceUploadError && error.permanent) throw error;
         remoteUploadError = error instanceof Error ? error.message : "图片直传失败";
     }
-    // 瞬时失败退回本机：文件仍可用，且云端数据同步会用同一幂等键重传。
+    // 瞬时失败退回本机：文件仍可用，且工作区保存会用同一幂等键重传。
     await store.setItem(storageKey, blob);
     const url = previewUrl;
     objectUrls.set(storageKey, url);

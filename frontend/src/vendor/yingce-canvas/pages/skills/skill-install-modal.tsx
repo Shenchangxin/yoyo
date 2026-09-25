@@ -138,7 +138,7 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
                     <Form.Item name="tag" label="技能分类" rules={[{ required: true, message: "请选择技能分类" }]}>
                         <Select options={fallbackSkillCategories} />
                     </Form.Item>
-                    <Form.Item name="is_public" label="公开状态" valuePropName="checked" extra="公开后其他用户可以加入使用。">
+                    <Form.Item name="is_public" label="工作室可见" valuePropName="checked" extra="打开后会出现在工作室技能列表，可加入当前会话。">
                         <Switch checkedChildren="公开" unCheckedChildren="私有" />
                     </Form.Item>
                 </div>

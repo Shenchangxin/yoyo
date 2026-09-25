@@ -294,7 +294,7 @@ export default function ProjectChaptersView({ detail, refreshProject }: ProjectD
         setDraftHtml(loadedUnit.sourceText || "");
         setDirty(false);
         editor.commands.setContent(loadedUnit.sourceText || "", { emitUpdate: false });
-        // 只在切换章节时装载服务端内容，避免项目刷新覆盖当前未保存正文。
+        // 只在切换章节时装载已保存内容，避免项目刷新覆盖当前未保存正文。
     }, [editor, selectedUnit?.id]);
 
     const wordCount = useMemo(() => editor?.storage.characterCount?.characters?.() || stripHtml(draftHtml).length || 0, [draftHtml, editor]);
@@ -351,7 +351,7 @@ export default function ProjectChaptersView({ detail, refreshProject }: ProjectD
         setCompletedChapterOperations((current) => ({ ...current, [chapterOperationKey(unitId, kind)]: true }));
     };
     const storeExtractedAssets = async (unitId: string, assets: Awaited<ReturnType<typeof extractChapterAssets>>) => {
-        // 去重由服务端按分类、名称及别名统一完成，避免使用页面分页快照漏判。
+        // 去重由本机按分类、名称及别名统一完成，避免使用页面分页快照漏判。
         const candidates = [
             ...assets.characters.map((asset) => ({ unitId, name: asset.name, category: "character" as const, details: { ...asset } })),
             ...assets.scenes.map((asset) => ({ unitId, name: asset.name, category: "environment" as const, details: { ...asset } })),

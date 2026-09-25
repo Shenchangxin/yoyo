@@ -146,7 +146,7 @@ export default function DiagnosticsPanel({ taskId, projectId }: DiagnosticsPanel
                 </div>
 
                 <footer className="mt-5 flex flex-col-reverse gap-4 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="max-w-md text-xs leading-5 text-foreground/48">下载后请把 ZIP 文件和诊断编号一起提交。诊断包不会自动上传到服务器。</p>
+                    <p className="max-w-md text-xs leading-5 text-foreground/48">下载后请把 ZIP 文件和诊断编号一起提交。诊断包不会自动上传到任何远程服务。</p>
                     <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
                         {bundleId ? (
                             <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/[.06] px-2.5 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300" role="status">

@@ -87,7 +87,7 @@ export function CanvasWorkspaceToolPanel({ onInsert }: CanvasWorkspaceToolPanelP
         setCoverUploading(true);
         try {
             const image = await uploadImage(file);
-            if (image.pendingRemoteUpload) throw new Error(image.remoteUploadError || "图片暂存本机，尚未上传到云端，请稍后重试");
+            if (image.pendingRemoteUpload) throw new Error(image.remoteUploadError || "图片暂存本机，尚未保存到素材库，请稍后重试");
             createForm.setFieldValue("cover", toAbsoluteUrl(image.url));
             message.success("封面已上传");
         } catch (error) {
@@ -101,7 +101,7 @@ export function CanvasWorkspaceToolPanel({ onInsert }: CanvasWorkspaceToolPanelP
         setMediaUploading(true);
         try {
             const uploaded = await uploadMediaFile(file, "video");
-            if (uploaded.pendingRemoteUpload) throw new Error(uploaded.remoteUploadError || "视频暂存本机，尚未上传到云端，请稍后重试");
+            if (uploaded.pendingRemoteUpload) throw new Error(uploaded.remoteUploadError || "视频暂存本机，尚未保存到素材库，请稍后重试");
             createForm.setFieldValue("mediaUrl", toAbsoluteUrl(uploaded.url));
             message.success("演示视频已上传");
         } catch (error) {

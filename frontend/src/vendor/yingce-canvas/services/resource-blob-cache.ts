@@ -151,7 +151,7 @@ async function downloadResourceBlob(storageKey: string, target: ResourceCacheMet
 
 function enqueuePersist(target: ResourceCacheMeta, blob: Blob) {
     const task = persistQueue.then(() => persistBlob(target, blob));
-    // IndexedDB 缓存是读性能优化，不得反向判定服务端资源上传失败；但失败必须可观测，
+    // IndexedDB 缓存是读性能优化，不得反向判定本地资源写入失败；但失败必须可观测，
     // 并把队列恢复为 fulfilled，避免一个坏条目永久阻断后续缓存写入。
     const observed = task.catch((error) => {
         console.warn("媒体缓存持久化失败，当前会话仍可继续读取", { resourceId: target.resourceId, version: target.version, error });
@@ -181,7 +181,7 @@ async function persistBlob(target: ResourceCacheMeta, blob: Blob) {
         return;
     } catch (firstError) {
         // 第一次失败通常意味着浏览器配额不足；激进淘汰后只允许再尝试一次，
-        // 避免缓存层无限重试拖慢资源读取，也不把缓存失败误报成服务端资源失败。
+        // 避免缓存层无限重试拖慢资源读取，也不把缓存失败误报成本地资源失败。
         await evictFor(blob.size, target.key, true);
         try {
             await write();

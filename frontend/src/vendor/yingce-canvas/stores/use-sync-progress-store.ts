@@ -65,8 +65,8 @@ if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", (event) => {
         if (useSyncProgressStore.getState().isAnySyncing()) {
             event.preventDefault();
-            event.returnValue = "画布正在同步至云端，请勿关闭页面。";
-            return "画布正在同步至云端，请勿关闭页面。";
+            event.returnValue = "画布正在保存，请勿关闭页面。";
+            return "画布正在保存，请勿关闭页面。";
         }
     });
 }

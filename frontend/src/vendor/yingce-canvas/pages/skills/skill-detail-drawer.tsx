@@ -138,7 +138,7 @@ export function SkillDetailModal({ skill, loading, mutating, categories, onClose
                             </div>
                             <div className="skill-package-sidebar-footer">
                                 <span className="inline-flex items-center gap-1"><Users className="size-3.5" />{formatSkillCount(skill.addedCount)} 人加入</span>
-                                <span>{skill.isPrivate ? "仅自己可见" : "公开"}</span>
+                                <span>{skill.isPrivate ? "仅本机" : "工作室"}</span>
                             </div>
                         </aside>
 

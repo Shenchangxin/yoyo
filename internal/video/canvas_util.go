@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,6 +39,34 @@ func canvasFail(code int, msg, reason string) canvasEnv {
 
 func canvasConflict(msg string) canvasEnv {
 	return canvasEnv{Code: 428, Msg: msg, Reason: "failed_precondition"}
+}
+
+func parseQueryString(raw string) map[string]any {
+	out := map[string]any{}
+	if strings.TrimSpace(raw) == "" {
+		return out
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		for _, pair := range strings.Split(raw, "&") {
+			if pair == "" {
+				continue
+			}
+			k, v, _ := strings.Cut(pair, "=")
+			if k != "" {
+				out[k] = v
+			}
+		}
+		return out
+	}
+	for k, vs := range values {
+		if len(vs) == 0 {
+			out[k] = ""
+			continue
+		}
+		out[k] = vs[0]
+	}
+	return out
 }
 
 func asMap(v any) map[string]any {

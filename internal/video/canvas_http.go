@@ -52,6 +52,14 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	path = strings.TrimPrefix(path, "/api")
 	path = strings.TrimPrefix(path, "/")
 	query := asMap(params["query"])
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		for k, v := range parseQueryString(path[i+1:]) {
+			if _, exists := query[k]; !exists || fmt.Sprint(query[k]) == "" {
+				query[k] = v
+			}
+		}
+		path = path[:i]
+	}
 	body := params["body"]
 	bodyMap := asMap(body)
 	parts := splitPath(path)
@@ -256,12 +264,12 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		for _, r := range rows {
 			projects = append(projects, e.projectDocFromRow(r))
 		}
-		page := e.listAssetsPage("", "", "", "", "", 1, 500, false)
+		page := e.listAssetsPage("", "", "", "", "", 1, 500, false, "")
 		return canvasOK(map[string]any{"assets": page["assets"], "projects": projects})
 	}
 
 	if path == "assets" && method == "GET" {
-		page := e.listAssetsPage(strAnyMap(query, "kind"), strAnyMap(query, "category"), strAnyMap(query, "folderId"), strAnyMap(query, "status"), strAnyMap(query, "q"), intAny(query["page"]), intAny(query["pageSize"]), boolAny(query["uncategorized"]))
+		page := e.listAssetsPage(strAnyMap(query, "kind"), strAnyMap(query, "category"), strAnyMap(query, "folderId"), strAnyMap(query, "status"), strAnyMap(query, "q"), intAny(query["page"]), intAny(query["pageSize"]), boolAny(query["uncategorized"]), strAnyMap(query, "excludeKind"))
 		if strAnyMap(query, "page") == "" && strAnyMap(query, "pageSize") == "" {
 			return canvasOK(map[string]any{"assets": page["assets"]})
 		}
@@ -609,7 +617,7 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 			bodyMap["projectId"] = p["id"]
 			return canvasOK(map[string]any{"asset": e.upsertAsset(bodyMap)})
 		}
-		page := e.listAssetsPage("", "", "", "", "", 1, 100, false)
+		page := e.listAssetsPage("", "", "", "", "", 1, 100, false, "")
 		page["projectId"] = p["id"]
 		return canvasOK(page)
 	}
@@ -624,16 +632,7 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		return canvasOK(map[string]any{"profile": map[string]any{"id": NewID(), "profileJson": bodyMap["profileJson"]}})
 	}
 	if path == "skills" || strings.HasPrefix(path, "skills/") {
-		if path == "skills" && method == "GET" {
-			return canvasOK(map[string]any{"skills": []any{}, "total": 0, "totalCount": 0, "hasMore": false, "categories": []any{}})
-		}
-		if path == "skills/presets" {
-			return canvasOK(map[string]any{"presets": []any{}})
-		}
-		if path == "skills/added" {
-			return canvasOK(map[string]any{"skills": []any{}})
-		}
-		return canvasOK(map[string]any{"skill": map[string]any{}, "files": []any{}, "results": []any{}, "deleted": true})
+		return e.handleCanvasSkills(method, path, query, bodyMap)
 	}
 	if path == "tools" || strings.HasPrefix(path, "tools/") {
 		return canvasOK(map[string]any{"tools": []any{}, "total": 0})

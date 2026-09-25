@@ -96,7 +96,15 @@ function canvasPath(url: string) {
     return String(url || "")
         .replace(/^https?:\/\/[^/]+/i, "")
         .replace(/^\/api\/?/, "")
-        .replace(/^\//, "");
+        .replace(/^\//, "")
+        .split("?")[0];
+}
+
+function canvasQuery(url: string) {
+    const text = String(url || "");
+    const qIndex = text.indexOf("?");
+    if (qIndex < 0) return {};
+    return Object.fromEntries(new URLSearchParams(text.slice(qIndex + 1)));
 }
 
 /**
@@ -187,7 +195,7 @@ async function send<T>(method: string, url: string, data?: unknown, config?: Htt
         const env = await videoCall("canvas.http", {
             method: String(method || "GET").toUpperCase(),
             path: canvasPath(url),
-            query: config?.params || {},
+            query: { ...canvasQuery(url), ...(config?.params && typeof config.params === "object" ? config.params : {}) },
             body: extra.body,
             file_b64: extra.file_b64,
             file_name: extra.file_name,

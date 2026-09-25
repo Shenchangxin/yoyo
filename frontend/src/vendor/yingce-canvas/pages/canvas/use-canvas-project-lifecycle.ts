@@ -206,7 +206,7 @@ export function useCanvasProjectLifecycle({
                     pendingReloadRef.current = null;
                     pendingReload?.reject(error);
                 }
-                if (useSyncProgressStore.getState().syncingProjects[projectId]?.phase !== "conflict") useSyncProgressStore.getState().setProjectProgress(projectId, { phase: "error", message: error instanceof Error ? error.message : "读取云端版本失败" });
+                if (useSyncProgressStore.getState().syncingProjects[projectId]?.phase !== "conflict") useSyncProgressStore.getState().setProjectProgress(projectId, { phase: "error", message: error instanceof Error ? error.message : "读取已保存版本失败" });
                 const detail = error instanceof Error ? error.message : "读取画布失败，请重试";
                 if (keepEditor) message.error(detail);
                 else setLoadError(detail);
@@ -284,7 +284,7 @@ export function useCanvasProjectLifecycle({
 
     const createAndOpenProject = useCallback(() => {
         void createCanvasProjectWithRemoteSync(`自由画布 ${useCanvasStore.getState().projects.length + 1}`).then(({ id, syncError }) => {
-            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，云端同步失败：${syncError.message}` : "画布已在本地创建，云端同步失败");
+            if (syncError) message.warning(syncError instanceof Error ? `画布已在本地创建，工作区保存失败：${syncError.message}` : "画布已在本地创建，工作区保存失败");
             navigate(`/canvas/${id}`);
         });
     }, [message, navigate]);
@@ -312,7 +312,7 @@ export function useCanvasProjectLifecycle({
         renameProject(projectId, title);
         // 标题是画布列表和分享入口的元数据，重命名后立即提交，避免只停留在浏览器缓存。
         void saveRemoteUserDataNow(projectId).catch((error) => {
-            message.warning(error instanceof Error ? `名称已更新到本地，云端同步将在后台重试：${error.message}` : "名称已更新到本地，云端同步将在后台重试");
+            message.warning(error instanceof Error ? `名称已更新，后台将重试写入工作区：${error.message}` : "名称已更新，后台将重试写入工作区");
         });
     }, [message, projectId, renameProject]);
 
@@ -363,10 +363,10 @@ export function useCanvasProjectLifecycle({
         }
         try {
             await saveRemoteUserDataNow(projectId);
-            message.success("画布已保存到云端");
+            message.success("画布已保存到本机");
         } catch (error) {
             const detail = error instanceof Error ? error.message : "未知错误";
-            message.warning(`本地画布布局已保存，云端同步失败：${detail}`);
+            message.warning(`本地画布布局已保存，工作区保存失败：${detail}`);
             // Imports can retain their durable local result; sharing requires cloud success.
             return options.requireRemote === false;
         }

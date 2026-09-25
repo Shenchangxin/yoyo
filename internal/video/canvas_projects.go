@@ -164,42 +164,19 @@ func (e *Engine) deleteProjectUnit(id string) error {
 	return err
 }
 
-func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page, pageSize int, uncategorized bool) map[string]any {
+func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page, pageSize int, uncategorized bool, excludeKind string) map[string]any {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize <= 0 {
 		pageSize = 40
 	}
-	where := `deleted_at = ''`
-	var args []any
-	if kind != "" {
-		where += ` AND kind = ?`
-		args = append(args, kind)
-	}
-	if category != "" {
-		where += ` AND category = ?`
-		args = append(args, category)
-	}
-	if folderID != "" {
-		where += ` AND folder_id = ?`
-		args = append(args, folderID)
-	}
-	if uncategorized {
-		where += ` AND folder_id = ''`
-	}
-	if status != "" {
-		where += ` AND status = ?`
-		args = append(args, status)
-	}
-	if q != "" {
-		where += ` AND title LIKE ?`
-		args = append(args, "%"+q+"%")
-	}
+	where, args := assetListWhere(kind, category, folderID, status, q, uncategorized, excludeKind)
 	var total int
 	_ = e.DB.QueryRow(`SELECT COUNT(*) FROM canvas_assets WHERE `+where, args...).Scan(&total)
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := e.DB.Query(`SELECT id, folder_id, kind, category, title, resource_id, payload_json, status, created_at, updated_at FROM canvas_assets WHERE `+where+` ORDER BY updated_at DESC LIMIT ? OFFSET ?`, args...)
+	kindCounts, categoryCounts, folderCounts := e.scanAssetFacets(status, q, excludeKind)
+	pageArgs := append(append([]any{}, args...), pageSize, (page-1)*pageSize)
+	rows, err := e.DB.Query(`SELECT id, folder_id, kind, category, title, resource_id, payload_json, status, created_at, updated_at FROM canvas_assets WHERE `+where+` ORDER BY updated_at DESC LIMIT ? OFFSET ?`, pageArgs...)
 	assets := []map[string]any{}
 	if err == nil {
 		defer rows.Close()
@@ -219,8 +196,102 @@ func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page
 	}
 	return map[string]any{
 		"assets": assets, "page": page, "pageSize": pageSize, "total": total, "hasMore": page*pageSize < total,
-		"kindCounts": map[string]int{}, "categoryCounts": map[string]int{}, "folderCounts": map[string]int{},
+		"kindCounts": kindCounts, "categoryCounts": categoryCounts, "folderCounts": folderCounts,
 	}
+}
+
+func assetSearchClause(q string) (string, []any) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return "", nil
+	}
+	like := "%" + q + "%"
+	return ` AND (title LIKE ? OR IFNULL(payload_json, '') LIKE ?)`, []any{like, like}
+}
+
+func assetListWhere(kind, category, folderID, status, q string, uncategorized bool, excludeKind string) (string, []any) {
+	where := `deleted_at = ''`
+	var args []any
+	if excludeKind != "" {
+		where += ` AND kind != ?`
+		args = append(args, excludeKind)
+	}
+	if kind != "" {
+		where += ` AND kind = ?`
+		args = append(args, kind)
+	}
+	if category != "" {
+		where += ` AND category = ?`
+		args = append(args, category)
+	}
+	if folderID != "" {
+		where += ` AND folder_id = ?`
+		args = append(args, folderID)
+	}
+	if uncategorized {
+		where += ` AND folder_id = ''`
+	}
+	if status == "active" {
+		where += ` AND status != 'archived'`
+	} else if status != "" {
+		where += ` AND status = ?`
+		args = append(args, status)
+	}
+	searchSQL, searchArgs := assetSearchClause(q)
+	where += searchSQL
+	args = append(args, searchArgs...)
+	return where, args
+}
+
+func (e *Engine) scanAssetFacets(status, q, excludeKind string) (map[string]int, map[string]int, map[string]int) {
+	where := `deleted_at = ''`
+	var args []any
+	if excludeKind != "" {
+		where += ` AND kind != ?`
+		args = append(args, excludeKind)
+	}
+	if status == "active" {
+		where += ` AND status != 'archived'`
+	} else if status != "" {
+		where += ` AND status = ?`
+		args = append(args, status)
+	}
+	searchSQL, searchArgs := assetSearchClause(q)
+	where += searchSQL
+	args = append(args, searchArgs...)
+	kinds := map[string]int{}
+	cats := map[string]int{}
+	folders := map[string]int{}
+	rows, err := e.DB.Query(`SELECT kind, category, COUNT(*) FROM canvas_assets WHERE `+where+` GROUP BY kind, category`, args...)
+	if err != nil {
+		return kinds, cats, folders
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, cat string
+		var n int
+		if rows.Scan(&kind, &cat, &n) != nil {
+			continue
+		}
+		kinds[kind] += n
+		if cat == "" {
+			cat = "other"
+		}
+		cats[cat] += n
+	}
+	frows, ferr := e.DB.Query(`SELECT folder_id, COUNT(*) FROM canvas_assets WHERE `+where+` GROUP BY folder_id`, args...)
+	if ferr == nil {
+		defer frows.Close()
+		for frows.Next() {
+			var folder string
+			var n int
+			if frows.Scan(&folder, &n) != nil {
+				continue
+			}
+			folders[folder] += n
+		}
+	}
+	return kinds, cats, folders
 }
 
 func (e *Engine) upsertAsset(in map[string]any) map[string]any {
@@ -233,14 +304,14 @@ func (e *Engine) upsertAsset(in map[string]any) map[string]any {
 	_, _ = e.DB.Exec(`INSERT INTO canvas_assets(id, folder_id, kind, category, title, resource_id, payload_json, status, created_at, updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id, kind=excluded.kind, category=excluded.category, title=excluded.title, resource_id=excluded.resource_id, payload_json=excluded.payload_json, status=excluded.status, updated_at=excluded.updated_at, deleted_at=''`,
-		id, strAnyMap(in, "folderId"), firstNonEmpty(strAnyMap(in, "kind"), "image"), strAnyMap(in, "category"), firstNonEmpty(strAnyMap(in, "title"), "Asset"), strAnyMap(in, "resourceId"), string(payload), firstNonEmpty(strAnyMap(in, "status"), "ready"), now, now)
+		id, strAnyMap(in, "folderId"), firstNonEmpty(strAnyMap(in, "kind"), "image"), strAnyMap(in, "category"), firstNonEmpty(strAnyMap(in, "title"), "Asset"), strAnyMap(in, "resourceId"), string(payload), firstNonEmpty(strAnyMap(in, "status"), "confirmed"), now, now)
 	in["id"] = id
 	in["updatedAt"] = now
 	return in
 }
 
 func (e *Engine) getAsset(id string) (map[string]any, error) {
-	page := e.listAssetsPage("", "", "", "", "", 1, 500, false)
+	page := e.listAssetsPage("", "", "", "", "", 1, 500, false, "")
 	for _, a := range page["assets"].([]map[string]any) {
 		if fmt.Sprint(a["id"]) == id {
 			return a, nil

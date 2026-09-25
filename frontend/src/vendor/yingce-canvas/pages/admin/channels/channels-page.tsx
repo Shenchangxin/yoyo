@@ -375,7 +375,7 @@ export default function ChannelsPage() {
                         <Input placeholder="例如：OpenAI 官方渠道" />
                     </Form.Item>
                     <Form.Item name="baseUrl" label="Base URL" rules={[{ required: true, message: "请填写 Base URL" }]}>
-                        <Input placeholder="填写云端渠道 Base URL" />
+                        <Input placeholder="填写接口 Base URL" />
                     </Form.Item>
                     <Form.Item
                         name="apiKey"

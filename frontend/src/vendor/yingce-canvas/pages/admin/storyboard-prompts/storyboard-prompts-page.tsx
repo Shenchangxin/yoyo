@@ -240,7 +240,7 @@ export default function StoryboardPromptsPage() {
                                     {
                                         key: "contract",
                                         label: "输出契约",
-                                        children: <div><div className="mb-3 flex items-center gap-2 text-xs font-medium"><ShieldCheck className="size-4" />服务端只读</div><pre className="thin-scrollbar max-h-96 overflow-auto whitespace-pre-wrap text-xs leading-6 text-foreground/65">{selectedDefinition?.outputContract || "请选择模板类型"}</pre></div>,
+                                        children: <div><div className="mb-3 flex items-center gap-2 text-xs font-medium"><ShieldCheck className="size-4" />引擎只读</div><pre className="thin-scrollbar max-h-96 overflow-auto whitespace-pre-wrap text-xs leading-6 text-foreground/65">{selectedDefinition?.outputContract || "请选择模板类型"}</pre></div>,
                                     },
                                     {
                                         key: "preview",

@@ -29,7 +29,7 @@ export function CanvasWorkspaceAssetPanel({ onInsert, onManage, onProjectAssets 
     const query = useInfiniteQuery({
         queryKey: ["canvas-workspace-assets", userId, category, kind, search],
         initialPageParam: 1,
-        queryFn: ({ signal, pageParam }) => loadAssetLibraryPage({ page: pageParam, pageSize: 40, category, kind: kind === "all" ? undefined : kind, status: "active", query: search, signal }),
+        queryFn: ({ signal, pageParam }) => loadAssetLibraryPage({ page: pageParam, pageSize: 40, category, kind: kind === "all" ? undefined : kind, status: "active", query: search, excludeKind: "entity", signal }),
         getNextPageParam: (page, pages) => (pages.reduce((count, item) => count + item.assets.length, 0) < page.total ? pages.length + 1 : undefined),
         enabled: Boolean(userId) && hydrated,
     });

@@ -19,7 +19,7 @@ const EDITOR_TIMELINE_KEY = "editor-timeline";
 
 /**
  * 为尚未产生本地时间线的项目建立一个可编辑的初始时间线。
- * 该时间线只写入当前用户与项目作用域的本地存储，不代表服务端已有成片数据。
+ * 该时间线只写入当前用户与项目作用域的本地存储，不代表本机已有成片数据。
  */
 function createEmptyEditorTimeline(): TimelineProject {
     // 没有真实素材时返回空时间线，避免把不存在的 demo node 当成可剪辑资产。
@@ -294,7 +294,7 @@ export default function ProjectEditorView({ detail }: { detail: ProjectDetail })
     const detailAssetsRef = useRef(detail.assets);
     detailAssetsRef.current = detail.assets;
 
-    // 挂载、切换项目或切换账号时先恢复详情快照，再以服务端列表校准。
+    // 挂载、切换项目或切换账号时先恢复详情快照，再以本机列表校准。
     // detail.assets 只用于切换瞬间占位；refreshAssets 内部负责丢弃过期和乱序响应。
     useEffect(() => {
         setAssets(detailAssetsRef.current);

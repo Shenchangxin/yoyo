@@ -1,4 +1,4 @@
-// Package layout 是画布节点排布的确定性几何实现，供云端 Agent 的"整理 / 归类 / 新增落位"使用。
+// Package layout 是画布节点排布的确定性几何实现，供画布 Agent 的"整理 / 归类 / 新增落位"使用。
 //
 // 这里刻意与前端 web/src/lib/canvas/canvas-layout.ts 保持同一套常量与算法语义：
 // 前端"自动整理节点"按钮与 Agent 的整理工具必须给出同样的结果，否则同一个画布在两条

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Check, Clapperboard, CloudUpload, Download, FileText, Frame, Image as ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Settings2, Trash2, Video, X } from "lucide-react";
+import { Check, Clapperboard, Download, FileText, Frame, HardDrive, Image as ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Settings2, Trash2, Video, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { App, Dropdown, Input } from "antd";
@@ -197,8 +197,8 @@ export function ProjectPreview({ project, preferLatestImage = false }: { project
             {isSyncing && syncProgress ? (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-stone-950/75 p-3 text-center backdrop-blur-sm transition-all duration-300 pointer-events-none select-none" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1.5 text-amber-400">
-                        <CloudUpload className="size-4 animate-bounce" />
-                        <span className="text-xs font-medium tracking-wide">云端同步中</span>
+                        <HardDrive className="size-4 animate-bounce" />
+                        <span className="text-xs font-medium tracking-wide">正在保存</span>
                     </div>
                     <div className="w-full max-w-[150px] space-y-1">
                         {syncProgress.total > 0 ? (
@@ -219,7 +219,7 @@ export function ProjectPreview({ project, preferLatestImage = false }: { project
                                 </div>
                             </>
                         ) : (
-                            <div className="text-[10px] text-white/80">正在写入云端结构...</div>
+                            <div className="text-[10px] text-white/80">正在写入工作区结构...</div>
                         )}
                         <div className="text-[9px] text-white/60">请勿关闭或刷新浏览器</div>
                     </div>

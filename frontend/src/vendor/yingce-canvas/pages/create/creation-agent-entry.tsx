@@ -8,7 +8,7 @@ import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { createCanvasProjectWithRemoteSync, hasRemoteUserDataSyncSession, saveRemoteUserDataNow } from "@yingce/services/user-data-sync";
 
-/** Agent 依赖真实画布 ID，先完成服务端保存，再进入同一个画布 Agent。 */
+/** Agent 依赖真实画布 ID，先完成本机保存，再进入同一个画布 Agent。 */
 export function CreationAgentEntry() {
     const navigate = useNavigate();
     const { message } = App.useApp();
@@ -31,7 +31,7 @@ export function CreationAgentEntry() {
                 const result = await createCanvasProjectWithRemoteSync("Agent 创作");
                 if (!result.id) throw new Error("画布创建未返回有效 ID，请重试。");
                 created.current = { id: result.id, userId };
-                if (result.syncError) throw new Error("画布已缓存在本机，但云端尚未保存。请重试同步后再启动 Agent。");
+                if (result.syncError) throw new Error("画布已缓存在本机，但工作区尚未写入完成。请稍后重试再启动 Agent。");
             } else {
                 await saveRemoteUserDataNow();
             }
