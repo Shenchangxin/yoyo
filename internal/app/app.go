@@ -86,6 +86,7 @@ type Config struct {
 	PaletteLight            string            `yaml:"palette_light" json:"palette_light"`
 	GateMode                string            `yaml:"gate_mode" json:"gate_mode"`
 	CrashResume             bool              `yaml:"crash_resume" json:"crash_resume"`
+	SessionRetentionDays    int               `yaml:"session_retention_days" json:"session_retention_days"`
 	SearchURL               string            `yaml:"search_url" json:"search_url"`
 	SearchKey               string            `yaml:"search_key" json:"search_key"`
 	ContextWindow           int               `yaml:"context_window" json:"context_window"`
@@ -180,6 +181,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		UpdateChannel:        "nightly",
 		Theme:                "system",
 		CrashResume:          true,
+		SessionRetentionDays: 30,
 		GateMode:             capability.GateManual,
 	}
 	if b, err := os.ReadFile(h.Config()); err == nil {
@@ -203,6 +205,9 @@ func Open(root, bundledEvals string) (*App, error) {
 		}
 		if _, ok := raw["crash_resume"]; !ok {
 			cfg.CrashResume = true
+		}
+		if _, ok := raw["session_retention_days"]; !ok {
+			cfg.SessionRetentionDays = 30
 		}
 	}
 	cfg.NormalizeAppearance()
@@ -358,6 +363,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	if a.crashResume() {
 		a.resumeCrashed()
 	}
+	a.SweepExpiredSessions()
 	diaglog.Info("app open", "component", "boot", "home", h.Root, "isolated", isolated(), "isolation_kind", isolationKind(), "crash_resume", a.crashResume())
 	return a, nil
 }
@@ -689,17 +695,6 @@ func (a *App) restoreRuns() {
 		}
 		id := strings.TrimSuffix(name, ".run.json")
 		st := a.Threads.Load(id)
-		if len(st.Queue) > 0 {
-			a.queueMu.Lock()
-			for _, t := range st.Queue {
-				atts := make([]Attachment, 0, len(t.Attachments))
-				for _, x := range t.Attachments {
-					atts = append(atts, Attachment{Path: x.Path, Name: x.Name, MIME: x.MIME, DataB64: x.DataB64})
-				}
-				a.queue[id] = append(a.queue[id], QueuedTurn{Text: t.Text, Plan: t.Plan, Attachments: atts})
-			}
-			a.queueMu.Unlock()
-		}
 		if a.Caps != nil {
 			a.Caps.ApplyAuthMode(id, st.AuthMode)
 			if len(st.SessionCaps) > 0 {
@@ -716,22 +711,31 @@ func (a *App) restoreRuns() {
 			a.queueMu.Unlock()
 		}
 		if strings.TrimSpace(st.ResumeText) != "" {
-			a.queueMu.Lock()
-			a.queue[id] = append([]QueuedTurn{{Text: st.ResumeText, Plan: st.ResumePlan}}, a.queue[id]...)
-			a.queueMu.Unlock()
+			a.Threads.PrependQueue(id, session.QueuedTurn{ID: "q-resume", Text: st.ResumeText, Plan: st.ResumePlan})
+			a.Threads.SetResume(id, "", false)
 		}
 	}
 }
 
 func (a *App) resumeCrashed() {
-	a.queueMu.Lock()
-	ids := make([]string, 0, len(a.queue))
-	for id, q := range a.queue {
-		if len(q) > 0 {
+	if a.Threads == nil || a.Home == nil {
+		return
+	}
+	entries, err := os.ReadDir(a.Home.Sessions())
+	if err != nil {
+		return
+	}
+	var ids []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".run.json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".run.json")
+		if len(a.Threads.QueueList(id)) > 0 {
 			ids = append(ids, id)
 		}
 	}
-	a.queueMu.Unlock()
 	for _, id := range ids {
 		diaglog.Warn("crash resume skips high-risk grants", "component", "policy", "session_id", id)
 		diaglog.Warn("crash resume", "component", "runtime", "session_id", id)

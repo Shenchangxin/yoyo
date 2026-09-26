@@ -3,6 +3,7 @@ package connector
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,11 +40,13 @@ type Draft struct {
 }
 
 type Broker struct {
-	mu      sync.Mutex
-	path    string
-	acct    []Account
-	drafts  []Draft
-	local   map[string][]map[string]string
+	mu     sync.Mutex
+	path   string
+	acct   []Account
+	drafts []Draft
+	local  map[string][]map[string]string
+	tokens TokenStore
+	http   *http.Client
 }
 
 func Open(dir string) (*Broker, error) {
@@ -97,15 +100,18 @@ func (b *Broker) Disconnect(id string) bool {
 
 func (b *Broker) Read(id, query string) ([]map[string]string, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	a, ok := b.find(id)
+	local := b.local[id]
+	b.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("connector: unknown %s", id)
 	}
-	items := b.local[id]
+	if live, err := b.liveRead(a, query); err == nil {
+		return live, nil
+	}
 	q := strings.ToLower(query)
 	var out []map[string]string
-	for _, it := range items {
+	for _, it := range local {
 		blob := strings.ToLower(it["subject"] + " " + it["body"] + " " + it["title"])
 		if q == "" || strings.Contains(blob, q) {
 			out = append(out, it)
@@ -115,7 +121,7 @@ func (b *Broker) Read(id, query string) ([]map[string]string, error) {
 		out = append(out, map[string]string{
 			"provider": a.Provider,
 			"kind":     string(a.Kind),
-			"note":     "no local items; connect a real MCP/OAuth pack to read live mail/calendar",
+			"note":     "no live token and no local items; complete OAuth or seed the mailbox",
 			"query":    query,
 		})
 	}
@@ -139,19 +145,40 @@ func (b *Broker) Draft(account, to, subject, body string) Draft {
 
 func (b *Broker) Send(id string) (Draft, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	var d Draft
+	var acct Account
+	idx := -1
 	for i := range b.drafts {
 		if b.drafts[i].ID != id {
 			continue
 		}
 		if LooksExfilDraft(b.drafts[i].To, b.drafts[i].Body) {
+			b.mu.Unlock()
 			return Draft{}, fmt.Errorf("connector: no-exfil blocked send")
 		}
-		b.drafts[i].Sent = true
-		_ = b.flush()
-		return b.drafts[i], nil
+		d = b.drafts[i]
+		acct, _ = b.find(d.Account)
+		idx = i
+		break
 	}
-	return Draft{}, fmt.Errorf("connector: unknown draft")
+	b.mu.Unlock()
+	if idx < 0 {
+		return Draft{}, fmt.Errorf("connector: unknown draft")
+	}
+	local := strings.EqualFold(acct.Provider, "local") || acct.Provider == ""
+	if !local {
+		if err := b.liveSend(acct, d); err != nil {
+			return Draft{}, err
+		}
+	}
+	b.mu.Lock()
+	if idx < len(b.drafts) && b.drafts[idx].ID == id {
+		b.drafts[idx].Sent = true
+		d = b.drafts[idx]
+	}
+	_ = b.flush()
+	b.mu.Unlock()
+	return d, nil
 }
 
 func (b *Broker) Drafts() []Draft {

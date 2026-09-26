@@ -80,8 +80,12 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		case trace.TypeUser:
 			flush()
 			text, _ := ev.Payload["text"].(string)
-			if text != "" {
-				out = append(out, Message{Role: RoleUser, Content: text})
+			parts := partsFromPayload(ev.Payload["parts"])
+			if text != "" || len(parts) > 0 {
+				if text == "" {
+					text = "(image attached)"
+				}
+				out = append(out, Message{Role: RoleUser, Content: text, Parts: parts})
 			}
 		case trace.TypeInject:
 			if ev.Source != "mention" {
@@ -172,6 +176,31 @@ func parseRoundIndex(id string) int {
 		return 0
 	}
 	return n
+}
+
+func partsFromPayload(v any) []ContentPart {
+	if v == nil {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var parts []ContentPart
+	if json.Unmarshal(raw, &parts) != nil {
+		return nil
+	}
+	out := parts[:0]
+	for _, p := range parts {
+		if p.Type == "" && p.ImageURL == "" && p.Text == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func payloadString(v any) string {

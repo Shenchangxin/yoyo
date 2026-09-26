@@ -18,11 +18,25 @@ var ChatCoreTools = []string{
 	"web_fetch", "web_search",
 }
 
+// ChatOfficeTools are first-class on personal chat so the model can see
+// the connector → browser → computer_act ladder without tool_search.
+var ChatOfficeTools = []string{
+	"office_create", "office_edit", "office_query", "office_render",
+	"browser_open", "browser_snapshot", "browser_click", "browser_type",
+	"browser_fill", "browser_download", "browser_screenshot", "browser_takeover",
+	"browser_cookies",
+	"connector_read", "connector_draft", "connector_send",
+	"computer_act",
+}
+
 // ApplyChatToolMenu projects the harness catalog onto the coding core.
 // alwaysAdvertise tools stay visible via AllToolJSON even if omitted here.
 func ApplyChatToolMenu(have []string) []string {
 	core := map[string]bool{}
 	for _, n := range ChatCoreTools {
+		core[n] = true
+	}
+	for _, n := range ChatOfficeTools {
 		core[n] = true
 	}
 	seen := map[string]bool{}
@@ -38,6 +52,9 @@ func ApplyChatToolMenu(have []string) []string {
 		for _, n := range ChatCoreTools {
 			add(n)
 		}
+		for _, n := range ChatOfficeTools {
+			add(n)
+		}
 		return out
 	}
 	for _, n := range have {
@@ -46,6 +63,9 @@ func ApplyChatToolMenu(have []string) []string {
 		}
 	}
 	for _, n := range ChatCoreTools {
+		add(n)
+	}
+	for _, n := range ChatOfficeTools {
 		add(n)
 	}
 	return out

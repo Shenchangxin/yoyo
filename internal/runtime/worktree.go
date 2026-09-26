@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // IsolateWorkspace copies the workspace (or git worktree) so a subagent
@@ -81,6 +82,46 @@ func gitWorktree(src, dst string) error {
 		return err
 	}
 	return exec.Command("git", "-C", src, "worktree", "add", "--detach", dst).Run()
+}
+
+// ApplyWorktree copies isolate dest back onto origin. Git worktrees are
+// synced with a checkout of dest's files; non-git isolates are a tree copy.
+func ApplyWorktree(origin, dest string) error {
+	origin = filepath.Clean(origin)
+	dest = filepath.Clean(dest)
+	if origin == "" || dest == "" || origin == dest {
+		return fmt.Errorf("invalid worktree apply paths")
+	}
+	if st, err := os.Stat(dest); err != nil || !st.IsDir() {
+		return fmt.Errorf("worktree missing: %s", dest)
+	}
+	if gitApply(origin, dest) == nil {
+		return nil
+	}
+	return copyTree(dest, origin)
+}
+
+func gitApply(origin, dest string) error {
+	if err := exec.Command("git", "-C", origin, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("git", "-C", dest, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
+		return err
+	}
+	cmd := exec.Command("git", "-C", dest, "diff", "--binary")
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	apply := exec.Command("git", "-C", origin, "apply", "--binary", "-")
+	apply.Stdin = strings.NewReader(string(out))
+	if err := apply.Run(); err != nil {
+		return copyTree(dest, origin)
+	}
+	return nil
 }
 
 func copyTree(src, dst string) error {

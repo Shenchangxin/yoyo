@@ -41,6 +41,76 @@ func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 	return strings.TrimSpace(b.String())
 }
 
+// ImageParts turns image attachments into native multimodal parts so the
+// model sees pixels instead of "binary mime (N bytes)".
+func ImageParts(workspace string, atts []Attachment) []ContentPart {
+	var out []ContentPart
+	for i, att := range atts {
+		part, ok := imagePart(workspace, att, i)
+		if !ok {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+func imagePart(workspace string, att Attachment, i int) (ContentPart, bool) {
+	if !isImageAtt(att) {
+		return ContentPart{}, false
+	}
+	raw, mime, err := attachmentBytes(workspace, att)
+	if err != nil || len(raw) == 0 {
+		return ContentPart{}, false
+	}
+	if len(raw) > 2<<20 {
+		raw = raw[:2<<20]
+	}
+	if mime == "" {
+		mime = "image/png"
+	}
+	url := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
+	label := att.Name
+	if label == "" {
+		label = filepath.Base(att.Path)
+	}
+	if label == "" || label == "." {
+		label = fmt.Sprintf("attachment-%d", i+1)
+	}
+	return ContentPart{Type: "image_url", ImageURL: url, MIME: mime, Text: label}, true
+}
+
+func isImageAtt(att Attachment) bool {
+	mime := strings.ToLower(strings.TrimSpace(att.MIME))
+	if strings.HasPrefix(mime, "image/") {
+		return true
+	}
+	name := strings.ToLower(att.Name + " " + att.Path)
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func attachmentBytes(workspace string, att Attachment) ([]byte, string, error) {
+	mime := strings.TrimSpace(att.MIME)
+	if att.Path != "" {
+		p, err := jailPath(workspace, att.Path)
+		if err != nil {
+			return nil, mime, err
+		}
+		raw, err := os.ReadFile(p)
+		return raw, mime, err
+	}
+	if att.DataB64 == "" {
+		return nil, mime, fmt.Errorf("empty")
+	}
+	raw, err := base64.StdEncoding.DecodeString(att.DataB64)
+	return raw, mime, err
+}
+
 func attachmentChunk(workspace, path, name, mime, b64 string, i int) string {
 	label := name
 	if label == "" {
@@ -73,6 +143,9 @@ func attachmentChunk(workspace, path, name, mime, b64 string, i int) string {
 		dest := filepath.Join(dir, sanitizeName(label))
 		if err := os.WriteFile(dest, raw, 0o644); err == nil {
 			rel, _ := filepath.Rel(workspace, dest)
+			if isImageMIME(mime) || looksImageName(label) {
+				return fmt.Sprintf("## attachment:%s\nsaved %s (%d bytes, %s); image attached as a multimodal part\n", label, filepath.ToSlash(rel), len(raw), mime)
+			}
 			return fmt.Sprintf("## attachment:%s\nsaved %s (%d bytes, %s)\n", label, filepath.ToSlash(rel), len(raw), mime)
 		}
 	}
@@ -80,6 +153,9 @@ func attachmentChunk(workspace, path, name, mime, b64 string, i int) string {
 }
 
 func formatAttachment(label, mime string, raw []byte) string {
+	if isImageMIME(mime) || looksImageName(label) {
+		return fmt.Sprintf("## attachment:%s\nimage attached as a multimodal part (%d bytes, %s)\n", label, len(raw), mime)
+	}
 	if looksBinary(raw) {
 		return fmt.Sprintf("## attachment:%s\nbinary %s (%d bytes)\n", label, mime, len(raw))
 	}
@@ -89,6 +165,20 @@ func formatAttachment(label, mime string, raw []byte) string {
 		out += "\n…[truncated]"
 	}
 	return out + "\n"
+}
+
+func isImageMIME(mime string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(mime)), "image/")
+}
+
+func looksImageName(name string) bool {
+	n := strings.ToLower(name)
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp"} {
+		if strings.HasSuffix(n, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func looksBinary(b []byte) bool {

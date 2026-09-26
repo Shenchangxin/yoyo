@@ -76,6 +76,20 @@ describe("presenceOf", () => {
       })).emotionId,
       "37",
     );
+    assert.equal(
+      presenceOf(base({
+        running: true,
+        items: [item({ type: "tool_call", name: "connector_read", payload: { id: "1" } })],
+      })).emotionId,
+      "36",
+    );
+    assert.equal(
+      presenceOf(base({
+        running: true,
+        items: [item({ type: "tool_call", name: "office_create", payload: { id: "1" } })],
+      })).tips,
+      "office_create",
+    );
   });
 
   it("flashes receive then done, sleeps when unfocused", () => {

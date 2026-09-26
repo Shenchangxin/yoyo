@@ -63,7 +63,8 @@ function WorkstationApp() {
   const popoutId = readPopoutId();
   const popout = !!popoutId;
   const [layout, setLayout] = useState(readLayout);
-  const [reviewFile, setReviewFile] = useState("");
+  const reviewFile = useUI((s) => s.reviewFile);
+  const setReviewFile = useUI((s) => s.setReviewFile);
   const sheetInspect = useMedia("(max-width: 1099px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
@@ -139,7 +140,7 @@ function WorkstationApp() {
   const bindComposer = {
     files: ws.files,
     skills: ws.skills,
-    authMode: ws.active?.authMode || "full",
+    authMode: ws.active?.authMode || "default",
     workspace: sessionWs,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
@@ -167,6 +168,10 @@ function WorkstationApp() {
     },
     onClipboard: async () => api.clipboardRead(),
     onScreenshot: async () => api.captureScreenshot(),
+    queueItems: ws.queueItems,
+    onQueueCancel: (id: string) => { void ws.onQueueCancel(id); },
+    onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
+    onApplyWorktree: () => { void ws.onApplyWorktree(); },
     taskPlan: latestTaskPlan(ws.items),
   };
 
@@ -221,15 +226,10 @@ function WorkstationApp() {
       running={ws.threadRunning}
       trace={ws.trace}
       thread={ws.active}
-      workspace={sessionWs}
+      workspace={toolRoot}
       focusFile={reviewFile}
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
-      onResolve={ws.onResolve}
-          onOpenThread={(id) => {
-            const t = ws.threads.find((x) => x.id === id);
-            if (t) ws.openThread(t);
-          }}
       onOpenPath={(rel) => {
         const root = ws.active?.workspace || ws.savedCfg.workspace;
         const path = joinWorkspace(root, rel);
@@ -259,9 +259,9 @@ function WorkstationApp() {
             ws.setInspector(true);
             if (path) {
               setReviewFile(path);
-              ws.setInspTab("files");
+              ws.setInspTab(/\.(html?|xhtml)$/i.test(path) ? "browser" : "files");
             } else {
-              ws.setInspTab("diff");
+              ws.setInspTab("files");
             }
             void ws.refreshDiff();
           }}
@@ -365,6 +365,7 @@ function WorkstationApp() {
       onNewIn={(path) => { void ws.onNewIn(path); }}
       workspace={ws.surface === "video" ? (ws.savedCfg.videoWorkspace || ws.health.videoWorkspace || ws.savedCfg.workspace) : ws.savedCfg.workspace}
       onLab={ws.setLab}
+      onChats={() => ws.showConversation()}
       onHarness={() => {
         if (ws.surface === "harness") ws.showConversation();
         else ws.openHarness("overview");
@@ -529,6 +530,11 @@ function WorkstationApp() {
               onSelectRunning={(t) => ws.openThread(t)}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
+              onOpenThread={(id) => {
+                const t = ws.threads.find((x) => x.id === id);
+                if (t) ws.openThread(t);
+              }}
+              onResolve={ws.onResolve}
               onRename={async (title) => {
                 if (!ws.activeId) return;
                 await api.renameSession(ws.activeId, title);

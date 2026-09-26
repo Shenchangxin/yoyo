@@ -48,6 +48,36 @@ func TestForkPinsHarness(t *testing.T) {
 	}
 }
 
+func TestForkSessionFromKeepsFromUserMessage(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "first turn"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeAssistant, SessionID: src.ID, Payload: map[string]any{"text": "ok"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "branch here now"}})
+	dst, err := a.ForkSessionFrom(src.ID, "branch here")
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := a.Traces.Read(dst.ID)
+	if err != nil || len(evs) == 0 {
+		t.Fatalf("%d %v", len(evs), err)
+	}
+	if evs[0].Type != trace.TypeUser {
+		t.Fatalf("want user start, got %s", evs[0].Type)
+	}
+	text, _ := evs[0].Payload["text"].(string)
+	if text != "branch here now" {
+		t.Fatalf("got %q", text)
+	}
+}
+
 func TestMaterialsDecodeFailsVisible(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

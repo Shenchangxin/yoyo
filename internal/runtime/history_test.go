@@ -118,3 +118,16 @@ func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 		t.Fatalf("calls=%d results=%d msgs=%+v", calls, results, msgs)
 	}
 }
+
+func TestMessagesFromEventsKeepsImageParts(t *testing.T) {
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{
+			"text": "look",
+			"parts": []map[string]any{{"type": "image_url", "image_url": "data:image/png;base64,xx"}},
+		}},
+	}
+	msgs := MessagesFromEvents(evs)
+	if len(msgs) != 1 || len(msgs[0].Parts) != 1 || msgs[0].Parts[0].ImageURL == "" {
+		t.Fatalf("%+v", msgs)
+	}
+}

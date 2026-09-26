@@ -215,6 +215,8 @@ function ConnectorSection() {
   const copy = useCopy();
   const [data, setData] = useState<{ accounts?: any[]; catalog?: any[] }>({});
   const [provider, setProvider] = useState("gmail");
+  const [clientId, setClientId] = useState("");
+  const [code, setCode] = useState("");
   const refresh = () => {
     void api.connectors().then(setData).catch(() => {});
   };
@@ -223,7 +225,7 @@ function ConnectorSection() {
   }, []);
   const catalog = asArray(data.catalog);
   const accounts = asArray(data.accounts);
-  const options = catalog.length ? catalog : [{ provider: "gmail" }, { provider: "feishu" }, { provider: "local" }];
+  const options = catalog.length ? catalog : [{ provider: "gmail" }, { provider: "outlook" }, { provider: "feishu" }, { provider: "local" }];
   return (
     <SettingSection
       id="extensions-connectors"
@@ -239,7 +241,18 @@ function ConnectorSection() {
             list
             title={str(a.label || a.Label || a.provider)}
             description={str(a.kind || a.Kind) || undefined}
-          />
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await api.connectorDisconnect(str(a.id || a.ID));
+                refresh();
+              }}
+            >
+              {copy.settings.disconnect}
+            </Button>
+          </SettingRow>
         ))
       )}
       <SettingRow title={copy.settings.provider} stack border={false}>
@@ -251,17 +264,19 @@ function ConnectorSection() {
             <SelectContent>
               {options.map((c: any) => (
                 <SelectItem key={str(c.provider)} value={str(c.provider)}>
-                  {str(c.label || c.provider)}
+                  {str(c.label || c.provider)}{c.mcp_pack || c.MCPPack ? " · MCP" : ""}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Field label={copy.settings.oauthClientId} value={clientId} onChange={setClientId} />
+          <Field label={copy.settings.oauthCode} value={code} onChange={setCode} />
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={async () => {
-                const r = await api.connectorAuthURL(provider, "", "http://127.0.0.1:3080/oauth");
+                const r = await api.connectorAuthURL(provider, clientId, "http://127.0.0.1:3080/oauth");
                 const url = str(r?.url || r?.URL);
                 if (url) window.open(url, "_blank", "noopener");
               }}
@@ -271,8 +286,24 @@ function ConnectorSection() {
             </Button>
             <Button
               size="sm"
+              variant="outline"
+              disabled={!code.trim()}
               onClick={async () => {
-                await api.connectorConnect({ provider, kind: "mail", label: provider });
+                await api.connectorComplete(provider, code.trim(), clientId);
+                setCode("");
+                refresh();
+              }}
+            >
+              {copy.settings.completeOAuth}
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await api.connectorConnect({
+                  provider,
+                  kind: str(catalog.find((c: any) => str(c.provider) === provider)?.kind || catalog.find((c: any) => str(c.provider) === provider)?.Kind || "mail"),
+                  label: provider,
+                });
                 refresh();
               }}
             >

@@ -74,6 +74,7 @@ func (a *App) openPersonal() error {
 			return nil, err
 		}
 		a.Connectors = conn
+		a.Connectors.SetTokens(a.Vault)
 		return func() error { a.Connectors = nil; return nil }, nil
 	}); err != nil {
 		return err
@@ -144,6 +145,9 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	tools.SearchAPI = a.searchAPI
 	tools.ChatOverlay = true
 	tools.Advertised = runtime.ApplyChatToolMenu(tools.Advertised)
+	if a.Threads != nil && tools.SessionID != "" {
+		tools.AllowedConnectors = a.Threads.ConnectorAllow(tools.SessionID)
+	}
 }
 
 func (a *App) searchAPI(query string) (string, error) {
@@ -208,6 +212,8 @@ func (a *App) IsolationReport() map[string]any {
 		"sandbox_badge_ok": iso.Sandbox,
 		"gate_mode":        capability.ParseGateMode(a.Config.GateMode),
 		"crash_resume":     a.crashResume(),
+		"awake_required":   true,
+		"lid_close_stops":  true,
 	}
 }
 

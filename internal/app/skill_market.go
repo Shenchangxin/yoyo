@@ -42,6 +42,21 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	mcpURL := ""
+	if skParsed.Metadata != nil {
+		mcpURL = strings.TrimSpace(skParsed.Metadata["mcp"])
+		if mcpURL == "" {
+			mcpURL = strings.TrimSpace(skParsed.Metadata["mcp_url"])
+		}
+	}
+	mcpNote := ""
+	if mcpURL != "" {
+		if err := a.StartMCPHTTP(slug, mcpURL); err != nil {
+			mcpNote = err.Error()
+		} else {
+			mcpNote = "mcp started"
+		}
+	}
 	sk := a.GetSkill("", scan.Name)
 	if sk == nil {
 		sk = a.GetSkill("", slug)
@@ -53,11 +68,20 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 		"skill":   sk,
 		"files":   skillmarketFiles(files),
 		"warning": warn,
+		"mcp":     mcpNote,
+		"bundle":  skillBundleNote(skParsed.Metadata),
 	}, nil
 }
 
 func (a *App) UninstallMarketSkill(slug string) error {
 	return skillmarket.Uninstall(a.Home.Skills(), slug)
+}
+
+func skillBundleNote(meta map[string]string) string {
+	if meta == nil {
+		return ""
+	}
+	return strings.TrimSpace(meta["connectors"])
 }
 
 func packSkillMD(files []skillmarket.PackFile) []byte {

@@ -14,6 +14,7 @@ import {
   Folder,
   GitBranch,
   LayoutGrid,
+  MessageSquare,
   MessageSquarePlus,
   MoreHorizontal,
   Pin,
@@ -168,6 +169,7 @@ export function ThreadRail(props: {
   onNewIn?: (path: string) => void;
   workspace?: string;
   onLab: (lab: Lab) => void;
+  onChats: () => void;
   onHarness: () => void;
   onSkills: () => void;
   onVideo: () => void;
@@ -299,6 +301,14 @@ export function ThreadRail(props: {
       )}
       {videoOn ? <div className="min-h-0 flex-1" /> : null}
       <div className="rail-dock">
+        <DockIcon
+          label={copy.rail.sessions}
+          hint={copy.rail.sessionsHint}
+          on={props.surface === "agent"}
+          onClick={props.onChats}
+        >
+          <MessageSquare className="size-4" aria-hidden />
+        </DockIcon>
         <DockIcon
           label={copy.rail.skills}
           hint={copy.rail.skillsHint}
@@ -640,9 +650,9 @@ function ThreadRow(props: {
               {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
               <span className={cn("block truncate text-[13px]", active ? "font-medium text-foreground" : "font-normal")}>{displayTitle(t.title, copy.rail.untitled)}</span>
             </span>
-            {run || t.archived || t.isolate ? (
+            {run || t.archived || t.isolate || t.interrupted || (t.queued || 0) > 0 ? (
               <span className="block truncate text-[11px] text-muted">
-                {run ? copy.rail.running : t.archived ? copy.rail.archived : copy.rail.isolated}
+                {run ? copy.rail.running : t.interrupted ? copy.rail.interrupted : (t.queued || 0) > 0 ? copy.rail.queued : t.archived ? copy.rail.archived : copy.rail.isolated}
               </span>
             ) : null}
           </span>

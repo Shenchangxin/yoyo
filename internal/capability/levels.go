@@ -10,6 +10,7 @@ const (
 	SendAsYou      Level = "send_as_you"
 	Schedule       Level = "schedule"
 	MemoryWrite    Level = "memory_write"
+	Clipboard      Level = "clipboard"
 )
 
 // GateMode is the operator-facing approval policy.
@@ -88,9 +89,11 @@ func AuthModeLevels(mode string) []Level {
 	case AuthFull:
 		return []Level{
 			ReadWorkspace, WriteWorkspace, SpecifiedPath, MemoryWrite,
-			Shell, Network, Browser, Schedule, ReadConnector, WriteConnector,
+			Shell, Network, Browser, Schedule, ReadConnector, WriteConnector, Clipboard,
 		}
 	default:
+		// Default uses the broker always-map (workspace R/W). Shell,
+		// network, browser, clipboard, and identity actions still ask.
 		return nil
 	}
 }

@@ -176,6 +176,34 @@ func (s *Service) QueueList(id string) []app.QueuedTurn {
 	return s.App.QueueList(id)
 }
 
+func (s *Service) QueueCancel(id, itemID string) bool {
+	if s.RPC != nil {
+		v, _ := s.call("thread.queue.cancel", map[string]any{"session": id, "id": itemID})
+		m, _ := decode[map[string]any](v, nil)
+		ok, _ := m["ok"].(bool)
+		return ok
+	}
+	return s.App.QueueCancel(id, itemID)
+}
+
+func (s *Service) QueueReorder(id, itemID string, delta int) bool {
+	if s.RPC != nil {
+		v, _ := s.call("thread.queue.reorder", map[string]any{"session": id, "id": itemID, "delta": delta})
+		m, _ := decode[map[string]any](v, nil)
+		ok, _ := m["ok"].(bool)
+		return ok
+	}
+	return s.App.QueueReorder(id, itemID, delta)
+}
+
+func (s *Service) ApplySessionWorktree(id string) (app.SessionMeta, error) {
+	if s.RPC != nil {
+		v, err := s.call("thread.worktree.apply", map[string]any{"session": id})
+		return decode[app.SessionMeta](v, err)
+	}
+	return s.App.ApplySessionWorktree(id)
+}
+
 func (s *Service) Steer(id, text string) error {
 	if s.RPC != nil {
 		_, err := s.call("turn.steer", map[string]any{"session": id, "text": text})
@@ -197,6 +225,21 @@ func (s *Service) SearchFiles(workspace, query string) []runtime.FileHit {
 		workspace = s.App.Workspace()
 	}
 	return runtime.FuzzySearch(workspace, query, 40)
+}
+
+func (s *Service) WorkspaceTree(workspace string) []runtime.FileHit {
+	if s.RPC != nil {
+		v, err := s.call("fs.tree", map[string]any{"workspace": workspace})
+		hits, _ := decode[[]runtime.FileHit](v, err)
+		if hits == nil {
+			return []runtime.FileHit{}
+		}
+		return hits
+	}
+	if workspace == "" && s.App != nil {
+		workspace = s.App.Workspace()
+	}
+	return runtime.ListTree(workspace, 4000)
 }
 
 func (s *Service) ListSkills() []map[string]string {

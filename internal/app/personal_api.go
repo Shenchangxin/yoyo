@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/connector"
@@ -57,6 +58,57 @@ func (a *App) ConnectorStoreToken(id, token string) error {
 	return nil
 }
 
+func (a *App) ConnectorComplete(provider, code, clientID, secret, redirect string) (connector.Account, error) {
+	var zero connector.Account
+	if a.Connectors == nil {
+		return zero, fmt.Errorf("no connectors")
+	}
+	if clientID == "" {
+		clientID = strings.TrimSpace(os.Getenv("YOYO_" + strings.ToUpper(provider) + "_CLIENT_ID"))
+	}
+	if secret == "" {
+		secret, _ = a.Vault.Lease("connector." + provider + ".secret")
+		if secret == "" {
+			secret = strings.TrimSpace(os.Getenv("YOYO_" + strings.ToUpper(provider) + "_CLIENT_SECRET"))
+		}
+	}
+	if redirect == "" {
+		redirect = "http://127.0.0.1:3080/oauth"
+	}
+	tok, err := a.Connectors.Exchange(provider, code, clientID, secret, redirect)
+	if err != nil {
+		return zero, err
+	}
+	acct := a.Connectors.Connect(connector.Account{Provider: provider, Kind: connector.KindMail, Label: provider})
+	if err := a.Connectors.SaveToken(acct.VaultKey, tok); err != nil {
+		return acct, err
+	}
+	return acct, nil
+}
+
+func (a *App) SetSessionConnectors(id string, accounts []string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	if a.Threads != nil {
+		a.Threads.SetConnectorAllow(id, accounts)
+	}
+	return m, nil
+}
+
+func (a *App) TriggerWebhook(id string) error {
+	if a.Schedule == nil {
+		return fmt.Errorf("no scheduler")
+	}
+	j, ok := a.Schedule.Trigger(id)
+	if !ok {
+		return fmt.Errorf("unknown webhook job")
+	}
+	go a.runIsolatedJob(j)
+	return nil
+}
+
 func (a *App) AdmitExpert(dir string) (expert.Pack, error) {
 	return expert.Admit(dir, a.Home.Skills(), a.wasmPub)
 }
@@ -72,6 +124,31 @@ func (a *App) DistillExpert(name, description, body string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+func (a *App) BrowserView() map[string]any {
+	if a == nil || a.Browser == nil {
+		return map[string]any{"lane": "isolated", "live": false, "log": []any{}}
+	}
+	v := a.Browser.View()
+	return map[string]any{
+		"url":        v.URL,
+		"title":      v.Title,
+		"lane":       v.Lane,
+		"profile":    v.Profile,
+		"headed":     v.Headed,
+		"live":       v.Live,
+		"text":       v.Text,
+		"screenshot": v.Screenshot,
+		"log":        v.Log,
+	}
+}
+
+func (a *App) BrowserTakeover() error {
+	if a == nil || a.Browser == nil {
+		return fmt.Errorf("no isolated browser")
+	}
+	return a.Browser.StartTakeover()
 }
 
 func (a *App) ReviewQueue() map[string]any {

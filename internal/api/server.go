@@ -114,7 +114,17 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		if len(parts) > 1 && parts[1] == "fork" && r.Method == http.MethodPost {
-			m, err := a.ForkSession(id)
+			var body struct {
+				From string `json:"from"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			var m app.SessionMeta
+			var err error
+			if strings.TrimSpace(body.From) != "" {
+				m, err = a.ForkSessionFrom(id, body.From)
+			} else {
+				m, err = a.ForkSession(id)
+			}
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return
@@ -265,6 +275,20 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		if len(parts) > 1 && parts[1] == "queue" {
+			if r.Method == http.MethodDelete {
+				ok := a.QueueCancel(id, r.URL.Query().Get("id"))
+				writeJSON(w, map[string]any{"ok": ok})
+				return
+			}
+			if r.Method == http.MethodPost {
+				var body struct {
+					ID    string `json:"id"`
+					Delta int    `json:"delta"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				writeJSON(w, map[string]any{"ok": a.QueueReorder(id, body.ID, body.Delta)})
+				return
+			}
 			writeJSON(w, a.QueueList(id))
 			return
 		}
@@ -326,6 +350,15 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			m, err := a.SetSessionIsolate(id, body.Isolate)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "worktree" && r.Method == http.MethodPost {
+			m, err := a.ApplySessionWorktree(id)
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return
@@ -400,6 +433,13 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			ws = a.Workspace()
 		}
 		writeJSON(w, runtime.FuzzySearch(ws, q.Get("q"), 40))
+	})
+	mux.HandleFunc("/api/workspace/tree", func(w http.ResponseWriter, r *http.Request) {
+		ws := r.URL.Query().Get("workspace")
+		if ws == "" {
+			ws = a.Workspace()
+		}
+		writeJSON(w, runtime.ListTree(ws, 4000))
 	})
 	mux.HandleFunc("/api/skills", func(w http.ResponseWriter, r *http.Request) {
 		ws := r.URL.Query().Get("workspace")

@@ -405,8 +405,9 @@ function IsolationSection({ host }: { host: SettingsHost }) {
         title={copy.settings.isolationBrowser}
         value={rep?.browser_isolated || rep?.browserIsolated ? "isolated profile" : "unset"}
         mono
-        border={false}
       />
+      <SettingValueRow title={copy.settings.awakeRequired} value={copy.settings.yes} />
+      <SettingValueRow title={copy.settings.lidCloseStops} value={copy.settings.yes} border={false} />
     </SettingSection>
   );
 }

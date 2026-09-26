@@ -9,6 +9,7 @@ import (
 
 // QueuedTurn is a durable inbox item for a busy session.
 type QueuedTurn struct {
+	ID          string       `json:"id,omitempty"`
 	Text        string       `json:"text"`
 	Plan        bool         `json:"plan"`
 	Attachments []Attachment `json:"attachments,omitempty"`
@@ -41,6 +42,7 @@ type RunState struct {
 	ResumePlan       bool              `json:"resume_plan,omitempty"`
 	AskQuestion      string            `json:"ask_question,omitempty"`
 	AuthMode         string            `json:"auth_mode,omitempty"`
+	ConnectorAllow   []string          `json:"connector_allow,omitempty"`
 }
 
 func runPath(dir, id string) string {

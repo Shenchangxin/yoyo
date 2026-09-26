@@ -65,6 +65,8 @@ export type Thread = {
   pinnedSkills?: string[];
   loadedSkills?: string[];
   channel?: ThreadChannel;
+  interrupted?: boolean;
+  queued?: number;
 };
 
 export function threadChannel(t: { channel?: string } | null | undefined): ThreadChannel {

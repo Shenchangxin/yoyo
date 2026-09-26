@@ -11,11 +11,14 @@ import (
 )
 
 type Event struct {
-	TS      time.Time `json:"ts"`
-	Op      string    `json:"op"`
-	App     string    `json:"app"`
-	Detail  string    `json:"detail"`
-	Display string    `json:"display"`
+	TS       time.Time `json:"ts"`
+	Op       string    `json:"op"`
+	App      string    `json:"app"`
+	Detail   string    `json:"detail"`
+	Display  string    `json:"display"`
+	Injected bool      `json:"injected,omitempty"`
+	Shot     string    `json:"shot,omitempty"`
+	Note     string    `json:"note,omitempty"`
 }
 
 type Host struct {
@@ -63,6 +66,12 @@ func (h *Host) Act(app, op, detail string) (Event, error) {
 		return Event{}, fmt.Errorf("computer_use: app %q not on allowlist (virtual display only; never the operator desktop)", app)
 	}
 	ev := Event{TS: time.Now().UTC(), Op: op, App: app, Detail: detail, Display: h.display}
+	if shot, err := h.inject(op, app, detail); err != nil {
+		ev.Note = err.Error()
+	} else {
+		ev.Injected = op != "record"
+		ev.Shot = shot
+	}
 	h.events = append(h.events, ev)
 	raw, _ := json.MarshalIndent(h.events, "", "  ")
 	_ = os.WriteFile(filepath.Join(h.dir, "recording.json"), raw, 0o600)

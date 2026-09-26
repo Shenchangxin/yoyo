@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { DiffBlock } from "../../lib/split-diff";
 import { langFromPath, type ArtifactView } from "../../lib/artifact-preview";
-import { looksLikeHTML, looksLikeHTMLFile } from "../../lib/html-preview";
+import { looksLikeHTML, looksLikeHTMLFile, looksLikePDF, asPreviewDocument } from "../../lib/html-preview";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
@@ -145,10 +145,10 @@ export function WorkspaceFileView({
   if (err) return <p className={note}>{err}</p>;
   if (binary) return <p className={note}>{copy.transcript.binaryFile}</p>;
   const asHtml = !source && (html || looksLikeHTML(text) || looksLikeHTMLFile(path));
-  if (asHtml && looksLikeHTML(text)) {
+  if (asHtml && text) {
     return (
       <div className={cn(frame, fill && "min-h-0")}>
-        <SandboxedFrame html={text} title={path} fill={fill} />
+        <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} />
       </div>
     );
   }
@@ -186,6 +186,9 @@ export function ArtifactBody({
       ) : null}
       {source || (!wantHtml && view.code) ? <CodePreview lang={view.lang || langFromPath(view.path)} text={view.code} /> : null}
       {view.kind === "text" && view.path && workspace && !view.diff && !view.code ? (
+        <WorkspaceFileView workspace={workspace} path={view.path} source={source} />
+      ) : null}
+      {view.path && workspace && !view.diff && !view.code && !wantHtml && view.kind !== "text" && (looksLikePDF(view.path) || /\.(docx|xlsx|pptx)$/i.test(view.path)) ? (
         <WorkspaceFileView workspace={workspace} path={view.path} source={source} />
       ) : null}
     </div>

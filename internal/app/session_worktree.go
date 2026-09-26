@@ -50,6 +50,22 @@ func (a *App) EnsureSessionWorktree(id string) (SessionMeta, error) {
 	return m, nil
 }
 
+func (a *App) ApplySessionWorktree(id string) (SessionMeta, error) {
+	m, err := a.GetSession(id)
+	if err != nil {
+		return m, err
+	}
+	origin := m.ProjectRoot()
+	dest := strings.TrimSpace(m.Worktree)
+	if dest == "" {
+		return m, fmt.Errorf("session has no worktree")
+	}
+	if err := runtime.ApplyWorktree(origin, dest); err != nil {
+		return m, err
+	}
+	return m, nil
+}
+
 func (a *App) SetSessionIsolate(id string, isolate bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {

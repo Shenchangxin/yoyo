@@ -100,7 +100,7 @@ export function parseAuthMode(v: any): AuthMode {
   if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
   if (s === "auto_edit" || s === "autoedit") return "auto_edit";
   if (s === "full" || s === "full_access") return "full";
-  if (!s) return "full";
+  if (!s) return "default";
   return "default";
 }
 
@@ -126,6 +126,8 @@ export function threadOf(v: any): Thread {
     pinnedSkills: asArray(pick(v, "pinned_skills", "PinnedSkills")).map(String).filter(Boolean),
     loadedSkills: asArray(pick(v, "loaded_skills", "LoadedSkills")).map(String).filter(Boolean),
     channel: str(pick(v, "channel", "Channel")) === "video" ? "video" : "agent",
+    interrupted: bool(pick(v, "interrupted", "Interrupted")),
+    queued: num(pick(v, "queued", "Queued")),
   };
 }
 
@@ -478,11 +480,38 @@ function isQueuedResult(raw: any): boolean {
   return false;
 }
 
-export async function queueList(sessionID: string): Promise<{ text?: string }[]> {
+export async function queueList(sessionID: string): Promise<{ id?: string; text?: string; plan?: boolean }[]> {
   const s = await wailsService();
   if (s?.QueueList) return asArray(await s.QueueList(sessionID));
   if (s) return [];
   return asArray(await http(`/api/sessions/${sessionID}/queue`));
+}
+
+export async function queueCancel(sessionID: string, itemID: string): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.QueueCancel) return asBool(await s.QueueCancel(sessionID, itemID));
+  if (s) return false;
+  const r = await http<any>(`/api/sessions/${sessionID}/queue?id=${encodeURIComponent(itemID)}`, { method: "DELETE" });
+  return asBool(pick(r, "ok", "Ok") ?? r);
+}
+
+export async function queueReorder(sessionID: string, itemID: string, delta: number): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.QueueReorder) return asBool(await s.QueueReorder(sessionID, itemID, delta));
+  if (s) return false;
+  const r = await http<any>(`/api/sessions/${sessionID}/queue`, {
+    method: "POST",
+    body: JSON.stringify({ id: itemID, delta }),
+  });
+  return asBool(pick(r, "ok", "Ok") ?? r);
+}
+
+export async function applySessionWorktree(sessionID: string): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.ApplySessionWorktree
+    ? await s.ApplySessionWorktree(sessionID)
+    : await http(`/api/sessions/${sessionID}/worktree`, { method: "POST" });
+  return threadOf(raw);
 }
 
 export async function running(sessionID: string): Promise<boolean> {
@@ -629,12 +658,26 @@ export async function unloadFiber(name: string): Promise<void> {
   if (s?.UnloadFiber) return s.UnloadFiber(name);
 }
 
-export async function forkSession(id: string): Promise<Thread> {
+export async function forkSession(id: string, from = ""): Promise<Thread> {
   const s = await wailsService();
-  const raw = s?.ForkSession
-    ? await s.ForkSession(id)
-    : await http(`/api/sessions/${id}/fork`, { method: "POST" });
+  const raw = s?.ForkSessionFrom && from
+    ? await s.ForkSessionFrom(id, from)
+    : s?.ForkSession && !from
+      ? await s.ForkSession(id)
+      : await http(`/api/sessions/${id}/fork`, { method: "POST", body: from ? JSON.stringify({ from }) : undefined });
   return threadOf(raw);
+}
+
+export async function dumpSession(id: string): Promise<{ id: string; path: string }> {
+  const s = await wailsService();
+  const raw = s?.DumpSession
+    ? await s.DumpSession(id)
+    : await http(`/api/sessions/${id}/dump`);
+  const paths = pick(raw, "paths", "Paths") || {};
+  return {
+    id: str(pick(raw, "id", "ID"), id),
+    path: str(pick(paths, "dump", "Dump"), str(pick(raw, "path", "Path"))),
+  };
 }
 
 export async function renameSession(id: string, title: string): Promise<void> {
@@ -871,6 +914,14 @@ export async function steer(id: string, text: string): Promise<void> {
   await http(`/api/sessions/${id}/steer`, { method: "POST", body: JSON.stringify({ text }) });
 }
 
+export async function workspaceTree(workspace: string): Promise<FileHit[]> {
+  const s = await wailsService();
+  const raw = s?.WorkspaceTree
+    ? await s.WorkspaceTree(workspace)
+    : await http(`/api/workspace/tree?workspace=${encodeURIComponent(workspace || "")}`);
+  return asArray(raw).map((v) => ({ path: str(pick(v, "path", "Path")), kind: str(pick(v, "kind", "Kind"), "file") })).filter((h) => h.path);
+}
+
 export async function searchFiles(workspace: string, query: string): Promise<FileHit[]> {
   const s = await wailsService();
   const raw = s?.SearchFiles
@@ -1080,6 +1131,29 @@ export async function connectorAuthURL(provider: string, clientId: string, redir
   return http("/api/connectors/oauth", { method: "POST", body: JSON.stringify({ provider, client_id: clientId, redirect }) });
 }
 
+export async function connectorComplete(provider: string, code: string, clientId = "", secret = "", redirect = "http://127.0.0.1:3080/oauth"): Promise<any> {
+  const s = await wailsService();
+  if (s?.ConnectorComplete) return s.ConnectorComplete(provider, code, clientId, secret, redirect);
+  return http("/api/connectors/oauth", {
+    method: "POST",
+    body: JSON.stringify({ provider, code, client_id: clientId, secret, redirect }),
+  });
+}
+
+export async function connectorDisconnect(id: string): Promise<boolean> {
+  const s = await wailsService();
+  if (s?.ConnectorDisconnect) return asBool(await s.ConnectorDisconnect(id));
+  if (s) return false;
+  const r = await http<any>(`/api/connectors?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+  return asBool(pick(r, "ok", "Ok") ?? true);
+}
+
+export async function triggerWebhook(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.TriggerWebhook) { await s.TriggerWebhook(id); return; }
+  await http(`/api/hooks/${encodeURIComponent(id)}`, { method: "POST" });
+}
+
 export async function memoryList(q = "", kind = ""): Promise<any[]> {
   const s = await wailsService();
   if (s?.MemoryList) return asArray(await s.MemoryList(q, kind));
@@ -1139,6 +1213,48 @@ export async function reviewQueue(): Promise<any> {
   const s = await wailsService();
   if (s?.ReviewQueue) return s.ReviewQueue();
   return http("/api/review/queue");
+}
+
+export type BrowserView = {
+  url: string;
+  title: string;
+  lane: string;
+  profile: string;
+  headed: boolean;
+  live: boolean;
+  text: string;
+  screenshot: string;
+  log: { op?: string; detail?: string; url?: string; ts?: string }[];
+};
+
+export async function browserView(): Promise<BrowserView> {
+  const s = await wailsService();
+  const raw = s?.BrowserView ? await s.BrowserView() : await http("/api/browser/view");
+  return {
+    url: str(pick(raw, "url", "URL")),
+    title: str(pick(raw, "title", "Title")),
+    lane: str(pick(raw, "lane", "Lane"), "isolated"),
+    profile: str(pick(raw, "profile", "Profile")),
+    headed: bool(pick(raw, "headed", "Headed")),
+    live: bool(pick(raw, "live", "Live")),
+    text: str(pick(raw, "text", "Text")),
+    screenshot: str(pick(raw, "screenshot", "Screenshot")),
+    log: asArray(pick(raw, "log", "Log")).map((row: any) => ({
+      op: str(pick(row, "op")),
+      detail: str(pick(row, "detail")),
+      url: str(pick(row, "url")),
+      ts: str(pick(row, "ts", "TS")),
+    })),
+  };
+}
+
+export async function browserTakeover(): Promise<void> {
+  const s = await wailsService();
+  if (s?.BrowserTakeover) {
+    await s.BrowserTakeover();
+    return;
+  }
+  await http("/api/browser/takeover", { method: "POST", body: "{}" });
 }
 
 export async function clipboardRead(): Promise<string> {

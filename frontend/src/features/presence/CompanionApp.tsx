@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { presenceLine, presenceOf } from "./director";
 import { PresenceSprite } from "./PresenceRuntime";
+import {
+  bubbleLine,
+  itemEndsWork,
+  itemStartsWork,
+  mergePulse,
+  pulseFrom,
+  showLoading,
+  type CompanionPulse,
+} from "./companion-pulse";
 import { useMotionReduced } from "../../lib/motion";
 import { subscribeItems, subscribeSessions } from "../../lib/stream";
 import * as api from "../../lib/client";
@@ -11,23 +20,6 @@ import { cn } from "../../lib/utils";
 
 const KEEP = 80;
 const AWAKE_MS = 12_000;
-const PULSE_MS = 7000;
-
-type Pulse = { title: string; body: string; session: string; until: number; kind: string };
-
-function pulseFrom(raw: any): Pulse | null {
-  const p = raw && typeof raw === "object" && "title" in raw ? raw : raw?.data || raw;
-  if (!p || typeof p !== "object") return null;
-  const title = String(p.title || "").trim();
-  if (!title) return null;
-  return {
-    title,
-    body: String(p.body || "").trim(),
-    session: String(p.session || "").trim(),
-    kind: String(p.kind || "").trim(),
-    until: Date.now() + PULSE_MS,
-  };
-}
 
 export function CompanionApp() {
   const copy = useCopy();
@@ -38,14 +30,22 @@ export function CompanionApp() {
   const [items, setItems] = useState<Item[]>([]);
   const [approvals, setApprovals] = useState(0);
   const [hover, setHover] = useState(false);
-  const [pulse, setPulse] = useState<Pulse | null>(null);
+  const [pulse, setPulse] = useState<CompanionPulse | null>(null);
   const [spark, setSpark] = useState(0);
   const idleAt = useRef(Date.now());
   const [now, setNow] = useState(() => Date.now());
   const sessionRef = useRef("");
   const dragged = useRef(false);
+  const pulseChannel = useRef(false);
 
   const bump = () => { idleAt.current = Date.now(); };
+
+  const applyPulse = (next: CompanionPulse) => {
+    bump();
+    if (next.session) sessionRef.current = next.session;
+    setPulse((cur) => mergePulse(cur, next));
+    setSpark((n) => n + 1);
+  };
 
   useEffect(() => {
     document.documentElement.classList.add("companion");
@@ -69,13 +69,11 @@ export function CompanionApp() {
     void import("@wailsio/runtime").then((mod: any) => {
       const Events = mod.Events;
       if (!alive || !Events?.On) return;
+      pulseChannel.current = true;
       off = Events.On("yoyo:pulse", (raw: any) => {
         const next = pulseFrom(raw);
         if (!next) return;
-        bump();
-        if (next.session) sessionRef.current = next.session;
-        setPulse(next);
-        setSpark((n) => n + 1);
+        applyPulse(next);
       });
     });
     return () => {
@@ -112,6 +110,26 @@ export function CompanionApp() {
         const next = [...prev, it];
         return next.length > KEEP ? next.slice(-KEEP) : next;
       });
+      if (itemStartsWork(it)) setRunning(true);
+      if (it.type === "turn_end") setRunning(false);
+      if (pulseChannel.current) {
+        if (itemEndsWork(it)) {
+          setPulse((cur) => (cur?.kind === "loading" ? { ...cur, until: Date.now() } : cur));
+        }
+        return;
+      }
+      if (itemStartsWork(it) && it.type !== "assistant" && it.type !== "reasoning") {
+        applyPulse({
+          title: String(it.name || it.text || copy.presence.loading).trim().slice(0, 42) || copy.presence.loading,
+          body: copy.presence.loading,
+          session: it.sessionId || sessionRef.current,
+          kind: "loading",
+          until: Date.now() + 16_000,
+        });
+      }
+      if (itemEndsWork(it)) {
+        setPulse((cur) => (cur?.kind === "loading" ? { ...cur, until: Date.now() } : cur));
+      }
     });
     const offSess = subscribeSessions(() => { void pull(); });
     return () => {
@@ -120,9 +138,12 @@ export function CompanionApp() {
       offItems();
       offSess();
     };
-  }, []);
+  }, [copy.presence.loading]);
 
   const idleMs = running ? 0 : now - idleAt.current;
+  const activePulse = pulse && now < pulse.until ? pulse : null;
+  const loading = showLoading(running, pulse, approvals, now);
+  const interrupted = !running && items.some((it) => it.type === "error" && /interrupt|cancel|stopped/i.test(`${it.text || ""} ${it.name || ""}`));
   const emotion = useMemo(() => presenceOf({
     booted,
     running,
@@ -132,13 +153,19 @@ export function CompanionApp() {
     idleMs,
     voicePhase,
     now,
-  }), [booted, running, items, approvals, idleMs, now, voicePhase]);
+    moduleLoading: loading && !running,
+    interrupted,
+  }), [booted, running, items, approvals, idleMs, now, voicePhase, loading, interrupted]);
 
-  const activePulse = pulse && now < pulse.until ? pulse : null;
-  const line = activePulse
-    ? (activePulse.body ? `${activePulse.title} · ${activePulse.body}` : activePulse.title)
-    : presenceLine(emotion, copy.presence);
-  const showLine = !!activePulse || emotion.live || hover || emotion.tips === "approval" || emotion.tips === "ask";
+  const emotionLine = presenceLine(emotion, copy.presence);
+  const line = bubbleLine({
+    approvals,
+    pulse: activePulse,
+    approvalLine: copy.presence.approval,
+    emotionLine,
+    now,
+  });
+  const showLine = !!activePulse || emotion.live || hover || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
 
   useEffect(() => {
     void api.setCompanionCaption(showLine);
@@ -191,8 +218,12 @@ export function CompanionApp() {
       </div>
       <button
         type="button"
-        className={cn("companion-bubble", showLine ? "is-on" : "is-off")}
+        className={cn("companion-bubble", showLine ? "is-on" : "is-off", loading && "is-loading")}
         data-testid="companion-bubble"
+        data-loading={loading ? "true" : undefined}
+        data-kind={approvals > 0 ? "approval" : (activePulse?.kind || emotion.tips || undefined)}
+        aria-busy={loading}
+        aria-live="polite"
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
         onClick={(e) => {
@@ -200,7 +231,8 @@ export function CompanionApp() {
           open();
         }}
       >
-        {line}
+        <span className="companion-bubble-text">{line}</span>
+        {loading ? <span className="companion-dots" aria-hidden><i /><i /><i /></span> : null}
       </button>
     </div>
   );

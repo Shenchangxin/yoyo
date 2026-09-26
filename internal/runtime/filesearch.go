@@ -69,6 +69,13 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 	return hits
 }
 
+func ListTree(root string, limit int) []FileHit {
+	if limit <= 0 {
+		limit = 4000
+	}
+	return FuzzySearch(root, "", limit)
+}
+
 func scoreHit(h FileHit, q string) int {
 	base := strings.ToLower(filepath.Base(h.Path))
 	if q == "" {

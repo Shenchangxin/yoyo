@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ErrBusy means a turn is already running on this session.
@@ -88,9 +89,82 @@ func (m *Manager) Enqueue(id string, turn QueuedTurn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st := m.state(id)
+	if turn.ID == "" {
+		turn.ID = fmt.Sprintf("q-%d-%d", time.Now().UTC().UnixNano(), len(st.Queue)+1)
+	}
 	st.Queue = append(st.Queue, turn)
 	m.runs[id] = st
 	m.persist(id)
+}
+
+func (m *Manager) PrependQueue(id string, turn QueuedTurn) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	if turn.ID == "" {
+		turn.ID = "q-resume"
+	}
+	st.Queue = append([]QueuedTurn{turn}, st.Queue...)
+	m.runs[id] = st
+	m.persist(id)
+}
+
+func (m *Manager) CancelQueue(id, itemID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	out := st.Queue[:0]
+	ok := false
+	for _, t := range st.Queue {
+		if t.ID == itemID {
+			ok = true
+			continue
+		}
+		out = append(out, t)
+	}
+	st.Queue = out
+	m.runs[id] = st
+	m.persist(id)
+	return ok
+}
+
+func (m *Manager) ReorderQueue(id, itemID string, delta int) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	i := -1
+	for n, t := range st.Queue {
+		if t.ID == itemID {
+			i = n
+			break
+		}
+	}
+	if i < 0 {
+		return false
+	}
+	j := i + delta
+	if j < 0 || j >= len(st.Queue) {
+		return false
+	}
+	st.Queue[i], st.Queue[j] = st.Queue[j], st.Queue[i]
+	m.runs[id] = st
+	m.persist(id)
+	return true
+}
+
+func (m *Manager) SetConnectorAllow(id string, accounts []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	st := m.state(id)
+	st.ConnectorAllow = append([]string(nil), accounts...)
+	m.runs[id] = st
+	m.persist(id)
+}
+
+func (m *Manager) ConnectorAllow(id string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.state(id).ConnectorAllow...)
 }
 
 func (m *Manager) QueueList(id string) []QueuedTurn {

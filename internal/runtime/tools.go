@@ -101,14 +101,18 @@ type WorkspaceTools struct {
 	MaxParallel  int
 	SearchAPI    func(query string) (string, error)
 	Sessions     func(id string) []Message
+	ListThreads  func() []ThreadRef
+	SendThread   func(id, text string) error
 	Memory       *memory.Store
 	Schedule     *schedule.Service
 	Projects     *project.Store
 	Connectors   *connector.Broker
 	Browser      *browser.Host
 	Computer     *computeruse.Host
-	Inbox        *inbox.Store
-	LastBrowser  string
+	Inbox            *inbox.Store
+	LastBrowser      string
+	AllowedConnectors []string
+	Takeover         func(question string) (string, error)
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -243,6 +247,12 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	}
 	if t != nil && t.PlanMode && !readonlyCall(t, name) {
 		return ToolResult{Err: fmt.Errorf("plan mode: write/shell tools are disabled; produce a plan instead")}
+	}
+	rawHint := str(args["url"]) + " " + str(args["app"]) + " " + str(args["op"]) + " " + str(args["detail"])
+	if t != nil {
+		if err := t.ladderBlock(name, strings.TrimSpace(rawHint+" "+argsJSON)); err != nil {
+			return ToolResult{Err: err}
+		}
 	}
 	if fn := hostFns[name]; fn != nil {
 		return fn(t, args, argsJSON)
@@ -453,6 +463,7 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if prev, err := os.ReadFile(p); err == nil && bytes.Equal(prev, want) {
 		return ToolResult{Content: "unchanged " + rel}
 	}
+	t.snapshotBeforeWrite(rel, p)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return ToolResult{Err: err}
 	}
@@ -491,6 +502,7 @@ func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	if next == text {
 		return ToolResult{Content: "unchanged " + rel}
 	}
+	t.snapshotBeforeWrite(rel, p)
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}

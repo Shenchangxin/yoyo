@@ -113,7 +113,19 @@ function JobSection() {
             <span>{copy.settings.schedulePrompt}</span>
             <Input className="h-8 w-full text-[12.5px] font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
           </label>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!prompt.trim()}
+              onClick={async () => {
+                await api.scheduleCreate({ kind: "webhook", spec: spec || "hook", prompt, isolate: true });
+                setPrompt("");
+                refresh();
+              }}
+            >
+              {copy.settings.webhookJob}
+            </Button>
             <Button
               size="sm"
               disabled={!prompt.trim()}
@@ -148,6 +160,17 @@ function JobSection() {
             >
               {copy.settings.unload}
             </Button>
+            {str(j.kind) === "webhook" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.triggerWebhook(str(j.id || j.spec));
+                  refresh();
+                }}
+              >
+                {copy.settings.triggerWebhook}
+              </Button>
+            ) : null}
           </SettingRow>
         ))
       )}

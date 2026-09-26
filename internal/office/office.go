@@ -17,6 +17,7 @@ const (
 	KindDocx Kind = "docx"
 	KindXlsx Kind = "xlsx"
 	KindPptx Kind = "pptx"
+	KindPDF  Kind = "pdf"
 )
 
 type CreateReq struct {
@@ -36,6 +37,8 @@ func Create(path string, req CreateReq) error {
 		req.Kind = KindXlsx
 	case ".pptx":
 		req.Kind = KindPptx
+	case ".pdf":
+		req.Kind = KindPDF
 	}
 	var b []byte
 	var err error
@@ -46,6 +49,8 @@ func Create(path string, req CreateReq) error {
 		b, err = encodeXlsx(req)
 	case KindPptx:
 		b, err = encodePptx(req)
+	case KindPDF:
+		b, err = encodePDF(req)
 	default:
 		return fmt.Errorf("office: unknown kind %s", req.Kind)
 	}
@@ -79,60 +84,14 @@ func Query(path string) (string, error) {
 		return readDocxText(path)
 	case ".pptx":
 		return readPptxText(path)
+	case ".pdf":
+		return readPDFText(path)
 	default:
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return "", err
 		}
 		return string(raw), nil
-	}
-}
-
-func EditReplace(path, old, neu string) error {
-	text, err := Query(path)
-	if err != nil {
-		return err
-	}
-	if old == "" || !strings.Contains(text, old) {
-		return fmt.Errorf("office: old_str not found")
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".docx":
-		return Create(path, CreateReq{Kind: KindDocx, Title: filepath.Base(path), Body: strings.ReplaceAll(text, old, neu)})
-	case ".pptx":
-		slides := splitSlides(strings.ReplaceAll(text, old, neu))
-		return Create(path, CreateReq{Kind: KindPptx, Title: filepath.Base(path), Slides: slides})
-	case ".xlsx":
-		cells, err := ReadXlsx(path)
-		if err != nil {
-			return err
-		}
-		var rows [][]string
-		for r := 1; r <= 64; r++ {
-			var row []string
-			empty := true
-			for c := 1; c <= 16; c++ {
-				v := cells[cellAddr(c, r)]
-				v = strings.ReplaceAll(v, old, neu)
-				row = append(row, v)
-				if v != "" {
-					empty = false
-				}
-			}
-			if empty {
-				break
-			}
-			rows = append(rows, row)
-		}
-		return Create(path, CreateReq{Kind: KindXlsx, Title: filepath.Base(path), Rows: rows})
-	default:
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		out := strings.ReplaceAll(string(raw), old, neu)
-		return os.WriteFile(path, []byte(out), 0o644)
 	}
 }
 

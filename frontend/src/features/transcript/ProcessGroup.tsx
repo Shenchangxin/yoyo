@@ -22,6 +22,8 @@ import {
 import { langFromPath } from "../../lib/artifact-preview";
 import { CodePreview } from "./FilePreview";
 import type { Item } from "../../lib/protocol";
+import * as api from "../../lib/client";
+import { writeClipboard } from "../../lib/clipboard";
 import {
   pairState,
   pairTools,
@@ -371,16 +373,32 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
     );
   }
   if (item.type === "subagent") {
+    const child = String(item.payload?.child || "").trim();
     return (
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<Bot className="size-3 text-muted/70" />} />}
         label={copy.transcript.subagent}
         labelTone="font-sans text-[12.5px] text-muted"
         detail={body.split(/\r?\n/)[0]?.slice(0, 120)}
-        open={open && !!body}
+        open={open && !!(body || child)}
         onToggle={() => setOpen((v) => !v)}
       >
         {body ? <div className="min-w-0 max-w-full whitespace-pre-wrap break-words text-[13px] leading-6 text-muted">{body}</div> : null}
+        {child ? (
+          <button
+            type="button"
+            className="mt-1 text-[12px] text-muted underline decoration-muted/40 underline-offset-2 hover:text-foreground"
+            onClick={() => {
+              void api.dumpSession(child).then(async (dump) => {
+                const text = dump.path || child;
+                await writeClipboard(text);
+              });
+            }}
+          >
+            {copy.transcript.openChild}
+            <span className="ml-1 font-mono text-[11px] text-muted">{child}</span>
+          </button>
+        ) : null}
       </StepRow>
     );
   }

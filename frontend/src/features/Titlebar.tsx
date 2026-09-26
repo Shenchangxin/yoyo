@@ -3,12 +3,13 @@ import { Inbox, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import type { RunStatus, Thread } from "../lib/protocol";
 import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
-import { useUI } from "../lib/store";
+import { InboxMenu, inboxBadgeCount } from "./InboxMenu";
 
 export function Titlebar(props: {
   onToggleInspector: () => void;
@@ -23,6 +24,8 @@ export function Titlebar(props: {
   runningStatus?: RunStatus[];
   onSelectRunning?: (t: Thread) => void;
   renameTick?: number;
+  onOpenThread?: (id: string) => void;
+  onResolve?: (id: string, decision: string) => void;
 }) {
   const copy = useCopy();
   const [editing, setEditing] = useState(false);
@@ -99,7 +102,9 @@ export function Titlebar(props: {
         ) : props.runningCount ? (
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
         ) : null}
-        {props.hideInbox ? null : <InboxButton />}
+        {props.hideInbox ? null : (
+          <InboxButton onOpenThread={props.onOpenThread} onResolve={props.onResolve} />
+        )}
         {props.hideInspector ? null : (
           <Tooltip content={props.inspectLabel || copy.review.toggle}>
             <Button
@@ -119,34 +124,42 @@ export function Titlebar(props: {
   );
 }
 
-function InboxButton() {
+function InboxButton(props: {
+  onOpenThread?: (id: string) => void;
+  onResolve?: (id: string, decision: string) => void;
+}) {
   const copy = useCopy();
   const [n, setN] = useState(0);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     const tick = () => {
-      void api.inboxList().then((items) => setN(items.filter((it: any) => it.unread || it.Unread).length)).catch(() => {});
+      void Promise.all([api.inboxList().catch(() => []), api.reviewQueue().catch(() => ({}))]).then(([items, q]) => {
+        setN(inboxBadgeCount(items, q));
+      });
     };
     tick();
     const id = window.setInterval(tick, 15000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [open]);
   return (
-    <Tooltip content={copy.titlebar.inbox}>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          useUI.getState().setInspector(true);
-          useUI.getState().setInspTab("queue");
-        }}
-        aria-label={copy.titlebar.inbox}
-        className={cn("relative shrink-0", n > 0 && "text-foreground")}
-      >
-        <Inbox className="size-4" aria-hidden />
-        {n > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{n}</span>
-        ) : null}
-      </Button>
-    </Tooltip>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          title={copy.titlebar.inbox}
+          aria-label={copy.titlebar.inbox}
+          className={cn("relative shrink-0", n > 0 && "text-foreground")}
+        >
+          <Inbox className="size-4" aria-hidden />
+          {n > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{n}</span>
+          ) : null}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[22rem] p-0">
+        <InboxMenu onOpenThread={props.onOpenThread} onResolve={props.onResolve} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

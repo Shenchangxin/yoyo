@@ -110,6 +110,27 @@ func (s *Service) Due(now time.Time) []Job {
 	return out
 }
 
+func (s *Service) Trigger(id string) (Job, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.jobs {
+		if s.jobs[i].ID != id && s.jobs[i].Spec != id {
+			continue
+		}
+		if s.jobs[i].Kind != KindWebhook && s.jobs[i].Kind != KindOnce && s.jobs[i].Kind != KindHeartbeat {
+			continue
+		}
+		if !s.jobs[i].Enabled {
+			return Job{}, false
+		}
+		s.jobs[i].LastRun = time.Now().UTC()
+		j := s.jobs[i]
+		_ = s.flush()
+		return j, true
+	}
+	return Job{}, false
+}
+
 func (s *Service) Record(id string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -149,6 +170,8 @@ func due(j Job, now time.Time) bool {
 		return now.Sub(j.LastRun) >= d
 	case KindCron:
 		return cronDue(j.Spec, j.LastRun, now)
+	case KindWebhook:
+		return false
 	default:
 		return false
 	}

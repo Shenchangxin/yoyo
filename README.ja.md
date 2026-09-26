@@ -6,7 +6,7 @@
 
 Yoyo は Cursor の複製ではありません。**self-harnessing** なコーディングエージェントです。ひとつの Go コアが CLI・ブラウザ・Wails デスクトップを同時に支え、製品の堀は IDE の見た目ではなく、**版管理でき、評価でき、昇格でき、巻き戻せるハーネス**です。プロンプト・プレイブック・スキルは進化してよい。評価器・保管庫・アップデータは進化してはならない。
 
-**バージョン 0.3.0** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
+**バージョン 0.3.1** · Go 1.25 · Apache-2.0 · [不変条件](docs/architecture/invariants.md) · [脅威モデル](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
 
 ---
 
@@ -247,7 +247,7 @@ Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あ�
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | スナップショット、親チェーン、デコード済み成果物（loop/ポリシーは `checkout --l3`） |
 | `yoyo replay [session]` | JSONL 軌跡を表示 |
 | `yoyo update apply` | 人間が `updates/yoyo.staging` を適用 |
-| `yoyo version` | `0.3.0` |
+| `yoyo version` | `0.3.1` |
 
 JSON-RPC には `thread.*`、`turn.start` / `turn.interrupt`、`item.event`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*` があります。
 

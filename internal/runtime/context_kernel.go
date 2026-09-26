@@ -42,6 +42,9 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 		identity += "\n## Environment\n" + env
 	}
 	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, src)
+	if req.SoftHorizon {
+		pins += ActionLadderPin
+	}
 	if strings.TrimSpace(req.ProfileMemory) != "" {
 		pins += "\n## Profile memory\n" + req.ProfileMemory
 	}
@@ -71,9 +74,17 @@ func (k *ContextKernel) seed() ([]Message, error) {
 		emit(*k.req, trace.TypeInject, "mention", map[string]any{"text": k.req.Inject})
 		messages = append(messages, Message{Role: RoleUser, Content: mentionUserPrefix + "\n" + k.req.Inject})
 	}
-	if user := collapseDoubledText(strings.TrimSpace(k.req.User)); user != "" {
-		emit(*k.req, trace.TypeUser, "user", map[string]any{"text": user})
-		messages = append(messages, Message{Role: RoleUser, Content: user})
+	user := collapseDoubledText(strings.TrimSpace(k.req.User))
+	if user == "" && len(k.req.UserParts) > 0 {
+		user = "(image attached)"
+	}
+	if user != "" {
+		payload := map[string]any{"text": user}
+		if len(k.req.UserParts) > 0 {
+			payload["parts"] = k.req.UserParts
+		}
+		emit(*k.req, trace.TypeUser, "user", payload)
+		messages = append(messages, Message{Role: RoleUser, Content: user, Parts: k.req.UserParts})
 	} else if len(stripSystem(k.req.History)) == 0 {
 		return nil, fmt.Errorf("nothing to continue")
 	}
