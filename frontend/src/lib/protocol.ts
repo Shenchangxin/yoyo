@@ -221,6 +221,7 @@ export type AppConfig = {
   usdPerMtok: number;
   models: string[];
   closeToTray: boolean;
+  companionEnabled?: boolean;
   updateUrl: string;
   keymap?: Record<string, string>;
   locale?: string;

@@ -9,6 +9,7 @@ export const controlSchema = z.object({
   workspace: z.string().trim().min(1, "Workspace path is required"),
   autoAllow: z.boolean(),
   closeToTray: z.boolean(),
+  companionEnabled: z.boolean().optional(),
   maxBudgetUsd: z.number().min(0, "Budget cannot be negative"),
   usdPerMtok: z.number().min(0, "Rate cannot be negative"),
 });

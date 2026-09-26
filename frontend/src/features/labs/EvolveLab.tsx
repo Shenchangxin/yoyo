@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { asArray, bool, num, pick, str } from "../../lib/normalize";
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { LabCard, LabChip, LabFrame, LabStat, LabTable } from "./LabFrame";
+import { PresenceModuleLoading } from "../presence";
+import { useUI } from "../../lib/store";
 
 export function EvolveLab(props: {
   busy: boolean;
@@ -28,6 +31,18 @@ export function EvolveLab(props: {
   onRate: (id: string, helpful: boolean) => void;
 }) {
   const copy = useCopy();
+  useEffect(() => {
+    if (!props.busy) return;
+    useUI.getState().setModuleLoading(true);
+    return () => useUI.getState().setModuleLoading(false);
+  }, [props.busy]);
+  if (props.busy) {
+    return (
+      <LabFrame>
+        <PresenceModuleLoading />
+      </LabFrame>
+    );
+  }
   const trials = asArray(pick(props.evolve, "tried", "Tried"));
   const bullets = asArray(pick(props.playbook, "bullets", "Bullets"));
   const deltas = trials.flatMap((t: any) => {

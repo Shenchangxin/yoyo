@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"strings"
+
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
@@ -205,6 +207,13 @@ func (s *Service) Screenshot(path string) error {
 
 func (s *Service) RaiseWindow() {
 	Raise(s.win)
+}
+
+func (s *Service) RaiseSession(id string) {
+	s.RaiseWindow()
+	if s.gui != nil && strings.TrimSpace(id) != "" {
+		s.gui.Event.Emit("yoyo:focus", strings.TrimSpace(id))
+	}
 }
 
 func (s *Service) ComputerAllow(name string) {

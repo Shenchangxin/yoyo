@@ -25,6 +25,7 @@ import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentP
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
+import { PresenceAnchor, PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
 
@@ -157,7 +158,13 @@ export function Transcript(props: {
           space: rowSpace(layout, i),
           virtualize: virtualize && !liveHere && !workingHere,
           node: (
-            <article className="assistant-letter group/turn" data-testid="agent-turn">
+            <article className="assistant-letter group/turn flex gap-2.5" data-testid="agent-turn">
+              {last && props.running ? (
+                <PresenceAnchor id="avatar" size={22} className="mt-0.5" />
+              ) : (
+                <PresenceStamp size={22} className="mt-0.5" />
+              )}
+              <div className="min-w-0 flex-1">
               {row.parts.map((part, pi) => (
                 <div
                   key={part.key}
@@ -200,6 +207,7 @@ export function Transcript(props: {
                   />
                 </div>
               ) : null}
+              </div>
             </article>
           ),
         };

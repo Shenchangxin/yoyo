@@ -570,6 +570,31 @@ func TestAppearancePaletteDefaults(t *testing.T) {
 	}
 }
 
+func TestCompanionEnabledDefaultsOn(t *testing.T) {
+	dir := t.TempDir()
+	a, err := app.Open(dir, evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.Config.CompanionEnabled {
+		a.Close()
+		t.Fatal("companion should default on")
+	}
+	cfgPath := a.Home.Config()
+	a.Close()
+	if err := os.WriteFile(cfgPath, []byte("companion_enabled: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b, err := app.Open(dir, evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if b.Config.CompanionEnabled {
+		t.Fatal("explicit false must stick")
+	}
+}
+
 func TestSaveConfigWritesKeymap(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

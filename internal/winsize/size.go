@@ -82,6 +82,48 @@ func LostOffscreen(x, y, w, h, vx, vy, vw, vh int) bool {
 	return ix2-ix1 < 80 || iy2-iy1 < 40
 }
 
+// KeepInside pins a rectangle inside a box. If the box is smaller than the
+// rectangle, it pins to the box origin plus pad.
+func KeepInside(x, y, w, h, boxX, boxY, boxW, boxH, pad int) (int, int) {
+	if boxW <= 0 || boxH <= 0 {
+		return x, y
+	}
+	if pad < 0 {
+		pad = 0
+	}
+	minX := boxX + pad
+	minY := boxY + pad
+	maxX := boxX + boxW - w - pad
+	maxY := boxY + boxH - h - pad
+	if maxX < minX {
+		maxX = minX
+	}
+	if maxY < minY {
+		maxY = minY
+	}
+	if x < minX {
+		x = minX
+	}
+	if y < minY {
+		y = minY
+	}
+	if x > maxX {
+		x = maxX
+	}
+	if y > maxY {
+		y = maxY
+	}
+	return x, y
+}
+
+// FullyInside reports that the rectangle sits entirely within the box.
+func FullyInside(x, y, w, h, boxX, boxY, boxW, boxH int) bool {
+	if boxW <= 0 || boxH <= 0 || w <= 0 || h <= 0 {
+		return false
+	}
+	return x >= boxX && y >= boxY && x+w <= boxX+boxW && y+h <= boxY+boxH
+}
+
 // ShouldRefit reports whether a saved size should be replaced by the current
 // screen-relative default. Overflow always refits. A stored fit_rev below
 // CurrentFitRev migrates once (including shrink). After CurrentFitRev is

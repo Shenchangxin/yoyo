@@ -158,6 +158,7 @@ export function configOf(v: any): AppConfig {
     usdPerMtok: num(pick(v, "usd_per_mtok", "USDPerMTok", "usdPerMtok")),
     models: asArray(pick(v, "models", "Models")).map(String).filter(Boolean),
     closeToTray: bool(pick(v, "close_to_tray", "CloseToTray", "closeToTray")),
+    companionEnabled: boolOr(pick(v, "companion_enabled", "CompanionEnabled", "companionEnabled"), true),
     updateUrl: str(pick(v, "update_url", "UpdateURL", "updateUrl")),
     keymap: (pick(v, "keymap", "Keymap") || {}) as Record<string, string>,
     locale: str(pick(v, "locale", "Locale")),
@@ -242,6 +243,8 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     usd_per_mtok: cfg.usdPerMtok,
     models: cfg.models,
     close_to_tray: cfg.closeToTray,
+    companion_enabled: cfg.companionEnabled !== false,
+    CompanionEnabled: cfg.companionEnabled !== false,
     update_url: cfg.updateUrl,
     locale: cfg.locale || "",
     Locale: cfg.locale || "",
@@ -264,6 +267,46 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     return;
   }
   await http("/api/config", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function raiseSession(id: string): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "RaiseSession", "raiseSession");
+  if (fn) {
+    await fn(id);
+    return;
+  }
+  await raiseWindow();
+}
+
+export async function raiseWindow(): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "RaiseWindow", "raiseWindow");
+  if (fn) await fn();
+}
+
+export async function showCompanion(): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ShowCompanion", "showCompanion");
+  if (fn) await fn();
+}
+
+export async function dismissCompanion(): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "HideCompanion", "hideCompanion") || svcMethod(s, "DismissCompanion", "dismissCompanion");
+  if (fn) await fn();
+}
+
+export async function setCompanionCaption(on: boolean): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "SetCompanionCaption", "setCompanionCaption");
+  if (fn) await fn(on);
+}
+
+export async function placeCompanion(x: number, y: number): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "PlaceCompanion", "placeCompanion");
+  if (fn) await fn(Math.round(x), Math.round(y));
 }
 
 export async function setAPIKey(value: string): Promise<void> {

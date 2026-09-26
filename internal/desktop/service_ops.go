@@ -17,15 +17,11 @@ func (s *Service) Attach(gui *application.App, win application.Window) {
 }
 
 func (s *Service) CloseToTray() bool {
-	if s.RPC != nil {
-		v, err := s.call("config.get", nil)
-		c, _ := decode[app.Config](v, err)
-		return c.CloseToTray
-	}
-	if s.App == nil {
-		return false
-	}
-	return s.App.Config.CloseToTray
+	return s.GetConfig().CloseToTray
+}
+
+func (s *Service) CompanionEnabled() bool {
+	return s.GetConfig().CompanionEnabled
 }
 
 func (s *Service) emitSessions(payload any) {

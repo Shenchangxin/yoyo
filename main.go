@@ -127,6 +127,7 @@ func main() {
 	desktop.InstallChrome(gui, win, svc, ns)
 	desktop.PersistWindow(svc, win)
 	desktop.WatchSignals(gui, svc, win)
+	svc.PrepareCompanion()
 
 	if err := gui.Run(); err != nil {
 		fail(err)

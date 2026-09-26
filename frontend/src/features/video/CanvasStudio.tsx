@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } 
 import { useUI } from "../../lib/store";
 import { yingcePathForPane } from "../../lib/protocol";
 import { useCanvasHost } from "./canvas-host/session";
+import { PresenceModuleLoading } from "../presence";
 
 const YingceApp = lazy(() =>
   import("./canvas-host/YingceApp").catch((err: Error) => ({
@@ -35,6 +36,19 @@ class IslandBoundary extends Component<{ children: ReactNode }, { err: Error | n
   }
 }
 
+function CanvasLoading() {
+  useEffect(() => {
+    useUI.getState().setModuleLoading(true);
+    return () => useUI.getState().setModuleLoading(false);
+  }, []);
+  return (
+    <div className="flex h-full min-h-0 flex-col items-center justify-center" data-testid="canvas-studio-loading" aria-busy="true">
+      <span className="sr-only">Opening infinite canvas…</span>
+      <PresenceModuleLoading className="min-h-0 h-full" />
+    </div>
+  );
+}
+
 export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void; onClose?: () => void }) {
   const pane = useUI((s) => s.videoPane);
   const canvasFocus = useUI((s) => s.canvasFocus);
@@ -54,17 +68,7 @@ export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => 
       <div className="min-h-0 flex-1">
         <IslandBoundary>
           <Suspense
-            fallback={
-              <div className="flex h-full flex-col gap-3 p-5" data-testid="canvas-studio-loading" aria-busy="true">
-                <span className="sr-only">Opening infinite canvas…</span>
-                <div className="flex items-center gap-2">
-                  <div className="skeleton-sweep h-8 w-8 rounded-lg" />
-                  <div className="skeleton-sweep h-4 w-36 rounded-md" />
-                  <div className="skeleton-sweep ml-auto h-8 w-24 rounded-lg" />
-                </div>
-                <div className="skeleton-sweep is-soft min-h-0 flex-1 rounded-2xl" />
-              </div>
-            }
+            fallback={<CanvasLoading />}
           >
             <YingceApp key={start} initialPath={start} />
           </Suspense>

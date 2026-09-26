@@ -22,15 +22,23 @@ import (
 // worker process (YOYO_WORKER=1 / yoyo serve --stdio) so a wedged loop
 // cannot stall the window. App is used in-process otherwise.
 type Service struct {
-	App        *app.App
-	RPC        *api.LineClient
-	cmd        *exec.Cmd
-	gui        *application.App
-	win        application.Window
-	tray       *application.SystemTray
-	menuLocale string
-	quitting   atomic.Bool
-	workerLog  *os.File
+	App                *app.App
+	RPC                *api.LineClient
+	cmd                *exec.Cmd
+	gui                *application.App
+	win                application.Window
+	companion          application.Window
+	companionDismissed atomic.Bool
+	companionPlaced    atomic.Bool
+	companionClosing   atomic.Bool
+	companionClamping  atomic.Bool
+	companionCaption   atomic.Bool
+	companionMenu      *application.MenuItem
+	cursorWatch        atomic.Bool
+	tray               *application.SystemTray
+	menuLocale         string
+	quitting           atomic.Bool
+	workerLog          *os.File
 }
 
 func NewService(a *app.App) *Service { return &Service{App: a} }
@@ -123,6 +131,7 @@ func (s *Service) applyDesktop(cfg app.Config) {
 	if s.win != nil {
 		s.win.SetAlwaysOnTop(cfg.AlwaysOnTop)
 	}
+	s.syncCompanion(cfg)
 	_ = SetStartAtLogin(cfg.StartAtLogin)
 	s.RebuildMenus()
 }

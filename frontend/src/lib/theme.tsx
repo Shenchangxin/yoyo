@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { isCompanionSurface } from "./popout";
 
 export type ThemePref = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
@@ -62,13 +63,19 @@ function apply(resolved: ResolvedTheme, palette: PaletteId) {
   root.classList.remove("dark", "light");
   root.classList.add(resolved);
   root.setAttribute("data-palette", palette);
-  root.style.colorScheme = resolved;
+  root.style.colorScheme = isCompanionSurface() ? "normal" : resolved;
 }
 
 function paintWindow(palette: PaletteId) {
-  const rgb = PALETTE_WINDOW[palette];
   import("@wailsio/runtime")
-    .then(({ Window }) => Window.SetBackgroundColour(rgb[0], rgb[1], rgb[2], 255))
+    .then(({ Window }) => {
+      if (isCompanionSurface()) {
+        Window.SetBackgroundColour(0, 0, 0, 0);
+        return;
+      }
+      const rgb = PALETTE_WINDOW[palette];
+      Window.SetBackgroundColour(rgb[0], rgb[1], rgb[2], 255);
+    })
     .catch(() => {});
 }
 

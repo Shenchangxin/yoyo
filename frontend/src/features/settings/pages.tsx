@@ -108,6 +108,9 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
         <SettingRow title={copy.settings.closeToTray} description={copy.settings.closeToTrayDesc}>
           <Switch checked={!!cfg.closeToTray} onCheckedChange={(v) => void host.patch({ closeToTray: v })} />
         </SettingRow>
+        <SettingRow title={copy.settings.companion} description={copy.settings.companionDesc}>
+          <Switch checked={cfg.companionEnabled !== false} onCheckedChange={(v) => void host.patch({ companionEnabled: v })} />
+        </SettingRow>
         <SettingRow title={copy.settings.startAtLogin} description={copy.settings.startAtLoginDesc}>
           <Switch checked={!!cfg.startAtLogin} onCheckedChange={(v) => void host.patch({ startAtLogin: v })} />
         </SettingRow>

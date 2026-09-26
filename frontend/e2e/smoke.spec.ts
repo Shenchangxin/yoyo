@@ -978,3 +978,14 @@ test("advanced diagnostics is not the journal", async ({ page }) => {
   await expect(page.getByTestId("journal-tail")).toContainText("checkout");
   await expect(page.getByText("Journal tail. The agent cannot edit this file.")).toHaveCount(0);
 });
+
+test("companion surface does not render the workstation", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/?surface=companion");
+  await expect(page.getByTestId("companion-stage")).toBeVisible();
+  await expect(page.getByTestId("companion-bubble")).toBeAttached();
+  await expect(page.locator(".companion-close")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+});
