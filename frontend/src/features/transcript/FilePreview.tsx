@@ -78,7 +78,7 @@ export function CodePreview({
       data-lang={lang || undefined}
       tabIndex={0}
       className={cn(
-        "code-hl min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-[11.5px] leading-[1.6] text-foreground/90",
+        "code-hl min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90",
         fill ? "mt-0 h-full min-h-0 flex-1 rounded-none border-0" : "mt-2 max-h-[28rem] rounded-lg border border-border/60",
         dim && "opacity-70",
         className,

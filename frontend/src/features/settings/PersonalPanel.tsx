@@ -32,7 +32,7 @@ function MemorySection() {
       <SettingRow title={copy.settings.sections.personalMemory} stack>
         <Input
           aria-label={copy.settings.sections.personalMemory}
-          className="h-8 w-full text-[12.5px]"
+          className="h-8 w-full text-[13px]"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={copy.settings.memoryPlaceholder}
@@ -107,11 +107,11 @@ function JobSection() {
         <div className="flex w-full flex-col gap-[var(--space-group)]">
           <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
             <span>{copy.settings.scheduleSpec}</span>
-            <Input className="h-8 w-full text-[12.5px] font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
+            <Input className="h-8 w-full text-[13px] font-normal" value={spec} onChange={(e) => setSpec(e.target.value)} />
           </label>
           <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
             <span>{copy.settings.schedulePrompt}</span>
-            <Input className="h-8 w-full text-[12.5px] font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+            <Input className="h-8 w-full text-[13px] font-normal" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
           </label>
           <div className="flex justify-end gap-2">
             <Button

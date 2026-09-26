@@ -129,7 +129,7 @@ export function SkillsWorkspace(props: {
     <div className="flex h-full min-h-0 flex-col" data-testid="skills-workspace">
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
-          <p className="mb-4 max-w-[46ch] text-[12.5px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
+          <p className="mb-4 max-w-[46ch] text-[13px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
           <div className="mb-5 flex h-10 items-stretch gap-3">
             <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
               {(["installed", "market"] as Pane[]).map((id) => (
@@ -139,7 +139,7 @@ export function SkillsWorkspace(props: {
                   role="tab"
                   aria-selected={pane === id}
                   className={cn(
-                    "relative flex h-full cursor-pointer items-center px-2.5 text-[12.5px] font-medium transition-colors",
+                    "relative flex h-full cursor-pointer items-center px-2.5 text-[13px] font-medium transition-colors",
                     pane === id ? "text-foreground" : "text-muted hover:text-foreground",
                   )}
                   onClick={() => setPane(id)}
@@ -177,7 +177,7 @@ export function SkillsWorkspace(props: {
               </div>
             ) : null}
           </div>
-          {err ? <p className="mb-4 text-[12.5px] text-danger" role="alert">{err}</p> : null}
+          {err ? <p className="mb-4 text-[13px] text-danger" role="alert">{err}</p> : null}
           {pane === "installed" ? (
             <InstalledList
               skills={props.installed}
@@ -361,7 +361,7 @@ function MarketList(props: {
           </div>
         </section>
       ))}
-      <p className="mt-2 max-w-[68ch] text-[11.5px] leading-5 text-muted">{copy.skills.attribution}</p>
+      <p className="mt-2 max-w-[68ch] text-[12px] leading-5 text-muted">{copy.skills.attribution}</p>
     </div>
   );
 }
@@ -386,7 +386,7 @@ function MarketRow(props: {
           {it.hasScripts ? <span className="text-[11px] text-muted">{copy.skills.hasScripts}</span> : null}
           {props.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
         </div>
-        <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-5 text-muted">{it.purpose || it.slug}</p>
+        <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-muted">{it.purpose || it.slug}</p>
         {it.prerequisites && it.prerequisites !== "无" ? (
           <p className="mt-1 text-[11px] leading-4 text-muted">{it.prerequisites}</p>
         ) : null}
@@ -450,7 +450,7 @@ function Chip(props: { on: boolean; onClick: () => void; children: string }) {
     <button
       type="button"
       className={cn(
-        "rounded-md border px-2 py-1 text-[11.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "rounded-md border px-2 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         props.on ? "border-border bg-lift text-foreground" : "border-transparent text-muted hover:bg-lift/50 hover:text-foreground",
       )}
       aria-pressed={props.on}

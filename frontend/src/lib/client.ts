@@ -1,5 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
+import { snapUiScale } from "./scale";
 import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 
 export class ApiError extends Error {
@@ -168,7 +169,8 @@ export function configOf(v: any): AppConfig {
     startAtLogin: bool(pick(v, "start_at_login", "StartAtLogin", "startAtLogin")),
     notificationsEnabled: boolOr(pick(v, "notifications_enabled", "NotificationsEnabled", "notificationsEnabled"), true),
     notifyWhenUnfocusedOnly: bool(pick(v, "notify_when_unfocused_only", "NotifyWhenUnfocusedOnly", "notifyWhenUnfocusedOnly")),
-    uiScale: num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1,
+    uiScale: snapUiScale(num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1),
+    showThinking: bool(pick(v, "show_thinking", "ShowThinking", "showThinking")),
     updateChannel: str(pick(v, "update_channel", "UpdateChannel", "updateChannel"), "nightly"),
     theme: str(pick(v, "theme", "Theme"), "system"),
     paletteDark: str(pick(v, "palette_dark", "PaletteDark", "paletteDark"), "ink"),
@@ -255,7 +257,8 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     start_at_login: !!cfg.startAtLogin,
     notifications_enabled: cfg.notificationsEnabled !== false,
     notify_when_unfocused_only: !!cfg.notifyWhenUnfocusedOnly,
-    ui_scale: cfg.uiScale || 1,
+    ui_scale: snapUiScale(cfg.uiScale || 1),
+    show_thinking: !!cfg.showThinking,
     update_channel: cfg.updateChannel || "nightly",
     theme: cfg.theme || "system",
     palette_dark: cfg.paletteDark || "ink",

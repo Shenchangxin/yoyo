@@ -1,10 +1,12 @@
-import { memo, type HTMLAttributes, type ReactNode } from "react";
+import { memo, useEffect, useState, type HTMLAttributes, type ReactNode } from "react";
 import { Streamdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
 import { codePlugin } from "./code-plugin";
 
 type MdProps<T extends HTMLElement> = HTMLAttributes<T> & ExtraProps & { children?: ReactNode };
+
+const SHIKI_SETTLE_MS = 400;
 
 /**
  * Streamdown ships ChatGPT-scale headings (`text-3xl` / `mt-6`) and
@@ -72,14 +74,27 @@ export const Markdown = memo(function Markdown({
   quiet?: boolean;
 }) {
   const copy = useCopy();
+  const [highlight, setHighlight] = useState(!streaming);
+  useEffect(() => {
+    if (streaming) {
+      setHighlight(false);
+      return;
+    }
+    const id = window.setTimeout(() => setHighlight(true), SHIKI_SETTLE_MS);
+    return () => window.clearTimeout(id);
+  }, [streaming]);
   if (!text && !streaming) return null;
+  const live = !!streaming;
+  const settled = !live && highlight;
   return (
     <Streamdown
       className={cn("md-body space-y-2", quiet && "md-body-quiet")}
-      mode={streaming ? "streaming" : "static"}
-      isAnimating={!!streaming}
-      caret={streaming ? "circle" : undefined}
-      plugins={{ code: codePlugin }}
+      mode={settled ? "static" : "streaming"}
+      parseIncompleteMarkdown={live}
+      remend={live ? {} : undefined}
+      isAnimating={live}
+      caret={live ? "block" : undefined}
+      plugins={settled ? { code: codePlugin } : undefined}
       animated={false}
       lineNumbers={false}
       codeBlockMaxHeight={Infinity}

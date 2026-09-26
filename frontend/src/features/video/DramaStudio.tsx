@@ -97,7 +97,7 @@ type Pane = "script" | "cast" | "board" | "cut";
 type CopyT = ReturnType<typeof useCopy>;
 
 const field =
-  "no-drag h-8 rounded-lg border border-border bg-background px-2 text-[12.5px] text-foreground outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15";
+  "no-drag h-8 rounded-lg border border-border bg-background px-2 text-[13px] text-foreground outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15";
 
 function pipeStatus(raw: string, stage: string) {
   try {
@@ -530,7 +530,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <section className="drama-viewer" aria-label={copy.video.play}>
               <div className="drama-viewer-stage">
                 {pane === "script" ? (
-                  <div className="w-full max-w-[42rem] text-[13px] leading-6 text-[#f2ede6]/80">
+                  <div className="w-full max-w-[42rem] text-[13px] leading-6 text-[#f4f4f0]/80">
                     {(ep?.script_content || ep?.content || copy.video.emptyHint).slice(0, 900)}
                   </div>
                 ) : pane === "cut" && ep?.video_url ? (
@@ -540,7 +540,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                 ) : focused?.poster_url ? (
                   <img src={focused.poster_url} alt="" />
                 ) : (
-                  <div className="grid aspect-video w-full max-w-xl place-items-center rounded-[10px] bg-black/40 text-[12px] text-[#f2ede6]/55">{copy.video.noClip}</div>
+                  <div className="grid aspect-video w-full max-w-xl place-items-center rounded-[10px] bg-black/40 text-[12px] text-[#f4f4f0]/55">{copy.video.noClip}</div>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-white/5 px-2 py-1.5">
@@ -561,7 +561,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                       }}
                       className={cn(
                         "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
-                        st === "done" ? "bg-white/10 text-[#f2ede6]" : live ? "bg-accent/20 text-[#f2ede6]" : "text-[#f2ede6]/55 hover:bg-white/8 hover:text-[#f2ede6]",
+                        st === "done" ? "bg-white/10 text-[#f4f4f0]" : live ? "bg-accent/20 text-[#f4f4f0]" : "text-[#f4f4f0]/55 hover:bg-white/8 hover:text-[#f4f4f0]",
                       )}
                     >
                       {live ? <span className="pulse-dot" /> : <span className={cn("size-1.5 rounded-full", st === "done" ? "bg-success" : "bg-white/25")} />}
@@ -569,13 +569,13 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                     </button>
                   );
                 })}
-                {busy ? <span className="ml-1 text-[11px] text-[#f2ede6]/55">{copy.video.stageBusy}</span> : null}
+                {busy ? <span className="ml-1 text-[11px] text-[#f4f4f0]/55">{copy.video.stageBusy}</span> : null}
               </div>
             </section>
             <aside className="drama-inspector">
               <div className="mb-3 flex flex-wrap items-center gap-1.5">
                 <Input
-                  className="h-7 max-w-[7.5rem] text-[12.5px] font-medium"
+                  className="h-7 max-w-[7.5rem] text-[13px] font-medium"
                   value={drama?.title || ""}
                   aria-label={copy.video.pickSeries}
                   onChange={(e) => {
@@ -711,7 +711,7 @@ function ScriptPane({ ep, plan, copy, onSave, onRewrite, onSkip }: { ep: Episode
             <Button size="sm" onClick={onRewrite}>{copy.video.rewrite}</Button>
           </span>
         </div>
-        <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[12.5px] leading-5" value={script} onChange={(e) => setScript(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
+        <Textarea className="min-h-[160px] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[13px] leading-5" value={script} onChange={(e) => setScript(e.target.value)} onBlur={() => onSave({ content, script_content: script })} />
       </label>
       <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
         <span className="rounded-md bg-lift px-2 py-1">{copy.video.duration}</span>
@@ -788,7 +788,7 @@ function AssetCol(props: {
                     <div className="grid size-10 shrink-0 place-items-center rounded-md bg-lift text-[10px] text-muted">—</div>
                   )}
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => { setOpen(open === a.id ? "" : a.id); setDraft(""); }}>
-                    <div className="truncate text-[12.5px] font-medium">{props.name(a)}</div>
+                    <div className="truncate text-[13px] font-medium">{props.name(a)}</div>
                     <div className="truncate text-[11px] text-muted">{narrator ? c.narrator : (a.final_prompt || a.appearance || a.description || a.prompt || "")}</div>
                   </button>
                   <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={c.upload}>
@@ -882,7 +882,7 @@ function BoardPane(props: {
                     {s.video_url ? <a className="text-[11px] underline" href={s.video_url} download>{c.download}</a> : null}
                     <Button size="sm" variant="lift" onClick={() => props.onGen(s.id)}>{c.generate}</Button>
                   </div>
-                  <p className="mb-2 text-[12.5px] leading-5 text-muted">{s.description}</p>
+                  <p className="mb-2 text-[13px] leading-5 text-muted">{s.description}</p>
                   <DramaMentionField
                     assets={shotMentions(s, props.bundle)}
                     defaultValue={s.video_prompt}
@@ -966,7 +966,7 @@ function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: 
   const n = selectedClipIds(shots, props.sel).length;
   return (
     <div>
-      {!props.ffmpeg ? <p className="mb-3 text-[12.5px] text-danger">{c.ffmpegMissing}</p> : null}
+      {!props.ffmpeg ? <p className="mb-3 text-[13px] text-danger">{c.ffmpegMissing}</p> : null}
       {!props.compact && ep.video_url ? <video src={ep.video_url} poster={ep.poster_url} controls className="mb-4 max-h-[360px] w-full rounded-[10px] bg-background" /> : null}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button onClick={props.onMerge} disabled={!props.ffmpeg || n === 0}>{c.export}</Button>

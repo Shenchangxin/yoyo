@@ -7,9 +7,9 @@ import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
 /** One control width inside a group, so fields in the same section share a left edge and a measure. */
-export const CONTROL_SM = "h-8 w-full text-[12.5px]";
-export const CONTROL_MD = "h-8 w-full text-[12.5px]";
-export const CONTROL_LG = "h-8 w-full text-[12.5px]";
+export const CONTROL_SM = "h-8 w-full text-[13px]";
+export const CONTROL_MD = "h-8 w-full text-[13px]";
+export const CONTROL_LG = "h-8 w-full text-[13px]";
 
 export function SettingsPageHeader({
   title,
@@ -24,7 +24,7 @@ export function SettingsPageHeader({
     <header className="mb-[var(--space-section)]">
       <h1 className="text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">{title}</h1>
       {description ? (
-        <p className="mt-[var(--space-item)] max-w-[46ch] text-[13.5px] leading-[1.6] text-muted">{description}</p>
+        <p className="mt-[var(--space-item)] max-w-[46ch] text-[14px] leading-[1.6] text-muted">{description}</p>
       ) : null}
       {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
     </header>
@@ -59,7 +59,7 @@ export function SettingSection({
           {title}
         </h2>
       ) : null}
-      {description ? <p className="mb-[var(--space-group)] text-[12.5px] leading-[1.55] text-muted">{description}</p> : null}
+      {description ? <p className="mb-[var(--space-group)] text-[13px] leading-[1.55] text-muted">{description}</p> : null}
       <div
         id={title ? undefined : id}
         data-setting-section-id={id}
@@ -117,7 +117,7 @@ export function SettingRow({
       {title ? (
         <div className="min-w-0">
           <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
-          {description ? <div className="mt-1 text-[12.5px] leading-[1.5] text-muted">{description}</div> : null}
+          {description ? <div className="mt-1 text-[13px] leading-[1.5] text-muted">{description}</div> : null}
         </div>
       ) : null}
       {children ? <div className="flex w-full flex-wrap items-center justify-start gap-2">{children}</div> : null}
@@ -139,7 +139,7 @@ export function SettingValueRow({
 }) {
   return (
     <SettingRow title={title} list>
-      <span className={cn("text-[12.5px] text-muted", mono && "font-mono tabular-nums")}>{value}</span>
+      <span className={cn("text-[13px] text-muted", mono && "font-mono tabular-nums")}>{value}</span>
     </SettingRow>
   );
 }
@@ -173,7 +173,7 @@ export function SettingActionRow({
         <span className={cn("block text-[13px] font-medium leading-[1.4]", danger ? "text-danger" : "text-foreground")}>
           {title}
         </span>
-        {description ? <span className="mt-0.5 block text-[11.5px] leading-[1.5] text-muted">{description}</span> : null}
+        {description ? <span className="mt-0.5 block text-[12px] leading-[1.5] text-muted">{description}</span> : null}
       </span>
       {trailing ? <span className="flex shrink-0 items-center text-[12px] text-muted">{trailing}</span> : null}
       {chevron ? <ChevronRight className="size-4 shrink-0 text-muted/70" aria-hidden /> : null}
@@ -200,7 +200,7 @@ export function SettingCodePanel({
     <div>
       <pre
         className={cn(
-          "overflow-auto whitespace-pre-wrap break-words py-1 font-mono text-[11.5px] leading-[1.65] text-muted",
+          "overflow-auto whitespace-pre-wrap break-words py-1 font-mono text-[12px] leading-[1.65] text-muted",
           className,
         )}
       >
@@ -288,13 +288,13 @@ export function SettingsSaveBar({
           className="sticky bottom-3 z-20 mt-8"
         >
           <div className="flex items-center gap-2 rounded-2xl border border-border bg-popover py-2 pl-4 pr-2 shadow-[var(--shadow-popover)]">
-            <span className="flex-1 truncate text-[12.5px] text-muted">{label || copy.settings.unsaved}</span>
+            <span className="flex-1 truncate text-[13px] text-muted">{label || copy.settings.unsaved}</span>
             {onDiscard ? (
               <Button size="sm" variant="ghost" onClick={onDiscard}>
                 {copy.settings.discard}
               </Button>
             ) : null}
-            <Button size="sm" variant="accent" onClick={onSave}>
+            <Button size="sm" onClick={onSave}>
               {saveLabel || copy.settings.saveChanges}
             </Button>
           </div>

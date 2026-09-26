@@ -6,14 +6,13 @@ import { writeClipboard } from "../../lib/clipboard";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
 import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
-import { applyUiScale } from "../../lib/scale";
+import { applyUiScale, snapUiScale, type UiScale } from "../../lib/scale";
 import { chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { IconSwap } from "../../components/ui/icon-swap";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
-import { Slider } from "../../components/ui/slider";
 import { ConfirmDialog } from "../ConfirmDialog";
 import {
   CONTROL_LG,
@@ -132,7 +131,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const { pref, setPref, resolved, darkPalette, lightPalette, setDarkPalette, setLightPalette } = useTheme();
   const locale = (host.cfg.locale === "zh-CN" ? "zh-CN" : host.cfg.locale === "en" ? "en" : getLocale()) as Locale;
-  const scale = host.cfg.uiScale && host.cfg.uiScale > 0 ? host.cfg.uiScale : 1;
+  const scale = String(snapUiScale(host.cfg.uiScale)) as `${UiScale}`;
   const modes: { id: ThemePref; label: string }[] = [
     { id: "system", label: copy.settings.system },
     { id: "dark", label: copy.settings.dark },
@@ -219,22 +218,28 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             }}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.uiScale} description={copy.settings.uiScaleDesc} border={false}>
-          <div className="flex w-full items-center gap-3">
-            <Slider
-              min={0.85}
-              max={1.25}
-              step={0.05}
-              value={[scale]}
-              onValueChange={([v]) => {
-                applyUiScale(v);
-                void host.patch({ uiScale: v });
-              }}
-            />
-            <span className="w-9 shrink-0 text-right text-[12px] tabular-nums text-muted">
-              {Math.round(scale * 100)}%
-            </span>
-          </div>
+        <SettingRow title={copy.settings.uiScale} description={copy.settings.uiScaleDesc}>
+          <SettingSegmented
+            id="ui-scale"
+            ariaLabel={copy.settings.uiScale}
+            value={scale}
+            options={[
+              { value: "1", label: "100%" },
+              { value: "1.25", label: "125%" },
+              { value: "1.5", label: "150%" },
+            ]}
+            onChange={(next) => {
+              const v = Number(next) as UiScale;
+              applyUiScale(v);
+              void host.patch({ uiScale: v });
+            }}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.showThinking} description={copy.settings.showThinkingDesc} border={false}>
+          <Switch
+            checked={!!host.cfg.showThinking}
+            onCheckedChange={(v) => void host.patch({ showThinking: v })}
+          />
         </SettingRow>
       </SettingSection>
     </>
@@ -416,7 +421,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
         ok ? "bg-success/15 text-success" : "bg-lift text-muted",
       )}
     >

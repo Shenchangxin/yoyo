@@ -69,9 +69,9 @@ export function VideoHistory(props: {
       <div className="flex shrink-0 items-center gap-2 px-5 py-4">
         <div className="min-w-0 flex-1">
           <h1 className="text-[16px] font-semibold tracking-[-0.03em]">{copy.video.shellTasks}</h1>
-          <p className="mt-0.5 text-[12.5px] text-muted">{copy.video.historyHint}</p>
+          <p className="mt-0.5 text-[13px] text-muted">{copy.video.historyHint}</p>
         </div>
-        <div className="relative flex rounded-lg bg-lift p-0.5 text-[12.5px]">
+        <div className="relative flex rounded-lg bg-lift p-0.5 text-[13px]">
           {(["projects", "jobs"] as const).map((id) => {
             const on = tab === id;
             return (

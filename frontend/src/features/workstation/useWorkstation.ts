@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
 import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
+import { isLiveDelta, liveBody, structureSig } from "../../lib/stream-live";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -42,6 +43,7 @@ export const emptyCfg: AppConfig = {
   notificationsEnabled: true,
   notifyWhenUnfocusedOnly: false,
   uiScale: 1,
+  showThinking: false,
   updateChannel: "nightly",
   theme: "system",
   paletteDark: "ink",
@@ -185,6 +187,9 @@ export function useWorkstation() {
   const [active, setActive] = useState<Thread | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
+  const [liveTexts, setLiveTexts] = useState<Record<string, string>>({});
+  const liveAcc = useRef<Record<string, string>>({});
+  const liveRaf = useRef(0);
   const [queued, setQueued] = useState(0);
   const [queueItems, setQueueItems] = useState<{ id?: string; text?: string; plan?: boolean }[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -488,19 +493,43 @@ export function useWorkstation() {
   useEffect(() => {
     if (!activeId) {
       itemsAcc.current = [];
+      liveAcc.current = {};
       setItems([]);
+      setLiveTexts({});
       setCtx(emptyCtx);
       return;
     }
     itemsAcc.current = [];
+    liveAcc.current = {};
     setItems([]);
+    setLiveTexts({});
     setQueued(0);
     setQueueItems([]);
     setCtx(emptyCtx);
+    const flushLive = () => {
+      liveRaf.current = 0;
+      setLiveTexts({ ...liveAcc.current });
+    };
+    const scheduleLive = () => {
+      if (liveRaf.current) return;
+      liveRaf.current = requestAnimationFrame(flushLive);
+    };
     const unsub = subscribeSession(
       activeId,
       (item) => {
+        const prevSig = structureSig(itemsAcc.current);
         itemsAcc.current = mergeItem(itemsAcc.current, item);
+        if (isLiveDelta(item)) {
+          const merged = itemsAcc.current.find((x) => x.key === item.key);
+          if (merged) {
+            liveAcc.current[merged.key] = liveBody(merged);
+            scheduleLive();
+          }
+          if (structureSig(itemsAcc.current) === prevSig) return;
+        } else if (item.key && liveAcc.current[item.key] != null) {
+          delete liveAcc.current[item.key];
+          scheduleLive();
+        }
         setItems(itemsAcc.current.slice());
         if (item.type === "compaction") {
           const p = item.payload || {};
@@ -551,6 +580,8 @@ export function useWorkstation() {
       },
       (seed) => {
         itemsAcc.current = foldLiveIntoSeed(seed, itemsAcc.current);
+        liveAcc.current = {};
+        setLiveTexts({});
         setItems(itemsAcc.current.slice());
       },
     );
@@ -559,7 +590,13 @@ export function useWorkstation() {
     api.running(activeId)
       .then((live) => setRunning((m) => ({ ...m, [activeId]: live && !settled(endedAt.current, activeId) })))
       .catch(() => {});
-    return unsub;
+    return () => {
+      unsub();
+      if (liveRaf.current) {
+        cancelAnimationFrame(liveRaf.current);
+        liveRaf.current = 0;
+      }
+    };
   }, [activeId, markEnded]);
 
   useEffect(() => {
@@ -1212,7 +1249,7 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,

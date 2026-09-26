@@ -1,4 +1,5 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUpRight, Check, CircleDashed, Copy, FileText, RotateCcw, ShieldAlert } from "lucide-react";
 import { IconSwap } from "../components/ui/icon-swap";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "../
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
 import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
@@ -115,6 +117,8 @@ function partSpace(parts: AgentPart[], i: number): string {
 
 export function Transcript(props: {
   items: Item[];
+  liveTexts?: Record<string, string>;
+  showThinking?: boolean;
   approvals: Approval[];
   running: boolean;
   compact?: boolean;
@@ -127,13 +131,18 @@ export function Transcript(props: {
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
-  const layout = layoutRows(props.items);
-  const empty = props.items.length === 0 && !props.running && props.approvals.length === 0;
-  const live = lastMeaningful(props.items);
-  const streamingKey = props.running && live?.type === "assistant" && live.delta ? live.key : "";
+  const visible = useMemo(
+    () => (props.showThinking ? props.items : props.items.filter((it) => it.type !== "reasoning")),
+    [props.items, props.showThinking],
+  );
+  const layout = useMemo(() => layoutRows(visible), [visible]);
+  const empty = visible.length === 0 && !props.running && props.approvals.length === 0;
+  const live = lastMeaningful(visible);
+  const liveItem = live ? withLiveText(live, props.liveTexts) : null;
+  const streamingKey = props.running && liveItem?.type === "assistant" && liveItem.delta ? liveItem.key : "";
   const showWorking = props.running && !streamingKey && !tailOwnsActivity(layout);
-  const since = props.running ? lastUserTimeMs(props.items) : 0;
-  const retryKey = lastErrorKey(props.items);
+  const since = props.running ? lastUserTimeMs(visible) : 0;
+  const retryKey = lastErrorKey(visible);
   const pinnedTurn = lastAgentKey(layout);
   const longThread = layout.length > LONG_THREAD_TURNS;
 
@@ -180,6 +189,7 @@ export function Transcript(props: {
                       live={props.running && last && pi === tail}
                       running={props.running}
                       compact={props.compact}
+                      liveTexts={props.liveTexts}
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
@@ -187,6 +197,7 @@ export function Transcript(props: {
                     <ItemRow
                       item={part.item}
                       streaming={part.item.key === streamingKey}
+                      liveText={props.liveTexts?.[part.item.key]}
                     />
                   )}
                 </div>
@@ -257,15 +268,7 @@ export function Transcript(props: {
           scrollClassName="transcript-scroll"
           className={cn(col, "flex flex-col pb-4 pt-5")}
         >
-          {rows.map((row) => (
-            <div
-              key={row.key}
-              className={row.space}
-              style={row.virtualize ? { contentVisibility: "auto", containIntrinsicSize: "auto 160px" } : undefined}
-            >
-              {row.node}
-            </div>
-          ))}
+          <TranscriptLane rows={rows} virtualize={longThread && !props.compact} />
         </StickToBottom.Content>
       )}
       {props.compact ? null : <JumpLatest />}
@@ -324,7 +327,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           <button
             type="button"
             key={s.label}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[12.5px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[13px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}
           >
@@ -334,6 +337,63 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         ))}
       </div>
     </div>
+  );
+}
+
+type TranscriptRow = { key: string; space?: string; virtualize?: boolean; node: ReactNode };
+
+function TranscriptLane({ rows, virtualize }: { rows: TranscriptRow[]; virtualize: boolean }) {
+  const { scrollRef } = useStickToBottomContext();
+  const frozen = virtualize ? rows.filter((r) => r.virtualize) : [];
+  const rest = virtualize ? rows.filter((r) => !r.virtualize) : rows;
+  const virtualizer = useVirtualizer({
+    count: frozen.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 140,
+    overscan: 8,
+    enabled: frozen.length > 0,
+  });
+  if (!frozen.length) {
+    return (
+      <>
+        {rest.map((row) => (
+          <div key={row.key} className={row.space}>
+            {row.node}
+          </div>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((v) => {
+          const row = frozen[v.index];
+          return (
+            <div
+              key={row.key}
+              data-index={v.index}
+              ref={virtualizer.measureElement}
+              className={row.space}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${v.start}px)`,
+              }}
+            >
+              {row.node}
+            </div>
+          );
+        })}
+      </div>
+      {rest.map((row) => (
+        <div key={row.key} className={row.space}>
+          {row.node}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -415,16 +475,16 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
             {copy.transcript.needsApproval}
           </div>
-          <div className="mt-0.5 text-[13.5px] font-medium tracking-[-0.015em] text-foreground">{item.action || "action"}</div>
+          <div className="mt-0.5 text-[14px] font-medium tracking-tight text-foreground">{item.action || "action"}</div>
           {subject ? (
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[11.5px] leading-[1.5] text-foreground/85">
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.5] text-foreground/85">
               {subject}
             </pre>
           ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-[filter,transform] duration-200 ease-[var(--ease-out)] hover:brightness-[1.04] active:scale-[0.98] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
               onClick={() => onResolve(item.id, "once")}
             >
               {copy.transcript.allow}
@@ -515,7 +575,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
         className={cn("pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full", soft ? "bg-muted/60" : "bg-danger/80")}
         aria-hidden
       />
-      <div className={cn("text-[13.5px] font-medium tracking-[-0.01em]", soft ? "text-foreground" : "text-danger")}>{labels.title}</div>
+      <div className={cn("text-[14px] font-medium tracking-[-0.01em]", soft ? "text-foreground" : "text-danger")}>{labels.title}</div>
       {hint ? <p className={cn("mt-1 text-[13px] leading-5", soft ? "text-muted" : "text-danger/80")}>{hint}</p> : null}
       {showDetail ? (
         <details className="mt-2 text-[12px] text-muted">
@@ -526,7 +586,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
       {classified.retryable && onRetry ? (
         <button
           type="button"
-          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] transition-[filter,transform] duration-200 ease-[var(--ease-out)] hover:brightness-[1.04] active:scale-[0.98] disabled:opacity-40"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
           onClick={onRetry}
         >
           <RotateCcw className="size-3" aria-hidden />
@@ -545,28 +605,31 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
 const ItemRow = memo(function ItemRow({
   item,
   streaming,
+  liveText,
   copyText,
   onRetry,
 }: {
   item: Item;
   streaming?: boolean;
+  liveText?: string;
   copyText?: string;
   onRetry?: () => void;
 }) {
   const copy = useCopy();
-  if (item.type === "user") {
-    if (item.source === "steer") {
+  const shown = liveText != null ? { ...item, text: liveText } : item;
+  if (shown.type === "user") {
+    if (shown.source === "steer") {
       return (
         <div className="text-center text-[11px] text-muted">
-          {copy.transcript.steer}: {item.text.replace(/^User steering \(apply now\):\s*/i, "")}
+          {copy.transcript.steer}: {shown.text.replace(/^User steering \(apply now\):\s*/i, "")}
         </div>
       );
     }
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[13.5px] leading-[1.55] tracking-[-0.014em]">
-            {item.text}
+          <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[14px] leading-[1.55] tracking-normal">
+            {shown.text}
           </div>
           {copyText ? (
             <div className="flex h-8 items-center justify-end opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100">
@@ -577,31 +640,31 @@ const ItemRow = memo(function ItemRow({
       </div>
     );
   }
-  if (item.type === "assistant") {
+  if (shown.type === "assistant") {
     return (
       <div className="assistant-prose w-full min-w-0">
         <div className={cn(streaming && "assistant-live")}>
-          <Markdown text={item.text} streaming={streaming} />
+          <Markdown text={shown.text} streaming={streaming} />
         </div>
       </div>
     );
   }
-  if (item.type === "error") {
-    return <ErrorCard item={item} onRetry={onRetry} />;
+  if (shown.type === "error") {
+    return <ErrorCard item={shown} onRetry={onRetry} />;
   }
-  if (item.type === "compaction") {
-    const kind = String(item.payload?.kind || "");
+  if (shown.type === "compaction") {
+    const kind = String(shown.payload?.kind || "");
     if (kind === "checkpoint_start") return null;
-    const note = String(item.payload?.note || item.text || "");
+    const note = String(shown.payload?.note || shown.text || "");
     const label = note || (kind === "checkpoint" ? copy.transcript.checkpoint : copy.app.compacted);
     return <div className="text-center text-[11px] text-muted/80">{label}</div>;
   }
-  if (item.type === "tool_call" || item.type === "tool_result") {
-    return <ToolLine item={item} />;
+  if (shown.type === "tool_call" || shown.type === "tool_result") {
+    return <ToolLine item={shown} />;
   }
-  if (item.type === "turn_end" || item.type === "system") return null;
-  if (item.type === "plan" || item.type === "file_change" || item.type === "ask_user") return null;
-  if (item.type === "approval") return null;
+  if (shown.type === "turn_end" || shown.type === "system") return null;
+  if (shown.type === "plan" || shown.type === "file_change" || shown.type === "ask_user") return null;
+  if (shown.type === "approval") return null;
   return null;
 });
 
@@ -692,10 +755,10 @@ function ArtifactCard({
           {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-3.5" />}
         </span>
         <div className="min-w-0 flex-1 basis-40">
-          <div className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
+          <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
             <span className={cn("truncate", pending && "shimmer-text")}>{title}</span>
             {interrupted ? (
-              <span className="rounded-md bg-warning/12 px-1.5 py-px text-[10.5px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
+              <span className="rounded-md bg-warning/12 px-1.5 py-px text-[11px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
           </div>
           <div className="truncate font-mono text-[11px] text-muted">{meta}</div>

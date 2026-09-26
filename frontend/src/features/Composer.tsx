@@ -712,7 +712,7 @@ function QueueDock(props: {
       {props.items.map((it, i) => {
         const id = it.id || `q-${i}`;
         return (
-          <div key={id} className="flex min-w-0 items-center gap-1 rounded-lg bg-lift/70 px-2 py-1 text-[11.5px]">
+          <div key={id} className="flex min-w-0 items-center gap-1 rounded-lg bg-lift/70 px-2 py-1 text-[12px]">
             <span className="min-w-0 flex-1 truncate text-foreground/85">{it.text || props.copy.composer.queue}</span>
             {props.onReorder ? (
               <>

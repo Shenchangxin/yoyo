@@ -80,6 +80,7 @@ type Config struct {
 	NotificationsEnabled    bool              `yaml:"notifications_enabled" json:"notifications_enabled"`
 	NotifyWhenUnfocusedOnly bool              `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
 	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
+	ShowThinking            bool              `yaml:"show_thinking" json:"show_thinking"`
 	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
 	Theme                   string            `yaml:"theme" json:"theme"`
 	PaletteDark             string            `yaml:"palette_dark" json:"palette_dark"`
@@ -194,9 +195,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		if _, ok := raw["companion_enabled"]; !ok {
 			cfg.CompanionEnabled = true
 		}
-		if cfg.UIScale <= 0 {
-			cfg.UIScale = 1
-		}
+		cfg.UIScale = snapUIScale(cfg.UIScale)
 		if cfg.UpdateChannel == "" {
 			cfg.UpdateChannel = "nightly"
 		}
@@ -553,6 +552,7 @@ func (c *Config) NormalizeAppearance() {
 	default:
 		c.PaletteLight = "neutral"
 	}
+	c.UIScale = snapUIScale(c.UIScale)
 }
 
 func (a *App) SaveConfig() error {

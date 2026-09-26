@@ -36,6 +36,25 @@ func TestWaitBlockReturnsWhileAlive(t *testing.T) {
 	killProcess(t, cmd)
 }
 
+func TestWaitNotifyChunks(t *testing.T) {
+	cmd := echoHi()
+	var n int
+	o := WaitNotify(context.Background(), cmd, 0, 0, func(p []byte) {
+		if len(p) > 0 {
+			n++
+		}
+	})
+	if o.Err != nil {
+		t.Fatal(o.Err)
+	}
+	if n == 0 {
+		t.Fatal("no stdout chunks")
+	}
+	if !strings.Contains(strings.ToLower(string(o.Output)), "hi") {
+		t.Fatalf("output %q", o.Output)
+	}
+}
+
 func TestWaitEchoFinishes(t *testing.T) {
 	cmd := echoHi()
 	o := Wait(context.Background(), cmd, 2*time.Second, 2*time.Second)

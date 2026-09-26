@@ -16,10 +16,10 @@
   --fs-title: 16px;
   --fs-heading-lg: 15px;
   --fs-heading: 13px;
-  --fs-body-lg: 13.5px;
+  --fs-body-lg: 14px;
   --fs-body: 13px;
   --fs-tiny: 11px;
-  --fs-micro: 10.5px;
+  --fs-micro: 11px;
   --typ-display-mega: 21px;
   --typ-display-xl: 21px;
   --typ-display-lg: 21px;
@@ -106,23 +106,22 @@
   --node-radius: 12px;
   --glass-saturate: 180%;
   --elevation-overlay: var(--shadow-popover);
-  --plugin-switch-checked-bg: #e08a6a;
-  --plugin-switch-checked-hover-bg: color-mix(in srgb, #e08a6a 86%, black);
+  --plugin-switch-checked-bg: var(--accent);
+  --plugin-switch-checked-hover-bg: color-mix(in srgb, var(--accent) 86%, black);
   --plugin-switch-off-bg: color-mix(in srgb, var(--foreground) 16%, transparent);
   --plugin-switch-off-hover-bg: color-mix(in srgb, var(--foreground) 24%, transparent);
   color: var(--foreground);
   background: var(--background);
   font-family: inherit;
   font-feature-settings: "ss01" 1, "cv11" 1;
-  -webkit-font-smoothing: antialiased;
 }
 
 html.light .yingce-island {
-  --plugin-switch-checked-bg: #b45c48;
-  --plugin-switch-checked-hover-bg: color-mix(in srgb, #b45c48 86%, black);
+  --plugin-switch-checked-bg: var(--accent);
+  --plugin-switch-checked-hover-bg: color-mix(in srgb, var(--accent) 86%, black);
 }
 
-/* —— Nodes: iOS media tile, hairline, terracotta only when live —— */
+/* —— Nodes: iOS media tile, hairline, blue only when live —— */
 .yingce-island .canvas-node-shell {
   overflow: hidden;
   border-radius: var(--node-radius);

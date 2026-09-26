@@ -56,7 +56,7 @@ export function PlanChip({
           />
           <span className="shrink-0 text-[13px] font-medium tracking-[-0.01em] text-foreground/90">{copy.transcript.plan}</span>
           {!open && focus ? (
-            <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted" title={focus.step}>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-muted" title={focus.step}>
               {focus.step}
             </span>
           ) : (
@@ -84,7 +84,7 @@ export function PlanChip({
             className="overflow-hidden"
           >
             {plan.explanation && !compact ? (
-              <p className="px-3.5 pb-1 pl-8 text-[11.5px] leading-[1.4] text-muted">{plan.explanation}</p>
+              <p className="px-3.5 pb-1 pl-8 text-[12px] leading-[1.4] text-muted">{plan.explanation}</p>
             ) : null}
             <ol className={cn("min-w-0", compact ? "max-h-28 overflow-y-auto pb-1.5" : "max-h-40 overflow-y-auto pb-2")}>
               {plan.steps.map((step, i) => (

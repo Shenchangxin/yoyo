@@ -598,6 +598,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Meter:            meter,
 		PullSteer:        func() string { return a.pullSteer(sessionID) },
 		SoftHorizon:      true,
+		ShowThinking:     a.Config.ShowThinking,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {

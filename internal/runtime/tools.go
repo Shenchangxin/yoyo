@@ -29,6 +29,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/tool"
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 type ToolResult struct {
@@ -85,34 +86,37 @@ type WorkspaceTools struct {
 	OperatorVoice string
 	// VerifyHint is set when chat tries to end_turn with an open plan so
 	// verify-artifact is re-injected into working memory (I2/I5).
-	VerifyHint   bool
-	Ctx          context.Context
-	Extra        map[string]ExtraTool
-	Spill        *Spill
-	Depth        int
-	Task         TaskFunc
-	PlanText     string
-	Advertised   []string
-	AllowedTools []string
-	AskUser      func(question string) (string, error)
-	SkillMeta    map[string]artifact.Skill
-	prefetch     map[string]prefetchHit
-	mu           sync.Mutex
-	MaxParallel  int
-	SearchAPI    func(query string) (string, error)
-	Sessions     func(id string) []Message
-	ListThreads  func() []ThreadRef
-	SendThread   func(id, text string) error
-	Memory       *memory.Store
-	Schedule     *schedule.Service
-	Projects     *project.Store
-	Connectors   *connector.Broker
-	Browser      *browser.Host
-	Computer     *computeruse.Host
-	Inbox            *inbox.Store
-	LastBrowser      string
+	VerifyHint        bool
+	Ctx               context.Context
+	Extra             map[string]ExtraTool
+	Spill             *Spill
+	Depth             int
+	Task              TaskFunc
+	PlanText          string
+	Advertised        []string
+	AllowedTools      []string
+	AskUser           func(question string) (string, error)
+	SkillMeta         map[string]artifact.Skill
+	prefetch          map[string]prefetchHit
+	mu                sync.Mutex
+	MaxParallel       int
+	SearchAPI         func(query string) (string, error)
+	Sessions          func(id string) []Message
+	ListThreads       func() []ThreadRef
+	SendThread        func(id, text string) error
+	Memory            *memory.Store
+	Schedule          *schedule.Service
+	Projects          *project.Store
+	Connectors        *connector.Broker
+	Browser           *browser.Host
+	Computer          *computeruse.Host
+	Inbox             *inbox.Store
+	LastBrowser       string
 	AllowedConnectors []string
-	Takeover         func(question string) (string, error)
+	Takeover          func(question string) (string, error)
+	OnLive            func(trace.Event)
+	liveCall          string
+	liveRound         string
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -651,7 +655,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		return ToolResult{Err: err}
 	}
 	cmd.Dir = t.Workspace
-	out := runShell(ctx, cmd, idle, block)
+	out := runShell(ctx, cmd, idle, block, t.emitStdout)
 	if out.Err != nil && runtime.GOOS == "windows" && !posix && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(out.Err) {
 		if fuse {
 			cmd = exec.Command("cmd", "/C", command)
@@ -659,7 +663,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 		}
 		cmd.Dir = t.Workspace
-		out = runShell(ctx, cmd, idle, block)
+		out = runShell(ctx, cmd, idle, block, t.emitStdout)
 	}
 	content := rewriteNote + string(out.Output)
 	if out.Background {
@@ -684,12 +688,51 @@ func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Durati
 	return chatShellIdle, chatShellBlock, true
 }
 
-func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration) isolation.Outcome {
+func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) isolation.Outcome {
 	if idle > 0 || block > 0 {
-		return isolation.Wait(ctx, cmd, idle, block)
+		return isolation.WaitNotify(ctx, cmd, idle, block, onChunk)
+	}
+	if onChunk != nil {
+		return isolation.WaitNotify(ctx, cmd, 0, 0, onChunk)
 	}
 	out, err := isolation.Run(ctx, cmd)
 	return isolation.Outcome{Output: out, Err: err}
+}
+
+func (t *WorkspaceTools) setLiveCall(id, round string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.liveCall = id
+	t.liveRound = round
+	t.mu.Unlock()
+}
+
+func (t *WorkspaceTools) emitStdout(p []byte) {
+	if t == nil || t.OnLive == nil || len(p) == 0 {
+		return
+	}
+	t.mu.Lock()
+	id := t.liveCall
+	round := t.liveRound
+	session := t.SessionID
+	t.mu.Unlock()
+	if id == "" {
+		return
+	}
+	payload := map[string]any{
+		"id": id, "name": "shell", "content": string(p), "delta": true, "untrusted": true,
+	}
+	if round != "" {
+		payload["round"] = round
+	}
+	t.OnLive(trace.Event{
+		Type:      trace.TypeToolResult,
+		SessionID: session,
+		Source:    "tool",
+		Payload:   payload,
+	})
 }
 
 func bindShell(ctx context.Context, command string, argv []string, posix bool) (*exec.Cmd, error) {

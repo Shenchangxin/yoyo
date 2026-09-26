@@ -41,9 +41,9 @@ export function itemKey(opts: {
   const ts = opts.ts || "";
   const name = opts.name || "";
   const idx = opts.idx || 0;
-  if (type === "assistant") {
+  if (type === "assistant" || type === "reasoning") {
     const rid = id || round;
-    if (rid) return `${sessionId}:assistant:${rid}`;
+    if (rid) return `${sessionId}:${type}:${rid}`;
   }
   if (id && round && id !== round) return `${sessionId}:${type}:${round}:${id}`;
   if (id) return `${sessionId}:${type}:${id}`;
@@ -121,18 +121,6 @@ function openAssistantIndex(list: Item[]): number {
   return -1;
 }
 
-function assistantIndexFor(list: Item[], ev: Item): number {
-  const rid = assistantRound(ev);
-  if (rid) {
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].type === "user") return -1;
-      if (list[i].type === "assistant" && assistantRound(list[i]) === rid) return i;
-    }
-    return -1;
-  }
-  return openAssistantIndex(list);
-}
-
 function sameUserText(a: string, b: string): boolean {
   return a.trim() === b.trim();
 }
@@ -172,6 +160,63 @@ function dropTrailingOptimistic(list: Item[], text: string, steer: boolean): Ite
   return out;
 }
 
+function textDeltaIndex(list: Item[], ev: Item): number {
+  const rid = assistantRound(ev);
+  if (rid) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].type === "user") return -1;
+      if (list[i].type === ev.type && assistantRound(list[i]) === rid) return i;
+    }
+    return -1;
+  }
+  if (ev.type === "assistant") return openAssistantIndex(list);
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].type === ev.type) return i;
+    if (closesAssistant(list[i].type)) return -1;
+  }
+  return -1;
+}
+
+function foldTextDelta(list: Item[], ev: Item): Item[] {
+  const idx = textDeltaIndex(list, ev);
+  if (idx >= 0) {
+    const cur = list[idx];
+    if (ev.delta && cur.text && !cur.delta) return list;
+    const text = ev.delta ? cur.text + (ev.text || "") : (ev.text || cur.text);
+    const next = list.slice();
+    next[idx] = {
+      ...cur,
+      text,
+      delta: ev.delta,
+      payload: { ...cur.payload, ...ev.payload, text, delta: ev.delta },
+    };
+    return next;
+  }
+  if (!ev.text && !ev.delta) return list;
+  return [...list, ev];
+}
+
+function foldToolResult(list: Item[], ev: Item): Item[] {
+  const idx = ev.key ? list.findIndex((x) => x.key === ev.key) : -1;
+  if (idx >= 0) {
+    const cur = list[idx];
+    const curBody = String(cur.payload?.content ?? cur.text ?? "");
+    if (ev.delta && curBody && !cur.delta) return list;
+    const add = String(ev.payload?.content ?? ev.text ?? "");
+    const body = ev.delta ? curBody + add : (add || curBody);
+    const next = list.slice();
+    next[idx] = {
+      ...cur,
+      ...ev,
+      text: body,
+      delta: ev.delta,
+      payload: { ...cur.payload, ...ev.payload, content: body, delta: ev.delta },
+    };
+    return next;
+  }
+  return [...list, ev];
+}
+
 /**
  * Fold a live or replayed event into the transcript.
  * Assistant deltas only join the in-progress bubble of the current round —
@@ -197,23 +242,12 @@ export function mergeItem(list: Item[], ev: Item): Item[] {
     return [...next, row];
   }
 
-  if (ev.type === "assistant") {
-    const idx = assistantIndexFor(list, ev);
-    if (idx >= 0) {
-      const cur = list[idx];
-      if (ev.delta && cur.text && !cur.delta) return list;
-      const text = ev.delta ? cur.text + (ev.text || "") : (ev.text || cur.text);
-      const next = list.slice();
-      next[idx] = {
-        ...cur,
-        text,
-        delta: ev.delta,
-        payload: { ...cur.payload, ...ev.payload, delta: ev.delta },
-      };
-      return next;
-    }
-    if (!ev.text && !ev.delta) return list;
-    return [...list, { ...ev, delta: false }];
+  if (ev.type === "assistant" || ev.type === "reasoning") {
+    return foldTextDelta(list, ev);
+  }
+
+  if (ev.type === "tool_result") {
+    return foldToolResult(list, ev);
   }
 
   if (ev.key && list.some((x) => x.key === ev.key)) return list;

@@ -85,7 +85,7 @@ export function Titlebar(props: {
       ) : props.title ? (
         <button
           type="button"
-          className="min-w-0 max-w-[46%] shrink truncate rounded-lg px-1.5 py-0.5 text-left text-[13.5px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
+          className="min-w-0 max-w-[46%] shrink truncate rounded-lg px-1.5 py-0.5 text-left text-[14px] font-medium tracking-[-0.02em] text-foreground hover:bg-lift/70"
           onClick={() => {
             setDraft(props.title);
             setEditing(true);

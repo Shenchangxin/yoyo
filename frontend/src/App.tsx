@@ -249,6 +249,8 @@ function WorkstationApp() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
           items={ws.items}
+          liveTexts={ws.liveTexts}
+          showThinking={!!ws.savedCfg.showThinking}
           approvals={ws.approvals}
           running={ws.threadRunning}
           workspace={sessionWs}
@@ -648,6 +650,8 @@ function WorkstationApp() {
               {agent ? inspect : (
                 <ChatDock
                   items={ws.items}
+                  liveTexts={ws.liveTexts}
+                  showThinking={!!ws.savedCfg.showThinking}
                   approvals={ws.approvals}
                   running={ws.threadRunning}
                   draftKey={ws.draftKey}
@@ -740,6 +744,8 @@ function WorkstationApp() {
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}
+                        liveTexts={ws.liveTexts}
+                        showThinking={!!ws.savedCfg.showThinking}
                         approvals={ws.approvals}
                         running={ws.threadRunning}
                         draftKey={ws.draftKey}

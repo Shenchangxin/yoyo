@@ -7,9 +7,11 @@ import { installFrontendLogBridge } from "./lib/diag-bridge";
 import { ThemeProvider, useTheme } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { isCompanionSurface } from "./lib/popout";
+import { applyOsClass } from "./lib/chrome";
 import "./styles.css";
 
 installFrontendLogBridge();
+applyOsClass();
 
 function ThemedToaster() {
   const { resolved } = useTheme();

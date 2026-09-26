@@ -26,10 +26,26 @@
           document.documentElement.classList.add(dark ? "dark" : "light");
           document.documentElement.setAttribute("data-palette", pal);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var ua = navigator.userAgent || "";
+          document.documentElement.dataset.os = /Windows/i.test(ua)
+            ? "windows"
+            : /Mac/i.test(ua) && !/iPhone|iPad|iPod/.test(ua)
+              ? "mac"
+              : "linux";
           var scale = parseFloat(localStorage.getItem("yoyo-ui-scale") || "1");
+          var steps = [1, 1.25, 1.5];
+          var snapped = 1;
+          var dist = Infinity;
           if (scale > 0 && isFinite(scale)) {
-            document.documentElement.style.setProperty("--ui-scale", String(scale));
+            for (var i = 0; i < steps.length; i++) {
+              var d = Math.abs(steps[i] - scale);
+              if (d < dist) {
+                dist = d;
+                snapped = steps[i];
+              }
+            }
           }
+          document.documentElement.style.setProperty("--ui-scale", String(snapped));
         } catch (e) {
           document.documentElement.classList.add("dark");
           document.documentElement.setAttribute("data-palette", "ink");
@@ -37,7 +53,7 @@
       })();
     </script>
   </head>
-  <body class="h-full bg-background text-foreground antialiased">
+  <body class="h-full bg-background text-foreground">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
