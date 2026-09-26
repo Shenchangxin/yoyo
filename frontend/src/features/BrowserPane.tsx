@@ -60,17 +60,17 @@ export function BrowserPane(props: {
     return (
       <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center" data-testid="review-browser">
         <span className="mark-well mb-3 text-muted" aria-hidden><Globe className="size-4" /></span>
-        <p className="text-[12.5px] font-medium text-foreground/85">{copy.review.browserIdle}</p>
-        <p className="mt-1 max-w-[22rem] text-[11.5px] leading-[1.55] text-muted">{copy.review.browserIdleHint}</p>
+        <p className="text-[13px] font-medium text-foreground/85">{copy.review.browserIdle}</p>
+        <p className="mt-1 max-w-[22rem] text-[12px] leading-[1.55] text-muted">{copy.review.browserIdleHint}</p>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="review-browser">
-      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 pl-2.5 pr-1.5 text-[11.5px] text-muted">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 pl-2.5 pr-1.5 text-[12px] text-muted">
         {live ? <span className={cn("pulse-dot", view?.live && "is-accent")} aria-hidden /> : <Globe className="size-3.5 shrink-0" aria-hidden />}
-        <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[10.5px] uppercase tracking-[0.08em] text-muted">
+        <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] uppercase tracking-[0.08em] text-muted">
           {live ? copy.review.liveLane : copy.review.page}
         </span>
         <span
@@ -80,7 +80,7 @@ export function BrowserPane(props: {
         >
           {address}
         </span>
-        {live ? <span className="shrink-0 text-[10.5px] text-muted/80">{lane}</span> : null}
+        {live ? <span className="shrink-0 text-[11px] text-muted/80">{lane}</span> : null}
         {htmlPath && live ? (
           <button
             type="button"

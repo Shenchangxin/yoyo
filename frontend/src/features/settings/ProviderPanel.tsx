@@ -100,7 +100,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
       />
 
       <section className="mb-7">
-        <h2 className="mb-2 px-1 text-[12.5px] font-semibold text-foreground/75">{copy.settings.provider}</h2>
+        <h2 className="mb-2 px-1 text-[13px] font-semibold text-foreground/75">{copy.settings.provider}</h2>
         <div role="radiogroup" aria-label={copy.settings.provider} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PROVIDER_PRESETS.map((p) => {
             const count = modelsForProvider(MODELS_DEV_SNAPSHOT, p.id).length;
@@ -120,7 +120,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
               >
                 <ProviderMark id={p.id} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-medium text-foreground">{p.label}</span>
+                  <span className="block truncate text-[13px] font-medium text-foreground">{p.label}</span>
                   <span className="block truncate text-[11px] text-muted">
                     {count ? `${count} ${copy.settings.modelsCount}` : p.model || "—"}
                   </span>
@@ -210,7 +210,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
                     onClick={() => pickModel(m.id)}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-[12.5px] font-medium text-foreground">{m.name || m.id}</span>
+                      <span className="block truncate text-[13px] font-medium text-foreground">{m.name || m.id}</span>
                       <span className="mt-0.5 block truncate font-mono text-[11px] text-muted">{m.id}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2 text-right text-[11px] tabular-nums text-muted">

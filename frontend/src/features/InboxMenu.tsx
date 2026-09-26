@@ -19,8 +19,8 @@ export function InboxMenu(props: {
   if (!drafts.length && !inbox.length && !offers.length) {
     return (
       <div className="px-3 py-6 text-center" data-testid="inbox-menu">
-        <p className="text-[12.5px] font-medium text-foreground/85">{copy.review.nothingWaiting}</p>
-        <p className="mt-1 text-[11.5px] leading-[1.55] text-muted">{copy.review.noQueue}</p>
+        <p className="text-[13px] font-medium text-foreground/85">{copy.review.nothingWaiting}</p>
+        <p className="mt-1 text-[12px] leading-[1.55] text-muted">{copy.review.noQueue}</p>
       </div>
     );
   }
@@ -38,7 +38,7 @@ export function InboxMenu(props: {
                 <li key={id} className="px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-foreground">{str(req.action || req.Action, "approval")}</div>
+                      <div className="text-[13px] font-medium text-foreground">{str(req.action || req.Action, "approval")}</div>
                       <div className="mt-0.5 truncate font-mono text-[11px] text-muted">{str(req.command || req.Command || req.path || req.Path)}</div>
                     </div>
                     {session && props.onOpenThread ? (
@@ -70,8 +70,8 @@ export function InboxMenu(props: {
                 <li key={id} className="px-3 py-2.5">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-foreground">{str(it.title || it.Title)}</div>
-                      <div className="mt-0.5 text-[11.5px] leading-[1.5] text-muted">{str(it.body || it.Body).slice(0, 200)}</div>
+                      <div className="text-[13px] font-medium text-foreground">{str(it.title || it.Title)}</div>
+                      <div className="mt-0.5 text-[12px] leading-[1.5] text-muted">{str(it.body || it.Body).slice(0, 200)}</div>
                     </div>
                     {session && props.onOpenThread ? (
                       <IconAction label={copy.review.openThread} onClick={() => { void api.inboxRead(id); props.onOpenThread?.(session); }}>
@@ -101,8 +101,8 @@ export function InboxMenu(props: {
           <ul>
             {drafts.map((d: any, i: number) => (
               <li key={str(d.id || i)} className="px-3 py-2.5">
-                <div className="text-[12.5px] font-medium text-foreground">{str(d.to)}</div>
-                <div className="mt-0.5 text-[11.5px] text-muted">{str(d.subject)}</div>
+                <div className="text-[13px] font-medium text-foreground">{str(d.to)}</div>
+                <div className="mt-0.5 text-[12px] text-muted">{str(d.subject)}</div>
               </li>
             ))}
           </ul>

@@ -58,7 +58,7 @@ export function HomeStage(props: {
                 style={{ animationDelay: `${80 + i * 50}ms` }}
                 onClick={() => props.onPrompt?.(s.text)}
               >
-                <span className="text-[12.5px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
+                <span className="text-[13px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
               </button>
             ))}
           </div>

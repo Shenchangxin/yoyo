@@ -8,8 +8,8 @@ sentence:
 
 > **Show the work, hide the chrome. Color is evidence. Motion is state.**
 
-Visual direction is a warm night studio: Plus Jakarta Sans, terracotta on
-charcoal, Apple HIG materials (glass chrome, concentric radii, grouped Form).
+Visual direction is quiet stone paper (WorkBuddy) with Codex blue as
+evidence, Apple HIG materials (opaque chrome, concentric radii, grouped Form).
 Beauty is instrument craft — not personality marketing. Skill-layer notes live
 in `design-system/yoyo/MASTER.md`; this file still wins on grammar.
 
@@ -34,8 +34,9 @@ functional layer above opaque media. Do not mix Regular and Clear glass.
 2. **Hairlines, not boxes.** Lists are separated by `border-border/50` lines.
    Cards are reserved for objects the operator acts on (approvals, artifacts,
    errors). Never nest a card inside a card.
-3. **Color is evidence.** Warm charcoal chrome. Terracotta (`accent`) is for
-   primary selection and live generation. `success` and `danger` appear only
+3. **Color is evidence.** Quiet stone chrome. Primary actions stay ink
+   (`foreground` on `background`). Codex blue (`accent`) marks live work,
+   selection, and focus. `success` and `danger` appear only
    where they carry meaning: diff adds/deletes, failed steps, destructive
    actions. `warning` marks incomplete state. Do not spend hue on node-type
    rainbows.
@@ -66,25 +67,25 @@ Mode (`system | dark | light`) is orthogonal to named palettes. The document
 element carries `class="dark|light"` and `data-palette`. Accent, success,
 danger, and warning stay put so Harbor and diffs still mean the same thing.
 
-Default dark is the warm night studio. Mist (cool daylight) is an opt-in light
+Default dark is quiet stone. Mist (cool daylight) is an opt-in light
 palette — not the brand.
 
-| Token | Dark (studio) | Light | Use |
+| Token | Dark (stone) | Light | Use |
 |---|---|---|---|
-| `background` | `#161310` | `#f5f5f3` | app canvas, transcript |
-| `sidebar` | `#100e0c` | cool/warm rail | rail, review panel, code surfaces |
-| `card` | `#1e1a17` | paper | actionable cards, grouped Form |
-| `popover` | `#25201c` | white | menus, tooltips, jump pill |
-| `input-bar` | `#1c1916` | white | composer |
-| `lift` | `#2c2621` | hover wash | hover, selected, chips, kbd |
-| `border` | foreground 10% | ink 10% | every hairline |
-| `foreground` | `#f2ede6` | `#1c1916` | primary text, primary button fill |
-| `muted` | `#9a9086` | `#6f675f` | secondary text, icons |
-| `accent` | `#e08a6a` terracotta | terracotta | selection, live generation |
-| `success` | `#7eae8c` | green | diff add, healthy, iOS switch |
-| `warning` | `#c4a15a` | gold | interrupted, needs approval |
-| `danger` | `#d16a64` | red | failed, destructive |
-| `media-surface` | `#0b0d10` | near-black | Drama viewer, canvas stage |
+| `background` | `#1c1c1a` | `#fbfbfa` | app canvas, transcript |
+| `sidebar` | `#222220` | `#f1f1ee` | rail, review panel, code surfaces |
+| `card` | `#242422` | white | actionable cards, grouped Form |
+| `popover` | `#2c2c29` | white | menus, tooltips, jump pill |
+| `input-bar` | `#222220` | white | composer |
+| `lift` | `#32322e` | hover wash | hover, selected, chips, kbd |
+| `border` | foreground 9% | ink 8% | every hairline |
+| `foreground` | `#f4f4f0` | `#1c1c1a` | primary text, primary button fill |
+| `muted` | `#8c8b85` | `#6f6e68` | secondary text, icons |
+| `accent` | `#5c99d6` Codex blue | `#0169cc` | live, selected, focus |
+| `success` | `#74b48a` | green | diff add, healthy, iOS switch |
+| `warning` | `#d4b06a` | gold | interrupted, needs approval |
+| `danger` | `#e06b66` | red | failed, destructive |
+| `media-surface` | `#0c0c0b` | near-black | Drama viewer, canvas stage |
 | `glass-bg` | sidebar 72% | sidebar 72% | chrome only (header, rail, inspector) |
 
 Opacity steps for text: `foreground` (primary) · `foreground/85` (labels) ·
@@ -183,7 +184,7 @@ stops the moment `running` is false.
 - **Drama** is a Final Cut split: browser (cast/scenes/props) | viewer + film
   strip | inspector. Pipeline verbs sit on the viewer. Tasks open a drawer.
 - **Canvas** keeps the Yingce renderer. Nodes are monochrome media tiles with
-  a 1-letter type mark; terracotta only while generating. Chrome is grouped
+  a 1-letter type mark; teal outline only while generating. Chrome is grouped
   glass islands on the window edge plus a selection HUD. Agent pins to the
   right inspector — no second chat product. See **Canvas island**.
 - **Harness process rail** — Overview is the unnumbered origin. Propose /
@@ -203,11 +204,22 @@ stops the moment `running` is false.
 - **Assistant** — left prose, no bubble. One turn is one `assistant-letter`.
   A 22–28px sphere stamp sits to the left: the **pinned live turn** portals the
   single live engine (or yields to the process-row glyph); history uses a
-  static cream-sphere silhouette. The answer is the scan target (13.5px);
-  headings step 16 / 14.5 / 13.5px — never Streamdown's stock `text-3xl`.
-  Process rows and fenced code sit a step quieter (12.5px / 12px). Copy/review
-  actions sit at the foot and appear on hover once the turn is settled.
-  Turns are separated by whitespace (40px), not rules.
+  static cream-sphere silhouette. The answer is the scan target (**14px / 1.65
+  / 0.01em**, full ink, CJK fallbacks after Plus Jakarta). Headings step
+  16 / 15 / 14px — never Streamdown's stock `text-3xl`. Process rows and
+  fenced code sit a step quieter (13px / 12px). Copy/review actions sit at the
+  foot and appear on hover once the turn is settled. Turns are separated by
+  whitespace (40px), not rules.
+- **Live stream** — Hub coalesces token deltas (16ms, same session+round).
+  The workstation overlays live text on rAF so `layoutRows` only runs on
+  structural change. Streamdown stays: remend + block caret while streaming,
+  Shiki 400ms after settle, `mode="static"` swap. Do not persist token
+  deltas. Do not virtualize the open letter.
+- **Thinking** — gated by Settings → Show thinking. Reasoning is a collapsible
+  process-rail row, italic 13px, never a companion pulse.
+- **Shell** — live stdout is a hairline terminal (32KB live cap). Settled
+  turns past `LONG_THREAD_TURNS` virtualize with TanStack; the live letter
+  stays mounted.
 - **Process** — one disclosure row per model round. Live: sphere glyph + shimmer
   verb (`Reading`, `Running`, `Thinking`) + mono detail + clock. Settled:
   `Worked for 20s · Ran 1 command · Read 2 files` with a dot / ✕ / dashed-ring
@@ -256,7 +268,7 @@ stops the moment `running` is false.
 | Grouped Form | macOS Settings: 12px card, 13px labels, trailing controls, hairlines between rows |
 | kbd | 20px tall, `lift` fill, `border`, 10px/500 |
 | Pill CTA | `rounded-full px-3 py-1.5 text-[12px] font-medium`; filled `foreground` for primary |
-| Canvas node | 12px radius, hairline, monochrome type glyph, terracotta outline while generating or selected |
+| Canvas node | 12px radius, hairline, monochrome type glyph, teal outline while generating or selected |
 | Canvas island | grouped glass toolbar, 16px shell / 8px items, no magnification, icon-only |
 | Overlay | Island · Menu · Popover · Dialog · Workbench. No new raw `antd.Modal`. |
 

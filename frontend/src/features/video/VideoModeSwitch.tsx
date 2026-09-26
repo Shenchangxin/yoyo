@@ -47,7 +47,7 @@ export function VideoModeSwitch(props: { disabled?: boolean }) {
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex items-center gap-1.5">
                 {m.label}
-                {!m.ready ? <span className="text-[10.5px] font-normal text-muted/70">{copy.video.soon}</span> : null}
+                {!m.ready ? <span className="text-[11px] font-normal text-muted/70">{copy.video.soon}</span> : null}
               </span>
               <span className="text-[11px] text-muted">{m.hint}</span>
             </span>

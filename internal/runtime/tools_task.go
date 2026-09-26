@@ -102,11 +102,12 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		PreCompactHooks:  parent.PreCompactHooks,
 		OnEvent:          nil,
 		Meter:            parent.Meter,
-	Observe: parent.Observe,
+		Observe:          parent.Observe,
 		Home:             parent.Home,
 		ModelWindow:      parent.ModelWindow,
 		TurnID:           diaglog.NewTurnID(),
 		TraceID:          parent.TraceID,
+		ShowThinking:     parent.ShowThinking,
 	})
 	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID}
 	if err != nil {

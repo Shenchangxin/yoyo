@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEvents, unwrapEvent } from "../src/lib/stream-fold";
-import { layoutRows } from "../src/lib/transcript-layout";
+import { layoutRows, processGroupLive } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
@@ -376,4 +376,55 @@ test("unchanged source dumps stay in the process rail, not preview cards", () =>
   expect(artifactShouldShow(dump)).toBe(false);
   expect(artifactShouldShow(noop)).toBe(false);
   expect(artifactShouldShow(edit)).toBe(true);
+});
+
+test("assistant token deltas concatenate and stay live until the snapshot", () => {
+  let list: Item[] = [];
+  list = mergeItem(list, itemFromEvent({
+    type: "assistant", session_id: "s", payload: { text: "he", id: "s:r1", delta: true },
+  }));
+  list = mergeItem(list, itemFromEvent({
+    type: "assistant", session_id: "s", payload: { text: "llo", id: "s:r1", delta: true },
+  }));
+  expect(list).toHaveLength(1);
+  expect(list[0].text).toBe("hello");
+  expect(list[0].delta).toBe(true);
+  list = mergeItem(list, itemFromEvent({
+    type: "assistant", session_id: "s", payload: { text: "hello", id: "s:r1" },
+  }));
+  expect(list[0].text).toBe("hello");
+  expect(list[0].delta).toBe(false);
+});
+
+test("reasoning deltas share a round key", () => {
+  let list: Item[] = [];
+  list = mergeItem(list, itemFromEvent({
+    type: "reasoning", session_id: "s", payload: { text: "why ", id: "s:r1", round: "s:r1", delta: true },
+  }));
+  list = mergeItem(list, itemFromEvent({
+    type: "reasoning", session_id: "s", payload: { text: "not", id: "s:r1", round: "s:r1", delta: true },
+  }));
+  expect(list).toHaveLength(1);
+  expect(list[0].text).toBe("why not");
+  expect(list[0].delta).toBe(true);
+});
+
+test("shell stdout deltas concatenate without closing the process group", () => {
+  let list: Item[] = [];
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_call", session_id: "s", payload: { id: "c1", name: "shell", round: "s:r1" },
+  }));
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_result", session_id: "s", payload: { id: "c1", name: "shell", content: "hel", round: "s:r1", delta: true },
+  }));
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_result", session_id: "s", payload: { id: "c1", name: "shell", content: "lo", round: "s:r1", delta: true },
+  }));
+  expect(list.filter((x) => x.type === "tool_result")).toHaveLength(1);
+  expect(String(list.find((x) => x.type === "tool_result")?.payload?.content)).toBe("hello");
+  expect(processGroupLive(list)).toBe(true);
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_result", session_id: "s", payload: { id: "c1", name: "shell", content: "hello", round: "s:r1" },
+  }));
+  expect(processGroupLive(list)).toBe(false);
 });

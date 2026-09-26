@@ -1,19 +1,19 @@
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
 
-/** Hosted 影策 Ant tokens: Yoyo terracotta studio + Apple control geometry. */
+/** Hosted 影策 Ant tokens: quiet stone + Codex blue, Apple control geometry. */
 export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
-  const fg = dark ? "#f2ede6" : "#1c1916";
-  const bg = dark ? "#161310" : "#f4f1ec";
-  const card = dark ? "#1e1a17" : "#fffcf8";
-  const popover = dark ? "#25201c" : "#ffffff";
-  const lift = dark ? "#2c2621" : "#ece6de";
-  const muted = dark ? "#9a9086" : "#6f675f";
-  const border = dark ? "rgba(242, 237, 230, 0.10)" : "rgba(28, 25, 22, 0.10)";
-  const success = dark ? "#7eae8c" : "#3f8a58";
-  const warning = dark ? "#c4a15a" : "#a97a1f";
-  const danger = dark ? "#d16a64" : "#c43333";
-  const focus = dark ? "rgba(224, 138, 106, 0.35)" : "rgba(224, 138, 106, 0.28)";
+  const fg = dark ? "#f4f4f0" : "#1c1c1a";
+  const bg = dark ? "#1c1c1a" : "#fbfbfa";
+  const card = dark ? "#242422" : "#ffffff";
+  const popover = dark ? "#2c2c29" : "#ffffff";
+  const lift = dark ? "#32322e" : "#e8e8e4";
+  const muted = dark ? "#8c8b85" : "#6f6e68";
+  const border = dark ? "rgba(244, 244, 240, 0.09)" : "rgba(28, 28, 26, 0.08)";
+  const success = dark ? "#74b48a" : "#1f7a45";
+  const warning = dark ? "#d4b06a" : "#a07a2a";
+  const danger = dark ? "#e06b66" : "#c4453e";
+  const focus = dark ? "rgba(92, 153, 214, 0.38)" : "rgba(1, 105, 204, 0.28)";
 
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -76,7 +76,7 @@ export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
         defaultBg: lift,
         defaultColor: fg,
         defaultBorderColor: border,
-        defaultHoverBg: dark ? "#342e28" : "#e4ddd4",
+        defaultHoverBg: dark ? "#3a3a36" : "#e8e8e4",
         defaultHoverColor: fg,
         defaultHoverBorderColor: border,
         borderColorDisabled: border,
@@ -85,8 +85,8 @@ export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
         borderRadius: 8,
         paddingInline: 10,
         activeShadow: "none",
-        activeBorderColor: dark ? "rgba(242, 237, 230, 0.25)" : "rgba(28, 25, 22, 0.22)",
-        hoverBorderColor: dark ? "rgba(242, 237, 230, 0.18)" : "rgba(28, 25, 22, 0.16)",
+        activeBorderColor: dark ? "rgba(244, 244, 240, 0.25)" : "rgba(28, 28, 26, 0.22)",
+        hoverBorderColor: dark ? "rgba(244, 244, 240, 0.18)" : "rgba(28, 28, 26, 0.16)",
       },
       InputNumber: {
         borderRadius: 8,

@@ -18,6 +18,9 @@ func TestCompanionPulseKind(t *testing.T) {
 	if companionPulseKind("assistant", "runtime") != "" {
 		t.Fatal("token deltas must not spam pulses")
 	}
+	if companionPulseKind("reasoning", "runtime") != "" {
+		t.Fatal("reasoning deltas must not spam pulses")
+	}
 }
 
 func TestCompanionPulseTitleClipsUserText(t *testing.T) {

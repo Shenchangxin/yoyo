@@ -9,8 +9,8 @@ This file is the skill-layer source for visual direction. Token values and gramm
 | Dial | Value | Why |
 |---|---|---|
 | Style | Swiss Modernism 2.0 + Flat Design | Grid, Inter, one accent, mathematical spacing. No decorations. |
-| Typography | Inter Variable (UI) + system mono (evidence) | “Modern Dark Cinema” pairing for developer tools — already in the client. |
-| Color | Zinc chrome + sage accent | Color is evidence. Palettes change the paper, not Harbor. Light default is Neutral (true gray); Paper yellow is opt-in. |
+| Typography | Plus Jakarta Variable (UI) + CJK stack + system mono (evidence) | Letter is 14/1.65/full ink. Do not use Inter on the session column. |
+| Color | Quiet stone + Codex blue | Color is evidence. Palettes change the paper, not Harbor. Light default is Neutral (WorkBuddy paper); Paper cream is opt-in. |
 | Motion | Subtle (120–180ms, `--ease-out`) | Motion is state. No overshoot on data. |
 | Density | 7 / 4pt grid | Operator density. Empty and lab surfaces get one extra step of air. |
 | Variance | 4 | Crafted restraint. Asymmetry in the RSI process rail, not in chrome. |
@@ -24,8 +24,8 @@ This file is the skill-layer source for visual direction. Token values and gramm
 
 ## Do / Don't
 
-- Do: Inter, 4pt grid, zinc + sage, inset highlights, underline tabs, MarkWell on empty still-lifes.
-- Don't: gradients as decoration, glows, avatars, spinners on text, cards in cards, headlines > 21px, daisyUI, a second agent loop.
+- Do: Plus Jakarta, CJK fallbacks (Noto / PingFang / YaHei), 4pt grid, quiet stone + Codex blue, inset highlights, underline tabs, MarkWell on empty still-lifes.
+- Don't: Inter on the letter, gradients as decoration, glows, avatars, spinners on text, cards in cards, headlines > 21px, daisyUI, a second agent loop.
 
 ## Stack
 

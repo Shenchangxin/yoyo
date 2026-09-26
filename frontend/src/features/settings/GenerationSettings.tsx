@@ -146,7 +146,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
         ok ? "bg-success/15 text-success" : "bg-danger/10 text-danger",
       )}
     >
@@ -436,7 +436,7 @@ function AdapterSection(props: {
                         title={v.defaultModel}
                         aria-pressed={on}
                         className={cn(
-                          "max-w-[14rem] truncate rounded-full px-2 py-0.5 font-mono text-[10.5px]",
+                          "max-w-[14rem] truncate rounded-full px-2 py-0.5 font-mono text-[11px]",
                           on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
                         )}
                         onClick={() => void patchRow(p, { model: m })}
@@ -491,7 +491,7 @@ function AdapterSection(props: {
               <ProviderMark id={t.provider} className="size-8" />
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium leading-[1.4] text-foreground">{t.name}</span>
-                <span className="mt-0.5 block truncate font-mono text-[11.5px] leading-[1.5] text-muted">
+                <span className="mt-0.5 block truncate font-mono text-[12px] leading-[1.5] text-muted">
                   {vendorLabel(t.provider)} · {t.model}
                 </span>
               </span>

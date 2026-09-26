@@ -1,7 +1,7 @@
 {
   "name": "yoyo-ui",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "build": "tsc && vite build --mode production",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts"
+    "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts",
+    "test:scale": "node --experimental-strip-types --test src/lib/scale.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

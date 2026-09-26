@@ -12,12 +12,12 @@ export const LIGHT_PALETTES: readonly LightPalette[] = ["neutral", "paper", "mis
 
 /** Native window chrome RGB — keep in lockstep with styles.css canvas tokens. */
 export const PALETTE_WINDOW: Record<PaletteId, readonly [number, number, number]> = {
-  ink: [22, 19, 16],
-  dim: [34, 30, 26],
-  slate: [22, 24, 28],
-  neutral: [245, 245, 243],
-  paper: [244, 241, 235],
-  mist: [247, 249, 250],
+  ink: [28, 28, 26],
+  dim: [36, 36, 34],
+  slate: [18, 18, 18],
+  neutral: [251, 251, 250],
+  paper: [246, 243, 236],
+  mist: [246, 248, 250],
 };
 
 const KEY = "yoyo-theme";

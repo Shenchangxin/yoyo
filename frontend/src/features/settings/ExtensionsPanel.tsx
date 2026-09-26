@@ -21,7 +21,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   return (
     <label className="flex flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">
       <span>{label}</span>
-      <Input className="h-8 w-full text-[12.5px] font-normal" value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input className="h-8 w-full text-[13px] font-normal" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }
@@ -82,7 +82,7 @@ function McpSection({ host }: { host: SettingsHost }) {
         <div className="p-3">
           <textarea
             aria-label={copy.settings.mcpJson}
-            className="no-drag h-44 w-full rounded-[9px] border border-border bg-background p-3 font-mono text-[11.5px] leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
+            className="no-drag h-44 w-full rounded-[9px] border border-border bg-background p-3 font-mono text-[12px] leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
             value={json}
             onChange={(e) => setJson(e.target.value)}
           />

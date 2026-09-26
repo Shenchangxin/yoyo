@@ -91,7 +91,7 @@ export function EvolveLab(props: {
         </div>
       ) : <p className="mb-4 text-[13px] text-muted">{copy.labs.noCycle}</p>}
       {props.evolve ? <SpendBlock spend={pick(props.evolve, "spend", "Spend")} copy={copy} /> : null}
-      <p className="mb-5 text-[12.5px] text-muted">{copy.labs.goNoGo}</p>
+      <p className="mb-5 text-[13px] text-muted">{copy.labs.goNoGo}</p>
       {deltas.length ? (
         <div className="mb-5 overflow-hidden rounded-md bg-sidebar/40">
           <div className="border-b border-border/70 px-4 py-2 text-[12px] font-medium">{copy.labs.thisCycle} · {copy.labs.playbookDelta}</div>
@@ -99,7 +99,7 @@ export function EvolveLab(props: {
             <div key={d.id || i} className={cn("px-4 py-2.5 text-[13px]", i > 0 && "border-t border-border/70")}>{d.text}</div>
           ))}
         </div>
-      ) : props.evolve ? <p className="mb-5 text-[12.5px] text-muted">{copy.labs.noDelta}</p> : null}
+      ) : props.evolve ? <p className="mb-5 text-[13px] text-muted">{copy.labs.noDelta}</p> : null}
       {trials.length ? (
         <div className="mb-6">
           <LabTable>
@@ -189,7 +189,7 @@ function SpendBlock(props: { spend: any; copy: ReturnType<typeof useCopy> }) {
   const wall = num(pick(s, "wall_ms", "WallMs"));
   if (!usd && !tin && !tout && !wall) return null;
   return (
-    <p className="mb-4 text-[12.5px] text-muted">
+    <p className="mb-4 text-[13px] text-muted">
       {props.copy.labs.spend} · {props.copy.labs.usd} {usd.toFixed(4)} · {props.copy.labs.tokens} {tin}/{tout} · {props.copy.labs.wall} {wall}ms
     </p>
   );

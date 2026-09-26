@@ -1,7 +1,11 @@
 package runtime
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -60,6 +64,48 @@ func TestDisableThinkingPayload(t *testing.T) {
 	}
 	if !thinkingRejected("unknown field: enable_thinking") {
 		t.Fatal("rejected")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestShowThinkingOmitsDisableFields(t *testing.T) {
+	var got map[string]any
+	c := &OpenAIClient{
+		BaseURL: "http://example.invalid/v1",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &got)
+			return &http.Response{StatusCode: 500, Body: io.NopCloser(bytes.NewReader(nil)), Header: make(http.Header)}, nil
+		})},
+	}
+	_, _ = c.doChat(context.Background(), ChatRequest{Model: "x", ShowThinking: true}, false, nil)
+	if _, ok := got["enable_thinking"]; ok {
+		t.Fatalf("thinking disable leaked: %+v", got)
+	}
+	if _, ok := got["thinking"]; ok {
+		t.Fatalf("thinking object leaked: %+v", got)
+	}
+}
+
+func TestApplyStreamChunkReasoning(t *testing.T) {
+	tools := map[int]*streamAcc{}
+	max := -1
+	_, text, reason, _, _, _ := applyStreamChunk(
+		`{"choices":[{"delta":{"reasoning_content":"think ","content":"hi"}}]}`,
+		tools, &max,
+	)
+	if text != "hi" || reason != "think " {
+		t.Fatalf("text=%q reason=%q", text, reason)
+	}
+	_, _, reason, _, _, _ = applyStreamChunk(
+		`{"choices":[{"delta":{"content":[{"type":"thinking","text":"why"},{"type":"text","text":"ok"}]}}]}`,
+		tools, &max,
+	)
+	if reason != "why" {
+		t.Fatalf("parts reason %q", reason)
 	}
 }
 

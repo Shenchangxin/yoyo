@@ -265,7 +265,7 @@ export function ThreadRail(props: {
       </div>
       {videoOn ? <VideoShellNav /> : (
       <div className="px-2.5 pb-2">
-        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" variant="accent" onClick={props.onNew}>
+        <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
           {copy.rail.newChat}
         </Button>
@@ -790,7 +790,7 @@ function SessionMetaCard(props: {
       <div className="border-t border-border/50 px-3 py-2">
         <div className="text-[11px] font-medium text-muted">{copy.rail.sessionId}</div>
         <div className="mt-1 flex items-center gap-1">
-          <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-foreground" title={t.id}>{t.id}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground" title={t.id}>{t.id}</span>
           <button
             type="button"
             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground"
@@ -827,7 +827,7 @@ function MetaLine(props: { label: string; value: string; title?: string; mono?: 
     <div className="border-t border-border/50 px-3 py-2">
       <div className="text-[11px] font-medium text-muted">{props.label}</div>
       <div
-        className={cn("mt-1 truncate text-[12px] text-foreground", props.mono && "font-mono text-[11.5px]")}
+        className={cn("mt-1 truncate text-[12px] text-foreground", props.mono && "font-mono text-[12px]")}
         title={props.title || props.value}
       >
         {props.value}

@@ -8,6 +8,12 @@ export function isMac(): boolean {
   return os() === "darwin" || /Mac/i.test(navigator.platform);
 }
 
+export function applyOsClass() {
+  const n = os();
+  const key = n === "darwin" || isMac() ? "mac" : n === "windows" || /Win/i.test(navigator.userAgent) ? "windows" : "linux";
+  document.documentElement.dataset.os = key;
+}
+
 export function showCaptionButtons(): boolean {
   if (isMac()) return false;
   const n = os();

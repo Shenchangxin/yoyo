@@ -82,7 +82,7 @@ export function Inspector(props: {
               <Icon className="size-3.5 shrink-0" aria-hidden />
               <span className="truncate">{t.label}</span>
               {t.count ? (
-                <span className={cn("tabular-nums text-[10.5px]", on ? "text-muted" : "text-muted/70")}>{t.count}</span>
+                <span className={cn("tabular-nums text-[11px]", on ? "text-muted" : "text-muted/70")}>{t.count}</span>
               ) : null}
               <span
                 className={cn(
@@ -122,8 +122,8 @@ export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string;
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">
       {icon ? <span className="mark-well mb-3 text-muted" aria-hidden>{icon}</span> : null}
-      <p className="text-[12.5px] font-medium text-foreground/85">{title}</p>
-      {hint ? <p className="mt-1 max-w-[22rem] text-[11.5px] leading-[1.55] text-muted">{hint}</p> : null}
+      <p className="text-[13px] font-medium text-foreground/85">{title}</p>
+      {hint ? <p className="mt-1 max-w-[22rem] text-[12px] leading-[1.55] text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -134,7 +134,7 @@ function FilePath({ path, className }: { path: string; className?: string }) {
   const dir = i >= 0 ? norm.slice(0, i + 1) : "";
   const base = i >= 0 ? norm.slice(i + 1) : norm;
   return (
-    <span className={cn("min-w-0 truncate text-left font-mono text-[11.5px]", className)} title={path} dir="rtl">
+    <span className={cn("min-w-0 truncate text-left font-mono text-[12px]", className)} title={path} dir="rtl">
       <bdi>
         {dir ? <span className="text-muted/70">{dir}</span> : null}
         <span className="text-foreground/90">{base}</span>
@@ -263,7 +263,7 @@ function FilesPane(props: FilesPaneProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="review-files">
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5 text-[11.5px] text-muted">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 pl-3 pr-1.5 text-[12px] text-muted">
         <span className="min-w-0 flex-1 truncate tabular-nums">
           {shown
             ? shown.replace(/\\/g, "/").split("/").pop()
@@ -365,7 +365,7 @@ function FilesPane(props: FilesPaneProps) {
                         {mark}
                       </span>
                     ) : null}
-                    <span className="shrink-0 tabular-nums text-[10.5px] text-muted/70">
+                    <span className="shrink-0 tabular-nums text-[11px] text-muted/70">
                       {g.hunks.length === 1 ? copy.review.hunkOne : copy.review.hunksCount.replace("{n}", String(g.hunks.length))}
                     </span>
                   </header>

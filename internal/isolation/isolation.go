@@ -50,11 +50,21 @@ func Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 // (Cursor block_until_ms). ctx cancel always kills. idle=block=0 waits
 // until exit or ctx, matching Run.
 func Wait(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration) Outcome {
+	return WaitNotify(ctx, cmd, idle, block, nil)
+}
+
+// liveStdoutCap is the live UI budget. The full capture still lands on the
+// tool_result; bytes past this are not fanned out as deltas.
+const liveStdoutCap = 32 * 1024
+
+// WaitNotify is Wait plus a stdout/stderr chunk callback for live UI.
+// onChunk must not block: Hub coalesces and the shell thread holds the pipe.
+func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) Outcome {
 	if cmd == nil {
 		return Outcome{Err: os.ErrInvalid}
 	}
 	apply(cmd)
-	sp := &spool{last: time.Now()}
+	sp := &spool{last: time.Now(), onChunk: onChunk}
 	if cmd.Stdout == nil {
 		cmd.Stdout = sp
 	}
@@ -128,18 +138,35 @@ func ctxDone(ctx context.Context) <-chan struct{} {
 }
 
 type spool struct {
-	mu   sync.Mutex
-	buf  bytes.Buffer
-	last time.Time
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	last    time.Time
+	liveN   int
+	onChunk func([]byte)
 }
 
 func (s *spool) Write(p []byte) (int, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if len(p) > 0 {
 		s.last = time.Now()
 	}
-	return s.buf.Write(p)
+	n, err := s.buf.Write(p)
+	emit := s.onChunk != nil && s.liveN < liveStdoutCap && n > 0
+	var chunk []byte
+	if emit {
+		take := n
+		if remain := liveStdoutCap - s.liveN; take > remain {
+			take = remain
+		}
+		chunk = make([]byte, take)
+		copy(chunk, p[:take])
+		s.liveN += take
+	}
+	s.mu.Unlock()
+	if len(chunk) > 0 {
+		s.onChunk(chunk)
+	}
+	return n, err
 }
 
 func (s *spool) Bytes() []byte {

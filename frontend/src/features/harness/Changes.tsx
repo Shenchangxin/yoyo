@@ -5,12 +5,12 @@ import { cn } from "../../lib/utils";
 export function MaterialChangeList({ changes, empty }: { changes: MaterialChange[]; empty?: string }) {
   const copy = useCopy();
   if (!changes.length) {
-    return empty ? <p className="text-[12.5px] text-muted">{empty}</p> : null;
+    return empty ? <p className="text-[13px] text-muted">{empty}</p> : null;
   }
   return (
     <ul className="space-y-1" data-testid="harness-changes">
       {changes.map((c, i) => (
-        <li key={`${c.surface}-${c.op}-${c.id}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-[12.5px] leading-5">
+        <li key={`${c.surface}-${c.op}-${c.id}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-5">
           <span className="font-medium text-foreground/85">{c.surface}</span>
           <span className={cn(
             "text-[11px] font-medium",

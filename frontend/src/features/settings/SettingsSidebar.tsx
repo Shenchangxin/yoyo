@@ -97,7 +97,7 @@ export function SettingsSidebar(props: {
             autoComplete="off"
             name="settings-search"
             spellCheck={false}
-            className="no-drag h-8 w-full rounded-[9px] border border-border bg-background pl-8 pr-7 text-[12.5px] text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
+            className="no-drag h-8 w-full rounded-[9px] border border-border bg-background pl-8 pr-7 text-[13px] text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
           />
           {query ? (
             <button
@@ -123,7 +123,7 @@ export function SettingsSidebar(props: {
                     onClick={() => props.onSection(s.tab, s.id)}
                     className="flex w-full flex-col items-start gap-0.5 rounded-[9px] px-2.5 py-[7px] text-left transition-colors hover:bg-lift"
                   >
-                    <span className="text-[12.5px] font-medium text-foreground">
+                    <span className="text-[13px] font-medium text-foreground">
                       {copy.settings.sections[s.titleKey]}
                     </span>
                     <span className="text-[11px] text-muted">{copy.settings.tabs[s.tab]}</span>

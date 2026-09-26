@@ -232,6 +232,7 @@ export type AppConfig = {
   notificationsEnabled?: boolean;
   notifyWhenUnfocusedOnly?: boolean;
   uiScale?: number;
+  showThinking?: boolean;
   updateChannel?: string;
 	theme?: string;
   paletteDark?: string;

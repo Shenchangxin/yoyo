@@ -91,7 +91,7 @@ export function DiffBlock({
     onLineClick(text);
   };
   const clickable = onLineClick ? "cursor-pointer hover:brightness-110" : "";
-  const wrap = cn("max-h-72 overflow-auto font-mono text-[11.5px] leading-[1.6]", className);
+  const wrap = cn("max-h-72 overflow-auto font-mono text-[12px] leading-[1.6]", className);
   if (mode === "unified") {
     return (
       <div className={wrap} style={{ tabSize: 2 }}>

@@ -12,28 +12,28 @@
 
 :root,
 html.dark {
-  /* Warm night studio. Terracotta on charcoal, never cool zinc or AI purple. */
-  --background: #161310;
-  --foreground: #f2ede6;
-  --sidebar: #100e0c;
-  --panel: #161310;
-  --card: #1e1a17;
-  --popover: #25201c;
-  --input-bar: #1c1916;
-  --lift: #2c2621;
-  --border: color-mix(in srgb, #f2ede6 10%, transparent);
-  --muted: #9a9086;
+  /* Quiet stone (WorkBuddy) + Codex blue. Ink is chrome. Blue is evidence. */
+  --background: #1c1c1a;
+  --foreground: #f4f4f0;
+  --sidebar: #222220;
+  --panel: #1c1c1a;
+  --card: #242422;
+  --popover: #2c2c29;
+  --input-bar: #222220;
+  --lift: #32322e;
+  --border: color-mix(in srgb, #f4f4f0 9%, transparent);
+  --muted: #8c8b85;
   --muted-foreground: var(--muted);
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-fg);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
   --card-foreground: var(--foreground);
   --input: var(--border);
-  --accent: #e08a6a;
-  --accent-fg: #1c100c;
-  --danger: #d16a64;
-  --success: #7eae8c;
-  --warning: #c4a15a;
-  --ring: #e08a6a;
+  --accent: #5c99d6;
+  --accent-fg: #0c1924;
+  --danger: #e06b66;
+  --success: #74b48a;
+  --warning: #d4b06a;
+  --ring: #5c99d6;
   --radius: 0.5rem;
   --radius-lg: 0.875rem;
   --radius-composer: 1.25rem;
@@ -41,7 +41,7 @@ html.dark {
   --radius-pane: 0.75rem;
   --radius-control: 0.5rem;
   --radius-chip: 0.375rem;
-  --media-surface: #0b0d10;
+  --media-surface: #0c0c0b;
   --glass-blur: 20px;
   --glass-bg: color-mix(in srgb, var(--sidebar) 72%, transparent);
   --glass-stroke: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -66,9 +66,9 @@ html.dark {
   --shadow-card: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   --shadow-composer: 0 12px 36px color-mix(in srgb, black 28%, transparent);
   --shadow-popover: 0 18px 48px color-mix(in srgb, black 42%, transparent), 0 0 0 1px color-mix(in srgb, white 6%, transparent);
-  --ctx-system: color-mix(in srgb, var(--foreground) 38%, #8a7a6c);
-  --ctx-tools: color-mix(in srgb, var(--accent) 70%, #8a5a44);
-  --ctx-dynamic: #c4a35a;
+  --ctx-system: color-mix(in srgb, var(--foreground) 38%, #9a958c);
+  --ctx-tools: color-mix(in srgb, var(--accent) 72%, var(--muted));
+  --ctx-dynamic: var(--warning);
   --ctx-chat: var(--accent);
   --ctx-free: color-mix(in srgb, var(--muted) 18%, transparent);
   --z-grain: 1;
@@ -81,104 +81,98 @@ html.dark {
   color-scheme: dark;
 }
 
-/* Light default is Neutral — gallery plaster, not Tailwind gray-100. */
+/* Light default is Neutral — WorkBuddy paper, not Tailwind gray-100. */
 html.light,
 html.light[data-palette="neutral"] {
-  --background: #f5f5f3;
-  --foreground: #2c2c2a;
-  --sidebar: #ecece9;
-  --panel: #f5f5f3;
-  --card: #fbfbfa;
-  --popover: #fcfcfb;
-  --input-bar: #fcfcfb;
+  --background: #fbfbfa;
+  --foreground: #1c1c1a;
+  --sidebar: #f1f1ee;
+  --panel: #fbfbfa;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --input-bar: #ffffff;
   --lift: #e8e8e4;
-  --border: color-mix(in srgb, #2c2c2a 8%, transparent);
-  --muted: #6e6e68;
+  --border: color-mix(in srgb, #1c1c1a 8%, transparent);
+  --muted: #6f6e68;
   --muted-foreground: var(--muted);
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-fg);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
   --card-foreground: var(--foreground);
   --input: var(--border);
-  --accent: #b45c48;
-  --accent-fg: #fff8f5;
-  --danger: #b5524c;
-  --success: #4d7a5e;
-  --warning: #9a7a3c;
-  --ring: #b45c48;
-  --shadow-card: 0 1px 0 color-mix(in srgb, #2c2c2a 4%, transparent);
-  --shadow-composer: 0 12px 36px color-mix(in srgb, #2c2c2a 7%, transparent);
-  --shadow-popover: 0 18px 44px color-mix(in srgb, #2c2c2a 10%, transparent), 0 0 0 1px color-mix(in srgb, #2c2c2a 5%, transparent);
-  --ctx-system: color-mix(in srgb, var(--foreground) 22%, #8a7a6c);
-  --ctx-tools: color-mix(in srgb, var(--accent) 55%, #c47a62);
-  --ctx-dynamic: #b8923f;
+  --accent: #0169cc;
+  --accent-fg: #f5faff;
+  --danger: #c4453e;
+  --success: #1f7a45;
+  --warning: #a07a2a;
+  --ring: #0169cc;
+  --shadow-card: 0 1px 0 color-mix(in srgb, #1c1c1a 4%, transparent);
+  --shadow-composer: 0 12px 36px color-mix(in srgb, #1c1c1a 7%, transparent);
+  --shadow-popover: 0 18px 44px color-mix(in srgb, #1c1c1a 10%, transparent), 0 0 0 1px color-mix(in srgb, #1c1c1a 5%, transparent);
+  --ctx-system: color-mix(in srgb, var(--foreground) 22%, #9a958c);
+  --ctx-tools: color-mix(in srgb, var(--accent) 55%, var(--muted));
+  --ctx-dynamic: var(--warning);
   --ctx-chat: var(--accent);
   --ctx-free: color-mix(in srgb, var(--muted) 16%, transparent);
   color-scheme: light;
 }
 
 html.dark[data-palette="dim"] {
-  --background: #221e1a;
-  --foreground: #f3eee7;
-  --sidebar: #1a1613;
-  --panel: #221e1a;
-  --card: #2a2521;
-  --popover: #322c27;
-  --input-bar: #2a2521;
-  --lift: #3a332d;
+  --background: #242422;
+  --foreground: #f5f5f1;
+  --sidebar: #2a2a27;
+  --panel: #242422;
+  --card: #2e2e2b;
+  --popover: #363632;
+  --input-bar: #2c2c29;
+  --lift: #3c3c37;
   --border: color-mix(in srgb, white 9%, transparent);
-  --muted: #a3988e;
-  --ring: #e08a6a;
+  --muted: #999891;
 }
 
 html.dark[data-palette="slate"] {
-  --background: #16181c;
-  --foreground: #ece8e2;
-  --sidebar: #111318;
-  --panel: #16181c;
-  --card: #1e2228;
-  --popover: #262b32;
-  --input-bar: #1e2228;
-  --lift: #2e343c;
+  --background: #121212;
+  --foreground: #f5f5f5;
+  --sidebar: #1a1a1a;
+  --panel: #121212;
+  --card: #1e1e1e;
+  --popover: #262626;
+  --input-bar: #1c1c1c;
+  --lift: #2a2a2a;
   --border: color-mix(in srgb, white 9%, transparent);
-  --muted: #8f97a1;
-  --ring: #e08a6a;
-  --ctx-system: color-mix(in srgb, var(--foreground) 32%, #7d8ea3);
+  --muted: #8e8e8e;
+  --ctx-system: color-mix(in srgb, var(--foreground) 32%, #8a9098);
 }
 
 html.light[data-palette="paper"] {
-  --background: #f4f1eb;
-  --foreground: #1c1a17;
-  --sidebar: #ebe6dd;
-  --panel: #f4f1eb;
-  --card: #fffcf7;
-  --popover: #fffcf7;
-  --input-bar: #fffcf7;
-  --lift: #e6e0d6;
-  --muted: #6d675e;
-  --accent: #b84a32;
-  --ring: #b84a32;
+  --background: #f6f3ec;
+  --foreground: #1a1916;
+  --sidebar: #eeeae2;
+  --panel: #f6f3ec;
+  --card: #fffdf8;
+  --popover: #fffdf8;
+  --input-bar: #fffdf8;
+  --lift: #e7e2d8;
+  --muted: #6d6a62;
 }
 
 html.light[data-palette="mist"] {
-  --background: #f7f9fa;
-  --foreground: #2a3136;
-  --sidebar: #eef2f4;
-  --panel: #f7f9fa;
-  --card: #fcfdfe;
+  --background: #f6f8fa;
+  --foreground: #1b1f24;
+  --sidebar: #eef1f4;
+  --panel: #f6f8fa;
+  --card: #ffffff;
   --popover: #ffffff;
   --input-bar: #ffffff;
-  --lift: #e6ebee;
-  --border: color-mix(in srgb, #2a3136 7%, transparent);
-  --muted: #6a747c;
-  --accent: #b45c48;
-  --ring: #b45c48;
-  --shadow-composer: 0 12px 36px color-mix(in srgb, #2a3136 6%, transparent);
-  --shadow-popover: 0 18px 44px color-mix(in srgb, #2a3136 9%, transparent), 0 0 0 1px color-mix(in srgb, #2a3136 5%, transparent);
+  --lift: #e6eaee;
+  --border: color-mix(in srgb, #1b1f24 7%, transparent);
+  --muted: #6a7178;
+  --shadow-composer: 0 12px 36px color-mix(in srgb, #1b1f24 6%, transparent);
+  --shadow-popover: 0 18px 44px color-mix(in srgb, #1b1f24 9%, transparent), 0 0 0 1px color-mix(in srgb, #1b1f24 5%, transparent);
   --ctx-system: color-mix(in srgb, var(--foreground) 22%, #7a8aa0);
 }
 
 @theme inline {
-  --font-sans: "Plus Jakarta Sans Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans Variable", "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -239,7 +233,8 @@ input[type="checkbox"] {
 
 html {
   background: var(--background);
-  font-size: calc(15px * var(--ui-scale, 1));
+  /* 16px × 100/125/150% lands on whole device pixels at common Windows scales. */
+  font-size: calc(16px * var(--ui-scale, 1));
   font-optical-sizing: auto;
   font-feature-settings: "ss01" 1, "cv11" 1, "calt" 1;
 }
@@ -249,10 +244,17 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 1rem;
-  letter-spacing: -0.018em;
-  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
   overflow: hidden;
   touch-action: manipulation;
+}
+
+/* Grayscale AA is a Mac convention. On Windows WebView2 it disables ClearType and softens small type. */
+html[data-os="mac"] body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -345,7 +347,7 @@ h1, h2, h3 {
   border: 1px solid var(--border);
   background: var(--popover);
   padding: 0.45rem 0.85rem;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--foreground);
   box-shadow: var(--shadow-popover);
@@ -500,7 +502,7 @@ kbd,
   max-width: none;
   min-width: 0;
   overflow-wrap: break-word;
-  color: color-mix(in srgb, var(--foreground) 92%, var(--muted));
+  color: var(--foreground);
 }
 .assistant-live {
   --streamdown-caret: color-mix(in srgb, var(--foreground) 55%, transparent);
@@ -528,11 +530,12 @@ kbd,
   user-select: text;
 }
 .md-body {
-  line-height: 1.62;
+  line-height: 1.65;
   font-size: 14px;
   font-weight: 400;
   max-width: 100%;
-  letter-spacing: -0.014em;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
   --streamdown-caret: var(--foreground);
 }
 .md-body > :first-child { margin-top: 0; }
@@ -542,7 +545,7 @@ kbd,
 .md-body [data-streamdown="heading-1"] {
   font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: -0.016em;
   line-height: 1.3;
   margin: 0.7em 0 0.12em;
   color: var(--foreground);
@@ -550,9 +553,9 @@ kbd,
 }
 .md-body h2,
 .md-body [data-streamdown="heading-2"] {
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.016em;
+  letter-spacing: -0.01em;
   line-height: 1.35;
   margin: 0.62em 0 0.1em;
   color: var(--foreground);
@@ -560,9 +563,9 @@ kbd,
 }
 .md-body h3,
 .md-body [data-streamdown="heading-3"] {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: -0.008em;
+  letter-spacing: 0;
   line-height: 1.4;
   margin: 0.5em 0 0.08em;
   color: color-mix(in srgb, var(--foreground) 88%, var(--muted));
@@ -574,7 +577,7 @@ kbd,
 .md-body [data-streamdown="heading-4"],
 .md-body [data-streamdown="heading-5"],
 .md-body [data-streamdown="heading-6"] {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.4;
@@ -620,7 +623,7 @@ kbd,
   height: 1.5rem;
   min-height: 1.5rem;
   padding-inline: 0.5rem;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.04em;
 }
@@ -682,13 +685,15 @@ html.dark .code-hl span {
   margin: 0.55em 0;
 }
 .md-body table {
-  font-size: 12.5px;
+  font-size: 13px;
   margin: 0.2em 0;
   max-width: 100%;
 }
 .md-body-quiet {
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  font-style: italic;
   color: color-mix(in srgb, var(--foreground) 62%, var(--muted));
 }
 .md-body-quiet h1,
@@ -698,9 +703,9 @@ html.dark .code-hl span {
 .md-body-quiet h5,
 .md-body-quiet h6,
 .md-body-quiet [data-streamdown^="heading"] {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: inherit;
   margin: 0.2em 0 0.06em;
 }
@@ -1021,26 +1026,13 @@ html.dark .code-hl span {
 }
 
 .glass-chrome {
-  background: var(--glass-bg);
+  background: var(--sidebar);
   box-shadow: var(--shadow-card);
-}
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .glass-chrome {
-    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-  }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass-chrome {
-    background: var(--sidebar);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
 }
 
 .media-surface {
   background: var(--media-surface);
-  color: #f2ede6;
+  color: #f4f4f0;
 }
 
 .scroll-edge {
@@ -1168,53 +1160,53 @@ html.dark .code-hl span {
 /* Miniature window used by the theme / palette picker cards. */
 [data-theme-preview="ink"],
 .theme-preview-dark {
-  background: #161310;
-  --tp-rail: #100e0c;
-  --tp-line: #4a4038;
-  --tp-bubble: #2c2621;
-  --tp-accent: #e08a6a;
+  background: #1c1c1a;
+  --tp-rail: #222220;
+  --tp-line: #4a4a44;
+  --tp-bubble: #32322e;
+  --tp-accent: #5c99d6;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="dim"] {
-  background: #221e1a;
-  --tp-rail: #1a1613;
-  --tp-line: #564c44;
-  --tp-bubble: #3a332d;
-  --tp-accent: #e08a6a;
+  background: #242422;
+  --tp-rail: #2a2a27;
+  --tp-line: #54544e;
+  --tp-bubble: #3c3c37;
+  --tp-accent: #5c99d6;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="slate"] {
-  background: #16181c;
-  --tp-rail: #111318;
-  --tp-line: #3e4550;
-  --tp-bubble: #2e343c;
-  --tp-accent: #e08a6a;
+  background: #121212;
+  --tp-rail: #1a1a1a;
+  --tp-line: #3e3e3e;
+  --tp-bubble: #2a2a2a;
+  --tp-accent: #5c99d6;
   --tp-border: color-mix(in srgb, white 8%, transparent);
 }
 [data-theme-preview="neutral"],
 .theme-preview-light {
-  background: #f5f5f3;
-  --tp-rail: #ecece9;
-  --tp-line: #cfcfc8;
-  --tp-bubble: #fcfcfb;
-  --tp-accent: #b45c48;
-  --tp-border: color-mix(in srgb, #2c2c2a 8%, transparent);
+  background: #fbfbfa;
+  --tp-rail: #f1f1ee;
+  --tp-line: #d4d4ce;
+  --tp-bubble: #ffffff;
+  --tp-accent: #0169cc;
+  --tp-border: color-mix(in srgb, #1c1c1a 8%, transparent);
 }
 [data-theme-preview="paper"] {
-  background: #f4f1eb;
-  --tp-rail: #ebe6dd;
+  background: #f6f3ec;
+  --tp-rail: #eeeae2;
   --tp-line: #d4cfc4;
-  --tp-bubble: #fffcf7;
-  --tp-accent: #b84a32;
+  --tp-bubble: #fffdf8;
+  --tp-accent: #0169cc;
   --tp-border: color-mix(in srgb, black 8%, transparent);
 }
 [data-theme-preview="mist"] {
-  background: #f7f9fa;
-  --tp-rail: #eef2f4;
+  background: #f6f8fa;
+  --tp-rail: #eef1f4;
   --tp-line: #cdd6dc;
   --tp-bubble: #ffffff;
-  --tp-accent: #b45c48;
-  --tp-border: color-mix(in srgb, #2a3136 7%, transparent);
+  --tp-accent: #0169cc;
+  --tp-border: color-mix(in srgb, #1b1f24 7%, transparent);
 }
 .theme-preview-rail {
   background: var(--tp-rail);
@@ -1252,7 +1244,7 @@ html.dark .code-hl span {
 }
 
 .app-grain {
-  display: block;
+  display: none;
   position: fixed;
   inset: 0;
   z-index: var(--z-grain);
@@ -1266,8 +1258,11 @@ html.light .app-grain {
   opacity: 0.018;
   mix-blend-mode: multiply;
 }
+@media (min-resolution: 2dppx) {
+  .app-grain { display: block; }
+}
 @media (prefers-reduced-transparency: reduce) {
-  .app-grain { display: none; }
+  .app-grain { display: none !important; }
 }
 
 .mark-well {
@@ -1336,8 +1331,8 @@ html.light .app-grain {
   transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .send-orb[data-live="true"] {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--foreground);
+  color: var(--background);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
 }
 .send-orb:hover[data-live="true"] {
@@ -1631,7 +1626,7 @@ html.companion .presence-engine svg {
   border: 0;
   border-radius: 1.15em;
   background: color-mix(in srgb, var(--popover, #2a2622) 82%, transparent);
-  color: var(--foreground, #f2ede6);
+  color: var(--foreground, #f4f4f0);
   font-size: 12px;
   line-height: 1.4;
   letter-spacing: 0.01em;
@@ -1676,7 +1671,7 @@ html.companion .presence-engine svg {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--foreground, #f2ede6) 78%, transparent);
+  background: color-mix(in srgb, var(--foreground, #f4f4f0) 78%, transparent);
   animation: companion-dot 1s ease-in-out infinite;
 }
 .companion-dots i:nth-child(2) { animation-delay: 160ms; }
@@ -1693,7 +1688,7 @@ html.companion .presence-engine svg {
   left: 18%;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #e8b86d) 78%, transparent);
+  background: color-mix(in srgb, var(--accent) 78%, transparent);
   animation: companion-load 1.15s var(--ease-out, ease) infinite;
 }
 @keyframes companion-load {

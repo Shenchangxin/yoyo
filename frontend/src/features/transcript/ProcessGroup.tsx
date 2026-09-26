@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
+import { withLiveText } from "../../lib/stream-live";
 import { PresenceAnchor } from "../presence";
 import { useCopy } from "../../lib/i18n";
 import type { Copy } from "../../lib/copy";
@@ -62,7 +63,7 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
   const elapsed = since && now > since ? formatSpan(now - since) : "";
   return (
     <div
-      className="flex h-7 items-center gap-2.5 text-[12.5px]"
+      className="flex h-7 items-center gap-2.5 text-[13px]"
       role="status"
       aria-live="polite"
       data-testid="working-line"
@@ -71,26 +72,29 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
         <PresenceAnchor id="process" size={22} />
       </span>
       <span className="shimmer-text font-medium">{label || copy.transcript.working}</span>
-      {elapsed ? <span className="tabular-nums text-[11.5px] text-muted/70">{elapsed}</span> : null}
+      {elapsed ? <span className="tabular-nums text-[12px] text-muted/70">{elapsed}</span> : null}
     </div>
   );
 }
 
 export function ProcessGroup({
-  items,
+  items: rawItems,
   live,
   running,
   compact,
+  liveTexts,
 }: {
   items: Item[];
   live: boolean;
   running: boolean;
   compact?: boolean;
+  liveTexts?: Record<string, string>;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
   const swap = motionTransition(reduced, DURATION_FAST);
   const [open, setOpen] = useState(false);
+  const items = liveTexts ? rawItems.map((it) => withLiveText(it, liveTexts)) : rawItems;
   const pairs = pairTools(items);
   const tools = processToolPairs(items);
   const pending = tools.filter((p) => pairState(p, running) === "running");
@@ -108,7 +112,7 @@ export function ProcessGroup({
     <div className="u-chrome min-w-0" data-testid="process-group" data-live={live ? "true" : "false"}>
       <button
         type="button"
-        className="group/head flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md text-left text-[12.5px]"
+        className="group/head flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md text-left text-[13px]"
         data-testid={live ? undefined : "process-summary"}
         aria-expanded={open}
         title={open ? copy.transcript.hideSteps : copy.transcript.showSteps}
@@ -166,7 +170,7 @@ export function ProcessGroup({
           </AnimatePresence>
         </span>
         {live && span ? (
-          <span className="shrink-0 tabular-nums text-[11.5px] text-muted/70">{span}</span>
+          <span className="shrink-0 tabular-nums text-[12px] text-muted/70">{span}</span>
         ) : null}
         <ChevronRight
           className={cn(
@@ -210,7 +214,7 @@ function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   return (
     <>
       <span className="shrink-0 shimmer-text font-medium">{verb}</span>
-      <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/80">{detail || (kind === "other" ? "" : name)}</span>
+      <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{detail || (kind === "other" ? "" : name)}</span>
     </>
   );
 }
@@ -233,7 +237,7 @@ function ProcessPair({
           item={pair.result || pair.call!}
           call={pair.call}
           result={pair.result}
-          pending={!!pair.call && !pair.result}
+          pending={pairState(pair, running) === "running"}
           running={running}
           compact={compact}
           highlightFail={highlightFail}
@@ -292,13 +296,13 @@ function StepRow({
     <div data-testid={testId} className={cn("step-row -mx-1.5 rounded-md px-1.5", className)}>
       <button
         type="button"
-        className="group/row flex w-full min-w-0 items-center gap-2.5 py-1 pr-0.5 text-left text-[12.5px]"
+        className="group/row flex w-full min-w-0 items-center gap-2.5 py-1 pr-0.5 text-left text-[13px]"
         aria-expanded={open}
         onClick={onToggle}
       >
         {glyph}
         <span className={cn("shrink-0 font-mono text-[12px] font-medium", labelTone || "text-foreground/85")}>{label}</span>
-        {detail ? <span className="min-w-0 truncate font-mono text-[11.5px] text-muted/75">{detail}</span> : null}
+        {detail ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/75">{detail}</span> : null}
         <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums text-[11px] text-muted/70">
           {meta}
           <ChevronRight
@@ -340,6 +344,18 @@ function CodeSurface({ text, cap = 4000, dim, lang }: { text: string; cap?: numb
   );
 }
 
+function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
+  return (
+    <pre
+      data-testid="shell-terminal"
+      className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background px-2.5 py-2 font-mono text-[11px] leading-[1.55] text-foreground/90"
+    >
+      {text}
+      {live ? <span className="ml-px inline-block h-[1.1em] w-[0.45em] translate-y-px bg-foreground/70" aria-hidden /> : null}
+    </pre>
+  );
+}
+
 function guessLang(text: string): string {
   const t = text.trim();
   if (t.startsWith("{") || t.startsWith("[")) return "json";
@@ -349,7 +365,11 @@ function guessLang(text: string): string {
 
 function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
   const copy = useCopy();
-  const [open, setOpen] = useState(false);
+  const streaming = !!item.delta;
+  const [open, setOpen] = useState(streaming);
+  useEffect(() => {
+    if (streaming) setOpen(true);
+  }, [streaming]);
   const body = readableExtra(item);
   if (item.type === "reasoning") {
     const ms = toolElapsedMs(item);
@@ -360,13 +380,14 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<Brain className="size-3 text-muted/70" />} />}
         label={label}
-        labelTone="font-sans text-[12.5px] text-muted"
+        labelTone="font-sans text-[13px] italic text-muted"
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
+        testId="reasoning-block"
       >
         {body ? (
-          <div className="min-w-0 max-w-full text-muted">
-            <Markdown text={body} quiet />
+          <div className="md-reasoning min-w-0 max-w-full text-muted">
+            <Markdown text={body} quiet streaming={streaming} />
           </div>
         ) : null}
       </StepRow>
@@ -378,7 +399,7 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<Bot className="size-3 text-muted/70" />} />}
         label={copy.transcript.subagent}
-        labelTone="font-sans text-[12.5px] text-muted"
+        labelTone="font-sans text-[13px] text-muted"
         detail={body.split(/\r?\n/)[0]?.slice(0, 120)}
         open={open && !!(body || child)}
         onToggle={() => setOpen((v) => !v)}
@@ -407,7 +428,7 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<AtSign className="size-3 text-muted/70" />} />}
         label={copy.transcript.mention}
-        labelTone="font-sans text-[12.5px] text-muted"
+        labelTone="font-sans text-[13px] text-muted"
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
       >
@@ -480,6 +501,10 @@ export function ToolLine({
   const detail = toolDetail(call || source);
   const ms = toolElapsedMs(result || item);
   const elapsed = formatElapsed(ms);
+  const streamingOut = !!(result?.delta || result?.payload?.delta);
+  useEffect(() => {
+    if (pending || streamingOut) setOpen(true);
+  }, [pending, streamingOut]);
   const state: PairState = pending
     ? (running ? "running" : "interrupted")
     : isToolFailed(result) ? "failed" : "done";
@@ -530,7 +555,13 @@ export function ToolLine({
     >
       <div className="space-y-1">
         {input ? <CodeSurface text={input} cap={800} dim={!!output} lang={inLang} /> : null}
-        {output ? <CodeSurface text={output} lang={outLang} /> : null}
+        {output ? (
+          name === "shell" ? (
+            <ShellTerminal text={output} live={streamingOut || !!pending} />
+          ) : (
+            <CodeSurface text={output} lang={outLang} />
+          )
+        ) : null}
       </div>
     </StepRow>
   );

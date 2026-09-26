@@ -244,7 +244,7 @@ html.light .yingce-island,
 
 .sg-menu-item .sg-kbd {
   margin-left: auto;
-  font-size: 10.5px;
+  font-size: 11px;
   color: color-mix(in srgb, var(--muted) 70%, transparent);
   font-variant-numeric: tabular-nums;
 }
@@ -252,7 +252,7 @@ html.light .yingce-island,
 .sg-eyebrow {
   height: 32px;
   padding: 0 12px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -509,7 +509,7 @@ html.light .yingce-island,
 
 .yingce-island .canvas-workspace-panel header strong,
 .yingce-island .sg-eyebrow {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;

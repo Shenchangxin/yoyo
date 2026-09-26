@@ -59,6 +59,9 @@ type RunRequest struct {
 	// Chat stops on end_turn (with an open-plan continue), cancel, budget,
 	// or overflow — not because a counter ran out while work was progressing.
 	SoftHorizon bool
+	// ShowThinking streams provider reasoning into the transcript. Off by
+	// default: many OpenAI-compatible endpoints reject thinking fields.
+	ShowThinking bool
 }
 
 var emitSeq atomic.Int64
@@ -69,6 +72,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	}
 	if req.Tools != nil {
 		req.Tools.Ctx = ctx
+		req.Tools.OnLive = req.OnEvent
 		req.Tools.Policy = req.Policy
 		req.Tools.PlanMode = req.Loop.PlanMode || req.Policy.Mode == "plan"
 		if req.Tools.OperatorVoice == "" {
@@ -157,7 +161,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		msg, err := chat(ctx, req, chatReq, roundID)
@@ -349,9 +353,14 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 	}
 	if s, ok := req.Client.(Streamer); ok {
 		var wg sync.WaitGroup
+		var reason strings.Builder
 		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" {
 				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
+			}
+			if req.ShowThinking && d.Reasoning != "" {
+				reason.WriteString(d.Reasoning)
+				emit(req, trace.TypeReasoning, "model", map[string]any{"text": d.Reasoning, "delta": true, "id": roundID, "round": roundID})
 			}
 			if d.ToolDone && d.Tool.Name != "" && readonlyCall(req.Tools, d.Tool.Name) {
 				tc := d.Tool
@@ -364,6 +373,9 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 			return nil
 		})
 		wg.Wait()
+		if req.ShowThinking && reason.Len() > 0 {
+			emit(req, trace.TypeReasoning, "model", map[string]any{"text": reason.String(), "id": roundID, "round": roundID})
+		}
 		return msg, err
 	}
 	return req.Client.Chat(ctx, chatReq)
@@ -437,6 +449,10 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 		started := time.Now()
 		j := jobs[i]
+		if req.Tools != nil {
+			req.Tools.setLiveCall(j.tc.ID, roundID)
+			defer req.Tools.setLiveCall("", "")
+		}
 		var res ToolResult
 		var toolSpan observe.Span
 		if req.Observe != nil {
@@ -785,9 +801,12 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 		}
 	}
 	persist := req.Trace != nil
-	if persist && typ == trace.TypeAssistant {
+	if persist {
 		if delta, _ := payload["delta"].(bool); delta {
-			persist = false
+			switch typ {
+			case trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolResult:
+				persist = false
+			}
 		}
 	}
 	if persist {

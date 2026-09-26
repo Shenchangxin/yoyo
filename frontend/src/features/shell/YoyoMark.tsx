@@ -7,7 +7,7 @@ type MarkProps = {
   compact?: boolean;
 };
 
-/** Custom YOYO wordmark — overlapping terracotta discs between two Ys. */
+/** Custom YOYO wordmark — overlapping ink discs between two Ys. */
 export function YoyoMark({ className, compact }: MarkProps) {
   return (
     <span
@@ -21,7 +21,7 @@ export function YoyoMark({ className, compact }: MarkProps) {
         src={wordmark}
         alt="Yoyo"
         draggable={false}
-        className="h-full w-full origin-center scale-[1.42] object-cover"
+        className="h-full w-full origin-center scale-[1.42] object-cover grayscale"
       />
     </span>
   );

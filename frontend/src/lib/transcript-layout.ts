@@ -99,7 +99,10 @@ export function processGroupLive(items: Item[]): boolean {
   for (const it of items) {
     const id = String(it.payload?.id || it.key);
     if (it.type === "tool_call") open.add(id);
-    if (it.type === "tool_result") open.delete(id);
+    if (it.type === "tool_result") {
+      if (it.delta || it.payload?.delta) continue;
+      open.delete(id);
+    }
   }
   return open.size > 0;
 }
@@ -151,6 +154,9 @@ export type PairState = "running" | "done" | "failed" | "interrupted";
  */
 export function pairState(pair: ToolPair, running: boolean): PairState {
   if (pair.call && !pair.result) return running ? "running" : "interrupted";
+  if (pair.result && (pair.result.delta || pair.result.payload?.delta)) {
+    return running ? "running" : "interrupted";
+  }
   if (isToolFailed(pair.result)) return "failed";
   return "done";
 }

@@ -72,7 +72,7 @@ export function HarnessWorkspace(props: {
               aria-label={labels[id].label}
               aria-selected={on}
               className={cn(
-                "relative flex h-full items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium transition-colors",
+                "relative flex h-full items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
                 on ? "text-foreground" : "text-muted hover:text-foreground",
               )}
               onClick={() => props.onTab(id)}

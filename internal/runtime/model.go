@@ -42,12 +42,12 @@ type Message struct {
 	Content          string        `json:"content,omitempty"`
 	Parts            []ContentPart `json:"parts,omitempty"`
 	Name             string        `json:"name,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	PromptTokens     int        `json:"-"`
-	CompletionTokens int        `json:"-"`
-	CachedTokens     int        `json:"-"`
-	CacheReported    bool       `json:"-"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
+	PromptTokens     int           `json:"-"`
+	CompletionTokens int           `json:"-"`
+	CachedTokens     int           `json:"-"`
+	CacheReported    bool          `json:"-"`
 }
 
 type ToolJSON struct {
@@ -56,18 +56,20 @@ type ToolJSON struct {
 }
 
 type ChatRequest struct {
-	Model       string     `json:"model"`
-	Messages    []Message  `json:"messages"`
-	Tools       []ToolJSON `json:"tools,omitempty"`
-	Temperature float64    `json:"temperature,omitempty"`
-	MaxTokens   int        `json:"max_tokens,omitempty"`
-	CacheKey    string     `json:"-"`
+	Model        string     `json:"model"`
+	Messages     []Message  `json:"messages"`
+	Tools        []ToolJSON `json:"tools,omitempty"`
+	Temperature  float64    `json:"temperature,omitempty"`
+	MaxTokens    int        `json:"max_tokens,omitempty"`
+	CacheKey     string     `json:"-"`
+	ShowThinking bool       `json:"-"`
 }
 
 type StreamDelta struct {
-	Text     string
-	Tool     ToolCall
-	ToolDone bool
+	Text      string
+	Reasoning string
+	Tool      ToolCall
+	ToolDone  bool
 }
 
 type Client interface {
@@ -131,7 +133,9 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 	if req.CacheKey != "" {
 		payload["prompt_cache_key"] = req.CacheKey
 	}
-	disableThinking(payload)
+	if !req.ShowThinking {
+		disableThinking(payload)
+	}
 	msg, err := c.postChat(ctx, payload, stream, emit)
 	if err != nil && thinkingRejected(err.Error()) {
 		delete(payload, "thinking")
@@ -226,7 +230,7 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 			sawData = true
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data != "" && data != "[DONE]" {
-				msg, piece, uPrompt, uComp, uCached := applyStreamChunk(data, tools, &maxIdx)
+				msg, piece, reason, uPrompt, uComp, uCached := applyStreamChunk(data, tools, &maxIdx)
 				if uPrompt > 0 {
 					promptTok = uPrompt
 				}
@@ -251,6 +255,9 @@ func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error
 					if emit != nil {
 						_ = emit(StreamDelta{Text: piece})
 					}
+				}
+				if reason != "" && emit != nil {
+					_ = emit(StreamDelta{Reasoning: reason})
 				}
 				if emit != nil {
 					emitCompletedTools(tools, emit)
@@ -288,7 +295,7 @@ func emitCompletedTools(tools map[int]*streamAcc, emit func(StreamDelta) error) 
 	}
 }
 
-func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, int, int, int) {
+func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, string, int, int, int) {
 	var chunk struct {
 		Usage *struct {
 			PromptTokens         int `json:"prompt_tokens"`
@@ -300,8 +307,11 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		} `json:"usage"`
 		Choices []struct {
 			Delta struct {
-				Content   any `json:"content"`
-				ToolCalls []struct {
+				Content          any `json:"content"`
+				ReasoningContent any `json:"reasoning_content"`
+				Reasoning        any `json:"reasoning"`
+				Thinking         any `json:"thinking"`
+				ToolCalls        []struct {
 					Index    int    `json:"index"`
 					ID       string `json:"id"`
 					Function struct {
@@ -323,7 +333,7 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-		return nil, "", 0, 0, 0
+		return nil, "", "", 0, 0, 0
 	}
 	uPrompt, uComp, uCached := 0, 0, 0
 	if chunk.Usage != nil {
@@ -331,15 +341,15 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		uCached = usageCached(chunk.Usage.CacheReadInputTokens, chunk.Usage.PromptTokensDetails)
 	}
 	if len(chunk.Choices) == 0 {
-		return nil, "", uPrompt, uComp, uCached
+		return nil, "", "", uPrompt, uComp, uCached
 	}
 	ch := chunk.Choices[0]
-	if ch.Message != nil && (stringify(ch.Message.Content) != "" || len(ch.Message.ToolCalls) > 0) {
-		msg := Message{Role: RoleAssistant, Content: stringify(ch.Message.Content)}
+	if ch.Message != nil && (textFromContent(ch.Message.Content) != "" || len(ch.Message.ToolCalls) > 0) {
+		msg := Message{Role: RoleAssistant, Content: textFromContent(ch.Message.Content)}
 		for _, tc := range ch.Message.ToolCalls {
 			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
 		}
-		return &msg, "", uPrompt, uComp, uCached
+		return &msg, "", "", uPrompt, uComp, uCached
 	}
 	for _, tc := range ch.Delta.ToolCalls {
 		a := tools[tc.Index]
@@ -358,16 +368,16 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		}
 		a.args += tc.Function.Arguments
 	}
-	return nil, stringify(ch.Delta.Content), uPrompt, uComp, uCached
+	return nil, textFromContent(ch.Delta.Content), reasoningFromDelta(ch.Delta.Content, ch.Delta.ReasoningContent, ch.Delta.Reasoning, ch.Delta.Thinking), uPrompt, uComp, uCached
 }
 
 func parseOpenAIJSON(raw []byte) (Message, error) {
 	var parsed struct {
 		Usage *struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
+			PromptTokens         int `json:"prompt_tokens"`
+			CompletionTokens     int `json:"completion_tokens"`
 			CacheReadInputTokens int `json:"cache_read_input_tokens"`
-			PromptTokensDetails *struct {
+			PromptTokensDetails  *struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
@@ -419,15 +429,61 @@ func usageCached(anthropic int, details *struct {
 }
 
 func stringify(v any) string {
+	return textFromContent(v)
+}
+
+func textFromContent(v any) string {
 	switch t := v.(type) {
 	case nil:
 		return ""
 	case string:
 		return t
+	case []any:
+		var b strings.Builder
+		for _, p := range t {
+			m, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			typ, _ := m["type"].(string)
+			if typ == "thinking" || typ == "reasoning" {
+				continue
+			}
+			if s, _ := m["text"].(string); s != "" {
+				b.WriteString(s)
+			}
+		}
+		return b.String()
 	default:
 		b, _ := json.Marshal(t)
 		return string(b)
 	}
+}
+
+func reasoningFromDelta(content, reasoningContent, reasoning, thinking any) string {
+	var b strings.Builder
+	b.WriteString(textFromContent(reasoningContent))
+	b.WriteString(textFromContent(reasoning))
+	b.WriteString(textFromContent(thinking))
+	if arr, ok := content.([]any); ok {
+		for _, p := range arr {
+			m, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			typ, _ := m["type"].(string)
+			if typ != "thinking" && typ != "reasoning" {
+				continue
+			}
+			if s, _ := m["thinking"].(string); s != "" {
+				b.WriteString(s)
+			}
+			if s, _ := m["text"].(string); s != "" {
+				b.WriteString(s)
+			}
+		}
+	}
+	return b.String()
 }
 
 func truncate(s string, n int) string {
