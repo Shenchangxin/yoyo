@@ -59,14 +59,14 @@ func TestPlanContinueIfOpen(t *testing.T) {
 	}
 }
 
-func TestPlanContinueNudgeIsLanguageNeutral(t *testing.T) {
+func TestPlanContinueNudgeFollowsOperator(t *testing.T) {
 	tools := &WorkspaceTools{}
 	if res := tools.Call("update_plan", `{"plan":[{"step":"勘察现状","status":"in_progress"}]}`); res.Err != nil {
 		t.Fatal(res.Err)
 	}
 	req := RunRequest{User: "完善该项目", Tools: tools}
 	got := planContinueIfOpen(req, false, 1, nil, nil)
-	if got != planContinueNudge {
+	if got != planContinueNudgeZH {
 		t.Fatalf("%q", got)
 	}
 }

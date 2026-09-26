@@ -110,6 +110,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	overflowFails := 0
 	roundSeq := req.RoundSeq
 	writeHits := map[string]int{}
+	errorHits := map[string]int{}
+	waitHits := map[string]int{}
 	lastPlan := planTextOf(req.Tools)
 	if roundSeq <= 0 {
 		for _, m := range req.History {
@@ -292,8 +294,16 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
 		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
+		recordToolErrors(errorHits, results)
+		recordWaits(waitHits, msg.ToolCalls)
 		kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
 		if stall := rewriteStallNudge(req, writeHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if stall := errorRepeatNudge(req, errorHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if stall := waitLoopNudge(req, waitHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if inj := middlewareNudge(loop, results); inj != "" {
@@ -701,7 +711,7 @@ func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues 
 	if toolsAt != nil {
 		*toolsAt = toolCount
 	}
-	return planContinueNudge
+	return voiceNudge(req, planContinueNudge, planContinueNudgeZH)
 }
 
 func PlanOpen(plan string) bool {

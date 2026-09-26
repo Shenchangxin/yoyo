@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, Check, CircleDashed, Copy, FileText, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, RotateCcw, ShieldAlert } from "lucide-react";
 import { IconSwap } from "../components/ui/icon-swap";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -30,6 +30,7 @@ import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceAnchor, PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
+import { peelCompletedMentions, type MentionKind, type MentionPin } from "../lib/mentions";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -602,6 +603,39 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
+function MentionGlyph({ kind }: { kind: MentionKind }) {
+  const cls = "size-3 shrink-0 opacity-80";
+  if (kind === "folder") return <Folder className={cls} />;
+  if (kind === "skill") return <BookOpen className={cls} />;
+  if (kind === "harness") return <Boxes className={cls} />;
+  return <FileText className={cls} />;
+}
+
+function UserPrompt({ text }: { text: string }) {
+  const peeled = peelCompletedMentions(text);
+  const chips: MentionPin[] = peeled.chips;
+  const prose = peeled.text.trim();
+  return (
+    <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[14px] leading-[1.55] tracking-normal">
+      {chips.length ? (
+        <div className={cn("flex flex-wrap items-center gap-1", prose && "mb-1.5")}>
+          {chips.map((c, i) => (
+            <span
+              key={`${c.token}-${i}`}
+              className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-[11px]"
+              title={c.detail || c.token}
+            >
+              <MentionGlyph kind={c.kind} />
+              <span className="truncate">{c.label}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {prose || !chips.length ? prose || text : null}
+    </div>
+  );
+}
+
 const ItemRow = memo(function ItemRow({
   item,
   streaming,
@@ -628,9 +662,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[14px] leading-[1.55] tracking-normal">
-            {shown.text}
-          </div>
+          <UserPrompt text={shown.text} />
           {copyText ? (
             <div className="flex h-8 items-center justify-end opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100">
               <CopyAction text={copyText} />

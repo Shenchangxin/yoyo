@@ -424,10 +424,15 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
     );
   }
   if (item.type === "context_injection") {
+    const skill = item.source === "skill" || String(item.payload?.name || "") === "load_skill";
+    const name = String(item.payload?.name || "").trim();
+    const label = skill
+      ? (name && name !== "load_skill" ? name : copy.transcript.live.skill)
+      : copy.transcript.live.skill;
     return (
       <StepRow
         glyph={<StepGlyph state="note" compact={compact} icon={<AtSign className="size-3 text-muted/70" />} />}
-        label={copy.transcript.mention}
+        label={label}
         labelTone="font-sans text-[13px] text-muted"
         open={open && !!body}
         onToggle={() => setOpen((v) => !v)}
@@ -457,7 +462,8 @@ function summarize(items: Item[], t: TranscriptCopy): string {
     return ms > 0 ? t.thoughtFor.replace("{n}", formatElapsed(ms)) : t.thinking;
   }
   if (items.some((it) => it.type === "subagent")) return t.subagent;
-  return t.mention;
+  if (items.some((it) => it.type === "context_injection")) return t.live.skill;
+  return t.working;
 }
 
 function readableExtra(item: Item): string {

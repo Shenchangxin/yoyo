@@ -31,6 +31,11 @@ export function isSteer(it: Item): boolean {
   return it.type === "user" && it.source === "steer";
 }
 
+/** @mention inject is folded into the user bubble; do not render it as a turn. */
+export function isMentionInject(it: Item): boolean {
+  return it.type === "context_injection" && it.source !== "skill";
+}
+
 /** Duplicate of a tool already in the turn — keep in the agent block, never render. */
 export function isTranscriptDuplicate(it: Item): boolean {
   return it.type === "plan" || it.type === "file_change" || it.type === "ask_user";
@@ -59,11 +64,13 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
 }
 
 export function isProcessItem(it: Item): boolean {
+  if (isMentionInject(it)) return false;
   if (it.type === "reasoning" || it.type === "subagent" || it.type === "context_injection") return true;
   return isToolish(it) && !isOutcomeTool(it);
 }
 
 export function isAgentItem(it: Item): boolean {
+  if (isMentionInject(it)) return false;
   return (
     it.type === "assistant" ||
     it.type === "reasoning" ||
@@ -208,7 +215,7 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
     artifacts = [];
   };
   for (const it of items) {
-    if (isTranscriptDuplicate(it)) continue;
+    if (isMentionInject(it) || isTranscriptDuplicate(it)) continue;
     if (isToolish(it)) {
       const id = String(it.payload?.id || it.key);
       if (pairKind.get(id) === "artifact") {
@@ -252,6 +259,9 @@ export function layoutRows(items: Item[]): LayoutRow[] {
     if (it.type === "user" && it.source !== "steer") {
       flushAgent();
       rows.push({ key: it.key, kind: "user", item: it });
+      continue;
+    }
+    if (isMentionInject(it)) {
       continue;
     }
     if (isAgentItem(it)) {

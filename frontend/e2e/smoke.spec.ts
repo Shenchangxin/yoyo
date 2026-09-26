@@ -537,7 +537,13 @@ test("insert mention keeps the popup open and pins a file token", async ({ page 
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("@");
-  await expect(page.getByRole("listbox", { name: "Mentions" })).toBeVisible();
+  const list = page.getByRole("listbox", { name: "Mentions" });
+  await expect(list).toBeVisible();
+  const core = page.locator(".composer-core");
+  const listBox = await list.boundingBox();
+  const coreBox = await core.boundingBox();
+  expect(listBox && coreBox).toBeTruthy();
+  expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(coreBox!.y + 8);
   await page.getByRole("option", { name: /@file:/ }).first().click();
   await expect(page.getByRole("option", { name: /@file:src\/main.go/ })).toBeVisible();
   await page.getByRole("option", { name: /@file:src\/main.go/ }).click();
