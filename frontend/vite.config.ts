@@ -2,11 +2,24 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import wails from "@wailsio/runtime/plugins/vite";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
+const embedKeep = path.join(dir, "dist", ".keep");
+const embedKeepBody = "go embed stub\n";
+
+function keepGoEmbed() {
+  return {
+    name: "keep-go-embed",
+    closeBundle() {
+      mkdirSync(path.dirname(embedKeep), { recursive: true });
+      if (!existsSync(embedKeep)) writeFileSync(embedKeep, embedKeepBody);
+    },
+  };
+}
+
 const wailsReady = existsSync("./bindings/github.com/wailsapp/wails");
 const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as { version?: string };
 const appVersion = process.env.npm_package_version?.trim() || pkg.version || "0.0.0";
@@ -36,5 +49,5 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
-  plugins: [tailwindcss(), react(), ...(wailsReady ? [wails("./bindings")] : [])],
+  plugins: [tailwindcss(), react(), keepGoEmbed(), ...(wailsReady ? [wails("./bindings")] : [])],
 });

@@ -41,6 +41,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+      - name: Seed frontend/dist for go embed
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          if [[ -z "$(ls -A frontend/dist 2>/dev/null || true)" ]]; then
+            printf 'go embed stub\n' > frontend/dist/.keep
+          fi
       - name: Test
         run: go test ./...
       - name: Build CLI

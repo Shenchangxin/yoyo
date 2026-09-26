@@ -11,7 +11,10 @@
 
 # Frontend
 frontend/node_modules/
-frontend/dist/
+# Built assets stay local. Keep one tracked stub so `go:embed all:frontend/dist`
+# compiles before `npm run build` (CI `go test ./...` and a clean clone).
+frontend/dist/*
+!frontend/dist/.keep
 frontend/bindings/
 frontend/playwright-report/
 frontend/test-results/
