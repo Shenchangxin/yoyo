@@ -31,6 +31,31 @@ func TestExpandMentionsFileAndJail(t *testing.T) {
 	}
 }
 
+func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "arxiv-watcher")
+	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "scripts", "search_arxiv.sh"), []byte("#!/bin/bash\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skills := map[string]string{"arxiv-watcher": "Use scripts/search_arxiv.sh"}
+	dirs := map[string]string{"arxiv-watcher": skillDir}
+	inject, refs := ExpandMentionsPacks(dir, "@skill:arxiv-watcher 帮我查论文", "", skills, dirs, 3200)
+	if len(MentionSkillNames(refs)) != 1 {
+		t.Fatalf("names=%v", MentionSkillNames(refs))
+	}
+	if !strings.Contains(inject, "run_skill_script") || !strings.Contains(inject, skillDir) {
+		t.Fatalf("missing pack routing:\n%s", inject)
+	}
+	idxRoute := strings.Index(inject, "run_skill_script")
+	idxBody := strings.Index(inject, "Use scripts/search_arxiv.sh")
+	if idxRoute < 0 || idxBody < 0 || idxRoute > idxBody {
+		t.Fatalf("routing must lead body: %s", inject)
+	}
+}
+
 func TestShellPolicy(t *testing.T) {
 	dir := t.TempDir()
 	if err := ShellDenied("curl https://example.com", dir, nil); err == nil {

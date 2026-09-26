@@ -271,27 +271,7 @@ export function Composer(props: {
   return (
     <div className="relative no-drag w-full shrink-0" data-testid={props.compact ? undefined : "composer-column"}>
       <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : props.hero ? "pb-0 pt-0" : "pb-4 pt-1")}>
-        <div
-          className="composer-bezel"
-          data-focused={focused ? "true" : "false"}
-          data-welded={popupWelded ? "true" : "false"}
-          data-hero={props.hero ? "true" : "false"}
-        >
-        <div
-          className={cn(
-            "composer-core",
-            props.disabled && "opacity-55",
-          )}
-          onDragOver={(e) => {
-            if (props.disabled) return;
-            e.preventDefault();
-          }}
-          onDrop={(e) => {
-            if (props.disabled) return;
-            e.preventDefault();
-            if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
-          }}
-        >
+        <div className="composer-stack" data-open={popupWelded ? "true" : "false"}>
           {showPopup && slashOpen ? (
             <CommandWeld
               label={copy.composer.commands}
@@ -315,6 +295,27 @@ export function Composer(props: {
               onPick={(item) => insertMention(item)}
             />
           ) : null}
+        <div
+          className="composer-bezel"
+          data-focused={focused ? "true" : "false"}
+          data-welded={popupWelded ? "true" : "false"}
+          data-hero={props.hero ? "true" : "false"}
+        >
+        <div
+          className={cn(
+            "composer-core",
+            props.disabled && "opacity-55",
+          )}
+          onDragOver={(e) => {
+            if (props.disabled) return;
+            e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (props.disabled) return;
+            e.preventDefault();
+            if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
+          }}
+        >
           {props.taskPlan ? (
             <PlanChip key={props.draftKey} plan={props.taskPlan} running={props.running} compact={props.compact} />
           ) : null}
@@ -680,6 +681,7 @@ export function Composer(props: {
           </div>
         </div>
         </div>
+        </div>
         <QueueDock
           items={props.queueItems || []}
           onCancel={props.onQueueCancel}
@@ -801,8 +803,9 @@ function CommandWeld(props: {
     <div
       role="listbox"
       aria-label={props.label}
+      data-testid="composer-popup"
       className={cn(
-        "absolute -inset-x-px bottom-[calc(100%-1px)] z-10 max-h-52 overflow-auto rounded-t-[var(--radius-composer)] border border-b-0 bg-input-bar",
+        "absolute inset-x-0 bottom-[calc(100%-4px)] z-30 max-h-52 overflow-auto rounded-t-[var(--radius-composer)] border border-b-0 bg-input-bar",
         props.focused ? "border-foreground/20" : "border-border",
       )}
     >

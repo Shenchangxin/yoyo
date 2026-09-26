@@ -29,17 +29,23 @@ func (t *WorkspaceTools) skillDirRoots() []string {
 }
 
 func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
-	if t == nil || t.SkillDirs == nil {
-		return body
+	dir := ""
+	if t != nil && t.SkillDirs != nil {
+		dir = t.SkillDirs[name]
 	}
-	dir := strings.TrimSpace(t.SkillDirs[name])
+	return DecorateSkillBody(name, body, dir)
+}
+
+// DecorateSkillBody prepends pack routing so @mention inject and load_skill
+// both see it before a truncated skill body.
+func DecorateSkillBody(name, body, dir string) string {
+	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return body
 	}
 	files := SkillPackFiles(dir)
 	var b strings.Builder
-	b.WriteString(body)
-	b.WriteString("\n\n---\nSkill pack directory: ")
+	b.WriteString("Skill pack directory: ")
 	b.WriteString(dir)
 	if len(files) > 0 {
 		b.WriteString("\nPack files:\n")
@@ -51,7 +57,8 @@ func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 	}
 	b.WriteString("Run helpers with run_skill_script (skill=")
 	b.WriteString(name)
-	b.WriteString(", script=<file under scripts/>) or the absolute path above. Workspace-relative scripts/ will not find this pack.\n")
+	b.WriteString(", script=<file under scripts/>). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.\n\n")
+	b.WriteString(body)
 	return b.String()
 }
 

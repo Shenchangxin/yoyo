@@ -667,7 +667,8 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	}
 	content := rewriteNote + string(out.Output)
 	if out.Background {
-		content = fmt.Sprintf("still running pid=%d; not killed (idle/block fuse)\n%s", out.PID, content)
+		stopFusedPID(out.PID)
+		content = fmt.Sprintf("stopped pid=%d after idle/block fuse (no output). Do not poll with wait/tasklist. For public HTTP use web_fetch; if https returns 406, retry the http URL.\n%s", out.PID, content)
 		return ToolResult{Content: content}
 	}
 	if out.Err != nil {
@@ -686,6 +687,20 @@ func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Durati
 		return 0, 0, false
 	}
 	return chatShellIdle, chatShellBlock, true
+}
+
+func stopFusedPID(pid int) {
+	if pid <= 0 {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+		return
+	}
+	p, err := os.FindProcess(pid)
+	if err == nil {
+		_ = p.Kill()
+	}
 }
 
 func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) isolation.Outcome {
@@ -841,6 +856,30 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 		}
 	}
 	return ToolResult{Content: content}
+}
+
+func (t *WorkspaceTools) MarkSkillsLoaded(names ...string) {
+	if t == nil {
+		return
+	}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		t.mu.Lock()
+		dup := false
+		for _, n := range t.Loaded {
+			if n == name {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			t.Loaded = append(t.Loaded, name)
+		}
+		t.mu.Unlock()
+	}
 }
 
 func (t *WorkspaceTools) recall(id string, offset, limit int) ToolResult {

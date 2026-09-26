@@ -547,7 +547,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		if snap.Note != "" {
 			note = hash + " " + snap.Note
 		}
-		inject, _ = runtime.ExpandMentionsSkills(toolRoot, message, note, skillBodies, 2400)
+		var refs []runtime.Mention
+		inject, refs = runtime.ExpandMentionsPacks(toolRoot, message, note, skillBodies, skillDirs, 3200)
+		tools.MarkSkillsLoaded(runtime.MentionSkillNames(refs)...)
 		if extra := runtime.ExpandAttachments(toolRoot, toRuntimeAtts(atts), 2400); extra != "" {
 			if inject != "" {
 				inject += "\n"
@@ -563,6 +565,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	voice := runtime.OperatorVoice(message, hist)
 	tools.OperatorVoice = voice
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(loop.PlanMode)...)
+	if pin := runtime.LanguagePin(voice); pin.Text != "" {
+		frags = append(frags, pin)
+	}
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
 		TurnID:           turnID,

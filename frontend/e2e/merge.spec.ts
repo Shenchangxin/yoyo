@@ -130,6 +130,17 @@ test("late seed cannot drop a live second assistant round", () => {
   expect(out.filter((x) => x.type === "assistant").map((x) => x.text)).toEqual(["first answer", "second answer"]);
 });
 
+test("mention inject does not render as a prior user turn", () => {
+  const items = replayEvents([
+    { type: "context_injection", source: "mention", session_id: "s", payload: { text: "## @skill:arxiv-watcher\nUse scripts" } },
+    { type: "user", session_id: "s", payload: { text: "@skill:arxiv-watcher 帮我查询一下关于agent自进化的论文" } },
+    { type: "assistant", session_id: "s", payload: { text: "好", id: "s:r1" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+  expect(rows[0].kind === "user" ? rows[0].item.text : "").toContain("帮我查询");
+});
+
 test("two-turn layout keeps separate agent rows", () => {
   const items = replayEvents([
     { type: "user", session_id: "s", payload: { text: "first question" } },

@@ -136,8 +136,8 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if req.Workspace != "" && req.Path != "" {
-		if !WithinWorkspace(req.Workspace, req.Path) && req.Level != SpecifiedPath && req.Level != HighRisk {
+	if req.Workspace != "" && req.Path != "" && workspacePathJail(req) {
+		if !WithinWorkspace(req.Workspace, req.Path) {
 			return fmt.Errorf("capability: path %q escapes workspace", req.Path)
 		}
 	}
@@ -207,4 +207,21 @@ func WithinWorkspace(root, p string) bool {
 
 func osPathSeparator() string {
 	return string(filepath.Separator)
+}
+
+// LooksLikeURL is a network locator, not a workspace file path.
+func LooksLikeURL(p string) bool {
+	s := strings.ToLower(strings.TrimSpace(p))
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// workspacePathJail is only for workspace file levels. Network/browser
+// tools put URLs in Path; jailing those as files blocks every fetch.
+func workspacePathJail(req Request) bool {
+	switch req.Level {
+	case ReadWorkspace, WriteWorkspace:
+		return !LooksLikeURL(req.Path)
+	default:
+		return false
+	}
 }

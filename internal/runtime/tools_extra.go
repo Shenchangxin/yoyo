@@ -93,7 +93,7 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	if args != "" {
 		argv = append(argv, SplitShellArgv(args)...)
 	}
-	return t.shell(joinShellArgv(argv), 60)
+	return t.shell(joinShellArgv(argv), 30)
 }
 
 func (t *WorkspaceTools) applyAllowedFromSkills() {

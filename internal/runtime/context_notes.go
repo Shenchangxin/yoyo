@@ -17,6 +17,21 @@ const (
 	steerUserPrefix   = "User steering (apply now):"
 )
 
+// AttachMention puts the operator utterance first so language and task
+// follow the user, not the (often English) skill/file body.
+func AttachMention(user, inject string) string {
+	user = strings.TrimSpace(user)
+	inject = strings.TrimSpace(inject)
+	if inject == "" {
+		return user
+	}
+	block := mentionUserPrefix + "\n" + inject
+	if user == "" {
+		return block
+	}
+	return user + "\n\n" + block
+}
+
 // SessionNotes is task working memory. It is not the ACE playbook.
 type SessionNotes struct {
 	Objective string   `json:"objective,omitempty"`
@@ -102,6 +117,12 @@ func isControlUser(text string) bool {
 		return true
 	}
 	if strings.HasPrefix(s, rewriteStallPrefixEN) || strings.HasPrefix(s, rewriteStallPrefixZH) {
+		return true
+	}
+	if strings.HasPrefix(s, errorRepeatPrefixEN) || strings.HasPrefix(s, errorRepeatPrefixZH) {
+		return true
+	}
+	if strings.HasPrefix(s, waitLoopPrefixEN) || strings.HasPrefix(s, waitLoopPrefixZH) {
 		return true
 	}
 	if strings.Contains(s, "Context checkpoint") {
@@ -211,6 +232,9 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 }
 
 func stickObjective(n *SessionNotes, text string) {
+	if i := strings.Index(text, mentionUserPrefix); i >= 0 {
+		text = text[:i]
+	}
 	t := capRunes(collapseDoubledText(strings.TrimSpace(text)), 400)
 	if t == "" {
 		return

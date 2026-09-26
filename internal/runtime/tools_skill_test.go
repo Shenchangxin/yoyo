@@ -28,6 +28,9 @@ func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	if !strings.Contains(res.Content, skillDir) || !strings.Contains(res.Content, "scripts/search_arxiv.sh") {
 		t.Fatalf("missing pack footer: %s", res.Content)
 	}
+	if strings.Index(res.Content, "run_skill_script") > strings.Index(res.Content, "Use scripts/search_arxiv.sh") {
+		t.Fatal("routing must lead the skill body")
+	}
 }
 
 func TestRunSkillScriptFindsPackHelper(t *testing.T) {

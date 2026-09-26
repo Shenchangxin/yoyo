@@ -114,6 +114,8 @@ func (t *WorkspaceTools) viewImage(rel string) ToolResult {
 	return res
 }
 
+const webFetchUA = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
+
 func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -122,25 +124,8 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	if blockedHost(u.Hostname()) {
 		return ToolResult{Err: fmt.Errorf("web_fetch: host is not allowed")}
 	}
-	if t.Caps != nil {
-		req := capability.Request{
-			Level:     capability.Network,
-			Action:    "web_fetch",
-			Path:      rawURL,
-			Command:   rawURL,
-			SessionID: t.SessionID,
-			Workspace: t.Workspace,
-			ForceAsk:  true,
-		}
-		var err error
-		if t.Ctx != nil {
-			err = t.Caps.CheckCtx(t.Ctx, req)
-		} else {
-			err = t.Caps.Check(req)
-		}
-		if err != nil {
-			return ToolResult{Err: err}
-		}
+	if err := t.check(capability.Network, "web_fetch", "", rawURL); err != nil {
+		return ToolResult{Err: err}
 	}
 	ctx := t.Ctx
 	if ctx == nil {
@@ -148,26 +133,44 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	status, finalURL, ct, body, err := httpGet(ctx, u.String())
 	if err != nil {
 		return ToolResult{Err: err}
 	}
-	req.Header.Set("User-Agent", "Yoyo/0.1")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return ToolResult{Err: err}
+	if alt := retryHTTPOn406(u, status); alt != nil {
+		if s2, u2, ct2, b2, e2 := httpGet(ctx, alt.String()); e2 == nil && s2 != 406 {
+			status, finalURL, ct, body = s2, u2, ct2, b2
+		}
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
-	if err != nil {
-		return ToolResult{Err: err}
-	}
-	text := string(body)
-	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "json") {
+	text := body
+	if compact, ok := formatFeed(body); ok {
+		text = compact
+	} else if isXMLFeed(ct, body) {
+		// Keep tags so ids/titles stay recoverable after elision.
+	} else if !strings.Contains(strings.ToLower(ct), "json") {
 		text = stripTags(text)
 	}
 	capped, _ := capText(text, 12_000)
-	return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", resp.StatusCode, rawURL, capped)}
+	return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, capped)}
+}
+
+func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentType, body string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return 0, rawURL, "", "", err
+	}
+	req.Header.Set("User-Agent", webFetchUA)
+	req.Header.Set("Accept", "application/atom+xml, application/xml, text/html;q=0.9, */*;q=0.8")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, rawURL, "", "", err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+	if err != nil {
+		return resp.StatusCode, resp.Request.URL.String(), resp.Header.Get("Content-Type"), "", err
+	}
+	return resp.StatusCode, resp.Request.URL.String(), resp.Header.Get("Content-Type"), string(raw), nil
 }
 
 func blockedHost(host string) bool {

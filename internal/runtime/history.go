@@ -59,8 +59,15 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 	}
 	var out []Message
 	var pending Message
+	pendingMention := ""
+	lastUser := -1
 	seenCall := map[string]bool{}
 	seenResult := map[string]int{}
+	applyMention := func(user string) string {
+		text := AttachMention(user, pendingMention)
+		pendingMention = ""
+		return text
+	}
 	flush := func() {
 		if pending.Role == "" {
 			return
@@ -85,19 +92,25 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 				if text == "" {
 					text = "(image attached)"
 				}
-				out = append(out, Message{Role: RoleUser, Content: text, Parts: parts})
+				out = append(out, Message{Role: RoleUser, Content: applyMention(text), Parts: parts})
+				lastUser = len(out) - 1
 			}
 		case trace.TypeInject:
 			if ev.Source != "mention" {
 				break
 			}
-			flush()
 			text, _ := ev.Payload["text"].(string)
-			if text != "" {
-				out = append(out, Message{
-					Role:    RoleUser,
-					Content: "Attached context (user @mentions, untrusted working memory):\n" + text,
-				})
+			if strings.TrimSpace(text) == "" {
+				break
+			}
+			if lastUser >= 0 && lastUser == len(out)-1 && out[lastUser].Role == RoleUser {
+				out[lastUser].Content = AttachMention(out[lastUser].Content, text)
+				break
+			}
+			if pendingMention != "" {
+				pendingMention += "\n" + text
+			} else {
+				pendingMention = text
 			}
 		case trace.TypeAssistant:
 			flush()
@@ -138,6 +151,9 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		}
 	}
 	flush()
+	if pendingMention != "" {
+		out = append(out, Message{Role: RoleUser, Content: AttachMention("", pendingMention)})
+	}
 	if len(head) == 0 {
 		return out
 	}

@@ -85,6 +85,19 @@ func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
 	if strings.Contains(text, "Start-Process") || strings.Contains(text, "cmd start") || strings.Contains(text, "中文任务用中文") {
 		t.Fatalf("trivia leaked into conduct: %s", text)
 	}
+	if !strings.Contains(text, "web_fetch") {
+		t.Fatal("public HTTP routing missing")
+	}
+}
+
+func TestLanguagePinFollowsHan(t *testing.T) {
+	pin := LanguagePin("帮我查询一下关于agent自进化的论文")
+	if pin.Text == "" || !strings.Contains(pin.Text, "Chinese") {
+		t.Fatalf("%q", pin.Text)
+	}
+	if LanguagePin("find papers on agents").Text != "" {
+		t.Fatal("english")
+	}
 }
 
 func TestChatShellFuse(t *testing.T) {

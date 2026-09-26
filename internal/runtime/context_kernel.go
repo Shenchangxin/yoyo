@@ -70,10 +70,6 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	if len(k.req.History) > 0 {
 		messages = append(messages, stripSystem(k.req.History)...)
 	}
-	if strings.TrimSpace(k.req.Inject) != "" {
-		emit(*k.req, trace.TypeInject, "mention", map[string]any{"text": k.req.Inject})
-		messages = append(messages, Message{Role: RoleUser, Content: mentionUserPrefix + "\n" + k.req.Inject})
-	}
 	user := collapseDoubledText(strings.TrimSpace(k.req.User))
 	if user == "" && len(k.req.UserParts) > 0 {
 		user = "(image attached)"
@@ -84,7 +80,15 @@ func (k *ContextKernel) seed() ([]Message, error) {
 			payload["parts"] = k.req.UserParts
 		}
 		emit(*k.req, trace.TypeUser, "user", payload)
-		messages = append(messages, Message{Role: RoleUser, Content: user, Parts: k.req.UserParts})
+	}
+	inject := strings.TrimSpace(k.req.Inject)
+	if inject != "" {
+		emit(*k.req, trace.TypeInject, "mention", map[string]any{"text": inject})
+	}
+	if user != "" {
+		messages = append(messages, Message{Role: RoleUser, Content: AttachMention(user, inject), Parts: k.req.UserParts})
+	} else if inject != "" {
+		messages = append(messages, Message{Role: RoleUser, Content: AttachMention("", inject)})
 	} else if len(stripSystem(k.req.History)) == 0 {
 		return nil, fmt.Errorf("nothing to continue")
 	}

@@ -70,14 +70,32 @@ func TestMessagesFromEventsIncludesMentionInject(t *testing.T) {
 		{Type: trace.TypeInject, Source: "skill", Payload: map[string]any{"text": "skill body"}},
 	}
 	msgs := MessagesFromEvents(evs)
-	if len(msgs) != 3 {
+	if len(msgs) != 2 {
 		t.Fatalf("%+v", msgs)
 	}
-	if msgs[0].Role != RoleUser || !strings.Contains(msgs[0].Content, "README.md") {
+	if msgs[0].Role != RoleUser || !strings.Contains(msgs[0].Content, "README.md") || !strings.HasPrefix(msgs[0].Content, "summarize") {
 		t.Fatalf("inject %+v", msgs[0])
 	}
-	if msgs[1].Content != "summarize" {
-		t.Fatalf("user %+v", msgs[1])
+	if msgs[1].Content != "ok" {
+		t.Fatalf("asst %+v", msgs[1])
+	}
+}
+
+func TestMessagesFromEventsFoldsMentionAfterUser(t *testing.T) {
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "帮我查论文"}},
+		{Type: trace.TypeInject, Source: "mention", Payload: map[string]any{"text": "## @skill:arxiv-watcher\nUse scripts"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "好", "id": "s:r1"}},
+	}
+	msgs := MessagesFromEvents(evs)
+	if len(msgs) != 2 {
+		t.Fatalf("%+v", msgs)
+	}
+	if !strings.HasPrefix(msgs[0].Content, "帮我查论文") {
+		t.Fatalf("operator must lead: %q", msgs[0].Content)
+	}
+	if !strings.Contains(msgs[0].Content, "arxiv-watcher") {
+		t.Fatalf("skill dropped: %q", msgs[0].Content)
 	}
 }
 
@@ -122,7 +140,7 @@ func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 func TestMessagesFromEventsKeepsImageParts(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{
-			"text": "look",
+			"text":  "look",
 			"parts": []map[string]any{{"type": "image_url", "image_url": "data:image/png;base64,xx"}},
 		}},
 	}

@@ -3,6 +3,7 @@ package capability
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -154,5 +155,45 @@ func TestParseAuthMode(t *testing.T) {
 	}
 	if ParseAuthMode("") != AuthDefault {
 		t.Fatal(ParseAuthMode(""))
+	}
+}
+
+func TestBrokerNetworkURLSkipsPathJail(t *testing.T) {
+	n := 0
+	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {
+		n++
+		return Session, nil
+	})
+	ws := t.TempDir()
+	req := Request{
+		Level:     Network,
+		Action:    "web_fetch",
+		Path:      "https://export.arxiv.org/api/query?q=agent",
+		Command:   "https://export.arxiv.org/api/query?q=agent",
+		SessionID: "s1",
+		Workspace: ws,
+	}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("asked %d", n)
+	}
+	if err := b.Check(Request{Level: Network, SessionID: "s1", Path: "https://example.com", Workspace: ws}); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("session grant should stick, asked %d", n)
+	}
+}
+
+func TestBrokerReadStillJailsEscape(t *testing.T) {
+	b := NewBroker(AutoPolicy{Allow: []Level{ReadWorkspace}}, func(context.Context, Request) (Decision, error) {
+		return Always, nil
+	})
+	ws := t.TempDir()
+	err := b.Check(Request{Level: ReadWorkspace, Path: filepath.Join(ws, "..", "secret"), Workspace: ws, SessionID: "s1"})
+	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
+		t.Fatalf("%v", err)
 	}
 }

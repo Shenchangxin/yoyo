@@ -190,7 +190,7 @@ func (t *WorkspaceTools) scheduleCancel(id string) ToolResult {
 }
 
 func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
-	if err := t.check(capability.Browser, "browser_open", raw, raw); err != nil {
+	if err := t.check(capability.Browser, "browser_open", "", raw); err != nil {
 		return ToolResult{Err: err}
 	}
 	if t.Browser == nil {

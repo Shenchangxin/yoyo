@@ -217,7 +217,7 @@ func TestRewriteStallNudgeOnSoftHorizon(t *testing.T) {
 	}
 	found := false
 	for _, msgs := range client.seen {
-		if strings.Contains(messagesBlob(msgs), "App.tsx") && strings.Contains(messagesBlob(msgs), rewriteStallPrefixEN) {
+		if strings.Contains(messagesBlob(msgs), "App.tsx") && strings.Contains(messagesBlob(msgs), rewriteStallPrefixZH) {
 			found = true
 		}
 	}
@@ -373,4 +373,41 @@ func messagesBlob(msgs []Message) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+func TestInjectFoldsAfterOperatorVoice(t *testing.T) {
+	dir := t.TempDir()
+	client := &planRecordingClient{ScriptedClient: ScriptedClient{Steps: []Message{
+		{Role: RoleAssistant, Content: "好"},
+	}}}
+	_, err := Run(context.Background(), RunRequest{
+		User:        "帮我查询一下关于agent自进化的论文",
+		Inject:      "## @skill:arxiv-watcher\nUse scripts/search_arxiv.sh",
+		Workspace:   dir,
+		Tools:       &WorkspaceTools{Workspace: dir},
+		Client:      client,
+		Loop:        DefaultLoop(),
+		SoftHorizon: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) == 0 {
+		t.Fatal("no chat")
+	}
+	var users []string
+	for _, m := range client.seen[0] {
+		if m.Role == RoleUser {
+			users = append(users, m.Content)
+		}
+	}
+	if len(users) != 1 {
+		t.Fatalf("want one user message, got %d: %q", len(users), users)
+	}
+	if !strings.HasPrefix(users[0], "帮我查询一下关于agent自进化的论文") {
+		t.Fatalf("operator must lead:\n%s", users[0])
+	}
+	if !strings.Contains(users[0], "arxiv-watcher") {
+		t.Fatalf("skill dropped:\n%s", users[0])
+	}
 }

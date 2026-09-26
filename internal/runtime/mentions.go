@@ -55,6 +55,10 @@ func ExpandMentions(workspace, text, harnessNote string, budget int) (inject str
 }
 
 func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string]string, budget int) (inject string, refs []Mention) {
+	return ExpandMentionsPacks(workspace, text, harnessNote, skills, nil, budget)
+}
+
+func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]string, skillDirs map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
 	if budget <= 0 {
 		budget = 2400
@@ -62,7 +66,7 @@ func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string
 	var b strings.Builder
 	used := 0
 	for _, m := range refs {
-		chunk := mentionChunk(workspace, harnessNote, skills, m, budget-used)
+		chunk := mentionChunk(workspace, harnessNote, skills, skillDirs, m, budget-used)
 		if chunk == "" {
 			continue
 		}
@@ -76,7 +80,20 @@ func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string
 	return strings.TrimSpace(b.String()), refs
 }
 
-func mentionChunk(workspace, harnessNote string, skills map[string]string, m Mention, remain int) string {
+func MentionSkillNames(refs []Mention) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, r := range refs {
+		if r.Kind != "skill" || r.Ref == "" || seen[r.Ref] {
+			continue
+		}
+		seen[r.Ref] = true
+		out = append(out, r.Ref)
+	}
+	return out
+}
+
+func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]string, m Mention, remain int) string {
 	if remain < 32 {
 		return ""
 	}
@@ -89,6 +106,11 @@ func mentionChunk(workspace, harnessNote string, skills map[string]string, m Men
 		if !ok {
 			return fmt.Sprintf("## @skill:%s\nERROR: unknown skill\n", m.Ref)
 		}
+		dir := ""
+		if skillDirs != nil {
+			dir = skillDirs[m.Ref]
+		}
+		body = DecorateSkillBody(m.Ref, body, dir)
 		capped, trunc := capText(body, remain)
 		out := "## @skill:" + m.Ref + "\n" + capped
 		if trunc {

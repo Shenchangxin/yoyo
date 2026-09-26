@@ -34,6 +34,19 @@ func TestNotesSkipControlUsers(t *testing.T) {
 	}
 }
 
+func TestAttachMentionPutsOperatorFirst(t *testing.T) {
+	got := AttachMention("帮我查论文", "## @skill:arxiv-watcher\nUse scripts")
+	if !strings.HasPrefix(got, "帮我查论文") {
+		t.Fatalf("%q", got)
+	}
+	if !strings.Contains(got, mentionUserPrefix) || !strings.Contains(got, "arxiv-watcher") {
+		t.Fatalf("%q", got)
+	}
+	if AttachMention("hello", "") != "hello" {
+		t.Fatal("empty inject")
+	}
+}
+
 func TestWriteNotesKeepsOldObjective(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	WriteNotes(sp, SessionNotes{Objective: "ship the patch", Files: []string{"a.go"}})
