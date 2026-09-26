@@ -72,7 +72,10 @@ func (s *Store) Write(it Item) Item {
 	if it.CreatedAt.IsZero() {
 		it.CreatedAt = time.Now().UTC()
 	}
-	it.Staging = true
+	it.Staging = it.Kind != KindProfile
+	if it.Kind == KindProfile {
+		it.Staging = false
+	}
 	s.items = append(s.items, it)
 	_ = s.flush()
 	return it

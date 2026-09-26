@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Ref } from "react";
-import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, Clipboard, FileText, Folder, GitBranch, Paperclip, Plus, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipboard, FileText, Folder, GitBranch, Paperclip, Plus, Square, X } from "lucide-react";
 import { Textarea } from "../components/ui/input";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
@@ -43,6 +43,10 @@ export function Composer(props: {
   provider?: string;
   ctx?: ContextUsage;
   queued?: number;
+  queueItems?: { id?: string; text?: string; plan?: boolean }[];
+  onQueueCancel?: (id: string) => void;
+  onQueueReorder?: (id: string, delta: number) => void;
+  onApplyWorktree?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];
   onSearchFiles?: (q: string) => void;
@@ -509,6 +513,15 @@ export function Composer(props: {
                       <span className="min-w-0 flex-1 truncate">{props.isolate ? copy.composer.isolateOn : copy.composer.isolate}</span>
                       {props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
                     </DropdownMenuItem>
+                    {props.isolate && props.onApplyWorktree ? (
+                      <DropdownMenuItem
+                        disabled={props.disabled || props.running}
+                        onSelect={() => props.onApplyWorktree?.()}
+                      >
+                        <GitBranch className="size-3.5" />
+                        <span className="min-w-0 flex-1 truncate">{copy.composer.applyWorktree}</span>
+                      </DropdownMenuItem>
+                    ) : null}
                   </>
                 ) : null}
               </DropdownMenuContent>
@@ -667,6 +680,12 @@ export function Composer(props: {
           </div>
         </div>
         </div>
+        <QueueDock
+          items={props.queueItems || []}
+          onCancel={props.onQueueCancel}
+          onReorder={props.onQueueReorder}
+          copy={copy}
+        />
         <ContextMeter
           ctx={props.ctx}
           draftTokens={estimateTokens(composeDraft(chips, value))}
@@ -677,6 +696,42 @@ export function Composer(props: {
           copy={copy}
         />
       </div>
+    </div>
+  );
+}
+
+function QueueDock(props: {
+  items: { id?: string; text?: string; plan?: boolean }[];
+  onCancel?: (id: string) => void;
+  onReorder?: (id: string, delta: number) => void;
+  copy: Copy;
+}) {
+  if (!props.items.length) return null;
+  return (
+    <div className="mt-1.5 flex min-w-0 flex-col gap-1" data-testid="composer-queue">
+      {props.items.map((it, i) => {
+        const id = it.id || `q-${i}`;
+        return (
+          <div key={id} className="flex min-w-0 items-center gap-1 rounded-lg bg-lift/70 px-2 py-1 text-[11.5px]">
+            <span className="min-w-0 flex-1 truncate text-foreground/85">{it.text || props.copy.composer.queue}</span>
+            {props.onReorder ? (
+              <>
+                <button type="button" className="grid size-6 place-items-center rounded-md text-muted hover:bg-background hover:text-foreground" aria-label={props.copy.composer.queueUp} disabled={i === 0} onClick={() => props.onReorder?.(id, -1)}>
+                  <ChevronUp className="size-3.5" />
+                </button>
+                <button type="button" className="grid size-6 place-items-center rounded-md text-muted hover:bg-background hover:text-foreground" aria-label={props.copy.composer.queueDown} disabled={i === props.items.length - 1} onClick={() => props.onReorder?.(id, 1)}>
+                  <ChevronDown className="size-3.5" />
+                </button>
+              </>
+            ) : null}
+            {props.onCancel ? (
+              <button type="button" className="grid size-6 place-items-center rounded-md text-muted hover:bg-danger/10 hover:text-danger" aria-label={props.copy.composer.queueCancel} onClick={() => props.onCancel?.(id)}>
+                <X className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

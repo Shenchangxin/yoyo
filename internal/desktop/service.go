@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -184,10 +185,16 @@ func (s *Service) ListSessions() ([]app.SessionMeta, error) {
 }
 
 func (s *Service) ForkSession(id string) (app.SessionMeta, error) {
+	return s.ForkSessionFrom(id, "")
+}
+
+func (s *Service) ForkSessionFrom(id, from string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
 	if s.RPC != nil {
-		m, err = decode[app.SessionMeta](s.call("thread.fork", map[string]any{"session": id}))
+		m, err = decode[app.SessionMeta](s.call("thread.fork", map[string]any{"session": id, "from": from}))
+	} else if strings.TrimSpace(from) != "" {
+		m, err = s.App.ForkSessionFrom(id, from)
 	} else {
 		m, err = s.App.ForkSession(id)
 	}

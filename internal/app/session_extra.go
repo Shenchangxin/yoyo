@@ -94,6 +94,8 @@ func (a *App) ArchiveSession(id string, archived bool) (SessionMeta, error) {
 		return m, err
 	}
 	m.Archived = archived
+	m.Interrupted = false
+	m.Queued = 0
 	return m, a.writeSession(m)
 }
 
@@ -104,6 +106,31 @@ func (a *App) PinSession(id string, pinned bool) (SessionMeta, error) {
 	}
 	m.Pinned = pinned
 	return m, a.writeSession(m)
+}
+
+func (a *App) SweepExpiredSessions() int {
+	days := a.Config.SessionRetentionDays
+	if days <= 0 {
+		return 0
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -days)
+	list, err := a.ListSessions()
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, m := range list {
+		if !m.Archived || m.Pinned {
+			continue
+		}
+		if m.CreatedAt.After(cutoff) {
+			continue
+		}
+		if err := a.DeleteSession(m.ID); err == nil {
+			n++
+		}
+	}
+	return n
 }
 
 func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
@@ -378,12 +405,30 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 	client, _ := a.Client()
 	loop = runtime.ApplyChatHorizon(loop)
 	opt := runtime.CompactOpts{Trigger: "user", Focus: focus}
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(focus)), "from ") {
+	scope, from := runtime.ParseRewindScope(focus)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(focus)), "from ") || from != "" {
 		opt.Trigger = "rewind"
-		opt.From = strings.TrimSpace(focus[5:])
+		if from != "" {
+			opt.From = from
+		} else {
+			opt.From = strings.TrimSpace(focus[5:])
+		}
 		opt.Focus = ""
 	}
-	note := runtime.CompactHistoryOpts(a.Traces, id, msgs, loop, spill, client, model, window, frags, opt)
+	note := ""
+	if scope != "files" {
+		note = runtime.CompactHistoryOpts(a.Traces, id, msgs, loop, spill, client, model, window, frags, opt)
+	} else {
+		note = "rewind files"
+		opt.Trigger = "rewind"
+	}
+	if (scope == "files" || scope == "both") && spill != nil {
+		n, err := runtime.RestoreFileSnapshots(spill.Dir, meta.ToolRoot())
+		if err != nil {
+			return note, err
+		}
+		note = fmt.Sprintf("%s · restored %d files", note, n)
+	}
 	runtime.WriteDiscoverIndex(meta.ToolRoot(), id, spill)
 	if a.Hub != nil {
 		a.Hub.Publish(trace.Event{

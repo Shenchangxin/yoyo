@@ -665,7 +665,7 @@ function ArtifactCard({
   const pdf = looksLikePDF(path);
   const office = name.startsWith("office_");
   const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || looksLikeHTML(mcpHtml);
-  const hasPreview = !office && !pdf && (artifactShouldShow(view) || !!mcpHtml);
+  const hasPreview = artifactShouldShow(view) || !!mcpHtml || ((office || pdf) && !!path && !!workspace);
   if (!office && !pdf && name !== "cite_sources" && !hasPreview) return null;
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
@@ -736,7 +736,7 @@ function ArtifactCard({
           {mcpHtml && looksLikeHTML(mcpHtml) && !view.diff && !view.code && !view.html ? (
             <SandboxedFrame html={mcpHtml} title={title} />
           ) : (
-            <ArtifactBody view={view} workspace={workspace} source={source} />
+            <ArtifactBody view={{ ...view, path: view.path || path, kind: view.kind || ((office || pdf) ? "text" : view.kind) }} workspace={workspace} source={source} />
           )}
         </>
       ) : null}

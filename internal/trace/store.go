@@ -156,6 +156,34 @@ func (s *Store) Remove(sessionID string) error {
 	return err
 }
 
+func (s *Store) Replace(sessionID string, evs []Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.path(sessionID)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	enc := json.NewEncoder(f)
+	for i := range evs {
+		ev := evs[i]
+		if ev.ItemKind == "" {
+			ev.ItemKind = ItemKindOf(ev.Type)
+		}
+		if ev.TS.IsZero() {
+			ev.TS = time.Now().UTC()
+		}
+		if err := enc.Encode(ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) ListSessions() ([]string, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if err != nil {

@@ -2,6 +2,7 @@ package office
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +33,28 @@ func TestPptxHasSlides(t *testing.T) {
 	}
 	if n < 3 {
 		t.Fatalf("slides %d", n)
+	}
+}
+
+func TestPDFRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "brief.pdf")
+	if err := Create(p, CreateReq{Kind: KindPDF, Title: "Brief", Body: "Ship Friday"}); err != nil {
+		t.Fatal(err)
+	}
+	text, err := Query(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "Brief") || !strings.Contains(text, "Ship Friday") {
+		t.Fatalf("%q", text)
+	}
+	if err := EditReplace(p, "Friday", "Monday"); err != nil {
+		t.Fatal(err)
+	}
+	text, err = Query(p)
+	if err != nil || !strings.Contains(text, "Monday") {
+		t.Fatalf("%q %v", text, err)
 	}
 }
 

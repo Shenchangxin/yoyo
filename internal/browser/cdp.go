@@ -102,10 +102,14 @@ func (h *Host) ensureCDP() error {
 		"--no-default-browser-check",
 		"--disable-sync",
 		"--disable-extensions",
-		"--headless=new",
-		"--disable-gpu",
-		"about:blank",
 	}
+	h.mu.Lock()
+	headed := h.headed
+	h.mu.Unlock()
+	if !headed {
+		args = append(args, "--headless=new", "--disable-gpu")
+	}
+	args = append(args, "about:blank")
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = h.dir
 	if err := cmd.Start(); err != nil {
@@ -137,6 +141,22 @@ func (h *Host) ensureCDP() error {
 	h.port = port
 	h.mu.Unlock()
 	_, _ = h.cdp.call("Page.enable", nil)
+	_, _ = h.cdp.call("Network.enable", nil)
+	return nil
+}
+
+func (h *Host) dialWS(wsURL string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.cdp = &cdpConn{ws: ws, next: 1}
+	h.mu.Unlock()
+	_, _ = h.cdp.call("Page.enable", nil)
+	_, _ = h.cdp.call("Network.enable", nil)
 	return nil
 }
 
@@ -214,6 +234,13 @@ func (h *Host) navigateCDP(raw string) error {
 func (h *Host) evalJS(expr string) (string, error) {
 	if err := h.ensureCDP(); err != nil {
 		return "", err
+	}
+	return h.evalOnConn(expr)
+}
+
+func (h *Host) evalOnConn(expr string) (string, error) {
+	if h.cdp == nil {
+		return "", fmt.Errorf("browser: no CDP")
 	}
 	raw, err := h.cdp.call("Runtime.evaluate", map[string]any{
 		"expression":    expr,

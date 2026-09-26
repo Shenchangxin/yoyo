@@ -49,8 +49,9 @@ function toolName(item: Item): string {
   return String(item.name || item.payload?.name || "tool");
 }
 
-function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "other" {
+function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "office" | "other" {
   const n = name.toLowerCase();
+  if (/(office_|connector_|browser_|computer_act|clipboard)/.test(n)) return "office";
   if (/(search|grep|glob|find|query|lookup)/.test(n)) return "search";
   if (/(web|http|fetch|browser|url|crawl)/.test(n)) return "web";
   if (/(^|_)(read|view|cat|open)(_|$)/.test(n)) return "read";
@@ -112,6 +113,8 @@ function emotionForTool(item: Item): string {
     case "run":
     case "edit":
       return "32";
+    case "office":
+      return "36";
     default:
       return "32";
   }

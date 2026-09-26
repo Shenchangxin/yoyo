@@ -18,7 +18,7 @@ type nativeStrings struct {
 	Help, About, Doctor, Logs                                                                string
 	Show, Hide, ShowCompanion, HideCompanion, NewChat                                        string
 	ChooseWorkspace, AttachFiles                                                             string
-	TurnFinished, Approval, ErrTitle                                                         string
+	TurnFinished, Approval, ErrTitle, Working                                                string
 }
 
 var nativeEN = nativeStrings{
@@ -29,7 +29,7 @@ var nativeEN = nativeStrings{
 	Help: "Help", About: "About Yoyo", Doctor: "Doctor", Logs: "Logs",
 	Show: "Show Yoyo", Hide: "Hide", ShowCompanion: "Show pet", HideCompanion: "Hide pet", NewChat: "New chat",
 	ChooseWorkspace: "Choose workspace", AttachFiles: "Attach files",
-	TurnFinished: "Turn finished", Approval: "Yoyo approval", ErrTitle: "Yoyo error",
+	TurnFinished: "Turn finished", Approval: "Yoyo approval", ErrTitle: "Yoyo error", Working: "Working",
 }
 
 var nativeZH = nativeStrings{
@@ -40,5 +40,5 @@ var nativeZH = nativeStrings{
 	Help: "帮助", About: "关于 Yoyo", Doctor: "Doctor", Logs: "日志",
 	Show: "显示 Yoyo", Hide: "隐藏", ShowCompanion: "显示宠物", HideCompanion: "隐藏宠物", NewChat: "新对话",
 	ChooseWorkspace: "选择工作区", AttachFiles: "附加文件",
-	TurnFinished: "轮次结束", Approval: "Yoyo 审批", ErrTitle: "Yoyo 错误",
+	TurnFinished: "轮次结束", Approval: "Yoyo 审批", ErrTitle: "Yoyo 错误", Working: "处理中",
 }

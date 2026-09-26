@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/connector"
@@ -80,6 +81,11 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 			writeJSON(w, a.ConnectorConnect(acct))
 			return
 		}
+		if r.Method == http.MethodDelete {
+			id := r.URL.Query().Get("id")
+			writeJSON(w, map[string]any{"ok": a.ConnectorDisconnect(id)})
+			return
+		}
 		writeJSON(w, map[string]any{"accounts": a.ConnectorsList(), "catalog": a.ConnectorCatalog()})
 	})
 	mux.HandleFunc("/api/connectors/oauth", func(w http.ResponseWriter, r *http.Request) {
@@ -87,8 +93,19 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 			Provider string `json:"provider"`
 			ClientID string `json:"client_id"`
 			Redirect string `json:"redirect"`
+			Code     string `json:"code"`
+			Secret   string `json:"secret"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Code != "" {
+			acct, err := a.ConnectorComplete(body.Provider, body.Code, body.ClientID, body.Secret, body.Redirect)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, acct)
+			return
+		}
 		m, err := a.ConnectorAuthURL(body.Provider, body.ClientID, body.Redirect)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
@@ -96,11 +113,37 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, m)
 	})
+	mux.HandleFunc("/api/hooks/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/api/hooks/")
+		if r.Method != http.MethodPost || id == "" {
+			http.Error(w, "method", 405)
+			return
+		}
+		if err := a.TriggerWebhook(id); err != nil {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "awake_required": true})
+	})
 	mux.HandleFunc("/api/isolation", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.IsolationReport())
 	})
 	mux.HandleFunc("/api/review/queue", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.ReviewQueue())
+	})
+	mux.HandleFunc("/api/browser/view", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.BrowserView())
+	})
+	mux.HandleFunc("/api/browser/takeover", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		if err := a.BrowserTakeover(); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("/api/phone", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.PhoneStatus())

@@ -47,6 +47,9 @@ type SessionMeta struct {
 	PinnedSkills     []string `json:"pinned_skills,omitempty"`
 	PlanText         string   `json:"plan_text,omitempty"`
 	AuthMode         string   `json:"auth_mode,omitempty"`
+	// Interrupted/Queued are live annotations from .run.json, not durable meta.
+	Interrupted bool `json:"interrupted,omitempty"`
+	Queued      int  `json:"queued,omitempty"`
 }
 
 func (m SessionMeta) ProjectRoot() string {
@@ -90,14 +93,14 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 		HarnessPolicy:    session.FollowActive,
 		ModelFingerprint: Fingerprint(a.Config),
 		Title:            title,
-		AuthMode:         capability.AuthFull,
+		AuthMode:         capability.AuthDefault,
 	}
 	b, _ := json.MarshalIndent(meta, "", "  ")
 	path := filepath.Join(a.Home.Sessions(), id+".meta.json")
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return meta, err
 	}
-	a.applySessionAuth(id, capability.AuthFull)
+	a.applySessionAuth(id, capability.AuthDefault)
 	return a.attachAuthMode(meta), nil
 }
 
@@ -126,7 +129,7 @@ func (a *App) GetSession(id string) (SessionMeta, error) {
 }
 
 func (a *App) attachAuthMode(m SessionMeta) SessionMeta {
-	mode := capability.AuthFull
+	mode := capability.AuthDefault
 	if a != nil && a.Threads != nil && m.ID != "" {
 		if st := a.Threads.Load(m.ID); strings.TrimSpace(st.AuthMode) != "" {
 			mode = capability.ParseAuthMode(st.AuthMode)
@@ -152,6 +155,8 @@ func (a *App) applySessionAuth(id, mode string) {
 }
 
 func (a *App) writeSession(m SessionMeta) error {
+	m.Interrupted = false
+	m.Queued = 0
 	b, _ := json.MarshalIndent(m, "", "  ")
 	return os.WriteFile(filepath.Join(a.Home.Sessions(), m.ID+".meta.json"), b, 0o644)
 }
@@ -481,6 +486,31 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 		return runtime.MessagesFromEventsOpts(evs, runtime.BindSpill(a.Home.Root, toolRoot, id))
 	}
+	tools.ListThreads = func() []runtime.ThreadRef {
+		list, err := a.ListSessions()
+		if err != nil {
+			return nil
+		}
+		out := make([]runtime.ThreadRef, 0, len(list))
+		for _, m := range list {
+			if m.Archived {
+				continue
+			}
+			out = append(out, runtime.ThreadRef{ID: m.ID, Title: m.Title})
+		}
+		return out
+	}
+	tools.SendThread = func(id, text string) error {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return fmt.Errorf("empty message")
+		}
+		if a.Running(id) {
+			return a.Steer(id, text)
+		}
+		a.Enqueue(id, QueuedTurn{Text: text})
+		return nil
+	}
 	hist := []runtime.Message{}
 	roundSeq := 0
 	if evs, err := a.Traces.Read(sessionID); err == nil {
@@ -525,6 +555,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			inject += extra
 		}
 	}
+	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""
 	if a.Memory != nil {
 		profile = a.Memory.ProfilePin(800)
@@ -538,6 +569,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		TraceID:          turnSpan.TraceID,
 		Observe:          a.Observe,
 		User:             message,
+		UserParts:        userParts,
 		Inject:           inject,
 		Workspace:        toolRoot,
 		Home:             a.Home.Root,

@@ -46,7 +46,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			"body":    body,
 			"session": session,
 		})
-		if ns == nil || !svc.NotifyAllowed() {
+		if kind == "loading" || ns == nil || !svc.NotifyAllowed() {
 			return
 		}
 		if session != "" && !strings.Contains(id, session) {
@@ -68,24 +68,41 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			gui.Event.Emit("yoyo:focus", session)
 		})
 	}
+	dispatch := func(typ, source, session string, payload map[string]any) {
+		kind := companionPulseKind(typ, source)
+		if kind == "" {
+			return
+		}
+		n := nativeCopy(svc.GetConfig().Locale)
+		title := "Yoyo"
+		body := n.TurnFinished
+		id := "yoyo-turn"
+		switch kind {
+		case "loading":
+			title = companionPulseTitle(kind, typ, n.Working, payloadStr(payload, "text"), payloadStr(payload, "name"))
+			body = n.Working
+			id = "yoyo-load"
+		case "approval":
+			title = n.Approval
+			body = payloadStr(payload, "action")
+			id = "yoyo-ask"
+		case "error":
+			title = n.ErrTitle
+			body = notifyError(payload)
+			id = "yoyo-err"
+		case "eval":
+			id = "yoyo-eval"
+		case "evolve":
+			id = "yoyo-evolve"
+		}
+		notify(id, title, body, session, kind)
+	}
 	if svc.App != nil {
 		ch, _ := svc.App.Hub.Subscribe("*")
 		go func() {
 			for ev := range ch {
 				gui.Event.Emit("yoyo:item", ev)
-				n := nativeCopy(svc.GetConfig().Locale)
-				switch string(ev.Type) {
-				case "turn_end":
-					notify("yoyo-turn", "Yoyo", n.TurnFinished, ev.SessionID, "done")
-				case "approval", "ask_user":
-					notify("yoyo-ask", n.Approval, payloadStr(ev.Payload, "action"), ev.SessionID, "approval")
-				case "error":
-					notify("yoyo-err", n.ErrTitle, notifyError(ev.Payload), ev.SessionID, "error")
-				case "eval":
-					notify("yoyo-eval", "Yoyo", n.TurnFinished, ev.SessionID, "eval")
-				case "evolve":
-					notify("yoyo-evolve", "Yoyo", n.TurnFinished, ev.SessionID, "evolve")
-				}
+				dispatch(string(ev.Type), ev.Source, ev.SessionID, ev.Payload)
 			}
 		}()
 	} else if svc.RPC != nil {
@@ -98,21 +115,10 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				var m map[string]any
 				_ = json.Unmarshal(msg.Params, &m)
 				typ, _ := m["type"].(string)
+				source, _ := m["source"].(string)
 				payload, _ := m["payload"].(map[string]any)
 				session, _ := m["session_id"].(string)
-				n := nativeCopy(svc.GetConfig().Locale)
-				switch typ {
-				case "turn_end":
-					notify("yoyo-turn", "Yoyo", n.TurnFinished, session, "done")
-				case "approval", "ask_user":
-					notify("yoyo-ask", n.Approval, payloadStr(payload, "action"), session, "approval")
-				case "error":
-					notify("yoyo-err", n.ErrTitle, notifyError(payload), session, "error")
-				case "eval":
-					notify("yoyo-eval", "Yoyo", n.TurnFinished, session, "eval")
-				case "evolve":
-					notify("yoyo-evolve", "Yoyo", n.TurnFinished, session, "evolve")
-				}
+				dispatch(typ, source, session, payload)
 			}
 		}()
 	}

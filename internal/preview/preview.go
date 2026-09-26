@@ -35,6 +35,8 @@ func Render(path string) (string, error) {
 			return "", err
 		}
 		return text, nil
+	case ".pdf":
+		return office.Query(path)
 	default:
 		raw, err := os.ReadFile(path)
 		if err != nil {

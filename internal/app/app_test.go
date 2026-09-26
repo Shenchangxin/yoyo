@@ -854,11 +854,11 @@ func TestSessionAuthMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.AuthMode != capability.AuthFull {
+	if sess.AuthMode != capability.AuthDefault {
 		t.Fatalf("new session auth %q", sess.AuthMode)
 	}
-	if err := a.Caps.Check(capability.Request{Level: capability.Shell, SessionID: sess.ID}); err != nil {
-		t.Fatalf("full access should grant shell: %v", err)
+	if lv := capability.AuthModeLevels(sess.AuthMode); len(lv) != 0 {
+		t.Fatalf("default must not auto-grant shell/network: %v", lv)
 	}
 	got, err := a.SetSessionAuthMode(sess.ID, capability.AuthAsk)
 	if err != nil {

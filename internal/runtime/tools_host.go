@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/tool"
@@ -80,7 +81,7 @@ func init() {
 		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
 	}
 	hostFns["read_thread"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.readThread(str(args["session_id"]), str(args["query"]))
+		return t.readThread(str(args["session_id"]), str(args["query"]), str(args["message"]))
 	}
 	hostFns["update_plan"] = func(t *WorkspaceTools, _ map[string]any, raw string) ToolResult {
 		return t.updatePlan(raw)
@@ -140,7 +141,11 @@ func init() {
 		return t.scheduleCancel(str(args["id"]))
 	}
 	hostFns["browser_open"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.browserOpen(str(args["url"]))
+		raw := str(args["url"])
+		if lane := str(args["lane"]); lane != "" {
+			raw = strings.TrimSpace(raw + " lane=" + lane)
+		}
+		return t.browserOpen(raw)
 	}
 	hostFns["browser_snapshot"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
 		return t.browserSnapshot()
@@ -156,6 +161,15 @@ func init() {
 	}
 	hostFns["browser_download"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.browserDownload(str(args["url"]), str(args["path"]))
+	}
+	hostFns["browser_screenshot"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserScreenshot(str(args["path"]))
+	}
+	hostFns["browser_takeover"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserTakeover(str(args["question"]))
+	}
+	hostFns["browser_cookies"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserCookies(str(args["path"]))
 	}
 	hostFns["clipboard_read"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
 		return t.clipboardRead()

@@ -20,6 +20,7 @@ type RunRequest struct {
 	TraceID          string
 	TaskID           string
 	User             string
+	UserParts        []ContentPart
 	Workspace        string
 	Home             string
 	Harness          artifact.HarnessSnapshot

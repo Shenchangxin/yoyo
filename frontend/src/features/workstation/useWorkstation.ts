@@ -7,7 +7,10 @@ import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
-import { useUI } from "../../lib/store";
+import { coerceInspTab, useUI } from "../../lib/store";
+import { looksLikeHTMLFile } from "../../lib/html-preview";
+import { pathFromPatch } from "../../lib/artifact-preview";
+import { toolArgs, toolName } from "../../lib/tool-summary";
 import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
@@ -122,8 +125,7 @@ function localUser(sessionId: string, text: string): Item {
 
 function readInspTab(id: string) {
   try {
-    const v = localStorage.getItem(`yoyo-insp-${id}`);
-    if (v === "diff" || v === "files" || v === "trace" || v === "queue" || v === "memory") return v;
+    return coerceInspTab(localStorage.getItem(`yoyo-insp-${id}`));
   } catch {
     /* ignore */
   }
@@ -160,6 +162,7 @@ export function useWorkstation() {
   const setQuery = useUI((s) => s.setQuery);
   const inspTab = useUI((s) => s.inspTab);
   const setInspTab = useUI((s) => s.setInspTab);
+  const setReviewFile = useUI((s) => s.setReviewFile);
   const diffMode = useUI((s) => s.diffMode);
   const setDiffMode = useUI((s) => s.setDiffMode);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
@@ -183,6 +186,7 @@ export function useWorkstation() {
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
   const [queued, setQueued] = useState(0);
+  const [queueItems, setQueueItems] = useState<{ id?: string; text?: string; plan?: boolean }[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [running, setRunning] = useState<Record<string, boolean>>({});
   const endedAt = useRef<Record<string, number>>({});
@@ -392,9 +396,10 @@ export function useWorkstation() {
 
   useEffect(() => {
     if (!activeId) return;
+    setReviewFile("");
     const saved = readInspTab(activeId);
     if (saved) setInspTab(saved);
-  }, [activeId, setInspTab]);
+  }, [activeId, setInspTab, setReviewFile]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -490,6 +495,7 @@ export function useWorkstation() {
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);
+    setQueueItems([]);
     setCtx(emptyCtx);
     const unsub = subscribeSession(
       activeId,
@@ -520,10 +526,27 @@ export function useWorkstation() {
         if (item.type === "approval") {
           api.approvals().then(setApprovals).catch(() => {});
         }
+        if (item.type === "tool_call") {
+          const name = toolName(item);
+          if (name === "browser_open" || name === "browser_takeover") {
+            setInspector(true);
+            setInspTab("browser");
+          }
+          const args = toolArgs(item);
+          const path = String(args.path || pathFromPatch(String(args.patch || args.diff || "")) || "");
+          if (looksLikeHTMLFile(path)) {
+            setReviewFile(path);
+            setInspector(true);
+            setInspTab("browser");
+          }
+        }
         if (item.type === "turn_end" || item.type === "error") {
           markEnded(activeId);
           api.contextUsage(activeId).then(setCtx).catch(() => {});
-          api.queueList(activeId).then((q) => setQueued(q.length)).catch(() => setQueued(0));
+          api.queueList(activeId).then((q) => {
+            setQueueItems(q);
+            setQueued(q.length);
+          }).catch(() => { setQueued(0); setQueueItems([]); });
         }
       },
       (seed) => {
@@ -690,10 +713,13 @@ export function useWorkstation() {
       }
       const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
       if (wasRunning || res.queued) {
-        setQueued((n) => n + 1);
+        const q = await api.queueList(t.id).catch(() => []);
+        setQueueItems(q);
+        setQueued(q.length || 1);
         toast.message(copy.app.queued);
       } else {
         setQueued(0);
+        setQueueItems([]);
       }
     } catch (e) {
       const m = api.errMessage(e);
@@ -703,6 +729,22 @@ export function useWorkstation() {
         return;
       }
       if (activeId) markEnded(activeId);
+      fail(e);
+    }
+  }
+
+  async function onContinueLast() {
+    const ch = surface === "video" ? "video" : "agent";
+    const last = useUI.getState().lastThreadId(ch);
+    const hit = threads.find((t) => t.id === last)
+      || threads.find((t) => t.interrupted || (t.queued || 0) > 0)
+      || threads.find((t) => threadChannel(t) === ch);
+    if (!hit) return;
+    openThread(hit);
+    if (running[hit.id]) return;
+    try {
+      await api.retry(hit.id);
+    } catch (e) {
       fail(e);
     }
   }
@@ -761,9 +803,19 @@ export function useWorkstation() {
       return;
     }
     if (raw === "remember") {
-      const text = rest.trim();
+      let text = rest.trim();
       if (!text) return;
-      await api.memoryWrite("episodic", text);
+      let kind = "episodic";
+      const low = text.toLowerCase();
+      if (low.startsWith("profile ")) {
+        kind = "profile";
+        text = text.slice(8).trim();
+      } else if (low.startsWith("pin ")) {
+        kind = "profile";
+        text = text.slice(4).trim();
+      }
+      if (!text) return;
+      await api.memoryWrite(kind, text);
       toast.success(copy.settings.save);
       return;
     }
@@ -794,9 +846,11 @@ export function useWorkstation() {
     }
     if (raw === "fork") {
       if (!activeId) return;
-      const t = await api.forkSession(activeId);
+      const from = rest.replace(/^from\s+/i, "").trim();
+      const t = await api.forkSession(activeId, from);
       setThreads((prev) => [t, ...prev]);
       setActive(t);
+      toast.success(copy.app.forked);
       return;
     }
     if (raw === "archive") {
@@ -820,7 +874,16 @@ export function useWorkstation() {
     }
     if (raw === "rewind") {
       if (!activeId) return;
-      const focus = rest.trim() ? "from " + rest.trim() : "from ";
+      const r = rest.trim();
+      let focus = "both";
+      if (r) {
+        const low = r.toLowerCase();
+        if (low.startsWith("files") || low.startsWith("both") || low.startsWith("conversation") || low.startsWith("chat") || low.startsWith("from ")) {
+          focus = r;
+        } else {
+          focus = "both from " + r;
+        }
+      }
       const note = await api.compactSession(activeId, focus);
       toast.success(note || copy.app.compacted);
       refreshCtx();
@@ -836,8 +899,19 @@ export function useWorkstation() {
     }
     if (raw === "export") {
       const md = await api.exportSession(activeId);
-      await navigator.clipboard.writeText(md);
-      toast.success(copy.app.exported);
+      const dump = await api.dumpSession(activeId).catch(() => ({ path: "" }));
+      const blob = dump.path ? `${md}\n\nDump: ${dump.path}` : md;
+      await navigator.clipboard.writeText(blob);
+      toast.success(dump.path ? copy.app.dumped : copy.app.exported);
+      return;
+    }
+    if (raw === "context") {
+      if (!activeId) return;
+      const u = await api.contextUsage(activeId);
+      const layers = (u.layers || []).filter(Boolean).join(" · ");
+      const line = `${u.tokens || 0}/${u.budget || 0}${u.window ? ` · window ${u.window}` : ""}${layers ? ` · ${layers}` : ""}${u.note ? ` · ${u.note}` : ""}`;
+      toast.message(line.trim() || copy.review.context);
+      refreshCtx();
       return;
     }
     if (raw === "artifact") {
@@ -1138,14 +1212,35 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, approvals, running, runStatus, queued, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
+    onQueueCancel: async (id: string) => {
+      if (!activeId) return;
+      await api.queueCancel(activeId, id);
+      const q = await api.queueList(activeId).catch(() => []);
+      setQueueItems(q);
+      setQueued(q.length);
+    },
+    onQueueReorder: async (id: string, delta: number) => {
+      if (!activeId) return;
+      await api.queueReorder(activeId, id, delta);
+      const q = await api.queueList(activeId).catch(() => []);
+      setQueueItems(q);
+      setQueued(q.length);
+    },
+    onApplyWorktree: async () => {
+      if (!activeId) return;
+      const t = await api.applySessionWorktree(activeId);
+      setActive(t);
+      setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
+      toast.success(copy.app.worktreeApplied);
+    },
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };
 }

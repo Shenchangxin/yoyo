@@ -77,6 +77,11 @@ func (a *App) ResolveSessionID(query string) (string, error) {
 	if a.sessionOnDisk(q) {
 		return q, nil
 	}
+	if a.Traces != nil && strings.Contains(q, "/tasks/") {
+		if evs, err := a.Traces.Read(q); err == nil && len(evs) > 0 {
+			return q, nil
+		}
+	}
 	var matches []string
 	for _, id := range ids {
 		if strings.HasPrefix(id, q) {

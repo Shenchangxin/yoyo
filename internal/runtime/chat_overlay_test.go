@@ -10,7 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
-func TestApplyChatToolMenuOmitsOffice(t *testing.T) {
+func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	var all []string
 	for _, s := range tool.HostSpecs() {
 		all = append(all, s.Name)
@@ -20,8 +20,8 @@ func TestApplyChatToolMenuOmitsOffice(t *testing.T) {
 	if !strings.Contains(joined, "read_file") || !strings.Contains(joined, "shell") {
 		t.Fatalf("core missing: %v", got)
 	}
-	if strings.Contains(joined, "office_create") || strings.Contains(joined, "browser_open") {
-		t.Fatalf("personal schema still dumps office/browser: %v", got)
+	if !strings.Contains(joined, "office_create") || !strings.Contains(joined, "browser_open") || !strings.Contains(joined, "connector_read") {
+		t.Fatalf("office ladder must be first-class: %v", got)
 	}
 }
 
@@ -35,23 +35,26 @@ func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	if !strings.Contains(names, "read_file") || !strings.Contains(names, "tool_search") {
 		t.Fatalf("core/search missing: %s", names)
 	}
-	if strings.Contains(names, "office_create") {
-		t.Fatalf("office_create should be deferred: %s", names)
+	if !strings.Contains(names, "office_create") || !strings.Contains(names, "connector_read") {
+		t.Fatalf("office ladder should be advertised: %s", names)
 	}
-	search := tools.Call("tool_search", `{"query":"office"}`)
-	if search.Err != nil || !strings.Contains(search.Content, "office_create") {
+	if strings.Contains(names, "memory_write") {
+		t.Fatalf("memory_write should still be deferred: %s", names)
+	}
+	search := tools.Call("tool_search", `{"query":"memory"}`)
+	if search.Err != nil || !strings.Contains(search.Content, "memory_write") {
 		t.Fatalf("tool_search should unlock host specs: %+v", search)
 	}
 	js = AllToolJSON(tools)
 	names = toolJSONNames(js)
-	if strings.Contains(names, "office_create") {
-		t.Fatal("office_create must wait until checkpoint")
+	if strings.Contains(names, "memory_write") {
+		t.Fatal("memory_write must wait until checkpoint")
 	}
 	tools.CommitToolUnlocks()
 	js = AllToolJSON(tools)
 	names = toolJSONNames(js)
-	if !strings.Contains(names, "office_create") {
-		t.Fatal("office_create not advertised after checkpoint unlock")
+	if !strings.Contains(names, "memory_write") {
+		t.Fatal("memory_write not advertised after checkpoint unlock")
 	}
 }
 

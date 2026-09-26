@@ -51,6 +51,47 @@ func TestRetryDoesNotQueue(t *testing.T) {
 	}
 }
 
+func TestQueueCancelAndReorder(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
+	a.mu.Unlock()
+	if err := a.StartSendOpts(sess.ID, "one", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatal(err)
+	}
+	if err := a.StartSendOpts(sess.ID, "two", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatal(err)
+	}
+	if err := a.StartSendOpts(sess.ID, "three", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatal(err)
+	}
+	q := a.QueueList(sess.ID)
+	if len(q) != 3 || q[0].ID == "" {
+		t.Fatalf("%+v", q)
+	}
+	if !a.QueueReorder(sess.ID, q[2].ID, -1) {
+		t.Fatal("reorder")
+	}
+	q = a.QueueList(sess.ID)
+	if q[1].Text != "three" {
+		t.Fatalf("reorder %+v", q)
+	}
+	if !a.QueueCancel(sess.ID, q[0].ID) {
+		t.Fatal("cancel")
+	}
+	if got := a.QueueList(sess.ID); len(got) != 2 {
+		t.Fatalf("after cancel %+v", got)
+	}
+}
+
 // A finished loop must stop reporting Running() even while the slot is still
 // held for post-turn bookkeeping — otherwise the UI's 1.5s poll resurrects the
 // spinner after it already saw turn_end. A second send still queues.

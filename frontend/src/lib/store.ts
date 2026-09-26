@@ -4,7 +4,13 @@ import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 import type { VoicePhase } from "../features/presence/types";
 
-export type InspTab = "diff" | "files" | "trace" | "queue" | "memory";
+export type InspTab = "files" | "browser" | "trace";
+
+export function coerceInspTab(v: string | null | undefined): InspTab | null {
+  if (v === "files" || v === "browser" || v === "trace") return v;
+  if (v === "changes" || v === "diff" || v === "queue" || v === "memory") return "files";
+  return null;
+}
 export type DiffMode = "unified" | "split";
 
 type UIState = {
@@ -19,6 +25,7 @@ type UIState = {
   palette: boolean;
   query: string;
   inspTab: InspTab;
+  reviewFile: string;
   diffMode: DiffMode;
   plan: boolean;
   drafts: Record<string, string>;
@@ -57,6 +64,7 @@ type UIState = {
   setPalette: (v: boolean | ((p: boolean) => boolean)) => void;
   setQuery: (q: string) => void;
   setInspTab: (t: InspTab) => void;
+  setReviewFile: (path: string) => void;
   setDiffMode: (m: DiffMode) => void;
   setPlan: (v: boolean | ((p: boolean) => boolean)) => void;
   setDraft: (key: string, value: string) => void;
@@ -168,7 +176,8 @@ export const useUI = create<UIState>((set, get) => ({
   chatDock: readChatDock(),
   palette: false,
   query: "",
-  inspTab: "diff",
+  inspTab: "files",
+  reviewFile: "",
   diffMode: readDiffMode(),
   plan: false,
   drafts: {},
@@ -297,7 +306,8 @@ export const useUI = create<UIState>((set, get) => ({
     }),
   setPalette: (v) => set((s) => ({ palette: typeof v === "function" ? v(s.palette) : v })),
   setQuery: (query) => set({ query }),
-  setInspTab: (inspTab) => set({ inspTab }),
+  setInspTab: (inspTab) => set({ inspTab: coerceInspTab(inspTab) || "files" }),
+  setReviewFile: (reviewFile) => set({ reviewFile: reviewFile || "" }),
   setDiffMode: (diffMode) => {
     try {
       localStorage.setItem("yoyo-diff-mode", diffMode);

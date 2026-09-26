@@ -13,18 +13,21 @@ type CatalogEntry struct {
 	Kind     Kind   `json:"kind"`
 	Label    string `json:"label"`
 	AuthURL  string `json:"auth_url,omitempty"`
+	MCPPack  bool   `json:"mcp_pack,omitempty"`
 }
 
 func Catalog() []CatalogEntry {
 	return []CatalogEntry{
 		{Provider: "gmail", Kind: KindMail, Label: "Gmail", AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
 		{Provider: "outlook", Kind: KindMail, Label: "Outlook", AuthURL: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"},
-		{Provider: "feishu", Kind: KindIM, Label: "Feishu / 飞书", AuthURL: "https://open.feishu.cn/open-apis/authen/v1/index"},
-		{Provider: "dingtalk", Kind: KindIM, Label: "DingTalk / 钉钉", AuthURL: "https://login.dingtalk.com/oauth2/auth"},
-		{Provider: "wecom", Kind: KindIM, Label: "WeCom / 企业微信"},
+		{Provider: "gcal", Kind: KindCalendar, Label: "Google Calendar", AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
+		{Provider: "feishu", Kind: KindIM, Label: "Feishu / 飞书", AuthURL: "https://open.feishu.cn/open-apis/authen/v1/index", MCPPack: true},
+		{Provider: "dingtalk", Kind: KindIM, Label: "DingTalk / 钉钉", AuthURL: "https://login.dingtalk.com/oauth2/auth", MCPPack: true},
+		{Provider: "wecom", Kind: KindIM, Label: "WeCom / 企业微信", MCPPack: true},
+		{Provider: "wechat", Kind: KindIM, Label: "WeChat assistant (MCP-pack)", MCPPack: true},
 		{Provider: "slack", Kind: KindIM, Label: "Slack", AuthURL: "https://slack.com/oauth/v2/authorize"},
-		{Provider: "notion", Kind: KindDrive, Label: "Notion", AuthURL: "https://api.notion.com/v1/oauth/authorize"},
-		{Provider: "github", Kind: KindDrive, Label: "GitHub", AuthURL: "https://github.com/login/oauth/authorize"},
+		{Provider: "notion", Kind: KindDrive, Label: "Notion", AuthURL: "https://api.notion.com/v1/oauth/authorize", MCPPack: true},
+		{Provider: "github", Kind: KindDrive, Label: "GitHub", AuthURL: "https://github.com/login/oauth/authorize", MCPPack: true},
 		{Provider: "local", Kind: KindMail, Label: "Local mailbox (IMAP/MCP)"},
 	}
 }
@@ -33,12 +36,12 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 	state := nonce()
 	var raw string
 	switch strings.ToLower(provider) {
-	case "gmail":
+	case "gmail", "gcal":
 		q := url.Values{
 			"client_id":     {clientID},
 			"redirect_uri":  {redirect},
 			"response_type": {"code"},
-			"scope":         {"https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose"},
+			"scope":         {"https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events"},
 			"state":         {state},
 			"access_type":   {"offline"},
 		}
@@ -48,7 +51,7 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 			"client_id":     {clientID},
 			"redirect_uri":  {redirect},
 			"response_type": {"code"},
-			"scope":         {"offline_access Mail.Read Mail.ReadWrite Calendars.Read"},
+			"scope":         {"offline_access Mail.Read Mail.ReadWrite Mail.Send Calendars.Read Calendars.ReadWrite"},
 			"state":         {state},
 		}
 		raw = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" + q.Encode()

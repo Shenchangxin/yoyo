@@ -6,6 +6,8 @@ test("opens the agent without a setup dialog", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("dialog", { name: /Set up this workstation/i })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sessions", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue last" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
 });
 
@@ -114,6 +116,11 @@ test("module docks toggle back to chat", async ({ page }) => {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
   });
   await page.goto("/");
+  await page.getByRole("button", { name: "Skills", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toBeVisible();
+  await page.getByRole("button", { name: "Sessions", exact: true }).click();
+  await expect(page.getByTestId("skills-workspace")).toHaveCount(0);
+  await expect(page.getByTestId("conversation-column")).toBeVisible();
   await page.getByRole("button", { name: "Skills", exact: true }).click();
   await expect(page.getByTestId("skills-workspace")).toBeVisible();
   await page.getByRole("button", { name: "Skills", exact: true }).click();
@@ -379,16 +386,25 @@ test("continue this turn posts retry instead of a new user message", async ({ pa
   expect(await leaked).toBe(false);
 });
 
-test("review pane has diff files and trace", async ({ page }) => {
+test("review pane has files browser and trace", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Toggle review" }).click();
   await expect(page.getByRole("tablist", { name: "Review" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /^Diff/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Files/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Browser/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Trace/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Changes/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Diff/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Queue/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Memory/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /Context/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
+  await expect(page.getByTestId("review-file-tree")).toBeVisible();
+  await expect(page.getByTestId("file-tree-src/main.go")).toBeVisible();
+  await page.getByRole("button", { name: "Inbox" }).click();
+  await expect(page.getByTestId("inbox-menu")).toBeVisible();
+  await expect(page.getByTestId("inbox-menu")).toContainText("Nothing is waiting on you.");
 });
 
 test("trace tab shows trajectory and artifacts", async ({ page }) => {
@@ -694,9 +710,8 @@ test("office artifacts land as review cards", async ({ page }) => {
   await expect(card.getByText("reports/week.docx")).toBeVisible();
   await expect(card.getByRole("button", { name: "Open in Review" })).toBeVisible();
   await expect(card.getByRole("button", { name: "Open", exact: true })).toHaveCount(0);
-  await expect(card.getByRole("button", { name: "Preview" })).toHaveCount(0);
   await card.getByRole("button", { name: "Open in Review" }).click();
-  await expect(page.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: /^Files/ })).toHaveAttribute("aria-selected", "true");
 });
 
 test("review file preview fills the pane and highlights source", async ({ page }) => {
@@ -775,6 +790,60 @@ test("write_file html and str_replace render as previewable artifacts", async ({
   await expect(diff).toContainText("oldFn");
   await expect(diff).toContainText("newFn");
   await expect(page.getByTestId("artifact-card").first()).toContainText("index.html");
+});
+
+test("html artifacts open in the review browser pane", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "build the page" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "w1",
+          name: "write_file",
+          arguments: JSON.stringify({
+            path: "web/index.html",
+            content: "<!doctype html><html><body><h1>Hello RBAC</h1></body></html>",
+          }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "w1", name: "write_file", content: "wrote web/index.html" } },
+    ],
+  });
+  await page.goto("/");
+  await page.getByTestId("artifact-card").getByRole("button", { name: "Open in Review" }).click();
+  await expect(page.getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("review-browser")).toBeVisible();
+  await expect(page.getByTestId("review-browser").getByTestId("html-preview")).toBeVisible();
+});
+
+test("review browser follows a live isolated page", async ({ page }) => {
+  const gif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [{ type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "open it" } }],
+    browser: {
+      live: true,
+      url: "https://example.com",
+      title: "Example",
+      lane: "isolated",
+      headed: false,
+      screenshot: gif,
+      text: "Example Domain",
+      log: [{ op: "open", detail: "https://example.com" }],
+    },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle review" }).click();
+  await page.getByRole("tab", { name: "Browser" }).click();
+  await expect(page.getByTestId("review-browser")).toBeVisible();
+  await expect(page.getByTestId("browser-frame")).toBeVisible();
+  await expect(page.getByTestId("browser-url")).toContainText("example.com");
+  await expect(page.getByTestId("browser-takeover")).toBeVisible();
+  await expect(page.getByText("open", { exact: true })).toBeVisible();
 });
 
 test("write_file of source stays in the process rail without a preview card", async ({ page }) => {
@@ -988,4 +1057,15 @@ test("companion surface does not render the workstation", async ({ page }) => {
   await expect(page.getByRole("button", { name: "New chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+});
+
+test("companion bubble shows loading while a turn is running", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "live", created_at: "2026-01-01T00:00:00Z" }],
+    running: true,
+  });
+  await page.goto("/?surface=companion");
+  await expect(page.getByTestId("companion-bubble")).toHaveAttribute("data-loading", "true");
+  await expect(page.getByTestId("companion-bubble")).toHaveClass(/is-loading/);
+  await expect(page.locator(".companion-dots")).toBeVisible();
 });

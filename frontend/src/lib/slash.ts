@@ -17,6 +17,7 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
     { cmd: "/steer", hint: copy.slash.steer },
     { cmd: "/compact", hint: copy.slash.compact },
     { cmd: "/rewind", hint: copy.slash.rewind },
+    { cmd: "/context", hint: copy.slash.context },
     { cmd: "/model", hint: copy.slash.model },
     { cmd: "/export", hint: copy.slash.export },
     { cmd: "/stop", hint: copy.slash.stop },

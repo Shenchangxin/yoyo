@@ -26,11 +26,18 @@ type Host struct {
 	mu      sync.Mutex
 	dir     string
 	url     string
+	title   string
 	profile string
+	lane    string
 	log     []map[string]any
 	cmd     *exec.Cmd
 	cdp     *cdpConn
 	port    int
+	headed  bool
+	snap    string
+	frame   string
+	frameAt time.Time
+	syncing bool
 }
 
 func Open(dir string) (*Host, error) {
@@ -86,12 +93,16 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 	}
 	snap := Snapshot{URL: u.String(), Title: u.Host, Text: text, Profile: h.profile}
 	if err := h.navigateCDP(u.String()); err == nil {
-		if body, err := h.evalJS("document.body ? document.body.innerText : ''"); err == nil && body != "" && body != "<nil>" {
-			snap.Text = body
-			if len(snap.Text) > 8000 {
-				snap.Text = snap.Text[:8000]
-			}
+		time.Sleep(350 * time.Millisecond)
+		h.syncView()
+		h.mu.Lock()
+		if h.title != "" {
+			snap.Title = h.title
 		}
+		if h.snap != "" {
+			snap.Text = h.snap
+		}
+		h.mu.Unlock()
 	}
 	h.record("open", raw)
 	return snap, nil
@@ -102,6 +113,7 @@ func (h *Host) Click(sel string) error {
 	if err := h.clickCDP(sel); err != nil {
 		return fmt.Errorf("browser: isolated profile click failed: %w", err)
 	}
+	h.syncView()
 	return nil
 }
 
@@ -110,17 +122,40 @@ func (h *Host) Type(sel, text string) error {
 	if err := h.typeCDP(sel, text); err != nil {
 		return fmt.Errorf("browser: isolated profile type failed: %w", err)
 	}
+	h.syncView()
 	return nil
 }
 
 func (h *Host) Fill(sel, text string) error { return h.Type(sel, text) }
 
 func (h *Host) Download(raw, dest string) error {
-	snap, err := h.OpenURL(raw)
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return fmt.Errorf("browser: need http(s) URL")
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dest, []byte(snap.Text), 0o644)
+	req.Header.Set("User-Agent", "YoyoBrowser/0.3")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, io.LimitReader(resp.Body, 64<<20))
+	h.record("download", raw)
+	return err
 }
 
 func (h *Host) Log() []map[string]any {

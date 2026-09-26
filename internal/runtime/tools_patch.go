@@ -88,6 +88,7 @@ func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return ToolResult{Err: err}
 	}
+	t.snapshotBeforeWrite(rel, p)
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}

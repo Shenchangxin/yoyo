@@ -46,6 +46,7 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	if loop.TaskMaxToolMessages < ChatTaskMaxTools {
 		loop.TaskMaxToolMessages = ChatTaskMaxTools
 	}
+	loop.StackAgentsMD = true
 	return loop
 }
 

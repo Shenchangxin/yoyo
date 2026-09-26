@@ -30,6 +30,10 @@ export function ChatDock(props: {
   onWorkspace?: (path: string) => void;
   onBrowseWorkspace?: () => void;
   onIsolate?: (isolate: boolean) => void;
+  onApplyWorktree?: () => void;
+  queueItems?: { id?: string; text?: string; plan?: boolean }[];
+  onQueueCancel?: (id: string) => void;
+  onQueueReorder?: (id: string, delta: number) => void;
   onSend: (opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) => void;
   onStop: () => void;
   onClipboard?: () => Promise<string>;
@@ -60,6 +64,9 @@ export function ChatDock(props: {
         provider={props.provider}
         ctx={props.ctx}
         queued={props.queued}
+        queueItems={props.queueItems}
+        onQueueCancel={props.onQueueCancel}
+        onQueueReorder={props.onQueueReorder}
         files={props.files}
         skills={props.skills}
         authMode={props.authMode}
@@ -72,6 +79,7 @@ export function ChatDock(props: {
         onWorkspace={props.onWorkspace}
         onBrowseWorkspace={props.onBrowseWorkspace}
         onIsolate={props.onIsolate}
+        onApplyWorktree={props.onApplyWorktree}
         onSend={props.onSend}
         onStop={props.onStop}
         onSlash={props.onSlash}

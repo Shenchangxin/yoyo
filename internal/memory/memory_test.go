@@ -1,6 +1,9 @@
 package memory
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestForgetRemoves(t *testing.T) {
 	s, err := Open(t.TempDir())
@@ -25,14 +28,7 @@ func TestProfilePinSkipsStaging(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Write(Item{Kind: KindProfile, Text: "call me Ada"})
-	if pin := s.ProfilePin(200); pin != "" {
-		t.Fatal("staging must not pin")
-	}
-	id := s.Search("", KindProfile, 1)[0].ID
-	if !s.Promote(id) {
-		t.Fatal("promote")
-	}
-	if s.ProfilePin(200) == "" {
-		t.Fatal("promoted pin")
+	if pin := s.ProfilePin(200); !strings.Contains(pin, "Ada") {
+		t.Fatalf("profile writes pin immediately: %q", pin)
 	}
 }

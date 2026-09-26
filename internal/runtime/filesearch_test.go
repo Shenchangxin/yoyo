@@ -25,4 +25,8 @@ func TestFuzzySearch(t *testing.T) {
 	if len(all) < 2 {
 		t.Fatalf("%+v", all)
 	}
+	tree := ListTree(dir, 20)
+	if len(tree) < 2 {
+		t.Fatalf("tree %+v", tree)
+	}
 }

@@ -66,6 +66,36 @@ func TestSessionIsolateAndPins(t *testing.T) {
 	}
 }
 
+func TestApplySessionWorktree(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	if err := os.WriteFile(filepath.Join(ws, "note.txt"), []byte("origin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.SetSessionIsolate(sess.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(got.ToolRoot(), "note.txt"), []byte("isolate"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.ApplySessionWorktree(sess.ID); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(ws, "note.txt"))
+	if err != nil || string(raw) != "isolate" {
+		t.Fatalf("origin %q %v", raw, err)
+	}
+}
+
 func TestInboxDismiss(t *testing.T) {
 	dir := t.TempDir()
 	box, err := inbox.Open(dir)

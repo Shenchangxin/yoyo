@@ -1653,3 +1653,58 @@ html.companion .presence-engine svg {
   transform: translateY(0);
   pointer-events: auto;
 }
+.companion-bubble.is-loading {
+  padding-top: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.companion-bubble-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.companion-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.companion-dots i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground, #f2ede6) 78%, transparent);
+  animation: companion-dot 1s ease-in-out infinite;
+}
+.companion-dots i:nth-child(2) { animation-delay: 160ms; }
+.companion-dots i:nth-child(3) { animation-delay: 320ms; }
+@keyframes companion-dot {
+  0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+.companion-bubble.is-loading::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 18%;
+  left: 18%;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #e8b86d) 78%, transparent);
+  animation: companion-load 1.15s var(--ease-out, ease) infinite;
+}
+@keyframes companion-load {
+  0%, 100% { opacity: 0.28; transform: scaleX(0.45); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .companion-dots i,
+  .companion-bubble.is-loading::before {
+    animation: none;
+    opacity: 0.7;
+    transform: none;
+  }
+}

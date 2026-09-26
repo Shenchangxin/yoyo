@@ -8,6 +8,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/home"
+	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
 // WorkspaceReady reports whether p is a real directory the harness can use.
@@ -116,6 +117,18 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 		raw = raw[:previewFileBytes]
 		truncated = true
 	}
+	ext := strings.ToLower(filepath.Ext(p))
+	if officeText, err := officePreviewText(p, ext); err == nil && officeText != "" {
+		return map[string]any{
+			"path":      filepath.ToSlash(rel),
+			"text":      officeText,
+			"lang":      "text",
+			"html":      false,
+			"bytes":     len(raw),
+			"truncated": truncated,
+			"office":    true,
+		}, nil
+	}
 	if looksBinary(raw) {
 		return map[string]any{
 			"path":      filepath.ToSlash(rel),
@@ -124,7 +137,6 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 			"truncated": truncated,
 		}, nil
 	}
-	ext := strings.ToLower(filepath.Ext(p))
 	html := ext == ".html" || ext == ".htm" || ext == ".xhtml"
 	return map[string]any{
 		"path":      filepath.ToSlash(rel),
@@ -134,6 +146,15 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 		"bytes":     len(raw),
 		"truncated": truncated,
 	}, nil
+}
+
+func officePreviewText(path, ext string) (string, error) {
+	switch ext {
+	case ".docx", ".xlsx", ".pptx", ".pdf":
+		return office.Query(path)
+	default:
+		return "", os.ErrInvalid
+	}
 }
 
 func looksBinary(b []byte) bool {

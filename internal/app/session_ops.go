@@ -29,6 +29,10 @@ func (a *App) RenameSession(id, title string) error {
 }
 
 func (a *App) ForkSession(id string) (SessionMeta, error) {
+	return a.ForkSessionFrom(id, "")
+}
+
+func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	src, err := a.GetSession(id)
 	if err != nil {
 		return SessionMeta{}, err
@@ -66,6 +70,30 @@ func (a *App) ForkSession(id string) (SessionMeta, error) {
 			filepath.Join(src.ProjectRoot(), ".yoyo", "context", src.ID),
 			filepath.Join(src.ProjectRoot(), ".yoyo", "context", dst.ID),
 		)
+	}
+	from = strings.TrimSpace(from)
+	if from != "" && a.Traces != nil {
+		evs, err := a.Traces.Read(dst.ID)
+		if err == nil {
+			cut := -1
+			for i, ev := range evs {
+				if ev.Type != "user" {
+					continue
+				}
+				text, _ := ev.Payload["text"].(string)
+				if strings.Contains(text, from) {
+					cut = i
+					break
+				}
+			}
+			if cut > 0 {
+				keep := evs[cut:]
+				for i := range keep {
+					keep[i].SessionID = dst.ID
+				}
+				_ = a.Traces.Replace(dst.ID, keep)
+			}
+		}
 	}
 	if src.Isolate {
 		return a.EnsureSessionWorktree(dst.ID)
@@ -105,7 +133,7 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 			// jsonl without meta is a leftover, not a chat
 			continue
 		}
-		out = append(out, m)
+		out = append(out, a.decorateLive(m))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Pinned != out[j].Pinned {
@@ -114,6 +142,15 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 		return out[i].CreatedAt.After(out[j].CreatedAt)
 	})
 	return out, nil
+}
+
+func (a *App) decorateLive(m SessionMeta) SessionMeta {
+	q := a.QueueList(m.ID)
+	m.Queued = len(q)
+	if !a.Running(m.ID) && m.Queued > 0 {
+		m.Interrupted = true
+	}
+	return m
 }
 
 func (a *App) Playbook() (artifact.Playbook, error) {

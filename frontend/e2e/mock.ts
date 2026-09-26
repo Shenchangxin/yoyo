@@ -7,7 +7,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[] },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; browser?: any; inbox?: any[]; queue?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
@@ -262,7 +262,7 @@ export async function mockApi(
     if (path.endsWith("/api/eval") || path.includes("/api/eval/")) {
       return route.fulfill({ json: { metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 }, results: [] } });
     }
-    if (path.includes("/api/fs/search")) {
+    if (path.includes("/api/fs/search") || path.includes("/api/workspace/tree")) {
       return route.fulfill({
         json: extra?.files ?? [
           { path: "src/main.go", kind: "file" },
@@ -323,6 +323,18 @@ export async function mockApi(
     }
     if (path.includes("/api/context")) {
       return route.fulfill({ json: extra?.context ?? { tokens: 0, budget: 0 } });
+    }
+    if (path.endsWith("/api/browser/view")) {
+      return route.fulfill({ json: extra?.browser ?? { live: false, lane: "isolated", log: [] } });
+    }
+    if (path.endsWith("/api/browser/takeover")) {
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (path.endsWith("/api/inbox")) {
+      return route.fulfill({ json: extra?.inbox ?? [] });
+    }
+    if (path.endsWith("/api/review/queue")) {
+      return route.fulfill({ json: extra?.queue ?? { offers: [], inbox: [], drafts: [], browser: [] } });
     }
     return route.fulfill({ status: 200, json: {} });
   });

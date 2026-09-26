@@ -70,6 +70,7 @@ func (t *WorkspaceTools) officeEdit(rel, old, neu string) ToolResult {
 	if err := t.check(capability.WriteWorkspace, "office_edit", p, ""); err != nil {
 		return ToolResult{Err: err}
 	}
+	t.snapshotBeforeWrite(rel, p)
 	if err := office.EditReplace(p, old, neu); err != nil {
 		return ToolResult{Err: err}
 	}
@@ -195,14 +196,18 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
-	snap, err := t.Browser.OpenURL(raw)
+	lane := "isolated"
+	if strings.Contains(strings.ToLower(raw), "lane=attached") {
+		lane = "attached"
+	}
+	snap, err := t.Browser.OpenURLLane(raw, lane)
 	if err != nil {
 		return ToolResult{Err: err}
 	}
 	t.mu.Lock()
 	t.LastBrowser = snap.Text
 	t.mu.Unlock()
-	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\n\n%s", snap.URL, snap.Profile, snap.Text)}
+	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, snap.Text)}
 }
 
 func (t *WorkspaceTools) browserSnapshot() ToolResult {
@@ -255,6 +260,9 @@ func (t *WorkspaceTools) browserDownload(raw, rel string) ToolResult {
 }
 
 func (t *WorkspaceTools) clipboardRead() ToolResult {
+	if err := t.check(capability.Clipboard, "clipboard_read", "", ""); err != nil {
+		return ToolResult{Err: err}
+	}
 	s, err := osutil.ClipboardRead()
 	if err != nil {
 		return ToolResult{Err: err}
@@ -264,6 +272,9 @@ func (t *WorkspaceTools) clipboardRead() ToolResult {
 }
 
 func (t *WorkspaceTools) clipboardWrite(text string) ToolResult {
+	if err := t.check(capability.Clipboard, "clipboard_write", "", text); err != nil {
+		return ToolResult{Err: err}
+	}
 	if err := osutil.ClipboardWrite(text); err != nil {
 		return ToolResult{Err: err}
 	}
@@ -278,10 +289,29 @@ func (t *WorkspaceTools) screenshot(rel string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: err}
 	}
-	if err := t.check(capability.ReadWorkspace, "screenshot_region", p, ""); err != nil {
-		return ToolResult{Err: err}
+	req := capability.Request{
+		Level:     capability.ComputerUse,
+		Action:    "screenshot_region",
+		Path:      p,
+		SessionID: t.SessionID,
+		Workspace: t.Workspace,
+		ForceAsk:  true,
 	}
-	if err := osutil.Screenshot(p); err != nil {
+	if t.Caps != nil {
+		var err error
+		if t.Ctx != nil {
+			err = t.Caps.CheckCtx(t.Ctx, req)
+		} else {
+			err = t.Caps.Check(req)
+		}
+		if err != nil {
+			return ToolResult{Err: err}
+		}
+	}
+	if t.Computer == nil {
+		return ToolResult{Err: fmt.Errorf("screenshot_region captures the virtual display only; primary screen is never captured")}
+	}
+	if err := t.Computer.Capture(p); err != nil {
 		return ToolResult{Err: err}
 	}
 	return t.viewImage(rel)
@@ -315,6 +345,9 @@ func (t *WorkspaceTools) connectorRead(account, query string) ToolResult {
 	if t.Connectors == nil {
 		return ToolResult{Err: fmt.Errorf("no connectors")}
 	}
+	if !t.connectorAllowed(account) {
+		return ToolResult{Err: fmt.Errorf("connector %s is not granted to this session", account)}
+	}
 	items, err := t.Connectors.Read(account, query)
 	if err != nil {
 		return ToolResult{Err: err}
@@ -329,6 +362,9 @@ func (t *WorkspaceTools) connectorDraft(account, to, subject, body string) ToolR
 	}
 	if t.Connectors == nil {
 		return ToolResult{Err: fmt.Errorf("no connectors")}
+	}
+	if !t.connectorAllowed(account) {
+		return ToolResult{Err: fmt.Errorf("connector %s is not granted to this session", account)}
 	}
 	d := t.Connectors.Draft(account, to, subject, body)
 	b, _ := json.Marshal(d)
@@ -394,7 +430,77 @@ func (t *WorkspaceTools) computerAct(app, op, detail string) ToolResult {
 		return ToolResult{Err: err}
 	}
 	b, _ := json.Marshal(ev)
-	return ToolResult{Content: "virtual-display " + string(b)}
+	note := "virtual-display "
+	if !ev.Injected && op != "record" {
+		note = "virtual-display (inject pending) "
+	}
+	return ToolResult{Content: note + string(b)}
+}
+
+func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
+	if err := t.check(capability.Browser, "browser_screenshot", rel, ""); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if rel == "" {
+		rel = filepath.ToSlash(filepath.Join(".yoyo", "captures", "browser.png"))
+	}
+	p, err := t.resolve(rel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := t.Browser.Screenshot(p); err != nil {
+		return ToolResult{Err: err}
+	}
+	return t.viewImage(rel)
+}
+
+func (t *WorkspaceTools) browserTakeover(question string) ToolResult {
+	if err := t.check(capability.Browser, "browser_takeover", "", question); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.StartTakeover(); err != nil {
+		return ToolResult{Err: err}
+	}
+	q := question
+	if q == "" {
+		q = "Complete login, MFA, or CAPTCHA in the Yoyo browser window, then confirm to hand control back."
+	}
+	ask := t.AskUser
+	if t.Takeover != nil {
+		ask = t.Takeover
+	}
+	if ask == nil {
+		return ToolResult{Content: "headed browser is waiting for takeover; no ask_user hook"}
+	}
+	ans, err := ask(q)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: "takeover complete: " + ans}
+}
+
+func (t *WorkspaceTools) browserCookies(rel string) ToolResult {
+	if err := t.check(capability.Browser, "browser_cookies", rel, ""); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	p, err := t.resolve(rel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	n, err := t.Browser.ImportCookies(p)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: fmt.Sprintf("imported %d cookies into isolated profile", n)}
 }
 
 func (t *WorkspaceTools) projectList() ToolResult {

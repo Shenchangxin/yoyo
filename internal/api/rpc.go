@@ -347,8 +347,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	case "thread.fork":
 		var p struct {
 			Session string `json:"session"`
+			From    string `json:"from"`
 		}
 		_ = json.Unmarshal(params, &p)
+		if strings.TrimSpace(p.From) != "" {
+			return a.ForkSessionFrom(p.Session, p.From)
+		}
 		return a.ForkSession(p.Session)
 	case "thread.delete":
 		var p struct {
@@ -437,6 +441,34 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.QueueList(p.Session), nil
+	case "thread.queue.cancel":
+		var p struct {
+			Session string `json:"session"`
+			ID      string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": a.QueueCancel(p.Session, p.ID)}, nil
+	case "thread.queue.reorder":
+		var p struct {
+			Session string `json:"session"`
+			ID      string `json:"id"`
+			Delta   int    `json:"delta"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": a.QueueReorder(p.Session, p.ID, p.Delta)}, nil
+	case "thread.worktree.apply":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ApplySessionWorktree(p.Session)
+	case "thread.connectors.set":
+		var p struct {
+			Session  string   `json:"session"`
+			Accounts []string `json:"accounts"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionConnectors(p.Session, p.Accounts)
 	case "turn.steer":
 		var p struct {
 			Session string `json:"session"`
@@ -456,6 +488,16 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			ws = a.Workspace()
 		}
 		return runtime.FuzzySearch(ws, p.Query, p.Limit), nil
+	case "fs.tree":
+		var p struct {
+			Workspace string `json:"workspace"`
+		}
+		_ = json.Unmarshal(params, &p)
+		ws := p.Workspace
+		if ws == "" {
+			ws = a.Workspace()
+		}
+		return runtime.ListTree(ws, 4000), nil
 	case "skills.list":
 		var p struct {
 			Workspace string `json:"workspace"`
@@ -843,6 +885,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		var p connector.Account
 		_ = json.Unmarshal(params, &p)
 		return a.ConnectorConnect(p), nil
+	case "connectors.disconnect":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": a.ConnectorDisconnect(p.ID)}, nil
 	case "connectors.auth_url":
 		var p struct {
 			Provider string `json:"provider"`
@@ -858,10 +906,30 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.ConnectorStoreToken(p.ID, p.Token)
+	case "connectors.complete":
+		var p struct {
+			Provider string `json:"provider"`
+			Code     string `json:"code"`
+			ClientID string `json:"client_id"`
+			Secret   string `json:"secret"`
+			Redirect string `json:"redirect"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ConnectorComplete(p.Provider, p.Code, p.ClientID, p.Secret, p.Redirect)
+	case "schedule.trigger":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.TriggerWebhook(p.ID)
 	case "isolation.report":
 		return a.IsolationReport(), nil
 	case "review.queue":
 		return a.ReviewQueue(), nil
+	case "browser.view":
+		return a.BrowserView(), nil
+	case "browser.takeover":
+		return map[string]any{"ok": true}, a.BrowserTakeover()
 	case "phone.status":
 		return a.PhoneStatus(), nil
 	case "phone.approve":

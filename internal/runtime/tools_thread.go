@@ -7,13 +7,25 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/memory"
 )
 
-func (t *WorkspaceTools) readThread(sessionID, query string) ToolResult {
-	if t == nil || t.Sessions == nil {
+type ThreadRef struct {
+	ID    string
+	Title string
+}
+
+func (t *WorkspaceTools) readThread(sessionID, query, message string) ToolResult {
+	if t == nil {
 		return ToolResult{Err: fmt.Errorf("read_thread is not available")}
 	}
 	sessionID = strings.TrimSpace(sessionID)
+	message = strings.TrimSpace(message)
 	if sessionID == "" {
-		return ToolResult{Err: fmt.Errorf("session_id required")}
+		return t.listThreads(query)
+	}
+	if message != "" {
+		return t.sendThread(sessionID, message)
+	}
+	if t.Sessions == nil {
+		return ToolResult{Err: fmt.Errorf("read_thread is not available")}
 	}
 	if sessionID == t.SessionID {
 		return ToolResult{Err: fmt.Errorf("read_thread cannot target the current session")}
@@ -45,6 +57,53 @@ func (t *WorkspaceTools) readThread(sessionID, query string) ToolResult {
 		return ToolResult{Content: "no matching snippets"}
 	}
 	return ToolResult{Content: capRunes(b.String(), 2000)}
+}
+
+func (t *WorkspaceTools) listThreads(query string) ToolResult {
+	if t.ListThreads == nil {
+		return ToolResult{Err: fmt.Errorf("session_id required")}
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	var b strings.Builder
+	n := 0
+	for _, ref := range t.ListThreads() {
+		if ref.ID == "" || ref.ID == t.SessionID {
+			continue
+		}
+		if strings.Contains(ref.ID, "/tasks/") {
+			continue
+		}
+		blob := strings.ToLower(ref.ID + " " + ref.Title)
+		if q != "" && !strings.Contains(blob, q) {
+			continue
+		}
+		title := strings.TrimSpace(ref.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		fmt.Fprintf(&b, "- `%s` %s\n", ref.ID, title)
+		n++
+		if n >= 24 {
+			break
+		}
+	}
+	if n == 0 {
+		return ToolResult{Content: "no other sessions"}
+	}
+	return ToolResult{Content: "sessions:\n" + b.String()}
+}
+
+func (t *WorkspaceTools) sendThread(id, text string) ToolResult {
+	if t.SendThread == nil {
+		return ToolResult{Err: fmt.Errorf("send to another session is not available")}
+	}
+	if id == t.SessionID {
+		return ToolResult{Err: fmt.Errorf("read_thread cannot target the current session")}
+	}
+	if err := t.SendThread(id, text); err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: "queued or steered into " + id}
 }
 
 func consolidateMemory(req RunRequest, notes SessionNotes) {

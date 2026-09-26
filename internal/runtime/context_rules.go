@@ -46,7 +46,7 @@ func WriteRulesIndex(root string) {
 	_ = os.MkdirAll(dir, 0o755)
 	var b strings.Builder
 	b.WriteString("# Rules index (DCD)\n\n")
-	b.WriteString("Pins contain the first-hit YOYO.md/AGENTS.md/CLAUDE.md only. Nested files are listed here — load with read_file when the path matches.\n\n")
+	b.WriteString("Pins contain the first-hit YOYO.md/AGENTS.md/CLAUDE.md, then stacked AGENTS.md from git root to cwd. Nested files are listed here — load with read_file when the path matches the directory that contains the rule.\n\n")
 	seen := map[string]bool{}
 	add := func(rel string) {
 		rel = filepath.ToSlash(rel)
@@ -54,9 +54,17 @@ func WriteRulesIndex(root string) {
 			return
 		}
 		seen[rel] = true
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		if dir == "." {
+			dir = "/"
+		} else {
+			dir = dir + "/"
+		}
 		b.WriteString("- ")
 		b.WriteString(rel)
-		b.WriteByte('\n')
+		b.WriteString(" — when path matches ")
+		b.WriteString(dir)
+		b.WriteString("*\n")
 	}
 	for _, name := range []string{"YOYO.md", "AGENTS.md", "CLAUDE.md", filepath.Join(".yoyo", "YOYO.md"), filepath.Join(".cursor", "rules", "yoyo.mdc")} {
 		if _, err := os.Stat(filepath.Join(root, name)); err == nil {

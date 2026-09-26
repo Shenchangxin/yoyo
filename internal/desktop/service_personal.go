@@ -3,6 +3,7 @@ package desktop
 import (
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/expert"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
@@ -111,6 +112,22 @@ func (s *Service) ScheduleCancel(id string) bool {
 	return s.App.ScheduleCancel(id)
 }
 
+func (s *Service) TriggerWebhook(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("schedule.trigger", map[string]any{"id": id})
+		return err
+	}
+	return s.App.TriggerWebhook(id)
+}
+
+func (s *Service) SetSessionConnectors(id string, accounts []string) (app.SessionMeta, error) {
+	if s.RPC != nil {
+		v, err := s.call("thread.connectors.set", map[string]any{"session": id, "accounts": accounts})
+		return decode[app.SessionMeta](v, err)
+	}
+	return s.App.SetSessionConnectors(id, accounts)
+}
+
 func (s *Service) ConnectorsList() []connector.Account {
 	if s.RPC != nil {
 		v, _ := s.call("connectors.list", nil)
@@ -154,6 +171,29 @@ func (s *Service) ReviewQueue() map[string]any {
 		return m
 	}
 	return s.App.ReviewQueue()
+}
+
+func (s *Service) BrowserView() map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("browser.view", nil)
+		m, _ := decode[map[string]any](v, err)
+		return m
+	}
+	if s.App == nil {
+		return map[string]any{"lane": "isolated", "live": false, "log": []any{}}
+	}
+	return s.App.BrowserView()
+}
+
+func (s *Service) BrowserTakeover() error {
+	if s.RPC != nil {
+		_, err := s.call("browser.takeover", nil)
+		return err
+	}
+	if s.App == nil {
+		return nil
+	}
+	return s.App.BrowserTakeover()
 }
 
 func (s *Service) PhoneStatus() map[string]any {
@@ -240,6 +280,26 @@ func (s *Service) ConnectorStoreToken(id, token string) error {
 		return err
 	}
 	return s.App.ConnectorStoreToken(id, token)
+}
+
+func (s *Service) ConnectorComplete(provider, code, clientID, secret, redirect string) (connector.Account, error) {
+	if s.RPC != nil {
+		v, err := s.call("connectors.complete", map[string]any{
+			"provider": provider, "code": code, "client_id": clientID, "secret": secret, "redirect": redirect,
+		})
+		return decode[connector.Account](v, err)
+	}
+	return s.App.ConnectorComplete(provider, code, clientID, secret, redirect)
+}
+
+func (s *Service) ConnectorDisconnect(id string) bool {
+	if s.RPC != nil {
+		v, _ := s.call("connectors.disconnect", map[string]any{"id": id})
+		m, _ := decode[map[string]any](v, nil)
+		ok, _ := m["ok"].(bool)
+		return ok
+	}
+	return s.App.ConnectorDisconnect(id)
 }
 
 func (s *Service) MemoryWrite(kind, text, project string) memory.Item {
