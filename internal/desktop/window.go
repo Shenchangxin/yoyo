@@ -281,7 +281,7 @@ func PersistWindow(svc *Service, win application.Window) {
 			saveWindowState(svc, win)
 			return
 		}
-		if svc.CloseToTray() {
+		if svc.CloseToTray() || svc.CompanionEnabled() {
 			e.Cancel()
 			win.Hide()
 			return

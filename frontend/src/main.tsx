@@ -6,6 +6,7 @@ import { AppErrorBoundary } from "./features/AppErrorBoundary";
 import { installFrontendLogBridge } from "./lib/diag-bridge";
 import { ThemeProvider, useTheme } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { isCompanionSurface } from "./lib/popout";
 import "./styles.css";
 
 installFrontendLogBridge();
@@ -26,15 +27,23 @@ function ThemedToaster() {
   );
 }
 
+const companion = isCompanionSurface();
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <TooltipProvider>
+      {companion ? (
         <AppErrorBoundary>
           <App />
         </AppErrorBoundary>
-        <ThemedToaster />
-      </TooltipProvider>
+      ) : (
+        <TooltipProvider>
+          <AppErrorBoundary>
+            <App />
+          </AppErrorBoundary>
+          <ThemedToaster />
+        </TooltipProvider>
+      )}
     </ThemeProvider>
   </React.StrictMode>,
 );

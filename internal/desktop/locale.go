@@ -11,14 +11,14 @@ func nativeCopy(locale string) nativeStrings {
 }
 
 type nativeStrings struct {
-	File, NewSession, OpenWorkspace, CloseWindow, Quit string
+	File, NewSession, OpenWorkspace, CloseWindow, Quit                                       string
 	View, ToggleReview, ToggleSidebar, ToggleDock, Palette, Settings, OpenHarness, OpenVideo string
-	Thread, Compact, Export, Rename, Fork, Archive     string
-	Harness, RunEval, RunCycle                         string
-	Help, About, Doctor, Logs                          string
-	Show, Hide, NewChat                                string
-	ChooseWorkspace, AttachFiles                       string
-	TurnFinished, Approval, ErrTitle                   string
+	Thread, Compact, Export, Rename, Fork, Archive                                           string
+	Harness, RunEval, RunCycle                                                               string
+	Help, About, Doctor, Logs                                                                string
+	Show, Hide, ShowCompanion, HideCompanion, NewChat                                        string
+	ChooseWorkspace, AttachFiles                                                             string
+	TurnFinished, Approval, ErrTitle                                                         string
 }
 
 var nativeEN = nativeStrings{
@@ -27,7 +27,7 @@ var nativeEN = nativeStrings{
 	Thread: "Thread", Compact: "Compact context", Export: "Export markdown", Rename: "Rename", Fork: "Fork", Archive: "Archive",
 	Harness: "Harness", RunEval: "Run eval suite", RunCycle: "Run evolve cycle",
 	Help: "Help", About: "About Yoyo", Doctor: "Doctor", Logs: "Logs",
-	Show: "Show Yoyo", Hide: "Hide", NewChat: "New chat",
+	Show: "Show Yoyo", Hide: "Hide", ShowCompanion: "Show pet", HideCompanion: "Hide pet", NewChat: "New chat",
 	ChooseWorkspace: "Choose workspace", AttachFiles: "Attach files",
 	TurnFinished: "Turn finished", Approval: "Yoyo approval", ErrTitle: "Yoyo error",
 }
@@ -38,7 +38,7 @@ var nativeZH = nativeStrings{
 	Thread: "会话", Compact: "压缩上下文", Export: "导出 Markdown", Rename: "重命名", Fork: "复制会话", Archive: "归档",
 	Harness: "Harness", RunEval: "运行评测套件", RunCycle: "跑一轮进化",
 	Help: "帮助", About: "关于 Yoyo", Doctor: "Doctor", Logs: "日志",
-	Show: "显示 Yoyo", Hide: "隐藏", NewChat: "新对话",
+	Show: "显示 Yoyo", Hide: "隐藏", ShowCompanion: "显示宠物", HideCompanion: "隐藏宠物", NewChat: "新对话",
 	ChooseWorkspace: "选择工作区", AttachFiles: "附加文件",
 	TurnFinished: "轮次结束", Approval: "Yoyo 审批", ErrTitle: "Yoyo 错误",
 }

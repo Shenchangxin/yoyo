@@ -39,7 +39,13 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		forceQuit(gui, svc, win)
 	})
 
-	notify := func(id, title, body, session string) {
+	notify := func(id, title, body, session, kind string) {
+		gui.Event.Emit("yoyo:pulse", map[string]any{
+			"kind":    kind,
+			"title":   title,
+			"body":    body,
+			"session": session,
+		})
 		if ns == nil || !svc.NotifyAllowed() {
 			return
 		}
@@ -70,11 +76,15 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				n := nativeCopy(svc.GetConfig().Locale)
 				switch string(ev.Type) {
 				case "turn_end":
-					notify("yoyo-turn", "Yoyo", n.TurnFinished, ev.SessionID)
-				case "approval":
-					notify("yoyo-ask", n.Approval, payloadStr(ev.Payload, "action"), ev.SessionID)
+					notify("yoyo-turn", "Yoyo", n.TurnFinished, ev.SessionID, "done")
+				case "approval", "ask_user":
+					notify("yoyo-ask", n.Approval, payloadStr(ev.Payload, "action"), ev.SessionID, "approval")
 				case "error":
-					notify("yoyo-err", n.ErrTitle, notifyError(ev.Payload), ev.SessionID)
+					notify("yoyo-err", n.ErrTitle, notifyError(ev.Payload), ev.SessionID, "error")
+				case "eval":
+					notify("yoyo-eval", "Yoyo", n.TurnFinished, ev.SessionID, "eval")
+				case "evolve":
+					notify("yoyo-evolve", "Yoyo", n.TurnFinished, ev.SessionID, "evolve")
 				}
 			}
 		}()
@@ -93,11 +103,15 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				n := nativeCopy(svc.GetConfig().Locale)
 				switch typ {
 				case "turn_end":
-					notify("yoyo-turn", "Yoyo", n.TurnFinished, session)
-				case "approval":
-					notify("yoyo-ask", n.Approval, payloadStr(payload, "action"), session)
+					notify("yoyo-turn", "Yoyo", n.TurnFinished, session, "done")
+				case "approval", "ask_user":
+					notify("yoyo-ask", n.Approval, payloadStr(payload, "action"), session, "approval")
 				case "error":
-					notify("yoyo-err", n.ErrTitle, notifyError(payload), session)
+					notify("yoyo-err", n.ErrTitle, notifyError(payload), session, "error")
+				case "eval":
+					notify("yoyo-eval", "Yoyo", n.TurnFinished, session, "eval")
+				case "evolve":
+					notify("yoyo-evolve", "Yoyo", n.TurnFinished, session, "evolve")
 				}
 			}
 		}()
@@ -142,7 +156,7 @@ func (s *Service) rebuildMenusNow() {
 	file.AddSeparator()
 	file.Add(n.CloseWindow).SetAccelerator("CmdOrCtrl+W").OnClick(func(ctx *application.Context) {
 		if win != nil {
-			if s.CloseToTray() {
+			if s.CloseToTray() || s.CompanionEnabled() {
 				win.Hide()
 				return
 			}
@@ -235,6 +249,17 @@ func (s *Service) rebuildMenusNow() {
 			win.Hide()
 		}
 	})
+	if s.CompanionEnabled() {
+		label := n.ShowCompanion
+		if s.companionShown() {
+			label = n.HideCompanion
+		}
+		s.companionMenu = tmenu.Add(label).OnClick(func(ctx *application.Context) {
+			s.ToggleCompanion()
+		})
+	} else {
+		s.companionMenu = nil
+	}
 	tmenu.AddSeparator()
 	tmenu.Add(n.NewChat).OnClick(func(ctx *application.Context) {
 		showWindow(win)

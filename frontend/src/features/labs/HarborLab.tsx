@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { asArray, num, pick, str } from "../../lib/normalize";
 import { readHarborMetrics } from "../../lib/harness-refs";
@@ -12,9 +12,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { ProgressHairline } from "../../components/ui/progress-hairline";
-import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
+import { PresenceModuleLoading } from "../presence";
 import type { HarborKind } from "../../lib/protocol";
+import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
+import { useUI } from "../../lib/store";
 
 export function HarborLab(props: {
   busy: string | null;
@@ -36,6 +37,19 @@ export function HarborLab(props: {
   const safety = metrics?.safetyFail ?? 0;
   const why = safety > 0 ? copy.harbor.whySafety : props.report ? copy.harbor.whyEvidence : "";
   const [modelsOpen, setModelsOpen] = useState(false);
+  useEffect(() => {
+    if (!props.busy) return;
+    useUI.getState().setModuleLoading(true);
+    return () => useUI.getState().setModuleLoading(false);
+  }, [props.busy]);
+
+  if (props.busy) {
+    return (
+      <LabFrame>
+        <PresenceModuleLoading label={props.busy} />
+      </LabFrame>
+    );
+  }
 
   return (
     <LabFrame>
@@ -71,13 +85,7 @@ export function HarborLab(props: {
           </label>
         ) : null}
       </div>
-      {props.busy ? (
-        <div className="relative mb-4 overflow-hidden rounded-md bg-sidebar/40 px-4 py-3" aria-busy="true">
-          <p className="text-[13px] text-muted">{props.busy}</p>
-          <ProgressHairline className="absolute inset-x-0 bottom-0 rounded-none" indeterminate />
-        </div>
-      ) : null}
-      {!props.busy && props.error ? (
+      {props.error ? (
         <div className="mb-4 flex items-center gap-3 rounded-md bg-danger/8 px-4 py-3 text-[13px] text-danger">
           <span>{props.error}</span>
           <Button size="sm" variant="lift" onClick={() => props.onRun(props.lastKind || "suite")}>{copy.harbor.retry}</Button>

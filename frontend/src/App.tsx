@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
@@ -32,7 +32,8 @@ import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
 import { VideoWorkshop } from "./features/video/VideoWorkshop";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
-import { readPopoutId } from "./lib/popout";
+import { isCompanionSurface, readPopoutId } from "./lib/popout";
+import { CompanionApp, PresenceLayer } from "./features/presence";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
@@ -51,6 +52,11 @@ function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread
 }
 
 export default function App() {
+  if (isCompanionSurface()) return <CompanionApp />;
+  return <WorkstationApp />;
+}
+
+function WorkstationApp() {
   const ws = useWorkstation();
   useSettingsHash();
   const copy = ws.copy;
@@ -65,6 +71,32 @@ export default function App() {
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
+  const moduleLoading = useUI((s) => s.moduleLoading);
+  const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
+  const idleAt = useRef(Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const [waking, setWaking] = useState(false);
+  const sawBoot = useRef(false);
+  useEffect(() => {
+    if (ws.booted && !sawBoot.current) {
+      sawBoot.current = true;
+      setWaking(true);
+      const t = window.setTimeout(() => setWaking(false), 900);
+      return () => window.clearTimeout(t);
+    }
+  }, [ws.booted]);
+  useEffect(() => {
+    const on = () => { setWinFocused(true); idleAt.current = Date.now(); };
+    const off = () => setWinFocused(false);
+    window.addEventListener("focus", on);
+    window.addEventListener("blur", off);
+    const t = window.setInterval(() => setNow(Date.now()), 2000);
+    return () => {
+      window.removeEventListener("focus", on);
+      window.removeEventListener("blur", off);
+      window.clearInterval(t);
+    };
+  }, []);
   const staged = videoing && (ws.videoBoard || ws.canvasStage || videoPane !== "chat");
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
@@ -78,6 +110,17 @@ export default function App() {
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
   const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
+  const presenceInput = useMemo(() => ({
+    booted: ws.booted,
+    running: ws.threadRunning,
+    items: ws.items,
+    approvals: ws.approvals.length,
+    moduleLoading,
+    windowFocused: winFocused,
+    idleMs: winFocused ? 0 : now - idleAt.current,
+    waking,
+    now,
+  }), [ws.booted, ws.threadRunning, ws.items, ws.approvals.length, moduleLoading, winFocused, now, waking]);
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = ws.active?.toolRoot || sessionWs;
@@ -530,6 +573,7 @@ export default function App() {
   ) : agentPane;
 
   return (
+    <PresenceLayer input={presenceInput}>
     <AppFrame
       overlay={(
         <>
@@ -736,6 +780,7 @@ export default function App() {
         </div>
       ) : null}
     </AppFrame>
+    </PresenceLayer>
   );
 }
 

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
+import { PresenceAnchor } from "../presence";
 import { useCopy } from "../../lib/i18n";
 import type { Copy } from "../../lib/copy";
 import { DURATION_FAST, motionTransition, useMotionReduced } from "../../lib/motion";
@@ -64,8 +65,8 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
       aria-live="polite"
       data-testid="working-line"
     >
-      <span className="grid size-3.5 shrink-0 place-items-center" aria-hidden>
-        <span className="pulse-dot" />
+      <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
+        <PresenceAnchor id="process" size={22} />
       </span>
       <span className="shimmer-text font-medium">{label || copy.transcript.working}</span>
       {elapsed ? <span className="tabular-nums text-[11.5px] text-muted/70">{elapsed}</span> : null}
@@ -111,9 +112,9 @@ export function ProcessGroup({
         title={open ? copy.transcript.hideSteps : copy.transcript.showSteps}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="grid size-3.5 shrink-0 place-items-center" aria-hidden>
+        <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
           {live ? (
-            <span className="pulse-dot" />
+            <PresenceAnchor id="process" size={22} />
           ) : failed > 0 ? (
             <X className="size-3 text-danger" strokeWidth={2.4} />
           ) : interrupted ? (

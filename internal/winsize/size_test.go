@@ -63,6 +63,30 @@ func TestLostOffscreen(t *testing.T) {
 	}
 }
 
+func TestKeepInside(t *testing.T) {
+	x, y := KeepInside(-80, -40, 176, 208, 0, 0, 1920, 1080, 8)
+	if x != 8 || y != 8 {
+		t.Fatalf("off top-left -> %d,%d", x, y)
+	}
+	x, y = KeepInside(1900, 1000, 176, 208, 0, 0, 1920, 1080, 8)
+	if x != 1920-176-8 || y != 1080-208-8 {
+		t.Fatalf("off bottom-right -> %d,%d", x, y)
+	}
+	x, y = KeepInside(100, 80, 176, 208, 0, 0, 1920, 1080, 8)
+	if x != 100 || y != 80 {
+		t.Fatalf("on-screen moved: %d,%d", x, y)
+	}
+}
+
+func TestFullyInside(t *testing.T) {
+	if !FullyInside(100, 80, 176, 208, 0, 0, 1920, 1080) {
+		t.Fatal("on-screen must be fully inside")
+	}
+	if FullyInside(1800, 80, 176, 208, 0, 0, 1920, 1080) {
+		t.Fatal("hanging off the right edge")
+	}
+}
+
 func TestOverflows(t *testing.T) {
 	if !Overflows(3532, 1987, 2560, 1440) {
 		t.Fatal("physical-pixel window overflows DIP work area")

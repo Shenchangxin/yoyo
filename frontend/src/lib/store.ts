@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { CanvasFocus, HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode, VideoPane } from "./protocol";
 import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
+import type { VoicePhase } from "../features/presence/types";
 
 export type InspTab = "diff" | "files" | "trace" | "queue" | "memory";
 export type DiffMode = "unified" | "split";
@@ -65,6 +66,10 @@ type UIState = {
   pushNotice: (n: Notice) => void;
   setNoticesOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   clearNotices: () => void;
+  voicePhase: VoicePhase;
+  setVoicePhase: (v: VoicePhase) => void;
+  moduleLoading: boolean;
+  setModuleLoading: (v: boolean) => void;
 };
 
 function readDiffMode(): DiffMode {
@@ -314,4 +319,8 @@ export const useUI = create<UIState>((set, get) => ({
   pushNotice: (n) => set((s) => ({ notices: [n, ...s.notices].slice(0, 30) })),
   setNoticesOpen: (v) => set((s) => ({ noticesOpen: typeof v === "function" ? v(s.noticesOpen) : v })),
   clearNotices: () => set({ notices: [] }),
+  voicePhase: "off",
+  setVoicePhase: (voicePhase) => set({ voicePhase }),
+  moduleLoading: false,
+  setModuleLoading: (moduleLoading) => set({ moduleLoading }),
 }));

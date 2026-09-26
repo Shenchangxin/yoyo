@@ -71,6 +71,7 @@ type Config struct {
 	Models                  []string          `yaml:"models" json:"models"`
 	MCP                     []MCPServerConfig `yaml:"mcp" json:"mcp"`
 	CloseToTray             bool              `yaml:"close_to_tray" json:"close_to_tray"`
+	CompanionEnabled        bool              `yaml:"companion_enabled" json:"companion_enabled"`
 	UpdateURL               string            `yaml:"update_url" json:"update_url"`
 	Locale                  string            `yaml:"locale" json:"locale"`
 	Keymap                  map[string]string `yaml:"keymap" json:"keymap"`
@@ -174,6 +175,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		Workspace:            "",
 		AutoAllow:            false,
 		NotificationsEnabled: true,
+		CompanionEnabled:     true,
 		UIScale:              1,
 		UpdateChannel:        "nightly",
 		Theme:                "system",
@@ -186,6 +188,9 @@ func Open(root, bundledEvals string) (*App, error) {
 		_ = yaml.Unmarshal(b, &cfg)
 		if _, ok := raw["notifications_enabled"]; !ok {
 			cfg.NotificationsEnabled = true
+		}
+		if _, ok := raw["companion_enabled"]; !ok {
+			cfg.CompanionEnabled = true
 		}
 		if cfg.UIScale <= 0 {
 			cfg.UIScale = 1

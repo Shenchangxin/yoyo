@@ -1,0 +1,22 @@
+Presence engine notice
+======================
+
+`frontend/src/vendor/emotion-ball/` vendors the Emotion Ball expression engine
+(rings, spherical projection, ribbons/confetti FX, engine, emotion configuration)
+from https://github.com/sam70361 (contact 1251579308@qq.com). Yoyo presence
+loads this engine as the spherical robot (`shape: 'blob'`).
+
+The engine source and emotion data are dual-licensed:
+
+- Community / non-commercial: see aora-bot/LICENSE
+- Commercial integration of the engine/data into a shipped product requires a
+  commercial license from the copyright holder (aora-bot/LICENSE-COMMERCIAL.md).
+
+The blob / wedge / gem *visuals* (silhouette, default palette, ribbon look) are
+learning-only and are never commercially licensed. See aora-bot/NOTICE.md.
+
+Do not load Mood Mates and Emotion Ball on the same page: both write
+`window.EMOTION_SEED`.
+
+`frontend/src/vendor/mood-mates/` remains vendored for reference and is unused
+on the presence path.

@@ -30,6 +30,7 @@ export const emptyCfg: AppConfig = {
   usdPerMtok: 0,
   models: [],
   closeToTray: false,
+  companionEnabled: true,
   updateUrl: "",
   keymap: {},
   locale: "",

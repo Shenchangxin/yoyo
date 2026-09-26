@@ -8,7 +8,8 @@
     "build:dev": "tsc && vite build --minify false --mode development",
     "build": "tsc && vite build --mode production",
     "preview": "vite preview",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

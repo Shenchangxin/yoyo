@@ -10,8 +10,20 @@ import * as api from "../../lib/client";
 import type { SkillInfo } from "../../lib/protocol";
 import type { Copy } from "../../lib/copy";
 import { YoyoMark } from "../shell/YoyoMark";
+import { PresenceModuleLoading } from "../presence";
+import { useUI } from "../../lib/store";
 
 type Pane = "installed" | "market";
+
+function SkillsLoading() {
+  useEffect(() => {
+    useUI.getState().setModuleLoading(true);
+    return () => useUI.getState().setModuleLoading(false);
+  }, []);
+  return (
+    <PresenceModuleLoading />
+  );
+}
 
 export function SkillsWorkspace(props: {
   installed: SkillInfo[];
@@ -292,19 +304,7 @@ function MarketList(props: {
 }) {
   const copy = useCopy();
   if (props.loading && !props.grouped.length) {
-    return (
-      <div className="space-y-2" aria-busy="true" aria-live="polite">
-        {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="flex items-start gap-3 px-1 py-2">
-            <div className="skeleton-sweep size-8 rounded-md" />
-            <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-              <div className="skeleton-sweep h-3 w-32 rounded" />
-              <div className="skeleton-sweep is-soft h-3 w-full max-w-md rounded" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    return <SkillsLoading />;
   }
   if (!props.grouped.length) {
     return <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyMarket} />;

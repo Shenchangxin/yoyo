@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";
-import { MarkWell } from "./shell/YoyoMark";
+import { PresenceAnchor } from "./presence";
 
 function hello(copy: Copy): string {
   const h = new Date().getHours();
@@ -39,7 +39,7 @@ export function HomeStage(props: {
     <section className="@container relative flex h-full min-h-0 min-w-0 flex-col" data-testid="conversation-column">
       <div className="home-stage empty-rise flex min-h-0 flex-1 flex-col overflow-auto" data-testid="empty-turn">
         <div className="mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-1 flex-col justify-center px-5 py-10 sm:px-8">
-          <MarkWell className="mx-auto" markClassName="h-9 w-[4.15rem] rounded-lg" />
+          <PresenceAnchor id="home" size={140} className="mx-auto cursor-pointer" />
           <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
             {hello(copy)}
           </p>

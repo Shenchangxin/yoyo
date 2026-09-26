@@ -1,4 +1,5 @@
 import { YoyoMark } from "./shell/YoyoMark";
+import { PresenceAnchor } from "./presence";
 
 export function BootSkeleton() {
   return (
@@ -18,7 +19,9 @@ export function BootSkeleton() {
       </div>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="h-12 border-b border-border/40" />
-        <div className="flex-1" />
+        <div className="flex flex-1 items-center justify-center">
+          <PresenceAnchor id="boot" size={132} />
+        </div>
         <div className="px-4 pb-5">
           <div className="composer-bezel mx-auto w-full max-w-[min(100%,var(--thread-measure))]">
             <div className="skeleton-sweep h-[84px] rounded-[var(--radius-composer)]" />

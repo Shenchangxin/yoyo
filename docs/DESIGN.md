@@ -40,9 +40,11 @@ functional layer above opaque media. Do not mix Regular and Clear glass.
    actions. `warning` marks incomplete state. Do not spend hue on node-type
    rainbows.
 4. **Motion is state.** Something moves only while something is happening
-   (shimmer verb, pulse dot, ticking clock). The instant work ends the motion
-   stops and the row settles into past tense. Decorative motion is limited to
-   enter transitions ≤ 320ms.
+   (shimmer verb, presence character, ticking clock). The instant work ends the
+   motion stops and the row settles into past tense. Decorative motion is
+   limited to enter transitions ≤ 320ms. The spherical robot (Emotion Ball
+   blob) is a **state actor**, not a mascot: expression follows real boot /
+   run / tool / error / idle (and later voice). Work stops, the actor stops.
 5. **Say less, in order.** Headline → one-line context → action. Empty states
    are one sentence plus one hint. Buttons are verbs. Counts are tabular
    numerals, never in parentheses.
@@ -134,9 +136,10 @@ HoverBorderGradient, no WorkingGlow.
 
 ### Mark
 
-The four-cell CAS square is the only brand glyph. On empty still-lifes it sits
-in a 40px inset well (`MarkWell`). Never replace it with Sparkles, a wordmark
-illustration, or an avatar.
+The four-cell CAS square (`YoyoMark`) stays in chrome — rail, header, menus.
+The spherical robot occupies empty stage, live process, boot, module loading,
+and the desktop companion window. Never replace either with Sparkles, a
+wordmark illustration, a Disc overlapping-disc mascot, or a purple agent orb.
 
 ### Motion
 
@@ -147,9 +150,11 @@ illustration, or an avatar.
 | `--duration-shell` | 240ms | pane resize, sheet |
 | `--ease-out` | `cubic-bezier(.32,.72,0,1)` | everything |
 
-Live grammar (see `ProcessGroup`): `.shimmer-text` sweeps the verb, `.pulse-dot`
-breathes on the rail, `useNow` ticks a `Worked for` clock. All three stop the
-moment `running` is false.
+Live grammar (see `ProcessGroup`): `.shimmer-text` sweeps the verb, the
+spherical robot replaces the pulse glyph on the **live** process row, `useNow`
+ticks a `Worked for` clock. Verb, mono path and clock stay as the audit trail.
+Capsules too small for eyes (`RunningHub`) keep `.pulse-dot`. All live motion
+stops the moment `running` is false.
 
 ---
 
@@ -194,18 +199,20 @@ moment `running` is false.
 ## 4. Transcript grammar
 
 - **User** — right-aligned bubble on `lift`, 18px radius, ≤80% of the column,
-  13px. No avatar.
-- **Assistant** — left prose, no bubble, no avatar. One turn is one
-  `assistant-letter`. The answer is the scan target (13.5px); headings step
-  16 / 14.5 / 13.5px — never Streamdown's stock `text-3xl`. Process rows and
-  fenced code sit a step quieter (12.5px / 12px). A circle caret marks live
-  tokens; the process row (pulse + shimmer verb) is status. Copy/review
+  13px. No avatar (do not symmetrize into IM).
+- **Assistant** — left prose, no bubble. One turn is one `assistant-letter`.
+  A 22–28px sphere stamp sits to the left: the **pinned live turn** portals the
+  single live engine (or yields to the process-row glyph); history uses a
+  static cream-sphere silhouette. The answer is the scan target (13.5px);
+  headings step 16 / 14.5 / 13.5px — never Streamdown's stock `text-3xl`.
+  Process rows and fenced code sit a step quieter (12.5px / 12px). Copy/review
   actions sit at the foot and appear on hover once the turn is settled.
   Turns are separated by whitespace (40px), not rules.
-- **Process** — one disclosure row per model round. Live: pulse dot + shimmer
+- **Process** — one disclosure row per model round. Live: sphere glyph + shimmer
   verb (`Reading`, `Running`, `Thinking`) + mono detail + clock. Settled:
   `Worked for 20s · Ran 1 command · Read 2 files` with a dot / ✕ / dashed-ring
-  glyph for done / failed / interrupted. Expanded: a hairline step rail.
+  glyph for done / failed / interrupted — never a character per historical
+  step. Expanded: a hairline step rail.
 - **Artifacts** (patch, office file, MCP view) — card on `card/60` with icon
   tile, title, mono meta and pill actions (`Preview`, `Open in Review`).
 - **Approval** — card with a `warning` left bar and icon tile, eyebrow, action
@@ -213,9 +220,10 @@ moment `running` is false.
   chat` · `Always` · `Reject` with kbd hints `1 2 3 Esc`.
 - **Error** — `danger` bar and tint for provider failures; neutral card for
   soft stops with a `Continue this turn` CTA when retryable.
-- **Empty thread** — bottom-anchored above the composer: mark, greeting
-  (`Ready when you are.` / Video: `Paste a chapter.`), one hint line, starter
-  **pills** (not a 3-column marketing grid). No headline larger than 21px.
+- **Empty thread** — bottom-anchored above the composer: 140px spherical robot,
+  greeting (`Ready when you are.` / Video: `Paste a chapter.`), one hint line,
+  starter **pills** (not a 3-column marketing grid). No headline larger than 21px.
+  Click the sphere to bounce and spin.
 - **Composer** — brightest object on the stage. Toolbar is ghost controls;
   send is a filled circle that flips to a stop square while running.
 
@@ -278,15 +286,18 @@ on `background`, muted ≥ 4.5:1. `prefers-reduced-motion` and
 
 ## 9. Forbidden
 
-Avatars in the transcript · spinners on text · cards inside cards · bordered
-list items · labelled buttons in toolbars · colour on chrome · ligatures in
-code · headlines over 21px · Sparkles / WandSparkles · gradients · glows ·
-HoverBorderGradient · SpotlightSurface · WorkingGlow · daisyUI · marketing
-empty states · fake sandbox badges · a second agent loop in the client · a
-7-item Video shell · Inter / sage / zinc as the live system · Apple-blue + SF
-Pro as the default brand · credit-cost chips in the hosted island · a Chat
-dock on Video · Dock magnification · SpotlightSurface on menus · purple agent
-orbs · card-in-card create grids.
+Decorative avatars / IM-style user+assistant pairs · a live Emotion Ball engine
+per tool row or virtualized history · Mood Mates Nimbo/Twinkle · Disc overlapping
+discs · wedge/gem silhouettes · extra engines on the same page ·
+spinners on text · cards inside cards · bordered list items ·
+labelled buttons in toolbars · colour on chrome · ligatures in code · headlines
+over 21px · Sparkles / WandSparkles · gradients · glows · HoverBorderGradient ·
+SpotlightSurface · WorkingGlow · daisyUI · marketing empty states · fake sandbox
+badges · a second agent loop in the client · a 7-item Video shell · Inter /
+sage / zinc as the live system · Apple-blue + SF Pro as the default brand ·
+credit-cost chips in the hosted island · a Chat dock on Video · Dock
+magnification · SpotlightSurface on menus · purple agent orbs · card-in-card
+create grids.
 
 ---
 
@@ -331,3 +342,34 @@ when selected.
 
 At most one Menu, one Popover, and one HUD. Opening a Dialog or Workbench
 dismisses HUD popovers. Chrome never raises itself above the node HUD.
+
+---
+
+## 11. Presence
+
+One live SVG engine per window (`PresenceRuntime` in the main webview;
+`PresenceSprite` in the companion). The actor is Emotion Ball’s spherical
+robot (`shape: 'blob'`): cream body, spherical-projection eyes, 32-emotion
+motion, ribbons on spin. Slot priority: boot → module loading → live process
+→ live transcript stamp → empty home. Historical turns are static.
+`prefers-reduced-motion` freezes a static frame. Do not load Mood Mates on
+the same page (`EMOTION_SEED` clash).
+
+The desktop companion (`/?surface=companion`) can sit beside the
+workstation. It is a tool window: no taskbar button, no close chrome.
+Show and hide it from one tray item that toggles with visibility. Clicks
+pass through transparent chrome; only the blob and a visible caption
+receive input. The HWND is not clipped to a circle, so bounce, lean,
+ribbons and the caption can overshoot the body. Click the pet or its
+caption to raise the related session; drag stays inside the current
+monitor work area. Quit still goes through the tray.
+
+Idle faces wander on their own. Eyes follow the OS cursor without resetting
+the face every frame. A darting cursor startles; approaching makes it
+curious. Live work, tools, eval, evolve, voice, and OS notices take over
+the face. Turn-end, approval, and error toasts also pulse a caption on the
+pet so the desk pet is the live ticker for every module.
+
+Voice is a socket only: `useUI.voicePhase` is `off | listening | thinking |
+speaking`. No microphone in this layer. Drama TTS stays footage dubbing.
+
