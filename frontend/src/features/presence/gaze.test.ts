@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { curiousId, dartId, gazeFromPoint, gazeFromScreen, isIdleEmotion } from "./gaze.ts";
+import { curiousId, dartId, gazeFromPoint, gazeFromScreen, isIdleEmotion, lingerId } from "./gaze.ts";
 
 describe("gazeFromPoint", () => {
   const box = { left: 0, top: 0, width: 140, height: 140 };
@@ -37,5 +37,14 @@ describe("dartId", () => {
     assert.equal(dartId("02", 2.4), "13");
     assert.equal(dartId("02", 0.2), "02");
     assert.equal(dartId("30", 4), "30");
+    assert.equal(dartId("00", 2.4), "07");
+  });
+});
+
+describe("lingerId", () => {
+  it("goes shy after lingering on an idle face", () => {
+    assert.equal(lingerId("02", true), "14");
+    assert.equal(lingerId("02", false), "03");
+    assert.equal(lingerId("30", true), "30");
   });
 });

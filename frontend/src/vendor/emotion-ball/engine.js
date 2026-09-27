@@ -492,12 +492,18 @@
 
     resetIdle: function () { this._lastActivity = performance.now(); },
 
-    /* 注视目标：横向 ±48、纵向 ±30，指数跟手（由宿主高频喂坐标） */
-    setGaze: function (nx, ny) {
-      this._gaze.tx = clamp(nx, -1, 1) * 48;
-      this._gaze.ty = clamp(ny, -1, 1) * 30;
-      this._gazeHeld = true;
-      this._gazeHoldUntil = performance.now() + 900;
+    /* 注视目标：横向 ±24、纵向 ±15（对齐 Emotion Ball 含蓄幅度）。
+     * hold=true 时暂停 glance 动画，只在指针贴近球体时由宿主打开，避免桌宠被远处光标拽歪。 */
+    setGaze: function (nx, ny, hold) {
+      this._gaze.tx = clamp(nx, -1, 1) * 24;
+      this._gaze.ty = clamp(ny, -1, 1) * 15;
+      if (hold) {
+        this._gazeHeld = true;
+        this._gazeHoldUntil = performance.now() + 900;
+      } else {
+        this._gazeHeld = false;
+        this._gazeHoldUntil = 0;
+      }
       return this;
     },
     clearGaze: function () {
@@ -736,12 +742,8 @@
       pose.right.lookX += this._gaze.x;
       pose.left.lookY += this._gaze.y;
       pose.right.lookY += this._gaze.y;
-      if (this._gazeHeld || Math.abs(this._gaze.x) > 1) {
-        pose.body.rotate += this._gaze.x * 0.14;
-        pose.body.x += this._gaze.x * 0.22;
-      }
 
-      /* 常驻眼神微漂移：跟手时关掉，避免和注视目标对拉 */
+      /* 常驻眼神微漂移：跟手贴近时关掉，避免和注视目标对拉 */
       if (def.gaze !== false && !this._gazeHeld) {
         var w = now / 1000;
         pose.left.lookX += 1.4 * Math.sin(0.42 * w) + 0.5 * Math.sin(1.0 * w);

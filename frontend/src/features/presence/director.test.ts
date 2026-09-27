@@ -137,7 +137,7 @@ describe("presenceOf", () => {
         items: [item({ type: "error", text: "request denied by gate", ts: new Date(999_000).toISOString() })],
         now: 1_000_000,
       })).emotionId,
-      "38",
+      "21",
     );
     assert.equal(presenceOf(base({ moduleLoading: true })).emotionId, "36");
     assert.equal(
@@ -146,7 +146,7 @@ describe("presenceOf", () => {
         now: 1_000_000,
         items: [item({ type: "turn_end", ts: new Date(999_500).toISOString() })],
       })).emotionId,
-      "41",
+      "17",
     );
     assert.equal(presenceOf(base({
         running: false,
@@ -169,7 +169,8 @@ describe("presenceOf", () => {
 describe("wanderEmotion", () => {
   it("cycles ambient faces then drowses into sleep", () => {
     assert.equal(wanderEmotion(0, 0), "02");
-    assert.equal(wanderEmotion(6200, 0), "03");
+    assert.equal(wanderEmotion(6200, 0), "10");
+    assert.equal(wanderEmotion(12 * 6200, 0), "12");
     assert.equal(wanderEmotion(6200, 30_000), "04");
     assert.equal(wanderEmotion(0, 60_000), "15");
     assert.equal(wanderEmotion(0, 140_000), "06");

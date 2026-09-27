@@ -1624,6 +1624,7 @@ html.companion body {
   pointer-events: auto;
   cursor: grab;
   background: transparent !important;
+  border-radius: 50%;
 }
 .companion-pet-wrap:active {
   cursor: grabbing;

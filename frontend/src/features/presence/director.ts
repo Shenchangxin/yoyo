@@ -30,8 +30,9 @@ const SLEEP_MS = 180_000;
 const WANDER_MS = 6200;
 
 const WANDER = [
-  "02", "03", "10", "02", "11", "19", "03", "04",
-  "16", "02", "14", "18", "10", "20", "03", "19",
+  "02", "10", "02", "03", "19", "02", "04", "11",
+  "02", "14", "16", "02", "12", "18", "20", "02",
+  "10", "19", "02", "03",
 ] as const;
 
 /** Ambient idle face. Cycles through glances, moods, then drowsy sleep. */
@@ -136,7 +137,7 @@ export function presenceOf(input: PresenceInput): PresenceOut {
 
   const lastError = lastOf(items, (it) => it.type === "error");
   if (lastError && (input.running || now - ts(lastError) < 4000)) {
-    if (refused(lastError)) return { emotionId: "38", live: true, tips: "refused" };
+    if (refused(lastError)) return { emotionId: "21", live: true, tips: "refused" };
     return { emotionId: "34", live: true, tips: "error" };
   }
   if (lastError && !input.running && now - ts(lastError) < RECOVER_MS) {
@@ -175,7 +176,7 @@ export function presenceOf(input: PresenceInput): PresenceOut {
     return { emotionId: "10", live: false, tips: "pleased" };
   }
   if (input.interrupted && lastEnd && now - ts(lastEnd) < STOP_MS) {
-    return { emotionId: "41", live: false, tips: "stop" };
+    return { emotionId: "17", live: false, tips: "stop" };
   }
 
   if (input.waking) return { emotionId: "01", live: false, tips: "wake" };

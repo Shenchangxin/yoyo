@@ -29,6 +29,26 @@ func TestCompanionHitDisk(t *testing.T) {
 	}
 }
 
+func TestCompanionShapeLeavesChrome(t *testing.T) {
+	w, h := float64(companionW), float64(companionH)
+	cx, cy, rx, ry := companionBlobEllipse(w, h)
+	if !inEllipse(cx, cy, cx, cy, rx, ry) {
+		t.Fatal("blob center must sit inside the window region")
+	}
+	if inEllipse(2, 2, cx, cy, rx, ry) {
+		t.Fatal("top-left chrome must sit outside the window region")
+	}
+	if inEllipse(w-2, 2, cx, cy, rx, ry) {
+		t.Fatal("top-right chrome must sit outside the window region")
+	}
+	if inEllipse(2, cy, cx, cy, rx, ry) {
+		t.Fatal("left chrome beside the blob must sit outside the window region")
+	}
+	if inEllipse(2, h-2, cx, cy, rx, ry) {
+		t.Fatal("bottom-left chrome must sit outside the window region")
+	}
+}
+
 func TestCompanionHitCaption(t *testing.T) {
 	w, h := float64(companionW), float64(companionH)
 	bx := w / 2
@@ -38,6 +58,12 @@ func TestCompanionHitCaption(t *testing.T) {
 	}
 	if !CompanionHit(bx, by, w, h, true) {
 		t.Fatal("visible caption must hit")
+	}
+	if CompanionHit(2, by, w, h, true) {
+		t.Fatal("chrome beside a visible caption must pass through")
+	}
+	if CompanionHit(w-2, by, w, h, true) {
+		t.Fatal("right chrome beside a visible caption must pass through")
 	}
 }
 

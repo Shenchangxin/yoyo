@@ -9,11 +9,16 @@ const (
 	companionPet       = 148
 	companionPetTop    = 40
 	companionBubbleGap = 12
-	companionBubblePad = 18
-	companionBubbleH   = 58
+	companionBubbleW   = 168
+	companionBubbleH   = 40
 	// Hit disk is slightly inside the 148px box so empty corners pass through,
 	// but larger than the viewBox inset so bounce/lean still grab.
-	companionHitFill = 0.92
+	companionHitFill = 0.88
+	// Window region is a taller oval than the grab disk: bounce peaks ~27px
+	// above the body, lean/ribbons a little past the sides. Chrome outside
+	// this oval is not part of the HWND, so clicks fall through.
+	companionShapeFillX = 1.08
+	companionShapeFillY = 1.38
 )
 
 type hitBox struct {
@@ -40,11 +45,44 @@ func CompanionHit(lx, ly, winW, winH float64, caption bool) bool {
 	if !caption {
 		return false
 	}
-	bx := float64(companionBubblePad) * sx
-	by := (float64(companionPetTop+companionPet) + float64(companionBubbleGap)) * sy
-	bw := winW - 2*bx
+	bw := float64(companionBubbleW) * sx
 	bh := float64(companionBubbleH) * sy
+	bx := (winW - bw) * 0.5
+	by := (float64(companionPetTop+companionPet) + float64(companionBubbleGap)) * sy
 	return lx >= bx && lx <= bx+bw && ly >= by && ly <= by+bh
+}
+
+func companionScale(winW, winH float64) (sx, sy, s float64) {
+	sx = winW / float64(companionW)
+	sy = winH / float64(companionH)
+	return sx, sy, min(sx, sy)
+}
+
+func companionBlobEllipse(winW, winH float64) (cx, cy, rx, ry float64) {
+	_, sy, s := companionScale(winW, winH)
+	cx = winW * 0.5
+	cy = (float64(companionPetTop) + float64(companionPet)*0.5) * sy
+	rx = float64(companionPet) * 0.5 * companionShapeFillX * s
+	ry = float64(companionPet) * 0.5 * companionShapeFillY * s
+	return cx, cy, rx, ry
+}
+
+func companionCaptionRect(winW, winH float64) (x, y, w, h float64) {
+	sx, sy, _ := companionScale(winW, winH)
+	w = float64(companionBubbleW) * sx
+	h = float64(companionBubbleH) * sy
+	x = (winW - w) * 0.5
+	y = (float64(companionPetTop+companionPet) + float64(companionBubbleGap)) * sy
+	return x, y, w, h
+}
+
+func inEllipse(px, py, cx, cy, rx, ry float64) bool {
+	if rx < 1 || ry < 1 {
+		return false
+	}
+	dx := (px - cx) / rx
+	dy := (py - cy) / ry
+	return dx*dx+dy*dy <= 1
 }
 
 func dist2ToBox(px, py int, b hitBox) int {

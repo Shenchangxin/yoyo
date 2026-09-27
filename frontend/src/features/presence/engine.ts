@@ -21,7 +21,10 @@ export function createMate(el: HTMLElement, opts: MoodMateCreateOpts = {}): Mood
   const origOff = typeof ball.off === "function" ? ball.off.bind(ball) : undefined;
   ball.celebrate = function (strength) {
     this.bounce();
-    if (strength !== 0) this.spin(1);
+    if (strength !== 0) {
+      this.spin(1);
+      this.burst(16);
+    }
     return this;
   };
   ball.signature = function () {
