@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -94,6 +95,34 @@ func TestHubCoalescesShellStdout(t *testing.T) {
 	ev := recv(t, ch)
 	if got, _ := ev.Payload["content"].(string); got != "hello" {
 		t.Fatalf("stdout %q", got)
+	}
+}
+
+func TestHubDropsLiveWhenSubscriberBlocked(t *testing.T) {
+	h := NewHub()
+	ch, off := h.Subscribe("s")
+	defer off()
+	start := time.Now()
+	for i := 0; i < 8200; i++ {
+		h.Publish(trace.Event{
+			SessionID: "s", Type: trace.TypeToolCall,
+			Payload: map[string]any{"name": "write_file", "id": fmt.Sprintf("%d", i)},
+		})
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("Publish blocked on slow subscriber")
+	}
+	h.Publish(trace.Event{SessionID: "s", Type: trace.TypeTurnEnd, Payload: map[string]any{"id": "end"}})
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Type == trace.TypeTurnEnd {
+				return
+			}
+		case <-deadline:
+			t.Fatal("turn_end never arrived")
+		}
 	}
 }
 

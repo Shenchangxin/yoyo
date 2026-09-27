@@ -49,11 +49,11 @@ func (a *App) SessionTrace(id string) (SessionTrace, error) {
 		return SessionTrace{}, fmt.Errorf("empty session id")
 	}
 	meta, _ := a.GetSession(id)
-	evs, err := a.Trajectory(id)
+	evs, err := a.Traces.Read(id)
 	if err != nil {
 		return SessionTrace{}, err
 	}
-	view := runtime.ProjectTrace(evs)
+	view := runtime.TrimTraceView(runtime.ProjectTrace(evs), 0)
 	if view.Events == nil {
 		view.Events = []runtime.TraceEvent{}
 	}
@@ -68,9 +68,12 @@ func (a *App) SessionTrace(id string) (SessionTrace, error) {
 		arts = []TraceArtifact{}
 	}
 	var spillBytes int
-	for _, art := range arts {
-		if art.Kind == "spill" {
-			spillBytes += art.Bytes
+	if spill != nil {
+		for _, sid := range spill.ListIDs() {
+			if sid == "notes" {
+				continue
+			}
+			spillBytes += spill.Size(sid)
 		}
 	}
 	view.Stats.SpillBytes = spillBytes
@@ -140,17 +143,23 @@ func (a *App) collectTraceArtifacts(id string, meta SessionMeta, spill *runtime.
 		}
 		ids := spill.ListIDs()
 		sort.Strings(ids)
+		var spills []TraceArtifact
 		for _, sid := range ids {
 			if sid == "notes" {
 				continue
 			}
-			out = append(out, TraceArtifact{
+			spills = append(spills, TraceArtifact{
 				Kind:  "spill",
 				ID:    sid,
 				Label: sid,
 				Bytes: spill.Size(sid),
 			})
 		}
+		const maxSpillArts = 24
+		if len(spills) > maxSpillArts {
+			spills = spills[len(spills)-maxSpillArts:]
+		}
+		out = append(out, spills...)
 	}
 	if dir := runtime.WorkspaceContextDir(meta.Workspace, id); dir != "" {
 		if art, ok := fileArtifact("index", "INDEX.md", filepath.Join(dir, "INDEX.md")); ok {

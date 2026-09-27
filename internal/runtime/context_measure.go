@@ -50,8 +50,9 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	var compacted []Message
 	var report ShapeReport
 	if opts.ModelWindow > 0 {
-		compacted = Legalize(copyMessages(msgs))
-		report.Budget = effectiveBudget(ShapeOpts{Loop: loop, ModelWindow: opts.ModelWindow, Overhead: overhead})
+		compacted, report = projectChat(msgs, ShapeOpts{
+			Loop: loop, Spill: opts.Spill, ModelWindow: opts.ModelWindow, Overhead: overhead,
+		})
 	} else {
 		compacted, report = Shape(msgs, ShapeOpts{
 			Loop: loop, Spill: opts.Spill, ModelWindow: opts.ModelWindow, Overhead: overhead,

@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -94,6 +95,27 @@ func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
 const previewFileBytes = 80_000
 const blobFileBytes = 16 << 20
 
+func readCapped(path string, limit int) ([]byte, bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	if limit <= 0 {
+		b, err := io.ReadAll(f)
+		return b, false, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
+	if err != nil {
+		return nil, false, err
+	}
+	trunc := len(raw) > limit
+	if trunc {
+		raw = raw[:limit]
+	}
+	return raw, trunc, nil
+}
+
 func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string, err error) {
 	if a != nil && strings.TrimSpace(workspace) == "" {
 		workspace = a.Workspace()
@@ -138,14 +160,9 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 		meta["binary"] = true
 		return meta, nil
 	}
-	raw, err := os.ReadFile(p)
+	raw, truncated, err := readCapped(p, previewFileBytes)
 	if err != nil {
 		return nil, err
-	}
-	truncated := false
-	if len(raw) > previewFileBytes {
-		raw = raw[:previewFileBytes]
-		truncated = true
 	}
 	meta["truncated"] = truncated
 	if officeText, oerr := officePreviewText(p, ext); oerr == nil && officeText != "" {
@@ -176,14 +193,9 @@ func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(p)
+	raw, truncated, err := readCapped(p, blobFileBytes)
 	if err != nil {
 		return nil, err
-	}
-	truncated := false
-	if len(raw) > blobFileBytes {
-		raw = raw[:blobFileBytes]
-		truncated = true
 	}
 	ext := strings.ToLower(filepath.Ext(p))
 	mimeType := mimeFromExt(ext)

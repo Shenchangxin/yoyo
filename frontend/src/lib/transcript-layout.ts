@@ -60,6 +60,7 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   if (artifactShouldShow(artifactView(pair.call, pair.result))) return true;
   const body = String((pair.result || item).payload?.content || (pair.result || item).text || "");
   const path = String(toolArgs(pair.call || pair.result || item).path || "");
+  if (name === "apply_patch" && (/\*\*\*\s+(Add|Update) File:/.test(body) || !!path)) return true;
   return isRichResult(name, body, path);
 }
 
@@ -116,6 +117,14 @@ export function processGroupLive(items: Item[]): boolean {
 
 export function processToolPairs(items: Item[]): ToolPair[] {
   return pairTools(items).filter((p) => p.call || p.result);
+}
+
+/** Expand a process rail from the tail so a 200-step turn does not mount every row. */
+export const PROCESS_PAGE = 60;
+
+export function tailProcessPairs(pairs: ToolPair[], shown: number): { visible: ToolPair[]; hidden: number } {
+  if (shown <= 0 || pairs.length <= shown) return { visible: pairs, hidden: 0 };
+  return { visible: pairs.slice(pairs.length - shown), hidden: pairs.length - shown };
 }
 
 export function processElapsedMs(items: Item[]): number {

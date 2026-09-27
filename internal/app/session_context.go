@@ -27,7 +27,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	if err != nil {
 		loop, frags, pb, skills, _, pol, err = a.Materials(a.ActiveHash())
 	}
-	evs, _ := a.Trajectory(sessionID)
+	evs, _ := a.ReadTrace(sessionID)
 	if err != nil {
 		return overlayPrompt(runtime.ShapeFromEvents(evs, window), a.liveShape(sessionID))
 	}

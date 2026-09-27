@@ -86,7 +86,8 @@ export function CodePreview({
   dim?: boolean;
   fill?: boolean;
 }) {
-  const body = cap && text.length > cap ? text.slice(0, cap) : text;
+  const limit = cap && cap > 0 ? cap : 12_000;
+  const body = text.length > limit ? text.slice(0, limit) : text;
   const tokens = useHighlight(body, lang);
   if (!body.trim()) return null;
   return (
@@ -308,7 +309,7 @@ export function WorkspaceFileView({
     return (
       <div className={cn(frame, fill && "min-h-0")}>
         <div className={cn("min-h-0 overflow-auto px-4 py-3", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
-          <Markdown text={text} quiet />
+          <Markdown text={text.length > 12_000 ? text.slice(0, 12_000) : text} quiet />
         </div>
         {cap}
       </div>

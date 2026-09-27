@@ -1,9 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
-import { withLiveText } from "../../lib/stream-live";
 import { PresenceAnchor } from "../presence";
 import { useCopy } from "../../lib/i18n";
 import type { Copy } from "../../lib/copy";
@@ -33,7 +32,8 @@ import {
   processKindTally,
   processSpanMs,
   processStartMs,
-  processToolPairs,
+  tailProcessPairs,
+  PROCESS_PAGE,
   type PairState,
   type ToolPair,
 } from "../../lib/transcript-layout";
@@ -77,26 +77,25 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
   );
 }
 
-export function ProcessGroup({
+export const ProcessGroup = memo(function ProcessGroup({
   items: rawItems,
   live,
   running,
   compact,
-  liveTexts,
 }: {
   items: Item[];
   live: boolean;
   running: boolean;
   compact?: boolean;
-  liveTexts?: Record<string, string>;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
   const swap = motionTransition(reduced, DURATION_FAST);
   const [open, setOpen] = useState(false);
-  const items = liveTexts ? rawItems.map((it) => withLiveText(it, liveTexts)) : rawItems;
-  const pairs = pairTools(items);
-  const tools = processToolPairs(items);
+  const [shown, setShown] = useState(PROCESS_PAGE);
+  const items = rawItems;
+  const pairs = useMemo(() => pairTools(items), [items]);
+  const tools = useMemo(() => pairs.filter((p) => p.call || p.result), [pairs]);
   const pending = tools.filter((p) => pairState(p, running) === "running");
   const current = live ? pending[pending.length - 1] : undefined;
   const failed = processFailedCount(items);
@@ -107,6 +106,7 @@ export function ProcessGroup({
   const span = formatSpan(spanMs);
   const summary = summarize(items, copy.transcript);
   const settledLabel = span ? copy.transcript.workedFor.replace("{n}", span) : "";
+  const { visible: openPairs, hidden } = open ? tailProcessPairs(pairs, shown) : { visible: [] as typeof pairs, hidden: 0 };
 
   return (
     <div className="u-chrome min-w-0" data-testid="process-group" data-live={live ? "true" : "false"}>
@@ -191,7 +191,17 @@ export function ProcessGroup({
             className="overflow-hidden"
           >
             <div className={cn("step-rail min-w-0 pb-1 pt-0.5", compact && "pt-1")}>
-              {pairs.map((p) => (
+              {hidden > 0 ? (
+                <button
+                  type="button"
+                  className="mb-1 h-7 w-full rounded-md px-2 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+                  data-testid="process-earlier"
+                  onClick={() => setShown((n) => n + PROCESS_PAGE)}
+                >
+                  {copy.transcript.earlierSteps.replace("{n}", String(hidden))}
+                </button>
+              ) : null}
+              {openPairs.map((p) => (
                 <ProcessPair key={p.key} pair={p} running={running} compact={compact} highlightFail />
               ))}
             </div>
@@ -200,7 +210,7 @@ export function ProcessGroup({
       </AnimatePresence>
     </div>
   );
-}
+});
 
 function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   if (!pair?.call && !pair?.result) {

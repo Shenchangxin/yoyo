@@ -675,7 +675,7 @@ func replayCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			evs, err := a.Trajectory(id)
+			evs, err := a.ReadTrace(id)
 			if err != nil {
 				return err
 			}

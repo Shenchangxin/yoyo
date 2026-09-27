@@ -112,7 +112,7 @@ func (a *App) DumpSession(query string) (SessionDump, error) {
 	if metaErr != nil {
 		meta = SessionMeta{ID: id}
 	}
-	evs, err := a.Trajectory(id)
+	evs, err := a.ReadTrace(id)
 	if err != nil {
 		return SessionDump{}, err
 	}
@@ -143,7 +143,7 @@ func (a *App) ListSessionIndex() []SessionIndexEntry {
 		if metaErr != nil {
 			meta = SessionMeta{ID: id}
 		}
-		evs, _ := a.Trajectory(id)
+		evs, _ := a.ReadTrace(id)
 		spill := runtime.BindSpill(a.Home.Root, meta.Workspace, id)
 		nSpill := 0
 		if spill != nil {

@@ -128,8 +128,12 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 		Loop: k.req.Loop, Spill: k.spill, ModelWindow: k.req.ModelWindow, Overhead: overhead, Aggressive: aggressive,
 	}
 	if k.chatMode() && !aggressive {
-		out = Legalize(copyMessages(messages))
-		report.Budget = effectiveBudget(opts)
+		// SoftHorizon skips snip/forceFit so the cache-stable prefix stays
+		// intact, but write_file bodies must still be stubbed. Otherwise a
+		// long desktop turn ships every full file back to the local model
+		// on every round (session 477c0d8b0b8ac64e: 139 writes, 1M window
+		// so checkpoint never fired).
+		out, report = projectChat(messages, opts)
 	} else {
 		out, report = Shape(messages, opts)
 		out = Legalize(out)

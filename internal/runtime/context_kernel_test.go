@@ -184,6 +184,38 @@ func TestHarborIgnoresModelWindow(t *testing.T) {
 	}
 }
 
+func TestChatPromptStubsHeavyWrites(t *testing.T) {
+	body := strings.Repeat("x", 4000)
+	origArgs := `{"path":"a.ts","content":"` + body + `"}`
+	msgs := []Message{
+		{Role: RoleSystem, Content: "sys"},
+		{Role: RoleUser, Content: "u"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "w1", Name: "write_file", Arguments: origArgs}}},
+		{Role: RoleTool, ToolCallID: "w1", Name: "write_file", Content: "wrote a.ts"},
+	}
+	req := &RunRequest{SoftHorizon: true, Loop: ApplyChatHorizon(DefaultLoop()), ModelWindow: 1_000_000, Tools: &WorkspaceTools{}}
+	k := newContextKernel(req)
+	out, _, rep := k.prompt(msgs, false)
+	if msgs[2].ToolCalls[0].Arguments != origArgs {
+		t.Fatal("live messages must keep full write")
+	}
+	shaped := ""
+	for _, m := range out {
+		if m.Role == RoleAssistant && len(m.ToolCalls) > 0 {
+			shaped = m.ToolCalls[0].Arguments
+		}
+	}
+	if shaped == origArgs || strings.Contains(shaped, body) {
+		t.Fatalf("chat prompt still has full write body: %s", shaped[:min(180, len(shaped))])
+	}
+	if !strings.Contains(shaped, "read_file") || !strings.Contains(shaped, "a.ts") {
+		t.Fatalf("%s", shaped)
+	}
+	if !strings.Contains(rep.Note, "calls") {
+		t.Fatalf("layers %s", rep.Note)
+	}
+}
+
 func TestShapeStubsHeavyWriteCalls(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	origArgs := `{"path":"a.ts","content":"` + body + `"}`

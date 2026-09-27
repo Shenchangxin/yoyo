@@ -201,7 +201,7 @@ func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, str
 		}
 		return msg, err
 	}
-	return readOpenAIStream(res.Body, emit)
+	return readOpenAIStream(ctx, res.Body, emit)
 }
 
 type streamAcc struct {
@@ -209,14 +209,27 @@ type streamAcc struct {
 	done           bool
 }
 
-func readOpenAIStream(r io.Reader, emit func(StreamDelta) error) (Message, error) {
-	br := bufio.NewReader(r)
+func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamDelta) error) (Message, error) {
+	defer body.Close()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = body.Close()
+		case <-stop:
+		}
+	}()
+	br := bufio.NewReader(body)
 	var content strings.Builder
 	tools := map[int]*streamAcc{}
 	maxIdx := -1
 	sawData := false
 	promptTok, completionTok, cachedTok := 0, 0, 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return Message{}, err
+		}
 		line, err := br.ReadString('\n')
 		if len(line) > 0 {
 			trim := strings.TrimSpace(line)
