@@ -380,7 +380,7 @@ func (s *Server) handshake() error {
 	_, err := s.call("initialize", map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    caps,
-		"clientInfo":      map[string]any{"name": "yoyo", "version": "0.3.2"},
+		"clientInfo":      map[string]any{"name": "yoyo", "version": "0.3.3"},
 	})
 	if err != nil {
 		return err
