@@ -117,6 +117,7 @@ type WorkspaceTools struct {
 	OnLive            func(trace.Event)
 	liveCall          string
 	liveRound         string
+	liveOut           int
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -732,6 +733,7 @@ func (t *WorkspaceTools) setLiveCall(id, round string) {
 	t.mu.Lock()
 	t.liveCall = id
 	t.liveRound = round
+	t.liveOut = 0
 	t.mu.Unlock()
 }
 
@@ -743,10 +745,16 @@ func (t *WorkspaceTools) emitStdout(p []byte) {
 	id := t.liveCall
 	round := t.liveRound
 	session := t.SessionID
-	t.mu.Unlock()
-	if id == "" {
+	if id == "" || t.liveOut >= 8_000 {
+		t.mu.Unlock()
 		return
 	}
+	remain := 8_000 - t.liveOut
+	if len(p) > remain {
+		p = p[:remain]
+	}
+	t.liveOut += len(p)
+	t.mu.Unlock()
 	payload := map[string]any{
 		"id": id, "name": "shell", "content": string(p), "delta": true, "untrusted": true,
 	}

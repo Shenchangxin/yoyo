@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEvents, unwrapEvent } from "../src/lib/stream-fold";
-import { layoutRows, processGroupLive } from "../src/lib/transcript-layout";
+import { layoutRows, processGroupLive, tailProcessPairs } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
@@ -438,4 +438,41 @@ test("shell stdout deltas concatenate without closing the process group", () => 
     type: "tool_result", session_id: "s", payload: { id: "c1", name: "shell", content: "hello", round: "s:r1" },
   }));
   expect(processGroupLive(list)).toBe(false);
+});
+
+test("write_file live items do not keep the full file body", () => {
+  const body = "x".repeat(4000);
+  const args = JSON.stringify({ path: "a.ts", content: body });
+  const it = itemFromEvent({
+    type: "tool_call",
+    session_id: "s",
+    payload: { id: "w1", name: "write_file", arguments: args, round: "s:r1" },
+  });
+  expect(String(it.payload?.arguments)).not.toContain(body);
+  expect(String(it.payload?.arguments)).toContain("a.ts");
+  expect(it.payload?.bytes).toBe(args.length);
+});
+
+test("transcript keeps prior turns and all slim tool pairs", () => {
+  const raw: any[] = [
+    { type: "user", session_id: "s", payload: { text: "old" } },
+    { type: "assistant", session_id: "s", payload: { text: "ok", id: "s:r0" } },
+  ];
+  for (let i = 0; i < 40; i++) {
+    raw.push({ type: "tool_call", session_id: "s", payload: { id: `c${i}`, name: "read_file", arguments: "{}" } });
+    raw.push({ type: "file_change", session_id: "s", payload: { id: `c${i}`, path: "x.ts" } });
+    raw.push({ type: "tool_result", session_id: "s", payload: { id: `c${i}`, name: "read_file", content: "ok" } });
+  }
+  raw.push({ type: "user", session_id: "s", payload: { text: "new" } });
+  const items = replayEvents(raw);
+  expect(items.filter((x) => x.type === "file_change")).toHaveLength(0);
+  expect(items.filter((x) => x.type === "user").map((x) => x.text)).toEqual(["old", "new"]);
+  expect(items.filter((x) => x.type === "tool_call")).toHaveLength(40);
+});
+
+test("process rail expands from the tail", () => {
+  const pairs = Array.from({ length: 80 }, (_, i) => ({ key: `c${i}`, extra: [] as Item[] }));
+  const page = tailProcessPairs(pairs, 60);
+  expect(page.hidden).toBe(20);
+  expect(page.visible.map((p) => p.key)).toEqual(pairs.slice(20).map((p) => p.key));
 });

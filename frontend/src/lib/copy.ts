@@ -188,6 +188,7 @@ export const en = {
     failedCount: "{n} failed",
     showSteps: "Show steps",
     hideSteps: "Hide steps",
+    earlierSteps: "Earlier {n} steps",
     live: {
       read: "Reading",
       edit: "Editing",

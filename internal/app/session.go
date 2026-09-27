@@ -174,6 +174,19 @@ func titleFrom(message string) string {
 }
 
 func (a *App) Trajectory(id string) ([]trace.Event, error) {
+	evs, err := a.ReadTrace(id)
+	if err != nil {
+		return nil, err
+	}
+	// UI replay must not marshal every write_file body across Wails.
+	// DumpSession / compact / context measurement still read the store.
+	return runtime.UITrajectory(evs), nil
+}
+
+func (a *App) ReadTrace(id string) ([]trace.Event, error) {
+	if a.Traces == nil {
+		return nil, fmt.Errorf("no trace store")
+	}
 	return a.Traces.Read(id)
 }
 

@@ -59,6 +59,31 @@ func TestProjectTraceSkipsDeltasAndKeepsCalls(t *testing.T) {
 	}
 }
 
+func TestTrimTraceViewDropsNoiseAndTails(t *testing.T) {
+	var evs []trace.Event
+	evs = append(evs, trace.Event{Type: trace.TypeUser, Payload: map[string]any{"text": "go"}})
+	for i := 0; i < 40; i++ {
+		evs = append(evs, trace.Event{Type: trace.TypeFileChange, Payload: map[string]any{"path": "x"}})
+		evs = append(evs, trace.Event{Type: trace.TypeCompact, Payload: map[string]any{"kind": "shape", "tokens": 9}})
+		evs = append(evs, trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c", "name": "read_file", "arguments": "{}"}})
+	}
+	view := TrimTraceView(ProjectTrace(evs), 10)
+	if view.Stats.Events != len(evs) {
+		t.Fatalf("stats must stay full: %d != %d", view.Stats.Events, len(evs))
+	}
+	if view.Stats.Compactions != 40 {
+		t.Fatalf("compactions %d", view.Stats.Compactions)
+	}
+	if len(view.Events) > 10 {
+		t.Fatalf("timeline %d", len(view.Events))
+	}
+	for _, ev := range view.Events {
+		if ev.Type == "file_change" || (ev.Type == "compaction" && ev.Name != "checkpoint") {
+			t.Fatalf("noise leaked %+v", ev)
+		}
+	}
+}
+
 func TestProjectTraceRecoversSpillIDFromStub(t *testing.T) {
 	evs := []trace.Event{{
 		Type: trace.TypeToolResult,

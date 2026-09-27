@@ -51,6 +51,37 @@ export function itemKey(opts: {
   return `${sessionId}:${ts}:${type}:${name}:${opts.delta ? "d" : "f"}:${idx}:${(opts.text || "").slice(0, 80)}`;
 }
 
+const HEAVY_CALLS = new Set([
+  "write_file",
+  "create_file",
+  "apply_patch",
+  "str_replace",
+  "edit_file",
+  "office_create",
+  "office_edit",
+  "cite_sources",
+]);
+
+function slimToolCallPayload(type: string, name: string, p: Record<string, any>): Record<string, any> {
+  if (type !== "tool_call" || !HEAVY_CALLS.has(name)) return p;
+  const args = p.arguments;
+  if (typeof args !== "string" || args.length < 1600) return p;
+  try {
+    const m = JSON.parse(args) as Record<string, unknown>;
+    let changed = false;
+    for (const key of ["content", "patch", "body", "old_str", "new_str"]) {
+      const v = m[key];
+      if (typeof v !== "string" || v.length <= 800) continue;
+      m[key] = `[elided ${key} ${v.length} chars]\n${v.slice(0, 120)}`;
+      changed = true;
+    }
+    if (!changed) return p;
+    return { ...p, arguments: JSON.stringify(m), bytes: args.length };
+  } catch {
+    return { ...p, arguments: args.slice(0, 400), bytes: args.length };
+  }
+}
+
 export function itemFromEvent(raw: any, idx = 0): Item {
   const src = unwrapEvent(raw);
   const p = payload(src);
@@ -62,6 +93,7 @@ export function itemFromEvent(raw: any, idx = 0): Item {
   const delta = asBool(pick(p, "delta", "Delta"));
   const id = str(pick(p, "id", "Id", "ID"));
   const round = str(pick(p, "round", "Round", "round_id", "roundId", "RoundID"));
+  const slim = slimToolCallPayload(type, name, p);
   return {
     key: itemKey({ sessionId, type, id, round, ts, name, text, delta, idx }),
     type,
@@ -71,7 +103,7 @@ export function itemFromEvent(raw: any, idx = 0): Item {
     text,
     name,
     delta,
-    payload: { ...p, ...(id ? { id } : {}), ...(round ? { round } : {}), delta },
+    payload: { ...slim, ...(id ? { id } : {}), ...(round ? { round } : {}), delta },
   };
 }
 
@@ -96,7 +128,14 @@ export function closesAssistant(type: ItemType): boolean {
 }
 
 export function isTranscriptNoise(ev: Item): boolean {
-  if (ev.type === "system" || ev.type === "turn_end" || ev.type === "eval" || ev.type === "evolve") {
+  if (
+    ev.type === "system" ||
+    ev.type === "turn_end" ||
+    ev.type === "eval" ||
+    ev.type === "evolve" ||
+    ev.type === "file_change" ||
+    ev.type === "ask_user"
+  ) {
     return true;
   }
   if (ev.type !== "compaction") return false;
@@ -224,7 +263,7 @@ function foldToolResult(list: Item[], ev: Item): Item[] {
  */
 export function mergeItem(list: Item[], ev: Item): Item[] {
   if (!ev) return list;
-  if (ev.type === "turn_end" || ev.type === "system" || ev.type === "eval" || ev.type === "evolve") {
+  if (ev.type === "turn_end" || ev.type === "system" || ev.type === "eval" || ev.type === "evolve" || ev.type === "file_change" || ev.type === "ask_user") {
     return list;
   }
   if (ev.type === "compaction" && isTranscriptNoise(ev)) return list;

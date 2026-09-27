@@ -403,6 +403,13 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 }
 
 func (a *App) Interrupt(sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		for _, id := range a.RunningIDs() {
+			_ = a.Interrupt(id)
+		}
+		return nil
+	}
 	if a.Threads != nil {
 		a.Threads.Interrupt(sessionID)
 	}

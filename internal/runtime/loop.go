@@ -823,6 +823,15 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 		_ = req.Trace.Append(ev)
 	}
 	if req.OnEvent != nil {
-		req.OnEvent(ev)
+		if typ == trace.TypeCompact {
+			kind, _ := payload["kind"].(string)
+			if kind == "" || kind == "shape" {
+				return
+			}
+		}
+		if typ == trace.TypeFileChange {
+			return
+		}
+		req.OnEvent(slimLiveEvent(ev))
 	}
 }

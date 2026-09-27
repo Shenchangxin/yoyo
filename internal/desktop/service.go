@@ -477,6 +477,13 @@ func (s *Service) RetrySession(sessionID string) error {
 }
 
 func (s *Service) Interrupt(sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		for _, id := range s.RunningIDs() {
+			_ = s.Interrupt(id)
+		}
+		return nil
+	}
 	if s.RPC != nil {
 		_, err := s.call("turn.interrupt", map[string]any{"session": sessionID})
 		return err

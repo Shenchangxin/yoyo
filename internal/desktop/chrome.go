@@ -8,6 +8,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/icons"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
+
+	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 // InstallChrome adds native menus, a tray icon, and typed desktop notifications.
@@ -99,12 +102,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	}
 	if svc.App != nil {
 		ch, _ := svc.App.Hub.Subscribe("*")
-		go func() {
-			for ev := range ch {
-				gui.Event.Emit("yoyo:item", ev)
-				dispatch(string(ev.Type), ev.Source, ev.SessionID, ev.Payload)
-			}
-		}()
+		go pumpDesktopEvents(gui, ch, dispatch)
 	} else if svc.RPC != nil {
 		go func() {
 			for msg := range svc.RPC.Notify {
@@ -121,6 +119,31 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 				dispatch(typ, source, session, payload)
 			}
 		}()
+	}
+}
+
+// pumpDesktopEvents never lets a frozen WebView stall Hub consumption.
+// Live events drop if the renderer is still painting; turn_end still tries.
+func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch func(typ, source, session string, payload map[string]any)) {
+	emit := make(chan trace.Event, 256)
+	go func() {
+		for ev := range emit {
+			gui.Event.Emit("yoyo:item", ev)
+			dispatch(string(ev.Type), ev.Source, ev.SessionID, ev.Payload)
+		}
+	}()
+	for ev := range ch {
+		select {
+		case emit <- ev:
+		default:
+			if !app.KeepHubEvent(ev) {
+				continue
+			}
+			select {
+			case emit <- ev:
+			default:
+			}
+		}
 	}
 }
 
@@ -200,6 +223,11 @@ func (s *Service) rebuildMenusNow() {
 	})
 
 	thread := menu.AddSubmenu(n.Thread)
+	thread.Add(n.Stop).SetAccelerator("CmdOrCtrl+.").OnClick(func(ctx *application.Context) {
+		for _, id := range s.RunningIDs() {
+			_ = s.Interrupt(id)
+		}
+	})
 	thread.Add(n.Compact).OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "compact")
 	})
@@ -267,6 +295,9 @@ func (s *Service) rebuildMenusNow() {
 		s.companionMenu = nil
 	}
 	tmenu.AddSeparator()
+	tmenu.Add(n.Stop).OnClick(func(ctx *application.Context) {
+		_ = s.Interrupt("")
+	})
 	tmenu.Add(n.NewChat).OnClick(func(ctx *application.Context) {
 		showWindow(win)
 		gui.Event.Emit("yoyo:command", "new")

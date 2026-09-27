@@ -556,7 +556,13 @@ export async function contextUsage(sessionID: string): Promise<ContextUsage> {
 
 export async function interrupt(sessionID: string): Promise<void> {
   const s = await wailsService();
-  if (s?.Interrupt) return s.Interrupt(sessionID);
+  if (s?.Interrupt) {
+    await Promise.race([
+      s.Interrupt(sessionID),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
+    ]);
+    return;
+  }
   await http(`/api/sessions/${sessionID}/interrupt`, { method: "POST" });
 }
 

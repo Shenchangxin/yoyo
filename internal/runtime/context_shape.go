@@ -44,6 +44,31 @@ func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
 	return out, rep.Note
 }
 
+// projectChat is the desktop-chat prompt projection: Legalize + spill
+// previews + stub heavy write args. It does not snip or forceFit, so the
+// identity/pins prefix stays cache-stable. Live transcript is not mutated.
+func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
+	rep := ShapeReport{Budget: effectiveBudget(opts)}
+	if len(msgs) == 0 {
+		return msgs, rep
+	}
+	out := copyMessages(msgs)
+	per := opts.Loop.ToolResultBudget
+	if per <= 0 {
+		per = 8_000
+	}
+	if n := applyBudget(out, per, opts.Spill); n > 0 {
+		rep.Layers = append(rep.Layers, "budget")
+		rep.Elided += n
+	}
+	if n := stubHeavyCalls(out, 0, opts.Spill); n > 0 {
+		rep.Layers = append(rep.Layers, "calls")
+		rep.Elided += n
+	}
+	rep.Note = strings.Join(rep.Layers, "+")
+	return Legalize(out), rep
+}
+
 // Shape is a read-time projection. The live transcript is not mutated.
 // Order is cheapest-first and lossless where possible: legalize-prep →
 // budget (spill+preview) → stub heavy write args → microcompact stubs →

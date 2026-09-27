@@ -10,7 +10,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-const traceDetailRunes = 4_000
+const (
+	traceDetailRunes = 4_000
+	uiTraceEvents    = 180
+)
 
 var elidedSpillRe = regexp.MustCompile(`\[elided tool_result id=([A-Za-z0-9_-]+) name=\S+ bytes=(\d+)`)
 
@@ -109,6 +112,31 @@ func ProjectTrace(evs []trace.Event) TraceView {
 		}
 	}
 	return out
+}
+
+// TrimTraceView keeps inspector stats from the full ledger but only ships a
+// short, noise-filtered timeline across Wails. Full jsonl stays on disk.
+func TrimTraceView(view TraceView, keep int) TraceView {
+	if keep <= 0 {
+		keep = uiTraceEvents
+	}
+	out := make([]TraceEvent, 0, min(len(view.Events), keep))
+	for _, ev := range view.Events {
+		switch ev.Type {
+		case "file_change", "system", "eval", "evolve":
+			continue
+		case "compaction":
+			if ev.Name != "checkpoint" {
+				continue
+			}
+		}
+		out = append(out, ev)
+	}
+	if len(out) > keep {
+		out = out[len(out)-keep:]
+	}
+	view.Events = out
+	return view
 }
 
 func projectTraceEvent(i int, ev trace.Event) TraceEvent {

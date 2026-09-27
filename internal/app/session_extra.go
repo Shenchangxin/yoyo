@@ -351,7 +351,7 @@ func (a *App) ResumeSession(id string) (SessionMeta, error) {
 }
 
 func (a *App) ExportSession(id string) (string, error) {
-	evs, err := a.Trajectory(id)
+	evs, err := a.ReadTrace(id)
 	if err != nil {
 		return "", err
 	}
@@ -379,7 +379,7 @@ func (a *App) CompactSession(id string) (string, error) {
 }
 
 func (a *App) CompactSessionFocus(id, focus string) (string, error) {
-	evs, err := a.Trajectory(id)
+	evs, err := a.ReadTrace(id)
 	if err != nil {
 		return "", err
 	}

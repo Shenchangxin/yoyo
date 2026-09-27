@@ -189,6 +189,7 @@ export const zhCN = {
     failedCount: "{n} 个失败",
     showSteps: "展开步骤",
     hideSteps: "收起步骤",
+    earlierSteps: "更早的 {n} 步",
     live: {
       read: "正在读取",
       edit: "正在编辑",

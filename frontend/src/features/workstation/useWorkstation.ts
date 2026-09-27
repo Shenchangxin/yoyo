@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
 import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
-import { isLiveDelta, liveBody, structureSig } from "../../lib/stream-live";
+import { isLiveDelta, liveBody } from "../../lib/stream-live";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -188,6 +188,7 @@ export function useWorkstation() {
   const [liveTexts, setLiveTexts] = useState<Record<string, string>>({});
   const liveAcc = useRef<Record<string, string>>({});
   const liveRaf = useRef(0);
+  const itemsRaf = useRef(0);
   const [queued, setQueued] = useState(0);
   const [queueItems, setQueueItems] = useState<{ id?: string; text?: string; plan?: boolean }[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -416,7 +417,7 @@ export function useWorkstation() {
     if (inspTab !== "trace") return;
     void refreshTrace();
     if (!threadRunning) return;
-    const timer = window.setInterval(() => { void refreshTrace(); }, 2000);
+    const timer = window.setInterval(() => { void refreshTrace(); }, 4000);
     return () => window.clearInterval(timer);
   }, [inspTab, refreshTrace, threadRunning]);
 
@@ -509,25 +510,53 @@ export function useWorkstation() {
     };
     const scheduleLive = () => {
       if (liveRaf.current) return;
-      liveRaf.current = requestAnimationFrame(flushLive);
+      liveRaf.current = window.setTimeout(flushLive, 80);
+    };
+    const flushItems = () => {
+      itemsRaf.current = 0;
+      const keys = new Set(itemsAcc.current.map((x) => x.key));
+      for (const k of Object.keys(liveAcc.current)) {
+        if (!keys.has(k)) delete liveAcc.current[k];
+      }
+      setItems(itemsAcc.current.slice());
+    };
+    const scheduleItems = (immediate: boolean) => {
+      if (immediate) {
+        if (itemsRaf.current) {
+          window.clearTimeout(itemsRaf.current);
+          itemsRaf.current = 0;
+        }
+        flushItems();
+        return;
+      }
+      if (itemsRaf.current) return;
+      itemsRaf.current = window.setTimeout(flushItems, 120);
     };
     const unsub = subscribeSession(
       activeId,
       (item) => {
-        const prevSig = structureSig(itemsAcc.current);
-        itemsAcc.current = mergeItem(itemsAcc.current, item);
         if (isLiveDelta(item)) {
-          const merged = itemsAcc.current.find((x) => x.key === item.key);
-          if (merged) {
-            liveAcc.current[merged.key] = liveBody(merged);
-            scheduleLive();
+          const existed = itemsAcc.current.some((x) => x.key === item.key);
+          if (!existed) {
+            itemsAcc.current = mergeItem(itemsAcc.current, item);
+            scheduleItems(true);
           }
-          if (structureSig(itemsAcc.current) === prevSig) return;
-        } else if (item.key && liveAcc.current[item.key] != null) {
+          const piece = liveBody(item);
+          const prev = liveAcc.current[item.key] ?? "";
+          const cap = item.type === "tool_result" ? 8_000 : 48_000;
+          let next = item.delta ? prev + piece : piece;
+          if (next.length > cap) next = next.slice(0, cap);
+          liveAcc.current[item.key] = next;
+          scheduleLive();
+          return;
+        }
+        itemsAcc.current = mergeItem(itemsAcc.current, item);
+        if (item.key && liveAcc.current[item.key] != null) {
           delete liveAcc.current[item.key];
           scheduleLive();
         }
-        setItems(itemsAcc.current.slice());
+        const batch = item.type === "tool_call" || item.type === "tool_result";
+        scheduleItems(!batch);
         if (item.type === "compaction") {
           const p = item.payload || {};
           setCtx((prev) => ({
@@ -590,8 +619,12 @@ export function useWorkstation() {
     return () => {
       unsub();
       if (liveRaf.current) {
-        cancelAnimationFrame(liveRaf.current);
+        window.clearTimeout(liveRaf.current);
         liveRaf.current = 0;
+      }
+      if (itemsRaf.current) {
+        window.clearTimeout(itemsRaf.current);
+        itemsRaf.current = 0;
       }
     };
   }, [activeId, markEnded]);
@@ -732,7 +765,7 @@ export function useWorkstation() {
             ...localUser(t.id, text),
             source: "steer",
             key: `ui-steer:${t.id}:${Date.now()}`,
-          });
+          }));
           setItems(itemsAcc.current.slice());
         }
         toast.success(copy.app.steered);
@@ -965,8 +998,8 @@ export function useWorkstation() {
 
   async function onStop() {
     if (!activeId) return;
-    await api.interrupt(activeId);
     markEnded(activeId);
+    void api.interrupt(activeId).catch(() => {});
   }
 
   async function onResolve(id: string, decision: string) {

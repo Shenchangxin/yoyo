@@ -12,10 +12,12 @@ import (
 )
 
 // Hub fans session events to HTTP SSE clients without a heavy broker.
-// Publish never drops: a full buffer spills to disk and a goroutine delivers.
-// Adjacent token deltas (same session, type, and round) coalesce on a 16ms
-// window so Wails and SSE subscribers both see ~60fps instead of per-token
-// wakeups. A type change or a non-delta event flushes immediately.
+// Live events (token deltas, tool_call, tool_result) drop under backpressure
+// after spilling to Overflow: a frozen WebView must not spawn unbounded
+// send goroutines. Terminal events (turn_end, error, approval, user) still
+// wait on a single overflow goroutine. Adjacent token deltas (same session,
+// type, and round) coalesce on a 50ms window so Wails and SSE subscribers
+// both see ~20fps instead of per-token wakeups.
 type Hub struct {
 	mu       sync.Mutex
 	subs     map[string]map[chan trace.Event]struct{}
@@ -26,7 +28,7 @@ type Hub struct {
 	timer   *time.Timer
 }
 
-const coalesceWindow = 16 * time.Millisecond
+const coalesceWindow = 50 * time.Millisecond
 
 type deltaBuf struct {
 	ev   trace.Event
@@ -119,18 +121,43 @@ func (h *Hub) fanout(ev trace.Event) {
 	overflow := h.Overflow
 	h.mu.Unlock()
 	for _, ch := range chans {
-		func(ch chan trace.Event) {
-			defer func() { _ = recover() }()
-			select {
-			case ch <- ev:
-			default:
-				spillOverflow(overflow, ev)
-				go func(ch chan trace.Event, ev trace.Event) {
-					defer func() { _ = recover() }()
-					ch <- ev
-				}(ch, ev)
-			}
-		}(ch)
+		deliver(ch, ev, overflow)
+	}
+}
+
+func deliver(ch chan trace.Event, ev trace.Event, overflow string) {
+	defer func() { _ = recover() }()
+	select {
+	case ch <- ev:
+		return
+	default:
+	}
+	spillOverflow(overflow, ev)
+	if !keepUnderBackpressure(ev) {
+		return
+	}
+	go func() {
+		defer func() { _ = recover() }()
+		ch <- ev
+	}()
+}
+
+// KeepHubEvent is true for terminal events that must still reach a slow UI.
+func KeepHubEvent(ev trace.Event) bool {
+	return keepUnderBackpressure(ev)
+}
+
+func keepUnderBackpressure(ev trace.Event) bool {
+	if ev.Payload != nil {
+		if delta, _ := ev.Payload["delta"].(bool); delta {
+			return false
+		}
+	}
+	switch ev.Type {
+	case trace.TypeTurnEnd, trace.TypeError, trace.TypeApproval, trace.TypeUser, trace.TypeInject:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -3,7 +3,6 @@ import { Composer } from "./Composer";
 import type { Approval, Attachment, AuthMode, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
 import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
-import { lastUserTurns } from "../lib/stream";
 
 export function ChatDock(props: {
   items: Item[];
@@ -55,7 +54,7 @@ export function ChatDock(props: {
           {copy.dock.expand}
         </button>
       </div>
-      <Transcript items={lastUserTurns(props.items, 3)} liveTexts={props.liveTexts} showThinking={props.showThinking} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
+      <Transcript items={props.items} liveTexts={props.liveTexts} showThinking={props.showThinking} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
       <Composer
         draftKey={props.draftKey}
         running={props.running}

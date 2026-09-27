@@ -112,6 +112,15 @@ export const Markdown = memo(function Markdown({
   if (!text && !streaming) return null;
   const live = !!streaming;
   const settled = !live && highlight;
+  if (live) {
+    return (
+      <MarkdownBoundary key="live" text={text} fallback={copy.review.previewFailed}>
+        <div className={cn("md-body space-y-2", quiet && "md-body-quiet")} data-streamdown="live">
+          <p className="whitespace-pre-wrap break-words">{text || ""}</p>
+        </div>
+      </MarkdownBoundary>
+    );
+  }
   return (
     <MarkdownBoundary key={settled ? "static" : "live"} text={text} fallback={copy.review.previewFailed}>
       <Streamdown

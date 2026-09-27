@@ -190,7 +190,6 @@ export function Transcript(props: {
                       live={props.running && last && pi === tail}
                       running={props.running}
                       compact={props.compact}
-                      liveTexts={props.liveTexts}
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
@@ -269,7 +268,7 @@ export function Transcript(props: {
           scrollClassName="transcript-scroll"
           className={cn(col, "flex flex-col pb-4 pt-5")}
         >
-          <TranscriptLane rows={rows} virtualize={longThread && !props.compact} />
+          <TranscriptLane rows={rows} virtualize={longThread} />
         </StickToBottom.Content>
       )}
       {props.compact ? null : <JumpLatest />}
