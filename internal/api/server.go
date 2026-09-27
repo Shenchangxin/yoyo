@@ -681,6 +681,16 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, prev)
 	})
+	mux.HandleFunc("/api/workspace/blob", func(w http.ResponseWriter, r *http.Request) {
+		ws := r.URL.Query().Get("workspace")
+		path := r.URL.Query().Get("path")
+		blob, err := a.ReadWorkspaceBlob(ws, path)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, blob)
+	})
 	mux.HandleFunc("/api/eval/safety", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 		defer cancel()

@@ -282,7 +282,7 @@ export function PresenceStamp(props: { className?: string; size?: number }) {
 
 export const MODULE_PRESENCE_SIZE = 228;
 
-export function PresenceModuleLoading(props: { label?: string; className?: string }) {
+export function PresenceModuleLoading(props: { label?: string; className?: string; size?: number }) {
   return (
     <div
       className={cn(
@@ -292,7 +292,7 @@ export function PresenceModuleLoading(props: { label?: string; className?: strin
       data-testid="presence-module-loading"
       aria-busy="true"
     >
-      <PresenceAnchor id="module" size={MODULE_PRESENCE_SIZE} />
+      <PresenceAnchor id="module" size={props.size ?? MODULE_PRESENCE_SIZE} />
       {props.label ? <p className="text-[13px] text-muted">{props.label}</p> : null}
     </div>
   );

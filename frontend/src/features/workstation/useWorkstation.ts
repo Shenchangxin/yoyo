@@ -172,8 +172,6 @@ export function useWorkstation() {
   const sidebarHover = useUI((s) => s.sidebarHover);
   const setSidebarHover = useUI((s) => s.setSidebarHover);
   const notices = useUI((s) => s.notices);
-  const noticesOpen = useUI((s) => s.noticesOpen);
-  const setNoticesOpen = useUI((s) => s.setNoticesOpen);
   const pushNotice = useUI((s) => s.pushNotice);
   const clearNotices = useUI((s) => s.clearNotices);
   const renameTick = useUI((s) => s.renameTick);
@@ -225,7 +223,6 @@ export function useWorkstation() {
   const [diffB, setDiffB] = useState("");
   const [diffOut, setDiffOut] = useState<any>(null);
   const [booted, setBooted] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutInfo, setAboutInfo] = useState<Record<string, any>>({});
   const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
@@ -1248,11 +1245,11 @@ export function useWorkstation() {
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
-    notices, noticesOpen, setNoticesOpen, clearNotices, renameTick,
+    notices, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
-    booted, showArchived, setShowArchived, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
+    booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, loadVideoHistory, patchConfig, requestQuit,

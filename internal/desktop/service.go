@@ -280,6 +280,13 @@ func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {
 	return s.App.PreviewWorkspaceFile(workspace, path)
 }
 
+func (s *Service) ReadWorkspaceBlob(workspace, path string) (any, error) {
+	if s.RPC != nil {
+		return s.call("workspace.blob", map[string]any{"workspace": workspace, "path": path})
+	}
+	return s.App.ReadWorkspaceBlob(workspace, path)
+}
+
 func (s *Service) ApplyHunks(workspace string, ids []string) error {
 	if s.RPC != nil {
 		_, err := s.call("workspace.apply_hunks", map[string]any{"workspace": workspace, "ids": ids})

@@ -18,6 +18,7 @@ import { Transcript } from "./features/Transcript";
 import { HomeStage } from "./features/HomeStage";
 import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
+import { FilePeek } from "./features/FilePeek";
 import { ChatDock } from "./features/ChatDock";
 import { About } from "./features/About";
 import { ConfirmDialog } from "./features/ConfirmDialog";
@@ -104,6 +105,7 @@ function WorkstationApp() {
   const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
+  const peekOpen = three && !!reviewFile && ws.inspTab === "files";
   const showRail = !popout && !ws.sidebarCollapsed && !railNarrow;
   const overlayRail = !popout && !showRail && ws.sidebarHover;
   const mac = isMac();
@@ -228,6 +230,8 @@ function WorkstationApp() {
       thread={ws.active}
       workspace={toolRoot}
       focusFile={reviewFile}
+      peekInline={sheetInspect}
+      onPreviewFile={setReviewFile}
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
       onOpenPath={(rel) => {
@@ -351,9 +355,6 @@ function WorkstationApp() {
       surface={ws.surface}
       harness={ws.harness}
       fallbackActive={ws.health.harness}
-      showArchived={ws.showArchived}
-      notices={ws.notices}
-      noticesOpen={ws.noticesOpen}
       connected={ws.health.ok}
       isolated={ws.health.isolated}
       isolationKind={ws.health.isolationKind}
@@ -385,16 +386,6 @@ function WorkstationApp() {
         else ws.openSettings();
       }}
       onCollapse={() => ws.setSidebarCollapsed(true)}
-      onToggleArchived={() => ws.setShowArchived((v) => !v)}
-      onToggleNotices={() => ws.setNoticesOpen((v) => !v)}
-      onClearNotices={ws.clearNotices}
-      onNotice={(n) => {
-        if (n.sessionId) {
-          const t = ws.threads.find((x) => x.id === n.sessionId);
-          if (t) ws.openThread(t);
-        }
-        ws.setNoticesOpen(false);
-      }}
       onPin={async (t, pinned) => {
         ws.setThreads((prev) => patchThread(prev, t.id, { pinned }));
         try {
@@ -532,6 +523,14 @@ function WorkstationApp() {
               onSelectRunning={(t) => ws.openThread(t)}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
+              notices={ws.notices}
+              onClearNotices={ws.clearNotices}
+              onNotice={(n) => {
+                if (n.sessionId) {
+                  const t = ws.threads.find((x) => x.id === n.sessionId);
+                  if (t) ws.openThread(t);
+                }
+              }}
               onOpenThread={(id) => {
                 const t = ws.threads.find((x) => x.id === id);
                 if (t) ws.openThread(t);
@@ -722,10 +721,12 @@ function WorkstationApp() {
               </div>
             ) : inspectOpen ? (
               <Group
-                key={three ? "agent-inspect" : "lab-dock"}
+                key={peekOpen ? "agent-peek" : three ? "agent-inspect" : "lab-dock"}
                 className="min-h-0 min-w-0 flex-1"
                 orientation="horizontal"
-                defaultLayout={{ main: Math.max(54, 100 - innerInspect), inspect: innerInspect }}
+                defaultLayout={peekOpen
+                  ? { main: 40, peek: 40, inspect: 20 }
+                  : { main: Math.max(54, 100 - innerInspect), inspect: innerInspect }}
                 onLayoutChanged={(next, meta) => {
                   if (!meta.isUserInteraction || typeof next.inspect !== "number") return;
                   const inspectWindow = (next.inspect / 100) * stagePct;
@@ -735,11 +736,35 @@ function WorkstationApp() {
                   }));
                 }}
               >
-                <Panel id="main" minSize="32" className="h-full min-h-0 min-w-0">
+                <Panel id="main" minSize={peekOpen ? "26" : "32"} className="h-full min-h-0 min-w-0">
                   {workspace}
                 </Panel>
+                {peekOpen ? (
+                  <>
+                    <ResizeHandle />
+                    <Panel id="peek" minSize="28" maxSize="52" className="h-full min-h-0 min-w-0">
+                      <FilePeek
+                        workspace={toolRoot}
+                        path={reviewFile}
+                        hunks={ws.hunks}
+                        mode={ws.diffMode}
+                        onMode={ws.setDiffMode}
+                        onClose={() => setReviewFile("")}
+                        onQuote={(text) => {
+                          const cur = useUI.getState().drafts[ws.draftKey] || "";
+                          useUI.getState().setDraft(ws.draftKey, cur ? `${cur}\n${text}` : text);
+                        }}
+                        onOpenPath={(rel) => {
+                          const root = ws.active?.workspace || ws.savedCfg.workspace;
+                          const path = joinWorkspace(root, rel);
+                          if (path) void api.openInEditor(path);
+                        }}
+                      />
+                    </Panel>
+                  </>
+                ) : null}
                 <ResizeHandle />
-                <Panel id="inspect" minSize="16" maxSize="48" className="h-full min-h-0 min-w-0">
+                <Panel id="inspect" minSize="14" maxSize={peekOpen ? "28" : "48"} className="h-full min-h-0 min-w-0">
                   <div className="glass-chrome h-full min-h-0 overflow-hidden">
                     {three ? inspect : (
                       <ChatDock

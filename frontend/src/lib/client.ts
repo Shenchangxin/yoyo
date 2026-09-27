@@ -724,6 +724,9 @@ export type FilePreview = {
   binary: boolean;
   truncated: boolean;
   bytes: number;
+  kind: string;
+  mime: string;
+  office: boolean;
 };
 
 export async function previewWorkspaceFile(workspace: string, path: string): Promise<FilePreview> {
@@ -739,6 +742,35 @@ export async function previewWorkspaceFile(workspace: string, path: string): Pro
     binary: bool(pick(raw, "binary", "Binary")),
     truncated: bool(pick(raw, "truncated", "Truncated")),
     bytes: num(pick(raw, "bytes", "Bytes")),
+    kind: str(pick(raw, "kind", "Kind")),
+    mime: str(pick(raw, "mime", "MIME", "Mime")),
+    office: bool(pick(raw, "office", "Office")),
+  };
+}
+
+export type FileBlob = {
+  path: string;
+  kind: string;
+  mime: string;
+  bytes: number;
+  truncated: boolean;
+  base64: string;
+};
+
+export async function readWorkspaceBlob(workspace: string, path: string): Promise<FileBlob> {
+  const s = await wailsService();
+  const raw = s?.ReadWorkspaceBlob
+    ? await s.ReadWorkspaceBlob(workspace, path)
+    : await http(`/api/workspace/blob?workspace=${encodeURIComponent(workspace || "")}&path=${encodeURIComponent(path || "")}`, {
+        signal: AbortSignal.timeout(30_000),
+      });
+  return {
+    path: str(pick(raw, "path", "Path")),
+    kind: str(pick(raw, "kind", "Kind")),
+    mime: str(pick(raw, "mime", "MIME", "Mime")),
+    bytes: num(pick(raw, "bytes", "Bytes")),
+    truncated: bool(pick(raw, "truncated", "Truncated")),
+    base64: str(pick(raw, "base64", "Base64")),
   };
 }
 

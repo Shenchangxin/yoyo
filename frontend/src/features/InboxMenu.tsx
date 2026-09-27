@@ -4,8 +4,12 @@ import { useCopy } from "../lib/i18n";
 import * as api from "../lib/client";
 import { asArray, str } from "../lib/normalize";
 import { cn } from "../lib/utils";
+import type { Notice } from "../lib/protocol";
 
 export function InboxMenu(props: {
+  notices?: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string) => void;
 }) {
@@ -16,7 +20,8 @@ export function InboxMenu(props: {
   const drafts = asArray(q.drafts);
   const inbox = asArray(q.inbox);
   const offers = asArray(q.offers);
-  if (!drafts.length && !inbox.length && !offers.length) {
+  const notices = props.notices || [];
+  if (!drafts.length && !inbox.length && !offers.length && !notices.length) {
     return (
       <div className="px-3 py-6 text-center" data-testid="inbox-menu">
         <p className="text-[13px] font-medium text-foreground/85">{copy.review.nothingWaiting}</p>
@@ -26,6 +31,30 @@ export function InboxMenu(props: {
   }
   return (
     <div className="max-h-[28rem] overflow-auto py-1" data-testid="inbox-menu">
+      {notices.length ? (
+        <section>
+          <MenuLabel count={notices.length}>{copy.rail.notifications}</MenuLabel>
+          <ul>
+            {notices.slice(0, 12).map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-lift/50"
+                  onClick={() => props.onNotice?.(n)}
+                >
+                  <span className="truncate text-[13px] font-medium text-foreground">{n.title}</span>
+                  {n.body ? <span className="mt-0.5 line-clamp-2 text-[12px] leading-[1.5] text-muted">{n.body}</span> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {props.onClearNotices ? (
+            <div className="px-3 pb-2">
+              <TextAction onClick={props.onClearNotices}>{copy.rail.clearNotifications}</TextAction>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       {offers.length ? (
         <section>
           <MenuLabel count={offers.length}>{copy.review.approvals}</MenuLabel>
@@ -112,11 +141,11 @@ export function InboxMenu(props: {
   );
 }
 
-export function inboxBadgeCount(inbox: any[], queue: any): number {
+export function inboxBadgeCount(inbox: any[], queue: any, notices = 0): number {
   const unread = inbox.filter((it: any) => it.unread || it.Unread).length;
   const offers = asArray(queue?.offers).length;
   const drafts = asArray(queue?.drafts).length;
-  return unread + offers + drafts;
+  return unread + offers + drafts + notices;
 }
 
 function MenuLabel({ children, count }: { children: ReactNode; count?: number }) {

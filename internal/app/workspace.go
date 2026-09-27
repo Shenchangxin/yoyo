@@ -1,7 +1,10 @@
 package app
 
 import (
+	"encoding/base64"
 	"fmt"
+	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,16 +92,15 @@ func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
 }
 
 const previewFileBytes = 80_000
+const blobFileBytes = 16 << 20
 
-// PreviewWorkspaceFile returns a bounded text preview of a workspace file
-// for the session inspector and artifact cards.
-func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error) {
+func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string, err error) {
 	if a != nil && strings.TrimSpace(workspace) == "" {
 		workspace = a.Workspace()
 	}
 	rel = strings.TrimSpace(rel)
 	if workspace == "" || rel == "" {
-		return nil, fmt.Errorf("empty path")
+		return "", "", fmt.Errorf("empty path")
 	}
 	p := rel
 	if !filepath.IsAbs(p) {
@@ -106,7 +108,35 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 	}
 	p = filepath.Clean(p)
 	if !capability.WithinWorkspace(workspace, p) {
-		return nil, fmt.Errorf("path escapes workspace")
+		return "", "", fmt.Errorf("path escapes workspace")
+	}
+	return p, filepath.ToSlash(rel), nil
+}
+
+// PreviewWorkspaceFile returns a bounded text preview of a workspace file
+// for the session inspector and artifact cards.
+func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error) {
+	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
+	if err != nil {
+		return nil, err
+	}
+	st, err := os.Stat(p)
+	if err != nil {
+		return nil, err
+	}
+	ext := strings.ToLower(filepath.Ext(p))
+	kind := previewKind(ext)
+	meta := map[string]any{
+		"path":  slashRel,
+		"kind":  kind,
+		"mime":  mimeFromExt(ext),
+		"lang":  langFromExt(ext),
+		"html":  kind == "html",
+		"bytes": st.Size(),
+	}
+	if kind == "image" || kind == "pdf" || kind == "audio" || kind == "video" {
+		meta["binary"] = true
+		return meta, nil
 	}
 	raw, err := os.ReadFile(p)
 	if err != nil {
@@ -117,40 +147,64 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 		raw = raw[:previewFileBytes]
 		truncated = true
 	}
-	ext := strings.ToLower(filepath.Ext(p))
-	if officeText, err := officePreviewText(p, ext); err == nil && officeText != "" {
-		return map[string]any{
-			"path":      filepath.ToSlash(rel),
-			"text":      officeText,
-			"lang":      "text",
-			"html":      false,
-			"bytes":     len(raw),
-			"truncated": truncated,
-			"office":    true,
-		}, nil
+	meta["truncated"] = truncated
+	if officeText, oerr := officePreviewText(p, ext); oerr == nil && officeText != "" {
+		meta["text"] = officeText
+		meta["lang"] = "text"
+		meta["html"] = false
+		meta["office"] = true
+		meta["kind"] = "office"
+		return meta, nil
 	}
 	if looksBinary(raw) {
-		return map[string]any{
-			"path":      filepath.ToSlash(rel),
-			"bytes":     len(raw),
-			"binary":    true,
-			"truncated": truncated,
-		}, nil
+		meta["binary"] = true
+		meta["kind"] = "binary"
+		return meta, nil
 	}
-	html := ext == ".html" || ext == ".htm" || ext == ".xhtml"
+	meta["text"] = string(raw)
+	return meta, nil
+}
+
+// ReadWorkspaceBlob returns a bounded base64 payload so the inspector can
+// render PDF, images, and other binary previews.
+func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
+	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
+	if err != nil {
+		return nil, err
+	}
+	st, err := os.Stat(p)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return nil, err
+	}
+	truncated := false
+	if len(raw) > blobFileBytes {
+		raw = raw[:blobFileBytes]
+		truncated = true
+	}
+	ext := strings.ToLower(filepath.Ext(p))
+	mimeType := mimeFromExt(ext)
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		if d := http.DetectContentType(raw); d != "" {
+			mimeType = d
+		}
+	}
 	return map[string]any{
-		"path":      filepath.ToSlash(rel),
-		"text":      string(raw),
-		"lang":      langFromExt(ext),
-		"html":      html,
-		"bytes":     len(raw),
+		"path":      slashRel,
+		"kind":      previewKind(ext),
+		"mime":      mimeType,
+		"bytes":     st.Size(),
 		"truncated": truncated,
+		"base64":    base64.StdEncoding.EncodeToString(raw),
 	}, nil
 }
 
 func officePreviewText(path, ext string) (string, error) {
 	switch ext {
-	case ".docx", ".xlsx", ".pptx", ".pdf":
+	case ".docx", ".xlsx", ".pptx":
 		return office.Query(path)
 	default:
 		return "", os.ErrInvalid
@@ -184,7 +238,7 @@ func langFromExt(ext string) string {
 		return "css"
 	case ".html", ".htm", ".xhtml":
 		return "html"
-	case ".md":
+	case ".md", ".markdown":
 		return "md"
 	case ".py":
 		return "python"
@@ -199,4 +253,40 @@ func langFromExt(ext string) string {
 	default:
 		return strings.TrimPrefix(ext, ".")
 	}
+}
+
+func previewKind(ext string) string {
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif":
+		return "image"
+	case ".pdf":
+		return "pdf"
+	case ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac":
+		return "audio"
+	case ".mp4", ".webm", ".mov", ".m4v":
+		return "video"
+	case ".html", ".htm", ".xhtml":
+		return "html"
+	case ".md", ".markdown":
+		return "markdown"
+	case ".docx", ".xlsx", ".pptx":
+		return "office"
+	default:
+		return "text"
+	}
+}
+
+func mimeFromExt(ext string) string {
+	switch ext {
+	case ".md", ".markdown":
+		return "text/markdown"
+	case ".ts", ".tsx":
+		return "text/typescript"
+	case ".svg":
+		return "image/svg+xml"
+	}
+	if t := mime.TypeByExtension(ext); t != "" {
+		return t
+	}
+	return "application/octet-stream"
 }

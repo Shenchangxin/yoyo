@@ -138,4 +138,35 @@ func TestPreviewWorkspaceFile(t *testing.T) {
 	if _, err := a.PreviewWorkspaceFile(abs, outside); err == nil {
 		t.Fatal("escaped workspace")
 	}
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	if err := os.WriteFile(filepath.Join(abs, "shot.png"), png, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	img, err := a.PreviewWorkspaceFile(abs, "shot.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img["kind"] != "image" || img["binary"] != true {
+		t.Fatalf("image %+v", img)
+	}
+	blob, err := a.ReadWorkspaceBlob(abs, "shot.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blob["kind"] != "image" || blob["base64"] == "" {
+		t.Fatalf("blob %+v", blob)
+	}
+	if err := os.WriteFile(filepath.Join(abs, "notes.pdf"), []byte("%PDF-1.4 junk stream"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pdf, err := a.PreviewWorkspaceFile(abs, "notes.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pdf["kind"] != "pdf" || pdf["binary"] != true {
+		t.Fatalf("pdf %+v", pdf)
+	}
+	if _, ok := pdf["text"]; ok {
+		t.Fatalf("pdf must not leak extracted text %+v", pdf)
+	}
 }
