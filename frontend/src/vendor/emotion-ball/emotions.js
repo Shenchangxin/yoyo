@@ -69,11 +69,11 @@ window.EMOTION_SEED = [
     desc: '左看看、右看看，目光在两侧各停留片刻，偶尔自旋甩彩带 / 弹跳',
     en: { name: 'Idle', desc: 'Glances left, glances right, lingering on each side; an occasional ribbon spin or bounce' },
     transition: 700,
-    pool: [0, 8], poolMs: [4500, 8000], blinkMs: [2200, 5200], antics: true,
+    pool: [0, 8], poolMs: [9000, 16000], blinkMs: [6000, 14000], antics: true,
     body: { breathe: 0.012 },
     anims: [
-      { target: 'eyes', prop: 'lookX', type: 'glance', amp: 16, period: 2600 },
-      { target: 'eyes', prop: 'lookY', type: 'sine', amp: 3, period: 3100, phase: 1.1 }
+      { target: 'eyes', prop: 'lookX', type: 'glance', amp: 10, period: 4800 },
+      { target: 'eyes', prop: 'lookY', type: 'sine', amp: 2, period: 4100, phase: 1.1 }
     ]
   },
   {

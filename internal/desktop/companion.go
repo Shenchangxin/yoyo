@@ -61,7 +61,12 @@ func companionCursorLocal(win application.Window) (lx, ly, ww, wh float64, ok bo
 }
 
 func (s *Service) SetCompanionCaption(on bool) {
-	s.companionCaption.Store(on)
+	if s.companionCaption.Swap(on) == on {
+		return
+	}
+	if win := s.companion; win != nil {
+		applyCompanionShape(win, on)
+	}
 }
 
 func (s *Service) PlaceCompanion(x, y int) {
@@ -189,7 +194,7 @@ func (s *Service) OpenCompanion() error {
 		s.companion.Show()
 		s.companion.SetAlwaysOnTop(true)
 		hideCompanionTaskbar(s.companion)
-		applyCompanionShape(s.companion, false)
+		applyCompanionShape(s.companion, s.companionCaption.Load())
 		setCompanionPassthrough(s.companion, true)
 		s.pinCompanion(s.companion)
 		s.emitCompanion("shown")
@@ -273,7 +278,7 @@ func (s *Service) OpenCompanion() error {
 		win.Show()
 		win.SetAlwaysOnTop(true)
 		hideCompanionTaskbar(win)
-		applyCompanionShape(win, false)
+		applyCompanionShape(win, s.companionCaption.Load())
 		setCompanionPassthrough(win, true)
 		s.pinCompanion(win)
 		s.emitCompanion("shown")
@@ -293,6 +298,8 @@ func (s *Service) startCursorWatch() {
 		var armed, dragging, downPrev bool
 		passthrough := true
 		var idlePins uint8
+		var lastCap bool
+		var lastWW, lastWH float64
 		for range tick.C {
 			if s.quitting.Load() {
 				return
@@ -300,18 +307,25 @@ func (s *Service) startCursorWatch() {
 			win := s.companion
 			if win == nil || !win.IsVisible() {
 				armed, dragging, downPrev = false, false, false
+				lastWW, lastWH = 0, 0
 				continue
 			}
 			caption := s.companionCaption.Load()
 			lx, ly, ww, wh, locOK := companionCursorLocal(win)
 			hit := locOK && CompanionHit(lx, ly, ww, wh, caption)
 			down := leftMouseDown()
+			want := true
 			if locOK {
-				want := !(hit || dragging || (armed && down))
-				if want != passthrough {
-					passthrough = want
-					setCompanionPassthrough(win, want)
+				want = !(hit || dragging || (armed && down))
+			}
+			if runtime.GOOS == "windows" {
+				if locOK && (caption != lastCap || absF(ww-lastWW) > 1 || absF(wh-lastWH) > 1) {
+					lastCap, lastWW, lastWH = caption, ww, wh
+					applyCompanionShape(win, caption)
 				}
+			} else if want != passthrough {
+				passthrough = want
+				setCompanionPassthrough(win, want)
 			}
 			cx, cy, curOK := desktopCursorCSS()
 			if down && !downPrev && hit && curOK {

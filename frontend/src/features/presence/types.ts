@@ -8,7 +8,7 @@ export type MoodMate = {
   setEmotion: (id: string) => unknown;
   handleAIMessage: (msg: string | { emotionId: string; tips?: string }) => unknown;
   on: (ev: "change" | "tips" | "error", cb: (e: any) => void) => () => void;
-  setGaze: (nx: number, ny: number) => MoodMate;
+  setGaze: (nx: number, ny: number, hold?: boolean) => MoodMate;
   clearGaze?: () => MoodMate;
   setStyle: (s: { sketch?: number }) => MoodMate;
   celebrate: (strength?: number) => MoodMate;
