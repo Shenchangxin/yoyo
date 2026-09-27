@@ -64,14 +64,28 @@ func LooksSecretPaste(args string) bool {
 	return strings.Contains(low, "sk-") || strings.Contains(low, "api_key") || strings.Contains(low, "-----begin")
 }
 
+func isWorkspaceWrite(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "write_file", "str_replace", "apply_patch", "office_create", "office_update":
+		return true
+	default:
+		return false
+	}
+}
+
 func PreTool(name, arguments string) (deny bool, reason string) {
 	// File bodies are not shell commands. Scanning write_file/apply_patch
 	// arguments for "format " blocked ordinary Go ("export format is").
 	if isShellTool(name) && LooksDelete(name, arguments, "") {
 		return true, "destructive delete requires an explicit operator path"
 	}
-	if ok, why := LooksExfil(name, "", "", arguments); ok {
-		return true, why
+	// Writing into the workspace is not exfil. API specs and auth docs
+	// contain "Authorization:" next to example https URLs; the data leaves
+	// the machine only if a later network tool posts it.
+	if !isWorkspaceWrite(name) {
+		if ok, why := LooksExfil(name, "", "", arguments); ok {
+			return true, why
+		}
 	}
 	if name == "browser_type" || name == "browser_fill" || strings.HasPrefix(name, "computer_") {
 		if LooksSecretPaste(arguments) {

@@ -114,6 +114,9 @@ func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 	}
 	loaded := capLoadedSkills(loadedFrom(k.req.Tools))
 	k.dyn = AssembleDynamic(planTextOf(k.req.Tools), loaded, k.notes, ckpt, AssembleToday(k.req.Tools))
+	if k.req != nil {
+		k.dyn = languageDynPin(OperatorVoice(k.req.User, k.req.History)) + k.dyn
+	}
 	return setDynamic(messages, k.dyn)
 }
 

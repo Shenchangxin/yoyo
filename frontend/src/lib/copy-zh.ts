@@ -397,6 +397,7 @@ export const zhCN = {
     closePreview: "关闭预览",
     backToFiles: "返回文件",
     previewTruncated: "预览已截到上限。打开原文件看全文。",
+    previewFailed: "无法高亮此文件，已显示原文。",
     cannotPreview: "这个文件没法在面板里预览。",
     openingFile: "正在打开…",
     openReview: "在 Review 打开",

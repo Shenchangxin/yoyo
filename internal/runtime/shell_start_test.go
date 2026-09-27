@@ -81,7 +81,7 @@ func TestRewriteCmdStartWaitStaysError(t *testing.T) {
 }
 
 func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
-	text := ChatConductFragments(false)[0].Text
+	text := fragmentText(ChatConductFragments(false))
 	if strings.Contains(text, "Start-Process") || strings.Contains(text, "cmd start") || strings.Contains(text, "中文任务用中文") {
 		t.Fatalf("trivia leaked into conduct: %s", text)
 	}

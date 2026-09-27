@@ -144,6 +144,23 @@ func looksPosixUnix(command string) bool {
 	return false
 }
 
+// unixOutputCap is `| head -N` / `| tail -N` (optionally with 2>&1) used only
+// to cap captured output. The runtime already captures the full stream.
+var unixOutputCap = regexp.MustCompile(`(?i)(?:\s*2>&1)?\s*\|\s*(?:head|tail)(?:\s+-n?\s*\d+|\s+-\d+)?\b`)
+
+// stripUnixOutputPipes drops posix output caps so a Windows cmd command
+// is not rejected just because the model piped to head/tail.
+func stripUnixOutputPipes(command string) (string, bool) {
+	next := strings.TrimSpace(unixOutputCap.ReplaceAllString(command, ""))
+	if next == "" || next == strings.TrimSpace(command) {
+		return command, false
+	}
+	if looksPosixUnix(next) {
+		return command, false
+	}
+	return next, true
+}
+
 func isUnixUtil(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "ls", "cat", "head", "tail", "find", "pwd", "which", "true", "false",
