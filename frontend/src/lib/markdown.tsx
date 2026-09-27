@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type HTMLAttributes, type ReactNode } from "react";
+import { Component, memo, useEffect, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
 import { Streamdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
@@ -64,6 +64,32 @@ const mdComponents: Components = {
   ),
 };
 
+class MarkdownBoundary extends Component<{ text: string; fallback: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    console.warn("[markdown]", err.message, info.componentStack);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div data-testid="markdown-fallback">
+          <p className="mb-2 text-[11px] text-muted">{this.props.fallback}</p>
+          <pre className="overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90">
+            {this.props.text}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const Markdown = memo(function Markdown({
   text,
   streaming,
@@ -87,30 +113,32 @@ export const Markdown = memo(function Markdown({
   const live = !!streaming;
   const settled = !live && highlight;
   return (
-    <Streamdown
-      className={cn("md-body space-y-2", quiet && "md-body-quiet")}
-      mode={settled ? "static" : "streaming"}
-      parseIncompleteMarkdown={live}
-      remend={live ? {} : undefined}
-      isAnimating={live}
-      caret={live ? "block" : undefined}
-      plugins={settled ? { code: codePlugin } : undefined}
-      animated={false}
-      lineNumbers={false}
-      codeBlockMaxHeight={Infinity}
-      components={mdComponents}
-      translations={{
-        copyCode: copy.transcript.copyCode,
-        copyTable: copy.transcript.copyTable,
-      }}
-      controls={{
-        code: { copy: true, download: false },
-        table: { copy: true, download: false, fullscreen: false },
-        mermaid: false,
-        image: { download: false },
-      }}
-    >
-      {text || ""}
-    </Streamdown>
+    <MarkdownBoundary key={settled ? "static" : "live"} text={text} fallback={copy.review.previewFailed}>
+      <Streamdown
+        className={cn("md-body space-y-2", quiet && "md-body-quiet")}
+        mode={settled ? "static" : "streaming"}
+        parseIncompleteMarkdown={live}
+        remend={live ? {} : undefined}
+        isAnimating={live}
+        caret={live ? "block" : undefined}
+        plugins={settled ? { code: codePlugin } : undefined}
+        animated={false}
+        lineNumbers={false}
+        codeBlockMaxHeight={Infinity}
+        components={mdComponents}
+        translations={{
+          copyCode: copy.transcript.copyCode,
+          copyTable: copy.transcript.copyTable,
+        }}
+        controls={{
+          code: { copy: true, download: false },
+          table: { copy: true, download: false, fullscreen: false },
+          mermaid: false,
+          image: { download: false },
+        }}
+      >
+        {text || ""}
+      </Streamdown>
+    </MarkdownBoundary>
   );
 });

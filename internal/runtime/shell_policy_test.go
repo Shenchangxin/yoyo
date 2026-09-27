@@ -29,6 +29,23 @@ func TestShellNeedsWrapper(t *testing.T) {
 	}
 }
 
+func TestStripUnixOutputPipes(t *testing.T) {
+	got, ok := stripUnixOutputPipes(`cd apps/api && go vet ./... 2>&1 | head -40`)
+	if !ok || got != `cd apps/api && go vet ./...` {
+		t.Fatalf("got %q ok=%v", got, ok)
+	}
+	got, ok = stripUnixOutputPipes(`cd apps\api && go test ./... | tail -20`)
+	if !ok || !strings.Contains(got, `go test ./...`) || strings.Contains(got, "tail") {
+		t.Fatalf("got %q ok=%v", got, ok)
+	}
+	if _, ok := stripUnixOutputPipes(`ls -la | head -20`); ok {
+		t.Fatal("ls | head must stay posix — stripping would still be unix")
+	}
+	if _, ok := stripUnixOutputPipes(`go test ./...`); ok {
+		t.Fatal("no pipe")
+	}
+}
+
 func TestLooksPosixUnix(t *testing.T) {
 	posix := []string{
 		`find . -maxdepth 2 -type d -not -path '*/node_modules/*' 2>/dev/null | head -60; echo "---"; ls -la`,

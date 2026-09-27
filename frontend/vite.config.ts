@@ -20,6 +20,52 @@ function keepGoEmbed() {
   };
 }
 
+/**
+ * streamdown React.lazy()s ./highlighted-body-*.js. Vite 8's dep optimizer
+ * rewrites that to a hashed file under .vite/deps that is never written, so
+ * WebView2 on wails.localhost fails the dynamic import.
+ *
+ * Do not optimizeDeps.exclude streamdown — native ESM of that graph never
+ * mounts in WebView2 and leaves the Wails background (28,29,31) on screen.
+ */
+function streamdownHighlight() {
+  const shim =
+    'export { HighlightedCodeBlockBody } from "/src/lib/streamdown-highlight-body.tsx";\n';
+  const isMissingDep = (url: string) =>
+    /(?:^|\/)node_modules\/\.vite\/deps\/highlighted-body-[^/?]+\.js(?:$|\?)/.test(url);
+
+  return {
+    name: "yoyo-streamdown-highlight",
+    configureServer(server: {
+      middlewares: {
+        use: (
+          fn: (
+            req: { url?: string },
+            res: { setHeader: (k: string, v: string) => void; end: (b: string) => void },
+            next: () => void,
+          ) => void,
+        ) => void;
+      };
+    }) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || "";
+        if (!isMissingDep(url)) {
+          next();
+          return;
+        }
+        const name = (url.split("?")[0] || "").split("/").pop() || "";
+        if (name && existsSync(path.join(dir, "node_modules/.vite/deps", name))) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache");
+        res.end(shim);
+      });
+    },
+  };
+}
+
 const wailsReady = existsSync("./bindings/github.com/wailsapp/wails");
 const pkg = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as { version?: string };
 const appVersion = process.env.npm_package_version?.trim() || pkg.version || "0.0.0";
@@ -34,6 +80,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ["@ffmpeg/core", "@ffmpeg/ffmpeg"],
+    include: ["streamdown"],
   },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
@@ -48,6 +95,7 @@ export default defineConfig({
     host: true,
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
+    cors: true,
   },
-  plugins: [tailwindcss(), react(), keepGoEmbed(), ...(wailsReady ? [wails("./bindings")] : [])],
+  plugins: [streamdownHighlight(), tailwindcss(), react(), keepGoEmbed(), ...(wailsReady ? [wails("./bindings")] : [])],
 });

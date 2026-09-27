@@ -55,10 +55,14 @@ function useHighlight(code: string, lang?: string): HlToken[][] | null {
     setLines(null);
     const language = (lang && codePlugin.supportsLanguage(lang as Parameters<typeof codePlugin.supportsLanguage>[0]) ? lang : "text") as Parameters<typeof codePlugin.highlight>[0]["language"];
     const themes = codePlugin.getThemes();
-    const sync = codePlugin.highlight({ code, language, themes }, (next) => {
-      if (live && Array.isArray(next?.tokens)) setLines(next.tokens as HlToken[][]);
-    });
-    if (sync && live && Array.isArray(sync.tokens)) setLines(sync.tokens as HlToken[][]);
+    try {
+      const sync = codePlugin.highlight({ code, language, themes }, (next) => {
+        if (live && Array.isArray(next?.tokens)) setLines(next.tokens as HlToken[][]);
+      });
+      if (sync && live && Array.isArray(sync.tokens)) setLines(sync.tokens as HlToken[][]);
+    } catch {
+      if (live) setLines(null);
+    }
     return () => {
       live = false;
     };

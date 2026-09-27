@@ -622,11 +622,18 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if err := t.check(capability.Shell, "shell", t.Workspace, command); err != nil {
 		return ToolResult{Err: err}
 	}
-	posix := looksPosixUnix(command)
 	rewriteNote := ""
+	if runtime.GOOS == "windows" && windowsPosixShell() == "" {
+		if next, ok := stripUnixOutputPipes(command); ok {
+			rewriteNote = "dropped unix head/tail pipe (no bash on PATH); output is already captured\n"
+			command = next
+			argv = SplitShellArgv(command)
+		}
+	}
+	posix := looksPosixUnix(command)
 	if runtime.GOOS == "windows" && cmdStartWouldHang(command) {
 		if next, ok := rewriteCmdStart(command); ok {
-			rewriteNote = "rewrote cmd start to Start-Process (captured stdout would hang)\n"
+			rewriteNote += "rewrote cmd start to Start-Process (captured stdout would hang)\n"
 			command = next
 			argv = SplitShellArgv(command)
 		} else {
@@ -662,9 +669,9 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	out := runShell(ctx, cmd, idle, block, t.emitStdout)
 	if out.Err != nil && runtime.GOOS == "windows" && !posix && !looksPosixUnix(command) && !shellNeedsWrapper(command, argv) && isExecNotFound(out.Err) {
 		if fuse {
-			cmd = exec.Command("cmd", "/C", command)
+			cmd = exec.Command("cmd", "/S", "/C", command)
 		} else {
-			cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+			cmd = exec.CommandContext(ctx, "cmd", "/S", "/C", command)
 		}
 		cmd.Dir = t.Workspace
 		out = runShell(ctx, cmd, idle, block, t.emitStdout)
@@ -772,7 +779,9 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool) (
 		if !shellNeedsWrapper(command, argv) {
 			return newCmd(argv[0], argv[1:]...), nil
 		}
-		return newCmd("cmd", "/C", command), nil
+		// /S keeps quoted tokens (findstr /C:"--- PASS") from being split
+		// when Go's Windows argv joining wraps the command.
+		return newCmd("cmd", "/S", "/C", command), nil
 	}
 	if !shellNeedsWrapper(command, argv) {
 		return newCmd(argv[0], argv[1:]...), nil

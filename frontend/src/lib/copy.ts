@@ -396,6 +396,7 @@ export const en = {
     closePreview: "Close preview",
     backToFiles: "Back to files",
     previewTruncated: "Preview stopped at the size cap. Open the file to read the rest.",
+    previewFailed: "Couldn't highlight this file. Showing source.",
     cannotPreview: "This file can't be previewed in the pane.",
     openingFile: "Opening…",
     openReview: "Open in Review",

@@ -62,26 +62,42 @@ func TestApplyChatHorizon(t *testing.T) {
 func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	base := DefaultLoop()
 	frags := ChatConductFragments(false)
-	if len(frags) != 1 || !strings.Contains(frags[0].Text, "same language") {
+	joined := fragmentText(frags)
+	if !strings.Contains(joined, "same language") {
 		t.Fatalf("%+v", frags)
 	}
-	if !strings.Contains(frags[0].Text, "start writing workspace artifacts") {
-		t.Fatal("missing start-work")
+	if !strings.Contains(joined, "You decide the deliverable") {
+		t.Fatal("missing deliverable judgment")
 	}
-	if !strings.Contains(frags[0].Text, "plan step") || !strings.Contains(frags[0].Text, "rewrite the tree") {
+	if strings.Contains(joined, "The latest operator utterance is already the task: start writing workspace artifacts this turn") {
+		t.Fatal("must not unconditionally force writes")
+	}
+	if !strings.Contains(joined, "plan step") || !strings.Contains(joined, "rewrite the tree") {
 		t.Fatal("missing plan-language and no-blind-rewrite")
+	}
+	if !strings.Contains(joined, "ask_user") {
+		t.Fatal("ambiguous plan vs implement must go through the agent")
 	}
 	got := DefaultLoop()
 	if got.Execution != base.Execution || got.Bootstrap != base.Bootstrap || got.MaxTurns != 32 {
 		t.Fatalf("harbor loop mutated: %+v", got)
 	}
 	plan := ChatConductFragments(true)
-	if strings.Contains(plan[0].Text, "start writing workspace artifacts") {
+	if strings.Contains(fragmentText(plan), "start writing those workspace artifacts") {
 		t.Fatal("plan mode must not force writes")
 	}
 	if !strings.Contains(plan[0].Text, "same language") {
 		t.Fatal("plan mode must still match language")
 	}
+}
+
+func fragmentText(frags []artifact.PromptFragment) string {
+	var b strings.Builder
+	for _, f := range frags {
+		b.WriteString(f.Text)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func TestChildLoopProfiles(t *testing.T) {
@@ -165,11 +181,11 @@ func TestChatDoesNotPinALanguage(t *testing.T) {
 func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	loop := DefaultLoop()
 	plain := AssembleIdentity(loop, nil)
-	if strings.Contains(plain, "start writing workspace artifacts") {
+	if strings.Contains(plain, "You decide the deliverable") {
 		t.Fatal("harbor identity picked up chat conduct")
 	}
 	s := AssembleIdentity(loop, ChatConductFragments(false))
-	if !strings.Contains(s, "start writing workspace artifacts") {
+	if !strings.Contains(s, "You decide the deliverable") {
 		t.Fatal("chat conduct dropped")
 	}
 	if !strings.Contains(s, "rewrite the tree") {
@@ -177,6 +193,9 @@ func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	}
 	if !strings.Contains(s, "## runtime") {
 		t.Fatalf("runtime heading missing\n%s", s)
+	}
+	if !strings.Contains(s, chatBootstrap) {
+		t.Fatal("chat bootstrap dropped")
 	}
 }
 
@@ -187,6 +206,18 @@ func TestLanguagePinLeadsIdentity(t *testing.T) {
 	ci := strings.Index(s, "Chinese")
 	if ci < 0 || yi < 0 || ci > yi {
 		t.Fatalf("pin must lead identity\n%s", s)
+	}
+	if !strings.Contains(pin.Text, "progress") {
+		t.Fatal("pin must cover progress narration, not only the final letter")
+	}
+}
+
+func TestRefreshDynamicRepeatsLanguagePin(t *testing.T) {
+	req := RunRequest{User: "帮我查询一下关于agent自进化的论文", SoftHorizon: true}
+	k := newContextKernel(&req)
+	_ = k.refreshDynamic(nil)
+	if !strings.Contains(k.dyn, "Output language") || !strings.Contains(k.dyn, "Chinese") {
+		t.Fatalf("working memory must re-pin Chinese output:\n%s", k.dyn)
 	}
 }
 
