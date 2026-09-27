@@ -239,10 +239,7 @@ func fn(name, desc string, params map[string]any) ToolJSON {
 }
 
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
-	var args map[string]any
-	if argsJSON != "" {
-		_ = json.Unmarshal([]byte(argsJSON), &args)
-	}
+	args := parseToolArgs(argsJSON)
 	if args == nil {
 		args = map[string]any{}
 	}
@@ -534,10 +531,14 @@ func (t *WorkspaceTools) listDir(rel string) ToolResult {
 		}
 		if e.IsDir() {
 			b.WriteString("d ")
+			b.WriteString(e.Name())
 		} else {
 			b.WriteString("f ")
+			b.WriteString(e.Name())
+			if info, err := e.Info(); err == nil {
+				fmt.Fprintf(&b, "  %d  %s", info.Size(), info.ModTime().Format("2006-01-02T15:04"))
+			}
 		}
-		b.WriteString(e.Name())
 		b.WriteByte('\n')
 		n++
 	}
@@ -605,6 +606,9 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 		}
 	}
 	argv := SplitShellArgv(command)
+	if runtime.GOOS == "windows" {
+		command, argv = rewriteWindowsBash(command, argv)
+	}
 	extra := t.skillDirRoots()
 	if err := ShellDenied(command, t.Workspace, t.Policy.NetworkAllow, extra...); err != nil {
 		return ToolResult{Err: err}
@@ -826,11 +830,60 @@ func usableWindowsPosixShell(p string) bool {
 	if strings.Contains(low, `\system32\`) || strings.Contains(low, `/system32/`) {
 		return false
 	}
+	if strings.Contains(low, `\sysnative\`) || strings.Contains(low, `/sysnative/`) {
+		return false
+	}
+	if strings.Contains(low, `\syswow64\`) || strings.Contains(low, `/syswow64/`) {
+		return false
+	}
 	if strings.Contains(low, `\windowsapps\`) || strings.Contains(low, `\windows\system32`) {
 		return false
 	}
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
+}
+
+func rewriteWindowsBash(command string, argv []string) (string, []string) {
+	if len(argv) == 0 {
+		return command, argv
+	}
+	name := strings.ToLower(filepath.Base(argv[0]))
+	name = strings.TrimSuffix(name, ".exe")
+	if name != "bash" && name != "sh" {
+		return command, argv
+	}
+	if usableWindowsPosixShell(argv[0]) {
+		return command, argv
+	}
+	sh := windowsPosixShell()
+	if sh == "" {
+		return command, argv
+	}
+	argv = append([]string{sh}, argv[1:]...)
+	return joinShellArgv(argv), argv
+}
+
+func isWSLPosixStub(p string) bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	p = strings.Trim(p, `"'`)
+	base := strings.ToLower(filepath.Base(p))
+	name := strings.TrimSuffix(base, ".exe")
+	if name != "bash" && name != "sh" && name != "wsl" {
+		return false
+	}
+	abs := p
+	if !filepath.IsAbs(p) {
+		if found := lookPath(p); found != "" {
+			abs = found
+		} else if found := lookPath(name + ".exe"); found != "" {
+			abs = found
+		} else {
+			return false
+		}
+	}
+	return !usableWindowsPosixShell(abs)
 }
 
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {
@@ -954,6 +1007,9 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 		want := map[string]bool{}
 		for _, n := range t.advertisedCopy() {
 			want[n] = true
+		}
+		if hostToolKnown(q) && (want[q] || alwaysAdvertise(q)) && b.Len() == 0 {
+			return ToolResult{Content: q + " is already in your tool list — call it directly. tool_search is for deferred extra (MCP/WASM) tools."}
 		}
 		for _, name := range searchHostSpecs(q) {
 			if want[name] || alwaysAdvertise(name) {

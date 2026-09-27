@@ -144,7 +144,7 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	}
 	text := body
 	if compact, ok := formatFeed(body); ok {
-		text = compact
+		return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, compact)}
 	} else if isXMLFeed(ct, body) {
 		// Keep tags so ids/titles stay recoverable after elision.
 	} else if !strings.Contains(strings.ToLower(ct), "json") {

@@ -57,7 +57,15 @@ func DecorateSkillBody(name, body, dir string) string {
 	}
 	b.WriteString("Run helpers with run_skill_script (skill=")
 	b.WriteString(name)
-	b.WriteString(", script=<file under scripts/>). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.\n\n")
+	b.WriteString(", script=<file under scripts/>). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.")
+	if runtime.GOOS == "windows" {
+		if windowsPosixShell() == "" {
+			b.WriteString(" Windows WSL bash.exe cannot run pack .sh — do not call run_skill_script on .sh; use web_fetch for public HTTP.")
+		} else {
+			b.WriteString(" Pack .sh runs under Git Bash, not WSL bash.exe.")
+		}
+	}
+	b.WriteString("\n\n")
 	b.WriteString(body)
 	return b.String()
 }
@@ -157,8 +165,11 @@ func normalizeSkillScript(script string) (string, error) {
 func requireScriptInterpreter(path string) error {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".sh":
-		if runtime.GOOS == "windows" && scriptInterpreter(path) == "" {
-			return fmt.Errorf("missing bash to run %s (install Git Bash)", filepath.Base(path))
+		if scriptInterpreter(path) == "" {
+			if runtime.GOOS == "windows" {
+				return fmt.Errorf("cannot run %s: Windows WSL bash.exe is not a usable POSIX shell. Install Git Bash, or use web_fetch for public HTTP (retry http if https returns 406)", filepath.Base(path))
+			}
+			return fmt.Errorf("missing bash to run %s", filepath.Base(path))
 		}
 	case ".py":
 		if scriptInterpreter(path) == "" {
@@ -171,6 +182,9 @@ func requireScriptInterpreter(path string) error {
 func scriptInterpreter(path string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".sh":
+		if runtime.GOOS == "windows" {
+			return windowsPosixShell()
+		}
 		if lookPath("bash") != "" {
 			return "bash"
 		}

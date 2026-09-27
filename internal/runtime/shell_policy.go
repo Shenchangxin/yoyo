@@ -73,16 +73,8 @@ func DenyArgvPaths(argv []string, workspace string, extraRoots ...string) error 
 	}
 	roots := append([]string{workspace}, extraRoots...)
 	for _, f := range argv {
-		f = strings.Trim(f, `"'`)
-		if capability.LooksLikeWindowsSwitch(f) {
-			continue
-		}
-		f = capability.CanonicalizeToolPath(f)
-		if !filepath.IsAbs(f) {
-			continue
-		}
-		if !pathInRoots(f, roots) {
-			return fmt.Errorf("shell policy denied path outside workspace")
+		if err := denyShellAbsPath(f, roots); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -334,19 +326,45 @@ func denyEscapingAbsPaths(command, workspace string, extraRoots ...string) error
 	roots := append([]string{workspace}, extraRoots...)
 	fields := strings.Fields(command)
 	for _, f := range fields {
-		f = strings.Trim(f, `"'`)
-		if capability.LooksLikeWindowsSwitch(f) {
-			continue
-		}
-		f = capability.CanonicalizeToolPath(f)
-		if !filepath.IsAbs(f) {
-			continue
-		}
-		if !pathInRoots(f, roots) {
-			return fmt.Errorf("shell policy denied path outside workspace")
+		if err := denyShellAbsPath(f, roots); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func denyShellAbsPath(f string, roots []string) error {
+	f = strings.Trim(f, `"'`)
+	if capability.LooksLikeWindowsSwitch(f) {
+		return nil
+	}
+	if isWSLPosixStub(f) {
+		return fmt.Errorf("shell policy denied WSL bash.exe (NAT/mount failures). Use Git Bash, or web_fetch for public HTTP")
+	}
+	f = capability.CanonicalizeToolPath(f)
+	if !filepath.IsAbs(f) {
+		return nil
+	}
+	if looksLikeHostInterpreter(f) {
+		return nil
+	}
+	if !pathInRoots(f, roots) {
+		return fmt.Errorf("shell policy denied path outside workspace: %s (interpreters are allowed; data files must stay in the workspace; public HTTP uses web_fetch)", f)
+	}
+	return nil
+}
+
+func looksLikeHostInterpreter(p string) bool {
+	base := strings.ToLower(filepath.Base(strings.Trim(p, `"'`)))
+	base = strings.TrimSuffix(base, ".exe")
+	switch base {
+	case "python", "python3", "pythonw", "py", "node", "nodejs", "bun", "deno",
+		"go", "ruby", "perl", "php", "bash", "sh", "pwsh", "powershell", "cmd",
+		"git", "java", "dotnet", "pip", "pip3", "uv", "conda":
+		return true
+	default:
+		return false
+	}
 }
 
 func pathInRoots(p string, roots []string) bool {

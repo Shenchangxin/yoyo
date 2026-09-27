@@ -40,6 +40,10 @@ func isXMLFeed(contentType, body string) bool {
 	return strings.HasPrefix(trim, "<?xml") || strings.HasPrefix(trim, "<feed") || strings.HasPrefix(trim, "<rss")
 }
 
+// feedInlineBudget stays under ingestToolResult's 8k rune cap so ids are
+// not stubbed behind recall_context (session 6ffbe8c1: 12k compact → elided).
+const feedInlineBudget = 7000
+
 func formatFeed(body string) (string, bool) {
 	entries := reFeedEntry.FindAllStringSubmatch(body, 40)
 	if len(entries) == 0 {
@@ -52,16 +56,32 @@ func formatFeed(body string) (string, bool) {
 	if m := reFeedTotal.FindStringSubmatch(body); len(m) > 1 {
 		total = m[1]
 	}
+	cfgs := []struct{ limit, summary int }{
+		{20, 160},
+		{16, 80},
+		{12, 0},
+		{8, 0},
+	}
+	var last string
+	for _, cfg := range cfgs {
+		last = renderFeed(entries, total, cfg.limit, cfg.summary)
+		if utf8.RuneCountInString(last) <= feedInlineBudget {
+			return last, true
+		}
+	}
+	return clipRunes(last, feedInlineBudget), true
+}
+
+func renderFeed(entries [][]string, total string, limit, summaryRunes int) string {
+	if limit > len(entries) {
+		limit = len(entries)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "feed entries: %d", len(entries))
 	if total != "" {
 		fmt.Fprintf(&b, " (totalResults=%s)", total)
 	}
 	b.WriteByte('\n')
-	limit := 25
-	if len(entries) < limit {
-		limit = len(entries)
-	}
 	for i := 0; i < limit; i++ {
 		inner := entries[i][1]
 		id := feedField(inner, "id")
@@ -76,9 +96,12 @@ func formatFeed(body string) (string, bool) {
 		if published == "" {
 			published = feedField(inner, "pubDate")
 		}
-		summary := clipRunes(feedField(inner, "summary"), 360)
-		if summary == "" {
-			summary = clipRunes(feedField(inner, "description"), 360)
+		summary := ""
+		if summaryRunes > 0 {
+			summary = clipRunes(feedField(inner, "summary"), summaryRunes)
+			if summary == "" {
+				summary = clipRunes(feedField(inner, "description"), summaryRunes)
+			}
 		}
 		authors := feedAuthors(inner)
 		pdf := ""
@@ -115,7 +138,7 @@ func formatFeed(body string) (string, bool) {
 	if len(entries) > limit {
 		fmt.Fprintf(&b, "\n… %d more entries omitted\n", len(entries)-limit)
 	}
-	return strings.TrimSpace(b.String()), true
+	return strings.TrimSpace(b.String())
 }
 
 func feedField(inner, tag string) string {

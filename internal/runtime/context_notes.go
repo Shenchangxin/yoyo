@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 
@@ -342,8 +341,8 @@ func extractJSONPaths(args string) []string {
 	if strings.TrimSpace(args) == "" {
 		return nil
 	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(args), &m); err != nil {
+	m := parseToolArgs(args)
+	if len(m) == 0 {
 		return nil
 	}
 	var out []string

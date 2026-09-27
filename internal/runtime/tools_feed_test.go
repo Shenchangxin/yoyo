@@ -1,9 +1,11 @@
 package runtime
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestFormatArxivAtomKeepsIDs(t *testing.T) {
@@ -61,5 +63,26 @@ func TestIsXMLFeed(t *testing.T) {
 	}
 	if !isXMLFeed("text/plain", "<?xml version=\"1.0\"?>") {
 		t.Fatal("body")
+	}
+}
+
+func TestFormatFeedStaysUnderBudget(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">`)
+	b.WriteString(`<opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">999</opensearch:totalResults>`)
+	summary := strings.Repeat("word ", 80)
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&b, `<entry><id>http://arxiv.org/abs/2609.%05dv1</id><title>Paper %d</title><published>2026-09-24T00:00:00Z</published><summary>%s</summary><author><name>A B</name></author><link rel="alternate" href="http://arxiv.org/abs/2609.%05dv1"/></entry>`, i, i, summary, i)
+	}
+	b.WriteString(`</feed>`)
+	got, ok := formatFeed(b.String())
+	if !ok {
+		t.Fatal("expected feed")
+	}
+	if n := utf8.RuneCountInString(got); n > feedInlineBudget {
+		t.Fatalf("compact feed %d runes exceeds %d", n, feedInlineBudget)
+	}
+	if !strings.Contains(got, "2609.00000v1") {
+		t.Fatalf("missing first id:\n%s", got)
 	}
 }
