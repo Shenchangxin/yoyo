@@ -23,6 +23,9 @@ func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	if !strings.Contains(joined, "office_create") || !strings.Contains(joined, "browser_open") || !strings.Contains(joined, "connector_read") {
 		t.Fatalf("office ladder must be first-class: %v", got)
 	}
+	if !strings.Contains(joined, "run_skill_script") {
+		t.Fatalf("run_skill_script must be first-class so skill packs do not tool_search: %v", got)
+	}
 }
 
 func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
@@ -40,6 +43,13 @@ func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	}
 	if strings.Contains(names, "memory_write") {
 		t.Fatalf("memory_write should still be deferred: %s", names)
+	}
+	if !strings.Contains(names, "run_skill_script") {
+		t.Fatalf("run_skill_script should be advertised: %s", names)
+	}
+	already := tools.Call("tool_search", `{"query":"run_skill_script"}`)
+	if already.Err != nil || !strings.Contains(already.Content, "already in your tool list") {
+		t.Fatalf("advertised host tool must not require tool_search: %+v", already)
 	}
 	search := tools.Call("tool_search", `{"query":"memory"}`)
 	if search.Err != nil || !strings.Contains(search.Content, "memory_write") {

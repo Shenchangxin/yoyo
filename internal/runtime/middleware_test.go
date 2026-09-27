@@ -51,3 +51,18 @@ func TestWaitLoopNudgeOnSoftHorizon(t *testing.T) {
 		t.Fatal("one wait is not a loop")
 	}
 }
+
+func TestErrorRepeatNudgeOnEmptyPath(t *testing.T) {
+	hits := map[string]int{}
+	results := []Message{
+		{Content: "ERROR: empty path"},
+		{Content: "ERROR: empty path"},
+		{Content: "ERROR: empty patch"},
+	}
+	recordToolErrors(hits, results)
+	req := RunRequest{User: "帮我查论文", SoftHorizon: true}
+	got := errorRepeatNudge(req, hits)
+	if !strings.Contains(got, errorRepeatPrefixZH) || !strings.Contains(got, "write args json") {
+		t.Fatalf("%q hits=%v", got, hits)
+	}
+}

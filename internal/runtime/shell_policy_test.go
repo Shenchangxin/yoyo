@@ -110,3 +110,16 @@ func TestShellDeniedIgnoresWindowsSwitches(t *testing.T) {
 		}
 	}
 }
+
+func TestShellDeniedAllowsHostInterpreter(t *testing.T) {
+	ws := t.TempDir()
+	cmds := []string{
+		`E:\python-sdk\python.exe scripts\fetch_arxiv.py`,
+		`/usr/bin/python3 scripts/fetch_arxiv.py`,
+	}
+	for _, cmd := range cmds {
+		if err := ShellDenied(cmd, ws, nil); err != nil {
+			t.Fatalf("interpreter must pass: %s: %v", cmd, err)
+		}
+	}
+}

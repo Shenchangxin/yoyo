@@ -180,6 +180,16 @@ func TestChatConductLandsInRuntimeSlot(t *testing.T) {
 	}
 }
 
+func TestLanguagePinLeadsIdentity(t *testing.T) {
+	pin := LanguagePin("帮我查询一下关于agent自进化的论文")
+	s := AssembleIdentity(DefaultLoop(), []artifact.PromptFragment{pin})
+	yi := strings.Index(s, "You are Yoyo")
+	ci := strings.Index(s, "Chinese")
+	if ci < 0 || yi < 0 || ci > yi {
+		t.Fatalf("pin must lead identity\n%s", s)
+	}
+}
+
 func TestAssembleEnvironmentIsFacts(t *testing.T) {
 	ws := t.TempDir()
 	got := AssembleEnvironment(ws)

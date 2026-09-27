@@ -88,6 +88,9 @@ func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
 	if !strings.Contains(text, "web_fetch") {
 		t.Fatal("public HTTP routing missing")
 	}
+	if !strings.Contains(text, "leftover") {
+		t.Fatal("leftover artifact routing missing")
+	}
 }
 
 func TestLanguagePinFollowsHan(t *testing.T) {

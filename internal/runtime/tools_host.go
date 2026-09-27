@@ -16,8 +16,12 @@ func init() {
 	hostFns["read_file"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.readFile(str(args["path"]), intArg(args["offset"]), intArg(args["limit"]))
 	}
-	hostFns["write_file"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.writeFile(str(args["path"]), str(args["content"]))
+	hostFns["write_file"] = func(t *WorkspaceTools, args map[string]any, raw string) ToolResult {
+		path := str(args["path"])
+		if path == "" {
+			return ToolResult{Err: missingWriteArg("path", raw)}
+		}
+		return t.writeFile(path, str(args["content"]))
 	}
 	hostFns["str_replace"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
@@ -41,8 +45,12 @@ func init() {
 	hostFns["load_skill"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.loadSkill(str(args["name"]))
 	}
-	hostFns["apply_patch"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.applyPatch(str(args["patch"]))
+	hostFns["apply_patch"] = func(t *WorkspaceTools, args map[string]any, raw string) ToolResult {
+		patch := str(args["patch"])
+		if strings.TrimSpace(patch) == "" {
+			return ToolResult{Err: missingWriteArg("patch", raw)}
+		}
+		return t.applyPatch(patch)
 	}
 	hostFns["git_status"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
 		return t.git([]string{"status", "--short", "--branch"}, false)

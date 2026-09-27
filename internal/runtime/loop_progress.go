@@ -127,6 +127,8 @@ func errorSignature(content string) string {
 	switch {
 	case strings.Contains(lower, "escapes workspace"):
 		return "escapes workspace"
+	case strings.Contains(lower, "empty path"), strings.Contains(lower, "empty patch"), strings.Contains(lower, "invalid json arguments"):
+		return "write args json"
 	case strings.Contains(lower, "capability:"):
 		return "capability"
 	case strings.Contains(lower, "406"):
