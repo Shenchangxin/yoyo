@@ -19,7 +19,7 @@ This file is the skill-layer source for visual direction. Token values and gramm
 
 1. **The RSI loop is the product.** Overview is the map. Propose → Prove → Promote is a numbered sequence, not four equal admin tabs.
 2. **Show the work, hide the chrome.** Hairline lists. Cards only for objects the operator acts on.
-3. **Beauty is instrument craft.** CAS four-cell mark, paper grain, optical type, pointer maps. Not Sparkles, gold leaf, or personality marketing.
+3. **Beauty is instrument craft.** Lowercase yoyo wordmark, paper grain, optical type, pointer maps. Not Sparkles, gold leaf, or personality marketing.
 4. **Say less, in order.** Headline → one-line context → action.
 
 ## Do / Don't

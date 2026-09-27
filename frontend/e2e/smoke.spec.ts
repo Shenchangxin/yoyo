@@ -402,7 +402,7 @@ test("review pane has files browser and trace", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
   await expect(page.getByTestId("review-file-tree")).toBeVisible();
   await expect(page.getByTestId("file-tree-src/main.go")).toBeVisible();
-  await page.getByRole("button", { name: "Inbox" }).click();
+  await page.getByRole("button", { name: "Notifications" }).click();
   await expect(page.getByTestId("inbox-menu")).toBeVisible();
   await expect(page.getByTestId("inbox-menu")).toContainText("Nothing is waiting on you.");
 });
@@ -746,14 +746,38 @@ test("review file preview fills the pane and highlights source", async ({ page }
   const pane = page.getByTestId("review-files");
   const preview = page.getByTestId("review-file-preview");
   await expect(preview).toBeVisible();
+  await expect(page.getByTestId("review-file-tree")).toBeVisible();
   const paneBox = await pane.boundingBox();
   const prevBox = await preview.boundingBox();
   expect(paneBox && prevBox).toBeTruthy();
   expect(prevBox!.height).toBeGreaterThan(paneBox!.height * 0.55);
+  expect(prevBox!.width).toBeGreaterThan(240);
   const code = preview.getByTestId("artifact-code");
   await expect(code).toContainText("package main");
   await expect(code).toContainText("func Hello()");
   await expect(code.locator("span[style*='color']").first()).toBeVisible({ timeout: 15_000 });
+});
+
+test("pdf preview shows presence loading then the viewer, never source garbage", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    files: [
+      { path: "notes.pdf", kind: "file" },
+      { path: "src/main.go", kind: "file" },
+      { path: "src", kind: "dir" },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle review" }).click();
+  await page.getByRole("tab", { name: /^Files/ }).click();
+  await page.getByTestId("file-tree-notes.pdf").click();
+  const preview = page.getByTestId("review-file-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview.getByTestId("presence-module-loading")).toBeVisible();
+  await expect(preview.getByTestId("artifact-code")).toHaveCount(0);
+  await expect(preview.locator("iframe")).toBeVisible({ timeout: 15_000 });
+  await expect(preview.getByTestId("presence-module-loading")).toHaveCount(0, { timeout: 15_000 });
+  await expect(preview.getByTestId("artifact-code")).toHaveCount(0);
 });
 
 test("write_file html and str_replace render as previewable artifacts", async ({ page }) => {

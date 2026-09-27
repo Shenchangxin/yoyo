@@ -137,10 +137,11 @@ HoverBorderGradient, no WorkingGlow.
 
 ### Mark
 
-The four-cell CAS square (`YoyoMark`) stays in chrome — rail, header, menus.
-The spherical robot occupies empty stage, live process, boot, module loading,
-and the desktop companion window. Never replace either with Sparkles, a
-wordmark illustration, a Disc overlapping-disc mascot, or a purple agent orb.
+The mark (`YoyoMark`) stays in chrome — rail, header, menus. It is the
+lowercase word **yoyo** in the UI face. No pictogram, no mascot. The spherical
+robot occupies empty stage, live process, boot, module loading, and the
+desktop companion window. Never replace the robot with Sparkles, a wordmark
+illustration, or a purple agent orb.
 
 ### Motion
 

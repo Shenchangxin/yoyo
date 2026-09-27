@@ -1,5 +1,8 @@
 import type { Page } from "@playwright/test";
 
+/** Minimal valid PDF so Chromium's viewer can load in the inspector iframe. */
+const MINI_PDF_B64 = "JVBERi0xLjEKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PmVuZG9iagoyIDAgb2JqCjw8L1R5cGUvUGFnZXMvS2lkc1szIDAgUl0vQ291bnQgMT4+ZW5kb2JqCjMgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTIgMDAwMDAgbiAKMDAwMDAwMDEwMSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNC9Sb290IDEgMCBSPj4Kc3RhcnR4cmVmCjE0NwolJUVPRg==";
+
 function sid(s: any) {
   return String(s.id || s.ID);
 }
@@ -297,19 +300,38 @@ export async function mockApi(
     if (path.includes("/api/skills") || path.includes("/api/doctor") || path.includes("/api/about") || path.includes("/api/key")) {
       return route.fulfill({ json: [] });
     }
+    if (path.includes("/api/workspace/blob")) {
+      const u = new URL(route.request().url());
+      const p = u.searchParams.get("path") || "";
+      const pdf = /\.pdf$/i.test(p);
+      if (pdf) await new Promise((r) => setTimeout(r, 450));
+      return route.fulfill({
+        json: {
+          path: p,
+          kind: pdf ? "pdf" : /\.(png|jpe?g|gif|webp)$/i.test(p) ? "image" : /\.docx$/i.test(p) ? "office" : "binary",
+          mime: pdf ? "application/pdf" : /\.docx$/i.test(p) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/octet-stream",
+          bytes: 32,
+          truncated: false,
+          base64: pdf ? MINI_PDF_B64 : "",
+        },
+      });
+    }
     if (path.includes("/api/workspace/file")) {
       const u = new URL(route.request().url());
       const p = u.searchParams.get("path") || "";
       const html = /\.html?$/i.test(p);
-      const office = /\.(docx|xlsx|pptx|pdf)$/i.test(p);
+      const pdf = /\.pdf$/i.test(p);
+      const office = /\.(docx|xlsx|pptx)$/i.test(p);
       const go = /\.go$/i.test(p);
       return route.fulfill({
         json: {
           path: p,
-          text: office ? "" : html ? "<!doctype html><html><body><h1>preview</h1></body></html>" : go ? "package main\n\nfunc Hello() string {\n\treturn \"yoyo\"\n}\n" : "package main\n",
+          text: pdf || office ? "" : html ? "<!doctype html><html><body><h1>preview</h1></body></html>" : go ? "package main\n\nfunc Hello() string {\n\treturn \"yoyo\"\n}\n" : "package main\n",
           lang: html ? "html" : go ? "go" : "text",
           html,
-          binary: office,
+          kind: pdf ? "pdf" : office ? "office" : html ? "html" : go ? "text" : "text",
+          mime: pdf ? "application/pdf" : html ? "text/html" : go ? "text/plain" : "text/plain",
+          binary: office || pdf,
           truncated: false,
           bytes: 32,
         },

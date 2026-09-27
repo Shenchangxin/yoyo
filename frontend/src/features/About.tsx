@@ -22,7 +22,7 @@ export function About(props: {
       <Dialog.Portal>
         <Dialog.Overlay className="overlay-scrim fixed inset-0 z-50" />
         <Dialog.Content className="dialog-sheet fixed left-1/2 top-1/2 z-50 w-[min(420px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-popover p-6 shadow-[var(--shadow-popover)] focus:outline-none">
-          <MarkWell markClassName="h-7 w-[3.2rem] rounded-md" />
+          <MarkWell />
           <div>
             <Dialog.Title className="text-[17px] font-semibold tracking-[-0.03em]">{copy.about.title}</Dialog.Title>
             <Dialog.Description className="mt-[var(--space-item)] text-[13px] leading-[1.55] text-muted">{copy.about.body}</Dialog.Description>

@@ -1,11 +1,24 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { DiffBlock } from "../../lib/split-diff";
 import { langFromPath, type ArtifactView } from "../../lib/artifact-preview";
-import { looksLikeHTML, looksLikeHTMLFile, looksLikePDF, asPreviewDocument } from "../../lib/html-preview";
+import {
+  asPreviewDocument,
+  blobFromBase64,
+  looksLikeHTML,
+  looksLikeHTMLFile,
+  looksLikeMarkdown,
+  looksLikeOffice,
+  looksLikePDF,
+  needsBlobPreview,
+  previewKindFromPath,
+} from "../../lib/html-preview";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
 import { codePlugin } from "../../lib/code-plugin";
+import { Markdown } from "../../lib/markdown";
+import { useUI } from "../../lib/store";
+import { PresenceModuleLoading } from "../presence";
 import { SandboxedFrame } from "./SandboxedFrame";
 
 type HlToken = {
@@ -102,6 +115,20 @@ export function CodePreview({
   );
 }
 
+function PreviewLoading({ fill, label }: { fill?: boolean; label: string }) {
+  useEffect(() => {
+    useUI.getState().setModuleLoading(true);
+    return () => useUI.getState().setModuleLoading(false);
+  }, []);
+  return (
+    <PresenceModuleLoading
+      label={label}
+      size={fill ? 160 : 96}
+      className={cn("w-full", fill ? "h-full min-h-0" : "min-h-40")}
+    />
+  );
+}
+
 export function WorkspaceFileView({
   workspace,
   path,
@@ -114,41 +141,180 @@ export function WorkspaceFileView({
   fill?: boolean;
 }) {
   const copy = useCopy();
+  const blobKind = !source && needsBlobPreview(path);
   const [text, setText] = useState("");
   const [html, setHtml] = useState(false);
   const [lang, setLang] = useState("");
+  const [kind, setKind] = useState("");
   const [binary, setBinary] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+  const [objectUrl, setObjectUrl] = useState("");
+  const [mime, setMime] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [mediaReady, setMediaReady] = useState(false);
   useEffect(() => {
     if (!workspace || !path) return;
     let cancel = false;
-    void api
-      .previewWorkspaceFile(workspace, path)
-      .then((p) => {
+    let url = "";
+    setErr("");
+    setText("");
+    setHtml(false);
+    setLang(langFromPath(path));
+    setKind(previewKindFromPath(path));
+    setBinary(blobKind);
+    setTruncated(false);
+    setObjectUrl("");
+    setMime("");
+    setLoading(true);
+    setMediaReady(false);
+    void (async () => {
+      try {
+        if (blobKind) {
+          const blob = await api.readWorkspaceBlob(workspace, path);
+          if (cancel) return;
+          setTruncated(!!blob.truncated);
+          setMime(blob.mime || "");
+          setKind(blob.kind || previewKindFromPath(path, blob.mime));
+          const file = await blobFromBase64(blob.base64, blob.mime || "application/octet-stream");
+          if (cancel) return;
+          if (/\.docx$/i.test(path)) {
+            try {
+              const mammoth = await import("mammoth");
+              const converted = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+              if (cancel) return;
+              setText(converted.value || "");
+              setHtml(true);
+              setKind("office");
+              setLoading(false);
+              setMediaReady(true);
+              return;
+            } catch {
+              if (!cancel) {
+                setLoading(false);
+                setMediaReady(true);
+              }
+              return;
+            }
+          }
+          url = URL.createObjectURL(file);
+          if (cancel) {
+            URL.revokeObjectURL(url);
+            url = "";
+            return;
+          }
+          setObjectUrl(url);
+          setLoading(false);
+          return;
+        }
+        const p = await api.previewWorkspaceFile(workspace, path);
         if (cancel) return;
         setText(p.text || "");
         setHtml(!!p.html);
         setLang(p.lang || langFromPath(path));
+        setKind(p.kind || previewKindFromPath(path, p.mime));
         setBinary(!!p.binary);
-        setErr("");
-      })
-      .catch((e) => {
-        if (!cancel) setErr(e instanceof Error ? e.message : String(e));
-      });
+        setTruncated(!!p.truncated);
+        setMime(p.mime || "");
+        setLoading(false);
+        setMediaReady(true);
+      } catch (e) {
+        if (!cancel) {
+          setErr(e instanceof Error ? e.message : String(e));
+          setLoading(false);
+          setMediaReady(true);
+        }
+      }
+    })();
     return () => {
       cancel = true;
+      if (url) URL.revokeObjectURL(url);
     };
-  }, [workspace, path]);
+  }, [workspace, path, blobKind]);
+
+  useEffect(() => {
+    if (!objectUrl || mediaReady) return;
+    const t = window.setTimeout(() => setMediaReady(true), 2_000);
+    return () => window.clearTimeout(t);
+  }, [objectUrl, mediaReady]);
+
   const frame = fill ? "flex h-full min-h-0 flex-col" : "";
   const note = fill ? "grid h-full place-items-center px-4 text-center text-[12px] text-muted" : "mt-2 text-[12px] text-muted";
   if (!workspace || !path) return null;
   if (err) return <p className={note}>{err}</p>;
-  if (binary) return <p className={note}>{copy.transcript.binaryFile}</p>;
+  const resolved = kind || previewKindFromPath(path, mime);
+  const cap = truncated ? (
+    <p className={cn("shrink-0 px-3 py-1.5 text-[11px] text-muted", fill ? "border-t border-border/50" : "mt-1")}>
+      {copy.review.previewTruncated}
+    </p>
+  ) : null;
+  const waiting = blobKind && !mediaReady;
+  const reveal = waiting ? "invisible" : "";
+  const markReady = () => setMediaReady(true);
+
+  if (blobKind) {
+    return (
+      <div className={cn(frame, "relative", fill && "min-h-0")} data-kind={resolved || "binary"}>
+        {waiting ? (
+          <div className={cn("z-[1] flex items-center justify-center bg-sidebar/70", objectUrl || text ? "absolute inset-0" : fill ? "h-full min-h-0 flex-1" : "")}>
+            <PreviewLoading fill={fill} label={copy.review.openingFile} />
+          </div>
+        ) : null}
+        {objectUrl && (resolved === "pdf" || looksLikePDF(path, mime)) ? (
+          <iframe
+            title={path}
+            src={objectUrl}
+            onLoad={markReady}
+            onError={markReady}
+            className={cn("w-full min-w-0 bg-media-surface", fill ? "h-full min-h-0 flex-1 border-0" : "mt-2 h-[28rem] rounded-lg border border-border/70", reveal)}
+          />
+        ) : null}
+        {objectUrl && resolved === "image" ? (
+          <div className={cn("grid place-items-center overflow-auto", fill ? "h-full min-h-0 flex-1 bg-media-surface p-3" : "mt-2 max-h-[28rem] rounded-lg border border-border/70 bg-media-surface p-3", reveal)}>
+            <img src={objectUrl} alt={path} onLoad={markReady} onError={markReady} className="max-h-full max-w-full object-contain" />
+          </div>
+        ) : null}
+        {objectUrl && resolved === "video" ? (
+          <video controls src={objectUrl} onLoadedData={markReady} onError={markReady} className={cn("w-full bg-media-surface", fill ? "h-full min-h-0 flex-1" : "mt-2 max-h-[28rem] rounded-lg", reveal)} />
+        ) : null}
+        {objectUrl && resolved === "audio" ? (
+          <audio controls src={objectUrl} onLoadedMetadata={markReady} onError={markReady} className={cn("w-full max-w-lg", fill ? "px-4" : "mt-2", reveal)} />
+        ) : null}
+        {!waiting && html && text ? <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} /> : null}
+        {!waiting && !objectUrl && !text ? <p className={note}>{copy.review.cannotPreview}</p> : null}
+        {cap}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return fill ? <div className={cn(frame, "min-h-0")} /> : null;
+  }
+  if (binary && !text && !objectUrl) return <p className={note}>{copy.transcript.binaryFile}</p>;
   const asHtml = !source && (html || looksLikeHTML(text) || looksLikeHTMLFile(path));
   if (asHtml && text) {
     return (
       <div className={cn(frame, fill && "min-h-0")}>
         <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} />
+        {cap}
+      </div>
+    );
+  }
+  if (!source && (resolved === "markdown" || looksLikeMarkdown(path)) && text) {
+    return (
+      <div className={cn(frame, fill && "min-h-0")}>
+        <div className={cn("min-h-0 overflow-auto px-4 py-3", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+          <Markdown text={text} quiet />
+        </div>
+        {cap}
+      </div>
+    );
+  }
+  if (!source && (resolved === "office" || looksLikeOffice(path)) && text && !/\.pdf$/i.test(path)) {
+    return (
+      <div className={cn(frame, fill && "min-h-0")}>
+        <OfficeText text={text} fill={fill} />
+        {cap}
       </div>
     );
   }
@@ -156,10 +322,64 @@ export function WorkspaceFileView({
     return (
       <div className={cn(frame, fill && "min-h-0")}>
         <CodePreview lang={lang || langFromPath(path)} text={text} fill={fill} />
+        {cap}
       </div>
     );
   }
-  return null;
+  return <p className={note}>{copy.review.cannotPreview}</p>;
+}
+
+function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
+  const rows = parseSheet(text);
+  if (rows) {
+    return (
+      <div className={cn("min-h-0 overflow-auto", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+        <table className="w-full border-collapse text-left text-[12px]">
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-b border-border/40">
+                {row.map((cell, j) => (
+                  <td key={j} className="px-2.5 py-1.5 font-mono text-foreground/90">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  return (
+    <pre className={cn("overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6]", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+      {text}
+    </pre>
+  );
+}
+
+function parseSheet(text: string): string[][] | null {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const cells: { r: number; c: number; v: string }[] = [];
+  for (const line of lines) {
+    const m = line.match(/^([A-Z]+)(\d+)=(.*)$/);
+    if (!m) return null;
+    cells.push({ c: colIndex(m[1]), r: Number(m[2]), v: m[3] });
+  }
+  const maxR = Math.max(...cells.map((c) => c.r));
+  const maxC = Math.max(...cells.map((c) => c.c));
+  if (maxR > 80 || maxC > 26) return null;
+  const grid = Array.from({ length: maxR }, () => Array.from({ length: maxC }, () => ""));
+  for (const c of cells) {
+    if (c.r > 0 && c.c > 0) grid[c.r - 1][c.c - 1] = c.v;
+  }
+  return grid;
+}
+
+function colIndex(col: string): number {
+  let n = 0;
+  for (const ch of col) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
 }
 
 export function ArtifactBody({

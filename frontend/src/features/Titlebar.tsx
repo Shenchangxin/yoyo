@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Inbox, PanelRight } from "lucide-react";
+import { Bell, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
-import type { RunStatus, Thread } from "../lib/protocol";
+import type { Notice, RunStatus, Thread } from "../lib/protocol";
 import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
 import { InboxMenu, inboxBadgeCount } from "./InboxMenu";
@@ -26,6 +26,9 @@ export function Titlebar(props: {
   renameTick?: number;
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string) => void;
+  notices?: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
 }) {
   const copy = useCopy();
   const [editing, setEditing] = useState(false);
@@ -103,7 +106,13 @@ export function Titlebar(props: {
           <Badge className="hidden sm:inline-flex">{props.runningCount} {copy.titlebar.live}</Badge>
         ) : null}
         {props.hideInbox ? null : (
-          <InboxButton onOpenThread={props.onOpenThread} onResolve={props.onResolve} />
+          <NoticeButton
+            notices={props.notices || []}
+            onNotice={props.onNotice}
+            onClearNotices={props.onClearNotices}
+            onOpenThread={props.onOpenThread}
+            onResolve={props.onResolve}
+          />
         )}
         {props.hideInspector ? null : (
           <Tooltip content={props.inspectLabel || copy.review.toggle}>
@@ -124,7 +133,10 @@ export function Titlebar(props: {
   );
 }
 
-function InboxButton(props: {
+function NoticeButton(props: {
+  notices: Notice[];
+  onNotice?: (n: Notice) => void;
+  onClearNotices?: () => void;
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string) => void;
 }) {
@@ -134,13 +146,13 @@ function InboxButton(props: {
   useEffect(() => {
     const tick = () => {
       void Promise.all([api.inboxList().catch(() => []), api.reviewQueue().catch(() => ({}))]).then(([items, q]) => {
-        setN(inboxBadgeCount(items, q));
+        setN(inboxBadgeCount(items, q, props.notices.length));
       });
     };
     tick();
     const id = window.setInterval(tick, 15000);
     return () => window.clearInterval(id);
-  }, [open]);
+  }, [open, props.notices.length]);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -151,14 +163,26 @@ function InboxButton(props: {
           aria-label={copy.titlebar.inbox}
           className={cn("relative shrink-0", n > 0 && "text-foreground")}
         >
-          <Inbox className="size-4" aria-hidden />
+          <Bell className="size-4" aria-hidden />
           {n > 0 ? (
             <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-foreground px-1 text-[9px] text-background">{n}</span>
           ) : null}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[22rem] p-0">
-        <InboxMenu onOpenThread={props.onOpenThread} onResolve={props.onResolve} />
+        <InboxMenu
+          notices={props.notices}
+          onNotice={(n) => {
+            props.onNotice?.(n);
+            setOpen(false);
+          }}
+          onClearNotices={props.onClearNotices}
+          onOpenThread={(id) => {
+            props.onOpenThread?.(id);
+            setOpen(false);
+          }}
+          onResolve={props.onResolve}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );

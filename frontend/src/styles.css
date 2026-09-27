@@ -30,6 +30,8 @@ html.dark {
   --input: var(--border);
   --accent: #5c99d6;
   --accent-fg: #0c1924;
+  --mark: #d4896a;
+  --mark-deep: #b56545;
   --danger: #e06b66;
   --success: #74b48a;
   --warning: #d4b06a;
@@ -101,6 +103,8 @@ html.light[data-palette="neutral"] {
   --input: var(--border);
   --accent: #0169cc;
   --accent-fg: #f5faff;
+  --mark: #c2663d;
+  --mark-deep: #9a4e2e;
   --danger: #c4453e;
   --success: #1f7a45;
   --warning: #a07a2a;
@@ -196,6 +200,8 @@ html.light[data-palette="mist"] {
   --color-input: var(--input);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  --color-mark: var(--mark);
+  --color-mark-deep: var(--mark-deep);
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -1268,9 +1274,9 @@ html.light .app-grain {
 .mark-well {
   display: grid;
   place-items: center;
-  width: 3rem;
-  height: 3rem;
-  padding: 3px;
+  width: auto;
+  height: 2.75rem;
+  padding: 0.28rem 0.85rem;
   border-radius: 1rem;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -1280,6 +1286,7 @@ html.light .app-grain {
   place-items: center;
   width: 100%;
   height: 100%;
+  padding: 0 0.2rem;
   border-radius: calc(1rem - 3px);
   background: var(--card);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent);

@@ -1,5 +1,4 @@
 import { cn } from "../../lib/utils";
-import wordmark from "../../assets/yoyo-wordmark.png";
 
 type MarkProps = {
   className?: string;
@@ -7,22 +6,17 @@ type MarkProps = {
   compact?: boolean;
 };
 
-/** Custom YOYO wordmark — overlapping ink discs between two Ys. */
+/** Lowercase yoyo wordmark in the UI face. */
 export function YoyoMark({ className, compact }: MarkProps) {
   return (
     <span
       className={cn(
-        "relative inline-flex shrink-0 overflow-hidden",
-        compact ? "h-5 w-[2.35rem] rounded-[4px]" : "h-8 w-[3.7rem] rounded-md",
+        "yoyo-mark inline-flex shrink-0 items-center font-semibold tracking-[-0.04em] text-foreground",
+        compact ? "text-[15px] leading-none" : "text-[17px] leading-none",
         className,
       )}
     >
-      <img
-        src={wordmark}
-        alt="Yoyo"
-        draggable={false}
-        className="h-full w-full origin-center scale-[1.42] object-cover grayscale"
-      />
+      yoyo
     </span>
   );
 }
@@ -30,8 +24,10 @@ export function YoyoMark({ className, compact }: MarkProps) {
 /** Empty still-life: a quiet stamp, not a poster. */
 export function MarkWell({ className, markClassName }: { className?: string; markClassName?: string }) {
   return (
-    <span className={cn("inline-flex", className)} aria-hidden>
-      <YoyoMark className={cn("h-8 w-[3.7rem] rounded-md", markClassName)} />
+    <span className={cn("mark-well inline-flex", className)} aria-hidden>
+      <span className="mark-well-core">
+        <YoyoMark className={markClassName} />
+      </span>
     </span>
   );
 }

@@ -788,6 +788,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.PreviewWorkspaceFile(p.Workspace, p.Path)
+	case "workspace.blob":
+		var p struct {
+			Workspace string `json:"workspace"`
+			Path      string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ReadWorkspaceBlob(p.Workspace, p.Path)
 	case "workspace.apply_hunks":
 		var p struct {
 			Workspace string   `json:"workspace"`

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { asPreviewDocument, looksLikeHTML, looksLikeHTMLFile } from "./html-preview.ts";
+import { asPreviewDocument, blobFromBase64, looksLikeHTML, looksLikeHTMLFile, needsBlobPreview } from "./html-preview.ts";
 
 test("html files and documents are recognized", () => {
   assert.equal(looksLikeHTMLFile("web/index.html"), true);
@@ -15,4 +15,19 @@ test("asPreviewDocument wraps fragments for the inspector iframe", () => {
   assert.match(wrapped, /<h1>Hello<\/h1>/);
   const full = "<!doctype html><html><body>ok</body></html>";
   assert.equal(asPreviewDocument(full), full);
+});
+
+test("pdf image audio video and docx use blob preview", () => {
+  assert.equal(needsBlobPreview("notes.pdf"), true);
+  assert.equal(needsBlobPreview("shot.png"), true);
+  assert.equal(needsBlobPreview("clip.mp4"), true);
+  assert.equal(needsBlobPreview("week.docx"), true);
+  assert.equal(needsBlobPreview("src/main.go"), false);
+  assert.equal(needsBlobPreview("sheet.xlsx"), false);
+});
+
+test("blobFromBase64 yields a typed blob", async () => {
+  const blob = await blobFromBase64(btoa("hello"), "text/plain");
+  assert.equal(blob.type, "text/plain");
+  assert.equal(await blob.text(), "hello");
 });

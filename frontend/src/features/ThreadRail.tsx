@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
-  Archive,
-  Bell,
   BookOpen,
   Check,
   ChevronDown,
@@ -41,7 +39,7 @@ import { writeClipboard } from "../lib/clipboard";
 import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
-import type { Lab, Notice, Surface, Thread, VideoProject } from "../lib/protocol";
+import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
 import { threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
@@ -153,9 +151,6 @@ export function ThreadRail(props: {
   lab: Lab;
   harness?: unknown;
   fallbackActive?: string;
-  showArchived?: boolean;
-  notices: Notice[];
-  noticesOpen: boolean;
   connected: boolean;
   isolated?: boolean;
   isolationKind?: string;
@@ -183,10 +178,6 @@ export function ThreadRail(props: {
   onPopOut?: (t: Thread) => void;
   onOpenEditor?: (t: Thread) => void;
   onOpenTerminal?: (t: Thread) => void;
-  onToggleArchived?: () => void;
-  onToggleNotices: () => void;
-  onClearNotices: () => void;
-  onNotice: (n: Notice) => void;
 }) {
   const copy = useCopy();
   const mac = isMac();
@@ -196,7 +187,7 @@ export function ThreadRail(props: {
   const canary = canaryDirty(refs);
   const q = props.query.toLowerCase();
   const list = props.threads.filter((t) => {
-    if (!props.showArchived && t.archived) return false;
+    if (t.archived && !q) return false;
     if (threadChannel(t) !== (props.surface === "video" ? "video" : "agent")) return false;
     if (!q) return true;
     return (t.title + t.id + t.workspace).toLowerCase().includes(q);
@@ -335,55 +326,6 @@ export function ThreadRail(props: {
           <GitBranch className="size-4" aria-hidden />
         </DockIcon>
         <div className="ml-auto flex items-center gap-0.5">
-          <Tooltip content={props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}>
-            <button
-              type="button"
-              className={cn(
-                "dock-hit grid size-8 place-items-center rounded-xl",
-                props.showArchived ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
-              )}
-              aria-label={props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
-              aria-pressed={!!props.showArchived}
-              onClick={props.onToggleArchived}
-            >
-              <Archive className="size-4" />
-            </button>
-          </Tooltip>
-          <DropdownMenu open={props.noticesOpen} onOpenChange={(v) => { if (v !== props.noticesOpen) props.onToggleNotices(); }}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="dock-hit relative grid size-8 place-items-center rounded-xl text-muted hover:bg-lift hover:text-foreground"
-                aria-label={copy.rail.notifications}
-                title={copy.rail.notifications}
-              >
-                  <Bell className="size-4" />
-                  {props.notices.length ? (
-                    <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-foreground" />
-                  ) : null}
-                </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              {props.notices.length === 0 ? (
-                <div className="px-3 py-6 text-center text-[11px] text-muted">{copy.rail.noNotifications}</div>
-              ) : (
-                props.notices.slice(0, 8).map((n) => (
-                  <DropdownMenuItem key={n.id} onSelect={() => props.onNotice(n)}>
-                    <span className="min-w-0">
-                      <span className="block truncate text-[12px] font-medium">{n.title}</span>
-                      <span className="block truncate text-[11px] text-muted">{n.body}</span>
-                    </span>
-                  </DropdownMenuItem>
-                ))
-              )}
-              {props.notices.length ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={props.onClearNotices}>{copy.rail.clearNotifications}</DropdownMenuItem>
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
           <Tooltip content={copy.rail.settings} side="top">
             <button
               type="button"
