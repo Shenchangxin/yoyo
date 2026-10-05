@@ -8,15 +8,26 @@ import (
 	"os"
 )
 
+const idxVersion = 2
+
 // idxEntry is one JSONL line's location. Seq is a durable cursor for UI paging
 // (not the live Hub seq). Kind is set for compaction so checkpointed reads
-// can seek without unmarshalling the prefix.
+// can seek without unmarshalling the prefix. Source lets paging skip steer
+// injects without reading the JSONL body.
 type idxEntry struct {
-	Seq  int64     `json:"seq"`
-	Off  int64     `json:"off"`
-	N    int       `json:"n"`
-	Type EventType `json:"t"`
-	Kind string    `json:"k,omitempty"`
+	Seq    int64     `json:"seq"`
+	Off    int64     `json:"off"`
+	N      int       `json:"n"`
+	Type   EventType `json:"t"`
+	Kind   string    `json:"k,omitempty"`
+	Source string    `json:"s,omitempty"`
+}
+
+func (e idxEntry) operatorUser() bool {
+	if e.Type != TypeUser {
+		return false
+	}
+	return e.Source != "steer" && e.Kind != "steer"
 }
 
 type sessionIndex struct {
@@ -34,6 +45,21 @@ func payloadKind(ev Event) string {
 	}
 	k, _ := ev.Payload["kind"].(string)
 	return k
+}
+
+func entrySource(ev Event) string {
+	if ev.Source == "steer" {
+		return "steer"
+	}
+	if ev.Payload != nil {
+		if n, _ := ev.Payload["name"].(string); n == "steer" {
+			return "steer"
+		}
+		if k, _ := ev.Payload["kind"].(string); k == "steer" {
+			return "steer"
+		}
+	}
+	return ev.Source
 }
 
 func (s *Store) indexLocked(sessionID string) *sessionIndex {
@@ -99,7 +125,7 @@ func loadIdxFile(path string) *sessionIndex {
 				V    int   `json:"v"`
 				Size int64 `json:"size"`
 			}
-			if json.Unmarshal(b, &head) != nil || head.V != 1 {
+			if json.Unmarshal(b, &head) != nil || head.V != idxVersion {
 				return nil
 			}
 			idx.size = head.Size
@@ -135,15 +161,23 @@ func (s *Store) rebuildIndexLocked(sessionID string) *sessionIndex {
 			n := len(line)
 			var peek struct {
 				Type    EventType      `json:"type"`
+				Source  string         `json:"source"`
 				Payload map[string]any `json:"payload"`
 			}
 			_ = json.Unmarshal(line, &peek)
 			kind := ""
+			source := peek.Source
 			if peek.Payload != nil {
 				kind, _ = peek.Payload["kind"].(string)
+				if n, _ := peek.Payload["name"].(string); n == "steer" {
+					source = "steer"
+				}
+				if kind == "steer" {
+					source = "steer"
+				}
 			}
 			idx.entries = append(idx.entries, idxEntry{
-				Seq: seq, Off: off, N: n, Type: peek.Type, Kind: kind,
+				Seq: seq, Off: off, N: n, Type: peek.Type, Kind: kind, Source: source,
 			})
 			off += int64(n)
 		}
@@ -162,7 +196,7 @@ func (s *Store) rebuildIndexLocked(sessionID string) *sessionIndex {
 func writeIdxFile(path string, idx *sessionIndex) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	if err := enc.Encode(map[string]any{"v": 1, "size": idx.size}); err != nil {
+	if err := enc.Encode(map[string]any{"v": idxVersion, "size": idx.size}); err != nil {
 		return err
 	}
 	for i := range idx.entries {
@@ -187,11 +221,12 @@ func (s *Store) recordAppendLocked(sessionID string, ev Event, off int64, n int)
 		return
 	}
 	e := idxEntry{
-		Seq:  int64(len(idx.entries)) + 1,
-		Off:  off,
-		N:    n,
-		Type: ev.Type,
-		Kind: payloadKind(ev),
+		Seq:    int64(len(idx.entries)) + 1,
+		Off:    off,
+		N:      n,
+		Type:   ev.Type,
+		Kind:   payloadKind(ev),
+		Source: entrySource(ev),
 	}
 	if len(idx.entries) > 0 {
 		e.Seq = idx.entries[len(idx.entries)-1].Seq + 1
@@ -212,7 +247,7 @@ func appendIdxLine(path string, size int64, e idxEntry) error {
 	st, _ := f.Stat()
 	enc := json.NewEncoder(f)
 	if st.Size() == 0 {
-		if err := enc.Encode(map[string]any{"v": 1, "size": size}); err != nil {
+		if err := enc.Encode(map[string]any{"v": idxVersion, "size": size}); err != nil {
 			return err
 		}
 	}

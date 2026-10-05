@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
@@ -235,14 +237,11 @@ func (s *Service) ClipboardRead() (string, error) {
 }
 
 func (s *Service) Screenshot(path string) error {
+	path = strings.TrimSpace(path)
 	if path == "" {
-		ws := s.GetConfig().Workspace
-		if ws == "" && s.App != nil {
-			ws = s.App.Workspace()
-		}
-		path = ws + "/.yoyo/captures/shot.png"
+		return fmt.Errorf("screenshot path required")
 	}
-	return osutil.Screenshot(path)
+	return osutil.Screenshot(filepath.Clean(path))
 }
 
 func (s *Service) RaiseWindow() {

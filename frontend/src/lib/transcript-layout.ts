@@ -1,4 +1,5 @@
 import type { Item } from "./protocol";
+import { itemTurnKey } from "./turn-outline";
 import {
   isRichResult,
   isToolFailed,
@@ -19,8 +20,8 @@ export type AgentPart =
   | { key: string; kind: "artifact"; items: Item[] };
 
 export type LayoutRow =
-  | { key: string; kind: "user"; item: Item }
-  | { key: string; kind: "agent"; parts: AgentPart[]; copyText: string }
+  | { key: string; kind: "user"; item: Item; turnKey: string }
+  | { key: string; kind: "agent"; parts: AgentPart[]; copyText: string; turnKey: string }
   | { key: string; kind: "solo"; item: Item };
 
 export function isToolish(it: Item): boolean {
@@ -254,6 +255,7 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
 export function layoutRows(items: Item[]): LayoutRow[] {
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];
+  let turnKey = "";
   const flushAgent = () => {
     if (!agent.length) return;
     rows.push({
@@ -261,13 +263,15 @@ export function layoutRows(items: Item[]): LayoutRow[] {
       kind: "agent",
       parts: layoutAgentParts(agent),
       copyText: agentCopyText(agent),
+      turnKey,
     });
     agent = [];
   };
   for (const it of items) {
     if (it.type === "user" && it.source !== "steer") {
       flushAgent();
-      rows.push({ key: it.key, kind: "user", item: it });
+      turnKey = itemTurnKey(it);
+      rows.push({ key: it.key, kind: "user", item: it, turnKey });
       continue;
     }
     if (isMentionInject(it)) {

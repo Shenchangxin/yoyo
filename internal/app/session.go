@@ -38,6 +38,8 @@ type SessionMeta struct {
 	Isolate          bool     `json:"isolate,omitempty"`
 	Harness          string   `json:"harness"`
 	HarnessPolicy    string   `json:"harness_policy,omitempty"`
+	UpdatedAt        time.Time `json:"updated_at,omitempty"`
+	Preview          string    `json:"preview,omitempty"`
 	ModelFingerprint string   `json:"model_fingerprint"`
 	Title            string   `json:"title,omitempty"`
 	Archived         bool     `json:"archived"`
@@ -87,6 +89,7 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 	meta := SessionMeta{
 		ID:               id,
 		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
 		Channel:          ch,
 		Workspace:        workspace,
 		Harness:          a.ActiveHash(),
@@ -171,6 +174,15 @@ func titleFrom(message string) string {
 		return string(r[:42]) + "…"
 	}
 	return s
+}
+
+func (a *App) touchSessionMeta(m SessionMeta, preview string) SessionMeta {
+	m.UpdatedAt = time.Now().UTC()
+	if s := strings.TrimSpace(preview); s != "" {
+		m.Preview = titleFrom(s)
+	}
+	_ = a.writeSession(m)
+	return m
 }
 
 func (a *App) Trajectory(id string) ([]trace.Event, error) {
@@ -527,6 +539,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		model = meta.Model
 	}
 	preHooks, stopHooks, preCompact := runtime.LoadHookFile(toolRoot)
+	if a.MCP != nil && strings.TrimSpace(toolRoot) != "" {
+		a.MCP.SetRoots([]string{toolRoot})
+	}
 	tools := &runtime.WorkspaceTools{
 		Workspace:  toolRoot,
 		Home:       a.Home.Root,
@@ -624,8 +639,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	} else {
 		if meta.Title == "" || meta.Title == "session" {
 			meta.Title = titleFrom(message)
-			_ = a.writeSession(meta)
 		}
+		meta = a.touchSessionMeta(meta, message)
 		note := hash
 		if snap.Note != "" {
 			note = hash + " " + snap.Note
@@ -753,6 +768,7 @@ func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID st
 	if a.Hub != nil {
 		a.Hub.Publish(ev)
 	}
+	a.touchSessionMeta(meta, text)
 	return nil
 }
 

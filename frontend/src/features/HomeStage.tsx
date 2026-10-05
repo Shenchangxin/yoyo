@@ -27,6 +27,7 @@ function readyOf(copy: Copy, videoing: boolean, videoMode: string) {
 
 export function HomeStage(props: {
   onPrompt?: (text: string) => void;
+  onContinueLast?: () => void;
   children: ReactNode;
 }) {
   const copy = useCopy();
@@ -49,6 +50,17 @@ export function HomeStage(props: {
           <div className="mt-8 w-full">
             {props.children}
           </div>
+          {props.onContinueLast ? (
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                className="text-[12px] text-muted hover:text-foreground"
+                onClick={() => props.onContinueLast?.()}
+              >
+                {copy.rail.continueLast}
+              </button>
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap justify-center gap-1.5">
             {starters.map((s, i) => (
               <button

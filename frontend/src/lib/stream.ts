@@ -22,6 +22,7 @@ export {
   lastUserTurns,
   mergeItem,
   mergePendingUsers,
+  withLiveTail,
   parseLiveNotice,
   replayEvents,
   unwrapEvent,

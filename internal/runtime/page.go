@@ -117,7 +117,7 @@ func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]tr
 func userRanges(evs []trace.Event) [][2]int {
 	var starts []int
 	for i, ev := range evs {
-		if ev.Type == trace.TypeUser {
+		if ev.Type == trace.TypeUser && !trace.IsSteerUser(ev) {
 			starts = append(starts, i)
 		}
 	}

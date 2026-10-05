@@ -121,6 +121,8 @@ export function threadOf(v: any): Thread {
     isolate,
     harness: str(pick(v, "harness", "Harness")),
     createdAt: str(pick(v, "created_at", "CreatedAt")),
+    updatedAt: str(pick(v, "updated_at", "UpdatedAt")),
+    preview: str(pick(v, "preview", "Preview")),
     archived: bool(pick(v, "archived", "Archived")),
     pinned: bool(pick(v, "pinned", "Pinned")),
     model: str(pick(v, "model", "Model")),
@@ -340,6 +342,16 @@ export async function createSession(workspace: string, channel: ThreadChannel = 
 export async function listSessions(): Promise<Thread[]> {
   const s = await wailsService();
   const raw = s?.ListSessions ? await s.ListSessions() : await http("/api/sessions");
+  return asArray(raw).map(threadOf).filter((t) => t.id);
+}
+
+export async function searchSessions(query: string, includeArchived = false): Promise<Thread[]> {
+  const s = await wailsService();
+  const q = query.trim();
+  if (!q) return listSessions();
+  const raw = s?.SearchSessions
+    ? await s.SearchSessions(q, includeArchived)
+    : await http(`/api/sessions?q=${encodeURIComponent(q)}${includeArchived ? "&archived=1" : ""}`);
   return asArray(raw).map(threadOf).filter((t) => t.id);
 }
 
@@ -647,10 +659,14 @@ export async function approvals(): Promise<Approval[]> {
   return asArray(raw).map(approvalOf).filter((a) => a.id);
 }
 
-export async function resolveApproval(id: string, decision: string): Promise<void> {
+export async function resolveApproval(id: string, decision: string, answer = ""): Promise<void> {
   const s = await wailsService();
-  if (s?.ResolveApproval) return s.ResolveApproval(id, decision);
-  await http("/api/approvals", { method: "POST", body: JSON.stringify({ id, decision }) });
+  if (s?.ResolveApprovalAnswer) return s.ResolveApprovalAnswer(id, decision, answer);
+  if (s?.ResolveApproval) {
+    if (answer && s.ResolveApproval.length >= 3) return s.ResolveApproval(id, decision, answer);
+    return s.ResolveApproval(id, decision);
+  }
+  await http("/api/approvals", { method: "POST", body: JSON.stringify({ id, decision, answer }) });
 }
 
 export async function harness(): Promise<any> {
@@ -1379,11 +1395,14 @@ export async function clipboardRead(): Promise<string> {
   return "";
 }
 
-export async function captureScreenshot(): Promise<string> {
+export async function captureScreenshot(workspace = ""): Promise<string> {
+  const rel = ".yoyo/captures/shot.png";
+  if (!workspace.trim()) return "";
   const s = await wailsService();
   if (s?.Screenshot) {
-    await s.Screenshot("");
-    return ".yoyo/captures/shot.png";
+    const { joinWorkspace } = await import("./workspace");
+    await s.Screenshot(joinWorkspace(workspace, rel));
+    return rel;
   }
   return "";
 }

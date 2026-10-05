@@ -224,10 +224,7 @@ func (s *Service) rebuildMenusNow() {
 
 	thread := menu.AddSubmenu(n.Thread)
 	thread.Add(n.Stop).SetAccelerator("CmdOrCtrl+.").OnClick(func(ctx *application.Context) {
-		for _, id := range s.RunningIDs() {
-			res := s.StopTurn(id)
-			gui.Event.Emit("yoyo:stopped", map[string]any{"session_id": id, "state": res.State})
-		}
+		gui.Event.Emit("yoyo:command", "stop")
 	})
 	thread.Add(n.Compact).OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:command", "compact")

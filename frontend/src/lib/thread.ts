@@ -1,13 +1,14 @@
 /**
- * One conversation column shared by transcript and composer so left edges
- * align. It tracks the stage (`100%`) and only ceilings on very wide panes
- * (`--thread-measure`). The scroll container stays pane-wide so the
- * scrollbar hugs the pane edge, not the text.
+ * Live transcript + composer fill the remaining stage between the turn
+ * outline and the inspector. No `--thread-measure` cap — that token is
+ * only the empty-home / boot hero. Gutters follow this column's
+ * `@container`, so opening those rails grows the letter instead of
+ * leaving empty mx-auto shoulders.
  *
- * Gutters follow the stage container, not the viewport — review open/closed
- * must not jump padding as if the window resized.
+ * The scroll container stays pane-wide so the scrollbar hugs the pane
+ * edge, not the text.
  */
 export const THREAD_MAX = "max-w-[min(100%,var(--thread-measure))]";
-export const THREAD_COL = `mx-auto w-full min-w-0 ${THREAD_MAX}`;
-export const THREAD_GUTTER = "px-4 @[36rem]:px-6 @[52rem]:px-8";
+export const THREAD_COL = "w-full min-w-0";
+export const THREAD_GUTTER = "px-4 @[28rem]:px-6 @[42rem]:px-8 @[60rem]:px-10";
 export const THREAD_GUTTER_COMPACT = "px-3";

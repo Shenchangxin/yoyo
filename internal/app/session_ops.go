@@ -139,7 +139,14 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 		if out[i].Pinned != out[j].Pinned {
 			return out[i].Pinned
 		}
-		return out[i].CreatedAt.After(out[j].CreatedAt)
+		ai, aj := out[i].UpdatedAt, out[j].UpdatedAt
+		if ai.IsZero() {
+			ai = out[i].CreatedAt
+		}
+		if aj.IsZero() {
+			aj = out[j].CreatedAt
+		}
+		return ai.After(aj)
 	})
 	return out, nil
 }

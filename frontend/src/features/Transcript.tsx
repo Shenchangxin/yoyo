@@ -129,7 +129,7 @@ export function Transcript(props: {
   loadingOlder?: boolean;
   idle?: boolean;
   onLoadOlder?: () => void | Promise<void>;
-  onResolve: (id: string, decision: string) => void;
+  onResolve: (id: string, decision: string, answer?: string) => void;
   onPrompt?: (text: string) => void;
   onOpenReview?: (path?: string) => void;
   onRetry?: () => void;
@@ -160,7 +160,8 @@ export function Transcript(props: {
       if (row.kind === "user") {
         return {
           key: row.key,
-          turnKey: itemTurnKey(row.item),
+          kind: "user" as const,
+          turnKey: row.turnKey || itemTurnKey(row.item),
           space: rowSpace(layout, i),
           estimate: 96,
           render: () => <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />,
@@ -173,6 +174,8 @@ export function Transcript(props: {
         const tail = row.parts.length - 1;
         return {
           key: row.key,
+          kind: "agent" as const,
+          turnKey: row.turnKey,
           space: rowSpace(layout, i),
           estimate: agentEstimate(row.copyText),
           render: () => (
@@ -198,6 +201,7 @@ export function Transcript(props: {
                       live={props.running && last && pi === tail}
                       running={props.running}
                       compact={props.compact}
+                      liveTexts={props.liveTexts}
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
@@ -234,6 +238,7 @@ export function Transcript(props: {
       }
       return {
         key: row.key,
+        kind: "solo" as const,
         space: rowSpace(layout, i),
         estimate: 96,
         render: () => (
@@ -246,6 +251,7 @@ export function Transcript(props: {
     }),
     ...props.approvals.map((a) => ({
       key: `ask:${a.id}`,
+      kind: "ask" as const,
       space: "pt-4",
       estimate: 160,
       render: () => <ApprovalCard item={a} onResolve={props.onResolve} />,
@@ -254,6 +260,7 @@ export function Transcript(props: {
   if (showWorking && !pinnedTurn) {
     rows.push({
       key: "working",
+      kind: "working",
       space: "pt-3",
       estimate: 40,
       render: () => <WorkingLine since={since} />,
@@ -362,7 +369,33 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   );
 }
 
-type TranscriptRow = { key: string; turnKey?: string; space?: string; estimate: number; render: () => ReactNode };
+type TranscriptRow = {
+  key: string;
+  kind?: "user" | "agent" | "solo" | "ask" | "working";
+  turnKey?: string;
+  space?: string;
+  estimate: number;
+  render: () => ReactNode;
+};
+
+/** Live / current pack stays in document flow so streaming markdown is not virtualized. */
+function lastPackStart(rows: TranscriptRow[]): number {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind === "user") return i;
+  }
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].kind === "agent") return i;
+  }
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].kind === "ask" || rows[i].kind === "working") return i;
+  }
+  return rows.length;
+}
+
+function cssEscape(s: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(s);
+  return s.replace(/["\\]/g, "\\$&");
+}
 
 function agentEstimate(copyText: string): number {
   return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
@@ -409,12 +442,15 @@ function TranscriptLane({
   if (jumpNonce && jumpNonce !== appliedJump.current) {
     stick.current = false;
   }
+  const packStart = lastPackStart(rows);
+  const history = packStart > 0 ? rows.slice(0, packStart) : [];
+  const pin = packStart >= 0 ? rows.slice(packStart) : rows;
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: history.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => rows[i]?.estimate ?? 96,
+    estimateSize: (i) => history[i]?.estimate ?? 96,
     overscan,
-    getItemKey: (i) => rows[i]?.key ?? i,
+    getItemKey: (i) => history[i]?.key ?? i,
   });
   const followEnd = useCallback(() => {
     const el = scrollRef.current;
@@ -449,11 +485,16 @@ function TranscriptLane({
     jumpHeld.current = true;
     const align = () => {
       if (!jumpHeld.current) return;
-      virtualizer.scrollToIndex(idx, { align: 'start' });
+      if (idx < history.length) {
+        virtualizer.scrollToIndex(idx, { align: "start" });
+        return;
+      }
+      const el = scrollRef.current?.querySelector(`[data-turn-key="${cssEscape(key)}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ block: "start" });
     };
     align();
     requestAnimationFrame(align);
-  }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key]);
+  }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, history.length]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -474,6 +515,11 @@ function TranscriptLane({
   const spyTurns = useCallback(() => {
     const root = scrollRef.current;
     if (!root || !onActiveTurn) return;
+    if (jumpHeld.current) {
+      const k = jumpTo?.key;
+      if (k) reportActive(k);
+      return;
+    }
     const gap = root.scrollHeight - root.scrollTop - root.clientHeight;
     if (gap < 72) {
       const last = [...rows].reverse().find((r) => r.turnKey)?.turnKey;
@@ -482,14 +528,14 @@ function TranscriptLane({
     }
     const line = root.getBoundingClientRect().top + Math.min(64, root.clientHeight * 0.16);
     const nodes: { key: string; top: number }[] = [];
-    root.querySelectorAll('[data-turn-key]').forEach((node) => {
-      const k = (node as HTMLElement).dataset.turnKey || '';
+    root.querySelectorAll("[data-turn-key]").forEach((node) => {
+      const k = (node as HTMLElement).dataset.turnKey || "";
       if (!k) return;
       nodes.push({ key: k, top: node.getBoundingClientRect().top });
     });
     const best = pickActiveTurnKey(nodes, line);
     if (best) reportActive(best);
-  }, [rows, onActiveTurn, reportActive]);
+  }, [rows, onActiveTurn, reportActive, jumpTo?.key]);
   const queueSpy = useCallback(() => {
     if (spyRaf.current) return;
     spyRaf.current = requestAnimationFrame(() => {
@@ -535,38 +581,49 @@ function TranscriptLane({
       >
         {older ? (
           <button
-            type='button'
-            className='mb-3 w-full rounded-md py-1.5 text-center text-[12px] text-muted hover:bg-lift hover:text-foreground'
+            type="button"
+            className="mb-3 w-full rounded-md py-1.5 text-center text-[12px] text-muted hover:bg-lift hover:text-foreground"
             disabled={loadingOlder}
             onClick={() => { void onLoadOlder?.(); }}
           >
             {copy.transcript.loadEarlier}
           </button>
         ) : null}
-        <div className='relative w-full shrink-0 overflow-clip bg-background' style={{ height: virtualizer.getTotalSize() }}>
-          {virtualizer.getVirtualItems().map((v) => {
-            const row = rows[v.index];
-            if (!row) return null;
-            return (
-              <div
-                key={row.key}
-                data-index={v.index}
-                {...(row.turnKey ? { 'data-turn-key': row.turnKey } : {})}
-                ref={virtualizer.measureElement}
-                className={cn('bg-background', row.space)}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${v.start}px)`,
-                }}
-              >
-                {row.render()}
-              </div>
-            );
-          })}
-        </div>
+        {history.length ? (
+          <div className="relative w-full shrink-0 overflow-clip bg-background" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((v) => {
+              const row = history[v.index];
+              if (!row) return null;
+              return (
+                <div
+                  key={row.key}
+                  data-index={v.index}
+                  {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
+                  ref={virtualizer.measureElement}
+                  className={cn("bg-background", row.space)}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${v.start}px)`,
+                  }}
+                >
+                  {row.render()}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {pin.map((row) => (
+          <div
+            key={row.key}
+            {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
+            className={cn("bg-background", row.space)}
+          >
+            {row.render()}
+          </div>
+        ))}
       </div>
       {escaped ? (
         <button
@@ -626,9 +683,47 @@ function TurnActions({
   );
 }
 
-function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string) => void }) {
+function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: string, decision: string, answer?: string) => void }) {
   const copy = useCopy();
+  const ask = item.action === "ask_user";
+  const [answer, setAnswer] = useState("");
   const subject = item.command || item.path || item.level;
+  if (ask) {
+    return (
+      <div
+        className="u-card-hover is-warn relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
+        role="status"
+        data-testid="ask-user-card"
+      >
+        <span className="pointer-events-none absolute inset-y-3 left-0 w-[2px] rounded-full bg-warning/80" aria-hidden />
+        <div className="text-[11px] font-medium text-muted">{copy.transcript.askQuestion}</div>
+        <div className="mt-0.5 text-[14px] font-medium tracking-tight text-foreground">{subject || copy.transcript.askQuestion}</div>
+        <textarea
+          className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-[13px] leading-[1.5] text-foreground outline-none focus:border-foreground/30"
+          value={answer}
+          placeholder={copy.transcript.answerPlaceholder}
+          onChange={(e) => setAnswer(e.target.value)}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background transition-[opacity,transform] duration-200 ease-[var(--ease-out)] hover:opacity-[0.92] active:scale-[0.98] disabled:opacity-40"
+            disabled={!answer.trim()}
+            onClick={() => onResolve(item.id, "once", answer.trim())}
+          >
+            {copy.transcript.sendAnswer}
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+            onClick={() => onResolve(item.id, "deny")}
+          >
+            {copy.transcript.reject}
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       className="u-card-hover is-warn relative overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[var(--shadow-card)]"
@@ -779,12 +874,25 @@ function MentionGlyph({ kind }: { kind: MentionKind }) {
   return <FileText className={cls} />;
 }
 
-function UserPrompt({ text }: { text: string }) {
+function UserPrompt({ text, parts }: { text: string; parts?: { type?: string; image_url?: string; mime?: string; text?: string }[] }) {
   const peeled = peelCompletedMentions(text);
   const chips: MentionPin[] = peeled.chips;
   const prose = peeled.text.trim();
+  const images = (parts || []).filter((p) => p.image_url && (p.type === "image_url" || (p.mime || "").startsWith("image/")));
   return (
     <div className="user-bubble whitespace-pre-wrap break-words px-3.5 py-2.5 text-[14px] leading-[1.55] tracking-normal">
+      {images.length ? (
+        <div className={cn("flex flex-wrap gap-1.5", (chips.length || prose) && "mb-1.5")}>
+          {images.map((p, i) => (
+            <img
+              key={`${p.image_url?.slice(-24)}-${i}`}
+              src={p.image_url}
+              alt={p.text || "attachment"}
+              className="max-h-28 max-w-[9rem] rounded-lg object-cover"
+            />
+          ))}
+        </div>
+      ) : null}
       {chips.length ? (
         <div className={cn("flex flex-wrap items-center gap-1", prose && "mb-1.5")}>
           {chips.map((c, i) => (
@@ -832,7 +940,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <UserPrompt text={shown.text} />
+          <UserPrompt text={shown.text} parts={Array.isArray(shown.payload?.parts) ? shown.payload.parts : undefined} />
           {copyText ? (
             <div className="flex h-8 items-center justify-end opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100">
               <CopyAction text={copyText} />

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
-import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, userTurnCount } from "../../lib/stream";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, userTurnCount, withLiveTail } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
-import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
+import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -186,6 +186,7 @@ export function useWorkstation() {
   const [active, setActive] = useState<Thread | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
+  const hotItemsRef = useRef<Item[]>([]);
   const [liveTexts, setLiveTexts] = useState<Record<string, string>>({});
   const liveAcc = useRef<Record<string, string>>({});
   const liveRaf = useRef(0);
@@ -241,6 +242,8 @@ export function useWorkstation() {
   const [aboutInfo, setAboutInfo] = useState<Record<string, any>>({});
   const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
   const [files, setFiles] = useState<FileHit[]>([]);
+  const [searchHits, setSearchHits] = useState<Thread[] | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const activeIdRef = useRef("");
   const [logs, setLogs] = useState<any>(null);
@@ -262,6 +265,10 @@ export function useWorkstation() {
   const anyRun = Object.values(running).some(Boolean);
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
   const outlineTurns = useMemo(() => pendingOutline(outline, items), [outline, items]);
+  const outlineState = useMemo(
+    () => outlineStatus({ running: threadRunning, waiting: approvals.length > 0 }),
+    [threadRunning, approvals.length],
+  );
   outlineRef.current = outlineTurns;
   activeTurnRef.current = activeTurn;
 
@@ -307,14 +314,17 @@ export function useWorkstation() {
   const jumpToLatest = useCallback(async () => {
     if (!activeId) return;
     if (browsingRef.current) {
-      const page = await api.trajectoryPage(activeId);
-      if (activeIdRef.current !== activeId) return;
       browsingRef.current = false;
-      itemsAcc.current = lastUserTurns(replayEvents(page.events), HOT_TRANSCRIPT_TURNS);
-      headSeqRef.current = page.headSeq || 0;
-      olderRef.current = !!page.older;
-      setOlder(!!page.older);
-      setItems(itemsAcc.current.slice());
+      if (!hotItemsRef.current.length) {
+        const page = await api.trajectoryPage(activeId);
+        if (activeIdRef.current !== activeId) return;
+        hotItemsRef.current = lastUserTurns(replayEvents(page.events), HOT_TRANSCRIPT_TURNS);
+        headSeqRef.current = page.headSeq || 0;
+        olderRef.current = !!page.older;
+        setOlder(!!page.older);
+      }
+      itemsAcc.current = hotItemsRef.current;
+      setItems(hotItemsRef.current.slice());
     }
     setLatestNonce(Date.now());
   }, [activeId]);
@@ -333,7 +343,7 @@ export function useWorkstation() {
       headSeqRef.current = page.headSeq || 0;
       olderRef.current = !!page.older;
       setOlder(!!page.older);
-      setItems(itemsAcc.current.slice());
+      setItems(withLiveTail(itemsAcc.current, hotItemsRef.current));
     }
     setJumpTo({ key, aliases, nonce: Date.now() });
   }, [activeId]);
@@ -567,6 +577,7 @@ export function useWorkstation() {
   useEffect(() => {
     if (!activeId) {
       itemsAcc.current = [];
+      hotItemsRef.current = [];
       liveAcc.current = {};
       browsingRef.current = false;
       setItems([]);
@@ -577,9 +588,11 @@ export function useWorkstation() {
       setOutline([]);
       setActiveTurn("");
       setCtx(emptyCtx);
+      setFiles([]);
       return;
     }
     itemsAcc.current = [];
+    hotItemsRef.current = [];
     liveAcc.current = {};
     browsingRef.current = false;
     setItems([]);
@@ -592,6 +605,7 @@ export function useWorkstation() {
     headSeqRef.current = 0;
     setOutline([]);
     setActiveTurn("");
+    setFiles([]);
     const flushLive = () => {
       liveRaf.current = 0;
       setLiveTexts({ ...liveAcc.current });
@@ -602,11 +616,15 @@ export function useWorkstation() {
     };
     const flushItems = () => {
       itemsRaf.current = 0;
-      const keys = new Set(itemsAcc.current.map((x) => x.key));
+      const keys = new Set(hotItemsRef.current.map((x) => x.key));
       for (const k of Object.keys(liveAcc.current)) {
         if (!keys.has(k)) delete liveAcc.current[k];
       }
-      setItems(itemsAcc.current.slice());
+      if (browsingRef.current) {
+        setItems(withLiveTail(itemsAcc.current, hotItemsRef.current));
+      } else {
+        setItems(hotItemsRef.current.slice());
+      }
     };
     const scheduleItems = (immediate: boolean) => {
       if (immediate) {
@@ -624,9 +642,10 @@ export function useWorkstation() {
       activeId,
       (item) => {
         if (isLiveDelta(item)) {
-          const existed = itemsAcc.current.some((x) => x.key === item.key);
+          const existed = hotItemsRef.current.some((x) => x.key === item.key);
           if (!existed) {
-            itemsAcc.current = mergeItem(itemsAcc.current, item);
+            hotItemsRef.current = mergeItem(hotItemsRef.current, item);
+            if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
             scheduleItems(true);
           }
           const piece = liveBody(item);
@@ -638,11 +657,13 @@ export function useWorkstation() {
           scheduleLive();
           return;
         }
-        itemsAcc.current = mergeItem(itemsAcc.current, item);
+        hotItemsRef.current = mergeItem(hotItemsRef.current, item);
         if (item.type === "user" && item.source !== "steer") {
-          const cap = browsingRef.current ? BROWSE_TRANSCRIPT_TURNS : HOT_TRANSCRIPT_TURNS;
-          itemsAcc.current = lastUserTurns(itemsAcc.current, cap);
+          hotItemsRef.current = lastUserTurns(hotItemsRef.current, HOT_TRANSCRIPT_TURNS);
+          if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
           void refreshOutline();
+        } else if (!browsingRef.current) {
+          itemsAcc.current = hotItemsRef.current;
         }
         if (item.key && liveAcc.current[item.key] != null) {
           delete liveAcc.current[item.key];
@@ -700,10 +721,11 @@ export function useWorkstation() {
       },
       (seed, page) => {
         browsingRef.current = false;
-        itemsAcc.current = lastUserTurns(foldLiveIntoSeed(seed, itemsAcc.current), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = lastUserTurns(foldLiveIntoSeed(seed, hotItemsRef.current), HOT_TRANSCRIPT_TURNS);
+        itemsAcc.current = hotItemsRef.current;
         liveAcc.current = {};
         setLiveTexts({});
-        setItems(itemsAcc.current.slice());
+        setItems(hotItemsRef.current.slice());
         if (page) {
           headSeqRef.current = page.headSeq || 0;
           olderRef.current = !!page.older;
@@ -729,6 +751,18 @@ export function useWorkstation() {
       }
     };
   }, [activeId, markEnded, refreshOutline]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setSearchHits(null);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      api.searchSessions(q, true).then(setSearchHits).catch(() => setSearchHits(null));
+    }, 220);
+    return () => window.clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -862,12 +896,13 @@ export function useWorkstation() {
         await api.steer(t.id, text);
         useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
         if (t.id === activeId) {
-          itemsAcc.current = mergeItem(itemsAcc.current, {
+          hotItemsRef.current = mergeItem(hotItemsRef.current, {
             ...localUser(t.id, text),
             source: "steer",
             key: `ui-steer:${t.id}:${Date.now()}`,
           });
-          setItems(itemsAcc.current.slice());
+          if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
+          setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
         }
         toast.success(copy.app.steered);
         return;
@@ -877,8 +912,9 @@ export function useWorkstation() {
       markStarted(t.id);
       if (t.id === activeId) {
         browsingRef.current = false;
-        itemsAcc.current = lastUserTurns(mergeItem(itemsAcc.current, localUser(t.id, text)), HOT_TRANSCRIPT_TURNS);
-        setItems(itemsAcc.current.slice());
+        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, localUser(t.id, text)), HOT_TRANSCRIPT_TURNS);
+        itemsAcc.current = hotItemsRef.current;
+        setItems(hotItemsRef.current.slice());
       }
       const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
       if (wasRunning || res.queued) {
@@ -913,8 +949,9 @@ export function useWorkstation() {
     openThread(hit);
     if (running[hit.id]) return;
     if (hit.id === activeId) {
-      itemsAcc.current = dropTurnErrors(itemsAcc.current);
-      setItems(itemsAcc.current.slice());
+      hotItemsRef.current = dropTurnErrors(hotItemsRef.current);
+      itemsAcc.current = browsingRef.current ? dropTurnErrors(itemsAcc.current) : hotItemsRef.current;
+      setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
       markStarted(hit.id);
     }
     try {
@@ -931,8 +968,9 @@ export function useWorkstation() {
     if (!hasTurn) return;
     setErr("");
     markStarted(activeId);
-    itemsAcc.current = dropTurnErrors(itemsAcc.current);
-    setItems(itemsAcc.current.slice());
+    hotItemsRef.current = dropTurnErrors(hotItemsRef.current);
+    itemsAcc.current = browsingRef.current ? dropTurnErrors(itemsAcc.current) : hotItemsRef.current;
+    setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
     try {
       await api.retry(activeId);
     } catch (e) {
@@ -1113,7 +1151,11 @@ export function useWorkstation() {
 
   const loadOlder = useCallback(async () => {
     if (!activeId || loadingOlder || !olderRef.current) return;
-    if (userTurnCount(itemsAcc.current) >= BROWSE_TRANSCRIPT_TURNS) return;
+    if (userTurnCount(itemsAcc.current) >= BROWSE_TRANSCRIPT_TURNS) {
+      olderRef.current = false;
+      setOlder(false);
+      return;
+    }
     setLoadingOlder(true);
     try {
       const page = await api.trajectoryPage(activeId, { before: headSeqRef.current, turns: HOT_TRANSCRIPT_TURNS });
@@ -1123,9 +1165,10 @@ export function useWorkstation() {
       browsingRef.current = true;
       itemsAcc.current = lastUserTurns([...add, ...itemsAcc.current], BROWSE_TRANSCRIPT_TURNS);
       headSeqRef.current = page.headSeq;
-      olderRef.current = page.older;
-      setOlder(page.older);
-      setItems(itemsAcc.current.slice());
+      const atCap = userTurnCount(itemsAcc.current) >= BROWSE_TRANSCRIPT_TURNS;
+      olderRef.current = !!page.older && !atCap;
+      setOlder(olderRef.current);
+      setItems(withLiveTail(itemsAcc.current, hotItemsRef.current));
     } finally {
       setLoadingOlder(false);
     }
@@ -1133,8 +1176,8 @@ export function useWorkstation() {
 
   const presenceItems = useMemo(() => lastUserTurns(items, 2), [items]);
 
-  async function onResolve(id: string, decision: string) {
-    await api.resolveApproval(id, decision);
+  async function onResolve(id: string, decision: string, answer?: string) {
+    await api.resolveApproval(id, decision, answer);
     setApprovals((prev) => prev.filter((a) => a.id !== id));
   }
 
@@ -1423,7 +1466,8 @@ export function useWorkstation() {
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
-    outlineTurns, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
+    outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
+    searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,

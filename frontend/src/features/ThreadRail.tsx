@@ -178,6 +178,8 @@ export function ThreadRail(props: {
   onPopOut?: (t: Thread) => void;
   onOpenEditor?: (t: Thread) => void;
   onOpenTerminal?: (t: Thread) => void;
+  showArchived?: boolean;
+  onShowArchived?: (on: boolean) => void;
 }) {
   const copy = useCopy();
   const mac = isMac();
@@ -187,10 +189,10 @@ export function ThreadRail(props: {
   const canary = canaryDirty(refs);
   const q = props.query.toLowerCase();
   const list = props.threads.filter((t) => {
-    if (t.archived && !q) return false;
+    if (t.archived && !q && !props.showArchived) return false;
     if (threadChannel(t) !== (props.surface === "video" ? "video" : "agent")) return false;
     if (!q) return true;
-    return (t.title + t.id + t.workspace).toLowerCase().includes(q);
+    return (t.title + t.id + t.workspace + (t.preview || "")).toLowerCase().includes(q);
   });
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
@@ -273,6 +275,15 @@ export function ThreadRail(props: {
             spellCheck={false}
           />
         </div>
+        {props.onShowArchived ? (
+          <button
+            type="button"
+            className="mt-1.5 w-full rounded-lg px-2 py-1 text-left text-[11px] text-muted hover:bg-lift/50 hover:text-foreground"
+            onClick={() => props.onShowArchived?.(!props.showArchived)}
+          >
+            {props.showArchived ? copy.rail.hideArchived : copy.rail.showArchived}
+          </button>
+        ) : null}
       </div>
       )}
       {videoOn ? null : (
@@ -592,9 +603,9 @@ function ThreadRow(props: {
               {t.pinned ? <Pin className="size-3 text-muted" aria-hidden /> : null}
               <span className={cn("block truncate text-[13px]", active ? "font-medium text-foreground" : "font-normal")}>{displayTitle(t.title, copy.rail.untitled)}</span>
             </span>
-            {run || t.archived || t.isolate || t.interrupted || (t.queued || 0) > 0 ? (
+            {run || t.archived || t.isolate || t.interrupted || (t.queued || 0) > 0 || t.preview ? (
               <span className="block truncate text-[11px] text-muted">
-                {run ? copy.rail.running : t.interrupted ? copy.rail.interrupted : (t.queued || 0) > 0 ? copy.rail.queued : t.archived ? copy.rail.archived : copy.rail.isolated}
+                {run ? copy.rail.running : t.interrupted ? copy.rail.interrupted : (t.queued || 0) > 0 ? copy.rail.queued : t.archived ? copy.rail.archived : t.preview || (t.isolate ? copy.rail.isolated : "")}
               </span>
             ) : null}
           </span>
@@ -757,6 +768,7 @@ function SessionMetaCard(props: {
         <MetaLine label={copy.rail.workspace} value={workspace} title={workspace} />
       ) : null}
       {created ? <MetaLine label={copy.rail.created} value={created} /> : null}
+      {t.preview ? <MetaLine label={copy.rail.preview} value={t.preview} title={t.preview} /> : null}
       {t.model ? <MetaLine label={copy.rail.model} value={t.model} /> : null}
       {harness ? <MetaLine label={copy.rail.harness} value={harness} mono title={t.harness} /> : null}
     </div>,
