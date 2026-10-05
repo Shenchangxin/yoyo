@@ -106,6 +106,8 @@ export type Item = {
   name: string;
   delta: boolean;
   payload: Record<string, any>;
+  /** Store-index or live-hub seq. Used to jump from the turn outline. */
+  seq?: number;
 };
 
 export type Approval = {

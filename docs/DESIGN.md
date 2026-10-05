@@ -194,6 +194,13 @@ stops the moment `running` is false.
 - Default split 19 / 51 / 30. Review collapses to a right sheet under 1100px;
   the rail becomes a hover overlay under 800px. Panes are user-resizable and
   persisted (`yoyo-layout-v1`).
+- **Turn outline** sits left of the conversation column, not the session rail.
+  One row per operator prompt, sourced from the store index (not mounted DOM).
+  Click jumps, including turns outside the hot window — that loads a page
+  around the target instead of dumping the JSONL. Default is ChatGPT-style
+  ticks (collapsed); expand for titles. Hidden until two operator turns.
+  Scroll-spy marks exactly one in-view turn. Option/Alt+Up/Down steps between
+  prompts.
 - The review panel is a `@container`; tab labels show at ≥320px, icons below.
 
 ---
@@ -237,6 +244,12 @@ stops the moment `running` is false.
   greeting (`Ready when you are.` / Video: `Paste a chapter.`), one hint line,
   starter **pills** (not a 3-column marketing grid). No headline larger than 21px.
   Click the sphere to bounce and spin.
+- **Turn outline** — left of the letter, default ticks. Accent marks only the
+  active turn (a 2px hairline, no row wash). Outline and transcript share turn
+  identity only: click is a one-shot `scrollToIndex`, scroll-spy updates the
+  tick. The pane stays freely scrollable. Stick-to-bottom follows the live
+  tail solely while the operator is at the bottom; "Jump to latest" reseeds
+  the live window. Do not index from the virtualizer DOM.
 - **Composer** — brightest object on the stage. Toolbar is ghost controls;
   send is a filled circle that flips to a stop square while running.
 

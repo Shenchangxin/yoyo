@@ -12,6 +12,7 @@ type QueuedTurn struct {
 	ID          string       `json:"id,omitempty"`
 	Text        string       `json:"text"`
 	Plan        bool         `json:"plan"`
+	Resume      bool         `json:"resume,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
@@ -40,6 +41,7 @@ type RunState struct {
 	PendingApprovals []PendingApproval `json:"pending_approvals,omitempty"`
 	ResumeText       string            `json:"resume_text,omitempty"`
 	ResumePlan       bool              `json:"resume_plan,omitempty"`
+	ResumeInFlight   bool              `json:"resume_in_flight,omitempty"`
 	AskQuestion      string            `json:"ask_question,omitempty"`
 	AuthMode         string            `json:"auth_mode,omitempty"`
 	ConnectorAllow   []string          `json:"connector_allow,omitempty"`

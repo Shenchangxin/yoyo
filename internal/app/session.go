@@ -183,6 +183,50 @@ func (a *App) Trajectory(id string) ([]trace.Event, error) {
 	return runtime.UITrajectory(evs), nil
 }
 
+func (a *App) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.TrajectoryPage, error) {
+	if a.Traces == nil {
+		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
+	}
+	raw, err := a.Traces.PageTurns(id, beforeSeq, turns)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
+	}
+	hubSeq := int64(0)
+	if a.Hub != nil {
+		hubSeq = a.Hub.Head()
+	}
+	return runtime.ProjectPage(raw, hubSeq, trace.DefaultPageBytes), nil
+}
+
+func (a *App) TrajectoryOutline(id string) ([]trace.OutlineTurn, error) {
+	if a.Traces == nil {
+		return []trace.OutlineTurn{}, fmt.Errorf("no trace store")
+	}
+	return a.Traces.OutlineTurns(id)
+}
+
+func (a *App) TrajectoryAround(id string, userSeq int64, turns int) (runtime.TrajectoryPage, error) {
+	if a.Traces == nil {
+		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
+	}
+	raw, err := a.Traces.PageAroundUser(id, userSeq, turns)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
+	}
+	hubSeq := int64(0)
+	if a.Hub != nil {
+		hubSeq = a.Hub.Head()
+	}
+	return runtime.ProjectPageKeep(raw, hubSeq, trace.DefaultPageBytes, userSeq), nil
+}
+
+func (a *App) LiveSince(sessionID string, after int64) []trace.Event {
+	if a.Hub == nil {
+		return nil
+	}
+	return runtime.SlimTrajectory(a.Hub.Since(after, sessionID))
+}
+
 func (a *App) ReadTrace(id string) ([]trace.Event, error) {
 	if a.Traces == nil {
 		return nil, fmt.Errorf("no trace store")
@@ -348,8 +392,18 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 		}
 		return err
 	}
-	if a.Threads != nil && strings.TrimSpace(message) != "" {
-		a.Threads.SetResume(sessionID, message, plan)
+	turnID := diaglog.NewTurnID()
+	committed := false
+	if !resume {
+		if err := a.commitUser(sessionID, message, atts, turnID); err != nil {
+			cancel()
+			release()
+			return err
+		}
+		committed = userCommitNeeded(message, atts)
+	}
+	if a.Threads != nil {
+		a.Threads.MarkTurnInFlight(sessionID, true, plan)
 	}
 	go func() {
 		defer cancel()
@@ -368,7 +422,7 @@ func (a *App) launchSend(sessionID, message string, plan bool, atts []Attachment
 			}
 		}()
 		defer a.kickQueue(sessionID)
-		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume)
+		_, _ = a.sendLocked(ctx, sessionID, message, nil, nil, plan, atts, resume, committed, turnID)
 	}()
 	return nil
 }
@@ -379,11 +433,13 @@ func (a *App) SendOpts(ctx context.Context, sessionID, message string, client ru
 		return "", err
 	}
 	defer release()
-	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false)
+	return a.sendLocked(ctx, sessionID, message, client, onEvent, plan, nil, false, false, "")
 }
 
-func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume bool) (out string, runErr error) {
-	turnID := diaglog.NewTurnID()
+func (a *App) sendLocked(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event), plan bool, atts []Attachment, resume, alreadyCommitted bool, turnID string) (out string, runErr error) {
+	if turnID == "" {
+		turnID = diaglog.NewTurnID()
+	}
 	ctx = diaglog.With(ctx, diaglog.Fields{SessionID: sessionID, TurnID: turnID, Component: "runtime"})
 	var turnSpan observe.Span
 	if a.Observe != nil {
@@ -493,7 +549,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
-		evs, err := a.Traces.Read(id)
+		evs, err := a.Traces.ReadFromCheckpoint(id)
 		if err != nil {
 			return nil
 		}
@@ -524,11 +580,25 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		a.Enqueue(id, QueuedTurn{Text: text})
 		return nil
 	}
+	userCommitted := alreadyCommitted
+	if !resume && !alreadyCommitted {
+		if err := a.commitUser(sessionID, message, atts, turnID); err != nil {
+			return "", err
+		}
+		userCommitted = userCommitNeeded(message, atts)
+	}
 	hist := []runtime.Message{}
 	roundSeq := 0
-	if evs, err := a.Traces.Read(sessionID); err == nil {
+	if evs, err := a.Traces.ReadFromCheckpoint(sessionID); err == nil {
 		hist = runtime.MessagesFromEventsOpts(evs, tools.Spill)
 		roundSeq = runtime.MaxAssistantRound(evs)
+	}
+	if userCommitted {
+		drop := runtime.NormalizeUserText(message)
+		if drop == "" && len(atts) > 0 {
+			drop = "(image attached)"
+		}
+		hist = runtime.DropTrailingUser(hist, drop)
 	}
 	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
 	hist = runtime.MaybeCheckpoint(a.Traces, sessionID, hist, loop, tools.Spill, client, model, window, frags)
@@ -587,6 +657,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		TraceID:          turnSpan.TraceID,
 		Observe:          a.Observe,
 		User:             message,
+		UserCommitted:    userCommitted && !resume,
 		UserParts:        userParts,
 		Inject:           inject,
 		Workspace:        toolRoot,
@@ -634,11 +705,92 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		blob.WriteByte(' ')
 		blob.WriteString(message)
 		a.Threads.IndexBlob(sessionID, blob.String())
-		if runErr == nil {
-			a.Threads.SetResume(sessionID, "", false)
-		}
+		a.Threads.MarkTurnInFlight(sessionID, false, false)
 	}
 	return out, runErr
+}
+
+func userCommitNeeded(message string, atts []Attachment) bool {
+	return runtime.NormalizeUserText(message) != "" || len(atts) > 0
+}
+
+func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID string) error {
+	if a.Traces == nil {
+		return fmt.Errorf("no trace store")
+	}
+	text := runtime.NormalizeUserText(message)
+	meta, err := a.GetSession(sessionID)
+	if err != nil {
+		return fmt.Errorf("unknown session %s: %w", sessionID, err)
+	}
+	parts := runtime.ImageParts(meta.ToolRoot(), toRuntimeAtts(atts))
+	if text == "" && len(parts) == 0 {
+		return nil
+	}
+	if text == "" {
+		text = "(image attached)"
+	}
+	payload := map[string]any{"text": text, "id": fmt.Sprintf("%s:user:%s", sessionID, turnID)}
+	if len(parts) > 0 {
+		payload["parts"] = parts
+	}
+	if turnID != "" {
+		payload["turn_id"] = turnID
+	}
+	hash := session.ResolveHarness(meta.HarnessPolicy, meta.Harness, a.ActiveHash())
+	ev := trace.Event{
+		Type:             trace.TypeUser,
+		Source:           "user",
+		SessionID:        sessionID,
+		TurnID:           turnID,
+		HarnessSnapshot:  hash,
+		ModelFingerprint: Fingerprint(a.Config),
+		Payload:          payload,
+	}
+	if err := a.Traces.AppendDurable(ev); err != nil {
+		return err
+	}
+	if a.Hub != nil {
+		a.Hub.Publish(ev)
+	}
+	return nil
+}
+
+type InterruptResult struct {
+	SessionID string `json:"session_id"`
+	State     string `json:"state"`
+}
+
+func (a *App) StopTurn(sessionID string) InterruptResult {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		ids := a.RunningIDs()
+		if len(ids) == 0 {
+			return InterruptResult{State: "idle"}
+		}
+		var last InterruptResult
+		for _, id := range ids {
+			last = a.StopTurn(id)
+		}
+		return last
+	}
+	was := a.Running(sessionID)
+	if a.Threads != nil {
+		a.Threads.Interrupt(sessionID)
+	}
+	a.mu.Lock()
+	slot := a.runs[sessionID]
+	a.mu.Unlock()
+	if slot != nil && slot.cancel != nil {
+		slot.cancel()
+	}
+	if !was {
+		return InterruptResult{SessionID: sessionID, State: "idle"}
+	}
+	if a.Running(sessionID) {
+		return InterruptResult{SessionID: sessionID, State: "cancelled"}
+	}
+	return InterruptResult{SessionID: sessionID, State: "already_done"}
 }
 
 const errBusy errString = "session already running"

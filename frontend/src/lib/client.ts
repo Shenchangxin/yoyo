@@ -2,6 +2,7 @@ import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./nor
 import { getLocale } from "./i18n";
 import { snapUiScale } from "./scale";
 import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
 export class ApiError extends Error {
   status: number;
@@ -346,6 +347,80 @@ export async function trajectory(id: string): Promise<any[]> {
   const s = await wailsService();
   if (s?.Trajectory) return asArray(await s.Trajectory(id));
   return asArray(await http(`/api/sessions/${id}/trajectory`));
+}
+
+export type TrajectoryPage = {
+  events: any[];
+  headSeq: number;
+  tailSeq: number;
+  older: boolean;
+  hubSeq: number;
+};
+
+function trajectoryPageOf(v: any): TrajectoryPage {
+  if (v && typeof v === "object" && !Array.isArray(v) && v.result && typeof v.result === "object" && !Array.isArray(v.result)) {
+    const inner = v.result;
+    if (pick(inner, "events", "Events") != null || pick(inner, "head_seq", "HeadSeq") != null || pick(inner, "hub_seq", "HubSeq") != null) {
+      v = inner;
+    }
+  }
+  return {
+    events: asArray(pick(v, "events", "Events") ?? v),
+    headSeq: num(pick(v, "head_seq", "HeadSeq")),
+    tailSeq: num(pick(v, "tail_seq", "TailSeq")),
+    older: asBool(pick(v, "older", "Older")),
+    hubSeq: num(pick(v, "hub_seq", "HubSeq")),
+  };
+}
+
+export async function trajectoryPage(id: string, opts?: { before?: number; turns?: number }): Promise<TrajectoryPage> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "TrajectoryPage", "trajectoryPage");
+  if (fn) return trajectoryPageOf(await fn(id, opts?.before || 0, opts?.turns || 0));
+  const q = new URLSearchParams();
+  if (opts?.before) q.set("before", String(opts.before));
+  if (opts?.turns) q.set("turns", String(opts.turns));
+  const qs = q.toString();
+  return trajectoryPageOf(await http(`/api/sessions/${id}/trajectory/page${qs ? `?${qs}` : ""}`));
+}
+
+function unwrapResult(v: any): any {
+  if (v && typeof v === "object" && !Array.isArray(v) && v.result != null) return v.result;
+  return v;
+}
+
+export async function trajectoryOutline(id: string): Promise<OutlineTurn[]> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "TrajectoryOutline", "trajectoryOutline");
+  const raw = fn ? await fn(id) : await http(`/api/sessions/${id}/trajectory/outline`);
+  return asArray(unwrapResult(raw)).map(outlineOfRaw).filter((t) => t.seq > 0 || t.id || t.key);
+}
+
+export async function trajectoryAround(id: string, seq: number, turns?: number): Promise<TrajectoryPage> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "TrajectoryAround", "trajectoryAround");
+  if (fn) return trajectoryPageOf(await fn(id, seq, turns || 0));
+  const q = new URLSearchParams();
+  if (seq) q.set("seq", String(seq));
+  if (turns) q.set("turns", String(turns));
+  const qs = q.toString();
+  return trajectoryPageOf(await http(`/api/sessions/${id}/trajectory/around${qs ? `?${qs}` : ""}`));
+}
+
+export async function liveSince(id: string, after: number): Promise<any[]> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "LiveSince", "liveSince");
+  if (fn) return asArray(await fn(id, after));
+  return asArray(await http(`/api/sessions/${id}/live?after=${encodeURIComponent(String(after))}`));
+}
+
+export async function setRendererMemory(level: "low" | "normal"): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "SetRendererMemory", "setRendererMemory");
+  if (fn) {
+    await fn(level).catch(() => {});
+    return;
+  }
 }
 
 export function sessionTraceOf(v: any): SessionTrace {

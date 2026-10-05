@@ -368,6 +368,13 @@ func keepNotePath(p string) bool {
 // collapseDoubledText drops an accidental exact concatenation of the same
 // operator paragraph (IME/paste). Short strings are left alone so "haha"
 // does not collapse.
+// NormalizeUserText is the durable operator utterance: trim plus IME-doubling
+// collapse. Persist-first and seed() must share this so jsonl and the model
+// see the same row.
+func NormalizeUserText(s string) string {
+	return collapseDoubledText(strings.TrimSpace(s))
+}
+
 func collapseDoubledText(s string) string {
 	s = strings.TrimSpace(s)
 	rs := []rune(s)

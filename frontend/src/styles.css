@@ -470,6 +470,7 @@ kbd,
   /* Beat use-stick-to-bottom's inline `stable both-edges` gutter. */
   scrollbar-gutter: auto !important;
   overscroll-behavior: contain;
+  overflow-anchor: none;
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 22%, transparent) transparent;

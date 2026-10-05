@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { foldLiveIntoSeed, itemFromEvent, mergeItem, mergePendingUsers, replayEvents, unwrapEvent } from "../src/lib/stream-fold";
+import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount } from "../src/lib/stream-fold";
 import { layoutRows, processGroupLive, tailProcessPairs } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
+import { structureSig } from "../src/lib/stream-live";
 import type { Item } from "../src/lib/protocol";
+import { itemMatchesTurn, isOutlineActive, itemTurnKey, neighborTurn, outlineTitle, outlineTurnKey, pendingOutline, pickActiveTurnKey, rowMatchesJump, turnJumpAliases } from "../src/lib/turn-outline";
 
 function liveUser(text: string, extra?: Record<string, any>): Item {
   return itemFromEvent({
@@ -354,8 +356,8 @@ test("write_file and str_replace land as artifacts with a rendered diff", () => 
   expect(diff.kind).toBe("diff");
   expect(diff.diff).toContain("-old");
   expect(diff.diff).toContain("+new");
-  expect(artifactPreviewOpen(view)).toBe(true);
-  expect(artifactPreviewOpen(diff)).toBe(true);
+  expect(artifactPreviewOpen(view)).toBe(false);
+  expect(artifactPreviewOpen(diff)).toBe(false);
   const code = artifactView({
     type: "tool_call",
     name: "write_file",
@@ -475,4 +477,171 @@ test("process rail expands from the tail", () => {
   const page = tailProcessPairs(pairs, 60);
   expect(page.hidden).toBe(20);
   expect(page.visible.map((p) => p.key)).toEqual(pairs.slice(20).map((p) => p.key));
+});
+
+test("live notices peel nested events and leave pull-only seqs", () => {
+  const inline = parseLiveNotice({ seq: 3, type: "user", session_id: "s", payload: { text: "hi" } });
+  expect(inline.seq).toBe(3);
+  expect(inline.event.type).toBe("user");
+  const nested = parseLiveNotice({
+    seq: 4,
+    session_id: "s",
+    type: "assistant",
+    event: { type: "assistant", session_id: "s", payload: { text: "ok" } },
+  });
+  expect(nested.seq).toBe(4);
+  expect(nested.event.type).toBe("assistant");
+  const pull = parseLiveNotice({ seq: 8, session_id: "s", type: "assistant" });
+  expect(pull.seq).toBe(8);
+  expect(pull.event).toBeUndefined();
+});
+
+test("structureSig ignores token text", () => {
+  const a: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "he", name: "", delta: true, payload: {} }];
+  const b: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hello", name: "", delta: true, payload: {} }];
+  expect(structureSig(a)).toBe(structureSig(b));
+});
+
+test("hot window keeps only the last N user turns", () => {
+  const raw: any[] = [];
+  for (let i = 0; i < 20; i++) {
+    raw.push({ type: "user", session_id: "s", payload: { text: `u${i}`, id: `u${i}` } });
+    raw.push({ type: "assistant", session_id: "s", payload: { text: `a${i}`, id: `r${i}` } });
+  }
+  const items = lastUserTurns(replayEvents(raw), HOT_TRANSCRIPT_TURNS);
+  expect(userTurnCount(items)).toBe(HOT_TRANSCRIPT_TURNS);
+  expect(items.find((x) => x.text === "u0")).toBeUndefined();
+  expect(items.filter((x) => x.type === "user").map((x) => x.text).pop()).toBe("u19");
+});
+
+test("settled assistant text is capped for the renderer", () => {
+  const body = "x".repeat(UI_TEXT_CAP + 4000);
+  const it = itemFromEvent({
+    type: "assistant",
+    session_id: "s",
+    payload: { text: body, id: "r1" },
+  });
+  expect(it.text.length).toBeLessThan(body.length);
+  expect(it.text.endsWith("…")).toBe(true);
+  const delta = itemFromEvent({
+    type: "assistant",
+    session_id: "s",
+    payload: { text: body, id: "r1", delta: true },
+  });
+  expect(delta.text).toBe(body);
+});
+
+test("delta fingerprints stay unique across seqs without storing the slice", () => {
+  const a = eventFingerprint({
+    seq: 11,
+    type: "assistant",
+    session_id: "s",
+    payload: { text: "hello world this is a slice", id: "r1", delta: true },
+  });
+  const b = eventFingerprint({
+    seq: 12,
+    type: "assistant",
+    session_id: "s",
+    payload: { text: " and more tokens here", id: "r1", delta: true },
+  });
+  expect(a).not.toEqual(b);
+  expect(a.includes("hello world")).toBe(false);
+  expect(b.includes("and more tokens")).toBe(false);
+});
+
+test("interrupted card stays only while it is the turn's terminal chip", () => {
+  const stopped = itemFromEvent({
+    type: "error",
+    session_id: "s",
+    payload: { kind: "canceled", title: "Stopped", hint: "This turn was interrupted.", id: "e1" },
+  });
+  let list = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "go", id: "u1" } },
+    { type: "assistant", session_id: "s", payload: { text: "working", id: "r1" } },
+  ]);
+  list = mergeItem(list, stopped);
+  expect(list.filter((x) => x.type === "error")).toHaveLength(1);
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_call",
+    session_id: "s",
+    payload: { id: "c2", name: "read_file", round: "s:r1" },
+  }));
+  expect(list.filter((x) => x.type === "error")).toHaveLength(0);
+  expect(list.some((x) => x.type === "tool_call")).toBe(true);
+});
+
+test("continue-this-turn drops the interrupted card before new tokens", () => {
+  const list = [
+    itemFromEvent({ type: "user", session_id: "s", payload: { text: "go", id: "u1" } }),
+    itemFromEvent({ type: "assistant", session_id: "s", payload: { text: "working", id: "r1" } }),
+    itemFromEvent({ type: "error", session_id: "s", payload: { kind: "canceled", title: "Stopped", id: "e1" } }),
+  ];
+  expect(dropTurnErrors(list).filter((x) => x.type === "error")).toHaveLength(0);
+  const folded = foldTurnErrors(list);
+  expect(folded.filter((x) => x.type === "error")).toHaveLength(1);
+});
+
+test("outline title peels mentions and caps runes", () => {
+  expect(outlineTitle("@file:src/loop.go  Fix the parser\nnow")).toBe("Fix the parser now");
+  expect([...outlineTitle("字".repeat(50))].length).toBe(43);
+});
+
+test("itemFromEvent keeps store seq for outline jump", () => {
+  const it = itemFromEvent({
+    type: "user",
+    session_id: "s",
+    seq: 12,
+    payload: { text: "hello", id: "s:user:1" },
+  });
+  expect(it.seq).toBe(12);
+  expect(itemMatchesTurn(it, { seq: 12, title: "hello", id: "s:user:1", key: "s:user:1" })).toBeTruthy();
+});
+
+test("pending outline appends optimistic ui turns", () => {
+  const store = [{ seq: 1, title: "first", id: "u1", key: "u1" }];
+  const extra = pendingOutline(store, [uiUser("second question")]);
+  expect(extra).toHaveLength(2);
+  expect(extra[1].title).toBe("second question");
+  expect(pendingOutline(store, [uiUser("first")])).toEqual(store);
+});
+
+test("neighbor turn walks the directory", () => {
+  const turns = [
+    { seq: 1, title: "a", id: "a", key: "a" },
+    { seq: 3, title: "b", id: "b", key: "b" },
+    { seq: 5, title: "c", id: "c", key: "c" },
+  ];
+  const mid = outlineTurnKey(turns[1]);
+  expect(outlineTurnKey(neighborTurn(turns, mid, -1)!)).toBe(outlineTurnKey(turns[0]));
+  expect(outlineTurnKey(neighborTurn(turns, mid, 1)!)).toBe(outlineTurnKey(turns[2]));
+  expect(neighborTurn(turns, outlineTurnKey(turns[0]), -1)).toBeNull();
+});
+
+test("outline active is a single non-empty key", () => {
+  const a = { seq: 1, title: "a", id: "", key: "" };
+  const b = { seq: 2, title: "b", id: "", key: "" };
+  const c = { seq: 0, title: "c", id: "", key: "" };
+  expect(isOutlineActive(a, "")).toBeFalsy();
+  expect(isOutlineActive(c, "")).toBeFalsy();
+  expect(isOutlineActive(a, outlineTurnKey(a))).toBeTruthy();
+  expect(isOutlineActive(b, outlineTurnKey(a))).toBeFalsy();
+  expect(pickActiveTurnKey([
+    { key: "seq:1", top: 10 },
+    { key: "seq:2", top: 40 },
+    { key: "seq:3", top: 90 },
+    { key: "", top: 41 },
+  ], 50)).toBe("seq:2");
+});
+
+test("itemTurnKey prefers durable id over hub seq", () => {
+  const it = itemFromEvent({
+    type: "user",
+    session_id: "s",
+    seq: 99,
+    payload: { text: "hello", id: "s:user:1" },
+  });
+  expect(itemTurnKey(it)).toBe("s:user:1");
+  expect(itemMatchesTurn(it, { seq: 12, title: "hello", id: "s:user:1", key: "s:user:1" })).toBeTruthy();
+  expect(itemMatchesTurn(it, { seq: 99, title: "other", id: "s:user:2", key: "s:user:2" })).toBeFalsy();
+  expect(rowMatchesJump(itemTurnKey(it), turnJumpAliases({ seq: 12, id: "s:user:1", key: "s:user:1" }))).toBeTruthy();
 });

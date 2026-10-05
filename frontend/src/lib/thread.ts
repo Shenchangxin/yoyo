@@ -11,5 +11,3 @@ export const THREAD_MAX = "max-w-[min(100%,var(--thread-measure))]";
 export const THREAD_COL = `mx-auto w-full min-w-0 ${THREAD_MAX}`;
 export const THREAD_GUTTER = "px-4 @[36rem]:px-6 @[52rem]:px-8";
 export const THREAD_GUTTER_COMPACT = "px-3";
-
-export const LONG_THREAD_TURNS = 50;

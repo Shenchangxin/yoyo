@@ -1,15 +1,14 @@
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, RotateCcw, ShieldAlert } from "lucide-react";
 import { IconSwap } from "../components/ui/icon-swap";
 import { toast } from "sonner";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { writeClipboard } from "../lib/clipboard";
-import { LONG_THREAD_TURNS, THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
+import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import {
   formatToolBody,
   itemTimeMs,
@@ -23,7 +22,7 @@ import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "../
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
 import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
-import { withLiveText } from "../lib/stream-live";
+import { structureSig, withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
@@ -31,6 +30,7 @@ import { PresenceAnchor, PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
 import { peelCompletedMentions, type MentionKind, type MentionPin } from "../lib/mentions";
+import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -125,10 +125,18 @@ export function Transcript(props: {
   compact?: boolean;
   flush?: boolean;
   workspace?: string;
+  older?: boolean;
+  loadingOlder?: boolean;
+  idle?: boolean;
+  onLoadOlder?: () => void | Promise<void>;
   onResolve: (id: string, decision: string) => void;
   onPrompt?: (text: string) => void;
   onOpenReview?: (path?: string) => void;
   onRetry?: () => void;
+  jumpTo?: { key: string; aliases?: string[]; nonce: number } | null;
+  latestNonce?: number;
+  onActiveTurn?: (key: string) => void;
+  onJumpLatest?: () => void | Promise<void>;
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
@@ -136,26 +144,26 @@ export function Transcript(props: {
     () => (props.showThinking ? props.items : props.items.filter((it) => it.type !== "reasoning")),
     [props.items, props.showThinking],
   );
-  const layout = useMemo(() => layoutRows(visible), [visible]);
+  const layout = useStableLayout(visible);
   const empty = visible.length === 0 && !props.running && props.approvals.length === 0;
   const live = lastMeaningful(visible);
   const liveItem = live ? withLiveText(live, props.liveTexts) : null;
   const streamingKey = props.running && liveItem?.type === "assistant" && liveItem.delta ? liveItem.key : "";
+  const liveLen = streamingKey ? (props.liveTexts?.[streamingKey]?.length || 0) : 0;
   const showWorking = props.running && !streamingKey && !tailOwnsActivity(layout);
   const since = props.running ? lastUserTimeMs(visible) : 0;
   const retryKey = lastErrorKey(visible);
   const pinnedTurn = lastAgentKey(layout);
-  const longThread = layout.length > LONG_THREAD_TURNS;
 
-  const rows: { key: string; space?: string; virtualize?: boolean; node: ReactNode }[] = [
+  const rows: TranscriptRow[] = [
     ...layout.map((row, i) => {
-      const virtualize = longThread && i < layout.length - 2;
       if (row.kind === "user") {
         return {
           key: row.key,
+          turnKey: itemTurnKey(row.item),
           space: rowSpace(layout, i),
-          virtualize,
-          node: <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />,
+          estimate: 96,
+          render: () => <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />,
         };
       }
       if (row.kind === "agent") {
@@ -166,8 +174,8 @@ export function Transcript(props: {
         return {
           key: row.key,
           space: rowSpace(layout, i),
-          virtualize: virtualize && !liveHere && !workingHere,
-          node: (
+          estimate: agentEstimate(row.copyText),
+          render: () => (
             <article className="assistant-letter group/turn flex gap-2.5" data-testid="agent-turn">
               {last && props.running ? (
                 <PresenceAnchor id="avatar" size={22} className="mt-0.5" />
@@ -198,6 +206,7 @@ export function Transcript(props: {
                       item={part.item}
                       streaming={part.item.key === streamingKey}
                       liveText={props.liveTexts?.[part.item.key]}
+                      rich={part.item.type === "assistant" && part.item.key !== streamingKey}
                     />
                   )}
                 </div>
@@ -226,8 +235,8 @@ export function Transcript(props: {
       return {
         key: row.key,
         space: rowSpace(layout, i),
-        virtualize,
-        node: (
+        estimate: 96,
+        render: () => (
           <ItemRow
             item={row.item}
             onRetry={row.item.key === retryKey ? props.onRetry : undefined}
@@ -238,42 +247,55 @@ export function Transcript(props: {
     ...props.approvals.map((a) => ({
       key: `ask:${a.id}`,
       space: "pt-4",
-      node: <ApprovalCard item={a} onResolve={props.onResolve} />,
+      estimate: 160,
+      render: () => <ApprovalCard item={a} onResolve={props.onResolve} />,
     })),
   ];
   if (showWorking && !pinnedTurn) {
     rows.push({
       key: "working",
       space: "pt-3",
-      node: <WorkingLine since={since} />,
+      estimate: 40,
+      render: () => <WorkingLine since={since} />,
     });
   }
 
   return (
-    <StickToBottom
+    <div
       className="prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      resize="instant"
-      initial="instant"
       data-testid="conversation-column"
     >
       {empty && !props.compact ? (
-        <StickToBottom.Content
-          scrollClassName="transcript-scroll"
-          className={cn(col, "flex min-h-full flex-col justify-end pb-8 pt-10")}
-        >
+        <div className={cn(col, "transcript-scroll flex min-h-full flex-col justify-end overflow-y-auto pb-8 pt-10")}>
           <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
-        </StickToBottom.Content>
+        </div>
       ) : (
-        <StickToBottom.Content
-          scrollClassName="transcript-scroll"
-          className={cn(col, "flex flex-col pb-4 pt-5")}
-        >
-          <TranscriptLane rows={rows} virtualize={longThread} />
-        </StickToBottom.Content>
+        <TranscriptLane
+          className={cn(col, "min-h-0 flex-1 pb-4 pt-5")}
+          rows={rows}
+          older={!!props.older}
+          loadingOlder={!!props.loadingOlder}
+          overscan={4}
+          onLoadOlder={props.onLoadOlder}
+          follow={props.running}
+          followNonce={liveLen}
+          jumpTo={props.jumpTo}
+          latestNonce={props.latestNonce}
+          onActiveTurn={props.onActiveTurn}
+          onJumpLatest={props.onJumpLatest}
+        />
       )}
-      {props.compact ? null : <JumpLatest />}
-    </StickToBottom>
+    </div>
   );
+}
+
+function useStableLayout(items: Item[]): LayoutRow[] {
+  const sig = structureSig(items);
+  const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
+  if (ref.current.sig !== sig) {
+    ref.current = { sig, rows: layoutRows(items) };
+  }
+  return ref.current.rows;
 }
 
 /**
@@ -340,81 +362,228 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   );
 }
 
-type TranscriptRow = { key: string; space?: string; virtualize?: boolean; node: ReactNode };
+type TranscriptRow = { key: string; turnKey?: string; space?: string; estimate: number; render: () => ReactNode };
 
-function TranscriptLane({ rows, virtualize }: { rows: TranscriptRow[]; virtualize: boolean }) {
-  const { scrollRef } = useStickToBottomContext();
-  const frozen = virtualize ? rows.filter((r) => r.virtualize) : [];
-  const rest = virtualize ? rows.filter((r) => !r.virtualize) : rows;
-  const virtualizer = useVirtualizer({
-    count: frozen.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 140,
-    overscan: 8,
-    enabled: frozen.length > 0,
-  });
-  if (!frozen.length) {
-    return (
-      <>
-        {rest.map((row) => (
-          <div key={row.key} className={row.space}>
-            {row.node}
-          </div>
-        ))}
-      </>
-    );
-  }
-  return (
-    <>
-      <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-        {virtualizer.getVirtualItems().map((v) => {
-          const row = frozen[v.index];
-          return (
-            <div
-              key={row.key}
-              data-index={v.index}
-              ref={virtualizer.measureElement}
-              className={row.space}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${v.start}px)`,
-              }}
-            >
-              {row.node}
-            </div>
-          );
-        })}
-      </div>
-      {rest.map((row) => (
-        <div key={row.key} className={row.space}>
-          {row.node}
-        </div>
-      ))}
-    </>
-  );
+function agentEstimate(copyText: string): number {
+  return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
 }
 
-function JumpLatest() {
+function TranscriptLane({
+  className,
+  rows,
+  older,
+  loadingOlder,
+  overscan,
+  onLoadOlder,
+  follow,
+  followNonce,
+  jumpTo,
+  latestNonce,
+  onActiveTurn,
+  onJumpLatest,
+}: {
+  className?: string;
+  rows: TranscriptRow[];
+  older: boolean;
+  loadingOlder: boolean;
+  overscan: number;
+  onLoadOlder?: () => void | Promise<void>;
+  follow: boolean;
+  followNonce?: number;
+  jumpTo?: { key: string; aliases?: string[]; nonce: number } | null;
+  latestNonce?: number;
+  onActiveTurn?: (key: string) => void;
+  onJumpLatest?: () => void | Promise<void>;
+}) {
   const copy = useCopy();
-  const ctx = useStickToBottomContext() as ReturnType<typeof useStickToBottomContext> & {
-    isAtBottom: boolean;
-    escapedFromLock: boolean;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const [escaped, setEscaped] = useState(false);
+  const loadingRef = useRef(false);
+  const appliedJump = useRef(0);
+  const appliedLatest = useRef(0);
+  const lastActive = useRef('');
+  const spyRaf = useRef(0);
+  const jumpHeld = useRef(false);
+  const jumpNonce = jumpTo?.nonce || 0;
+  if (jumpNonce && jumpNonce !== appliedJump.current) {
+    stick.current = false;
+  }
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => rows[i]?.estimate ?? 96,
+    overscan,
+    getItemKey: (i) => rows[i]?.key ?? i,
+  });
+  const followEnd = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !stick.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+  const releaseJump = useCallback(() => {
+    jumpHeld.current = false;
+  }, []);
+  useLayoutEffect(() => {
+    followEnd();
+  }, [followEnd, rows.length, follow, followNonce]);
+  useLayoutEffect(() => {
+    if (!latestNonce || latestNonce === appliedLatest.current) return;
+    appliedLatest.current = latestNonce;
+    jumpHeld.current = false;
+    stick.current = true;
+    setEscaped(false);
+    followEnd();
+  }, [latestNonce, followEnd]);
+  useLayoutEffect(() => {
+    const key = jumpTo?.key;
+    const nonce = jumpTo?.nonce || 0;
+    if (!key || nonce === appliedJump.current) return;
+    const aliases = jumpTo?.aliases?.length ? jumpTo.aliases : [key];
+    const idx = rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases));
+    stick.current = false;
+    setEscaped(true);
+    lastActive.current = key;
+    if (idx < 0) return;
+    appliedJump.current = nonce;
+    jumpHeld.current = true;
+    const align = () => {
+      if (!jumpHeld.current) return;
+      virtualizer.scrollToIndex(idx, { align: 'start' });
+    };
+    align();
+    requestAnimationFrame(align);
+  }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', releaseJump, { passive: true });
+    el.addEventListener('pointerdown', releaseJump);
+    el.addEventListener('touchstart', releaseJump, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', releaseJump);
+      el.removeEventListener('pointerdown', releaseJump);
+      el.removeEventListener('touchstart', releaseJump);
+    };
+  }, [releaseJump]);
+  const reportActive = useCallback((key: string) => {
+    if (!key || key === lastActive.current) return;
+    lastActive.current = key;
+    onActiveTurn?.(key);
+  }, [onActiveTurn]);
+  const spyTurns = useCallback(() => {
+    const root = scrollRef.current;
+    if (!root || !onActiveTurn) return;
+    const gap = root.scrollHeight - root.scrollTop - root.clientHeight;
+    if (gap < 72) {
+      const last = [...rows].reverse().find((r) => r.turnKey)?.turnKey;
+      if (last) reportActive(last);
+      return;
+    }
+    const line = root.getBoundingClientRect().top + Math.min(64, root.clientHeight * 0.16);
+    const nodes: { key: string; top: number }[] = [];
+    root.querySelectorAll('[data-turn-key]').forEach((node) => {
+      const k = (node as HTMLElement).dataset.turnKey || '';
+      if (!k) return;
+      nodes.push({ key: k, top: node.getBoundingClientRect().top });
+    });
+    const best = pickActiveTurnKey(nodes, line);
+    if (best) reportActive(best);
+  }, [rows, onActiveTurn, reportActive]);
+  const queueSpy = useCallback(() => {
+    if (spyRaf.current) return;
+    spyRaf.current = requestAnimationFrame(() => {
+      spyRaf.current = 0;
+      spyTurns();
+    });
+  }, [spyTurns]);
+  useEffect(() => {
+    queueSpy();
+    return () => {
+      if (spyRaf.current) cancelAnimationFrame(spyRaf.current);
+      spyRaf.current = 0;
+    };
+  }, [queueSpy, rows.length]);
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = gap < 72;
+    if (!jumpHeld.current) {
+      stick.current = atBottom;
+      setEscaped(!atBottom);
+    }
+    queueSpy();
+    if (el.scrollTop < 48 && older && onLoadOlder && !loadingRef.current) {
+      loadingRef.current = true;
+      const prev = el.scrollHeight;
+      Promise.resolve(onLoadOlder()).finally(() => {
+        requestAnimationFrame(() => {
+          const node = scrollRef.current;
+          if (node) node.scrollTop += node.scrollHeight - prev;
+          loadingRef.current = false;
+        });
+      });
+    }
   };
-  if (ctx.isAtBottom && !ctx.escapedFromLock) return null;
   return (
-    <button
-      type="button"
-      className="absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]"
-      onClick={() => {
-        void ctx.scrollToBottom();
-      }}
-    >
-      <ArrowDown className="size-3 text-muted" aria-hidden />
-      {copy.transcript.jumpLatest}
-    </button>
+    <>
+      <div
+        ref={scrollRef}
+        className={cn('transcript-scroll min-h-0 flex-1 overflow-y-auto', className)}
+        onScroll={onScroll}
+      >
+        {older ? (
+          <button
+            type='button'
+            className='mb-3 w-full rounded-md py-1.5 text-center text-[12px] text-muted hover:bg-lift hover:text-foreground'
+            disabled={loadingOlder}
+            onClick={() => { void onLoadOlder?.(); }}
+          >
+            {copy.transcript.loadEarlier}
+          </button>
+        ) : null}
+        <div className='relative w-full shrink-0 overflow-clip bg-background' style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((v) => {
+            const row = rows[v.index];
+            if (!row) return null;
+            return (
+              <div
+                key={row.key}
+                data-index={v.index}
+                {...(row.turnKey ? { 'data-turn-key': row.turnKey } : {})}
+                ref={virtualizer.measureElement}
+                className={cn('bg-background', row.space)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${v.start}px)`,
+                }}
+              >
+                {row.render()}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {escaped ? (
+        <button
+          type='button'
+          className='absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]'
+          onClick={() => {
+            stick.current = true;
+            setEscaped(false);
+            if (onJumpLatest) void onJumpLatest();
+            else followEnd();
+          }}
+        >
+          <ArrowDown className='size-3 text-muted' aria-hidden />
+          {copy.transcript.jumpLatest}
+        </button>
+      ) : null}
+    </>
   );
 }
 
@@ -640,12 +809,14 @@ const ItemRow = memo(function ItemRow({
   streaming,
   liveText,
   copyText,
+  rich,
   onRetry,
 }: {
   item: Item;
   streaming?: boolean;
   liveText?: string;
   copyText?: string;
+  rich?: boolean;
   onRetry?: () => void;
 }) {
   const copy = useCopy();
@@ -675,7 +846,7 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="assistant-prose w-full min-w-0">
         <div className={cn(streaming && "assistant-live")}>
-          <Markdown text={shown.text} streaming={streaming} />
+          <Markdown text={shown.text} streaming={streaming} rich={!!rich && !streaming} />
         </div>
       </div>
     );
@@ -710,10 +881,17 @@ function ArtifactTimeline({
   workspace?: string;
   onOpenReview?: (path?: string) => void;
 }) {
-  const pairs = pairTools(items).filter(pairShowsArtifact);
-  if (!pairs.length) return null;
+  const copy = useCopy();
+  const all = pairTools(items).filter(pairShowsArtifact);
+  if (!all.length) return null;
+  const cap = 12;
+  const pairs = all.length > cap ? all.slice(-cap) : all;
+  const hidden = all.length - pairs.length;
   return (
     <div className="u-chrome min-w-0 space-y-1" data-testid="tool-timeline">
+      {hidden > 0 ? (
+        <div className="px-1 py-0.5 text-[11px] text-muted">{copy.transcript.earlierSteps.replace("{n}", String(hidden))}</div>
+      ) : null}
       {pairs.map((p) => (
         <ArtifactCard
           key={p.key}

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
-import { dropTrailingErrors, foldLiveIntoSeed, mergeItem, subscribeItems, subscribeSession, subscribeSessions } from "../../lib/stream";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, userTurnCount } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
+import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -189,6 +190,18 @@ export function useWorkstation() {
   const liveAcc = useRef<Record<string, string>>({});
   const liveRaf = useRef(0);
   const itemsRaf = useRef(0);
+  const headSeqRef = useRef(0);
+  const olderRef = useRef(false);
+  const browsingRef = useRef(false);
+  const [outline, setOutline] = useState<OutlineTurn[]>([]);
+  const outlineRef = useRef<OutlineTurn[]>([]);
+  const [activeTurn, setActiveTurn] = useState("");
+  const activeTurnRef = useRef("");
+  const [jumpTo, setJumpTo] = useState<{ key: string; aliases?: string[]; nonce: number } | null>(null);
+  const [latestNonce, setLatestNonce] = useState(0);
+  const [older, setOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [idle, setIdle] = useState(false);
   const [queued, setQueued] = useState(0);
   const [queueItems, setQueueItems] = useState<{ id?: string; text?: string; plan?: boolean }[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -248,6 +261,9 @@ export function useWorkstation() {
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
+  const outlineTurns = useMemo(() => pendingOutline(outline, items), [outline, items]);
+  outlineRef.current = outlineTurns;
+  activeTurnRef.current = activeTurn;
 
   const refreshCtx = useCallback(() => {
     if (!activeId) {
@@ -272,6 +288,54 @@ export function useWorkstation() {
   const loadSpill = useCallback(async (blobID: string): Promise<SpillBlob> => {
     if (!activeId) return { id: blobID, bytes: 0, text: "", truncated: false };
     return api.spillBlob(activeId, blobID);
+  }, [activeId]);
+
+  const refreshOutline = useCallback(async () => {
+    if (!activeId) {
+      setOutline([]);
+      return;
+    }
+    try {
+      const rows = await api.trajectoryOutline(activeId);
+      if (activeIdRef.current !== activeId) return;
+      setOutline(rows);
+    } catch {
+      /* keep last directory */
+    }
+  }, [activeId]);
+
+  const jumpToLatest = useCallback(async () => {
+    if (!activeId) return;
+    if (browsingRef.current) {
+      const page = await api.trajectoryPage(activeId);
+      if (activeIdRef.current !== activeId) return;
+      browsingRef.current = false;
+      itemsAcc.current = lastUserTurns(replayEvents(page.events), HOT_TRANSCRIPT_TURNS);
+      headSeqRef.current = page.headSeq || 0;
+      olderRef.current = !!page.older;
+      setOlder(!!page.older);
+      setItems(itemsAcc.current.slice());
+    }
+    setLatestNonce(Date.now());
+  }, [activeId]);
+
+  const jumpToTurn = useCallback(async (turn: OutlineTurn) => {
+    if (!activeId || !turn) return;
+    const key = outlineTurnKey(turn);
+    const aliases = turnJumpAliases(turn);
+    setActiveTurn(key);
+    const mounted = itemsAcc.current.some((it) => itemMatchesTurn(it, turn) || aliases.includes(itemTurnKey(it)));
+    if (!mounted && turn.seq > 0) {
+      const page = await api.trajectoryAround(activeId, turn.seq, HOT_TRANSCRIPT_TURNS);
+      if (activeIdRef.current !== activeId) return;
+      browsingRef.current = true;
+      itemsAcc.current = lastUserTurns(replayEvents(page.events), BROWSE_TRANSCRIPT_TURNS);
+      headSeqRef.current = page.headSeq || 0;
+      olderRef.current = !!page.older;
+      setOlder(!!page.older);
+      setItems(itemsAcc.current.slice());
+    }
+    setJumpTo({ key, aliases, nonce: Date.now() });
   }, [activeId]);
 
   const fail = (e: unknown) => {
@@ -488,29 +552,53 @@ export function useWorkstation() {
     }
   }), [pushNotice, markEnded, markStarted]);
 
+  useEffect(() => subscribeStopped((id) => markEnded(id)), [markEnded]);
+
+  useEffect(() => {
+    const onVis = () => {
+      const hidden = typeof document !== "undefined" && document.hidden;
+      setIdle(hidden);
+      void api.setRendererMemory(hidden ? "low" : "normal");
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   useEffect(() => {
     if (!activeId) {
       itemsAcc.current = [];
       liveAcc.current = {};
+      browsingRef.current = false;
       setItems([]);
       setLiveTexts({});
+      setOlder(false);
+      olderRef.current = false;
+      headSeqRef.current = 0;
+      setOutline([]);
+      setActiveTurn("");
       setCtx(emptyCtx);
       return;
     }
     itemsAcc.current = [];
     liveAcc.current = {};
+    browsingRef.current = false;
     setItems([]);
     setLiveTexts({});
     setQueued(0);
     setQueueItems([]);
     setCtx(emptyCtx);
+    setOlder(false);
+    olderRef.current = false;
+    headSeqRef.current = 0;
+    setOutline([]);
+    setActiveTurn("");
     const flushLive = () => {
       liveRaf.current = 0;
       setLiveTexts({ ...liveAcc.current });
     };
     const scheduleLive = () => {
       if (liveRaf.current) return;
-      liveRaf.current = window.setTimeout(flushLive, 80);
+      liveRaf.current = window.setTimeout(flushLive, 32);
     };
     const flushItems = () => {
       itemsRaf.current = 0;
@@ -551,6 +639,11 @@ export function useWorkstation() {
           return;
         }
         itemsAcc.current = mergeItem(itemsAcc.current, item);
+        if (item.type === "user" && item.source !== "steer") {
+          const cap = browsingRef.current ? BROWSE_TRANSCRIPT_TURNS : HOT_TRANSCRIPT_TURNS;
+          itemsAcc.current = lastUserTurns(itemsAcc.current, cap);
+          void refreshOutline();
+        }
         if (item.key && liveAcc.current[item.key] != null) {
           delete liveAcc.current[item.key];
           scheduleLive();
@@ -602,13 +695,21 @@ export function useWorkstation() {
             setQueueItems(q);
             setQueued(q.length);
           }).catch(() => { setQueued(0); setQueueItems([]); });
+          void refreshOutline();
         }
       },
-      (seed) => {
-        itemsAcc.current = foldLiveIntoSeed(seed, itemsAcc.current);
+      (seed, page) => {
+        browsingRef.current = false;
+        itemsAcc.current = lastUserTurns(foldLiveIntoSeed(seed, itemsAcc.current), HOT_TRANSCRIPT_TURNS);
         liveAcc.current = {};
         setLiveTexts({});
         setItems(itemsAcc.current.slice());
+        if (page) {
+          headSeqRef.current = page.headSeq || 0;
+          olderRef.current = !!page.older;
+          setOlder(!!page.older);
+        }
+        void refreshOutline();
       },
     );
     api.approvals().then(setApprovals).catch(() => {});
@@ -627,7 +728,7 @@ export function useWorkstation() {
         itemsRaf.current = 0;
       }
     };
-  }, [activeId, markEnded]);
+  }, [activeId, markEnded, refreshOutline]);
 
   useEffect(() => {
     if (!anyRun) return;
@@ -765,7 +866,7 @@ export function useWorkstation() {
             ...localUser(t.id, text),
             source: "steer",
             key: `ui-steer:${t.id}:${Date.now()}`,
-          }));
+          });
           setItems(itemsAcc.current.slice());
         }
         toast.success(copy.app.steered);
@@ -775,7 +876,8 @@ export function useWorkstation() {
       useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
       markStarted(t.id);
       if (t.id === activeId) {
-        itemsAcc.current = mergeItem(itemsAcc.current, localUser(t.id, text));
+        browsingRef.current = false;
+        itemsAcc.current = lastUserTurns(mergeItem(itemsAcc.current, localUser(t.id, text)), HOT_TRANSCRIPT_TURNS);
         setItems(itemsAcc.current.slice());
       }
       const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
@@ -788,6 +890,7 @@ export function useWorkstation() {
         setQueued(0);
         setQueueItems([]);
       }
+      void refreshOutline();
     } catch (e) {
       const m = api.errMessage(e);
       if (m.includes("queued") || m.includes("already running")) {
@@ -809,9 +912,15 @@ export function useWorkstation() {
     if (!hit) return;
     openThread(hit);
     if (running[hit.id]) return;
+    if (hit.id === activeId) {
+      itemsAcc.current = dropTurnErrors(itemsAcc.current);
+      setItems(itemsAcc.current.slice());
+      markStarted(hit.id);
+    }
     try {
       await api.retry(hit.id);
     } catch (e) {
+      if (hit.id === activeId) markEnded(hit.id);
       fail(e);
     }
   }
@@ -822,10 +931,10 @@ export function useWorkstation() {
     if (!hasTurn) return;
     setErr("");
     markStarted(activeId);
+    itemsAcc.current = dropTurnErrors(itemsAcc.current);
+    setItems(itemsAcc.current.slice());
     try {
       await api.retry(activeId);
-      itemsAcc.current = dropTrailingErrors(itemsAcc.current);
-      setItems(itemsAcc.current.slice());
     } catch (e) {
       markEnded(activeId);
       fail(e);
@@ -1001,6 +1110,28 @@ export function useWorkstation() {
     markEnded(activeId);
     void api.interrupt(activeId).catch(() => {});
   }
+
+  const loadOlder = useCallback(async () => {
+    if (!activeId || loadingOlder || !olderRef.current) return;
+    if (userTurnCount(itemsAcc.current) >= BROWSE_TRANSCRIPT_TURNS) return;
+    setLoadingOlder(true);
+    try {
+      const page = await api.trajectoryPage(activeId, { before: headSeqRef.current, turns: HOT_TRANSCRIPT_TURNS });
+      const olderItems = replayEvents(page.events);
+      const have = new Set(itemsAcc.current.map((x) => x.key));
+      const add = olderItems.filter((x) => !have.has(x.key));
+      browsingRef.current = true;
+      itemsAcc.current = lastUserTurns([...add, ...itemsAcc.current], BROWSE_TRANSCRIPT_TURNS);
+      headSeqRef.current = page.headSeq;
+      olderRef.current = page.older;
+      setOlder(page.older);
+      setItems(itemsAcc.current.slice());
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [activeId, loadingOlder]);
+
+  const presenceItems = useMemo(() => lastUserTurns(items, 2), [items]);
 
   async function onResolve(id: string, decision: string) {
     await api.resolveApproval(id, decision);
@@ -1228,6 +1359,18 @@ export function useWorkstation() {
         }
         return;
       }
+      if (!typing && matchKey(e, km.prevTurn)) {
+        e.preventDefault();
+        const next = neighborTurn(outlineRef.current, activeTurnRef.current, -1);
+        if (next) void jumpToTurn(next);
+        return;
+      }
+      if (!typing && matchKey(e, km.nextTurn)) {
+        e.preventDefault();
+        const next = neighborTurn(outlineRef.current, activeTurnRef.current, 1);
+        if (next) void jumpToTurn(next);
+        return;
+      }
       const first = approvals[0];
       if (first && !typing && !(e.ctrlKey || e.metaKey)) {
         if (matchKey(e, km.once)) {
@@ -1246,7 +1389,7 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab]);
+  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn]);
 
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
@@ -1279,7 +1422,8 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
+    outlineTurns, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,

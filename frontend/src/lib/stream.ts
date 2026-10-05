@@ -3,12 +3,18 @@ import type { Item } from "./protocol";
 import {
   eventFingerprint,
   itemFromEvent,
+  parseLiveNotice,
   replayEvents,
 } from "./stream-fold";
 
 export {
+  BROWSE_TRANSCRIPT_TURNS,
+  HOT_TRANSCRIPT_TURNS,
+  UI_TEXT_CAP,
   closesAssistant,
   dropTrailingErrors,
+  dropTurnErrors,
+  foldTurnErrors,
   eventFingerprint,
   foldLiveIntoSeed,
   isTranscriptNoise,
@@ -16,47 +22,124 @@ export {
   lastUserTurns,
   mergeItem,
   mergePendingUsers,
+  parseLiveNotice,
   replayEvents,
   unwrapEvent,
+  userTurnCount,
 } from "./stream-fold";
+
+export function emptyTrajectoryPage(): TrajectoryPageView {
+  return { events: [], headSeq: 0, tailSeq: 0, older: false, hubSeq: 0 };
+}
+
+async function loadSeedPage(sessionId: string): Promise<TrajectoryPageView> {
+  try {
+    return await api.trajectoryPage(sessionId);
+  } catch {
+    // Never dump Trajectory() into the desktop webview. An empty window is
+    // recoverable via live notices; a 10MB JSONL is not.
+    return emptyTrajectoryPage();
+  }
+}
+
+export type TrajectoryPageView = {
+  events: any[];
+  headSeq: number;
+  tailSeq: number;
+  older: boolean;
+  hubSeq: number;
+};
 
 export function subscribeSession(
   sessionId: string,
   onItem: (item: Item) => void,
-  onSeed?: (items: Item[]) => void,
+  onSeed?: (items: Item[], page?: TrajectoryPageView) => void,
 ): () => void {
   let alive = true;
   let stopLive = () => {};
   let seeded = false;
-  const buffered: { raw: any; item: Item }[] = [];
+  let hubSeq = 0;
+  let pulling = false;
+  let pullAgain = false;
+  const buffered: { raw: any; item: Item; seq: number }[] = [];
   const seen = new Set<string>();
 
-  const applySeed = (raws: any[]) => {
-    (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
-    const items = replayEvents(raws || []);
-    if (onSeed) onSeed(items);
-    else items.forEach(onItem);
-    seeded = true;
-    for (const row of buffered) {
-      const fp = eventFingerprint(row.raw);
-      if (seen.has(fp)) continue;
-      seen.add(fp);
-      onItem(row.item);
-    }
-    buffered.length = 0;
-  };
-
-  const onLive = (raw: any) => {
-    const item = itemFromEvent(raw);
-    if (item.sessionId && item.sessionId !== sessionId) return;
-    if (!seeded) {
-      buffered.push({ raw, item });
-      return;
-    }
+  const applyItem = (raw: any, item: Item) => {
+    if (seen.size > 4000) seen.clear();
     const fp = eventFingerprint(raw);
     if (seen.has(fp)) return;
     seen.add(fp);
     onItem(item);
+  };
+
+  const applySeed = (raws: any[], page?: TrajectoryPageView) => {
+    (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
+    const items = replayEvents(raws || []);
+    if (onSeed) onSeed(items, page);
+    else items.forEach(onItem);
+    seeded = true;
+    for (const row of buffered) {
+      if (row.seq > 0 && row.seq <= hubSeq) continue;
+      const fp = eventFingerprint(row.raw);
+      if (seen.has(fp)) continue;
+      seen.add(fp);
+      onItem(row.item);
+      if (row.seq > hubSeq) hubSeq = row.seq;
+    }
+    buffered.length = 0;
+  };
+
+  const pullSince = async (after: number) => {
+    if (!alive || after < 0) return;
+    if (pulling) {
+      pullAgain = true;
+      return;
+    }
+    pulling = true;
+    try {
+      let from = after;
+      do {
+        pullAgain = false;
+        const batch = await api.liveSince(sessionId, from).catch(() => []);
+        if (!alive) return;
+        for (const raw of batch) {
+          const notice = parseLiveNotice(raw);
+          const event = notice.event;
+          if (notice.seq > hubSeq) hubSeq = notice.seq;
+          if (!event) continue;
+          const item = itemFromEvent(event);
+          if (item.sessionId && item.sessionId !== sessionId) continue;
+          applyItem(event, item);
+        }
+        from = hubSeq;
+      } while (pullAgain && alive);
+    } finally {
+      pulling = false;
+    }
+  };
+
+  const onLive = (raw: any) => {
+    const notice = parseLiveNotice(raw);
+    if (notice.sessionId && notice.sessionId !== sessionId) return;
+    if (!seeded) {
+      if (!notice.event) return;
+      const item = itemFromEvent(notice.event);
+      if (item.sessionId && item.sessionId !== sessionId) return;
+      buffered.push({ raw: notice.event, item, seq: notice.seq });
+      return;
+    }
+    if (notice.seq > 0 && notice.seq <= hubSeq) return;
+    if (!notice.event) {
+      void pullSince(hubSeq);
+      return;
+    }
+    const item = itemFromEvent(notice.event);
+    if (item.sessionId && item.sessionId !== sessionId) return;
+    const gap = notice.seq > 0 && notice.seq > hubSeq + 1;
+    if (gap) void pullSince(hubSeq);
+    if (notice.seq > hubSeq) hubSeq = notice.seq;
+    const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq: notice.seq };
+    applyItem(event, item);
   };
 
   (async () => {
@@ -65,9 +148,11 @@ export function subscribeSession(
     if (Events?.On) {
       const off = Events.On("yoyo:item", (e: any) => onLive(e));
       stopLive = typeof off === "function" ? off : () => {};
-      const seed = await api.trajectory(sessionId).catch(() => []);
+      const page = await loadSeedPage(sessionId);
       if (!alive) return;
-      applySeed(seed);
+      hubSeq = page.hubSeq || 0;
+      applySeed(page.events, page);
+      if (hubSeq > 0) void pullSince(hubSeq);
       return;
     }
 
@@ -81,19 +166,21 @@ export function subscribeSession(
         }
       };
       stopLive = () => es.close();
-      const seed = await api.trajectory(sessionId).catch(() => []);
+      const page = await loadSeedPage(sessionId);
       if (!alive) {
         es.close();
         return;
       }
-      applySeed(seed);
+      hubSeq = page.hubSeq || 0;
+      applySeed(page.events, page);
       return;
     }
 
     const tick = async () => {
-      const seed = await api.trajectory(sessionId).catch(() => []);
+      const page = await loadSeedPage(sessionId);
       if (!alive) return;
-      applySeed(seed);
+      hubSeq = page.hubSeq || hubSeq;
+      applySeed(page.events, page);
     };
     await tick();
     const t = window.setInterval(tick, 2500);
@@ -106,13 +193,35 @@ export function subscribeSession(
   };
 }
 
+export function subscribeStopped(onStop: (sessionId: string) => void): () => void {
+  let off: (() => void) | undefined;
+  let alive = true;
+  (async () => {
+    const Events = await wailsEvents();
+    if (!alive || !Events?.On) return;
+    off = Events.On("yoyo:stopped", (e: any) => {
+      const src = Array.isArray(e) ? e[0] : e?.data ?? e;
+      const id = String(src?.session_id || src?.SessionID || src || "");
+      if (id) onStop(id);
+    });
+  })();
+  return () => {
+    alive = false;
+    off?.();
+  };
+}
+
 export function subscribeItems(onItem: (item: Item) => void): () => void {
   let off: (() => void) | undefined;
   let alive = true;
   (async () => {
     const Events = await wailsEvents();
     if (!alive || !Events?.On) return;
-    off = Events.On("yoyo:item", (e: any) => onItem(itemFromEvent(e)));
+    off = Events.On("yoyo:item", (e: any) => {
+      const notice = parseLiveNotice(e);
+      if (!notice.event) return;
+      onItem(itemFromEvent(notice.event));
+    });
   })();
   return () => {
     alive = false;

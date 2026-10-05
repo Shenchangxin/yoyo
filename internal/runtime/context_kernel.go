@@ -70,11 +70,11 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	if len(k.req.History) > 0 {
 		messages = append(messages, stripSystem(k.req.History)...)
 	}
-	user := collapseDoubledText(strings.TrimSpace(k.req.User))
+	user := NormalizeUserText(k.req.User)
 	if user == "" && len(k.req.UserParts) > 0 {
 		user = "(image attached)"
 	}
-	if user != "" {
+	if user != "" && !k.req.UserCommitted {
 		payload := map[string]any{"text": user}
 		if len(k.req.UserParts) > 0 {
 			payload["parts"] = k.req.UserParts

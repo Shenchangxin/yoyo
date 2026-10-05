@@ -16,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -380,6 +381,79 @@ func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 		return nil, err
 	}
 	return s.App.Trajectory(resolved)
+}
+
+func (s *Service) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.TrajectoryPage, error) {
+	if s.RPC != nil {
+		return decode[runtime.TrajectoryPage](s.call("trajectory.page", map[string]any{
+			"session": id, "before": beforeSeq, "turns": turns,
+		}))
+	}
+	resolved, err := s.App.ResolveSessionID(id)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
+	}
+	return s.App.TrajectoryPage(resolved, beforeSeq, turns)
+}
+
+func (s *Service) TrajectoryOutline(id string) ([]trace.OutlineTurn, error) {
+	if s.RPC != nil {
+		out, err := decode[[]trace.OutlineTurn](s.call("trajectory.outline", map[string]any{"session": id}))
+		if out == nil {
+			out = []trace.OutlineTurn{}
+		}
+		return out, err
+	}
+	resolved, err := s.App.ResolveSessionID(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.App.TrajectoryOutline(resolved)
+}
+
+func (s *Service) TrajectoryAround(id string, userSeq int64, turns int) (runtime.TrajectoryPage, error) {
+	if s.RPC != nil {
+		return decode[runtime.TrajectoryPage](s.call("trajectory.around", map[string]any{
+			"session": id, "seq": userSeq, "turns": turns,
+		}))
+	}
+	resolved, err := s.App.ResolveSessionID(id)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
+	}
+	return s.App.TrajectoryAround(resolved, userSeq, turns)
+}
+
+func (s *Service) LiveSince(sessionID string, after int64) ([]trace.Event, error) {
+	if s.RPC != nil {
+		return decode[[]trace.Event](s.call("live.since", map[string]any{
+			"session": sessionID, "after": after,
+		}))
+	}
+	resolved := strings.TrimSpace(sessionID)
+	if resolved != "" {
+		id, err := s.App.ResolveSessionID(resolved)
+		if err != nil {
+			return nil, err
+		}
+		resolved = id
+	}
+	return s.App.LiveSince(resolved, after), nil
+}
+
+func (s *Service) StopTurn(sessionID string) app.InterruptResult {
+	if s.RPC != nil {
+		res, err := decode[app.InterruptResult](s.call("turn.stop", map[string]any{"session": sessionID}))
+		if err != nil {
+			return app.InterruptResult{SessionID: sessionID, State: "idle"}
+		}
+		return res
+	}
+	return s.App.StopTurn(sessionID)
+}
+
+func (s *Service) SetRendererMemory(level string) error {
+	return setRendererMemory(s.win, level)
 }
 
 func (s *Service) SessionTrace(id string) (any, error) {
