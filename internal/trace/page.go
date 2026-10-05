@@ -49,7 +49,7 @@ func (s *Store) PageTurns(sessionID string, beforeSeq int64, turns int) (Page, e
 	users := 0
 	for i := end - 1; i >= 0; i-- {
 		start = i
-		if idx.entries[i].Type == TypeUser {
+		if idx.entries[i].operatorUser() {
 			users++
 			if users >= turns {
 				break

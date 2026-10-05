@@ -82,6 +82,34 @@ type UIState = {
   setModuleLoading: (v: boolean) => void;
 };
 
+function readDrafts(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem("yoyo-drafts");
+    if (!raw) return {};
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    if (!o || typeof o !== "object") return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === "string" && v) out[k] = v.slice(0, 80_000);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeDrafts(drafts: Record<string, string>) {
+  try {
+    const slim: Record<string, string> = {};
+    for (const [k, v] of Object.entries(drafts)) {
+      if (v) slim[k] = v.slice(0, 80_000);
+    }
+    localStorage.setItem("yoyo-drafts", JSON.stringify(slim));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 function readDiffMode(): DiffMode {
   try {
     return localStorage.getItem("yoyo-diff-mode") === "split" ? "split" : "unified";
@@ -192,7 +220,7 @@ export const useUI = create<UIState>((set, get) => ({
   reviewFile: "",
   diffMode: readDiffMode(),
   plan: false,
-  drafts: {},
+  drafts: readDrafts(),
   sidebarCollapsed: readCollapsed(),
   sidebarHover: false,
   outlineCollapsed: readOutlineCollapsed(),
@@ -330,8 +358,18 @@ export const useUI = create<UIState>((set, get) => ({
     set({ diffMode });
   },
   setPlan: (v) => set((s) => ({ plan: typeof v === "function" ? v(s.plan) : v })),
-  setDraft: (key, value) => set((s) => ({ drafts: { ...s.drafts, [key]: value } })),
-  patchDrafts: (patch) => set((s) => ({ drafts: { ...s.drafts, ...patch } })),
+  setDraft: (key, value) =>
+    set((s) => {
+      const drafts = { ...s.drafts, [key]: value };
+      writeDrafts(drafts);
+      return { drafts };
+    }),
+  patchDrafts: (patch) =>
+    set((s) => {
+      const drafts = { ...s.drafts, ...patch };
+      writeDrafts(drafts);
+      return { drafts };
+    }),
   setSidebarCollapsed: (v) =>
     set((s) => {
       const sidebarCollapsed = typeof v === "function" ? v(s.sidebarCollapsed) : v;

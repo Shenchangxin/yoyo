@@ -11,7 +11,7 @@ export function InboxMenu(props: {
   onNotice?: (n: Notice) => void;
   onClearNotices?: () => void;
   onOpenThread?: (id: string) => void;
-  onResolve?: (id: string, decision: string) => void;
+  onResolve?: (id: string, decision: string, answer?: string) => void;
 }) {
   const copy = useCopy();
   const [q, setQ] = useState<any>({});

@@ -39,7 +39,7 @@ export function ChatDock(props: {
   onStop: () => void;
   onClipboard?: () => Promise<string>;
   onScreenshot?: () => Promise<string>;
-  onResolve: (id: string, decision: string) => void;
+  onResolve: (id: string, decision: string, answer?: string) => void;
   onOpenAgent: () => void;
   onRetry?: () => void;
   onSlash?: (cmd: string, rest: string) => void;

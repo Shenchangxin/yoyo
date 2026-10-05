@@ -22,6 +22,7 @@ import {
 import { langFromPath } from "../../lib/artifact-preview";
 import { CodePreview } from "./FilePreview";
 import type { Item } from "../../lib/protocol";
+import { withLiveText } from "../../lib/stream-live";
 import * as api from "../../lib/client";
 import { writeClipboard } from "../../lib/clipboard";
 import {
@@ -82,18 +83,23 @@ export const ProcessGroup = memo(function ProcessGroup({
   live,
   running,
   compact,
+  liveTexts,
 }: {
   items: Item[];
   live: boolean;
   running: boolean;
   compact?: boolean;
+  liveTexts?: Record<string, string>;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
   const swap = motionTransition(reduced, DURATION_FAST);
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(PROCESS_PAGE);
-  const items = rawItems;
+  const items = useMemo(
+    () => (liveTexts ? rawItems.map((it) => withLiveText(it, liveTexts)) : rawItems),
+    [rawItems, liveTexts],
+  );
   const pairs = useMemo(() => pairTools(items), [items]);
   const tools = useMemo(() => pairs.filter((p) => p.call || p.result), [pairs]);
   const pending = tools.filter((p) => pairState(p, running) === "running");

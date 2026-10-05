@@ -25,7 +25,7 @@ export function Titlebar(props: {
   onSelectRunning?: (t: Thread) => void;
   renameTick?: number;
   onOpenThread?: (id: string) => void;
-  onResolve?: (id: string, decision: string) => void;
+  onResolve?: (id: string, decision: string, answer?: string) => void;
   notices?: Notice[];
   onNotice?: (n: Notice) => void;
   onClearNotices?: () => void;
@@ -138,7 +138,7 @@ function NoticeButton(props: {
   onNotice?: (n: Notice) => void;
   onClearNotices?: () => void;
   onOpenThread?: (id: string) => void;
-  onResolve?: (id: string, decision: string) => void;
+  onResolve?: (id: string, decision: string, answer?: string) => void;
 }) {
   const copy = useCopy();
   const [n, setN] = useState(0);

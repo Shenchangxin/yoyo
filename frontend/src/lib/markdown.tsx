@@ -1,5 +1,5 @@
 import { Component, memo, useEffect, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
-import { Streamdown, type Components, type ExtraProps } from "streamdown";
+import { Streamdown, TableCopyDropdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
 import { codePlugin } from "./code-plugin";
@@ -10,8 +10,10 @@ const SHIKI_SETTLE_MS = 400;
 
 /**
  * Streamdown ships ChatGPT-scale headings (`text-3xl` / `mt-6`) and
- * `list-inside`. Replace those nodes so the letter follows DESIGN.md.
- * Do not override `code` — Streamdown uses it for both inline and fences.
+ * `list-inside`. Replace those nodes so the letter stays desk-sized.
+ * Tables keep Streamdown's copy dropdown but drop its `bg-muted/80`
+ * chrome (`--muted` is ink, not a fill). Do not override `code` —
+ * Streamdown uses it for both inline and fences.
  */
 function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
   return function MdHeading({ children, className, node: _node, ...props }: MdProps<HTMLHeadingElement>) {
@@ -61,6 +63,43 @@ const mdComponents: Components = {
   ),
   hr: ({ className, node: _node, ...props }: MdProps<HTMLHRElement>) => (
     <hr {...props} data-streamdown="horizontal-rule" className={className} />
+  ),
+  table: ({ children, className, node: _node, ...props }: MdProps<HTMLTableElement>) => (
+    <div className="md-table" data-streamdown="table-wrapper">
+      <div className="md-table-tools">
+        <TableCopyDropdown />
+      </div>
+      <div className="md-table-scroll">
+        <table {...props} data-streamdown="table" className={className}>
+          {children}
+        </table>
+      </div>
+    </div>
+  ),
+  thead: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
+    <thead {...props} data-streamdown="table-header" className={className}>
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
+    <tbody {...props} data-streamdown="table-body" className={className}>
+      {children}
+    </tbody>
+  ),
+  tr: ({ children, className, node: _node, ...props }: MdProps<HTMLTableRowElement>) => (
+    <tr {...props} data-streamdown="table-row" className={className}>
+      {children}
+    </tr>
+  ),
+  th: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
+    <th {...props} data-streamdown="table-header-cell" className={className}>
+      {children}
+    </th>
+  ),
+  td: ({ children, className, node: _node, ...props }: MdProps<HTMLTableCellElement>) => (
+    <td {...props} data-streamdown="table-cell" className={className}>
+      {children}
+    </td>
   ),
 };
 
@@ -119,33 +158,31 @@ export const Markdown = memo(function Markdown({
   }, [decorate]);
   const capped = text && text.length > UI_MARKDOWN_CAP ? `${text.slice(0, UI_MARKDOWN_CAP)}\n…` : text;
   if (!capped && !streaming) return null;
-  if (!decorate) {
-    return (
-      <MarkdownBoundary key="plain" text={capped || ""} fallback={copy.review.previewFailed}>
-        <div className={cn("md-body space-y-2", quiet && "md-body-quiet")} data-streamdown={live ? "live" : "plain"}>
-          <p className="whitespace-pre-wrap break-words">{capped || ""}</p>
-        </div>
-      </MarkdownBoundary>
-    );
-  }
-  const settled = highlight;
+  const settled = highlight && !live;
   return (
-    <MarkdownBoundary key={settled ? "static" : "live"} text={capped || ""} fallback={copy.review.previewFailed}>
+    <MarkdownBoundary text={capped || ""} fallback={copy.review.previewFailed}>
       <Streamdown
         className={cn("md-body space-y-2", quiet && "md-body-quiet")}
         mode={settled ? "static" : "streaming"}
-        parseIncompleteMarkdown={false}
-        remend={undefined}
+        parseIncompleteMarkdown={live}
+        remend={live ? {} : undefined}
         isAnimating={false}
-        caret={undefined}
+        caret={live ? "block" : undefined}
         plugins={settled ? { code: codePlugin } : undefined}
         animated={false}
         lineNumbers={false}
         codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
+        tableMaxHeight="none"
         components={mdComponents}
         translations={{
           copyCode: copy.transcript.copyCode,
           copyTable: copy.transcript.copyTable,
+          copyTableAsCsv: copy.transcript.copyTableAsCsv,
+          copyTableAsMarkdown: copy.transcript.copyTableAsMarkdown,
+          copyTableAsTsv: copy.transcript.copyTableAsTsv,
+          tableFormatCsv: copy.transcript.tableFormatCsv,
+          tableFormatMarkdown: copy.transcript.tableFormatMarkdown,
+          tableFormatTsv: copy.transcript.tableFormatTsv,
         }}
         controls={{
           code: { copy: true, download: false },

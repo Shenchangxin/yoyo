@@ -37,6 +37,10 @@ func OutlineTitle(text string) string {
 	return s
 }
 
+func IsSteerUser(ev Event) bool {
+	return isSteerUser(ev)
+}
+
 func isSteerUser(ev Event) bool {
 	if ev.Type != TypeUser {
 		return false
@@ -129,7 +133,7 @@ func (s *Store) PageAroundUser(sessionID string, userSeq int64, turns int) (Page
 	}
 	users := make([]int, 0, 16)
 	for i, e := range idx.entries {
-		if e.Type == TypeUser {
+		if e.operatorUser() {
 			users = append(users, i)
 		}
 	}

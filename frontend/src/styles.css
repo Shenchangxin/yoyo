@@ -63,7 +63,7 @@ html.dark {
   --space-section: 2rem;
   --space-group: 1rem;
   --space-item: 0.5rem;
-  /* Conversation column tracks the stage; 72rem is a 4K ceiling, not a desk width. */
+  /* Empty-home / boot hero only. Live transcript fills the remaining stage. */
   --thread-measure: 54rem;
   --shadow-card: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   --shadow-composer: 0 12px 36px color-mix(in srgb, black 28%, transparent);
@@ -691,10 +691,139 @@ html.dark .code-hl span {
   background: var(--border);
   margin: 0.55em 0;
 }
-.md-body table {
-  font-size: 13px;
-  margin: 0.2em 0;
+.md-body table,
+.md-body [data-streamdown="table"] {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+.md-body .md-table,
+.md-body [data-streamdown="table-wrapper"] {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
   max-width: 100%;
+  min-width: 0;
+  margin: 0.4em 0 0.55em;
+  padding: 0;
+  gap: 0;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--foreground) 11%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lift) 38%, var(--background));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+.md-body .md-table:hover,
+.md-body .md-table:focus-within,
+.md-body [data-streamdown="table-wrapper"]:hover,
+.md-body [data-streamdown="table-wrapper"]:focus-within {
+  z-index: 1;
+}
+.md-body .md-table-tools {
+  position: absolute;
+  top: 0.28rem;
+  right: 0.28rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms var(--ease-out);
+}
+.md-body .md-table:hover .md-table-tools,
+.md-body .md-table:focus-within .md-table-tools,
+.md-body [data-streamdown="table-wrapper"]:hover > .md-table-tools,
+.md-body [data-streamdown="table-wrapper"]:focus-within > .md-table-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+.md-body .md-table-tools button,
+.md-body .md-table-tools [role="button"] {
+  height: 1.45rem;
+  min-height: 1.45rem;
+  width: 1.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  color: var(--muted);
+  box-shadow: 0 1px 2px color-mix(in srgb, black 18%, transparent);
+}
+.md-body .md-table-tools button:hover,
+.md-body .md-table-tools [role="button"]:hover {
+  color: var(--foreground);
+  background: var(--lift);
+}
+.md-body .md-table-tools .absolute {
+  background: var(--popover);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow-popover);
+}
+.md-body .md-table-tools .absolute button {
+  width: auto;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+.md-body .md-table-tools .absolute button:hover {
+  background: var(--lift);
+}
+.md-body .md-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  border-radius: inherit;
+  scrollbar-width: thin;
+}
+.md-body [data-streamdown="table-header"] {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.md-body [data-streamdown="table-header-cell"] {
+  padding: 0.48em 0.78em;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted));
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.md-body [data-streamdown="table-cell"] {
+  padding: 0.46em 0.78em;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.md-body [data-streamdown="table-body"] [data-streamdown="table-row"]:last-child [data-streamdown="table-cell"] {
+  border-bottom: 0;
+}
+.md-body [data-streamdown="table-row"]:hover [data-streamdown="table-cell"] {
+  background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
+}
+.md-body [data-streamdown="table-header-cell"]:first-child,
+.md-body [data-streamdown="table-cell"]:first-child {
+  padding-left: 0.9em;
+}
+.md-body [data-streamdown="table-header-cell"]:last-child,
+.md-body [data-streamdown="table-cell"]:last-child {
+  padding-right: 2.6rem;
 }
 .md-body-quiet {
   font-size: 13px;

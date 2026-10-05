@@ -619,11 +619,15 @@ func (s *Service) PendingApprovals() any {
 }
 
 func (s *Service) ResolveApproval(id, decision string) error {
+	return s.ResolveApprovalAnswer(id, decision, "")
+}
+
+func (s *Service) ResolveApprovalAnswer(id, decision, answer string) error {
 	if s.RPC != nil {
-		_, err := s.call("approvals.resolve", map[string]any{"id": id, "decision": decision})
+		_, err := s.call("approvals.resolve", map[string]any{"id": id, "decision": decision, "answer": answer})
 		return err
 	}
-	return s.App.ResolveApproval(id, decision)
+	return s.App.ResolveApprovalAnswer(id, decision, answer)
 }
 
 func (s *Service) StartMCP(name, command string, args []string) error {

@@ -377,6 +377,35 @@ export function foldLiveIntoSeed(seed: Item[], live: Item[]): Item[] {
   return out;
 }
 
+/**
+ * Keep the live hot pack visible while the operator browses an older window.
+ * Identity is payload.id / seq / key — never dump the full JSONL.
+ */
+export function withLiveTail(browse: Item[], live: Item[]): Item[] {
+  if (!live.length) return browse;
+  let lastLiveUser = -1;
+  for (let i = live.length - 1; i >= 0; i--) {
+    if (live[i].type === "user" && live[i].source !== "steer") {
+      lastLiveUser = i;
+      break;
+    }
+  }
+  if (lastLiveUser < 0) return foldLiveIntoSeed(browse, live);
+  const liveKey = liveTurnId(live[lastLiveUser]);
+  const inBrowse = browse.some((it) => it.type === "user" && it.source !== "steer" && liveTurnId(it) === liveKey);
+  if (inBrowse) return foldLiveIntoSeed(browse, live);
+  const have = new Set(browse.map((x) => x.key));
+  const tail = live.slice(lastLiveUser).filter((x) => !have.has(x.key));
+  return tail.length ? [...browse, ...tail] : browse;
+}
+
+function liveTurnId(it: Item): string {
+  const id = String(it.payload?.id || "").trim();
+  if (id) return id;
+  if (typeof it.seq === "number" && it.seq > 0) return `seq:${it.seq}`;
+  return it.key || "";
+}
+
 export function lastUserTurns(items: Item[], users = 3): Item[] {
   if (users <= 0 || items.length === 0) return items;
   let n = 0;

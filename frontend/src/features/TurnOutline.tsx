@@ -9,6 +9,7 @@ import {
   OUTLINE_SEARCH_AT,
   isOutlineActive,
   outlineTurnKey,
+  type OutlineStatus,
   type OutlineTurn,
 } from "../lib/turn-outline";
 
@@ -16,6 +17,7 @@ export function TurnOutline(props: {
   turns: OutlineTurn[];
   activeKey: string;
   onJump: (turn: OutlineTurn) => void;
+  status?: OutlineStatus;
 }) {
   const copy = useCopy();
   const collapsed = useUI((s) => s.outlineCollapsed);
@@ -97,6 +99,8 @@ export function TurnOutline(props: {
                       className={cn(
                         "block w-[2px] rounded-full",
                         active ? "h-2.5 bg-accent" : "h-[7px] bg-foreground/18 hover:bg-foreground/40",
+                        t.live && "bg-accent/70",
+                        props.status === "working" && i === props.turns.length - 1 && "animate-pulse bg-accent",
                       )}
                     />
                   </button>
@@ -128,6 +132,9 @@ export function TurnOutline(props: {
                     ) : null}
                     <span className="w-4 shrink-0 pt-px text-right text-[10px] tabular-nums text-muted/55">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {t.live || (props.status === "working" && i === props.turns.length - 1) ? (
+                      <span className="mt-0.5 size-1 shrink-0 rounded-full bg-accent" aria-hidden />
+                    ) : null}
                   </button>
                 </li>
               );

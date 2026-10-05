@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount } from "../src/lib/stream-fold";
+import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
 import { layoutRows, processGroupLive, tailProcessPairs } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
@@ -644,4 +644,41 @@ test("itemTurnKey prefers durable id over hub seq", () => {
   expect(itemMatchesTurn(it, { seq: 12, title: "hello", id: "s:user:1", key: "s:user:1" })).toBeTruthy();
   expect(itemMatchesTurn(it, { seq: 99, title: "other", id: "s:user:2", key: "s:user:2" })).toBeFalsy();
   expect(rowMatchesJump(itemTurnKey(it), turnJumpAliases({ seq: 12, id: "s:user:1", key: "s:user:1" }))).toBeTruthy();
+});
+
+test("neighbor turn miss does not wrap to the other end", () => {
+  const turns = [
+    { seq: 1, title: "a", id: "a", key: "a" },
+    { seq: 3, title: "b", id: "b", key: "b" },
+  ];
+  expect(neighborTurn(turns, "missing", 1)).toBeNull();
+  expect(neighborTurn(turns, "missing", -1)).toBeNull();
+});
+
+test("agent layout rows share the operator turnKey", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", seq: 4, payload: { text: "go", id: "s:user:1" } },
+    { type: "assistant", session_id: "s", payload: { text: "ok", id: "s:r1" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows).toHaveLength(2);
+  expect(rows[0].kind).toBe("user");
+  expect(rows[1].kind).toBe("agent");
+  if (rows[0].kind === "user" && rows[1].kind === "agent") {
+    expect(rows[0].turnKey).toBe("s:user:1");
+    expect(rows[1].turnKey).toBe("s:user:1");
+  }
+});
+
+test("withLiveTail pins the live pack onto a browse window", () => {
+  const browse = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "old", id: "u0" } },
+    { type: "assistant", session_id: "s", payload: { text: "a0", id: "r0" } },
+  ]);
+  const live = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "new", id: "u9" } },
+    { type: "assistant", session_id: "s", payload: { text: "a9", id: "r9" } },
+  ]);
+  const out = withLiveTail(browse, live);
+  expect(out.filter((x) => x.type === "user").map((x) => x.text)).toEqual(["old", "new"]);
 });

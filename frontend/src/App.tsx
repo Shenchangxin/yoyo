@@ -36,7 +36,7 @@ import { PanelLeft } from "lucide-react";
 import { DEFAULT_KEYMAP, displayShortcut } from "./lib/keymap";
 import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
-import { recentWorkspaces } from "./lib/workspace";
+import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan } from "./lib/plan";
 
@@ -68,7 +68,7 @@ function WorkstationApp() {
   const [layout, setLayout] = useState(readLayout);
   const reviewFile = useUI((s) => s.reviewFile);
   const setReviewFile = useUI((s) => s.setReviewFile);
-  const sheetInspect = useMedia("(max-width: 1099px)");
+  const sheetInspect = useMedia("(max-width: 799px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
@@ -128,7 +128,7 @@ function WorkstationApp() {
   }), [ws.booted, ws.threadRunning, ws.presenceItems, ws.items, ws.approvals.length, moduleLoading, winFocused, now, waking]);
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
-  const toolRoot = ws.active?.toolRoot || sessionWs;
+  const toolRoot = sessionFsRoot(ws.active, sessionWs);
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
@@ -145,7 +145,7 @@ function WorkstationApp() {
     files: ws.files,
     skills: ws.skills,
     authMode: ws.active?.authMode || "default",
-    workspace: sessionWs,
+    workspace: toolRoot,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
     onWorkspace: (path: string) => { void applySessionWorkspace(path); },
@@ -171,7 +171,7 @@ function WorkstationApp() {
       ws.setThreads((list) => patchThread(list, t.id, t));
     },
     onClipboard: async () => api.clipboardRead(),
-    onScreenshot: async () => api.captureScreenshot(),
+    onScreenshot: async () => api.captureScreenshot(toolRoot),
     queueItems: ws.queueItems,
     onQueueCancel: (id: string) => { void ws.onQueueCancel(id); },
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
@@ -237,8 +237,7 @@ function WorkstationApp() {
       onRefreshTrace={() => { void ws.refreshTrace(); }}
       onLoadSpill={ws.loadSpill}
       onOpenPath={(rel) => {
-        const root = ws.active?.workspace || ws.savedCfg.workspace;
-        const path = joinWorkspace(root, rel);
+        const path = joinWorkspace(toolRoot, rel);
         if (path) void api.openInEditor(path);
       }}
     />
@@ -247,24 +246,26 @@ function WorkstationApp() {
   const agentPane = home ? (
     <HomeStage
       onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+      onContinueLast={() => { void ws.onContinueLast(); }}
     >
       {composer}
     </HomeStage>
   ) : (
-    <section className="@container relative flex h-full min-h-0 min-w-0 flex-row">
+    <section className="relative flex h-full min-h-0 min-w-0 flex-row">
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
+        status={ws.outlineState}
         onJump={(turn) => { void ws.jumpToTurn(turn); }}
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
           items={ws.items}
           liveTexts={ws.liveTexts}
           showThinking={!!ws.savedCfg.showThinking}
           approvals={ws.approvals}
           running={ws.threadRunning}
-          workspace={sessionWs}
+          workspace={toolRoot}
           older={ws.older}
           loadingOlder={ws.loadingOlder}
           idle={ws.idle}
@@ -362,7 +363,7 @@ function WorkstationApp() {
 
   const rail = (
     <ThreadRail
-      threads={ws.threads}
+      threads={ws.searchHits ?? ws.threads}
       activeId={ws.activeId}
       query={ws.query}
       running={ws.running}
@@ -373,6 +374,8 @@ function WorkstationApp() {
       connected={ws.health.ok}
       isolated={ws.health.isolated}
       isolationKind={ws.health.isolationKind}
+      showArchived={ws.showArchived}
+      onShowArchived={ws.setShowArchived}
       onQuery={ws.setQuery}
       onSelect={ws.openThread}
       onSelectProject={(p) => { void ws.openVideoProject(p); }}
@@ -743,7 +746,8 @@ function WorkstationApp() {
             ) : inspectOpen ? (
               <Group
                 key={peekOpen ? "agent-peek" : three ? "agent-inspect" : "lab-dock"}
-                className="min-h-0 min-w-0 flex-1"
+                className="h-full min-h-0 min-w-0 flex-1"
+                style={{ height: "100%" }}
                 orientation="horizontal"
                 defaultLayout={peekOpen
                   ? { main: 40, peek: 40, inspect: 20 }
@@ -889,11 +893,4 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
       }}
     />
   );
-}
-
-function joinWorkspace(root: string, rel: string): string {
-  if (!rel) return root;
-  if (/^[a-zA-Z]:[\\/]/.test(rel) || rel.startsWith("/")) return rel;
-  const base = (root || "").replace(/[\\/]+$/, "");
-  return base ? `${base}/${rel.replace(/^[\\/]+/, "")}` : rel;
 }

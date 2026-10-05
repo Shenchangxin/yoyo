@@ -80,6 +80,21 @@ func NewHost() *Host {
 	return &Host{servers: map[string]*Server{}, Timeout: 30 * time.Second}
 }
 
+func (h *Host) SetRoots(roots []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.Roots = append([]string(nil), roots...)
+	for _, s := range h.servers {
+		if s == nil {
+			continue
+		}
+		s.mu.Lock()
+		s.roots = append([]string(nil), h.Roots...)
+		s.mu.Unlock()
+		_ = s.notify("notifications/roots/list_changed", map[string]any{})
+	}
+}
+
 func (h *Host) Start(name, command string, args []string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()

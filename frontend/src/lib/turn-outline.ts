@@ -7,7 +7,12 @@ export type OutlineTurn = {
   title: string;
   id: string;
   key: string;
+  kind?: "user" | "steer";
+  /** Optimistic / live pack not yet in the store index. */
+  live?: boolean;
 };
+
+export type OutlineStatus = "idle" | "working" | "waiting" | "failed";
 
 export const MIN_OUTLINE_TURNS = 2;
 export const OUTLINE_SEARCH_AT = 8;
@@ -51,6 +56,8 @@ export function turnJumpAliases(t: Pick<OutlineTurn, "seq" | "id" | "key">): str
   return out;
 }
 
+export const turnAliases = turnJumpAliases;
+
 export function rowMatchesJump(turnKey: string | undefined, aliases: string[]): boolean {
   return !!turnKey && aliases.includes(turnKey);
 }
@@ -59,6 +66,13 @@ export function rowMatchesJump(turnKey: string | undefined, aliases: string[]): 
 export function isOutlineActive(turn: Pick<OutlineTurn, "seq" | "id" | "key">, activeKey: string): boolean {
   if (!activeKey) return false;
   return turnJumpAliases(turn).includes(activeKey);
+}
+
+export function outlineStatus(args: { running: boolean; waiting: boolean; failed?: boolean }): OutlineStatus {
+  if (args.failed) return "failed";
+  if (args.waiting) return "waiting";
+  if (args.running) return "working";
+  return "idle";
 }
 
 /**
@@ -102,16 +116,21 @@ export function outlineOfRaw(v: any): OutlineTurn {
 export function pendingOutline(store: OutlineTurn[], items: Item[]): OutlineTurn[] {
   const extra: OutlineTurn[] = [];
   const last = store[store.length - 1];
+  const have = new Set(store.flatMap((t) => turnJumpAliases(t)));
   for (const it of items) {
-    if (it.type !== "user" || it.source !== "ui") continue;
+    if (it.type !== "user" || it.source === "steer") continue;
+    const key = itemTurnKey(it);
+    if (have.has(key) || have.has(it.key)) continue;
     const title = outlineTitle(it.text);
     if (last && title === last.title) continue;
     extra.push({
       seq: it.seq || 0,
       title,
       id: String(it.payload?.id || ""),
-      key: itemTurnKey(it),
+      key,
+      live: it.source === "ui" || !it.seq,
     });
+    have.add(key);
   }
   return extra.length ? [...store, ...extra] : store;
 }
@@ -128,7 +147,7 @@ export function itemMatchesTurn(item: Item, turn: OutlineTurn): boolean {
 
 export function neighborTurn(turns: OutlineTurn[], key: string, delta: number): OutlineTurn | null {
   if (!turns.length) return null;
-  const i = turns.findIndex((t) => outlineTurnKey(t) === key);
-  const next = i < 0 ? (delta > 0 ? 0 : turns.length - 1) : i + delta;
-  return turns[next] || null;
+  const i = turns.findIndex((t) => isOutlineActive(t, key));
+  if (i < 0) return null;
+  return turns[i + delta] || null;
 }

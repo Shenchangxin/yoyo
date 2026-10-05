@@ -174,6 +174,8 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 
 func jailPath(workspace, rel string) (string, error) {
 	rel = strings.Trim(rel, `"'`)
+	rel = capability.CanonicalizeToolPath(rel)
+	workspace = capability.CanonicalizeToolPath(workspace)
 	p := rel
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(workspace, rel)

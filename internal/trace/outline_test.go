@@ -99,6 +99,54 @@ func TestPageAroundUserPutsTargetInWindow(t *testing.T) {
 	}
 }
 
+func TestPageAroundUserSkipsSteer(t *testing.T) {
+	s := NewStore(t.TempDir())
+	id := "sess"
+	_ = s.Append(Event{Type: TypeUser, SessionID: id, Source: "user", Payload: map[string]any{"text": "a", "id": "a"}})
+	_ = s.Append(Event{Type: TypeAssistant, SessionID: id, Payload: map[string]any{"text": "ok"}})
+	_ = s.Append(Event{Type: TypeUser, SessionID: id, Source: "steer", Payload: map[string]any{"text": "hurry", "name": "steer"}})
+	_ = s.Append(Event{Type: TypeUser, SessionID: id, Source: "user", Payload: map[string]any{"text": "b", "id": "b"}})
+	out, err := s.OutlineTurns(id)
+	if err != nil || len(out) != 2 {
+		t.Fatalf("outline %v %d", err, len(out))
+	}
+	page, err := s.PageAroundUser(id, out[0].Seq, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	users := operatorTexts(page)
+	if len(users) != 2 || users[0] != "a" || users[1] != "b" {
+		t.Fatalf("window counted steer as a turn: %v", users)
+	}
+	steerKept := false
+	for _, ev := range page.Events {
+		if IsSteerUser(ev) {
+			steerKept = true
+		}
+	}
+	if !steerKept {
+		t.Fatal("steer inject dropped from the body window")
+	}
+	page2, err := s.PageTurns(id, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := operatorTexts(page2)
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("PageTurns counted steer: %v", got)
+	}
+}
+
+func operatorTexts(page Page) []string {
+	var out []string
+	for _, ev := range page.Events {
+		if ev.Type == TypeUser && !IsSteerUser(ev) {
+			out = append(out, payloadString(ev, "text"))
+		}
+	}
+	return out
+}
+
 func userTexts(page Page) []string {
 	var out []string
 	for _, ev := range page.Events {

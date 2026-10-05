@@ -58,6 +58,8 @@ export type Thread = {
   isolate?: boolean;
   harness: string;
   createdAt: string;
+  updatedAt?: string;
+  preview?: string;
   archived?: boolean;
   pinned?: boolean;
   model?: string;
