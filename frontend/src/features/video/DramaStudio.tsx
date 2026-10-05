@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input, Textarea } from "../../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { Tooltip } from "../../components/ui/tooltip";
@@ -14,6 +15,7 @@ import * as api from "../../lib/client";
 import { subscribeItems } from "../../lib/stream";
 import { DramaMentionField, type MentionAsset } from "./DramaMentionField";
 import { useDramaSelection } from "./workshop-store";
+import { modelOptionName, useConfigStore } from "@yingce/stores/use-config-store";
 
 type Drama = {
   id: string;
@@ -126,6 +128,17 @@ function parseModels(raw: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+function serviceKind(raw: unknown): string {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s === "speech" || s === "audio") return "tts";
+  if (s === "llm" || s === "text") return "chat";
+  return s;
+}
+
+function providerKey(id: string): string {
+  return String(id || "").trim().replace(/^ch-/, "").replace(/--(text|image|video|audio)$/i, "");
+}
+
 function catalogOf(p: { model?: string; models?: string } | undefined, selected = ""): string[] {
   const out: string[] = [];
   const add = (v: string) => {
@@ -146,19 +159,34 @@ function ProviderModelSelect(props: {
   model: string;
   onChange: (providerId: string, model: string) => void;
 }) {
-  const rows = props.providers.filter((p) => p.service_type === props.kind && (p.is_active !== false || p.id === props.providerId));
-  if (rows.length === 0) return null;
-  const current = rows.find((p) => p.id === props.providerId);
+  const copy = useCopy();
+  const openSettings = useUI((s) => s.openSettings);
+  const want = serviceKind(props.kind);
+  const settingSection = want === "tts" ? "generation-speech" : `generation-${want}`;
+  const rows = props.providers.filter((p) => {
+    if (serviceKind(p.service_type ?? p.serviceType) !== want) return false;
+    const selected = providerKey(p.id) === providerKey(props.providerId) && providerKey(p.id) !== "";
+    return p.is_active !== false || p.has_key || selected;
+  });
+  if (rows.length === 0) {
+    return (
+      <button
+        type="button"
+        className={cn(field, "h-7 max-w-[14rem] text-left text-muted")}
+        onClick={() => openSettings("generation", settingSection)}
+      >
+        {props.label} · {copy.video.openSettings}
+      </button>
+    );
+  }
+  const current = rows.find((p) => providerKey(p.id) === providerKey(props.providerId)) || rows.find((p) => p.is_default) || rows[0];
   const models = catalogOf(current, props.model);
   const model = props.model && models.includes(props.model) ? props.model : (current?.model || models[0] || "");
-  const value = props.providerId ? `${props.providerId}::${model}` : "";
+  const value = current ? `${current.id}::${model}` : "";
   return (
-    <select
-      className={cn(field, "h-7 max-w-[14rem]")}
-      value={value}
-      aria-label={props.label}
-      onChange={(e) => {
-        const raw = e.target.value;
+    <Select
+      value={value || undefined}
+      onValueChange={(raw) => {
         const i = raw.indexOf("::");
         if (i < 0) {
           props.onChange("", "");
@@ -167,19 +195,21 @@ function ProviderModelSelect(props: {
         props.onChange(raw.slice(0, i), raw.slice(i + 2));
       }}
     >
-      <option value="">{props.label}</option>
-      {rows.map((p) => {
-        const models = catalogOf(p, p.id === props.providerId ? props.model : "");
-        const ids = models.length ? models : [""];
-        return (
-          <optgroup key={p.id} label={`${p.name || p.provider}${p.has_key ? "" : " · —"}`}>
-            {ids.map((m) => (
-              <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{m || p.name || p.provider}</option>
-            ))}
-          </optgroup>
-        );
-      })}
-    </select>
+      <SelectTrigger className={cn(field, "h-7 max-w-[14rem]")} aria-label={props.label}>
+        <SelectValue placeholder={props.label} />
+      </SelectTrigger>
+      <SelectContent>
+        {rows.map((p) => {
+          const models = catalogOf(p, providerKey(p.id) === providerKey(props.providerId) ? props.model : "");
+          const ids = models.length ? models : [""];
+          return ids.map((m) => (
+            <SelectItem key={`${p.id}::${m}`} value={`${p.id}::${m}`}>
+              {`${p.name || p.provider}${m ? ` · ${m}` : ""}`}
+            </SelectItem>
+          ));
+        })}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -322,6 +352,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     if (!episodeId) return;
     await run(name, async () => {
       await api.video.bind(props.sessionId!, episodeId);
+      const textModel = useConfigStore.getState().config.textModel;
+      if (textModel) await api.setSessionModel(props.sessionId!, modelOptionName(textModel)).catch(() => {});
       await api.video.stage(props.sessionId!, episodeId, name);
     });
   }

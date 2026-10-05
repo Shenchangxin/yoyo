@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	_ "modernc.org/sqlite"
 )
 
-// ImportHuobao copies a Huobao SQLite project (no API keys) into this store.
+// ImportHuobao copies a Huobao SQLite project (no API keys) into this file store.
+// SQLite is only an external import format, not Yoyo's persist layer.
 func (e *Engine) ImportHuobao(dbPath, staticDir string) (map[string]any, error) {
 	src, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
@@ -67,7 +70,11 @@ func (e *Engine) ImportHuobao(dbPath, staticDir string) (map[string]any, error) 
 			}
 			_, _ = e.UpdateEpisode(ep)
 			if h := ep.VideoHash; h != "" {
-				_, _ = e.DB.Exec(`UPDATE episodes SET video_hash = ?, updated_at = ? WHERE id = ?`, h, Now(), ep.ID)
+				if rec, err := getDoc[episodeRec](e, colEpisodes, ep.ID); err == nil {
+					rec.VideoHash = h
+					rec.UpdatedAt = Now()
+					_ = e.putDoc(colEpisodes, rec.ID, rec)
+				}
 			}
 			idMap["e:"+strconv.Itoa(oid)] = ep.ID
 			nEp++
@@ -134,8 +141,7 @@ func (e *Engine) importDramaAssets(src *sql.DB, staticDir string, oldDrama int, 
 			c.ID = NewID()
 			c.DramaID = dramaID
 			c.ImageHash = e.importFile(staticDir, image)
-			_, _ = e.DB.Exec(`INSERT INTO characters(id, drama_id, name, role, appearance, styling, final_prompt, image_hash, sort_order, created_at, updated_at, deleted_at) VALUES(?,?,?,?,?,?,?,?,0,?,?, '')`,
-				c.ID, dramaID, c.Name, c.Role, c.Appearance, c.Styling, c.FinalPrompt, c.ImageHash, now, now)
+			_ = e.putDoc(colCharacters, c.ID, characterRec{Character: c, CreatedAt: now, UpdatedAt: now})
 			idMap["c:"+strconv.Itoa(oid)] = c.ID
 		}
 		rows.Close()
@@ -153,8 +159,7 @@ func (e *Engine) importDramaAssets(src *sql.DB, staticDir string, oldDrama int, 
 			s.ID = NewID()
 			s.DramaID = dramaID
 			s.ImageHash = e.importFile(staticDir, image)
-			_, _ = e.DB.Exec(`INSERT INTO scenes(id, drama_id, location, time_of_day, prompt, lighting, final_prompt, image_hash, created_at, updated_at, deleted_at) VALUES(?,?,?,?,?,?,?,?,?,?, '')`,
-				s.ID, dramaID, s.Location, s.TimeOfDay, s.Prompt, s.Lighting, s.FinalPrompt, s.ImageHash, now, now)
+			_ = e.putDoc(colScenes, s.ID, sceneRec{Scene: s, CreatedAt: now, UpdatedAt: now})
 			idMap["s:"+strconv.Itoa(oid)] = s.ID
 		}
 		rows.Close()
@@ -170,8 +175,7 @@ func (e *Engine) importDramaAssets(src *sql.DB, staticDir string, oldDrama int, 
 			p.ID = NewID()
 			p.DramaID = dramaID
 			p.ImageHash = e.importFile(staticDir, image)
-			_, _ = e.DB.Exec(`INSERT INTO props(id, drama_id, name, type, description, final_prompt, image_hash, created_at, updated_at, deleted_at) VALUES(?,?,?,?,?,?,?,?,?, '')`,
-				p.ID, dramaID, p.Name, p.Type, p.Description, p.FinalPrompt, p.ImageHash, now, now)
+			_ = e.putDoc(colProps, p.ID, propRec{Prop: p, CreatedAt: now, UpdatedAt: now})
 			idMap["p:"+strconv.Itoa(oid)] = p.ID
 		}
 		rows.Close()
@@ -272,36 +276,52 @@ func (e *Engine) importStoryboards(src *sql.DB, staticDir string, oldEp int, epi
 		shotID := out[0].ID
 		idMap["b:"+strconv.Itoa(oid)] = shotID
 		if dur > 0 {
-			_, _ = e.DB.Exec(`UPDATE storyboards SET duration = ? WHERE id = ?`, ClampProviderDuration(dur, "aliyun"), shotID)
+			if rec, err := getDoc[shotRec](e, colShots, shotID); err == nil {
+				rec.Duration = ClampProviderDuration(dur, "aliyun")
+				_ = e.putDoc(colShots, shotID, rec)
+			}
 		}
 		if s.VideoHash != "" {
-			_, _ = e.DB.Exec(`UPDATE storyboards SET video_hash = ?, status = 'ready', updated_at = ? WHERE id = ?`, s.VideoHash, Now(), shotID)
+			if rec, err := getDoc[shotRec](e, colShots, shotID); err == nil {
+				rec.VideoHash = s.VideoHash
+				rec.Status = "ready"
+				rec.UpdatedAt = Now()
+				_ = e.putDoc(colShots, shotID, rec)
+			}
 		}
 		if chRows, err := src.Query(`SELECT character_id FROM storyboard_characters WHERE storyboard_id = ?`, oid); err == nil {
-			_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, shotID)
+			var ids []string
 			for chRows.Next() {
 				var cid int
 				if chRows.Scan(&cid) != nil {
 					continue
 				}
 				if id := idMap["c:"+strconv.Itoa(cid)]; id != "" {
-					_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_characters(storyboard_id, character_id) VALUES(?,?)`, shotID, id)
+					ids = append(ids, id)
 				}
 			}
 			chRows.Close()
+			if rec, err := getDoc[shotRec](e, colShots, shotID); err == nil {
+				rec.CharacterIDs = ids
+				_ = e.putDoc(colShots, shotID, rec)
+			}
 		}
 		if pRows, err := src.Query(`SELECT prop_id FROM storyboard_props WHERE storyboard_id = ?`, oid); err == nil {
-			_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, shotID)
+			var ids []string
 			for pRows.Next() {
 				var pid int
 				if pRows.Scan(&pid) != nil {
 					continue
 				}
 				if id := idMap["p:"+strconv.Itoa(pid)]; id != "" {
-					_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_props(storyboard_id, prop_id) VALUES(?,?)`, shotID, id)
+					ids = append(ids, id)
 				}
 			}
 			pRows.Close()
+			if rec, err := getDoc[shotRec](e, colShots, shotID); err == nil {
+				rec.PropIDs = ids
+				_ = e.putDoc(colShots, shotID, rec)
+			}
 		}
 	}
 }

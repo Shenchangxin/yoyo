@@ -614,6 +614,45 @@ func TestSaveConfigWritesKeymap(t *testing.T) {
 	}
 }
 
+func TestApplyConfigPatchKeepsOmitted(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Config.SearchURL = "https://search.example/{q}"
+	a.Config.GateMode = capability.GateManual
+	a.Config.CrashResume = true
+	a.Config.MCP = []app.MCPServerConfig{{Name: "keep", Command: "echo", Args: []string{"ok"}}}
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ApplyConfigPatch([]byte(`{"model":"gpt-4.1","search_url":"https://search.example/v2/{q}"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if a.Config.Model != "gpt-4.1" {
+		t.Fatalf("model %q", a.Config.Model)
+	}
+	if a.Config.SearchURL != "https://search.example/v2/{q}" {
+		t.Fatalf("search %q", a.Config.SearchURL)
+	}
+	if !a.Config.CrashResume {
+		t.Fatal("crash_resume wiped")
+	}
+	if a.Config.GateMode != capability.GateManual {
+		t.Fatalf("gate %q", a.Config.GateMode)
+	}
+	if len(a.Config.MCP) != 1 || a.Config.MCP[0].Name != "keep" {
+		t.Fatalf("mcp wiped: %+v", a.Config.MCP)
+	}
+	if a.Video == nil || a.Video.Conn == nil {
+		t.Fatal("video connections missing")
+	}
+	if c, err := a.Video.Conn.Active("search", ""); err != nil || c.Endpoint != a.Config.SearchURL {
+		t.Fatalf("search connection %+v %v", c, err)
+	}
+}
+
 func TestC5ForkRecallHitsCopiedSpill(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

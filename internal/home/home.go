@@ -41,6 +41,7 @@ func Open(root string) (*Dir, error) {
 		d.Schedule(),
 		d.Inbox(),
 		d.Connectors(),
+		d.Connections(),
 		d.Browser(),
 		d.Computer(),
 		d.Observe(),
@@ -88,11 +89,14 @@ func (d *Dir) Memory() string     { return filepath.Join(d.Root, "memory") }
 func (d *Dir) Schedule() string   { return filepath.Join(d.Root, "schedule") }
 func (d *Dir) Inbox() string      { return filepath.Join(d.Root, "inbox") }
 func (d *Dir) Connectors() string { return filepath.Join(d.Root, "connectors") }
-func (d *Dir) Browser() string    { return filepath.Join(d.Root, "browser") }
-func (d *Dir) Computer() string   { return filepath.Join(d.Root, "computer") }
-func (d *Dir) Observe() string    { return filepath.Join(d.Root, "observe") }
-func (d *Dir) Worktrees() string  { return filepath.Join(d.Root, "worktrees") }
-func (d *Dir) Video() string      { return filepath.Join(d.Root, "video") }
+func (d *Dir) Connections() string {
+	return filepath.Join(d.Root, "connections")
+}
+func (d *Dir) Browser() string   { return filepath.Join(d.Root, "browser") }
+func (d *Dir) Computer() string  { return filepath.Join(d.Root, "computer") }
+func (d *Dir) Observe() string   { return filepath.Join(d.Root, "observe") }
+func (d *Dir) Worktrees() string { return filepath.Join(d.Root, "worktrees") }
+func (d *Dir) Video() string     { return filepath.Join(d.Root, "video") }
 func (d *Dir) VideoWorkspace() string {
 	return filepath.Join(d.Video(), "workspace")
 }

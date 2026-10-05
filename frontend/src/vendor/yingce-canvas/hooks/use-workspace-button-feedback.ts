@@ -10,7 +10,7 @@ export function useWorkspaceButtonFeedback(enabled: boolean) {
         const clicked = (event: MouseEvent) => {
             if (reduced.matches || !(event.target instanceof Element)) return;
             const button = event.target.closest<HTMLElement>('button, [role="button"]');
-            if (!button || button.matches(':disabled, [aria-disabled="true"], .ant-btn-loading') || !button.closest(".app-product-workspace, .ant-popover, .ant-dropdown, .ant-modal, .ant-drawer")) return;
+            if (!button || button.matches(':disabled, [aria-disabled="true"], .ant-btn-loading, .yc-btn-loading') || !button.closest(".app-product-workspace, .ant-popover, .yc-popover, .ant-dropdown, .yc-dropdown, .ant-modal, .yc-modal, .ant-drawer, .yc-drawer")) return;
             if (typeof button.animate === "function") {
                 const press = button.animate([{ scale: ".98" }, { scale: "1" }], { duration: 180, easing: "cubic-bezier(.16,1,.3,1)" });
                 animations.add(press);

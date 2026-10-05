@@ -5,9 +5,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/connection"
 )
 
 func (a *App) TestProvider() map[string]any {
+	if a.Video != nil && a.Video.Conn != nil {
+		if c, err := a.Video.Conn.Active(connection.CapChat, ""); err == nil {
+			return connection.TestConnection(c, a.Video.Conn)
+		}
+	}
 	base := strings.TrimRight(a.Config.BaseURL, "/")
 	if base == "" {
 		return map[string]any{"ok": false, "error": "base_url empty"}

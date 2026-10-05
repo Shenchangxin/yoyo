@@ -240,24 +240,19 @@ func (e *Engine) allCanvasSkills() []map[string]any {
 		out = append(out, skill)
 		seen[fmt.Sprint(skill["skillId"])] = true
 	}
-	rows, err := e.DB.Query(`SELECT id, payload_json FROM canvas_user_skills WHERE deleted_at = ''`)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var id, payload string
-			if rows.Scan(&id, &payload) != nil {
-				continue
-			}
-			item := map[string]any{}
-			_ = json.Unmarshal([]byte(payload), &item)
-			if fmt.Sprint(item["skillId"]) == "" {
-				item["skillId"] = id
-			}
-			if seen[fmt.Sprint(item["skillId"])] {
-				continue
-			}
-			out = append(out, e.hydrateSkill(item))
+	for _, rec := range loadCol[canvasUserSkillRec](e, colUserSkills) {
+		if rec.DeletedAt != "" {
+			continue
 		}
+		item := map[string]any{}
+		_ = json.Unmarshal([]byte(rec.PayloadJSON), &item)
+		if fmt.Sprint(item["skillId"]) == "" {
+			item["skillId"] = rec.ID
+		}
+		if seen[fmt.Sprint(item["skillId"])] {
+			continue
+		}
+		out = append(out, e.hydrateSkill(item))
 	}
 	return out
 }
@@ -301,11 +296,10 @@ func (e *Engine) hydrateSkill(skill map[string]any) map[string]any {
 	id := fmt.Sprint(skill["skillId"])
 	added := boolAny(skill["isAdded"])
 	liked := boolAny(skill["isLike"])
-	var addedFlag, likedFlag int
-	err := e.DB.QueryRow(`SELECT added, liked FROM canvas_skill_flags WHERE skill_id = ?`, id).Scan(&addedFlag, &likedFlag)
-	if err == nil {
-		added = addedFlag != 0
-		liked = likedFlag != 0
+	flags := e.loadSkillFlags()
+	if f, ok := flags[id]; ok {
+		added = f.Added
+		liked = f.Liked
 	}
 	skill["isAdded"] = added
 	skill["isLike"] = liked
@@ -335,16 +329,9 @@ func (e *Engine) setSkillFlag(id string, added *bool, liked *bool) map[string]an
 	if liked != nil {
 		curLiked = *liked
 	}
-	ai, li := 0, 0
-	if curAdded {
-		ai = 1
-	}
-	if curLiked {
-		li = 1
-	}
-	_, _ = e.DB.Exec(`INSERT INTO canvas_skill_flags(skill_id, added, liked, updated_at) VALUES(?,?,?,?)
-		ON CONFLICT(skill_id) DO UPDATE SET added=excluded.added, liked=excluded.liked, updated_at=excluded.updated_at`,
-		id, ai, li, Now())
+	flags := e.loadSkillFlags()
+	flags[id] = skillFlagRec{Added: curAdded, Liked: curLiked, UpdatedAt: Now()}
+	_ = e.saveSkillFlags(flags)
 	skill["isAdded"] = curAdded
 	skill["isLike"] = curLiked
 	return e.hydrateSkill(skill)
@@ -378,24 +365,24 @@ func (e *Engine) upsertUserSkill(id string, in map[string]any) map[string]any {
 		skill["showcaseMedia"] = []any{}
 	}
 	raw, _ := json.Marshal(skill)
-	_, _ = e.DB.Exec(`INSERT INTO canvas_user_skills(id, payload_json, created_at, updated_at) VALUES(?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json, updated_at=excluded.updated_at, deleted_at=''`,
-		id, string(raw), now, now)
-	_, _ = e.DB.Exec(`INSERT INTO canvas_skill_flags(skill_id, added, liked, updated_at) VALUES(?,?,?,?)
-		ON CONFLICT(skill_id) DO UPDATE SET added=1, updated_at=excluded.updated_at`, id, 1, 0, now)
+	rec := canvasUserSkillRec{ID: id, PayloadJSON: string(raw), CreatedAt: now, UpdatedAt: now}
+	if cur, err := getDoc[canvasUserSkillRec](e, colUserSkills, id); err == nil {
+		rec.CreatedAt = cur.CreatedAt
+	}
+	_ = e.putDoc(colUserSkills, id, rec)
+	flags := e.loadSkillFlags()
+	flags[id] = skillFlagRec{Added: true, Liked: false, UpdatedAt: now}
+	_ = e.saveSkillFlags(flags)
 	return e.hydrateSkill(skill)
 }
 
 func (e *Engine) deleteUserSkill(id string) error {
-	res, err := e.DB.Exec(`UPDATE canvas_user_skills SET deleted_at = ? WHERE id = ? AND deleted_at = ''`, Now(), id)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	rec, err := getDoc[canvasUserSkillRec](e, colUserSkills, id)
+	if err != nil || rec.DeletedAt != "" {
 		return fmt.Errorf("只能删除本机创建的技能")
 	}
-	return nil
+	rec.DeletedAt = Now()
+	return e.putDoc(colUserSkills, id, rec)
 }
 
 func skillFiles(skill map[string]any) []map[string]any {

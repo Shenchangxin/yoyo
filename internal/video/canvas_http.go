@@ -89,9 +89,12 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	case method == "GET" && path == "settings/oss":
 		return canvasOK(map[string]any{"setting": e.disabledOSS()})
 	case method == "PATCH" && path == "settings/oss":
-		return canvasOK(map[string]any{"setting": e.disabledOSS()})
+		return canvasOK(map[string]any{"setting": e.applyOSS(bodyMap)})
 	case method == "POST" && path == "settings/oss/test":
-		return canvasOK(map[string]any{"ok": false, "message": "object storage is replaced by local CAS"})
+		if len(bodyMap) > 0 {
+			_ = e.applyOSS(bodyMap)
+		}
+		return canvasOK(e.testOSS())
 	case method == "GET" && path == "settings/prompt-templates":
 		return canvasOK(map[string]any{"templates": []any{}})
 	case method == "GET" && path == "resources/storage-usage":
@@ -451,7 +454,10 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 			}
 			return canvasOK(map[string]any{"channel": ch})
 		case "DELETE":
-			_, _ = e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, p["id"])
+			if e.Conn != nil {
+				_ = e.Conn.Delete(providerIDFromChannel(p["id"]))
+			}
+			_ = e.delDoc(colChannels, p["id"])
 			return canvasOK(map[string]any{"id": p["id"]})
 		}
 	}

@@ -3,7 +3,10 @@ package video
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/filestore"
 )
 
 func (e *Engine) writeBack(j Job) error {
@@ -11,13 +14,39 @@ func (e *Engine) writeBack(j Job) error {
 	var err error
 	switch {
 	case j.CharacterID != "":
-		_, err = e.DB.Exec(`UPDATE characters SET image_hash = ?, updated_at = ? WHERE id = ?`, j.ResultHash, now, j.CharacterID)
+		rec, getErr := getDoc[characterRec](e, colCharacters, j.CharacterID)
+		if getErr != nil {
+			return getErr
+		}
+		rec.ImageHash = j.ResultHash
+		rec.UpdatedAt = now
+		err = e.putDoc(colCharacters, rec.ID, rec)
 	case j.SceneID != "":
-		_, err = e.DB.Exec(`UPDATE scenes SET image_hash = ?, updated_at = ? WHERE id = ?`, j.ResultHash, now, j.SceneID)
+		rec, getErr := getDoc[sceneRec](e, colScenes, j.SceneID)
+		if getErr != nil {
+			return getErr
+		}
+		rec.ImageHash = j.ResultHash
+		rec.UpdatedAt = now
+		err = e.putDoc(colScenes, rec.ID, rec)
 	case j.PropID != "":
-		_, err = e.DB.Exec(`UPDATE props SET image_hash = ?, updated_at = ? WHERE id = ?`, j.ResultHash, now, j.PropID)
+		rec, getErr := getDoc[propRec](e, colProps, j.PropID)
+		if getErr != nil {
+			return getErr
+		}
+		rec.ImageHash = j.ResultHash
+		rec.UpdatedAt = now
+		err = e.putDoc(colProps, rec.ID, rec)
 	case j.StoryboardID != "" && j.Type == "video":
-		_, err = e.DB.Exec(`UPDATE storyboards SET video_hash = ?, poster_hash = ?, status = 'ready', updated_at = ? WHERE id = ?`, j.ResultHash, j.PosterHash, now, j.StoryboardID)
+		rec, getErr := getDoc[shotRec](e, colShots, j.StoryboardID)
+		if getErr != nil {
+			return getErr
+		}
+		rec.VideoHash = j.ResultHash
+		rec.PosterHash = j.PosterHash
+		rec.Status = "ready"
+		rec.UpdatedAt = now
+		err = e.putDoc(colShots, rec.ID, rec)
 	}
 	if err == nil && j.EpisodeID != "" {
 		e.maybeFinishStage(j)
@@ -42,30 +71,40 @@ func (e *Engine) maybeFinishStage(j Job) {
 }
 
 func (e *Engine) patchPipeline(episodeID, stage, status, errMsg string) error {
-	var raw string
-	_ = e.DB.QueryRow(`SELECT pipeline FROM episodes WHERE id = ?`, episodeID).Scan(&raw)
+	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
+	if err != nil {
+		return err
+	}
 	m := map[string]any{}
-	_ = json.Unmarshal([]byte(raw), &m)
+	_ = json.Unmarshal([]byte(rec.Pipeline), &m)
+	if m == nil {
+		m = map[string]any{}
+	}
 	m[stage] = map[string]any{"status": status, "error": errMsg, "updated_at": Now()}
-	_, err := e.DB.Exec(`UPDATE episodes SET pipeline = ?, updated_at = ? WHERE id = ?`, marshalJSON(m), Now(), episodeID)
-	return err
+	rec.Pipeline = marshalJSON(m)
+	rec.UpdatedAt = Now()
+	return e.putDoc(colEpisodes, rec.ID, rec)
 }
 
 func (e *Engine) ListDramas() ([]Drama, error) {
-	rows, err := e.DB.Query(`SELECT d.id, d.title, d.description, d.genre, d.style, d.aspect_ratio, d.status, d.thumbnail_hash, d.created_at, d.updated_at,
-		(SELECT COUNT(*) FROM episodes e WHERE e.drama_id = d.id AND e.deleted_at = '') FROM dramas d WHERE d.deleted_at = '' ORDER BY d.updated_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Drama
-	for rows.Next() {
-		var d Drama
-		if err := rows.Scan(&d.ID, &d.Title, &d.Description, &d.Genre, &d.Style, &d.AspectRatio, &d.Status, &d.ThumbnailHash, &d.CreatedAt, &d.UpdatedAt, &d.EpisodeCount); err != nil {
-			return nil, err
+	recs := loadCol[dramaRec](e, colDramas)
+	eps := loadCol[episodeRec](e, colEpisodes)
+	counts := map[string]int{}
+	for _, ep := range eps {
+		if ep.DeletedAt == "" {
+			counts[ep.DramaID]++
 		}
+	}
+	var out []Drama
+	for _, r := range recs {
+		if r.DeletedAt != "" {
+			continue
+		}
+		d := r.Drama
+		d.EpisodeCount = counts[d.ID]
 		out = append(out, d)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
 	if out == nil {
 		out = []Drama{}
 	}
@@ -86,20 +125,27 @@ func (e *Engine) CreateDrama(d Drama) (Drama, error) {
 	if d.Title == "" {
 		d.Title = "Untitled"
 	}
-	_, err := e.DB.Exec(`INSERT INTO dramas(id, title, description, genre, style, aspect_ratio, status, thumbnail_hash, created_at, updated_at, deleted_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?, '')`, d.ID, d.Title, d.Description, d.Genre, d.Style, d.AspectRatio, d.Status, d.ThumbnailHash, d.CreatedAt, d.UpdatedAt)
-	return d, err
+	return d, e.putDoc(colDramas, d.ID, dramaRec{Drama: d})
 }
 
 func (e *Engine) GetDrama(id string) (Drama, error) {
-	var d Drama
-	err := e.DB.QueryRow(`SELECT id, title, description, genre, style, aspect_ratio, status, thumbnail_hash, created_at, updated_at FROM dramas WHERE id = ? AND deleted_at = ''`, id).
-		Scan(&d.ID, &d.Title, &d.Description, &d.Genre, &d.Style, &d.AspectRatio, &d.Status, &d.ThumbnailHash, &d.CreatedAt, &d.UpdatedAt)
-	if err != nil {
-		return d, fmt.Errorf("drama not found")
+	r, err := getDoc[dramaRec](e, colDramas, id)
+	if err != nil || r.DeletedAt != "" {
+		return Drama{}, fmt.Errorf("drama not found")
 	}
-	_ = e.DB.QueryRow(`SELECT COUNT(*) FROM episodes WHERE drama_id = ? AND deleted_at = ''`, id).Scan(&d.EpisodeCount)
+	d := r.Drama
+	d.EpisodeCount = e.episodeCount(id)
 	return d, nil
+}
+
+func (e *Engine) episodeCount(dramaID string) int {
+	n := 0
+	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
+		if ep.DramaID == dramaID && ep.DeletedAt == "" {
+			n++
+		}
+	}
+	return n
 }
 
 func (e *Engine) UpdateDrama(d Drama) (Drama, error) {
@@ -122,52 +168,66 @@ func (e *Engine) UpdateDrama(d Drama) (Drama, error) {
 		cur.Status = d.Status
 	}
 	cur.UpdatedAt = Now()
-	_, err = e.DB.Exec(`UPDATE dramas SET title=?, description=?, genre=?, style=?, aspect_ratio=?, status=?, updated_at=? WHERE id=?`,
-		cur.Title, cur.Description, cur.Genre, cur.Style, cur.AspectRatio, cur.Status, cur.UpdatedAt, cur.ID)
-	return cur, err
+	r, _ := getDoc[dramaRec](e, colDramas, cur.ID)
+	r.Drama = cur
+	r.UpdatedAt = cur.UpdatedAt
+	return cur, e.putDoc(colDramas, cur.ID, r)
 }
 
 func (e *Engine) DeleteDrama(id string) error {
 	now := Now()
-	_, err := e.DB.Exec(`UPDATE dramas SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
+	r, err := getDoc[dramaRec](e, colDramas, id)
 	if err != nil {
 		return err
 	}
-	_, _ = e.DB.Exec(`UPDATE episodes SET deleted_at = ?, updated_at = ? WHERE drama_id = ? AND deleted_at = ''`, now, now, id)
-	_, _ = e.DB.Exec(`UPDATE characters SET deleted_at = ?, updated_at = ? WHERE drama_id = ? AND deleted_at = ''`, now, now, id)
-	_, _ = e.DB.Exec(`UPDATE scenes SET deleted_at = ?, updated_at = ? WHERE drama_id = ? AND deleted_at = ''`, now, now, id)
-	_, _ = e.DB.Exec(`UPDATE props SET deleted_at = ?, updated_at = ? WHERE drama_id = ? AND deleted_at = ''`, now, now, id)
+	r.DeletedAt = now
+	r.UpdatedAt = now
+	if err := e.putDoc(colDramas, id, r); err != nil {
+		return err
+	}
+	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
+		if ep.DramaID == id && ep.DeletedAt == "" {
+			ep.DeletedAt = now
+			ep.UpdatedAt = now
+			_ = e.putDoc(colEpisodes, ep.ID, ep)
+		}
+	}
+	for _, c := range loadCol[characterRec](e, colCharacters) {
+		if c.DramaID == id && c.DeletedAt == "" {
+			c.DeletedAt = now
+			c.UpdatedAt = now
+			_ = e.putDoc(colCharacters, c.ID, c)
+		}
+	}
+	for _, s := range loadCol[sceneRec](e, colScenes) {
+		if s.DramaID == id && s.DeletedAt == "" {
+			s.DeletedAt = now
+			s.UpdatedAt = now
+			_ = e.putDoc(colScenes, s.ID, s)
+		}
+	}
+	for _, p := range loadCol[propRec](e, colProps) {
+		if p.DramaID == id && p.DeletedAt == "" {
+			p.DeletedAt = now
+			p.UpdatedAt = now
+			_ = e.putDoc(colProps, p.ID, p)
+		}
+	}
 	return nil
 }
 
 func (e *Engine) ListEpisodes(dramaID string) ([]Episode, error) {
-	rows, err := e.DB.Query(`SELECT `+episodeCols+` FROM episodes WHERE drama_id = ? AND deleted_at = '' ORDER BY episode_number`, dramaID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	var out []Episode
-	for rows.Next() {
-		ep, err := scanEpisode(rows)
-		if err != nil {
-			return nil, err
+	for _, rec := range loadCol[episodeRec](e, colEpisodes) {
+		if rec.DramaID == dramaID && rec.DeletedAt == "" {
+			out = append(out, rec.Episode)
 		}
-		out = append(out, ep)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].EpisodeNumber < out[j].EpisodeNumber })
 	if out == nil {
 		out = []Episode{}
 	}
 	return out, nil
-}
-
-const episodeCols = `id, drama_id, episode_number, title, content, script_content, status, video_hash, poster_hash, image_provider_id, video_provider_id, image_model, video_model, tts_provider_id, tts_model, resolution, pipeline, created_at, updated_at`
-
-func scanEpisode(rows interface {
-	Scan(dest ...any) error
-}) (Episode, error) {
-	var ep Episode
-	err := rows.Scan(&ep.ID, &ep.DramaID, &ep.EpisodeNumber, &ep.Title, &ep.Content, &ep.ScriptContent, &ep.Status, &ep.VideoHash, &ep.PosterHash, &ep.ImageProviderID, &ep.VideoProviderID, &ep.ImageModel, &ep.VideoModel, &ep.TTSProviderID, &ep.TTSModel, &ep.Resolution, &ep.Pipeline, &ep.CreatedAt, &ep.UpdatedAt)
-	return ep, err
 }
 
 func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) {
@@ -175,8 +235,12 @@ func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) 
 	if err != nil {
 		return Episode{}, err
 	}
-	var n int
-	_ = e.DB.QueryRow(`SELECT COALESCE(MAX(episode_number),0) FROM episodes WHERE drama_id = ?`, dramaID).Scan(&n)
+	n := 0
+	for _, rec := range loadCol[episodeRec](e, colEpisodes) {
+		if rec.DramaID == dramaID && rec.EpisodeNumber > n {
+			n = rec.EpisodeNumber
+		}
+	}
 	img, _ := e.ActiveProvider("image", "")
 	vid, _ := e.ActiveProvider("video", "")
 	tts, _ := e.ActiveProvider("tts", "")
@@ -188,20 +252,16 @@ func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) 
 		ImageModel: img.Model, VideoModel: vid.Model, TTSModel: tts.Model,
 		Resolution: "720p", Pipeline: "{}", CreatedAt: now, UpdatedAt: now,
 	}
-	_, err = e.DB.Exec(`INSERT INTO episodes(id, drama_id, episode_number, title, content, script_content, status, video_hash, poster_hash, image_provider_id, video_provider_id, image_model, video_model, tts_provider_id, tts_model, resolution, pipeline, created_at, updated_at, deleted_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
-		ep.ID, ep.DramaID, ep.EpisodeNumber, ep.Title, ep.Content, ep.ScriptContent, ep.Status, ep.VideoHash, ep.PosterHash, ep.ImageProviderID, ep.VideoProviderID, ep.ImageModel, ep.VideoModel, ep.TTSProviderID, ep.TTSModel, ep.Resolution, ep.Pipeline, ep.CreatedAt, ep.UpdatedAt)
 	_ = d
-	return ep, err
+	return ep, e.putDoc(colEpisodes, ep.ID, episodeRec{Episode: ep})
 }
 
 func (e *Engine) GetEpisode(id string) (Episode, error) {
-	row := e.DB.QueryRow(`SELECT `+episodeCols+` FROM episodes WHERE id = ? AND deleted_at = ''`, id)
-	ep, err := scanEpisode(row)
-	if err != nil {
-		return ep, fmt.Errorf("episode not found")
+	rec, err := getDoc[episodeRec](e, colEpisodes, id)
+	if err != nil || rec.DeletedAt != "" {
+		return Episode{}, fmt.Errorf("episode not found")
 	}
-	return ep, nil
+	return rec.Episode, nil
 }
 
 func (e *Engine) UpdateEpisode(ep Episode) (Episode, error) {
@@ -237,6 +297,12 @@ func (e *Engine) UpdateEpisode(ep Episode) (Episode, error) {
 	}
 	if ep.Status != "" {
 		cur.Status = ep.Status
+	}
+	if ep.VideoHash != "" {
+		cur.VideoHash = ep.VideoHash
+	}
+	if ep.PosterHash != "" {
+		cur.PosterHash = ep.PosterHash
 	}
 	return e.saveEpisode(cur)
 }
@@ -305,21 +371,39 @@ func (e *Engine) PatchEpisode(id string, fields map[string]any) (Episode, error)
 }
 
 func (e *Engine) saveEpisode(cur Episode) (Episode, error) {
+	rec, err := getDoc[episodeRec](e, colEpisodes, cur.ID)
+	if err != nil {
+		if err == filestore.ErrNotFound {
+			rec = episodeRec{Episode: cur}
+		} else {
+			return cur, err
+		}
+	}
 	cur.UpdatedAt = Now()
-	_, err := e.DB.Exec(`UPDATE episodes SET title=?, content=?, script_content=?, status=?, resolution=?, image_provider_id=?, video_provider_id=?, image_model=?, video_model=?, tts_provider_id=?, tts_model=?, updated_at=? WHERE id=?`,
-		cur.Title, cur.Content, cur.ScriptContent, cur.Status, cur.Resolution, cur.ImageProviderID, cur.VideoProviderID, cur.ImageModel, cur.VideoModel, cur.TTSProviderID, cur.TTSModel, cur.UpdatedAt, cur.ID)
-	return cur, err
+	rec.Episode = cur
+	rec.UpdatedAt = cur.UpdatedAt
+	return cur, e.putDoc(colEpisodes, cur.ID, rec)
 }
 
 func (e *Engine) DeleteEpisode(id string) error {
+	rec, err := getDoc[episodeRec](e, colEpisodes, id)
+	if err != nil {
+		return err
+	}
 	now := Now()
-	_, err := e.DB.Exec(`UPDATE episodes SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
-	return err
+	rec.DeletedAt = now
+	rec.UpdatedAt = now
+	return e.putDoc(colEpisodes, id, rec)
 }
 
 func (e *Engine) SaveScript(episodeID, script string) error {
-	_, err := e.DB.Exec(`UPDATE episodes SET script_content = ?, updated_at = ? WHERE id = ?`, script, Now(), episodeID)
+	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
+		return err
+	}
+	rec.ScriptContent = script
+	rec.UpdatedAt = Now()
+	if err := e.putDoc(colEpisodes, rec.ID, rec); err != nil {
 		return err
 	}
 	return e.patchPipeline(episodeID, "rewrite", "done", "")
@@ -340,19 +424,13 @@ func (e *Engine) SkipRewrite(episodeID string) error {
 func (e *Engine) hydrateEpisodeProviders(ep *Episode) {
 	fields := map[string]any{}
 	fill := func(kind, id, model string) (string, string, bool) {
-		changed := false
-		if strings.TrimSpace(id) == "" {
-			if p, err := e.ActiveProvider(kind, ""); err == nil && p.ID != "" {
-				return p.ID, first(model, p.Model), true
-			}
+		p, err := e.ActiveProvider(kind, id)
+		if err != nil || p.ID == "" {
 			return id, model, false
 		}
-		if strings.TrimSpace(model) == "" {
-			if p, err := e.GetProvider(id); err == nil {
-				return id, p.Model, p.Model != ""
-			}
-		}
-		return id, model, changed
+		nextModel := first(strings.TrimSpace(model), p.Model)
+		changed := providerIDFromChannel(id) != p.ID || strings.TrimSpace(model) != nextModel
+		return p.ID, nextModel, changed
 	}
 	if id, model, ok := fill("image", ep.ImageProviderID, ep.ImageModel); ok {
 		fields["image_provider_id"] = id

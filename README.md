@@ -6,7 +6,7 @@
 
 Yoyo is not another Cursor clone. It is a **self-harnessing** coding agent: one Go core serving CLI, browser, and a Wails desktop shell, with a versioned, evaluable, promotable harness as the product moat. Prompts, playbooks, and skills can evolve. The evaluator, vault, and updater cannot.
 
-**Version 0.3.4** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
+**Version 0.3.4** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
 
 ---
 

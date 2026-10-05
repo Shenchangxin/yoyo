@@ -1,6 +1,27 @@
+const POPUP_ROOT_ID = "yingce-popup-root";
+
+function hostThemeClass(dark: boolean) {
+  return dark ? "yoyo-host-dark" : "yoyo-host-light";
+}
+
+/** Keep portaled Ant/yc overlays on a token-bearing host root, not raw document.body. */
+export function syncYoyoPopupRoot(dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+  if (typeof document === "undefined") return null;
+  let root = document.getElementById(POPUP_ROOT_ID);
+  if (!root) {
+    root = document.createElement("div");
+    root.id = POPUP_ROOT_ID;
+    document.body.appendChild(root);
+  }
+  root.className = `yingce-island yingce-popup-root app-user-overlays app-product-overlays ${hostThemeClass(dark)}`;
+  root.style.colorScheme = dark ? "dark" : "light";
+  return root;
+}
+
 export function yoyoCanvasPopupContainer(node?: HTMLElement): HTMLElement {
   if (typeof document === "undefined") return node || (undefined as unknown as HTMLElement);
-  return document.body;
+  const dark = document.documentElement.classList.contains("dark");
+  return syncYoyoPopupRoot(dark) || document.body;
 }
 
 export function isYoyoCanvasHost(): boolean {

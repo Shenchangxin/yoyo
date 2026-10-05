@@ -1,5 +1,18 @@
 /* Ant / yc popups that escape the island still inherit Studio Glass. */
 
+#yingce-popup-root,
+.yingce-popup-root {
+  position: relative;
+  z-index: 400;
+  background: transparent;
+  color: var(--foreground);
+  pointer-events: none;
+}
+
+.yingce-popup-root > * {
+  pointer-events: auto;
+}
+
 body .yc-dropdown,
 body .ant-dropdown,
 body .yc-tooltip,
@@ -51,6 +64,16 @@ body .ant-modal .ant-modal-content {
   background: var(--popover) !important;
   box-shadow: var(--shadow-popover) !important;
   backdrop-filter: none !important;
+}
+
+body .yc-message-notice .yc-message-notice-content,
+body .ant-message-notice .ant-message-notice-content,
+body .yc-notification-notice,
+body .ant-notification-notice {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-popover) !important;
 }
 
 body .yc-dropdown-menu-item,

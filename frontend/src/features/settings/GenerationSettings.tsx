@@ -20,7 +20,7 @@ import {
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
 
-type Kind = "image" | "video" | "tts";
+type Kind = "image" | "video" | "tts" | "storage" | "search" | "workflow";
 
 type MediaProvider = {
   id: string;
@@ -30,6 +30,7 @@ type MediaProvider = {
   base_url: string;
   model: string;
   models: string;
+  settings?: string;
   is_default?: boolean;
   is_active?: boolean;
   has_key?: boolean;
@@ -50,6 +51,10 @@ type Draft = {
   is_default: boolean;
   is_active: boolean;
   has_key?: boolean;
+  bucket?: string;
+  region?: string;
+  path_style?: boolean;
+  cdn_base_url?: string;
 };
 
 const VENDOR_LABEL: Record<string, string> = {
@@ -58,8 +63,44 @@ const VENDOR_LABEL: Record<string, string> = {
   gemini: "Gemini",
   minimax: "MiniMax",
   aliyun: "Alibaba Cloud",
+  s3: "S3",
+  cas: "CAS",
+  runninghub: "RunningHub",
+  search: "Search",
+  otel: "OpenTelemetry",
   custom: "Custom",
 };
+
+function usesModels(kind: Kind): boolean {
+  return kind === "image" || kind === "video" || kind === "tts";
+}
+
+function serviceKind(p: { service_type?: string; serviceType?: string } | string): string {
+  const raw = typeof p === "string" ? p : String(p.service_type || p.serviceType || "");
+  const s = raw.toLowerCase().trim();
+  if (s === "speech" || s === "audio") return "tts";
+  if (s === "llm" || s === "text") return "chat";
+  return s;
+}
+
+function parseSettings(raw?: string): Record<string, any> {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function settingsJSON(d: Draft): string {
+  const st: Record<string, unknown> = {};
+  if (d.bucket) st.bucket = d.bucket;
+  if (d.region) st.region = d.region;
+  if (d.cdn_base_url) st.cdn_base_url = d.cdn_base_url;
+  if (d.service_type === "storage") st.path_style = !!d.path_style;
+  return JSON.stringify(st);
+}
 
 function parseModels(raw: string): string[] {
   const s = (raw || "").trim();
@@ -104,6 +145,7 @@ function emptyDraft(kind: Kind): Draft {
 }
 
 function fromRow(p: MediaProvider): Draft {
+  const st = parseSettings(p.settings);
   return {
     id: p.id,
     service_type: (p.service_type as Kind) || "image",
@@ -116,10 +158,15 @@ function fromRow(p: MediaProvider): Draft {
     is_default: !!p.is_default,
     is_active: p.is_active !== false,
     has_key: !!p.has_key,
+    bucket: String(st.bucket || ""),
+    region: String(st.region || ""),
+    path_style: st.path_style !== false,
+    cdn_base_url: String(st.cdn_base_url || ""),
   };
 }
 
 function fromTemplate(kind: Kind, t: MediaProvider): Draft {
+  const st = parseSettings(t.settings);
   return {
     ...emptyDraft(kind),
     provider: t.provider,
@@ -127,6 +174,10 @@ function fromTemplate(kind: Kind, t: MediaProvider): Draft {
     base_url: t.base_url,
     model: t.model,
     models: parseModels(t.models).join(", "),
+    bucket: String(st.bucket || ""),
+    region: String(st.region || ""),
+    path_style: st.path_style !== false,
+    cdn_base_url: String(st.cdn_base_url || ""),
   };
 }
 
@@ -266,6 +317,36 @@ export function GenerationSettings() {
         onChanged={refresh}
         footnote={v.speechHint}
       />
+      <AdapterSection
+        id="generation-storage"
+        title={copy.settings.sections.generationStorage}
+        kind="storage"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        footnote={v.storageHint}
+      />
+      <AdapterSection
+        id="generation-search"
+        title={copy.settings.sections.generationSearch}
+        kind="search"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        footnote={v.searchHint}
+      />
+      <AdapterSection
+        id="generation-workflow"
+        title={copy.settings.sections.generationWorkflow}
+        kind="workflow"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        footnote={v.workflowHint}
+      />
 
       <CanvasChannelsSection copy={copy} />
 
@@ -286,11 +367,11 @@ function AdapterSection(props: {
 }) {
   const v = props.copy.video;
   const rows = useMemo(
-    () => props.rows.filter((p) => p.service_type === props.kind),
+    () => props.rows.filter((p) => serviceKind(p) === props.kind),
     [props.rows, props.kind],
   );
   const kindTemplates = useMemo(
-    () => props.templates.filter((t) => t.service_type === props.kind),
+    () => props.templates.filter((t) => serviceKind(t) === props.kind),
     [props.templates, props.kind],
   );
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -311,6 +392,7 @@ function AdapterSection(props: {
           base_url: d.base_url,
           model: d.model,
           models: JSON.stringify(models.length ? models : (d.model ? [d.model] : [])),
+          settings: settingsJSON(d),
           is_default: d.is_default,
           is_active: d.is_active,
         },
@@ -408,10 +490,10 @@ function AdapterSection(props: {
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    p.has_key ? "bg-success/15 text-success" : "bg-danger/10 text-danger",
+                    p.provider === "cas" || p.has_key ? "bg-success/15 text-success" : "bg-danger/10 text-danger",
                   )}
                 >
-                  {p.has_key ? v.keySaved : v.noKey}
+                  {p.provider === "cas" || p.has_key ? v.keySaved : v.noKey}
                 </span>
                 <div
                   onClick={(e) => e.stopPropagation()}
@@ -455,7 +537,7 @@ function AdapterSection(props: {
                 busy={busy}
                 onSave={() => void save(draft)}
                 onTest={() => void test(p.id)}
-                onDelete={() => setPending(p)}
+                onDelete={p.id === "cas-local" ? undefined : () => setPending(p)}
               />
             ) : null}
           </div>
@@ -492,7 +574,7 @@ function AdapterSection(props: {
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium leading-[1.4] text-foreground">{t.name}</span>
                 <span className="mt-0.5 block truncate font-mono text-[12px] leading-[1.5] text-muted">
-                  {vendorLabel(t.provider)} · {t.model}
+                  {[vendorLabel(t.provider), t.model || hostOf(t.base_url)].filter(Boolean).join(" · ")}
                 </span>
               </span>
             </button>
@@ -568,35 +650,57 @@ function AdapterForm({
       <Field label={copy.settings.baseUrl}>
         <Input className={cn(CONTROL_LG, "font-mono")} value={draft.base_url} onChange={(e) => patch({ base_url: e.target.value })} />
       </Field>
-      <Field label={copy.settings.model}>
-        {models.length ? (
-          <Select value={draft.model || models[0]} onValueChange={(value) => patch({ model: value })}>
-            <SelectTrigger className="h-8 w-full font-mono">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input className={cn(CONTROL_LG, "font-mono")} value={draft.model} onChange={(e) => patch({ model: e.target.value })} />
-        )}
-      </Field>
-      <Field label={v.modelsCsv}>
-        <Input className={cn(CONTROL_LG, "font-mono")} value={draft.models} onChange={(e) => patch({ models: e.target.value })} />
-      </Field>
-      <Field label={copy.settings.apiKey} hint={draft.has_key ? v.keySaved : copy.settings.apiKeyPh}>
-        <Input
-          className={cn(CONTROL_LG, "font-mono")}
-          type="password"
-          autoComplete="off"
-          placeholder={draft.id && draft.has_key ? "••••••••" : copy.settings.apiKeyPh}
-          value={draft.api_key}
-          onChange={(e) => patch({ api_key: e.target.value })}
-        />
-      </Field>
+      {usesModels(draft.service_type) ? (
+        <>
+          <Field label={copy.settings.model}>
+            {models.length ? (
+              <Select value={draft.model || models[0]} onValueChange={(value) => patch({ model: value })}>
+                <SelectTrigger className="h-8 w-full font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input className={cn(CONTROL_LG, "font-mono")} value={draft.model} onChange={(e) => patch({ model: e.target.value })} />
+            )}
+          </Field>
+          <Field label={v.modelsCsv}>
+            <Input className={cn(CONTROL_LG, "font-mono")} value={draft.models} onChange={(e) => patch({ models: e.target.value })} />
+          </Field>
+        </>
+      ) : null}
+      {draft.service_type === "storage" ? (
+        <>
+          <Field label={v.bucket}>
+            <Input className={cn(CONTROL_LG, "font-mono")} value={draft.bucket || ""} onChange={(e) => patch({ bucket: e.target.value })} />
+          </Field>
+          <Field label={v.region}>
+            <Input className={cn(CONTROL_LG, "font-mono")} value={draft.region || ""} onChange={(e) => patch({ region: e.target.value })} />
+          </Field>
+          <Field label={v.cdnBase}>
+            <Input className={cn(CONTROL_LG, "font-mono")} value={draft.cdn_base_url || ""} onChange={(e) => patch({ cdn_base_url: e.target.value })} />
+          </Field>
+          <SettingRow title={v.pathStyle} list>
+            <Switch checked={draft.path_style !== false} onCheckedChange={(on) => patch({ path_style: on })} />
+          </SettingRow>
+        </>
+      ) : null}
+      {draft.provider !== "cas" ? (
+        <Field label={copy.settings.apiKey} hint={draft.has_key ? v.keySaved : copy.settings.apiKeyPh}>
+          <Input
+            className={cn(CONTROL_LG, "font-mono")}
+            type="password"
+            autoComplete="off"
+            placeholder={draft.id && draft.has_key ? "••••••••" : copy.settings.apiKeyPh}
+            value={draft.api_key}
+            onChange={(e) => patch({ api_key: e.target.value })}
+          />
+        </Field>
+      ) : null}
       <SettingRow title={v.enabled} list>
         <Switch checked={draft.is_active} onCheckedChange={(on) => patch({ is_active: on })} />
       </SettingRow>

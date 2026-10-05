@@ -266,6 +266,10 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     theme: cfg.theme || "system",
     palette_dark: cfg.paletteDark || "ink",
     palette_light: cfg.paletteLight || "neutral",
+    gate_mode: cfg.gateMode || "manual",
+    crash_resume: cfg.crashResume !== false,
+    search_url: cfg.searchUrl || "",
+    search_key: cfg.searchKey || "",
   };
   const s = await wailsService();
   if (s?.SetConfig) {
@@ -1561,6 +1565,13 @@ export const video = {
   upsertProvider: (provider: any, apiKey = "") => videoCall("video.providers.upsert", { provider, api_key: apiKey }),
   deleteProvider: (id: string) => videoCall("video.providers.delete", { id }),
   testProvider: (id: string) => videoCall("video.providers.test", { id }),
+  connections: (capability = "") => videoCall("connections.list", { capability }),
+  upsertConnection: (connection: any, apiKey = "") => videoCall("connections.upsert", { connection, api_key: apiKey }),
+  deleteConnection: (id: string) => videoCall("connections.delete", { id }),
+  testConnection: (id: string) => videoCall("connections.test", { id }),
+  connectionDefaults: () => videoCall("connections.defaults"),
+  setConnectionDefault: (capability: string, id: string) => videoCall("connections.setDefault", { capability, id }),
+  connectionTemplates: () => videoCall("connections.templates"),
   styles: () => videoCall("video.styles"),
   allStyles: () => videoCall("video.styles.all"),
   upsertStyle: (s: Record<string, any>) => videoCall("video.styles.upsert", s),

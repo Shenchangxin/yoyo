@@ -478,13 +478,18 @@ export type ConfigStoreSnapshot = {
 
 function isVideoModelName(model: string) {
     const value = modelOptionName(model).toLowerCase();
+    if (value.includes("qwen") && !value.includes("video")) return false;
     return (
         value.includes("seedance") ||
         value.includes("video") ||
         value.includes("sora") ||
         value.includes("veo") ||
         value.includes("kling") ||
-        value.includes("wan") ||
+        value.includes("wanx") ||
+        value.includes("wan2") ||
+        value.includes("wan3") ||
+        value.includes("wan-video") ||
+        (value.includes("wan") && !value.includes("qwen")) ||
         value.includes("hailuo") ||
         value.includes("pika") ||
         value.includes("runway") ||

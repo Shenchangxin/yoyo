@@ -1,6 +1,10 @@
 package video
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 func (e *Engine) seedStyles() error {
 	now := Now()
@@ -24,36 +28,46 @@ func (e *Engine) seedStyles() error {
 		"watercolor": "watercolor storyboard, paper texture, bleeding pigment, soft edges, consistent costume hues, not photoreal",
 		"comic":      "graphic-novel panel, bold ink, limited flat color, dramatic shadow, consistent character model sheets, not photoreal",
 	}
+	existing := loadCol[styleRec](e, colStyles)
+	byValue := map[string]styleRec{}
+	for _, s := range existing {
+		byValue[s.Value] = s
+	}
 	for i, s := range seeds {
-		_, err := e.DB.Exec(`INSERT OR IGNORE INTO style_presets(id, name, value, prompt, description, sort_order, is_active, seeded, created_at, updated_at)
-			VALUES(?,?,?,?,?,?,1,1,?,?)`, NewID(), s.Name, s.Value, s.Prompt, s.Description, i, now, now)
-		if err != nil {
-			return err
+		if cur, ok := byValue[s.Value]; ok {
+			if old, hit := legacy[s.Value]; hit && cur.Prompt == old {
+				cur.Name = s.Name
+				cur.Prompt = s.Prompt
+				cur.Description = s.Description
+				cur.SortOrder = i
+				cur.UpdatedAt = now
+				if err := e.putDoc(colStyles, cur.ID, cur); err != nil {
+					return err
+				}
+			}
+			continue
 		}
-		if old, ok := legacy[s.Value]; ok {
-			_, _ = e.DB.Exec(`UPDATE style_presets SET name=?, prompt=?, description=?, sort_order=?, updated_at=? WHERE value=? AND prompt=?`,
-				s.Name, s.Prompt, s.Description, i, now, s.Value, old)
+		rec := styleRec{Style: Style{ID: NewID(), Name: s.Name, Value: s.Value, Prompt: s.Prompt, Description: s.Description, SortOrder: i, IsActive: true}, Seeded: true, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colStyles, rec.ID, rec); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func (e *Engine) ListStyles() ([]Style, error) {
-	rows, err := e.DB.Query(`SELECT id, name, value, prompt, description, sort_order, is_active FROM style_presets WHERE is_active = 1 ORDER BY sort_order, name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	var out []Style
-	for rows.Next() {
-		var s Style
-		var active int
-		if err := rows.Scan(&s.ID, &s.Name, &s.Value, &s.Prompt, &s.Description, &s.SortOrder, &active); err != nil {
-			return nil, err
+	for _, s := range loadCol[styleRec](e, colStyles) {
+		if s.IsActive {
+			out = append(out, s.Style)
 		}
-		s.IsActive = active != 0
-		out = append(out, s)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortOrder != out[j].SortOrder {
+			return out[i].SortOrder < out[j].SortOrder
+		}
+		return out[i].Name < out[j].Name
+	})
 	if out == nil {
 		out = []Style{}
 	}
@@ -61,21 +75,16 @@ func (e *Engine) ListStyles() ([]Style, error) {
 }
 
 func (e *Engine) ListAllStyles() ([]Style, error) {
-	rows, err := e.DB.Query(`SELECT id, name, value, prompt, description, sort_order, is_active FROM style_presets ORDER BY sort_order, name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	var out []Style
-	for rows.Next() {
-		var s Style
-		var active int
-		if err := rows.Scan(&s.ID, &s.Name, &s.Value, &s.Prompt, &s.Description, &s.SortOrder, &active); err != nil {
-			return nil, err
-		}
-		s.IsActive = active != 0
-		out = append(out, s)
+	for _, s := range loadCol[styleRec](e, colStyles) {
+		out = append(out, s.Style)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortOrder != out[j].SortOrder {
+			return out[i].SortOrder < out[j].SortOrder
+		}
+		return out[i].Name < out[j].Name
+	})
 	if out == nil {
 		out = []Style{}
 	}
@@ -83,12 +92,12 @@ func (e *Engine) ListAllStyles() ([]Style, error) {
 }
 
 func (e *Engine) StyleByValue(value string) (Style, error) {
-	var s Style
-	var active int
-	err := e.DB.QueryRow(`SELECT id, name, value, prompt, description, sort_order, is_active FROM style_presets WHERE value = ?`, value).
-		Scan(&s.ID, &s.Name, &s.Value, &s.Prompt, &s.Description, &s.SortOrder, &active)
-	s.IsActive = active != 0
-	return s, err
+	for _, s := range loadCol[styleRec](e, colStyles) {
+		if s.Value == value {
+			return s.Style, nil
+		}
+	}
+	return Style{}, fmt.Errorf("style not found")
 }
 
 func (e *Engine) PrefixStyle(value, prompt string) string {
@@ -108,25 +117,36 @@ func (e *Engine) UpsertStyle(s Style) (Style, error) {
 		return s, fmt.Errorf("style value required")
 	}
 	if s.ID == "" {
-		var existing string
-		if e.DB.QueryRow(`SELECT id FROM style_presets WHERE value = ?`, s.Value).Scan(&existing) == nil {
-			s.ID = existing
-		} else {
+		for _, cur := range loadCol[styleRec](e, colStyles) {
+			if cur.Value == s.Value {
+				s.ID = cur.ID
+				break
+			}
+		}
+		if s.ID == "" {
 			s.ID = NewID()
 		}
 	}
-	active := 1
-	if !s.IsActive {
-		active = 0
+	rec, err := getDoc[styleRec](e, colStyles, s.ID)
+	if err != nil {
+		rec = styleRec{CreatedAt: now}
 	}
-	_, err := e.DB.Exec(`INSERT INTO style_presets(id, name, value, prompt, description, sort_order, is_active, seeded, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,0,?,?)
-		ON CONFLICT(id) DO UPDATE SET name=excluded.name, value=excluded.value, prompt=excluded.prompt, description=excluded.description, sort_order=excluded.sort_order, is_active=excluded.is_active, updated_at=excluded.updated_at`,
-		s.ID, s.Name, s.Value, s.Prompt, s.Description, s.SortOrder, active, now, now)
-	return s, err
+	rec.Style = s
+	rec.UpdatedAt = now
+	if rec.CreatedAt == "" {
+		rec.CreatedAt = now
+	}
+	return s, e.putDoc(colStyles, s.ID, rec)
 }
 
 func (e *Engine) DeleteStyle(id string) error {
-	_, err := e.DB.Exec(`UPDATE style_presets SET is_active = 0, updated_at = ? WHERE id = ?`, Now(), id)
-	return err
+	rec, err := getDoc[styleRec](e, colStyles, id)
+	if err != nil {
+		return err
+	}
+	rec.IsActive = false
+	rec.UpdatedAt = Now()
+	return e.putDoc(colStyles, id, rec)
 }
+
+func styleValueKey(v string) string { return strings.TrimSpace(v) }

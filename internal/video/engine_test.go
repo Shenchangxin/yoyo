@@ -213,7 +213,11 @@ func TestProviderKeyStaysInVault(t *testing.T) {
 		t.Fatal("key not in vault")
 	}
 	var leaked string
-	_ = e.DB.QueryRow(`SELECT settings FROM providers WHERE id = ?`, p.ID).Scan(&leaked)
+	if e.Conn != nil {
+		if c, err := e.Conn.Get(p.ID); err == nil {
+			leaked = fmt.Sprint(c.Settings)
+		}
+	}
 	if leaked == "sk-secret" {
 		t.Fatal("key leaked into settings")
 	}
@@ -549,7 +553,7 @@ func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 	channels, _ := cat["channels"].([]map[string]any)
 	found := false
 	for _, c := range channels {
-		if fmt.Sprint(c["id"]) == chID {
+		if fmt.Sprint(c["id"]) == chID || fmt.Sprint(c["id"]) == p.ID {
 			found = true
 			models, _ := c["models"].([]map[string]any)
 			if len(models) == 0 || fmt.Sprint(models[0]["modelKey"]) != "dall-e-3" {
@@ -571,12 +575,9 @@ func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 		t.Fatalf("resync %+v %v", ch, err)
 	}
 
-	if _, err := e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, chID); err != nil {
-		t.Fatal(err)
-	}
 	ch, err = e.getCanvasChannel(chID)
 	if err != nil || ch.Model != "gpt-image-1" {
-		t.Fatalf("fallback %+v %v", ch, err)
+		t.Fatalf("ch- prefix lookup %+v %v", ch, err)
 	}
 
 	if _, err := e.upsertCanvasChannel(map[string]any{"id": "extra-1", "name": "Yingce extra", "capability": "image", "pluginId": "openai-images"}, "k-extra"); err != nil {
@@ -598,4 +599,148 @@ func TestProviderSyncsIntoCanvasCatalog(t *testing.T) {
 	if _, err := e.getCanvasChannel("extra-1"); err != nil {
 		t.Fatal("extra channel should survive adapter delete")
 	}
+}
+
+func TestChatAndMultiCapShowInModelCatalog(t *testing.T) {
+	e := testEngine(t)
+	chat, err := e.UpsertProvider(Provider{
+		ServiceType: "chat",
+		Provider:    "openai",
+		Name:        "Studio Chat",
+		BaseURL:     "https://api.openai.com/v1",
+		Model:       "gpt-4.1-mini",
+		Models:      "gpt-4.1-mini,gpt-4.1",
+		IsActive:    true,
+	}, "sk-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	both, err := e.UpsertProvider(Provider{
+		ServiceType: "image",
+		Provider:    "openai",
+		Name:        "Studio Multi",
+		BaseURL:     "https://api.openai.com/v1",
+		Model:       "dall-e-3",
+		IsActive:    true,
+	}, "sk-multi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	both.ServiceType = "video"
+	both.Model = "sora-2"
+	if _, err := e.UpsertProvider(both, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	cat := e.modelCatalog()
+	channels, _ := cat["channels"].([]map[string]any)
+	var textKeys, imageKeys, videoKeys []string
+	for _, c := range channels {
+		models, _ := c["models"].([]map[string]any)
+		for _, m := range models {
+			cap := fmt.Sprint(m["capability"])
+			key := fmt.Sprint(m["modelKey"])
+			switch cap {
+			case "text":
+				textKeys = append(textKeys, key)
+			case "image":
+				imageKeys = append(imageKeys, key)
+			case "video":
+				videoKeys = append(videoKeys, key)
+			}
+			if fmt.Sprint(m["available"]) != "true" {
+				t.Fatalf("catalog model not available %+v", m)
+			}
+		}
+	}
+	if !containsAll(textKeys, "gpt-4.1-mini", "gpt-4.1") {
+		t.Fatalf("text models %v chat %+v", textKeys, chat)
+	}
+	if containsAll(textKeys, "dall-e-3") || containsAll(textKeys, "sora-2") {
+		t.Fatalf("text catalog mixed media models %v", textKeys)
+	}
+	if !containsAll(imageKeys, "dall-e-3") {
+		t.Fatalf("image models %v", imageKeys)
+	}
+	if containsAll(imageKeys, "gpt-4.1-mini") || containsAll(imageKeys, "sora-2") {
+		t.Fatalf("image catalog mixed models %v", imageKeys)
+	}
+	if !containsAll(videoKeys, "sora-2") {
+		t.Fatalf("video models %v", videoKeys)
+	}
+	if containsAll(videoKeys, "dall-e-3") || containsAll(videoKeys, "gpt-4.1") {
+		t.Fatalf("video catalog mixed models %v", videoKeys)
+	}
+}
+
+func TestChatModelsShowAsImageWhenNamed(t *testing.T) {
+	e := testEngine(t)
+	chat, err := e.UpsertProvider(Provider{
+		ServiceType: "chat",
+		Provider:    "openai",
+		Name:        "Studio Chat",
+		BaseURL:     "https://api.openai.com/v1",
+		Model:       "gpt-4.1",
+		Models:      `["gpt-4.1","gpt-image-1"]`,
+		IsActive:    true,
+	}, "sk-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgs, err := e.ListProviders("image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range imgs {
+		if p.ID == chat.ID {
+			found = true
+			if p.ServiceType != "image" {
+				t.Fatalf("service %s", p.ServiceType)
+			}
+			if !strings.Contains(p.Models, "gpt-image-1") || strings.Contains(p.Models, "gpt-4.1") {
+				t.Fatalf("image models %s", p.Models)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("chat connection missing from image providers: %+v", imgs)
+	}
+	cat := e.modelCatalog()
+	channels, _ := cat["channels"].([]map[string]any)
+	var textKeys, imageKeys []string
+	for _, c := range channels {
+		models, _ := c["models"].([]map[string]any)
+		for _, m := range models {
+			switch fmt.Sprint(m["capability"]) {
+			case "text":
+				textKeys = append(textKeys, fmt.Sprint(m["modelKey"]))
+			case "image":
+				imageKeys = append(imageKeys, fmt.Sprint(m["modelKey"]))
+			}
+		}
+	}
+	if !containsAll(textKeys, "gpt-4.1") || containsAll(textKeys, "gpt-image-1") {
+		t.Fatalf("text %v", textKeys)
+	}
+	if !containsAll(imageKeys, "gpt-image-1") || containsAll(imageKeys, "gpt-4.1") {
+		t.Fatalf("image %v", imageKeys)
+	}
+	p, err := e.ActiveProvider("image", "")
+	if err != nil || p.ID != chat.ID {
+		t.Fatalf("active image %+v %v", p, err)
+	}
+}
+
+func containsAll(have []string, want ...string) bool {
+	set := map[string]bool{}
+	for _, h := range have {
+		set[h] = true
+	}
+	for _, w := range want {
+		if !set[w] {
+			return false
+		}
+	}
+	return true
 }

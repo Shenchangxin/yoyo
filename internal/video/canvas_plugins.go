@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/video/protocol"
 )
 
@@ -269,7 +270,69 @@ func providerChannelID(id string) string {
 }
 
 func providerIDFromChannel(id string) string {
-	return strings.TrimPrefix(strings.TrimSpace(id), "ch-")
+	return stripCatalogCapSuffix(strings.TrimPrefix(strings.TrimSpace(id), "ch-"))
+}
+
+func stripCatalogCapSuffix(id string) string {
+	for _, suf := range []string{"--text", "--image", "--video", "--audio"} {
+		if strings.HasSuffix(id, suf) {
+			return strings.TrimSuffix(id, suf)
+		}
+	}
+	return id
+}
+
+func catalogSuffixCap(id string) string {
+	for _, suf := range []string{"--text", "--image", "--video", "--audio"} {
+		if strings.HasSuffix(id, suf) {
+			return strings.TrimPrefix(suf, "--")
+		}
+	}
+	return ""
+}
+
+func yingceCapability(cap string) string {
+	switch connection.NormalizeCap(cap) {
+	case connection.CapChat:
+		return "text"
+	case connection.CapSpeech:
+		return "audio"
+	case connection.CapImage:
+		return "image"
+	case connection.CapVideo:
+		return "video"
+	default:
+		return ""
+	}
+}
+
+func yingceCaps(c connection.Connection) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, x := range connection.CapsOf(c) {
+		y := yingceCapability(x)
+		if y == "" || seen[y] {
+			continue
+		}
+		seen[y] = true
+		out = append(out, y)
+	}
+	return out
+}
+
+func connCapForYingce(y string) string {
+	switch y {
+	case "text":
+		return connection.CapChat
+	case "audio":
+		return connection.CapSpeech
+	default:
+		return y
+	}
+}
+
+func isGenerationConnection(c connection.Connection) bool {
+	return connection.MatchesCap(c, connection.CapChat) || connection.MatchesCap(c, connection.CapImage) || connection.MatchesCap(c, connection.CapVideo) || connection.MatchesCap(c, connection.CapSpeech)
 }
 
 func (e *Engine) channelFromProvider(p Provider) canvasChannel {
@@ -277,7 +340,7 @@ func (e *Engine) channelFromProvider(p Provider) canvasChannel {
 		ID:         providerChannelID(p.ID),
 		PluginID:   mapProviderPlugin(p.ServiceType, p.Provider),
 		Name:       p.Name,
-		Capability: p.ServiceType,
+		Capability: firstNonEmpty(yingceCapability(p.ServiceType), p.ServiceType),
 		BaseURL:    p.BaseURL,
 		VaultKey:   p.VaultKey,
 		Model:      p.Model,
@@ -290,120 +353,90 @@ func (e *Engine) channelFromProvider(p Provider) canvasChannel {
 	}
 }
 
-func (e *Engine) syncProviderChannel(p Provider) error {
-	if strings.TrimSpace(p.ID) == "" {
-		return nil
+func (e *Engine) channelFromConn(c connection.Connection) canvasChannel {
+	cap := ""
+	if caps := yingceCaps(c); len(caps) > 0 {
+		cap = caps[0]
 	}
-	now := Now()
-	id := providerChannelID(p.ID)
-	plugin := mapProviderPlugin(p.ServiceType, p.Provider)
-	enabled := 1
-	if !p.IsActive {
-		enabled = 0
-	}
-	models := p.Models
-	if models == "" {
-		models = "[]"
-	}
-	settings := p.Settings
-	if settings == "" {
-		settings = "{}"
-	}
-	_, err := e.DB.Exec(`INSERT INTO canvas_channels(id, plugin_id, name, capability, base_url, vault_key, model, models, settings, sort_order, enabled, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET plugin_id=excluded.plugin_id, name=excluded.name, capability=excluded.capability, base_url=excluded.base_url, vault_key=excluded.vault_key, model=excluded.model, models=excluded.models, settings=excluded.settings, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-		id, plugin, p.Name, p.ServiceType, p.BaseURL, p.VaultKey, p.Model, models, settings, 0, enabled, coalesce(p.CreatedAt, now), now)
-	return err
+	return e.channelFromConnCap(c, cap)
 }
+
+func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) canvasChannel {
+	if yingceCap == "" {
+		if caps := yingceCaps(c); len(caps) > 0 {
+			yingceCap = caps[0]
+		}
+	}
+	ccap := connCapForYingce(yingceCap)
+	def := connection.ModelForCap(c, ccap)
+	keys := connection.ModelsFor(c, ccap)
+	if def != "" {
+		found := false
+		for _, k := range keys {
+			if k == def {
+				found = true
+				break
+			}
+		}
+		if !found {
+			keys = append([]string{def}, keys...)
+		}
+	}
+	models := "[]"
+	if b, err := json.Marshal(keys); err == nil {
+		models = string(b)
+	}
+	plugin := connection.InferProtocol(c.Vendor, ccap)
+	if plugin == "" {
+		plugin = c.Protocol
+	}
+	return canvasChannel{
+		ID: c.ID, PluginID: plugin, Name: c.Name, Capability: yingceCap,
+		BaseURL: c.Endpoint, VaultKey: c.VaultKey, Model: def,
+		Models: models, Enabled: c.Active || c.HasKey, HasKey: c.HasKey,
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+	}
+}
+
+func (e *Engine) syncProviderChannel(p Provider) error { return nil }
 
 func (e *Engine) deleteProviderChannel(id string) {
-	chID := providerChannelID(id)
-	if chID == "" {
-		return
-	}
-	_, _ = e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, chID)
+	_ = e.DeleteProvider(id)
+	_ = e.delDoc(colChannels, id)
 }
 
-func (e *Engine) syncAllProviderChannels() error {
-	providers, err := e.ListProviders("")
-	if err != nil {
-		return err
-	}
-	keep := map[string]bool{}
-	for _, p := range providers {
-		if err := e.syncProviderChannel(p); err != nil {
-			return err
-		}
-		keep[providerChannelID(p.ID)] = true
-	}
-	for _, c := range e.listCanvasChannels() {
-		if strings.HasPrefix(c.ID, "ch-") && !keep[c.ID] {
-			_, _ = e.DB.Exec(`DELETE FROM canvas_channels WHERE id = ?`, c.ID)
-		}
-	}
-	return nil
-}
+func (e *Engine) syncAllProviderChannels() error { return nil }
 
 func (e *Engine) seedCanvasChannels() error {
 	return e.syncAllProviderChannels()
 }
 
-func mapProviderPlugin(serviceType, vendor string) string {
-	v := strings.ToLower(vendor)
-	switch strings.ToLower(serviceType) {
-	case "image":
-		switch v {
-		case "openai":
-			return "openai-images"
-		case "gemini":
-			return "google-gemini-image"
-		case "volcengine":
-			return "volcengine-ark-seedream"
-		default:
-			return "openai-images"
-		}
-	case "video":
-		switch v {
-		case "openai":
-			return "openai-videos"
-		case "gemini":
-			return "google-gemini-veo"
-		case "minimax", "hailuo":
-			return "minimax-hailuo-video-v2"
-		case "wan", "dashscope":
-			return "dashscope-wan-video"
-		case "volcengine", "seedance":
-			return "volcengine-ark-seedance"
-		default:
-			return "openai-videos"
-		}
-	case "tts", "audio":
-		return "openai-audio"
-	default:
-		return "openai-chat-completions"
-	}
-}
-
 func (e *Engine) listCanvasChannels() []canvasChannel {
-	rows, err := e.DB.Query(`SELECT id, plugin_id, name, capability, base_url, vault_key, model, models, settings, sort_order, enabled, created_at, updated_at FROM canvas_channels ORDER BY sort_order ASC, created_at ASC`)
-	if err != nil {
-		return []canvasChannel{}
-	}
-	defer rows.Close()
+	seen := map[string]bool{}
 	var out []canvasChannel
-	for rows.Next() {
-		var c canvasChannel
-		var enabled int
-		if err := rows.Scan(&c.ID, &c.PluginID, &c.Name, &c.Capability, &c.BaseURL, &c.VaultKey, &c.Model, &c.Models, &c.Settings, &c.SortOrder, &enabled, &c.CreatedAt, &c.UpdatedAt); err != nil {
-			continue
+	add := func(c canvasChannel) {
+		if c.ID == "" || seen[c.ID] {
+			return
 		}
-		c.Enabled = enabled != 0
+		seen[c.ID] = true
 		if e.Vault != nil && c.VaultKey != "" {
 			if _, err := e.Vault.Get(c.VaultKey); err == nil {
 				c.HasKey = true
 			}
 		}
 		out = append(out, c)
+	}
+	if e.Conn != nil {
+		list, _ := e.Conn.List("")
+		for _, c := range list {
+			if !isGenerationConnection(c) {
+				continue
+			}
+			add(e.channelFromConn(c))
+		}
+	}
+	for _, rec := range loadCol[canvasChannel](e, colChannels) {
+		add(rec)
 	}
 	if out == nil {
 		out = []canvasChannel{}
@@ -413,18 +446,33 @@ func (e *Engine) listCanvasChannels() []canvasChannel {
 
 func (e *Engine) getCanvasChannel(id string) (canvasChannel, error) {
 	id = strings.TrimSpace(id)
+	wantCap := catalogSuffixCap(id)
+	pid := providerIDFromChannel(id)
 	for _, c := range e.listCanvasChannels() {
-		if c.ID == id {
+		if c.ID == id || c.ID == pid {
+			if wantCap != "" {
+				c.ID = id
+				c.Capability = wantCap
+			}
 			return c, nil
 		}
 	}
-	if p, err := e.GetProvider(id); err == nil {
-		return e.channelFromProvider(p), nil
-	}
-	if pid := providerIDFromChannel(id); pid != "" && pid != id {
-		if p, err := e.GetProvider(pid); err == nil {
-			return e.channelFromProvider(p), nil
+	if e.Conn != nil && pid != "" {
+		if c, err := e.Conn.Get(pid); err == nil && isGenerationConnection(c) {
+			ch := e.channelFromConnCap(c, wantCap)
+			if wantCap != "" {
+				ch.ID = id
+			}
+			return ch, nil
 		}
+	}
+	if p, err := e.GetProvider(pid); err == nil {
+		ch := e.channelFromProvider(p)
+		if wantCap != "" {
+			ch.ID = id
+			ch.Capability = wantCap
+		}
+		return ch, nil
 	}
 	return canvasChannel{}, fmt.Errorf("channel not found")
 }
@@ -444,20 +492,36 @@ func (e *Engine) upsertCanvasChannel(in map[string]any, apiKey string) (canvasCh
 	if models == "" {
 		models = "[]"
 	}
-	vaultKey := firstNonEmpty(strAnyMap(in, "vaultKey", "vault_key"), "video.canvas."+id)
-	enabled := 1
-	if v, ok := in["enabled"]; ok && !boolAny(v) {
-		enabled = 0
+	vaultKey := firstNonEmpty(strAnyMap(in, "vaultKey", "vault_key"), "conn."+id+".key")
+	enabled := true
+	if v, ok := in["enabled"]; ok {
+		enabled = boolAny(v)
 	}
-	_, err := e.DB.Exec(`INSERT INTO canvas_channels(id, plugin_id, name, capability, base_url, vault_key, model, models, settings, sort_order, enabled, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET plugin_id=excluded.plugin_id, name=excluded.name, capability=excluded.capability, base_url=excluded.base_url, model=excluded.model, models=excluded.models, settings=excluded.settings, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-		id, plugin, name, cap, base, vaultKey, model, models, "{}", 0, enabled, now, now)
-	if err != nil {
-		return canvasChannel{}, err
+	if e.Conn != nil {
+		c := connection.Connection{
+			ID: id, Name: name, Vendor: firstNonEmpty(plugin, "custom"), Protocol: plugin,
+			Endpoint: base, VaultKey: vaultKey,
+			Capabilities: []string{connection.NormalizeCap(cap), connection.CapProtocol},
+			Models:       connection.ParseModels(models), DefaultModel: map[string]string{connection.NormalizeCap(cap): model},
+			Active: enabled,
+		}
+		if model != "" && len(c.Models) == 0 {
+			c.Models = []string{model}
+		}
+		out, err := e.Conn.Upsert(c, apiKey)
+		if err != nil {
+			return canvasChannel{}, err
+		}
+		_ = now
+		return e.channelFromConn(out), nil
 	}
+	ch := canvasChannel{ID: id, PluginID: plugin, Name: name, Capability: cap, BaseURL: base, VaultKey: vaultKey, Model: model, Models: models, Enabled: enabled, CreatedAt: now, UpdatedAt: now}
 	if apiKey != "" && e.Vault != nil {
 		e.Vault.Set(vaultKey, apiKey)
+		ch.HasKey = true
+	}
+	if err := e.putDoc(colChannels, id, ch); err != nil {
+		return canvasChannel{}, err
 	}
 	return e.getCanvasChannel(id)
 }
@@ -479,21 +543,32 @@ func catalogModels(c canvasChannel) []map[string]any {
 			keys = append([]string{c.Model}, keys...)
 		}
 	}
+	cap := yingceCapability(c.Capability)
+	if cap == "" {
+		cap = c.Capability
+		if cap == "tts" || cap == "speech" {
+			cap = "audio"
+		}
+		if cap == "chat" || cap == "llm" {
+			cap = "text"
+		}
+	}
 	models := []map[string]any{}
 	for i, key := range keys {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
-		cap := c.Capability
-		if cap == "tts" {
-			cap = "audio"
-		}
-		models = append(models, map[string]any{
+		item := map[string]any{
 			"id": c.ID + ":" + key, "modelKey": key, "name": key, "displayName": key,
-			"capability": cap, "available": c.HasKey, "sortOrder": i,
+			"capability": cap, "available": c.Enabled || c.HasKey, "sortOrder": i,
 			"pricingMode": "info", "priceLabel": "",
+			"priceTiers": []map[string]any{{"billingMode": "fixed_request", "unitPriceMicrocredits": 0}},
 			"capabilitySpec": map[string]any{"version": 1, "capability": cap, "operations": defaultOps(cap)},
-		})
+		}
+		if c.PluginID != "" {
+			item["protocol"] = c.PluginID
+		}
+		models = append(models, item)
 	}
 	return models
 }
@@ -510,13 +585,31 @@ func (e *Engine) modelCatalog() map[string]any {
 			"id": c.ID, "name": c.Name, "displayName": c.Name, "sortOrder": c.SortOrder, "models": catalogModels(c),
 		})
 	}
-	for _, c := range e.listCanvasChannels() {
-		add(c)
-	}
-	if providers, err := e.ListProviders(""); err == nil {
-		for _, p := range providers {
-			add(e.channelFromProvider(p))
+	if e.Conn != nil {
+		list, _ := e.Conn.List("")
+		for _, c := range list {
+			if !isGenerationConnection(c) {
+				continue
+			}
+			caps := yingceCaps(c)
+			if len(caps) == 0 {
+				continue
+			}
+			for _, cap := range caps {
+				ch := e.channelFromConnCap(c, cap)
+				if len(caps) > 1 {
+					ch.ID = c.ID + "--" + cap
+					ch.Name = c.Name + " · " + cap
+				}
+				add(ch)
+			}
 		}
+	}
+	for _, rec := range loadCol[canvasChannel](e, colChannels) {
+		if rec.Capability != "" && yingceCapability(rec.Capability) != "" {
+			rec.Capability = yingceCapability(rec.Capability)
+		}
+		add(rec)
 	}
 	return map[string]any{"source": "system", "channels": channels, "models": []any{}}
 }

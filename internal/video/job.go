@@ -2,10 +2,10 @@ package video
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -13,29 +13,25 @@ import (
 const maxJobWorkers = 8
 
 func (e *Engine) GetJob(id string) (Job, error) {
-	return e.scanJob(e.DB.QueryRow(`SELECT id, type, status, provider, model, vault_key, remote_id, prompt, params, result_hash, poster_hash, error, drama_id, episode_id, storyboard_id, character_id, scene_id, prop_id, created_at, updated_at, completed_at FROM jobs WHERE id = ?`, id))
+	j, err := getDoc[Job](e, colJobs, id)
+	if err != nil {
+		return Job{}, err
+	}
+	return j, nil
 }
 
 func (e *Engine) ListJobs(episodeID string) ([]Job, error) {
-	q := `SELECT id, type, status, provider, model, vault_key, remote_id, prompt, params, result_hash, poster_hash, error, drama_id, episode_id, storyboard_id, character_id, scene_id, prop_id, created_at, updated_at, completed_at FROM jobs`
-	var args []any
-	if episodeID != "" {
-		q += ` WHERE episode_id = ?`
-		args = append(args, episodeID)
-	}
-	q += ` ORDER BY created_at DESC LIMIT 200`
-	rows, err := e.DB.Query(q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	all := loadCol[Job](e, colJobs)
 	var out []Job
-	for rows.Next() {
-		j, err := scanJobRows(rows)
-		if err != nil {
-			return nil, err
+	for _, j := range all {
+		if episodeID != "" && j.EpisodeID != episodeID {
+			continue
 		}
 		out = append(out, j)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	if len(out) > 200 {
+		out = out[:200]
 	}
 	if out == nil {
 		out = []Job{}
@@ -43,31 +39,17 @@ func (e *Engine) ListJobs(episodeID string) ([]Job, error) {
 	return out, nil
 }
 
-func (e *Engine) scanJob(row *sql.Row) (Job, error) {
-	var j Job
-	err := row.Scan(&j.ID, &j.Type, &j.Status, &j.Provider, &j.Model, &j.VaultKey, &j.RemoteID, &j.Prompt, &j.Params, &j.ResultHash, &j.PosterHash, &j.Error, &j.DramaID, &j.EpisodeID, &j.StoryboardID, &j.CharacterID, &j.SceneID, &j.PropID, &j.CreatedAt, &j.UpdatedAt, &j.CompletedAt)
-	return j, err
-}
-
-func scanJobRows(rows *sql.Rows) (Job, error) {
-	var j Job
-	err := rows.Scan(&j.ID, &j.Type, &j.Status, &j.Provider, &j.Model, &j.VaultKey, &j.RemoteID, &j.Prompt, &j.Params, &j.ResultHash, &j.PosterHash, &j.Error, &j.DramaID, &j.EpisodeID, &j.StoryboardID, &j.CharacterID, &j.SceneID, &j.PropID, &j.CreatedAt, &j.UpdatedAt, &j.CompletedAt)
-	return j, err
-}
-
 func (e *Engine) insertJob(j Job) error {
-	_, err := e.DB.Exec(`INSERT INTO jobs(id, type, status, provider, model, vault_key, remote_id, prompt, params, result_hash, poster_hash, error, drama_id, episode_id, storyboard_id, character_id, scene_id, prop_id, created_at, updated_at, completed_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.ID, j.Type, j.Status, j.Provider, j.Model, j.VaultKey, j.RemoteID, j.Prompt, j.Params, j.ResultHash, j.PosterHash, j.Error, j.DramaID, j.EpisodeID, j.StoryboardID, j.CharacterID, j.SceneID, j.PropID, j.CreatedAt, j.UpdatedAt, j.CompletedAt)
-	return err
+	return e.putDoc(colJobs, j.ID, j)
 }
 
 func (e *Engine) saveJob(j Job) error {
 	j.UpdatedAt = Now()
-	_, err := e.DB.Exec(`UPDATE jobs SET status=?, remote_id=?, prompt=?, params=?, result_hash=?, poster_hash=?, error=?, completed_at=?, updated_at=? WHERE id=?`,
-		j.Status, j.RemoteID, j.Prompt, j.Params, j.ResultHash, j.PosterHash, j.Error, j.CompletedAt, j.UpdatedAt, j.ID)
+	if err := e.putDoc(colJobs, j.ID, j); err != nil {
+		return err
+	}
 	e.emit(j)
-	return err
+	return nil
 }
 
 func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
@@ -165,21 +147,8 @@ func (e *Engine) RetryJob(id string) (Job, error) {
 }
 
 func (e *Engine) resumeJobs() {
-	rows, err := e.DB.Query(`SELECT id FROM jobs WHERE status IN ('running','polling')`)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	for _, id := range ids {
-		j, err := e.GetJob(id)
-		if err != nil {
+	for _, j := range loadCol[Job](e, colJobs) {
+		if j.Status != "running" && j.Status != "polling" {
 			continue
 		}
 		if j.RemoteID != "" {
@@ -218,25 +187,23 @@ func (e *Engine) pump(ctx context.Context) {
 	if slots <= 0 {
 		return
 	}
-	rows, err := e.DB.Query(`SELECT id FROM jobs WHERE status IN ('queued','polling') ORDER BY created_at ASC LIMIT ?`, slots)
-	if err != nil {
-		return
-	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
+	var pending []Job
+	for _, j := range loadCol[Job](e, colJobs) {
+		if j.Status == "queued" || j.Status == "polling" {
+			pending = append(pending, j)
 		}
 	}
-	rows.Close()
-	for _, id := range ids {
+	sort.Slice(pending, func(i, j int) bool { return pending[i].CreatedAt < pending[j].CreatedAt })
+	if len(pending) > slots {
+		pending = pending[:slots]
+	}
+	for _, j := range pending {
 		jobCtx, cancel := context.WithTimeout(ctx, 12*time.Minute)
-		if _, loaded := e.inflight.LoadOrStore(id, cancel); loaded {
+		if _, loaded := e.inflight.LoadOrStore(j.ID, cancel); loaded {
 			cancel()
 			continue
 		}
-		go e.runJob(jobCtx, id, cancel)
+		go e.runJob(jobCtx, j.ID, cancel)
 	}
 }
 
@@ -382,7 +349,12 @@ func (e *Engine) runMerge(j *Job) error {
 		return err
 	}
 	if j.EpisodeID != "" {
-		_, _ = e.DB.Exec(`UPDATE episodes SET video_hash = ?, poster_hash = ?, updated_at = ? WHERE id = ?`, j.ResultHash, j.PosterHash, Now(), j.EpisodeID)
+		if rec, err := getDoc[episodeRec](e, colEpisodes, j.EpisodeID); err == nil {
+			rec.VideoHash = j.ResultHash
+			rec.PosterHash = j.PosterHash
+			rec.UpdatedAt = Now()
+			_ = e.putDoc(colEpisodes, rec.ID, rec)
+		}
 		_ = e.patchPipeline(j.EpisodeID, "merge", "done", "")
 	}
 	return nil

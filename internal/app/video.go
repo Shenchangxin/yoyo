@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -28,6 +29,10 @@ func (a *App) openVideo() error {
 	eng.OnJob = a.onVideoJob
 	eng.OnHub = a.onCanvasHub
 	a.Video = eng
+	a.seedConnections()
+	if a.Observe != nil {
+		a.Observe.SetEndpoint(a.otelEndpoint())
+	}
 	return nil
 }
 
@@ -278,6 +283,49 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"ok": true}, eng.DeleteProvider(str("id"))
 	case "video.providers.test":
 		return eng.TestProvider(str("id")), nil
+	case "connections.list":
+		if eng.Conn == nil {
+			return []connection.Connection{}, nil
+		}
+		return eng.Conn.List(str("capability"))
+	case "connections.get":
+		if eng.Conn == nil {
+			return nil, fmt.Errorf("connection registry missing")
+		}
+		return eng.Conn.Get(str("id"))
+	case "connections.upsert":
+		if eng.Conn == nil {
+			return nil, fmt.Errorf("connection registry missing")
+		}
+		var c connection.Connection
+		b, _ := json.Marshal(params["connection"])
+		if len(b) == 0 || string(b) == "null" {
+			b, _ = json.Marshal(params)
+		}
+		_ = json.Unmarshal(b, &c)
+		return eng.Conn.Upsert(c, str("api_key"))
+	case "connections.delete":
+		if eng.Conn == nil {
+			return map[string]any{"ok": true}, nil
+		}
+		return map[string]any{"ok": true}, eng.Conn.Delete(str("id"))
+	case "connections.test":
+		if eng.Conn == nil {
+			return map[string]any{"ok": false, "error": "registry missing"}, nil
+		}
+		return eng.Conn.Test(str("id")), nil
+	case "connections.defaults":
+		if eng.Conn == nil {
+			return connection.Defaults{}, nil
+		}
+		return eng.Conn.Defaults(), nil
+	case "connections.setDefault":
+		if eng.Conn == nil {
+			return nil, fmt.Errorf("connection registry missing")
+		}
+		return map[string]any{"ok": true}, eng.Conn.SetDefault(str("capability"), str("id"))
+	case "connections.templates":
+		return connection.Templates(), nil
 	case "video.styles":
 		return eng.ListStyles()
 	case "video.styles.all":

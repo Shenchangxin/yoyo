@@ -1,0 +1,457 @@
+/* Hosted 影策: lock every product surface to Yoyo tokens.
+   Vendor `.app-user-workspace` resets --user-* to light hex, then
+   `.dark .app-user-workspace` paints a parallel Yingce palette. This
+   file loads last so the island always follows html.dark / html.light. */
+
+.yingce-island .app-user-workspace,
+.yingce-island .app-user-overlays,
+.yingce-popup-root,
+.yingce-popup-root.app-user-overlays,
+.yingce-popup-root.app-product-overlays,
+.yingce-popup-root .workspace-quiet-popup {
+  --user-page-bg: var(--background);
+  --user-bg: var(--background);
+  --library-icon-surface: var(--lift);
+  --library-cover-surface: var(--lift);
+  --user-surface: var(--card);
+  --user-surface-raised: var(--popover);
+  --user-surface-muted: var(--lift);
+  --user-surface-hover: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+  --user-control-pressed: color-mix(in srgb, var(--foreground) 12%, var(--card));
+  --user-border: var(--border);
+  --user-border-strong: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --user-ink: var(--foreground);
+  --user-ink-muted: var(--muted);
+  --user-ink-soft: color-mix(in srgb, var(--muted) 78%, transparent);
+  --user-accent: var(--accent);
+  --user-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --user-shadow-card: none;
+  --user-shadow-hover: none;
+  --button-primary-bg: var(--foreground);
+  --button-primary-fg: var(--background);
+  --button-primary-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
+  --button-primary-active-bg: var(--foreground);
+  --creation-text: var(--foreground);
+  --creation-muted: var(--muted);
+  --creation-faint: color-mix(in srgb, var(--muted) 80%, transparent);
+  --creation-surface: var(--card);
+  --creation-surface-hover: var(--lift);
+  --creation-border: var(--border);
+  --creation-accent: var(--accent);
+  --color-surface: var(--card);
+  --color-border: var(--border);
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --surface: var(--card);
+  --surface-hover: var(--lift);
+}
+
+.yingce-island .app-user-workspace:not(.app-spatial-workspace),
+.yingce-island .app-user-workspace:not(.app-spatial-workspace) .app-workspace-stage,
+.yingce-island .app-user-workspace:not(.app-spatial-workspace) .app-user-content,
+.yingce-island .app-user-workspace:not(.app-spatial-workspace) .app-workspace-scroll,
+.yingce-island .app-user-workspace:not(.app-spatial-workspace) .app-workspace-grid,
+.yingce-island .library-page,
+.yingce-island .studio-collection-page,
+.yingce-island .creation-home,
+.yingce-island .assets-library-page,
+.yingce-island .settings-page,
+.yingce-island .task-library-frame,
+.yingce-island .settings-library-frame,
+.yingce-island .full-screen-loader,
+.yingce-island .workspace-route-loader,
+.yingce-island [data-full-screen-loader] {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .full-screen-loader {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px) !important;
+  background-size: 32px 32px !important;
+}
+
+.yingce-island .full-screen-loader-copy,
+.yingce-island .full-screen-loader-copy strong,
+.yingce-island .full-screen-loader-scene {
+  color: var(--foreground) !important;
+}
+
+.yingce-island .full-screen-loader-copy > span:not(.loading-signal) {
+  color: var(--muted) !important;
+}
+
+.yingce-island .full-screen-loader-frame,
+.yingce-island .full-screen-loader-script,
+.yingce-island .full-screen-loader-timeline,
+.yingce-island .full-screen-loader-logo {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .app-page-header,
+.yingce-island .app-page-header-title,
+.yingce-island .library-page h1,
+.yingce-island .studio-collection-page h1,
+.yingce-island .creation-home-heading h1,
+.yingce-island .asset-archive-title {
+  color: var(--foreground) !important;
+}
+
+.yingce-island .app-page-header p,
+.yingce-island .creation-home-heading p,
+.yingce-island .library-page .app-page-header p {
+  color: var(--muted) !important;
+}
+
+/* Create: featured / suggest copy was hardcoded ink-on-paper. */
+.yingce-island .creation-featured-copy,
+.yingce-island .creation-featured-copy strong,
+.yingce-island .suggest-card,
+.yingce-island .creation-hero-prompt {
+  color: var(--foreground) !important;
+}
+
+.yingce-island .creation-featured-copy > span,
+.yingce-island .creation-featured-copy em,
+.yingce-island .suggest-copy,
+.yingce-island .creation-hero-prompt-text,
+.yingce-island .creation-empty-suggest p {
+  color: var(--muted) !important;
+}
+
+.yingce-island .creation-featured-card,
+.yingce-island .creation-suggest-card,
+.yingce-island .suggest-card,
+.yingce-island .creation-hero-prompt {
+  background: var(--card) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island .creation-mode-tabs,
+.yingce-island .creation-launchpad > .creation-mode-capsule {
+  background: var(--lift) !important;
+  border-color: var(--border) !important;
+}
+
+.yingce-island .creation-chat-composer,
+.yingce-island .creation-chat-composer textarea,
+.yingce-island .creation-chat-mention-editor,
+.yingce-island .creation-chat-writing-surface {
+  color: var(--foreground) !important;
+}
+
+.yingce-island .drama-agent-select,
+.yingce-island .drama-agent-select :where(.ant-select-selector, .yc-select-selector),
+.yingce-island .drama-agent-select :where(.ant-select-selection-item, .ant-select-selection-placeholder, .yc-select-selection-item, .yc-select-selection-placeholder) {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .drama-agent-select :where(.ant-select-selection-placeholder, .yc-select-selection-placeholder) {
+  color: var(--muted) !important;
+}
+
+.yingce-island .creation-thread-toolbar,
+.yingce-island .creation-rail-trigger,
+.yingce-island .creation-message-content,
+.yingce-island .creation-user-message,
+.yingce-island .creation-assistant-message {
+  color: var(--foreground);
+}
+
+.yingce-island .library-icon-tile,
+.yingce-island .suggest-icon {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .suggest-card-hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent) !important;
+}
+
+.yingce-island .creation-chat-composer textarea::placeholder,
+.yingce-island .creation-chat-mention-editor::placeholder,
+.yingce-island textarea::placeholder,
+.yingce-island input::placeholder,
+.yingce-popup-root textarea::placeholder,
+.yingce-popup-root input::placeholder {
+  color: var(--muted) !important;
+}
+
+/* Drama agent reuses creation chrome. */
+.yingce-island .drama-agent-page,
+.yingce-island .drama-agent-page .creation-home,
+.yingce-island .creation-agent-copy h2,
+.yingce-island .creation-agent-copy p {
+  color: var(--foreground);
+}
+
+.yingce-island .creation-agent-copy p {
+  color: var(--muted) !important;
+}
+
+/* Library / assets / skills / plugins / tasks */
+.yingce-island .collection-filter-label,
+.yingce-island .asset-collection-date,
+.yingce-island .asset-collection-source,
+.yingce-island .canvas-collection-updated,
+.yingce-island .canvas-collection-meta,
+.yingce-island .skill-card-description p,
+.yingce-island .project-library-subtitle,
+.yingce-island .library-card-description,
+.yingce-island .library-card-meta,
+.yingce-island .task-record-row,
+.yingce-island .plugin-enable-copy {
+  color: var(--muted);
+}
+
+.yingce-island .canvas-collection-title,
+.yingce-island .asset-collection-body h2,
+.yingce-island .skill-library-card h3,
+.yingce-island .plugin-card,
+.yingce-island .product-collection-card {
+  color: var(--foreground);
+}
+
+.yingce-island .assets-filter-item,
+.yingce-island .collection-folder-list > button,
+.yingce-island .collection-filter-options button {
+  color: var(--muted);
+  background: transparent;
+}
+
+.yingce-island .assets-filter-item.is-active,
+.yingce-island .assets-filter-item[aria-pressed="true"],
+.yingce-island .collection-folder-list > button.is-active,
+.yingce-island .collection-filter-options button[aria-pressed="true"] {
+  color: var(--foreground);
+  background: var(--lift);
+}
+
+.yingce-island .product-media-placeholder,
+.yingce-island .canvas-collection-preview,
+.yingce-island .canvas-project-empty {
+  background: var(--lift) !important;
+  color: var(--muted) !important;
+}
+
+/* Ant / yc controls that vendor CSS still paints as paper. */
+.yingce-island :where(.ant-btn-default, .yc-btn-default):not(.ant-btn-dangerous):not(.yc-btn-dangerous):not(.creation-submit),
+.yingce-popup-root :where(.ant-btn-default, .yc-btn-default):not(.ant-btn-dangerous):not(.yc-btn-dangerous) {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island :where(.ant-btn-primary, .yc-btn-primary):not(.creation-submit),
+.yingce-popup-root :where(.ant-btn-primary, .yc-btn-primary) {
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island :where(.ant-btn-text, .ant-btn-link, .yc-btn-text, .yc-btn-link),
+.yingce-popup-root :where(.ant-btn-text, .ant-btn-link, .yc-btn-text, .yc-btn-link) {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-btn-dangerous, .yc-btn-dangerous),
+.yingce-popup-root :where(.ant-btn-dangerous, .yc-btn-dangerous) {
+  color: var(--danger) !important;
+}
+
+.yingce-island :where(
+    .ant-input,
+    .ant-input-affix-wrapper,
+    .ant-select-selector,
+    .ant-picker,
+    .ant-input-number,
+    .ant-input-outlined,
+    .yc-input,
+    .yc-input-affix-wrapper,
+    .yc-select-selector,
+    .yc-picker,
+    .yc-input-number
+  ),
+.yingce-popup-root :where(
+    .ant-input,
+    .ant-input-affix-wrapper,
+    .ant-select-selector,
+    .ant-picker,
+    .ant-input-number,
+    .yc-input,
+    .yc-input-affix-wrapper,
+    .yc-select-selector
+  ) {
+  background: var(--input-bar) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island :where(.ant-input::placeholder, .ant-select-selection-placeholder, .yc-input::placeholder, .yc-select-selection-placeholder),
+.yingce-popup-root :where(.ant-input::placeholder, .ant-select-selection-placeholder, .yc-input::placeholder, .yc-select-selection-placeholder) {
+  color: var(--muted) !important;
+}
+
+.yingce-island :where(.ant-select-arrow, .ant-select-clear, .yc-select-arrow, .yc-select-clear),
+.yingce-popup-root :where(.ant-select-arrow, .ant-select-clear, .yc-select-arrow) {
+  color: var(--muted) !important;
+}
+
+.yingce-island :where(.ant-empty-description, .yc-empty-description, .ant-pagination, .yc-pagination, .ant-statistic-content, .workspace-state),
+.yingce-island .workspace-state,
+.yingce-island .workspace-empty,
+.yingce-island .workspace-loading {
+  color: var(--muted) !important;
+}
+
+.yingce-island :where(.ant-pagination-item, .yc-pagination-item) a,
+.yingce-popup-root :where(.ant-pagination-item, .yc-pagination-item) a {
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-pagination-item-active, .yc-pagination-item-active),
+.yingce-popup-root :where(.ant-pagination-item-active, .yc-pagination-item-active) {
+  background: var(--lift) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island :where(.ant-tag, .yc-tag),
+.yingce-popup-root :where(.ant-tag, .yc-tag) {
+  background: var(--lift) !important;
+  border-color: transparent !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-tabs-tab, .yc-tabs-tab) {
+  color: var(--muted) !important;
+}
+
+.yingce-island :where(.ant-tabs-tab-active, .yc-tabs-tab-active) :where(.ant-tabs-tab-btn, .yc-tabs-tab-btn) {
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-segmented, .yc-segmented) {
+  background: var(--lift) !important;
+}
+
+.yingce-island :where(.ant-segmented-item-selected, .yc-segmented-item-selected) {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-table, .ant-table-thead > tr > th, .ant-table-tbody > tr > td, .yc-table, .yc-table-thead > tr > th, .yc-table-tbody > tr > td) {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-spin-text, .yc-spin-text, .ant-skeleton, .yc-skeleton) {
+  color: var(--muted) !important;
+}
+
+.yingce-island :where(.ant-modal-content, .ant-drawer-content, .yc-modal-content, .yc-drawer-content),
+.yingce-popup-root :where(.ant-modal-content, .ant-drawer-content, .yc-modal-content, .yc-drawer-content) {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-modal-title, .ant-drawer-title, .yc-modal-title, .yc-drawer-title),
+.yingce-popup-root :where(.ant-modal-title, .ant-drawer-title, .yc-modal-title, .yc-drawer-title) {
+  color: var(--foreground) !important;
+}
+
+.yingce-island :where(.ant-modal-close, .ant-drawer-close, .yc-modal-close, .yc-drawer-close),
+.yingce-popup-root :where(.ant-modal-close, .ant-drawer-close, .yc-modal-close, .yc-drawer-close) {
+  color: var(--muted) !important;
+}
+
+.yingce-popup-root :where(
+    .ant-dropdown-menu,
+    .ant-select-dropdown,
+    .ant-popover-inner,
+    .ant-tooltip-inner,
+    .yc-dropdown-menu,
+    .yc-select-dropdown,
+    .yc-popover-inner,
+    .yc-tooltip-inner
+  ) {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+.yingce-popup-root :where(.ant-select-item, .ant-dropdown-menu-item, .yc-select-item, .yc-dropdown-menu-item) {
+  color: var(--foreground) !important;
+}
+
+.yingce-popup-root :where(
+    .ant-select-item-option-active,
+    .ant-dropdown-menu-item:hover,
+    .yc-select-item-option-active,
+    .yc-dropdown-menu-item:hover
+  ) {
+  background: var(--lift) !important;
+}
+
+.yingce-popup-root :where(.ant-message-notice-content, .yc-message-notice-content, .ant-notification-notice, .yc-notification-notice) {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* Creation parameter popovers (prefix ant or yc). */
+.yingce-popup-root .creation-control-popover :where(.ant-popover-inner, .yc-popover-inner, .creation-control-popover-surface),
+.yingce-popup-root .creation-control-popover-surface {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  border: 0 !important;
+}
+
+.yingce-popup-root .creation-parameter-section h3,
+.yingce-popup-root .creation-duration-heading > span,
+.yingce-popup-root .creation-choice-grid button,
+.yingce-popup-root .creation-duration-choices button {
+  color: var(--muted) !important;
+}
+
+.yingce-popup-root .creation-parameter-section > header > span,
+.yingce-popup-root .creation-duration-heading strong,
+.yingce-popup-root .creation-choice-grid button.is-selected,
+.yingce-popup-root .creation-duration-choices button.is-selected {
+  color: var(--foreground) !important;
+}
+
+.yingce-popup-root .creation-choice-grid button.is-selected,
+.yingce-popup-root .creation-duration-choices button.is-selected {
+  background: var(--lift) !important;
+}
+
+/* Canvas editor HUD already uses canvas-theme tokens; keep stage dark. */
+html.dark .yingce-island .app-spatial-workspace .app-workspace-stage {
+  background: var(--media-surface, #0c0c0b);
+  color: var(--foreground);
+}
+
+html.light .yingce-island .app-spatial-workspace .app-workspace-stage {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Vendor 2026-09 chrome leftover ink (sidebar hidden in host, keep for safety). */
+html.dark .yingce-island .app-workspace-nav-link.is-active,
+html.dark .yingce-island .app-workspace-topbar,
+html.dark .yingce-island .app-workspace-topbar-breadcrumb,
+html.dark .yingce-island .app-workspace-nav-group-toggle {
+  color: var(--foreground);
+}
+
+html.dark .yingce-island .app-workspace-nav-group-toggle,
+html.dark .yingce-island .app-workspace-topbar-breadcrumb {
+  color: var(--muted);
+}

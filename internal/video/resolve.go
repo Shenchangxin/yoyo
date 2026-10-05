@@ -23,62 +23,35 @@ func (e *Engine) resolveOne(kind, dramaID, raw string) string {
 	}
 	switch kind {
 	case "character":
-		var id string
-		if e.DB.QueryRow(`SELECT id FROM characters WHERE id = ? AND drama_id = ? AND deleted_at = ''`, raw, dramaID).Scan(&id) == nil {
-			return id
+		if rec, err := getDoc[characterRec](e, colCharacters, raw); err == nil && rec.DeletedAt == "" && rec.DramaID == dramaID {
+			return rec.ID
 		}
 		key := NormalizeName(raw)
-		rows, err := e.DB.Query(`SELECT id, name FROM characters WHERE drama_id = ? AND deleted_at = ''`, dramaID)
-		if err != nil {
-			return ""
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id, name string
-			if rows.Scan(&id, &name) != nil {
-				continue
-			}
-			if NormalizeName(name) == key {
-				return id
+		for _, rec := range loadCol[characterRec](e, colCharacters) {
+			if rec.DramaID == dramaID && rec.DeletedAt == "" && NormalizeName(rec.Name) == key {
+				return rec.ID
 			}
 		}
 	case "prop":
-		var id string
-		if e.DB.QueryRow(`SELECT id FROM props WHERE id = ? AND drama_id = ? AND deleted_at = ''`, raw, dramaID).Scan(&id) == nil {
-			return id
+		if rec, err := getDoc[propRec](e, colProps, raw); err == nil && rec.DeletedAt == "" && rec.DramaID == dramaID {
+			return rec.ID
 		}
 		key := NormalizeName(raw)
-		rows, err := e.DB.Query(`SELECT id, name FROM props WHERE drama_id = ? AND deleted_at = ''`, dramaID)
-		if err != nil {
-			return ""
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id, name string
-			if rows.Scan(&id, &name) != nil {
-				continue
-			}
-			if NormalizeName(name) == key {
-				return id
+		for _, rec := range loadCol[propRec](e, colProps) {
+			if rec.DramaID == dramaID && rec.DeletedAt == "" && NormalizeName(rec.Name) == key {
+				return rec.ID
 			}
 		}
 	case "scene":
-		var id string
-		if e.DB.QueryRow(`SELECT id FROM scenes WHERE id = ? AND drama_id = ? AND deleted_at = ''`, raw, dramaID).Scan(&id) == nil {
-			return id
+		if rec, err := getDoc[sceneRec](e, colScenes, raw); err == nil && rec.DeletedAt == "" && rec.DramaID == dramaID {
+			return rec.ID
 		}
-		rows, err := e.DB.Query(`SELECT id, location, time_of_day FROM scenes WHERE drama_id = ? AND deleted_at = ''`, dramaID)
-		if err != nil {
-			return ""
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id, loc, tod string
-			if rows.Scan(&id, &loc, &tod) != nil {
+		for _, rec := range loadCol[sceneRec](e, colScenes) {
+			if rec.DramaID != dramaID || rec.DeletedAt != "" {
 				continue
 			}
-			if strings.EqualFold(strings.TrimSpace(loc), raw) || NormalizeSceneKey(loc, tod) == NormalizeName(raw) {
-				return id
+			if strings.EqualFold(strings.TrimSpace(rec.Location), raw) || NormalizeSceneKey(rec.Location, rec.TimeOfDay) == NormalizeName(raw) {
+				return rec.ID
 			}
 		}
 	}
@@ -86,9 +59,14 @@ func (e *Engine) resolveOne(kind, dramaID, raw string) string {
 }
 
 func (e *Engine) DeleteShot(id string) error {
+	rec, err := getDoc[shotRec](e, colShots, id)
+	if err != nil {
+		return err
+	}
 	now := Now()
-	_, err := e.DB.Exec(`UPDATE storyboards SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
-	return err
+	rec.DeletedAt = now
+	rec.UpdatedAt = now
+	return e.putDoc(colShots, id, rec)
 }
 
 func (e *Engine) AttachImage(kind, id string, raw []byte) error {
@@ -99,19 +77,34 @@ func (e *Engine) AttachImage(kind, id string, raw []byte) error {
 	if err := e.UpdateAsset(kind, id, map[string]any{"image_hash": hash}); err != nil {
 		return err
 	}
-	var episodeID string
-	switch kind {
-	case "character":
-		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_characters WHERE character_id = ? LIMIT 1`, id).Scan(&episodeID)
-	case "scene":
-		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_scenes WHERE scene_id = ? LIMIT 1`, id).Scan(&episodeID)
-	case "prop":
-		_ = e.DB.QueryRow(`SELECT episode_id FROM episode_props WHERE prop_id = ? LIMIT 1`, id).Scan(&episodeID)
-	}
+	episodeID := e.firstLinkedEpisode(kind, id)
 	if episodeID != "" && e.missingStills(episodeID) == 0 {
 		_ = e.patchPipeline(episodeID, "assets", "done", "")
 	}
 	return nil
+}
+
+func (e *Engine) firstLinkedEpisode(kind, id string) string {
+	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
+		if ep.DeletedAt != "" {
+			continue
+		}
+		switch kind {
+		case "character":
+			if containsID(ep.CharacterIDs, id) {
+				return ep.ID
+			}
+		case "scene":
+			if containsID(ep.SceneIDs, id) {
+				return ep.ID
+			}
+		case "prop":
+			if containsID(ep.PropIDs, id) {
+				return ep.ID
+			}
+		}
+	}
+	return ""
 }
 
 func (e *Engine) missingStills(episodeID string) int {
@@ -232,18 +225,7 @@ func (e *Engine) GenerateMissingShots(episodeID string) ([]Job, error) {
 }
 
 func (e *Engine) SettingsMap() map[string]string {
-	rows, err := e.DB.Query(`SELECT key, value FROM settings`)
-	if err != nil {
-		return map[string]string{}
-	}
-	defer rows.Close()
-	out := map[string]string{}
-	for rows.Next() {
-		var k, v string
-		if rows.Scan(&k, &v) == nil {
-			out[k] = v
-		}
-	}
+	out := e.kvSettings()
 	if _, ok := out["content_language"]; !ok {
 		out["content_language"] = "zh"
 	}

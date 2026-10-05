@@ -28,3 +28,16 @@ func TestConfigUnmarshalKeepsOtherFields(t *testing.T) {
 		t.Fatalf("got %+v", c)
 	}
 }
+
+func TestConfigUnmarshalMergesOmitted(t *testing.T) {
+	c := Config{SearchURL: "https://keep.example/{q}", CrashResume: true, Model: "old"}
+	if err := c.UnmarshalJSON([]byte(`{"model":"new","theme":"dark"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "new" || c.Theme != "dark" {
+		t.Fatalf("patched %+v", c)
+	}
+	if c.SearchURL != "https://keep.example/{q}" || !c.CrashResume {
+		t.Fatalf("omitted wiped %+v", c)
+	}
+}
