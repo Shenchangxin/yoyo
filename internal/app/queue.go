@@ -18,6 +18,7 @@ type QueuedTurn struct {
 	ID          string       `json:"id,omitempty"`
 	Text        string       `json:"text"`
 	Plan        bool         `json:"plan"`
+	Resume      bool         `json:"resume,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
@@ -126,7 +127,7 @@ func toSessionQueued(turn QueuedTurn) session.QueuedTurn {
 	for _, x := range turn.Attachments {
 		atts = append(atts, session.Attachment{Path: x.Path, Name: x.Name, MIME: x.MIME, DataB64: x.DataB64})
 	}
-	return session.QueuedTurn{ID: turn.ID, Text: turn.Text, Plan: turn.Plan, Attachments: atts}
+	return session.QueuedTurn{ID: turn.ID, Text: turn.Text, Plan: turn.Plan, Resume: turn.Resume, Attachments: atts}
 }
 
 func fromSessionQueued(t session.QueuedTurn) QueuedTurn {
@@ -134,7 +135,7 @@ func fromSessionQueued(t session.QueuedTurn) QueuedTurn {
 	for _, x := range t.Attachments {
 		atts = append(atts, Attachment{Path: x.Path, Name: x.Name, MIME: x.MIME, DataB64: x.DataB64})
 	}
-	return QueuedTurn{ID: t.ID, Text: t.Text, Plan: t.Plan, Attachments: atts}
+	return QueuedTurn{ID: t.ID, Text: t.Text, Plan: t.Plan, Resume: t.Resume, Attachments: atts}
 }
 
 func fromSessionQueuedList(in []session.QueuedTurn) []QueuedTurn {
@@ -148,6 +149,10 @@ func fromSessionQueuedList(in []session.QueuedTurn) []QueuedTurn {
 func (a *App) kickQueue(sessionID string) {
 	next, ok := a.popQueue(sessionID)
 	if !ok {
+		return
+	}
+	if next.Resume {
+		_ = a.launchSend(sessionID, "", next.Plan, nil, true)
 		return
 	}
 	_ = a.StartSendOpts(sessionID, next.Text, next.Plan, next.Attachments)

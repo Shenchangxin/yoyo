@@ -66,8 +66,8 @@ export function fenced(lang: string, text: string, cap = 12000): string {
   return "```" + (lang || "text") + "\n" + body + "\n```";
 }
 
-export function artifactPreviewOpen(view: ArtifactView): boolean {
-  return view.kind === "html" || view.kind === "diff";
+export function artifactPreviewOpen(_view: ArtifactView): boolean {
+  return false;
 }
 
 /** A preview card is only for a changed fragment (or an HTML document). Full-file code dumps are not a change. */

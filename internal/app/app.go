@@ -403,22 +403,7 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 }
 
 func (a *App) Interrupt(sessionID string) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		for _, id := range a.RunningIDs() {
-			_ = a.Interrupt(id)
-		}
-		return nil
-	}
-	if a.Threads != nil {
-		a.Threads.Interrupt(sessionID)
-	}
-	a.mu.Lock()
-	slot := a.runs[sessionID]
-	a.mu.Unlock()
-	if slot != nil && slot.cancel != nil {
-		slot.cancel()
-	}
+	a.StopTurn(sessionID)
 	return nil
 }
 
@@ -717,9 +702,9 @@ func (a *App) restoreRuns() {
 			a.steers[id] = append(a.steers[id], st.Steers...)
 			a.queueMu.Unlock()
 		}
-		if strings.TrimSpace(st.ResumeText) != "" {
-			a.Threads.PrependQueue(id, session.QueuedTurn{ID: "q-resume", Text: st.ResumeText, Plan: st.ResumePlan})
-			a.Threads.SetResume(id, "", false)
+		if st.ResumeInFlight || strings.TrimSpace(st.ResumeText) != "" {
+			a.Threads.PrependQueue(id, session.QueuedTurn{ID: "q-resume", Plan: st.ResumePlan, Resume: true})
+			a.Threads.MarkTurnInFlight(id, false, false)
 		}
 	}
 }

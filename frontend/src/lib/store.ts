@@ -31,6 +31,7 @@ type UIState = {
   drafts: Record<string, string>;
   sidebarCollapsed: boolean;
   sidebarHover: boolean;
+  outlineCollapsed: boolean;
   notices: Notice[];
   noticesOpen: boolean;
   renameTick: number;
@@ -71,6 +72,7 @@ type UIState = {
   patchDrafts: (patch: Record<string, string>) => void;
   setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   setSidebarHover: (v: boolean) => void;
+  setOutlineCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   pushNotice: (n: Notice) => void;
   setNoticesOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   clearNotices: () => void;
@@ -93,6 +95,16 @@ function readCollapsed(): boolean {
     return localStorage.getItem("yoyo-sidebar-collapsed") === "1";
   } catch {
     return false;
+  }
+}
+
+function readOutlineCollapsed(): boolean {
+  try {
+    const v = localStorage.getItem("yoyo-outline-collapsed");
+    if (v === "0") return false;
+    return true;
+  } catch {
+    return true;
   }
 }
 
@@ -183,6 +195,7 @@ export const useUI = create<UIState>((set, get) => ({
   drafts: {},
   sidebarCollapsed: readCollapsed(),
   sidebarHover: false,
+  outlineCollapsed: readOutlineCollapsed(),
   notices: [],
   noticesOpen: false,
   renameTick: 0,
@@ -326,6 +339,12 @@ export const useUI = create<UIState>((set, get) => ({
       return { sidebarCollapsed, sidebarHover: sidebarCollapsed ? s.sidebarHover : false };
     }),
   setSidebarHover: (sidebarHover) => set({ sidebarHover }),
+  setOutlineCollapsed: (v) =>
+    set((s) => {
+      const outlineCollapsed = typeof v === "function" ? v(s.outlineCollapsed) : v;
+      writeFlag("yoyo-outline-collapsed", outlineCollapsed);
+      return { outlineCollapsed };
+    }),
   pushNotice: (n) => set((s) => ({ notices: [n, ...s.notices].slice(0, 30) })),
   setNoticesOpen: (v) => set((s) => ({ noticesOpen: typeof v === "function" ? v(s.noticesOpen) : v })),
   clearNotices: () => set({ notices: [] }),

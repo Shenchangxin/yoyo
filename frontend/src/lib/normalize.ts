@@ -13,6 +13,7 @@ export function asArray(value: any): any[] {
   if (Array.isArray(value.result)) return value.result;
   if (Array.isArray(value.sessions)) return value.sessions;
   if (Array.isArray(value.events)) return value.events;
+  if (Array.isArray(value.Events)) return value.Events;
   if (Array.isArray(value.hunks)) return value.hunks;
   return [];
 }

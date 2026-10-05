@@ -1,4 +1,4 @@
-import { asBool, pick, str } from "./normalize";
+import { asBool, num, pick, str } from "./normalize";
 import type { Item, ItemType } from "./protocol";
 
 function payload(raw: any): Record<string, any> {
@@ -82,18 +82,34 @@ function slimToolCallPayload(type: string, name: string, p: Record<string, any>)
   }
 }
 
+/** Renderer hot window. Seed, send, and live merge stay inside this. */
+export const HOT_TRANSCRIPT_TURNS = 8;
+/** Scroll-up may grow the window this far; send snaps back to HOT. */
+export const BROWSE_TRANSCRIPT_TURNS = 16;
+export const UI_TEXT_CAP = 24_000;
+export const UI_RESULT_CAP = 1_200;
+
+function capText(s: string, n = UI_TEXT_CAP): string {
+  if (!s || s.length <= n) return s;
+  return `${s.slice(0, n)}\n…`;
+}
+
 export function itemFromEvent(raw: any, idx = 0): Item {
   const src = unwrapEvent(raw);
   const p = payload(src);
   const type = str(pick(src, "type", "Type"), "system") as ItemType;
   const sessionId = str(pick(src, "session_id", "SessionID", "sessionId"));
   const ts = coerceTS(pick(src, "ts", "TS", "Ts"));
-  const text = str(pick(p, "text", "Text", "content", "Content", "error", "Error"));
+  const rawText = str(pick(p, "text", "Text", "content", "Content", "error", "Error"));
   const name = str(pick(p, "name", "Name", "action", "Action"));
   const delta = asBool(pick(p, "delta", "Delta"));
   const id = str(pick(p, "id", "Id", "ID"));
   const round = str(pick(p, "round", "Round", "round_id", "roundId", "RoundID"));
-  const slim = slimToolCallPayload(type, name, p);
+  let slim = slimToolCallPayload(type, name, p);
+  const text = delta ? rawText : capText(rawText, type === "tool_result" ? UI_RESULT_CAP : UI_TEXT_CAP);
+  if (!delta && type === "tool_result" && typeof slim.content === "string" && slim.content.length > UI_RESULT_CAP) {
+    slim = { ...slim, content: capText(slim.content, UI_RESULT_CAP), bytes: slim.content.length };
+  }
   return {
     key: itemKey({ sessionId, type, id, round, ts, name, text, delta, idx }),
     type,
@@ -104,15 +120,21 @@ export function itemFromEvent(raw: any, idx = 0): Item {
     name,
     delta,
     payload: { ...slim, ...(id ? { id } : {}), ...(round ? { round } : {}), delta },
+    seq: num(pick(src, "seq", "Seq")) || undefined,
   };
 }
 
 export function eventFingerprint(raw: any): string {
+  const src = unwrapEvent(raw);
+  const seq = num(pick(src, "seq", "Seq"));
   const it = itemFromEvent(raw);
   const id = str(it.payload?.id) || str(it.payload?.round);
-  if (it.delta) return `${it.sessionId}|${it.ts}|${it.type}|d|${it.text}|${id}`;
-  if (id) return `${it.sessionId}|${it.type}|${id}|${it.text}|${it.name}`;
-  return `${it.sessionId}|${it.ts}|${it.type}|${it.text}|${it.name}|${it.key}`;
+  if (it.delta) {
+    if (seq) return `${it.sessionId}|${it.type}|d|${id}|${seq}`;
+    return `${it.sessionId}|${it.type}|d|${id}|${it.text.length}|${it.text.slice(-16)}`;
+  }
+  if (id) return `${it.sessionId}|${it.type}|${id}|${it.name}|${it.key}`;
+  return `${it.sessionId}|${it.ts}|${it.type}|${it.name}|${it.key}`;
 }
 
 /** A new model round starts after these; do not merge assistant text across them. */
@@ -262,6 +284,10 @@ function foldToolResult(list: Item[], ev: Item): Item[] {
  * never the previous user turn (Codex/Claude API-round grouping).
  */
 export function mergeItem(list: Item[], ev: Item): Item[] {
+  return foldTurnErrors(mergeItemCore(list, ev));
+}
+
+function mergeItemCore(list: Item[], ev: Item): Item[] {
   if (!ev) return list;
   if (ev.type === "turn_end" || ev.type === "system" || ev.type === "eval" || ev.type === "evolve" || ev.type === "file_change" || ev.type === "ask_user") {
     return list;
@@ -293,6 +319,44 @@ export function mergeItem(list: Item[], ev: Item): Item[] {
   return [...list, ev];
 }
 
+function isTurnProgress(it: Item): boolean {
+  if (it.type === "user" && it.source !== "steer") return true;
+  return it.type === "assistant" || it.type === "reasoning" || it.type === "tool_call" || it.type === "tool_result";
+}
+
+/**
+ * Error cards are the terminal chip of a turn, not a letter. Keep at most
+ * the last one after the latest progress; a retry or a new user message
+ * supersedes Stopped / max-turns / provider failures.
+ */
+export function foldTurnErrors(list: Item[]): Item[] {
+  if (!list.length) return list;
+  let lastProgress = -1;
+  let hasError = false;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].type === "error") hasError = true;
+    else if (isTurnProgress(list[i])) lastProgress = i;
+  }
+  if (!hasError) return list;
+  let keep = -1;
+  for (let i = lastProgress + 1; i < list.length; i++) {
+    if (list[i].type === "error") keep = i;
+  }
+  const next = list.filter((it, i) => it.type !== "error" || i === keep);
+  return next.length === list.length ? list : next;
+}
+
+/** Operator resumed the turn: the chip is gone before the next token. */
+export function dropTurnErrors(list: Item[]): Item[] {
+  const next = list.filter((it) => it.type !== "error");
+  return next.length === list.length ? list : next;
+}
+
+/** Drop the error chips at the tail so a resume can keep the same turn. */
+export function dropTrailingErrors(items: Item[]): Item[] {
+  return dropTurnErrors(items);
+}
+
 /** Keep optimistic composer bubbles that the JSONL seed has not caught up to. */
 export function mergePendingUsers(seed: Item[], live: Item[]): Item[] {
   const pending = live.filter((x) => x.source === "ui" && x.type === "user");
@@ -319,17 +383,18 @@ export function lastUserTurns(items: Item[], users = 3): Item[] {
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "user" && items[i].source !== "steer") {
       n++;
-      if (n >= users) return items.slice(i);
+      if (n >= users) return i === 0 ? items : items.slice(i);
     }
   }
   return items;
 }
 
-/** Drop the error chips at the tail so a resume can keep the same turn. */
-export function dropTrailingErrors(items: Item[]): Item[] {
-  let i = items.length;
-  while (i > 0 && items[i - 1].type === "error") i--;
-  return i === items.length ? items : items.slice(0, i);
+export function userTurnCount(items: Item[]): number {
+  let n = 0;
+  for (const it of items) {
+    if (it.type === "user" && it.source !== "steer") n++;
+  }
+  return n;
 }
 
 export function replayEvents(raws: any[]): Item[] {
@@ -342,6 +407,28 @@ export function replayEvents(raws: any[]): Item[] {
 
 function isTraceEnvelopeType(t: unknown): boolean {
   return typeof t === "string" && t.length > 0 && !t.startsWith("yoyo:");
+}
+
+export type LiveNotice = {
+  seq: number;
+  sessionId: string;
+  event?: any;
+};
+
+/** Peel a notify/pull envelope without treating `type` as the event itself. */
+export function parseLiveNotice(raw: any): LiveNotice {
+  const e = unwrapEvent(raw);
+  if (e == null || typeof e !== "object") return { seq: 0, sessionId: "", event: e };
+  const seq = num(e.seq ?? e.Seq);
+  const nested = e.event ?? e.Event;
+  const sessionId = str(pick(e, "session_id", "SessionID", "sessionId") || pick(nested, "session_id", "SessionID", "sessionId"));
+  if (nested && typeof nested === "object" && (nested.type || nested.Type || nested.payload || nested.Payload)) {
+    return { seq, sessionId, event: nested };
+  }
+  if (e.payload != null || e.Payload != null) {
+    return { seq, sessionId, event: e };
+  }
+  return { seq, sessionId };
 }
 
 /**

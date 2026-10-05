@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -70,17 +71,24 @@ func (m *Manager) SetStatus(id, status string) {
 	if status != StatusRunning {
 		st.ResumeText = ""
 		st.ResumePlan = false
+		st.ResumeInFlight = false
 	}
 	m.runs[id] = st
 	m.persist(id)
 }
 
 func (m *Manager) SetResume(id, text string, plan bool) {
+	m.MarkTurnInFlight(id, strings.TrimSpace(text) != "" || plan, plan)
+}
+
+func (m *Manager) MarkTurnInFlight(id string, inFlight, plan bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st := m.state(id)
-	st.ResumeText = text
+	st.ResumeInFlight = inFlight
 	st.ResumePlan = plan
+	// User text lives on JSONL. Storing it here re-queued a duplicate after crash.
+	st.ResumeText = ""
 	m.runs[id] = st
 	m.persist(id)
 }

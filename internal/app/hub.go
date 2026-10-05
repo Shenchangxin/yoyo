@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,9 @@ import (
 // wait on a single overflow goroutine. Adjacent token deltas (same session,
 // type, and round) coalesce on a 50ms window so Wails and SSE subscribers
 // both see ~20fps instead of per-token wakeups.
+//
+// Every fanout is recorded in a seq ring so a slow renderer can pull what
+// it missed instead of depending on the in-flight channel.
 type Hub struct {
 	mu       sync.Mutex
 	subs     map[string]map[chan trace.Event]struct{}
@@ -26,9 +30,23 @@ type Hub struct {
 	cMu     sync.Mutex
 	pending *deltaBuf
 	timer   *time.Timer
+
+	logMu sync.Mutex
+	seq   int64
+	log   []liveItem
 }
 
-const coalesceWindow = 50 * time.Millisecond
+const (
+	coalesceWindow  = 50 * time.Millisecond
+	liveLogCap      = 4096
+	liveInlineBytes = 768
+	liveSinceCap    = 512
+)
+
+type liveItem struct {
+	seq int64
+	ev  trace.Event
+}
 
 type deltaBuf struct {
 	ev   trace.Event
@@ -36,8 +54,17 @@ type deltaBuf struct {
 	text strings.Builder
 }
 
+// LiveNotice is the Wails payload. Small events travel inline; larger ones
+// are a seq the renderer pulls via LiveSince.
+type LiveNotice struct {
+	Seq       int64        `json:"seq"`
+	SessionID string       `json:"session_id"`
+	Type      string       `json:"type"`
+	Event     *trace.Event `json:"event,omitempty"`
+}
+
 func NewHub() *Hub {
-	return &Hub{subs: map[string]map[chan trace.Event]struct{}{}}
+	return &Hub{subs: make(map[string]map[chan trace.Event]struct{})}
 }
 
 func (h *Hub) Subscribe(sessionID string) (<-chan trace.Event, func()) {
@@ -111,6 +138,7 @@ func (h *Hub) flushPendingLocked() {
 }
 
 func (h *Hub) fanout(ev trace.Event) {
+	ev.Seq = h.record(ev)
 	h.mu.Lock()
 	var chans []chan trace.Event
 	for _, id := range []string{ev.SessionID, "*"} {
@@ -122,6 +150,110 @@ func (h *Hub) fanout(ev trace.Event) {
 	h.mu.Unlock()
 	for _, ch := range chans {
 		deliver(ch, ev, overflow)
+	}
+}
+
+func (h *Hub) record(ev trace.Event) int64 {
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	h.seq++
+	item := liveItem{seq: h.seq, ev: cloneEvent(ev)}
+	item.ev.Seq = h.seq
+	if len(h.log) < liveLogCap {
+		h.log = append(h.log, item)
+	} else {
+		h.log[int(h.seq-1)%liveLogCap] = item
+	}
+	return h.seq
+}
+
+// Head is the latest live seq, or 0 if nothing has been published.
+func (h *Hub) Head() int64 {
+	if h == nil {
+		return 0
+	}
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	return h.seq
+}
+
+// Since returns recorded events with seq > after, optionally filtered by session.
+func (h *Hub) Since(after int64, sessionID string) []trace.Event {
+	if h == nil {
+		return nil
+	}
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	if len(h.log) == 0 {
+		return nil
+	}
+	out := make([]trace.Event, 0, 16)
+	for _, it := range h.log {
+		if it.seq <= after {
+			continue
+		}
+		if sessionID != "" && it.ev.SessionID != sessionID && it.ev.SessionID != "" {
+			continue
+		}
+		out = append(out, it.ev)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
+	if len(out) > liveSinceCap {
+		out = out[len(out)-liveSinceCap:]
+	}
+	return out
+}
+
+func NoticeOf(ev trace.Event) LiveNotice {
+	n := LiveNotice{Seq: ev.Seq, SessionID: ev.SessionID, Type: string(ev.Type)}
+	if liveDelta(ev) {
+		e := ev
+		n.Event = &e
+		return n
+	}
+	if !mayInlineNotice(ev) {
+		return n
+	}
+	b, err := json.Marshal(ev)
+	if err == nil && len(b) <= liveInlineBytes {
+		e := ev
+		n.Event = &e
+	}
+	return n
+}
+
+func liveDelta(ev trace.Event) bool {
+	if ev.Payload == nil {
+		return false
+	}
+	delta, _ := ev.Payload["delta"].(bool)
+	if !delta {
+		return false
+	}
+	switch ev.Type {
+	case trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolResult:
+		return true
+	default:
+		return false
+	}
+}
+
+// mayInlineNotice is the Wails fast path. Tool bodies and settled assistant
+// letters are pull-only so Event.Emit never materializes a 20KB JSON blob on
+// the WebView UI thread. Tiny token slices still ride along.
+func mayInlineNotice(ev trace.Event) bool {
+	switch ev.Type {
+	case trace.TypeToolCall, trace.TypeToolResult:
+		return false
+	case trace.TypeAssistant, trace.TypeReasoning:
+		if ev.Payload != nil {
+			if delta, _ := ev.Payload["delta"].(bool); delta {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
 	}
 }
 

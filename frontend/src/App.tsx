@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
 import { cn } from "./lib/utils";
@@ -15,6 +15,7 @@ import { ResizeHandle } from "./features/ResizeHandle";
 import { Titlebar } from "./features/Titlebar";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
+import { TurnOutline } from "./features/TurnOutline";
 import { HomeStage } from "./features/HomeStage";
 import { Composer } from "./features/Composer";
 import { Inspector } from "./features/Inspector";
@@ -23,14 +24,7 @@ import { ChatDock } from "./features/ChatDock";
 import { About } from "./features/About";
 import { ConfirmDialog } from "./features/ConfirmDialog";
 import { BootSkeleton } from "./features/BootSkeleton";
-import { HarborLab } from "./features/labs/HarborLab";
-import { EvolveLab } from "./features/labs/EvolveLab";
-import { HarnessLab } from "./features/labs/HarnessLab";
-import { HarnessWorkspace } from "./features/harness/HarnessWorkspace";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "./lib/harness-refs";
-import { SettingsPage } from "./features/settings/SettingsPage";
-import { SkillsWorkspace } from "./features/skills/SkillsWorkspace";
-import { VideoWorkshop } from "./features/video/VideoWorkshop";
 import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
 import { isCompanionSurface, readPopoutId } from "./lib/popout";
@@ -45,6 +39,14 @@ import { displayTitle } from "./lib/display-title";
 import { recentWorkspaces } from "./lib/workspace";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan } from "./lib/plan";
+
+const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
+const EvolveLab = lazy(() => import("./features/labs/EvolveLab").then((m) => ({ default: m.EvolveLab })));
+const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => ({ default: m.HarnessLab })));
+const HarnessWorkspace = lazy(() => import("./features/harness/HarnessWorkspace").then((m) => ({ default: m.HarnessWorkspace })));
+const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").then((m) => ({ default: m.SkillsWorkspace })));
+const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
   const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
@@ -116,14 +118,14 @@ function WorkstationApp() {
   const presenceInput = useMemo(() => ({
     booted: ws.booted,
     running: ws.threadRunning,
-    items: ws.items,
+    items: ws.presenceItems || ws.items,
     approvals: ws.approvals.length,
     moduleLoading,
     windowFocused: winFocused,
     idleMs: winFocused ? 0 : now - idleAt.current,
     waking,
     now,
-  }), [ws.booted, ws.threadRunning, ws.items, ws.approvals.length, moduleLoading, winFocused, now, waking]);
+  }), [ws.booted, ws.threadRunning, ws.presenceItems, ws.items, ws.approvals.length, moduleLoading, winFocused, now, waking]);
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = ws.active?.toolRoot || sessionWs;
@@ -249,7 +251,12 @@ function WorkstationApp() {
       {composer}
     </HomeStage>
   ) : (
-    <section className="@container relative flex h-full min-h-0 min-w-0 flex-col">
+    <section className="@container relative flex h-full min-h-0 min-w-0 flex-row">
+      <TurnOutline
+        turns={ws.outlineTurns}
+        activeKey={ws.activeTurn}
+        onJump={(turn) => { void ws.jumpToTurn(turn); }}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Transcript
           items={ws.items}
@@ -258,6 +265,10 @@ function WorkstationApp() {
           approvals={ws.approvals}
           running={ws.threadRunning}
           workspace={sessionWs}
+          older={ws.older}
+          loadingOlder={ws.loadingOlder}
+          idle={ws.idle}
+          onLoadOlder={ws.loadOlder}
           onResolve={ws.onResolve}
           onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
           onRetry={() => { void ws.onRetryLast(); }}
@@ -271,10 +282,14 @@ function WorkstationApp() {
             }
             void ws.refreshDiff();
           }}
+          jumpTo={ws.jumpTo}
+          latestNonce={ws.latestNonce}
+          onActiveTurn={ws.setActiveTurn}
+          onJumpLatest={ws.jumpToLatest}
         />
-      </div>
-      <div className={cn(THREAD_COL, THREAD_GUTTER)}>
-        {composer}
+        <div className={cn(THREAD_COL, THREAD_GUTTER)}>
+          {composer}
+        </div>
       </div>
     </section>
   );
@@ -570,13 +585,19 @@ function WorkstationApp() {
   );
 
   const workspace = settings ? (
-    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <SettingsSurface ws={ws} />
-    </div>
+    <Suspense fallback={null}>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">
+        <SettingsSurface ws={ws} />
+      </div>
+    </Suspense>
   ) : skills ? (
-    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{skillsPane}</div>
+    <Suspense fallback={null}>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{skillsPane}</div>
+    </Suspense>
   ) : harnessing ? (
-    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{labPane}</div>
+    <Suspense fallback={null}>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{labPane}</div>
+    </Suspense>
   ) : agentPane;
 
   return (
@@ -716,7 +737,7 @@ function WorkstationApp() {
             {staged ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
                 <div className="h-full min-h-0 overflow-hidden bg-background">
-                  {workshop}
+                  <Suspense fallback={null}>{workshop}</Suspense>
                 </div>
               </div>
             ) : inspectOpen ? (

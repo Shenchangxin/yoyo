@@ -210,7 +210,13 @@ export const ProcessGroup = memo(function ProcessGroup({
       </AnimatePresence>
     </div>
   );
-});
+}, (a, b) => (
+  a.live === b.live
+  && a.running === b.running
+  && a.compact === b.compact
+  && a.items.length === b.items.length
+  && a.items.every((it, i) => it === b.items[i])
+));
 
 function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   if (!pair?.call && !pair?.result) {

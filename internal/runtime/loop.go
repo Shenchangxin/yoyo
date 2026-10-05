@@ -62,6 +62,9 @@ type RunRequest struct {
 	// ShowThinking streams provider reasoning into the transcript. Off by
 	// default: many OpenAI-compatible endpoints reject thinking fields.
 	ShowThinking bool
+	// UserCommitted means the operator row is already on JSONL. seed() still
+	// appends it to the model transcript but must not emit a second TypeUser.
+	UserCommitted bool
 }
 
 var emitSeq atomic.Int64

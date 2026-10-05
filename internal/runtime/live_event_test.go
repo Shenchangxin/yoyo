@@ -58,11 +58,35 @@ func TestSlimLiveEventCapsToolResult(t *testing.T) {
 	ev := trace.Event{Type: trace.TypeToolResult, Payload: orig}
 	live := slimLiveEvent(ev)
 	got, _ := live.Payload["content"].(string)
-	if len(got) > 4_100 || !strings.Contains(got, "…") {
+	if len(got) > uiResultBytes+8 || !strings.Contains(got, "…") {
 		t.Fatalf("live result not capped: %d", len(got))
 	}
 	if orig["content"] != body {
 		t.Fatal("persist payload must keep full result")
+	}
+}
+
+func TestUITrajectoryCapsSettledAssistant(t *testing.T) {
+	body := strings.Repeat("a", 40_000)
+	orig := map[string]any{"text": body, "id": "r1"}
+	evs := []trace.Event{{Type: trace.TypeAssistant, Payload: orig}}
+	got := UITrajectory(evs)
+	if len(got) != 1 {
+		t.Fatalf("n=%d", len(got))
+	}
+	out, _ := got[0].Payload["text"].(string)
+	if len(out) > uiAssistantBytes+8 || !strings.Contains(out, "…") {
+		t.Fatalf("assistant not capped: %d", len(out))
+	}
+	if orig["text"] != body {
+		t.Fatal("store event must keep full assistant")
+	}
+	delta := slimLiveEvent(trace.Event{
+		Type:    trace.TypeAssistant,
+		Payload: map[string]any{"text": body, "delta": true, "id": "r1"},
+	})
+	if delta.Payload["text"] != body {
+		t.Fatal("token slices must stay intact for live concat")
 	}
 }
 
@@ -107,4 +131,35 @@ func TestUITrajectoryKeepsTurnsDropsNoise(t *testing.T) {
 	if calls != 41 {
 		t.Fatalf("tools dropped from UI trajectory: %d", calls)
 	}
+}
+
+func TestUITrajectoryDropsSupersededErrors(t *testing.T) {
+	stopped := trace.Event{Type: trace.TypeError, Payload: map[string]any{"kind": "canceled", "title": "Stopped", "hint": "This turn was interrupted."}}
+	kept := UITrajectory([]trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "go"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "working", "id": "r1"}},
+		stopped,
+	})
+	if n := countType(kept, trace.TypeError); n != 1 {
+		t.Fatalf("terminal stop should stay: %d", n)
+	}
+	resumed := UITrajectory([]trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "go"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "working", "id": "r1"}},
+		stopped,
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "continued", "id": "r1"}},
+	})
+	if n := countType(resumed, trace.TypeError); n != 0 {
+		t.Fatalf("resumed turn still has stop card: %d", n)
+	}
+}
+
+func countType(evs []trace.Event, typ trace.EventType) int {
+	n := 0
+	for _, ev := range evs {
+		if ev.Type == typ {
+			n++
+		}
+	}
+	return n
 }

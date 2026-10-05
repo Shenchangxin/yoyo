@@ -90,50 +90,58 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
   }
 }
 
+const UI_MARKDOWN_CAP = 24_000;
+const CODE_BLOCK_MAX_PX = 280;
+
 export const Markdown = memo(function Markdown({
   text,
   streaming,
   quiet,
+  rich,
 }: {
   text: string;
   streaming?: boolean;
   quiet?: boolean;
+  /** Streamdown+Shiki. Historical turns pass false so WebView2 does not keep a highlighter per letter. */
+  rich?: boolean;
 }) {
   const copy = useCopy();
-  const [highlight, setHighlight] = useState(!streaming);
+  const live = !!streaming;
+  const decorate = (rich ?? !live) && !live;
+  const [highlight, setHighlight] = useState(false);
   useEffect(() => {
-    if (streaming) {
+    if (!decorate) {
       setHighlight(false);
       return;
     }
     const id = window.setTimeout(() => setHighlight(true), SHIKI_SETTLE_MS);
     return () => window.clearTimeout(id);
-  }, [streaming]);
-  if (!text && !streaming) return null;
-  const live = !!streaming;
-  const settled = !live && highlight;
-  if (live) {
+  }, [decorate]);
+  const capped = text && text.length > UI_MARKDOWN_CAP ? `${text.slice(0, UI_MARKDOWN_CAP)}\n…` : text;
+  if (!capped && !streaming) return null;
+  if (!decorate) {
     return (
-      <MarkdownBoundary key="live" text={text} fallback={copy.review.previewFailed}>
-        <div className={cn("md-body space-y-2", quiet && "md-body-quiet")} data-streamdown="live">
-          <p className="whitespace-pre-wrap break-words">{text || ""}</p>
+      <MarkdownBoundary key="plain" text={capped || ""} fallback={copy.review.previewFailed}>
+        <div className={cn("md-body space-y-2", quiet && "md-body-quiet")} data-streamdown={live ? "live" : "plain"}>
+          <p className="whitespace-pre-wrap break-words">{capped || ""}</p>
         </div>
       </MarkdownBoundary>
     );
   }
+  const settled = highlight;
   return (
-    <MarkdownBoundary key={settled ? "static" : "live"} text={text} fallback={copy.review.previewFailed}>
+    <MarkdownBoundary key={settled ? "static" : "live"} text={capped || ""} fallback={copy.review.previewFailed}>
       <Streamdown
         className={cn("md-body space-y-2", quiet && "md-body-quiet")}
         mode={settled ? "static" : "streaming"}
-        parseIncompleteMarkdown={live}
-        remend={live ? {} : undefined}
-        isAnimating={live}
-        caret={live ? "block" : undefined}
+        parseIncompleteMarkdown={false}
+        remend={undefined}
+        isAnimating={false}
+        caret={undefined}
         plugins={settled ? { code: codePlugin } : undefined}
         animated={false}
         lineNumbers={false}
-        codeBlockMaxHeight={Infinity}
+        codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
         components={mdComponents}
         translations={{
           copyCode: copy.transcript.copyCode,
@@ -146,7 +154,7 @@ export const Markdown = memo(function Markdown({
           image: { download: false },
         }}
       >
-        {text || ""}
+        {capped || ""}
       </Streamdown>
     </MarkdownBoundary>
   );

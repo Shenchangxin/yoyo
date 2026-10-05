@@ -233,3 +233,24 @@ func payloadString(v any) string {
 		return string(b)
 	}
 }
+
+// DropTrailingUser removes a just-persisted operator row from rebuilt history
+// so MaybeCheckpoint still runs on the prior tail, then seed() re-appends it.
+func DropTrailingUser(hist []Message, text string) []Message {
+	text = NormalizeUserText(text)
+	if text == "" || len(hist) == 0 {
+		return hist
+	}
+	last := hist[len(hist)-1]
+	if last.Role != RoleUser {
+		return hist
+	}
+	body := last.Content
+	if i := strings.Index(body, "\n\n"+mentionUserPrefix); i >= 0 {
+		body = body[:i]
+	}
+	if NormalizeUserText(body) != text {
+		return hist
+	}
+	return hist[:len(hist)-1]
+}

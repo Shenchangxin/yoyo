@@ -237,7 +237,62 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Session string `json:"session"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return map[string]any{"ok": true}, a.Interrupt(p.Session)
+		return map[string]any{"ok": true, "state": a.StopTurn(p.Session).State}, nil
+	case "turn.stop":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.StopTurn(p.Session), nil
+	case "trajectory.page":
+		var p struct {
+			Session string `json:"session"`
+			Before  int64  `json:"before"`
+			Turns   int    `json:"turns"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.TrajectoryPage(id, p.Before, p.Turns)
+	case "trajectory.outline":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.TrajectoryOutline(id)
+	case "trajectory.around":
+		var p struct {
+			Session string `json:"session"`
+			Seq     int64  `json:"seq"`
+			Turns   int    `json:"turns"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id, err := a.ResolveSessionID(p.Session)
+		if err != nil {
+			return nil, err
+		}
+		return a.TrajectoryAround(id, p.Seq, p.Turns)
+	case "live.since":
+		var p struct {
+			Session string `json:"session"`
+			After   int64  `json:"after"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id := p.Session
+		if strings.TrimSpace(id) != "" {
+			resolved, err := a.ResolveSessionID(id)
+			if err != nil {
+				return nil, err
+			}
+			id = resolved
+		}
+		return a.LiveSince(id, p.After), nil
 	case "trajectory.get":
 		var p struct {
 			Session string `json:"session"`

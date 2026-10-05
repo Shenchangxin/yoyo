@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,8 +102,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		if len(parts) > 1 && parts[1] == "interrupt" && r.Method == http.MethodPost {
-			_ = a.Interrupt(id)
-			writeJSON(w, map[string]any{"ok": true})
+			writeJSON(w, a.StopTurn(id))
 			return
 		}
 		if len(parts) > 1 && parts[1] == "retry" && r.Method == http.MethodPost {
@@ -157,12 +157,48 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			return
 		}
 		if len(parts) > 1 && parts[1] == "trajectory" {
+			if len(parts) > 2 && parts[2] == "page" {
+				before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
+				turns, _ := strconv.Atoi(r.URL.Query().Get("turns"))
+				page, err := a.TrajectoryPage(id, before, turns)
+				if err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				writeJSON(w, page)
+				return
+			}
+			if len(parts) > 2 && parts[2] == "outline" {
+				turns, err := a.TrajectoryOutline(id)
+				if err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				writeJSON(w, turns)
+				return
+			}
+			if len(parts) > 2 && parts[2] == "around" {
+				seq, _ := strconv.ParseInt(r.URL.Query().Get("seq"), 10, 64)
+				turns, _ := strconv.Atoi(r.URL.Query().Get("turns"))
+				page, err := a.TrajectoryAround(id, seq, turns)
+				if err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				writeJSON(w, page)
+				return
+			}
 			evs, err := a.Trajectory(id)
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
 			writeJSON(w, evs)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "live" {
+			after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+			writeJSON(w, a.LiveSince(id, after))
 			return
 		}
 		if len(parts) > 1 && parts[1] == "trace" {

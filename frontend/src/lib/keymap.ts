@@ -7,6 +7,8 @@ export const DEFAULT_KEYMAP = {
   session: "2",
   always: "3",
   deny: "Escape",
+  prevTurn: "Alt+ArrowUp",
+  nextTurn: "Alt+ArrowDown",
 } as const;
 
 export type KeymapId = keyof typeof DEFAULT_KEYMAP;
@@ -51,6 +53,8 @@ export function displayShortcut(spec: string): string {
       if (p === "Shift") return mac ? "⇧" : "Shift";
       if (p === "Alt") return mac ? "⌥" : "Alt";
       if (p === "Escape") return "Esc";
+      if (p === "ArrowUp") return "↑";
+      if (p === "ArrowDown") return "↓";
       if (p === ",") return ",";
       if (p === "\\") return "\\";
       return p;

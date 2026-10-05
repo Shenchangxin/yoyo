@@ -128,7 +128,7 @@ func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch fun
 	emit := make(chan trace.Event, 256)
 	go func() {
 		for ev := range emit {
-			gui.Event.Emit("yoyo:item", ev)
+			gui.Event.Emit("yoyo:item", app.NoticeOf(ev))
 			dispatch(string(ev.Type), ev.Source, ev.SessionID, ev.Payload)
 		}
 	}()
@@ -225,7 +225,8 @@ func (s *Service) rebuildMenusNow() {
 	thread := menu.AddSubmenu(n.Thread)
 	thread.Add(n.Stop).SetAccelerator("CmdOrCtrl+.").OnClick(func(ctx *application.Context) {
 		for _, id := range s.RunningIDs() {
-			_ = s.Interrupt(id)
+			res := s.StopTurn(id)
+			gui.Event.Emit("yoyo:stopped", map[string]any{"session_id": id, "state": res.State})
 		}
 	})
 	thread.Add(n.Compact).OnClick(func(ctx *application.Context) {
