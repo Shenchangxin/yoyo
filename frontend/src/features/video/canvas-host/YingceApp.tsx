@@ -12,6 +12,7 @@ import { bindCanvasSession, setCanvasHostTitle } from "./session";
 import { installCanvasHub } from "./hub";
 import { installHostNavigation } from "./host-nav";
 import { primeCanvasMediaBase } from "./media";
+import { syncYoyoPopupRoot } from "./design-system/popup-container";
 import "@yingce/styles/globals.css";
 import "@yingce/styles/shared/model-picker.css";
 import "@yingce/styles/shared/overlays.css";
@@ -19,6 +20,7 @@ import "@yingce/styles/shared/scrollbars.css";
 import "./design-system/tokens.css";
 import "./design-system/overlays.css";
 import "./apple-skin.css";
+import "./host-dark.css";
 
 const CanvasPage = lazy(() => import("@yingce/pages/canvas"));
 const CanvasProjectPage = lazy(() => import("@yingce/pages/canvas/project"));
@@ -89,9 +91,10 @@ export default function YingceApp({ initialPath = "/create" }: { initialPath?: s
     const syncTheme = () => {
       const dark = document.documentElement.classList.contains("dark");
       useCanvasThemeStore.getState().setTheme(dark ? "dark" : "light");
-      const island = document.querySelector(".yingce-island");
-      island?.classList.toggle("dark", dark);
-      island?.classList.toggle("light", !dark);
+      const island = document.querySelector(".yingce-island") as HTMLElement | null;
+      island?.classList.remove("dark", "light");
+      if (island) island.style.colorScheme = dark ? "dark" : "light";
+      syncYoyoPopupRoot(dark);
     };
     syncTheme();
     const observer = new MutationObserver(syncTheme);

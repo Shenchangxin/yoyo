@@ -21,6 +21,7 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
 - **Video** is a conversation surface. Mode and episode live on the composer. There is no Review pane — the stage is transcript + composer, like the Agent. The episode board is an on-demand overlay, not a right column. Video chats and Agent chats are separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
+- **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, search, storage, and workflow accounts share one registry. Keys stay in the vault. See [architecture/persist.md](architecture/persist.md).
 
 ## Distinctive, not decorative
 

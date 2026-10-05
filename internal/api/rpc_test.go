@@ -179,3 +179,32 @@ func TestLineClientHealth(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 }
+
+func TestConfigSetMergesPartial(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	a.Config.SearchURL = "https://keep.example/{q}"
+	a.Config.CrashResume = true
+	if err := a.SaveConfig(); err != nil {
+		t.Fatal(err)
+	}
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 20, Method: "config.set", Params: jsonRaw(`{"model":"gpt-4.1-mini","theme":"dark"}`)})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	if a.Config.Model != "gpt-4.1-mini" {
+		t.Fatalf("model %q", a.Config.Model)
+	}
+	if a.Config.SearchURL != "https://keep.example/{q}" {
+		t.Fatalf("search wiped %q", a.Config.SearchURL)
+	}
+	if !a.Config.CrashResume {
+		t.Fatal("crash_resume wiped")
+	}
+	if a.Config.Theme != "dark" {
+		t.Fatalf("theme %q", a.Config.Theme)
+	}
+}

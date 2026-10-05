@@ -2,7 +2,6 @@ package video
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,9 +11,10 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/connection"
+	"github.com/Shenchangxin/yoyo/internal/filestore"
 	"github.com/Shenchangxin/yoyo/internal/vault"
 	"github.com/Shenchangxin/yoyo/internal/video/protocol"
-	_ "modernc.org/sqlite"
 )
 
 type Secrets interface {
@@ -34,7 +34,8 @@ type HTTPDoer interface {
 }
 
 type Engine struct {
-	DB        *sql.DB
+	docs      *filestore.Store
+	Conn      *connection.Registry
 	Dir       string
 	CAS       Blobs
 	Vault     Secrets
@@ -45,8 +46,8 @@ type Engine struct {
 
 	mu       sync.Mutex
 	binds    map[string]Bind
-	inflight sync.Map // job id -> context.CancelFunc
-	uploads  sync.Map // upload id -> *canvasUpload
+	inflight sync.Map
+	uploads  sync.Map
 	cancel   context.CancelFunc
 	OnJob    func(Job)
 	OnHub    func(kind string, payload map[string]any)
@@ -63,20 +64,26 @@ type Bind struct {
 }
 
 func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
+	return OpenWith(dir, cas, secrets, nil)
+}
+
+func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry) (*Engine, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	dbPath := filepath.Join(dir, "video.sqlite")
-	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	docs, err := filestore.New(filepath.Join(dir, "docs"))
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		_ = db.Close()
-		return nil, err
+	if conn == nil {
+		conn, err = connection.Open(filepath.Join(dir, "connections"), secrets)
+		if err != nil {
+			return nil, err
+		}
 	}
 	e := &Engine{
-		DB:    db,
+		docs:  docs,
+		Conn:  conn,
 		Dir:   dir,
 		CAS:   cas,
 		Vault: secrets,
@@ -85,17 +92,14 @@ func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 	}
 	e.FFMPEG, e.FFProbe = LookFFmpeg()
 	e.WHISPER = LookWhisper()
-	if err := e.migrate(); err != nil {
-		_ = db.Close()
+	if err := migrateSQLiteIfPresent(e); err != nil {
 		return nil, err
 	}
 	if err := e.seedStyles(); err != nil {
-		_ = db.Close()
 		return nil, err
 	}
 	e.PluginDir = findYingcePluginDir(dir)
 	_ = e.loadCanvasPlugins()
-	_ = e.seedCanvasChannels()
 	_ = e.seedStudioAssets()
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
@@ -105,95 +109,37 @@ func Open(dir string, cas Blobs, secrets Secrets) (*Engine, error) {
 }
 
 func OpenDefault(dir string, cas *artifact.Store, v *vault.Store) (*Engine, error) {
-	return Open(dir, cas, v)
+	var conn *connection.Registry
+	if v != nil {
+		home := filepath.Dir(dir)
+		c, err := connection.Open(filepath.Join(home, "connections"), v)
+		if err != nil {
+			return nil, err
+		}
+		conn = c
+	}
+	return OpenWith(dir, cas, v, conn)
 }
 
 func (e *Engine) Close() error {
 	if e.cancel != nil {
 		e.cancel()
 	}
-	if e.DB != nil {
-		return e.DB.Close()
-	}
 	return nil
-}
-
-func (e *Engine) migrate() error {
-	if _, err := e.DB.Exec(schemaV1); err != nil {
-		return err
-	}
-	if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)`); err != nil {
-		return err
-	}
-	if err := e.ensureEpisodeAdapterColumns(); err != nil {
-		return err
-	}
-	var ver int
-	_ = e.DB.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&ver)
-	if ver < 2 {
-		if _, err := e.DB.Exec(schemaV2); err != nil {
-			return err
-		}
-		if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (2)`); err != nil {
-			return err
-		}
-	}
-	if ver < 3 {
-		if _, err := e.DB.Exec(schemaV3); err != nil {
-			return err
-		}
-		if _, err := e.DB.Exec(`INSERT OR IGNORE INTO schema_migrations(version) VALUES (3)`); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (e *Engine) ensureEpisodeAdapterColumns() error {
-	for _, col := range []string{"image_model", "video_model", "tts_provider_id", "tts_model"} {
-		if e.hasColumn("episodes", col) {
-			continue
-		}
-		if _, err := e.DB.Exec(`ALTER TABLE episodes ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (e *Engine) hasColumn(table, col string) bool {
-	rows, err := e.DB.Query(`PRAGMA table_info(` + table + `)`)
-	if err != nil {
-		return false
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt any
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			return false
-		}
-		if name == col {
-			return true
-		}
-	}
-	return false
 }
 
 func (e *Engine) Setting(key, fallback string) string {
-	var v string
-	err := e.DB.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&v)
-	if err != nil || v == "" {
-		return fallback
+	m := e.kvSettings()
+	if v := m[key]; v != "" {
+		return v
 	}
-	return v
+	return fallback
 }
 
 func (e *Engine) SetSetting(key, value string) error {
-	_, err := e.DB.Exec(`INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
-	return err
+	m := e.kvSettings()
+	m[key] = value
+	return e.putJSON(fileSettings, m)
 }
 
 func (e *Engine) ContentLanguage() string {
@@ -211,15 +157,14 @@ func (e *Engine) BindSession(sessionID, episodeID string) error {
 	if err != nil {
 		return err
 	}
-	now := Now()
-	_, err = e.DB.Exec(`INSERT INTO session_binds(session_id, episode_id, drama_id, updated_at) VALUES(?,?,?,?)
-		ON CONFLICT(session_id) DO UPDATE SET episode_id=excluded.episode_id, drama_id=excluded.drama_id, updated_at=excluded.updated_at`,
-		sessionID, episodeID, ep.DramaID, now)
-	if err != nil {
+	b := Bind{SessionID: sessionID, EpisodeID: episodeID, DramaID: ep.DramaID}
+	m := e.loadBinds()
+	m[sessionID] = b
+	if err := e.saveBinds(m); err != nil {
 		return err
 	}
 	e.mu.Lock()
-	e.binds[sessionID] = Bind{SessionID: sessionID, EpisodeID: episodeID, DramaID: ep.DramaID}
+	e.binds[sessionID] = b
 	e.mu.Unlock()
 	return nil
 }
@@ -231,16 +176,15 @@ func (e *Engine) SessionBind(sessionID string) (Bind, bool) {
 	if ok {
 		return b, true
 	}
-	var out Bind
-	err := e.DB.QueryRow(`SELECT session_id, episode_id, drama_id FROM session_binds WHERE session_id = ?`, sessionID).
-		Scan(&out.SessionID, &out.EpisodeID, &out.DramaID)
-	if err != nil {
+	m := e.loadBinds()
+	b, ok = m[sessionID]
+	if !ok {
 		return Bind{}, false
 	}
 	e.mu.Lock()
-	e.binds[sessionID] = out
+	e.binds[sessionID] = b
 	e.mu.Unlock()
-	return out, true
+	return b, true
 }
 
 func (e *Engine) leaseProvider(p Provider) (string, error) {
@@ -251,8 +195,8 @@ func (e *Engine) leaseProvider(p Provider) (string, error) {
 }
 
 func marshalJSON(v any) string {
-	b, _ := json.Marshal(v)
-	if len(b) == 0 {
+	b, err := json.Marshal(v)
+	if err != nil {
 		return "{}"
 	}
 	return string(b)

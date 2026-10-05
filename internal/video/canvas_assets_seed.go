@@ -8,13 +8,9 @@ import (
 func (e *Engine) seedStudioAssets() error {
 	now := Now()
 	existing := map[string]bool{}
-	if rows, err := e.DB.Query(`SELECT id FROM canvas_assets WHERE deleted_at = ''`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			if rows.Scan(&id) == nil {
-				existing[id] = true
-			}
+	for _, a := range loadCol[canvasAssetRec](e, colAssets) {
+		if a.DeletedAt == "" {
+			existing[a.ID] = true
 		}
 	}
 	folders := []struct {
@@ -28,9 +24,11 @@ func (e *Engine) seedStudioAssets() error {
 		{"studio-folder-boards", "镜头板", 4},
 	}
 	for _, f := range folders {
-		_, err := e.DB.Exec(`INSERT OR IGNORE INTO canvas_asset_folders(id, name, position, created_at, updated_at) VALUES(?,?,?,?,?)`,
-			f.id, f.name, f.pos, now, now)
-		if err != nil {
+		if _, err := getDoc[canvasFolderRec](e, colFolders, f.id); err == nil {
+			continue
+		}
+		rec := canvasFolderRec{ID: f.id, Name: f.name, Position: f.pos, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colFolders, f.id, rec); err != nil {
 			return err
 		}
 	}

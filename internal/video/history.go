@@ -72,17 +72,11 @@ type dramaSessionHit struct {
 
 func (e *Engine) latestCanvasSessions() map[string]string {
 	out := map[string]string{}
-	if e == nil || e.DB == nil {
+	if e == nil {
 		return out
 	}
-	rows, err := e.DB.Query(`SELECT canvas_id, session_id FROM canvas_session_binds ORDER BY updated_at DESC`)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var canvasID, sessionID string
-		if err := rows.Scan(&canvasID, &sessionID); err != nil {
+	for sessionID, canvasID := range e.loadCanvasBinds() {
+		if canvasID == "" {
 			continue
 		}
 		if _, ok := out[canvasID]; !ok {
@@ -94,31 +88,27 @@ func (e *Engine) latestCanvasSessions() map[string]string {
 
 func (e *Engine) latestDramaSessions() map[string]dramaSessionHit {
 	out := map[string]dramaSessionHit{}
-	if e == nil || e.DB == nil {
+	if e == nil {
 		return out
 	}
-	rows, err := e.DB.Query(`SELECT drama_id, episode_id, session_id FROM session_binds ORDER BY updated_at DESC`)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var dramaID, episodeID, sessionID string
-		if err := rows.Scan(&dramaID, &episodeID, &sessionID); err != nil {
+	for _, b := range e.loadBinds() {
+		if b.DramaID == "" {
 			continue
 		}
-		if _, ok := out[dramaID]; !ok {
-			out[dramaID] = dramaSessionHit{SessionID: sessionID, EpisodeID: episodeID}
+		if _, ok := out[b.DramaID]; !ok {
+			out[b.DramaID] = dramaSessionHit{SessionID: b.SessionID, EpisodeID: b.EpisodeID}
 		}
 	}
 	return out
 }
 
 func (e *Engine) firstEpisodeID(dramaID string) string {
-	var id string
-	if e == nil || e.DB == nil || dramaID == "" {
+	if e == nil || dramaID == "" {
 		return ""
 	}
-	_ = e.DB.QueryRow(`SELECT id FROM episodes WHERE drama_id = ? AND deleted_at = '' ORDER BY episode_number LIMIT 1`, dramaID).Scan(&id)
-	return id
+	eps, err := e.ListEpisodes(dramaID)
+	if err != nil || len(eps) == 0 {
+		return ""
+	}
+	return eps[0].ID
 }

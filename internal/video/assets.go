@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -10,23 +11,26 @@ func (e *Engine) EpisodeCharacters(episodeID string) ([]Character, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := e.DB.Query(`SELECT c.id, c.drama_id, c.name, c.role, c.appearance, c.styling, c.final_prompt, c.image_hash, c.sort_order,
-		EXISTS(SELECT 1 FROM episode_characters x WHERE x.episode_id = ? AND x.character_id = c.id)
-		FROM characters c WHERE c.drama_id = ? AND c.deleted_at = '' ORDER BY c.sort_order, c.name`, episodeID, ep.DramaID)
-	if err != nil {
-		return nil, err
+	rec, _ := getDoc[episodeRec](e, colEpisodes, episodeID)
+	linked := map[string]bool{}
+	for _, id := range rec.CharacterIDs {
+		linked[id] = true
 	}
-	defer rows.Close()
 	var out []Character
-	for rows.Next() {
-		var c Character
-		var linked int
-		if err := rows.Scan(&c.ID, &c.DramaID, &c.Name, &c.Role, &c.Appearance, &c.Styling, &c.FinalPrompt, &c.ImageHash, &c.SortOrder, &linked); err != nil {
-			return nil, err
+	for _, c := range loadCol[characterRec](e, colCharacters) {
+		if c.DramaID != ep.DramaID || c.DeletedAt != "" {
+			continue
 		}
-		c.Linked = linked != 0
-		out = append(out, c)
+		item := c.Character
+		item.Linked = linked[c.ID]
+		out = append(out, item)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortOrder != out[j].SortOrder {
+			return out[i].SortOrder < out[j].SortOrder
+		}
+		return out[i].Name < out[j].Name
+	})
 	if out == nil {
 		out = []Character{}
 	}
@@ -38,23 +42,21 @@ func (e *Engine) EpisodeScenes(episodeID string) ([]Scene, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := e.DB.Query(`SELECT s.id, s.drama_id, s.location, s.time_of_day, s.prompt, s.lighting, s.final_prompt, s.image_hash,
-		EXISTS(SELECT 1 FROM episode_scenes x WHERE x.episode_id = ? AND x.scene_id = s.id)
-		FROM scenes s WHERE s.drama_id = ? AND s.deleted_at = '' ORDER BY s.location`, episodeID, ep.DramaID)
-	if err != nil {
-		return nil, err
+	rec, _ := getDoc[episodeRec](e, colEpisodes, episodeID)
+	linked := map[string]bool{}
+	for _, id := range rec.SceneIDs {
+		linked[id] = true
 	}
-	defer rows.Close()
 	var out []Scene
-	for rows.Next() {
-		var s Scene
-		var linked int
-		if err := rows.Scan(&s.ID, &s.DramaID, &s.Location, &s.TimeOfDay, &s.Prompt, &s.Lighting, &s.FinalPrompt, &s.ImageHash, &linked); err != nil {
-			return nil, err
+	for _, s := range loadCol[sceneRec](e, colScenes) {
+		if s.DramaID != ep.DramaID || s.DeletedAt != "" {
+			continue
 		}
-		s.Linked = linked != 0
-		out = append(out, s)
+		item := s.Scene
+		item.Linked = linked[s.ID]
+		out = append(out, item)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Location < out[j].Location })
 	if out == nil {
 		out = []Scene{}
 	}
@@ -66,23 +68,21 @@ func (e *Engine) EpisodeProps(episodeID string) ([]Prop, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := e.DB.Query(`SELECT p.id, p.drama_id, p.name, p.type, p.description, p.final_prompt, p.image_hash,
-		EXISTS(SELECT 1 FROM episode_props x WHERE x.episode_id = ? AND x.prop_id = p.id)
-		FROM props p WHERE p.drama_id = ? AND p.deleted_at = '' ORDER BY p.name`, episodeID, ep.DramaID)
-	if err != nil {
-		return nil, err
+	rec, _ := getDoc[episodeRec](e, colEpisodes, episodeID)
+	linked := map[string]bool{}
+	for _, id := range rec.PropIDs {
+		linked[id] = true
 	}
-	defer rows.Close()
 	var out []Prop
-	for rows.Next() {
-		var p Prop
-		var linked int
-		if err := rows.Scan(&p.ID, &p.DramaID, &p.Name, &p.Type, &p.Description, &p.FinalPrompt, &p.ImageHash, &linked); err != nil {
-			return nil, err
+	for _, p := range loadCol[propRec](e, colProps) {
+		if p.DramaID != ep.DramaID || p.DeletedAt != "" {
+			continue
 		}
-		p.Linked = linked != 0
-		out = append(out, p)
+		item := p.Prop
+		item.Linked = linked[p.ID]
+		out = append(out, item)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	if out == nil {
 		out = []Prop{}
 	}
@@ -90,13 +90,28 @@ func (e *Engine) EpisodeProps(episodeID string) ([]Prop, error) {
 }
 
 func (e *Engine) linkCharacter(episodeID, characterID string) {
-	_, _ = e.DB.Exec(`INSERT OR IGNORE INTO episode_characters(episode_id, character_id) VALUES(?,?)`, episodeID, characterID)
+	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
+	if err != nil {
+		return
+	}
+	rec.CharacterIDs = addID(rec.CharacterIDs, characterID)
+	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
 func (e *Engine) linkScene(episodeID, sceneID string) {
-	_, _ = e.DB.Exec(`INSERT OR IGNORE INTO episode_scenes(episode_id, scene_id) VALUES(?,?)`, episodeID, sceneID)
+	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
+	if err != nil {
+		return
+	}
+	rec.SceneIDs = addID(rec.SceneIDs, sceneID)
+	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
 func (e *Engine) linkProp(episodeID, propID string) {
-	_, _ = e.DB.Exec(`INSERT OR IGNORE INTO episode_props(episode_id, prop_id) VALUES(?,?)`, episodeID, propID)
+	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
+	if err != nil {
+		return
+	}
+	rec.PropIDs = addID(rec.PropIDs, propID)
+	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
 
 func (e *Engine) SaveCharacters(episodeID string, items []Character) ([]Character, error) {
@@ -126,7 +141,10 @@ func (e *Engine) SaveCharacters(episodeID string, items []Character) ([]Characte
 			if c.Role != "" {
 				old.Role = c.Role
 			}
-			_, _ = e.DB.Exec(`UPDATE characters SET role=?, appearance=?, styling=?, updated_at=? WHERE id=?`, old.Role, old.Appearance, old.Styling, now, old.ID)
+			rec, _ := getDoc[characterRec](e, colCharacters, old.ID)
+			rec.Character = old
+			rec.UpdatedAt = now
+			_ = e.putDoc(colCharacters, old.ID, rec)
 			e.linkCharacter(episodeID, old.ID)
 			out = append(out, old)
 			continue
@@ -134,9 +152,8 @@ func (e *Engine) SaveCharacters(episodeID string, items []Character) ([]Characte
 		c.ID = NewID()
 		c.DramaID = ep.DramaID
 		c.SortOrder = i
-		_, err := e.DB.Exec(`INSERT INTO characters(id, drama_id, name, role, appearance, styling, final_prompt, image_hash, sort_order, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?, '')`, c.ID, c.DramaID, c.Name, c.Role, c.Appearance, c.Styling, c.FinalPrompt, c.ImageHash, c.SortOrder, now, now)
-		if err != nil {
+		rec := characterRec{Character: c, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colCharacters, c.ID, rec); err != nil {
 			return nil, err
 		}
 		e.linkCharacter(episodeID, c.ID)
@@ -170,9 +187,8 @@ func (e *Engine) SaveScenes(episodeID string, items []Scene) ([]Scene, error) {
 		}
 		s.ID = NewID()
 		s.DramaID = ep.DramaID
-		_, err := e.DB.Exec(`INSERT INTO scenes(id, drama_id, location, time_of_day, prompt, lighting, final_prompt, image_hash, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?, '')`, s.ID, s.DramaID, s.Location, s.TimeOfDay, s.Prompt, s.Lighting, s.FinalPrompt, s.ImageHash, now, now)
-		if err != nil {
+		rec := sceneRec{Scene: s, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colScenes, s.ID, rec); err != nil {
 			return nil, err
 		}
 		e.linkScene(episodeID, s.ID)
@@ -208,9 +224,8 @@ func (e *Engine) SaveProps(episodeID string, items []Prop) ([]Prop, error) {
 		}
 		p.ID = NewID()
 		p.DramaID = ep.DramaID
-		_, err := e.DB.Exec(`INSERT INTO props(id, drama_id, name, type, description, final_prompt, image_hash, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,?, '')`, p.ID, p.DramaID, p.Name, p.Type, p.Description, p.FinalPrompt, p.ImageHash, now, now)
-		if err != nil {
+		rec := propRec{Prop: p, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colProps, p.ID, rec); err != nil {
 			return nil, err
 		}
 		e.linkProp(episodeID, p.ID)
@@ -225,83 +240,77 @@ func (e *Engine) UpdateAsset(kind, id string, fields map[string]any) error {
 	set := func(k string) string { return strMap(fields, k) }
 	switch kind {
 	case "character":
-		var name, role, appearance, styling, prompt, hash string
-		if err := e.DB.QueryRow(`SELECT name, role, appearance, styling, final_prompt, image_hash FROM characters WHERE id=?`, id).
-			Scan(&name, &role, &appearance, &styling, &prompt, &hash); err != nil {
+		rec, err := getDoc[characterRec](e, colCharacters, id)
+		if err != nil {
 			return err
 		}
 		if has("name") {
-			name = set("name")
+			rec.Name = set("name")
 		}
 		if has("role") {
-			role = set("role")
+			rec.Role = set("role")
 		}
 		if has("appearance") {
-			appearance = set("appearance")
+			rec.Appearance = set("appearance")
 		}
 		if has("styling") {
-			styling = set("styling")
+			rec.Styling = set("styling")
 		}
 		if has("final_prompt") {
-			prompt = set("final_prompt")
+			rec.FinalPrompt = set("final_prompt")
 		}
 		if has("image_hash") {
-			hash = set("image_hash")
+			rec.ImageHash = set("image_hash")
 		}
-		_, err := e.DB.Exec(`UPDATE characters SET name=?, role=?, appearance=?, styling=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
-			name, role, appearance, styling, prompt, hash, now, id)
-		return err
+		rec.UpdatedAt = now
+		return e.putDoc(colCharacters, id, rec)
 	case "scene":
-		var loc, tod, prompt, lighting, final, hash string
-		if err := e.DB.QueryRow(`SELECT location, time_of_day, prompt, lighting, final_prompt, image_hash FROM scenes WHERE id=?`, id).
-			Scan(&loc, &tod, &prompt, &lighting, &final, &hash); err != nil {
+		rec, err := getDoc[sceneRec](e, colScenes, id)
+		if err != nil {
 			return err
 		}
 		if has("location") {
-			loc = set("location")
+			rec.Location = set("location")
 		}
 		if has("time_of_day") {
-			tod = set("time_of_day")
+			rec.TimeOfDay = set("time_of_day")
 		}
 		if has("prompt") {
-			prompt = set("prompt")
+			rec.Prompt = set("prompt")
 		}
 		if has("lighting") {
-			lighting = set("lighting")
+			rec.Lighting = set("lighting")
 		}
 		if has("final_prompt") {
-			final = set("final_prompt")
+			rec.FinalPrompt = set("final_prompt")
 		}
 		if has("image_hash") {
-			hash = set("image_hash")
+			rec.ImageHash = set("image_hash")
 		}
-		_, err := e.DB.Exec(`UPDATE scenes SET location=?, time_of_day=?, prompt=?, lighting=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
-			loc, tod, prompt, lighting, final, hash, now, id)
-		return err
+		rec.UpdatedAt = now
+		return e.putDoc(colScenes, id, rec)
 	case "prop":
-		var name, typ, desc, final, hash string
-		if err := e.DB.QueryRow(`SELECT name, type, description, final_prompt, image_hash FROM props WHERE id=?`, id).
-			Scan(&name, &typ, &desc, &final, &hash); err != nil {
+		rec, err := getDoc[propRec](e, colProps, id)
+		if err != nil {
 			return err
 		}
 		if has("name") {
-			name = set("name")
+			rec.Name = set("name")
 		}
 		if has("type") {
-			typ = set("type")
+			rec.Type = set("type")
 		}
 		if has("description") {
-			desc = set("description")
+			rec.Description = set("description")
 		}
 		if has("final_prompt") {
-			final = set("final_prompt")
+			rec.FinalPrompt = set("final_prompt")
 		}
 		if has("image_hash") {
-			hash = set("image_hash")
+			rec.ImageHash = set("image_hash")
 		}
-		_, err := e.DB.Exec(`UPDATE props SET name=?, type=?, description=?, final_prompt=?, image_hash=?, updated_at=? WHERE id=?`,
-			name, typ, desc, final, hash, now, id)
-		return err
+		rec.UpdatedAt = now
+		return e.putDoc(colProps, id, rec)
 	}
 	return fmt.Errorf("unknown asset")
 }
@@ -312,57 +321,18 @@ func (e *Engine) SaveFinalPrompt(kind, id, prompt, style string) error {
 }
 
 func (e *Engine) ListShots(episodeID string) ([]Shot, error) {
-	rows, err := e.DB.Query(`SELECT id, episode_id, scene_id, shot_number, title, shot_type, angle, movement, atmosphere, description, video_prompt, duration, video_hash, poster_hash, status FROM storyboards WHERE episode_id = ? AND deleted_at = '' ORDER BY shot_number`, episodeID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	var out []Shot
-	for rows.Next() {
-		var s Shot
-		if err := rows.Scan(&s.ID, &s.EpisodeID, &s.SceneID, &s.ShotNumber, &s.Title, &s.ShotType, &s.Angle, &s.Movement, &s.Atmosphere, &s.Description, &s.VideoPrompt, &s.Duration, &s.VideoHash, &s.PosterHash, &s.Status); err != nil {
-			return nil, err
+	for _, rec := range loadCol[shotRec](e, colShots) {
+		if rec.EpisodeID != episodeID || rec.DeletedAt != "" {
+			continue
 		}
-		s.CharacterIDs = e.shotChars(s.ID)
-		s.PropIDs = e.shotProps(s.ID)
-		out = append(out, s)
+		out = append(out, rec.Shot)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ShotNumber < out[j].ShotNumber })
 	if out == nil {
 		out = []Shot{}
 	}
 	return out, nil
-}
-
-func (e *Engine) shotChars(id string) []string {
-	rows, err := e.DB.Query(`SELECT character_id FROM storyboard_characters WHERE storyboard_id = ?`, id)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var x string
-		if rows.Scan(&x) == nil {
-			out = append(out, x)
-		}
-	}
-	return out
-}
-
-func (e *Engine) shotProps(id string) []string {
-	rows, err := e.DB.Query(`SELECT prop_id FROM storyboard_props WHERE storyboard_id = ?`, id)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var x string
-		if rows.Scan(&x) == nil {
-			out = append(out, x)
-		}
-	}
-	return out
 }
 
 func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot, error) {
@@ -371,15 +341,22 @@ func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot
 		return nil, err
 	}
 	if replace {
-		existing, _ := e.ListShots(episodeID)
-		for _, old := range existing {
-			_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, old.ID)
-			_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, old.ID)
+		for _, old := range loadCol[shotRec](e, colShots) {
+			if old.EpisodeID == episodeID {
+				_ = e.delDoc(colShots, old.ID)
+			}
 		}
-		_, _ = e.DB.Exec(`DELETE FROM storyboards WHERE episode_id = ?`, episodeID)
 	}
 	now := Now()
 	var out []Shot
+	existingByNum := map[int]shotRec{}
+	if !replace {
+		for _, rec := range loadCol[shotRec](e, colShots) {
+			if rec.EpisodeID == episodeID && rec.DeletedAt == "" {
+				existingByNum[rec.ShotNumber] = rec
+			}
+		}
+	}
 	for i, s := range shots {
 		if s.ShotNumber == 0 {
 			s.ShotNumber = i + 1
@@ -392,34 +369,40 @@ func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot
 			s.SceneID = first(e.resolveOne("scene", ep.DramaID, s.SceneID), s.SceneID)
 			e.linkScene(episodeID, s.SceneID)
 		}
-		var existingID string
-		_ = e.DB.QueryRow(`SELECT id FROM storyboards WHERE episode_id = ? AND shot_number = ?`, episodeID, s.ShotNumber).Scan(&existingID)
-		if existingID != "" {
-			s.ID = existingID
-			_, err := e.DB.Exec(`UPDATE storyboards SET scene_id=?, title=?, shot_type=?, angle=?, movement=?, atmosphere=?, description=?, video_prompt=?, duration=?, updated_at=?, deleted_at='' WHERE id=?`,
-				s.SceneID, s.Title, s.ShotType, s.Angle, s.Movement, s.Atmosphere, s.Description, s.VideoPrompt, s.Duration, now, s.ID)
-			if err != nil {
+		if old, ok := existingByNum[s.ShotNumber]; ok {
+			s.ID = old.ID
+			if s.VideoHash == "" {
+				s.VideoHash = old.VideoHash
+			}
+			if s.PosterHash == "" {
+				s.PosterHash = old.PosterHash
+			}
+			if s.Status == "" {
+				s.Status = old.Status
+			}
+			rec := old
+			rec.Shot = s
+			rec.UpdatedAt = now
+			rec.DeletedAt = ""
+			if err := e.putDoc(colShots, s.ID, rec); err != nil {
 				return nil, err
 			}
 		} else {
 			if s.ID == "" {
 				s.ID = NewID()
 			}
-			_, err := e.DB.Exec(`INSERT INTO storyboards(id, episode_id, scene_id, shot_number, title, shot_type, angle, movement, atmosphere, description, video_prompt, duration, video_hash, poster_hash, status, created_at, updated_at, deleted_at)
-				VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, '')`,
-				s.ID, episodeID, s.SceneID, s.ShotNumber, s.Title, s.ShotType, s.Angle, s.Movement, s.Atmosphere, s.Description, s.VideoPrompt, s.Duration, s.VideoHash, s.PosterHash, first(s.Status, "pending"), now, now)
-			if err != nil {
+			if s.Status == "" {
+				s.Status = "pending"
+			}
+			rec := shotRec{Shot: s, CreatedAt: now, UpdatedAt: now}
+			if err := e.putDoc(colShots, s.ID, rec); err != nil {
 				return nil, err
 			}
 		}
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, s.ID)
 		for _, id := range s.CharacterIDs {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_characters(storyboard_id, character_id) VALUES(?,?)`, s.ID, id)
 			e.ensureCharLinked(ep.DramaID, episodeID, id)
 		}
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, s.ID)
 		for _, id := range s.PropIDs {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_props(storyboard_id, prop_id) VALUES(?,?)`, s.ID, id)
 			e.ensurePropLinked(ep.DramaID, episodeID, id)
 		}
 		out = append(out, s)
@@ -475,54 +458,43 @@ func (e *Engine) PatchShot(id string, fields map[string]any) (Shot, error) {
 			cur.Duration = ClampProviderDuration(n, provider)
 		}
 	}
-	now := Now()
-	_, err = e.DB.Exec(`UPDATE storyboards SET title=?, atmosphere=?, description=?, video_prompt=?, duration=?, scene_id=?, updated_at=? WHERE id=?`,
-		cur.Title, cur.Atmosphere, cur.Description, cur.VideoPrompt, cur.Duration, cur.SceneID, now, cur.ID)
+	if has("character_ids") {
+		cur.CharacterIDs = decodeStringSlice(fields["character_ids"])
+	}
+	if has("prop_ids") {
+		cur.PropIDs = decodeStringSlice(fields["prop_ids"])
+	}
+	rec, err := getDoc[shotRec](e, colShots, cur.ID)
 	if err != nil {
 		return cur, err
 	}
-	if has("character_ids") {
-		ids := decodeStringSlice(fields["character_ids"])
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE storyboard_id = ?`, cur.ID)
-		for _, cid := range ids {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_characters(storyboard_id, character_id) VALUES(?,?)`, cur.ID, cid)
-		}
+	rec.Shot = cur
+	rec.UpdatedAt = Now()
+	if err := e.putDoc(colShots, cur.ID, rec); err != nil {
+		return cur, err
 	}
-	if has("prop_ids") {
-		ids := decodeStringSlice(fields["prop_ids"])
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE storyboard_id = ?`, cur.ID)
-		for _, pid := range ids {
-			_, _ = e.DB.Exec(`INSERT OR IGNORE INTO storyboard_props(storyboard_id, prop_id) VALUES(?,?)`, cur.ID, pid)
-		}
-	}
-	cur.CharacterIDs = e.shotChars(cur.ID)
-	cur.PropIDs = e.shotProps(cur.ID)
 	return cur, nil
 }
 
 func (e *Engine) GetShot(id string) (Shot, error) {
-	var s Shot
-	err := e.DB.QueryRow(`SELECT id, episode_id, scene_id, shot_number, title, shot_type, angle, movement, atmosphere, description, video_prompt, duration, video_hash, poster_hash, status FROM storyboards WHERE id = ?`, id).
-		Scan(&s.ID, &s.EpisodeID, &s.SceneID, &s.ShotNumber, &s.Title, &s.ShotType, &s.Angle, &s.Movement, &s.Atmosphere, &s.Description, &s.VideoPrompt, &s.Duration, &s.VideoHash, &s.PosterHash, &s.Status)
+	rec, err := getDoc[shotRec](e, colShots, id)
 	if err != nil {
-		return s, fmt.Errorf("shot not found")
+		return Shot{}, fmt.Errorf("shot not found")
 	}
-	s.CharacterIDs = e.shotChars(s.ID)
-	s.PropIDs = e.shotProps(s.ID)
-	return s, nil
+	return rec.Shot, nil
 }
 
 func (e *Engine) ensureCharLinked(dramaID, episodeID, characterID string) {
-	var did string
-	if e.DB.QueryRow(`SELECT drama_id FROM characters WHERE id = ?`, characterID).Scan(&did) != nil || did != dramaID {
+	rec, err := getDoc[characterRec](e, colCharacters, characterID)
+	if err != nil || rec.DramaID != dramaID {
 		return
 	}
 	e.linkCharacter(episodeID, characterID)
 }
 
 func (e *Engine) ensurePropLinked(dramaID, episodeID, propID string) {
-	var did string
-	if e.DB.QueryRow(`SELECT drama_id FROM props WHERE id = ?`, propID).Scan(&did) != nil || did != dramaID {
+	rec, err := getDoc[propRec](e, colProps, propID)
+	if err != nil || rec.DramaID != dramaID {
 		return
 	}
 	e.linkProp(episodeID, propID)
@@ -531,26 +503,23 @@ func (e *Engine) ensurePropLinked(dramaID, episodeID, propID string) {
 func (e *Engine) ShotRefs(s Shot) ([]AssetRef, error) {
 	var refs []AssetRef
 	if s.SceneID != "" {
-		var name, hash string
-		if e.DB.QueryRow(`SELECT location, image_hash FROM scenes WHERE id = ?`, s.SceneID).Scan(&name, &hash) == nil && hash != "" {
-			if u, err := e.RefDataURL(hash); err == nil {
-				refs = append(refs, AssetRef{Name: name, URL: u})
+		if rec, err := getDoc[sceneRec](e, colScenes, s.SceneID); err == nil && rec.ImageHash != "" {
+			if u, err := e.RefDataURL(rec.ImageHash); err == nil {
+				refs = append(refs, AssetRef{Name: rec.Location, URL: u})
 			}
 		}
 	}
 	for _, id := range s.CharacterIDs {
-		var name, hash string
-		if e.DB.QueryRow(`SELECT name, image_hash FROM characters WHERE id = ?`, id).Scan(&name, &hash) == nil && hash != "" {
-			if u, err := e.RefDataURL(hash); err == nil {
-				refs = append(refs, AssetRef{Name: name, URL: u})
+		if rec, err := getDoc[characterRec](e, colCharacters, id); err == nil && rec.ImageHash != "" {
+			if u, err := e.RefDataURL(rec.ImageHash); err == nil {
+				refs = append(refs, AssetRef{Name: rec.Name, URL: u})
 			}
 		}
 	}
 	for _, id := range s.PropIDs {
-		var name, hash string
-		if e.DB.QueryRow(`SELECT name, image_hash FROM props WHERE id = ?`, id).Scan(&name, &hash) == nil && hash != "" {
-			if u, err := e.RefDataURL(hash); err == nil {
-				refs = append(refs, AssetRef{Name: name, URL: u})
+		if rec, err := getDoc[propRec](e, colProps, id); err == nil && rec.ImageHash != "" {
+			if u, err := e.RefDataURL(rec.ImageHash); err == nil {
+				refs = append(refs, AssetRef{Name: rec.Name, URL: u})
 			}
 		}
 	}
@@ -589,7 +558,11 @@ func (e *Engine) GenerateShot(shotID string) (Job, error) {
 		DramaID: d.ID, EpisodeID: ep.ID, ShotID: s.ID,
 	})
 	if err == nil {
-		_, _ = e.DB.Exec(`UPDATE storyboards SET status = 'generating', updated_at = ? WHERE id = ?`, Now(), s.ID)
+		if rec, getErr := getDoc[shotRec](e, colShots, s.ID); getErr == nil {
+			rec.Status = "generating"
+			rec.UpdatedAt = Now()
+			_ = e.putDoc(colShots, s.ID, rec)
+		}
 		_ = e.patchPipeline(ep.ID, "gen", "running", "")
 	}
 	return j, err
@@ -600,9 +573,7 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	in := EnqueueImage{}
 	switch kind {
 	case "character":
-		var c Character
-		err := e.DB.QueryRow(`SELECT id, drama_id, name, role, final_prompt, appearance, styling FROM characters WHERE id = ?`, id).
-			Scan(&c.ID, &c.DramaID, &c.Name, &c.Role, &c.FinalPrompt, &c.Appearance, &c.Styling)
+		c, err := getDoc[characterRec](e, colCharacters, id)
 		if err != nil {
 			return Job{}, err
 		}
@@ -620,9 +591,7 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 		in.AspectRatio = d.AspectRatio
 		dramaID = c.DramaID
 	case "scene":
-		var s Scene
-		err := e.DB.QueryRow(`SELECT id, drama_id, final_prompt, prompt, lighting, location FROM scenes WHERE id = ?`, id).
-			Scan(&s.ID, &s.DramaID, &s.FinalPrompt, &s.Prompt, &s.Lighting, &s.Location)
+		s, err := getDoc[sceneRec](e, colScenes, id)
 		if err != nil {
 			return Job{}, err
 		}
@@ -637,9 +606,7 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 		in.AspectRatio = d.AspectRatio
 		dramaID = s.DramaID
 	case "prop":
-		var p Prop
-		err := e.DB.QueryRow(`SELECT id, drama_id, final_prompt, description, name FROM props WHERE id = ?`, id).
-			Scan(&p.ID, &p.DramaID, &p.FinalPrompt, &p.Description, &p.Name)
+		p, err := getDoc[propRec](e, colProps, id)
 		if err != nil {
 			return Job{}, err
 		}
@@ -659,7 +626,7 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	in.Prompt = prompt
 	in.DramaID = dramaID
 	if episodeID == "" {
-		_ = e.DB.QueryRow(`SELECT id FROM episodes WHERE drama_id = ? AND deleted_at = '' ORDER BY episode_number LIMIT 1`, dramaID).Scan(&episodeID)
+		episodeID = e.firstEpisodeID(dramaID)
 	}
 	in.EpisodeID = episodeID
 	if episodeID != "" {
@@ -717,9 +684,7 @@ func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any
 		if strings.TrimSpace(c.Name) == "" {
 			return nil, fmt.Errorf("name required")
 		}
-		_, err := e.DB.Exec(`INSERT INTO characters(id, drama_id, name, role, appearance, styling, final_prompt, image_hash, sort_order, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,0,?,?, '')`, c.ID, c.DramaID, c.Name, c.Role, c.Appearance, c.Styling, c.FinalPrompt, c.ImageHash, now, now)
-		if err != nil {
+		if err := e.putDoc(colCharacters, c.ID, characterRec{Character: c, CreatedAt: now, UpdatedAt: now}); err != nil {
 			return nil, err
 		}
 		e.linkCharacter(episodeID, c.ID)
@@ -733,9 +698,7 @@ func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any
 		if strings.TrimSpace(s.Location) == "" {
 			return nil, fmt.Errorf("location required")
 		}
-		_, err := e.DB.Exec(`INSERT INTO scenes(id, drama_id, location, time_of_day, prompt, lighting, final_prompt, image_hash, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?, '')`, s.ID, s.DramaID, s.Location, s.TimeOfDay, s.Prompt, s.Lighting, s.FinalPrompt, s.ImageHash, now, now)
-		if err != nil {
+		if err := e.putDoc(colScenes, s.ID, sceneRec{Scene: s, CreatedAt: now, UpdatedAt: now}); err != nil {
 			return nil, err
 		}
 		e.linkScene(episodeID, s.ID)
@@ -749,9 +712,7 @@ func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any
 		if strings.TrimSpace(p.Name) == "" {
 			return nil, fmt.Errorf("name required")
 		}
-		_, err := e.DB.Exec(`INSERT INTO props(id, drama_id, name, type, description, final_prompt, image_hash, created_at, updated_at, deleted_at)
-			VALUES(?,?,?,?,?,?,?,?,?, '')`, p.ID, p.DramaID, p.Name, p.Type, p.Description, p.FinalPrompt, p.ImageHash, now, now)
-		if err != nil {
+		if err := e.putDoc(colProps, p.ID, propRec{Prop: p, CreatedAt: now, UpdatedAt: now}); err != nil {
 			return nil, err
 		}
 		e.linkProp(episodeID, p.ID)
@@ -765,22 +726,90 @@ func (e *Engine) DeleteAsset(kind, id string) error {
 	now := Now()
 	switch kind {
 	case "character":
-		_, err := e.DB.Exec(`UPDATE characters SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
-		_, _ = e.DB.Exec(`DELETE FROM episode_characters WHERE character_id = ?`, id)
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_characters WHERE character_id = ?`, id)
-		return err
+		rec, err := getDoc[characterRec](e, colCharacters, id)
+		if err != nil {
+			return err
+		}
+		rec.DeletedAt = now
+		rec.UpdatedAt = now
+		if err := e.putDoc(colCharacters, id, rec); err != nil {
+			return err
+		}
+		e.unlinkAssetFromEpisodes(id, "character")
+		for _, s := range loadCol[shotRec](e, colShots) {
+			if containsID(s.CharacterIDs, id) {
+				s.CharacterIDs = removeID(s.CharacterIDs, id)
+				_ = e.putDoc(colShots, s.ID, s)
+			}
+		}
+		return nil
 	case "scene":
-		_, err := e.DB.Exec(`UPDATE scenes SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
-		_, _ = e.DB.Exec(`DELETE FROM episode_scenes WHERE scene_id = ?`, id)
-		_, _ = e.DB.Exec(`UPDATE storyboards SET scene_id = '' WHERE scene_id = ?`, id)
-		return err
+		rec, err := getDoc[sceneRec](e, colScenes, id)
+		if err != nil {
+			return err
+		}
+		rec.DeletedAt = now
+		rec.UpdatedAt = now
+		if err := e.putDoc(colScenes, id, rec); err != nil {
+			return err
+		}
+		e.unlinkAssetFromEpisodes(id, "scene")
+		for _, s := range loadCol[shotRec](e, colShots) {
+			if s.SceneID == id {
+				s.SceneID = ""
+				_ = e.putDoc(colShots, s.ID, s)
+			}
+		}
+		return nil
 	case "prop":
-		_, err := e.DB.Exec(`UPDATE props SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id)
-		_, _ = e.DB.Exec(`DELETE FROM episode_props WHERE prop_id = ?`, id)
-		_, _ = e.DB.Exec(`DELETE FROM storyboard_props WHERE prop_id = ?`, id)
-		return err
+		rec, err := getDoc[propRec](e, colProps, id)
+		if err != nil {
+			return err
+		}
+		rec.DeletedAt = now
+		rec.UpdatedAt = now
+		if err := e.putDoc(colProps, id, rec); err != nil {
+			return err
+		}
+		e.unlinkAssetFromEpisodes(id, "prop")
+		for _, s := range loadCol[shotRec](e, colShots) {
+			if containsID(s.PropIDs, id) {
+				s.PropIDs = removeID(s.PropIDs, id)
+				_ = e.putDoc(colShots, s.ID, s)
+			}
+		}
+		return nil
 	}
 	return fmt.Errorf("unknown asset")
+}
+
+func (e *Engine) unlinkAssetFromEpisodes(id, kind string) {
+	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
+		changed := false
+		switch kind {
+		case "character":
+			n := removeID(ep.CharacterIDs, id)
+			if len(n) != len(ep.CharacterIDs) {
+				ep.CharacterIDs = n
+				changed = true
+			}
+		case "scene":
+			n := removeID(ep.SceneIDs, id)
+			if len(n) != len(ep.SceneIDs) {
+				ep.SceneIDs = n
+				changed = true
+			}
+		case "prop":
+			n := removeID(ep.PropIDs, id)
+			if len(n) != len(ep.PropIDs) {
+				ep.PropIDs = n
+				changed = true
+			}
+		}
+		if changed {
+			_ = e.putDoc(colEpisodes, ep.ID, ep)
+		}
+	}
 }
 
 func (e *Engine) ApplyJob(id string) (Job, error) {

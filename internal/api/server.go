@@ -34,8 +34,11 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	})
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			_ = json.NewDecoder(r.Body).Decode(&a.Config)
-			_ = a.SaveConfig()
+			b, _ := io.ReadAll(r.Body)
+			if err := a.ApplyConfigPatch(b); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
 		}
 		writeJSON(w, a.Config)
 	})

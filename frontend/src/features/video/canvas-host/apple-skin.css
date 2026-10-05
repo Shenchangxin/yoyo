@@ -4,6 +4,28 @@
   --font-sans: inherit;
   --font-heading: inherit;
   --font-mono: inherit;
+  /* Yingce globals redeclare light shadcn tokens on .yingce-island.
+     Inherit Yoyo html.dark / html.light so the island never forks a paper palette. */
+  --background: inherit;
+  --foreground: inherit;
+  --card: inherit;
+  --popover: inherit;
+  --border: inherit;
+  --muted: inherit;
+  --muted-foreground: inherit;
+  --accent: inherit;
+  --primary: inherit;
+  --primary-foreground: inherit;
+  --secondary: inherit;
+  --secondary-foreground: inherit;
+  --sidebar: inherit;
+  --sidebar-foreground: inherit;
+  --ring: inherit;
+  --input: inherit;
+  --destructive: inherit;
+  --card-foreground: inherit;
+  --popover-foreground: inherit;
+  --accent-foreground: inherit;
   --radius: var(--radius-control, 0.5rem);
   --r-xs: 4px;
   --r-sm: 6px;
@@ -39,16 +61,35 @@
   --workspace-text-muted: var(--muted);
   --workspace-text-faint: color-mix(in srgb, var(--muted) 80%, transparent);
   --workspace-glass-surface: var(--glass-bg, var(--sidebar));
+  --user-page-bg: var(--background);
+  --user-bg: var(--background);
+  --library-icon-surface: var(--lift);
+  --library-cover-surface: var(--lift);
   --user-ink: var(--foreground);
   --user-ink-muted: var(--muted);
-  --user-ink-soft: color-mix(in srgb, var(--muted) 80%, transparent);
+  --user-ink-soft: color-mix(in srgb, var(--muted) 78%, transparent);
   --user-surface: var(--card);
+  --user-surface-raised: var(--popover);
   --user-surface-muted: var(--lift);
-  --user-surface-hover: var(--lift);
+  --user-surface-hover: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+  --user-control-pressed: color-mix(in srgb, var(--foreground) 12%, var(--card));
+  --user-border: var(--border);
+  --user-border-strong: color-mix(in srgb, var(--foreground) 16%, transparent);
   --user-accent: var(--accent);
-  --user-accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --user-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --user-shadow-card: none;
+  --user-shadow-hover: none;
   --user-radius-card: 12px;
   --user-radius-control: 8px;
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --bg-secondary: var(--sidebar);
+  --bg-tertiary: var(--card);
+  --surface: var(--card);
+  --surface-hover: var(--lift);
+  --surface-active: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --color-surface: var(--card);
+  --color-border: var(--border);
   --button-primary-bg: var(--foreground);
   --button-primary-fg: var(--background);
   --button-primary-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
@@ -110,6 +151,36 @@
   --plugin-switch-checked-hover-bg: color-mix(in srgb, var(--accent) 86%, black);
   --plugin-switch-off-bg: color-mix(in srgb, var(--foreground) 16%, transparent);
   --plugin-switch-off-hover-bg: color-mix(in srgb, var(--foreground) 24%, transparent);
+  --muted-foreground: var(--muted);
+  --primary: var(--foreground);
+  --primary-foreground: var(--background);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary: var(--lift);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--accent-fg, var(--background));
+  --destructive: var(--danger);
+  --btn-solid-bg: var(--foreground);
+  --btn-solid-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
+  --btn-solid-active-bg: var(--foreground);
+  --btn-solid-fg: var(--background);
+  --control-selected-bg: var(--lift);
+  --control-selected-hover-bg: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --control-selected-fg: var(--foreground);
+  --control-selected-border: var(--border);
+  --control-check-bg: var(--foreground);
+  --control-check-fg: var(--background);
+  --creation-text: var(--foreground);
+  --creation-muted: var(--muted);
+  --creation-faint: color-mix(in srgb, var(--muted) 80%, transparent);
+  --creation-surface: var(--card);
+  --creation-surface-muted: var(--lift);
+  --creation-surface-hover: var(--lift);
+  --creation-surface-selected: var(--lift);
+  --creation-bg: var(--background);
+  --creation-border: var(--border);
+  --creation-border-strong: color-mix(in srgb, var(--foreground) 22%, var(--border));
+  --creation-accent: var(--accent);
   color: var(--foreground);
   background: var(--background);
   font-family: inherit;
@@ -529,7 +600,8 @@ html.light .yingce-island {
 .yingce-island .yc-btn-default,
 .yingce-island .ant-btn-default,
 .yingce-island .product-icon-button,
-.yingce-island .creation-chat-control {
+.yingce-island .creation-chat-control,
+.yingce-island .creation-studio-control {
   background: var(--lift) !important;
   color: var(--foreground) !important;
   border-color: transparent !important;
@@ -538,10 +610,43 @@ html.light .yingce-island {
 .yingce-island .yc-btn-primary,
 .yingce-island .ant-btn-primary,
 .yingce-island .yc-btn-primary.yc-btn-circle,
-.yingce-island .ant-btn-primary.ant-btn-circle {
+.yingce-island .ant-btn-primary.ant-btn-circle,
+.yingce-island .creation-studio-submit {
   background: var(--foreground) !important;
   color: var(--background) !important;
   border-color: transparent !important;
+}
+
+.yingce-island .yc-btn-text,
+.yingce-island .yc-btn-link,
+.yingce-island .ant-btn-text,
+.yingce-island .ant-btn-link,
+.yingce-island .yc-btn-default.yc-btn-text {
+  background: transparent !important;
+  color: var(--foreground) !important;
+  border-color: transparent !important;
+}
+
+.yingce-island .yc-btn-default:hover,
+.yingce-island .ant-btn-default:hover,
+.yingce-island .creation-studio-control:hover,
+.yingce-island .creation-chat-control:hover {
+  background: color-mix(in srgb, var(--foreground) 12%, var(--lift)) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .yc-btn-primary:hover,
+.yingce-island .ant-btn-primary:hover,
+.yingce-island .creation-studio-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 88%, var(--accent)) !important;
+  color: var(--background) !important;
+}
+
+.yingce-island .yc-btn:disabled,
+.yingce-island .ant-btn:disabled,
+.yingce-island .creation-studio-submit:disabled {
+  color: var(--muted) !important;
+  opacity: 0.55;
 }
 
 .yingce-island .yc-btn-primary.yc-btn-circle,
@@ -652,7 +757,7 @@ html.light .yingce-island {
 .yingce-island .plugin-enable-thumb {
   left: 2px;
   transform: none !important;
-  background: #fff !important;
+  background: var(--foreground) !important;
 }
 
 .yingce-island .plugin-enable.is-on .plugin-enable-thumb {

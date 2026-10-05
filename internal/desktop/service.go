@@ -98,26 +98,27 @@ func (s *Service) GetConfig() app.Config {
 	return s.App.Config
 }
 
-func (s *Service) SetConfig(cfg app.Config) error {
+func (s *Service) SetConfig(cfg map[string]any) error {
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
 	if s.RPC != nil {
 		_, err := s.call("config.set", cfg)
 		if err == nil {
-			s.applyDesktop(cfg)
+			s.applyDesktop(s.GetConfig())
 		}
 		return err
 	}
-	s.App.Config = cfg
-	if err := s.App.SaveConfig(); err != nil {
+	if err := s.App.ApplyConfigPatch(b); err != nil {
 		return err
 	}
-	s.applyDesktop(cfg)
+	s.applyDesktop(s.App.Config)
 	return nil
 }
 
 func (s *Service) SetLocale(locale string) error {
-	cfg := s.GetConfig()
-	cfg.Locale = locale
-	return s.SetConfig(cfg)
+	return s.SetConfig(map[string]any{"locale": locale})
 }
 
 func (s *Service) BeginQuit() {

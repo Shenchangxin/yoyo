@@ -3,6 +3,7 @@ package video
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -68,32 +69,28 @@ func (e *Engine) listCanvasTasks(projectID string, activeOnly bool, limit int) [
 	if limit <= 0 {
 		limit = 50
 	}
-	q := `SELECT id FROM jobs WHERE (type LIKE 'canvas%' OR (json_extract(params, '$.canvas_project_id') IS NOT NULL AND json_extract(params, '$.canvas_project_id') != ''))`
-	var args []any
-	if projectID != "" {
-		q += ` AND json_extract(params, '$.canvas_project_id') = ?`
-		args = append(args, projectID)
+	active := map[string]bool{"queued": true, "running": true, "polling": true, "text_replay": true}
+	var jobs []Job
+	for _, j := range loadCol[Job](e, colJobs) {
+		p := parseParams(j.Params)
+		isCanvas := strings.HasPrefix(j.Type, "canvas") || p.CanvasProjectID != ""
+		if !isCanvas {
+			continue
+		}
+		if projectID != "" && p.CanvasProjectID != projectID {
+			continue
+		}
+		if activeOnly && !active[j.Status] {
+			continue
+		}
+		jobs = append(jobs, j)
 	}
-	if activeOnly {
-		q += ` AND status IN ('queued','running','polling','text_replay')`
+	sort.Slice(jobs, func(i, j int) bool { return jobs[i].CreatedAt > jobs[j].CreatedAt })
+	if len(jobs) > limit {
+		jobs = jobs[:limit]
 	}
-	q += ` ORDER BY created_at DESC LIMIT ?`
-	args = append(args, limit)
-	rows, err := e.DB.Query(q, args...)
-	if err != nil {
-		return []map[string]any{}
-	}
-	defer rows.Close()
 	out := []map[string]any{}
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) != nil {
-			continue
-		}
-		j, err := e.GetJob(id)
-		if err != nil {
-			continue
-		}
+	for _, j := range jobs {
 		out = append(out, e.taskView(j))
 	}
 	return out
@@ -172,23 +169,21 @@ func (e *Engine) taskView(j Job) map[string]any {
 }
 
 func (e *Engine) appendTaskLog(taskID, level, stage, message string) {
-	_, _ = e.DB.Exec(`INSERT INTO canvas_task_logs(id, task_id, level, stage, message, created_at) VALUES(?,?,?,?,?,?)`,
-		NewID(), taskID, level, stage, message, Now())
+	rec := canvasTaskLogRec{ID: NewID(), TaskID: taskID, Level: level, Stage: stage, Message: message, CreatedAt: Now()}
+	_ = e.putDoc(colTaskLogs, rec.ID, rec)
 }
 
 func (e *Engine) taskLogs(id string) []map[string]any {
-	rows, err := e.DB.Query(`SELECT level, message, created_at FROM canvas_task_logs WHERE task_id = ? ORDER BY created_at ASC`, id)
-	if err != nil {
-		return []map[string]any{}
-	}
-	defer rows.Close()
-	out := []map[string]any{}
-	for rows.Next() {
-		var level, msg, created string
-		if rows.Scan(&level, &msg, &created) != nil {
-			continue
+	var recs []canvasTaskLogRec
+	for _, r := range loadCol[canvasTaskLogRec](e, colTaskLogs) {
+		if r.TaskID == id {
+			recs = append(recs, r)
 		}
-		out = append(out, map[string]any{"level": level, "message": msg, "createdAt": created})
+	}
+	sort.Slice(recs, func(i, j int) bool { return recs[i].CreatedAt < recs[j].CreatedAt })
+	out := []map[string]any{}
+	for _, r := range recs {
+		out = append(out, map[string]any{"level": r.Level, "message": r.Message, "createdAt": r.CreatedAt})
 	}
 	return out
 }
@@ -198,12 +193,16 @@ func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var seq int
-	_ = e.DB.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM canvas_text_deltas WHERE task_id = ?`, id).Scan(&seq)
+	seq := 0
+	for _, d := range loadCol[canvasDeltaRec](e, colTextDeltas) {
+		if d.TaskID == id && d.Seq > seq {
+			seq = d.Seq
+		}
+	}
 	seq++
 	now := Now()
-	_, err = e.DB.Exec(`INSERT INTO canvas_text_deltas(id, task_id, seq, content, created_at) VALUES(?,?,?,?,?)`, NewID(), id, seq, content, now)
-	if err != nil {
+	rec := canvasDeltaRec{ID: NewID(), TaskID: id, Seq: seq, Content: content, CreatedAt: now}
+	if err := e.putDoc(colTextDeltas, rec.ID, rec); err != nil {
 		return nil, err
 	}
 	p := parseParams(j.Params)
@@ -215,24 +214,21 @@ func (e *Engine) appendTextDelta(id, content string) (map[string]any, error) {
 }
 
 func (e *Engine) textReplay(id string, after int) map[string]any {
-	rows, err := e.DB.Query(`SELECT seq, content, created_at FROM canvas_text_deltas WHERE task_id = ? AND seq > ? ORDER BY seq ASC`, id, after)
-	if err != nil {
-		return map[string]any{"items": []any{}, "cursor": after}
+	var recs []canvasDeltaRec
+	for _, d := range loadCol[canvasDeltaRec](e, colTextDeltas) {
+		if d.TaskID == id && d.Seq > after {
+			recs = append(recs, d)
+		}
 	}
-	defer rows.Close()
+	sort.Slice(recs, func(i, j int) bool { return recs[i].Seq < recs[j].Seq })
 	items := []map[string]any{}
 	cursor := after
-	for rows.Next() {
-		var seq int
-		var content, created string
-		if rows.Scan(&seq, &content, &created) != nil {
-			continue
-		}
+	for _, d := range recs {
 		items = append(items, map[string]any{
-			"id": fmt.Sprintf("%s-%d", id, seq), "taskId": id, "sequence": seq, "seq": seq,
-			"content": content, "byteCount": len(content), "createdAt": created,
+			"id": fmt.Sprintf("%s-%d", id, d.Seq), "taskId": id, "sequence": d.Seq, "seq": d.Seq,
+			"content": d.Content, "byteCount": len(d.Content), "createdAt": d.CreatedAt,
 		})
-		cursor = seq
+		cursor = d.Seq
 	}
 	draft := ""
 	status := "running"
@@ -303,6 +299,5 @@ func (e *Engine) recoverCanvasTask(id string) (map[string]any, error) {
 }
 
 func (e *Engine) deleteCanvasTask(id string) error {
-	_, err := e.DB.Exec(`DELETE FROM jobs WHERE id = ?`, id)
-	return err
+	return e.delDoc(colJobs, id)
 }

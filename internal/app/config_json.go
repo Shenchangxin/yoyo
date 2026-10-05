@@ -2,11 +2,11 @@ package app
 
 import "encoding/json"
 
-// UnmarshalJSON accepts both `locale` and Wails' `Locale` key so native menus
-// follow the UI language even when the bound payload uses Go field names.
+// UnmarshalJSON merges into the existing Config so omitted keys survive a
+// partial Wails/HTTP body. It also accepts both `locale` and Wails' `Locale`.
 func (c *Config) UnmarshalJSON(b []byte) error {
 	type plain Config
-	var p plain
+	p := plain(*c)
 	if err := json.Unmarshal(b, &p); err != nil {
 		return err
 	}

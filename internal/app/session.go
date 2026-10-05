@@ -247,6 +247,19 @@ func (a *App) ReadTrace(id string) ([]trace.Event, error) {
 }
 
 func (a *App) Client() (runtime.Client, error) {
+	if a.Video != nil && a.Video.Conn != nil {
+		if c, err := a.Video.Conn.Active("chat", ""); err == nil {
+			key := ""
+			if k, e := a.Video.Conn.Lease(c); e == nil {
+				key = k
+			}
+			base := strings.TrimSpace(c.Endpoint)
+			if base == "" {
+				base = a.Config.BaseURL
+			}
+			return runtime.NewOpenAIClient(base, key), nil
+		}
+	}
 	key, _ := a.Vault.Lease("default")
 	return runtime.NewOpenAIClient(a.Config.BaseURL, key), nil
 }

@@ -1,9 +1,9 @@
 package video
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,67 +13,69 @@ const canvasHistoryLimit = 20
 const canvasHistoryInterval = 5 * time.Minute
 
 type canvasProjectRow struct {
-	ID            string
-	Title         string
-	PayloadJSON   string
-	TimelineJSON  string
-	Revision      int64
-	WorkspaceMode string
-	Theme         string
-	ProjectLink   string
-	CreatedAt     string
-	UpdatedAt     string
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	PayloadJSON   string `json:"payload_json"`
+	TimelineJSON  string `json:"timeline_json"`
+	Revision      int64  `json:"revision"`
+	WorkspaceMode string `json:"workspace_mode"`
+	Theme         string `json:"theme"`
+	ProjectLink   string `json:"project_link"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+	DeletedAt     string `json:"deleted_at,omitempty"`
 }
 
 func (e *Engine) getCanvasProject(id string) (canvasProjectRow, error) {
-	var r canvasProjectRow
-	err := e.DB.QueryRow(`SELECT id, title, payload_json, timeline_json, revision, workspace_mode, theme, project_link, created_at, updated_at FROM canvas_projects WHERE id = ? AND deleted_at = ''`, id).
-		Scan(&r.ID, &r.Title, &r.PayloadJSON, &r.TimelineJSON, &r.Revision, &r.WorkspaceMode, &r.Theme, &r.ProjectLink, &r.CreatedAt, &r.UpdatedAt)
-	if err != nil {
-		return r, fmt.Errorf("canvas not found")
+	r, err := getDoc[canvasProjectRow](e, colProjects, id)
+	if err != nil || r.DeletedAt != "" {
+		return canvasProjectRow{}, fmt.Errorf("canvas not found")
 	}
 	return r, nil
 }
 
-func (e *Engine) listCanvasProjectRows(search, sort string, page, pageSize int) ([]canvasProjectRow, int, error) {
+func (e *Engine) listCanvasProjectRows(search, sortKey string, page, pageSize int) ([]canvasProjectRow, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize <= 0 {
 		pageSize = 40
 	}
-	where := `deleted_at = ''`
-	var args []any
-	if q := strings.TrimSpace(search); q != "" {
-		where += ` AND (title LIKE ? OR id LIKE ?)`
-		like := "%" + q + "%"
-		args = append(args, like, like)
-	}
-	order := `updated_at DESC`
-	switch sort {
-	case "name":
-		order = `title COLLATE NOCASE ASC`
-	case "nodes":
-		order = `json_array_length(json_extract(payload_json, '$.nodes')) DESC, updated_at DESC`
-	}
-	var total int
-	if err := e.DB.QueryRow(`SELECT COUNT(*) FROM canvas_projects WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	args = append(args, pageSize, (page-1)*pageSize)
-	rows, err := e.DB.Query(`SELECT id, title, payload_json, timeline_json, revision, workspace_mode, theme, project_link, created_at, updated_at FROM canvas_projects WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var out []canvasProjectRow
-	for rows.Next() {
-		var r canvasProjectRow
-		if err := rows.Scan(&r.ID, &r.Title, &r.PayloadJSON, &r.TimelineJSON, &r.Revision, &r.WorkspaceMode, &r.Theme, &r.ProjectLink, &r.CreatedAt, &r.UpdatedAt); err != nil {
-			return nil, 0, err
+	q := strings.ToLower(strings.TrimSpace(search))
+	var all []canvasProjectRow
+	for _, r := range loadCol[canvasProjectRow](e, colProjects) {
+		if r.DeletedAt != "" {
+			continue
 		}
-		out = append(out, r)
+		if q != "" && !strings.Contains(strings.ToLower(r.Title), q) && !strings.Contains(strings.ToLower(r.ID), q) {
+			continue
+		}
+		all = append(all, r)
 	}
+	switch sortKey {
+	case "name":
+		sort.Slice(all, func(i, j int) bool { return strings.ToLower(all[i].Title) < strings.ToLower(all[j].Title) })
+	case "nodes":
+		sort.Slice(all, func(i, j int) bool {
+			ni, nj := canvasNodeCount(all[i].PayloadJSON), canvasNodeCount(all[j].PayloadJSON)
+			if ni != nj {
+				return ni > nj
+			}
+			return all[i].UpdatedAt > all[j].UpdatedAt
+		})
+	default:
+		sort.Slice(all, func(i, j int) bool { return all[i].UpdatedAt > all[j].UpdatedAt })
+	}
+	total := len(all)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	out := all[start:end]
 	if out == nil {
 		out = []canvasProjectRow{}
 	}
@@ -223,15 +225,17 @@ func (e *Engine) upsertCanvasProject(raw json.RawMessage, repair bool) (map[stri
 	if repair {
 		reason = "before_resource_repair"
 	}
+	row := canvasProjectRow{
+		ID: id, Title: title, PayloadJSON: string(payload), Revision: newRev,
+		WorkspaceMode: "simple", ProjectLink: projectLink, CreatedAt: created, UpdatedAt: now,
+	}
 	if found {
 		_ = e.maybeSnapshot(existing, reason)
-		_, err = e.DB.Exec(`UPDATE canvas_projects SET title=?, payload_json=?, revision=?, project_link=?, updated_at=? WHERE id=?`,
-			title, string(payload), newRev, projectLink, now, id)
-	} else {
-		_, err = e.DB.Exec(`INSERT INTO canvas_projects(id, title, payload_json, timeline_json, revision, workspace_mode, theme, project_link, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			id, title, string(payload), "", newRev, "simple", "", projectLink, created, now)
+		row.TimelineJSON = existing.TimelineJSON
+		row.WorkspaceMode = existing.WorkspaceMode
+		row.Theme = existing.Theme
 	}
-	if err != nil {
+	if err := e.putDoc(colProjects, id, row); err != nil {
 		return nil, canvasFail(500, err.Error(), "internal")
 	}
 	return map[string]any{
@@ -246,9 +250,7 @@ func (e *Engine) upsertCanvasProject(raw json.RawMessage, repair bool) (map[stri
 func (e *Engine) validateCanvasResources(payload []byte) error {
 	ids := collectResourceIDs(payload)
 	for _, id := range ids {
-		var n int
-		err := e.DB.QueryRow(`SELECT COUNT(*) FROM canvas_resources WHERE id = ? AND deleted_at = ''`, id).Scan(&n)
-		if err != nil || n == 0 {
+		if rec, err := getDoc[canvasResourceRec](e, colResources, id); err != nil || rec.DeletedAt != "" {
 			return fmt.Errorf("画布引用了缺失资源 %s", id)
 		}
 	}
@@ -291,35 +293,38 @@ func collectResourceIDs(payload []byte) []string {
 func (e *Engine) maybeSnapshot(existing canvasProjectRow, reason string) error {
 	force := reason == "before_restore" || reason == "before_resource_repair"
 	if !force {
-		var last string
-		_ = e.DB.QueryRow(`SELECT created_at FROM canvas_snapshots WHERE canvas_id = ? ORDER BY created_at DESC LIMIT 1`, existing.ID).Scan(&last)
-		if last != "" {
-			if t, err := time.Parse(time.RFC3339Nano, last); err == nil && time.Since(t) < canvasHistoryInterval {
+		var latest string
+		for _, s := range loadCol[canvasSnapshotRec](e, colSnapshots) {
+			if s.CanvasID == existing.ID && s.CreatedAt > latest {
+				latest = s.CreatedAt
+			}
+		}
+		if latest != "" {
+			if t, err := time.Parse(time.RFC3339Nano, latest); err == nil && time.Since(t) < canvasHistoryInterval {
 				return nil
 			}
 		}
 	}
 	now := Now()
-	_, err := e.DB.Exec(`INSERT INTO canvas_snapshots(id, canvas_id, revision, title, payload_json, reason, node_count, connection_count, created_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-		NewID(), existing.ID, existing.Revision, existing.Title, existing.PayloadJSON, reason, canvasNodeCount(existing.PayloadJSON), canvasConnectionCount(existing.PayloadJSON), now)
-	if err != nil {
+	snap := canvasSnapshotRec{
+		ID: NewID(), CanvasID: existing.ID, Revision: existing.Revision, Title: existing.Title,
+		PayloadJSON: existing.PayloadJSON, Reason: reason,
+		NodeCount: canvasNodeCount(existing.PayloadJSON), ConnectionCount: canvasConnectionCount(existing.PayloadJSON),
+		CreatedAt: now,
+	}
+	if err := e.putDoc(colSnapshots, snap.ID, snap); err != nil {
 		return err
 	}
-	rows, err := e.DB.Query(`SELECT id FROM canvas_snapshots WHERE canvas_id = ? ORDER BY created_at DESC`, existing.ID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
+	var ids []canvasSnapshotRec
+	for _, s := range loadCol[canvasSnapshotRec](e, colSnapshots) {
+		if s.CanvasID == existing.ID {
+			ids = append(ids, s)
 		}
 	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i].CreatedAt > ids[j].CreatedAt })
 	if len(ids) > canvasHistoryLimit {
-		for _, id := range ids[canvasHistoryLimit:] {
-			_, _ = e.DB.Exec(`DELETE FROM canvas_snapshots WHERE id = ?`, id)
+		for _, s := range ids[canvasHistoryLimit:] {
+			_ = e.delDoc(colSnapshots, s.ID)
 		}
 	}
 	return nil
@@ -330,47 +335,45 @@ func (e *Engine) listCanvasHistory(id string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := e.DB.Query(`SELECT id, canvas_id, revision, title, payload_json, reason, node_count, connection_count, created_at FROM canvas_snapshots WHERE canvas_id = ? ORDER BY created_at DESC LIMIT ?`, id, canvasHistoryLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	snaps := []map[string]any{}
-	for rows.Next() {
-		var sid, cid, title, payload, reason, created string
-		var rev int64
-		var nodes, conns int
-		if err := rows.Scan(&sid, &cid, &rev, &title, &payload, &reason, &nodes, &conns, &created); err != nil {
-			return nil, err
+	var snaps []map[string]any
+	var list []canvasSnapshotRec
+	for _, s := range loadCol[canvasSnapshotRec](e, colSnapshots) {
+		if s.CanvasID == id {
+			list = append(list, s)
 		}
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].CreatedAt > list[j].CreatedAt })
+	if len(list) > canvasHistoryLimit {
+		list = list[:canvasHistoryLimit]
+	}
+	for _, s := range list {
 		snaps = append(snaps, map[string]any{
-			"id": sid, "canvasId": cid, "revision": rev, "title": title,
-			"nodeCount": nodes, "connectionCount": conns, "payloadBytes": len(payload),
-			"reason": reason, "createdAt": created, "contentUpdatedAt": created,
+			"id": s.ID, "canvasId": s.CanvasID, "revision": s.Revision, "title": s.Title,
+			"nodeCount": s.NodeCount, "connectionCount": s.ConnectionCount, "payloadBytes": len(s.PayloadJSON),
+			"reason": s.Reason, "createdAt": s.CreatedAt, "contentUpdatedAt": s.CreatedAt,
 		})
+	}
+	if snaps == nil {
+		snaps = []map[string]any{}
 	}
 	return map[string]any{"snapshots": snaps, "currentRevision": row.Revision}, nil
 }
 
 func (e *Engine) getCanvasSnapshot(canvasID, snapshotID string) (map[string]any, map[string]any, error) {
-	var sid, cid, title, payload, reason, created string
-	var rev int64
-	var nodes, conns int
-	err := e.DB.QueryRow(`SELECT id, canvas_id, revision, title, payload_json, reason, node_count, connection_count, created_at FROM canvas_snapshots WHERE id = ? AND canvas_id = ?`, snapshotID, canvasID).
-		Scan(&sid, &cid, &rev, &title, &payload, &reason, &nodes, &conns, &created)
-	if err != nil {
+	s, err := getDoc[canvasSnapshotRec](e, colSnapshots, snapshotID)
+	if err != nil || s.CanvasID != canvasID {
 		return nil, nil, fmt.Errorf("snapshot not found")
 	}
 	snap := map[string]any{
-		"id": sid, "canvasId": cid, "revision": rev, "title": title,
-		"nodeCount": nodes, "connectionCount": conns, "payloadBytes": len(payload),
-		"reason": reason, "createdAt": created, "contentUpdatedAt": created,
+		"id": s.ID, "canvasId": s.CanvasID, "revision": s.Revision, "title": s.Title,
+		"nodeCount": s.NodeCount, "connectionCount": s.ConnectionCount, "payloadBytes": len(s.PayloadJSON),
+		"reason": s.Reason, "createdAt": s.CreatedAt, "contentUpdatedAt": s.CreatedAt,
 	}
 	doc := map[string]any{}
-	_ = json.Unmarshal([]byte(payload), &doc)
+	_ = json.Unmarshal([]byte(s.PayloadJSON), &doc)
 	doc["id"] = canvasID
-	doc["title"] = title
-	doc["revision"] = rev
+	doc["title"] = s.Title
+	doc["revision"] = s.Revision
 	return snap, doc, nil
 }
 
@@ -396,16 +399,23 @@ func (e *Engine) restoreCanvasSnapshot(canvasID, snapshotID string, revision int
 	doc["revision"] = newRev
 	doc["updatedAt"] = now
 	payload, _ := json.Marshal(doc)
-	_, err = e.DB.Exec(`UPDATE canvas_projects SET title=?, payload_json=?, revision=?, updated_at=? WHERE id=?`, title, string(payload), newRev, now, canvasID)
-	if err != nil {
+	existing.Title = title
+	existing.PayloadJSON = string(payload)
+	existing.Revision = newRev
+	existing.UpdatedAt = now
+	if err := e.putDoc(colProjects, canvasID, existing); err != nil {
 		return nil, canvasFail(500, err.Error(), "internal")
 	}
 	return map[string]any{"id": canvasID, "title": title, "revision": newRev, "createdAt": existing.CreatedAt, "updatedAt": now}, canvasOK(nil)
 }
 
 func (e *Engine) deleteCanvasProject(id string) error {
-	_, err := e.DB.Exec(`UPDATE canvas_projects SET deleted_at = ? WHERE id = ? AND deleted_at = ''`, Now(), id)
-	return err
+	r, err := e.getCanvasProject(id)
+	if err != nil {
+		return err
+	}
+	r.DeletedAt = Now()
+	return e.putDoc(colProjects, id, r)
 }
 
 func (e *Engine) createEmptyCanvas(title string) (map[string]any, error) {
@@ -421,9 +431,11 @@ func (e *Engine) createEmptyCanvas(title string) (map[string]any, error) {
 		"directorScenes": []any{}, "createdAt": now, "updatedAt": now,
 	}
 	payload, _ := json.Marshal(doc)
-	_, err := e.DB.Exec(`INSERT INTO canvas_projects(id, title, payload_json, timeline_json, revision, workspace_mode, theme, project_link, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		id, title, string(payload), "", 1, "simple", "", "", now, now)
-	if err != nil {
+	row := canvasProjectRow{
+		ID: id, Title: title, PayloadJSON: string(payload), Revision: 1,
+		WorkspaceMode: "simple", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := e.putDoc(colProjects, id, row); err != nil {
 		return nil, err
 	}
 	doc["revision"] = 1
@@ -437,23 +449,28 @@ func (e *Engine) BindCanvasSession(sessionID, canvasID string) error {
 	if _, err := e.getCanvasProject(canvasID); err != nil {
 		return err
 	}
-	now := Now()
-	_, err := e.DB.Exec(`INSERT INTO canvas_session_binds(session_id, canvas_id, updated_at) VALUES(?,?,?)
-		ON CONFLICT(session_id) DO UPDATE SET canvas_id=excluded.canvas_id, updated_at=excluded.updated_at`, sessionID, canvasID, now)
-	return err
+	m := e.loadCanvasBinds()
+	m[sessionID] = canvasID
+	return e.saveCanvasBinds(m)
 }
 
 func (e *Engine) CanvasSessionBind(sessionID string) (string, bool) {
-	var id string
-	err := e.DB.QueryRow(`SELECT canvas_id FROM canvas_session_binds WHERE session_id = ?`, sessionID).Scan(&id)
-	if err == sql.ErrNoRows || id == "" {
+	m := e.loadCanvasBinds()
+	id := m[sessionID]
+	if id == "" {
 		return "", false
 	}
-	return id, err == nil
+	return id, true
 }
 
 func (e *Engine) saveCanvasPayload(id string, payload []byte, title string) error {
-	now := Now()
-	_, err := e.DB.Exec(`UPDATE canvas_projects SET payload_json=?, title=?, revision=revision+1, updated_at=? WHERE id=? AND deleted_at=''`, string(payload), title, now, id)
-	return err
+	r, err := e.getCanvasProject(id)
+	if err != nil {
+		return err
+	}
+	r.PayloadJSON = string(payload)
+	r.Title = title
+	r.Revision++
+	r.UpdatedAt = Now()
+	return e.putDoc(colProjects, id, r)
 }

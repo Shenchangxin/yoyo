@@ -208,31 +208,31 @@ func (e *Engine) inspectCanvasImage(canvasID string, args map[string]any) (strin
 func (e *Engine) rememberLesson(args map[string]any) (string, error) {
 	now := Now()
 	id := NewID()
-	_, err := e.DB.Exec(`INSERT INTO canvas_lessons(id, topic, category, situation, lesson, steps_json, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-		id, strAnyMap(args, "topic"), firstNonEmpty(strAnyMap(args, "category"), "other"), strAnyMap(args, "situation"), strAnyMap(args, "lesson"), "[]", "pending", now, now)
-	if err != nil {
+	rec := canvasLessonRec{
+		ID: id, Topic: strAnyMap(args, "topic"), Category: firstNonEmpty(strAnyMap(args, "category"), "other"),
+		Situation: strAnyMap(args, "situation"), Lesson: strAnyMap(args, "lesson"), StepsJSON: "[]",
+		Status: "pending", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := e.putDoc(colLessons, id, rec); err != nil {
 		return "", err
 	}
 	return marshalJSON(map[string]any{"id": id, "status": "pending"}), nil
 }
 
 func (e *Engine) recallLessons(query string) (string, error) {
-	rows, err := e.DB.Query(`SELECT id, topic, category, situation, lesson, status FROM canvas_lessons WHERE status = 'approved' ORDER BY updated_at DESC LIMIT 20`)
-	if err != nil {
-		return marshalJSON([]any{}), nil
-	}
-	defer rows.Close()
 	out := []map[string]any{}
 	q := strings.ToLower(query)
-	for rows.Next() {
-		var id, topic, cat, sit, lesson, status string
-		if rows.Scan(&id, &topic, &cat, &sit, &lesson, &status) != nil {
+	for _, rec := range loadCol[canvasLessonRec](e, colLessons) {
+		if rec.Status != "approved" {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(topic+sit+lesson), q) {
+		if q != "" && !strings.Contains(strings.ToLower(rec.Topic+rec.Situation+rec.Lesson), q) {
 			continue
 		}
-		out = append(out, map[string]any{"id": id, "topic": topic, "category": cat, "situation": sit, "lesson": lesson, "status": status})
+		out = append(out, map[string]any{"id": rec.ID, "topic": rec.Topic, "category": rec.Category, "situation": rec.Situation, "lesson": rec.Lesson, "status": rec.Status})
+	}
+	if len(out) > 20 {
+		out = out[:20]
 	}
 	return marshalJSON(out), nil
 }

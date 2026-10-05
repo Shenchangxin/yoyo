@@ -3,8 +3,11 @@ import { App, Button, Select } from "antd";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Clapperboard, FileText, Film, LayoutGrid, Plus, Users } from "lucide-react";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
+import { ModelPicker } from "@yingce/components/model-picker";
 import { aceternityMotion } from "@yingce/lib/aceternity-motion";
+import { refreshSystemChannels } from "@yingce/lib/user-session";
 import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
+import { modelOptionName, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
 import { CreationMessageView } from "@yingce/pages/create/creation-workspace";
 import type { CreationMessage } from "@yingce/pages/create/creation-types";
 import { cn } from "@yingce/lib/utils";
@@ -54,6 +57,11 @@ export default function DramaAgentPage() {
   const brandName = useAppearanceStore((state) => state.appearance.brandName);
   const sessionId = useCanvasHost((s) => s.sessionId);
   const setVideoBoard = useUI((s) => s.setVideoBoard);
+  const openSettings = useUI((s) => s.openSettings);
+  const config = useEffectiveConfig();
+  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const textModels = useMemo(() => selectableModelsByCapability(config, "text"), [config]);
+  const selectedTextModel = textModels.includes(config.textModel) ? config.textModel : (textModels[0] || "");
   const dramaId = useDramaSelection((s) => s.dramaId);
   const episodeId = useDramaSelection((s) => s.episodeId);
   const setDramaId = useDramaSelection((s) => s.setDramaId);
@@ -81,6 +89,10 @@ export default function DramaAgentPage() {
   useEffect(() => {
     void loadDramas().catch(() => {});
   }, [loadDramas]);
+
+  useEffect(() => {
+    void refreshSystemChannels().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!dramaId) {
@@ -122,6 +134,9 @@ export default function DramaAgentPage() {
     setBusy(true);
     try {
       await bindVideoThread(sid).catch(() => {});
+      if (selectedTextModel) {
+        await api.setSessionModel(sid, modelOptionName(selectedTextModel)).catch(() => {});
+      }
       await api.send(sid, next);
     } catch (err) {
       setBusy(false);
@@ -195,6 +210,22 @@ export default function DramaAgentPage() {
                 <Plus /><span>新建</span>
               </button>
             </Tooltip>
+            <ModelPicker
+              config={config}
+              value={selectedTextModel}
+              onChange={(model) => {
+                updateConfig("textModel", model);
+                const sid = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
+                if (sid) void api.setSessionModel(sid, modelOptionName(model)).catch(() => {});
+              }}
+              capability="text"
+              variant="creation"
+              className="creation-model-picker"
+              placeholder="选择文本模型"
+              showSelectedPrice={false}
+              showOptionPrices={false}
+              onMissingConfig={() => openSettings("provider")}
+            />
             <Tooltip title="打开短剧工坊">
               <button type="button" className="creation-chat-control" data-testid="drama-open-board" aria-label="打开短剧工坊" onClick={() => setVideoBoard(true)}>
                 <LayoutGrid /><span>工坊</span>

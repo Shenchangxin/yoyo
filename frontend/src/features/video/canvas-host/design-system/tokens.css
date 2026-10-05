@@ -58,19 +58,23 @@
   --ring: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-.yingce-island.dark,
-.yingce-island .dark {
+html.dark .yingce-island,
+html.dark .yingce-popup-root {
   color-scheme: dark;
   --glass-bg: color-mix(in srgb, var(--popover) 72%, transparent);
   --glass-highlight: inset 0 0.5px 0 color-mix(in srgb, white 14%, transparent);
   --glass-hairline: color-mix(in srgb, white 12%, transparent);
+  --dock-switch-thumb: var(--foreground);
+  --dock-switch-thumb-text: var(--background);
 }
 
 html.light .yingce-island,
-.yingce-island.light {
+html.light .yingce-popup-root {
   --glass-bg: color-mix(in srgb, var(--popover) 88%, transparent);
   --glass-highlight: inset 0 0.5px 0 color-mix(in srgb, white 70%, transparent);
   --glass-hairline: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --dock-switch-thumb: var(--foreground);
+  --dock-switch-thumb-text: var(--background);
 }
 
 /* —— Surfaces —— */
@@ -402,7 +406,7 @@ html.light .yingce-island,
 .yingce-island .aceternity-dock-switch-thumb {
   border-radius: 6px !important;
   height: 24px !important;
-  background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
+  background: var(--dock-switch-thumb, var(--foreground)) !important;
   box-shadow: inset 0 0.5px 0 color-mix(in srgb, white 14%, transparent);
 }
 
@@ -417,11 +421,11 @@ html.light .yingce-island,
 }
 
 .yingce-island .aceternity-dock-switch-option[aria-checked="true"] {
-  color: var(--foreground) !important;
+  color: var(--dock-switch-thumb-text, var(--background)) !important;
 }
 
 .yingce-island .aceternity-dock-switch-option[aria-checked="true"] svg {
-  color: var(--foreground) !important;
+  color: var(--dock-switch-thumb-text, var(--background)) !important;
   stroke: currentColor !important;
 }
 

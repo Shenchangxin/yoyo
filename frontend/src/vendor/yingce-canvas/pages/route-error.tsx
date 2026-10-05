@@ -7,10 +7,30 @@ import { WorkspaceSignalIcon } from "@yingce/components/ui/aceternity/workspace-
 import { reloadAfterChunkFailure } from "@yingce/lib/chunk-recovery";
 import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
 
+function routeErrorMessage(error: unknown) {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "string" && error.trim()) return error;
+    if (error && typeof error === "object") {
+        const record = error as { message?: unknown; statusText?: unknown; data?: unknown; error?: { message?: unknown } };
+        const nested = [record.message, record.statusText, record.error?.message, record.data]
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .find(Boolean);
+        if (nested) return nested;
+        try {
+            const dumped = JSON.stringify(error);
+            if (dumped && dumped !== "{}") return dumped;
+        } catch {
+            /* ignore */
+        }
+    }
+    return "页面暂时无法显示";
+}
+
 export default function RouteErrorPage() {
     const error = useRouteError();
     const navigate = useNavigate();
-    const message = error instanceof Error ? error.message : "页面暂时无法显示";
+    const message = routeErrorMessage(error);
+    if (typeof console !== "undefined") console.error("yingce route error", error);
 
     return (
         <main className="app-workspace-page grid h-dvh place-items-center px-6 text-foreground">

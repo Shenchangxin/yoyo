@@ -133,6 +133,22 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "drama.import"
 	case "skip-rewrite":
 		return "drama.skip_rewrite"
+	case "connections":
+		if httpMethod == http.MethodPost {
+			return "connections.upsert"
+		}
+		return "connections.list"
+	case "connections/test":
+		return "connections.test"
+	case "connections/delete":
+		return "connections.delete"
+	case "connections/defaults":
+		if httpMethod == http.MethodPost {
+			return "connections.setDefault"
+		}
+		return "connections.defaults"
+	case "connections/templates":
+		return "connections.templates"
 	}
 	return ""
 }

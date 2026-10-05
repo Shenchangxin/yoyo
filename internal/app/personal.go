@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -121,11 +120,7 @@ func (a *App) openPersonal() error {
 	a.Inbox = box
 	a.Computer = cu
 	a.Observe = observe.Open(a.Home.Observe())
-	ep := strings.TrimSpace(os.Getenv("YOYO_OTEL_ENDPOINT"))
-	if ep == "" {
-		ep = strings.TrimSpace(a.Config.Log.OTELEndpoint)
-	}
-	if ep != "" {
+	if ep := a.otelEndpoint(); ep != "" {
 		a.Observe.SetEndpoint(ep)
 	}
 	return nil
@@ -152,14 +147,24 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 
 func (a *App) searchAPI(query string) (string, error) {
 	endpoint := strings.TrimSpace(a.Config.SearchURL)
-	if endpoint == "" {
-		return "", fmt.Errorf("no search_url")
-	}
 	keyName := a.Config.SearchKey
 	if keyName == "" {
 		keyName = "search"
 	}
 	key, _ := a.Vault.Lease(keyName)
+	if a.Video != nil && a.Video.Conn != nil {
+		if c, err := a.Video.Conn.Active("search", ""); err == nil {
+			if ep := strings.TrimSpace(c.Endpoint); ep != "" {
+				endpoint = ep
+			}
+			if k, e := a.Video.Conn.Lease(c); e == nil && strings.TrimSpace(k) != "" {
+				key = k
+			}
+		}
+	}
+	if endpoint == "" {
+		return "", fmt.Errorf("no search_url")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if strings.Contains(endpoint, "{q}") {

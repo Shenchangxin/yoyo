@@ -5,20 +5,39 @@ import { ArrowLeft, Boxes, Brain, Bug, Cloud, MessageSquareText, RadioTower, Sli
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
-import { UserOSSSettingsForm } from "@yingce/components/layout/user-oss-settings-form";
 import { refreshSystemChannels } from "@yingce/lib/user-session";
-import { defaultConfig, useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
+import { defaultConfig, useConfigStore } from "@yingce/stores/use-config-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
-import { ChannelSettingsPane, channelValidationError, focusInvalidChannelField, isChannelReady } from "./channel-settings-pane";
-import { ModelDefaultGrid } from "./model-default-grid";
 import { PromptPreferencesPane } from "./prompt-preferences-pane";
 import DiagnosticsPanel from "./diagnostics-panel";
 import AgentMemoryPane from "./agent-memory-pane";
-import { RunningHubSettingsPane } from "./runninghub-settings-pane";
 import { RUNNINGHUB_PLUGIN_ID } from "@yingce/lib/plugins/builtin/workflows";
 import { usePluginStore } from "@yingce/stores/use-plugin-store";
 
 type ConfigSectionKey = "channels" | "models" | "runninghub" | "preferences" | "prompts" | "agent-memory" | "storage" | "diagnostics";
+
+const HOSTED_SECTIONS = new Set<ConfigSectionKey>(["channels", "models", "runninghub", "storage"]);
+
+function openHostSettings(section: ConfigSectionKey) {
+    const to = `/settings?section=${section}`;
+    window.dispatchEvent(new CustomEvent("workspace:navigate", { detail: { to }, cancelable: true }));
+}
+
+function HostManagedNotice({ section }: { section: ConfigSectionKey }) {
+    return (
+        <SettingsPane>
+            <div className="settings-pane-header">
+                <div className="min-w-0">
+                    <h2>由 Yoyo 设置管理</h2>
+                    <p>密钥、渠道、对象存储和 RunningHub 统一写在宿主 Settings。画布岛内不再保存凭据。</p>
+                </div>
+            </div>
+            <div className="settings-section">
+                <Button type="primary" onClick={() => openHostSettings(section)}>打开 Yoyo 设置</Button>
+            </div>
+        </SettingsPane>
+    );
+}
 
 const configSections: Array<{ key: ConfigSectionKey; label: string; description: string; icon: ReactNode }> = [
     { key: "channels", label: "个人渠道", description: "模型服务与个人工作流", icon: <RadioTower className="size-4" /> },
@@ -47,11 +66,9 @@ export default function SettingsPage() {
     const initialSection = isConfigSection(requestedSection) && requestedSectionEnabled ? requestedSection : customChannelsEnabled ? "channels" : "models";
     const [activeTab, setActiveTab] = useState<ConfigSectionKey>(initialSection === "channels" && !customChannelsEnabled ? "models" : initialSection);
     const config = useConfigStore((state) => state.config);
-    const effectiveConfig = useEffectiveConfig();
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const shouldPromptContinue = searchParams.get("continue") === "1";
     const userId = useUserStore((state) => state.user?.id);
-    const userChannels = config.channels.filter((channel) => channel.scope !== "system");
     const visibleConfigSections = useMemo(() => (customChannelsEnabled ? configSections : configSections.filter((section) => section.key !== "channels"))
         .filter((section) => section.key !== "runninghub" || runningHubPluginEnabled), [customChannelsEnabled, runningHubPluginEnabled]);
 
@@ -64,6 +81,10 @@ export default function SettingsPage() {
         }
         setActiveTab((current) => visibleConfigSections.some((section) => section.key === current) ? current : customChannelsEnabled ? "channels" : "models");
     }, [customChannelsEnabled, requestedSection, visibleConfigSections]);
+
+    useEffect(() => {
+        if (HOSTED_SECTIONS.has(activeTab)) openHostSettings(activeTab);
+    }, [activeTab]);
 
     useEffect(() => {
         if (!userId) return;
@@ -85,39 +106,14 @@ export default function SettingsPage() {
     };
 
     const finishConfig = () => {
-        const invalidChannel = customChannelsEnabled ? userChannels.find((channel) => channelValidationError(channel)) : undefined;
-        if (invalidChannel) {
-            selectSection("channels");
-            message.warning(`${invalidChannel.name || "未命名渠道"}：${channelValidationError(invalidChannel)}`);
-            focusInvalidChannelField(invalidChannel);
-            return;
-        }
-        const workflowReady = Boolean(runningHubPluginEnabled && config.runningHub.enabled && config.runningHub.workflowId.trim() && config.runningHub.baseUrl.trim() && config.runningHub.apiKey.trim());
-        if (!effectiveConfig.channels.some(isChannelReady) && !workflowReady) {
-            selectSection(customChannelsEnabled ? "channels" : "models");
-            message.error(customChannelsEnabled ? (shouldPromptContinue ? "请先完成至少一个渠道的 Base URL、API Key 和模型配置" : "当前没有可用渠道，请先完成连接信息和模型配置") : "当前没有可用的系统模型，请联系管理员配置系统渠道");
-            return;
-        }
         message.success("配置已保存，正在返回创作页面");
         navigate(-1);
     };
 
     const panes: Record<ConfigSectionKey, ReactNode> = {
-        channels: <SettingsPane><ChannelSettingsPane onOpenModels={() => selectSection("models")} onOpenRunningHub={runningHubPluginEnabled ? () => selectSection("runninghub") : undefined} /></SettingsPane>,
-        models: (
-            <SettingsPane>
-                <div className="settings-pane-header">
-                    <div className="min-w-0">
-                        <h2>模型选择</h2>
-                        <p>按领域选择默认模型；模型能力与请求协议在渠道“模型与能力”中配置。</p>
-                    </div>
-                </div>
-                <div className="settings-section">
-                    <ModelDefaultGrid config={effectiveConfig} onChange={(key, model) => updateConfig(key, model)} />
-                </div>
-            </SettingsPane>
-        ),
-        runninghub: <SettingsPane><RunningHubSettingsPane /></SettingsPane>,
+        channels: <HostManagedNotice section="channels" />,
+        models: <HostManagedNotice section="models" />,
+        runninghub: <HostManagedNotice section="runninghub" />,
         preferences: (
             <SettingsPane>
                 <div className="settings-pane-header">
@@ -165,13 +161,7 @@ export default function SettingsPage() {
             </SettingsPane>
         ),
         diagnostics: <SettingsPane><DiagnosticsPanel taskId={searchParams.get("taskId") || undefined} projectId={searchParams.get("projectId") || undefined} /></SettingsPane>,
-        storage: (
-            <SettingsPane>
-                <div className="settings-section">
-                    <UserOSSSettingsForm />
-                </div>
-            </SettingsPane>
-        ),
+        storage: <HostManagedNotice section="storage" />,
     };
 
     return (

@@ -559,11 +559,7 @@ func (a *App) SaveConfig() error {
 	a.writeKeymapFile()
 	a.attachLogger()
 	if a.Observe != nil {
-		ep := strings.TrimSpace(os.Getenv("YOYO_OTEL_ENDPOINT"))
-		if ep == "" {
-			ep = strings.TrimSpace(a.Config.Log.OTELEndpoint)
-		}
-		a.Observe.SetEndpoint(ep)
+		a.Observe.SetEndpoint(a.otelEndpoint())
 	}
 	return nil
 }

@@ -74,15 +74,11 @@ func (e *Engine) canvasResourceFromRow(id, hash, kind, mime string, bytes int64,
 }
 
 func (e *Engine) getCanvasResource(id string) (canvasResource, error) {
-	var hash, kind, mime, poster, playback, fileName, created, updated string
-	var bytes int64
-	var width, height, duration int
-	err := e.DB.QueryRow(`SELECT cas_hash, kind, mime, bytes, width, height, duration_ms, poster_hash, playback_status, file_name, created_at, updated_at FROM canvas_resources WHERE id = ? AND deleted_at = ''`, id).
-		Scan(&hash, &kind, &mime, &bytes, &width, &height, &duration, &poster, &playback, &fileName, &created, &updated)
-	if err != nil {
+	rec, err := getDoc[canvasResourceRec](e, colResources, id)
+	if err != nil || rec.DeletedAt != "" {
 		return canvasResource{}, fmt.Errorf("resource not found")
 	}
-	return e.canvasResourceFromRow(id, hash, kind, mime, bytes, width, height, duration, poster, playback, fileName, created, updated), nil
+	return e.canvasResourceFromRow(rec.ID, rec.CASHash, rec.Kind, rec.Mime, rec.Bytes, rec.Width, rec.Height, rec.DurationMs, rec.PosterHash, rec.PlaybackStatus, rec.FileName, rec.CreatedAt, rec.UpdatedAt), nil
 }
 
 func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, height, duration int, id string) (canvasResource, error) {
@@ -124,11 +120,15 @@ func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, 
 			}
 		}
 	}
-	_, err = e.DB.Exec(`INSERT INTO canvas_resources(id, cas_hash, kind, mime, bytes, width, height, duration_ms, poster_hash, playback_status, file_name, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET cas_hash=excluded.cas_hash, kind=excluded.kind, mime=excluded.mime, bytes=excluded.bytes, width=excluded.width, height=excluded.height, duration_ms=excluded.duration_ms, poster_hash=excluded.poster_hash, file_name=excluded.file_name, updated_at=excluded.updated_at, deleted_at=''`,
-		id, hash, kind, mime, int64(len(raw)), width, height, duration, poster, "none", fileName, now, now)
-	if err != nil {
+	rec := canvasResourceRec{
+		ID: id, CASHash: hash, Kind: kind, Mime: mime, Bytes: int64(len(raw)),
+		Width: width, Height: height, DurationMs: duration, PosterHash: poster,
+		PlaybackStatus: "none", FileName: fileName, CreatedAt: now, UpdatedAt: now,
+	}
+	if cur, err := getDoc[canvasResourceRec](e, colResources, id); err == nil {
+		rec.CreatedAt = cur.CreatedAt
+	}
+	if err := e.putDoc(colResources, id, rec); err != nil {
 		return canvasResource{}, err
 	}
 	return e.getCanvasResource(id)
@@ -140,10 +140,12 @@ func (e *Engine) putCanvasResourceFromHash(hash, kind, mime string, bytes int64,
 	}
 	id := NewID()
 	now := Now()
-	_, err := e.DB.Exec(`INSERT INTO canvas_resources(id, cas_hash, kind, mime, bytes, width, height, duration_ms, poster_hash, playback_status, file_name, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, hash, kind, mime, bytes, width, height, duration, "", "none", "", now, now)
-	if err != nil {
+	rec := canvasResourceRec{
+		ID: id, CASHash: hash, Kind: kind, Mime: mime, Bytes: bytes,
+		Width: width, Height: height, DurationMs: duration, PosterHash: "",
+		PlaybackStatus: "none", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := e.putDoc(colResources, id, rec); err != nil {
 		return canvasResource{}, err
 	}
 	return e.getCanvasResource(id)
@@ -203,7 +205,11 @@ func (e *Engine) resourceAccess(id, purpose, variant string) (map[string]any, er
 
 func (e *Engine) storageUsage() map[string]any {
 	var used int64
-	_ = e.DB.QueryRow(`SELECT COALESCE(SUM(bytes), 0) FROM canvas_resources WHERE deleted_at = ''`).Scan(&used)
+	for _, r := range loadCol[canvasResourceRec](e, colResources) {
+		if r.DeletedAt == "" {
+			used += r.Bytes
+		}
+	}
 	return map[string]any{"usedBytes": used, "totalBytes": int64(1 << 40)}
 }
 
@@ -219,9 +225,11 @@ func (e *Engine) startChunkUpload(kind, fileName string, size, width, height, du
 		return nil, err
 	}
 	now := Now()
-	_, err := e.DB.Exec(`INSERT INTO canvas_uploads(id, kind, file_name, mime, size, chunk_size, chunk_count, width, height, duration_ms, received, dir, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, kind, fileName, "", size, chunk, count, width, height, duration, 0, dir, now)
-	if err != nil {
+	up := canvasUploadRec{
+		ID: id, Kind: kind, FileName: fileName, Size: size, ChunkSize: chunk, ChunkCount: count,
+		Width: width, Height: height, DurationMs: duration, Received: 0, Dir: dir, CreatedAt: now,
+	}
+	if err := e.putDoc(colUploads, id, up); err != nil {
 		return nil, err
 	}
 	u := &canvasUpload{ID: id, Kind: kind, FileName: fileName, Size: size, ChunkSize: chunk, ChunkCount: count, Width: width, Height: height, DurationMs: duration, Dir: dir, got: map[int]bool{}}
@@ -246,7 +254,10 @@ func (e *Engine) putChunk(id string, index int, raw []byte) error {
 	u.got[index] = true
 	n := len(u.got)
 	u.mu.Unlock()
-	_, _ = e.DB.Exec(`UPDATE canvas_uploads SET received = ? WHERE id = ?`, n, id)
+	if rec, err := getDoc[canvasUploadRec](e, colUploads, id); err == nil {
+		rec.Received = n
+		_ = e.putDoc(colUploads, id, rec)
+	}
 	return nil
 }
 
@@ -267,7 +278,7 @@ func (e *Engine) completeChunkUpload(id string) (canvasResource, error) {
 	res, err := e.putCanvasBytes(u.Kind, u.Mime, u.FileName, buf, u.Width, u.Height, u.DurationMs, "")
 	_ = os.RemoveAll(u.Dir)
 	e.uploads.Delete(id)
-	_, _ = e.DB.Exec(`DELETE FROM canvas_uploads WHERE id = ?`, id)
+	_ = e.delDoc(colUploads, id)
 	return res, err
 }
 

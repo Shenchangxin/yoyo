@@ -455,6 +455,18 @@ func (a *App) Doctor() map[string]any {
 		"isolation":       a.IsolationReport(),
 		"video":           a.VideoStatus(),
 	}
+	if a.Video != nil && a.Video.Conn != nil {
+		all, _ := a.Video.Conn.List("")
+		dir := ""
+		if a.Home != nil {
+			dir = a.Home.Connections()
+		}
+		out["connections"] = map[string]any{
+			"count":    len(all),
+			"defaults": a.Video.Conn.Defaults(),
+			"dir":      dir,
+		}
+	}
 	if a.Log != nil {
 		_, diskErr := os.Stat(a.Log.Dir())
 		out["logs"] = map[string]any{
@@ -573,6 +585,9 @@ func (a *App) persistMCP() {
 	var out []MCPServerConfig
 	for _, info := range a.MCP.Info() {
 		out = append(out, MCPServerConfig{Name: info.Name, Command: info.Command, Args: info.Args, Endpoint: info.Endpoint})
+		if a.Video != nil && a.Video.Conn != nil && strings.TrimSpace(info.Endpoint) != "" {
+			a.Video.Conn.SeedMCP(info.Name, info.Endpoint)
+		}
 	}
 	a.Config.MCP = out
 	_ = a.SaveConfig()

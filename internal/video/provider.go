@@ -1,98 +1,107 @@
 package video
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/connection"
 )
 
 func (e *Engine) ListProviders(serviceType string) ([]Provider, error) {
-	q := `SELECT id, service_type, provider, name, base_url, vault_key, model, models, priority, is_default, is_active, settings, created_at, updated_at FROM providers`
-	var args []any
-	if serviceType != "" {
-		q += ` WHERE service_type = ?`
-		args = append(args, serviceType)
+	if e.Conn == nil {
+		return []Provider{}, nil
 	}
-	q += ` ORDER BY priority DESC, created_at ASC`
-	rows, err := e.DB.Query(q, args...)
+	want := connection.NormalizeCap(serviceType)
+	list, err := e.Conn.List("")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Provider
-	for rows.Next() {
-		p, err := scanProvider(rows)
-		if err != nil {
-			return nil, err
-		}
-		if e.Vault != nil {
-			if _, err := e.Vault.Get(p.VaultKey); err == nil {
-				p.HasKey = true
+	defs := e.Conn.Defaults()
+	out := make([]Provider, 0, len(list))
+	seen := map[string]bool{}
+	for _, c := range list {
+		caps := connection.CapsOf(c)
+		for _, cap := range caps {
+			if cap == "" || cap == connection.CapProtocol {
+				continue
 			}
+			if want != "" && cap != want {
+				continue
+			}
+			if want == "" && cap == connection.CapChat {
+				continue
+			}
+			key := c.ID + "/" + cap
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, providerFromConn(c, cap, defs))
 		}
-		out = append(out, p)
 	}
 	if out == nil {
 		out = []Provider{}
 	}
-	return out, rows.Err()
-}
-
-func scanProvider(rows *sql.Rows) (Provider, error) {
-	var p Provider
-	var def, active int
-	err := rows.Scan(&p.ID, &p.ServiceType, &p.Provider, &p.Name, &p.BaseURL, &p.VaultKey, &p.Model, &p.Models, &p.Priority, &def, &active, &p.Settings, &p.CreatedAt, &p.UpdatedAt)
-	p.IsDefault = def != 0
-	p.IsActive = active != 0
-	return p, err
+	return out, nil
 }
 
 func (e *Engine) GetProvider(id string) (Provider, error) {
-	row := e.DB.QueryRow(`SELECT id, service_type, provider, name, base_url, vault_key, model, models, priority, is_default, is_active, settings, created_at, updated_at FROM providers WHERE id = ?`, id)
-	var p Provider
-	var def, active int
-	err := row.Scan(&p.ID, &p.ServiceType, &p.Provider, &p.Name, &p.BaseURL, &p.VaultKey, &p.Model, &p.Models, &p.Priority, &def, &active, &p.Settings, &p.CreatedAt, &p.UpdatedAt)
-	p.IsDefault = def != 0
-	p.IsActive = active != 0
+	if e.Conn == nil {
+		return Provider{}, fmt.Errorf("provider not found")
+	}
+	wantCap := catalogSuffixCap(id)
+	id = providerIDFromChannel(id)
+	c, err := e.Conn.Get(id)
 	if err != nil {
-		return p, fmt.Errorf("provider not found")
+		return Provider{}, fmt.Errorf("provider not found")
 	}
-	if e.Vault != nil {
-		if _, err := e.Vault.Get(p.VaultKey); err == nil {
-			p.HasKey = true
-		}
-	}
-	return p, nil
+	return providerFromConn(c, connCapForYingce(wantCap), e.Conn.Defaults()), nil
 }
 
 func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
+	if e.Conn == nil {
+		return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
+	}
+	cap := connection.NormalizeCap(serviceType)
+	id = providerIDFromChannel(id)
 	if id != "" {
-		if p, err := e.GetProvider(id); err == nil {
-			return p, nil
+		if c, err := e.Conn.Get(id); err == nil && connection.MatchesCap(c, cap) {
+			return providerFromConn(c, cap, e.Conn.Defaults()), nil
 		}
 	}
-	list, err := e.ListProviders(serviceType)
+	c, err := e.Conn.Active(serviceType, id)
 	if err != nil {
-		return Provider{}, err
+		c, err = e.firstMatchingConn(cap)
+		if err != nil {
+			return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
+		}
 	}
-	var keyed, anyActive Provider
+	return providerFromConn(c, cap, e.Conn.Defaults()), nil
+}
+
+func (e *Engine) firstMatchingConn(cap string) (connection.Connection, error) {
+	list, err := e.Conn.List("")
+	if err != nil {
+		return connection.Connection{}, err
+	}
+	var keyed, anyMatch connection.Connection
 	var hasKeyed, hasAny bool
-	for _, p := range list {
-		if !p.IsActive {
+	for _, c := range list {
+		if !c.Active || !connection.MatchesCap(c, cap) {
 			continue
 		}
 		if !hasAny {
-			anyActive = p
+			anyMatch = c
 			hasAny = true
 		}
-		if p.HasKey {
-			if p.IsDefault {
-				return p, nil
-			}
+		if c.HasKey {
 			if !hasKeyed {
-				keyed = p
+				keyed = c
 				hasKeyed = true
+			}
+			if connection.HasCap(c, cap) {
+				return c, nil
 			}
 		}
 	}
@@ -100,37 +109,13 @@ func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 		return keyed, nil
 	}
 	if hasAny {
-		return anyActive, nil
+		return anyMatch, nil
 	}
-	return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
+	return connection.Connection{}, fmt.Errorf("no active %s connection", cap)
 }
 
 func ProviderModels(p Provider) []string {
-	var out []string
-	seen := map[string]bool{}
-	add := func(v string) {
-		v = strings.TrimSpace(v)
-		if v == "" || seen[v] {
-			return
-		}
-		seen[v] = true
-		out = append(out, v)
-	}
-	add(p.Model)
-	raw := strings.TrimSpace(p.Models)
-	if strings.HasPrefix(raw, "[") {
-		var arr []string
-		if json.Unmarshal([]byte(raw), &arr) == nil {
-			for _, m := range arr {
-				add(m)
-			}
-		}
-	} else if raw != "" {
-		for _, m := range strings.Split(raw, ",") {
-			add(m)
-		}
-	}
-	return out
+	return connection.ParseModels(p.Models)
 }
 
 func ResolveProviderModel(p Provider, want string) string {
@@ -147,113 +132,166 @@ func ResolveProviderModel(p Provider, want string) string {
 	return ""
 }
 
-func (e *Engine) uniqueProviderName(serviceType, name, skipID string) string {
-	base := strings.TrimSpace(name)
-	if base == "" {
-		return base
-	}
-	candidate := base
-	for n := 2; n < 100; n++ {
-		var id string
-		err := e.DB.QueryRow(`SELECT id FROM providers WHERE service_type = ? AND name = ? AND id != ? LIMIT 1`, serviceType, candidate, skipID).Scan(&id)
-		if err != nil {
-			return candidate
-		}
-		candidate = fmt.Sprintf("%s %d", base, n)
-	}
-	return candidate
-}
-
 func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
-	now := Now()
-	if p.ID != "" {
-		if cur, err := e.GetProvider(p.ID); err == nil {
-			if p.VaultKey == "" {
-				p.VaultKey = cur.VaultKey
+	if e.Conn == nil {
+		return p, fmt.Errorf("connection registry missing")
+	}
+	cap := connection.NormalizeCap(p.ServiceType)
+	if cap == "" {
+		cap = connection.CapImage
+	}
+	models := connection.ParseModels(p.Models)
+	if p.Model != "" {
+		models = connection.ParseModels(p.Model)
+		models = append(models, connection.ParseModels(p.Models)...)
+		models = uniqueModels(models)
+	}
+	c := connection.Connection{
+		ID:           providerIDFromChannel(p.ID),
+		Name:         p.Name,
+		Vendor:       p.Provider,
+		Endpoint:     p.BaseURL,
+		VaultKey:     p.VaultKey,
+		Capabilities: []string{cap},
+		Models:       models,
+		DefaultModel: map[string]string{cap: p.Model},
+		Active:       p.IsActive,
+		Priority:     p.Priority,
+		Protocol:     mapProviderPlugin(cap, p.Provider),
+	}
+	if c.ID != "" {
+		if cur, err := e.Conn.Get(c.ID); err == nil {
+			caps := cur.Capabilities
+			if !connection.HasCap(cur, cap) {
+				caps = append(caps, cap)
 			}
-			if p.CreatedAt == "" {
-				p.CreatedAt = cur.CreatedAt
+			c.Capabilities = caps
+			c.Models = uniqueModels(append(models, connection.ModelsExcept(cur, cap)...))
+			if cur.DefaultModel != nil {
+				for k, v := range cur.DefaultModel {
+					if c.DefaultModel[k] == "" {
+						c.DefaultModel[k] = v
+					}
+				}
+			}
+			if c.VaultKey == "" {
+				c.VaultKey = cur.VaultKey
+			}
+			c.CreatedAt = cur.CreatedAt
+			c.Settings = cur.Settings
+			if c.Name == "" {
+				c.Name = cur.Name
+			}
+			if c.Endpoint == "" {
+				c.Endpoint = cur.Endpoint
+			}
+			if c.Vendor == "" {
+				c.Vendor = cur.Vendor
 			}
 		}
 	}
-	if p.ID == "" {
-		p.ID = NewID()
-		p.CreatedAt = now
-		p.Name = e.uniqueProviderName(p.ServiceType, p.Name, p.ID)
+	if strings.TrimSpace(p.Settings) != "" && p.Settings != "{}" {
+		var st map[string]any
+		if json.Unmarshal([]byte(p.Settings), &st) == nil && st != nil {
+			if c.Settings == nil {
+				c.Settings = map[string]any{}
+			}
+			for k, v := range st {
+				c.Settings[k] = v
+			}
+		}
 	}
-	p.UpdatedAt = now
-	if p.VaultKey == "" {
-		p.VaultKey = "video." + p.ServiceType + "." + p.ID
-	}
-	if p.Settings == "" {
-		p.Settings = "{}"
-	}
-	if p.Models == "" {
-		p.Models = "[]"
-	}
-	def, active := 0, 0
-	if p.IsDefault {
-		def = 1
-	}
-	if p.IsActive {
-		active = 1
-	}
-	if p.IsDefault {
-		_, _ = e.DB.Exec(`UPDATE providers SET is_default = 0 WHERE service_type = ? AND id != ?`, p.ServiceType, p.ID)
-	}
-	_, err := e.DB.Exec(`INSERT INTO providers(id, service_type, provider, name, base_url, vault_key, model, models, priority, is_default, is_active, settings, created_at, updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET service_type=excluded.service_type, provider=excluded.provider, name=excluded.name, base_url=excluded.base_url, vault_key=excluded.vault_key, model=excluded.model, models=excluded.models, priority=excluded.priority, is_default=excluded.is_default, is_active=excluded.is_active, settings=excluded.settings, updated_at=excluded.updated_at`,
-		p.ID, p.ServiceType, p.Provider, p.Name, p.BaseURL, p.VaultKey, p.Model, p.Models, p.Priority, def, active, p.Settings, coalesce(p.CreatedAt, now), p.UpdatedAt)
+	out, err := e.Conn.Upsert(c, apiKey)
 	if err != nil {
 		return p, err
 	}
-	if apiKey != "" && e.Vault != nil {
-		e.Vault.Set(p.VaultKey, apiKey)
-		p.HasKey = true
+	if p.IsDefault {
+		_ = e.Conn.SetDefault(cap, out.ID)
 	}
-	out, err := e.GetProvider(p.ID)
-	if err != nil {
-		return p, err
-	}
-	if err := e.syncProviderChannel(out); err != nil {
-		return out, err
-	}
-	return out, nil
+	return providerFromConn(out, cap, e.Conn.Defaults()), nil
 }
 
 func (e *Engine) DeleteProvider(id string) error {
-	e.deleteProviderChannel(id)
-	_, err := e.DB.Exec(`DELETE FROM providers WHERE id = ?`, id)
-	return err
+	if e.Conn == nil {
+		return nil
+	}
+	id = providerIDFromChannel(id)
+	if id == "cas-local" {
+		return fmt.Errorf("local CAS cannot be removed")
+	}
+	return e.Conn.Delete(id)
 }
 
 func (e *Engine) TestProvider(id string) map[string]any {
-	p, err := e.GetProvider(id)
-	if err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
+	if e.Conn == nil {
+		return map[string]any{"ok": false, "error": "registry missing"}
 	}
-	key, err := e.leaseProvider(p)
-	if err != nil || key == "" {
-		return map[string]any{"ok": false, "error": "missing vault key"}
-	}
-	url := strings.TrimRight(p.BaseURL, "/")
-	req, err := httpGet(url, key)
-	if err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
-	res, err := e.HTTP.Do(req)
-	if err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
-	defer res.Body.Close()
-	ok := res.StatusCode == 200 || res.StatusCode == 400 || res.StatusCode == 401 || res.StatusCode == 403 || res.StatusCode == 404
-	return map[string]any{"ok": ok, "status": res.StatusCode, "reachable": ok}
+	return e.Conn.Test(providerIDFromChannel(id))
 }
 
-func coalesce(v, fb string) string {
-	if v == "" {
-		return fb
+func uniqueModels(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
 	}
-	return v
+	return out
+}
+
+func providerFromConn(c connection.Connection, cap string, defs connection.Defaults) Provider {
+	if cap == "" {
+		for _, x := range c.Capabilities {
+			if x == connection.CapImage || x == connection.CapVideo || x == connection.CapSpeech {
+				cap = x
+				break
+			}
+		}
+		if cap == "" && len(c.Capabilities) > 0 {
+			cap = c.Capabilities[0]
+		}
+	}
+	cap = connection.NormalizeCap(cap)
+	svc := cap
+	if svc == connection.CapSpeech {
+		svc = "tts"
+	}
+	if svc == connection.CapChat {
+		svc = "chat"
+	}
+	isDef := false
+	if defs != nil {
+		isDef = defs[cap] == c.ID
+	}
+	settings := "{}"
+	if len(c.Settings) > 0 {
+		if b, err := json.Marshal(c.Settings); err == nil {
+			settings = string(b)
+		}
+	}
+	return Provider{
+		ID:          c.ID,
+		ServiceType: svc,
+		Provider:    c.Vendor,
+		Name:        c.Name,
+		BaseURL:     c.Endpoint,
+		VaultKey:    c.VaultKey,
+		Model:       connection.ModelForCap(c, cap),
+		Models:      connection.ModelsJSONFor(c, cap),
+		Priority:    c.Priority,
+		IsDefault:   isDef,
+		IsActive:    c.Active,
+		HasKey:      c.HasKey,
+		CreatedAt:   c.CreatedAt,
+		UpdatedAt:   c.UpdatedAt,
+		Settings:    settings,
+	}
+}
+
+func mapProviderPlugin(serviceType, vendor string) string {
+	return connection.InferProtocol(vendor, serviceType)
 }
