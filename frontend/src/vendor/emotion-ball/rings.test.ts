@@ -49,12 +49,12 @@ describe("emotion-ball rings", () => {
     assert.ok(sumDy / RD.EXPRESSIONS.length < 0.2);
   });
 
-  it("keeps the rest pair as a large horizontal oval", () => {
+  it("keeps the rest pair as a vertical bar", () => {
     const [left] = RD.EXPRESSIONS[0]!;
     const box = bbox(left);
-    assert.ok(box.w > 36, `rest width ${box.w.toFixed(1)}`);
-    assert.ok(box.h > 22, `rest height ${box.h.toFixed(1)}`);
-    assert.ok(box.w / box.h > 1.15, `rest aspect ${(box.w / box.h).toFixed(3)}`);
+    assert.ok(box.w > 24, `rest width ${box.w.toFixed(1)}`);
+    assert.ok(box.h > 42, `rest height ${box.h.toFixed(1)}`);
+    assert.ok(box.h / box.w > 1.4, `rest aspect ${(box.h / box.w).toFixed(3)}`);
   });
 
   it("exposes designed mouth slots in local coordinates", () => {
@@ -66,5 +66,7 @@ describe("emotion-ball rings", () => {
       assert.ok(Math.abs(c.x) < 0.6, `${slot} cx`);
       assert.ok(Math.abs(c.y) < 8, `${slot} cy`);
     }
+    const smile = bbox(RD.MOUTHS.smile!);
+    assert.ok(smile.w > 40, `smile width ${smile.w.toFixed(1)}`);
   });
 });

@@ -280,13 +280,11 @@ export function PresenceStamp(props: { className?: string; size?: number }) {
         <ellipse className="presence-stamp-shine" cx="12.2" cy="12.4" rx="7.2" ry="5.4" fill="#FFFCFA" />
         <ellipse className="presence-stamp-shade" cx="16.4" cy="22.6" rx="9.5" ry="5.2" fill="#E7E1D8" />
         <g className="presence-stamp-face">
-          <ellipse className="presence-stamp-eye" cx="10.6" cy="15.1" rx="3.55" ry="2.7" fill="#1A1A1A" />
-          <ellipse className="presence-stamp-eye" cx="21.4" cy="15.1" rx="3.55" ry="2.7" fill="#1A1A1A" />
-          <ellipse className="presence-stamp-spark" cx="9.55" cy="14.15" rx="1.05" ry="0.85" fill="#FFFFFF" />
-          <ellipse className="presence-stamp-spark" cx="20.35" cy="14.15" rx="1.05" ry="0.85" fill="#FFFFFF" />
+          <ellipse className="presence-stamp-eye" cx="10.7" cy="14.65" rx="2.15" ry="4.4" fill="#1A1A1A" />
+          <ellipse className="presence-stamp-eye" cx="21.3" cy="14.65" rx="2.15" ry="4.4" fill="#1A1A1A" />
           <path
             className="presence-stamp-mouth"
-            d="M11.2 19.15C13.15 21.7 18.85 21.7 20.8 19.15C18.7 21.05 13.3 21.05 11.2 19.15Z"
+            d="M9.55 19.9C12.05 23.35 19.95 23.35 22.45 19.9C19.7 22.2 12.3 22.2 9.55 19.9Z"
             fill="#1A1A1A"
           />
         </g>
