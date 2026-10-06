@@ -25,7 +25,7 @@
   var TAU = Math.PI * 2;
 
   var HEAD_C = RD.HEAD_C;          /* 114.2705 */
-  var EYE_HALF = RD.EYE_HALF;      /* ~26，随更大的 rest 眼环 */
+  var EYE_HALF = RD.EYE_HALF;      /* rest 竖条半高 */
   var EXPR = RD.EXPRESSIONS;
   var STAR_GOLD = RD.STAR_GOLD;
   var CONFETTI_COLORS = ['#f9705c', '#5b95f0', '#3fbe86', '#f5b13f', '#9a72ee', '#35c3bd'];
@@ -147,10 +147,8 @@
       var g = el('g', {});
       var node = el('path', { fill: '#1A1A1A', stroke: 'none', 'stroke-width': '1.6' });
       node.setAttribute('d', ringPath(EXPR[0][k]));
-      var hi = el('ellipse', { fill: '#FFFFFF', 'fill-opacity': '0.95', stroke: 'none' });
       g.appendChild(node);
-      g.appendChild(hi);
-      return { g: g, node: node, hi: hi, ring: EXPR[0][k], c: centroid(EXPR[0][k]) };
+      return { g: g, node: node, ring: EXPR[0][k], c: centroid(EXPR[0][k]) };
     }
     var eyeL = buildEye(0);
     var eyeR = buildEye(1);
@@ -430,29 +428,6 @@
       var stroke = sketch > 0.5 ? 'var(--sketch-ink, ' + pose.color + ')' : '';
       if (fill !== eye.lastFill) { eye.node.setAttribute('fill', fill); eye.lastFill = fill; }
       if (stroke !== eye.lastStroke) { eye.node.style.stroke = stroke; eye.lastStroke = stroke; }
-
-      var src = ring || eye.ring;
-      var rw = 0, rh = 0, i;
-      if (src && src.length) {
-        var minX = src[0][0], maxX = src[0][0], minY = src[0][1], maxY = src[0][1];
-        for (i = 1; i < src.length; i++) {
-          if (src[i][0] < minX) minX = src[i][0];
-          if (src[i][0] > maxX) maxX = src[i][0];
-          if (src[i][1] < minY) minY = src[i][1];
-          if (src[i][1] > maxY) maxY = src[i][1];
-        }
-        rw = maxX - minX;
-        rh = maxY - minY;
-      }
-      if (sketch > 0.5 || open < 0.42 || rh < 10) {
-        eye.hi.style.display = 'none';
-      } else {
-        eye.hi.style.display = '';
-        eye.hi.setAttribute('cx', r2(base[0] - rw * 0.18));
-        eye.hi.setAttribute('cy', r2(base[1] - rh * 0.22));
-        eye.hi.setAttribute('rx', r2(Math.max(2.4, rw * 0.13)));
-        eye.hi.setAttribute('ry', r2(Math.max(1.8, rh * 0.15)));
-      }
     }
 
     /* ---- 每帧 ---- */

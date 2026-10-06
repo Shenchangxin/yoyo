@@ -11,7 +11,8 @@ describe("presence letterhead", () => {
     const stamp = readFileSync(join(root, "PresenceRuntime.tsx"), "utf8");
     assert.match(stamp, /data-testid="presence-stamp"/);
     assert.match(stamp, /presence-stamp-eye/);
-    assert.match(stamp, /presence-stamp-spark/);
+    assert.match(stamp, /rx="2\.15" ry="4\.4"/);
+    assert.doesNotMatch(stamp, /presence-stamp-spark/);
     assert.match(stamp, /presence-stamp-body/);
     assert.doesNotMatch(stamp, /stopOpacity/);
     assert.doesNotMatch(stamp, /eyeScale:\s*glyph \? 1\.6/);

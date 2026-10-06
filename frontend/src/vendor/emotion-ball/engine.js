@@ -85,9 +85,9 @@
     orbit: 0     /* 常驻水平环带（0~1） */
   };
   var DEFAULT_EYE = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, open: 1, color: '#1A1A1A', lookX: 0, lookY: 0 };
-  var DEFAULT_FACE = { mouthY: 42, mouthSX: 1.18, mouthSY: 1.18, mouthColor: '#1A1A1A' };
+  var DEFAULT_FACE = { mouthY: 46, mouthSX: 1.22, mouthSY: 1.22, mouthColor: '#1A1A1A' };
 
-  /* 眼环是共轭横椭圆：默认姿态不叠加左右高低差，注视漂移共用同一向量 */
+  /* 眼环是共轭竖条：默认姿态不叠加左右高低差，注视漂移共用同一向量 */
   function defaultPose() {
     return {
       body: Object.assign({}, DEFAULT_BODY),
