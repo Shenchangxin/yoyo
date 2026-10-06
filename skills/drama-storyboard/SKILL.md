@@ -17,4 +17,4 @@ Each saved row is one video job:
 - Bind `scene_id` and `character_ids` / `prop_ids` by name or id from the context.
 - `video_prompt` may stay empty; a later pass fills @name references.
 
-First batch: `drama_save_storyboards` with `replace_existing` true, at most 8 rows. Continue with `replace_existing` false until the episode is covered. Do not narrate.
+First batch: `drama_save_storyboards` with `replace_existing` true, at most 8 rows. Continue with `replace_existing` false while `coverage.continue` is true. Cover this episode's duration plan, not the whole novel. If `coverage.split_episode` is true, stop. Do not narrate.

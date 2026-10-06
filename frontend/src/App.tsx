@@ -580,9 +580,7 @@ function WorkstationApp() {
       dramaId={ws.dramaId}
       onOpenProject={(p) => { void ws.openVideoProject(p); }}
       onRefreshHistory={ws.loadVideoHistory}
-      onNeedSession={() => {
-        if (!ws.activeId) void ws.ensureThread();
-      }}
+      onNeedSession={async () => (await ws.ensureThread()).id}
       onClose={() => {
         useUI.getState().openVideoPane("chat");
       }}
@@ -729,8 +727,8 @@ function WorkstationApp() {
           </Panel>
         ) : null}
         {showRail ? <ResizeHandle /> : null}
-        <Panel id="stage" minSize="42" className="h-full min-h-0 min-w-0">
-          <MainColumn>
+        <Panel id="stage" minSize="42" className="h-full min-h-0 min-w-0" style={{ overflow: "hidden" }}>
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <PageHeader left={headerLeft} title={headerTitle} right={headerRight} macPad={mac && !showRail} />
             {ws.err ? (
               <div data-testid="app-error" className="mx-4 mb-1 flex items-start gap-3 rounded-xl bg-danger/10 px-3.5 py-2.5 text-[13px] text-danger">
@@ -739,6 +737,7 @@ function WorkstationApp() {
                 <button type="button" className="shrink-0 text-[11px] underline" onClick={() => { ws.setErr(""); void ws.refresh(); }}>{copy.app.retry}</button>
               </div>
             ) : null}
+            <MainColumn>
             {staged ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
                 <div className="h-full min-h-0 overflow-hidden bg-background">
@@ -829,7 +828,8 @@ function WorkstationApp() {
             ) : (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{workspace}</div>
             )}
-          </MainColumn>
+            </MainColumn>
+          </div>
         </Panel>
       </Group>
       {!showRail && !popout ? (

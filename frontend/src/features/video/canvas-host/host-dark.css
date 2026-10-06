@@ -106,6 +106,19 @@
   color: var(--muted) !important;
 }
 
+.yingce-island .drama-path-copy strong {
+  color: var(--foreground) !important;
+}
+
+.yingce-island .drama-path-copy span,
+.yingce-island .drama-open-existing {
+  color: var(--muted) !important;
+}
+
+.yingce-island .drama-open-existing:hover {
+  color: var(--foreground) !important;
+}
+
 /* Create: featured / suggest copy was hardcoded ink-on-paper. */
 .yingce-island .creation-featured-copy,
 .yingce-island .creation-featured-copy strong,

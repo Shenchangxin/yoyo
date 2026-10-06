@@ -39,6 +39,28 @@ func (e *Engine) ListJobs(episodeID string) ([]Job, error) {
 	return out, nil
 }
 
+func (e *Engine) ListDramaJobs(dramaID string) ([]Job, error) {
+	if dramaID == "" {
+		return e.ListJobs("")
+	}
+	all := loadCol[Job](e, colJobs)
+	var out []Job
+	for _, j := range all {
+		if j.DramaID != dramaID {
+			continue
+		}
+		out = append(out, j)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	if len(out) > 200 {
+		out = out[:200]
+	}
+	if out == nil {
+		out = []Job{}
+	}
+	return out, nil
+}
+
 func (e *Engine) insertJob(j Job) error {
 	return e.putDoc(colJobs, j.ID, j)
 }

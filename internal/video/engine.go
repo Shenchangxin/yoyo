@@ -169,14 +169,31 @@ func (e *Engine) BindSession(sessionID, episodeID string) error {
 	if err != nil {
 		return err
 	}
-	b := Bind{SessionID: sessionID, EpisodeID: episodeID, DramaID: ep.DramaID}
+	return e.putBind(Bind{SessionID: sessionID, EpisodeID: episodeID, DramaID: ep.DramaID})
+}
+
+func (e *Engine) BindSessionDrama(sessionID, dramaID string) error {
+	d, err := e.GetDrama(dramaID)
+	if err != nil {
+		return err
+	}
+	b := Bind{SessionID: sessionID, DramaID: d.ID}
+	if cur, ok := e.SessionBind(sessionID); ok && cur.EpisodeID != "" {
+		if ep, err := e.GetEpisode(cur.EpisodeID); err == nil && ep.DramaID == d.ID {
+			b.EpisodeID = ep.ID
+		}
+	}
+	return e.putBind(b)
+}
+
+func (e *Engine) putBind(b Bind) error {
 	m := e.loadBinds()
-	m[sessionID] = b
+	m[b.SessionID] = b
 	if err := e.saveBinds(m); err != nil {
 		return err
 	}
 	e.mu.Lock()
-	e.binds[sessionID] = b
+	e.binds[b.SessionID] = b
 	e.mu.Unlock()
 	return nil
 }

@@ -106,16 +106,17 @@ type Episode struct {
 }
 
 type Character struct {
-	ID          string `json:"id"`
-	DramaID     string `json:"drama_id"`
-	Name        string `json:"name"`
-	Role        string `json:"role"`
-	Appearance  string `json:"appearance"`
-	Styling     string `json:"styling"`
-	FinalPrompt string `json:"final_prompt"`
-	ImageHash   string `json:"image_hash"`
-	SortOrder   int    `json:"sort_order"`
-	Linked      bool   `json:"linked"`
+	ID               string `json:"id"`
+	DramaID          string `json:"drama_id"`
+	Name             string `json:"name"`
+	Role             string `json:"role"`
+	Appearance       string `json:"appearance"`
+	Styling          string `json:"styling"`
+	FinalPrompt      string `json:"final_prompt"`
+	ImageHash        string `json:"image_hash"`
+	SortOrder        int    `json:"sort_order"`
+	Linked           bool   `json:"linked"`
+	FirstSeenEpisode int    `json:"first_seen_episode,omitempty"`
 }
 
 type Scene struct {
@@ -172,15 +173,58 @@ type EpisodeBundle struct {
 	Plan       DurationPlan `json:"plan"`
 }
 
+type SourceSlice struct {
+	Index   int    `json:"index"`
+	Start   int    `json:"start"`
+	End     int    `json:"end"`
+	Heading string `json:"heading"`
+	Peek    string `json:"peek"`
+}
+
+type Source struct {
+	ID        string        `json:"id"`
+	DramaID   string        `json:"drama_id"`
+	Hash      string        `json:"hash"`
+	Title     string        `json:"title"`
+	RuneCount int           `json:"rune_count"`
+	Slices    []SourceSlice `json:"slices"`
+	CreatedAt string        `json:"created_at"`
+	UpdatedAt string        `json:"updated_at"`
+}
+
+type PlanEpisode struct {
+	N             int      `json:"n"`
+	Title         string   `json:"title"`
+	Logline       string   `json:"logline"`
+	Hook          string   `json:"hook"`
+	Start         int      `json:"start"`
+	End           int      `json:"end"`
+	CharacterIDs  []string `json:"character_ids"`
+	TargetSeconds int      `json:"target_seconds"`
+	EpisodeID     string   `json:"episode_id,omitempty"`
+}
+
+type EpisodePlan struct {
+	ID         string        `json:"id"`
+	DramaID    string        `json:"drama_id"`
+	Status     string        `json:"status"`
+	SourceID   string        `json:"source_id"`
+	Episodes   []PlanEpisode `json:"episodes"`
+	QueueKind  string        `json:"queue_kind,omitempty"`
+	QueueIndex int           `json:"queue_index,omitempty"`
+	CreatedAt  string        `json:"created_at"`
+	UpdatedAt  string        `json:"updated_at"`
+}
+
 type JobParams struct {
-	Size               string   `json:"size,omitempty"`
-	ReferenceImages    []string `json:"reference_images,omitempty"`
-	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
-	ReferenceVideoURLs []string `json:"reference_video_urls,omitempty"`
-	FirstFrameURL      string   `json:"first_frame_url,omitempty"`
-	LastFrameURL       string   `json:"last_frame_url,omitempty"`
-	GenerateAudio      bool     `json:"generate_audio,omitempty"`
-	Duration           int      `json:"duration,omitempty"`
+	Size               string          `json:"size,omitempty"`
+	ReferenceImages    []string        `json:"reference_images,omitempty"`
+	ReferenceImageURLs []string        `json:"reference_image_urls,omitempty"`
+	ReferenceVideoURLs []string        `json:"reference_video_urls,omitempty"`
+	FirstFrameURL      string          `json:"first_frame_url,omitempty"`
+	LastFrameURL       string          `json:"last_frame_url,omitempty"`
+	GenerateAudio      bool            `json:"generate_audio,omitempty"`
+	Duration           int             `json:"duration,omitempty"`
 	AspectRatio        string          `json:"aspect_ratio,omitempty"`
 	Resolution         string          `json:"resolution,omitempty"`
 	ShotIDs            []string        `json:"shot_ids,omitempty"`

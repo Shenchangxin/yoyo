@@ -221,19 +221,34 @@ func stripCanvasMCP(tools *runtime.WorkspaceTools) {
 	tools.ExtraEnabled = enabled
 }
 
-func (a *App) RunDramaStage(sessionID, episodeID, stage string) error {
+func (a *App) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
 	eng, err := a.requireVideo()
 	if err != nil {
 		return err
 	}
 	sessionID = strings.TrimSpace(sessionID)
+	stage = strings.TrimSpace(stage)
 	if sessionID == "" {
 		return fmt.Errorf("session required")
 	}
-	if err := eng.BindSession(sessionID, episodeID); err != nil {
-		return err
+	if dramaID == "" && episodeID != "" {
+		if ep, err := eng.GetEpisode(episodeID); err == nil {
+			dramaID = ep.DramaID
+		}
 	}
-	prompt, skills, err := eng.StagePrompt(stage, episodeID)
+	if stage == "outline" || stage == "bible" {
+		if dramaID == "" {
+			return fmt.Errorf("series required")
+		}
+		if err := eng.BindSessionDrama(sessionID, dramaID); err != nil {
+			return err
+		}
+	} else {
+		if err := eng.BindSession(sessionID, episodeID); err != nil {
+			return err
+		}
+	}
+	prompt, skills, err := eng.StagePrompt(stage, episodeID, dramaID)
 	if err != nil {
 		return err
 	}
@@ -241,16 +256,22 @@ func (a *App) RunDramaStage(sessionID, episodeID, stage string) error {
 		pinned := uniqueStrings(meta.PinnedSkills, skills)
 		_, _ = a.SetSessionPinnedSkills(sessionID, pinned)
 	}
-	a.journalVideo("drama.stage", map[string]any{"session": sessionID, "episode_id": episodeID, "stage": stage})
+	a.journalVideo("drama.stage", map[string]any{"session": sessionID, "episode_id": episodeID, "drama_id": dramaID, "stage": stage})
 	return a.StartSendOpts(sessionID, prompt, false, nil)
 }
 
-func (a *App) DramaBind(sessionID, episodeID string) error {
+func (a *App) DramaBind(sessionID, episodeID, dramaID string) error {
 	eng, err := a.requireVideo()
 	if err != nil {
 		return err
 	}
-	return eng.BindSession(sessionID, episodeID)
+	if strings.TrimSpace(episodeID) != "" {
+		return eng.BindSession(sessionID, episodeID)
+	}
+	if strings.TrimSpace(dramaID) != "" {
+		return eng.BindSessionDrama(sessionID, dramaID)
+	}
+	return fmt.Errorf("episode or series required")
 }
 
 func (a *App) VideoCall(method string, params map[string]any) (any, error) {
@@ -386,9 +407,59 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		return a.enrichBundle(b), nil
 	case "drama.bind":
-		return map[string]any{"ok": true}, a.DramaBind(str("session_id"), str("episode_id"))
+		return map[string]any{"ok": true}, a.DramaBind(str("session_id"), str("episode_id"), str("drama_id"))
 	case "drama.stage.run":
-		return map[string]any{"ok": true}, a.RunDramaStage(str("session_id"), str("episode_id"), str("stage"))
+		return map[string]any{"ok": true}, a.RunDramaStage(str("session_id"), str("episode_id"), str("stage"), str("drama_id"))
+	case "drama.source.ingest":
+		return eng.IngestSource(str("drama_id"), str("text"), str("title"))
+	case "drama.source.ingest_file":
+		return eng.IngestSourceFile(str("drama_id"), str("path"))
+	case "drama.source.get":
+		src, err := eng.GetSource(str("drama_id"))
+		if err != nil {
+			return nil, err
+		}
+		return src, nil
+	case "drama.plan.get":
+		plan, err := eng.GetPlan(str("drama_id"))
+		if err != nil {
+			return map[string]any{}, nil
+		}
+		return plan, nil
+	case "drama.plan.propose":
+		items := decodePlanEpisodes(params["episodes"])
+		return eng.ProposeEpisodes(str("drama_id"), items)
+	case "drama.plan.patch":
+		items := decodePlanEpisodes(params["episodes"])
+		return eng.PatchPlan(str("drama_id"), items)
+	case "drama.plan.split":
+		return eng.SplitPlanEpisode(str("drama_id"), intArgApp(params["n"]))
+	case "drama.plan.merge":
+		return eng.MergePlanEpisodes(str("drama_id"), intArgApp(params["n"]))
+	case "drama.plan.commit":
+		return eng.CommitEpisodes(str("drama_id"))
+	case "drama.plan.queue_scripts":
+		plan, err := eng.StartScriptQueue(str("drama_id"))
+		if err != nil {
+			return nil, err
+		}
+		ep, ok := eng.NextScriptEpisode(str("drama_id"))
+		if !ok {
+			return map[string]any{"ok": true, "plan": plan, "done": true}, nil
+		}
+		if err := a.RunDramaStage(str("session_id"), ep.ID, "rewrite", str("drama_id")); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true, "plan": plan, "episode_id": ep.ID}, nil
+	case "drama.jobs":
+		return eng.ListDramaJobs(str("drama_id"))
+	case "drama.bible":
+		id := str("drama_id")
+		return map[string]any{
+			"characters": eng.DramaCharacters(id),
+			"scenes":     eng.DramaScenes(id),
+			"props":      eng.DramaProps(id),
+		}, nil
 	case "drama.assets.save":
 		return map[string]any{"ok": true}, eng.UpdateAsset(str("kind"), str("id"), params)
 	case "drama.assets.create":
@@ -546,4 +617,36 @@ func decodeB64(s string) ([]byte, error) {
 		return nil, fmt.Errorf("empty upload")
 	}
 	return base64.StdEncoding.DecodeString(s)
+}
+
+func decodePlanEpisodes(v any) []video.PlanEpisode {
+	if v == nil {
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var out []video.PlanEpisode
+	if json.Unmarshal(b, &out) != nil {
+		return nil
+	}
+	return out
+}
+
+func intArgApp(v any) int {
+	switch t := v.(type) {
+	case float64:
+		return int(t)
+	case int:
+		return t
+	case json.Number:
+		n, _ := t.Int64()
+		return int(n)
+	case string:
+		n := 0
+		fmt.Sscanf(t, "%d", &n)
+		return n
+	}
+	return 0
 }

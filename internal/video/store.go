@@ -8,28 +8,30 @@ import (
 )
 
 const (
-	colDramas      = "dramas"
-	colEpisodes    = "episodes"
-	colCharacters  = "characters"
-	colScenes      = "scenes"
-	colProps       = "props"
-	colShots       = "shots"
-	colJobs        = "jobs"
-	colStyles      = "styles"
-	colMerges      = "merges"
-	colProjects    = "canvas_projects"
-	colSnapshots   = "canvas_snapshots"
-	colResources   = "canvas_resources"
-	colFolders     = "canvas_folders"
-	colAssets      = "canvas_assets"
-	colUnits       = "canvas_units"
-	colLessons     = "canvas_lessons"
-	colUploads     = "canvas_uploads"
-	colTaskLogs    = "canvas_task_logs"
-	colTextDeltas  = "canvas_text_deltas"
-	colUserSkills  = "canvas_user_skills"
-	colChannels    = "canvas_channels"
-	fileSettings   = "_settings.json"
+	colDramas        = "dramas"
+	colEpisodes      = "episodes"
+	colSources       = "sources"
+	colPlans         = "episode_plans"
+	colCharacters    = "characters"
+	colScenes        = "scenes"
+	colProps         = "props"
+	colShots         = "shots"
+	colJobs          = "jobs"
+	colStyles        = "styles"
+	colMerges        = "merges"
+	colProjects      = "canvas_projects"
+	colSnapshots     = "canvas_snapshots"
+	colResources     = "canvas_resources"
+	colFolders       = "canvas_folders"
+	colAssets        = "canvas_assets"
+	colUnits         = "canvas_units"
+	colLessons       = "canvas_lessons"
+	colUploads       = "canvas_uploads"
+	colTaskLogs      = "canvas_task_logs"
+	colTextDeltas    = "canvas_text_deltas"
+	colUserSkills    = "canvas_user_skills"
+	colChannels      = "canvas_channels"
+	fileSettings     = "_settings.json"
 	fileSessionBinds = "_session_binds.json"
 	fileCanvasBinds  = "_canvas_session_binds.json"
 	fileSkillFlags   = "_skill_flags.json"
@@ -84,15 +86,15 @@ type styleRec struct {
 }
 
 type canvasSnapshotRec struct {
-	ID               string `json:"id"`
-	CanvasID         string `json:"canvas_id"`
-	Revision         int64  `json:"revision"`
-	Title            string `json:"title"`
-	PayloadJSON      string `json:"payload_json"`
-	Reason           string `json:"reason"`
-	NodeCount        int    `json:"node_count"`
-	ConnectionCount  int    `json:"connection_count"`
-	CreatedAt        string `json:"created_at"`
+	ID              string `json:"id"`
+	CanvasID        string `json:"canvas_id"`
+	Revision        int64  `json:"revision"`
+	Title           string `json:"title"`
+	PayloadJSON     string `json:"payload_json"`
+	Reason          string `json:"reason"`
+	NodeCount       int    `json:"node_count"`
+	ConnectionCount int    `json:"connection_count"`
+	CreatedAt       string `json:"created_at"`
 }
 
 type canvasResourceRec struct {
@@ -122,17 +124,17 @@ type canvasFolderRec struct {
 }
 
 type canvasAssetRec struct {
-	ID         string `json:"id"`
-	FolderID   string `json:"folder_id"`
-	Kind       string `json:"kind"`
-	Category   string `json:"category"`
-	Title      string `json:"title"`
-	ResourceID string `json:"resource_id"`
+	ID          string `json:"id"`
+	FolderID    string `json:"folder_id"`
+	Kind        string `json:"kind"`
+	Category    string `json:"category"`
+	Title       string `json:"title"`
+	ResourceID  string `json:"resource_id"`
 	PayloadJSON string `json:"payload_json"`
-	Status     string `json:"status"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
-	DeletedAt  string `json:"deleted_at,omitempty"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	DeletedAt   string `json:"deleted_at,omitempty"`
 }
 
 type canvasUnitRec struct {

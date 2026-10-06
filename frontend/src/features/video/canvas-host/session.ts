@@ -6,6 +6,7 @@ type CanvasHostState = {
   projectId: string;
   saving: string;
   sessionId: string;
+  ensureSession: () => Promise<string>;
 };
 
 export const useCanvasHost = create<CanvasHostState>(() => ({
@@ -13,6 +14,7 @@ export const useCanvasHost = create<CanvasHostState>(() => ({
   projectId: "",
   saving: "",
   sessionId: "",
+  ensureSession: async () => "",
 }));
 
 export function setCanvasHostTitle(title: string) {

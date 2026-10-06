@@ -21,7 +21,10 @@ export function SettingsPageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="mb-[var(--space-section)]">
+    <header
+      data-settings-page-header
+      className="sticky top-0 z-10 -mx-8 mb-[var(--space-section)] border-b border-border/60 bg-background px-8 pb-4 pt-6"
+    >
       <h1 className="text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">{title}</h1>
       {description ? (
         <p className="mt-[var(--space-item)] max-w-[46ch] text-[14px] leading-[1.6] text-muted">{description}</p>

@@ -44,6 +44,7 @@ import { threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
 import { VideoShellNav } from "./video/VideoShellNav";
+import { shownSeriesTitle } from "./video/drama-lib";
 import type { Copy } from "../lib/copy";
 
 type RailEntry =
@@ -382,7 +383,7 @@ function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: (
       onClick={props.onSelect}
     >
       <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
-      <span className="truncate">{displayTitle(p.title, fallback)}</span>
+      <span className="truncate">{p.kind === "drama" ? shownSeriesTitle(p.title, fallback) : displayTitle(p.title, fallback)}</span>
     </button>
   );
 }

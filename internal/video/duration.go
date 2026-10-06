@@ -15,11 +15,11 @@ const (
 )
 
 type DurationPlan struct {
-	Chars         int
-	TargetSeconds int
-	SegmentCount  int
-	MinTotal      int
-	MaxTotal      int
+	Chars         int `json:"chars"`
+	TargetSeconds int `json:"target_seconds"`
+	SegmentCount  int `json:"segment_count"`
+	MinTotal      int `json:"min_total"`
+	MaxTotal      int `json:"max_total"`
 }
 
 func PlanDuration(script string) DurationPlan {

@@ -62,7 +62,7 @@ export function SettingsSidebar(props: {
 
   if (props.compact) {
     return (
-      <nav className="flex w-[60px] shrink-0 flex-col gap-0.5 overflow-auto bg-sidebar px-2 py-3" aria-label={copy.settings.title}>
+      <nav className="flex h-full min-h-0 w-[60px] shrink-0 flex-col gap-0.5 overflow-auto bg-sidebar px-2 py-3" aria-label={copy.settings.title}>
         {SETTINGS_TABS.map((t, i) => {
           const prev = SETTINGS_TABS[i - 1];
           return (
@@ -84,7 +84,7 @@ export function SettingsSidebar(props: {
   }
 
   return (
-    <nav className="glass-chrome flex w-[228px] shrink-0 flex-col" aria-label={copy.settings.title}>
+    <nav className="glass-chrome flex h-full min-h-0 w-[228px] shrink-0 flex-col overflow-hidden" aria-label={copy.settings.title}>
       <div className="px-3 pb-1.5 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />

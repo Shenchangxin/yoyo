@@ -49,7 +49,7 @@ function CanvasLoading() {
   );
 }
 
-export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void; onClose?: () => void }) {
+export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void | Promise<string | void>; onClose?: () => void }) {
   const pane = useUI((s) => s.videoPane);
   const canvasFocus = useUI((s) => s.canvasFocus);
   const projectId = useCanvasHost((s) => s.projectId);
@@ -57,8 +57,22 @@ export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => 
 
   useEffect(() => {
     if (typeof window !== "undefined") window.__YOYO_VIDEO_SESSION__ = props.sessionId || "";
-    useCanvasHost.setState({ sessionId: props.sessionId || "" });
-  }, [props.sessionId]);
+    useCanvasHost.setState({
+      sessionId: props.sessionId || "",
+      ensureSession: async () => {
+        if (props.sessionId) return props.sessionId;
+        const id = await props.onNeedSession?.();
+        const next = (typeof id === "string" && id)
+          || useCanvasHost.getState().sessionId
+          || (typeof window !== "undefined" ? String(window.__YOYO_VIDEO_SESSION__ || "") : "");
+        if (next) {
+          useCanvasHost.setState({ sessionId: next });
+          if (typeof window !== "undefined") window.__YOYO_VIDEO_SESSION__ = next;
+        }
+        return next;
+      },
+    });
+  }, [props.sessionId, props.onNeedSession]);
   useEffect(() => {
     if (!props.sessionId) props.onNeedSession?.();
   }, [props.sessionId, props.onNeedSession]);
