@@ -6,7 +6,7 @@
 
 Yoyo is not another Cursor clone. It is a **self-harnessing** coding agent: one Go core serving CLI, browser, and a Wails desktop shell, with a versioned, evaluable, promotable harness as the product moat. Prompts, playbooks, and skills can evolve. The evaluator, vault, and updater cannot.
 
-**Version 0.3.5** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Skill Packs](docs/architecture/skill-packs.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
+**Version 0.3.6** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Skill Packs](docs/architecture/skill-packs.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
 
 ---
 
@@ -257,7 +257,7 @@ Evolve candidates run Harbor inside a **detached git worktree**, not in your wor
 | `yoyo pack list\|install\|uninstall\|enable\|update` | Skill packs (Superpowers). Default off; Harbor stays pack-off |
 | `yoyo replay [session]` | Print a JSONL trajectory |
 | `yoyo update apply` | Human install of `updates/yoyo.staging` |
-| `yoyo version` | `0.3.5` |
+| `yoyo version` | `0.3.6` |
 
 JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.event` notifications, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`, `packs.*`.
 

@@ -6,7 +6,7 @@
 
 Yoyo 不是 Cursor 的仿制品。它是一台 **self-harnessing** 的编程智能体：同一套 Go 核心同时服务 CLI、浏览器和 Wails 桌面壳。产品护城河不是 IDE 皮肤，而是 **可版本化、可评测、可晋升、可回滚的 harness**。提示词、playbook、技能可以进化；评测器、密钥库、更新器不行。
 
-**版本 0.3.5** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [持久化](docs/architecture/persist.md) · [Skill Pack](docs/architecture/skill-packs.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
+**版本 0.3.6** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [持久化](docs/architecture/persist.md) · [Skill Pack](docs/architecture/skill-packs.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
 
 ---
 
@@ -257,7 +257,7 @@ Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的�
 | `yoyo pack list\|install\|uninstall\|enable\|update` | 技能包（Superpowers）。默认关闭；Harbor 不加载 |
 | `yoyo replay [session]` | 打印 JSONL 轨迹 |
 | `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
-| `yoyo version` | `0.3.5` |
+| `yoyo version` | `0.3.6` |
 
 JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通知、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*`。
 
