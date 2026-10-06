@@ -19,7 +19,7 @@ export function gazeFromPoint(rect: { left: number; top: number; width: number; 
   const mag = Math.min(1, dist / reach);
   return {
     nx: (dx / dist) * mag,
-    ny: (dy / dist) * mag * 0.82,
+    ny: (dy / dist) * mag * 0.62,
   };
 }
 

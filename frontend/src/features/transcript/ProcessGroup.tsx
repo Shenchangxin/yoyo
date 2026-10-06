@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
-import { PresenceAnchor } from "../presence";
 import { useCopy } from "../../lib/i18n";
 import type { Copy } from "../../lib/copy";
 import { DURATION_FAST, motionTransition, useMotionReduced } from "../../lib/motion";
@@ -71,7 +70,7 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
       data-testid="working-line"
     >
       <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
-        <PresenceAnchor id="process" size={22} />
+        <span className="pulse-dot" />
       </span>
       <span className="shimmer-text font-medium">{label || copy.transcript.working}</span>
       {elapsed ? <span className="tabular-nums text-[12px] text-muted/70">{elapsed}</span> : null}
@@ -127,7 +126,7 @@ export const ProcessGroup = memo(function ProcessGroup({
       >
         <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
           {live ? (
-            <PresenceAnchor id="process" size={22} />
+            <span className="pulse-dot" />
           ) : failed > 0 ? (
             <X className="size-3 text-danger" strokeWidth={2.4} />
           ) : interrupted ? (

@@ -21,8 +21,10 @@
   var EB = (window.EmotionBall = window.EmotionBall || {});
   var RD = window.EB_RINGS;
   var EXPR = RD.EXPRESSIONS;
+  var MOUTHS = RD.MOUTHS || {};
   var TAU = Math.PI * 2;
   var FALLBACK_ID = '02';
+  var MOUTH_FALLBACK = MOUTHS.flat || [];
 
   /* ---------------- 基础工具 ---------------- */
 
@@ -41,10 +43,13 @@
     if (!isFinite(s.x) || !isFinite(s.v)) { s.x = s.t; s.v = 0; }
   }
 
-  /* 两组眼环逐点插值 */
+  /* 轮廓环逐点插值（眼环 48 点、嘴环 24 点） */
   function lerpRing(a, b, t) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i++) {
+    if (!a || !a.length) return b || [];
+    if (!b || !b.length) return a;
+    var n = a.length < b.length ? a.length : b.length;
+    var out = new Array(n);
+    for (var i = 0; i < n; i++) {
       out[i] = [a[i][0] + (b[i][0] - a[i][0]) * t, a[i][1] + (b[i][1] - a[i][1]) * t];
     }
     return out;
@@ -80,20 +85,23 @@
     orbit: 0     /* 常驻水平环带（0~1） */
   };
   var DEFAULT_EYE = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, open: 1, color: '#1A1A1A', lookX: 0, lookY: 0 };
+  var DEFAULT_FACE = { mouthY: 42, mouthSX: 1.18, mouthSY: 1.18, mouthColor: '#1A1A1A' };
 
-  /* 眼环数据自带左右不对称，默认姿态不叠加高低差 */
+  /* 眼环是共轭横椭圆：默认姿态不叠加左右高低差，注视漂移共用同一向量 */
   function defaultPose() {
     return {
       body: Object.assign({}, DEFAULT_BODY),
       left: Object.assign({}, DEFAULT_EYE),
-      right: Object.assign({}, DEFAULT_EYE)
+      right: Object.assign({}, DEFAULT_EYE),
+      face: Object.assign({}, DEFAULT_FACE)
     };
   }
   function clonePose(p) {
     return {
       body: Object.assign({}, p.body),
       left: Object.assign({}, p.left),
-      right: Object.assign({}, p.right)
+      right: Object.assign({}, p.right),
+      face: Object.assign({}, p.face || DEFAULT_FACE)
     };
   }
 
@@ -107,12 +115,13 @@
       if (e.left) Object.assign(pose.left, e.left);
       if (e.right) Object.assign(pose.right, e.right);
     }
+    if (spec.face) Object.assign(pose.face, spec.face);
     return pose;
   }
 
   function lerpPose(a, b, t) {
     var out = defaultPose();
-    ['body', 'left', 'right'].forEach(function (part) {
+    ['body', 'left', 'right', 'face'].forEach(function (part) {
       var pa = a[part], pb = b[part], po = out[part];
       for (var k in pb) {
         var vb = pb[k];
@@ -235,6 +244,7 @@
       /* 表情池系统：pool = 眼环索引池，poolMs 间隔内随机轮换；
        * blinkMs = 眨眼间隔（null 不眨）；openness = 常驻开合度；
        * antics = 待机随机小动作（自旋 / 弹跳） */
+      mouth: (raw.mouth && MOUTHS[raw.mouth]) ? raw.mouth : 'flat',
       pool: pool,
       poolMs: raw.poolMs || [9000, 16000],
       poolSpeed: raw.poolSpeed || 6,
@@ -342,6 +352,12 @@
     this._exprIdx = 0;
     this._poolPos = 0;
     this._poolNext = 0;
+    this._mouthSrc = MOUTH_FALLBACK;
+    this._mouthDst = MOUTH_FALLBACK;
+    this._mouthCur = MOUTH_FALLBACK;
+    this._mouthSpring = spring(1);
+    this._mouthSlot = 'flat';
+    this._mouthSpeed = 8;
     /* ---- 眨眼系统：开合度弹簧（频率 26）+ 关键帧队列 ---- */
     this._open = spring(1);
     this._blinkQ = [];
@@ -433,6 +449,7 @@
        * 并且切换瞬间先眨一次眼（睡眠 / 停止类除外） */
       this._poolPos = 0;
       this._setExpr(def.pool[0], def.poolSpeed >= 10 ? 10 : 8);
+      this._setMouth(def.mouth, 8);
       this._poolNext = now + rand(def.poolMs[0], def.poolMs[1]);
       if (prevId !== null && prevId !== def.id && def.blinkMs) this._blinkNow(now);
       this._blinkNext = def.blinkMs ? now + rand(def.blinkMs[0], def.blinkMs[1]) : Infinity;
@@ -554,6 +571,19 @@
       this._exprIdx = idx;
     },
 
+    _setMouth: function (slot, speed) {
+      var ring = MOUTHS[slot] || MOUTH_FALLBACK;
+      if (slot === this._mouthSlot && this._mouthSpring.x >= 0.999) return;
+      var s = clamp(this._mouthSpring.x, 0, 1);
+      this._mouthSrc = lerpRing(this._mouthSrc, this._mouthDst, s);
+      this._mouthDst = ring;
+      this._mouthSpring.x = 0;
+      this._mouthSpring.v = 0;
+      this._mouthSpring.t = 1;
+      this._mouthSlot = slot;
+      this._mouthSpeed = speed || 8;
+    },
+
     /* 眨眼关键帧：合上 → 停 70ms → 睁到 1.08 过冲 → 300ms 落回 1，
      * 14% 概率追加第二次连眨 */
     _blinkNow: function (t) {
@@ -583,6 +613,8 @@
       this._transDur = 0;
       this._ringSpring.x = 1;
       this._ringSpring.v = 0;
+      this._mouthSpring.x = 1;
+      this._mouthSpring.v = 0;
       this._open.x = this._def ? this._def.openness : 1;
       this._open.v = 0;
       var seq = this._seq;
@@ -692,6 +724,7 @@
       var j = dt / steps;
       for (var si = 0; si < steps; si++) {
         springStep(this._ringSpring, this._ringSpeed, 1, j);
+        springStep(this._mouthSpring, this._mouthSpeed || 8, 1, j);
         springStep(this._open, 26, 1, j);
         if (this._spin) {
           springStep(this._spin, 6.2, 1, j);
@@ -729,6 +762,14 @@
       pose.left.ring = this._ringCur[0];
       pose.right.ring = this._ringCur[1];
 
+      if (this._mouthSpring.x < 0.999 || Math.abs(this._mouthSpring.v) > 0.001) {
+        var ms = clamp(this._mouthSpring.x, 0, 1.25);
+        this._mouthCur = lerpRing(this._mouthSrc, this._mouthDst, ms);
+      } else if (this._mouthCur !== this._mouthDst) {
+        this._mouthCur = this._mouthDst;
+      }
+      pose.face.mouthRing = this._mouthCur;
+
       /* 鼠标注视：帧率无关的指数平滑（约 26 的时间常数，跟手更快仍连续） */
       if (this._gazeHoldUntil && now > this._gazeHoldUntil && Math.abs(this._gaze.tx) < 0.8 && Math.abs(this._gaze.ty) < 0.8) {
         this._gazeHeld = false;
@@ -743,13 +784,15 @@
       pose.left.lookY += this._gaze.y;
       pose.right.lookY += this._gaze.y;
 
-      /* 常驻眼神微漂移：跟手贴近时关掉，避免和注视目标对拉 */
+      /* 常驻眼神微漂移：左右眼共用同一向量，保持共轭水平注视 */
       if (def.gaze !== false && !this._gazeHeld) {
         var w = now / 1000;
-        pose.left.lookX += 1.4 * Math.sin(0.42 * w) + 0.5 * Math.sin(1.0 * w);
-        pose.right.lookX += 1.4 * Math.sin(0.42 * w + 1) + 0.5 * Math.sin(1.0 * w + 2);
-        pose.left.lookY += 0.9 * Math.sin(0.58 * w);
-        pose.right.lookY += 0.9 * Math.sin(0.58 * w + 1);
+        var driftX = 1.4 * Math.sin(0.42 * w) + 0.5 * Math.sin(1.0 * w);
+        var driftY = 0.9 * Math.sin(0.58 * w);
+        pose.left.lookX += driftX;
+        pose.right.lookX += driftX;
+        pose.left.lookY += driftY;
+        pose.right.lookY += driftY;
       }
 
       /* 小尺寸实例放大眼睛占比，保证 32~48px 下仍可读 */

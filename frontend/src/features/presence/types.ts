@@ -1,6 +1,6 @@
 export type VoicePhase = "off" | "listening" | "thinking" | "speaking";
 
-export type PresenceSlotId = "boot" | "home" | "process" | "avatar" | "module";
+export type PresenceSlotId = "boot" | "home" | "module";
 
 export type MoodMate = {
   emotionId: string;

@@ -8,8 +8,6 @@ import type { PresenceSlotId } from "./types";
 const PRIORITY: Record<PresenceSlotId, number> = {
   boot: 100,
   module: 80,
-  process: 60,
-  avatar: 40,
   home: 20,
 };
 
@@ -86,7 +84,6 @@ export function PresenceRuntime(props: {
         idle,
         lite: glyph || props.reduced,
         autostart: !props.reduced && visible,
-        eyeScale: glyph ? 1.6 : 1,
       });
       kindRef.current = kind;
       if (props.reduced) mateRef.current.renderStatic();
@@ -219,7 +216,6 @@ export function PresenceSprite(props: {
       idle: false,
       lite: props.lite ?? (glyph || !!props.reduced),
       autostart: !props.reduced,
-      eyeScale: glyph ? 1.6 : 1,
     });
     mate.current = inst;
     if (props.reduced) inst.renderStatic();
@@ -269,6 +265,7 @@ export function PresenceSprite(props: {
   );
 }
 
+/** Rest-face letterhead: cream blob + conjugated eyes. Not a live engine. */
 export function PresenceStamp(props: { className?: string; size?: number }) {
   const n = props.size ?? 28;
   return (
@@ -276,7 +273,25 @@ export function PresenceStamp(props: { className?: string; size?: number }) {
       className={cn("presence-stamp relative inline-block shrink-0", props.className)}
       style={{ width: n, height: n }}
       aria-hidden
-    />
+      data-testid="presence-stamp"
+    >
+      <svg viewBox="0 0 32 32" width={n} height={n} focusable="false" className="block h-full w-full overflow-visible">
+        <circle className="presence-stamp-body" cx="16" cy="16.2" r="14.6" fill="#F3F0EA" />
+        <ellipse className="presence-stamp-shine" cx="12.2" cy="12.4" rx="7.2" ry="5.4" fill="#FFFCFA" />
+        <ellipse className="presence-stamp-shade" cx="16.4" cy="22.6" rx="9.5" ry="5.2" fill="#E7E1D8" />
+        <g className="presence-stamp-face">
+          <ellipse className="presence-stamp-eye" cx="10.6" cy="15.1" rx="3.55" ry="2.7" fill="#1A1A1A" />
+          <ellipse className="presence-stamp-eye" cx="21.4" cy="15.1" rx="3.55" ry="2.7" fill="#1A1A1A" />
+          <ellipse className="presence-stamp-spark" cx="9.55" cy="14.15" rx="1.05" ry="0.85" fill="#FFFFFF" />
+          <ellipse className="presence-stamp-spark" cx="20.35" cy="14.15" rx="1.05" ry="0.85" fill="#FFFFFF" />
+          <path
+            className="presence-stamp-mouth"
+            d="M11.2 19.15C13.15 21.7 18.85 21.7 20.8 19.15C18.7 21.05 13.3 21.05 11.2 19.15Z"
+            fill="#1A1A1A"
+          />
+        </g>
+      </svg>
+    </span>
   );
 }
 

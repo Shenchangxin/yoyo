@@ -26,7 +26,7 @@ import { structureSig, withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
-import { PresenceAnchor, PresenceStamp } from "./presence";
+import { PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
 import { peelCompletedMentions, type MentionKind, type MentionPin } from "../lib/mentions";
@@ -180,11 +180,7 @@ export function Transcript(props: {
           estimate: agentEstimate(row.copyText),
           render: () => (
             <article className="assistant-letter group/turn flex gap-2.5" data-testid="agent-turn">
-              {last && props.running ? (
-                <PresenceAnchor id="avatar" size={22} className="mt-0.5" />
-              ) : (
-                <PresenceStamp size={22} className="mt-0.5" />
-              )}
+              <PresenceStamp size={22} className="mt-0.5" />
               <div className="min-w-0 flex-1">
               {row.parts.map((part, pi) => (
                 <div
