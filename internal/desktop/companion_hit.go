@@ -4,21 +4,22 @@ import "github.com/Shenchangxin/yoyo/internal/winsize"
 
 const (
 	companionW         = 232
-	companionH         = 288
+	companionH         = 226
 	companionPad       = 8
 	companionPet       = 148
-	companionPetTop    = 40
-	companionBubbleGap = 12
+	companionPetTop    = 24
+	companionBubbleGap = 6
 	companionBubbleW   = 168
 	companionBubbleH   = 40
 	// Hit disk is slightly inside the 148px box so empty corners pass through,
 	// but larger than the viewBox inset so bounce/lean still grab.
 	companionHitFill = 0.88
-	// Window region is a taller oval than the grab disk: bounce peaks ~27px
-	// above the body, lean/ribbons a little past the sides. Chrome outside
-	// this oval is not part of the HWND, so clicks fall through.
+	// Occupancy follows paint: the HWND ellipse hugs the blob chin (~4px)
+	// and keeps bounce headroom above the crown, not a stretched oval below.
 	companionShapeFillX = 1.08
-	companionShapeFillY = 1.38
+	companionBlobInset  = 0.06
+	companionBounceHead = 28
+	companionChinPad    = 4
 )
 
 type hitBox struct {
@@ -61,9 +62,19 @@ func companionScale(winW, winH float64) (sx, sy, s float64) {
 func companionBlobEllipse(winW, winH float64) (cx, cy, rx, ry float64) {
 	_, sy, s := companionScale(winW, winH)
 	cx = winW * 0.5
-	cy = (float64(companionPetTop) + float64(companionPet)*0.5) * sy
+	boxTop := float64(companionPetTop) * sy
+	boxH := float64(companionPet) * sy
+	inset := float64(companionPet) * companionBlobInset * sy
+	paintTop := boxTop + inset
+	paintBot := boxTop + boxH - inset
+	top := paintTop - float64(companionBounceHead)*sy
+	if top < 0 {
+		top = 0
+	}
+	bot := paintBot + float64(companionChinPad)*sy
+	cy = (top + bot) * 0.5
+	ry = (bot - top) * 0.5
 	rx = float64(companionPet) * 0.5 * companionShapeFillX * s
-	ry = float64(companionPet) * 0.5 * companionShapeFillY * s
 	return cx, cy, rx, ry
 }
 

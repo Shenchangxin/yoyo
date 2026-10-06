@@ -3,8 +3,9 @@
  *
  *   坐标系：viewBox -15 -15 259 259，头部中心 HEAD_C = 114.2705
  *   身体：形状轮廓环（blob 圆胖 / wedge 三角 / gem 菱形）折线路径
- *   眼睛：25 组表情眼环（48 点轮廓），由 engine 逐点插值后传入，
+ *   眼睛：25 组共轭横椭圆眼环（48 点轮廓），由 engine 逐点插值后传入，
  *        本层负责球面投影、变换与 path 更新
+ *   嘴巴：局部坐标嘴环（中心 0,0），按 pose.face 锚到头部中心下方
  *   球面投影：按眼睛当前高度采样身体轮廓的局部半宽，经度换算 + 余弦压缩，
  *            自旋偏航时眼睛绕到背面自动隐藏（cos <= 0.02 判定）
  *   彩带：两种形态 ——
@@ -24,7 +25,7 @@
   var TAU = Math.PI * 2;
 
   var HEAD_C = RD.HEAD_C;          /* 114.2705 */
-  var EYE_HALF = RD.EYE_HALF;      /* 21 */
+  var EYE_HALF = RD.EYE_HALF;      /* ~26，随更大的 rest 眼环 */
   var EXPR = RD.EXPRESSIONS;
   var STAR_GOLD = RD.STAR_GOLD;
   var CONFETTI_COLORS = ['#f9705c', '#5b95f0', '#3fbe86', '#f5b13f', '#9a72ee', '#35c3bd'];
@@ -143,14 +144,20 @@
     bodyG.appendChild(head);
 
     function buildEye(k) {
+      var g = el('g', {});
       var node = el('path', { fill: '#1A1A1A', stroke: 'none', 'stroke-width': '1.6' });
       node.setAttribute('d', ringPath(EXPR[0][k]));
-      return { node: node, ring: EXPR[0][k], c: centroid(EXPR[0][k]) };
+      var hi = el('ellipse', { fill: '#FFFFFF', 'fill-opacity': '0.95', stroke: 'none' });
+      g.appendChild(node);
+      g.appendChild(hi);
+      return { g: g, node: node, hi: hi, ring: EXPR[0][k], c: centroid(EXPR[0][k]) };
     }
     var eyeL = buildEye(0);
     var eyeR = buildEye(1);
-    bodyG.appendChild(eyeL.node);
-    bodyG.appendChild(eyeR.node);
+    bodyG.appendChild(eyeL.g);
+    bodyG.appendChild(eyeR.g);
+    var mouth = el('path', { fill: '#1A1A1A', stroke: 'none', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+    bodyG.appendChild(mouth);
     svg.appendChild(bodyG);
 
     var fxFront = el('g', { 'pointer-events': 'none' });
@@ -404,15 +411,15 @@
       var total = theta + (yaw || 0);
       var cn = Math.cos(total);
       if (cn <= 0.02) {
-        eye.node.style.display = 'none';
+        eye.g.style.display = 'none';
         return;
       }
-      eye.node.style.display = '';
+      eye.g.style.display = '';
       var ex = cx0 + hw * Math.sin(total) * 0.985;
       var dyN = (ey0 - HEAD_C) / 130;
       var fy = Math.sqrt(1 - dyN * dyN * 0.22);
 
-      eye.node.setAttribute('transform',
+      eye.g.setAttribute('transform',
         'translate(' + r2(ex) + ' ' + r2(ey0) + ')' +
         (pose.rotate ? ' rotate(' + r2(pose.rotate) + ')' : '') +
         ' scale(' + r2(sxBase * cn) + ' ' + r2(sy * fy) + ')' +
@@ -423,6 +430,29 @@
       var stroke = sketch > 0.5 ? 'var(--sketch-ink, ' + pose.color + ')' : '';
       if (fill !== eye.lastFill) { eye.node.setAttribute('fill', fill); eye.lastFill = fill; }
       if (stroke !== eye.lastStroke) { eye.node.style.stroke = stroke; eye.lastStroke = stroke; }
+
+      var src = ring || eye.ring;
+      var rw = 0, rh = 0, i;
+      if (src && src.length) {
+        var minX = src[0][0], maxX = src[0][0], minY = src[0][1], maxY = src[0][1];
+        for (i = 1; i < src.length; i++) {
+          if (src[i][0] < minX) minX = src[i][0];
+          if (src[i][0] > maxX) maxX = src[i][0];
+          if (src[i][1] < minY) minY = src[i][1];
+          if (src[i][1] > maxY) maxY = src[i][1];
+        }
+        rw = maxX - minX;
+        rh = maxY - minY;
+      }
+      if (sketch > 0.5 || open < 0.42 || rh < 10) {
+        eye.hi.style.display = 'none';
+      } else {
+        eye.hi.style.display = '';
+        eye.hi.setAttribute('cx', r2(base[0] - rw * 0.18));
+        eye.hi.setAttribute('cy', r2(base[1] - rh * 0.22));
+        eye.hi.setAttribute('rx', r2(Math.max(2.4, rw * 0.13)));
+        eye.hi.setAttribute('ry', r2(Math.max(1.8, rh * 0.15)));
+      }
     }
 
     /* ---- 每帧 ---- */
@@ -455,6 +485,22 @@
       var yaw = b.yaw || 0;
       setEye(eyeL, pose.left, 0, sketch, yaw);
       setEye(eyeR, pose.right, 1, sketch, yaw);
+
+      var mf = pose.face || {};
+      var mring = mf.mouthRing;
+      var mouthHide = Math.cos(yaw || 0) <= 0.02;
+      if (mring && mring.length && !mouthHide) {
+        mouth.setAttribute('d', ringPath(mring));
+        mouth.setAttribute('fill', sketch > 0.5 ? 'none' : (mf.mouthColor || '#1A1A1A'));
+        mouth.style.stroke = sketch > 0.5 ? 'var(--sketch-ink, #1A1A1A)' : '';
+        mouth.setAttribute('stroke-width', sketch > 0.5 ? '1.6' : '0');
+        mouth.setAttribute('transform',
+          'translate(' + r2(HEAD_C + face.x) + ' ' + r2(HEAD_C + face.y + (mf.mouthY || 36)) + ')' +
+          ' scale(' + r2((mf.mouthSX || 1) * face.sx) + ' ' + r2((mf.mouthSY || 1) * face.sy) + ')');
+        mouth.style.display = '';
+      } else {
+        mouth.style.display = 'none';
+      }
 
       if (lite) return;
 

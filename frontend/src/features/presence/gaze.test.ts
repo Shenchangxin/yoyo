@@ -11,6 +11,13 @@ describe("gazeFromPoint", () => {
     assert.ok(Math.abs(g.ny) < 0.15);
   });
 
+  it("keeps vertical gaze shallower than horizontal", () => {
+    const side = gazeFromPoint(box, 200, 70);
+    const down = gazeFromPoint(box, 70, 200);
+    assert.ok(Math.abs(down.ny) < Math.abs(side.nx));
+    assert.ok(Math.abs(down.ny) < 0.7);
+  });
+
   it("stays near zero at the origin", () => {
     const g = gazeFromPoint(box, 70, 70);
     assert.equal(g.nx, 0);

@@ -9,6 +9,7 @@
  *   poolMs    池内轮换间隔 [min, max] ms
  *   poolSpeed 形变弹簧频率（检索 / 兴奋类 10，默认 6）
  *   blinkMs   眨眼间隔 [min, max] ms（null = 不眨眼）
+ *   mouth     嘴形槽位（smile / grin / o / flat / frown / wavy / pout / open / dot）
  *   openness  常驻开合度（如睡眠 0.08、疲惫 0.55）
  *   antics    待机随机小动作（自旋 / 弹跳，9~18s 一次）
  *   ribbons / confetti  进入表情时的一次性事件：自旋甩彩带 / 撒花
@@ -39,6 +40,7 @@ window.EMOTION_SEED = [
     desc: '闭眼成细线，右上角 zzz 缓缓飘起，头微垂，只剩缓慢呼吸',
     en: { name: 'Sleeping', desc: 'Eyes closed to thin lines, zzz drifting up at the top right, only a slow breath remains' },
     transition: 900,
+    mouth: 'flat',
     gaze: false,
     pool: [13, 22, 4], poolMs: [6000, 10000], blinkMs: null, openness: 0.08,
     body: { y: 4, rotate: -2, breathe: 0.018, color: '#EEEBE4', zzz: 1 },
@@ -52,6 +54,7 @@ window.EMOTION_SEED = [
     desc: '从闭合眼环缓缓睁开，先揉眼似的眨两下，随后进入待机',
     en: { name: 'Waking', desc: 'Eyes slowly crack open with a couple of groggy blinks, then settles into idle' },
     transition: 320,
+    mouth: 'o',
     pool: [13], poolMs: [800, 800], blinkMs: null,
     sequence: {
       settle: { next: '02' },
@@ -69,6 +72,7 @@ window.EMOTION_SEED = [
     desc: '左看看、右看看，目光在两侧各停留片刻，偶尔自旋甩彩带 / 弹跳',
     en: { name: 'Idle', desc: 'Glances left, glances right, lingering on each side; an occasional ribbon spin or bounce' },
     transition: 700,
+    mouth: 'smile',
     pool: [0, 8], poolMs: [9000, 16000], blinkMs: [6000, 14000], antics: true,
     body: { breathe: 0.012 },
     anims: [
@@ -81,6 +85,7 @@ window.EMOTION_SEED = [
     desc: '圆睁 / 平静 / 扫视眼环快速轮换，头微倾，目光轻轻打量',
     en: { name: 'Curious', desc: 'Wide, calm and scanning eye rings rotate quickly, head tilted, sizing things up' },
     transition: 420,
+    mouth: 'o',
     pool: [3, 21, 0, 15], poolMs: [1800, 3200], blinkMs: [2500, 5500],
     body: { rotate: 4, breathe: 0.01 },
     eyes: { both: { lookY: -1 } },
@@ -93,6 +98,7 @@ window.EMOTION_SEED = [
     desc: '半闭眼环慢轮换，双眼各望各的，偶尔弹跳提神',
     en: { name: 'Spacing Out', desc: 'Half-closed rings rotate slowly, each eye wandering its own way; a bounce now and then' },
     transition: 800,
+    mouth: 'dot',
     pool: [4, 22, 0], poolMs: [3500, 6000], blinkMs: [4000, 8000], antics: true,
     body: { rotate: -3, breathe: 0.008 },
     eyes: {
@@ -108,6 +114,7 @@ window.EMOTION_SEED = [
     desc: '双眼缓慢交替亮起，像系统正在逐项初始化',
     en: { name: 'Booting', desc: 'Eyes light up in slow alternation, like a system initializing step by step' },
     transition: 480,
+    mouth: 'flat',
     pool: [0, 8], poolMs: [6000, 10000], blinkMs: null,
     anims: [
       { target: 'left',  prop: 'open', type: 'blink', interval: 1600, dur: 700 },
@@ -120,6 +127,7 @@ window.EMOTION_SEED = [
     desc: '困倦眼环 + 半开合，几乎静止，只剩极弱的呼吸起伏',
     en: { name: 'Dormant', desc: 'Drowsy rings at half openness, nearly still, only the faintest breathing' },
     transition: 1200,
+    mouth: 'flat',
     gaze: false,
     pool: [4, 22, 13], poolMs: [4000, 8000], blinkMs: null, openness: 0.4,
     body: { y: 6, scale: 0.98, rotate: -1, breathe: 0.005, color: '#EBE8E1' },
@@ -130,6 +138,7 @@ window.EMOTION_SEED = [
     desc: '整球轻颤，闭合眼环交错睁开，随后进入待机',
     en: { name: 'Shake Awake', desc: 'The whole body trembles as the eyes stagger open, then settles into idle' },
     transition: 220,
+    mouth: 'o',
     pool: [13], poolMs: [800, 800], blinkMs: null,
     body: { breathe: 0.004 },
     anims: [
@@ -154,6 +163,7 @@ window.EMOTION_SEED = [
     desc: '笑眼轮换，目光下看看、上看看，身体轻快起伏，偶尔自旋甩彩带',
     en: { name: 'Happy', desc: 'Smiling rings rotate, gaze bobs down and up, body bounces lightly; occasional ribbon spin' },
     transition: 380,
+    mouth: 'grin',
     pool: [2, 11, 17, 19], poolMs: [2500, 4500], blinkMs: [2500, 5000], antics: true,
     body: { y: -3, breathe: 0.014, color: '#F6EFE4' },
     eyes: { both: { y: -3 } },
@@ -167,6 +177,7 @@ window.EMOTION_SEED = [
     desc: '斜眼环轮换，头微倾，一眼放大一眼收小',
     en: { name: 'Puzzled', desc: 'Skeptical rings, head atilt, one eye enlarged and the other shrunk' },
     transition: 420,
+    mouth: 'wavy',
     pool: [14, 5, 8], poolMs: [2200, 3800], blinkMs: [2800, 5500],
     body: { rotate: -8, breathe: 0.008 },
     eyes: {
@@ -182,6 +193,7 @@ window.EMOTION_SEED = [
     desc: '困倦 / 闭合眼环慢轮换，眼睛下沉，目光低垂',
     en: { name: 'Down', desc: 'Drowsy rings rotate slowly, eyes sinking with a downcast gaze' },
     transition: 820,
+    mouth: 'frown',
     pool: [4, 13, 22], poolMs: [4000, 7000], blinkMs: [4000, 8000],
     body: { y: 5, rotate: -4, breathe: 0.007, color: '#EDEAE3' },
     eyes: { both: { y: 8, scaleX: 0.88, scaleY: 0.88, lookY: 4 } },
@@ -194,6 +206,7 @@ window.EMOTION_SEED = [
     desc: '双眼瞬间放大到 1.45 倍再回稳，身体轻抬定住',
     en: { name: 'Surprised', desc: 'Eyes pop to 1.45x in an instant then steady, the body lifting and freezing' },
     transition: 180,
+    mouth: 'open',
     pool: [3, 21], poolMs: [2500, 4000], blinkMs: [1800, 3500],
     body: { y: -4, scale: 1.03, breathe: 0.006 },
     eyes: { both: { scaleX: 1.14, scaleY: 1.14, y: -2, lookY: -2 } },
@@ -211,6 +224,7 @@ window.EMOTION_SEED = [
     desc: '目光躲向一侧，脸颊在一秒多里渐渐泛起粉色',
     en: { name: 'Shy', desc: 'Gaze slips off to one side as the face slowly blushes pink over a second' },
     transition: 560,
+    mouth: 'pout',
     pool: [0, 24, 13], poolMs: [3000, 5500], blinkMs: [3000, 6000],
     /* base 色 = 序列终态粉，保证静态缩略图与最终观感一致 */
     body: { rotate: 6, breathe: 0.012, color: '#F4D3D0' },
@@ -231,6 +245,7 @@ window.EMOTION_SEED = [
     desc: '眼皮沉重半睁（低开合度 + 困倦眼环），目光下沉',
     en: { name: 'Tired', desc: 'Heavy eyelids at half openness with drowsy rings, gaze sinking low' },
     transition: 900,
+    mouth: 'flat',
     pool: [4, 22, 13], poolMs: [4000, 8000], blinkMs: null, openness: 0.55,
     body: { y: 4, rotate: -3, breathe: 0.016, color: '#EFECE5' },
     eyes: { both: { y: 5, lookY: 3 } },
@@ -243,6 +258,7 @@ window.EMOTION_SEED = [
     desc: '专注眼环族轮换，双眼微微内聚，身体几乎不动',
     en: { name: 'Focused', desc: 'Focused ring family rotates, eyes converge slightly, body almost motionless' },
     transition: 320,
+    mouth: 'flat',
     pool: [7, 16, 11, 10], poolMs: [1800, 3200], blinkMs: [2800, 5500],
     body: { breathe: 0.004 },
     eyes: {
@@ -255,6 +271,7 @@ window.EMOTION_SEED = [
     desc: '圆睁眼环高频轮换，目光乱晃，整球细颤',
     en: { name: 'Panicked', desc: 'Wide rings rotate at high frequency, gaze darting about, the whole body quivering' },
     transition: 200,
+    mouth: 'wavy',
     pool: [3, 21], poolMs: [900, 1800], blinkMs: [1200, 3000],
     body: { breathe: 0.006 },
     anims: [
@@ -268,6 +285,7 @@ window.EMOTION_SEED = [
     desc: '斜眼环轮换，头一歪，双眼翻向斜上方',
     en: { name: 'Resigned', desc: 'Sidelong rings, head cocked, both eyes rolling up and away' },
     transition: 560,
+    mouth: 'flat',
     pool: [14, 5, 23], poolMs: [2600, 4500], blinkMs: [4500, 8000],
     body: { rotate: 10, y: 2, breathe: 0.01 },
     eyes: { both: { lookX: 7, lookY: -8 } },
@@ -281,6 +299,7 @@ window.EMOTION_SEED = [
     desc: '目光正视前方，双眼有节奏地上下点动，如同点头认可',
     en: { name: 'Satisfied', desc: 'Gazing straight ahead while the eyes nod up and down in steady approval' },
     transition: 580,
+    mouth: 'smile',
     pool: [15, 8, 2], poolMs: [3500, 6000], blinkMs: [3500, 7000], antics: true,
     body: { breathe: 0.012, color: '#F5EFE6' },
     anims: [
@@ -293,6 +312,7 @@ window.EMOTION_SEED = [
     desc: '两眼大小不一，斜眼环轮换，注视方向对不齐',
     en: { name: 'Confused', desc: 'Mismatched eye sizes and sidelong rings, the two gazes never quite aligning' },
     transition: 480,
+    mouth: 'wavy',
     pool: [14, 5, 8], poolMs: [2200, 3800], blinkMs: [2800, 5500],
     body: { rotate: -5, breathe: 0.008 },
     eyes: {
@@ -309,6 +329,7 @@ window.EMOTION_SEED = [
     desc: '怒目圆睁，脸色在 0.25s 内迅速涨红并保持，身体细微发抖',
     en: { name: 'Angry', desc: 'Glaring eyes; the face flushes red within a quarter second and stays, body trembling' },
     transition: 260,
+    mouth: 'frown',
     pool: [7, 16], poolMs: [2200, 3800], blinkMs: [3500, 7000],
     /* base 色 = 序列终态红，保证静态缩略图与最终观感一致 */
     body: { y: 1, breathe: 0.004, color: '#E4574A' },
@@ -331,6 +352,7 @@ window.EMOTION_SEED = [
     desc: '思考眼环轮换，目光在上方巡回，一条彩带在头顶水平环绕',
     en: { name: 'Thinking', desc: 'Thinking rings rotate, gaze patrolling upward, a ribbon orbiting the head' },
     transition: 480,
+    mouth: 'dot',
     pool: [8, 16, 14, 17, 5], poolMs: [2000, 3600], blinkMs: [3500, 7000],
     body: { rotate: -3, breathe: 0.01, orbit: 1 },
     eyes: { both: { lookY: -6, y: -2 } },
@@ -343,6 +365,7 @@ window.EMOTION_SEED = [
     desc: '轻轻眨一下并放大，像点头确认收到',
     en: { name: 'Receiving', desc: 'A quick blink and slight enlargement, like a nod of acknowledgement' },
     transition: 220,
+    mouth: 'smile',
     pool: [19, 0, 8], poolMs: [4000, 8000], blinkMs: null,
     body: { breathe: 0.008 },
     sequence: {
@@ -360,6 +383,7 @@ window.EMOTION_SEED = [
     desc: '专注眼环轮换，目光小幅循环往复',
     en: { name: 'Busy', desc: 'Focused rings rotate while the gaze loops in tight little circuits' },
     transition: 360,
+    mouth: 'flat',
     pool: [7, 16, 11, 10], poolMs: [1800, 3200], blinkMs: [2800, 5500],
     body: { breathe: 0.008 },
     anims: [
@@ -372,6 +396,7 @@ window.EMOTION_SEED = [
     desc: '笑眼轮换 + 自旋甩彩带 + 撒花庆祝',
     en: { name: 'Done', desc: 'Smiling rings, a celebratory ribbon spin and a burst of confetti' },
     transition: 240,
+    mouth: 'grin',
     pool: [2, 8, 17], poolMs: [1400, 2600], blinkMs: [2200, 4500],
     body: { ribbons: 1, confetti: 0.95 },
     eyes: { both: { y: -3 } },
@@ -390,6 +415,7 @@ window.EMOTION_SEED = [
     desc: '圆睁眼环，脸色红白两色急促闪动，最后定格在警示红',
     en: { name: 'Error', desc: 'Wide rings as the face flashes red and white, settling on alarm red' },
     transition: 220,
+    mouth: 'wavy',
     pool: [3, 21], poolMs: [2000, 3600], blinkMs: null,
     body: { rotate: -6, color: '#E25B5B' },
     eyes: {
@@ -415,6 +441,7 @@ window.EMOTION_SEED = [
     desc: '聆听眼环轮换，目光轻轻上下扫读',
     en: { name: 'Listening', desc: 'Listening rings rotate while the gaze sweeps gently up and down' },
     transition: 480,
+    mouth: 'smile',
     pool: [10, 1, 19], poolMs: [2800, 5000], blinkMs: [3000, 7000],
     body: { breathe: 0.01 },
     anims: [
@@ -426,6 +453,7 @@ window.EMOTION_SEED = [
     desc: '左右眼轮流眨，像信号在两端来回跳',
     en: { name: 'Loading', desc: 'Eyes blink in alternation, like a signal hopping between two endpoints' },
     transition: 380,
+    mouth: 'dot',
     pool: [0, 8], poolMs: [6000, 10000], blinkMs: null,
     anims: [
       { target: 'left',  prop: 'open', type: 'blink', interval: 1200, dur: 380 },
@@ -438,6 +466,7 @@ window.EMOTION_SEED = [
     desc: '聆听眼环慢轮换，目光飘向上方翻检记忆',
     en: { name: 'Recalling', desc: 'Listening rings rotate slowly as the gaze drifts upward, leafing through memory' },
     transition: 780,
+    mouth: 'dot',
     pool: [10, 1, 19], poolMs: [4000, 8000], blinkMs: null,
     body: { rotate: -2, breathe: 0.009 },
     eyes: { both: { lookY: -9, lookX: 3, y: -3 } },
@@ -450,6 +479,7 @@ window.EMOTION_SEED = [
     desc: '斜眼下压，进入时连续摇头，明确表示不行',
     en: { name: 'Refusing', desc: 'A lowered sidelong gaze with a firm head-shake on entry: the answer is no' },
     transition: 380,
+    mouth: 'frown',
     pool: [14, 5, 23], poolMs: [2600, 4500], blinkMs: [4500, 8000], openness: 0.6,
     body: { y: 2, rotate: -2, color: '#EFE8E4' },
     eyes: { both: { lookY: 3, y: 2 } },
@@ -470,6 +500,7 @@ window.EMOTION_SEED = [
     desc: '扫读眼环轮换，随输出节奏轻微缩放',
     en: { name: 'Replying', desc: 'Reading rings rotate with a gentle pulse that keeps time with the output' },
     transition: 360,
+    mouth: 'open',
     pool: [15, 9], poolMs: [4000, 8000], blinkMs: null,
     body: { breathe: 0.008 },
     eyes: { both: { y: -2 } },
@@ -483,6 +514,7 @@ window.EMOTION_SEED = [
     desc: '6 组扫读眼环高速轮换（弹簧加速），目光左右快扫',
     en: { name: 'Searching', desc: 'Six reading rings rotate at high speed while the gaze sweeps rapidly side to side' },
     transition: 320,
+    mouth: 'flat',
     pool: [15, 9, 3, 20, 12, 18], poolMs: [1000, 1800], poolSpeed: 10, blinkMs: [1600, 4000],
     body: { breathe: 0.006 },
     anims: [
@@ -494,6 +526,7 @@ window.EMOTION_SEED = [
     desc: '闭合眼环，慢慢收小半闭后定格',
     en: { name: 'Powering Off', desc: 'Closing rings shrink to half-closed and quietly freeze' },
     transition: 280,
+    mouth: 'flat',
     gaze: false,
     pool: [13, 22], poolMs: [6000, 9000], blinkMs: null,
     body: { y: 3, breathe: 0.004, color: '#EBE8E2' },

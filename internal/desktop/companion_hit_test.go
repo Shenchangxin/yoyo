@@ -47,6 +47,17 @@ func TestCompanionShapeLeavesChrome(t *testing.T) {
 	if inEllipse(2, h-2, cx, cy, rx, ry) {
 		t.Fatal("bottom-left chrome must sit outside the window region")
 	}
+	paintBot := float64(companionPetTop) + float64(companionPet)*(1-companionBlobInset)
+	extra := (cy + ry) - paintBot
+	if extra < 0 {
+		t.Fatalf("ellipse clips the chin by %.1fpx", -extra)
+	}
+	if extra > 8 {
+		t.Fatalf("empty HWND below paint: %.1fpx (want ≤4px chin pad)", extra)
+	}
+	if cy-ry > 8 {
+		t.Fatalf("bounce headroom should sit above the blob, ellipse top=%.1f", cy-ry)
+	}
 }
 
 func TestCompanionHitCaption(t *testing.T) {
