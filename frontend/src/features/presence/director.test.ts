@@ -184,6 +184,20 @@ describe("presenceLine", () => {
     assert.equal(presenceLine({ emotionId: "02", live: false, tips: "idle" }, labels), "Around");
     assert.equal(presenceLine({ emotionId: "30", live: true, tips: "think" }, labels), "Thinking");
     assert.equal(presenceLine({ emotionId: "32", live: true, tips: "bash" }, labels), "Working · bash");
+    assert.equal(
+      presenceOf(base({
+        running: true,
+        items: [item({ type: "tool_call", name: "load_skill", payload: { id: "1", name: "load_skill", arguments: "{\"name\":\"brainstorming\"}" } })],
+      })).tips,
+      "brainstorming",
+    );
+    assert.equal(
+      presenceLine(presenceOf(base({
+        running: true,
+        items: [item({ type: "tool_call", name: "load_skill", payload: { id: "1", name: "load_skill", arguments: "{\"name\":\"brainstorming\"}" } })],
+      })), labels),
+      "Working · brainstorming",
+    );
     assert.equal(presenceLine({ emotionId: "36", live: true, tips: "eval" }, labels), "Running eval");
   });
 });

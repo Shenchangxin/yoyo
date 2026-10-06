@@ -12,6 +12,7 @@ const (
 	HookPreCompact  = "agent.pre_compact"
 	HookTurnEnd     = "agent.turn_end"
 	HookStop        = "agent.stop"
+	HookSessionStart = "agent.session_start"
 )
 
 // ToolHook is the payload for pre/post tool hooks.

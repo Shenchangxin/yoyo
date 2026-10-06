@@ -73,6 +73,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		cp.MaxParallel = parent.Tools.MaxParallel
 		cp.ChatOverlay = false
 		cp.VerifyHint = false
+		StripPackBootstrap(&cp)
 		childTools = &cp
 	}
 	user := prompt
@@ -90,7 +91,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		Model:            parent.Model,
 		Loop:             childLoop,
 		Policy:           parent.Policy,
-		Fragments:        parent.Fragments,
+		Fragments:        OverlayConduct(parent.Fragments, ConductOpts{Plan: childLoop.PlanMode, Methodology: false}),
 		Playbook:         parent.Playbook,
 		Skills:           parent.Skills,
 		Tools:            childTools,

@@ -17,7 +17,7 @@ import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
-import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
+import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
 import { channelForSurface, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
@@ -245,6 +245,7 @@ export function useWorkstation() {
   const [searchHits, setSearchHits] = useState<Thread[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [packs, setPacks] = useState<PackStatus[]>([]);
   const activeIdRef = useRef("");
   const [logs, setLogs] = useState<any>(null);
   const [journal, setJournal] = useState<any>(null);
@@ -458,11 +459,13 @@ export function useWorkstation() {
     if (!booted) return;
     const path = active?.workspace || savedCfg.workspace;
     api.listSkills(path).then(setSkills).catch(() => {});
+    api.listPacks(path).then(setPacks).catch(() => {});
   }, [booted, active?.workspace, savedCfg.workspace]);
 
   const reloadSkills = useCallback(() => {
     const path = active?.workspace || savedCfg.workspace;
     api.listSkills(path).then(setSkills).catch(() => {});
+    api.listPacks(path).then(setPacks).catch(() => {});
   }, [active?.workspace, savedCfg.workspace]);
   useEffect(() => {
     if (surface !== "settings") return;
@@ -1471,7 +1474,7 @@ export function useWorkstation() {
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
     evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
-    files, setFiles, skills, logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
+    files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,

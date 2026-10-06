@@ -12,6 +12,7 @@ import {
   formatSpan,
   formatToolBody,
   isToolFailed,
+  skillCallLabel,
   toolArgs,
   toolDetail,
   toolElapsedMs,
@@ -231,7 +232,8 @@ function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   const item = pair.call || pair.result!;
   const name = toolName(item);
   const kind = toolKind(name);
-  const detail = toolDetail(pair.call || item);
+  const skill = skillCallLabel(pair.call || item);
+  const detail = skill || toolDetail(pair.call || item);
   const verb = kind === "other" ? t.live.other.replace("{name}", name) : t.live[kind];
   return (
     <>

@@ -6,7 +6,7 @@
 
 Yoyo is not another Cursor clone. It is a **self-harnessing** coding agent: one Go core serving CLI, browser, and a Wails desktop shell, with a versioned, evaluable, promotable harness as the product moat. Prompts, playbooks, and skills can evolve. The evaluator, vault, and updater cannot.
 
-**Version 0.3.4** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
+**Version 0.3.4** · Go 1.25 · Apache-2.0 · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Skill Packs](docs/architecture/skill-packs.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
 
 ---
 
@@ -37,6 +37,8 @@ The scarce resource is the **context window**. Trusted pins (YOYO.md, ACE playbo
 **A self-harness** — ACE-style playbook deltas (grow-and-refine, never a full rewrite), online thumbs write `refs/staging` only, Harbor owns `refs/active`. Depth-1 `task` subagents. Optional WASM tools behind HighRisk + ForceAsk. No WASI filesystem. Snapshots keep a `parent` pointer; lineage is reconstructed from refs + that chain, not from a black-box version list.
 
 **One protocol, many clients** — HTTP + SSE, JSON-RPC on stdio (`yoyo serve --stdio`), WebSocket duplex at `/api/ws`. Set `YOYO_ISOLATE=1` and the desktop UI talks to a worker process so a wedged loop cannot stall the window.
+
+**Skill Packs** — third-party skill trees such as Superpowers install under `~/.yoyo/packs/` and stay off until you enable them for the workspace. Session start preloads the bootstrap skill in-process (not identity). Harbor evals never load packs. See [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md).
 
 ---
 
@@ -252,11 +254,12 @@ Evolve candidates run Harbor inside a **detached git worktree**, not in your wor
 | `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 12/8/10 / transfer / Index / behavior / safety / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness cycle (L1). Default: canary only |
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | Snapshot pointers, parent-chain evolution, and decoded artifacts (`checkout --l3` for loop/policy) |
+| `yoyo pack list\|install\|uninstall\|enable\|update` | Skill packs (Superpowers). Default off; Harbor stays pack-off |
 | `yoyo replay [session]` | Print a JSONL trajectory |
 | `yoyo update apply` | Human install of `updates/yoyo.staging` |
 | `yoyo version` | `0.3.4` |
 
-JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.event` notifications, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`.
+JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.event` notifications, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`, `packs.*`.
 
 ---
 

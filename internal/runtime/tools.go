@@ -118,6 +118,12 @@ type WorkspaceTools struct {
 	liveCall          string
 	liveRound         string
 	liveOut           int
+	// Packs are enabled methodology/content packs for this controller turn.
+	Packs []PackSession
+	// Methodology yields write-now chat conduct and plan-first overlay.
+	Methodology bool
+	// BootstrapBodies are wrapped session-start skill texts (not the catalog body).
+	BootstrapBodies map[string]string
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -315,7 +321,7 @@ func (t *WorkspaceTools) advertisedCopy() []string {
 
 func alwaysAdvertise(name string) bool {
 	switch name {
-	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread":
+	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread", "read_skill_file":
 		return true
 	default:
 		return false
@@ -904,6 +910,17 @@ func isWSLPosixStub(p string) bool {
 }
 
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {
+	if t.Skills == nil && (t.BootstrapBodies == nil || t.BootstrapBodies[name] == "") {
+		return ToolResult{Err: fmt.Errorf("no skills")}
+	}
+	t.mu.Lock()
+	if t.BootstrapBodies != nil {
+		if wrapped := strings.TrimSpace(t.BootstrapBodies[name]); wrapped != "" {
+			t.mu.Unlock()
+			return ToolResult{Content: wrapped}
+		}
+	}
+	t.mu.Unlock()
 	if t.Skills == nil {
 		return ToolResult{Err: fmt.Errorf("no skills")}
 	}
@@ -1102,15 +1119,26 @@ func (t *WorkspaceTools) loadedBodies() []string {
 		return nil
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	names := append([]string(nil), t.Loaded...)
+	skills := t.Skills
+	boot := t.BootstrapBodies
+	t.mu.Unlock()
 	var out []string
-	for _, name := range t.Loaded {
-		if t.Skills == nil {
+	for _, name := range names {
+		body := ""
+		if boot != nil {
+			if b, ok := boot[name]; ok {
+				out = append(out, "## Skill: "+name+"\n"+b)
+				continue
+			}
+		}
+		if skills != nil {
+			body = skills[name]
+		}
+		if strings.TrimSpace(body) == "" {
 			continue
 		}
-		if body, ok := t.Skills[name]; ok {
-			out = append(out, "## Skill: "+name+"\n"+body)
-		}
+		out = append(out, "## Skill: "+name+"\n"+t.decorateSkillBody(name, body))
 	}
 	return out
 }

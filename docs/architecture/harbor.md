@@ -28,6 +28,8 @@ The sealed tasks are isomorphic file writes. Splitting evolve-set from promote-s
 
 `yoyo eval --behavior` runs the cheap behavior probes (claim-complete, no-touch-tests, must-verify, no-invent-path). They belong in the evolve lab and CI, not the default 89-task promote gate.
 
+Skill Packs (Superpowers and later catalogs) stay **off** for every Harbor path. `Engine.runTask` does not attach pack bootstrap or methodology chat conduct. Do not add pack-on tasks to `BehaviorIDs` or the sealed suite. See [skill-packs.md](skill-packs.md).
+
 `yoyo eval --best N --sealed` repeats the same suite the evolve lab uses. Spend (`tokens_in/out`, `usd`, `wall_ms`) is on every `RunReport`.
 
 ## Matched-budget lab

@@ -50,6 +50,26 @@ function toolName(item: Item): string {
   return String(item.name || item.payload?.name || "tool");
 }
 
+function skillTip(item: Item): string {
+  const tagged = String(item.payload?.skill || "").trim();
+  if (tagged) return tagged;
+  const raw = item.payload?.arguments;
+  let args: Record<string, unknown> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) args = raw as Record<string, unknown>;
+  else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const o = JSON.parse(raw) as unknown;
+      if (o && typeof o === "object" && !Array.isArray(o)) args = o as Record<string, unknown>;
+    } catch { /* not JSON */ }
+  }
+  const name = toolName(item);
+  if (name === "load_skill") return String(args.name || "").trim() || name;
+  if (name === "read_skill_file" || name === "run_skill_script") {
+    return String(args.skill || "").trim() || name;
+  }
+  return name;
+}
+
 function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "office" | "other" {
   const n = name.toLowerCase();
   if (/(office_|connector_|browser_|computer_act|clipboard)/.test(n)) return "office";
@@ -164,7 +184,7 @@ export function presenceOf(input: PresenceInput): PresenceOut {
     const streaming = lastOf(items, (it) => it.type === "assistant" && !!it.delta);
     if (streaming) return { emotionId: "39", live: true, tips: "reply" };
     const tool = openTool(items);
-    if (tool) return { emotionId: emotionForTool(tool), live: true, tips: toolName(tool) };
+    if (tool) return { emotionId: emotionForTool(tool), live: true, tips: skillTip(tool) };
     return { emotionId: "30", live: true, tips: "think" };
   }
 

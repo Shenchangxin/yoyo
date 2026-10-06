@@ -219,6 +219,29 @@ test("plan and file_change stay inside the agent turn", () => {
   expect(plan?.steps.map((s) => s.step)).toEqual(["look", "patch"]);
 });
 
+test("skill runtime tools show on the live transcript and process rail", () => {
+  const folded = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "fix it" } },
+    { type: "tool_call", session_id: "s", payload: { id: "sk", name: "load_skill", arguments: "{\"name\":\"brainstorming\"}", skill: "brainstorming" } },
+    { type: "tool_result", session_id: "s", payload: { id: "sk", name: "load_skill", content: "## Skill: brainstorming\nYou have superpowers" } },
+    { type: "context_injection", source: "skill", session_id: "s", payload: { name: "brainstorming", text: "You have superpowers" } },
+    { type: "tool_call", session_id: "s", payload: { id: "rf", name: "read_skill_file", arguments: "{\"skill\":\"brainstorming\",\"path\":\"references/guide.md\"}", skill: "brainstorming · references/guide.md" } },
+    { type: "tool_result", session_id: "s", payload: { id: "rf", name: "read_skill_file", content: "guide" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w", name: "web_search", arguments: "{\"query\":\"x\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "w", name: "web_search", content: "ok" } },
+    { type: "assistant", session_id: "s", payload: { text: "done", id: "s:r1" } },
+  ]);
+  expect(folded.map((it) => it.name).filter(Boolean)).toEqual(["load_skill", "load_skill", "brainstorming", "read_skill_file", "read_skill_file", "web_search", "web_search"]);
+  const load = folded.find((it) => it.type === "tool_call" && it.name === "load_skill");
+  expect(toolDetail(load!)).toBe("brainstorming");
+  const rows = layoutRows(folded);
+  const agent = rows.find((r) => r.kind === "agent");
+  expect(agent?.kind).toBe("agent");
+  if (agent?.kind !== "agent") return;
+  const names = agent.parts.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
+  expect(names).toEqual(["load_skill", "read_skill_file", "web_search"]);
+});
+
 test("plan text parses statuses and explanation", () => {
   const plan = parsePlanText("Ship the chip\n\n1. [complete] Read the shell\n2. [in_progress] Move the checklist\n3. [pending] Cover with a test\n");
   expect(plan?.explanation).toBe("Ship the chip");

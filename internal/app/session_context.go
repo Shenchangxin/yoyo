@@ -36,7 +36,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
 	}
-	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, ws, bundledSkillsDir(a.BundledEvals))...)
+	disk := runtime.LoadSkillDirs(a.skillRoots(ws)...)
 	skills = runtime.MergeSkills(skills, disk)
 	for _, s := range disk {
 		skillBodies[s.Name] = s.Body
@@ -53,10 +53,12 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		Extra:     a.extraTools(sessionID),
 		Spill:     spill,
 		PlanText:  meta.PlanText,
+		Packs:     a.packSessions(ws),
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
+	runtime.ApplyPackBootstrap(tools)
 	rep := runtime.MeasureContext(runtime.MeasureOpts{
 		Loop:        loop,
 		Fragments:   frags,

@@ -535,7 +535,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	for _, s := range skills {
 		skillBodies[s.Name] = s.Body
 	}
-	disk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, skillRoot, bundledSkillsDir(a.BundledEvals))...)
+	disk := runtime.LoadSkillDirs(a.skillRoots(skillRoot)...)
 	skills = runtime.MergeSkills(skills, disk)
 	skills = runtime.FilterSkills(skills, loop.PlanMode || plan)
 	skillDirs := map[string]string{}
@@ -572,6 +572,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		PlanText:   "", // a new operator turn starts without the previous checklist
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
+		Packs:      a.packSessions(skillRoot),
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
@@ -675,7 +676,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	voice := runtime.OperatorVoice(message, hist)
 	tools.OperatorVoice = voice
-	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConductFragments(loop.PlanMode)...)
+	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)
 	if pin := runtime.LanguagePin(voice); pin.Text != "" {
 		frags = append(frags, pin)
 	}

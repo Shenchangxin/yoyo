@@ -116,6 +116,9 @@ func skillOrigin(dir, home, bundled string) string {
 	if bundled != "" && pathUnder(bundled, dir) {
 		return "bundled"
 	}
+	if home != "" && pathUnder(filepath.Join(home, "packs"), dir) {
+		return "pack"
+	}
 	if home != "" && pathUnder(filepath.Join(home, "skills"), dir) {
 		if _, err := os.Stat(filepath.Join(dir, ".market.json")); err == nil {
 			return "market"
@@ -126,6 +129,23 @@ func skillOrigin(dir, home, bundled string) string {
 		return "workspace"
 	}
 	return "cas"
+}
+
+func skillPackID(dir, home string) string {
+	if home == "" || dir == "" {
+		return ""
+	}
+	root := filepath.Join(home, "packs")
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dir))
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	id, _, _ := strings.Cut(rel, "/")
+	return id
 }
 
 func pathUnder(parent, path string) bool {

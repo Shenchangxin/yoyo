@@ -588,6 +588,39 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.UninstallMarketSkill(p.Slug)
+	case "packs.list":
+		var p struct {
+			Workspace string `json:"workspace"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ListPacks(p.Workspace), nil
+	case "packs.install":
+		var p struct {
+			ID   string `json:"id"`
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.InstallPack(p.ID, p.Path)
+	case "packs.uninstall":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.UninstallPack(p.ID)
+	case "packs.enable":
+		var p struct {
+			ID      string `json:"id"`
+			Scope   string `json:"scope"`
+			Enabled bool   `json:"enabled"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.EnablePack(p.ID, p.Scope, p.Enabled)
+	case "packs.update":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.UpdatePack(p.ID)
 	case "host.open":
 		var p struct {
 			Path string `json:"path"`

@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	skillBodyCapRunes  = 5_000
-	skillTotalCapRunes = 25_000
+	skillBodyCapRunes      = 5_000
+	skillBootstrapCapRunes = 12_000
+	skillTotalCapRunes     = 25_000
 )
 
 // ContextKernel owns pin/hot/dynamic assembly, the prefix contract, and
@@ -177,10 +178,28 @@ func capLoadedSkills(bodies []string) []string {
 	if len(bodies) == 0 {
 		return nil
 	}
+	var pinned []string
+	var rest []string
+	for _, body := range bodies {
+		if isBootstrapBody(body) {
+			pinned = append(pinned, capRunes(body, skillBootstrapCapRunes))
+		} else {
+			rest = append(rest, body)
+		}
+	}
 	used := 0
+	var keepPinned []string
+	for _, body := range pinned {
+		n := utf8.RuneCountInString(body)
+		if used+n > skillTotalCapRunes {
+			continue
+		}
+		used += n
+		keepPinned = append(keepPinned, body)
+	}
 	var newest []string
-	for i := len(bodies) - 1; i >= 0; i-- {
-		body := capRunes(bodies[i], skillBodyCapRunes)
+	for i := len(rest) - 1; i >= 0; i-- {
+		body := capRunes(rest[i], skillBodyCapRunes)
 		n := utf8.RuneCountInString(body)
 		if used+n > skillTotalCapRunes {
 			continue
@@ -188,11 +207,15 @@ func capLoadedSkills(bodies []string) []string {
 		used += n
 		newest = append(newest, body)
 	}
-	out := make([]string, 0, len(newest))
+	out := append([]string{}, keepPinned...)
 	for i := len(newest) - 1; i >= 0; i-- {
 		out = append(out, newest[i])
 	}
 	return out
+}
+
+func isBootstrapBody(s string) bool {
+	return strings.Contains(s, "<"+bootstrapMarker+">")
 }
 
 func hotPrefixHash(msgs []Message) string {

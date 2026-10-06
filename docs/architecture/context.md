@@ -4,7 +4,7 @@
 
 落地状态：**Slice 0–3 已进树。** `Run()` 只消费 `ContextKernel`（`seed` / `prompt` / `checkpoint`）。Chat 前缀 append-only 直到检查点；Dynamic 在 tail；Harbor 仍 Shape-only 且 `ModelWindow=0` 禁止 LLM compact。Playbook 永不进 compact prompt。
 
-本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。
+本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。Skill Pack（Superpowers）见 [skill-packs.md](skill-packs.md)。
 
 ---
 
@@ -155,6 +155,8 @@ Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），
 | 重写调用体 stub | `stubHeavyCalls` | 防「凭记忆整树重写」 |
 | 配对边界 snip | `pairingBoundary` + `Legalize` | 不会把半个 tool_call 交给 Chat Completions |
 | Skill catalog / `load_skill` | `AssemblePins` | progressive disclosure |
+| Skill Pack bootstrap | `ApplyPackBootstrap` + `BootstrapBodies` | Shape B：进程内预载，不进 identity；child `Depth>0` 跳过 |
+| `read_skill_file` | `skill_file.go` | 包目录在工作区 jail 外 |
 | Chat 工具菜单 + `tool_search` | `chat_menu.go` | 主机工具不全量广告 |
 | MCP schemaCap=8 后延迟 | `AllToolJSON` | 粗粒度 DCD |
 | `.yoyo/context/<session>/INDEX.md` | `context_discover.go` | 可 grep |

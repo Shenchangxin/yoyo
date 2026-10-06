@@ -26,6 +26,9 @@ func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	if !strings.Contains(joined, "run_skill_script") {
 		t.Fatalf("run_skill_script must be first-class so skill packs do not tool_search: %v", got)
 	}
+	if !strings.Contains(joined, "read_skill_file") {
+		t.Fatalf("read_skill_file must be first-class: %v", got)
+	}
 }
 
 func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
@@ -46,6 +49,9 @@ func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	}
 	if !strings.Contains(names, "run_skill_script") {
 		t.Fatalf("run_skill_script should be advertised: %s", names)
+	}
+	if !strings.Contains(names, "read_skill_file") {
+		t.Fatalf("read_skill_file should be advertised: %s", names)
 	}
 	already := tools.Call("tool_search", `{"query":"run_skill_script"}`)
 	if already.Err != nil || !strings.Contains(already.Content, "already in your tool list") {

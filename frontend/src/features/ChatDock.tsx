@@ -44,6 +44,7 @@ export function ChatDock(props: {
   onRetry?: () => void;
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
+  methodologyActive?: boolean;
 }) {
   const copy = useCopy();
   return (
@@ -88,6 +89,7 @@ export function ChatDock(props: {
         onClipboard={props.onClipboard}
         onScreenshot={props.onScreenshot}
         taskPlan={props.taskPlan}
+        methodologyActive={props.methodologyActive}
         compact
       />
     </aside>

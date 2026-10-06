@@ -9,13 +9,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-func SkillRoots(home, workspace, bundled string) []string {
+func SkillRoots(home, workspace, bundled string, packDirs ...string) []string {
 	var out []string
 	if bundled != "" {
 		out = append(out, bundled)
 	}
 	if home != "" {
 		out = append(out, filepath.Join(home, "skills"))
+	}
+	for _, d := range packDirs {
+		d = strings.TrimSpace(d)
+		if d != "" {
+			out = append(out, d)
+		}
 	}
 	if workspace != "" {
 		out = append(out, filepath.Join(workspace, ".yoyo", "skills"))

@@ -15,6 +15,7 @@ import { subscribeItems, subscribeSessions } from "../../lib/stream";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
+import { skillCallLabel } from "../../lib/tool-summary";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
 
@@ -120,7 +121,7 @@ export function CompanionApp() {
       }
       if (itemStartsWork(it) && it.type !== "assistant" && it.type !== "reasoning") {
         applyPulse({
-          title: String(it.name || it.text || copy.presence.loading).trim().slice(0, 42) || copy.presence.loading,
+          title: String(skillCallLabel(it) || it.name || it.text || copy.presence.loading).trim().slice(0, 42) || copy.presence.loading,
           body: copy.presence.loading,
           session: it.sessionId || sessionRef.current,
           kind: "loading",

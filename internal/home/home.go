@@ -35,6 +35,7 @@ func Open(root string) (*Dir, error) {
 		d.Tmp(),
 		d.Updates(),
 		d.Skills(),
+		d.Packs(),
 		d.Workspace(),
 		d.Projects(),
 		d.Memory(),
@@ -80,6 +81,7 @@ func (d *Dir) Plugins() string  { return filepath.Join(d.Root, "plugins") }
 func (d *Dir) Tmp() string      { return filepath.Join(d.Root, "tmp") }
 func (d *Dir) Updates() string  { return filepath.Join(d.Root, "updates") }
 func (d *Dir) Skills() string   { return filepath.Join(d.Root, "skills") }
+func (d *Dir) Packs() string    { return filepath.Join(d.Root, "packs") }
 func (d *Dir) Workspace() string {
 	return filepath.Join(d.Root, "workspace")
 }

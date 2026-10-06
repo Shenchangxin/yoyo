@@ -91,6 +91,7 @@ type Config struct {
 	SearchURL               string            `yaml:"search_url" json:"search_url"`
 	SearchKey               string            `yaml:"search_key" json:"search_key"`
 	ContextWindow           int               `yaml:"context_window" json:"context_window"`
+	Packs                   map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
 	Log                     LogConfig         `yaml:"log,omitempty" json:"log,omitempty"`
 }
 

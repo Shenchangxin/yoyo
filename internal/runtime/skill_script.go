@@ -57,7 +57,9 @@ func DecorateSkillBody(name, body, dir string) string {
 	}
 	b.WriteString("Run helpers with run_skill_script (skill=")
 	b.WriteString(name)
-	b.WriteString(", script=<file under scripts/>). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.")
+	b.WriteString(", script=<file under scripts/>). Read pack files with read_skill_file (skill=")
+	b.WriteString(name)
+	b.WriteString(", path=relative). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.")
 	if runtime.GOOS == "windows" {
 		if windowsPosixShell() == "" {
 			b.WriteString(" Windows WSL bash.exe cannot run pack .sh — do not call run_skill_script on .sh; use web_fetch for public HTTP.")
@@ -163,8 +165,9 @@ func normalizeSkillScript(script string) (string, error) {
 }
 
 func requireScriptInterpreter(path string) error {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".sh":
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".sh", "":
 		if scriptInterpreter(path) == "" {
 			if runtime.GOOS == "windows" {
 				return fmt.Errorf("cannot run %s: Windows WSL bash.exe is not a usable POSIX shell. Install Git Bash, or use web_fetch for public HTTP (retry http if https returns 406)", filepath.Base(path))
@@ -179,19 +182,27 @@ func requireScriptInterpreter(path string) error {
 	return nil
 }
 
+func posixShellBin() string {
+	if runtime.GOOS == "windows" {
+		return windowsPosixShell()
+	}
+	if lookPath("bash") != "" {
+		return "bash"
+	}
+	if lookPath("sh") != "" {
+		return "sh"
+	}
+	return ""
+}
+
 func scriptInterpreter(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == "" {
+		return posixShellBin()
+	}
+	switch ext {
 	case ".sh":
-		if runtime.GOOS == "windows" {
-			return windowsPosixShell()
-		}
-		if lookPath("bash") != "" {
-			return "bash"
-		}
-		if lookPath("sh") != "" {
-			return "sh"
-		}
-		return ""
+		return posixShellBin()
 	case ".py":
 		if runtime.GOOS == "windows" && lookPath("py") != "" {
 			return "py"
