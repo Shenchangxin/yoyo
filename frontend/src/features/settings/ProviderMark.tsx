@@ -1,98 +1,155 @@
-import type { JSX } from "react";
+import type { ComponentType, SVGProps } from "react";
+import AlibabaCloud from "@lobehub/icons/es/AlibabaCloud/components/Mono";
+import Aws from "@lobehub/icons/es/Aws/components/Mono";
+import AzureColor from "@lobehub/icons/es/Azure/components/Color";
+import Claude from "@lobehub/icons/es/Claude/components/Mono";
+import ComfyUI from "@lobehub/icons/es/ComfyUI/components/Mono";
+import DeepSeek from "@lobehub/icons/es/DeepSeek/components/Mono";
+import DoubaoColor from "@lobehub/icons/es/Doubao/components/Color";
+import GeminiColor from "@lobehub/icons/es/Gemini/components/Color";
+import Grok from "@lobehub/icons/es/Grok/components/Mono";
+import Groq from "@lobehub/icons/es/Groq/components/Mono";
+import Kimi from "@lobehub/icons/es/Kimi/components/Mono";
+import Minimax from "@lobehub/icons/es/Minimax/components/Mono";
+import OpenAI from "@lobehub/icons/es/OpenAI/components/Mono";
+import OpenRouter from "@lobehub/icons/es/OpenRouter/components/Mono";
+import Qwen from "@lobehub/icons/es/Qwen/components/Mono";
+import ZAI from "@lobehub/icons/es/ZAI/components/Mono";
 import { cn } from "../../lib/utils";
 
+type Glyph = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string; color?: string }>;
+
+type Mark = {
+  Icon: Glyph;
+  bg: string;
+  fg?: string;
+  scale?: number;
+  painted?: boolean;
+};
+
+const ALIAS: Record<string, string> = {
+  anthropic: "claude",
+  google: "gemini",
+  moonshot: "kimi",
+  zhipu: "zai",
+  glm: "zai",
+  chatglm: "zai",
+  xai: "grok",
+  dashscope: "qwen",
+  tongyi: "qwen",
+  alibaba: "aliyun",
+  alibabacloud: "aliyun",
+  wan: "aliyun",
+  bytedance: "volcengine",
+  doubao: "volcengine",
+  seedance: "volcengine",
+  seedream: "volcengine",
+  ark: "volcengine",
+  hailuo: "minimax",
+  aws: "s3",
+  amazon: "s3",
+  "azure-openai": "azure",
+  azureai: "azure",
+  comfyui: "runninghub",
+  openai_compat: "custom",
+};
+
+const MARK: Record<string, Mark> = {
+  openai: { Icon: OpenAI, bg: "#000", fg: "#fff", scale: 0.74 },
+  claude: { Icon: Claude, bg: "#D97757", fg: "#fff", scale: 0.74 },
+  gemini: { Icon: GeminiColor, bg: "#fff", painted: true, scale: 0.8 },
+  deepseek: { Icon: DeepSeek, bg: "#4D6BFE", fg: "#fff", scale: 0.74 },
+  kimi: { Icon: Kimi, bg: "#000", fg: "#fff", scale: 0.6 },
+  qwen: { Icon: Qwen, bg: "#615CED", fg: "#fff", scale: 0.74 },
+  zai: { Icon: ZAI, bg: "#000", fg: "#fff", scale: 0.62 },
+  grok: { Icon: Grok, bg: "#000", fg: "#fff", scale: 0.74 },
+  groq: { Icon: Groq, bg: "#F55036", fg: "#fff", scale: 0.74 },
+  openrouter: { Icon: OpenRouter, bg: "#111", fg: "#C8FF00", scale: 0.74 },
+  azure: { Icon: AzureColor, bg: "#fff", painted: true, scale: 0.7 },
+  volcengine: { Icon: DoubaoColor, bg: "#fff", painted: true, scale: 0.78 },
+  minimax: { Icon: Minimax, bg: "linear-gradient(90deg, #E2167E, #FE603C)", fg: "#fff", scale: 0.72 },
+  aliyun: { Icon: AlibabaCloud, bg: "#FF6A00", fg: "#fff", scale: 0.7 },
+  s3: { Icon: Aws, bg: "#222F3E", fg: "#fff", scale: 0.74 },
+  runninghub: { Icon: ComfyUI, bg: "#162DD4", fg: "#F0FF41", scale: 0.6 },
+  cas: { Icon: CasGlyph, bg: "#3F3F46", fg: "#fff", scale: 0.7 },
+  search: { Icon: SearchGlyph, bg: "#2563EB", fg: "#fff", scale: 0.68 },
+  otel: { Icon: OtelGlyph, bg: "#425CC7", fg: "#fff", scale: 0.7 },
+  custom: { Icon: CustomGlyph, bg: "#52525B", fg: "#fff", scale: 0.7 },
+};
+
 export function ProviderMark({ id, className }: { id: string; className?: string }) {
-  const glyph = GLYPH[id] || GLYPH.custom;
+  const key = resolveProviderId(id);
+  const mark = MARK[key] || MARK.custom;
+  const scale = mark.scale ?? 0.74;
+  const light = isLightFill(mark.bg);
+  const Icon = mark.Icon;
   return (
     <span
-      className={cn("grid size-9 shrink-0 place-items-center rounded-[10px] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]", className)}
-      style={{ background: glyph.bg }}
+      className={cn(
+        "relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-[22%] text-white",
+        className,
+      )}
+      style={{
+        background: mark.bg,
+        color: mark.fg,
+        boxShadow: light
+          ? "inset 0 0 0 1px rgba(15,15,15,0.08), 0 0.5px 0.5px rgba(15,15,15,0.04)"
+          : "inset 0 0 0 1px rgba(255,255,255,0.12)",
+      }}
       aria-hidden
     >
-      {glyph.svg}
+      <Icon
+        size={`${Math.round(scale * 100)}%`}
+        color={mark.painted ? undefined : mark.fg}
+        className="block"
+      />
     </span>
   );
 }
 
-const GLYPH: Record<string, { bg: string; svg: JSX.Element }> = {
-  openai: { bg: "#10A37F", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M12.8 3.1c.9-1.5 3.1-1.5 4 0l1.6 2.8c.2.3.5.6.9.7l3.1.4c1.7.3 2.4 2.3 1.1 3.5l-2.3 2.2c-.3.3-.4.7-.3 1.1l.6 3.1c.3 1.7-1.4 3-2.9 2.2l-2.8-1.5c-.4-.2-.8-.2-1.2 0l-2.8 1.5c-1.5.8-3.2-.5-2.9-2.2l.6-3.1c.1-.4 0-.8-.3-1.1L6.9 10.5C5.6 9.3 6.3 7.3 8 7l3.1-.4c.4-.1.7-.4.9-.7l.8-1.8Z" />
+export function resolveProviderId(id: string): string {
+  const raw = (id || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (!raw) return "custom";
+  return ALIAS[raw] || (MARK[raw] ? raw : "custom");
+}
+
+function isLightFill(bg: string): boolean {
+  const s = bg.trim().toLowerCase();
+  return s === "#fff" || s === "#ffffff" || s === "white";
+}
+
+function CasGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <path d="M4.8 7.2 12 4.4l7.2 2.8v9.6L12 19.6 4.8 16.8V7.2Z" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M12 4.4v15.2M4.8 7.2 12 10l7.2-2.8" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
     </svg>
-  ) },
-  claude: { bg: "#D97757", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M13.2 3.2 15 9.4l5.8.6-4.4 4 1.3 5.7L13 17.2 8.3 19.7l1.3-5.7-4.4-4 5.8-.6 1.8-6.2 0.4-1Z" />
+  );
+}
+
+function SearchGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <circle cx="10.5" cy="10.5" r="5.4" stroke={color} strokeWidth="1.8" />
+      <path d="M14.8 14.8 19 19" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     </svg>
-  ) },
-  gemini: { bg: "#4285F4", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M12 2.5 14.2 9.8 21.5 12 14.2 14.2 12 21.5 9.8 14.2 2.5 12 9.8 9.8Z" />
+  );
+}
+
+function OtelGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
+      <circle cx="12" cy="12" r="2.1" />
+      <path d="M12 4.2v3.2M12 16.6v3.2M4.2 12h3.2M16.6 12h3.2M6.5 6.5l2.3 2.3M15.2 15.2l2.3 2.3M17.5 6.5l-2.3 2.3M8.8 15.2l-2.3 2.3" stroke={color} strokeWidth="1.7" strokeLinecap="round" fill="none" />
     </svg>
-  ) },
-  deepseek: { bg: "#4D6BFE", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M5 15c2.2 3.2 6 5 10.2 4.2 3.4-.6 6-3.4 6.6-6.8.4-2.6-.4-5.2-2.2-7.1" />
-      <circle cx="9.2" cy="9.4" r="1.2" fill="currentColor" stroke="none" />
-      <path d="M4.8 10.5c2.8-3 7.4-4 11.2-2.2" />
+  );
+}
+
+function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <path d="M12 3.4 20.4 8.2v7.6L12 20.6 3.6 15.8V8.2L12 3.4Z" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.15" fill={color} />
     </svg>
-  ) },
-  kimi: { bg: "#1C1C1C", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M17.2 5.2a7.4 7.4 0 1 0 1.6 11.4 8.2 8.2 0 0 1-8.6-8.8 8.2 8.2 0 0 1 7-2.6Z" />
-    </svg>
-  ) },
-  qwen: { bg: "#615CED", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="11" cy="11" r="6.2" />
-      <path d="M15.4 15.4 20 20" strokeLinecap="round" />
-    </svg>
-  ) },
-  zai: { bg: "#102A43", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M6 6h12l-9.4 8.4H18V18H6l9.4-8.4H6V6Z" />
-    </svg>
-  ) },
-  grok: { bg: "#111111", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M5 5.5h4.2l3 4.2 3-4.2H19L13.6 12 19 18.5h-4.2l-3-4.3-3 4.3H5L10.4 12Z" />
-    </svg>
-  ) },
-  groq: { bg: "#F55040", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M13.2 3 6 13.2h5.1L10 21l8.4-11.6h-5.4L13.2 3Z" />
-    </svg>
-  ) },
-  openrouter: { bg: "#6566F1", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M7 12h10M14 8l4 4-4 4M10 16 6 12l4-4" />
-    </svg>
-  ) },
-  azure: { bg: "#0078D4", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M10.4 4 4 20h5.2l1.8-4.4h6.4L10.4 4Zm3.2 3.6 5.4 12.4H22L16.4 7.6h-2.8Z" />
-    </svg>
-  ) },
-  volcengine: { bg: "#1664FF", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M12 3.2 4.8 16.8h4.1L12 10.6l3.1 6.2h4.1L12 3.2Zm-5.4 15.1L12 20.8l5.4-2.5H6.6Z" />
-    </svg>
-  ) },
-  minimax: { bg: "#FF5A36", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <path d="M4.5 14.5c2-4 4.2-6.5 7.5-6.5s5.5 2.5 7.5 6.5" />
-      <path d="M7 17c1.4-2.4 2.8-3.6 5-3.6s3.6 1.2 5 3.6" />
-      <circle cx="12" cy="7.2" r="1.2" fill="currentColor" stroke="none" />
-    </svg>
-  ) },
-  aliyun: { bg: "#FF6A00", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-      <path d="M7.2 16.2h9.6c2.2 0 4-1.8 4-4 0-1.9-1.3-3.5-3.1-3.9A5.1 5.1 0 0 0 7.4 9.2 3.7 3.7 0 0 0 4 12.8c0 1.9 1.5 3.4 3.2 3.4Z" />
-    </svg>
-  ) },
-  custom: { bg: "#52525B", svg: (
-    <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-      <path d="M8 4h4l2 3h6v5l-3 2 3 2v4H14l-2 3H8l-2-3H4v-4l3-2-3-2V7h2L8 4Z" />
-    </svg>
-  ) },
-};
+  );
+}

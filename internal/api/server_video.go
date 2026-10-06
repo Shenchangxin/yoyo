@@ -43,6 +43,8 @@ func videoHTTPMethod(rest, httpMethod string) string {
 	switch rest {
 	case "status":
 		return "video.status"
+	case "ffmpeg/install":
+		return "video.ffmpeg.install"
 	case "modes":
 		return "video.modes"
 	case "templates":

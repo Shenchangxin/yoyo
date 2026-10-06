@@ -55,6 +55,18 @@ type Engine struct {
 	Proto     *protocol.Registry
 	PluginDir string
 	WHISPER   string
+
+	ffmpegHTTP HTTPDoer
+	ffmpegOS   string
+	ffmpegArch string
+	ffMu       sync.Mutex
+	ffPhase    string
+	ffPercent  int
+	ffBytes    int64
+	ffTotal    int64
+	ffArchive  string
+	ffErr      string
+	ffWait     chan struct{}
 }
 
 type Bind struct {
@@ -90,7 +102,7 @@ func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry)
 		HTTP:  &http.Client{Timeout: 12 * time.Minute},
 		binds: map[string]Bind{},
 	}
-	e.FFMPEG, e.FFProbe = LookFFmpeg()
+	e.FFMPEG, e.FFProbe = LookFFmpegIn([]string{filepath.Join(dir, "bin")})
 	e.WHISPER = LookWhisper()
 	if err := migrateSQLiteIfPresent(e); err != nil {
 		return nil, err

@@ -1,27 +1,8 @@
 import { providerPreset } from "./providers";
+import type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape";
 
-export type ModelDefinition = {
-  id: string;
-  name?: string;
-  reasoning?: boolean;
-  reasoningLevels?: string[];
-  input?: Array<"text" | "image">;
-  contextWindow?: number;
-  maxTokens?: number;
-  cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
-};
-
-export type CatalogEntry = {
-  model: ModelDefinition;
-  family?: string;
-  releaseDate?: string;
-};
-
-export type ModelsDevCatalog = {
-  version: number;
-  fetchedAt: string;
-  providers: Record<string, Record<string, CatalogEntry>>;
-};
+export type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape";
+export { hydrateCatalog, overlayCatalog } from "./catalog-shape";
 
 /** Chat default when models.dev has no entry for the current model id. */
 export const UNKNOWN_MODEL_WINDOW = 300_000;

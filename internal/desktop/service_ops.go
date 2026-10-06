@@ -291,6 +291,16 @@ func (s *Service) SkillMarket(refresh bool) (any, error) {
 	return s.App.SkillMarket(refresh)
 }
 
+func (s *Service) ModelCatalog(refresh bool) (any, error) {
+	if s.RPC != nil {
+		return s.call("models.catalog", map[string]any{"refresh": refresh})
+	}
+	if s.App == nil {
+		return nil, errors.New("no app")
+	}
+	return s.App.ModelCatalog(refresh)
+}
+
 func (s *Service) InstallMarketSkill(slug string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skills.install", map[string]any{"slug": slug})

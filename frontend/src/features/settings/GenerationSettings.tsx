@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { cn } from "../../lib/utils";
 import {
   CONTROL_LG,
@@ -193,19 +194,31 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+function StatusPill({ ok, busy, label }: { ok: boolean; busy?: boolean; label: string }) {
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
-        ok ? "bg-success/15 text-success" : "bg-danger/10 text-danger",
+        ok ? "bg-success/15 text-success" : busy ? "bg-accent/15 text-accent" : "bg-danger/10 text-danger",
       )}
     >
-      <span className={cn("size-1.5 rounded-full", ok ? "bg-success" : "bg-danger")} aria-hidden />
+      <span className={cn("size-1.5 rounded-full", ok ? "bg-success" : busy ? "bg-accent" : "bg-danger")} aria-hidden />
       {label}
     </span>
   );
 }
+
+function ffmpegBusy(phase?: string) {
+  return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
+}
+
+type FFmpegInstall = {
+  ready?: boolean;
+  phase?: string;
+  percent?: number;
+  error?: string;
+  archive?: string;
+};
 
 export function GenerationSettings() {
   const copy = useCopy();
@@ -215,10 +228,16 @@ export function GenerationSettings() {
   const [styles, setStyles] = useState<StyleRow[]>([]);
   const [lang, setLang] = useState("zh");
   const [ffmpeg, setFfmpeg] = useState(true);
+  const [ffmpegInstall, setFfmpegInstall] = useState<FFmpegInstall>({});
   const [tick, setTick] = useState(0);
 
   function refresh() {
     setTick((n) => n + 1);
+  }
+
+  function applyFFmpegStatus(s: any) {
+    setFfmpeg(!!s?.ffmpeg);
+    setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
   }
 
   useEffect(() => {
@@ -228,8 +247,28 @@ export function GenerationSettings() {
       void api.video.styles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {});
     });
     void api.video.settings().then((s) => setLang(s?.content_language || "zh")).catch(() => {});
-    void api.video.status().then((s) => setFfmpeg(!!s?.ffmpeg)).catch(() => {});
+    void api.video.status().then(applyFFmpegStatus).catch(() => {});
   }, [tick]);
+
+  const ffmpegPhase = String(ffmpegInstall.phase || "");
+  const ffmpegWorking = ffmpegBusy(ffmpegPhase);
+
+  useEffect(() => {
+    if (!ffmpegWorking) return;
+    const t = window.setInterval(() => {
+      void api.video.status().then(applyFFmpegStatus).catch(() => {});
+    }, 400);
+    return () => window.clearInterval(t);
+  }, [ffmpegWorking]);
+
+  async function installFFmpeg() {
+    try {
+      const s = await api.video.installFFmpeg();
+      applyFFmpegStatus(s);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    }
+  }
 
   const langChoice = lang === "zh" || lang === "zh-CN" ? "zh" : lang === "en" || lang === "en-US" ? "en" : "other";
 
@@ -284,9 +323,31 @@ export function GenerationSettings() {
             />
           </SettingRow>
         ) : null}
-        <SettingRow title={v.ffmpeg} border={false} list>
-          <StatusPill ok={ffmpeg} label={ffmpeg ? v.ffmpegReady : v.ffmpegMissing} />
+        <SettingRow title={v.ffmpeg} description={v.ffmpegHint} border={false} list>
+          <StatusPill
+            ok={ffmpeg}
+            busy={ffmpegWorking}
+            label={
+              ffmpeg
+                ? v.ffmpegReady
+                : ffmpegWorking
+                  ? `${v.ffmpegInstalling} ${Math.max(0, Math.min(100, Math.round(Number(ffmpegInstall.percent) || 0)))}%`
+                  : ffmpegPhase === "error"
+                    ? v.ffmpegInstallFailed
+                    : v.ffmpegMissing
+            }
+          />
+          {!ffmpeg && !ffmpegWorking ? (
+            <Button size="sm" variant="lift" onClick={() => void installFFmpeg()}>
+              <Download aria-hidden />
+              {v.ffmpegInstall}
+            </Button>
+          ) : null}
         </SettingRow>
+        {ffmpegWorking ? <ProgressHairline value={Number(ffmpegInstall.percent) || 0} /> : null}
+        {ffmpegPhase === "error" && !ffmpeg && ffmpegInstall.error ? (
+          <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(ffmpegInstall.error)}</p>
+        ) : null}
       </SettingSection>
 
       <AdapterSection

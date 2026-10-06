@@ -576,6 +576,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.SkillMarket(p.Refresh)
+	case "models.catalog":
+		var p struct {
+			Refresh bool `json:"refresh"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ModelCatalog(p.Refresh)
 	case "skills.install":
 		var p struct {
 			Slug string `json:"slug"`

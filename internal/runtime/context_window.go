@@ -22,12 +22,24 @@ func ModelContextWindow(model string) int {
 // ModelContextWindowFor infers the window from the model id. Provider is an
 // endpoint, not a catalog — a custom OpenAI-compatible host does not change the
 // model's native window.
+// CatalogWindow, if set, is the live models.dev lookup. A zero result falls
+// through to the built-in family heuristics.
+var CatalogWindow func(model string) int
+
 func ModelContextWindowFor(_, model string) int {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if m == "" {
 		return 0
 	}
 	id := lastPathSegment(m)
+	if CatalogWindow != nil {
+		if w := CatalogWindow(model); w > 0 {
+			return w
+		}
+		if w := CatalogWindow(id); w > 0 {
+			return w
+		}
+	}
 	if w := catalogishWindow(id); w > 0 {
 		return w
 	}

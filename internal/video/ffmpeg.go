@@ -2,6 +2,7 @@ package video
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"image"
@@ -18,6 +19,10 @@ import (
 )
 
 func LookFFmpeg() (ffmpeg, ffprobe string) {
+	return LookFFmpegIn(nil)
+}
+
+func LookFFmpegIn(extra []string) (ffmpeg, ffprobe string) {
 	if v := os.Getenv("FFMPEG_BIN"); v != "" {
 		ffmpeg = v
 	}
@@ -45,6 +50,12 @@ func LookFFmpeg() (ffmpeg, ffprobe string) {
 		probe += ".exe"
 	}
 	if ffmpeg == "" {
+		ffmpeg = lookFile(name, extra)
+	}
+	if ffprobe == "" {
+		ffprobe = lookFile(probe, extra)
+	}
+	if ffmpeg == "" {
 		ffmpeg = look(name, cands)
 	}
 	if ffprobe == "" {
@@ -57,7 +68,14 @@ func look(name string, dirs []string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
+	return lookFile(name, dirs)
+}
+
+func lookFile(name string, dirs []string) string {
 	for _, d := range dirs {
+		if strings.TrimSpace(d) == "" {
+			continue
+		}
 		p := filepath.Join(d, name)
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
 			return p
@@ -71,8 +89,8 @@ func (e *Engine) FFmpegOK() bool {
 }
 
 func (e *Engine) Concat(paths []string) ([]byte, error) {
-	if !e.FFmpegOK() {
-		return nil, fmt.Errorf("ffmpeg is not available — set FFMPEG_BIN or install ffmpeg")
+	if err := e.EnsureFFmpeg(context.Background()); err != nil {
+		return nil, err
 	}
 	for i, p := range paths {
 		if _, err := os.Stat(p); err != nil {
