@@ -273,6 +273,37 @@ export type SkillInfo = {
   files?: string;
   incomplete?: boolean;
   slug?: string;
+  pack?: string;
+};
+
+export type PackOrigin = {
+  kind: string;
+  repo?: string;
+  ref?: string;
+  skillsRel?: string;
+  path?: string;
+};
+
+export type PackStatus = {
+  id: string;
+  name: string;
+  description: string;
+  license?: string;
+  version?: string;
+  commit?: string;
+  bootstrapSkill?: string;
+  methodology: boolean;
+  installed: boolean;
+  enabled: boolean;
+  enableGlobal: boolean;
+  enableWorkspace?: boolean | null;
+  root?: string;
+  skillsDir?: string;
+  skillCount: number;
+  skills?: string[];
+  origin: PackOrigin;
+  installedAt?: string;
+  known: boolean;
 };
 
 export type RunStatus = {

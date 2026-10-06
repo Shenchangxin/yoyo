@@ -82,7 +82,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		id := "yoyo-turn"
 		switch kind {
 		case "loading":
-			title = companionPulseTitle(kind, typ, n.Working, payloadStr(payload, "text"), payloadStr(payload, "name"))
+			title = companionPulseTitle(kind, typ, n.Working, payloadStr(payload, "text"), firstPayloadStr(payload, "skill", "name"), payloadStr(payload, "arguments"))
 			body = n.Working
 			id = "yoyo-load"
 		case "approval":
@@ -335,6 +335,15 @@ func payloadStr(p map[string]any, key string) string {
 	}
 	s, _ := p[key].(string)
 	return s
+}
+
+func firstPayloadStr(p map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if s := strings.TrimSpace(payloadStr(p, key)); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func notifyError(p map[string]any) string {

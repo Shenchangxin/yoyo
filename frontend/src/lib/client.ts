@@ -1,7 +1,7 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
 import { snapUiScale } from "./scale";
-import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
 export class ApiError extends Error {
@@ -1084,6 +1084,7 @@ export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
     files: str(pick(v, "files", "Files")),
     slug: str(pick(v, "slug", "Slug")),
     incomplete: str(pick(v, "incomplete", "Incomplete")) === "1" || bool(pick(v, "incomplete", "Incomplete")),
+    pack: str(pick(v, "pack", "Pack")),
   })).filter((x) => x.name);
 }
 
@@ -1103,6 +1104,7 @@ export async function getSkill(workspace: string, name: string): Promise<SkillIn
     files: str(pick(raw, "files", "Files")),
     slug: str(pick(raw, "slug", "Slug")),
     incomplete: str(pick(raw, "incomplete", "Incomplete")) === "1" || bool(pick(raw, "incomplete", "Incomplete")),
+    pack: str(pick(raw, "pack", "Pack")),
   };
   return info.name ? info : null;
 }
@@ -1174,6 +1176,85 @@ export async function uninstallMarketSkill(slug: string): Promise<void> {
     return;
   }
   await http("/api/skills/market", { method: "POST", body: JSON.stringify({ slug, op: "uninstall" }) });
+}
+
+function asPackStatus(v: any): PackStatus | null {
+  const id = str(pick(v, "id", "ID"));
+  if (!id) return null;
+  const originRaw = pick(v, "origin", "Origin") || {};
+  const wsRaw = pick(v, "enable_workspace", "EnableWorkspace", "enableWorkspace");
+  let enableWorkspace: boolean | null | undefined;
+  if (wsRaw === undefined || wsRaw === null) enableWorkspace = null;
+  else enableWorkspace = bool(wsRaw);
+  return {
+    id,
+    name: str(pick(v, "name", "Name"), id),
+    description: str(pick(v, "description", "Description")),
+    license: str(pick(v, "license", "License")),
+    version: str(pick(v, "version", "Version")),
+    commit: str(pick(v, "commit", "Commit")),
+    bootstrapSkill: str(pick(v, "bootstrap_skill", "BootstrapSkill", "bootstrapSkill")),
+    methodology: bool(pick(v, "methodology", "Methodology")),
+    installed: bool(pick(v, "installed", "Installed")),
+    enabled: bool(pick(v, "enabled", "Enabled")),
+    enableGlobal: bool(pick(v, "enable_global", "EnableGlobal", "enableGlobal")),
+    enableWorkspace,
+    root: str(pick(v, "root", "Root")),
+    skillsDir: str(pick(v, "skills_dir", "SkillsDir", "skillsDir")),
+    skillCount: num(pick(v, "skill_count", "SkillCount", "skillCount")),
+    skills: asArray(pick(v, "skills", "Skills")).map((x) => str(x)).filter(Boolean),
+    origin: {
+      kind: str(pick(originRaw, "kind", "Kind")),
+      repo: str(pick(originRaw, "repo", "Repo")),
+      ref: str(pick(originRaw, "ref", "Ref")),
+      skillsRel: str(pick(originRaw, "skills_rel", "SkillsRel", "skillsRel")),
+      path: str(pick(originRaw, "path", "Path")),
+    },
+    installedAt: str(pick(v, "installed_at", "InstalledAt", "installedAt")),
+    known: bool(pick(v, "known", "Known")),
+  };
+}
+
+export async function listPacks(workspace?: string): Promise<PackStatus[]> {
+  const s = await wailsService();
+  const raw = s?.ListPacks
+    ? await s.ListPacks(workspace || "")
+    : await http(`/api/packs${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`);
+  return asArray(raw).map(asPackStatus).filter((x): x is PackStatus => !!x);
+}
+
+export async function installPack(id: string, path = ""): Promise<PackStatus | Record<string, unknown>> {
+  const s = await wailsService();
+  const raw = s?.InstallPack
+    ? await s.InstallPack(id, path)
+    : await http("/api/packs", { method: "POST", body: JSON.stringify({ id, path, op: "install" }) });
+  return asPackStatus(raw) || (raw as Record<string, unknown>);
+}
+
+export async function uninstallPack(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.UninstallPack) {
+    await s.UninstallPack(id);
+    return;
+  }
+  await http("/api/packs", { method: "POST", body: JSON.stringify({ id, op: "uninstall" }) });
+}
+
+export async function enablePack(id: string, scope: "workspace" | "global" | "inherit", enabled = true): Promise<void> {
+  const s = await wailsService();
+  if (s?.EnablePack) {
+    await s.EnablePack(id, scope, enabled);
+    return;
+  }
+  await http("/api/packs", { method: "POST", body: JSON.stringify({ id, op: "enable", scope, enabled }) });
+}
+
+export async function updatePack(id: string): Promise<PackStatus | Record<string, unknown>> {
+  const s = await wailsService();
+  const raw = s?.UpdatePack
+    ? await s.UpdatePack(id)
+    : await http("/api/packs", { method: "POST", body: JSON.stringify({ id, op: "update" }) });
+  return asPackStatus(raw) || (raw as Record<string, unknown>);
 }
 
 export async function openPath(path: string): Promise<void> {

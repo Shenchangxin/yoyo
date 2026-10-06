@@ -7,13 +7,13 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
-import type { SkillInfo } from "../../lib/protocol";
+import type { PackStatus, SkillInfo } from "../../lib/protocol";
 import type { Copy } from "../../lib/copy";
 import { YoyoMark } from "../shell/YoyoMark";
 import { PresenceModuleLoading } from "../presence";
-import { useUI } from "../../lib/store";
+import { useUI, type SkillsTab } from "../../lib/store";
 
-type Pane = "installed" | "market";
+type Pane = SkillsTab;
 
 function SkillsLoading() {
   useEffect(() => {
@@ -28,10 +28,13 @@ function SkillsLoading() {
 export function SkillsWorkspace(props: {
   installed: SkillInfo[];
   loaded: string[];
+  workspace?: string;
   onRefreshInstalled: () => void;
 }) {
   const copy = useCopy();
-  const [pane, setPane] = useState<Pane>("market");
+  const skillsTab = useUI((s) => s.skillsTab);
+  const setSkillsTab = useUI((s) => s.setSkillsTab);
+  const [pane, setPane] = useState<Pane>(skillsTab);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [open, setOpen] = useState("");
@@ -39,6 +42,10 @@ export function SkillsWorkspace(props: {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState<api.SkillMarketCatalog>({ source: "", fetchedAt: "", items: [] });
+  const [packs, setPacks] = useState<PackStatus[]>([]);
+  const [packsLoading, setPacksLoading] = useState(true);
+
+  useEffect(() => { setPane(skillsTab); }, [skillsTab]);
 
   const loadMarket = (refresh = false) => {
     setErr("");
@@ -49,7 +56,16 @@ export function SkillsWorkspace(props: {
       .finally(() => setLoading(false));
   };
 
+  const loadPacks = () => {
+    setPacksLoading(true);
+    void api.listPacks(props.workspace)
+      .then(setPacks)
+      .catch((e) => setErr(api.errMessage(e)))
+      .finally(() => setPacksLoading(false));
+  };
+
   useEffect(() => { loadMarket(false); }, []);
+  useEffect(() => { loadPacks(); }, [props.workspace]);
 
   const installedNames = useMemo(() => {
     const set = new Set<string>();
@@ -125,6 +141,68 @@ export function SkillsWorkspace(props: {
     }
   }
 
+  function selectPane(id: Pane) {
+    setPane(id);
+    setSkillsTab(id);
+  }
+
+  async function installKnownPack(id: string, path = "") {
+    setBusy(id);
+    setErr("");
+    try {
+      await api.installPack(id, path);
+      loadPacks();
+      props.onRefreshInstalled();
+      toast.success(copy.skills.installedBadge);
+    } catch (e) {
+      setErr(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function uninstallKnownPack(id: string) {
+    setBusy(id);
+    setErr("");
+    try {
+      await api.uninstallPack(id);
+      loadPacks();
+      props.onRefreshInstalled();
+    } catch (e) {
+      setErr(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function setPackEnabled(id: string, scope: "workspace" | "global" | "inherit", enabled: boolean) {
+    setBusy(id + ":" + scope);
+    setErr("");
+    try {
+      await api.enablePack(id, scope, enabled);
+      loadPacks();
+      props.onRefreshInstalled();
+    } catch (e) {
+      setErr(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function refreshPack(id: string) {
+    setBusy(id + ":update");
+    setErr("");
+    try {
+      await api.updatePack(id);
+      loadPacks();
+      props.onRefreshInstalled();
+    } catch (e) {
+      setErr(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="skills-workspace">
       <div className="min-h-0 flex-1 overflow-auto">
@@ -132,7 +210,7 @@ export function SkillsWorkspace(props: {
           <p className="mb-4 max-w-[46ch] text-[13px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
           <div className="mb-5 flex h-10 items-stretch gap-3">
             <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
-              {(["installed", "market"] as Pane[]).map((id) => (
+              {(["installed", "market", "packs"] as Pane[]).map((id) => (
                 <button
                   type="button"
                   key={id}
@@ -142,9 +220,9 @@ export function SkillsWorkspace(props: {
                     "relative flex h-full cursor-pointer items-center px-2.5 text-[13px] font-medium transition-colors",
                     pane === id ? "text-foreground" : "text-muted hover:text-foreground",
                   )}
-                  onClick={() => setPane(id)}
+                  onClick={() => selectPane(id)}
                 >
-                  {id === "installed" ? copy.skills.installed : copy.skills.market}
+                  {id === "installed" ? copy.skills.installed : id === "market" ? copy.skills.market : copy.skills.packs}
                   <span
                     className={cn(
                       "absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-200 ease-[var(--ease-out)]",
@@ -187,6 +265,16 @@ export function SkillsWorkspace(props: {
               busy={busy}
               onUninstall={uninstall}
               onRepair={(slug) => install(slug, true)}
+            />
+          ) : pane === "packs" ? (
+            <PacksList
+              packs={packs}
+              loading={packsLoading}
+              busy={busy}
+              onInstall={installKnownPack}
+              onUninstall={uninstallKnownPack}
+              onEnable={setPackEnabled}
+              onUpdate={refreshPack}
             />
           ) : (
             <MarketList
@@ -466,5 +554,116 @@ function sourceLabel(source: string, copy: Copy): string {
   if (source === "home") return copy.skills.home;
   if (source === "workspace") return copy.skills.workspace;
   if (source === "market") return copy.skills.marketSource;
+  if (source === "pack") return copy.skills.packSource;
   return copy.skills.cas;
+}
+
+function PacksList(props: {
+  packs: PackStatus[];
+  loading: boolean;
+  busy: string;
+  onInstall: (id: string, path?: string) => void;
+  onUninstall: (id: string) => void;
+  onEnable: (id: string, scope: "workspace" | "global" | "inherit", enabled: boolean) => void;
+  onUpdate: (id: string) => void;
+}) {
+  const copy = useCopy();
+  if (props.loading && !props.packs.length) {
+    return <SkillsLoading />;
+  }
+  if (!props.packs.length) {
+    return <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyPacks} />;
+  }
+  return (
+    <div className="space-y-4">
+      <p className="max-w-[68ch] text-[12px] leading-5 text-muted">{copy.skills.packHint}</p>
+      {props.packs.map((p) => {
+        const installing = props.busy === p.id;
+        const updating = props.busy === p.id + ":update";
+        const togglingWs = props.busy === p.id + ":workspace";
+        const togglingGlobal = props.busy === p.id + ":global";
+        const togglingInherit = props.busy === p.id + ":inherit";
+        return (
+          <section key={p.id} className="rounded-2xl bg-card px-4 py-3.5 shadow-[var(--shadow-card)]" data-testid={`pack-${p.id}`}>
+            <div className="flex items-start gap-3">
+              <SkillAvatar name={p.name} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[14px] font-medium text-foreground">{p.name}</h3>
+                  {p.methodology ? <span className="text-[11px] text-muted">{copy.skills.methodology}</span> : null}
+                  {p.enabled ? (
+                    <span className="text-[11px] text-muted">{copy.skills.packEnabled}</span>
+                  ) : p.installed ? (
+                    <span className="text-[11px] text-muted">{copy.skills.defaultOff}</span>
+                  ) : (
+                    <span className="text-[11px] text-muted">{copy.skills.packDisabled}</span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-[13px] leading-5 text-muted">{p.description}</p>
+                <p className="mt-1 text-[11px] tabular-nums text-muted">
+                  {copy.skills.skillCount.replace("{n}", String(p.skillCount || p.skills?.length || 0))}
+                  {p.license ? ` · ${copy.skills.packLicense} ${p.license}` : ""}
+                  {p.origin?.repo ? ` · ${p.origin.repo}` : ""}
+                </p>
+                {p.skills?.length ? (
+                  <p className="mt-1 truncate text-[11px] text-muted">{p.skills.join(" · ")}</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap justify-end gap-1.5">
+              {!p.installed ? (
+                <>
+                  <Button size="sm" variant="outline" disabled={installing} onClick={() => props.onInstall(p.id)}>
+                    {installing ? copy.skills.installing : copy.skills.fromGitHub}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={installing}
+                    onClick={() => {
+                      void api.pickFolder().then((path) => {
+                        if (path) props.onInstall(p.id, path);
+                      });
+                    }}
+                  >
+                    {copy.skills.fromLocal}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant={p.enabled ? "outline" : "ghost"}
+                    disabled={togglingWs}
+                    onClick={() => props.onEnable(p.id, "workspace", !p.enabled)}
+                  >
+                    {p.enabled ? copy.skills.disableWorkspace : copy.skills.enableWorkspace}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={togglingGlobal}
+                    onClick={() => props.onEnable(p.id, "global", !p.enableGlobal)}
+                  >
+                    {p.enableGlobal ? copy.skills.disableGlobal : copy.skills.enableGlobal}
+                  </Button>
+                  {p.enableWorkspace != null ? (
+                    <Button size="sm" variant="ghost" disabled={togglingInherit} onClick={() => props.onEnable(p.id, "inherit", true)}>
+                      {copy.skills.inheritGlobal}
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="ghost" disabled={updating} onClick={() => props.onUpdate(p.id)}>
+                    {updating ? copy.skills.updating : copy.skills.update}
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={installing} onClick={() => props.onUninstall(p.id)}>
+                    {copy.skills.uninstall}
+                  </Button>
+                </>
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
 }

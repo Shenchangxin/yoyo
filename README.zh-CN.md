@@ -6,7 +6,7 @@
 
 Yoyo 不是 Cursor 的仿制品。它是一台 **self-harnessing** 的编程智能体：同一套 Go 核心同时服务 CLI、浏览器和 Wails 桌面壳。产品护城河不是 IDE 皮肤，而是 **可版本化、可评测、可晋升、可回滚的 harness**。提示词、playbook、技能可以进化；评测器、密钥库、更新器不行。
 
-**版本 0.3.4** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [持久化](docs/architecture/persist.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
+**版本 0.3.4** · Go 1.25 · Apache-2.0 · [架构不变量](docs/architecture/invariants.md) · [持久化](docs/architecture/persist.md) · [Skill Pack](docs/architecture/skill-packs.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
 
 ---
 
@@ -37,6 +37,8 @@ Yoyo 对待 harness，就像 Git 对待源码：
 **自我打磨** — ACE 风格的 playbook 增量（只长不整篇重写），在线点赞只写 `refs/staging`，Harbor 才拥有 `refs/active`。深度为 1 的 `task` 子智能体。WASM 工具走 HighRisk + ForceAsk。没有 WASI 文件系统。快照带 `parent` 指针；进化路径由 refs + 这条链重建，而不是一份黑盒版本列表。
 
 **一套协议，多种客户端** — HTTP + SSE、stdio 上的 JSON-RPC（`yoyo serve --stdio`）、`/api/ws` 双向 WebSocket。设置 `YOYO_ISOLATE=1` 时，桌面 UI 只当客户端，loop 跑在子进程，卡住也不会拖死窗口。
+
+**Skill Pack** — Superpowers 这类第三方技能树按包安装到 `~/.yoyo/packs/`，默认关闭。为当前工作区打开后，会话开始预载 bootstrap，并让路「这轮就开始写」。Harbor 评测不加载。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
 
 ---
 
@@ -252,11 +254,12 @@ Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的�
 | `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 12/8/10 / 迁移 / Index / 行为 / 安全 / TB / best-of-N |
 | `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
 | `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | 快照指针、父子进化路径、解码后的构件（改 loop/策略要 `checkout --l3`） |
+| `yoyo pack list\|install\|uninstall\|enable\|update` | 技能包（Superpowers）。默认关闭；Harbor 不加载 |
 | `yoyo replay [session]` | 打印 JSONL 轨迹 |
 | `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
 | `yoyo version` | `0.3.4` |
 
-JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通知、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`。
+JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通知、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*`。
 
 ---
 

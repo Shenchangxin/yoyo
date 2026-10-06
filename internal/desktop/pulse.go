@@ -1,6 +1,10 @@
 package desktop
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/skillpack"
+)
 
 // companionPulseKind is the single mapping from a live item onto the
 // desktop-pet channel. "loading" must never become an OS notification.
@@ -28,10 +32,13 @@ func companionPulseKind(typ, source string) string {
 	}
 }
 
-func companionPulseTitle(kind, typ, fallback, text, tool string) string {
+func companionPulseTitle(kind, typ, fallback, text, tool, args string) string {
 	switch kind {
 	case "loading":
 		if typ == "tool_call" {
+			if s := skillpack.CallLabel(tool, args); s != "" {
+				return clipRunes(s, 42)
+			}
 			if s := strings.TrimSpace(tool); s != "" {
 				return s
 			}

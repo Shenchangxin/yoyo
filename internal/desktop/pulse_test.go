@@ -24,11 +24,23 @@ func TestCompanionPulseKind(t *testing.T) {
 }
 
 func TestCompanionPulseTitleClipsUserText(t *testing.T) {
-	title := companionPulseTitle("loading", "user", "Working", "please look at the weekly report and also the inbox", "")
+	title := companionPulseTitle("loading", "user", "Working", "please look at the weekly report and also the inbox", "", "")
 	if title == "Working" || len([]rune(title)) > 43 {
 		t.Fatalf("got %q", title)
 	}
-	if companionPulseTitle("loading", "tool_call", "Working", "", "web_search") != "web_search" {
+	if companionPulseTitle("loading", "tool_call", "Working", "", "web_search", "") != "web_search" {
 		t.Fatal("tool name")
+	}
+}
+
+func TestCompanionPulseTitleShowsSkillName(t *testing.T) {
+	if companionPulseTitle("loading", "tool_call", "Working", "", "load_skill", `{"name":"brainstorming"}`) != "brainstorming" {
+		t.Fatal("load_skill must title the pet with the skill id")
+	}
+	if companionPulseTitle("loading", "tool_call", "Working", "", "load_skill", "") != "load_skill" {
+		t.Fatal("unknown skill still discloses the tool")
+	}
+	if companionPulseTitle("loading", "tool_call", "Working", "", "read_skill_file", `{"skill":"brainstorming","path":"references/guide.md"}`) != "brainstorming · references/guide.md" {
+		t.Fatal("read_skill_file")
 	}
 }

@@ -523,6 +523,53 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, c)
 	})
+	mux.HandleFunc("/api/packs", func(w http.ResponseWriter, r *http.Request) {
+		ws := r.URL.Query().Get("workspace")
+		if r.Method == http.MethodPost {
+			var body struct {
+				ID     string `json:"id"`
+				Op     string `json:"op"`
+				Path   string `json:"path"`
+				Scope  string `json:"scope"`
+				Enable *bool  `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switch strings.ToLower(strings.TrimSpace(body.Op)) {
+			case "uninstall":
+				if err := a.UninstallPack(body.ID); err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				writeJSON(w, map[string]any{"ok": true})
+			case "enable":
+				on := true
+				if body.Enable != nil {
+					on = *body.Enable
+				}
+				if err := a.EnablePack(body.ID, body.Scope, on); err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				writeJSON(w, map[string]any{"ok": true})
+			case "update":
+				m, err := a.UpdatePack(body.ID)
+				if err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				writeJSON(w, m)
+			default:
+				m, err := a.InstallPack(body.ID, body.Path)
+				if err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				writeJSON(w, m)
+			}
+			return
+		}
+		writeJSON(w, a.ListPacks(ws))
+	})
 	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Path string `json:"path"`

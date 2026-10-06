@@ -196,7 +196,7 @@ func (a *App) collectSkills(workspace string) []artifact.Skill {
 	if !WorkspaceReady(ws) {
 		ws = a.Workspace()
 	}
-	sk := runtime.LoadSkillDirs(runtime.SkillRoots(a.Home.Root, ws, bundledSkillsDir(a.BundledEvals))...)
+	sk := runtime.LoadSkillDirs(a.skillRoots(ws)...)
 	if _, _, _, cas, _, _, err := a.Materials(a.ActiveHash()); err == nil {
 		sk = runtime.MergeSkills(cas, sk)
 	}
@@ -221,6 +221,7 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 			"display_name": item.DisplayName,
 			"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
 			"slug":         filepath.Base(item.Dir),
+			"pack":         skillPackID(item.Dir, a.Home.Root),
 		}
 		if skillmarket.PackIncomplete(item.Dir, item.Body) {
 			row["incomplete"] = "1"
@@ -244,6 +245,7 @@ func (a *App) GetSkill(workspace, name string) map[string]string {
 				"display_name": item.DisplayName,
 				"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
 				"slug":         filepath.Base(item.Dir),
+				"pack":         skillPackID(item.Dir, a.Home.Root),
 			}
 			if skillmarket.PackIncomplete(item.Dir, item.Body) {
 				row["incomplete"] = "1"

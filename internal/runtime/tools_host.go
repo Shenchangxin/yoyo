@@ -115,6 +115,9 @@ func init() {
 	hostFns["run_skill_script"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.runSkillScript(str(args["skill"]), str(args["script"]), str(args["args"]))
 	}
+	hostFns["read_skill_file"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.readSkillFile(str(args["skill"]), str(args["path"]), intArg(args["offset"]), intArg(args["limit"]))
+	}
 	hostFns["office_create"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.officeCreate(args)
 	}

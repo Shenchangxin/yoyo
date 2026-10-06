@@ -10,7 +10,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; browser?: any; inbox?: any[]; queue?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
@@ -293,6 +293,24 @@ export async function mockApi(
     }
     if (path.endsWith("/api/logs/export") || path.endsWith("/api/logs/diagnose")) {
       return route.fulfill({ json: { path: "C:/tmp/support.zip", text: "redacted tail" } });
+    }
+    if (path.includes("/api/packs")) {
+      return route.fulfill({
+        json: extra?.packs ?? [
+          {
+            id: "superpowers",
+            name: "Superpowers",
+            description: "Methodology pack",
+            methodology: true,
+            installed: false,
+            enabled: false,
+            enable_global: false,
+            skill_count: 0,
+            known: true,
+            origin: { kind: "github", repo: "obra/superpowers" },
+          },
+        ],
+      });
     }
     if (path.endsWith("/api/skills")) {
       return route.fulfill({ json: extra?.skills ?? [] });

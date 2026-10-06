@@ -19,6 +19,36 @@ export function toolName(item: Item): string {
   return String(item.name || item.payload?.name || "tool");
 }
 
+/** Operator-facing skill id. Empty if this is not a skill-runtime call. */
+export function skillCallLabel(item: Item): string {
+  const tagged = String(item.payload?.skill || "").trim();
+  if (tagged) return tagged;
+  const name = toolName(item);
+  const args = toolArgs(item);
+  switch (name) {
+    case "load_skill": {
+      const skill = String(args.name || "").trim();
+      return skill || name;
+    }
+    case "read_skill_file": {
+      const skill = String(args.skill || "").trim();
+      const path = String(args.path || "").trim();
+      if (skill && path) return `${skill} · ${path}`;
+      return skill || name;
+    }
+    case "run_skill_script": {
+      const skill = String(args.skill || "").trim();
+      const script = String(args.script || "").trim();
+      if (skill && script) return `${skill} · ${script}`;
+      return skill || script || name;
+    }
+    case "list_skills":
+      return name;
+    default:
+      return "";
+  }
+}
+
 export function toolArgs(item: Item): Record<string, unknown> {
   return parseMaybeJSON(item.payload?.arguments ?? item.text);
 }
@@ -35,6 +65,8 @@ export function toolResultBody(item: Item): string {
 }
 
 export function toolDetail(item: Item): string {
+  const skill = skillCallLabel(item);
+  if (skill) return skill;
   const args = item.type === "tool_call"
     ? toolArgs(item)
     : { ...toolArgs(item), ...parseMaybeJSON(item.payload) };
@@ -156,7 +188,6 @@ const KIND_EXACT: Record<string, ToolKind> = {
   glob: "search",
   tool_search: "search",
   memory_search: "search",
-  list_skills: "search",
   search_files: "search",
   list_dir: "list",
   project_list: "list",
@@ -173,7 +204,10 @@ const KIND_EXACT: Record<string, ToolKind> = {
   fetch_url: "web",
   browser_snapshot: "web",
   update_plan: "plan",
+  list_skills: "skill",
   load_skill: "skill",
+  read_skill_file: "skill",
+  run_skill_script: "skill",
 };
 
 export function toolKind(name: string): ToolKind {

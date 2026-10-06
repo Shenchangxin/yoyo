@@ -177,6 +177,7 @@ function WorkstationApp() {
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
     onApplyWorktree: () => { void ws.onApplyWorktree(); },
     taskPlan: latestTaskPlan(ws.items),
+    methodologyActive: ws.methodologyActive,
   };
 
   const composer = (
@@ -566,6 +567,7 @@ function WorkstationApp() {
     <SkillsWorkspace
       installed={ws.skills}
       loaded={ws.active?.loadedSkills || []}
+      workspace={ws.active?.workspace || ws.savedCfg.workspace}
       onRefreshInstalled={() => { void ws.reloadSkills(); }}
     />
   );

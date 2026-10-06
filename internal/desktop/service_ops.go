@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -310,6 +311,87 @@ func (s *Service) UninstallMarketSkill(slug string) error {
 		return errors.New("no app")
 	}
 	return s.App.UninstallMarketSkill(slug)
+}
+
+func (s *Service) ListPacks(workspace string) []map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("packs.list", map[string]any{"workspace": workspace})
+		out, _ := decode[[]map[string]any](v, err)
+		if out == nil {
+			return []map[string]any{}
+		}
+		return out
+	}
+	if s.App == nil {
+		return nil
+	}
+	list := s.App.ListPacks(workspace)
+	out := make([]map[string]any, 0, len(list))
+	for _, st := range list {
+		b, _ := json.Marshal(st)
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		out = append(out, m)
+	}
+	return out
+}
+
+func (s *Service) InstallPack(id, path string) (map[string]any, error) {
+	if s.RPC != nil {
+		v, err := s.call("packs.install", map[string]any{"id": id, "path": path})
+		return decode[map[string]any](v, err)
+	}
+	if s.App == nil {
+		return nil, errors.New("no app")
+	}
+	m, err := s.App.InstallPack(id, path)
+	if err != nil {
+		return nil, err
+	}
+	b, _ := json.Marshal(m)
+	var out map[string]any
+	_ = json.Unmarshal(b, &out)
+	return out, nil
+}
+
+func (s *Service) UninstallPack(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("packs.uninstall", map[string]any{"id": id})
+		return err
+	}
+	if s.App == nil {
+		return errors.New("no app")
+	}
+	return s.App.UninstallPack(id)
+}
+
+func (s *Service) EnablePack(id, scope string, enabled bool) error {
+	if s.RPC != nil {
+		_, err := s.call("packs.enable", map[string]any{"id": id, "scope": scope, "enabled": enabled})
+		return err
+	}
+	if s.App == nil {
+		return errors.New("no app")
+	}
+	return s.App.EnablePack(id, scope, enabled)
+}
+
+func (s *Service) UpdatePack(id string) (map[string]any, error) {
+	if s.RPC != nil {
+		v, err := s.call("packs.update", map[string]any{"id": id})
+		return decode[map[string]any](v, err)
+	}
+	if s.App == nil {
+		return nil, errors.New("no app")
+	}
+	m, err := s.App.UpdatePack(id)
+	if err != nil {
+		return nil, err
+	}
+	b, _ := json.Marshal(m)
+	var out map[string]any
+	_ = json.Unmarshal(b, &out)
+	return out, nil
 }
 
 func (s *Service) KeyStatus() map[string]any {

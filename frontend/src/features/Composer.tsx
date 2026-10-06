@@ -69,6 +69,7 @@ export function Composer(props: {
   onBrowseWorkspace?: () => void;
   onIsolate?: (isolate: boolean) => void;
   taskPlan?: TaskPlan | null;
+  methodologyActive?: boolean;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -612,6 +613,19 @@ export function Composer(props: {
               </DropdownMenuContent>
             </DropdownMenu>
             )}
+            {props.methodologyActive && !videoing ? (
+              <Tooltip content={copy.composer.methodologyHint}>
+                <button
+                  type="button"
+                  data-testid="methodology-chip"
+                  className={cn(ghostSelect, "inline-flex items-center text-muted hover:text-foreground")}
+                  onClick={() => useUI.getState().openPacks()}
+                  aria-label={copy.composer.methodologyChip}
+                >
+                  {copy.composer.methodologyChip}
+                </button>
+              </Tooltip>
+            ) : null}
             </div>
             <span className="ml-auto" />
             {props.running ? (

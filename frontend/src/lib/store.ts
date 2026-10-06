@@ -5,6 +5,7 @@ import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 import type { VoicePhase } from "../features/presence/types";
 
 export type InspTab = "files" | "browser" | "trace";
+export type SkillsTab = "installed" | "market" | "packs";
 
 export function coerceInspTab(v: string | null | undefined): InspTab | null {
   if (v === "files" || v === "browser" || v === "trace") return v;
@@ -43,7 +44,10 @@ type UIState = {
   openSettings: (tab?: SettingsTab, section?: string) => void;
   closeSettings: () => void;
   openSkills: () => void;
+  openPacks: () => void;
   closeSkills: () => void;
+  skillsTab: SkillsTab;
+  setSkillsTab: (t: SkillsTab) => void;
   openVideo: () => void;
   closeVideo: () => void;
   videoMode: VideoMode;
@@ -252,7 +256,10 @@ export const useUI = create<UIState>((set, get) => ({
     })),
   closeSettings: () => get().showConversation(),
   openSkills: () => set({ surface: "skills" }),
+  openPacks: () => set({ surface: "skills", skillsTab: "packs" }),
   closeSkills: () => get().showConversation(),
+  skillsTab: "market",
+  setSkillsTab: (skillsTab) => set({ skillsTab }),
   videoMode: readVideoMode(),
   agentThreadId: readThreadId("yoyo-agent-thread"),
   videoThreadId: readThreadId("yoyo-video-thread"),

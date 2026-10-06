@@ -11,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/skillpack"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -92,6 +93,18 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if req.Tools.MaxParallel <= 0 {
 			req.Tools.MaxParallel = req.Loop.MaxParallel
+		}
+		ApplyPackBootstrap(req.Tools)
+		if extra := applySessionStart(req.Events, SessionStart{
+			SessionID: req.SessionID,
+			Workspace: req.Workspace,
+			Depth:     req.Tools.Depth,
+		}); extra.AdditionalContext != "" {
+			if req.Inject != "" {
+				req.Inject = extra.AdditionalContext + "\n" + req.Inject
+			} else {
+				req.Inject = extra.AdditionalContext
+			}
 		}
 	}
 	loop := req.Loop
@@ -436,9 +449,13 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 		jobs[i] = job{tc: tc, deny: hook.Deny, reason: hook.Reason, args: args}
 		if recordTrace {
-			emit(req, trace.TypeToolCall, "agent", map[string]any{
+			call := map[string]any{
 				"name": tc.Name, "arguments": tc.Arguments, "id": tc.ID, "round": roundID,
-			})
+			}
+			if label := skillpack.CallLabel(tc.Name, tc.Arguments); label != "" {
+				call["skill"] = label
+			}
+			emit(req, trace.TypeToolCall, "agent", call)
 		}
 	}
 	runExec := func(i int) {
@@ -563,7 +580,11 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 			continue
 		}
 		if j.tc.Name == "load_skill" && j.ok {
-			emit(req, trace.TypeInject, "skill", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID})
+			label := skillpack.CallLabel(j.tc.Name, j.args)
+			if label == "" {
+				label = j.tc.Name
+			}
+			emit(req, trace.TypeInject, "skill", map[string]any{"name": label, "text": j.content, "round": roundID})
 		}
 		if j.tc.Name == "update_plan" && j.ok {
 			emit(req, trace.TypePlan, "agent", map[string]any{"name": j.tc.Name, "text": j.content, "round": roundID, "id": j.tc.ID})
@@ -596,7 +617,7 @@ func isReadonlyTool(name string) bool {
 		"list_skills", "view_image", "update_plan", "wait", "ask_user",
 		"office_query", "office_render", "memory_search", "schedule_list",
 		"browser_snapshot", "clipboard_read", "project_list", "connector_read",
-		"read_thread":
+		"read_thread", "read_skill_file":
 		return true
 	default:
 		return false

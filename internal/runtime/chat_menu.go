@@ -16,7 +16,7 @@ var ChatCoreTools = []string{
 	"git_status", "git_diff", "git_commit",
 	"task", "wait", "view_image",
 	"web_fetch", "web_search",
-	"run_skill_script",
+	"run_skill_script", "read_skill_file",
 }
 
 // ChatOfficeTools are first-class on personal chat so the model can see

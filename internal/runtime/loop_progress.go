@@ -181,6 +181,9 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 }
 
 func planFirstOverlay(t *WorkspaceTools) string {
+	if t != nil && t.Methodology {
+		return ""
+	}
 	return skillOverlay(t, "plan-first", t != nil && PlanOpen(planTextOf(t)))
 }
 

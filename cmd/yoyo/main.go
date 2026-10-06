@@ -59,7 +59,7 @@ func root() *cobra.Command {
 		Use:   "yoyo",
 		Short: "Yoyo self-harnessing local agent",
 	}
-	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd(), logsCmd())
+	cmd.AddCommand(versionCmd(), initCmd(), runCmd(), harnessCmd(), evalCmd(), evolveCmd(), sessionCmd(), replayCmd(), traceCmd(), serveCmd(), daemonCmd(), updateCmd(), doctorCmd(), logsCmd(), packCmd())
 	return cmd
 }
 

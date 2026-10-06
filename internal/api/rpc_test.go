@@ -208,3 +208,34 @@ func TestConfigSetMergesPartial(t *testing.T) {
 		t.Fatalf("theme %q", a.Config.Theme)
 	}
 }
+
+func TestRPCPacksListAndEnable(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: "packs.list"})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	raw, _ := json.Marshal(got.Result)
+	if !strings.Contains(string(raw), `"id":"superpowers"`) {
+		t.Fatalf("%s", raw)
+	}
+	if strings.Contains(string(raw), `"enabled":true`) {
+		t.Fatal("catalog must default off")
+	}
+	en := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 2, Method: "packs.enable", Params: jsonRaw(`{"id":"superpowers","scope":"workspace","enabled":true}`)})
+	if en.Error != nil {
+		t.Fatal(en.Error)
+	}
+	again := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "packs.list"})
+	raw2, _ := json.Marshal(again.Result)
+	if !strings.Contains(string(raw2), `"installed":false`) {
+		t.Fatalf("%s", raw2)
+	}
+	if strings.Contains(string(raw2), `"enabled":true`) {
+		t.Fatal("uninstalled pack must not report enabled")
+	}
+}
