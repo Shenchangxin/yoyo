@@ -523,6 +523,9 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		writeJSON(w, c)
 	})
+	mux.HandleFunc("/api/models/catalog", func(w http.ResponseWriter, r *http.Request) {
+		restRPC(a, w, r, "models.catalog", map[string]any{"refresh": r.URL.Query().Get("refresh") == "1"})
+	})
 	mux.HandleFunc("/api/packs", func(w http.ResponseWriter, r *http.Request) {
 		ws := r.URL.Query().Get("workspace")
 		if r.Method == http.MethodPost {

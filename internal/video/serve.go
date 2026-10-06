@@ -113,20 +113,23 @@ func mediaType(hash string, raw []byte) string {
 }
 
 type Status struct {
-	MediaBase string `json:"media_base"`
-	FFmpeg    bool   `json:"ffmpeg"`
-	FFmpegBin string `json:"ffmpeg_bin"`
-	FFProbe   string `json:"ffprobe_bin"`
-	DB        string `json:"db"`
+	MediaBase     string         `json:"media_base"`
+	FFmpeg        bool           `json:"ffmpeg"`
+	FFmpegBin     string         `json:"ffmpeg_bin"`
+	FFProbe       string         `json:"ffprobe_bin"`
+	FFmpegInstall map[string]any `json:"ffmpeg_install"`
+	DB            string         `json:"db"`
 }
 
 func (e *Engine) Status() Status {
+	e.refreshFFmpeg()
 	return Status{
-		MediaBase: e.MediaBase,
-		FFmpeg:    e.FFmpegOK(),
-		FFmpegBin: e.FFMPEG,
-		FFProbe:   e.FFProbe,
-		DB:        e.Dir,
+		MediaBase:     e.MediaBase,
+		FFmpeg:        e.FFmpegOK(),
+		FFmpegBin:     e.FFMPEG,
+		FFProbe:       e.FFProbe,
+		FFmpegInstall: e.FFmpegInstallSnapshot(),
+		DB:            e.Dir,
 	}
 }
 
@@ -146,6 +149,7 @@ func (e *Engine) Snapshot() map[string]any {
 		"ffmpeg":           st.FFmpeg,
 		"ffmpeg_bin":       st.FFmpegBin,
 		"ffprobe_bin":      st.FFProbe,
+		"ffmpeg_install":   st.FFmpegInstall,
 		"dir":              st.DB,
 		"dramas":           n,
 		"content_language": e.ContentLanguage(),

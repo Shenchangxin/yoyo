@@ -1151,6 +1151,13 @@ export async function skillMarket(refresh = false): Promise<SkillMarketCatalog> 
   };
 }
 
+export async function modelsCatalog(refresh = false): Promise<unknown> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ModelCatalog");
+  if (fn) return fn(refresh);
+  return http(`/api/models/catalog${refresh ? "?refresh=1" : ""}`);
+}
+
 export type SkillInstallResult = {
   ok: boolean;
   warning?: string;
@@ -1640,6 +1647,7 @@ export async function videoCall(method: string, params: Record<string, any> = {}
 
 export const video = {
   status: () => videoCall("video.status"),
+  installFFmpeg: () => videoCall("video.ffmpeg.install"),
   modes: () => videoCall("video.modes"),
   templates: () => videoCall("video.templates"),
   providers: (serviceType = "") => videoCall("video.providers.list", { service_type: serviceType }),

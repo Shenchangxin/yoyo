@@ -93,7 +93,7 @@ type Bundle = {
   shots: Shot[];
   jobs: Job[];
   plan: { chars: number; target_seconds: number; segment_count: number };
-  status?: { ffmpeg?: boolean; missing?: string[] };
+  status?: { ffmpeg?: boolean; missing?: string[]; ffmpeg_install?: { phase?: string; percent?: number; error?: string } };
 };
 type Pane = "script" | "cast" | "board" | "cut";
 type CopyT = ReturnType<typeof useCopy>;
@@ -251,6 +251,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const [styles, setStyles] = useState<{ value: string; name: string }[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
   const [ffmpeg, setFfmpeg] = useState(true);
+  const [ffmpegInstall, setFfmpegInstall] = useState<{ phase?: string; percent?: number; error?: string }>({});
   const [missing, setMissing] = useState<string[]>([]);
   const [ratio, setRatio] = useState("16:9");
   const [kill, setKill] = useState("");
@@ -270,6 +271,9 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     const b = (await api.video.bundle(id)) as Bundle;
     setBundle(b);
     setFfmpeg(b?.status?.ffmpeg !== false);
+    if (b?.status?.ffmpeg_install && typeof b.status.ffmpeg_install === "object") {
+      setFfmpegInstall(b.status.ffmpeg_install);
+    }
     if (Array.isArray(b?.status?.missing)) setMissing(b.status.missing);
   }, []);
 
@@ -279,9 +283,22 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
     void api.video.status().then((s) => {
       setFfmpeg(!!s?.ffmpeg);
+      if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
       if (Array.isArray(s?.missing)) setMissing(s.missing);
     }).catch(() => {});
   }, [loadList]);
+
+  const ffmpegWorking = ffmpegInstall.phase === "resolving" || ffmpegInstall.phase === "downloading" || ffmpegInstall.phase === "extracting" || ffmpegInstall.phase === "verifying";
+  useEffect(() => {
+    if (!ffmpegWorking) return;
+    const t = window.setInterval(() => {
+      void api.video.status().then((s) => {
+        setFfmpeg(!!s?.ffmpeg);
+        if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
+      }).catch(() => {});
+    }, 400);
+    return () => window.clearInterval(t);
+  }, [ffmpegWorking]);
 
   useEffect(() => {
     if (!dramaId) {
@@ -675,7 +692,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   onApply={(id) => void run("apply", () => api.video.applyJob(id))}
                 />
               ) : null}
-              {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} compact onMerge={() => {
+              {pane === "cut" ? <CutPane bundle={bundle} sel={selShots} setSel={setSelShots} copy={copy} ffmpeg={ffmpeg} ffmpegInstall={ffmpegInstall} compact onInstall={() => { void api.video.installFFmpeg().then((s) => { setFfmpeg(!!s?.ffmpeg); if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install); }).catch((e) => toast.error(api.errMessage(e))); }} onMerge={() => {
                 const ids = selectedClipIds(bundle.shots || [], selShots);
                 if (!ids.length) {
                   toast.message(copy.video.needClips);
@@ -991,17 +1008,27 @@ function BoardPane(props: {
   );
 }
 
-function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: (v: Record<string, boolean>) => void; copy: CopyT; ffmpeg: boolean; compact?: boolean; onMerge: () => void }) {
+function CutPane(props: { bundle: Bundle; sel: Record<string, boolean>; setSel: (v: Record<string, boolean>) => void; copy: CopyT; ffmpeg: boolean; ffmpegInstall?: { phase?: string; percent?: number; error?: string }; compact?: boolean; onMerge: () => void; onInstall?: () => void }) {
   const c = props.copy.video;
   const shots = props.bundle.shots || [];
   const ep = props.bundle.episode;
   const n = selectedClipIds(shots, props.sel).length;
+  const phase = String(props.ffmpegInstall?.phase || "");
+  const installing = phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
   return (
     <div>
-      {!props.ffmpeg ? <p className="mb-3 text-[13px] text-danger">{c.ffmpegMissing}</p> : null}
+      {!props.ffmpeg ? (
+        <p className="mb-3 text-[13px] text-danger">
+          {installing ? `${c.ffmpegInstalling} ${Math.max(0, Math.min(100, Math.round(Number(props.ffmpegInstall?.percent) || 0)))}%` : phase === "error" ? c.ffmpegInstallFailed : c.ffmpegMissing}
+          {!installing ? (
+            <button type="button" className="ml-2 text-foreground underline" onClick={() => props.onInstall?.()}>{c.ffmpegInstall}</button>
+          ) : null}
+        </p>
+      ) : null}
+      {installing ? <ProgressHairline className="mb-3" value={Number(props.ffmpegInstall?.percent) || 0} /> : null}
       {!props.compact && ep.video_url ? <video src={ep.video_url} poster={ep.poster_url} controls className="mb-4 max-h-[360px] w-full rounded-[10px] bg-background" /> : null}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button onClick={props.onMerge} disabled={!props.ffmpeg || n === 0}>{c.export}</Button>
+        <Button onClick={props.onMerge} disabled={n === 0}>{c.export}</Button>
         <span className="text-[12px] tabular-nums text-muted">{n} {c.clipCount}</span>
         <button type="button" className="text-[12px] text-muted underline" onClick={() => {
           const next: Record<string, boolean> = {};

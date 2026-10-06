@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { applyProviderPreset, PROVIDER_PRESETS } from "../../lib/providers";
-import { formatTokens, formatUsd, lookupCatalogModel, mergeModelIds, modelsForProvider, resolveContextWindow } from "../../lib/models-dev";
-import { MODELS_DEV_SNAPSHOT } from "../../lib/models-dev.snapshot";
+import { formatTokens, formatUsd, lookupCatalogModel, mergeModelIds, modelsForProvider, resolveContextWindow, type ModelsDevCatalog } from "../../lib/models-dev";
+import { useModelCatalog } from "../../lib/model-catalog";
 import {
   CONTROL_LG,
   CONTROL_MD,
@@ -27,9 +27,13 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   const [apiKey, setApiKey] = useState("");
   const [modelsCsv, setModelsCsv] = useState(host.cfg.models.join(","));
   const vaultSource = String(host.vault?.source || host.doctor?.vault?.source || "");
-  const catalog = useMemo(() => modelsForProvider(MODELS_DEV_SNAPSHOT, provider), [provider]);
-  const selected = lookupCatalogModel(MODELS_DEV_SNAPSHOT, provider, model)?.model;
-  const inferredWindow = resolveContextWindow(MODELS_DEV_SNAPSHOT, provider, model);
+  const data = useModelCatalog((s) => s.catalog);
+  const catalogLoading = useModelCatalog((s) => s.loading);
+  const catalogError = useModelCatalog((s) => s.error);
+  const refreshCatalog = useModelCatalog((s) => s.load);
+  const catalog = useMemo(() => modelsForProvider(data, provider), [data, provider]);
+  const selected = lookupCatalogModel(data, provider, model)?.model;
+  const inferredWindow = resolveContextWindow(data, provider, model);
 
   function hydrate() {
     const id = host.cfg.provider === "anthropic" ? "claude" : host.cfg.provider || "openai";
@@ -58,7 +62,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
       return;
     }
     setBaseUrl(next.baseUrl);
-    const cats = modelsForProvider(MODELS_DEV_SNAPSHOT, id);
+    const cats = modelsForProvider(data, id);
     const pick = cats.find((m) => m.id === next.model) || cats.find((m) => next.models.includes(m.id)) || cats[0];
     setModel(pick?.id || next.model);
     setModelsCsv(mergeModelIds(pick?.id, next.models).join(", "));
@@ -103,7 +107,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
         <h2 className="mb-2 px-1 text-[13px] font-semibold text-foreground/75">{copy.settings.provider}</h2>
         <div role="radiogroup" aria-label={copy.settings.provider} className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {PROVIDER_PRESETS.map((p) => {
-            const count = modelsForProvider(MODELS_DEV_SNAPSHOT, p.id).length;
+            const count = modelsForProvider(data, p.id).length;
             const active = provider === p.id;
             return (
               <button
@@ -165,7 +169,23 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
       <SettingSection
         id="provider-models"
         title={copy.settings.sections.providerModels}
-        footnote={copy.settings.catalogHint}
+        footnote={`${copy.settings.catalogHint} ${catalogStamp(data, copy.settings, catalogError)}`}
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={catalogLoading}
+            onClick={async () => {
+              await refreshCatalog(true);
+              const st = useModelCatalog.getState();
+              if (st.error || st.catalog.stale) toast.error(copy.settings.catalogOffline);
+              else toast.success(copy.settings.catalogUpdated);
+            }}
+          >
+            <RefreshCw className={cn("size-3.5", catalogLoading && "animate-spin")} aria-hidden />
+            {catalogLoading ? copy.settings.catalogRefreshing : copy.settings.catalogRefresh}
+          </Button>
+        }
       >
         <SettingRow title={copy.settings.selectedModel} border={!!selected || catalog.length > 0 || !!model.trim()}>
           <Input
@@ -271,4 +291,27 @@ function MetaChip({ label, value }: { label: string; value: string }) {
       <span className="font-medium tabular-nums text-foreground">{value}</span>
     </span>
   );
+}
+
+function catalogStamp(
+  catalog: ModelsDevCatalog,
+  settings: { catalogSourceLive: string; catalogSourceBundled: string; catalogSourceStale: string },
+  error: string,
+): string {
+  const live = catalog.source === "models.dev";
+  const src = !live
+    ? settings.catalogSourceBundled
+    : error || catalog.stale
+      ? settings.catalogSourceStale
+      : settings.catalogSourceLive;
+  const when = formatCatalogDate(catalog.fetchedAt);
+  return when ? `(${src} · ${when})` : `(${src})`;
+}
+
+function formatCatalogDate(iso?: string): string {
+  const s = (iso || "").trim();
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString();
 }

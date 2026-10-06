@@ -26,6 +26,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/memory"
+	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
@@ -60,39 +61,39 @@ type MCPServerConfig struct {
 }
 
 type Config struct {
-	Provider                string            `yaml:"provider" json:"provider"`
-	Model                   string            `yaml:"model" json:"model"`
-	BaseURL                 string            `yaml:"base_url" json:"base_url"`
-	Workspace               string            `yaml:"workspace" json:"workspace"`
-	VideoWorkspace          string            `yaml:"video_workspace" json:"video_workspace"`
-	AutoAllow               bool              `yaml:"auto_allow" json:"auto_allow"`
-	MaxBudgetUSD            float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
-	USDPerMTok              float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
-	Models                  []string          `yaml:"models" json:"models"`
-	MCP                     []MCPServerConfig `yaml:"mcp" json:"mcp"`
-	CloseToTray             bool              `yaml:"close_to_tray" json:"close_to_tray"`
-	CompanionEnabled        bool              `yaml:"companion_enabled" json:"companion_enabled"`
-	UpdateURL               string            `yaml:"update_url" json:"update_url"`
-	Locale                  string            `yaml:"locale" json:"locale"`
-	Keymap                  map[string]string `yaml:"keymap" json:"keymap"`
-	AlwaysOnTop             bool              `yaml:"always_on_top" json:"always_on_top"`
-	StartAtLogin            bool              `yaml:"start_at_login" json:"start_at_login"`
-	NotificationsEnabled    bool              `yaml:"notifications_enabled" json:"notifications_enabled"`
-	NotifyWhenUnfocusedOnly bool              `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
-	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
-	ShowThinking            bool              `yaml:"show_thinking" json:"show_thinking"`
-	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
-	Theme                   string            `yaml:"theme" json:"theme"`
-	PaletteDark             string            `yaml:"palette_dark" json:"palette_dark"`
-	PaletteLight            string            `yaml:"palette_light" json:"palette_light"`
-	GateMode                string            `yaml:"gate_mode" json:"gate_mode"`
-	CrashResume             bool              `yaml:"crash_resume" json:"crash_resume"`
-	SessionRetentionDays    int               `yaml:"session_retention_days" json:"session_retention_days"`
-	SearchURL               string            `yaml:"search_url" json:"search_url"`
-	SearchKey               string            `yaml:"search_key" json:"search_key"`
-	ContextWindow           int               `yaml:"context_window" json:"context_window"`
+	Provider                string              `yaml:"provider" json:"provider"`
+	Model                   string              `yaml:"model" json:"model"`
+	BaseURL                 string              `yaml:"base_url" json:"base_url"`
+	Workspace               string              `yaml:"workspace" json:"workspace"`
+	VideoWorkspace          string              `yaml:"video_workspace" json:"video_workspace"`
+	AutoAllow               bool                `yaml:"auto_allow" json:"auto_allow"`
+	MaxBudgetUSD            float64             `yaml:"max_budget_usd" json:"max_budget_usd"`
+	USDPerMTok              float64             `yaml:"usd_per_mtok" json:"usd_per_mtok"`
+	Models                  []string            `yaml:"models" json:"models"`
+	MCP                     []MCPServerConfig   `yaml:"mcp" json:"mcp"`
+	CloseToTray             bool                `yaml:"close_to_tray" json:"close_to_tray"`
+	CompanionEnabled        bool                `yaml:"companion_enabled" json:"companion_enabled"`
+	UpdateURL               string              `yaml:"update_url" json:"update_url"`
+	Locale                  string              `yaml:"locale" json:"locale"`
+	Keymap                  map[string]string   `yaml:"keymap" json:"keymap"`
+	AlwaysOnTop             bool                `yaml:"always_on_top" json:"always_on_top"`
+	StartAtLogin            bool                `yaml:"start_at_login" json:"start_at_login"`
+	NotificationsEnabled    bool                `yaml:"notifications_enabled" json:"notifications_enabled"`
+	NotifyWhenUnfocusedOnly bool                `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
+	UIScale                 float64             `yaml:"ui_scale" json:"ui_scale"`
+	ShowThinking            bool                `yaml:"show_thinking" json:"show_thinking"`
+	UpdateChannel           string              `yaml:"update_channel" json:"update_channel"`
+	Theme                   string              `yaml:"theme" json:"theme"`
+	PaletteDark             string              `yaml:"palette_dark" json:"palette_dark"`
+	PaletteLight            string              `yaml:"palette_light" json:"palette_light"`
+	GateMode                string              `yaml:"gate_mode" json:"gate_mode"`
+	CrashResume             bool                `yaml:"crash_resume" json:"crash_resume"`
+	SessionRetentionDays    int                 `yaml:"session_retention_days" json:"session_retention_days"`
+	SearchURL               string              `yaml:"search_url" json:"search_url"`
+	SearchKey               string              `yaml:"search_key" json:"search_key"`
+	ContextWindow           int                 `yaml:"context_window" json:"context_window"`
 	Packs                   map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
-	Log                     LogConfig         `yaml:"log,omitempty" json:"log,omitempty"`
+	Log                     LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
 }
 
 type LogConfig struct {
@@ -364,6 +365,8 @@ func Open(root, bundledEvals string) (*App, error) {
 		a.resumeCrashed()
 	}
 	a.SweepExpiredSessions()
+	runtime.CatalogWindow = modelcatalog.WindowFor
+	go a.warmModelCatalog()
 	diaglog.Info("app open", "component", "boot", "home", h.Root, "isolated", isolated(), "isolation_kind", isolationKind(), "crash_resume", a.crashResume())
 	return a, nil
 }

@@ -15,6 +15,7 @@ import { pathFromPatch } from "../../lib/artifact-preview";
 import { toolArgs, toolName } from "../../lib/tool-summary";
 import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
+import { loadModelCatalog } from "../../lib/model-catalog";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
@@ -429,6 +430,7 @@ export function useWorkstation() {
   }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.paletteDark, savedCfg.paletteLight, setPref, setDarkPalette, setLightPalette]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void loadModelCatalog(); }, []);
   useEffect(() => subscribeSessions(refresh), [refresh]);
   useEffect(() => {
     if (active) useUI.getState().rememberThread(active);

@@ -43,3 +43,19 @@ func TestModelContextWindowDeepSeekV4Is1M(t *testing.T) {
 		t.Fatalf("custom provider: %d", got)
 	}
 }
+
+func TestCatalogWindowOverridesHeuristic(t *testing.T) {
+	CatalogWindow = func(model string) int {
+		if model == "gpt-4o" {
+			return 999_000
+		}
+		return 0
+	}
+	t.Cleanup(func() { CatalogWindow = nil })
+	if got := ModelContextWindow("gpt-4o"); got != 999_000 {
+		t.Fatalf("override: %d", got)
+	}
+	if got := ModelContextWindow("local-flash-v4"); got != UnknownModelWindow {
+		t.Fatalf("unlisted still heuristic: %d", got)
+	}
+}

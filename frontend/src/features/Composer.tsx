@@ -15,7 +15,7 @@ import type { Attachment, AuthMode, ContextUsage, FileHit, SkillInfo } from "../
 import type { TaskPlan } from "../lib/plan";
 import { PlanChip } from "./PlanChip";
 import { formatTokens, lookupCatalogModel, composerModelIds, resolveContextWindow } from "../lib/models-dev";
-import { MODELS_DEV_SNAPSHOT } from "../lib/models-dev.snapshot";
+import { useModelCatalog } from "../lib/model-catalog";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
@@ -98,10 +98,11 @@ export function Composer(props: {
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
   const canSend = !props.disabled && hasPayload;
   const currentModel = (props.model || "").trim();
-  const modelOptions = composerModelIds(MODELS_DEV_SNAPSHOT, props.provider, currentModel, props.models);
+  const catalog = useModelCatalog((s) => s.catalog);
+  const modelOptions = composerModelIds(catalog, props.provider, currentModel, props.models);
   const slashOpen = hint === "slash";
-  const meta = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "openai", currentModel);
-  const fallbackWindow = resolveContextWindow(MODELS_DEV_SNAPSHOT, props.provider || "", currentModel);
+  const meta = lookupCatalogModel(catalog, props.provider || "openai", currentModel);
+  const fallbackWindow = resolveContextWindow(catalog, props.provider || "", currentModel);
   const modelLabel = meta?.model.name || currentModel;
 
   const slashPrefix = slashQuery(value);
@@ -646,7 +647,7 @@ export function Composer(props: {
                 </SelectTrigger>
                 <SelectContent>
                   {modelOptions.map((m) => {
-                    const label = lookupCatalogModel(MODELS_DEV_SNAPSHOT, props.provider || "", m)?.model.name || m;
+                    const label = lookupCatalogModel(catalog, props.provider || "", m)?.model.name || m;
                     return <SelectItem key={m} value={m}>{label}</SelectItem>;
                   })}
                 </SelectContent>

@@ -265,6 +265,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	switch method {
 	case "video.status":
 		return a.VideoStatus(), nil
+	case "video.ffmpeg.install":
+		return eng.InstallFFmpeg(), nil
 	case "video.modes":
 		return video.Modes(), nil
 	case "video.templates":

@@ -126,7 +126,10 @@ export async function mockApi(
         ]);
       }
       if (rpcMethod === "video.status") {
-        return ok({ ffmpeg: true, media_base: "" });
+        return ok({ ffmpeg: true, media_base: "", ffmpeg_install: { ready: true, phase: "ready", percent: 100 } });
+      }
+      if (rpcMethod === "video.ffmpeg.install") {
+        return ok({ ok: true, ffmpeg: true, ffmpeg_install: { ready: true, phase: "ready", percent: 100 } });
       }
       if (rpcMethod === "canvas.bind") {
         const cid = String(params.project_id || params.canvas_id || "");
@@ -152,6 +155,10 @@ export async function mockApi(
         return ok([]);
       }
       return ok({});
+    }
+
+    if (path.includes("/api/models/catalog")) {
+      return route.fulfill({ json: { version: 3, fetchedAt: "", source: "mock", providers: {} } });
     }
 
     if (path.endsWith("/api/health")) {
