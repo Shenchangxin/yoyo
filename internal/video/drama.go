@@ -122,9 +122,7 @@ func (e *Engine) CreateDrama(d Drama) (Drama, error) {
 	if d.Status == "" {
 		d.Status = "draft"
 	}
-	if d.Title == "" {
-		d.Title = "Untitled"
-	}
+	d.Title = strings.TrimSpace(d.Title)
 	return d, e.putDoc(colDramas, d.ID, dramaRec{Drama: d})
 }
 
@@ -231,6 +229,10 @@ func (e *Engine) ListEpisodes(dramaID string) ([]Episode, error) {
 }
 
 func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) {
+	return e.createEpisode(dramaID, title, content, 0, nil, nil, nil)
+}
+
+func (e *Engine) createEpisode(dramaID, title, content string, number int, chars, scenes, props []string) (Episode, error) {
 	d, err := e.GetDrama(dramaID)
 	if err != nil {
 		return Episode{}, err
@@ -241,19 +243,58 @@ func (e *Engine) CreateEpisode(dramaID, title, content string) (Episode, error) 
 			n = rec.EpisodeNumber
 		}
 	}
+	if number <= 0 {
+		number = n + 1
+	}
 	img, _ := e.ActiveProvider("image", "")
 	vid, _ := e.ActiveProvider("video", "")
 	tts, _ := e.ActiveProvider("tts", "")
 	now := Now()
 	ep := Episode{
-		ID: NewID(), DramaID: dramaID, EpisodeNumber: n + 1, Title: first(title, fmt.Sprintf("Episode %d", n+1)),
+		ID: NewID(), DramaID: dramaID, EpisodeNumber: number, Title: strings.TrimSpace(title),
 		Content: content, Status: "draft",
 		ImageProviderID: img.ID, VideoProviderID: vid.ID, TTSProviderID: tts.ID,
 		ImageModel: img.Model, VideoModel: vid.Model, TTSModel: tts.Model,
 		Resolution: "720p", Pipeline: "{}", CreatedAt: now, UpdatedAt: now,
 	}
+	if chars == nil && scenes == nil && props == nil {
+		chars, scenes, props = e.inheritLinks(dramaID, number)
+	}
 	_ = d
-	return ep, e.putDoc(colEpisodes, ep.ID, episodeRec{Episode: ep})
+	return ep, e.putDoc(colEpisodes, ep.ID, episodeRec{
+		Episode: ep, CharacterIDs: chars, SceneIDs: scenes, PropIDs: props,
+	})
+}
+
+func (e *Engine) inheritLinks(dramaID string, episodeNumber int) (chars, scenes, props []string) {
+	if plan, err := e.GetPlan(dramaID); err == nil {
+		for _, pe := range plan.Episodes {
+			if pe.N == episodeNumber && len(pe.CharacterIDs) > 0 {
+				chars = append([]string{}, pe.CharacterIDs...)
+				break
+			}
+		}
+	}
+	var at string
+	var hit episodeRec
+	for _, rec := range loadCol[episodeRec](e, colEpisodes) {
+		if rec.DramaID != dramaID || rec.DeletedAt != "" {
+			continue
+		}
+		if len(rec.CharacterIDs)+len(rec.SceneIDs)+len(rec.PropIDs) == 0 {
+			continue
+		}
+		if rec.UpdatedAt > at {
+			at = rec.UpdatedAt
+			hit = rec
+		}
+	}
+	if len(chars) == 0 {
+		chars = append([]string{}, hit.CharacterIDs...)
+	}
+	scenes = append([]string{}, hit.SceneIDs...)
+	props = append([]string{}, hit.PropIDs...)
+	return
 }
 
 func (e *Engine) GetEpisode(id string) (Episode, error) {
@@ -314,9 +355,7 @@ func (e *Engine) PatchEpisode(id string, fields map[string]any) (Episode, error)
 	}
 	has := func(k string) bool { _, ok := fields[k]; return ok }
 	if has("title") {
-		if v := strings.TrimSpace(strMap(fields, "title")); v != "" {
-			cur.Title = v
-		}
+		cur.Title = strings.TrimSpace(strMap(fields, "title"))
 	}
 	if has("content") {
 		cur.Content = strMap(fields, "content")

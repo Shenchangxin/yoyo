@@ -25,7 +25,7 @@ export function MainColumn({ children, className }: { children: ReactNode; class
   return (
     <div
       className={cn(
-        "no-drag flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-transparent",
+        "no-drag flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none bg-transparent",
         className,
       )}
       id="main-stage"

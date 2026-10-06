@@ -182,8 +182,11 @@ stops the moment `running` is false.
   the rail. Yoyo Skills in the dock is the skill market; Video → Skills is
   the hosted island library. Studio image / video / speech adapters in
   Settings are the same providers Create and Canvas pick from.
-- **Drama** is a Final Cut split: browser (cast/scenes/props) | viewer + film
-  strip | inspector. Pipeline verbs sit on the viewer. Tasks open a drawer.
+- **Drama** is conversation-first. Chat stays mounted. Opening an episode
+  splits a director desk beside it: four phases (script / looks / board /
+  cut), viewer plus inspector, film strip on board and cut. Factory stages
+  stay behind one CTA per phase. Aspect is locked on the series. Tasks open
+  a drawer. There is no second node canvas inside drama.
 - **Canvas** keeps the Yingce renderer. Nodes are monochrome media tiles with
   a 1-letter type mark; teal outline only while generating. Chrome is grouped
   glass islands on the window edge plus a selection HUD. Agent pins to the

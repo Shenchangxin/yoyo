@@ -234,6 +234,167 @@ func (e *Engine) SaveProps(episodeID string, items []Prop) ([]Prop, error) {
 	return out, nil
 }
 
+func (e *Engine) DramaCharacters(dramaID string) []Character {
+	var out []Character
+	for _, c := range loadCol[characterRec](e, colCharacters) {
+		if c.DramaID != dramaID || c.DeletedAt != "" {
+			continue
+		}
+		out = append(out, c.Character)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortOrder != out[j].SortOrder {
+			return out[i].SortOrder < out[j].SortOrder
+		}
+		return out[i].Name < out[j].Name
+	})
+	if out == nil {
+		out = []Character{}
+	}
+	return out
+}
+
+func (e *Engine) DramaScenes(dramaID string) []Scene {
+	var out []Scene
+	for _, s := range loadCol[sceneRec](e, colScenes) {
+		if s.DramaID != dramaID || s.DeletedAt != "" {
+			continue
+		}
+		out = append(out, s.Scene)
+	}
+	if out == nil {
+		out = []Scene{}
+	}
+	return out
+}
+
+func (e *Engine) DramaProps(dramaID string) []Prop {
+	var out []Prop
+	for _, p := range loadCol[propRec](e, colProps) {
+		if p.DramaID != dramaID || p.DeletedAt != "" {
+			continue
+		}
+		out = append(out, p.Prop)
+	}
+	if out == nil {
+		out = []Prop{}
+	}
+	return out
+}
+
+func (e *Engine) SaveBibleCharacters(dramaID string, items []Character) ([]Character, error) {
+	if _, err := e.GetDrama(dramaID); err != nil {
+		return nil, err
+	}
+	existing := e.DramaCharacters(dramaID)
+	byKey := map[string]Character{}
+	for _, c := range existing {
+		byKey[NormalizeName(c.Name)] = c
+	}
+	now := Now()
+	var out []Character
+	for i, c := range items {
+		key := NormalizeName(c.Name)
+		if key == "" {
+			continue
+		}
+		if old, ok := byKey[key]; ok {
+			if c.Appearance != "" {
+				old.Appearance = c.Appearance
+			}
+			if c.Styling != "" {
+				old.Styling = c.Styling
+			}
+			if c.Role != "" {
+				old.Role = c.Role
+			}
+			if c.FirstSeenEpisode > 0 {
+				old.FirstSeenEpisode = c.FirstSeenEpisode
+			}
+			rec, _ := getDoc[characterRec](e, colCharacters, old.ID)
+			rec.Character = old
+			rec.UpdatedAt = now
+			_ = e.putDoc(colCharacters, old.ID, rec)
+			out = append(out, old)
+			continue
+		}
+		c.ID = NewID()
+		c.DramaID = dramaID
+		c.SortOrder = i
+		rec := characterRec{Character: c, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colCharacters, c.ID, rec); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func (e *Engine) SaveBibleScenes(dramaID string, items []Scene) ([]Scene, error) {
+	if _, err := e.GetDrama(dramaID); err != nil {
+		return nil, err
+	}
+	existing := e.DramaScenes(dramaID)
+	byKey := map[string]Scene{}
+	for _, s := range existing {
+		byKey[NormalizeSceneKey(s.Location, s.TimeOfDay)] = s
+	}
+	now := Now()
+	var out []Scene
+	for _, s := range items {
+		if strings.TrimSpace(s.Location) == "" {
+			continue
+		}
+		key := NormalizeSceneKey(s.Location, s.TimeOfDay)
+		if old, ok := byKey[key]; ok {
+			out = append(out, old)
+			continue
+		}
+		s.ID = NewID()
+		s.DramaID = dramaID
+		rec := sceneRec{Scene: s, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colScenes, s.ID, rec); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func (e *Engine) SaveBibleProps(dramaID string, items []Prop) ([]Prop, error) {
+	if _, err := e.GetDrama(dramaID); err != nil {
+		return nil, err
+	}
+	if len(items) > 3 {
+		items = items[:3]
+	}
+	existing := e.DramaProps(dramaID)
+	byKey := map[string]Prop{}
+	for _, p := range existing {
+		byKey[NormalizeName(p.Name)] = p
+	}
+	now := Now()
+	var out []Prop
+	for _, p := range items {
+		key := NormalizeName(p.Name)
+		if key == "" {
+			continue
+		}
+		if old, ok := byKey[key]; ok {
+			out = append(out, old)
+			continue
+		}
+		p.ID = NewID()
+		p.DramaID = dramaID
+		rec := propRec{Prop: p, CreatedAt: now, UpdatedAt: now}
+		if err := e.putDoc(colProps, p.ID, rec); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func (e *Engine) UpdateAsset(kind, id string, fields map[string]any) error {
 	now := Now()
 	has := func(k string) bool { _, ok := fields[k]; return ok }
@@ -407,7 +568,9 @@ func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot
 		}
 		out = append(out, s)
 	}
-	_ = e.patchPipeline(episodeID, "storyboard", "done", "")
+	if _, done := e.storyboardCoverage(episodeID); done {
+		_ = e.patchPipeline(episodeID, "storyboard", "done", "")
+	}
 	return out, nil
 }
 
@@ -421,6 +584,9 @@ func (e *Engine) UpdateShot(s Shot) (Shot, error) {
 	}
 	if s.PropIDs != nil {
 		fields["prop_ids"] = s.PropIDs
+	}
+	if s.ShotNumber > 0 {
+		fields["shot_number"] = s.ShotNumber
 	}
 	return e.PatchShot(s.ID, fields)
 }
@@ -463,6 +629,12 @@ func (e *Engine) PatchShot(id string, fields map[string]any) (Shot, error) {
 	}
 	if has("prop_ids") {
 		cur.PropIDs = decodeStringSlice(fields["prop_ids"])
+	}
+	if has("shot_number") {
+		n := intArg(fields["shot_number"])
+		if n > 0 {
+			cur.ShotNumber = n
+		}
 	}
 	rec, err := getDoc[shotRec](e, colShots, cur.ID)
 	if err != nil {

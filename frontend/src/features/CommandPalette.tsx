@@ -22,6 +22,7 @@ import { DEFAULT_KEYMAP, displayShortcut } from "../lib/keymap";
 import { SETTINGS_SECTIONS, SETTINGS_TABS } from "./settings/registry";
 import { useUI } from "../lib/store";
 import { Kbd } from "../components/ui/kbd";
+import { shownSeriesTitle } from "./video/drama-lib";
 
 export function CommandPalette(props: {
   open: boolean;
@@ -135,20 +136,23 @@ export function CommandPalette(props: {
                   <History className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoTasks}
                 </Command.Item>
-                {(props.videoProjects || []).slice(0, 12).map((p) => (
+                {(props.videoProjects || []).slice(0, 12).map((p) => {
+                  const title = p.kind === "drama" ? shownSeriesTitle(p.title, copy.video.untitled) : (p.title || p.id);
+                  return (
                   <Command.Item
                     key={`${p.kind}-${p.id}`}
-                    value={`${p.title || p.id} ${p.kind} video project`}
+                    value={`${title} ${p.kind} video project`}
                     onSelect={() => {
                       props.onSelectProject?.(p);
                       props.onClose();
                     }}
                   >
                     {p.kind === "drama" ? <Clapperboard className="size-4 text-muted" aria-hidden /> : <PanelsTopLeft className="size-4 text-muted" aria-hidden />}
-                    {p.title || p.id}
+                    {title}
                     <span className="ml-auto text-[11px] text-muted">{p.kind === "drama" ? copy.video.drama : copy.video.canvas}</span>
                   </Command.Item>
-                ))}
+                  );
+                })}
               </Command.Group>
               <Command.Group heading={copy.palette.settings}>
                 {SETTINGS_TABS.map((t) => (

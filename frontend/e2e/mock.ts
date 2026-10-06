@@ -148,6 +148,15 @@ export async function mockApi(
       if (rpcMethod === "drama.list") {
         return ok([]);
       }
+      if (rpcMethod === "drama.episodes") {
+        return ok([]);
+      }
+      if (rpcMethod === "drama.bundle") {
+        return ok(null);
+      }
+      if (rpcMethod === "drama.episode.get") {
+        return ok(null);
+      }
       if (rpcMethod === "video.styles") {
         return ok([]);
       }

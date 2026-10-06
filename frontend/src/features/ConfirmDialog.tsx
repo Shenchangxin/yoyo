@@ -67,7 +67,11 @@ export function ConfirmDialog(props: {
         onPointerDown={(e) => e.stopPropagation()}
       >
         <h2 id="yoyo-confirm-title" className="text-[15px] font-semibold">{props.title}</h2>
-        <p className="text-[13px] leading-[1.55] text-muted">{props.body}</p>
+        {typeof props.body === "string" ? (
+          <p className="text-[13px] leading-[1.55] text-muted">{props.body}</p>
+        ) : (
+          <div className="text-[13px] leading-[1.55] text-muted">{props.body}</div>
+        )}
         <div className="dialog-actions">
           <Button
             variant="lift"

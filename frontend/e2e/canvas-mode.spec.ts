@@ -49,7 +49,16 @@ test("drama workshop still opens from the same switch", async ({ page }) => {
   await expect(island(page)).toBeVisible();
   await expect(page.getByTestId("drama-agent-page")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("drama-open-board").first().click();
+  await expect(page.getByTestId("drama-desk")).toBeVisible();
   await expect(page.getByTestId("drama-studio")).toBeVisible();
+  await expect(page.getByTestId("drama-agent-page")).toBeVisible();
+  await expect(page.getByTestId("drama-phase-script")).toBeVisible();
+  await expect(page.getByTestId("drama-phase-cast")).toBeVisible();
+  await expect(page.getByTestId("drama-phase-board")).toBeVisible();
+  await expect(page.getByTestId("drama-phase-cut")).toBeVisible();
+  await page.getByTestId("drama-close-board").click();
+  await expect(page.getByTestId("drama-studio")).toHaveCount(0);
+  await expect(page.getByTestId("drama-agent-page")).toBeVisible();
 });
 
 test("video rail hosts the canvas workspace shell instead of the inner create workbench", async ({ page }) => {
@@ -72,13 +81,13 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(island(page)).toBeVisible();
   await expect(island(page)).toHaveAttribute("data-pane", "drama");
   await expect(page.getByTestId("drama-agent-page")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/聊聊这部短剧/)).toBeVisible();
-  await expect(page.getByText("先贴一章原文")).toBeVisible();
+  await expect(page.getByTestId("drama-agent-heading")).toBeVisible();
+  await expect(page.getByTestId("drama-agent-hint")).toBeVisible();
+  await expect(page.getByTestId("drama-path")).toBeVisible();
   await expect(page.getByTestId("drama-agent-input")).toBeVisible();
   await expect(page.getByTestId("video-mode-switch")).toHaveCount(0);
   await expect(page.locator(".creation-mode-tabs")).toHaveCount(0);
   await expect(page.getByTestId("drama-studio")).toHaveCount(0);
-  await expect(page.getByText("开始一部新短剧")).toHaveCount(0);
   await expect(page.getByText("创作工作台")).toHaveCount(0);
 
   await page.getByTestId("video-shell-canvas").click();

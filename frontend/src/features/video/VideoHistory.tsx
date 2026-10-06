@@ -12,6 +12,7 @@ import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/mo
 import type { VideoProject } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
+import { shownSeriesTitle } from "./drama-lib";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
@@ -55,7 +56,7 @@ export function VideoHistory(props: {
   async function newDrama() {
     setBusy("drama");
     try {
-      await api.video.createDrama({ title: copy.video.untitled, style: "3d", aspect_ratio: "16:9" });
+      await api.video.createDrama({ title: "", style: "3d", aspect_ratio: "9:16" });
       props.onRefresh?.();
     } catch (e) {
       toast.error(api.errMessage(e));
@@ -174,7 +175,7 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
         onClick={props.onSelect}
       >
         <Icon className="size-4 shrink-0 opacity-70" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">{displayTitle(p.title, props.fallback)}</span>
+        <span className="min-w-0 flex-1 truncate">{p.kind === "drama" ? shownSeriesTitle(p.title, props.fallback) : displayTitle(p.title, props.fallback)}</span>
         {p.updatedAt ? <span className="shrink-0 text-[11px] text-muted">{p.updatedAt.slice(0, 10)}</span> : null}
       </button>
     </li>

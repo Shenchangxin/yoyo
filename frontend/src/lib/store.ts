@@ -305,7 +305,7 @@ export const useUI = create<UIState>((set, get) => ({
       const videoBoard = typeof v === "function" ? v(s.videoBoard) : v;
       if (videoBoard) {
         writeVideoMode("drama");
-        return { videoBoard: true, canvasStage: false, videoPane: "drama" as const, videoMode: "drama" as const };
+        return { videoBoard: true, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const };
       }
       return { videoBoard: false, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const };
     }),

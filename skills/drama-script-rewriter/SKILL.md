@@ -7,7 +7,7 @@ allowed-tools: drama_read_episode drama_save_script load_skill list_skills updat
 
 # Screenplay rewrite
 
-The episode is already bound. Call `drama_read_episode` first.
+The episode is already bound. Call `drama_read_episode` first. That text is a committed slice, not the whole series.
 
 Write a screenplay, not a summary.
 

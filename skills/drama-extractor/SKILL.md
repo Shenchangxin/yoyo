@@ -2,12 +2,12 @@
 name: drama-extractor
 description: Extract characters, scenes, and a few plot-critical props from a Short drama screenplay. Use after a rewrite, or when the operator asks to pull the cast and locations.
 license: Apache-2.0
-allowed-tools: drama_read_episode drama_read_assets drama_save_characters drama_save_scenes drama_save_props load_skill list_skills update_plan
+allowed-tools: drama_read_episode drama_read_assets drama_read_bible drama_read_source drama_save_characters drama_save_scenes drama_save_props load_skill list_skills update_plan
 ---
 
 # Asset extraction
 
-Call `drama_read_episode` and `drama_read_assets`. Merge with existing rows by normalized name. Do not duplicate 「林小雨」and「林小雨（主角）」.
+Call `drama_read_episode` and `drama_read_assets`. For a series bible pass, also call `drama_read_bible` and peek windows with `drama_read_source`. Merge with existing rows by normalized name. Do not duplicate 「林小雨」and「林小雨（主角）」.
 
 Characters: name, role, appearance, costume. Only people who appear on screen. Keep narrator/voice-over as a character row if they speak, but do not invent a face for them.
 

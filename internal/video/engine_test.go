@@ -744,3 +744,86 @@ func containsAll(have []string, want ...string) bool {
 	}
 	return true
 }
+
+func TestCreateEpisodeInheritsLooks(t *testing.T) {
+	e := testEngine(t)
+	d, err := e.CreateDrama(Drama{Title: "连载", Style: "3d", AspectRatio: "9:16"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep1, err := e.CreateEpisode(d.ID, "第一集", "林小雨在巷口等车。")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chars, err := e.SaveCharacters(ep1.ID, []Character{{Name: "林小雨"}})
+	if err != nil || len(chars) != 1 {
+		t.Fatalf("chars %v", err)
+	}
+	scenes, err := e.SaveScenes(ep1.ID, []Scene{{Location: "巷口"}})
+	if err != nil || len(scenes) != 1 {
+		t.Fatalf("scenes %v", err)
+	}
+	ep2, err := e.CreateEpisode(d.ID, "第二集", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.Bundle(ep2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Characters) != 1 || !b.Characters[0].Linked || b.Characters[0].ID != chars[0].ID {
+		t.Fatalf("inherit chars %+v", b.Characters)
+	}
+	if len(b.Scenes) != 1 || !b.Scenes[0].Linked || b.Scenes[0].ID != scenes[0].ID {
+		t.Fatalf("inherit scenes %+v", b.Scenes)
+	}
+}
+
+func TestPatchShotPersistsShotNumber(t *testing.T) {
+	e := testEngine(t)
+	d, _ := e.CreateDrama(Drama{Title: "序"})
+	ep, _ := e.CreateEpisode(d.ID, "一", "文")
+	shots, err := e.SaveShots(ep.ID, []Shot{{Title: "A"}, {Title: "B"}}, true)
+	if err != nil || len(shots) != 2 {
+		t.Fatalf("shots %v", err)
+	}
+	if _, err := e.PatchShot(shots[1].ID, map[string]any{"shot_number": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.PatchShot(shots[0].ID, map[string]any{"shot_number": 2}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.ListShots(ep.ID)
+	if err != nil || len(list) != 2 {
+		t.Fatal(err)
+	}
+	if list[0].Title != "B" || list[0].ShotNumber != 1 || list[1].Title != "A" || list[1].ShotNumber != 2 {
+		t.Fatalf("order %+v", list)
+	}
+}
+
+func TestCreateDramaAndEpisodeKeepEmptyTitles(t *testing.T) {
+	e := testEngine(t)
+	d, err := e.CreateDrama(Drama{Style: "3d", AspectRatio: "9:16"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Title != "" {
+		t.Fatalf("drama title %q", d.Title)
+	}
+	ep, err := e.CreateEpisode(d.ID, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.Title != "" || ep.EpisodeNumber != 1 {
+		t.Fatalf("episode %+v", ep)
+	}
+	got, err := e.PatchEpisode(ep.ID, map[string]any{"title": "巷口"})
+	if err != nil || got.Title != "巷口" {
+		t.Fatalf("named %q %v", got.Title, err)
+	}
+	cleared, err := e.PatchEpisode(ep.ID, map[string]any{"title": ""})
+	if err != nil || cleared.Title != "" {
+		t.Fatalf("cleared %q %v", cleared.Title, err)
+	}
+}

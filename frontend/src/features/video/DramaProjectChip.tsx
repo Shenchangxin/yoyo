@@ -8,9 +8,10 @@ import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
 import { useDramaSelection } from "./workshop-store";
 import { bindVideoThread } from "./bind";
+import { shownEpisodeTitle, shownSeriesTitle } from "./drama-lib";
 
 type Drama = { id: string; title: string };
-type Episode = { id: string; drama_id: string; title: string };
+type Episode = { id: string; drama_id: string; title: string; episode_number?: number };
 
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
@@ -47,13 +48,17 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
 
   const drama = dramas.find((d) => d.id === dramaId);
   const episode = episodes.find((e) => e.id === episodeId);
-  const label = episode?.title || drama?.title || copy.video.noProject;
+  const label = episode
+    ? shownEpisodeTitle(episode.title, episode.episode_number, copy.video.episodeN)
+    : drama
+      ? shownSeriesTitle(drama.title, copy.video.untitled)
+      : copy.video.noProject;
 
   async function createDrama() {
     try {
-      const d = await api.video.createDrama({ title: copy.video.untitled, style: "3d", aspect_ratio: "16:9" });
+      const d = await api.video.createDrama({ title: "", style: "3d", aspect_ratio: "9:16" });
       setDramaId(d.id);
-      const created = await api.video.createEpisode(d.id, copy.video.untitledEp, "");
+      const created = await api.video.createEpisode(d.id, "", "");
       setEpisodeId(created.id);
       if (sessionId) void bindVideoThread(sessionId);
       await load();
@@ -65,7 +70,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
   async function createEpisode() {
     if (!dramaId) return;
     try {
-      const created = await api.video.createEpisode(dramaId, copy.video.untitledEp, "");
+      const created = await api.video.createEpisode(dramaId, "", "");
       setEpisodeId(created.id);
       if (sessionId) void bindVideoThread(sessionId);
       const list = await api.video.episodes(dramaId);
@@ -118,6 +123,8 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
             drama={d}
             activeEpisode={d.id === dramaId ? episodeId : ""}
             copyLabel={copy.video.untitledEp}
+            episodeN={copy.video.episodeN}
+            untitled={copy.video.untitled}
             onPick={pickEpisode}
           />
         ))}
@@ -130,6 +137,8 @@ function DramaGroup(props: {
   drama: Drama;
   activeEpisode: string;
   copyLabel: string;
+  episodeN: string;
+  untitled: string;
   onPick: (d: Drama, ep: Episode) => void;
 }) {
   const [eps, setEps] = useState<Episode[]>([]);
@@ -141,10 +150,10 @@ function DramaGroup(props: {
 
   return (
     <>
-      <DropdownMenuLabel className="truncate">{props.drama.title || props.drama.id}</DropdownMenuLabel>
+      <DropdownMenuLabel className="truncate">{shownSeriesTitle(props.drama.title, props.untitled)}</DropdownMenuLabel>
       {eps.length ? eps.map((ep) => (
         <DropdownMenuItem key={ep.id} onSelect={() => props.onPick(props.drama, ep)}>
-          <span className="min-w-0 flex-1 truncate pl-1">{ep.title || props.copyLabel}</span>
+          <span className="min-w-0 flex-1 truncate pl-1">{shownEpisodeTitle(ep.title, ep.episode_number, props.episodeN)}</span>
           {props.activeEpisode === ep.id ? <Check className="size-3.5 shrink-0" /> : null}
         </DropdownMenuItem>
       )) : (
