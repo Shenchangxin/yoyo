@@ -286,6 +286,34 @@ test("copy sits under the message, not the column corner", async ({ page }) => {
   expect(c!.x).toBeLessThan(a!.x + a!.width + 48);
 });
 
+test("user turn restore and fork match the copy action", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", seq: 4, payload: { text: "first question", id: "s1:user:1" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "first answer", id: "s1:r1" } },
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:02Z", seq: 6, payload: { text: "second question", id: "s1:user:2" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { text: "second answer", id: "s1:r2" } },
+    ],
+  });
+  await page.goto("/");
+  const bubble = page.locator(".user-bubble").filter({ hasText: "second question" });
+  await bubble.hover();
+  const row = bubble.locator("xpath=..");
+  await expect(row.getByTestId("user-restore-files")).toBeVisible();
+  await expect(row.getByTestId("user-fork-from")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Copy" })).toBeVisible();
+  const restored = page.waitForRequest((r) => r.url().includes("/restore") && r.method() === "POST");
+  await row.getByTestId("user-restore-files").click();
+  const restoreReq = await restored;
+  expect(JSON.parse(restoreReq.postData() || "{}").from).toMatch(/seq:6|s1:user:2/);
+  await bubble.hover();
+  const forked = page.waitForRequest((r) => r.url().includes("/fork") && r.method() === "POST");
+  await row.getByTestId("user-fork-from").click();
+  const forkReq = await forked;
+  expect(JSON.parse(forkReq.postData() || "{}").from).toMatch(/seq:6|s1:user:2/);
+});
+
 test("one copy control per agent turn", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],

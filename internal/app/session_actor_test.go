@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,73 @@ func TestForkSessionFromSeq(t *testing.T) {
 	text, _ := evs[0].Payload["text"].(string)
 	if evs[0].Type != trace.TypeUser || text != "second turn" {
 		t.Fatalf("got %s %q", evs[0].Type, text)
+	}
+}
+
+func TestForkSessionFromUnknownTurnErrors(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "only turn"}})
+	if _, err := a.ForkSessionFrom(src.ID, "seq:999"); err == nil {
+		t.Fatal("expected missing fork point")
+	}
+	list, err := a.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range list {
+		if m.ID != src.ID && strings.Contains(strings.ToLower(m.Title), "fork") {
+			t.Fatalf("orphan fork left behind %s", m.ID)
+		}
+	}
+}
+
+func TestForkSessionFromFirstUserKeepsHistory(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "first turn"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeAssistant, SessionID: src.ID, Payload: map[string]any{"text": "ok"}})
+	dst, err := a.ForkSessionFrom(src.ID, "first turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := a.Traces.Read(dst.ID)
+	if err != nil || len(evs) < 2 {
+		t.Fatalf("%d %v", len(evs), err)
+	}
+	text, _ := evs[0].Payload["text"].(string)
+	if evs[0].Type != trace.TypeUser || text != "first turn" {
+		t.Fatalf("got %s %q", evs[0].Type, text)
+	}
+}
+
+func TestRestoreSessionFilesUnknownTurnErrors(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "only turn"}})
+	if _, err := a.RestoreSessionFiles(src.ID, "seq:999"); err == nil {
+		t.Fatal("expected missing turn")
 	}
 }
 

@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, RotateCcw, ShieldAlert } from "lucide-react";
 import { IconSwap } from "../components/ui/icon-swap";
+import { Tooltip } from "../components/ui/tooltip";
 import { toast } from "sonner";
 import { Markdown } from "../lib/markdown";
 import { cn } from "../lib/utils";
@@ -140,8 +141,8 @@ export function Transcript(props: {
   latestNonce?: number;
   onActiveTurn?: (key: string) => void;
   onJumpLatest?: () => void | Promise<void>;
-  onRestoreFiles?: (from: string) => void;
-  onForkFrom?: (from: string) => void;
+  onRestoreFiles?: (from: string) => void | Promise<void>;
+  onForkFrom?: (from: string) => void | Promise<void>;
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
@@ -171,14 +172,13 @@ export function Transcript(props: {
           estimate: 96,
           render: () => (
             <div className="group/user relative">
-              <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />
-              {!props.compact && (props.onRestoreFiles || props.onForkFrom) ? (
-                <UserTurnFoot
-                  from={row.item.seq ? `seq:${row.item.seq}` : itemTurnKey(row.item)}
-                  onRestore={props.onRestoreFiles}
-                  onFork={props.onForkFrom}
-                />
-              ) : null}
+              <ItemRow
+                item={row.item}
+                copyText={props.compact ? "" : row.item.text}
+                from={props.compact ? "" : (row.item.seq ? `seq:${row.item.seq}` : itemTurnKey(row.item))}
+                onRestore={props.compact ? undefined : props.onRestoreFiles}
+                onFork={props.compact ? undefined : props.onForkFrom}
+              />
             </div>
           ),
         };
@@ -692,7 +692,7 @@ function TurnActions({
       {showReview && onOpenReview ? (
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+          className={turnActionBtn}
           onClick={() => onOpenReview()}
         >
           <FileText className="size-3.5" aria-hidden />
@@ -808,6 +808,9 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
   );
 }
 
+const turnActionBtn =
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground disabled:opacity-40";
+
 function CopyAction({ text }: { text: string }) {
   const copy = useCopy();
   const [done, setDone] = useState(false);
@@ -815,7 +818,7 @@ function CopyAction({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+      className={turnActionBtn}
       aria-label={copy.transcript.copy}
       data-copy-text={text}
       onClick={async (e) => {
@@ -888,36 +891,70 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
-function UserTurnFoot({
+function UserMsgActions({
+  text,
   from,
   onRestore,
   onFork,
 }: {
-  from: string;
-  onRestore?: (from: string) => void;
-  onFork?: (from: string) => void;
+  text?: string;
+  from?: string;
+  onRestore?: (from: string) => void | Promise<void>;
+  onFork?: (from: string) => void | Promise<void>;
 }) {
   const copy = useCopy();
-  if (!from) return null;
+  const [busy, setBusy] = useState<"restore" | "fork" | "">("");
+  const run = async (kind: "restore" | "fork", fn?: (from: string) => void | Promise<void>) => {
+    if (!from || !fn || busy) return;
+    setBusy(kind);
+    try {
+      await fn(from);
+    } finally {
+      setBusy("");
+    }
+  };
+  if (!text && !onRestore && !onFork) return null;
   return (
-    <div className="mt-1 flex justify-end gap-1 opacity-0 transition-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100">
-      {onRestore ? (
-        <button
-          type="button"
-          className="h-6 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
-          onClick={() => onRestore(from)}
-        >
-          {copy.transcript.restoreFiles}
-        </button>
+    <div
+      className="flex h-8 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100"
+      data-testid="user-turn-actions"
+    >
+      {text ? <CopyAction text={text} /> : null}
+      {onRestore && from ? (
+        <Tooltip content={copy.transcript.restoreFiles}>
+          <button
+            type="button"
+            className={turnActionBtn}
+            aria-label={copy.transcript.restoreFiles}
+            data-testid="user-restore-files"
+            disabled={!!busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              void run("restore", onRestore);
+            }}
+          >
+            <RotateCcw className="size-3.5" aria-hidden />
+            <span>{copy.transcript.restore}</span>
+          </button>
+        </Tooltip>
       ) : null}
-      {onFork ? (
-        <button
-          type="button"
-          className="h-6 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
-          onClick={() => onFork(from)}
-        >
-          {copy.transcript.forkFrom}
-        </button>
+      {onFork && from ? (
+        <Tooltip content={copy.transcript.forkFrom}>
+          <button
+            type="button"
+            className={turnActionBtn}
+            aria-label={copy.transcript.forkFrom}
+            data-testid="user-fork-from"
+            disabled={!!busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              void run("fork", onFork);
+            }}
+          >
+            <GitFork className="size-3.5" aria-hidden />
+            <span>{copy.transcript.fork}</span>
+          </button>
+        </Tooltip>
       ) : null}
     </div>
   );
@@ -997,6 +1034,9 @@ const ItemRow = memo(function ItemRow({
   streaming,
   liveText,
   copyText,
+  from,
+  onRestore,
+  onFork,
   rich,
   onRetry,
 }: {
@@ -1004,6 +1044,9 @@ const ItemRow = memo(function ItemRow({
   streaming?: boolean;
   liveText?: string;
   copyText?: string;
+  from?: string;
+  onRestore?: (from: string) => void | Promise<void>;
+  onFork?: (from: string) => void | Promise<void>;
   rich?: boolean;
   onRetry?: () => void;
 }) {
@@ -1021,10 +1064,8 @@ const ItemRow = memo(function ItemRow({
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
           <UserPrompt text={shown.text} parts={Array.isArray(shown.payload?.parts) ? shown.payload.parts : undefined} />
-          {copyText ? (
-            <div className="flex h-8 items-center justify-end opacity-0 transition-opacity duration-150 pointer-events-none group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100">
-              <CopyAction text={copyText} />
-            </div>
+          {copyText || onRestore || onFork ? (
+            <UserMsgActions text={copyText} from={from} onRestore={onRestore} onFork={onFork} />
           ) : null}
         </div>
       </div>

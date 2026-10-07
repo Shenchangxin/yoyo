@@ -62,6 +62,24 @@ func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
 	}
 }
 
+func TestRestoreFileSnapshotsAfterDeletesCreatedFile(t *testing.T) {
+	dir := t.TempDir()
+	ws := t.TempDir()
+	target := filepath.Join(ws, "fresh.txt")
+	tools := &WorkspaceTools{Workspace: ws, Spill: NewSpill(dir)}
+	tools.snapshotBeforeWrite("fresh.txt", target)
+	if err := os.WriteFile(target, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n, err := RestoreFileSnapshotsAfter(dir, ws, time.Time{})
+	if err != nil || n != 1 {
+		t.Fatalf("restore n=%d err=%v", n, err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("created file should be removed, err=%v", err)
+	}
+}
+
 func TestParseRewindScope(t *testing.T) {
 	scope, from := ParseRewindScope("files from hello")
 	if scope != "files" || from != "hello" {

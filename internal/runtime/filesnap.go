@@ -8,12 +8,10 @@ import (
 	"time"
 )
 
+const createdSnapSuffix = ".yoyo-created"
+
 func (t *WorkspaceTools) snapshotBeforeWrite(rel, abs string) {
 	if t == nil || t.Spill == nil || t.Spill.Dir == "" || abs == "" {
-		return
-	}
-	prev, err := os.ReadFile(abs)
-	if err != nil {
 		return
 	}
 	rel = filepath.ToSlash(strings.TrimPrefix(rel, "/"))
@@ -21,20 +19,32 @@ func (t *WorkspaceTools) snapshotBeforeWrite(rel, abs string) {
 		rel = filepath.Base(abs)
 	}
 	stamp := time.Now().UTC().Format("20060102T150405.000000000")
-	dest := filepath.Join(t.Spill.Dir, "files", stamp, filepath.FromSlash(rel))
+	prev, err := os.ReadFile(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			writeSnapFile(t.Spill.Dir, t.Spill.Mirror, stamp, rel+createdSnapSuffix, nil)
+		}
+		return
+	}
+	writeSnapFile(t.Spill.Dir, t.Spill.Mirror, stamp, rel, prev)
+}
+
+func writeSnapFile(spillDir, mirror, stamp, rel string, body []byte) {
+	dest := filepath.Join(spillDir, "files", stamp, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return
 	}
 	tmp := dest + ".tmp"
-	if err := os.WriteFile(tmp, prev, 0o644); err != nil {
+	if err := os.WriteFile(tmp, body, 0o644); err != nil {
 		return
 	}
 	_ = os.Rename(tmp, dest)
-	if t.Spill.Mirror != "" {
-		m := filepath.Join(t.Spill.Mirror, "files", stamp, filepath.FromSlash(rel))
-		_ = os.MkdirAll(filepath.Dir(m), 0o755)
-		_ = os.WriteFile(m, prev, 0o644)
+	if mirror == "" {
+		return
 	}
+	m := filepath.Join(mirror, "files", stamp, filepath.FromSlash(rel))
+	_ = os.MkdirAll(filepath.Dir(m), 0o755)
+	_ = os.WriteFile(m, body, 0o644)
 }
 
 func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
@@ -75,11 +85,22 @@ func RestoreFileSnapshotsAfter(spillDir, workspace string, after time.Time) (int
 				return err
 			}
 			key := filepath.ToSlash(rel)
+			created := strings.HasSuffix(key, createdSnapSuffix)
+			if created {
+				key = strings.TrimSuffix(key, createdSnapSuffix)
+				rel = strings.TrimSuffix(rel, createdSnapSuffix)
+			}
 			if seen[key] {
 				return nil
 			}
 			seen[key] = true
 			dest := filepath.Join(workspace, rel)
+			if created {
+				if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+				return nil
+			}
 			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 				return err
 			}

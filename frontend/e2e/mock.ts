@@ -249,6 +249,9 @@ export async function mockApi(
         if (idx >= 0) sessions[idx] = { ...sessions[idx], title: String(body().title || sessions[idx].title) };
         return route.fulfill({ json: { ok: true } });
       }
+      if (method === "POST" && op === "restore") {
+        return route.fulfill({ json: { note: "restored 1 files" } });
+      }
       if (method === "POST" && op === "fork") {
         const src = idx >= 0 ? sessions[idx] : { id, title: "thread", workspace };
         const t = { ...src, id: `fork-${id}`, title: `fork of ${src.title || id}` };

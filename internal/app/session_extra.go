@@ -462,7 +462,10 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 		opt.Trigger = "rewind"
 	}
 	if (scope == "files" || scope == "both") && spill != nil {
-		after := eventTimeFrom(evs, from, a.Traces, id)
+		after, ok := lookupEventTime(evs, from, a.Traces, id)
+		if !ok {
+			return note, fmt.Errorf("turn not found")
+		}
 		n, err := runtime.RestoreFileSnapshotsAfter(spill.Dir, meta.ToolRoot(), after)
 		if err != nil {
 			return note, err

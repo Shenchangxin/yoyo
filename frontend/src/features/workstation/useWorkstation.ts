@@ -1522,16 +1522,24 @@ export function useWorkstation() {
     },
     onRestoreFiles: async (from: string) => {
       if (!activeId) return;
-      const note = await api.restoreSessionFiles(activeId, from);
-      toast.success(note || copy.app.restored);
-      void refreshDiff();
+      try {
+        const note = await api.restoreSessionFiles(activeId, from);
+        toast.success(note || copy.app.restored);
+        void refreshDiff();
+      } catch (e) {
+        fail(e);
+      }
     },
     onForkFrom: async (from: string) => {
       if (!activeId) return;
-      const t = await api.forkSession(activeId, from);
-      setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
-      openThread(t);
-      toast.success(copy.app.forked);
+      try {
+        const t = await api.forkSession(activeId, from);
+        setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+        openThread(t);
+        toast.success(copy.app.forked);
+      } catch (e) {
+        fail(e);
+      }
     },
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

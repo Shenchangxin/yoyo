@@ -79,15 +79,22 @@ func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	from = strings.TrimSpace(from)
 	if from != "" && a.Traces != nil {
 		evs, err := a.Traces.Read(dst.ID)
-		if err == nil {
-			cut := forkCutIndex(evs, from, a.Traces, src.ID)
-			if cut > 0 {
-				keep := evs[cut:]
-				for i := range keep {
-					keep[i].SessionID = dst.ID
-				}
-				_ = a.Traces.Replace(dst.ID, keep)
-			}
+		if err != nil {
+			_ = a.DeleteSession(dst.ID)
+			return SessionMeta{}, err
+		}
+		cut := forkCutIndex(evs, from, a.Traces, src.ID)
+		if cut < 0 {
+			_ = a.DeleteSession(dst.ID)
+			return SessionMeta{}, fmt.Errorf("fork point not found")
+		}
+		keep := evs[cut:]
+		for i := range keep {
+			keep[i].SessionID = dst.ID
+		}
+		if err := a.Traces.Replace(dst.ID, keep); err != nil {
+			_ = a.DeleteSession(dst.ID)
+			return SessionMeta{}, err
 		}
 	}
 	if src.ProjectRoot() != "" && strings.TrimSpace(src.PlanText) != "" {
@@ -280,23 +287,35 @@ func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID stri
 	if from == "" {
 		return -1
 	}
-	if strings.HasPrefix(from, "seq:") && store != nil && srcID != "" {
+	if strings.HasPrefix(from, "seq:") {
 		n, err := strconv.ParseInt(strings.TrimPrefix(from, "seq:"), 10, 64)
 		if err == nil && n > 0 {
-			if page, err := store.PageTurns(srcID, 0, 100000); err == nil {
-				for _, ev := range page.Events {
-					if ev.Seq != n || ev.Type != trace.TypeUser {
-						continue
-					}
-					for i, e := range evs {
-						if e.Type != trace.TypeUser {
+			for i, e := range evs {
+				if e.Type == trace.TypeUser && e.Seq == n {
+					return i
+				}
+			}
+			if store != nil && srcID != "" {
+				if page, err := store.PageTurns(srcID, 0, 100000); err == nil {
+					for _, ev := range page.Events {
+						if ev.Seq != n || ev.Type != trace.TypeUser {
 							continue
 						}
-						if !e.TS.IsZero() && !ev.TS.IsZero() && e.TS.Equal(ev.TS) {
-							return i
-						}
-						if payloadStr(e.Payload, "text") == payloadStr(ev.Payload, "text") {
-							return i
+						wantID := payloadStr(ev.Payload, "id")
+						wantText := payloadStr(ev.Payload, "text")
+						for i, e := range evs {
+							if e.Type != trace.TypeUser {
+								continue
+							}
+							if wantID != "" && payloadStr(e.Payload, "id") == wantID {
+								return i
+							}
+							if !e.TS.IsZero() && !ev.TS.IsZero() && e.TS.Equal(ev.TS) {
+								return i
+							}
+							if wantText != "" && payloadStr(e.Payload, "text") == wantText {
+								return i
+							}
 						}
 					}
 				}
@@ -324,17 +343,22 @@ func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID stri
 }
 
 func eventTimeFrom(evs []trace.Event, from string, store *trace.Store, srcID string) time.Time {
+	t, _ := lookupEventTime(evs, from, store, srcID)
+	return t
+}
+
+func lookupEventTime(evs []trace.Event, from string, store *trace.Store, srcID string) (time.Time, bool) {
 	from = strings.TrimSpace(from)
 	if from == "" {
-		return time.Time{}
+		return time.Time{}, true
 	}
 	if t, ok := runtime.ParseStampTime(from); ok {
-		return t
+		return t, true
 	}
 	if i := forkCutIndex(evs, from, store, srcID); i >= 0 && i < len(evs) {
-		return evs[i].TS
+		return evs[i].TS, true
 	}
-	return time.Time{}
+	return time.Time{}, false
 }
 
 func payloadStr(p map[string]any, key string) string {
