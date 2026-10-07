@@ -154,7 +154,10 @@ func (a *App) RestoreSessionFiles(id, from string) (string, error) {
 		return "no snapshots", nil
 	}
 	evs, _ := a.ReadTrace(id)
-	after := eventTimeFrom(evs, from, a.Traces, id)
+	after, ok := lookupEventTime(evs, from, a.Traces, id)
+	if !ok {
+		return "", fmt.Errorf("turn not found")
+	}
 	n, err := runtime.RestoreFileSnapshotsAfter(spill.Dir, meta.ToolRoot(), after)
 	if err != nil {
 		return "", err
