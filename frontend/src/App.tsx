@@ -300,7 +300,6 @@ function WorkstationApp() {
           jumpTo={ws.jumpTo}
           latestNonce={ws.latestNonce}
           onActiveTurn={ws.setActiveTurn}
-          onOpenChild={(id) => { void ws.onOpenChild(id); }}
           onRestoreFiles={(from) => { void ws.onRestoreFiles(from); }}
           onForkFrom={(from) => { void ws.onForkFrom(from); }}
           onJumpLatest={ws.jumpToLatest}

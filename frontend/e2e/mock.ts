@@ -10,7 +10,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
@@ -188,6 +188,14 @@ export async function mockApi(
     }
     if (path.endsWith("/api/sessions")) {
       return route.fulfill({ json: sessions });
+    }
+    const trajPage = path.match(/\/api\/sessions\/([^/]+)\/trajectory\/(page|around)$/);
+    if (trajPage) {
+      const id = decodeURIComponent(trajPage[1]);
+      const events = extra?.trajectories?.[id] ?? extra?.events ?? [];
+      return route.fulfill({
+        json: { events, head_seq: 0, tail_seq: events.length, older: false, hub_seq: events.length },
+      });
     }
     const spillOp = path.match(/\/api\/sessions\/([^/]+)\/spill\/([^/]+)$/);
     if (spillOp) {

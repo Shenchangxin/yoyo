@@ -88,8 +88,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if req.Tools.Task == nil && req.Tools.Depth < MaxTaskDepth {
 			parent := req
-			req.Tools.Task = func(prompt string, isolate bool) (string, error) {
-				return spawnTask(ctx, parent, prompt, isolate)
+			req.Tools.Task = func(prompt string, isolate bool, profile string) (string, error) {
+				return spawnTask(ctx, parent, prompt, isolate, profile)
 			}
 		}
 		if req.Tools.MaxParallel <= 0 {
@@ -427,12 +427,17 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 	jobs := make([]job, n)
 	readonly := true
 	exclusive := false
+	parallelOK := n > 1
 	for _, tc := range calls {
 		if !readonlyCall(req.Tools, tc.Name) {
 			readonly = false
 		}
 		if exclusiveCall(req.Tools, tc.Name) {
 			exclusive = true
+			parallelOK = false
+		}
+		if !parallelizableCall(req.Tools, tc.Name) {
+			parallelOK = false
 		}
 	}
 	for i, tc := range calls {
@@ -524,8 +529,12 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		jobs[i].change = res.FileChange
 		jobs[i].parts = res.Parts
 	}
-	if readonly && n > 1 {
-		sem := make(chan struct{}, 8)
+	if (readonly || parallelOK) && n > 1 {
+		limit := 8
+		if req.Tools != nil && req.Tools.MaxParallel > 0 && req.Tools.MaxParallel < limit {
+			limit = req.Tools.MaxParallel
+		}
+		sem := make(chan struct{}, limit)
 		var wg sync.WaitGroup
 		wg.Add(n)
 		for i := range jobs {
@@ -672,6 +681,28 @@ func exclusiveCall(tools *WorkspaceTools, name string) bool {
 	}
 	ann := HostAnn(name)
 	return ann.Exclusive || ann.OpenWorld
+}
+
+func parallelizableCall(tools *WorkspaceTools, name string) bool {
+	if exclusiveCall(tools, name) {
+		return false
+	}
+	if readonlyCall(tools, name) || name == "task" {
+		return true
+	}
+	return HostAnn(name).ConcurrencySafe
+}
+
+func readOnlySubagentCall(name string) bool {
+	if readonlyCall(nil, name) {
+		return true
+	}
+	switch name {
+	case "web_fetch", "web_search":
+		return true
+	default:
+		return false
+	}
 }
 
 func setStop(req *RunRequest, r StopReason) {

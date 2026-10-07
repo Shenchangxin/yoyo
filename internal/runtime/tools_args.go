@@ -33,9 +33,40 @@ func parseToolArgs(raw string) map[string]any {
 		}
 	}
 	if salvaged := salvageJSONObject(raw); len(salvaged) > 0 {
-		return salvaged
+		return unwrapToolArgs(salvaged)
 	}
 	return map[string]any{}
+}
+
+// unwrapToolArgs lifts a model-nested {"arguments": {path, content}} object
+// (or a JSON string of that object) so write_file does not see an empty path.
+func unwrapToolArgs(args map[string]any) map[string]any {
+	if len(args) == 0 {
+		return args
+	}
+	if hasToolArg(args) {
+		return args
+	}
+	switch inner := args["arguments"].(type) {
+	case map[string]any:
+		if len(inner) > 0 {
+			return unwrapToolArgs(inner)
+		}
+	case string:
+		if parsed := parseToolArgs(inner); len(parsed) > 0 {
+			return unwrapToolArgs(parsed)
+		}
+	}
+	return args
+}
+
+func hasToolArg(args map[string]any) bool {
+	for _, key := range []string{"path", "command", "prompt", "patch", "pattern", "url", "name", "query"} {
+		if strings.TrimSpace(str(args[key])) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func unmarshalObject(raw string) (map[string]any, bool) {

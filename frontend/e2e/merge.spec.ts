@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
-import { layoutRows, processGroupLive, tailProcessPairs } from "../src/lib/transcript-layout";
+import { layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
@@ -240,6 +240,29 @@ test("skill runtime tools show on the live transcript and process rail", () => {
   if (agent?.kind !== "agent") return;
   const names = agent.parts.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
   expect(names).toEqual(["load_skill", "read_skill_file", "web_search"]);
+});
+
+test("parallel subagents nest in the parent turn instead of as process rows", () => {
+  const folded = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "extract the papers" } },
+    { type: "tool_call", session_id: "s", payload: { id: "t1", name: "task", arguments: "{\"prompt\":\"list pdfs\",\"profile\":\"explore\"}" } },
+    { type: "tool_call", session_id: "s", payload: { id: "t2", name: "task", arguments: "{\"prompt\":\"read abstracts\",\"profile\":\"explore\"}" } },
+    { type: "subagent", session_id: "s", payload: { child: "s--task--aa", prompt: "list pdfs", phase: "start", profile: "explore" } },
+    { type: "subagent", session_id: "s", payload: { child: "s--task--bb", prompt: "read abstracts", phase: "start", profile: "explore" } },
+    { type: "subagent", session_id: "s", payload: { child: "s--task--aa", prompt: "list pdfs", phase: "complete", profile: "explore", summary: "3 pdfs" } },
+    { type: "tool_result", session_id: "s", payload: { id: "t1", name: "task", content: "SUBAGENT_SUMMARY:\\n3 pdfs" } },
+    { type: "subagent", session_id: "s", payload: { child: "s--task--bb", prompt: "read abstracts", phase: "complete", profile: "explore", summary: "ok" } },
+    { type: "tool_result", session_id: "s", payload: { id: "t2", name: "task", content: "SUBAGENT_SUMMARY:\\nok" } },
+    { type: "assistant", session_id: "s", payload: { text: "done", id: "s:r1" } },
+  ]);
+  const rows = layoutRows(folded);
+  const agent = rows.find((r) => r.kind === "agent");
+  expect(agent?.kind).toBe("agent");
+  if (agent?.kind !== "agent") return;
+  const sub = agent.parts.filter((p): p is Extract<AgentPart, { kind: "subagent" }> => p.kind === "subagent");
+  expect(sub.map((p) => p.child)).toEqual(["s--task--aa", "s--task--bb"]);
+  const processNames = agent.parts.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
+  expect(processNames).not.toContain("task");
 });
 
 test("plan text parses statuses and explanation", () => {

@@ -76,9 +76,11 @@ type WorkspaceTools struct {
 	ExtraEnabled []string
 	ExtraLive    []string
 	pendingHost  []string
-	taskProfile  string
 	Policy       artifact.PolicyPack
 	PlanMode     bool
+	// ReadOnly is explore/qa subagents: deny writes without the plan-mode
+	// persona ("produce a plan"). Plan mode and read-only are not the same.
+	ReadOnly bool
 	// ChatOverlay is desktop/CLI personal chat (I6). Harbor eval leaves it
 	// false so shell, plan language, and the tool menu stay eval-stable.
 	ChatOverlay bool
@@ -142,6 +144,17 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 		for _, j := range out {
 			name, _ := j.Function["name"].(string)
 			if name == "task" {
+				continue
+			}
+			filtered = append(filtered, j)
+		}
+		out = filtered
+	}
+	if t != nil && t.ReadOnly {
+		var filtered []ToolJSON
+		for _, j := range out {
+			name, _ := j.Function["name"].(string)
+			if !readOnlySubagentCall(name) {
 				continue
 			}
 			filtered = append(filtered, j)
@@ -246,12 +259,15 @@ func fn(name, desc string, params map[string]any) ToolJSON {
 }
 
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
-	args := parseToolArgs(argsJSON)
+	args := unwrapToolArgs(parseToolArgs(argsJSON))
 	if args == nil {
 		args = map[string]any{}
 	}
 	if t != nil && !t.toolAllowed(name) {
 		return ToolResult{Err: fmt.Errorf("tool %s is not advertised for this harness/skill", name)}
+	}
+	if t != nil && t.ReadOnly && !readOnlySubagentCall(name) {
+		return ToolResult{Err: fmt.Errorf("read-only subagent: write/shell tools are disabled; return findings in the final letter")}
 	}
 	if t != nil && t.PlanMode && !readonlyCall(t, name) {
 		return ToolResult{Err: fmt.Errorf("plan mode: write/shell tools are disabled; produce a plan instead")}
@@ -460,6 +476,9 @@ func (t *WorkspaceTools) spillOverflow(rel string, b []byte) (string, error) {
 }
 
 func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
+	if looksLikeContextStub(content) {
+		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
+	}
 	p, err := t.resolve(rel)
 	if err != nil {
 		return ToolResult{Err: err}
@@ -600,6 +619,27 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	command = t.expandSkillScripts(command)
+	ws := ""
+	if t != nil {
+		ws = t.Workspace
+	}
+	command, cleanupInline := rewriteInlineInterpreters(command, ws)
+	defer cleanupInline()
+	if runtime.GOOS == "windows" && t != nil {
+		if pat, ok := parseUnixFindGlob(command); ok {
+			res := t.glob(pat)
+			prefix := "redirected unix find to glob (Windows FIND.exe is a text search) pattern=" + pat + "\n"
+			if res.Err != nil {
+				res.Content = prefix + res.Err.Error()
+				return res
+			}
+			res.Content = prefix + res.Content
+			return res
+		}
+		if unixFindMisuse(command) {
+			return ToolResult{Err: fmt.Errorf("Windows FIND.exe is a text search, not unix find(1). Use glob (pattern *.pdf) or grep for content")}
+		}
+	}
 	if t != nil && t.ChatOverlay {
 		if rel, offset, limit, ok := parseShellRead(command); ok {
 			res := t.readFile(rel, offset, limit)

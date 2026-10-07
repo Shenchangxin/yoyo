@@ -360,6 +360,10 @@ func alreadyStubbed(s string) bool {
 	return strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ")
 }
 
+func looksLikeContextStub(s string) bool {
+	return strings.Contains(s, "[elided ") || strings.Contains(s, "[collapsed ")
+}
+
 func stubTool(id, name string, bytes int) string {
 	if id == "" {
 		id = "unknown"

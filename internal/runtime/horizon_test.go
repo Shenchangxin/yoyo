@@ -28,7 +28,7 @@ func TestApplyChatHorizon(t *testing.T) {
 	if got.MaxTurns < 64 || got.MaxToolMessages < 160 || got.MicroKeep < 32 || got.CompactionKeep < 96 {
 		t.Fatalf("%+v", got)
 	}
-	if got.RulesTokens < 8000 || got.KeepTokens < 16000 || got.TaskMaxTurns < 24 {
+	if got.RulesTokens < 8000 || got.KeepTokens < 16000 || got.TaskMaxTurns < 40 {
 		t.Fatalf("chat context floors %+v", got)
 	}
 	wide := DefaultLoop()
@@ -103,11 +103,17 @@ func fragmentText(frags []artifact.PromptFragment) string {
 func TestChildLoopProfiles(t *testing.T) {
 	parent := RunRequest{Loop: DefaultLoop(), SoftHorizon: true}
 	explore := childLoopFor(parent, "explore")
-	if !explore.PlanMode || explore.MaxTurns < 24 || !strings.Contains(explore.TaskInstruction, "explore") {
+	if explore.PlanMode {
+		t.Fatal("explore must return findings, not enter plan mode")
+	}
+	if explore.MaxTurns < 24 || !strings.Contains(explore.TaskInstruction, "explore") {
 		t.Fatalf("explore %+v", explore)
 	}
 	qa := childLoopFor(parent, "qa")
-	if !qa.PlanMode || !strings.Contains(qa.TaskInstruction, "evaluator") {
+	if qa.PlanMode {
+		t.Fatal("qa evaluates; it is not plan mode")
+	}
+	if !strings.Contains(qa.TaskInstruction, "evaluator") {
 		t.Fatalf("qa %+v", qa)
 	}
 	impl := childLoopFor(parent, "implement")

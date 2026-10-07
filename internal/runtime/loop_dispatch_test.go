@@ -5,10 +5,50 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
 )
+
+func TestParallelTaskCallsRunConcurrently(t *testing.T) {
+	var mu sync.Mutex
+	live := 0
+	max := 0
+	tools := &WorkspaceTools{
+		Task: func(prompt string, isolate bool, profile string) (string, error) {
+			mu.Lock()
+			live++
+			if live > max {
+				max = live
+			}
+			mu.Unlock()
+			time.Sleep(80 * time.Millisecond)
+			mu.Lock()
+			live--
+			mu.Unlock()
+			return prompt, nil
+		},
+	}
+	req := RunRequest{SessionID: "s", Tools: tools, Loop: DefaultLoop()}
+	started := time.Now()
+	out := dispatchTools(context.Background(), req, []ToolCall{
+		{ID: "t1", Name: "task", Arguments: `{"prompt":"a","profile":"explore"}`},
+		{ID: "t2", Name: "task", Arguments: `{"prompt":"b","profile":"explore"}`},
+		{ID: "t3", Name: "task", Arguments: `{"prompt":"c","profile":"explore"}`},
+	}, "s:r1", false)
+	elapsed := time.Since(started)
+	if elapsed > 220*time.Millisecond {
+		t.Fatalf("serial? elapsed=%s maxlive=%d", elapsed, max)
+	}
+	if max < 2 {
+		t.Fatalf("max live %d", max)
+	}
+	if len(out) != 3 {
+		t.Fatalf("len %d", len(out))
+	}
+}
 
 func TestExclusiveShellFailureDoesNotAbortSiblingWrite(t *testing.T) {
 	dir := t.TempDir()

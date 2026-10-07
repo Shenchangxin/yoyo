@@ -263,3 +263,32 @@ func TestInterruptCancelsInFlightSend(t *testing.T) {
 		t.Fatal("send did not return after interrupt")
 	}
 }
+
+func TestDeleteSessionCascadesTaskChildren(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	childID := src.ID + "--task--deadbeef"
+	child := SessionMeta{
+		ID:        childID,
+		ParentID:  src.ID,
+		CreatedAt: time.Now().UTC(),
+		Workspace: src.Workspace,
+		Title:     "task · explore",
+	}
+	if err := a.writeSession(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeleteSession(src.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(a.Home.Sessions(), childID+".meta.json")); !os.IsNotExist(err) {
+		t.Fatal("child meta remains")
+	}
+}
