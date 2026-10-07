@@ -76,13 +76,25 @@ func TestSubagentOwnJSONL(t *testing.T) {
 		}
 	}
 	found := false
+	sawStart := false
 	for _, ev := range parent {
-		if ev.Type == trace.TypeSubagent {
-			found = true
+		if ev.Type != trace.TypeSubagent {
+			continue
+		}
+		found = true
+		phase, _ := ev.Payload["phase"].(string)
+		if phase == "start" {
+			sawStart = true
+		}
+		if _, ok := ev.Payload["child"].(string); !ok {
+			t.Fatal("subagent event missing child")
 		}
 	}
 	if !found {
 		t.Fatal("missing parent subagent summary")
+	}
+	if !sawStart {
+		t.Fatal("missing subagent start event")
 	}
 }
 
@@ -137,6 +149,31 @@ func TestSubagentLiveEventsUseChildSession(t *testing.T) {
 	}
 	if childLive == 0 {
 		t.Fatal("expected child live events on Hub")
+	}
+}
+
+func TestReadOnlySubagentDeniesWrites(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir, ReadOnly: true}
+	if res := tools.Call("read_file", `{"path":"a.txt"}`); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	res := tools.Call("write_file", `{"path":"b.txt","content":"x"}`)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "read-only") {
+		t.Fatalf("%+v", res)
+	}
+	res = tools.Call("shell", `{"command":"echo x"}`)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "read-only") {
+		t.Fatalf("shell %+v", res)
+	}
+	for _, j := range AllToolJSON(tools) {
+		name, _ := j.Function["name"].(string)
+		if name == "shell" || name == "write_file" {
+			t.Fatalf("read-only schema still lists %s", name)
+		}
 	}
 }
 

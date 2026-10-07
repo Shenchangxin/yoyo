@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,38 @@ func TestApplyPatchSalvagesLiteralNewlines(t *testing.T) {
 	if !strings.Contains(string(b), "# hello") {
 		t.Fatalf("%s", b)
 	}
+}
+
+func TestUnwrapNestedWriteArguments(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	raw := `{"arguments":{"path":"reports/_part_head.html","content":"<h1>ok</h1>"}}`
+	res := tools.Call("write_file", raw)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "reports", "_part_head.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "<h1>ok</h1>") {
+		t.Fatalf("%s", b)
+	}
+}
+
+func TestWriteFileRejectsContextStub(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	stub := "[elided content 687 chars path=tools/md2canvas.py — on disk, read_file that path; do not rewrite from memory]\nprint(1)\n"
+	res := tools.Call("write_file", `{"path":"tools/md2canvas.py","content":`+mustJSONString(stub)+`}`)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "context stub") {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func mustJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 func TestWriteFileEmptyPathStillErrorsOnBlankJSON(t *testing.T) {

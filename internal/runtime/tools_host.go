@@ -78,15 +78,11 @@ func init() {
 		return t.toolSearch(str(args["query"]))
 	}
 	hostFns["task"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		if t != nil {
-			t.mu.Lock()
-			t.taskProfile = str(args["profile"])
-			t.mu.Unlock()
-		}
+		profile := str(args["profile"])
 		if prompts := anyStrings(args["prompts"]); len(prompts) > 1 {
-			return t.taskFanout(prompts, boolArg(args["isolate"]))
+			return t.taskFanout(prompts, boolArg(args["isolate"]), profile)
 		}
-		return t.task(str(args["prompt"]), boolArg(args["isolate"]))
+		return t.task(str(args["prompt"]), boolArg(args["isolate"]), profile)
 	}
 	hostFns["read_thread"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.readThread(str(args["session_id"]), str(args["query"]), str(args["message"]))

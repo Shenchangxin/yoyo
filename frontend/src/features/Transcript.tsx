@@ -24,6 +24,7 @@ import { classifyItem, errorCopy } from "../lib/error";
 import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig, withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
+import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
@@ -67,6 +68,7 @@ function tailOwnsActivity(rows: LayoutRow[]): boolean {
   const part = row.parts[row.parts.length - 1];
   if (!part) return false;
   if (part.kind === "process") return true;
+  if (part.kind === "subagent") return part.live;
   if (part.kind === "artifact") return processGroupLive(part.items);
   return false;
 }
@@ -108,9 +110,10 @@ function partSpace(parts: AgentPart[], i: number): string {
   const prev = parts[i - 1];
   const cur = parts[i];
   if (cur.kind === "process") return prev.kind === "item" ? "pt-2.5" : "pt-1.5";
+  if (cur.kind === "subagent") return "pt-1.5";
   if (cur.kind === "artifact") return "pt-2";
   if (cur.kind === "item" && cur.item.type === "assistant") {
-    if (prev.kind === "process" || prev.kind === "artifact") return "pt-3";
+    if (prev.kind === "process" || prev.kind === "artifact" || prev.kind === "subagent") return "pt-3";
     return "pt-2";
   }
   return "pt-2";
@@ -137,7 +140,6 @@ export function Transcript(props: {
   latestNonce?: number;
   onActiveTurn?: (key: string) => void;
   onJumpLatest?: () => void | Promise<void>;
-  onOpenChild?: (id: string) => void;
   onRestoreFiles?: (from: string) => void;
   onForkFrom?: (from: string) => void;
 }) {
@@ -202,7 +204,7 @@ export function Transcript(props: {
                   className={cn(
                     partSpace(row.parts, pi),
                     part.kind === "item" && part.item.type === "assistant" && "assistant-block min-w-0",
-                    (part.kind === "process" || part.kind === "artifact") && "u-chrome",
+                    (part.kind === "process" || part.kind === "artifact" || part.kind === "subagent") && "u-chrome",
                   )}
                 >
                   {part.kind === "process" ? (
@@ -212,7 +214,14 @@ export function Transcript(props: {
                       running={props.running}
                       compact={props.compact}
                       liveTexts={props.liveTexts}
-                      onOpenChild={props.onOpenChild}
+                    />
+                  ) : part.kind === "subagent" ? (
+                    <SubagentCard
+                      items={part.items}
+                      child={part.child}
+                      live={props.running && part.live}
+                      running={props.running}
+                      compact={props.compact}
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />

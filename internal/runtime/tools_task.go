@@ -21,10 +21,10 @@ const MaxTaskDepth = 2
 
 // TaskFunc runs an isolated child loop and returns a summary only —
 // Claude Code's subagent pattern: the parent context never absorbs the
-// child's tool transcript.
-type TaskFunc func(prompt string, isolate bool) (string, error)
+// child's tool transcript. profile is explore | implement | qa.
+type TaskFunc func(prompt string, isolate bool, profile string) (string, error)
 
-func (t *WorkspaceTools) task(prompt string, isolate bool) ToolResult {
+func (t *WorkspaceTools) task(prompt string, isolate bool, profile string) ToolResult {
 	if strings.TrimSpace(prompt) == "" {
 		return ToolResult{Err: fmt.Errorf("empty task prompt")}
 	}
@@ -34,7 +34,7 @@ func (t *WorkspaceTools) task(prompt string, isolate bool) ToolResult {
 	if t == nil || t.Task == nil {
 		return ToolResult{Err: fmt.Errorf("subagent not available")}
 	}
-	out, err := t.Task(prompt, isolate)
+	out, err := t.Task(prompt, isolate, profile)
 	if err != nil {
 		return ToolResult{Content: out, Err: err}
 	}
@@ -42,11 +42,22 @@ func (t *WorkspaceTools) task(prompt string, isolate bool) ToolResult {
 	return ToolResult{Content: "SUBAGENT_SUMMARY:\n" + capped}
 }
 
-func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bool) (string, error) {
+func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bool, profile string) (string, error) {
 	if parent.Tools != nil && parent.Tools.Depth >= MaxTaskDepth {
 		return "", fmt.Errorf("nested subagent forbidden")
 	}
 	ws := parent.Workspace
+	childLoop := childLoopFor(parent, profile)
+	childID := ChildSessionID(parent.SessionID)
+	if parent.OnChild != nil {
+		parent.OnChild(childID, prompt, false)
+		defer parent.OnChild(childID, prompt, true)
+	}
+	// Card must exist before isolate/Run so a failed copy still shows inline
+	// in the parent transcript instead of a bare tool_result.
+	emit(parent, trace.TypeSubagent, "runtime", map[string]any{
+		"prompt": prompt, "isolate": isolate, "child": childID, "phase": "start", "profile": profile,
+	})
 	cleanup := func() {}
 	if isolate && ws != "" {
 		var err error
@@ -56,15 +67,6 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		}
 		defer cleanup()
 	}
-	childLoop := childLoopFor(parent, profileOf(parent.Tools))
-	childID := ChildSessionID(parent.SessionID)
-	if parent.OnChild != nil {
-		parent.OnChild(childID, prompt, false)
-		defer parent.OnChild(childID, prompt, true)
-	}
-	emit(parent, trace.TypeSubagent, "runtime", map[string]any{
-		"prompt": prompt, "isolate": isolate, "child": childID, "phase": "start",
-	})
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
 		cp := *parent.Tools
@@ -76,16 +78,24 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		if ws != "" {
 			cp.Spill = NewSpill(filepath.Join(ws, ".yoyo", "context", "task", filepath.Base(childID)))
 		}
-		cp.PlanMode = parent.Tools.PlanMode
+		cp.PlanMode = false
+		cp.ReadOnly = readOnlyTaskProfile(profile)
 		cp.MaxParallel = parent.Tools.MaxParallel
 		cp.ChatOverlay = false
 		cp.VerifyHint = false
+		if cp.ReadOnly {
+			cp.Advertised = readOnlyAdvertised(cp.Advertised)
+		}
 		StripPackBootstrap(&cp)
 		childTools = &cp
 	}
 	user := prompt
 	if strings.TrimSpace(parent.Loop.TaskInstruction) != "" {
 		user = parent.Loop.TaskInstruction + "\n\n" + prompt
+	}
+	childPolicy := parent.Policy
+	if strings.EqualFold(strings.TrimSpace(childPolicy.Mode), "plan") {
+		childPolicy.Mode = "auto"
 	}
 	out, err := Run(ctx, RunRequest{
 		SessionID:        childID,
@@ -97,7 +107,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		ModelFingerprint: parent.ModelFingerprint,
 		Model:            parent.Model,
 		Loop:             childLoop,
-		Policy:           parent.Policy,
+		Policy:           childPolicy,
 		Fragments:        OverlayConduct(parent.Fragments, ConductOpts{Plan: childLoop.PlanMode, Methodology: false}),
 		Playbook:         parent.Playbook,
 		Skills:           parent.Skills,
@@ -117,7 +127,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		TraceID:          parent.TraceID,
 		ShowThinking:     parent.ShowThinking,
 	})
-	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID, "phase": "complete"}
+	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID, "phase": "complete", "profile": profile}
 	if err != nil {
 		payload["error"] = err.Error()
 	}
@@ -125,7 +135,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 	return out, err
 }
 
-func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool) ToolResult {
+func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool, profile string) ToolResult {
 	if t != nil && t.Depth >= MaxTaskDepth {
 		return ToolResult{Err: fmt.Errorf("nested subagent forbidden")}
 	}
@@ -156,7 +166,7 @@ func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool) ToolResult {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			out, err := t.Task(p, isolate)
+			out, err := t.Task(p, isolate, profile)
 			ch <- res{i: i, out: out, err: err}
 		}(i, p)
 	}
@@ -179,17 +189,38 @@ func (t *WorkspaceTools) taskFanout(prompts []string, isolate bool) ToolResult {
 	return ToolResult{Content: "SUBAGENT_FANOUT:\n" + b.String()}
 }
 
-func profileOf(t *WorkspaceTools) string {
-	if t == nil {
-		return ""
+func readOnlyTaskProfile(profile string) bool {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "explore", "qa":
+		return true
+	default:
+		return false
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.taskProfile
 }
 
-const exploreInstruction = "You are an explore subagent. Return structured findings: paths, symbols, and risks. Do not copy file bodies back to the parent. Read-only."
-const qaInstruction = "You are an independent evaluator. Check whether the required artifacts exist and match the spec. Do not implement new features."
+func readOnlyAdvertised(have []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(n string) {
+		if n == "" || seen[n] || !readOnlySubagentCall(n) {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	for _, n := range have {
+		add(n)
+	}
+	if len(out) == 0 {
+		for _, n := range []string{"read_file", "list_dir", "glob", "grep", "web_fetch", "web_search", "recall_context", "view_image"} {
+			add(n)
+		}
+	}
+	return out
+}
+
+const exploreInstruction = "You are an explore subagent. Execute the prompt with read-only tools and return structured findings in your final letter. Do not write a plan, do not call update_plan, and do not copy file bodies back to the parent."
+const qaInstruction = "You are an independent evaluator. Check whether the required artifacts exist and match the spec. Return a verdict. Do not implement new features and do not write a plan."
 
 func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	loop := parent.Loop
@@ -209,16 +240,15 @@ func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 			tools = ChatMaxToolMessages / 2
 		}
 	}
+	loop.PlanMode = false
 	switch strings.ToLower(strings.TrimSpace(profile)) {
 	case "explore":
-		loop.PlanMode = true
 		if strings.TrimSpace(loop.TaskInstruction) == "" {
 			loop.TaskInstruction = exploreInstruction
 		} else {
 			loop.TaskInstruction = exploreInstruction + "\n\n" + loop.TaskInstruction
 		}
 	case "qa":
-		loop.PlanMode = true
 		if strings.TrimSpace(loop.TaskInstruction) == "" {
 			loop.TaskInstruction = qaInstruction
 		} else {

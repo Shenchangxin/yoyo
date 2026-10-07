@@ -97,6 +97,21 @@ export function threadChannel(t: { channel?: string } | null | undefined): Threa
   return t?.channel === "video" ? "video" : "agent";
 }
 
+/** Subagent runs are not first-class chats; they belong inline in the parent transcript. */
+export function isSubagentThread(t: { id?: string; parentId?: string } | null | undefined): boolean {
+  if (!t) return false;
+  if (t.parentId) return true;
+  return !!parentSessionId(t.id || "");
+}
+
+export function parentSessionId(id: string): string {
+  const task = id.indexOf("--task--");
+  if (task >= 0) return id.slice(0, task);
+  const legacy = id.indexOf("/tasks/");
+  if (legacy >= 0) return id.slice(0, legacy);
+  return "";
+}
+
 export function channelForSurface(surface: Surface): ThreadChannel {
   return surface === "video" ? "video" : "agent";
 }

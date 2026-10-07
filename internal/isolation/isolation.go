@@ -64,6 +64,7 @@ func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, o
 		return Outcome{Err: os.ErrInvalid}
 	}
 	apply(cmd)
+	preparePythonUTF8(cmd)
 	sp := &spool{last: time.Now(), onChunk: onChunk}
 	if cmd.Stdout == nil {
 		cmd.Stdout = sp
@@ -128,6 +129,48 @@ func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, o
 			}
 		}
 	}
+}
+
+func preparePythonUTF8(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	env = withDefaultEnv(env, "PYTHONUTF8", "1")
+	env = withDefaultEnv(env, "PYTHONIOENCODING", "utf-8")
+	cmd.Env = env
+}
+
+func withDefaultEnv(env []string, key, val string) []string {
+	prefix := key + "="
+	for _, e := range env {
+		if len(e) >= len(prefix) && stringsEqualFoldPrefix(e, prefix) {
+			return env
+		}
+	}
+	return append(env, prefix+val)
+}
+
+func stringsEqualFoldPrefix(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	for i := 0; i < len(prefix); i++ {
+		a, b := s[i], prefix[i]
+		if a >= 'A' && a <= 'Z' {
+			a += 'a' - 'A'
+		}
+		if b >= 'A' && b <= 'Z' {
+			b += 'a' - 'A'
+		}
+		if a != b {
+			return false
+		}
+	}
+	return true
 }
 
 func ctxDone(ctx context.Context) <-chan struct{} {

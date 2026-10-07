@@ -40,7 +40,7 @@ import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
-import { threadChannel } from "../lib/protocol";
+import { isSubagentThread, threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
 import { VideoShellNav } from "./video/VideoShellNav";
@@ -213,6 +213,7 @@ export function ThreadRail(props: {
   const canary = canaryDirty(refs);
   const q = props.query.toLowerCase();
   const list = props.threads.filter((t) => {
+    if (isSubagentThread(t)) return false;
     if (t.archived && !q && !props.showArchived) return false;
     if (threadChannel(t) !== (props.surface === "video" ? "video" : "agent")) return false;
     if (!q) return true;

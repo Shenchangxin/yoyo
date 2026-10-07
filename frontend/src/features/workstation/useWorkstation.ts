@@ -19,7 +19,7 @@ import { loadModelCatalog } from "../../lib/model-catalog";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
-import { channelForSurface, threadChannel } from "../../lib/protocol";
+import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { useDramaSelection } from "../video/workshop-store";
@@ -57,17 +57,27 @@ export const emptyCfg: AppConfig = {
 };
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
 
+function resolveOperatorThread(list: Thread[], t: Thread | null, channel: ThreadChannel): Thread | null {
+  if (!t) return null;
+  if (!isSubagentThread(t) && threadChannel(t) === channel) return t;
+  const pid = t.parentId || parentSessionId(t.id);
+  const parent = list.find((x) => x.id === pid && !isSubagentThread(x) && threadChannel(x) === channel);
+  if (parent) return parent;
+  return list.find((x) => !isSubagentThread(x) && threadChannel(x) === channel && !x.archived)
+    || list.find((x) => !isSubagentThread(x) && threadChannel(x) === channel)
+    || null;
+}
+
 function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: string, cur: Thread | null): Thread | null {
-  if (cur && threadChannel(cur) === channel && list.some((t) => t.id === cur.id)) {
-    return list.find((t) => t.id === cur.id) || cur;
+  const chats = list.filter((t) => !isSubagentThread(t) && threadChannel(t) === channel);
+  if (cur && list.some((t) => t.id === cur.id)) {
+    return resolveOperatorThread(list, list.find((t) => t.id === cur.id) || cur, channel);
   }
   if (preferred) {
-    const hit = list.find((t) => t.id === preferred && threadChannel(t) === channel);
-    if (hit) return hit;
+    const hit = list.find((t) => t.id === preferred);
+    if (hit) return resolveOperatorThread(list, hit, channel);
   }
-  return list.find((t) => threadChannel(t) === channel && !t.archived)
-    || list.find((t) => threadChannel(t) === channel)
-    || null;
+  return chats.find((t) => !t.archived) || chats[0] || null;
 }
 
 function videoProjectOf(v: any): VideoProject | null {

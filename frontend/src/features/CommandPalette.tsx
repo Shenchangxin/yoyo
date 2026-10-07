@@ -14,7 +14,7 @@ import {
   Square,
 } from "lucide-react";
 import type { Lab, Thread, VideoProject } from "../lib/protocol";
-import { threadChannel } from "../lib/protocol";
+import { isSubagentThread, threadChannel } from "../lib/protocol";
 import { useCopy } from "../lib/i18n";
 import { displayTitle } from "../lib/display-title";
 import { chrome } from "../lib/chrome";
@@ -183,9 +183,9 @@ export function CommandPalette(props: {
                   </Command.Item>
                 ))}
               </Command.Group>
-              {props.threads.length ? (
+              {props.threads.some((t) => !isSubagentThread(t)) ? (
                 <Command.Group heading={copy.palette.chats}>
-                  {props.threads.slice(0, 20).map((t) => (
+                  {props.threads.filter((t) => !isSubagentThread(t)).slice(0, 20).map((t) => (
                     <Command.Item
                       key={t.id}
                       value={displayTitle(t.title, copy.rail.untitled) + " " + t.id}

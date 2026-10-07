@@ -17,7 +17,8 @@ export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] 
 export type AgentPart =
   | { key: string; kind: "item"; item: Item }
   | { key: string; kind: "process"; items: Item[]; live: boolean }
-  | { key: string; kind: "artifact"; items: Item[] };
+  | { key: string; kind: "artifact"; items: Item[] }
+  | { key: string; kind: "subagent"; items: Item[]; child: string; live: boolean };
 
 export type LayoutRow =
   | { key: string; kind: "user"; item: Item; turnKey: string }
@@ -39,7 +40,12 @@ export function isMentionInject(it: Item): boolean {
 
 /** Duplicate of a tool already in the turn — keep in the agent block, never render. */
 export function isTranscriptDuplicate(it: Item): boolean {
-  return it.type === "plan" || it.type === "file_change" || it.type === "ask_user";
+  if (it.type === "plan" || it.type === "file_change" || it.type === "ask_user") return true;
+  // Successful task calls are the SubagentCard; keep a failed result visible.
+  if (isToolish(it) && toolName(it) === "task") {
+    return !(it.type === "tool_result" && isToolFailed(it));
+  }
+  return false;
 }
 
 /** Artifacts the operator acts on. `update_plan` stays in the process rail. */
@@ -67,8 +73,20 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
 
 export function isProcessItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
-  if (it.type === "reasoning" || it.type === "subagent" || it.type === "context_injection") return true;
+  if (it.type === "reasoning" || it.type === "context_injection") return true;
+  if (it.type === "subagent") return false;
   return isToolish(it) && !isOutcomeTool(it);
+}
+
+export function subagentChildId(it: Item): string {
+  return String(it.payload?.child || "").trim();
+}
+
+export function subagentLive(items: Item[]): boolean {
+  if (!items.length) return false;
+  const last = items[items.length - 1];
+  const phase = String(last.payload?.phase || "").trim();
+  return phase !== "complete";
 }
 
 export function isAgentItem(it: Item): boolean {
@@ -226,6 +244,19 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
   };
   for (const it of items) {
     if (isMentionInject(it) || isTranscriptDuplicate(it)) continue;
+    if (it.type === "subagent") {
+      flushProcess();
+      flushArtifacts();
+      const child = subagentChildId(it) || it.key;
+      const existing = parts.find((p) => p.kind === "subagent" && p.child === child);
+      if (existing && existing.kind === "subagent") {
+        existing.items = [...existing.items, it];
+        existing.live = subagentLive(existing.items);
+      } else {
+        parts.push({ key: `subagent:${child}`, kind: "subagent", items: [it], child, live: subagentLive([it]) });
+      }
+      continue;
+    }
     if (isToolish(it)) {
       const id = String(it.payload?.id || it.key);
       if (pairKind.get(id) === "artifact") {

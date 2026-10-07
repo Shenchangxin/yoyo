@@ -1089,6 +1089,39 @@ test("companion surface does not render the workstation", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
 });
 
+test("subagent sessions stay nested in the parent transcript", async ({ page }) => {
+  const parent = "7c6f7b065959a6fa";
+  const child = `${parent}--task--abc123`;
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [
+      { id: parent, title: "PDF extract", workspace: "C:/tmp/ws" },
+      { id: child, parent_id: parent, title: "task · explore pdfs", workspace: "C:/tmp/ws" },
+    ],
+    events: [
+      { type: "user", session_id: parent, ts: "2026-01-01T00:00:00Z", payload: { text: "extract the papers" } },
+      { type: "subagent", session_id: parent, ts: "2026-01-01T00:00:01Z", payload: { child, prompt: "List PDF files in the workspace", phase: "start", profile: "explore" } },
+      { type: "subagent", session_id: parent, ts: "2026-01-01T00:00:05Z", payload: { child, prompt: "List PDF files in the workspace", phase: "complete", profile: "explore", summary: "Found 3 PDFs" } },
+      { type: "assistant", session_id: parent, ts: "2026-01-01T00:00:06Z", payload: { text: "I found three papers.", id: "r1" } },
+    ],
+    trajectories: {
+      [child]: [
+        { type: "user", session_id: child, ts: "2026-01-01T00:00:01Z", payload: { text: "List PDF files" } },
+        { type: "tool_call", session_id: child, ts: "2026-01-01T00:00:02Z", payload: { id: "g1", name: "glob", arguments: "{\"pattern\":\"*.pdf\"}" } },
+        { type: "tool_result", session_id: child, ts: "2026-01-01T00:00:03Z", payload: { id: "g1", name: "glob", content: "a.pdf" } },
+        { type: "assistant", session_id: child, ts: "2026-01-01T00:00:04Z", payload: { text: "Found 3 PDFs", id: "c1" } },
+      ],
+    },
+  });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: /PDF extract/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /task · explore/ })).toHaveCount(0);
+  const card = page.getByTestId("subagent-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByText("List PDF files in the workspace")).toBeVisible();
+  await card.click();
+  await expect(page.getByTestId("process-group")).toBeVisible();
+});
+
 test("companion bubble shows loading while a turn is running", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "live", created_at: "2026-01-01T00:00:00Z" }],

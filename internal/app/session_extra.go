@@ -39,6 +39,9 @@ func (a *App) DeleteSession(id string) error {
 	if id == "" {
 		return fmt.Errorf("empty session id")
 	}
+	for _, child := range a.childSessionIDs(id) {
+		_ = a.DeleteSession(child)
+	}
 	if a.Running(id) {
 		_ = a.Interrupt(id)
 	}
@@ -86,6 +89,36 @@ func (a *App) DeleteSession(id string) error {
 		runtime.RemoveWorktree(origin, worktree)
 	}
 	return first
+}
+
+func (a *App) childSessionIDs(parent string) []string {
+	parent = strings.TrimSpace(parent)
+	if parent == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(a.Home.Sessions())
+	if err != nil {
+		return nil
+	}
+	prefix := parent + "--task--"
+	seen := map[string]bool{}
+	var ids []string
+	for _, e := range entries {
+		name := e.Name()
+		id := ""
+		switch {
+		case strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".meta.json"):
+			id = strings.TrimSuffix(name, ".meta.json")
+		case strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ".jsonl"):
+			id = strings.TrimSuffix(name, ".jsonl")
+		}
+		if id == "" || id == parent || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (a *App) ArchiveSession(id string, archived bool) (SessionMeta, error) {

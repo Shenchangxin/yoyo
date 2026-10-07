@@ -10,7 +10,7 @@ const (
 	ChatRulesTokens     = 8_000
 	ChatKeepTokens      = 16_000
 	ChatContextBuffer   = 20_000
-	ChatTaskMaxTurns    = 24
+	ChatTaskMaxTurns    = 40
 	ChatTaskMaxTools    = 60
 )
 
