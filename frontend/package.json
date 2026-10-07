@@ -11,7 +11,7 @@
     "test:e2e": "playwright test",
     "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts src/vendor/emotion-ball/*.test.ts",
     "test:scale": "node --experimental-strip-types --test src/lib/scale.test.ts",
-    "test:lib": "node --experimental-strip-types --test src/lib/*.test.ts"
+    "test:lib": "node --experimental-strip-types --test src/lib/*.test.ts src/lib/skin/*.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

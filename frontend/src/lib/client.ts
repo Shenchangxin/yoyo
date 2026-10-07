@@ -2,6 +2,7 @@ import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./nor
 import { getLocale } from "./i18n";
 import { snapUiScale } from "./scale";
 import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextInventory, ContextObject, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import { defaultMaterials, type SkinInfo, type SkinResolved, type TokenMap } from "./skin/schema";
 import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
 export class ApiError extends Error {
@@ -199,6 +200,7 @@ export function configOf(v: any): AppConfig {
     theme: str(pick(v, "theme", "Theme"), "system"),
     paletteDark: str(pick(v, "palette_dark", "PaletteDark", "paletteDark"), "ink"),
     paletteLight: str(pick(v, "palette_light", "PaletteLight", "paletteLight"), "neutral"),
+    skin: str(pick(v, "skin", "Skin")),
     gateMode: str(pick(v, "gate_mode", "GateMode", "gateMode"), "manual"),
     crashResume: boolOr(pick(v, "crash_resume", "CrashResume", "crashResume"), true),
     searchUrl: str(pick(v, "search_url", "SearchURL", "searchUrl")),
@@ -287,6 +289,7 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     theme: cfg.theme || "system",
     palette_dark: cfg.paletteDark || "ink",
     palette_light: cfg.paletteLight || "neutral",
+    skin: cfg.skin || "",
     gate_mode: cfg.gateMode || "manual",
     crash_resume: cfg.crashResume !== false,
     search_url: cfg.searchUrl || "",
@@ -300,6 +303,184 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     return;
   }
   await http("/api/config", { method: "POST", body: JSON.stringify(body) });
+}
+
+function tokenMapOrUndef(v: any): TokenMap | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const keys = Object.keys(v);
+  if (!keys.length) return undefined;
+  return v as TokenMap;
+}
+
+function skinInfoOf(v: any): SkinInfo {
+  return {
+    id: str(pick(v, "id", "ID")),
+    name: str(pick(v, "name", "Name")),
+    author: str(pick(v, "author", "Author")),
+    description: str(pick(v, "description", "Description")),
+    builtin: bool(pick(v, "builtin", "Builtin")),
+    preserveEvidence: boolOr(pick(v, "preserveEvidence", "PreserveEvidence"), true),
+    capabilities: asArray(pick(v, "capabilities", "Capabilities")).map(String),
+    hasWallpaper: bool(pick(v, "hasWallpaper", "HasWallpaper")),
+    hasFonts: bool(pick(v, "hasFonts", "HasFonts")),
+    dark: str(pick(v, "dark", "Dark")),
+    light: str(pick(v, "light", "Light")),
+    wallpaperUrl: str(pick(v, "wallpaperUrl", "WallpaperURL", "wallpaper_url")),
+    previewUrl: str(pick(v, "previewUrl", "PreviewURL", "preview_url")),
+    previewDark: tokenMapOrUndef(pick(v, "previewDark", "PreviewDark")),
+    previewLight: tokenMapOrUndef(pick(v, "previewLight", "PreviewLight")),
+    materials: (() => {
+      const mats = pick(v, "materials", "Materials") || {};
+      const fit = str(pick(mats, "wallpaperFit", "WallpaperFit"), "cover");
+      return {
+        grain: num(pick(mats, "grain", "Grain"), 0.04),
+        glassBlur: str(pick(mats, "glassBlur", "GlassBlur")),
+        wallpaperFit: (fit === "contain" || fit === "tile" ? fit : "cover") as "cover" | "contain" | "tile",
+        wallpaperDim: num(pick(mats, "wallpaperDim", "WallpaperDim"), 0.45),
+        radiusScale: num(pick(mats, "radiusScale", "RadiusScale"), 1) || 1,
+      };
+    })(),
+  };
+}
+
+function skinResolvedOf(v: any): SkinResolved {
+  const tokens = (pick(v, "tokens", "Tokens") || {}) as TokenMap;
+  const mats = pick(v, "materials", "Materials") || {};
+  const fonts = asArray(pick(v, "fonts", "Fonts")).map((f: any) => ({
+    family: str(pick(f, "family", "Family")),
+    url: str(pick(f, "url", "URL")),
+    role: str(pick(f, "role", "Role")),
+  }));
+  const rgb = asArray(pick(v, "windowRgb", "WindowRGB", "window_rgb")).map(Number);
+  const contrast = pick(v, "contrast", "Contrast") || {};
+  const fit = str(pick(mats, "wallpaperFit", "WallpaperFit"), "cover");
+  return {
+    id: str(pick(v, "id", "ID")),
+    name: str(pick(v, "name", "Name")),
+    builtin: bool(pick(v, "builtin", "Builtin")),
+    mode: str(pick(v, "mode", "Mode"), "dark") === "light" ? "light" : "dark",
+    preserveEvidence: boolOr(pick(v, "preserveEvidence", "PreserveEvidence"), true),
+    tokens: tokens && typeof tokens === "object" ? tokens : {},
+    windowRgb: rgb.length >= 3 ? rgb.slice(0, 3) : [28, 28, 26],
+    wallpaperUrl: str(pick(v, "wallpaperUrl", "WallpaperURL", "wallpaper_url")),
+    wallpaperFile: str(pick(v, "wallpaperFile", "WallpaperFile", "wallpaper_file")),
+    fonts,
+    materials: {
+      grain: num(pick(mats, "grain", "Grain"), 0.04),
+      glassBlur: str(pick(mats, "glassBlur", "GlassBlur")),
+      wallpaperFit: fit === "contain" || fit === "tile" ? fit : "cover",
+      wallpaperDim: num(pick(mats, "wallpaperDim", "WallpaperDim"), 0.45),
+      radiusScale: num(pick(mats, "radiusScale", "RadiusScale"), 1) || 1,
+    },
+    contrast: {
+      foreground: num(pick(contrast, "foreground", "Foreground")),
+      muted: num(pick(contrast, "muted", "Muted")),
+      pass: boolOr(pick(contrast, "pass", "Pass"), true),
+      reason: str(pick(contrast, "reason", "Reason")),
+    },
+  };
+}
+
+export async function listSkins(): Promise<SkinInfo[]> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ListSkins", "listSkins");
+  const raw = fn ? await fn() : await http("/api/skins");
+  return asArray(raw).map(skinInfoOf);
+}
+
+export async function getSkin(id: string): Promise<{ info: SkinInfo; dark: TokenMap; light: TokenMap }> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "GetSkin", "getSkin");
+  const raw = fn ? await fn(id) : await http(`/api/skins?id=${encodeURIComponent(id)}`);
+  return {
+    info: skinInfoOf(pick(raw, "info", "Info") || raw),
+    dark: (pick(raw, "dark", "Dark") || {}) as TokenMap,
+    light: (pick(raw, "light", "Light") || {}) as TokenMap,
+  };
+}
+
+export async function importSkinB64(bytesB64: string): Promise<SkinInfo> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ImportSkin", "importSkin");
+  const raw = fn
+    ? await fn(bytesB64)
+    : await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "import", bytes_b64: bytesB64 }) });
+  return skinInfoOf(raw);
+}
+
+export async function importSkinPath(path: string): Promise<SkinInfo> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ImportSkinPath", "importSkinPath");
+  const raw = fn
+    ? await fn(path)
+    : await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "import", path }) });
+  return skinInfoOf(raw);
+}
+
+export async function exportSkin(id: string): Promise<{ filename: string; bytesB64: string }> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ExportSkin", "exportSkin");
+  const raw = fn
+    ? await fn(id)
+    : await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "export", id }) });
+  return {
+    filename: str(pick(raw, "filename", "Filename"), `${id}.yoyoskin`),
+    bytesB64: str(pick(raw, "bytes_b64", "bytesB64", "BytesB64")),
+  };
+}
+
+export async function deleteSkin(id: string): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "DeleteSkin", "deleteSkin");
+  if (fn) {
+    await fn(id);
+    return;
+  }
+  await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "delete", id }) });
+}
+
+export async function activateSkin(id: string): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ActivateSkin", "activateSkin");
+  if (fn) {
+    await fn(id);
+    return;
+  }
+  await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "activate", id }) });
+}
+
+export async function resolveSkin(id: string, mode: "dark" | "light"): Promise<SkinResolved> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "ResolveSkin", "resolveSkin");
+  const raw = fn
+    ? await fn(id, mode)
+    : await http(`/api/skins?id=${encodeURIComponent(id)}&resolve=1&mode=${mode}`);
+  return skinResolvedOf(raw);
+}
+
+export type SkinSaveIn = {
+  id?: string;
+  name: string;
+  author?: string;
+  description?: string;
+  preserveEvidence?: boolean;
+  dark: TokenMap;
+  light: TokenMap;
+  materials?: ReturnType<typeof defaultMaterials>;
+  wallpaper_b64?: string;
+  wallpaper_name?: string;
+  font_sans_b64?: string;
+  font_mono_b64?: string;
+  preview_b64?: string;
+};
+
+export async function saveSkin(in_: SkinSaveIn): Promise<SkinInfo> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "SaveSkin", "saveSkin");
+  const raw = fn
+    ? await fn(in_)
+    : await http("/api/skins", { method: "POST", body: JSON.stringify({ op: "save", ...in_ }) });
+  return skinInfoOf(raw);
 }
 
 export async function raiseSession(id: string): Promise<void> {

@@ -12,6 +12,7 @@ export function AppFrame({
       className={cn("relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground", className)}
       {...props}
     >
+      <div className="app-wallpaper" aria-hidden />
       <div className="app-grain" aria-hidden />
       {overlay}
       <div className="chrome drag relative z-10 flex h-full min-h-0 flex-1 items-stretch overflow-hidden" data-app-frame="content">
@@ -25,7 +26,7 @@ export function MainColumn({ children, className }: { children: ReactNode; class
   return (
     <div
       className={cn(
-        "no-drag flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none bg-transparent",
+        "no-drag relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none bg-transparent",
         className,
       )}
       id="main-stage"

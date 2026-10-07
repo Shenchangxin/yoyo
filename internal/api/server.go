@@ -15,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -1078,6 +1079,57 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		a.Vault.Set("default", strings.TrimSpace(body.Value))
 		writeJSON(w, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("/api/skins", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			id := strings.TrimSpace(r.URL.Query().Get("id"))
+			if id != "" && r.URL.Query().Get("resolve") != "" {
+				restRPC(a, w, r, "skins.resolve", map[string]any{"id": id, "mode": r.URL.Query().Get("mode")})
+				return
+			}
+			if id != "" {
+				restRPC(a, w, r, "skins.get", map[string]any{"id": id})
+				return
+			}
+			restRPC(a, w, r, "skins.list", nil)
+		case http.MethodPost:
+			b, _ := io.ReadAll(r.Body)
+			var body map[string]any
+			_ = json.Unmarshal(b, &body)
+			op, _ := body["op"].(string)
+			switch strings.TrimSpace(op) {
+			case "import", "":
+				if _, has := body["dark"]; has && op != "import" {
+					restRPC(a, w, r, "skins.save", body)
+					return
+				}
+				if op == "" && body["id"] != nil && body["mode"] != nil {
+					restRPC(a, w, r, "skins.resolve", body)
+					return
+				}
+				restRPC(a, w, r, "skins.import", body)
+			case "save":
+				restRPC(a, w, r, "skins.save", body)
+			case "activate":
+				restRPC(a, w, r, "skins.activate", body)
+			case "delete":
+				restRPC(a, w, r, "skins.delete", body)
+			case "export":
+				restRPC(a, w, r, "skins.export", body)
+			case "resolve":
+				restRPC(a, w, r, "skins.resolve", body)
+			case "get":
+				restRPC(a, w, r, "skins.get", body)
+			default:
+				http.Error(w, "unknown op", 400)
+			}
+		default:
+			http.Error(w, "method", 405)
+		}
+	})
+	if a != nil && a.Skins != nil {
+		mux.Handle(skin.AssetPrefix, skin.Handler(a.Skins))
+	}
 	if static != nil {
 		mux.Handle("/", static)
 	} else {

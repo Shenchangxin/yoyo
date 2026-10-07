@@ -291,6 +291,7 @@ export type AppConfig = {
 	theme?: string;
   paletteDark?: string;
   paletteLight?: string;
+  skin?: string;
   gateMode?: string;
   crashResume?: boolean;
   searchUrl?: string;

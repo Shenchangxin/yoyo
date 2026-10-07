@@ -66,7 +66,7 @@ export function VideoHistory(props: {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-history">
+    <div className="flex h-full min-h-0 flex-col" data-testid="video-history" data-skin-pane>
       <div className="flex shrink-0 items-center gap-2 px-5 py-4">
         <div className="min-w-0 flex-1">
           <h1 className="text-[16px] font-semibold tracking-[-0.03em]">{copy.video.shellTasks}</h1>

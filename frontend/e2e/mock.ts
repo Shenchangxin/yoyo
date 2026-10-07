@@ -163,6 +163,28 @@ export async function mockApi(
       if (rpcMethod === "video.providers.list") {
         return ok([]);
       }
+      if (rpcMethod === "skins.list") {
+        return ok([
+          { id: "builtin.ink", name: "Ink", builtin: true, preserveEvidence: true },
+          { id: "builtin.neutral", name: "Neutral", builtin: true, preserveEvidence: true },
+        ]);
+      }
+      if (rpcMethod === "skins.resolve") {
+        return ok({
+          id: params.id || "builtin.ink",
+          name: "Ink",
+          builtin: true,
+          mode: params.mode || "dark",
+          preserveEvidence: true,
+          tokens: {},
+          windowRgb: [28, 28, 26],
+          materials: { grain: 0.04, wallpaperFit: "cover", wallpaperDim: 0.45, radiusScale: 1 },
+          contrast: { foreground: 12, muted: 5, pass: true },
+        });
+      }
+      if (rpcMethod.startsWith("skins.")) {
+        return ok({ ok: true });
+      }
       return ok({});
     }
 
@@ -405,6 +427,37 @@ export async function mockApi(
     }
     if (path.endsWith("/api/review/queue")) {
       return route.fulfill({ json: extra?.queue ?? { offers: [], inbox: [], drafts: [], browser: [] } });
+    }
+    if (path.endsWith("/api/skins")) {
+      if (method === "GET") {
+        const u = new URL(route.request().url());
+        const id = u.searchParams.get("id") || "";
+        if (id && u.searchParams.get("resolve")) {
+          return route.fulfill({
+            json: {
+              id: id || "builtin.ink",
+              name: "Ink",
+              builtin: !id || id.startsWith("builtin."),
+              mode: u.searchParams.get("mode") || "dark",
+              preserveEvidence: true,
+              tokens: {},
+              windowRgb: [28, 28, 26],
+              materials: { grain: 0.04, wallpaperFit: "cover", wallpaperDim: 0.45, radiusScale: 1 },
+              contrast: { foreground: 12, muted: 5, pass: true },
+            },
+          });
+        }
+        if (id) {
+          return route.fulfill({ json: { info: { id, name: id, builtin: true, preserveEvidence: true }, dark: {}, light: {} } });
+        }
+        return route.fulfill({
+          json: [
+            { id: "builtin.ink", name: "Ink", builtin: true, preserveEvidence: true },
+            { id: "builtin.neutral", name: "Neutral", builtin: true, preserveEvidence: true },
+          ],
+        });
+      }
+      return route.fulfill({ json: { ok: true } });
     }
     return route.fulfill({ status: 200, json: {} });
   });

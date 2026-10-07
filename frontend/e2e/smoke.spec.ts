@@ -1125,6 +1125,8 @@ test("companion surface does not render the workstation", async ({ page }) => {
   await expect(page.getByRole("button", { name: "New chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
+  await expect(page.locator("html.companion")).toHaveCount(1);
+  await expect(page.locator("html[data-skin-wallpaper]")).toHaveCount(0);
 });
 
 test("subagent sessions stay nested in the parent transcript", async ({ page }) => {

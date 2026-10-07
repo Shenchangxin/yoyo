@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1142,6 +1143,63 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		_ = json.Unmarshal(params, &p)
 		a.ComputerAllow(p.App)
 		return map[string]any{"ok": true}, nil
+	case "skins.list":
+		return a.ListSkins(), nil
+	case "skins.get":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.GetSkin(p.ID)
+	case "skins.import":
+		var p struct {
+			BytesB64 string `json:"bytes_b64"`
+			Path     string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		if strings.TrimSpace(p.Path) != "" {
+			return a.ImportSkinPath(p.Path)
+		}
+		raw, err := decodeSkinB64(p.BytesB64)
+		if err != nil {
+			return nil, err
+		}
+		return a.ImportSkin(raw)
+	case "skins.export":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		name, body, err := a.ExportSkin(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"filename": name, "bytes_b64": encodeSkinB64(body)}, nil
+	case "skins.delete":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.DeleteSkin(p.ID)
+	case "skins.activate":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.ActivateSkin(p.ID)
+	case "skins.resolve":
+		var p struct {
+			ID   string `json:"id"`
+			Mode string `json:"mode"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ResolveSkin(p.ID, p.Mode)
+	case "skins.save":
+		var in app.SkinSaveIn
+		if err := json.Unmarshal(params, &in); err != nil {
+			return nil, err
+		}
+		return a.SaveSkin(in)
 	default:
 		return nil, errMethod(method)
 	}
@@ -1150,6 +1208,21 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 type errMethod string
 
 func (e errMethod) Error() string { return "method not found: " + string(e) }
+
+func decodeSkinB64(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("empty skin payload")
+	}
+	if i := strings.Index(s, ","); i >= 0 && strings.Contains(s[:i], "base64") {
+		s = s[i+1:]
+	}
+	return base64.StdEncoding.DecodeString(s)
+}
+
+func encodeSkinB64(b []byte) string {
+	return base64.StdEncoding.EncodeToString(b)
+}
 
 func asMap(params json.RawMessage) map[string]any {
 	m := map[string]any{}

@@ -62,7 +62,7 @@ export function SettingsSidebar(props: {
 
   if (props.compact) {
     return (
-      <nav className="flex h-full min-h-0 w-[60px] shrink-0 flex-col gap-0.5 overflow-auto bg-sidebar px-2 py-3" aria-label={copy.settings.title}>
+      <nav className="flex h-full min-h-0 w-[60px] shrink-0 flex-col gap-0.5 overflow-auto px-2 py-3" data-skin-pane aria-label={copy.settings.title}>
         {SETTINGS_TABS.map((t, i) => {
           const prev = SETTINGS_TABS[i - 1];
           return (

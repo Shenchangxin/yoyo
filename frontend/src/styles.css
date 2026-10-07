@@ -44,6 +44,7 @@ html.dark {
   --radius-control: 0.5rem;
   --radius-chip: 0.375rem;
   --media-surface: #0c0c0b;
+  --media-foreground: #f4f4f0;
   --glass-blur: 20px;
   --glass-bg: color-mix(in srgb, var(--sidebar) 72%, transparent);
   --glass-stroke: color-mix(in srgb, var(--foreground) 8%, transparent);
@@ -207,6 +208,7 @@ html.light[data-palette="mist"] {
   --color-warning: var(--warning);
   --color-ring: var(--ring);
   --color-media-surface: var(--media-surface);
+  --color-media-foreground: var(--media-foreground);
   --color-app: var(--background);
   --color-fg: var(--foreground);
   --color-line: var(--border);
@@ -1203,7 +1205,7 @@ html.dark .code-hl span {
 
 .media-surface {
   background: var(--media-surface);
-  color: #f4f4f0;
+  color: var(--media-foreground, #f4f4f0);
 }
 
 .scroll-edge {
@@ -1414,6 +1416,90 @@ html.dark .code-hl span {
   }
 }
 
+.app-wallpaper {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--skin-wallpaper);
+  background-size: var(--skin-wallpaper-fit, cover);
+  background-position: center;
+  background-repeat: var(--skin-wallpaper-repeat, no-repeat);
+}
+.app-wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--background) calc(var(--skin-wallpaper-dim, 0.45) * 100%), transparent);
+}
+html[data-skin-wallpaper="1"]:not(.companion) .app-wallpaper {
+  display: block;
+}
+html.companion .app-wallpaper {
+  display: none !important;
+}
+
+/* Wallpaper is a full-frame layer. Chrome, rails, and module pages punch through so the
+   photo is one surface. Canvas island keeps its own solid pages. */
+html[data-skin-wallpaper="1"]:not(.companion) .glass-chrome,
+html[data-skin-wallpaper="1"]:not(.companion) .home-stage,
+html[data-skin-wallpaper="1"]:not(.companion) #main-stage,
+html[data-skin-wallpaper="1"]:not(.companion) #main-stage > *,
+html[data-skin-wallpaper="1"]:not(.companion) [data-skin-pane],
+html[data-skin-wallpaper="1"]:not(.companion) [data-panel],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="conversation-column"],
+html[data-skin-wallpaper="1"]:not(.companion) .transcript-scroll,
+html[data-skin-wallpaper="1"]:not(.companion) .transcript-scroll .bg-background,
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="skills-workspace"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="harness-workspace"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-workshop"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-history"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-board"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-board"] > *,
+html[data-skin-wallpaper="1"]:not(.companion) [data-settings-page-header],
+html[data-skin-wallpaper="1"]:not(.companion) .drama-studio,
+html[data-skin-wallpaper="1"]:not(.companion) [data-slot="sheet-content"],
+html[data-skin-wallpaper="1"]:not(.companion) .bg-sidebar.fixed {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none;
+}
+html[data-skin-wallpaper="1"]:not(.companion) [data-app-frame="content"] {
+  text-shadow:
+    0 1px 1px color-mix(in srgb, var(--background) 82%, transparent),
+    0 0 16px color-mix(in srgb, var(--background) 48%, transparent);
+}
+html[data-skin-wallpaper="1"]:not(.companion) .composer-core,
+html[data-skin-wallpaper="1"]:not(.companion) .u-chrome,
+html[data-skin-wallpaper="1"]:not(.companion) .u-card-hover,
+html[data-skin-wallpaper="1"]:not(.companion) .bg-card,
+html[data-skin-wallpaper="1"]:not(.companion) .bg-popover,
+html[data-skin-wallpaper="1"]:not(.companion) [data-radix-popper-content-wrapper] {
+  text-shadow: none;
+}
+html[data-skin-wallpaper="1"]:not(.companion) .composer-core {
+  background: color-mix(in srgb, var(--input-bar) 78%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="canvas-studio-shell"],
+html[data-skin-wallpaper="1"]:not(.companion) [data-testid="canvas-studio-shell"] > * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+/* Canvas editor only: workspace without product/spatial flags. */
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-workspace:not(.app-spatial-workspace):not(.app-product-workspace),
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-workspace:not(.app-spatial-workspace):not(.app-product-workspace) .app-workspace-stage {
+  background-color: var(--media-surface, var(--background)) !important;
+  text-shadow: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-skin-wallpaper="1"]:not(.companion) .glass-chrome {
+    background: color-mix(in srgb, var(--sidebar) 88%, transparent) !important;
+  }
+}
+
 .app-grain {
   display: none;
   position: fixed;
@@ -1429,11 +1515,15 @@ html.light .app-grain {
   opacity: 0.018;
   mix-blend-mode: multiply;
 }
+html[data-skin] .app-grain {
+  opacity: var(--skin-grain, 0.04);
+}
 @media (min-resolution: 2dppx) {
   .app-grain { display: block; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .app-grain { display: none !important; }
+  html { --glass-blur: 0px !important; }
 }
 
 .mark-well {
@@ -2160,8 +2250,8 @@ html.companion body {
 .presence-stamp {
   overflow: visible;
   border-radius: 50%;
-  background: #F3F0EA;
-  box-shadow: inset 0 -1px 2px rgba(28, 25, 22, 0.08);
+  background: var(--card);
+  box-shadow: inset 0 -1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 .presence-stamp svg {
   display: block;
