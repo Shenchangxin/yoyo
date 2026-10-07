@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yoyo</title>
+    <meta
+      name="description"
+      content="Yoyo is a local agent workstation. Prompts can evolve. The harness has to prove it first. Apache-2.0."
+    />
+    <link rel="canonical" href="https://shenchangxin.github.io/yoyo/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content="Yoyo" />
+    <meta property="og:description" content="A local agent workstation. The harness has to prove it." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shenchangxin.github.io/yoyo/" />
+    <meta name="theme-color" content="#1c1c1a" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      (function () {
+        try {
+          var s = localStorage.getItem("yoyo-site-lang");
+          var n = (navigator.language || "en").toLowerCase();
+          var l = s || (n.indexOf("zh") === 0 ? "zh" : n.indexOf("ja") === 0 ? "ja" : "en");
+          document.documentElement.dataset.lang = l;
+          document.documentElement.lang = l === "zh" ? "zh-Hans" : l;
+        } catch (e) {}
+      })();
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Yoyo",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "url": "https://shenchangxin.github.io/yoyo/",
+        "downloadUrl": "https://github.com/Shenchangxin/yoyo/releases/latest",
+        "codeRepository": "https://github.com/Shenchangxin/yoyo",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#download">Skip to download</a>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="mark" href="#top">yoyo</a>
+      <div class="nav-end">
+        <nav class="lang" aria-label="Language">
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+          <button type="button" data-lang="ja" aria-pressed="false">日本語</button>
+        </nav>
+        <a href="https://github.com/Shenchangxin/yoyo">GitHub</a>
+        <a class="btn-ink" href="#download">
+          <span lang="en">Download</span>
+          <span lang="zh">下载</span>
+          <span lang="ja">ダウンロード</span>
+        </a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <span class="mark">yoyo</span>
+          <h1 id="hero-title">
+            <span lang="en">A local agent workstation.</span>
+            <span lang="zh">一台本地的<br />智能体工作站。</span>
+            <span lang="ja">ローカルな<br />エージェント・ワークステーション。</span>
+          </h1>
+          <p class="lead">
+            <span lang="en">The harness can evolve. It has to prove it before you trust the new one.</span>
+            <span lang="zh">Harness 可以进化。先评测，再晋升。没过 Harbor，就不会成为你信任的那一份。</span>
+            <span lang="ja">ハーネスは進化してよい。証明してから採用する。</span>
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-ink" id="download-primary" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <span lang="en">Download <span data-version>0.3.9</span></span>
+              <span lang="zh">下载 <span data-version>0.3.9</span></span>
+              <span lang="ja"><span data-version>0.3.9</span> を入手</span>
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/Shenchangxin/yoyo">GitHub</a>
+          </div>
+          <p class="hero-meta">
+            <span>Apache-2.0</span>
+            <span>Windows · macOS · Linux</span>
+            <span lang="en">Bring your own key</span>
+            <span lang="zh">自备 API Key</span>
+            <span lang="ja">API キーは自分で</span>
+          </p>
+        </div>
+
+        <div class="stage" aria-hidden="true">
+          <div class="window">
+            <div class="chrome">
+              <span class="traffic"><i></i><i></i><i></i></span>
+              <span class="mark">yoyo</span>
+              <span class="chrome-mod">Agent</span>
+            </div>
+            <div class="panes">
+              <aside class="rail">
+                <div class="rail-kicker">Module</div>
+                <button type="button" aria-current="true">Agent</button>
+                <button type="button">Video</button>
+                <button type="button">Skills</button>
+                <div class="rail-kicker">Chats</div>
+                <button class="thread is-live" type="button">
+                  Parser fix
+                  <small>apply_patch · waiting</small>
+                </button>
+                <button class="thread" type="button">Harbor smoke</button>
+                <button class="thread" type="button">New chat</button>
+              </aside>
+              <div class="mid">
+                <div class="mid-body">
+                  <p class="hello">Good afternoon.</p>
+                  <div class="turn">
+                    <p class="bubble">Fix the parser in <code>@file:internal/runtime/loop.go</code></p>
+                    <div class="work">
+                      <p>Read loop.go</p>
+                      <p class="live">apply_patch · +24 −6</p>
+                    </div>
+                    <div class="gate-card">
+                      <strong>write_file</strong>
+                      <em>internal/runtime/loop.go</em>
+                      <div class="chips">
+                        <span class="chip once">Once</span>
+                        <span class="chip">This chat</span>
+                        <span class="chip">Always</span>
+                        <span class="chip">Deny</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="composer">Fix the parser in @file:internal/runtime/loop.go <i class="send"></i></div>
+              </div>
+              <aside class="inspect">
+                <div class="inspect-kicker">Review</div>
+                <ul>
+                  <li class="file">loop.go</li>
+                  <li>Browser</li>
+                  <li>Trajectory</li>
+                </ul>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="gate">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Human gate</span>
+            <span lang="zh">人闸</span>
+            <span lang="ja">人のゲート</span>
+          </p>
+          <h2>
+            <span lang="en">The agent asks. You decide.</span>
+            <span lang="zh">它开口问。你拍板。</span>
+            <span lang="ja">エージェントは尋ねる。決めるのはあなた。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">Write a file, run a command: once, this chat, always, or deny. Keys stay in the vault. Appearance, policy, and the updater are operator-only.</span>
+            <span lang="zh">写文件、跑命令：一次、本会话、永远，或拒绝。密钥只进本地保险库。外观、策略、更新器，Agent 碰不到。</span>
+            <span lang="ja">ファイル書き込みもコマンドも、一度・この会話・常に・拒否。鍵は保管庫。見た目・ポリシー・アップデータは操作者だけ。</span>
+          </p>
+          <div class="gates">
+            <button class="is-on" type="button" data-kind="once">
+              <b lang="en">Once</b>
+              <b lang="zh">一次</b>
+              <b lang="ja">一度</b>
+              <i lang="en">This write only</i>
+              <i lang="zh">只这一次写入</i>
+              <i lang="ja">この書き込みだけ</i>
+            </button>
+            <button type="button" data-kind="session">
+              <b lang="en">This chat</b>
+              <b lang="zh">本会话</b>
+              <b lang="ja">この会話</b>
+              <i lang="en">Until you close it</i>
+              <i lang="zh">关掉会话为止</i>
+              <i lang="ja">閉じるまで</i>
+            </button>
+            <button type="button" data-kind="always">
+              <b lang="en">Always</b>
+              <b lang="zh">永远</b>
+              <b lang="ja">常に</b>
+              <i lang="en">Remembered locally</i>
+              <i lang="zh">记在这台电脑上</i>
+              <i lang="ja">このマシンに記憶</i>
+            </button>
+            <button type="button" data-kind="deny">
+              <b lang="en">Deny</b>
+              <b lang="zh">拒绝</b>
+              <b lang="ja">拒否</b>
+              <i lang="en">The turn stops</i>
+              <i lang="zh">这一轮停下</i>
+              <i lang="ja">このターンは止まる</i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="flow">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">One window</span>
+            <span lang="zh">同一个窗口</span>
+            <span lang="ja">ひとつの窓</span>
+          </p>
+          <h2>
+            <span lang="en">Speak, watch, review.</span>
+            <span lang="zh">左边说，中间看，右边审。</span>
+            <span lang="ja">話す。見る。審査する。</span>
+          </h2>
+          <div class="flow">
+            <article class="step">
+              <span class="idx">01</span>
+              <div>
+                <h3>
+                  <span lang="en">Pin a file, not the repo</span>
+                  <span lang="zh">钉一份文件，不是整仓</span>
+                  <span lang="ja">リポジトリではなくファイルをピン</span>
+                </h3>
+                <p>
+                  <span lang="en"><code>@file</code> and <code>@folder</code> are budgeted injections. Typing @ does not dump the tree into the prompt.</span>
+                  <span lang="zh"><code>@file</code> / <code>@folder</code> 是有预算的注入。打一个 @，不会把目录树塞进提示词。</span>
+                  <span lang="ja"><code>@file</code> と <code>@folder</code> は予算つきの注入。@ を打っただけでリポジトリは入らない。</span>
+                </p>
+              </div>
+            </article>
+            <article class="step">
+              <span class="idx">02</span>
+              <div>
+                <h3>
+                  <span lang="en">The loop can wedge. The window cannot.</span>
+                  <span lang="zh">循环卡住，窗口还得活着。</span>
+                  <span lang="ja">ループが詰まっても、窓は生きている。</span>
+                </h3>
+                <p>
+                  <span lang="en">Tools stack in the same turn. Isolate the worker if you want the shell to outlive a stuck model.</span>
+                  <span lang="zh">工具过程叠在当前这一轮里。可以把循环丢到子进程，界面死不了。</span>
+                  <span lang="ja">ツールは同じターンに積む。ワーカーを切り離せば、模型が止まっても壳は残る。</span>
+                </p>
+              </div>
+            </article>
+            <article class="step">
+              <span class="idx">03</span>
+              <div>
+                <h3>
+                  <span lang="en">Review is a queue, not a tab</span>
+                  <span lang="zh">审查是队列，不是另一个页</span>
+                  <span lang="ja">審査はタブではなくキュー</span>
+                </h3>
+                <p>
+                  <span lang="en">Hunks, an isolated browser, restore this turn, fork from here. Restore fails loud if it cannot find the files. It does not rewind the repo in silence.</span>
+                  <span lang="zh">补丁、隔离浏览器、还原这一轮、从这里分叉。找不到落点就报错，不会偷偷整库回滚。</span>
+                  <span lang="ja">ハンク、隔離ブラウザ、このターンの復元、ここから分岐。見つからなければ失敗する。黙ってリポジトリを巻き戻さない。</span>
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band skin" id="wallpaper">
+        <div class="skin-photo" aria-hidden="true"></div>
+        <div class="skin-veil" aria-hidden="true"></div>
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Wallpaper</span>
+            <span lang="zh">壁纸</span>
+            <span lang="ja">壁紙</span>
+          </p>
+          <h2>
+            <span lang="en">Any photograph. Type still has to read.</span>
+            <span lang="zh">随便哪张图。字还得站得住。</span>
+            <span lang="ja">どの写真でも。文字は読めたまま。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">Settings → Appearance → Wallpaper. No pack store. A veil mixes the palette over the image so the workstation stays legible — or pull it to zero.</span>
+            <span lang="zh">设置 → 外观 → 壁纸。没有皮肤商城。一层压暗让字能读；想看原图，把滑条拉到零。</span>
+            <span lang="ja">設定 → 外観 → 壁紙。ストアはない。ヴェールで文字を守る。ゼロにすれば原画。</span>
+          </p>
+          <label class="veil-row">
+            <span lang="en">Readable veil</span>
+            <span lang="zh">可读压暗</span>
+            <span lang="ja">可読ヴェール</span>
+            <input id="veil" type="range" min="0" max="88" value="32" />
+          </label>
+        </div>
+      </section>
+
+      <section class="band bound" id="bound">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Will not</span>
+            <span lang="zh">明确不做</span>
+            <span lang="ja">やらないこと</span>
+          </p>
+          <h2>
+            <span lang="en">Product decisions, not missing checkboxes.</span>
+            <span lang="zh">这是产品决定，不是没做完。</span>
+            <span lang="ja">未実装ではなく、製品の決定。</span>
+          </h2>
+          <ul>
+            <li>
+              <span lang="en">Fork VS Code, or ship a Monaco tab</span>
+              <span lang="zh">去 fork VS Code，或塞一个假 IDE</span>
+              <span lang="ja">VS Code をフォークしない。Monaco も置かない</span>
+              <span lang="en">It is a client of one Go loop.</span>
+              <span lang="zh">它是同一条 Go 循环上的客户端。</span>
+              <span lang="ja">ひとつの Go ループのクライアント。</span>
+            </li>
+            <li>
+              <span lang="en">Let the agent rewrite its Go kernel</span>
+              <span lang="zh">让 Agent 改自己的 Go 内核</span>
+              <span lang="ja">エージェントに Go カーネルを書かせない</span>
+              <span lang="en">Prompts and skills may evolve. Evaluator, vault, and updater cannot.</span>
+              <span lang="zh">提示词和技能可以进化。评测器、密钥库、更新器不行。</span>
+              <span lang="ja">プロンプトとスキルは進化してよい。評価器・保管庫・アップデータは不可。</span>
+            </li>
+            <li>
+              <span lang="en">Pretend a deny-list is a sandbox</span>
+              <span lang="zh">把命令黑名单说成沙箱</span>
+              <span lang="ja">拒否リストをサンドボックスと呼ばない</span>
+              <span lang="en">Isolation is opt-in, and the UI says so.</span>
+              <span lang="zh">隔离是可选的，界面会如实写。</span>
+              <span lang="ja">隔離は任意。UI は正直に書く。</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="band get" id="download">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Version <span data-version>0.3.9</span></span>
+            <span lang="zh">版本 <span data-version>0.3.9</span></span>
+            <span lang="ja">バージョン <span data-version>0.3.9</span></span>
+          </p>
+          <h2>
+            <span lang="en">Installers on GitHub Releases.</span>
+            <span lang="zh">安装包只在 GitHub Releases。</span>
+            <span lang="ja">インストーラは GitHub Releases のみ。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">No account. No cloud. Pick a workspace folder, paste a key, start a turn.</span>
+            <span lang="zh">不注册，不绑云。选一个工作文件夹，填 Key，开始一轮。</span>
+            <span lang="ja">アカウントもクラウドもない。フォルダを選び、キーを入れ、ターンを始める。</span>
+          </p>
+          <div class="downloads">
+            <a data-os="windows" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <b>Windows</b>
+              <span class="file">Yoyo-0.3.9-windows-x64-setup.exe</span>
+              <small class="size"></small>
+            </a>
+            <a data-os="mac" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <b>macOS</b>
+              <span class="file">Yoyo-0.3.9-darwin-universal.dmg</span>
+              <small class="size"></small>
+            </a>
+            <a data-os="linux" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <b>Linux</b>
+              <span class="file">Yoyo-0.3.9-linux-amd64.AppImage</span>
+              <small class="size"></small>
+            </a>
+            <a data-os="deb" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <b>Debian</b>
+              <span class="file">Yoyo-0.3.9-linux-amd64.deb</span>
+              <small class="size"></small>
+            </a>
+            <a data-os="rpm" href="https://github.com/Shenchangxin/yoyo/releases/latest">
+              <b>RPM</b>
+              <span class="file">Yoyo-0.3.9-linux-amd64.rpm</span>
+              <small class="size"></small>
+            </a>
+          </div>
+          <p class="note">
+            <span lang="en">Windows and Linux packages are unsigned. SmartScreen may ask for More info → Run anyway. macOS is ad-hoc signed, not notarized. CLI archives are optional.</span>
+            <span lang="zh">Windows / Linux 安装包未签名。SmartScreen 可能拦一下：更多信息 → 仍要运行。macOS 是 ad-hoc 签名，未经公证。CLI 压缩包可以不管。</span>
+            <span lang="ja">Windows と Linux は未署名。SmartScreen は「詳細情報 → 実行」。macOS はアドホック署名で公証なし。CLI アーカイブは任意。</span>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <a class="mark" href="./">yoyo</a>
+      <nav>
+        <a href="https://github.com/Shenchangxin/yoyo">GitHub</a>
+        <a href="https://github.com/Shenchangxin/yoyo/releases/latest">Releases</a>
+        <a href="https://github.com/Shenchangxin/yoyo/blob/master/docs/PRODUCT.md">Product</a>
+        <a href="https://github.com/Shenchangxin/yoyo/blob/master/LICENSE">Apache-2.0</a>
+      </nav>
+      <span>© 2026</span>
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>
