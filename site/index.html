@@ -6,12 +6,15 @@
     <title>Yoyo</title>
     <meta
       name="description"
-      content="Yoyo is a local agent workstation. Prompts can evolve. The harness has to prove it first. Apache-2.0."
+      content="Yoyo is a local agent workstation: chat, files, isolated browser, short-drama video, skill packs, and a self-harness that has to prove itself before you trust it. Apache-2.0."
     />
     <link rel="canonical" href="https://shenchangxin.github.io/yoyo/" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <meta property="og:title" content="Yoyo" />
-    <meta property="og:description" content="A local agent workstation. The harness has to prove it." />
+    <meta
+      property="og:description"
+      content="A local agent workstation. Files stay in your folder. The harness has to prove it. Apache-2.0."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://shenchangxin.github.io/yoyo/" />
     <meta name="theme-color" content="#1c1c1a" />
@@ -55,6 +58,19 @@
     <header class="nav">
       <a class="mark" href="#top">yoyo</a>
       <div class="nav-end">
+        <nav class="nav-toc" aria-label="On this page">
+          <a href="#inside">
+            <span lang="en">Inside</span>
+            <span lang="zh">里面</span>
+            <span lang="ja">中身</span>
+          </a>
+          <a href="#harness">Harness</a>
+          <a href="#video">
+            <span lang="en">Video</span>
+            <span lang="zh">视频</span>
+            <span lang="ja">ビデオ</span>
+          </a>
+        </nav>
         <nav class="lang" aria-label="Language">
           <button type="button" data-lang="en" aria-pressed="true">EN</button>
           <button type="button" data-lang="zh" aria-pressed="false">中文</button>
@@ -79,9 +95,9 @@
             <span lang="ja">ローカルな<br />エージェント・ワークステーション。</span>
           </h1>
           <p class="lead">
-            <span lang="en">The harness can evolve. It has to prove it before you trust the new one.</span>
-            <span lang="zh">Harness 可以进化。先评测，再晋升。没过 Harbor，就不会成为你信任的那一份。</span>
-            <span lang="ja">ハーネスは進化してよい。証明してから採用する。</span>
+            <span lang="en">One Go loop for chat, files, an isolated browser, short drama, and a self-harness. Prompts may evolve. Harbor has to pass before you trust the new one.</span>
+            <span lang="zh">同一条 Go 循环：对话、改文件、隔离浏览器、短剧、以及可进化的 harness。先评测，再晋升。没过 Harbor，就不会成为你信任的那一份。</span>
+            <span lang="ja">ひとつの Go ループが対話・ファイル・隔離ブラウザ・短編・自己ハーネスを支える。進化はよい。証明してから採用する。</span>
           </p>
           <div class="hero-actions">
             <a class="btn btn-ink" id="download-primary" href="https://github.com/Shenchangxin/yoyo/releases/latest">
@@ -94,6 +110,9 @@
           <p class="hero-meta">
             <span>Apache-2.0</span>
             <span>Windows · macOS · Linux</span>
+            <span lang="en">Desktop · browser · CLI</span>
+            <span lang="zh">桌面 · 浏览器 · 命令行</span>
+            <span lang="ja">デスクトップ · ブラウザ · CLI</span>
             <span lang="en">Bring your own key</span>
             <span lang="zh">自备 API Key</span>
             <span lang="ja">API キーは自分で</span>
@@ -157,6 +176,92 @@
         </div>
       </section>
 
+      <section class="band" id="inside">
+        <div class="band-wide">
+          <p class="kicker">
+            <span lang="en">Inside the window</span>
+            <span lang="zh">窗口里有什么</span>
+            <span lang="ja">窓の中身</span>
+          </p>
+          <h2>
+            <span lang="en">A client of one Go loop. Not an IDE.</span>
+            <span lang="zh">同一条循环上的客户端。不是 IDE。</span>
+            <span lang="ja">ひとつのループのクライアント。IDE ではない。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">Files stay in a folder you pick. Keys stay in a local vault. Agent chat and Video chat are separate session channels. Opening Control hides the thread rail — the agent cannot change those settings.</span>
+            <span lang="zh">文件在你指定的文件夹里，密钥在本地保险库。Agent 对话和视频对话走两条会话通道。打开设置会收起会话轨——外观、策略、更新器，Agent 碰不到。</span>
+            <span lang="ja">ファイルは選んだフォルダ。鍵はローカル保管庫。Agent と Video は別チャネル。設定を開くとレールが隠れる。エージェントはそこを触れない。</span>
+          </p>
+          <dl class="inventory">
+            <div>
+              <dt>Agent</dt>
+              <dd>
+                <span lang="en">Turns against a local workspace. <span class="code">@file</span> / <span class="code">@folder</span> / <span class="code">@harness</span> are budgeted injections — not a repo dump. Plan is a composer chip: it proposes, it does not write. Stop cancels the in-flight turn and keeps partial output.</span>
+                <span lang="zh">对着本地工作区跑一轮。<span class="code">@file</span> / <span class="code">@folder</span> / <span class="code">@harness</span> 是有预算的注入，不是把整仓塞进提示词。Plan 是输入框上的芯片：只提议，不动手。Stop 取消进行中的一轮，已写出的会留下。</span>
+                <span lang="ja">ローカル作業フォルダに対するターン。<span class="code">@file</span> / <span class="code">@folder</span> / <span class="code">@harness</span> は予算つき。Plan はチップで、提案するだけで書かない。Stop は途中まで残す。</span>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span lang="en">Video</span>
+                <span lang="zh">视频</span>
+                <span lang="ja">ビデオ</span>
+              </dt>
+              <dd>
+                <span lang="en">Create, Drama, and Canvas share one chrome. Drama chat is home; the episode board is an on-demand director desk. Video has its own default folder so it does not mix with Agent workspaces. <a href="#video">More</a></span>
+                <span lang="zh">创作、短剧、画布共用一套壳。短剧对话是首页；分集板是按需打开的导播台。视频有自己的默认目录，不和写代码的工作区搅在一起。<a href="#video">展开</a></span>
+                <span lang="ja">Create / Drama / Canvas は同じクロム。Drama の会話がホーム。話数ボードは必要なときだけ。Video は専用フォルダ。<a href="#video">続き</a></span>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span lang="en">Skills</span>
+                <span lang="zh">技能</span>
+                <span lang="ja">スキル</span>
+              </dt>
+              <dd>
+                <span lang="en">A catalog plus Packs — versioned skill trees such as Superpowers, installed under <span class="code">~/.yoyo/packs/</span>. Packs stay off until you enable them for the workspace. Harbor never loads them. <a href="#skills">More</a></span>
+                <span lang="zh">目录，加上 Pack：像 Superpowers 这样的整棵技能树，装在 <span class="code">~/.yoyo/packs/</span>。默认关，工作区里你打开才进会话。Harbor 评测从不加载这些包。<a href="#skills">展开</a></span>
+                <span lang="ja">カタログと Pack。Superpowers などは <span class="code">~/.yoyo/packs/</span>。既定オフ。ワークスペースで有効化。Harbor は読み込まない。<a href="#skills">続き</a></span>
+              </dd>
+            </div>
+            <div>
+              <dt>Harness</dt>
+              <dd>
+                <span lang="en">One RSI workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote. Chat docked there is opt-in. It is not a sibling of Agent with equal weight. <a href="#harness">More</a></span>
+                <span lang="zh">一个 RSI 工作区：总览 → 提议（Evolve）→ 证明（Harbor）→ 晋升。那里的对话是可选停靠，不是和 Agent 平级的另一个聊天。<a href="#harness">展开</a></span>
+                <span lang="ja">Overview → Evolve → Harbor → Promote。そこのチャットは任意。Agent と同等の兄弟ではない。<a href="#harness">続き</a></span>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span lang="en">Control</span>
+                <span lang="zh">设置</span>
+                <span lang="ja">設定</span>
+              </dt>
+              <dd>
+                <span lang="en">Vault, models, policy, USD budget hard-stop, wallpaper, updater. Connections (chat, image, video, speech, search, storage) are JSON under <span class="code">~/.yoyo/connections</span>. Keys never leave the vault.</span>
+                <span lang="zh">保险库、模型、策略、美元预算硬停止、壁纸、更新器。连接（对话、图像、视频、语音、搜索、存储）是 <span class="code">~/.yoyo/connections</span> 里的 JSON。密钥不进我的服务器。</span>
+                <span lang="ja">保管庫、モデル、ポリシー、USD 上限、壁紙、アップデータ。接続は <span class="code">~/.yoyo/connections</span>。鍵は外に出ない。</span>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <span lang="en">Companion</span>
+                <span lang="zh">桌面伴侣</span>
+                <span lang="ja">コンパニオン</span>
+              </dt>
+              <dd>
+                <span lang="en">A desk pet beside the main window. Tray toggle, no taskbar slot. Notifications land on the pet. Click-through chrome, so it does not steal the desktop.</span>
+                <span lang="zh">和主窗口一起待在桌面上。托盘一个开关即可显示或隐藏，不占任务栏。通知会打到宠物身上。点击可以穿透壳层。</span>
+                <span lang="ja">メイン窓の横のデスクペット。トレイで出し入れ。タスクバーは占有しない。通知はペットへ。</span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
       <section class="band" id="gate">
         <div class="band-narrow">
           <p class="kicker">
@@ -170,9 +275,9 @@
             <span lang="ja">エージェントは尋ねる。決めるのはあなた。</span>
           </h2>
           <p class="dek">
-            <span lang="en">Write a file, run a command: once, this chat, always, or deny. Keys stay in the vault. Appearance, policy, and the updater are operator-only.</span>
-            <span lang="zh">写文件、跑命令：一次、本会话、永远，或拒绝。密钥只进本地保险库。外观、策略、更新器，Agent 碰不到。</span>
-            <span lang="ja">ファイル書き込みもコマンドも、一度・この会話・常に・拒否。鍵は保管庫。見た目・ポリシー・アップデータは操作者だけ。</span>
+            <span lang="en">Write a file, run a command: once, this chat, always, or deny. Approvals render in the stream. Review is a queue mirror, not the only Once/Deny surface. Desktop defaults to ask — not auto-allow.</span>
+            <span lang="zh">写文件、跑命令：一次、本会话、永远，或拒绝。审批就画在对话里。右侧审查是队列镜像，不是唯一的闸。桌面默认是问你，不是全自动。</span>
+            <span lang="ja">書き込みもコマンドも、一度・この会話・常に・拒否。承認はストリームに出る。既定は尋ねる側。</span>
           </p>
           <div class="gates">
             <button class="is-on" type="button" data-kind="once">
@@ -233,9 +338,9 @@
                   <span lang="ja">リポジトリではなくファイルをピン</span>
                 </h3>
                 <p>
-                  <span lang="en"><code>@file</code> and <code>@folder</code> are budgeted injections. Typing @ does not dump the tree into the prompt.</span>
-                  <span lang="zh"><code>@file</code> / <code>@folder</code> 是有预算的注入。打一个 @，不会把目录树塞进提示词。</span>
-                  <span lang="ja"><code>@file</code> と <code>@folder</code> は予算つきの注入。@ を打っただけでリポジトリは入らない。</span>
+                  <span lang="en"><span class="code">@file</span> and <span class="code">@folder</span> are budgeted injections. Typing @ does not dump the tree into the prompt.</span>
+                  <span lang="zh"><span class="code">@file</span> / <span class="code">@folder</span> 是有预算的注入。打一个 @，不会把目录树塞进提示词。</span>
+                  <span lang="ja"><span class="code">@file</span> と <span class="code">@folder</span> は予算つきの注入。@ を打っただけでリポジトリは入らない。</span>
                 </p>
               </div>
             </article>
@@ -248,9 +353,9 @@
                   <span lang="ja">ループが詰まっても、窓は生きている。</span>
                 </h3>
                 <p>
-                  <span lang="en">Tools stack in the same turn. Isolate the worker if you want the shell to outlive a stuck model.</span>
-                  <span lang="zh">工具过程叠在当前这一轮里。可以把循环丢到子进程，界面死不了。</span>
-                  <span lang="ja">ツールは同じターンに積む。ワーカーを切り離せば、模型が止まっても壳は残る。</span>
+                  <span lang="en">Tools stack in the same turn — glob, grep, apply_patch, git, shell. Set <span class="code">YOYO_ISOLATE=1</span> and the desktop talks to a worker, so a stuck model does not freeze the shell. Depth-1 <span class="code">task</span> subagents nest in the parent transcript.</span>
+                  <span lang="zh">工具过程叠在当前这一轮：glob、grep、apply_patch、git、命令。设 <span class="code">YOYO_ISOLATE=1</span>，循环丢到子进程，界面死不了。一层 <span class="code">task</span> 子代理会嵌在父对话里。</span>
+                  <span lang="ja">ツールは同じターンに積む。<span class="code">YOYO_ISOLATE=1</span> ならワーカーへ。深さ 1 の <span class="code">task</span> サブエージェントは親の転写にネストする。</span>
                 </p>
               </div>
             </article>
@@ -263,12 +368,230 @@
                   <span lang="ja">審査はタブではなくキュー</span>
                 </h3>
                 <p>
-                  <span lang="en">Hunks, an isolated browser, restore this turn, fork from here. Restore fails loud if it cannot find the files. It does not rewind the repo in silence.</span>
-                  <span lang="zh">补丁、隔离浏览器、还原这一轮、从这里分叉。找不到落点就报错，不会偷偷整库回滚。</span>
-                  <span lang="ja">ハンク、隔離ブラウザ、このターンの復元、ここから分岐。見つからなければ失敗する。黙ってリポジトリを巻き戻さない。</span>
+                  <span lang="en">Hunks you tick and apply, an isolated browser for pages the agent opened, a trajectory. Feel boxed in — pop the page into the system browser.</span>
+                  <span lang="zh">补丁可以勾选再应用；Agent 打开过的页出现在隔离浏览器里；还有轨迹。内嵌窗口别扭，可以丢到系统浏览器。</span>
+                  <span lang="ja">ハンクを選んで適用。隔離ブラウザ。軌跡。狭ければシステムブラウザへ出せる。</span>
                 </p>
               </div>
             </article>
+            <article class="step">
+              <span class="idx">04</span>
+              <div>
+                <h3>
+                  <span lang="en">A thread is an object</span>
+                  <span lang="zh">会话是对象，不是一串气泡</span>
+                  <span lang="ja">スレッドはオブジェクト</span>
+                </h3>
+                <p>
+                  <span lang="en">Search, rename, running indicator. Fork copies the JSONL and starts a new chat — it does not move <span class="code">refs/active</span>. Hover your turn: copy, restore files from this turn, fork from here. Restore fails loud if it cannot find the files. It does not rewind the repo in silence.</span>
+                  <span lang="zh">可搜索、可改名、有进行中指示。分叉是复制 JSONL 开一条新会话，不会动 <span class="code">refs/active</span>。悬停自己的那句：复制、还原这一轮文件、从这里分叉。找不到落点就报错，不会偷偷整库回滚。</span>
+                  <span lang="ja">検索、改名、実行中。Fork は JSONL のコピー。<span class="code">refs/active</span> は動かない。自分のターンから復元・分岐。見つからなければ失敗する。</span>
+                </p>
+              </div>
+            </article>
+            <article class="step">
+              <span class="idx">05</span>
+              <div>
+                <h3>
+                  <span lang="en">Budget is a hard stop</span>
+                  <span lang="zh">预算是硬停止</span>
+                  <span lang="ja">予算はハードストップ</span>
+                </h3>
+                <p>
+                  <span lang="en">A USD cap in Control. When it hits, the loop stops. Not a dashboard warning you can ignore.</span>
+                  <span lang="zh">设置里的美元上限。到点就停，不是可以忽略的提示条。</span>
+                  <span lang="ja">設定の USD 上限。達したら止まる。無視できる警告ではない。</span>
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="harness">
+        <div class="band-narrow">
+          <p class="kicker">Harness</p>
+          <h2>
+            <span lang="en">Prove it, then promote.</span>
+            <span lang="zh">先证明，再晋升。</span>
+            <span lang="ja">証明してから昇格。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">Most agents get “smarter” by shipping a longer prompt. Yoyo treats the harness the way Git treats source: content-addressed objects, mutable pointers, tests before merge, a human gate. Online thumbs write <span class="code">refs/staging</span> only. Evolve writes <span class="code">refs/canary</span> only. Harbor plus Checkout is the door to <span class="code">refs/active</span>.</span>
+            <span lang="zh">多数 Agent 靠把提示词写长来「变聪明」。Yoyo 把 harness 当 Git 对待源码：内容寻址、可变指针、合并前测试、人闸。点赞只写 <span class="code">refs/staging</span>。Evolve 只写 <span class="code">refs/canary</span>。Harbor + Checkout 才是 <span class="code">refs/active</span> 的门。</span>
+            <span lang="ja">長いプロンプトで賢く見せない。ハーネスは Git のように扱う。Thumbs は <span class="code">refs/staging</span> のみ。Evolve は <span class="code">refs/canary</span> のみ。<span class="code">refs/active</span> は Harbor と Checkout。</span>
+          </p>
+        </div>
+        <div class="band-wide">
+          <div class="strip">
+            <div>
+              <b lang="en">Overview</b>
+              <b lang="zh">总览</b>
+              <b lang="ja">Overview</b>
+              <i lang="en">Walk the parent chain. See what a snapshot actually changed — playbook bullets, loop fields, skills — not a hash list.</i>
+              <i lang="zh">顺着 parent 走。看快照到底改了什么：playbook 条目、循环字段、技能。不是一串哈希。</i>
+              <i lang="ja">parent を辿る。プレイブック、ループ、スキル。ハッシュ一覧ではない。</i>
+            </div>
+            <div>
+              <b>Evolve</b>
+              <i lang="en">ACE-style grow-and-refine. Never a full rewrite of the playbook. Candidates run Harbor in a detached git worktree, not in your working tree.</i>
+              <i lang="zh">ACE 式只增补、不整本重写。候选在分离的 git worktree 里跑 Harbor，不动你的工作区。</i>
+              <i lang="ja">ACE 式に増やす。全文書き換えない。Harbor は分離 worktree。作業ツリーは触らない。</i>
+            </div>
+            <div>
+              <b>Harbor</b>
+              <i lang="en">Held-in and held-out must not regress. At least one split must improve. Any safety fail blocks promotion.</i>
+              <i lang="zh">训练集和留出集都不能退步；至少一侧要进步；安全项失败则禁止晋升。</i>
+              <i lang="ja">held-in / held-out は退行禁止。少なくとも一方は改善。安全失敗は昇格を止める。</i>
+            </div>
+            <div>
+              <b lang="en">Promote</b>
+              <b lang="zh">晋升</b>
+              <b lang="ja">Promote</b>
+              <i lang="en">A human checkout. The agent does not move the pointer you trust.</i>
+              <i lang="zh">人来 checkout。Agent 不能自己拨你信任的那根指针。</i>
+              <i lang="ja">人が checkout する。エージェントは信頼ポインタを動かさない。</i>
+            </div>
+          </div>
+          <div class="strip">
+            <div>
+              <b>L1</b>
+              <i lang="en">Prompts, playbook, skills — after Harbor.</i>
+              <i lang="zh">提示词、playbook、技能——过 Harbor 之后。</i>
+              <i lang="ja">プロンプト、プレイブック、スキル。Harbor の後。</i>
+            </div>
+            <div>
+              <b>L2</b>
+              <i lang="en">Signed WASM tools. Unsigned never becomes active. No WASI filesystem.</i>
+              <i lang="zh">签名的 WASM 工具。未签名成不了 active。没有 WASI 文件系统。</i>
+              <i lang="ja">署名 WASM。未署名は active にならない。WASI FS なし。</i>
+            </div>
+            <div>
+              <b>L3</b>
+              <i lang="en">Loop / policy topology — human confirmation in the UI or CLI.</i>
+              <i lang="zh">循环预设 / 策略拓扑——界面或 CLI 里人确认。</i>
+              <i lang="ja">ループ / ポリシー位相。人が UI か CLI で確認。</i>
+            </div>
+            <div>
+              <b>L4</b>
+              <i lang="en">Go kernel, evaluator, vault, updater keys — nobody. Not the agent. Not evolve.</i>
+              <i lang="zh">Go 内核、评测器、密钥库、更新器密钥——谁都不许改。Agent 不行，evolve 也不行。</i>
+              <i lang="ja">Go カーネル、評価器、保管庫、アップデータ鍵。誰も不可。</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="video">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Video</span>
+            <span lang="zh">视频</span>
+            <span lang="ja">ビデオ</span>
+          </p>
+          <h2>
+            <span lang="en">A conversation, not a factory console.</span>
+            <span lang="zh">它是一场对话，不是八步流水线。</span>
+            <span lang="ja">会話であり、工場コンソールではない。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">Left rail switches to Video. Short-drama production and an infinite canvas share that surface. They use your keys, your adapters, a separate session channel. Wallpaper covers the product pages; the canvas editor stays opaque so you can see the picture.</span>
+            <span lang="zh">左侧切到「视频」：短剧工作台、无限画布，走自己的会话通道，不和写代码的对话搅在一起。模型还是你自己的 Key。产品页可以铺壁纸；画布编辑页故意不铺，那边要干净。</span>
+            <span lang="ja">左レールで Video。短編と無限キャンバス。Agent とは別チャネル。キーは自分の。キャンバス編集は壁紙を敷かない。</span>
+          </p>
+        </div>
+        <div class="band-wide">
+          <div class="strip three">
+            <div>
+              <b lang="en">Create</b>
+              <b lang="zh">创作</b>
+              <b lang="ja">Create</b>
+              <i lang="en">Describe a clip. Generation adapters for image, speech, and video live in Settings — not a second runtime in the page.</i>
+              <i lang="zh">描述一段片子。图像、语音、视频适配器在设置里，不在页面里再跑一套 Agent。</i>
+              <i lang="ja">クリップを書く。画像・音声・動画アダプタは設定。ページに第二ランタイムはない。</i>
+            </div>
+            <div>
+              <b lang="en">Drama</b>
+              <b lang="zh">短剧</b>
+              <b lang="ja">Drama</b>
+              <i lang="en">Paste a chapter. Map a novel into a confirmable episode plan before shooting. The board is a director desk you open, not a permanent right column.</i>
+              <i lang="zh">贴一章小说。先映射成可确认的分集计划，再拍。分集板是按需打开的导播台，不是常驻右栏。</i>
+              <i lang="ja">章を貼る。撮影前に話数計画を確認する。ボードは常駐右列ではない。</i>
+            </div>
+            <div>
+              <b lang="en">Canvas</b>
+              <b lang="zh">画布</b>
+              <b lang="ja">Canvas</b>
+              <i lang="en">A spatial workspace for shots. Library and assets stay in the same video chrome. The editor itself is a user workspace, not a product page with wallpaper.</i>
+              <i lang="zh">镜头的空间工作区。片库和素材仍在同一套视频壳里。编辑器本身是用户画布，不是铺壁纸的产品页。</i>
+              <i lang="ja">ショットの空間ワークスペース。ライブラリも同じクロム。編集器は壁紙を敷かない。</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="skills">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Skills</span>
+            <span lang="zh">技能</span>
+            <span lang="ja">スキル</span>
+          </p>
+          <h2>
+            <span lang="en">Packs stay off until you say so.</span>
+            <span lang="zh">技能包默认关，你打开才进会话。</span>
+            <span lang="ja">Pack は、あなたが入れるまでオフ。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">A skill is a named method the loop may load. A pack is a versioned tree of them — Superpowers is the first. Enabling a pack is a workspace choice, not a per-turn toggle. Session start may preload a bootstrap skill in-process (not identity). Harbor evals never load packs, so a flashy method cannot fake a promote. Optional WASM tools sit behind HighRisk + ForceAsk, with no WASI filesystem.</span>
+            <span lang="zh">技能是循环可以加载的具名方法。Pack 是一棵有版本的技能树，Superpowers 是第一棵。启用是工作区选择，不是每一轮的开关。开场可以预载引导技能（不是身份）。Harbor 评测不加载这些包，避免「看起来聪明、实际过不了关」。可选 WASM 工具走 HighRisk + 强制询问，没有 WASI 文件系统。</span>
+            <span lang="ja">スキルはループが載せる方法。Pack は版付きの木。Superpowers が最初。有効化はワークスペース単位。Harbor は Pack を読まない。WASM は HighRisk + ForceAsk。WASI FS なし。</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="band" id="surfaces">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Surfaces</span>
+            <span lang="zh">三种入口</span>
+            <span lang="ja">三つの入口</span>
+          </p>
+          <h2>
+            <span lang="en">One core. Desktop, browser, CLI.</span>
+            <span lang="zh">同一套核心。桌面、浏览器、命令行。</span>
+            <span lang="ja">ひとつのコア。デスクトップ、ブラウザ、CLI。</span>
+          </h2>
+          <p class="dek">
+            <span lang="en">HTTP + SSE, JSON-RPC on stdio, WebSocket at <span class="code">/api/ws</span>. The GUI is not a second agent. Installers are the desktop app. CLI archives are optional.</span>
+            <span lang="zh">HTTP + SSE、stdio 上的 JSON-RPC、<span class="code">/api/ws</span> 的 WebSocket。图形界面不是第二套智能体。安装包是桌面应用。CLI 压缩包给命令行用户。</span>
+            <span lang="ja">HTTP + SSE、stdio の JSON-RPC、<span class="code">/api/ws</span>。GUI は第二エージェントではない。インストーラはデスクトップ。CLI は任意。</span>
+          </p>
+        </div>
+        <div class="band-wide">
+          <div class="strip three">
+            <div>
+              <b lang="en">Desktop</b>
+              <b lang="zh">桌面</b>
+              <b lang="ja">デスクトップ</b>
+              <i lang="en">Native window, menus, tray, notifications, companion. Wails shell around the same UI.</i>
+              <i lang="zh">原生窗口、菜单、托盘、通知、桌面伴侣。同一套界面，Wails 壳。</i>
+              <i lang="ja">ネイティブ窓、メニュー、トレイ、通知、コンパニオン。同じ UI の Wails 壳。</i>
+            </div>
+            <div>
+              <b lang="en">Browser</b>
+              <b lang="zh">浏览器</b>
+              <b lang="ja">ブラウザ</b>
+              <i lang="en"><span class="code">yoyo serve</span> on localhost. Chat, eval, evolve — no native menu or tray.</i>
+              <i lang="zh"><span class="code">yoyo serve</span> 开在本机。对话、评测、进化都在。没有原生菜单和托盘。</i>
+              <i lang="ja">本機の <span class="code">yoyo serve</span>。会話・評価・進化。ネイティブメニューはない。</i>
+            </div>
+            <div>
+              <b>CLI</b>
+              <i lang="en"><span class="code">yoyo run</span>, <span class="code">eval</span>, <span class="code">evolve</span>, <span class="code">harness</span>, <span class="code">pack</span>. Same home directory.</i>
+              <i lang="zh"><span class="code">yoyo run</span>、<span class="code">eval</span>、<span class="code">evolve</span>、<span class="code">harness</span>、<span class="code">pack</span>。同一套 home。</i>
+              <i lang="ja"><span class="code">yoyo run</span> / <span class="code">eval</span> / <span class="code">evolve</span> / <span class="code">harness</span> / <span class="code">pack</span>。同じ home。</i>
+            </div>
           </div>
         </div>
       </section>
@@ -288,9 +611,9 @@
             <span lang="ja">どの写真でも。文字は読めたまま。</span>
           </h2>
           <p class="dek">
-            <span lang="en">Settings → Appearance → Wallpaper. No pack store. A veil mixes the palette over the image so the workstation stays legible — or pull it to zero.</span>
-            <span lang="zh">设置 → 外观 → 壁纸。没有皮肤商城。一层压暗让字能读；想看原图，把滑条拉到零。</span>
-            <span lang="ja">設定 → 外観 → 壁紙。ストアはない。ヴェールで文字を守る。ゼロにすれば原画。</span>
+            <span lang="en">Settings → Appearance → Wallpaper. No pack store. The agent cannot change this. A veil mixes the palette over the image — or pull it to zero. Large photos downsample on import; they are not rejected for being a 4K phone shot.</span>
+            <span lang="zh">设置 → 外观 → 壁纸。没有皮肤商城。Agent 改不了这项。一层压暗让字能读；想看原图，把滑条拉到零。手机拍的大图导入时会缩小，不会弹「图片过大」把你拦回去。</span>
+            <span lang="ja">設定 → 外観 → 壁紙。ストアはない。エージェントは触れない。ヴェールで文字を守る。大きな写真は取り込み時に縮小され、拒否されない。</span>
           </p>
           <label class="veil-row">
             <span lang="en">Readable veil</span>
@@ -298,6 +621,71 @@
             <span lang="ja">可読ヴェール</span>
             <input id="veil" type="range" min="0" max="88" value="32" />
           </label>
+        </div>
+      </section>
+
+      <section class="band" id="who">
+        <div class="band-narrow">
+          <p class="kicker">
+            <span lang="en">Fit</span>
+            <span lang="zh">给谁用</span>
+            <span lang="ja">向き</span>
+          </p>
+          <h2>
+            <span lang="en">For operators. Not a hosted chat.</span>
+            <span lang="zh">给愿意自己填 Key 的人。不是全托管聊天。</span>
+            <span lang="ja">操作者向け。托管チャットではない。</span>
+          </h2>
+          <div class="who">
+            <div>
+              <h3>
+                <span lang="en">Fits</span>
+                <span lang="zh">适合</span>
+                <span lang="ja">向く</span>
+              </h3>
+              <ul>
+                <li>
+                  <span lang="en">You already have an OpenAI-compatible API key.</span>
+                  <span lang="zh">已经在用 API，OpenAI 兼容的也可以。</span>
+                  <span lang="ja">OpenAI 互換の API キーを持っている。</span>
+                </li>
+                <li>
+                  <span lang="en">You want “say” and “change files” in the same window, in a folder you own.</span>
+                  <span lang="zh">想把「说」和「改文件」放在同一窗口，文件夹是自己的。</span>
+                  <span lang="ja">話すこととファイル変更を、自分のフォルダで同じ窓にしたい。</span>
+                </li>
+                <li>
+                  <span lang="en">You want a human gate, a budget cap, and a harness that cannot promote itself.</span>
+                  <span lang="zh">要人闸、要预算上限、要 harness 不能自己晋升。</span>
+                  <span lang="ja">人のゲート、予算上限、自己昇格しないハーネスが欲しい。</span>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h3>
+                <span lang="en">Does not fit</span>
+                <span lang="zh">不适合</span>
+                <span lang="ja">向かない</span>
+              </h3>
+              <ul>
+                <li>
+                  <span lang="en">You want a fully hosted product and no keys of your own.</span>
+                  <span lang="zh">想要全托管、不想自己填 Key。</span>
+                  <span lang="ja">完全托管で、自分のキーを持ちたくない。</span>
+                </li>
+                <li>
+                  <span lang="en">You want a VS Code fork, a Monaco tab, or a fake IDE.</span>
+                  <span lang="zh">想要 VS Code 仿制品，或一个假 IDE。</span>
+                  <span lang="ja">VS Code のフォークや偽 IDE が欲しい。</span>
+                </li>
+                <li>
+                  <span lang="en">You want the agent to rewrite its own kernel.</span>
+                  <span lang="zh">想让智能体改自己的内核。</span>
+                  <span lang="ja">エージェントに自分のカーネルを書かせたい。</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -338,6 +726,30 @@
               <span lang="zh">隔离是可选的，界面会如实写。</span>
               <span lang="ja">隔離は任意。UI は正直に書く。</span>
             </li>
+            <li>
+              <span lang="en">Silently replace the running binary</span>
+              <span lang="zh">偷偷覆盖正在运行的程序</span>
+              <span lang="ja">実行中のバイナリを黙って置き換えない</span>
+              <span lang="en"><span class="code">yoyo update apply</span> stays a human step.</span>
+              <span lang="zh"><span class="code">yoyo update apply</span> 必须由人执行。</span>
+              <span lang="ja"><span class="code">yoyo update apply</span> は人の手順。</span>
+            </li>
+            <li>
+              <span lang="en">Stuff the whole repo into the prompt because you typed @</span>
+              <span lang="zh">因为你打了 @ 就把整仓塞进提示词</span>
+              <span lang="ja">@ を打っただけでリポジトリ全体を入れない</span>
+              <span lang="en">Mentions are bounded injections.</span>
+              <span lang="zh">提及是有预算的注入。</span>
+              <span lang="ja">メンションは予算つきの注入。</span>
+            </li>
+            <li>
+              <span lang="en">A second agent runtime in the frontend</span>
+              <span lang="zh">在前端再跑一套智能体</span>
+              <span lang="ja">フロントに第二エージェントを置かない</span>
+              <span lang="en">No LangChain, no Vercel AI SDK loop, no assistant-ui brain.</span>
+              <span lang="zh">没有第二套 LangChain / 前端循环。</span>
+              <span lang="ja">LangChain もフロントのループもない。</span>
+            </li>
           </ul>
         </div>
       </section>
@@ -355,10 +767,32 @@
             <span lang="ja">インストーラは GitHub Releases のみ。</span>
           </h2>
           <p class="dek">
-            <span lang="en">No account. No cloud. Pick a workspace folder, paste a key, start a turn.</span>
-            <span lang="zh">不注册，不绑云。选一个工作文件夹，填 Key，开始一轮。</span>
-            <span lang="ja">アカウントもクラウドもない。フォルダを選び、キーを入れ、ターンを始める。</span>
+            <span lang="en">No account. No cloud. I will not send a netdisk in private messages. After install: pick a workspace folder, paste a key, start a turn.</span>
+            <span lang="zh">不注册，不绑云。不会在私信发网盘。装完：选一个工作文件夹，填 Key，开始一轮。</span>
+            <span lang="ja">アカウントもクラウドもない。網盤は送らない。インストール後：フォルダ、キー、ターン。</span>
           </p>
+          <ol class="start">
+            <li>
+              <span lang="en">Install the desktop app for your OS.</span>
+              <span lang="zh">按系统安装桌面应用。Windows 不用管理员。</span>
+              <span lang="ja">OS のデスクトップアプリを入れる。</span>
+            </li>
+            <li>
+              <span lang="en">Settings → workspace: one folder the agent may touch.</span>
+              <span lang="zh">设置里选工作文件夹。它只在这个文件夹里动手。</span>
+              <span lang="ja">設定で作業フォルダを選ぶ。そこだけ触る。</span>
+            </li>
+            <li>
+              <span lang="en">Settings → Models: paste an OpenAI-compatible key. Default is gpt-4.1-mini against api.openai.com; any compatible base URL works.</span>
+              <span lang="zh">设置 → 模型：粘贴 OpenAI 兼容的 Key。默认 gpt-4.1-mini 打官方；换 base URL 也可以。</span>
+              <span lang="ja">設定 → モデル。OpenAI 互換キー。既定は gpt-4.1-mini。互換 base URL 可。</span>
+            </li>
+            <li>
+              <span lang="en">Type a task. Pin context with @. Approve or deny writes.</span>
+              <span lang="zh">输入任务。用 @ 钉上下文。写入先问你。</span>
+              <span lang="ja">タスクを打つ。@ でピン。書き込みは承認。</span>
+            </li>
+          </ol>
           <div class="downloads">
             <a data-os="windows" href="https://github.com/Shenchangxin/yoyo/releases/latest">
               <b>Windows</b>
@@ -387,20 +821,22 @@
             </a>
           </div>
           <p class="note">
-            <span lang="en">Windows and Linux packages are unsigned. SmartScreen may ask for More info → Run anyway. macOS is ad-hoc signed, not notarized. CLI archives are optional.</span>
-            <span lang="zh">Windows / Linux 安装包未签名。SmartScreen 可能拦一下：更多信息 → 仍要运行。macOS 是 ad-hoc 签名，未经公证。CLI 压缩包可以不管。</span>
-            <span lang="ja">Windows と Linux は未署名。SmartScreen は「詳細情報 → 実行」。macOS はアドホック署名で公証なし。CLI アーカイブは任意。</span>
+            <span lang="en">Windows and Linux packages are unsigned. SmartScreen may ask for More info → Run anyway. macOS is ad-hoc signed, not notarized. CLI archives (<span class="code">yoyo-cli-*</span>) are optional. Source is Apache-2.0 — compile it if the installer feels wrong.</span>
+            <span lang="zh">Windows / Linux 安装包未签名。SmartScreen 可能拦一下：更多信息 → 仍要运行。macOS 是 ad-hoc 签名，未经公证。CLI 压缩包（<span class="code">yoyo-cli-*</span>）可以不管。源码 Apache-2.0，不舒服就自己编译。</span>
+            <span lang="ja">Windows と Linux は未署名。SmartScreen は「詳細情報 → 実行」。macOS はアドホック署名で公証なし。CLI（<span class="code">yoyo-cli-*</span>）は任意。ソースは Apache-2.0。</span>
           </p>
         </div>
       </section>
     </main>
 
     <footer class="foot">
-      <a class="mark" href="./">yoyo</a>
+      <a class="mark" href="#top">yoyo</a>
       <nav>
         <a href="https://github.com/Shenchangxin/yoyo">GitHub</a>
         <a href="https://github.com/Shenchangxin/yoyo/releases/latest">Releases</a>
         <a href="https://github.com/Shenchangxin/yoyo/blob/master/docs/PRODUCT.md">Product</a>
+        <a href="https://github.com/Shenchangxin/yoyo/blob/master/docs/architecture/invariants.md">Invariants</a>
+        <a href="https://github.com/Shenchangxin/yoyo/issues">Issues</a>
         <a href="https://github.com/Shenchangxin/yoyo/blob/master/LICENSE">Apache-2.0</a>
       </nav>
       <span>© 2026</span>

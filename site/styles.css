@@ -124,6 +124,13 @@ input {
   gap: 4px;
 }
 
+.nav-toc {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+}
+
 .nav a,
 .nav button {
   appearance: none;
@@ -572,20 +579,160 @@ input {
 
 .band h2 {
   margin: 0;
-  max-width: 18ch;
+  max-width: 16em;
   font-size: clamp(28px, 4vw, 42px);
   font-weight: 600;
   letter-spacing: -0.04em;
-  line-height: 1.1;
+  line-height: 1.15;
   text-wrap: pretty;
 }
 
 .band .dek {
   margin: 16px 0 0;
-  max-width: 36rem;
+  max-width: 38rem;
   color: var(--muted);
   font-size: 16px;
   letter-spacing: -0.02em;
+}
+
+.band-wide {
+  width: min(100%, 64rem);
+  margin: 0 auto;
+}
+
+.inventory {
+  margin: 48px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.inventory > div {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  gap: 20px 32px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory dt {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.inventory dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.inventory a {
+  color: var(--accent);
+}
+
+.inventory a:hover {
+  color: var(--foreground);
+}
+
+.strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+}
+
+.strip > div {
+  padding: 28px 16px 24px 0;
+  border-right: 1px solid var(--border);
+}
+
+.strip > div:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.strip b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.strip i {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+
+.strip.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.who {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 48px;
+  margin-top: 40px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.who h3 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.who ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.who li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 14.5px;
+  letter-spacing: -0.02em;
+}
+
+.start {
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: start;
+}
+
+.start li {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 15px;
+  counter-increment: start;
+}
+
+.start li::before {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  content: counter(start, decimal-leading-zero);
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  font-variant-ligatures: none;
 }
 
 .gates {
@@ -872,7 +1019,8 @@ input {
     padding: 0 12px;
   }
 
-  .nav .nav-end > a:not(.btn-ink) {
+  .nav .nav-end > a:not(.btn-ink),
+  .nav-toc {
     display: none;
   }
 
@@ -941,6 +1089,24 @@ input {
   .downloads a {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .inventory > div,
+  .who,
+  .strip,
+  .strip.three {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory > div {
+    gap: 6px;
+  }
+
+  .strip > div,
+  .strip > div:last-child {
+    padding: 20px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 }
 
