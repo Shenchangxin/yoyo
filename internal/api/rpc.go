@@ -638,6 +638,8 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return map[string]any{"ok": true}, a.OpenInEditor(p.Path)
 		case "terminal":
 			return map[string]any{"ok": true}, a.OpenWorkspaceTerminal(p.Path)
+		case "url":
+			return map[string]any{"ok": true}, a.OpenURL(p.Path)
 		default:
 			return map[string]any{"ok": true}, a.OpenPath(p.Path)
 		}

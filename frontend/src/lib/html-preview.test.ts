@@ -13,8 +13,12 @@ test("asPreviewDocument wraps fragments for the inspector iframe", () => {
   const wrapped = asPreviewDocument("<h1>Hello</h1>");
   assert.match(wrapped, /<!doctype html>/i);
   assert.match(wrapped, /<h1>Hello<\/h1>/);
+  assert.match(wrapped, /data-yoyo-preview-scroll/);
   const full = "<!doctype html><html><body>ok</body></html>";
-  assert.equal(asPreviewDocument(full), full);
+  const previewed = asPreviewDocument(full);
+  assert.match(previewed, /data-yoyo-preview-scroll/);
+  assert.match(previewed, />ok</);
+  assert.equal(asPreviewDocument(previewed), previewed);
 });
 
 test("pdf image audio video and docx use blob preview", () => {

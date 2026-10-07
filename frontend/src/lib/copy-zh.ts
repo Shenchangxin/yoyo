@@ -460,6 +460,8 @@ export const zhCN = {
     snapshot: "快照",
     page: "页面",
     waitingFrame: "正在等待隔离页…",
+    openExternal: "打开到外部浏览器",
+    openExternalHint: "在系统默认浏览器中打开此页面",
     skills: "技能",
     memory: "记忆",
     pin: "钉选",

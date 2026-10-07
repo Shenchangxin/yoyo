@@ -96,7 +96,7 @@ export function CodePreview({
       data-lang={lang || undefined}
       tabIndex={0}
       className={cn(
-        "code-hl min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90",
+        "code-hl overlay-scroll min-w-0 overflow-auto bg-sidebar/70 px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90",
         fill ? "mt-0 h-full min-h-0 flex-1 rounded-none border-0" : "mt-2 max-h-[28rem] rounded-lg border border-border/60",
         dim && "opacity-70",
         className,
@@ -275,7 +275,7 @@ export function WorkspaceFileView({
           />
         ) : null}
         {objectUrl && resolved === "image" ? (
-          <div className={cn("grid place-items-center overflow-auto", fill ? "h-full min-h-0 flex-1 bg-media-surface p-3" : "mt-2 max-h-[28rem] rounded-lg border border-border/70 bg-media-surface p-3", reveal)}>
+          <div className={cn("grid place-items-center overflow-auto overlay-scroll", fill ? "h-full min-h-0 flex-1 bg-media-surface p-3" : "mt-2 max-h-[28rem] rounded-lg border border-border/70 bg-media-surface p-3", reveal)}>
             <img src={objectUrl} alt={path} onLoad={markReady} onError={markReady} className="max-h-full max-w-full object-contain" />
           </div>
         ) : null}
@@ -299,7 +299,7 @@ export function WorkspaceFileView({
   const asHtml = !source && (html || looksLikeHTML(text) || looksLikeHTMLFile(path));
   if (asHtml && text) {
     return (
-      <div className={cn(frame, fill && "min-h-0")}>
+      <div className={cn(frame, fill && "min-h-0 overflow-hidden")}>
         <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} />
         {cap}
       </div>
@@ -308,7 +308,7 @@ export function WorkspaceFileView({
   if (!source && (resolved === "markdown" || looksLikeMarkdown(path)) && text) {
     return (
       <div className={cn(frame, fill && "min-h-0")}>
-        <div className={cn("min-h-0 overflow-auto px-4 py-3", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+        <div className={cn("overlay-scroll min-h-0 overflow-auto px-4 py-3", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
           <Markdown text={text.length > 12_000 ? text.slice(0, 12_000) : text} quiet />
         </div>
         {cap}
@@ -338,7 +338,7 @@ function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
   const rows = parseSheet(text);
   if (rows) {
     return (
-      <div className={cn("min-h-0 overflow-auto", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+      <div className={cn("overlay-scroll min-h-0 overflow-auto", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
         <table className="w-full border-collapse text-left text-[12px]">
           <tbody>
             {rows.map((row, i) => (
@@ -356,7 +356,7 @@ function OfficeText({ text, fill }: { text: string; fill?: boolean }) {
     );
   }
   return (
-    <pre className={cn("overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6]", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
+    <pre className={cn("overlay-scroll overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[12px] leading-[1.6]", fill ? "h-full flex-1" : "mt-2 max-h-[28rem] rounded-lg border border-border/60")}>
       {text}
     </pre>
   );

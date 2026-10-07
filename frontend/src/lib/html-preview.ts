@@ -11,12 +11,25 @@ export function looksLikeHTMLFile(path: string): boolean {
   return /\.(html?|xhtml)$/i.test(path || "");
 }
 
+const PREVIEW_SCROLL_MARK = "data-yoyo-preview-scroll";
+const PREVIEW_SCROLL_STYLE = `<style ${PREVIEW_SCROLL_MARK}>html{color-scheme:light;scrollbar-width:thin;scrollbar-color:rgba(24,24,24,.28) transparent}html::-webkit-scrollbar,body::-webkit-scrollbar,*::-webkit-scrollbar{width:7px;height:7px}html::-webkit-scrollbar-track,body::-webkit-scrollbar-track,*::-webkit-scrollbar-track,html::-webkit-scrollbar-corner,body::-webkit-scrollbar-corner,*::-webkit-scrollbar-corner{background:transparent}html::-webkit-scrollbar-thumb,body::-webkit-scrollbar-thumb,*::-webkit-scrollbar-thumb{background-color:rgba(24,24,24,.22);border:2px solid transparent;border-radius:999px;background-clip:padding-box}html::-webkit-scrollbar-thumb:hover,body::-webkit-scrollbar-thumb:hover,*::-webkit-scrollbar-thumb:hover{background-color:rgba(24,24,24,.4)}</style>`;
+
+function withPreviewScrollbars(html: string): string {
+  if (!html || html.includes(PREVIEW_SCROLL_MARK)) return html;
+  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${PREVIEW_SCROLL_STYLE}</head>`);
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + PREVIEW_SCROLL_STYLE);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}<head>${PREVIEW_SCROLL_STYLE}</head>`);
+  return html;
+}
+
 /** Wrap a fragment so the inspector iframe can render it. */
 export function asPreviewDocument(html: string): string {
   const t = (html || "").trim();
   if (!t) return "";
-  if (looksLikeHTML(t)) return t;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1.25rem;font:13px/1.55 system-ui,sans-serif;color:#1c1c1a;background:#fff}img{max-width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}</style></head><body>${t}</body></html>`;
+  if (looksLikeHTML(t)) return withPreviewScrollbars(t);
+  return withPreviewScrollbars(
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1.25rem;font:13px/1.55 system-ui,sans-serif;color:#1c1c1a;background:#fff}img{max-width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}</style></head><body>${t}</body></html>`,
+  );
 }
 
 export function looksLikePDF(path: string, mime = ""): boolean {

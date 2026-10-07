@@ -459,6 +459,8 @@ export const en = {
     snapshot: "Snapshot",
     page: "Page",
     waitingFrame: "Waiting for the isolated page…",
+    openExternal: "Open in browser",
+    openExternalHint: "Open this page in your default browser",
     skills: "Skills",
     memory: "Memory",
     pin: "Pin",

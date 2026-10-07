@@ -160,6 +160,10 @@ func (a *App) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
+func (a *App) OpenURL(raw string) error {
+	return hostopen.URL(raw)
+}
+
 func (a *App) OpenInEditor(path string) error {
 	return hostopen.Editor(path)
 }

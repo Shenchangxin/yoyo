@@ -695,6 +695,8 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			err = a.OpenInEditor(body.Path)
 		case "terminal":
 			err = a.OpenWorkspaceTerminal(body.Path)
+		case "url":
+			err = a.OpenURL(body.Path)
 		default:
 			err = a.OpenPath(body.Path)
 		}

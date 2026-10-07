@@ -848,6 +848,12 @@ test("html artifacts open in the review browser pane", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("review-browser")).toBeVisible();
   await expect(page.getByTestId("review-browser").getByTestId("html-preview")).toBeVisible();
+  const opened = page.waitForRequest((r) => r.url().includes("/api/open") && r.method() === "POST");
+  await page.getByTestId("browser-open-external").click();
+  const req = await opened;
+  const body = JSON.parse(req.postData() || "{}");
+  expect(body.kind).toBe("path");
+  expect(String(body.path || "").replace(/\\/g, "/")).toContain("web/index.html");
 });
 
 test("review browser follows a live isolated page", async ({ page }) => {
@@ -874,6 +880,10 @@ test("review browser follows a live isolated page", async ({ page }) => {
   await expect(page.getByTestId("browser-url")).toContainText("example.com");
   await expect(page.getByTestId("browser-takeover")).toBeVisible();
   await expect(page.getByText("open", { exact: true })).toBeVisible();
+  const opened = page.waitForRequest((r) => r.url().includes("/api/open") && r.method() === "POST");
+  await page.getByTestId("browser-open-external").click();
+  const req = await opened;
+  expect(JSON.parse(req.postData() || "{}")).toMatchObject({ kind: "url", path: "https://example.com" });
 });
 
 test("write_file of source stays in the process rail without a preview card", async ({ page }) => {
