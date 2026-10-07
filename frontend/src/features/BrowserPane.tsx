@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
-import { Globe } from "lucide-react";
+import { ExternalLink, Globe } from "lucide-react";
+import { Tooltip } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import * as api from "../lib/client";
 import type { BrowserView } from "../lib/client";
 import { looksLikeHTMLFile } from "../lib/html-preview";
+import { joinWorkspace } from "../lib/workspace";
 import { WorkspaceFileView } from "./transcript/FilePreview";
+
+function isExternalURL(raw: string): boolean {
+  return /^(https?:|file:)/i.test((raw || "").trim());
+}
 
 export function BrowserPane(props: {
   workspace?: string;
@@ -17,6 +23,7 @@ export function BrowserPane(props: {
   const [view, setView] = useState<BrowserView | null>(null);
   const [source, setSource] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -43,6 +50,8 @@ export function BrowserPane(props: {
   const showHtml = !!htmlPath && (!live || source);
   const lane = view?.headed ? copy.review.headedLane : view?.lane === "attached" ? copy.review.attachedLane : copy.review.isolatedLane;
   const address = view?.url || htmlPath || view?.title || copy.review.browser;
+  const canOpenExternal = isExternalURL(view?.url || "") || !!htmlPath;
+
   const takeOver = async () => {
     setBusy(true);
     try {
@@ -53,6 +62,25 @@ export function BrowserPane(props: {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openExternal = async () => {
+    const liveURL = (view?.url || "").trim();
+    setOpening(true);
+    try {
+      if (showHtml && htmlPath) {
+        await api.openPath(joinWorkspace(props.workspace || "", htmlPath));
+      } else if (isExternalURL(liveURL)) {
+        await api.openURL(liveURL);
+      } else if (htmlPath) {
+        await api.openPath(joinWorkspace(props.workspace || "", htmlPath));
+      }
+      setErr("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOpening(false);
     }
   };
 
@@ -90,6 +118,18 @@ export function BrowserPane(props: {
             {source ? copy.review.liveLane : copy.transcript.preview}
           </button>
         ) : null}
+        <Tooltip content={copy.review.openExternalHint}>
+          <button
+            type="button"
+            className="grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground disabled:opacity-40"
+            aria-label={copy.review.openExternal}
+            data-testid="browser-open-external"
+            disabled={!canOpenExternal || opening}
+            onClick={() => { void openExternal(); }}
+          >
+            <ExternalLink className="size-3.5" aria-hidden />
+          </button>
+        </Tooltip>
         {live ? (
           <button
             type="button"
@@ -102,13 +142,15 @@ export function BrowserPane(props: {
           </button>
         ) : null}
       </div>
-      <div className="relative min-h-0 flex-1 bg-[var(--media-surface,#0b0d10)]">
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--media-surface,#0b0d10)]">
         {showHtml && htmlPath ? (
-          <WorkspaceFileView workspace={props.workspace} path={htmlPath} fill />
+          <div className="h-full min-h-0 overflow-hidden">
+            <WorkspaceFileView workspace={props.workspace} path={htmlPath} fill />
+          </div>
         ) : view?.screenshot && !source ? (
           <button
             type="button"
-            className="block h-full w-full cursor-pointer"
+            className="block h-full w-full min-h-full cursor-pointer"
             aria-label={copy.review.takeOver}
             data-testid="browser-frame-hit"
             onClick={() => { void takeOver(); }}
@@ -128,7 +170,7 @@ export function BrowserPane(props: {
         {err ? <p className="absolute bottom-2 left-3 right-3 text-[11px] text-danger">{err}</p> : null}
       </div>
       {view?.log?.length ? (
-        <ul className="max-h-28 shrink-0 overflow-auto border-t border-border/50">
+        <ul className="overlay-scroll max-h-28 shrink-0 overflow-auto border-t border-border/50">
           {view.log.slice(-8).reverse().map((row, i) => (
             <li key={`${row.ts}-${i}`} className="flex h-7 items-center gap-2 border-b border-border/40 px-3 font-mono text-[11px] last:border-b-0">
               <span className="shrink-0 text-foreground/80">{row.op}</span>

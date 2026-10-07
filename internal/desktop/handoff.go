@@ -22,6 +22,17 @@ func (s *Service) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
+func (s *Service) OpenURL(raw string) error {
+	if s.RPC != nil {
+		_, err := s.call("host.open", map[string]any{"path": raw, "kind": "url"})
+		return err
+	}
+	if s.App != nil {
+		return s.App.OpenURL(raw)
+	}
+	return hostopen.URL(raw)
+}
+
 func (s *Service) OpenInEditor(path string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": path, "kind": "editor"})

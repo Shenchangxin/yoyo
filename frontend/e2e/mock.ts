@@ -394,6 +394,9 @@ export async function mockApi(
     if (path.endsWith("/api/browser/takeover")) {
       return route.fulfill({ json: { ok: true } });
     }
+    if (path.endsWith("/api/open")) {
+      return route.fulfill({ json: { ok: true } });
+    }
     if (path.endsWith("/api/inbox")) {
       return route.fulfill({ json: extra?.inbox ?? [] });
     }

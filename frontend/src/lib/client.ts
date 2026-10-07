@@ -1341,6 +1341,12 @@ export async function openPath(path: string): Promise<void> {
   await http("/api/open", { method: "POST", body: JSON.stringify({ path, kind: "path" }) });
 }
 
+export async function openURL(raw: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.OpenURL) return s.OpenURL(raw);
+  await http("/api/open", { method: "POST", body: JSON.stringify({ path: raw, kind: "url" }) });
+}
+
 export async function openInEditor(path: string): Promise<void> {
   const s = await wailsService();
   if (s?.OpenInEditor) return s.OpenInEditor(path);
