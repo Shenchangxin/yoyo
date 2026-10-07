@@ -604,17 +604,17 @@ function WorkstationApp() {
 
   const workspace = settings ? (
     <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>
         <SettingsSurface ws={ws} />
       </div>
     </Suspense>
   ) : skills ? (
     <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{skillsPane}</div>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{skillsPane}</div>
     </Suspense>
   ) : harnessing ? (
     <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden bg-background">{labPane}</div>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{labPane}</div>
     </Suspense>
   ) : agentPane;
 
@@ -755,7 +755,7 @@ function WorkstationApp() {
             <MainColumn>
             {staged ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
-                <div className="h-full min-h-0 overflow-hidden bg-background">
+                <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
                   <Suspense fallback={null}>{workshop}</Suspense>
                 </div>
               </div>
@@ -806,7 +806,7 @@ function WorkstationApp() {
                 ) : null}
                 <ResizeHandle />
                 <Panel id="inspect" minSize="14" maxSize={peekOpen ? "28" : "48"} className="h-full min-h-0 min-w-0">
-                  <div className="glass-chrome h-full min-h-0 overflow-hidden">
+                  <div className="glass-chrome h-full min-h-0 overflow-hidden" data-skin-pane>
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}

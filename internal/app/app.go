@@ -35,6 +35,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/session"
+	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/vault"
@@ -86,6 +87,7 @@ type Config struct {
 	Theme                   string              `yaml:"theme" json:"theme"`
 	PaletteDark             string              `yaml:"palette_dark" json:"palette_dark"`
 	PaletteLight            string              `yaml:"palette_light" json:"palette_light"`
+	Skin                    string              `yaml:"skin" json:"skin"`
 	GateMode                string              `yaml:"gate_mode" json:"gate_mode"`
 	CrashResume             bool                `yaml:"crash_resume" json:"crash_resume"`
 	SessionRetentionDays    int                 `yaml:"session_retention_days" json:"session_retention_days"`
@@ -151,6 +153,7 @@ type App struct {
 	Observe    *observe.Tracer
 	Log        *diaglog.Logger
 	Video      *video.Engine
+	Skins      *skin.Store
 	schedStop  chan struct{}
 
 	evalMu     sync.Mutex
@@ -240,6 +243,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		runs:         map[string]*runSlot{},
 		lastShape:    map[string]runtime.ShapeReport{},
 		askAns:       map[string]string{},
+		Skins:        skin.NewStore(h.Skins()),
 	}
 	a.attachLogger()
 	a.Hub.Overflow = filepath.Join(h.Sessions(), "_overflow")
@@ -553,6 +557,7 @@ func (c *Config) NormalizeAppearance() {
 		c.PaletteLight = "neutral"
 	}
 	c.UIScale = snapUIScale(c.UIScale)
+	c.Skin = skin.NormalizeSkinID(c.Skin)
 }
 
 func (a *App) SaveConfig() error {

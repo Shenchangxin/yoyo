@@ -6,6 +6,8 @@ import { writeClipboard } from "../../lib/clipboard";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
 import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
+import { SkinStudio } from "./SkinStudio";
+import { builtinTokens } from "../../lib/skin/builtin";
 import { applyUiScale, snapUiScale, type UiScale } from "../../lib/scale";
 import { chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
@@ -201,6 +203,8 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
           }}
         />
       </SettingSection>
+
+      <SkinStudio host={host} />
 
       <SettingSection id="appearance-display" title={copy.settings.sections.appearanceDisplay}>
         <SettingRow title={copy.settings.language} description={copy.settings.languageDesc}>
@@ -729,14 +733,19 @@ function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalett
 }
 
 function PreviewPane({ palette }: { palette: PaletteId }) {
+  const tokens = builtinTokens(palette);
   return (
-    <div className="flex h-full w-full" data-theme-preview={palette}>
-      <div className="theme-preview-rail h-full w-[28%] border-r" />
+    <div
+      className="flex h-full w-full"
+      data-theme-preview={palette}
+      style={{ background: tokens["--background"], borderColor: tokens["--border"] }}
+    >
+      <div className="h-full w-[28%] border-r" style={{ background: tokens["--sidebar"], borderColor: tokens["--border"] }} />
       <div className="flex-1 space-y-[3px] p-[6px]">
-        <div className="theme-preview-line h-[3px] w-4/5 rounded-full" />
-        <div className="theme-preview-line h-[3px] w-3/5 rounded-full" />
-        <div className="theme-preview-bubble mt-[5px] h-[14px] w-full rounded-[6px]" />
-        <div className="theme-preview-accent mt-[4px] h-[4px] w-8 rounded-full" />
+        <div className="h-[3px] w-4/5 rounded-full" style={{ background: tokens["--muted"] }} />
+        <div className="h-[3px] w-3/5 rounded-full" style={{ background: tokens["--muted"] }} />
+        <div className="mt-[5px] h-[14px] w-full rounded-[6px]" style={{ background: tokens["--card"], border: `1px solid ${tokens["--border"]}` }} />
+        <div className="mt-[4px] h-[4px] w-8 rounded-full" style={{ background: tokens["--accent"] }} />
       </div>
     </div>
   );

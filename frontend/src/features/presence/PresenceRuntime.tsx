@@ -276,16 +276,16 @@ export function PresenceStamp(props: { className?: string; size?: number }) {
       data-testid="presence-stamp"
     >
       <svg viewBox="0 0 32 32" width={n} height={n} focusable="false" className="block h-full w-full overflow-visible">
-        <circle className="presence-stamp-body" cx="16" cy="16.2" r="14.6" fill="#F3F0EA" />
-        <ellipse className="presence-stamp-shine" cx="12.2" cy="12.4" rx="7.2" ry="5.4" fill="#FFFCFA" />
-        <ellipse className="presence-stamp-shade" cx="16.4" cy="22.6" rx="9.5" ry="5.2" fill="#E7E1D8" />
+        <circle className="presence-stamp-body" cx="16" cy="16.2" r="14.6" fill="var(--card)" />
+        <ellipse className="presence-stamp-shine" cx="12.2" cy="12.4" rx="7.2" ry="5.4" fill="var(--popover)" />
+        <ellipse className="presence-stamp-shade" cx="16.4" cy="22.6" rx="9.5" ry="5.2" fill="var(--lift)" />
         <g className="presence-stamp-face">
-          <ellipse className="presence-stamp-eye" cx="10.7" cy="14.65" rx="2.15" ry="4.4" fill="#1A1A1A" />
-          <ellipse className="presence-stamp-eye" cx="21.3" cy="14.65" rx="2.15" ry="4.4" fill="#1A1A1A" />
+          <ellipse className="presence-stamp-eye" cx="10.7" cy="14.65" rx="2.15" ry="4.4" fill="var(--foreground)" />
+          <ellipse className="presence-stamp-eye" cx="21.3" cy="14.65" rx="2.15" ry="4.4" fill="var(--foreground)" />
           <path
             className="presence-stamp-mouth"
             d="M9.55 19.9C12.05 23.35 19.95 23.35 22.45 19.9C19.7 22.2 12.3 22.2 9.55 19.9Z"
-            fill="#1A1A1A"
+            fill="var(--foreground)"
           />
         </g>
       </svg>

@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src *; media-src 'self' blob:; frame-src 'self' blob: data:; worker-src 'self' blob:;" />
     <title>Yoyo</title>
     <script>
       (function () {
@@ -26,6 +27,8 @@
           document.documentElement.classList.add(dark ? "dark" : "light");
           document.documentElement.setAttribute("data-palette", pal);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var companion = /(?:\?|&|#)surface=companion(?:&|$)/.test(location.search + location.hash);
+          if (companion) document.documentElement.classList.add("companion");
           var ua = navigator.userAgent || "";
           document.documentElement.dataset.os = /Windows/i.test(ua)
             ? "windows"
@@ -46,6 +49,53 @@
             }
           }
           document.documentElement.style.setProperty("--ui-scale", String(snapped));
+          var skinId = localStorage.getItem("yoyo-skin") || "";
+          var skinOk = /^[a-z][a-z0-9._-]{2,63}$/.test(skinId) && skinId.indexOf("builtin.") !== 0;
+          var tokensRaw = localStorage.getItem("yoyo-skin-tokens");
+          if (skinOk && tokensRaw) {
+            var tokens = JSON.parse(tokensRaw);
+            var locked = localStorage.getItem("yoyo-skin-evidence") !== "0";
+            var evidence = {
+              "--accent": 1, "--accent-fg": 1, "--ring": 1, "--mark": 1, "--mark-deep": 1,
+              "--ctx-chat": 1, "--ctx-tools": 1, "--success": 1, "--warning": 1, "--danger": 1, "--ctx-dynamic": 1
+            };
+            if (tokens && typeof tokens === "object") {
+              document.documentElement.setAttribute("data-skin", skinId);
+              for (var key in tokens) {
+                if (!Object.prototype.hasOwnProperty.call(tokens, key)) continue;
+                if (!/^--[a-z0-9-]+$/.test(key)) continue;
+                if (locked && evidence[key]) continue;
+                var val = String(tokens[key] || "");
+                if (!val || val.length > 240) continue;
+                if (/[;{}<>`]|url\s*\(|expression|@import|javascript/i.test(val)) continue;
+                document.documentElement.style.setProperty(key, val);
+              }
+            }
+            var wall = localStorage.getItem("yoyo-skin-wallpaper") || "";
+            if (!companion && /^wallpaper\.(png|jpe?g|webp)$/i.test(wall)) {
+              document.documentElement.style.setProperty("--skin-wallpaper", 'url("/yoyo-skin/' + skinId + "/assets/" + wall + '")');
+              document.documentElement.setAttribute("data-skin-wallpaper", "1");
+            }
+            var matsRaw = localStorage.getItem("yoyo-skin-materials");
+            if (matsRaw) {
+              try {
+                var mats = JSON.parse(matsRaw);
+                if (mats && typeof mats.grain === "number") {
+                  document.documentElement.style.setProperty("--skin-grain", String(mats.grain));
+                }
+                if (mats && typeof mats.wallpaperDim === "number") {
+                  document.documentElement.style.setProperty("--skin-wallpaper-dim", String(mats.wallpaperDim));
+                }
+                if (mats && mats.wallpaperFit === "contain") {
+                  document.documentElement.style.setProperty("--skin-wallpaper-fit", "contain");
+                  document.documentElement.style.setProperty("--skin-wallpaper-repeat", "no-repeat");
+                } else if (mats && mats.wallpaperFit === "tile") {
+                  document.documentElement.style.setProperty("--skin-wallpaper-fit", "auto");
+                  document.documentElement.style.setProperty("--skin-wallpaper-repeat", "repeat");
+                }
+              } catch (ignore) {}
+            }
+          }
         } catch (e) {
           document.documentElement.classList.add("dark");
           document.documentElement.setAttribute("data-palette", "ink");

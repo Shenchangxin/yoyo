@@ -468,3 +468,57 @@ html.dark .yingce-island .app-workspace-nav-group-toggle,
 html.dark .yingce-island .app-workspace-topbar-breadcrumb {
   color: var(--muted);
 }
+
+/* Wallpaper: Yingce marks create/library/assets as `.app-spatial-workspace`.
+   The infinite canvas editor is `.app-user-workspace` without those flags. */
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-spatial-workspace,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-product-workspace,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-shell,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-shell.is-creation-workspace,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-shell.is-spatial,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-main-row,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-spatial-workspace .app-workspace-stage,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-product-workspace .app-workspace-stage,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-content,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-scroll,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-grid,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-workspace-page,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-page-header,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .creation-home,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .library-page,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island [class*="-library-page"],
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .studio-collection-page,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .assets-library-page,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .settings-page,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .task-library-frame,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .settings-library-frame,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .full-screen-loader,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .workspace-route-loader,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island main.bg-background {
+  --user-page-bg: transparent;
+  --user-bg: transparent;
+  --workspace-page: transparent;
+  --workspace-content: transparent;
+  --workspace-canvas: transparent;
+  --workspace-navigation: transparent;
+  --creation-bg: transparent;
+  --bg: transparent;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: auto;
+}
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-workspace:not(.app-spatial-workspace):not(.app-product-workspace),
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-workspace:not(.app-spatial-workspace):not(.app-product-workspace) .app-workspace-stage,
+html[data-skin-wallpaper="1"]:not(.companion) .yingce-island .app-user-workspace:not(.app-spatial-workspace):not(.app-product-workspace) .app-workspace-page {
+  --user-page-bg: var(--background);
+  --workspace-page: var(--background);
+  --workspace-content: var(--background);
+  --workspace-canvas: var(--background);
+  background: var(--media-surface, var(--background)) !important;
+  background-color: var(--media-surface, var(--background)) !important;
+  background-image: none;
+}

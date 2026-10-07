@@ -4,6 +4,7 @@ import { PresenceAnchor } from "./presence";
 export function BootSkeleton() {
   return (
     <div className="relative flex h-full min-h-0 overflow-hidden bg-background" aria-busy="true" aria-label="Loading">
+      <div className="app-wallpaper" aria-hidden />
       <div className="app-grain" aria-hidden />
       <div className="flex w-60 shrink-0 flex-col bg-sidebar p-3">
         <div className="mb-4 flex h-8 items-center px-0.5">

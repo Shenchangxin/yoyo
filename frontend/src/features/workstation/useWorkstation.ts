@@ -17,6 +17,7 @@ import { HARNESS_TABS } from "../../lib/surface";
 import { applyUiScale } from "../../lib/scale";
 import { loadModelCatalog } from "../../lib/model-catalog";
 import { parseDarkPalette, parseLightPalette, parseThemePref, useTheme } from "../../lib/theme";
+import { isUserSkinId } from "../../lib/skin/schema";
 import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
 import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
@@ -50,6 +51,7 @@ export const emptyCfg: AppConfig = {
   theme: "system",
   paletteDark: "ink",
   paletteLight: "neutral",
+  skin: "",
   gateMode: "manual",
   crashResume: true,
   searchUrl: "",
@@ -148,7 +150,7 @@ function readInspTab(id: string) {
 
 export function useWorkstation() {
   const copy = useCopy();
-  const { setPref, setDarkPalette, setLightPalette } = useTheme();
+  const { setPref, setDarkPalette, setLightPalette, setSkinOverlay, resolved } = useTheme();
   const lab = useUI((s) => s.lab);
   const setLab = useUI((s) => s.setLab);
   const surface = useUI((s) => s.surface);
@@ -437,7 +439,27 @@ export function useWorkstation() {
     if (theme) setPref(theme);
     setDarkPalette(parseDarkPalette(savedCfg.paletteDark));
     setLightPalette(parseLightPalette(savedCfg.paletteLight));
-  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.paletteDark, savedCfg.paletteLight, setPref, setDarkPalette, setLightPalette]);
+    const skin = savedCfg.skin || "";
+    if (!isUserSkinId(skin)) {
+      setSkinOverlay(null);
+      return;
+    }
+    void api.resolveSkin(skin, resolved).then((r) => {
+      setSkinOverlay({
+        id: r.id,
+        tokens: r.tokens,
+        materials: r.materials,
+        wallpaperUrl: r.wallpaperUrl,
+        wallpaperFile: r.wallpaperFile,
+        fonts: r.fonts,
+        preserveEvidence: r.preserveEvidence,
+      });
+    }).catch(() => {
+      setSkinOverlay(null);
+      void api.activateSkin("");
+      toast.error(copy.settings.skinBroken);
+    });
+  }, [savedCfg.locale, savedCfg.uiScale, savedCfg.theme, savedCfg.paletteDark, savedCfg.paletteLight, savedCfg.skin, resolved, setPref, setDarkPalette, setLightPalette, setSkinOverlay, copy.settings.skinBroken]);
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { void loadModelCatalog(); }, []);

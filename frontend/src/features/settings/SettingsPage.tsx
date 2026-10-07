@@ -74,7 +74,7 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
         onSection={(t, id) => openSettings(t, id)}
         compact={compact}
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-skin-pane>
         <div
           ref={scroller}
           className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"

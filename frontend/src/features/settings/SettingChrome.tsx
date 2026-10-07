@@ -23,7 +23,7 @@ export function SettingsPageHeader({
   return (
     <header
       data-settings-page-header
-      className="sticky top-0 z-10 -mx-8 mb-[var(--space-section)] border-b border-border/60 bg-background px-8 pb-4 pt-6"
+      className="sticky top-0 z-10 -mx-8 mb-[var(--space-section)] border-b border-border/60 px-8 pb-4 pt-6"
     >
       <h1 className="text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">{title}</h1>
       {description ? (

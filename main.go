@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/desktop"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/home"
+	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
@@ -74,7 +77,8 @@ func main() {
 			application.NewService(ns),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler:    application.AssetFileServerFS(assets),
+			Middleware: skinAssetMiddleware(core, home),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -143,6 +147,21 @@ func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
 		return nil, nil, err
 	}
 	return desktop.NewService(core), core, nil
+}
+
+func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http.Handler {
+	var store *skin.Store
+	if core != nil && core.Skins != nil {
+		store = core.Skins
+	} else {
+		d, err := home.Open(homeRoot)
+		if err == nil {
+			store = skin.NewStore(d.Skins())
+		}
+	}
+	return func(next http.Handler) http.Handler {
+		return skin.Middleware(store, next)
+	}
 }
 
 func resolveEvals() string {
