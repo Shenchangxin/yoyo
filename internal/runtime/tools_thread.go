@@ -70,7 +70,7 @@ func (t *WorkspaceTools) listThreads(query string) ToolResult {
 		if ref.ID == "" || ref.ID == t.SessionID {
 			continue
 		}
-		if strings.Contains(ref.ID, "/tasks/") {
+		if IsChildSessionID(ref.ID) {
 			continue
 		}
 		blob := strings.ToLower(ref.ID + " " + ref.Title)

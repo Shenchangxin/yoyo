@@ -57,7 +57,14 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		defer cleanup()
 	}
 	childLoop := childLoopFor(parent, profileOf(parent.Tools))
-	childID := parent.SessionID + "/tasks/" + shortID()
+	childID := ChildSessionID(parent.SessionID)
+	if parent.OnChild != nil {
+		parent.OnChild(childID, prompt, false)
+		defer parent.OnChild(childID, prompt, true)
+	}
+	emit(parent, trace.TypeSubagent, "runtime", map[string]any{
+		"prompt": prompt, "isolate": isolate, "child": childID, "phase": "start",
+	})
 	var childTools *WorkspaceTools
 	if parent.Tools != nil {
 		cp := *parent.Tools
@@ -101,7 +108,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		FileHooks:        parent.FileHooks,
 		StopHooks:        parent.StopHooks,
 		PreCompactHooks:  parent.PreCompactHooks,
-		OnEvent:          nil,
+		OnEvent:          parent.OnEvent,
 		Meter:            parent.Meter,
 		Observe:          parent.Observe,
 		Home:             parent.Home,
@@ -110,7 +117,7 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 		TraceID:          parent.TraceID,
 		ShowThinking:     parent.ShowThinking,
 	})
-	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID}
+	payload := map[string]any{"prompt": prompt, "isolate": isolate, "summary": out, "child": childID, "phase": "complete"}
 	if err != nil {
 		payload["error"] = err.Error()
 	}
@@ -221,6 +228,33 @@ func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	loop.MaxTurns = turns
 	loop.MaxToolMessages = tools
 	return loop
+}
+
+const (
+	taskSep       = "--task--"
+	taskSepLegacy = "/tasks/"
+)
+
+func ChildSessionID(parent string) string {
+	parent = strings.TrimSpace(parent)
+	if parent == "" {
+		parent = "session"
+	}
+	return parent + taskSep + shortID()
+}
+
+func IsChildSessionID(id string) bool {
+	return strings.Contains(id, taskSep) || strings.Contains(id, taskSepLegacy)
+}
+
+func ParentOfSession(id string) string {
+	if i := strings.Index(id, taskSep); i >= 0 {
+		return id[:i]
+	}
+	if i := strings.Index(id, taskSepLegacy); i >= 0 {
+		return id[:i]
+	}
+	return ""
 }
 
 func shortID() string {

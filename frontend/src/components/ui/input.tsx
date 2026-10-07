@@ -2,12 +2,14 @@ import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } fro
 import { cn } from "../../lib/utils";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
-  { className, ...props },
+  { className, autoComplete = "off", spellCheck = false, ...props },
   ref,
 ) {
   return (
     <input
       ref={ref}
+      autoComplete={autoComplete}
+      spellCheck={spellCheck}
       className={cn(
         "no-drag h-8 w-full rounded-lg border border-border bg-background px-2.5 text-[13px] text-foreground placeholder:text-muted/70",
         "outline-none transition-[border-color,box-shadow,background-color] duration-200 ease-[var(--ease-out)]",

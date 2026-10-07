@@ -11,10 +11,12 @@ export function PlanChip({
   plan,
   running,
   compact,
+  onBuild,
 }: {
   plan: TaskPlan;
   running: boolean;
   compact?: boolean;
+  onBuild?: () => void;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
@@ -63,6 +65,28 @@ export function PlanChip({
             <span className="min-w-0 flex-1" />
           )}
           <span className="shrink-0 tabular-nums text-[11px] text-muted/80">{progress}</span>
+          {onBuild && !running && done < total ? (
+            <span
+              role="button"
+              tabIndex={0}
+              className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/10"
+              data-testid="build-plan"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onBuild();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onBuild();
+                }
+              }}
+            >
+              {copy.transcript.buildPlan}
+            </span>
+          ) : null}
         </button>
         {running || (done > 0 && done < total) ? (
           <ProgressHairline

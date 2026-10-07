@@ -63,12 +63,34 @@ export type Thread = {
   archived?: boolean;
   pinned?: boolean;
   model?: string;
+  connectionId?: string;
   authMode?: AuthMode;
   pinnedSkills?: string[];
   loadedSkills?: string[];
   channel?: ThreadChannel;
   interrupted?: boolean;
   queued?: number;
+  parentId?: string;
+  planText?: string;
+};
+
+export type ContextObject = {
+  id: string;
+  kind: string;
+  title: string;
+  detail?: string;
+  tokens?: number;
+  path?: string;
+  stale?: boolean;
+  pinned?: boolean;
+};
+
+export type ContextInventory = {
+  session: string;
+  shape: ContextUsage;
+  objects: ContextObject[];
+  plan?: string;
+  planPath?: string;
 };
 
 export function threadChannel(t: { channel?: string } | null | undefined): ThreadChannel {
@@ -202,6 +224,18 @@ export type SpillBlob = {
   truncated: boolean;
 };
 
+export type ChatProvider = {
+  id: string;
+  name: string;
+  vendor: string;
+  endpoint: string;
+  model: string;
+  models: string[];
+  hasKey: boolean;
+  isDefault: boolean;
+  active: boolean;
+};
+
 export type Health = {
   ok: boolean;
   harness: string;
@@ -214,6 +248,7 @@ export type Health = {
   workspaceReady: boolean;
   videoWorkspace?: string;
   videoWorkspaceReady?: boolean;
+  chatProviders?: ChatProvider[];
 };
 
 export type AppConfig = {

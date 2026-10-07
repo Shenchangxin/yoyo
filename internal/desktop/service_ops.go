@@ -510,15 +510,66 @@ func (s *Service) CheckUpdate() map[string]any {
 }
 
 func (s *Service) TestProvider() map[string]any {
+	return s.TestChatProvider("")
+}
+
+func (s *Service) ListChatProviders() []app.ChatProvider {
 	if s.RPC != nil {
-		v, err := s.call("provider.test", nil)
+		v, err := s.call("provider.list", nil)
+		list, _ := decode[[]app.ChatProvider](v, err)
+		if list == nil {
+			return []app.ChatProvider{}
+		}
+		return list
+	}
+	if s.App == nil {
+		return []app.ChatProvider{}
+	}
+	return s.App.ListChatProviders()
+}
+
+func (s *Service) UpsertChatProvider(in app.ChatProviderIn, apiKey string) (app.ChatProvider, error) {
+	if s.RPC != nil {
+		return decode[app.ChatProvider](s.call("provider.upsert", map[string]any{"provider": in, "api_key": apiKey}))
+	}
+	if s.App == nil {
+		return app.ChatProvider{}, fmt.Errorf("unavailable")
+	}
+	return s.App.UpsertChatProvider(in, apiKey)
+}
+
+func (s *Service) DeleteChatProvider(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("provider.delete", map[string]any{"id": id})
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("unavailable")
+	}
+	return s.App.DeleteChatProvider(id)
+}
+
+func (s *Service) SetDefaultChatProvider(id string) error {
+	if s.RPC != nil {
+		_, err := s.call("provider.setDefault", map[string]any{"id": id})
+		return err
+	}
+	if s.App == nil {
+		return fmt.Errorf("unavailable")
+	}
+	return s.App.SetDefaultChatProvider(id)
+}
+
+func (s *Service) TestChatProvider(id string) map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("provider.test", map[string]any{"id": id})
 		m, _ := decode[map[string]any](v, err)
 		return m
 	}
 	if s.App == nil {
 		return map[string]any{"ok": false, "error": "unavailable"}
 	}
-	return s.App.TestProvider()
+	return s.App.TestChatProvider(id)
 }
 
 func (s *Service) ReplaceMCP(servers []app.MCPServerConfig) error {

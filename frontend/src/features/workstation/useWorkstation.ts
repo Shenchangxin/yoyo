@@ -556,6 +556,9 @@ export function useWorkstation() {
     // A deliberate Stop lands as a "canceled" error card in the stream; it is
     // not news worth a notice.
     const stopped = item.type === "error" && classifyItem(item).kind === "canceled";
+    if (item.type === "subagent") {
+      void refresh();
+    }
     if ((item.type === "turn_end" || item.type === "approval" || item.type === "error") && !stopped) {
       pushNotice({
         id: item.key || `${item.type}-${Date.now()}`,
@@ -565,7 +568,7 @@ export function useWorkstation() {
         sessionId: item.sessionId,
       });
     }
-  }), [pushNotice, markEnded, markStarted]);
+  }), [pushNotice, markEnded, markStarted, refresh, copy]);
 
   useEffect(() => subscribeStopped((id) => markEnded(id)), [markEnded]);
 
@@ -1500,6 +1503,25 @@ export function useWorkstation() {
       setActive(t);
       setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
       toast.success(copy.app.worktreeApplied);
+    },
+    onOpenChild: async (id: string) => {
+      const fresh = await api.listSessions().catch(() => threads);
+      setThreads(fresh);
+      const t = fresh.find((x) => x.id === id) || threads.find((x) => x.id === id);
+      if (t) openThread(t);
+    },
+    onRestoreFiles: async (from: string) => {
+      if (!activeId) return;
+      const note = await api.restoreSessionFiles(activeId, from);
+      toast.success(note || copy.app.restored);
+      void refreshDiff();
+    },
+    onForkFrom: async (from: string) => {
+      if (!activeId) return;
+      const t = await api.forkSession(activeId, from);
+      setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+      openThread(t);
+      toast.success(copy.app.forked);
     },
     runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };

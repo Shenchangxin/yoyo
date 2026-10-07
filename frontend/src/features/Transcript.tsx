@@ -137,6 +137,9 @@ export function Transcript(props: {
   latestNonce?: number;
   onActiveTurn?: (key: string) => void;
   onJumpLatest?: () => void | Promise<void>;
+  onOpenChild?: (id: string) => void;
+  onRestoreFiles?: (from: string) => void;
+  onForkFrom?: (from: string) => void;
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
@@ -164,7 +167,18 @@ export function Transcript(props: {
           turnKey: row.turnKey || itemTurnKey(row.item),
           space: rowSpace(layout, i),
           estimate: 96,
-          render: () => <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />,
+          render: () => (
+            <div className="group/user relative">
+              <ItemRow item={row.item} copyText={props.compact ? "" : row.item.text} />
+              {!props.compact && (props.onRestoreFiles || props.onForkFrom) ? (
+                <UserTurnFoot
+                  from={row.item.seq ? `seq:${row.item.seq}` : itemTurnKey(row.item)}
+                  onRestore={props.onRestoreFiles}
+                  onFork={props.onForkFrom}
+                />
+              ) : null}
+            </div>
+          ),
         };
       }
       if (row.kind === "agent") {
@@ -198,6 +212,7 @@ export function Transcript(props: {
                       running={props.running}
                       compact={props.compact}
                       liveTexts={props.liveTexts}
+                      onOpenChild={props.onOpenChild}
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
@@ -698,6 +713,8 @@ function ApprovalCard({ item, onResolve }: { item: Approval; onResolve: (id: str
           className="mt-2 min-h-[4.5rem] w-full resize-y rounded-lg border border-border/60 bg-sidebar/70 px-3 py-2 text-[13px] leading-[1.5] text-foreground outline-none focus:border-foreground/30"
           value={answer}
           placeholder={copy.transcript.answerPlaceholder}
+          autoComplete="off"
+          spellCheck={false}
           onChange={(e) => setAnswer(e.target.value)}
         />
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -862,6 +879,64 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   );
 }
 
+function UserTurnFoot({
+  from,
+  onRestore,
+  onFork,
+}: {
+  from: string;
+  onRestore?: (from: string) => void;
+  onFork?: (from: string) => void;
+}) {
+  const copy = useCopy();
+  if (!from) return null;
+  return (
+    <div className="mt-1 flex justify-end gap-1 opacity-0 transition-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100">
+      {onRestore ? (
+        <button
+          type="button"
+          className="h-6 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+          onClick={() => onRestore(from)}
+        >
+          {copy.transcript.restoreFiles}
+        </button>
+      ) : null}
+      {onFork ? (
+        <button
+          type="button"
+          className="h-6 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+          onClick={() => onFork(from)}
+        >
+          {copy.transcript.forkFrom}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function CompactRow({ item }: { item: Item }) {
+  const copy = useCopy();
+  const p = item.payload || {};
+  const note = String(p.note || item.text || "");
+  const kept = Number(p.kept || 0);
+  const elided = Number(p.elided || 0);
+  const hydrated = Number(p.hydrated || 0);
+  const bits = [
+    copy.transcript.checkpoint,
+    kept ? copy.transcript.checkpointKept.replace("{n}", String(kept)) : "",
+    elided ? copy.transcript.checkpointElided.replace("{n}", String(elided)) : "",
+    hydrated ? copy.transcript.checkpointHydrated.replace("{n}", String(hydrated)) : "",
+  ].filter(Boolean);
+  const label = note || bits.join(" · ") || copy.app.compacted;
+  return (
+    <div className="flex justify-center py-1" data-testid="compact-row">
+      <div className="max-w-[36rem] rounded-full border border-border/50 bg-lift/40 px-3 py-1 text-center text-[11px] leading-[1.4] text-muted">
+        {label}
+      </div>
+    </div>
+  );
+}
+
 function MentionGlyph({ kind }: { kind: MentionKind }) {
   const cls = "size-3 shrink-0 opacity-80";
   if (kind === "folder") return <Folder className={cls} />;
@@ -961,9 +1036,7 @@ const ItemRow = memo(function ItemRow({
   if (shown.type === "compaction") {
     const kind = String(shown.payload?.kind || "");
     if (kind === "checkpoint_start") return null;
-    const note = String(shown.payload?.note || shown.text || "");
-    const label = note || (kind === "checkpoint" ? copy.transcript.checkpoint : copy.app.compacted);
-    return <div className="text-center text-[11px] text-muted/80">{label}</div>;
+    return <CompactRow item={shown} />;
   }
   if (shown.type === "tool_call" || shown.type === "tool_result") {
     return <ToolLine item={shown} />;

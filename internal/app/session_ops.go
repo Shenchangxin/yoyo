@@ -6,7 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/trace"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
@@ -48,6 +52,7 @@ func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	dst.HarnessPolicy = session.Pin
 	dst.ModelFingerprint = src.ModelFingerprint
 	dst.Model = src.Model
+	dst.ConnectionID = src.ConnectionID
 	dst.LoadedSkills = append([]string(nil), src.LoadedSkills...)
 	dst.PinnedSkills = append([]string(nil), src.PinnedSkills...)
 	dst.PlanText = src.PlanText
@@ -75,17 +80,7 @@ func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	if from != "" && a.Traces != nil {
 		evs, err := a.Traces.Read(dst.ID)
 		if err == nil {
-			cut := -1
-			for i, ev := range evs {
-				if ev.Type != "user" {
-					continue
-				}
-				text, _ := ev.Payload["text"].(string)
-				if strings.Contains(text, from) {
-					cut = i
-					break
-				}
-			}
+			cut := forkCutIndex(evs, from, a.Traces, src.ID)
 			if cut > 0 {
 				keep := evs[cut:]
 				for i := range keep {
@@ -94,6 +89,9 @@ func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 				_ = a.Traces.Replace(dst.ID, keep)
 			}
 		}
+	}
+	if src.ProjectRoot() != "" && strings.TrimSpace(src.PlanText) != "" {
+		runtime.WritePlanFile(src.ProjectRoot(), dst.ID, src.PlanText)
 	}
 	if src.Isolate {
 		return a.EnsureSessionWorktree(dst.ID)
@@ -275,4 +273,74 @@ func (a *App) ReverseWorkspaceHunks(workspace string, ids []string, snapshot str
 		return fmt.Errorf("missing snapshot for undo")
 	}
 	return runtime.ReverseApplyHunks(workspace, snapshot, ids)
+}
+
+func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID string) int {
+	from = strings.TrimSpace(from)
+	if from == "" {
+		return -1
+	}
+	if strings.HasPrefix(from, "seq:") && store != nil && srcID != "" {
+		n, err := strconv.ParseInt(strings.TrimPrefix(from, "seq:"), 10, 64)
+		if err == nil && n > 0 {
+			if page, err := store.PageTurns(srcID, 0, 100000); err == nil {
+				for _, ev := range page.Events {
+					if ev.Seq != n || ev.Type != trace.TypeUser {
+						continue
+					}
+					for i, e := range evs {
+						if e.Type != trace.TypeUser {
+							continue
+						}
+						if !e.TS.IsZero() && !ev.TS.IsZero() && e.TS.Equal(ev.TS) {
+							return i
+						}
+						if payloadStr(e.Payload, "text") == payloadStr(ev.Payload, "text") {
+							return i
+						}
+					}
+				}
+			}
+		}
+	}
+	for i, ev := range evs {
+		if ev.Type != trace.TypeUser {
+			continue
+		}
+		if id := payloadStr(ev.Payload, "id"); id != "" && id == from {
+			return i
+		}
+	}
+	for i, ev := range evs {
+		if ev.Type != trace.TypeUser {
+			continue
+		}
+		text := payloadStr(ev.Payload, "text")
+		if strings.Contains(text, from) {
+			return i
+		}
+	}
+	return -1
+}
+
+func eventTimeFrom(evs []trace.Event, from string, store *trace.Store, srcID string) time.Time {
+	from = strings.TrimSpace(from)
+	if from == "" {
+		return time.Time{}
+	}
+	if t, ok := runtime.ParseStampTime(from); ok {
+		return t
+	}
+	if i := forkCutIndex(evs, from, store, srcID); i >= 0 && i < len(evs) {
+		return evs[i].TS
+	}
+	return time.Time{}
+}
+
+func payloadStr(p map[string]any, key string) string {
+	if p == nil {
+		return ""
+	}
+	s, _ := p[key].(string)
+	return s
 }

@@ -97,6 +97,8 @@ export function SettingsSidebar(props: {
             autoComplete="off"
             name="settings-search"
             spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
             className="no-drag h-8 w-full rounded-[9px] border border-border bg-background pl-8 pr-7 text-[13px] text-foreground placeholder:text-muted outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15 [&::-webkit-search-cancel-button]:hidden"
           />
           {query ? (

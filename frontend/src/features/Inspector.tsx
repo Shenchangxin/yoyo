@@ -4,9 +4,11 @@ import {
   ExternalLink,
   Files,
   Globe,
+  Layers,
   RefreshCw,
   TextQuote,
 } from "lucide-react";
+import { ContextPane } from "./ContextPane";
 import { Tooltip } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
@@ -50,6 +52,7 @@ export function Inspector(props: {
   const dirty = files.length || props.hunks.length;
   const tabs: { id: InspTab; label: string; icon: typeof Files; count?: number }[] = [
     { id: "files", label: copy.review.files, icon: Files, count: dirty || undefined },
+    { id: "context", label: copy.review.contextTab, icon: Layers },
     { id: "browser", label: copy.review.browser, icon: Globe },
     { id: "trace", label: copy.trace.tab, icon: Activity },
   ];
@@ -104,6 +107,8 @@ export function Inspector(props: {
               onLoadSpill={props.onLoadSpill || (async () => ({ id: "", bytes: 0, text: "", truncated: false }))}
             />
           </div>
+        ) : active === "context" ? (
+          <ContextPane sessionId={props.sessionId} running={props.running} onQuote={props.onQuote} />
         ) : active === "browser" ? (
           <BrowserPane workspace={props.workspace} previewPath={props.focusFile} running={props.running} />
         ) : (

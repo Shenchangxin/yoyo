@@ -828,11 +828,76 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.ContextUsage(p.Session), nil
+	case "context.inventory":
+		var p struct {
+			Session string `json:"session"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ContextInventory(p.Session), nil
+	case "context.pin":
+		var p struct {
+			Session string `json:"session"`
+			Kind    string `json:"kind"`
+			Key     string `json:"key"`
+			Pinned  *bool  `json:"pinned"`
+		}
+		_ = json.Unmarshal(params, &p)
+		on := true
+		if p.Pinned != nil {
+			on = *p.Pinned
+		}
+		return a.ContextPin(p.Session, p.Kind, p.Key, on)
+	case "thread.plan":
+		var p struct {
+			Session string `json:"session"`
+			Text    string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionPlan(p.Session, p.Text)
+	case "thread.restore_files":
+		var p struct {
+			Session string `json:"session"`
+			From    string `json:"from"`
+		}
+		_ = json.Unmarshal(params, &p)
+		note, err := a.RestoreSessionFiles(p.Session, p.From)
+		return map[string]any{"note": note}, err
 	case "config.get":
 		return a.Config, nil
 	case "config.set":
 		return map[string]any{"ok": true}, a.ApplyConfigPatch(params)
+	case "provider.list":
+		return a.ListChatProviders(), nil
+	case "provider.upsert":
+		var p struct {
+			Provider app.ChatProviderIn `json:"provider"`
+			APIKey   string             `json:"api_key"`
+		}
+		_ = json.Unmarshal(params, &p)
+		if p.Provider.Vendor == "" && p.Provider.Endpoint == "" && p.Provider.ID == "" {
+			_ = json.Unmarshal(params, &p.Provider)
+		}
+		return a.UpsertChatProvider(p.Provider, p.APIKey)
+	case "provider.delete":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.DeleteChatProvider(p.ID)
+	case "provider.setDefault":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.SetDefaultChatProvider(p.ID)
 	case "provider.test":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		if strings.TrimSpace(p.ID) != "" {
+			return a.TestChatProvider(p.ID), nil
+		}
 		return a.TestProvider(), nil
 	case "mcp.replace":
 		var p struct {
@@ -845,7 +910,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Value string `json:"value"`
 		}
 		_ = json.Unmarshal(params, &p)
-		a.Vault.Set("default", p.Value)
+		a.Vault.Set("default", strings.TrimSpace(p.Value))
 		return map[string]any{"ok": true}, nil
 	case "mcp.start":
 		var p struct {

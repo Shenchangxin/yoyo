@@ -38,7 +38,7 @@ import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
 import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace";
 import type { AuthMode, Thread } from "./lib/protocol";
-import { latestTaskPlan } from "./lib/plan";
+import { latestTaskPlan, parsePlanText } from "./lib/plan";
 
 const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
 const EvolveLab = lazy(() => import("./features/labs/EvolveLab").then((m) => ({ default: m.EvolveLab })));
@@ -176,8 +176,21 @@ function WorkstationApp() {
     onQueueCancel: (id: string) => { void ws.onQueueCancel(id); },
     onQueueReorder: (id: string, delta: number) => { void ws.onQueueReorder(id, delta); },
     onApplyWorktree: () => { void ws.onApplyWorktree(); },
-    taskPlan: latestTaskPlan(ws.items),
+    taskPlan: latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || ""),
     methodologyActive: ws.methodologyActive,
+    connectionId: ws.active?.connectionId,
+    chatProviders: ws.health.chatProviders,
+    onBuildPlan: () => {
+      const plan = latestTaskPlan(ws.items) || parsePlanText(ws.active?.planText || "");
+      if (!plan) return;
+      const body = [
+        "Build this plan as written. Do not rewrite the plan unless a step is blocked.",
+        plan.explanation,
+        ...plan.steps.map((s, i) => `${i + 1}. [${s.status}] ${s.step}`),
+      ].filter(Boolean).join("\n");
+      useUI.getState().setPlan(false);
+      void ws.onSend({ text: body });
+    },
   };
 
   const composer = (
@@ -287,6 +300,9 @@ function WorkstationApp() {
           jumpTo={ws.jumpTo}
           latestNonce={ws.latestNonce}
           onActiveTurn={ws.setActiveTurn}
+          onOpenChild={(id) => { void ws.onOpenChild(id); }}
+          onRestoreFiles={(from) => { void ws.onRestoreFiles(from); }}
+          onForkFrom={(from) => { void ws.onForkFrom(from); }}
           onJumpLatest={ws.jumpToLatest}
         />
         <div className={cn(THREAD_COL, THREAD_GUTTER)}>
@@ -867,6 +883,7 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
           await ws.patchConfig(next);
           await ws.refresh();
         },
+        refresh: ws.refresh,
         onBrowse: () => api.pickFolder(),
         onStartMcp: async (name, command, args) => { await api.startMCP(name, command, args); await ws.refresh(); },
         onStartMcpHttp: async (name, endpoint) => { await api.startMCPHTTP(name, endpoint); await ws.refresh(); },

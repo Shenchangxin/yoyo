@@ -3,7 +3,7 @@ import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipbo
 import { Textarea } from "../components/ui/input";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
@@ -11,10 +11,10 @@ import { displayWorkspace } from "../lib/display-title";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
-import type { Attachment, AuthMode, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
+import type { Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
 import type { TaskPlan } from "../lib/plan";
 import { PlanChip } from "./PlanChip";
-import { formatTokens, lookupCatalogModel, composerModelIds, resolveContextWindow } from "../lib/models-dev";
+import { formatTokens, lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow } from "../lib/models-dev";
 import { useModelCatalog } from "../lib/model-catalog";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
@@ -41,6 +41,8 @@ export function Composer(props: {
   model?: string;
   models?: string[];
   provider?: string;
+  connectionId?: string;
+  chatProviders?: ChatProvider[];
   ctx?: ContextUsage;
   queued?: number;
   queueItems?: { id?: string; text?: string; plan?: boolean }[];
@@ -70,6 +72,7 @@ export function Composer(props: {
   onIsolate?: (isolate: boolean) => void;
   taskPlan?: TaskPlan | null;
   methodologyActive?: boolean;
+  onBuildPlan?: () => void;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -99,10 +102,15 @@ export function Composer(props: {
   const canSend = !props.disabled && hasPayload;
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
-  const modelOptions = composerModelIds(catalog, props.provider, currentModel, props.models);
+  const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
+  const grouped = groups.some((g) => g.models.length > 0);
+  const modelOptions = grouped ? [] : composerModelIds(catalog, props.provider, currentModel, props.models);
+  const groupedValue = grouped ? resolveComposerModelValue(props.chatProviders, currentModel, props.connectionId) : "";
   const slashOpen = hint === "slash";
-  const meta = lookupCatalogModel(catalog, props.provider || "openai", currentModel);
-  const fallbackWindow = resolveContextWindow(catalog, props.provider || "", currentModel);
+  const selectedGroup = grouped ? groups.find((g) => g.providerId === decodeChatModel(groupedValue).providerId) : undefined;
+  const catalogProvider = selectedGroup?.vendor || props.provider || "openai";
+  const meta = lookupCatalogModel(catalog, catalogProvider, currentModel);
+  const fallbackWindow = resolveContextWindow(catalog, catalogProvider, currentModel);
   const modelLabel = meta?.model.name || currentModel;
 
   const slashPrefix = slashQuery(value);
@@ -319,7 +327,7 @@ export function Composer(props: {
           }}
         >
           {props.taskPlan ? (
-            <PlanChip key={props.draftKey} plan={props.taskPlan} running={props.running} compact={props.compact} />
+            <PlanChip key={props.draftKey} plan={props.taskPlan} running={props.running} compact={props.compact} onBuild={props.onBuildPlan} />
           ) : null}
           {chips.length || atts.length ? (
             <div className="flex flex-wrap items-center gap-1 px-3 pt-2.5">
@@ -451,7 +459,7 @@ export function Composer(props: {
                   props.onSlash?.("/" + cmd, rest.join(" "));
                   return;
                 }
-                send();
+                send(props.running && (e.metaKey || e.ctrlKey));
               }
             }}
           />
@@ -630,17 +638,49 @@ export function Composer(props: {
             </div>
             <span className="ml-auto" />
             {props.running ? (
-              <button
-                type="button"
-                className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                disabled={props.disabled || !hasPayload}
-                onClick={() => send(true)}
-                aria-label={copy.composer.steer}
-              >
-                {copy.composer.steer}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  disabled={props.disabled || !hasPayload}
+                  onClick={() => send()}
+                  aria-label={copy.composer.queueNow}
+                  data-testid="composer-queue-btn"
+                >
+                  {copy.composer.queueNow}
+                </button>
+                <Tooltip content={copy.composer.steerHint}>
+                  <button
+                    type="button"
+                    className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                    disabled={props.disabled || !hasPayload}
+                    onClick={() => send(true)}
+                    aria-label={copy.composer.steerNow}
+                    data-testid="composer-steer"
+                  >
+                    {copy.composer.steerNow}
+                  </button>
+                </Tooltip>
+              </>
             ) : null}
-            {modelOptions.length > 0 && props.onModel ? (
+            {grouped && props.onModel ? (
+              <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
+                <SelectTrigger className={cn(ghostSelect, "max-w-[12rem]")} aria-label={copy.composer.model} title={currentModel}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="min-w-[16rem]">
+                  {groups.map((g) => (
+                    <SelectGroup key={g.providerId}>
+                      <SelectLabel>{g.providerName}{g.isDefault ? ` · ${copy.settings.defaultBadge}` : ""}</SelectLabel>
+                      {g.models.map((m) => {
+                        const label = lookupCatalogModel(catalog, g.vendor, m)?.model.name || m;
+                        return <SelectItem key={`${g.providerId}::${m}`} value={encodeChatModel(g.providerId, m)}>{label}</SelectItem>;
+                      })}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : modelOptions.length > 0 && props.onModel ? (
               <Select value={currentModel || modelOptions[0]} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
                 <SelectTrigger className={cn(ghostSelect, "max-w-[8.5rem]")} aria-label={copy.composer.model} title={currentModel}>
                   <SelectValue />

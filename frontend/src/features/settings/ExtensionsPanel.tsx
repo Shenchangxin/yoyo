@@ -84,6 +84,8 @@ function McpSection({ host }: { host: SettingsHost }) {
             aria-label={copy.settings.mcpJson}
             className="no-drag h-44 w-full rounded-[9px] border border-border bg-background p-3 font-mono text-[12px] leading-[1.6] text-foreground outline-none focus-visible:border-foreground/25"
             value={json}
+            spellCheck={false}
+            autoComplete="off"
             onChange={(e) => setJson(e.target.value)}
           />
           <div className="mt-2.5 flex justify-end">

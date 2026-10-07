@@ -57,7 +57,30 @@ function workspaceKey(t: Thread): string {
   return (t.originWorkspace || t.workspace || "").replace(/\\/g, "/");
 }
 
+function expandThreadTree(threads: Thread[]): Thread[] {
+  const have = new Set(threads.map((t) => t.id));
+  const kids = new Map<string, Thread[]>();
+  const roots: Thread[] = [];
+  for (const t of threads) {
+    if (t.parentId && have.has(t.parentId)) {
+      const list = kids.get(t.parentId) || [];
+      list.push(t);
+      kids.set(t.parentId, list);
+    } else {
+      roots.push(t);
+    }
+  }
+  const out: Thread[] = [];
+  const walk = (t: Thread) => {
+    out.push(t);
+    for (const c of kids.get(t.id) || []) walk(c);
+  };
+  for (const t of roots) walk(t);
+  return out;
+}
+
 function railEntries(threads: Thread[], copy: Copy, opts: { groupSpaces: boolean; homeWorkspace?: string }): RailEntry[] {
+  threads = expandThreadTree(threads);
   const pinned: Thread[] = [];
   const rest: Thread[] = [];
   for (const t of threads) {
@@ -237,7 +260,7 @@ export function ThreadRail(props: {
         />
       );
     }
-    return <ThreadRow key={e.thread.id} thread={e.thread} nested={!q && !e.thread.pinned && !videoOn} {...props} />;
+    return <ThreadRow key={e.thread.id} thread={e.thread} nested={!!e.thread.parentId || (!q && !e.thread.pinned && !videoOn)} {...props} />;
   }
   return (
     <SidebarCard>
@@ -545,6 +568,8 @@ function ThreadRow(props: {
         <input
           autoFocus
           aria-label={copy.rail.rename}
+          autoComplete="off"
+          spellCheck={false}
           className="w-full rounded-md bg-background px-1 text-[13px] font-medium text-foreground"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

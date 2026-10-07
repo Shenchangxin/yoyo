@@ -140,6 +140,7 @@ func (s *Service) applyDesktop(cfg app.Config) {
 }
 
 func (s *Service) SetAPIKey(value string) {
+	value = strings.TrimSpace(value)
 	if s.RPC != nil {
 		_, _ = s.call("key.set", map[string]any{"value": value})
 		return
@@ -609,6 +610,57 @@ func (s *Service) ContextUsage(sessionID string) any {
 		return v
 	}
 	return s.App.ContextUsage(sessionID)
+}
+
+func (s *Service) ContextInventory(sessionID string) any {
+	if s.RPC != nil {
+		v, _ := s.call("context.inventory", map[string]any{"session": sessionID})
+		return v
+	}
+	return s.App.ContextInventory(sessionID)
+}
+
+func (s *Service) SetSessionPlan(id, text string) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("thread.plan", map[string]any{"session": id, "text": text}))
+	} else {
+		m, err = s.App.SetSessionPlan(id, text)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
+}
+
+func (s *Service) RestoreSessionFiles(id, from string) (string, error) {
+	if s.RPC != nil {
+		v, err := s.call("thread.restore_files", map[string]any{"session": id, "from": from})
+		if err != nil {
+			return "", err
+		}
+		if m, ok := v.(map[string]any); ok {
+			note, _ := m["note"].(string)
+			return note, nil
+		}
+		return fmt.Sprint(v), nil
+	}
+	return s.App.RestoreSessionFiles(id, from)
+}
+
+func (s *Service) ContextPin(id, kind, key string, pinned bool) (app.SessionMeta, error) {
+	var m app.SessionMeta
+	var err error
+	if s.RPC != nil {
+		m, err = decode[app.SessionMeta](s.call("context.pin", map[string]any{"session": id, "kind": kind, "key": key, "pinned": pinned}))
+	} else {
+		m, err = s.App.ContextPin(id, kind, key, pinned)
+	}
+	if err == nil {
+		s.emitSessions(m)
+	}
+	return m, err
 }
 
 func (s *Service) PendingApprovals() any {

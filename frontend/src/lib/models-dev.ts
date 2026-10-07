@@ -1,8 +1,9 @@
-import { providerPreset } from "./providers";
-import type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape";
+import { providerPreset } from "./providers.ts";
+import type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape.ts";
+import type { ChatProvider } from "./protocol.ts";
 
-export type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape";
-export { hydrateCatalog, overlayCatalog } from "./catalog-shape";
+export type { CatalogEntry, ModelDefinition, ModelsDevCatalog } from "./catalog-shape.ts";
+export { hydrateCatalog, overlayCatalog } from "./catalog-shape.ts";
 
 /** Chat default when models.dev has no entry for the current model id. */
 export const UNKNOWN_MODEL_WINDOW = 300_000;
@@ -132,6 +133,64 @@ export function modelListedForProvider(
   if (models[id]) return true;
   const undated = id.replace(/-\d{8}$/, "");
   return undated !== id && !!models[undated];
+}
+
+export function encodeChatModel(providerId: string, model: string): string {
+  const id = (providerId || "").trim();
+  const m = (model || "").trim();
+  if (!id || !m) return m;
+  return `${id}::${m}`;
+}
+
+export function decodeChatModel(value: string): { providerId: string; model: string } {
+  const raw = (value || "").trim();
+  const i = raw.indexOf("::");
+  if (i <= 0) return { providerId: "", model: raw };
+  return { providerId: raw.slice(0, i), model: raw.slice(i + 2) };
+}
+
+export type ChatModelGroup = {
+  providerId: string;
+  providerName: string;
+  vendor: string;
+  isDefault: boolean;
+  models: string[];
+};
+
+export function composerModelGroups(
+  providers: ChatProvider[] | undefined,
+  currentModel?: string,
+  currentProviderId?: string,
+): ChatModelGroup[] {
+  const now = (currentModel || "").trim();
+  const pid = (currentProviderId || "").trim();
+  return (providers || [])
+    .filter((p) => p && p.id && p.active !== false)
+    .map((p) => ({
+      providerId: p.id,
+      providerName: p.name || p.vendor || p.id,
+      vendor: p.vendor || "custom",
+      isDefault: !!p.isDefault,
+      models: mergeModelIds(p.id === pid ? now : undefined, p.model, p.models),
+    }))
+    .filter((g) => g.models.length > 0);
+}
+
+export function resolveComposerModelValue(
+  providers: ChatProvider[] | undefined,
+  currentModel?: string,
+  currentProviderId?: string,
+): string {
+  const model = (currentModel || "").trim();
+  const pid = (currentProviderId || "").trim();
+  if (pid && model) return encodeChatModel(pid, model);
+  const groups = composerModelGroups(providers, model, pid);
+  const owners = groups.filter((g) => g.models.includes(model));
+  if (owners.length === 1) return encodeChatModel(owners[0].providerId, model);
+  const def = owners.find((g) => g.isDefault) || groups.find((g) => g.isDefault) || groups[0];
+  if (def && model) return encodeChatModel(def.providerId, model);
+  if (def?.models[0]) return encodeChatModel(def.providerId, def.models[0]);
+  return model;
 }
 
 /**

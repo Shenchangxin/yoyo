@@ -4,11 +4,11 @@ import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 import type { VoicePhase } from "../features/presence/types";
 
-export type InspTab = "files" | "browser" | "trace";
+export type InspTab = "files" | "browser" | "trace" | "context";
 export type SkillsTab = "installed" | "market" | "packs";
 
 export function coerceInspTab(v: string | null | undefined): InspTab | null {
-  if (v === "files" || v === "browser" || v === "trace") return v;
+  if (v === "files" || v === "browser" || v === "trace" || v === "context") return v;
   if (v === "changes" || v === "diff" || v === "queue" || v === "memory") return "files";
   return null;
 }

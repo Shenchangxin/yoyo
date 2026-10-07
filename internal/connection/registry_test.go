@@ -7,7 +7,7 @@ import (
 )
 
 func TestRegistryJSONRoundTrip(t *testing.T) {
-	v := vault.New(t.TempDir())
+	v := vault.NewFileOnly(t.TempDir())
 	r, err := Open(t.TempDir(), v)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestRegistryJSONRoundTrip(t *testing.T) {
 }
 
 func TestSeedChatAndSearch(t *testing.T) {
-	v := vault.New(t.TempDir())
+	v := vault.NewFileOnly(t.TempDir())
 	v.Set("default", "chat-key")
 	r, err := Open(t.TempDir(), v)
 	if err != nil {
@@ -92,5 +92,105 @@ func TestSeedChatAndSearch(t *testing.T) {
 	cas, err := r.Active(CapStorage, "")
 	if err != nil || cas.Protocol != "cas" {
 		t.Fatalf("cas %+v %v", cas, err)
+	}
+}
+
+func isolateVaultEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("YOYO_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+}
+
+func TestSyncChatAdoptsDefaultKeyAfterSave(t *testing.T) {
+	isolateVaultEnv(t)
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.SeedChat("custom", "https://server.flowyaipc.com/claw/v1", "openclaw/default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HasKey {
+		t.Fatal("expected empty key before vault save")
+	}
+	v.Set("default", "gw-token")
+	synced, err := r.SyncChat("custom", "https://server.flowyaipc.com/claw/v1 ", "openclaw/default", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !synced.HasKey {
+		t.Fatal("SyncChat should copy default vault key onto the chat connection")
+	}
+	if synced.Endpoint != "https://server.flowyaipc.com/claw/v1" {
+		t.Fatalf("endpoint %q", synced.Endpoint)
+	}
+	key, err := r.Lease(synced)
+	if err != nil || key != "gw-token" {
+		t.Fatalf("lease %q %v", key, err)
+	}
+}
+
+func TestSyncChatReplacesStaleConnectionKey(t *testing.T) {
+	isolateVaultEnv(t)
+	v := vault.NewFileOnly(t.TempDir())
+	v.Set("default", "old-openai")
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.SeedChat("openai", "https://api.openai.com/v1", "gpt-4.1-mini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key, err := r.Lease(c); err != nil || key != "old-openai" {
+		t.Fatalf("seed lease %v %v", key, err)
+	}
+	v.Set("default", "gw-token")
+	synced, err := r.SyncChat("custom", "https://server.flowyaipc.com/claw/v1", "openclaw/default", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := r.Lease(synced)
+	if err != nil || key != "gw-token" {
+		t.Fatalf("stale connection key kept %q %v", key, err)
+	}
+}
+
+func TestUpsertChatDoesNotClobberDefaultKey(t *testing.T) {
+	isolateVaultEnv(t)
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := r.Upsert(Connection{
+		Name: "OpenAI", Vendor: "openai", Endpoint: "https://api.openai.com/v1",
+		Capabilities: []string{CapChat}, Models: []string{"gpt-4.1-mini"},
+		DefaultModel: map[string]string{CapChat: "gpt-4.1-mini"}, Active: true,
+	}, "openai-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r.SetDefault(CapChat, first.ID)
+	second, err := r.Upsert(Connection{
+		Name: "Custom", Vendor: "custom", Endpoint: "https://server.flowyaipc.com/claw/v1",
+		Capabilities: []string{CapChat}, Models: []string{"openclaw/default"},
+		DefaultModel: map[string]string{CapChat: "openclaw/default"}, Active: true,
+	}, "gw-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := v.Get("default")
+	if err != nil || def != "openai-key" {
+		t.Fatalf("default vault %q %v", def, err)
+	}
+	k1, _ := r.Lease(first)
+	k2, _ := r.Lease(second)
+	if k1 != "openai-key" || k2 != "gw-token" {
+		t.Fatalf("keys %q %q", k1, k2)
 	}
 }

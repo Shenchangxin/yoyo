@@ -461,6 +461,7 @@ func (a *App) Health() map[string]any {
 		"isolated":              isolated(),
 		"isolation_kind":        isolationKind(),
 		"models":                a.Config.Models,
+		"chat_providers":        a.ListChatProviders(),
 		"workspace_ready":       WorkspaceReady(a.Config.Workspace),
 		"video_workspace":       a.VideoWorkspace(),
 		"video_workspace_ready": WorkspaceReady(a.VideoWorkspace()),
@@ -533,6 +534,9 @@ func (c *Config) NormalizeAppearance() {
 	if c == nil {
 		return
 	}
+	c.Provider = strings.TrimSpace(c.Provider)
+	c.Model = strings.TrimSpace(c.Model)
+	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
 	switch c.Theme {
 	case "dark", "light", "system":
 	default:

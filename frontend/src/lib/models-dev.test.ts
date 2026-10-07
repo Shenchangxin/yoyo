@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { hydrateCatalog, overlayCatalog, type ModelsDevCatalog } from "./catalog-shape.ts";
+import { composerModelGroups, encodeChatModel, resolveComposerModelValue } from "./models-dev.ts";
 
 const base: ModelsDevCatalog = {
   version: 3,
@@ -60,5 +61,27 @@ describe("hydrateCatalog", () => {
     }, base);
     assert.equal(got.providers.claude["claude-sonnet-4-6"].model.contextWindow, 1_000_000);
     assert.equal(got.providers.grok["grok-4"].model.id, "grok-4");
+  });
+});
+
+describe("composerModelGroups", () => {
+  const providers = [
+    { id: "a", name: "OpenAI", vendor: "openai", endpoint: "https://api.openai.com/v1", model: "gpt-4.1-mini", models: ["gpt-4.1-mini", "gpt-4.1"], hasKey: true, isDefault: true, active: true },
+    { id: "b", name: "FlowY", vendor: "custom", endpoint: "https://server.flowyaipc.com/claw/v1", model: "openclaw/default", models: ["openclaw/default"], hasKey: true, isDefault: false, active: true },
+  ];
+
+  it("groups models under each provider", () => {
+    const groups = composerModelGroups(providers, "gpt-4.1-mini", "a");
+    assert.equal(groups.length, 2);
+    assert.equal(groups[0].providerName, "OpenAI");
+    assert.deepEqual(groups[0].models, ["gpt-4.1-mini", "gpt-4.1"]);
+    assert.equal(groups[1].providerName, "FlowY");
+    assert.deepEqual(groups[1].models, ["openclaw/default"]);
+  });
+
+  it("encodes provider and model so two catalogs can share an id", () => {
+    assert.equal(encodeChatModel("a", "gpt-4.1-mini"), "a::gpt-4.1-mini");
+    assert.equal(resolveComposerModelValue(providers, "openclaw/default", "b"), "b::openclaw/default");
+    assert.equal(resolveComposerModelValue(providers, "gpt-4.1-mini"), "a::gpt-4.1-mini");
   });
 });

@@ -20,12 +20,21 @@ type Store struct {
 }
 
 func New(home string) *Store {
+	return open(home, keychainAvailable())
+}
+
+// NewFileOnly keeps secrets in the 0600 file so tests cannot clobber the OS keychain.
+func NewFileOnly(home string) *Store {
+	return open(home, false)
+}
+
+func open(home string, useKeychain bool) *Store {
 	s := &Store{mem: map[string]string{}}
 	if home != "" {
 		s.path = filepath.Join(home, "vault.json")
 		s.loadFile()
 	}
-	s.keychain = keychainAvailable()
+	s.keychain = useKeychain
 	if s.keychain {
 		s.migrateToKeychain()
 	}
@@ -58,9 +67,12 @@ func (s *Store) Get(name string) (string, error) {
 		s.mu.Unlock()
 		return v, nil
 	}
+	useKeychain := s.keychain
 	s.mu.Unlock()
-	if v, err := keychainGet(name); err == nil && v != "" {
-		return v, nil
+	if useKeychain {
+		if v, err := keychainGet(name); err == nil && v != "" {
+			return v, nil
+		}
 	}
 	if name == "openai" || name == "default" {
 		if v := os.Getenv(EnvAPIKey); v != "" {

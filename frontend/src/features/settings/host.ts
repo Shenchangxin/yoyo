@@ -11,6 +11,7 @@ export type SettingsHost = {
   sessionId?: string;
   patch: (partial: Partial<AppConfig>) => Promise<void>;
   saveProvider: (next: Partial<AppConfig>, apiKey: string) => Promise<void>;
+  refresh?: () => Promise<void>;
   onBrowse: () => Promise<string>;
   onStartMcp: (name: string, command: string, args: string[]) => Promise<void>;
   onStartMcpHttp?: (name: string, endpoint: string) => Promise<void>;
