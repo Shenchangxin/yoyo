@@ -3,12 +3,18 @@ package connection
 import "strings"
 
 func (r *Registry) adoptDefaultKey(c Connection) Connection {
-	if r == nil || r.vault == nil || c.HasKey {
+	if r == nil || r.vault == nil {
 		return c
 	}
 	key, err := r.vault.Get("default")
 	if err != nil || strings.TrimSpace(key) == "" {
 		return c
+	}
+	if c.VaultKey != "" {
+		if cur, e := r.vault.Get(c.VaultKey); e == nil && cur == key {
+			c.HasKey = true
+			return c
+		}
 	}
 	out, err := r.Upsert(c, key)
 	if err != nil {
@@ -61,7 +67,11 @@ func (r *Registry) SyncChat(provider, baseURL, model, apiKey string, extraModels
 	if cur.Protocol == "" {
 		cur.Protocol = InferProtocol(cur.Vendor, CapChat)
 	}
-	return r.Upsert(cur, apiKey)
+	out, err := r.Upsert(cur, apiKey)
+	if err != nil {
+		return out, err
+	}
+	return r.adoptDefaultKey(out), nil
 }
 
 func (r *Registry) SeedSearch(endpoint, vaultKeyName string) {

@@ -38,6 +38,10 @@ func (t *WorkspaceTools) snapshotBeforeWrite(rel, abs string) {
 }
 
 func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
+	return RestoreFileSnapshotsAfter(spillDir, workspace, time.Time{})
+}
+
+func RestoreFileSnapshotsAfter(spillDir, workspace string, after time.Time) (int, error) {
 	root := filepath.Join(spillDir, "files")
 	stamps, err := os.ReadDir(root)
 	if err != nil {
@@ -54,6 +58,12 @@ func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
 	for _, st := range stamps {
 		if !st.IsDir() {
 			continue
+		}
+		if !after.IsZero() {
+			stamp, ok := ParseStampTime(st.Name())
+			if !ok || stamp.Before(after) {
+				continue
+			}
 		}
 		src := filepath.Join(root, st.Name())
 		err = filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
@@ -80,6 +90,16 @@ func RestoreFileSnapshots(spillDir, workspace string) (int, error) {
 		}
 	}
 	return len(seen), nil
+}
+
+func ParseStampTime(name string) (time.Time, bool) {
+	name = strings.TrimSpace(name)
+	for _, layout := range []string{"20060102T150405.000000000", "20060102T150405", time.RFC3339Nano, time.RFC3339} {
+		if t, err := time.Parse(layout, name); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func sortStampDirs(stamps []os.DirEntry) {

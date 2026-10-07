@@ -41,6 +41,7 @@ type RunRequest struct {
 	Events           *kernel.EventBus
 	FileHooks        []FileHook
 	OnEvent          func(trace.Event)
+	OnChild          func(id, prompt string, done bool)
 	OnShape          func(ShapeReport)
 	Meter            *Meter
 	Observe          *observe.Tracer

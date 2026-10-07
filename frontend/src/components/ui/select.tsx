@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
+export const SelectGroup = SelectPrimitive.Group;
 
 export function SelectTrigger({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
@@ -38,6 +39,19 @@ export function SelectContent({ className, children, ...props }: ComponentProps<
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   );
+}
+
+export function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      className={cn("px-2 py-1.5 text-[10px] font-medium uppercase tracking-[0.04em] text-muted", className)}
+      {...props}
+    />
+  );
+}
+
+export function SelectSeparator({ className, ...props }: ComponentProps<typeof SelectPrimitive.Separator>) {
+  return <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
 export function SelectItem({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) {

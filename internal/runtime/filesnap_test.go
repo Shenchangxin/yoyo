@@ -34,6 +34,34 @@ func TestFileSnapshotRewindRestoresOldest(t *testing.T) {
 	}
 }
 
+func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
+	dir := t.TempDir()
+	ws := t.TempDir()
+	target := filepath.Join(ws, "note.txt")
+	if err := os.WriteFile(target, []byte("orig"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: ws, Spill: NewSpill(dir)}
+	tools.snapshotBeforeWrite("note.txt", target)
+	mark := time.Now().UTC()
+	time.Sleep(3 * time.Millisecond)
+	if err := os.WriteFile(target, []byte("edit-1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools.snapshotBeforeWrite("note.txt", target)
+	if err := os.WriteFile(target, []byte("edit-2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n, err := RestoreFileSnapshotsAfter(dir, ws, mark)
+	if err != nil || n != 1 {
+		t.Fatalf("restore n=%d err=%v", n, err)
+	}
+	raw, _ := os.ReadFile(target)
+	if string(raw) != "edit-1" {
+		t.Fatalf("got %q want edit-1 (turn snapshot, not session origin)", raw)
+	}
+}
+
 func TestParseRewindScope(t *testing.T) {
 	scope, from := ParseRewindScope("files from hello")
 	if scope != "files" || from != "hello" {

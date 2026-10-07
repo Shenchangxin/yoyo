@@ -45,7 +45,9 @@ func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
 	t.mu.Lock()
 	t.PlanText = b.String()
 	plan := t.PlanText
+	ws, sid := t.Workspace, t.SessionID
 	t.mu.Unlock()
+	WritePlanFile(ws, sid, plan)
 	return ToolResult{Content: plan}
 }
 

@@ -138,7 +138,11 @@ func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 	if err != nil {
 		return m, err
 	}
-	m.Model = strings.TrimSpace(model)
+	connID, modelID := a.splitSessionModel(model)
+	m.Model = modelID
+	if connID != "" {
+		m.ConnectionID = connID
+	}
 	return m, a.writeSession(m)
 }
 
@@ -404,7 +408,7 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 		model = meta.Model
 	}
 	window := runtime.EffectiveModelWindow(model, a.Config.ContextWindow)
-	client, _ := a.Client()
+	client, _ := a.ClientFor(meta)
 	loop = runtime.ApplyChatHorizon(loop)
 	opt := runtime.CompactOpts{Trigger: "user", Focus: focus}
 	scope, from := runtime.ParseRewindScope(focus)
@@ -425,7 +429,8 @@ func (a *App) CompactSessionFocus(id, focus string) (string, error) {
 		opt.Trigger = "rewind"
 	}
 	if (scope == "files" || scope == "both") && spill != nil {
-		n, err := runtime.RestoreFileSnapshots(spill.Dir, meta.ToolRoot())
+		after := eventTimeFrom(evs, from, a.Traces, id)
+		n, err := runtime.RestoreFileSnapshotsAfter(spill.Dir, meta.ToolRoot(), after)
 		if err != nil {
 			return note, err
 		}

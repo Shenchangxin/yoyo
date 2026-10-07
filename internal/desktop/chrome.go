@@ -168,6 +168,10 @@ func (s *Service) rebuildMenusNow() {
 	menu := gui.NewMenu()
 	if runtime.GOOS == "darwin" {
 		menu.AddRole(application.AppMenu)
+		// WKWebView has no clipboard shortcuts without this menu. WebView2 and
+		// GTK already paste in inputs; Wails EditMenu also runs insertText/paste,
+		// so Ctrl+V inserts the clipboard twice.
+		menu.AddRole(application.EditMenu)
 	}
 	file := menu.AddSubmenu(n.File)
 	file.Add(n.NewSession).SetAccelerator("CmdOrCtrl+N").OnClick(func(ctx *application.Context) {
@@ -195,8 +199,6 @@ func (s *Service) rebuildMenusNow() {
 	file.Add(n.Quit).SetAccelerator("CmdOrCtrl+Q").OnClick(func(ctx *application.Context) {
 		gui.Event.Emit("yoyo:quit", nil)
 	})
-
-	menu.AddRole(application.EditMenu)
 
 	view := menu.AddSubmenu(n.View)
 	view.Add(n.ToggleSidebar).OnClick(func(ctx *application.Context) {

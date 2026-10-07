@@ -68,6 +68,8 @@ export function Titlebar(props: {
         <input
           autoFocus
           aria-label={copy.titlebar.rename}
+          autoComplete="off"
+          spellCheck={false}
           className="min-w-0 flex-1 rounded-md bg-lift px-2 py-1 text-[13px] font-medium text-foreground"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

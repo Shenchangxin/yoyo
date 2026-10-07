@@ -43,7 +43,68 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, a.Config)
 	})
 	mux.HandleFunc("/api/provider/test", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, a.TestProvider())
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if r.Method == http.MethodPost {
+			var body struct {
+				ID string `json:"id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if strings.TrimSpace(body.ID) != "" {
+				id = strings.TrimSpace(body.ID)
+			}
+		}
+		writeJSON(w, a.TestChatProvider(id))
+	})
+	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			var body struct {
+				app.ChatProviderIn
+				APIKey string `json:"api_key"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			out, err := a.UpsertChatProvider(body.ChatProviderIn, body.APIKey)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, out)
+		default:
+			writeJSON(w, a.ListChatProviders())
+		}
+	})
+	mux.HandleFunc("/api/providers/", func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/api/providers/")
+		parts := strings.Split(strings.Trim(rest, "/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			http.NotFound(w, r)
+			return
+		}
+		id := parts[0]
+		if len(parts) > 1 && parts[1] == "default" {
+			if err := a.SetDefaultChatProvider(id); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "test" {
+			writeJSON(w, a.TestChatProvider(id))
+			return
+		}
+		if r.Method == http.MethodDelete {
+			if err := a.DeleteChatProvider(id); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
+		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/mcp/replace", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -98,6 +159,55 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		if len(parts) > 1 && parts[1] == "context" {
 			writeJSON(w, a.ContextUsage(id))
+			return
+		}
+		if len(parts) > 1 && parts[1] == "inventory" {
+			writeJSON(w, a.ContextInventory(id))
+			return
+		}
+		if len(parts) > 1 && parts[1] == "plan" && r.Method == http.MethodPost {
+			var body struct {
+				Text string `json:"text"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionPlan(id, body.Text)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "restore" && r.Method == http.MethodPost {
+			var body struct {
+				From string `json:"from"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			note, err := a.RestoreSessionFiles(id, body.From)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"note": note})
+			return
+		}
+		if len(parts) > 1 && parts[1] == "pin" && r.Method == http.MethodPost {
+			var body struct {
+				Kind   string `json:"kind"`
+				Key    string `json:"key"`
+				Pinned *bool  `json:"pinned"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			on := true
+			if body.Pinned != nil {
+				on = *body.Pinned
+			}
+			m, err := a.ContextPin(id, body.Kind, body.Key, on)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
 			return
 		}
 		if len(parts) > 1 && parts[1] == "running" {
@@ -963,7 +1073,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			Value string `json:"value"`
 		}
 		_ = json.Unmarshal(b, &body)
-		a.Vault.Set("default", body.Value)
+		a.Vault.Set("default", strings.TrimSpace(body.Value))
 		writeJSON(w, map[string]any{"ok": true})
 	})
 	if static != nil {

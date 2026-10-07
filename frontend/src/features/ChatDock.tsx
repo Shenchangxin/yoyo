@@ -1,6 +1,6 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
-import type { Approval, Attachment, AuthMode, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
+import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
 import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
 
@@ -17,6 +17,8 @@ export function ChatDock(props: {
   model?: string;
   models?: string[];
   provider?: string;
+  connectionId?: string;
+  chatProviders?: ChatProvider[];
   ctx?: ContextUsage;
   queued?: number;
   files?: FileHit[];
@@ -64,6 +66,8 @@ export function ChatDock(props: {
         model={props.model}
         models={props.models}
         provider={props.provider}
+        connectionId={props.connectionId}
+        chatProviders={props.chatProviders}
         ctx={props.ctx}
         queued={props.queued}
         queueItems={props.queueItems}

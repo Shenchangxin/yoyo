@@ -8,10 +8,12 @@ import { ThemeProvider, useTheme } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { isCompanionSurface } from "./lib/popout";
 import { applyOsClass } from "./lib/chrome";
+import { installInputGuards } from "./lib/input-guard";
 import "./styles.css";
 
 installFrontendLogBridge();
 applyOsClass();
+installInputGuards();
 
 function ThemedToaster() {
   const { resolved } = useTheme();

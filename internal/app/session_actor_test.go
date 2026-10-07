@@ -78,6 +78,49 @@ func TestForkSessionFromKeepsFromUserMessage(t *testing.T) {
 	}
 }
 
+func TestForkSessionFromSeq(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "first turn"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeAssistant, SessionID: src.ID, Payload: map[string]any{"text": "ok"}})
+	_ = a.Traces.Append(trace.Event{Type: trace.TypeUser, SessionID: src.ID, Payload: map[string]any{"text": "second turn"}})
+	page, err := a.Traces.PageTurns(src.ID, 0, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seq int64
+	for _, ev := range page.Events {
+		if ev.Type == trace.TypeUser {
+			text, _ := ev.Payload["text"].(string)
+			if text == "second turn" {
+				seq = ev.Seq
+			}
+		}
+	}
+	if seq == 0 {
+		t.Fatal("missing seq for second user")
+	}
+	dst, err := a.ForkSessionFrom(src.ID, fmt.Sprintf("seq:%d", seq))
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs, err := a.Traces.Read(dst.ID)
+	if err != nil || len(evs) == 0 {
+		t.Fatalf("%d %v", len(evs), err)
+	}
+	text, _ := evs[0].Payload["text"].(string)
+	if evs[0].Type != trace.TypeUser || text != "second turn" {
+		t.Fatalf("got %s %q", evs[0].Type, text)
+	}
+}
+
 func TestMaterialsDecodeFailsVisible(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

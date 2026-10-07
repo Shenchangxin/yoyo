@@ -71,6 +71,8 @@ export function TurnOutline(props: {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={copy.transcript.outlineSearch}
+          autoComplete="off"
+          spellCheck={false}
           className="mx-1.5 mb-1 h-7 rounded-md border border-border/60 bg-transparent px-2 text-[12px] text-foreground placeholder:text-muted/60"
         />
       ) : null}

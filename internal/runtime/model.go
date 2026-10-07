@@ -88,14 +88,20 @@ type OpenAIClient struct {
 	HTTPClient *http.Client
 }
 
+// NormalizeBaseURL strips paste whitespace and a trailing slash so
+// ".../claw/v1 " does not become ".../claw/v1 /chat/completions".
+func NormalizeBaseURL(baseURL string) string {
+	return strings.TrimRight(strings.TrimSpace(baseURL), "/")
+}
+
 func NewOpenAIClient(baseURL, apiKey string) *OpenAIClient {
-	baseURL = strings.TrimRight(baseURL, "/")
+	baseURL = NormalizeBaseURL(baseURL)
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
 	return &OpenAIClient{
 		BaseURL:    baseURL,
-		APIKey:     apiKey,
+		APIKey:     strings.TrimSpace(apiKey),
 		HTTPClient: &http.Client{},
 	}
 }

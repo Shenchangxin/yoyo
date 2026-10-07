@@ -252,7 +252,7 @@ test("plan text parses statuses and explanation", () => {
   ]);
 });
 
-test("composer chip drops the previous turn's plan", () => {
+test("composer chip keeps the plan across a follow-up", () => {
   const prior = [
     { type: "user", session_id: "s", payload: { text: "first" } },
     { type: "tool_call", session_id: "s", payload: { id: "p1", name: "update_plan", arguments: "{\"plan\":[{\"step\":\"old\",\"status\":\"in_progress\"}]}" } },
@@ -260,7 +260,7 @@ test("composer chip drops the previous turn's plan", () => {
     { type: "plan", session_id: "s", payload: { name: "update_plan", text: "1. [in_progress] old", id: "p1" } },
   ];
   expect(latestTaskPlan(replayEvents(prior))?.steps).toEqual([{ step: "old", status: "in_progress" }]);
-  expect(latestTaskPlan(replayEvents([...prior, { type: "user", session_id: "s", payload: { text: "second" } }]))).toBeNull();
+  expect(latestTaskPlan(replayEvents([...prior, { type: "user", session_id: "s", payload: { text: "second" } }]))?.steps).toEqual([{ step: "old", status: "in_progress" }]);
   const next = replayEvents([
     ...prior,
     { type: "user", session_id: "s", payload: { text: "second" } },

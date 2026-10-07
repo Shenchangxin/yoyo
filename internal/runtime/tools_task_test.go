@@ -86,6 +86,60 @@ func TestSubagentOwnJSONL(t *testing.T) {
 	}
 }
 
+func TestChildSessionIDIsPathSafe(t *testing.T) {
+	id := ChildSessionID("parent")
+	if strings.Contains(id, "/") || strings.Contains(id, "\\") {
+		t.Fatalf("child id must not split HTTP paths: %s", id)
+	}
+	if !IsChildSessionID(id) || ParentOfSession(id) != "parent" {
+		t.Fatalf("%s parent=%s", id, ParentOfSession(id))
+	}
+	legacy := "abc/tasks/x"
+	if !IsChildSessionID(legacy) || ParentOfSession(legacy) != "abc" {
+		t.Fatalf("legacy %s", legacy)
+	}
+}
+
+func TestSubagentLiveEventsUseChildSession(t *testing.T) {
+	dir := t.TempDir()
+	var live []trace.Event
+	client := &ScriptedClient{Steps: []Message{
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "1", Name: "task", Arguments: `{"prompt":"Write hello.txt containing hello","isolate":false}`}}},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "2", Name: "write_file", Arguments: `{"path":"hello.txt","content":"hello"}`}}},
+		{Role: RoleAssistant, Content: "child done"},
+		{Role: RoleAssistant, Content: "parent done"},
+	}}
+	_, err := Run(context.Background(), RunRequest{
+		SessionID: "parent",
+		User:      "delegate",
+		Workspace: dir,
+		Tools:     &WorkspaceTools{Workspace: dir},
+		Client:    client,
+		Loop:      DefaultLoop(),
+		OnEvent: func(ev trace.Event) {
+			live = append(live, ev)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childLive := 0
+	for _, ev := range live {
+		if ev.Type == trace.TypeToolCall {
+			name, _ := ev.Payload["name"].(string)
+			if name == "write_file" && !IsChildSessionID(ev.SessionID) {
+				t.Fatal("child tool_call live event used parent session")
+			}
+		}
+		if IsChildSessionID(ev.SessionID) {
+			childLive++
+		}
+	}
+	if childLive == 0 {
+		t.Fatal("expected child live events on Hub")
+	}
+}
+
 func TestNestedTaskForbidden(t *testing.T) {
 	tools := &WorkspaceTools{Depth: MaxTaskDepth}
 	res := tools.Call("task", `{"prompt":"nope"}`)

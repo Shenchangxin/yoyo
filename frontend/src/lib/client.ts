@@ -1,7 +1,7 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
 import { snapUiScale } from "./scale";
-import type { AppConfig, Approval, Attachment, AuthMode, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
+import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextInventory, ContextObject, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 import { outlineOfRaw, type OutlineTurn } from "./turn-outline";
 
 export class ApiError extends Error {
@@ -126,12 +126,15 @@ export function threadOf(v: any): Thread {
     archived: bool(pick(v, "archived", "Archived")),
     pinned: bool(pick(v, "pinned", "Pinned")),
     model: str(pick(v, "model", "Model")),
+    connectionId: str(pick(v, "connection_id", "ConnectionID", "connectionId")),
     authMode: parseAuthMode(pick(v, "auth_mode", "AuthMode", "authMode")),
     pinnedSkills: asArray(pick(v, "pinned_skills", "PinnedSkills")).map(String).filter(Boolean),
     loadedSkills: asArray(pick(v, "loaded_skills", "LoadedSkills")).map(String).filter(Boolean),
     channel: str(pick(v, "channel", "Channel")) === "video" ? "video" : "agent",
     interrupted: bool(pick(v, "interrupted", "Interrupted")),
     queued: num(pick(v, "queued", "Queued")),
+    parentId: str(pick(v, "parent_id", "ParentID", "parentId")),
+    planText: str(pick(v, "plan_text", "PlanText", "planText")),
   };
 }
 
@@ -149,6 +152,24 @@ export function healthOf(v: any): Health {
     workspaceReady: bool(pick(v, "workspace_ready", "workspaceReady")),
     videoWorkspace: str(pick(v, "video_workspace", "VideoWorkspace", "videoWorkspace")),
     videoWorkspaceReady: bool(pick(v, "video_workspace_ready", "videoWorkspaceReady")),
+    chatProviders: asArray(pick(v, "chat_providers", "ChatProviders", "chatProviders")).map(chatProviderOf),
+  };
+}
+
+export function chatProviderOf(v: any): ChatProvider {
+  const models = asArray(pick(v, "models", "Models")).map(String).filter(Boolean);
+  const model = str(pick(v, "model", "Model"));
+  if (model && !models.includes(model)) models.unshift(model);
+  return {
+    id: str(pick(v, "id", "ID")),
+    name: str(pick(v, "name", "Name")),
+    vendor: str(pick(v, "vendor", "Vendor")),
+    endpoint: str(pick(v, "endpoint", "Endpoint", "base_url", "BaseURL", "baseUrl")),
+    model,
+    models,
+    hasKey: bool(pick(v, "has_key", "HasKey", "hasKey")),
+    isDefault: bool(pick(v, "is_default", "IsDefault", "isDefault")),
+    active: pick(v, "active", "Active") == null ? true : bool(pick(v, "active", "Active")),
   };
 }
 
@@ -1036,6 +1057,56 @@ export async function setSessionPinnedSkills(id: string, names: string[]): Promi
   return threadOf(raw);
 }
 
+export function contextInventoryOf(v: any): ContextInventory {
+  const shape = contextOf(pick(v, "shape", "Shape") || v);
+  const objects: ContextObject[] = asArray(pick(v, "objects", "Objects")).map((o) => ({
+    id: str(pick(o, "id", "ID")),
+    kind: str(pick(o, "kind", "Kind")),
+    title: str(pick(o, "title", "Title")),
+    detail: str(pick(o, "detail", "Detail")),
+    tokens: num(pick(o, "tokens", "Tokens")),
+    path: str(pick(o, "path", "Path")),
+    stale: bool(pick(o, "stale", "Stale")),
+    pinned: bool(pick(o, "pinned", "Pinned")),
+  }));
+  return {
+    session: str(pick(v, "session", "Session")),
+    shape,
+    objects,
+    plan: str(pick(v, "plan", "Plan")),
+    planPath: str(pick(v, "plan_path", "PlanPath", "planPath")),
+  };
+}
+
+export async function contextInventory(sessionID: string): Promise<ContextInventory> {
+  const s = await wailsService();
+  const raw = s?.ContextInventory ? await s.ContextInventory(sessionID) : await http(`/api/sessions/${sessionID}/inventory`);
+  return contextInventoryOf(raw);
+}
+
+export async function setSessionPlan(id: string, text: string): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.SetSessionPlan
+    ? await s.SetSessionPlan(id, text)
+    : await http(`/api/sessions/${id}/plan`, { method: "POST", body: JSON.stringify({ text }) });
+  return threadOf(raw);
+}
+
+export async function restoreSessionFiles(id: string, from = ""): Promise<string> {
+  const s = await wailsService();
+  if (s?.RestoreSessionFiles) return String(await s.RestoreSessionFiles(id, from) || "");
+  const raw = await http<any>(`/api/sessions/${id}/restore`, { method: "POST", body: JSON.stringify({ from }) });
+  return str(pick(raw, "note"));
+}
+
+export async function contextPin(id: string, kind: string, key: string, pinned: boolean): Promise<Thread> {
+  const s = await wailsService();
+  const raw = s?.ContextPin
+    ? await s.ContextPin(id, kind, key, pinned)
+    : await http(`/api/sessions/${id}/pin`, { method: "POST", body: JSON.stringify({ kind, key, pinned }) });
+  return threadOf(raw);
+}
+
 export async function compactSession(id: string, focus?: string): Promise<string> {
   const s = await wailsService();
   if (s?.CompactSessionFocus) return String(await s.CompactSessionFocus(id, focus || "") || "");
@@ -1574,10 +1645,54 @@ export async function checkUpdate(): Promise<any> {
   return http("/api/update");
 }
 
-export async function testProvider(): Promise<any> {
+export async function testProvider(id = ""): Promise<any> {
   const s = await wailsService();
+  if (id && s?.TestChatProvider) return s.TestChatProvider(id);
   if (s?.TestProvider) return s.TestProvider();
-  return http("/api/provider/test", { method: "POST", body: "{}" });
+  return http("/api/provider/test", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function listChatProviders(): Promise<ChatProvider[]> {
+  const s = await wailsService();
+  if (s?.ListChatProviders) return asArray(await s.ListChatProviders()).map(chatProviderOf);
+  return asArray(await http("/api/providers")).map(chatProviderOf);
+}
+
+export async function upsertChatProvider(
+  provider: Partial<ChatProvider> & { make_default?: boolean; makeDefault?: boolean; active?: boolean },
+  apiKey = "",
+): Promise<ChatProvider> {
+  const s = await wailsService();
+  const body = {
+    id: provider.id || "",
+    name: provider.name || "",
+    vendor: provider.vendor || "custom",
+    endpoint: provider.endpoint || "",
+    model: provider.model || "",
+    models: provider.models || [],
+    active: provider.active,
+    make_default: !!(provider.make_default ?? provider.makeDefault ?? provider.isDefault),
+  };
+  if (s?.UpsertChatProvider) return chatProviderOf(await s.UpsertChatProvider(body, apiKey));
+  return chatProviderOf(await http("/api/providers", { method: "POST", body: JSON.stringify({ ...body, api_key: apiKey }) }));
+}
+
+export async function deleteChatProvider(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.DeleteChatProvider) {
+    await s.DeleteChatProvider(id);
+    return;
+  }
+  await http(`/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function setDefaultChatProvider(id: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.SetDefaultChatProvider) {
+    await s.SetDefaultChatProvider(id);
+    return;
+  }
+  await http(`/api/providers/${encodeURIComponent(id)}/default`, { method: "POST", body: "{}" });
 }
 
 export async function replaceMCP(servers: { name: string; command: string; args: string[]; endpoint?: string }[]): Promise<void> {

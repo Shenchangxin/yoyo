@@ -31,24 +31,27 @@ type SessionMeta struct {
 	CreatedAt time.Time `json:"created_at"`
 	// Channel is the conversation lane: agent (default) or video.
 	// Video chats never share an identity with Agent chats.
-	Channel          string   `json:"channel,omitempty"`
-	Workspace        string   `json:"workspace"`
-	OriginWorkspace  string   `json:"origin_workspace,omitempty"`
-	Worktree         string   `json:"worktree,omitempty"`
-	Isolate          bool     `json:"isolate,omitempty"`
-	Harness          string   `json:"harness"`
-	HarnessPolicy    string   `json:"harness_policy,omitempty"`
+	Channel          string    `json:"channel,omitempty"`
+	Workspace        string    `json:"workspace"`
+	OriginWorkspace  string    `json:"origin_workspace,omitempty"`
+	Worktree         string    `json:"worktree,omitempty"`
+	Isolate          bool      `json:"isolate,omitempty"`
+	Harness          string    `json:"harness"`
+	HarnessPolicy    string    `json:"harness_policy,omitempty"`
 	UpdatedAt        time.Time `json:"updated_at,omitempty"`
 	Preview          string    `json:"preview,omitempty"`
-	ModelFingerprint string   `json:"model_fingerprint"`
-	Title            string   `json:"title,omitempty"`
-	Archived         bool     `json:"archived"`
-	Pinned           bool     `json:"pinned"`
-	Model            string   `json:"model,omitempty"`
-	LoadedSkills     []string `json:"loaded_skills,omitempty"`
-	PinnedSkills     []string `json:"pinned_skills,omitempty"`
-	PlanText         string   `json:"plan_text,omitempty"`
-	AuthMode         string   `json:"auth_mode,omitempty"`
+	ModelFingerprint string    `json:"model_fingerprint"`
+	Title            string    `json:"title,omitempty"`
+	Archived         bool      `json:"archived"`
+	Pinned           bool      `json:"pinned"`
+	Model            string    `json:"model,omitempty"`
+	ConnectionID     string    `json:"connection_id,omitempty"`
+	LoadedSkills     []string  `json:"loaded_skills,omitempty"`
+	PinnedSkills     []string  `json:"pinned_skills,omitempty"`
+	PlanText         string    `json:"plan_text,omitempty"`
+	ParentID         string    `json:"parent_id,omitempty"`
+	PinnedPaths      []string  `json:"pinned_paths,omitempty"`
+	AuthMode         string    `json:"auth_mode,omitempty"`
 	// Interrupted/Queued are live annotations from .run.json, not durable meta.
 	Interrupted bool `json:"interrupted,omitempty"`
 	Queued      int  `json:"queued,omitempty"`
@@ -98,6 +101,7 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 		Title:            title,
 		AuthMode:         capability.AuthDefault,
 	}
+	meta.Model, meta.ConnectionID = a.defaultChatSlot()
 	b, _ := json.MarshalIndent(meta, "", "  ")
 	path := filepath.Join(a.Home.Sessions(), id+".meta.json")
 	if err := os.WriteFile(path, b, 0o644); err != nil {
@@ -247,21 +251,27 @@ func (a *App) ReadTrace(id string) ([]trace.Event, error) {
 }
 
 func (a *App) Client() (runtime.Client, error) {
-	if a.Video != nil && a.Video.Conn != nil {
-		if c, err := a.Video.Conn.Active("chat", ""); err == nil {
-			key := ""
-			if k, e := a.Video.Conn.Lease(c); e == nil {
+	return a.ClientFor(SessionMeta{})
+}
+
+func (a *App) ClientFor(meta SessionMeta) (runtime.Client, error) {
+	key := ""
+	base := a.Config.BaseURL
+	r := a.connReg()
+	if r != nil {
+		if c, err := a.resolveChatConnection(meta); err == nil {
+			if ep := strings.TrimSpace(c.Endpoint); ep != "" {
+				base = ep
+			}
+			if k, e := r.Lease(c); e == nil {
 				key = k
 			}
-			base := strings.TrimSpace(c.Endpoint)
-			if base == "" {
-				base = a.Config.BaseURL
-			}
-			return runtime.NewOpenAIClient(base, key), nil
 		}
 	}
-	key, _ := a.Vault.Lease("default")
-	return runtime.NewOpenAIClient(a.Config.BaseURL, key), nil
+	if strings.TrimSpace(key) == "" && a.Vault != nil {
+		key, _ = a.Vault.Lease("default")
+	}
+	return runtime.NewOpenAIClient(base, key), nil
 }
 
 func (a *App) Send(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event)) (string, error) {
@@ -315,6 +325,51 @@ func (a *App) RunningStatus() []RunStatus {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+func sessionPlanText(meta SessionMeta, toolRoot string) string {
+	if s := strings.TrimSpace(meta.PlanText); s != "" {
+		return s
+	}
+	return runtime.LoadPlanFile(toolRoot, meta.ID)
+}
+
+func (a *App) noteChildRun(parentID, childID, prompt string, parent SessionMeta, done bool) {
+	childID = strings.TrimSpace(childID)
+	if childID == "" {
+		return
+	}
+	if done {
+		a.mu.Lock()
+		delete(a.runs, childID)
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Lock()
+	if a.runs[childID] == nil {
+		a.runs[childID] = &runSlot{started: time.Now().UTC(), lastTool: "task"}
+	}
+	a.mu.Unlock()
+	title := "task · " + titleFrom(prompt)
+	child := SessionMeta{
+		ID:               childID,
+		ParentID:         parentID,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+		Channel:          parent.Channel,
+		Workspace:        parent.Workspace,
+		OriginWorkspace:  parent.OriginWorkspace,
+		Worktree:         parent.Worktree,
+		Isolate:          parent.Isolate,
+		Harness:          parent.Harness,
+		HarnessPolicy:    session.Pin,
+		ModelFingerprint: parent.ModelFingerprint,
+		Title:            title,
+		Model:            parent.Model,
+		ConnectionID:     parent.ConnectionID,
+		AuthMode:         parent.AuthMode,
+	}
+	_ = a.writeSession(child)
 }
 
 func (a *App) noteRunTool(sessionID, name string) {
@@ -516,7 +571,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	meter := &runtime.Meter{USDPerMTok: a.Config.USDPerMTok}
 	if client == nil {
-		client, err = a.Client()
+		client, err = a.ClientFor(meta)
 		if err != nil {
 			return "", err
 		}
@@ -569,7 +624,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Ctx:        ctx,
 		Extra:      a.extraTools(sessionID),
 		Spill:      runtime.BindSpill(a.Home.Root, toolRoot, sessionID),
-		PlanText:   "", // a new operator turn starts without the previous checklist
+		PlanText:   sessionPlanText(meta, toolRoot),
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
 		Packs:      a.packSessions(skillRoot),
@@ -635,9 +690,13 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	if a.Hub != nil {
 		prev := wrapped
 		wrapped = func(ev trace.Event) {
+			sid := ev.SessionID
+			if sid == "" {
+				sid = sessionID
+			}
 			if ev.Type == trace.TypeToolCall {
 				name, _ := ev.Payload["name"].(string)
-				a.noteRunTool(sessionID, name)
+				a.noteRunTool(sid, name)
 			}
 			a.Hub.Publish(ev)
 			if prev != nil {
@@ -712,11 +771,14 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		PreCompactHooks:  preCompact,
 		ProfileMemory:    profile,
 		OnEvent:          wrapped,
-		OnShape:          func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
-		Meter:            meter,
-		PullSteer:        func() string { return a.pullSteer(sessionID) },
-		SoftHorizon:      true,
-		ShowThinking:     a.Config.ShowThinking,
+		OnChild: func(id, prompt string, done bool) {
+			a.noteChildRun(sessionID, id, prompt, meta, done)
+		},
+		OnShape:      func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
+		Meter:        meter,
+		PullSteer:    func() string { return a.pullSteer(sessionID) },
+		SoftHorizon:  true,
+		ShowThinking: a.Config.ShowThinking,
 	})
 	a.markRunDone(sessionID)
 	if a.Threads != nil {
@@ -725,6 +787,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	loaded, planText := tools.Pins()
 	meta.LoadedSkills = loaded
 	meta.PlanText = planText
+	if strings.TrimSpace(planText) != "" {
+		runtime.WritePlanFile(toolRoot, sessionID, planText)
+	}
 	_ = a.writeSession(meta)
 	a.RememberUsage(meter.Snapshot())
 	_, _ = a.StageACE(sessionID)

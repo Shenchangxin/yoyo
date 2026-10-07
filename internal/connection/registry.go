@@ -173,9 +173,12 @@ func (r *Registry) Upsert(c Connection, apiKey string) (Connection, error) {
 	if apiKey != "" && r.vault != nil {
 		r.vault.Set(c.VaultKey, apiKey)
 		c.HasKey = true
-		// keep chat slot alias so existing Client() and env fallback still work
+		// Alias only the default chat slot so extra providers keep their own keys.
 		if HasCap(c, CapChat) {
-			r.vault.Set("default", apiKey)
+			d := r.defaultsLocked()
+			if d[CapChat] == c.ID || d[CapChat] == "" {
+				r.vault.Set("default", apiKey)
+			}
 		}
 	} else {
 		r.hydrateKey(&c)
@@ -342,7 +345,13 @@ func (r *Registry) SeedChat(provider, baseURL, model string, extraModels ...stri
 		return Connection{}, err
 	}
 	if len(list) > 0 {
-		return r.adoptDefaultKey(list[0]), nil
+		cur := list[0]
+		if id := r.Defaults()[CapChat]; id != "" {
+			if c, err := r.Get(id); err == nil {
+				cur = c
+			}
+		}
+		return r.adoptDefaultKey(cur), nil
 	}
 	provider = strings.TrimSpace(provider)
 	if provider == "" {

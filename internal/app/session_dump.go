@@ -77,7 +77,7 @@ func (a *App) ResolveSessionID(query string) (string, error) {
 	if a.sessionOnDisk(q) {
 		return q, nil
 	}
-	if a.Traces != nil && strings.Contains(q, "/tasks/") {
+	if a.Traces != nil && runtime.IsChildSessionID(q) {
 		if evs, err := a.Traces.Read(q); err == nil && len(evs) > 0 {
 			return q, nil
 		}

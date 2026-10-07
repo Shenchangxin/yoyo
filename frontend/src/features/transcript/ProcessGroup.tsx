@@ -84,12 +84,14 @@ export const ProcessGroup = memo(function ProcessGroup({
   running,
   compact,
   liveTexts,
+  onOpenChild,
 }: {
   items: Item[];
   live: boolean;
   running: boolean;
   compact?: boolean;
   liveTexts?: Record<string, string>;
+  onOpenChild?: (id: string) => void;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
@@ -208,7 +210,7 @@ export const ProcessGroup = memo(function ProcessGroup({
                 </button>
               ) : null}
               {openPairs.map((p) => (
-                <ProcessPair key={p.key} pair={p} running={running} compact={compact} highlightFail />
+                <ProcessPair key={p.key} pair={p} running={running} compact={compact} highlightFail onOpenChild={onOpenChild} />
               ))}
             </div>
           </motion.div>
@@ -220,6 +222,7 @@ export const ProcessGroup = memo(function ProcessGroup({
   a.live === b.live
   && a.running === b.running
   && a.compact === b.compact
+  && a.onOpenChild === b.onOpenChild
   && a.items.length === b.items.length
   && a.items.every((it, i) => it === b.items[i])
 ));
@@ -247,11 +250,13 @@ function ProcessPair({
   running,
   compact,
   highlightFail,
+  onOpenChild,
 }: {
   pair: ToolPair;
   running: boolean;
   compact?: boolean;
   highlightFail?: boolean;
+  onOpenChild?: (id: string) => void;
 }) {
   return (
     <>
@@ -267,7 +272,7 @@ function ProcessPair({
         />
       ) : null}
       {pair.extra.map((it) => (
-        <ProcessExtra key={it.key} item={it} compact={compact} />
+        <ProcessExtra key={it.key} item={it} compact={compact} onOpenChild={onOpenChild} />
       ))}
     </>
   );
@@ -386,7 +391,7 @@ function guessLang(text: string): string {
   return "text";
 }
 
-function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
+function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: boolean; onOpenChild?: (id: string) => void }) {
   const copy = useCopy();
   const streaming = !!item.delta;
   const [open, setOpen] = useState(streaming);
@@ -432,7 +437,12 @@ function ProcessExtra({ item, compact }: { item: Item; compact?: boolean }) {
           <button
             type="button"
             className="mt-1 text-[12px] text-muted underline decoration-muted/40 underline-offset-2 hover:text-foreground"
+            data-testid="open-child"
             onClick={() => {
+              if (onOpenChild) {
+                onOpenChild(child);
+                return;
+              }
               void api.dumpSession(child).then(async (dump) => {
                 const text = dump.path || child;
                 await writeClipboard(text);
