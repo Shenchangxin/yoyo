@@ -10,7 +10,7 @@ import (
 // pipe handle. That is a process-lifetime bug, not something to teach in
 // the system prompt. Detach the child so the shell can finish.
 
-const cmdStartHangMsg = "cmd start waits for the child while stdout is captured, and piping it to head/tail never reaches EOF — the tool hangs until timeout. Use Start-Process -WindowStyle Hidden (no pipe to head/tail). Then sleep and Get-Process. Inside bash double quotes write PowerShell $ as \\$ so bash does not expand it."
+const cmdStartHangMsg = "cmd start waits for the child while stdout is captured, and piping it to head/tail never reaches EOF — the tool hangs until timeout. Use Start-Process -WindowStyle Hidden (no pipe to head/tail). Then sleep and Get-Process. PowerShell $ variables are passed as argv and must not be wrapped in Git Bash."
 
 var (
 	reCmdStartHead = regexp.MustCompile(`(?i)\bcmd(?:\.exe)?\s+/{1,2}c\s+`)

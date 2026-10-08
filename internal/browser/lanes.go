@@ -35,7 +35,7 @@ func (h *Host) attachDebugPort() error {
 			port = n
 		}
 	}
-	wsURL, err := versionWS(fmt.Sprintf("127.0.0.1:%d", port))
+	wsURL, err := debugWS(fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return fmt.Errorf("browser: attached lane needs Chrome --remote-debugging-port=%d: %w", port, err)
 	}

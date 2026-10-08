@@ -48,6 +48,10 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 	if large.Event == nil {
 		t.Fatal("token slices must stay inline even when a 50ms window exceeds the byte cap")
 	}
+	prog := NoticeOf(trace.Event{Seq: 6, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "write_file", "id": "c1", "progress": true, "bytes": 1200, "path": "a.html", "arguments": `{"path":"a.html"}`}})
+	if prog.Event == nil {
+		t.Fatal("tiny tool-arg progress must inline")
+	}
 }
 
 func TestNoticeOmitsLargePayload(t *testing.T) {

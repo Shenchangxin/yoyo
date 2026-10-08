@@ -258,7 +258,20 @@ func fn(name, desc string, params map[string]any) ToolJSON {
 	}
 }
 
+func writeLikeTool(name string) bool {
+	switch name {
+	case "write_file", "create_file", "apply_patch", "str_replace", "edit_file",
+		"office_create", "office_edit", "cite_sources":
+		return true
+	default:
+		return false
+	}
+}
+
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
+	if writeLikeTool(name) && toolArgsTruncated(argsJSON) {
+		return ToolResult{Err: fmt.Errorf("truncated JSON arguments; refusing a partial write. Do not retry the same blob. Split the file or continue from the last complete section with str_replace")}
+	}
 	args := unwrapToolArgs(parseToolArgs(argsJSON))
 	if args == nil {
 		args = map[string]any{}
@@ -823,6 +836,9 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool) (
 		return exec.Command(name, args...)
 	}
 	if runtime.GOOS == "windows" {
+		if looksLikePowerShell(command) {
+			return newCmd("powershell", "-NoProfile", "-Command", powershellCommandArg(command)), nil
+		}
 		if posix || looksPosixUnix(command) {
 			sh := windowsPosixShell()
 			if sh == "" {

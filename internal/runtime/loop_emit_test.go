@@ -2,6 +2,9 @@ package runtime
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -88,6 +91,71 @@ func TestReasoningDeltasAreLiveOnly(t *testing.T) {
 	}
 	if liveFull < 1 || diskFull < 1 {
 		t.Fatalf("final reasoning live=%d disk=%d", liveFull, diskFull)
+	}
+}
+
+type writeProgressStreamer struct{ n int }
+
+func (s *writeProgressStreamer) Chat(ctx context.Context, req ChatRequest) (Message, error) {
+	return s.ChatStream(ctx, req, nil)
+}
+
+func (s *writeProgressStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+	s.n++
+	if s.n > 1 {
+		return Message{Role: RoleAssistant, Content: "done"}, nil
+	}
+	args := `{"path":"a.html","content":"` + strings.Repeat("x", 3000) + `"}`
+	if emit != nil {
+		_ = emit(StreamDelta{Tool: ToolCall{ID: "c1", Name: "write_file", Arguments: args[:20]}})
+		_ = emit(StreamDelta{Tool: ToolCall{ID: "c1", Name: "write_file", Arguments: args}})
+	}
+	return Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "read_file", Arguments: `{"path":"a.txt"}`}}}, nil
+}
+
+func TestToolArgProgressIsLiveOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := trace.NewStore(t.TempDir())
+	var live []trace.Event
+	_, err := Run(context.Background(), RunRequest{
+		SessionID: "s",
+		User:      "hi",
+		Workspace: dir,
+		Loop:      DefaultLoop(),
+		Client:    &writeProgressStreamer{},
+		Tools:     &WorkspaceTools{Workspace: dir},
+		Trace:     st,
+		OnEvent:   func(ev trace.Event) { live = append(live, ev) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prog int
+	for _, ev := range live {
+		if ev.Type == trace.TypeToolCall && payloadProgress(ev.Payload) {
+			prog++
+			if _, ok := ev.Payload["content"]; ok {
+				t.Fatal("progress must not carry file bodies")
+			}
+			if args, _ := ev.Payload["arguments"].(string); strings.Contains(args, strings.Repeat("x", 100)) {
+				t.Fatal("progress arguments must stay a path stub")
+			}
+		}
+	}
+	if prog == 0 {
+		t.Fatal("expected live tool-arg progress")
+	}
+	evs, err := st.Read("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if ev.Type == trace.TypeToolCall && payloadProgress(ev.Payload) {
+			t.Fatal("jsonl must not store tool-arg progress")
+		}
 	}
 }
 

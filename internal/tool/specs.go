@@ -37,7 +37,7 @@ func HostSpecs() []artifact.ToolSpec {
 	net := Annotations{OpenWorld: true, Exclusive: true}
 	return []artifact.ToolSpec{
 		spec("read_file", "Read a UTF-8 file under the workspace. Optional offset/limit are 1-based line numbers.", "read_workspace", obj(map[string]any{"path": strP(), "offset": intP(), "limit": intP()}, "path"), read),
-		spec("write_file", "Write a UTF-8 file under the workspace. Literal newlines in JSON content are accepted.", "write_workspace", obj(map[string]any{"path": strP(), "content": strP()}, "path", "content"), write),
+		spec("write_file", "Write a UTF-8 file under the workspace. Literal newlines in JSON content are accepted. Truncated JSON is rejected — split a large write or follow with str_replace. Writing *.html also opens the right inspector Browser pane.", "write_workspace", obj(map[string]any{"path": strP(), "content": strP()}, "path", "content"), write),
 		spec("str_replace", "Replace old_str with new_str. Fails if old_str is not unique unless replace_all is true.", "write_workspace", obj(map[string]any{"path": strP(), "old_str": strP(), "new_str": strP(), "replace_all": boolP()}, "path", "old_str", "new_str"), write),
 		spec("list_dir", "List a directory under the workspace (name, size, mtime).", "read_workspace", obj(map[string]any{"path": strP()}), read),
 		spec("glob", "Find files by glob pattern relative to the workspace (e.g. **/*.go).", "read_workspace", obj(map[string]any{"pattern": strP()}, "pattern"), read),
@@ -75,7 +75,7 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("read_skill_file", "Read a file from an installed skill pack (SKILL.md, references/, templates, prompts). Pack directories are outside the workspace jail. Path is relative to the skill root.", "read_workspace", obj(map[string]any{"skill": strP(), "path": strP(), "offset": intP(), "limit": intP()}, "skill", "path"), read),
 		spec("office_create", "Create a real .docx, .xlsx, .pptx, or .pdf under the workspace. Spreadsheets accept formula cells starting with =.", "write_workspace", obj(map[string]any{"path": strP(), "kind": strP(), "title": strP(), "body": strP(), "headings": map[string]any{"type": "array", "items": strP()}, "rows": map[string]any{"type": "array"}, "slides": map[string]any{"type": "array", "items": strP()}}, "path"), write),
 		spec("office_edit", "Replace text inside an office document without rewriting the whole package (keeps OOXML structure).", "write_workspace", obj(map[string]any{"path": strP(), "old_str": strP(), "new_str": strP()}, "path", "old_str", "new_str"), write),
-		spec("office_query", "Extract text or cells from a workspace office document.", "read_workspace", obj(map[string]any{"path": strP()}, "path"), read),
+		spec("office_query", "Extract text or cells from a workspace .docx, .xlsx, .pptx, or .pdf. Not for HTML — use read_file or browser_open.", "read_workspace", obj(map[string]any{"path": strP()}, "path"), read),
 		spec("office_render", "Render an office document to text for look-fix.", "read_workspace", obj(map[string]any{"path": strP()}, "path"), read),
 		spec("cite_sources", "Write citations.json next to a report. Each source needs url, excerpt, and hash.", "write_workspace", obj(map[string]any{"path": strP(), "sources": map[string]any{"type": "array"}}, "path", "sources"), write),
 		spec("memory_search", "Search long-term memory (profile, project, episodic). Staging items are included.", "", obj(map[string]any{"query": strP(), "kind": strP()}, "query"), read),
@@ -84,7 +84,7 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("schedule_create", "Create a cron, once, heartbeat, or webhook job. Jobs run in an isolated worktree on this awake machine and never send_as_you without a later approval.", "schedule", obj(map[string]any{"kind": strP(), "spec": strP(), "prompt": strP()}, "prompt"), write),
 		spec("schedule_list", "List scheduled jobs.", "schedule", obj(map[string]any{}), read),
 		spec("schedule_cancel", "Cancel a scheduled job by id.", "schedule", obj(map[string]any{"id": strP()}, "id"), write),
-		spec("browser_open", "Open a URL in the isolated browser profile (not the operator Chrome). Pass lane=attached to attach to a debug Chrome on port 9222.", "browser", obj(map[string]any{"url": strP(), "lane": strP()}, "url"), net),
+		spec("browser_open", "Open a page. Workspace-relative paths, workspace://, and file:// inside the workspace jail open in the right inspector Browser pane — do not start a local HTTP server. Remote http(s) URLs open in the isolated browser (not the operator Chrome). lane=attached attaches to debug Chrome on port 9222. data: URLs are rejected.", "browser", obj(map[string]any{"url": strP(), "path": strP(), "lane": strP()}, "url"), net),
 		spec("browser_snapshot", "Return the last isolated-browser snapshot text.", "browser", obj(map[string]any{}), read),
 		spec("browser_click", "Click a selector in the isolated browser. Requires CDP/Chrome.", "browser", obj(map[string]any{"selector": strP()}, "selector"), net),
 		spec("browser_type", "Type into a selector in the isolated browser.", "browser", obj(map[string]any{"selector": strP(), "text": strP()}, "selector", "text"), net),

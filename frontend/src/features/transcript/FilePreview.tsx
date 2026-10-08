@@ -2,7 +2,6 @@ import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { DiffBlock } from "../../lib/split-diff";
 import { langFromPath, type ArtifactView } from "../../lib/artifact-preview";
 import {
-  asPreviewDocument,
   blobFromBase64,
   looksLikeHTML,
   looksLikeHTMLFile,
@@ -285,7 +284,7 @@ export function WorkspaceFileView({
         {objectUrl && resolved === "audio" ? (
           <audio controls src={objectUrl} onLoadedMetadata={markReady} onError={markReady} className={cn("w-full max-w-lg", fill ? "px-4" : "mt-2", reveal)} />
         ) : null}
-        {!waiting && html && text ? <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} /> : null}
+        {!waiting && html && text ? <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill} /> : null}
         {!waiting && !objectUrl && !text ? <p className={note}>{copy.review.cannotPreview}</p> : null}
         {cap}
       </div>
@@ -300,7 +299,7 @@ export function WorkspaceFileView({
   if (asHtml && text) {
     return (
       <div className={cn(frame, fill && "min-h-0 overflow-hidden")}>
-        <SandboxedFrame html={asPreviewDocument(text)} title={path} fill={fill} />
+        <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill} />
         {cap}
       </div>
     );

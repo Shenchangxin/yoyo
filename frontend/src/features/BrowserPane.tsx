@@ -13,6 +13,41 @@ function isExternalURL(raw: string): boolean {
   return /^(https?:|file:)/i.test((raw || "").trim());
 }
 
+function useRevocableURL(src?: string): string {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!src) {
+      setUrl("");
+      return;
+    }
+    if (src.startsWith("blob:")) {
+      setUrl(src);
+      return;
+    }
+    let objectUrl = "";
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = src.startsWith("data:") ? await (await fetch(src)).blob() : null;
+        if (cancelled) return;
+        if (!blob) {
+          setUrl(src);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      } catch {
+        if (!cancelled) setUrl(src);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+  return url;
+}
+
 export function BrowserPane(props: {
   workspace?: string;
   previewPath?: string;
@@ -28,24 +63,29 @@ export function BrowserPane(props: {
 
   useEffect(() => {
     let alive = true;
+    let timer = 0;
     const pull = () => {
       void api.browserView().then((v) => {
-        if (alive) {
-          setView(v);
-          setErr("");
-        }
+        if (!alive) return;
+        setView(v);
+        setErr("");
+        const isolatedLive = !!(v?.live || v?.screenshot);
+        if (htmlPath && !isolatedLive) return;
+        timer = window.setTimeout(pull, props.running ? 800 : 1200);
       }).catch((e) => {
-        if (alive) setErr(e instanceof Error ? e.message : String(e));
+        if (!alive) return;
+        setErr(e instanceof Error ? e.message : String(e));
+        timer = window.setTimeout(pull, props.running ? 800 : 1200);
       });
     };
     pull();
-    const t = window.setInterval(pull, props.running ? 800 : 1200);
     return () => {
       alive = false;
-      window.clearInterval(t);
+      if (timer) window.clearTimeout(timer);
     };
-  }, [props.running]);
+  }, [props.running, htmlPath]);
 
+  const shot = useRevocableURL(view?.screenshot);
   const live = !!view?.live || !!view?.screenshot || !!view?.url;
   const showHtml = !!htmlPath && (!live || source);
   const lane = view?.headed ? copy.review.headedLane : view?.lane === "attached" ? copy.review.attachedLane : copy.review.isolatedLane;
@@ -147,7 +187,7 @@ export function BrowserPane(props: {
           <div className="h-full min-h-0 overflow-hidden">
             <WorkspaceFileView workspace={props.workspace} path={htmlPath} fill />
           </div>
-        ) : view?.screenshot && !source ? (
+        ) : shot && !source ? (
           <button
             type="button"
             className="block h-full w-full min-h-full cursor-pointer"
@@ -156,8 +196,8 @@ export function BrowserPane(props: {
             onClick={() => { void takeOver(); }}
           >
             <img
-              src={view.screenshot}
-              alt={view.title || view.url}
+              src={shot}
+              alt={view?.title || view?.url}
               className="h-full w-full object-contain object-top"
               data-testid="browser-frame"
             />

@@ -110,7 +110,8 @@ export function isArtifactTool(name: string): boolean {
 }
 
 export function isRichResult(name: string, body: string, path = ""): boolean {
-  if (looksLikeHTML(body) || looksLikePDF(path) || looksLikeHTMLFile(path)) return true;
+  if (looksLikePDF(path) || looksLikeHTMLFile(path)) return true;
+  if (looksLikeHTML(body)) return true;
   const n = name.toLowerCase();
   return n.includes("mcp") && looksLikeHTML(body);
 }

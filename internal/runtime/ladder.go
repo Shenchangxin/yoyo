@@ -11,9 +11,10 @@ import (
 
 const ActionLadderPin = `
 ## Action ladder
-1. Prefer connector_read / connector_draft / connector_send when a live account exists for that service.
-2. Use the isolated browser (browser_open) when there is no connector. Default profile is isolated; attached login is opt-in.
-3. computer_act is last resort on the virtual display, never the operator desktop.
+1. Workspace HTML/CSS/JS: write_file, then browser_open the relative path. That is the right inspector Browser pane. Do not start a static server, and do not pass file:// or data: URLs to isolated Chrome.
+2. Prefer connector_read / connector_draft / connector_send when a live account exists for that service.
+3. Use the isolated browser (browser_open with http/https) when there is no connector. Default profile is isolated; attached login is opt-in.
+4. computer_act is last resort on the virtual display, never the operator desktop.
 Do not screenshot or click a service that already has a live connector.
 Scheduled jobs and computer_act require this machine to stay awake. Closing the lid stops the agent.
 `

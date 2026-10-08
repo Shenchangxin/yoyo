@@ -1,10 +1,64 @@
 export type PreviewKind = "text" | "html" | "markdown" | "image" | "pdf" | "audio" | "video" | "office" | "binary";
 
+/** `read_file` dumps look like `     1|<!DOCTYPE html>`. Those are source, not documents. */
+export function looksLikeNumberedDump(raw: string): boolean {
+  const t = (raw || "").trimStart().slice(0, 120);
+  return /^\s*\d+\|/.test(t);
+}
+
 export function looksLikeHTML(raw: string): boolean {
+  if (looksLikeNumberedDump(raw)) return false;
   const t = raw.trim().slice(0, 400);
   if (!t) return false;
   const lower = t.toLowerCase();
-  return lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.includes("<html") || lower.includes("mcp-ui");
+  return lower.startsWith("<!doctype html") || lower.startsWith("<html") || lower.includes("mcp-ui");
+}
+
+export function looksLikeMCPUI(raw: string, toolName = ""): boolean {
+  if (looksLikeNumberedDump(raw)) return false;
+  const t = (raw || "").toLowerCase();
+  if (t.includes("mcp-ui")) return true;
+  return toolName.toLowerCase().includes("mcp") && looksLikeHTML(raw);
+}
+
+/** Workspace HTML the right inspector should open — never remote http(s) or data:. */
+export function workspaceHTMLPathFromOpen(raw: string): string {
+  let s = (raw || "").trim().replace(/\s+lane=\S+/i, "").trim();
+  if (!s || /^(https?:|data:)/i.test(s)) return "";
+  if (/^workspace:\/\//i.test(s)) s = s.replace(/^workspace:\/\//i, "");
+  if (/^file:/i.test(s)) {
+    try {
+      const u = new URL(s);
+      let p = decodeURIComponent(u.pathname || "");
+      if (/^\/[a-zA-Z]:/.test(p)) p = p.slice(1);
+      s = p;
+    } catch {
+      return "";
+    }
+  }
+  s = s.replace(/\\/g, "/").replace(/^\/+/, "");
+  return s;
+}
+
+export function workspacePreviewPath(name: string, args: Record<string, unknown>): string {
+  const path = String(args.path || args.file || "").trim();
+  if (looksLikeHTMLFile(path)) return path;
+  if (name === "browser_open" || name === "browser_takeover") {
+    const fromURL = workspaceHTMLPathFromOpen(String(args.url || path || ""));
+    return fromURL;
+  }
+  return "";
+}
+
+const NO_SCRIPT_CSP = `<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">`;
+
+export function disablePreviewScripts(html: string): string {
+  const t = html || "";
+  if (/http-equiv\s*=\s*["']Content-Security-Policy["']/i.test(t)) return t;
+  if (/<\/head>/i.test(t)) return t.replace(/<\/head>/i, `${NO_SCRIPT_CSP}</head>`);
+  if (/<head[^>]*>/i.test(t)) return t.replace(/<head[^>]*>/i, (m) => m + NO_SCRIPT_CSP);
+  if (/<html[^>]*>/i.test(t)) return t.replace(/<html[^>]*>/i, (m) => `${m}<head>${NO_SCRIPT_CSP}</head>`);
+  return t;
 }
 
 export function looksLikeHTMLFile(path: string): boolean {
@@ -23,13 +77,16 @@ function withPreviewScrollbars(html: string): string {
 }
 
 /** Wrap a fragment so the inspector iframe can render it. */
-export function asPreviewDocument(html: string): string {
+export function asPreviewDocument(html: string, opts?: { scripts?: boolean }): string {
   const t = (html || "").trim();
   if (!t) return "";
-  if (looksLikeHTML(t)) return withPreviewScrollbars(t);
-  return withPreviewScrollbars(
-    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1.25rem;font:13px/1.55 system-ui,sans-serif;color:#1c1c1a;background:#fff}img{max-width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}</style></head><body>${t}</body></html>`,
-  );
+  let doc = looksLikeHTML(t)
+    ? withPreviewScrollbars(t)
+    : withPreviewScrollbars(
+      `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1.25rem;font:13px/1.55 system-ui,sans-serif;color:#1c1c1a;background:#fff}img{max-width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}</style></head><body>${t}</body></html>`,
+    );
+  if (!opts?.scripts) doc = disablePreviewScripts(doc);
+  return doc;
 }
 
 export function looksLikePDF(path: string, mime = ""): boolean {

@@ -100,6 +100,57 @@ func DenyHomePlanes(argv []string, home string) error {
 	return nil
 }
 
+func looksLikePowerShell(command string) bool {
+	lower := strings.ToLower(command)
+	switch {
+	case strings.Contains(lower, "invoke-webrequest"),
+		strings.Contains(lower, "start-process"),
+		strings.Contains(lower, "get-content"),
+		strings.Contains(lower, "get-process"),
+		strings.Contains(lower, "get-ciminstance"),
+		strings.Contains(lower, "foreach-object"),
+		strings.Contains(lower, "select-object"),
+		strings.Contains(lower, "where-object"),
+		strings.Contains(lower, "convertto-json"),
+		strings.Contains(lower, "out-file"),
+		strings.Contains(lower, "set-content"),
+		strings.Contains(lower, "new-object"):
+		return true
+	}
+	if strings.Contains(command, "$_") {
+		return true
+	}
+	argv := SplitShellArgv(command)
+	if len(argv) > 0 {
+		name := strings.ToLower(filepath.Base(argv[0]))
+		name = strings.TrimSuffix(name, ".exe")
+		if name == "powershell" || name == "pwsh" {
+			return true
+		}
+	}
+	trim := strings.TrimSpace(command)
+	return strings.HasPrefix(trim, "$") && !strings.Contains(trim, "$(")
+}
+
+func powershellCommandArg(command string) string {
+	argv := SplitShellArgv(command)
+	if len(argv) == 0 {
+		return command
+	}
+	name := strings.ToLower(filepath.Base(argv[0]))
+	name = strings.TrimSuffix(name, ".exe")
+	if name != "powershell" && name != "pwsh" {
+		return command
+	}
+	for i := 1; i < len(argv); i++ {
+		a := strings.ToLower(argv[i])
+		if a == "-command" || a == "-c" || a == "/command" || a == "/c" {
+			return strings.TrimSpace(strings.Join(argv[i+1:], " "))
+		}
+	}
+	return command
+}
+
 func looksSimpleArgv(argv []string) bool {
 	if len(argv) == 0 {
 		return false
@@ -294,11 +345,33 @@ func collectNetworkHosts(lower string) []string {
 		}
 	}
 	for _, m := range reBareDNS.FindAllStringSubmatch(lower, -1) {
-		if len(m) > 1 {
+		if len(m) > 1 && !isFilenameHost(m[1]) {
 			add(m[1])
 		}
 	}
 	return out
+}
+
+var fileExtLooksLikeTLD = map[string]bool{
+	"html": true, "htm": true, "xhtml": true, "js": true, "cjs": true, "mjs": true,
+	"ts": true, "tsx": true, "jsx": true, "css": true, "json": true, "md": true,
+	"txt": true, "png": true, "jpg": true, "jpeg": true, "gif": true, "svg": true,
+	"webp": true, "pdf": true, "go": true, "py": true, "rs": true, "xml": true,
+	"yml": true, "yaml": true, "toml": true, "lock": true, "map": true, "wasm": true,
+	"exe": true, "dll": true, "zip": true, "tar": true, "gz": true, "log": true,
+	"csv": true, "vue": true, "scss": true, "less": true,
+}
+
+func isFilenameHost(h string) bool {
+	h = strings.TrimSpace(strings.ToLower(h))
+	if i := strings.LastIndexByte(h, ':'); i > 0 {
+		h = h[:i]
+	}
+	dot := strings.LastIndexByte(h, '.')
+	if dot < 0 || dot == len(h)-1 {
+		return false
+	}
+	return fileExtLooksLikeTLD[h[dot+1:]]
 }
 
 func isLoopbackHost(h string) bool {

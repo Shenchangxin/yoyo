@@ -1,6 +1,7 @@
 package office
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,6 +56,18 @@ func TestPDFRoundTrip(t *testing.T) {
 	text, err = Query(p)
 	if err != nil || !strings.Contains(text, "Monday") {
 		t.Fatalf("%q %v", text, err)
+	}
+}
+
+func TestQueryRejectsHTML(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "game.html")
+	if err := os.WriteFile(p, []byte("<!doctype html><html></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Query(p)
+	if err == nil || !strings.Contains(err.Error(), "not an office document") {
+		t.Fatalf("%v", err)
 	}
 }
 

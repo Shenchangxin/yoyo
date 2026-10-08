@@ -29,6 +29,22 @@ func TestParseToolArgsClosesTruncatedContent(t *testing.T) {
 	if !strings.Contains(str(args["content"]), "# Title") {
 		t.Fatalf("content=%q", args["content"])
 	}
+	if !toolArgsTruncated(raw) {
+		t.Fatal("truncated payload must be flagged")
+	}
+}
+
+func TestWriteFileRejectsTruncatedJSON(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	raw := "{\"path\": \"game.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\npartial"
+	res := tools.Call("write_file", raw)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "truncated") {
+		t.Fatalf("%+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "game.html")); !os.IsNotExist(err) {
+		t.Fatalf("partial file must not be written: %v", err)
+	}
 }
 
 func TestWriteFileSalvagesLiteralNewlines(t *testing.T) {
