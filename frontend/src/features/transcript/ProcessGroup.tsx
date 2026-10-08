@@ -235,12 +235,16 @@ function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   const name = toolName(item);
   const kind = toolKind(name);
   const skill = skillCallLabel(pair.call || item);
-  const detail = skill || toolDetail(pair.call || item);
+  const detail = skill || toolDetail(pair.call || item) || String(item.payload?.path || "");
   const verb = kind === "other" ? t.live.other.replace("{name}", name) : t.live[kind];
+  const bytes = Number(item.payload?.bytes || 0);
+  const size = item.payload?.progress && bytes > 2048 ? `${Math.round(bytes / 1024)}KB` : "";
   return (
     <>
       <span className="shrink-0 shimmer-text font-medium">{verb}</span>
-      <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{detail || (kind === "other" ? "" : name)}</span>
+      <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">
+        {[detail || (kind === "other" ? "" : name), size].filter(Boolean).join(" · ")}
+      </span>
     </>
   );
 }

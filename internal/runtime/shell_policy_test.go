@@ -82,6 +82,36 @@ func TestShellDeniedDoesNotMatchExportFormat(t *testing.T) {
 	}
 }
 
+func TestShellDeniedAllowsLoopbackWithLocalFilename(t *testing.T) {
+	ws := t.TempDir()
+	cmds := []string{
+		`Invoke-WebRequest http://127.0.0.1:8765/pelican-bicycle.html`,
+		`curl -s http://127.0.0.1:8765/pelican-bicycle.html`,
+		`powershell -NoProfile -Command "Invoke-WebRequest http://127.0.0.1:8765/index.html"`,
+	}
+	for _, cmd := range cmds {
+		if err := ShellDenied(cmd, ws, nil); err != nil {
+			t.Fatalf("loopback+filename must pass: %s: %v", cmd, err)
+		}
+	}
+}
+
+func TestLooksLikePowerShell(t *testing.T) {
+	if !looksLikePowerShell(`$c=Get-Content pelican-bicycle.html; $c.Count`) {
+		t.Fatal("assignment")
+	}
+	if !looksLikePowerShell(`Get-Process | ForEach-Object { $_.Id }`) {
+		t.Fatal("foreach")
+	}
+	if looksLikePowerShell(`ls $(pwd)`) {
+		t.Fatal("posix subshell is not powershell")
+	}
+	got := powershellCommandArg(`powershell -NoProfile -Command Start-Process x`)
+	if got != "Start-Process x" {
+		t.Fatalf("unwrap %q", got)
+	}
+}
+
 func TestShellDeniedAllowsLoopbackCurl(t *testing.T) {
 	ws := t.TempDir()
 	allow := []string{

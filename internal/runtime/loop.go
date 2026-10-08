@@ -381,6 +381,7 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 	if s, ok := req.Client.(Streamer); ok {
 		var wg sync.WaitGroup
 		var reason strings.Builder
+		var prog toolProgressGate
 		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" {
 				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
@@ -388,6 +389,9 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 			if req.ShowThinking && d.Reasoning != "" {
 				reason.WriteString(d.Reasoning)
 				emit(req, trace.TypeReasoning, "model", map[string]any{"text": d.Reasoning, "delta": true, "id": roundID, "round": roundID})
+			}
+			if d.Tool.Name != "" && !d.ToolDone && prog.allow(d.Tool.ID, len(d.Tool.Arguments), time.Now()) {
+				emitToolProgress(req, roundID, d.Tool)
 			}
 			if d.ToolDone && d.Tool.Name != "" && readonlyCall(req.Tools, d.Tool.Name) {
 				tc := d.Tool
@@ -873,6 +877,9 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 			case trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolResult:
 				persist = false
 			}
+		}
+		if typ == trace.TypeToolCall && payloadProgress(payload) {
+			persist = false
 		}
 	}
 	if persist {

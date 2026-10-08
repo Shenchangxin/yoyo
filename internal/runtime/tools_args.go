@@ -12,30 +12,43 @@ import (
 // inside write_file/apply_patch payloads. Swallowing Unmarshal errors made
 // those look like "empty path" / "empty patch".
 func parseToolArgs(raw string) map[string]any {
+	args, _ := parseToolArgsStatus(raw)
+	return args
+}
+
+// toolArgsTruncated is true when the model payload was incomplete and only
+// recovered by closing brackets or salvaging string fields. Literal newlines
+// inside JSON strings are repaired and are not truncation.
+func toolArgsTruncated(raw string) bool {
+	_, truncated := parseToolArgsStatus(raw)
+	return truncated
+}
+
+func parseToolArgsStatus(raw string) (map[string]any, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return map[string]any{}
+		return map[string]any{}, false
 	}
 	if args, ok := unmarshalObject(raw); ok {
-		return args
+		return args, false
 	}
 	repaired := repairJSONStrings(raw)
+	if args, ok := unmarshalObject(repaired); ok {
+		return args, false
+	}
 	if repaired != raw {
-		if args, ok := unmarshalObject(repaired); ok {
-			return args
-		}
 		raw = repaired
 	}
 	closed := closeTruncatedJSON(raw)
 	if closed != raw {
 		if args, ok := unmarshalObject(closed); ok {
-			return args
+			return args, true
 		}
 	}
 	if salvaged := salvageJSONObject(raw); len(salvaged) > 0 {
-		return unwrapToolArgs(salvaged)
+		return unwrapToolArgs(salvaged), true
 	}
-	return map[string]any{}
+	return map[string]any{}, false
 }
 
 // unwrapToolArgs lifts a model-nested {"arguments": {path, content}} object

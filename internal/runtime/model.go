@@ -280,6 +280,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 				}
 				if emit != nil {
 					emitCompletedTools(tools, emit)
+					emitToolArgProgress(tools, emit)
 				}
 			}
 		}
@@ -311,6 +312,16 @@ func emitCompletedTools(tools map[int]*streamAcc, emit func(StreamDelta) error) 
 			a.done = true
 			_ = emit(StreamDelta{Tool: ToolCall{ID: a.id, Name: a.name, Arguments: a.args}, ToolDone: true})
 		}
+	}
+}
+
+func emitToolArgProgress(tools map[int]*streamAcc, emit func(StreamDelta) error) {
+	for i := 0; i < len(tools)+8; i++ {
+		a := tools[i]
+		if a == nil || a.done || a.name == "" || a.id == "" {
+			continue
+		}
+		_ = emit(StreamDelta{Tool: ToolCall{ID: a.id, Name: a.name, Arguments: a.args}})
 	}
 }
 

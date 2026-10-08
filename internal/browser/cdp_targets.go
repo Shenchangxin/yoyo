@@ -1,0 +1,84 @@
+package browser
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type cdpTarget struct {
+	Type string `json:"type"`
+	WS   string `json:"webSocketDebuggerUrl"`
+	URL  string `json:"url"`
+}
+
+func pageWS(addr string) (string, error) {
+	tabs, err := listCDPTargets(addr)
+	if err != nil {
+		return "", err
+	}
+	var fallback string
+	for _, tab := range tabs {
+		if !strings.EqualFold(tab.Type, "page") || tab.WS == "" {
+			continue
+		}
+		if fallback == "" {
+			fallback = tab.WS
+		}
+		low := strings.ToLower(tab.URL)
+		if strings.HasPrefix(low, "http:") || strings.HasPrefix(low, "https:") || strings.HasPrefix(low, "about:") || strings.HasPrefix(low, "file:") {
+			return tab.WS, nil
+		}
+	}
+	if fallback != "" {
+		return fallback, nil
+	}
+	return "", fmt.Errorf("browser: no page target")
+}
+
+func listCDPTargets(addr string) ([]cdpTarget, error) {
+	var last error
+	for _, path := range []string{"/json/list", "/json"} {
+		tabs, err := fetchCDPTargets(addr, path)
+		if err == nil {
+			return tabs, nil
+		}
+		last = err
+	}
+	if last == nil {
+		last = fmt.Errorf("browser: no CDP targets")
+	}
+	return nil, last
+}
+
+func fetchCDPTargets(addr, path string) ([]cdpTarget, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("browser: %s %s", path, resp.Status)
+	}
+	var tabs []cdpTarget
+	if err := json.NewDecoder(resp.Body).Decode(&tabs); err != nil {
+		return nil, err
+	}
+	return tabs, nil
+}
+
+func debugWS(addr string) (string, error) {
+	if ws, err := pageWS(addr); err == nil && ws != "" {
+		return ws, nil
+	}
+	return versionWS(addr)
+}

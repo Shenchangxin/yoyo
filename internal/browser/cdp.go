@@ -118,7 +118,7 @@ func (h *Host) ensureCDP() error {
 	wsURL := ""
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		wsURL, err = versionWS("127.0.0.1:" + strconv.Itoa(port))
+		wsURL, err = debugWS("127.0.0.1:" + strconv.Itoa(port))
 		if err == nil && wsURL != "" {
 			break
 		}

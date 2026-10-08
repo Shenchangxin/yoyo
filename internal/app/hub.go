@@ -223,6 +223,9 @@ func NoticeOf(ev trace.Event) LiveNotice {
 }
 
 func liveDelta(ev trace.Event) bool {
+	if liveProgressCall(ev) {
+		return true
+	}
 	if ev.Payload == nil {
 		return false
 	}
@@ -238,10 +241,21 @@ func liveDelta(ev trace.Event) bool {
 	}
 }
 
+func liveProgressCall(ev trace.Event) bool {
+	if ev.Type != trace.TypeToolCall || ev.Payload == nil {
+		return false
+	}
+	p, _ := ev.Payload["progress"].(bool)
+	return p
+}
+
 // mayInlineNotice is the Wails fast path. Tool bodies and settled assistant
 // letters are pull-only so Event.Emit never materializes a 20KB JSON blob on
 // the WebView UI thread. Tiny token slices still ride along.
 func mayInlineNotice(ev trace.Event) bool {
+	if liveProgressCall(ev) {
+		return true
+	}
 	switch ev.Type {
 	case trace.TypeToolCall, trace.TypeToolResult:
 		return false

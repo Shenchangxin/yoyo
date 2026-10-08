@@ -190,17 +190,27 @@ func (t *WorkspaceTools) scheduleCancel(id string) ToolResult {
 }
 
 func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
-	if err := t.check(capability.Browser, "browser_open", "", raw); err != nil {
+	target, lane := parseBrowserOpen(raw)
+	if isDataURL(target) {
+		return ToolResult{Err: fmt.Errorf("browser_open: data: URLs are not supported. write_file the HTML, then browser_open the workspace path")}
+	}
+	if rel, err := t.workspacePreviewRel(target); err == nil {
+		if abs, rerr := t.resolve(rel); rerr == nil {
+			if err := t.check(capability.ReadWorkspace, "browser_open", abs, ""); err != nil {
+				return ToolResult{Err: err}
+			}
+		}
+		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome was not started. Do not start a local HTTP server or pass file:// / data: URLs to isolated Chrome.", rel)}
+	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
+		return ToolResult{Err: err}
+	}
+	if err := t.check(capability.Browser, "browser_open", "", target); err != nil {
 		return ToolResult{Err: err}
 	}
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
-	lane := "isolated"
-	if strings.Contains(strings.ToLower(raw), "lane=attached") {
-		lane = "attached"
-	}
-	snap, err := t.Browser.OpenURLLane(raw, lane)
+	snap, err := t.Browser.OpenURLLane(target, lane)
 	if err != nil {
 		return ToolResult{Err: err}
 	}

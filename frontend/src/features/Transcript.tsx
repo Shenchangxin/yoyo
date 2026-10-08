@@ -19,7 +19,7 @@ import {
   toolName,
 } from "../lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../lib/artifact-preview";
-import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "../lib/html-preview";
+import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikeMCPUI, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
 import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
@@ -68,7 +68,7 @@ function tailOwnsActivity(rows: LayoutRow[]): boolean {
   if (!row || row.kind !== "agent") return false;
   const part = row.parts[row.parts.length - 1];
   if (!part) return false;
-  if (part.kind === "process") return true;
+  if (part.kind === "process") return processGroupLive(part.items);
   if (part.kind === "subagent") return part.live;
   if (part.kind === "artifact") return processGroupLive(part.items);
   return false;
@@ -144,6 +144,7 @@ export function Transcript(props: {
   onRestoreFiles?: (from: string) => void | Promise<void>;
   onForkFrom?: (from: string) => void | Promise<void>;
 }) {
+  const copy = useCopy();
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
   const visible = useMemo(
@@ -210,7 +211,7 @@ export function Transcript(props: {
                   {part.kind === "process" ? (
                     <ProcessGroup
                       items={part.items}
-                      live={props.running && last && pi === tail}
+                      live={props.running && last && pi === tail && part.live}
                       running={props.running}
                       compact={props.compact}
                       liveTexts={props.liveTexts}
@@ -237,7 +238,7 @@ export function Transcript(props: {
               ))}
               {workingHere ? (
                 <div className={row.parts.length ? "pt-1.5" : undefined}>
-                  <WorkingLine since={since} />
+                  <WorkingLine since={since} label={copy.transcript.live.think} />
                 </div>
               ) : null}
               {row.copyText && !props.compact ? (
@@ -283,7 +284,7 @@ export function Transcript(props: {
       kind: "working",
       space: "pt-3",
       estimate: 40,
-      render: () => <WorkingLine since={since} />,
+      render: () => <WorkingLine since={since} label={copy.transcript.live.think} />,
     });
   }
 
@@ -1162,9 +1163,10 @@ function ArtifactCard({
   const path = view.path || String(args.path || args.file || "");
   const mcpHtml = result ? extractHTML(body) : "";
   const pdf = looksLikePDF(path);
-  const office = name.startsWith("office_");
-  const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || looksLikeHTML(mcpHtml);
-  const hasPreview = artifactShouldShow(view) || !!mcpHtml || ((office || pdf) && !!path && !!workspace);
+  const office = name.startsWith("office_") && /\.(docx|xlsx|pptx|pdf)$/i.test(path);
+  const mcp = looksLikeMCPUI(mcpHtml, name);
+  const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || mcp;
+  const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!workspace);
   if (!office && !pdf && name !== "cite_sources" && !hasPreview) return null;
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
@@ -1172,9 +1174,11 @@ function ArtifactCard({
       ? copy.transcript.patch
       : name === "cite_sources"
         ? copy.transcript.citations
-        : htmlish
+        : mcp
           ? copy.transcript.mcpApp
-          : copy.transcript.artifact;
+          : htmlish
+            ? copy.transcript.preview
+            : copy.transcript.artifact;
   const meta = name === "apply_patch" && files > 0
     ? copy.transcript.filesCount.replace("{n}", String(files))
     : (path || detail || name);
@@ -1232,8 +1236,8 @@ function ArtifactCard({
       </div>
       {open ? (
         <>
-          {mcpHtml && looksLikeHTML(mcpHtml) && !view.diff && !view.code && !view.html ? (
-            <SandboxedFrame html={mcpHtml} title={title} />
+          {mcp && mcpHtml && !view.diff && !view.code && !view.html ? (
+            <SandboxedFrame html={mcpHtml} title={title} allowScripts />
           ) : (
             <ArtifactBody view={{ ...view, path: view.path || path, kind: view.kind || ((office || pdf) ? "text" : view.kind) }} workspace={workspace} source={source} />
           )}

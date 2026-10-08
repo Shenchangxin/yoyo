@@ -149,6 +149,9 @@ func init() {
 	}
 	hostFns["browser_open"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		raw := str(args["url"])
+		if raw == "" {
+			raw = str(args["path"])
+		}
 		if lane := str(args["lane"]); lane != "" {
 			raw = strings.TrimSpace(raw + " lane=" + lane)
 		}

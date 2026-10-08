@@ -10,7 +10,7 @@ import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { coerceInspTab, useUI } from "../../lib/store";
-import { looksLikeHTMLFile } from "../../lib/html-preview";
+import { looksLikeHTMLFile, workspacePreviewPath } from "../../lib/html-preview";
 import { pathFromPatch } from "../../lib/artifact-preview";
 import { toolArgs, toolName } from "../../lib/tool-summary";
 import { HARNESS_TABS } from "../../lib/surface";
@@ -737,14 +737,11 @@ export function useWorkstation() {
         }
         if (item.type === "tool_call") {
           const name = toolName(item);
-          if (name === "browser_open" || name === "browser_takeover") {
-            setInspector(true);
-            setInspTab("browser");
-          }
           const args = toolArgs(item);
           const path = String(args.path || pathFromPatch(String(args.patch || args.diff || "")) || "");
-          if (looksLikeHTMLFile(path)) {
-            setReviewFile(path);
+          const preview = workspacePreviewPath(name, { ...args, url: args.url || item.payload?.path }) || path;
+          if (name === "browser_open" || name === "browser_takeover" || looksLikeHTMLFile(preview)) {
+            if (preview) setReviewFile(preview);
             setInspector(true);
             setInspTab("browser");
           }

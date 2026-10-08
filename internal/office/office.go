@@ -21,12 +21,12 @@ const (
 )
 
 type CreateReq struct {
-	Kind    Kind     `json:"kind"`
-	Title   string   `json:"title"`
-	Body    string   `json:"body"`
-	Headings []string `json:"headings,omitempty"`
-	Rows    [][]string `json:"rows,omitempty"`
-	Slides  []string `json:"slides,omitempty"`
+	Kind     Kind       `json:"kind"`
+	Title    string     `json:"title"`
+	Body     string     `json:"body"`
+	Headings []string   `json:"headings,omitempty"`
+	Rows     [][]string `json:"rows,omitempty"`
+	Slides   []string   `json:"slides,omitempty"`
 }
 
 func Create(path string, req CreateReq) error {
@@ -87,11 +87,10 @@ func Query(path string) (string, error) {
 	case ".pdf":
 		return readPDFText(path)
 	default:
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return "", err
+		if ext == "" {
+			ext = "unknown"
 		}
-		return string(raw), nil
+		return "", fmt.Errorf("office_query: %s is not an office document (docx/xlsx/pptx/pdf); use read_file or browser_open for HTML", ext)
 	}
 }
 
@@ -240,8 +239,8 @@ func encodePptx(req CreateReq) ([]byte, error) {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
 </Relationships>`,
-		"ppt/presentation.xml": presentationXML(len(slides)),
-		"ppt/_rels/presentation.xml.rels": presentationRels(len(slides)),
+		"ppt/presentation.xml":              presentationXML(len(slides)),
+		"ppt/_rels/presentation.xml.rels":   presentationRels(len(slides)),
 		"ppt/slideLayouts/slideLayout1.xml": `<p:sldLayout xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" type="blank"/>`,
 		"ppt/slideMasters/slideMaster1.xml": `<p:sldMaster xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>`,
 		"ppt/slideMasters/_rels/slideMaster1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -63,10 +63,11 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   const item = pair.call || pair.result || pair.extra[0];
   if (!item) return false;
   const name = toolName(item);
-  if (name.startsWith("office_") || name === "cite_sources") return true;
+  const path = String(toolArgs(pair.call || pair.result || item).path || "");
+  if (name === "cite_sources") return true;
+  if (name.startsWith("office_")) return /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   if (artifactShouldShow(artifactView(pair.call, pair.result))) return true;
   const body = String((pair.result || item).payload?.content || (pair.result || item).text || "");
-  const path = String(toolArgs(pair.call || pair.result || item).path || "");
   if (name === "apply_patch" && (/\*\*\*\s+(Add|Update) File:/.test(body) || !!path)) return true;
   return isRichResult(name, body, path);
 }

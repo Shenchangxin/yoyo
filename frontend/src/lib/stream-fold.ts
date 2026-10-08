@@ -315,8 +315,26 @@ function mergeItemCore(list: Item[], ev: Item): Item[] {
     return foldToolResult(list, ev);
   }
 
+  if (ev.type === "tool_call") {
+    return foldToolCall(list, ev);
+  }
+
   if (ev.key && list.some((x) => x.key === ev.key)) return list;
   return [...list, ev];
+}
+
+function foldToolCall(list: Item[], ev: Item): Item[] {
+  const idx = ev.key ? list.findIndex((x) => x.key === ev.key) : -1;
+  if (idx < 0) return [...list, ev];
+  const cur = list[idx];
+  const curProg = !!cur.payload?.progress;
+  const nextProg = !!ev.payload?.progress;
+  if (nextProg && !curProg) return list;
+  const payload = { ...cur.payload, ...ev.payload };
+  if (!nextProg) delete payload.progress;
+  const next = list.slice();
+  next[idx] = { ...cur, ...ev, payload };
+  return next;
 }
 
 function isTurnProgress(it: Item): boolean {

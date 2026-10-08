@@ -488,6 +488,28 @@ test("shell stdout deltas concatenate without closing the process group", () => 
   expect(processGroupLive(list)).toBe(false);
 });
 
+test("tool-arg progress updates then yields to the settled call", () => {
+  let list: Item[] = [];
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_call", session_id: "s",
+    payload: { id: "c1", name: "write_file", round: "s:r1", progress: true, bytes: 400, arguments: `{"path":"a.html"}`, path: "a.html" },
+  }));
+  expect(processGroupLive(list)).toBe(true);
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_call", session_id: "s",
+    payload: { id: "c1", name: "write_file", round: "s:r1", progress: true, bytes: 8000, arguments: `{"path":"a.html"}`, path: "a.html" },
+  }));
+  expect(list.filter((x) => x.type === "tool_call")).toHaveLength(1);
+  expect(list[0].payload?.bytes).toBe(8000);
+  list = mergeItem(list, itemFromEvent({
+    type: "tool_call", session_id: "s",
+    payload: { id: "c1", name: "write_file", round: "s:r1", arguments: `{"path":"a.html"}` },
+  }));
+  expect(list).toHaveLength(1);
+  expect(list[0].payload?.progress).toBeFalsy();
+  expect(processGroupLive(list)).toBe(true);
+});
+
 test("write_file live items do not keep the full file body", () => {
   const body = "x".repeat(4000);
   const args = JSON.stringify({ path: "a.ts", content: body });
