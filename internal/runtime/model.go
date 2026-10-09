@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
@@ -102,8 +104,36 @@ func NewOpenAIClient(baseURL, apiKey string) *OpenAIClient {
 	return &OpenAIClient{
 		BaseURL:    baseURL,
 		APIKey:     strings.TrimSpace(apiKey),
-		HTTPClient: &http.Client{},
+		HTTPClient: openaiHTTPClient(),
 	}
+}
+
+// openaiHTTPClient keeps streaming unbounded (no Client.Timeout) but raises
+// TLSHandshakeTimeout past Go's 10s default. Cross-region gateways such as
+// flowyaipc.com otherwise fail before the certificate is even read.
+func openaiHTTPClient() *http.Client {
+	return &http.Client{Transport: openaiHTTPTransport()}
+}
+
+func openaiHTTPTransport() *http.Transport {
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 20 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          32,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   45 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok && dt != nil {
+		cloned := dt.Clone()
+		cloned.TLSHandshakeTimeout = 45 * time.Second
+		if cloned.IdleConnTimeout == 0 {
+			cloned.IdleConnTimeout = 90 * time.Second
+		}
+		return cloned
+	}
+	return tr
 }
 
 func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {

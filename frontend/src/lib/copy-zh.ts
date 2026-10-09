@@ -209,6 +209,7 @@ export const zhCN = {
     thoughtFor: "思考了 {n}",
     citations: "引用",
     filesCount: "{n} 个文件",
+    created: "已创建",
     preview: "预览",
     hidePreview: "收起",
     mcpApp: "MCP 视图",

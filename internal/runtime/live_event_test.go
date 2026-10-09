@@ -8,6 +8,21 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+func TestCompactCallArgsOmitsFileBytes(t *testing.T) {
+	body := strings.Repeat("const GROUND = H - 78;\n", 400)
+	args := `{"path":"game.html","new_str":` + mustJSONString(body) + `,"old_str":"x"}`
+	got := compactCallArgs("str_replace", args, 800)
+	if strings.Contains(got, "const GROUND") {
+		t.Fatalf("leaked file bytes: %s", got[:min(240, len(got))])
+	}
+	if !strings.Contains(got, "(omitted") || !strings.Contains(got, "Do not paste this placeholder") {
+		t.Fatalf("%s", got)
+	}
+	if !looksLikeContextStub(got) {
+		t.Fatal("compact stub must be rejected if the model pastes it back")
+	}
+}
+
 func TestSlimLiveEventStubsWriteArgs(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	args := `{"path":"a.ts","content":"` + body + `"}`
@@ -23,6 +38,25 @@ func TestSlimLiveEventStubsWriteArgs(t *testing.T) {
 	}
 	if live.Payload["bytes"] != len(args) {
 		t.Fatalf("bytes %v", live.Payload["bytes"])
+	}
+}
+
+func TestSlimLiveEventStubsTruncatedWritePath(t *testing.T) {
+	args := `{"path": "pelican-bike.html", "content": "<!DOCTYPE html>\n<html`
+	ev := trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"name": "write_file", "arguments": args, "id": "w1"}}
+	live := slimLiveEvent(ev)
+	got, _ := live.Payload["arguments"].(string)
+	if !strings.Contains(got, "pelican-bike.html") {
+		t.Fatalf("path stub missing: %s", got)
+	}
+	if strings.Contains(got, "<!DOCTYPE") {
+		t.Fatalf("truncated body leaked: %s", got)
+	}
+	if live.Payload["path"] != "pelican-bike.html" {
+		t.Fatalf("path field %v", live.Payload["path"])
+	}
+	if ev.Payload["arguments"] != args {
+		t.Fatal("persist payload must keep truncated write")
 	}
 }
 

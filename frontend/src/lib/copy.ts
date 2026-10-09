@@ -208,6 +208,7 @@ export const en = {
     thoughtFor: "Thought for {n}",
     citations: "Citations",
     filesCount: "{n} files",
+    created: "Created",
     preview: "Preview",
     hidePreview: "Hide",
     mcpApp: "MCP view",

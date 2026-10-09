@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -25,7 +26,7 @@ func toolArgsTruncated(raw string) bool {
 }
 
 func parseToolArgsStatus(raw string) (map[string]any, bool) {
-	raw = strings.TrimSpace(raw)
+	raw = stripJSONFence(strings.TrimSpace(raw))
 	if raw == "" {
 		return map[string]any{}, false
 	}
@@ -277,6 +278,49 @@ func unescapeJSONString(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func stripJSONFence(raw string) string {
+	s := strings.TrimSpace(raw)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	s = strings.TrimPrefix(s, "```")
+	if n := len(s); n >= 4 && (strings.HasPrefix(s, "json") || strings.HasPrefix(s, "JSON")) {
+		s = strings.TrimSpace(s[4:])
+	} else {
+		if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+			s = strings.TrimSpace(s[i+1:])
+		}
+	}
+	if i := strings.LastIndex(s, "```"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	return s
+}
+
+func truncatedWriteErr(raw string) error {
+	salvaged := salvageJSONObject(raw)
+	path := str(salvaged["path"])
+	content := str(salvaged["content"])
+	msg := "truncated JSON arguments; refusing a partial write. Do not retry the same blob. Split the file or continue from the last complete section with str_replace"
+	if path != "" {
+		msg += fmt.Sprintf(" (path=%s recovered=%d bytes", path, len(content))
+		if mark := lastCompleteAnchor(content); mark != "" {
+			msg += "; last complete marker: " + mark
+		}
+		msg += ")"
+	}
+	return fmt.Errorf("%s", msg)
+}
+
+func lastCompleteAnchor(s string) string {
+	re := regexp.MustCompile(`(?m)^function\s+([A-Za-z_$][\w$]*)`)
+	matches := re.FindAllStringSubmatch(s, -1)
+	if n := len(matches); n > 0 {
+		return "function " + matches[n-1][1]
+	}
+	return ""
 }
 
 func missingWriteArg(kind, raw string) error {

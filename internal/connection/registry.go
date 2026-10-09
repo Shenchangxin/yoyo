@@ -105,6 +105,10 @@ func (r *Registry) hydrateKey(c *Connection) {
 	if r.vault == nil || c.VaultKey == "" {
 		return
 	}
+	if storedVault(r.vault, c.VaultKey) != "" {
+		c.HasKey = true
+		return
+	}
 	if _, err := r.vault.Get(c.VaultKey); err == nil {
 		c.HasKey = true
 	}

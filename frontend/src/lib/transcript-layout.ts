@@ -1,6 +1,7 @@
 import type { Item } from "./protocol";
 import { itemTurnKey } from "./turn-outline";
 import {
+  isArtifactTool,
   isRichResult,
   isToolFailed,
   itemTimeMs,
@@ -8,9 +9,11 @@ import {
   toolElapsedMs,
   toolKind,
   toolName,
+  toolResultUnchanged,
   type ToolKind,
 } from "./tool-summary";
 import { artifactShouldShow, artifactView } from "./artifact-preview";
+import { looksLikeHTMLFile } from "./html-preview";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
@@ -59,17 +62,40 @@ export function isOutcomeTool(it: Item): boolean {
   });
 }
 
+export function pairToolPath(pair: ToolPair): string {
+  const args = {
+    ...(pair.result ? toolArgs(pair.result) : {}),
+    ...(pair.call ? toolArgs(pair.call) : {}),
+  };
+  return String(args.path || args.file || "").replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
 export function pairShowsArtifact(pair: ToolPair): boolean {
   const item = pair.call || pair.result || pair.extra[0];
   if (!item) return false;
   const name = toolName(item);
-  const path = String(toolArgs(pair.call || pair.result || item).path || "");
+  if (name === "browser_open" || name === "browser_takeover" || name === "read_file") return false;
+  if (pair.result && isToolFailed(pair.result)) return false;
+  if (toolResultUnchanged(pair.result)) return false;
+  const path = pairToolPath(pair);
   if (name === "cite_sources") return true;
   if (name.startsWith("office_")) return /\.(docx|xlsx|pptx|pdf)$/i.test(path);
+  if (name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file" || name === "apply_patch") {
+    return true;
+  }
   if (artifactShouldShow(artifactView(pair.call, pair.result))) return true;
   const body = String((pair.result || item).payload?.content || (pair.result || item).text || "");
   if (name === "apply_patch" && (/\*\*\*\s+(Add|Update) File:/.test(body) || !!path)) return true;
+  if (isArtifactTool(name) && looksLikeHTMLFile(path)) return true;
   return isRichResult(name, body, path);
+}
+
+export function classifyToolPairs(pairs: ToolPair[]): Map<string, "artifact" | "process"> {
+  const kind = new Map<string, "artifact" | "process">();
+  for (const p of pairs) {
+    kind.set(p.key, pairShowsArtifact(p) ? "artifact" : "process");
+  }
+  return kind;
 }
 
 export function isProcessItem(it: Item): boolean {
@@ -224,10 +250,7 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
   let artifacts: Item[] = [];
-  const pairKind = new Map<string, "artifact" | "process">();
-  for (const p of pairTools(items.filter(isToolish))) {
-    pairKind.set(p.key, pairShowsArtifact(p) ? "artifact" : "process");
-  }
+  const pairKind = classifyToolPairs(pairTools(items.filter(isToolish)));
   const flushProcess = () => {
     if (!process.length) return;
     parts.push({

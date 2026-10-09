@@ -23,21 +23,26 @@ type Snapshot struct {
 }
 
 type Host struct {
-	mu      sync.Mutex
-	dir     string
-	url     string
-	title   string
-	profile string
-	lane    string
-	log     []map[string]any
-	cmd     *exec.Cmd
-	cdp     *cdpConn
-	port    int
-	headed  bool
-	snap    string
-	frame   string
-	frameAt time.Time
-	syncing bool
+	mu       sync.Mutex
+	dir      string
+	url      string
+	title    string
+	profile  string
+	lane     string
+	log      []map[string]any
+	cmd      *exec.Cmd
+	cdp      *cdpConn
+	port     int
+	headed   bool
+	snap     string
+	frame    string
+	frameAt  time.Time
+	syncing  bool
+	preview  string
+	fileSrv  *http.Server
+	fileRoot string
+	fileURL  string
+	killTree func()
 }
 
 func Open(dir string) (*Host, error) {
@@ -51,18 +56,42 @@ func Open(dir string) (*Host, error) {
 func (h *Host) Isolated() bool { return h != nil && h.profile != "" }
 
 func (h *Host) Close() {
+	h.closeFileServer()
+	h.stopChrome()
+}
+
+func (h *Host) stopChrome() {
 	h.mu.Lock()
 	cmd := h.cmd
 	cdp := h.cdp
+	killTree := h.killTree
 	h.cmd = nil
 	h.cdp = nil
+	h.killTree = nil
+	h.port = 0
 	h.mu.Unlock()
 	if cdp != nil {
 		cdp.close()
 	}
+	stopChromeProc(cmd, killTree)
+	waitProfileUnlocked(h.profile, 4*time.Second)
+}
+
+func stopChromeProc(cmd *exec.Cmd, killTree func()) {
+	if killTree != nil {
+		killTree()
+	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		done := make(chan struct{})
+		go func() {
+			_ = cmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+		}
 	}
 }
 

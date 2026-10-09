@@ -139,7 +139,11 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 			http.Error(w, "method", 405)
 			return
 		}
-		if err := a.BrowserTakeover(); err != nil {
+		var body struct {
+			Path string `json:"path"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := a.BrowserTakeoverAt(body.Path); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}

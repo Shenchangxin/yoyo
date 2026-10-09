@@ -37,12 +37,12 @@ func HostSpecs() []artifact.ToolSpec {
 	net := Annotations{OpenWorld: true, Exclusive: true}
 	return []artifact.ToolSpec{
 		spec("read_file", "Read a UTF-8 file under the workspace. Optional offset/limit are 1-based line numbers.", "read_workspace", obj(map[string]any{"path": strP(), "offset": intP(), "limit": intP()}, "path"), read),
-		spec("write_file", "Write a UTF-8 file under the workspace. Literal newlines in JSON content are accepted. Truncated JSON is rejected — split a large write or follow with str_replace. Writing *.html also opens the right inspector Browser pane.", "write_workspace", obj(map[string]any{"path": strP(), "content": strP()}, "path", "content"), write),
+		spec("write_file", "Write a UTF-8 file under the workspace. Literal newlines in JSON content are accepted. If JSON is truncated, a recovered prefix is saved — continue with str_replace from the last complete section; do not retry the same blob. Writing *.html also opens the right inspector Browser pane.", "write_workspace", obj(map[string]any{"path": strP(), "content": strP()}, "path", "content"), write),
 		spec("str_replace", "Replace old_str with new_str. Fails if old_str is not unique unless replace_all is true.", "write_workspace", obj(map[string]any{"path": strP(), "old_str": strP(), "new_str": strP(), "replace_all": boolP()}, "path", "old_str", "new_str"), write),
 		spec("list_dir", "List a directory under the workspace (name, size, mtime).", "read_workspace", obj(map[string]any{"path": strP()}), read),
 		spec("glob", "Find files by glob pattern relative to the workspace (e.g. **/*.go).", "read_workspace", obj(map[string]any{"pattern": strP()}, "pattern"), read),
 		spec("grep", "Search file contents with a regex. Optional glob limits which files are scanned.", "read_workspace", obj(map[string]any{"pattern": strP(), "glob": strP(), "path": strP()}, "pattern"), read),
-		spec("shell", "Run a shell command in the workspace directory. Prefer glob/grep/read_file when possible.", "shell", obj(map[string]any{"command": strP(), "timeout_sec": intP()}, "command"), shell),
+		spec("shell", "Run a shell command in the workspace directory (cwd is already the workspace — do not cd there). Prefer glob/grep/read_file. Put large node -e / python -c bodies in a workspace file.", "shell", obj(map[string]any{"command": strP(), "timeout_sec": intP()}, "command"), shell),
 		spec("load_skill", "Load a skill body by name into context.", "", obj(map[string]any{"name": strP()}, "name"), read),
 		spec("apply_patch", "Apply a Codex-style patch (*** Begin Patch / *** Add File or *** Update File / *** End Patch).", "write_workspace", obj(map[string]any{"patch": strP()}, "patch"), write),
 		spec("git_status", "Show git status of the workspace.", "read_workspace", obj(map[string]any{}), read),
@@ -90,7 +90,7 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("browser_type", "Type into a selector in the isolated browser.", "browser", obj(map[string]any{"selector": strP(), "text": strP()}, "selector", "text"), net),
 		spec("browser_fill", "Fill a selector in the isolated browser.", "browser", obj(map[string]any{"selector": strP(), "text": strP()}, "selector", "text"), net),
 		spec("browser_download", "Download a URL into the workspace as raw bytes via the isolated browser.", "browser", obj(map[string]any{"url": strP(), "path": strP()}, "url", "path"), net),
-		spec("browser_screenshot", "Capture the isolated browser page (not the operator desktop) into a workspace PNG.", "browser", obj(map[string]any{"path": strP()}), net),
+		spec("browser_screenshot", "Capture the current inspector page (workspace HTML preview or isolated Chrome) into a workspace PNG. Not the operator desktop.", "browser", obj(map[string]any{"path": strP()}), net),
 		spec("browser_takeover", "Pause and show a headed Yoyo browser so the operator can finish login, MFA, or CAPTCHA, then resume.", "browser", obj(map[string]any{"question": strP()}), net),
 		spec("browser_cookies", "Import a Netscape cookies.txt into the isolated browser profile. Does not touch the operator Chrome.", "browser", obj(map[string]any{"path": strP()}, "path"), net),
 		spec("clipboard_read", "Read the OS clipboard into the turn. Contents are untrusted. Always asks unless this session already granted clipboard.", "clipboard", obj(map[string]any{}), read),

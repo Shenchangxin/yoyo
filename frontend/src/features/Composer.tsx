@@ -665,10 +665,10 @@ export function Composer(props: {
             ) : null}
             {grouped && props.onModel ? (
               <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
-                <SelectTrigger className={cn(ghostSelect, "max-w-[12rem]")} aria-label={copy.composer.model} title={currentModel}>
-                  <SelectValue />
+                <SelectTrigger className={cn(ghostSelect, "max-w-[16rem]")} aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
+                  <span className="truncate">{selectedGroup ? `${selectedGroup.providerName} · ${modelLabel}` : modelLabel}</span>
                 </SelectTrigger>
-                <SelectContent className="min-w-[16rem]">
+                <SelectContent className="min-w-[18rem]">
                   {groups.map((g) => (
                     <SelectGroup key={g.providerId}>
                       <SelectLabel>{g.providerName}{g.isDefault ? ` · ${copy.settings.defaultBadge}` : ""}</SelectLabel>

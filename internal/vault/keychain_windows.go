@@ -9,7 +9,7 @@ import (
 
 const (
 	credTypeGeneric  = 1
-	credPersistLocal = 3
+	credPersistLocal = 2 // CRED_PERSIST_LOCAL_MACHINE; 3 is ENTERPRISE
 )
 
 var (

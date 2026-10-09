@@ -16,6 +16,7 @@ type View struct {
 	Live       bool             `json:"live"`
 	Text       string           `json:"text"`
 	Screenshot string           `json:"screenshot,omitempty"`
+	Preview    string           `json:"preview,omitempty"`
 	Log        []map[string]any `json:"log"`
 }
 
@@ -67,6 +68,7 @@ func (h *Host) View() View {
 		Live:       h.cdp != nil,
 		Text:       text,
 		Screenshot: h.frame,
+		Preview:    h.preview,
 		Log:        append([]map[string]any(nil), h.log[start:]...),
 	}
 }
@@ -81,10 +83,13 @@ func (h *Host) syncView() {
 	if cdp == nil {
 		return
 	}
-	href, _ := h.evalOnConn("location.href")
+	href, hrefErr := h.evalOnConn("location.href")
 	title, _ := h.evalOnConn("document.title")
 	text, _ := h.evalOnConn(`document.body ? (document.body.innerText || "").slice(0, 4000) : ""`)
 	shot := h.captureJPEG()
+	if isCDPGone(hrefErr) {
+		h.dropDeadCDP()
+	}
 	h.mu.Lock()
 	if clean := cleanJS(href); clean != "" {
 		h.url = clean
@@ -108,6 +113,9 @@ func (h *Host) captureJPEG() string {
 	}
 	raw, err := h.cdp.call("Page.captureScreenshot", map[string]any{"format": "jpeg", "quality": 42})
 	if err != nil {
+		if isCDPGone(err) {
+			h.dropDeadCDP()
+		}
 		return ""
 	}
 	var out struct {

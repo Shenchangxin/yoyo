@@ -701,6 +701,45 @@ test("settled tools collapse until the operator expands them", async ({ page }) 
   await expect(page.getByText("{\"path\":\"src/main.go\"}")).toHaveCount(0);
 });
 
+test("failed tools stay inside the process group and do not auto-expand", async ({ page }) => {
+  const err = "ERROR: failed to write JSON message: use of closed network connection";
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "screenshot the game" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { id: "c1", name: "write_file", arguments: "{\"path\":\"game.html\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "write_file", content: "wrote game.html", elapsed_ms: 8 } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { id: "c2", name: "browser_screenshot", arguments: "{\"path\":\"shot.png\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { id: "c2", name: "browser_screenshot", content: err, elapsed_ms: 24 } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:05Z", payload: { text: "the page is up", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByText("the page is up")).toBeVisible();
+  const summary = page.getByTestId("process-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary).toHaveAttribute("aria-expanded", "false");
+  await expect(summary).toContainText("1 failed");
+  await expect(page.getByTestId("process-failed")).toHaveCount(0);
+  await expect(page.getByTestId("tool-row")).toHaveCount(0);
+  await expect(page.getByText(err)).toHaveCount(0);
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+  const failed = page.getByTestId("tool-row").filter({ hasText: "browser_screenshot" });
+  await expect(failed).toBeVisible();
+  await expect(failed).toContainText("Failed");
+  const failedToggle = failed.getByRole("button").first();
+  await expect(failedToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(err)).toHaveCount(0);
+  await failedToggle.click();
+  await expect(failedToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(err)).toBeVisible();
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("tool-row")).toHaveCount(0);
+  await expect(page.getByText(err)).toHaveCount(0);
+});
+
 test("a call without a result on a finished turn reads interrupted, never running", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],

@@ -176,7 +176,10 @@ func (a *App) SetSessionModel(id, model string) (SessionMeta, error) {
 	if connID != "" {
 		m.ConnectionID = connID
 	}
-	return m, a.writeSession(m)
+	if err := a.writeSession(m); err != nil {
+		return m, err
+	}
+	return m, nil
 }
 
 func (a *App) SetSessionAuthMode(id, mode string) (SessionMeta, error) {

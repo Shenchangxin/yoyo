@@ -12,6 +12,7 @@ import { writeClipboard } from "../lib/clipboard";
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import {
   formatToolBody,
+  isArtifactTool,
   itemTimeMs,
   patchFileCount,
   toolArgs,
@@ -22,7 +23,7 @@ import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../lib/ar
 import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikeMCPUI, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { classifyItem, errorCopy } from "../lib/error";
-import { layoutRows, pairShowsArtifact, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { classifyToolPairs, layoutRows, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig, withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
@@ -1110,7 +1111,8 @@ function ArtifactTimeline({
   onOpenReview?: (path?: string) => void;
 }) {
   const copy = useCopy();
-  const all = pairTools(items).filter(pairShowsArtifact);
+  const classified = classifyToolPairs(pairTools(items));
+  const all = pairTools(items).filter((p) => classified.get(p.key) === "artifact");
   if (!all.length) return null;
   const cap = 12;
   const pairs = all.length > cap ? all.slice(-cap) : all;
@@ -1152,10 +1154,10 @@ function ArtifactCard({
   const item = result || call!;
   const name = toolName(item);
   const view = artifactView(call, result);
-  const [open, setOpen] = useState(() => artifactPreviewOpen(view));
   const openCall = !!call && !result;
   const pending = openCall && running;
   const interrupted = openCall && !running;
+  const [open, setOpen] = useState(() => !pending && artifactPreviewOpen(view));
   const detail = toolDetail(result || call || item);
   const body = result ? formatToolBody(result) : formatToolBody(call || item);
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
@@ -1166,8 +1168,12 @@ function ArtifactCard({
   const office = name.startsWith("office_") && /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   const mcp = looksLikeMCPUI(mcpHtml, name);
   const htmlish = view.kind === "html" || looksLikeHTMLFile(path) || looksLikeHTML(view.html) || mcp;
-  const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!workspace);
-  if (!office && !pdf && name !== "cite_sources" && !hasPreview) return null;
+  const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!workspace) || (htmlish && !!workspace && looksLikeHTMLFile(path)) || !!view.diff;
+  const fileChip = isArtifactTool(name) && !!path;
+  useEffect(() => {
+    if (!pending && (artifactPreviewOpen(view) || !!view.diff)) setOpen(true);
+  }, [pending, view.kind, view.path, view.html, view.diff]);
+  if (!office && !pdf && name !== "cite_sources" && !hasPreview && !fileChip) return null;
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path
     : name === "apply_patch"
@@ -1179,9 +1185,15 @@ function ArtifactCard({
           : htmlish
             ? copy.transcript.preview
             : copy.transcript.artifact;
+  const added = view.added || 0;
+  const removed = view.removed || 0;
+  const stat = [
+    view.created ? copy.transcript.created : "",
+    added || removed ? `+${added} / −${removed}` : "",
+  ].filter(Boolean).join(" · ");
   const meta = name === "apply_patch" && files > 0
     ? copy.transcript.filesCount.replace("{n}", String(files))
-    : (path || detail || name);
+    : [stat, path || detail || name].filter(Boolean).join(" · ");
   return (
     <div
       className={cn(

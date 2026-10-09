@@ -14,7 +14,7 @@ import (
 // nested quotes. A file is the platform-stable contract.
 func rewriteInlineInterpreters(command, workspace string) (string, func()) {
 	command = strings.TrimSpace(command)
-	if command == "" || !hasInlinePython(command) {
+	if command == "" || !hasInlineCode(command) {
 		return command, func() {}
 	}
 	var b strings.Builder
@@ -27,7 +27,7 @@ func rewriteInlineInterpreters(command, workspace string) (string, func()) {
 			b.WriteString(rest)
 			break
 		}
-		path, done, err := writeInlinePython(workspace, script)
+		path, done, err := writeInlineScript(workspace, script, inlineExt(interp))
 		if err != nil {
 			b.WriteString(rest)
 			break
@@ -50,12 +50,15 @@ func rewriteInlineInterpreters(command, workspace string) (string, func()) {
 	}
 }
 
-func hasInlinePython(command string) bool {
+func hasInlineCode(command string) bool {
 	low := strings.ToLower(command)
 	return strings.Contains(low, "python -c") || strings.Contains(low, "python.exe -c") ||
 		strings.Contains(low, "python3 -c") || strings.Contains(low, "pythonw -c") ||
 		strings.Contains(low, "py -c") || strings.Contains(low, "py.exe -c") ||
-		strings.Contains(low, "py -3 -c")
+		strings.Contains(low, "py -3 -c") ||
+		strings.Contains(low, "node -e") || strings.Contains(low, "node.exe -e") ||
+		strings.Contains(low, "nodejs -e") || strings.Contains(low, "node --eval") ||
+		strings.Contains(low, "node -p") || strings.Contains(low, "node.exe -p")
 }
 
 func nextInlinePython(command string) (idx int, interp, script, after string) {
@@ -71,10 +74,11 @@ func nextInlinePython(command string) (idx int, interp, script, after string) {
 		if isPyLauncher(token) {
 			rest = stripPyLauncherVersion(rest)
 		}
-		if !hasDashC(rest) {
+		flagLen, ok := inlineCodeFlag(rest)
+		if !ok {
 			continue
 		}
-		rest = strings.TrimLeft(rest[2:], " \t") // skip -c
+		rest = strings.TrimLeft(rest[flagLen:], " \t")
 		code, consumed := readInlineArg(rest)
 		if strings.TrimSpace(code) == "" {
 			continue
@@ -86,7 +90,7 @@ func nextInlinePython(command string) (idx int, interp, script, after string) {
 
 func peekInterpreter(s string) (string, int) {
 	low := strings.ToLower(s)
-	names := []string{"pythonw.exe", "python.exe", "python3", "pythonw", "python", "py.exe", "py"}
+	names := []string{"pythonw.exe", "python.exe", "python3", "pythonw", "python", "py.exe", "py", "nodejs.exe", "node.exe", "nodejs", "node"}
 	for _, name := range names {
 		if !strings.HasPrefix(low, name) {
 			continue
@@ -122,14 +126,25 @@ func stripPyLauncherVersion(s string) string {
 	return strings.TrimLeft(s[i:], " \t")
 }
 
-func hasDashC(s string) bool {
-	if !strings.HasPrefix(s, "-c") {
-		return false
+func inlineCodeFlag(s string) (int, bool) {
+	for _, fl := range []string{"--eval", "--print", "-e", "-p", "-c"} {
+		if !strings.HasPrefix(s, fl) {
+			continue
+		}
+		n := len(fl)
+		if n == len(s) || isInlineBoundary(rune(s[n])) || s[n] == ' ' || s[n] == '\t' {
+			return n, true
+		}
 	}
-	if len(s) == 2 {
-		return true
+	return 0, false
+}
+
+func inlineExt(token string) string {
+	low := strings.ToLower(strings.TrimSpace(token))
+	if strings.HasPrefix(low, "node") {
+		return ".js"
 	}
-	return isInlineBoundary(rune(s[2])) || s[2] == ' ' || s[2] == '\t'
+	return ".py"
 }
 
 func readInlineArg(s string) (string, int) {
@@ -143,7 +158,15 @@ func readInlineArg(s string) (string, int) {
 		for i := 1; i < len(s); i++ {
 			c := s[i]
 			if esc {
-				b.WriteByte(c)
+				// Only the wrapping quote and \\ are shell escapes. Keep
+				// \s \/ \n so JS regex and Python strings survive the file.
+				switch c {
+				case quote, '\\':
+					b.WriteByte(c)
+				default:
+					b.WriteByte('\\')
+					b.WriteByte(c)
+				}
 				esc = false
 				continue
 			}
@@ -155,6 +178,9 @@ func readInlineArg(s string) (string, int) {
 				return b.String(), i + 1
 			}
 			b.WriteByte(c)
+		}
+		if esc {
+			b.WriteByte('\\')
 		}
 		return b.String(), len(s)
 	}
@@ -178,7 +204,10 @@ func isInlineBoundary(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n' || r == ';' || r == '|' || r == '&' || r == '(' || unicode.IsSpace(r)
 }
 
-func writeInlinePython(workspace, script string) (string, func(), error) {
+func writeInlineScript(workspace, script, ext string) (string, func(), error) {
+	if ext == "" {
+		ext = ".py"
+	}
 	dir := os.TempDir()
 	if strings.TrimSpace(workspace) != "" {
 		dir = filepath.Join(workspace, ".yoyo", "tmp")
@@ -186,7 +215,7 @@ func writeInlinePython(workspace, script string) (string, func(), error) {
 			dir = os.TempDir()
 		}
 	}
-	f, err := os.CreateTemp(dir, "yoyo-inline-*.py")
+	f, err := os.CreateTemp(dir, "yoyo-inline-*"+ext)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -211,4 +240,133 @@ func quoteShellPath(p string) string {
 		return p
 	}
 	return `"` + strings.ReplaceAll(p, `"`, `\"`) + `"`
+}
+
+// unescapeWinPathEscapes applies JSON-style \t \n \r inside a Windows path.
+// Models emit cd "C:\Users\...\Desktop\test"; JSON "\test" becomes a tab and
+// CreateProcess returns ERROR_INVALID_NAME.
+func unescapeWinPathEscapes(p string) string {
+	return strings.NewReplacer(`\t`, "\t", `\n`, "\n", `\r`, "\r").Replace(p)
+}
+
+func repairWorkspacePathEscapes(command, workspace string) string {
+	if command == "" || workspace == "" {
+		return command
+	}
+	broken := unescapeWinPathEscapes(workspace)
+	if broken == workspace || !strings.Contains(command, broken) {
+		return command
+	}
+	return strings.ReplaceAll(command, broken, workspace)
+}
+
+func sameFilePath(a, b string) bool {
+	canon := func(p string) string {
+		p = strings.TrimSpace(strings.Trim(p, "`'\""))
+		p = strings.ReplaceAll(p, `\`, `/`)
+		p = strings.TrimRight(p, `/`)
+		return strings.ToLower(p)
+	}
+	return canon(a) == canon(b)
+}
+
+func isRedundantCwd(path, workspace string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "." || path == "./" || path == `.\` {
+		return true
+	}
+	if workspace == "" {
+		return false
+	}
+	return sameFilePath(path, workspace) || sameFilePath(path, unescapeWinPathEscapes(workspace))
+}
+
+func readShellPathToken(s string) (string, int) {
+	if s == "" {
+		return "", 0
+	}
+	switch s[0] {
+	case '"', '\'', '`':
+		q := s[0]
+		i := 1
+		for i < len(s) && s[i] != q {
+			i++
+		}
+		if i >= len(s) {
+			return s[1:], len(s)
+		}
+		return s[1:i], i + 1
+	}
+	i := 0
+	for i < len(s) {
+		if s[i] == ' ' || s[i] == '\t' || s[i] == '&' || s[i] == '|' || s[i] == ';' {
+			break
+		}
+		i++
+	}
+	return s[:i], i
+}
+
+func stripOneWorkspaceCd(command, workspace string) (string, bool) {
+	s := strings.TrimLeft(command, " \t")
+	low := strings.ToLower(s)
+	verbs := []string{
+		"set-location -literalpath ",
+		"set-location -path ",
+		"set-location ",
+		"pushd ",
+		"cd /d ",
+		"cd ",
+	}
+	rest := ""
+	found := false
+	for _, v := range verbs {
+		if strings.HasPrefix(low, v) {
+			rest = strings.TrimLeft(s[len(v):], " \t")
+			found = true
+			break
+		}
+	}
+	if !found {
+		return command, false
+	}
+	path, n := readShellPathToken(rest)
+	if n == 0 {
+		return command, false
+	}
+	after := strings.TrimLeft(rest[n:], " \t")
+	sep := 0
+	switch {
+	case strings.HasPrefix(after, "&&"):
+		sep = 2
+	case strings.HasPrefix(after, ";"):
+		sep = 1
+	case strings.HasPrefix(after, "&"):
+		sep = 1
+	default:
+		return command, false
+	}
+	tail := strings.TrimLeft(after[sep:], " \t")
+	if tail == "" || !isRedundantCwd(path, workspace) {
+		return command, false
+	}
+	return tail, true
+}
+
+// stripRedundantWorkspaceCd drops `cd <workspace> &&` — the tool already
+// runs with that cwd. Quoted `C:\Users\...` paths are also how Git Bash
+// turns `\t` into a tab.
+func stripRedundantWorkspaceCd(command, workspace string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return command
+	}
+	for i := 0; i < 4; i++ {
+		next, ok := stripOneWorkspaceCd(command, workspace)
+		if !ok {
+			break
+		}
+		command = next
+	}
+	return command
 }

@@ -40,8 +40,11 @@ type ToolResult struct {
 }
 
 type FileChange struct {
-	Paths []string
-	Patch string
+	Paths   []string
+	Patch   string
+	Added   int
+	Removed int
+	Created bool
 }
 
 // prefetchHit is a stream-time readonly execution that must not be traced
@@ -270,7 +273,10 @@ func writeLikeTool(name string) bool {
 
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	if writeLikeTool(name) && toolArgsTruncated(argsJSON) {
-		return ToolResult{Err: fmt.Errorf("truncated JSON arguments; refusing a partial write. Do not retry the same blob. Split the file or continue from the last complete section with str_replace")}
+		if name == "write_file" || name == "create_file" {
+			return t.recoverTruncatedWrite(argsJSON)
+		}
+		return ToolResult{Err: truncatedWriteErr(argsJSON)}
 	}
 	args := unwrapToolArgs(parseToolArgs(argsJSON))
 	if args == nil {
@@ -500,8 +506,13 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 		return ToolResult{Err: err}
 	}
 	want := []byte(content)
-	if prev, err := os.ReadFile(p); err == nil && bytes.Equal(prev, want) {
+	prev, err := os.ReadFile(p)
+	created := err != nil
+	if err == nil && bytes.Equal(prev, want) {
 		return ToolResult{Content: "unchanged " + rel}
+	}
+	if created {
+		prev = nil
 	}
 	t.snapshotBeforeWrite(rel, p)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -510,10 +521,54 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if err := os.WriteFile(p, want, 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: "wrote " + rel, FileChange: &FileChange{Paths: []string{rel}}}
+	t.maybePreviewHTML(rel, p)
+	return ToolResult{Content: "wrote " + rel, FileChange: fileChangeOf(rel, prev, want, created)}
+}
+
+// recoverTruncatedWrite keeps a recovered prefix on disk (Codex/Cursor write
+// the bytes they have) instead of leaving a 404 that cascades into retry
+// loops. An existing larger file is not clobbered.
+func (t *WorkspaceTools) recoverTruncatedWrite(raw string) ToolResult {
+	salvaged := salvageJSONObject(raw)
+	path := str(salvaged["path"])
+	content := str(salvaged["content"])
+	if path == "" || len(content) < 40 {
+		return ToolResult{Err: truncatedWriteErr(raw)}
+	}
+	if t == nil {
+		return ToolResult{Err: truncatedWriteErr(raw)}
+	}
+	if abs, err := t.resolve(path); err == nil {
+		if st, e := os.Stat(abs); e == nil && !st.IsDir() && st.Size() > int64(len(content)) {
+			return ToolResult{Err: truncatedWriteErr(raw)}
+		}
+	}
+	res := t.writeFile(path, content)
+	if res.Err != nil {
+		return res
+	}
+	hint := fmt.Sprintf("wrote partial %s from truncated JSON (%d bytes). File is on disk. Do not retry the same blob. Continue with str_replace", path, len(content))
+	if mark := lastCompleteAnchor(content); mark != "" {
+		hint += " from " + mark
+	}
+	res.Content = hint
+	return res
+}
+
+func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
+	if t == nil || t.Browser == nil || abs == "" {
+		return
+	}
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".html", ".htm":
+		t.Browser.SetPreview(abs)
+	}
 }
 
 func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
+	if looksLikeContextStub(old) || looksLikeContextStub(new) {
+		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
+	}
 	p, err := t.resolve(rel)
 	if err != nil {
 		return ToolResult{Err: err}
@@ -546,7 +601,10 @@ func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: fmt.Sprintf("replaced %d occurrence(s) in %s", n, rel), FileChange: &FileChange{Paths: []string{rel}}}
+	return ToolResult{
+		Content:    fmt.Sprintf("replaced %d occurrence(s) in %s", n, rel),
+		FileChange: fileChangeOf(rel, []byte(text), []byte(next), false),
+	}
 }
 
 func (t *WorkspaceTools) listDir(rel string) ToolResult {
@@ -636,6 +694,8 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if t != nil {
 		ws = t.Workspace
 	}
+	command = repairWorkspacePathEscapes(command, ws)
+	command = stripRedundantWorkspaceCd(command, ws)
 	command, cleanupInline := rewriteInlineInterpreters(command, ws)
 	defer cleanupInline()
 	if runtime.GOOS == "windows" && t != nil {
