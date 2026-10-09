@@ -28,6 +28,8 @@ var ChatOfficeTools = []string{
 	"browser_cookies",
 	"connector_read", "connector_draft", "connector_send",
 	"computer_act",
+	"delegate_work", "complete_work", "answer_work", "create_goal",
+	"watch_page", "present_choices", "personal_status", "remember_fact",
 }
 
 // ApplyChatToolMenu projects the harness catalog onto the coding core.

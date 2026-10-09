@@ -27,7 +27,10 @@ func TestProfilePinSkipsStaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Write(Item{Kind: KindProfile, Text: "call me Ada"})
+	it := s.Write(Item{Kind: KindProfile, Text: "call me Ada", Source: "User confirmed in chat"})
+	if it.Staging || it.Source != "User confirmed in chat" {
+		t.Fatalf("%+v", it)
+	}
 	if pin := s.ProfilePin(200); !strings.Contains(pin, "Ada") {
 		t.Fatalf("profile writes pin immediately: %q", pin)
 	}

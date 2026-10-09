@@ -17,6 +17,9 @@ const (
 	KindAsk       Kind = "ask_user"
 	KindHeartbeat Kind = "heartbeat"
 	KindArtifact  Kind = "artifact"
+	KindWork      Kind = "work"
+	KindProposal  Kind = "proposal"
+	KindWatch     Kind = "watch"
 )
 
 type Item struct {
@@ -25,6 +28,8 @@ type Item struct {
 	Title     string    `json:"title"`
 	Body      string    `json:"body"`
 	SessionID string    `json:"session_id,omitempty"`
+	TaskID    string    `json:"task_id,omitempty"`
+	Key       string    `json:"key,omitempty"`
 	Unread    bool      `json:"unread"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -47,6 +52,13 @@ func Open(dir string) (*Store, error) {
 func (s *Store) Push(it Item) Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if it.Key != "" {
+		for _, existing := range s.items {
+			if existing.Key == it.Key {
+				return existing
+			}
+		}
+	}
 	if it.ID == "" {
 		it.ID = time.Now().UTC().Format("in-20060102T150405.000000000")
 	}

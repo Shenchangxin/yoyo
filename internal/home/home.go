@@ -42,6 +42,7 @@ func Open(root string) (*Dir, error) {
 		d.Memory(),
 		d.Schedule(),
 		d.Inbox(),
+		d.Personal(),
 		d.Connectors(),
 		d.Connections(),
 		d.Browser(),
@@ -82,8 +83,8 @@ func (d *Dir) Plugins() string  { return filepath.Join(d.Root, "plugins") }
 func (d *Dir) Tmp() string      { return filepath.Join(d.Root, "tmp") }
 func (d *Dir) Updates() string  { return filepath.Join(d.Root, "updates") }
 func (d *Dir) Skills() string   { return filepath.Join(d.Root, "skills") }
-func (d *Dir) Packs() string { return filepath.Join(d.Root, "packs") }
-func (d *Dir) Skins() string { return filepath.Join(d.Root, "skins") }
+func (d *Dir) Packs() string    { return filepath.Join(d.Root, "packs") }
+func (d *Dir) Skins() string    { return filepath.Join(d.Root, "skins") }
 func (d *Dir) Workspace() string {
 	return filepath.Join(d.Root, "workspace")
 }
@@ -92,6 +93,7 @@ func (d *Dir) Projects() string   { return filepath.Join(d.Root, "projects") }
 func (d *Dir) Memory() string     { return filepath.Join(d.Root, "memory") }
 func (d *Dir) Schedule() string   { return filepath.Join(d.Root, "schedule") }
 func (d *Dir) Inbox() string      { return filepath.Join(d.Root, "inbox") }
+func (d *Dir) Personal() string   { return filepath.Join(d.Root, "personal") }
 func (d *Dir) Connectors() string { return filepath.Join(d.Root, "connectors") }
 func (d *Dir) Connections() string {
 	return filepath.Join(d.Root, "connections")

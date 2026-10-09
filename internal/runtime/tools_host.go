@@ -197,7 +197,7 @@ func init() {
 		return t.connectorRead(str(args["account"]), str(args["query"]))
 	}
 	hostFns["connector_draft"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.connectorDraft(str(args["account"]), str(args["to"]), str(args["subject"]), str(args["body"]))
+		return t.connectorDraft(args)
 	}
 	hostFns["connector_send"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.connectorSend(str(args["draft_id"]))
@@ -210,6 +210,30 @@ func init() {
 	}
 	hostFns["notify_actionable"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.notifyActionable(str(args["title"]), str(args["body"]))
+	}
+	hostFns["delegate_work"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.delegateWork(args)
+	}
+	hostFns["complete_work"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.completeWork(str(args["id"]), str(args["result"]))
+	}
+	hostFns["answer_work"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.answerWork(str(args["id"]), str(args["text"]))
+	}
+	hostFns["create_goal"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.createGoal(str(args["title"]), str(args["description"]), anyStrings(args["milestones"]))
+	}
+	hostFns["watch_page"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.watchPage(args)
+	}
+	hostFns["present_choices"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.presentChoices(str(args["title"]), args["options"])
+	}
+	hostFns["personal_status"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.personalStatus()
+	}
+	hostFns["remember_fact"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.rememberFact(str(args["text"]))
 	}
 }
 

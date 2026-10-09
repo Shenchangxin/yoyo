@@ -45,6 +45,7 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, src)
 	if req.SoftHorizon {
 		pins += ActionLadderPin
+		pins += PersonalPin
 	}
 	if strings.TrimSpace(req.ProfileMemory) != "" {
 		pins += "\n## Profile memory\n" + req.ProfileMemory

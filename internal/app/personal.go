@@ -22,9 +22,11 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 func (a *App) mountFiber(name string, setup func() (func() error, error)) error {
@@ -123,7 +125,33 @@ func (a *App) openPersonal() error {
 	if ep := a.otelEndpoint(); ep != "" {
 		a.Observe.SetEndpoint(ep)
 	}
-	return nil
+	return a.mountFiber("personal-os", func() (func() error, error) {
+		eng, err := personal.Open(a.Home.Personal())
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		eng.Bind(personal.Bind{
+			Connectors: a.Connectors,
+			Inbox:      a.Inbox,
+			Workspace:  a.Workspace(),
+			OnChange: func() {
+				a.Hub.Publish(trace.Event{
+					TS:       time.Now().UTC(),
+					Type:     trace.TypePersonal,
+					Source:   "personal",
+					ItemKind: "personal",
+				})
+			},
+		})
+		a.Personal = eng
+		go eng.Run(ctx)
+		return func() error {
+			cancel()
+			a.Personal = nil
+			return nil
+		}, nil
+	})
 }
 
 func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
@@ -134,6 +162,7 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	tools.Schedule = a.Schedule
 	tools.Projects = a.Projects
 	tools.Connectors = a.Connectors
+	tools.Personal = a.Personal
 	tools.Browser = a.Browser
 	tools.Computer = a.Computer
 	tools.Inbox = a.Inbox
@@ -307,7 +336,11 @@ func (a *App) ConnectorDisconnect(id string) bool {
 	if a.Connectors == nil {
 		return false
 	}
-	return a.Connectors.Disconnect(id)
+	ok := a.Connectors.Disconnect(id)
+	if ok && a.Personal != nil {
+		a.Personal.InvalidateAccount(id)
+	}
+	return ok
 }
 
 func (a *App) ComputerAllow(appName string) {
@@ -343,7 +376,32 @@ func (a *App) PhoneStatus() map[string]any {
 		"running":   a.RunningIDs(),
 		"isolation": a.IsolationReport(),
 		"jobs":      len(a.ScheduleList()),
+		"personal":  a.personalCounts(),
 	}
+}
+
+func (a *App) personalCounts() map[string]any {
+	if a.Personal == nil {
+		return map[string]any{}
+	}
+	s := a.Personal.Snapshot()
+	waiting, ideas, proposals := 0, 0, 0
+	for _, t := range s.Tasks {
+		if t.Status == "waiting_input" || t.Status == "waiting_approval" {
+			waiting++
+		}
+	}
+	for _, it := range s.Ideas {
+		if it.Status == "new" {
+			ideas++
+		}
+	}
+	for _, p := range s.Proposals {
+		if p.Status == "awaiting_review" {
+			proposals++
+		}
+	}
+	return map[string]any{"waiting": waiting, "ideas": ideas, "proposals": proposals, "running": s.Worker.Running}
 }
 
 func (a *App) scheduleLoop() {

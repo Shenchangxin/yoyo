@@ -26,11 +26,12 @@ type Item struct {
 	Project   string    `json:"project,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	Staging   bool      `json:"staging,omitempty"`
+	Source    string    `json:"source,omitempty"`
 }
 
 type Store struct {
-	mu   sync.Mutex
-	path string
+	mu    sync.Mutex
+	path  string
 	items []Item
 }
 

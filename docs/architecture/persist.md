@@ -11,6 +11,7 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 | `video/docs/{collection}/{id}.json` | Dramas, episodes, assets, jobs, canvas projects. Atomic temp+rename. |
 | `cas/objects` | Content-addressed blobs. |
 | `vault.json` / OS keychain | API keys. |
+| `personal/workspace.json` | Durable personal tasks, hashed proposals (with activity), ideas, goals, monitors, artifacts. Atomic temp+rename. |
 
 SQLite remains only as a **reader**:
 

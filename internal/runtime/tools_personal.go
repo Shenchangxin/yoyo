@@ -10,6 +10,7 @@ import (
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/cite"
+	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/office"
@@ -370,11 +371,23 @@ func (t *WorkspaceTools) connectorRead(account, query string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: err}
 	}
+	kind := connector.Kind("")
+	for _, a := range t.Connectors.List() {
+		if a.ID == account {
+			kind = a.Kind
+			break
+		}
+	}
+	items, err = connector.BoundView(kind, query, items)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
 	b, _ := json.MarshalIndent(items, "", "  ")
 	return ToolResult{Content: string(b)}
 }
 
-func (t *WorkspaceTools) connectorDraft(account, to, subject, body string) ToolResult {
+func (t *WorkspaceTools) connectorDraft(args map[string]any) ToolResult {
+	account, to, subject, body := str(args["account"]), str(args["to"]), str(args["subject"]), str(args["body"])
 	if err := t.check(capability.WriteConnector, "connector_draft", account, to); err != nil {
 		return ToolResult{Err: err}
 	}
@@ -385,6 +398,26 @@ func (t *WorkspaceTools) connectorDraft(account, to, subject, body string) ToolR
 		return ToolResult{Err: fmt.Errorf("connector %s is not granted to this session", account)}
 	}
 	d := t.Connectors.Draft(account, to, subject, body)
+	d.Cc = str(args["cc"])
+	d.Bcc = str(args["bcc"])
+	d.ThreadID = str(args["thread_id"])
+	d.ReplyTo = str(args["reply_to"])
+	d.Location = str(args["location"])
+	d.TimeZone = str(args["time_zone"])
+	d.Start = str(args["start"])
+	d.End = str(args["end"])
+	d.CalendarID = str(args["calendar_id"])
+	d.AllDay = str(args["all_day"]) == "true" || args["all_day"] == true
+	d.Attendees = anyStrings(args["attendees"])
+	d.Attachments = anyStrings(args["attachments"])
+	d.EventID = str(args["event_id"])
+	d.TargetVersion = str(args["target_version"])
+	d.Recurrence = str(args["recurrence"])
+	d.Op = str(args["op"])
+	if title := str(args["title"]); title != "" && d.Subject == "" {
+		d.Subject = title
+	}
+	d = t.Connectors.PutDraft(d)
 	b, _ := json.Marshal(d)
 	return ToolResult{Content: "draft " + string(b) + " — send with connector_send after send_as_you approval"}
 }
@@ -412,7 +445,16 @@ func (t *WorkspaceTools) connectorSend(id string) ToolResult {
 	if t.Connectors == nil {
 		return ToolResult{Err: fmt.Errorf("no connectors")}
 	}
+	var propID string
+	if t.Personal != nil {
+		if d, ok := t.Connectors.GetDraft(id); ok {
+			propID = t.Personal.RecordChatSend(d).ID
+		}
+	}
 	d, err := t.Connectors.Send(id)
+	if t.Personal != nil && propID != "" {
+		t.Personal.FinishChatSend(propID, err)
+	}
 	if err != nil {
 		return ToolResult{Err: err}
 	}

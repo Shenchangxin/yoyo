@@ -13,6 +13,11 @@ export function PersonalSettings() {
       <SettingsPageHeader title={copy.settings.tabs.personal} description={copy.settings.tabHints.personal} />
       <MemorySection />
       <JobSection />
+      <WorkSection />
+      <ProposalSection />
+      <IdeaSection />
+      <GoalSection />
+      <WatchSection />
     </>
   );
 }
@@ -169,6 +174,312 @@ function JobSection() {
                 }}
               >
                 {copy.settings.triggerWebhook}
+              </Button>
+            ) : null}
+          </SettingRow>
+        ))
+      )}
+    </SettingSection>
+  );
+}
+
+function usePersonalSnap() {
+  const [snap, setSnap] = useState<any>({});
+  const refresh = () => {
+    void api.personalSnapshot().then(setSnap).catch(() => {});
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+  return { snap, refresh };
+}
+
+function WorkSection() {
+  const copy = useCopy();
+  const { snap, refresh } = usePersonalSnap();
+  const [answer, setAnswer] = useState("");
+  const tasks = Array.isArray(snap.tasks) ? snap.tasks : [];
+  return (
+    <SettingSection id="personal-work" title={copy.settings.sections.personalWork} footnote={copy.settings.personalWorkHint}>
+      {tasks.length === 0 ? (
+        <SettingEmpty>{copy.settings.noTasks}</SettingEmpty>
+      ) : (
+        tasks.map((t: any, i: number) => (
+          <SettingRow
+            key={str(t.id || i)}
+            list
+            title={str(t.title).slice(0, 96)}
+            description={`${str(t.kind)} · ${str(t.status)}${t.question ? " · " + str(t.question).slice(0, 80) : ""}`}
+          >
+            {str(t.status) === "waiting_input" ? (
+              <>
+                <Input className="h-8 w-40 text-[13px]" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+                <Button
+                  size="sm"
+                  disabled={!answer.trim()}
+                  onClick={async () => {
+                    await api.personalAnswer(str(t.id), answer.trim());
+                    setAnswer("");
+                    refresh();
+                  }}
+                >
+                  {copy.settings.answerTask}
+                </Button>
+              </>
+            ) : null}
+            {str(t.status) === "paused" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.personalResume(str(t.id));
+                  refresh();
+                }}
+              >
+                {copy.settings.resumeWork}
+              </Button>
+            ) : null}
+            {str(t.status) === "failed" || str(t.status) === "cancelled" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.personalRetry(str(t.id));
+                  refresh();
+                }}
+              >
+                {copy.settings.retryWork}
+              </Button>
+            ) : null}
+            {str(t.status) !== "succeeded" && str(t.status) !== "cancelled" && str(t.status) !== "paused" ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await api.personalPause(str(t.id));
+                  refresh();
+                }}
+              >
+                {copy.settings.pauseWork}
+              </Button>
+            ) : null}
+            {str(t.status) !== "succeeded" && str(t.status) !== "cancelled" ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await api.personalCancel(str(t.id));
+                  refresh();
+                }}
+              >
+                {copy.settings.unload}
+              </Button>
+            ) : null}
+          </SettingRow>
+        ))
+      )}
+    </SettingSection>
+  );
+}
+
+function ProposalSection() {
+  const copy = useCopy();
+  const { snap, refresh } = usePersonalSnap();
+  const items = (Array.isArray(snap.proposals) ? snap.proposals : []).filter((p: any) => str(p.status) === "awaiting_review");
+  return (
+    <SettingSection id="personal-proposals" title={copy.settings.sections.personalProposals}>
+      {items.length === 0 ? (
+        <SettingEmpty>{copy.settings.noProposals}</SettingEmpty>
+      ) : (
+        items.map((p: any, i: number) => (
+          <SettingRow key={str(p.id || i)} list title={str(p.title).slice(0, 96)} description={str(p.kind) + " · " + str(p.hash).slice(0, 12)}>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await api.personalDecide(str(p.id), str(p.hash), true);
+                refresh();
+              }}
+            >
+              {copy.settings.approveSend}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await api.personalDecide(str(p.id), str(p.hash), false);
+                refresh();
+              }}
+            >
+              {copy.settings.denySend}
+            </Button>
+          </SettingRow>
+        ))
+      )}
+    </SettingSection>
+  );
+}
+
+function IdeaSection() {
+  const copy = useCopy();
+  const { snap, refresh } = usePersonalSnap();
+  const items = (Array.isArray(snap.ideas) ? snap.ideas : []).filter((it: any) => str(it.status) === "new");
+  return (
+    <SettingSection id="personal-ideas" title={copy.settings.sections.personalIdeas}>
+      {items.length === 0 ? (
+        <SettingEmpty>{copy.settings.noIdeas}</SettingEmpty>
+      ) : (
+        items.map((it: any, i: number) => (
+          <SettingRow key={str(it.id || i)} list title={str(it.title).slice(0, 96)} description={str(it.reason).slice(0, 120)}>
+            <Button
+              size="sm"
+              onClick={async () => {
+                await api.personalIdea(str(it.id), "accept");
+                refresh();
+              }}
+            >
+              {copy.settings.acceptIdea}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await api.personalIdea(str(it.id), "dismiss");
+                refresh();
+              }}
+            >
+              {copy.settings.dismissIdea}
+            </Button>
+          </SettingRow>
+        ))
+      )}
+    </SettingSection>
+  );
+}
+
+function GoalSection() {
+  const copy = useCopy();
+  const { snap, refresh } = usePersonalSnap();
+  const [title, setTitle] = useState("");
+  const items = Array.isArray(snap.goals) ? snap.goals : [];
+  return (
+    <SettingSection id="personal-goals" title={copy.settings.sections.personalGoals}>
+      <SettingRow stack>
+        <Input className="h-8 w-full text-[13px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
+        <div className="flex w-full justify-end">
+          <Button
+            size="sm"
+            disabled={!title.trim()}
+            onClick={async () => {
+              await api.personalGoal(title.trim(), "");
+              setTitle("");
+              refresh();
+            }}
+          >
+            {copy.settings.addGoal}
+          </Button>
+        </div>
+      </SettingRow>
+      {items.length === 0 ? (
+        <SettingEmpty>{copy.settings.noGoals}</SettingEmpty>
+      ) : (
+        items.map((g: any, i: number) => (
+          <SettingRow
+            key={str(g.id || i)}
+            list
+            title={str(g.title)}
+            description={`${str(g.status)} · ${(g.milestones || []).length} milestones`}
+          >
+            {str(g.status) === "paused" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.personalGoalStatus(str(g.id), "active");
+                  refresh();
+                }}
+              >
+                {copy.settings.resumeGoal}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await api.personalGoalStatus(str(g.id), "paused");
+                  refresh();
+                }}
+              >
+                {copy.settings.pauseGoal}
+              </Button>
+            )}
+            {(g.milestones || []).map((m: any) => (
+              <Button
+                key={str(m.id)}
+                size="sm"
+                variant={m.done ? "outline" : "ghost"}
+                onClick={async () => {
+                  await api.personalMilestone(str(g.id), str(m.id), !m.done);
+                  refresh();
+                }}
+              >
+                {m.done ? copy.settings.markDone : str(m.title).slice(0, 24)}
+              </Button>
+            ))}
+          </SettingRow>
+        ))
+      )}
+    </SettingSection>
+  );
+}
+
+function WatchSection() {
+  const copy = useCopy();
+  const { snap, refresh } = usePersonalSnap();
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const items = Array.isArray(snap.monitors) ? snap.monitors : [];
+  return (
+    <SettingSection id="personal-watch" title={copy.settings.sections.personalWatch}>
+      <SettingRow stack>
+        <Input className="h-8 w-full text-[13px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={copy.settings.goalTitle} />
+        <Input className="h-8 w-full text-[13px]" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={copy.settings.watchUrl} />
+        <div className="flex w-full justify-end">
+          <Button
+            size="sm"
+            disabled={!title.trim() || !url.trim()}
+            onClick={async () => {
+              await api.personalWatch(title.trim(), url.trim(), "change", "", 15);
+              setTitle("");
+              setUrl("");
+              refresh();
+            }}
+          >
+            {copy.settings.addWatch}
+          </Button>
+        </div>
+      </SettingRow>
+      {items.length === 0 ? (
+        <SettingEmpty>{copy.settings.noWatches}</SettingEmpty>
+      ) : (
+        items.map((m: any, i: number) => (
+          <SettingRow key={str(m.id || i)} list title={str(m.title)} description={`${str(m.condition)} · ${str(m.status)} · ${str(m.url)}`}>
+            {str(m.status) === "paused" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.personalMonitorStatus(str(m.id), "active");
+                  refresh();
+                }}
+              >
+                {copy.settings.resumeWork}
+              </Button>
+            ) : str(m.status) === "active" ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await api.personalMonitorStatus(str(m.id), "paused");
+                  refresh();
+                }}
+              >
+                {copy.settings.pauseWork}
               </Button>
             ) : null}
           </SettingRow>

@@ -26,6 +26,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/memory"
+	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/tool"
@@ -113,6 +114,7 @@ type WorkspaceTools struct {
 	Schedule          *schedule.Service
 	Projects          *project.Store
 	Connectors        *connector.Broker
+	Personal          *personal.Engine
 	Browser           *browser.Host
 	Computer          *computeruse.Host
 	Inbox             *inbox.Store

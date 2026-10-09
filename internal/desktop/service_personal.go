@@ -305,6 +305,106 @@ func (s *Service) ConnectorDisconnect(id string) bool {
 	return s.App.ConnectorDisconnect(id)
 }
 
+func (s *Service) PersonalSnapshot() map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("personal.snapshot", nil)
+		m, _ := decode[map[string]any](v, err)
+		return m
+	}
+	return s.App.PersonalSnapshot()
+}
+
+func (s *Service) PersonalAnswer(id, text string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.answer", map[string]any{"id": id, "text": text})
+	}
+	return s.App.PersonalAnswer(id, text)
+}
+
+func (s *Service) PersonalDecide(id, hash string, approve bool) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.decide", map[string]any{"id": id, "hash": hash, "approve": approve})
+	}
+	return s.App.PersonalDecide(id, hash, approve)
+}
+
+func (s *Service) PersonalIdea(id, action string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.idea", map[string]any{"id": id, "action": action})
+	}
+	return s.App.PersonalIdea(id, action)
+}
+
+func (s *Service) PersonalGoal(title, description string, milestones []string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.goal", map[string]any{"title": title, "description": description, "milestones": milestones})
+	}
+	return s.App.PersonalGoal(title, description, milestones)
+}
+
+func (s *Service) PersonalWatch(title, url, condition, value string, interval int) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.watch", map[string]any{"title": title, "url": url, "condition": condition, "value": value, "interval_minutes": interval})
+	}
+	return s.App.PersonalWatch(title, url, condition, value, interval)
+}
+
+func (s *Service) PersonalCancel(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.cancel", map[string]any{"id": id})
+	}
+	return s.App.PersonalCancel(id)
+}
+
+func (s *Service) PersonalChoice(id, option string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.choice", map[string]any{"id": id, "option": option})
+	}
+	return s.App.PersonalChoice(id, option)
+}
+
+func (s *Service) PersonalPause(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.pause", map[string]any{"id": id})
+	}
+	return s.App.PersonalPause(id)
+}
+
+func (s *Service) PersonalResume(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.resume", map[string]any{"id": id})
+	}
+	return s.App.PersonalResume(id)
+}
+
+func (s *Service) PersonalRetry(id string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.retry", map[string]any{"id": id})
+	}
+	return s.App.PersonalRetry(id)
+}
+
+func (s *Service) PersonalGoalStatus(id, status string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.goal.status", map[string]any{"id": id, "status": status})
+	}
+	return s.App.PersonalGoalStatus(id, status)
+}
+
+func (s *Service) PersonalMilestone(goalID, milestoneID string, done bool) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.milestone", map[string]any{"goal_id": goalID, "milestone_id": milestoneID, "done": done})
+	}
+	return s.App.PersonalMilestone(goalID, milestoneID, done)
+}
+
+func (s *Service) PersonalMonitorStatus(id, status string) (any, error) {
+	if s.RPC != nil {
+		return s.call("personal.monitor.status", map[string]any{"id": id, "status": status})
+	}
+	return s.App.PersonalMonitorStatus(id, status)
+}
+
 func (s *Service) MemoryWrite(kind, text, project string) memory.Item {
 	if s.RPC != nil {
 		v, _ := s.call("memory.write", map[string]any{"kind": kind, "text": text, "project": project})
