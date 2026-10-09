@@ -23,11 +23,26 @@ func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	if !strings.Contains(joined, "office_create") || !strings.Contains(joined, "browser_open") || !strings.Contains(joined, "connector_read") {
 		t.Fatalf("office ladder must be first-class: %v", got)
 	}
+	if !strings.Contains(joined, "delegate_work") || !strings.Contains(joined, "personal_status") {
+		t.Fatalf("personal-os tools must be first-class: %v", got)
+	}
 	if !strings.Contains(joined, "run_skill_script") {
 		t.Fatalf("run_skill_script must be first-class so skill packs do not tool_search: %v", got)
 	}
 	if !strings.Contains(joined, "read_skill_file") {
 		t.Fatalf("read_skill_file must be first-class: %v", got)
+	}
+}
+
+func TestPersonalPinSoftHorizonOnly(t *testing.T) {
+	req := &RunRequest{SoftHorizon: true, Loop: ApplyChatHorizon(DefaultLoop())}
+	k := newContextKernel(req)
+	if !strings.Contains(k.pins, "never starts a second model loop") {
+		t.Fatal("personal pin missing on chat")
+	}
+	harbor := newContextKernel(&RunRequest{SoftHorizon: false, Loop: DefaultLoop()})
+	if strings.Contains(harbor.pins, "never starts a second model loop") {
+		t.Fatal("personal pin leaked into harbor")
 	}
 }
 

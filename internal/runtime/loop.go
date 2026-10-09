@@ -653,7 +653,7 @@ func isReadonlyTool(name string) bool {
 		"list_skills", "view_image", "update_plan", "wait", "ask_user",
 		"office_query", "office_render", "memory_search", "schedule_list",
 		"browser_snapshot", "clipboard_read", "project_list", "connector_read",
-		"read_thread", "read_skill_file":
+		"read_thread", "read_skill_file", "personal_status", "present_choices":
 		return true
 	default:
 		return false

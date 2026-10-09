@@ -1204,6 +1204,103 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			return nil, err
 		}
 		return a.SaveSkin(in)
+	case "personal.snapshot":
+		return a.PersonalSnapshot(), nil
+	case "personal.answer":
+		var p struct {
+			ID   string `json:"id"`
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalAnswer(p.ID, p.Text)
+	case "personal.decide":
+		var p struct {
+			ID      string `json:"id"`
+			Hash    string `json:"hash"`
+			Approve bool   `json:"approve"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalDecide(p.ID, p.Hash, p.Approve)
+	case "personal.idea":
+		var p struct {
+			ID     string `json:"id"`
+			Action string `json:"action"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalIdea(p.ID, p.Action)
+	case "personal.goal":
+		var p struct {
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			Milestones  []string `json:"milestones"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalGoal(p.Title, p.Description, p.Milestones)
+	case "personal.watch":
+		var p struct {
+			Title     string `json:"title"`
+			URL       string `json:"url"`
+			Condition string `json:"condition"`
+			Value     string `json:"value"`
+			Interval  int    `json:"interval_minutes"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalWatch(p.Title, p.URL, p.Condition, p.Value, p.Interval)
+	case "personal.cancel":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalCancel(p.ID)
+	case "personal.choice":
+		var p struct {
+			ID     string `json:"id"`
+			Option string `json:"option"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalChoice(p.ID, p.Option)
+	case "personal.ideas.refresh":
+		return map[string]any{"ok": true}, a.PersonalRefreshIdeas()
+	case "personal.pause":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalPause(p.ID)
+	case "personal.resume":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalResume(p.ID)
+	case "personal.retry":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalRetry(p.ID)
+	case "personal.goal.status":
+		var p struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalGoalStatus(p.ID, p.Status)
+	case "personal.milestone":
+		var p struct {
+			GoalID      string `json:"goal_id"`
+			MilestoneID string `json:"milestone_id"`
+			Done        bool   `json:"done"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalMilestone(p.GoalID, p.MilestoneID, p.Done)
+	case "personal.monitor.status":
+		var p struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PersonalMonitorStatus(p.ID, p.Status)
 	default:
 		return nil, errMethod(method)
 	}

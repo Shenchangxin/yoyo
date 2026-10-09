@@ -1661,6 +1661,84 @@ export async function memoryWrite(kind: string, text: string, project = ""): Pro
   return http("/api/memory", { method: "POST", body: JSON.stringify({ kind, text, project }) });
 }
 
+export async function personalSnapshot(): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalSnapshot) return s.PersonalSnapshot();
+  return http("/api/personal");
+}
+
+export async function personalAnswer(id: string, text: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalAnswer) return s.PersonalAnswer(id, text);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "answer", id, text }) });
+}
+
+export async function personalDecide(id: string, hash: string, approve: boolean): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalDecide) return s.PersonalDecide(id, hash, approve);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "decide", id, hash, approve }) });
+}
+
+export async function personalIdea(id: string, action: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalIdea) return s.PersonalIdea(id, action);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "idea", id, action }) });
+}
+
+export async function personalGoal(title: string, description: string, milestones: string[] = []): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalGoal) return s.PersonalGoal(title, description, milestones);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "goal", title, description, milestones }) });
+}
+
+export async function personalWatch(title: string, url: string, condition: string, value: string, interval = 15): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalWatch) return s.PersonalWatch(title, url, condition, value, interval);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "watch", title, url, condition, value, interval_minutes: interval }) });
+}
+
+export async function personalCancel(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalCancel) return s.PersonalCancel(id);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "cancel", id }) });
+}
+
+export async function personalPause(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalPause) return s.PersonalPause(id);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "pause", id }) });
+}
+
+export async function personalResume(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalResume) return s.PersonalResume(id);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "resume", id }) });
+}
+
+export async function personalRetry(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalRetry) return s.PersonalRetry(id);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "retry", id }) });
+}
+
+export async function personalGoalStatus(id: string, status: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalGoalStatus) return s.PersonalGoalStatus(id, status);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "goal_status", id, status }) });
+}
+
+export async function personalMilestone(goalId: string, milestoneId: string, done: boolean): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalMilestone) return s.PersonalMilestone(goalId, milestoneId, done);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "milestone", goal_id: goalId, milestone_id: milestoneId, done }) });
+}
+
+export async function personalMonitorStatus(id: string, status: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.PersonalMonitorStatus) return s.PersonalMonitorStatus(id, status);
+  return http("/api/personal", { method: "POST", body: JSON.stringify({ op: "monitor_status", id, status }) });
+}
+
 export async function scheduleList(): Promise<any[]> {
   const s = await wailsService();
   if (s?.ScheduleList) return asArray(await s.ScheduleList());

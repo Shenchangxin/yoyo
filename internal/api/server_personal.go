@@ -205,6 +205,134 @@ func mountPersonal(mux *http.ServeMux, a *app.App) {
 		}
 		writeJSON(w, p)
 	})
+	mux.HandleFunc("/api/personal", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, a.PersonalSnapshot())
+			return
+		}
+		var body struct {
+			Op          string   `json:"op"`
+			ID          string   `json:"id"`
+			Text        string   `json:"text"`
+			Hash        string   `json:"hash"`
+			Approve     bool     `json:"approve"`
+			Action      string   `json:"action"`
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			Milestones  []string `json:"milestones"`
+			URL         string   `json:"url"`
+			Condition   string   `json:"condition"`
+			Value       string   `json:"value"`
+			Interval    int      `json:"interval_minutes"`
+			Option      string   `json:"option"`
+			Status      string   `json:"status"`
+			GoalID      string   `json:"goal_id"`
+			MilestoneID string   `json:"milestone_id"`
+			Done        bool     `json:"done"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch body.Op {
+		case "answer":
+			t, err := a.PersonalAnswer(body.ID, body.Text)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, t)
+		case "decide":
+			p, err := a.PersonalDecide(body.ID, body.Hash, body.Approve)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, p)
+		case "idea":
+			it, err := a.PersonalIdea(body.ID, body.Action)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, it)
+		case "goal":
+			g, err := a.PersonalGoal(body.Title, body.Description, body.Milestones)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, g)
+		case "watch":
+			m, err := a.PersonalWatch(body.Title, body.URL, body.Condition, body.Value, body.Interval)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+		case "cancel":
+			t, err := a.PersonalCancel(body.ID)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, t)
+		case "choice":
+			c, err := a.PersonalChoice(body.ID, body.Option)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, c)
+		case "ideas":
+			if err := a.PersonalRefreshIdeas(); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+		case "pause":
+			t, err := a.PersonalPause(body.ID)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, t)
+		case "resume":
+			t, err := a.PersonalResume(body.ID)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, t)
+		case "retry":
+			t, err := a.PersonalRetry(body.ID)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, t)
+		case "goal_status":
+			g, err := a.PersonalGoalStatus(body.ID, body.Status)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, g)
+		case "milestone":
+			g, err := a.PersonalMilestone(body.GoalID, body.MilestoneID, body.Done)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, g)
+		case "monitor_status":
+			m, err := a.PersonalMonitorStatus(body.ID, body.Status)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+		default:
+			writeJSON(w, a.PersonalSnapshot())
+		}
+	})
 	mux.HandleFunc("/api/expert/distill", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Name        string `json:"name"`

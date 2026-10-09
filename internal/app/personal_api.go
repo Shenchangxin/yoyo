@@ -277,6 +277,21 @@ func (a *App) ReviewQueue() map[string]any {
 		offers = a.Gate.Pending()
 		pending = len(offers)
 	}
+	proposals := []any{}
+	waiting := []any{}
+	if a.Personal != nil {
+		s := a.Personal.Snapshot()
+		for _, p := range s.Proposals {
+			if p.Status == "awaiting_review" {
+				proposals = append(proposals, p)
+			}
+		}
+		for _, t := range s.Tasks {
+			if t.Status == "waiting_input" || t.Status == "waiting_approval" {
+				waiting = append(waiting, t)
+			}
+		}
+	}
 	return map[string]any{
 		"approvals": pending,
 		"offers":    offers,
@@ -284,6 +299,8 @@ func (a *App) ReviewQueue() map[string]any {
 		"browser":   browser,
 		"computer":  recording,
 		"inbox":     a.InboxList(),
+		"proposals": proposals,
+		"waiting":   waiting,
 	}
 }
 

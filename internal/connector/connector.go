@@ -31,12 +31,28 @@ type Account struct {
 }
 
 type Draft struct {
-	ID      string `json:"id"`
-	Account string `json:"account"`
-	To      string `json:"to"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
-	Sent    bool   `json:"sent"`
+	ID            string   `json:"id"`
+	Account       string   `json:"account"`
+	To            string   `json:"to"`
+	Subject       string   `json:"subject"`
+	Body          string   `json:"body"`
+	Sent          bool     `json:"sent"`
+	Cc            string   `json:"cc,omitempty"`
+	Bcc           string   `json:"bcc,omitempty"`
+	ThreadID      string   `json:"thread_id,omitempty"`
+	ReplyTo       string   `json:"reply_to,omitempty"`
+	Attachments   []string `json:"attachments,omitempty"`
+	Location      string   `json:"location,omitempty"`
+	TimeZone      string   `json:"time_zone,omitempty"`
+	AllDay        bool     `json:"all_day,omitempty"`
+	Start         string   `json:"start,omitempty"`
+	End           string   `json:"end,omitempty"`
+	Attendees     []string `json:"attendees,omitempty"`
+	CalendarID    string   `json:"calendar_id,omitempty"`
+	EventID       string   `json:"event_id,omitempty"`
+	TargetVersion string   `json:"target_version,omitempty"`
+	Recurrence    string   `json:"recurrence,omitempty"`
+	Op            string   `json:"op,omitempty"`
 }
 
 type Broker struct {
@@ -165,6 +181,9 @@ func (b *Broker) Send(id string) (Draft, error) {
 	if idx < 0 {
 		return Draft{}, fmt.Errorf("connector: unknown draft")
 	}
+	if strings.TrimSpace(d.Recurrence) != "" {
+		return Draft{}, fmt.Errorf("connector: recurring series must be edited in the calendar app (422)")
+	}
 	local := strings.EqualFold(acct.Provider, "local") || acct.Provider == ""
 	if !local {
 		if err := b.liveSend(acct, d); err != nil {
@@ -179,6 +198,35 @@ func (b *Broker) Send(id string) (Draft, error) {
 	_ = b.flush()
 	b.mu.Unlock()
 	return d, nil
+}
+
+func (b *Broker) PutDraft(d Draft) Draft {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if d.ID == "" {
+		d.ID = time.Now().UTC().Format("draft-150405.000000000")
+	}
+	for i := range b.drafts {
+		if b.drafts[i].ID == d.ID {
+			b.drafts[i] = d
+			_ = b.flush()
+			return d
+		}
+	}
+	b.drafts = append(b.drafts, d)
+	_ = b.flush()
+	return d
+}
+
+func (b *Broker) GetDraft(id string) (Draft, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, d := range b.drafts {
+		if d.ID == id {
+			return d, true
+		}
+	}
+	return Draft{}, false
 }
 
 func (b *Broker) Drafts() []Draft {

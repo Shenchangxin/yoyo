@@ -28,6 +28,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/project"
@@ -148,6 +149,7 @@ type App struct {
 	Projects   *project.Store
 	Inbox      *inbox.Store
 	Connectors *connector.Broker
+	Personal   *personal.Engine
 	Browser    *browser.Host
 	Computer   *computeruse.Host
 	Observe    *observe.Tracer

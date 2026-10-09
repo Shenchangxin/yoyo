@@ -30,6 +30,7 @@ const (
 	TypePlan       EventType = "plan"
 	TypeFileChange EventType = "file_change"
 	TypeAsk        EventType = "ask_user"
+	TypePersonal   EventType = "personal"
 )
 
 func ItemKindOf(t EventType) string {
