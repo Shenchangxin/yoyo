@@ -34,16 +34,68 @@ func TestParseToolArgsClosesTruncatedContent(t *testing.T) {
 	}
 }
 
-func TestWriteFileRejectsTruncatedJSON(t *testing.T) {
+func TestWriteFileSavesTruncatedNewFile(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
-	raw := "{\"path\": \"game.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\npartial"
+	raw := "{\"path\": \"game.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\nfunction startGame(){\\npartial"
+	res := tools.Call("write_file", raw)
+	if res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	if !strings.Contains(res.Content, "partial") || !strings.Contains(res.Content, "game.html") {
+		t.Fatalf("expected partial-write hint: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "startGame") {
+		t.Fatalf("hint should include last complete marker: %s", res.Content)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "game.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "<!DOCTYPE html>") || !strings.Contains(string(b), "function startGame") {
+		t.Fatalf("recovered prefix not on disk: %s", b)
+	}
+}
+
+func TestWriteFileRefusesTruncatedOverwriteOfLargerFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "game.html")
+	full := strings.Repeat("x", 400)
+	if err := os.WriteFile(path, []byte(full), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir}
+	raw := "{\"path\": \"game.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\nfunction startGame(){\\npartial"
 	res := tools.Call("write_file", raw)
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "truncated") {
 		t.Fatalf("%+v", res)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "game.html")); !os.IsNotExist(err) {
-		t.Fatalf("partial file must not be written: %v", err)
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != full {
+		t.Fatalf("existing file clobbered")
+	}
+}
+
+func TestWriteFileAcceptsFencedJSON(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	raw := "```json\n{\"path\":\"notes.md\",\"content\":\"# hi\"}\n```"
+	res := tools.Call("write_file", raw)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "notes.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "# hi" {
+		t.Fatalf("%q", b)
+	}
+	if res.FileChange == nil || !res.FileChange.Created || !strings.Contains(res.FileChange.Patch, "+# hi") {
+		t.Fatalf("file change %+v", res.FileChange)
 	}
 }
 
@@ -112,6 +164,32 @@ func TestWriteFileRejectsContextStub(t *testing.T) {
 func mustJSONString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+func TestStrReplaceRejectsContextStub(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "game.html")
+	if err := os.WriteFile(path, []byte("const GROUND = H - 78;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir}
+	stubs := []string{
+		"[elided new_str 9627 chars path=game.html — on disk, read_file that path; do not rewrite from memory]\nconst GROUND = H - 78;",
+		"(omitted 9627-char new_str already on disk at game.html; read_file that path. Do not paste this placeholder as new_str.)\nconst GROUND = H - 78;",
+	}
+	for _, stub := range stubs {
+		res := tools.Call("str_replace", `{"path":"game.html","old_str":"const GROUND = H - 78;","new_str":`+mustJSONString(stub)+`}`)
+		if res.Err == nil || !strings.Contains(res.Err.Error(), "context stub") {
+			t.Fatalf("%+v", res)
+		}
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "elided") || strings.Contains(string(b), "omitted") {
+		t.Fatalf("file mutated: %s", b)
+	}
 }
 
 func TestWriteFileEmptyPathStillErrorsOnBlankJSON(t *testing.T) {

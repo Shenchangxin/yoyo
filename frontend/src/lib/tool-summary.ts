@@ -50,7 +50,17 @@ export function skillCallLabel(item: Item): string {
 }
 
 export function toolArgs(item: Item): Record<string, unknown> {
-  return parseMaybeJSON(item.payload?.arguments ?? item.text);
+  if (!item) return {};
+  const parsed = parseMaybeJSON(item.payload?.arguments ?? item.text);
+  const out: Record<string, unknown> = { ...parsed };
+  const payloadPath = String(item.payload?.path || "").trim();
+  if (payloadPath && !String(out.path || "").trim()) out.path = payloadPath;
+  const paths = item.payload?.paths;
+  if (Array.isArray(paths) && paths.length) {
+    if (!out.paths) out.paths = paths;
+    if (!String(out.path || "").trim()) out.path = String(paths[0] || "");
+  }
+  return out;
 }
 
 export function toolResultBody(item: Item): string {
@@ -110,10 +120,20 @@ export function isArtifactTool(name: string): boolean {
 }
 
 export function isRichResult(name: string, body: string, path = ""): boolean {
-  if (looksLikePDF(path) || looksLikeHTMLFile(path)) return true;
-  if (looksLikeHTML(body)) return true;
-  const n = name.toLowerCase();
-  return n.includes("mcp") && looksLikeHTML(body);
+  if (looksLikePDF(path) && (isArtifactTool(name) || name.startsWith("office_"))) return true;
+  if (looksLikeHTMLFile(path) && isArtifactTool(name)) return true;
+  if (looksLikeHTML(body)) {
+    const n = name.toLowerCase();
+    return isArtifactTool(name) || n.includes("mcp");
+  }
+  return name.toLowerCase().includes("mcp") && looksLikeHTML(body);
+}
+
+/** `str_replace` / `write_file` that did not change bytes. */
+export function toolResultUnchanged(item?: Item | null): boolean {
+  if (!item) return false;
+  const body = String(item.payload?.content || item.text || "").trim();
+  return /^unchanged\b/i.test(body);
 }
 
 export function isPlanTool(name: string): boolean {

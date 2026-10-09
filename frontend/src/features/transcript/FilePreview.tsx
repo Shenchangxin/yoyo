@@ -284,7 +284,7 @@ export function WorkspaceFileView({
         {objectUrl && resolved === "audio" ? (
           <audio controls src={objectUrl} onLoadedMetadata={markReady} onError={markReady} className={cn("w-full max-w-lg", fill ? "px-4" : "mt-2", reveal)} />
         ) : null}
-        {!waiting && html && text ? <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill} /> : null}
+        {!waiting && html && text ? <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill || looksLikeHTMLFile(path)} /> : null}
         {!waiting && !objectUrl && !text ? <p className={note}>{copy.review.cannotPreview}</p> : null}
         {cap}
       </div>
@@ -292,14 +292,14 @@ export function WorkspaceFileView({
   }
 
   if (loading) {
-    return fill ? <div className={cn(frame, "min-h-0")} /> : null;
+    return fill ? <PreviewLoading fill={fill} label={copy.review.openingFile} /> : null;
   }
   if (binary && !text && !objectUrl) return <p className={note}>{copy.transcript.binaryFile}</p>;
   const asHtml = !source && (html || looksLikeHTML(text) || looksLikeHTMLFile(path));
   if (asHtml && text) {
     return (
       <div className={cn(frame, fill && "min-h-0 overflow-hidden")}>
-        <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill} />
+        <SandboxedFrame html={text} title={path} fill={fill} allowScripts={!!fill || looksLikeHTMLFile(path)} />
         {cap}
       </div>
     );
@@ -399,16 +399,21 @@ export function ArtifactBody({
   const wantHtml = looksLikeHTMLFile(view.path) || !!localHtml;
   return (
     <div className="min-w-0 overflow-hidden" data-testid="artifact-body">
-      {view.diff ? (
+      {view.diff && (!wantHtml || source) ? (
         <div className="mt-2 min-w-0 overflow-hidden rounded-lg border border-border/70 bg-sidebar/50" data-testid="artifact-diff">
           <DiffBlock src={view.diff} mode="unified" className="max-h-[28rem]" />
         </div>
       ) : null}
-      {wantHtml && !source && localHtml ? <SandboxedFrame html={localHtml} title={view.title || view.path} /> : null}
-      {wantHtml && !source && !localHtml && workspace && view.path ? (
+      {wantHtml && source && view.diff ? null : wantHtml && source && workspace && view.path ? (
+        <WorkspaceFileView workspace={workspace} path={view.path} source />
+      ) : wantHtml && source && (view.code || localHtml) ? (
+        <CodePreview lang={view.lang || langFromPath(view.path)} text={view.code || localHtml} />
+      ) : wantHtml && !source && localHtml ? (
+        <SandboxedFrame html={localHtml} title={view.title || view.path} allowScripts />
+      ) : wantHtml && !source && workspace && view.path ? (
         <WorkspaceFileView workspace={workspace} path={view.path} />
       ) : null}
-      {source || (!wantHtml && view.code) ? <CodePreview lang={view.lang || langFromPath(view.path)} text={view.code} /> : null}
+      {!wantHtml && !view.diff && (source || view.code) ? <CodePreview lang={view.lang || langFromPath(view.path)} text={view.code} /> : null}
       {view.kind === "text" && view.path && workspace && !view.diff && !view.code ? (
         <WorkspaceFileView workspace={workspace} path={view.path} source={source} />
       ) : null}

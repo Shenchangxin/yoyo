@@ -614,9 +614,31 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		}
 		if j.change != nil {
 			payload["paths"] = j.change.Paths
-			emit(req, trace.TypeFileChange, "tool", map[string]any{
+			if j.change.Patch != "" {
+				payload["patch"] = j.change.Patch
+			}
+			if j.change.Added != 0 {
+				payload["added"] = j.change.Added
+			}
+			if j.change.Removed != 0 {
+				payload["removed"] = j.change.Removed
+			}
+			if j.change.Created {
+				payload["created"] = true
+			}
+			filePay := map[string]any{
 				"id": j.tc.ID, "name": j.tc.Name, "paths": j.change.Paths, "round": roundID,
-			})
+			}
+			if j.change.Added != 0 {
+				filePay["added"] = j.change.Added
+			}
+			if j.change.Removed != 0 {
+				filePay["removed"] = j.change.Removed
+			}
+			if j.change.Created {
+				filePay["created"] = true
+			}
+			emit(req, trace.TypeFileChange, "tool", filePay)
 		}
 		emit(req, trace.TypeToolResult, "tool", payload)
 		out[i] = Message{Role: RoleTool, ToolCallID: j.tc.ID, Name: j.tc.Name, Content: j.content, Parts: j.parts}

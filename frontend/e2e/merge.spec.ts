@@ -382,13 +382,43 @@ test("steer stays inside the running agent turn", () => {
   expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
 });
 
+test("elided html write_file still lands as an artifact card", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "build the game" } },
+    {
+      type: "tool_call",
+      session_id: "s",
+      payload: {
+        id: "w1",
+        name: "write_file",
+        path: "pelican-bike.html",
+        arguments: JSON.stringify({
+          path: "pelican-bike.html",
+          content: "[elided content 4000 chars path=pelican-bike.html — on disk, read_file that path; do not rewrite from memory]\n<!DOCTYPE html>",
+        }),
+      },
+    },
+    { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote pelican-bike.html", paths: ["pelican-bike.html"] } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  const view = artifactView(items.find((it) => it.type === "tool_call"), items.find((it) => it.type === "tool_result"));
+  expect(view.kind).toBe("html");
+  expect(view.path).toBe("pelican-bike.html");
+  expect(artifactShouldShow(view)).toBe(true);
+  expect(artifactPreviewOpen(view)).toBe(true);
+});
+
 test("write_file and str_replace land as artifacts with a rendered diff", () => {
   const items = replayEvents([
     { type: "user", session_id: "s", payload: { text: "edit it" } },
     { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: "{\"path\":\"web/index.html\",\"content\":\"<!doctype html><html><body>hi</body></html>\"}" } },
     { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote web/index.html" } },
     { type: "tool_call", session_id: "s", payload: { id: "e1", name: "str_replace", arguments: "{\"path\":\"src/main.go\",\"old_str\":\"old\",\"new_str\":\"new\"}" } },
-    { type: "tool_result", session_id: "s", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go" } },
+    { type: "tool_result", session_id: "s", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in src/main.go", patch: "--- a/src/main.go\n+++ b/src/main.go\n@@\n-old\n+new", added: 1, removed: 1 } },
   ]);
   const rows = layoutRows(items);
   const agent = rows[1];
@@ -402,8 +432,8 @@ test("write_file and str_replace land as artifacts with a rendered diff", () => 
   expect(diff.kind).toBe("diff");
   expect(diff.diff).toContain("-old");
   expect(diff.diff).toContain("+new");
-  expect(artifactPreviewOpen(view)).toBe(false);
-  expect(artifactPreviewOpen(diff)).toBe(false);
+  expect(artifactPreviewOpen(view)).toBe(true);
+  expect(artifactPreviewOpen(diff)).toBe(true);
   const code = artifactView({
     type: "tool_call",
     name: "write_file",
@@ -412,6 +442,54 @@ test("write_file and str_replace land as artifacts with a rendered diff", () => 
   expect(code.kind).toBe("code");
   expect(artifactPreviewOpen(code)).toBe(false);
   expect(artifactShouldShow(code)).toBe(false);
+});
+
+test("write_file chip uses result patch as the change region", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "add a helper" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: JSON.stringify({ path: "src/util.ts", content: "[elided content 4000 chars path=src/util.ts]" }) } },
+    { type: "tool_result", session_id: "s", payload: {
+      id: "w1", name: "write_file", content: "wrote src/util.ts",
+      paths: ["src/util.ts"], created: true, added: 2, removed: 0,
+      patch: "--- a/src/util.ts\n+++ b/src/util.ts\n@@ -0,0 +1,2 @@\n+export const n = 1\n+export const m = 2\n",
+    } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent?.kind).toBe("agent");
+  if (agent?.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  const view = artifactView(items.find((it) => it.type === "tool_call"), items.find((it) => it.type === "tool_result"));
+  expect(view.kind).toBe("diff");
+  expect(view.created).toBe(true);
+  expect(view.diff).toContain("+export const n = 1");
+  expect(artifactShouldShow(view)).toBe(true);
+});
+
+test("html file bubbles show each real change; reads and no-ops stay in the process rail", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "make the game" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: JSON.stringify({ path: "pelican-bike.html", content: "<!doctype html><html><body>v1</body></html>" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote pelican-bike.html" } },
+    { type: "tool_call", session_id: "s", payload: { id: "r1", name: "read_file", arguments: JSON.stringify({ path: "pelican-bike.html" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "r1", name: "read_file", content: "     1|<!doctype html>" } },
+    { type: "tool_call", session_id: "s", payload: { id: "e1", name: "str_replace", arguments: JSON.stringify({ path: "pelican-bike.html", old_str: "v1", new_str: "v2" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "e1", name: "str_replace", content: "replaced 1 occurrence(s) in pelican-bike.html" } },
+    { type: "tool_call", session_id: "s", payload: { id: "e2", name: "str_replace", arguments: JSON.stringify({ path: "pelican-bike.html", old_str: "v2", new_str: "v2" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "e2", name: "str_replace", content: "unchanged pelican-bike.html" } },
+    { type: "tool_call", session_id: "s", payload: { id: "b1", name: "browser_open", arguments: JSON.stringify({ url: "pelican-bike.html" }) } },
+    { type: "tool_result", session_id: "s", payload: { id: "b1", name: "browser_open", content: "opened pelican-bike.html" } },
+    { type: "assistant", session_id: "s", payload: { text: "ready", id: "s:r1" } },
+  ]);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact", "process", "artifact", "process", "item"]);
+  const artifactCalls = agent.parts.filter((p) => p.kind === "artifact").flatMap((p) => p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
+  expect(artifactCalls).toEqual(["w1", "e1"]);
+  const processCalls = agent.parts.flatMap((p) => p.kind === "process" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
+  expect(processCalls).toEqual(["r1", "e2", "b1"]);
 });
 
 test("unchanged source dumps stay in the process rail, not preview cards", () => {
@@ -428,10 +506,11 @@ test("unchanged source dumps stay in the process rail, not preview cards", () =>
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact"]);
+  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact", "process", "artifact"]);
   const dump = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "w1"));
   const noop = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e1"));
   const edit = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e2"));
+  expect(dump.path).toBe("webui/src/pages/Users.tsx");
   expect(artifactShouldShow(dump)).toBe(false);
   expect(artifactShouldShow(noop)).toBe(false);
   expect(artifactShouldShow(edit)).toBe(true);

@@ -6,13 +6,25 @@ func (r *Registry) adoptDefaultKey(c Connection) Connection {
 	if r == nil || r.vault == nil {
 		return c
 	}
-	key, err := r.vault.Get("default")
-	if err != nil || strings.TrimSpace(key) == "" {
+	// Only copy a key that was actually saved. Process env (OPENAI_API_KEY)
+	// must not overwrite a custom provider — that is the 401 on new sessions.
+	key := storedVault(r.vault, "default")
+	if key == "" {
 		return c
 	}
-	if c.VaultKey != "" {
-		if cur, e := r.vault.Get(c.VaultKey); e == nil && cur == key {
-			c.HasKey = true
+	own := storedVault(r.vault, c.VaultKey)
+	if own != "" {
+		c.HasKey = true
+		if own == key {
+			return c
+		}
+		defID := r.Defaults()[CapChat]
+		if c.ID != defID {
+			return c
+		}
+	} else {
+		defID := r.Defaults()[CapChat]
+		if c.ID != "" && c.ID != defID {
 			return c
 		}
 	}
@@ -21,6 +33,18 @@ func (r *Registry) adoptDefaultKey(c Connection) Connection {
 		return c
 	}
 	return out
+}
+
+func storedVault(v Secrets, name string) string {
+	name = strings.TrimSpace(name)
+	if v == nil || name == "" {
+		return ""
+	}
+	if g, ok := v.(interface{ GetStored(string) (string, error) }); ok {
+		got, _ := g.GetStored(name)
+		return strings.TrimSpace(got)
+	}
+	return ""
 }
 
 func (r *Registry) SyncChat(provider, baseURL, model, apiKey string, extraModels ...string) (Connection, error) {

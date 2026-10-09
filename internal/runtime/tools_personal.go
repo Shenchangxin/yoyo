@@ -200,6 +200,14 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 				return ToolResult{Err: err}
 			}
 		}
+		if t.Browser != nil {
+			if abs, rerr := t.resolve(rel); rerr == nil {
+				t.Browser.SetPreview(abs)
+			}
+		}
+		t.mu.Lock()
+		t.LastBrowser = "workspace:" + rel
+		t.mu.Unlock()
 		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome was not started. Do not start a local HTTP server or pass file:// / data: URLs to isolated Chrome.", rel)}
 	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
 		return ToolResult{Err: err}
@@ -453,6 +461,11 @@ func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	}
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if preview := t.Browser.PreviewPath(); preview != "" {
+		if _, err := t.Browser.OpenLocal(preview); err != nil {
+			return ToolResult{Err: err}
+		}
 	}
 	if rel == "" {
 		rel = filepath.ToSlash(filepath.Join(".yoyo", "captures", "browser.png"))

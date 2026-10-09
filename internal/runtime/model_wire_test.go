@@ -109,6 +109,19 @@ func TestApplyStreamChunkReasoning(t *testing.T) {
 	}
 }
 
+func TestClassifyModelNotFound(t *testing.T) {
+	info := ClassifyError(fmtError(`openai: 404 Not Found: {"error":{"message":"The model 'gone' does not exist","code":"model_not_found"}}`))
+	if info.Kind != ErrKindModel {
+		t.Fatalf("kind %s title %s", info.Kind, info.Title)
+	}
+	if !FailoverWorthy(fmtError("model_not_found")) || FailoverSkipProvider(fmtError("model_not_found")) {
+		t.Fatal("model errors should try sibling models on the same provider")
+	}
+	if !FailoverWorthy(fmtError("401 unauthorized")) || !FailoverSkipProvider(fmtError("401 unauthorized")) {
+		t.Fatal("auth should skip the rest of this provider")
+	}
+}
+
 func TestClassifyInvalidToolCalls(t *testing.T) {
 	err := fmtError(`openai: 500 Internal Server Error: {"code":500,"msg":"Model call failed. Please try again later: invalid_parameter_error: \u003c400\u003e InternalError.Algo.InvalidParameter: Field required: input.messages.4.tool_calls.0.function","error_key":"error.all_channel_models_failed"}`)
 	info := ClassifyError(err)

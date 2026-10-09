@@ -131,6 +131,18 @@ func (a *App) BrowserView() map[string]any {
 		return map[string]any{"lane": "isolated", "live": false, "log": []any{}}
 	}
 	v := a.Browser.View()
+	preview := ""
+	if abs := strings.TrimSpace(v.Preview); abs != "" {
+		ws := a.Workspace()
+		if ws != "" {
+			if rel, err := filepath.Rel(ws, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				preview = filepath.ToSlash(rel)
+			}
+		}
+		if preview == "" {
+			preview = filepath.ToSlash(abs)
+		}
+	}
 	return map[string]any{
 		"url":        v.URL,
 		"title":      v.Title,
@@ -140,15 +152,113 @@ func (a *App) BrowserView() map[string]any {
 		"live":       v.Live,
 		"text":       v.Text,
 		"screenshot": v.Screenshot,
+		"preview":    preview,
 		"log":        v.Log,
 	}
 }
 
 func (a *App) BrowserTakeover() error {
+	return a.BrowserTakeoverAt("")
+}
+
+func (a *App) BrowserTakeoverAt(rel string) error {
 	if a == nil || a.Browser == nil {
 		return fmt.Errorf("no isolated browser")
 	}
+	if abs := a.resolveTakeoverFile(rel); abs != "" {
+		return a.Browser.StartTakeoverAt(abs)
+	}
 	return a.Browser.StartTakeover()
+}
+
+func (a *App) resolveTakeoverFile(rel string) string {
+	rel = strings.TrimSpace(rel)
+	preview := ""
+	if a != nil && a.Browser != nil {
+		preview = strings.TrimSpace(a.Browser.PreviewPath())
+	}
+	var cands []string
+	if rel != "" {
+		if filepath.IsAbs(rel) {
+			cands = append(cands, filepath.Clean(rel))
+		} else {
+			for _, root := range a.takeoverRoots() {
+				cands = append(cands, filepath.Join(root, rel))
+			}
+		}
+	}
+	if preview != "" {
+		cands = append(cands, filepath.Clean(preview))
+	}
+	seen := map[string]bool{}
+	for _, p := range cands {
+		p = filepath.Clean(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() {
+			continue
+		}
+		if a.takeoverFileAllowed(p, preview) {
+			return p
+		}
+	}
+	if rel != "" && preview != "" {
+		slashP := filepath.ToSlash(preview)
+		slashR := strings.TrimPrefix(filepath.ToSlash(rel), "./")
+		if slashR != "" && strings.HasSuffix(slashP, slashR) {
+			if st, err := os.Stat(preview); err == nil && !st.IsDir() {
+				return filepath.Clean(preview)
+			}
+		}
+	}
+	return ""
+}
+
+func (a *App) takeoverRoots() []string {
+	var roots []string
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		for _, e := range roots {
+			if strings.EqualFold(e, p) {
+				return
+			}
+		}
+		roots = append(roots, p)
+	}
+	if a != nil {
+		add(a.Workspace())
+		if a.Home != nil {
+			add(a.Home.Workspace())
+		}
+	}
+	return roots
+}
+
+func (a *App) takeoverFileAllowed(abs, preview string) bool {
+	abs = filepath.Clean(abs)
+	if preview != "" && filepath.Clean(preview) == abs {
+		return true
+	}
+	if filepath.IsAbs(abs) {
+		// Inspector already showed this file; the session workspace is often
+		// not Config.Workspace, so an existing absolute path is the page to open.
+		return true
+	}
+	for _, root := range a.takeoverRoots() {
+		if capability.WithinWorkspace(root, abs) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) ReviewQueue() map[string]any {

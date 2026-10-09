@@ -27,6 +27,7 @@ test("asPreviewDocument wraps fragments for the inspector iframe", () => {
   assert.equal(asPreviewDocument(previewed), previewed);
   const live = asPreviewDocument(full, { scripts: true });
   assert.doesNotMatch(live, /script-src 'none'/);
+  assert.match(live, /data-yoyo-preview-guard/);
 });
 
 test("pdf image audio video and docx use blob preview", () => {

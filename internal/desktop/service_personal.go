@@ -188,14 +188,18 @@ func (s *Service) BrowserView() map[string]any {
 }
 
 func (s *Service) BrowserTakeover() error {
+	return s.BrowserTakeoverAt("")
+}
+
+func (s *Service) BrowserTakeoverAt(path string) error {
 	if s.RPC != nil {
-		_, err := s.call("browser.takeover", nil)
+		_, err := s.call("browser.takeover", map[string]any{"path": path})
 		return err
 	}
 	if s.App == nil {
 		return nil
 	}
-	return s.App.BrowserTakeover()
+	return s.App.BrowserTakeoverAt(path)
 }
 
 func (s *Service) PhoneStatus() map[string]any {

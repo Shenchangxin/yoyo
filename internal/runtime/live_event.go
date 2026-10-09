@@ -1,11 +1,16 @@
 package runtime
 
-import "github.com/Shenchangxin/yoyo/internal/trace"
+import (
+	"encoding/json"
+
+	"github.com/Shenchangxin/yoyo/internal/trace"
+)
 
 const (
 	uiAssistantBytes = 24_000
 	uiResultBytes    = 1_200
 	uiUserBytes      = 8_000
+	uiPatchBytes     = 8_000
 )
 
 // slimLiveEvent copies a heavy write_file/str_replace payload for the live
@@ -23,16 +28,28 @@ func slimLiveEvent(ev trace.Event) trace.Event {
 			return ev
 		}
 		compact := compactCallArgs(name, args, heavyCallRunes)
+		path := salvageJSONStringField(args, "path")
 		if compact == args {
-			return ev
+			if _, ok := unmarshalObject(args); ok {
+				return ev
+			}
+			if path == "" {
+				return ev
+			}
+			stub, _ := json.Marshal(map[string]any{"path": path})
+			compact = string(stub)
 		}
 		p := clonePayload(ev.Payload)
 		p["arguments"] = compact
 		p["bytes"] = len(args)
+		if path != "" {
+			p["path"] = path
+		}
 		ev.Payload = p
 		return ev
 	case trace.TypeToolResult:
-		return slimPayloadString(ev, "content", uiResultBytes)
+		ev = slimPayloadString(ev, "content", uiResultBytes)
+		return slimPayloadString(ev, "patch", uiPatchBytes)
 	case trace.TypeAssistant, trace.TypeReasoning:
 		if delta, _ := ev.Payload["delta"].(bool); delta {
 			return ev

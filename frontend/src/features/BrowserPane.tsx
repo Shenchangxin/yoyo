@@ -54,12 +54,16 @@ export function BrowserPane(props: {
   running?: boolean;
 }) {
   const copy = useCopy();
-  const htmlPath = looksLikeHTMLFile(props.previewPath || "") ? props.previewPath : "";
   const [view, setView] = useState<BrowserView | null>(null);
   const [source, setSource] = useState(false);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState(false);
   const [err, setErr] = useState("");
+  const htmlPath = looksLikeHTMLFile(props.previewPath || "")
+    ? (props.previewPath || "")
+    : looksLikeHTMLFile(view?.preview || "")
+      ? (view?.preview || "")
+      : "";
 
   useEffect(() => {
     let alive = true;
@@ -86,16 +90,21 @@ export function BrowserPane(props: {
   }, [props.running, htmlPath]);
 
   const shot = useRevocableURL(view?.screenshot);
-  const live = !!view?.live || !!view?.screenshot || !!view?.url;
-  const showHtml = !!htmlPath && (!live || source);
+  const remoteLive = isExternalURL(view?.url || "") && (!!view?.live || !!view?.screenshot);
+  const live = remoteLive || !!view?.live || !!view?.screenshot || isExternalURL(view?.url || "");
+  // Workspace HTML is the operator-facing Browser pane. Leftover isolated
+  // Chrome (previous http(s) session) must not cover the page the agent opened.
+  const showHtml = !!htmlPath && !(source && remoteLive);
   const lane = view?.headed ? copy.review.headedLane : view?.lane === "attached" ? copy.review.attachedLane : copy.review.isolatedLane;
-  const address = view?.url || htmlPath || view?.title || copy.review.browser;
+  const address = (remoteLive ? view?.url : "") || htmlPath || view?.url || view?.title || copy.review.browser;
   const canOpenExternal = isExternalURL(view?.url || "") || !!htmlPath;
+  const canTakeOver = live || !!htmlPath;
 
   const takeOver = async () => {
     setBusy(true);
     try {
-      await api.browserTakeover();
+      const target = htmlPath ? joinWorkspace(props.workspace || "", htmlPath) : "";
+      await api.browserTakeover(target || undefined);
       setView(await api.browserView());
       setErr("");
     } catch (e) {
@@ -170,7 +179,7 @@ export function BrowserPane(props: {
             <ExternalLink className="size-3.5" aria-hidden />
           </button>
         </Tooltip>
-        {live ? (
+        {canTakeOver ? (
           <button
             type="button"
             className="h-6 rounded-md bg-foreground px-2 text-[11px] font-medium text-background hover:opacity-90 disabled:opacity-40"

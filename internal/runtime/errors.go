@@ -18,6 +18,7 @@ const (
 	ErrKindProvider  = "provider"
 	ErrKindBudget    = "budget"
 	ErrKindMaxTurns  = "max_turns"
+	ErrKindModel     = "model"
 	ErrKindUnknown   = "unknown"
 )
 
@@ -87,17 +88,23 @@ func ClassifyError(err error) ErrorInfo {
 	case IsContextOverflow(err):
 		info.Kind, info.Title, info.Hint = ErrKindOverflow, "Context too large", "Yoyo will compact on the next send. If this persists, run /compact or start a new chat."
 		info.Retryable = true
-	case containsAny(low, "invalid_api_key", "incorrect api key", "unauthorized", "401", "authentication", "invalid token"):
+	case containsAny(low, "invalid_api_key", "incorrect api key", "unauthorized", "401", "authentication", "invalid token", "expired token", "invalid or expired"):
 		info.Kind, info.Title, info.Hint = ErrKindAuth, "Provider rejected the key", "Check the API key and base URL in Settings."
 		info.Retryable = false
 	case containsAny(low, "rate limit", "rate_limit", "too many requests", "429"):
 		info.Kind, info.Title, info.Hint = ErrKindRateLimit, "Rate limited", "Wait a moment, then retry."
+		info.Retryable = true
+	case containsAny(low, "model_not_found", "model not found", "unknown model", "invalid model", "no such model", "model does not exist"):
+		info.Kind, info.Title, info.Hint = ErrKindModel, "This model is not available", "Pick another model in the composer, or add it on the provider in Settings."
 		info.Retryable = true
 	case containsAny(low, "tool_calls", "invalid_parameter", "invalid_request", "unrecognized request argument"):
 		info.Kind, info.Title, info.Hint = ErrKindInvalid, "The provider rejected this turn", "Usually a malformed tool history. Retry; start a new chat if it repeats."
 		info.Retryable = true
 	case containsAny(low, "timeout", "deadline exceeded", "i/o timeout"):
 		info.Kind, info.Title, info.Hint = ErrKindTimeout, "Request timed out", "The model did not respond in time."
+		info.Retryable = true
+	case containsAny(low, "connection refused", "no such host", "network is unreachable", "dial tcp"):
+		info.Kind, info.Title, info.Hint = ErrKindProvider, "The model endpoint failed", "The provider returned an error. Retry in a moment."
 		info.Retryable = true
 	case containsAny(low, "all_channel_models_failed", "internal server error", "502", "503", "504", "overloaded"):
 		info.Kind, info.Title, info.Hint = ErrKindProvider, "The model endpoint failed", "The provider returned an error. Retry in a moment."
@@ -107,6 +114,33 @@ func ClassifyError(err error) ErrorInfo {
 		info.Retryable = false
 	}
 	return info
+}
+
+// FailoverWorthy is true when another Settings provider or model may succeed.
+func FailoverWorthy(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch ClassifyError(err).Kind {
+	case ErrKindOverflow, ErrKindBudget, ErrKindCanceled, ErrKindInvalid, ErrKindMaxTurns:
+		return false
+	default:
+		return true
+	}
+}
+
+// FailoverSkipProvider is true when the rest of this provider's models will
+// fail the same way (bad key, rate limit, dead endpoint).
+func FailoverSkipProvider(err error) bool {
+	switch ClassifyError(err).Kind {
+	case ErrKindAuth, ErrKindRateLimit, ErrKindTimeout, ErrKindProvider:
+		return true
+	default:
+		return false
+	}
 }
 
 func extractProviderMsg(s string) string {

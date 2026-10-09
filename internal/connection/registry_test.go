@@ -194,3 +194,64 @@ func TestUpsertChatDoesNotClobberDefaultKey(t *testing.T) {
 		t.Fatalf("keys %q %q", k1, k2)
 	}
 }
+
+func TestAdoptDefaultKeyDoesNotCopyEnvOntoCustomDefault(t *testing.T) {
+	t.Setenv("YOYO_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "env-openai")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.Upsert(Connection{
+		Name: "Custom", Vendor: "custom", Endpoint: "https://server.flowyaipc.com/claw/v1",
+		Capabilities: []string{CapChat}, Models: []string{"openclaw/default"},
+		DefaultModel: map[string]string{CapChat: "openclaw/default"}, Active: true,
+	}, "gw-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r.SetDefault(CapChat, c.ID)
+	v.Set("default", "")
+	got := r.adoptDefaultKey(c)
+	key, err := r.Lease(got)
+	if err != nil || key != "gw-token" {
+		t.Fatalf("custom default clobbered with env %q %v", key, err)
+	}
+}
+
+func TestAdoptDefaultKeyDoesNotClobberCustomWithEnv(t *testing.T) {
+	t.Setenv("YOYO_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "env-openai")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := r.Upsert(Connection{
+		Name: "OpenAI", Vendor: "openai", Endpoint: "https://api.openai.com/v1",
+		Capabilities: []string{CapChat}, Models: []string{"gpt-4.1-mini"},
+		DefaultModel: map[string]string{CapChat: "gpt-4.1-mini"}, Active: true,
+	}, "openai-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r.SetDefault(CapChat, first.ID)
+	second, err := r.Upsert(Connection{
+		Name: "Custom", Vendor: "custom", Endpoint: "https://server.flowyaipc.com/claw/v1",
+		Capabilities: []string{CapChat}, Models: []string{"openclaw/default"},
+		DefaultModel: map[string]string{CapChat: "openclaw/default"}, Active: true,
+	}, "gw-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.adoptDefaultKey(second)
+	key, err := r.Lease(got)
+	if err != nil || key != "gw-token" {
+		t.Fatalf("custom key clobbered %q %v", key, err)
+	}
+}

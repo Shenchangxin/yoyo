@@ -59,6 +59,18 @@ export const emptyCfg: AppConfig = {
 };
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
 
+function latestWorkspaceHTMLPath(items: Item[]): string {
+  let found = "";
+  for (const it of items) {
+    if (it.type !== "tool_call" && it.type !== "tool_result") continue;
+    const name = toolName(it);
+    const args = toolArgs(it);
+    const preview = workspacePreviewPath(name, { ...args, url: args.url || it.payload?.path });
+    if (preview) found = preview;
+  }
+  return found;
+}
+
 function resolveOperatorThread(list: Thread[], t: Thread | null, channel: ThreadChannel): Thread | null {
   if (!t) return null;
   if (!isSubagentThread(t) && threadChannel(t) === channel) return t;
@@ -746,6 +758,16 @@ export function useWorkstation() {
             setInspTab("browser");
           }
         }
+        if (item.type === "tool_result") {
+          const name = toolName(item);
+          const args = toolArgs(item);
+          const preview = workspacePreviewPath(name, { ...args, url: args.url || item.payload?.path });
+          if ((name === "browser_open" || name === "browser_takeover") && preview) {
+            setReviewFile(preview);
+            setInspector(true);
+            setInspTab("browser");
+          }
+        }
         if (item.type === "turn_end" || item.type === "error") {
           markEnded(activeId);
           api.contextUsage(activeId).then(setCtx).catch(() => {});
@@ -763,6 +785,12 @@ export function useWorkstation() {
         liveAcc.current = {};
         setLiveTexts({});
         setItems(hotItemsRef.current.slice());
+        const html = latestWorkspaceHTMLPath(hotItemsRef.current);
+        if (html) {
+          setReviewFile(html);
+          setInspector(true);
+          setInspTab("browser");
+        }
         if (page) {
           headSeqRef.current = page.headSeq || 0;
           olderRef.current = !!page.older;
@@ -1263,7 +1291,7 @@ export function useWorkstation() {
     const ch = channelForSurface(useUI.getState().surface);
     const created = await api.createSession(workspace || channelWorkspace(ch), ch);
     const t = created.channel ? created : { ...created, channel: ch };
-    setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+    setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
     setItems([]);
     setQueued(0);

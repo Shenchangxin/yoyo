@@ -52,6 +52,31 @@ export function workspacePreviewPath(name: string, args: Record<string, unknown>
 
 const NO_SCRIPT_CSP = `<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">`;
 
+/** srcdoc iframes are unique-origin; localStorage throws and kills canvas games (session df1ede293929bc0f). */
+const PREVIEW_STORAGE_GUARD = `<script data-yoyo-preview-guard>
+(function(){
+  function mem(){
+    var s = {};
+    return {
+      getItem: function(k){ return Object.prototype.hasOwnProperty.call(s, k) ? s[k] : null; },
+      setItem: function(k,v){ s[String(k)] = String(v); },
+      removeItem: function(k){ delete s[k]; },
+      clear: function(){ s = {}; },
+      key: function(i){ return Object.keys(s)[i] || null; },
+      get length(){ return Object.keys(s).length; }
+    };
+  }
+  function shim(name){
+    try { void window[name].getItem("__yoyo"); }
+    catch (e) {
+      try { Object.defineProperty(window, name, { value: mem(), configurable: true }); } catch (err) {}
+    }
+  }
+  shim("localStorage");
+  shim("sessionStorage");
+})();
+</script>`;
+
 export function disablePreviewScripts(html: string): string {
   const t = html || "";
   if (/http-equiv\s*=\s*["']Content-Security-Policy["']/i.test(t)) return t;
@@ -76,6 +101,13 @@ function withPreviewScrollbars(html: string): string {
   return html;
 }
 
+function withPreviewStorageGuard(html: string): string {
+  if (!html || html.includes("data-yoyo-preview-guard")) return html;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + PREVIEW_STORAGE_GUARD);
+  if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}<head>${PREVIEW_STORAGE_GUARD}</head>`);
+  return PREVIEW_STORAGE_GUARD + html;
+}
+
 /** Wrap a fragment so the inspector iframe can render it. */
 export function asPreviewDocument(html: string, opts?: { scripts?: boolean }): string {
   const t = (html || "").trim();
@@ -86,6 +118,7 @@ export function asPreviewDocument(html: string, opts?: { scripts?: boolean }): s
       `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1.25rem;font:13px/1.55 system-ui,sans-serif;color:#1c1c1a;background:#fff}img{max-width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:6px 8px;text-align:left}</style></head><body>${t}</body></html>`,
     );
   if (!opts?.scripts) doc = disablePreviewScripts(doc);
+  else doc = withPreviewStorageGuard(doc);
   return doc;
 }
 

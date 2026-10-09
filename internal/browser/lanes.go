@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/hostopen"
 )
 
 func (h *Host) OpenURLLane(raw, lane string) (Snapshot, error) {
@@ -49,40 +51,133 @@ func (h *Host) attachDebugPort() error {
 }
 
 func (h *Host) StartTakeover() error {
+	return h.StartTakeoverAt("")
+}
+
+func (h *Host) StartTakeoverAt(abs string) error {
 	h.mu.Lock()
-	h.headed = true
 	raw := strings.TrimSpace(h.url)
-	cmd := h.cmd
-	cdp := h.cdp
-	h.cmd = nil
-	h.cdp = nil
+	preview := h.preview
 	h.mu.Unlock()
-	if cdp != nil {
-		cdp.close()
+	if abs != "" {
+		h.SetPreview(abs)
+		preview = abs
 	}
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+	target := takeoverTarget(raw, preview, h.serveFileURL)
+	if isBlankURL(target) {
+		if preview != "" {
+			return h.openTakeoverSystem(target, preview)
+		}
+		if !isBlankURL(raw) {
+			target = raw
+		}
 	}
-	time.Sleep(200 * time.Millisecond)
-	if err := h.ensureCDP(); err != nil {
+	if isBlankURL(target) {
+		return fmt.Errorf("browser: nothing to take over")
+	}
+	h.mu.Lock()
+	h.url = target
+	h.mu.Unlock()
+	h.stopChrome()
+	if err := h.startChromeCDP(target, true); err != nil {
+		if openErr := h.openTakeoverSystem(target, preview); openErr == nil {
+			return nil
+		}
 		return err
 	}
-	if raw != "" {
-		_ = h.navigateCDP(raw)
-		time.Sleep(350 * time.Millisecond)
+	if err := h.showTakeover(target); err != nil {
+		h.stopChrome()
+		if openErr := h.openTakeoverSystem(target, preview); openErr == nil {
+			return nil
+		}
+		return err
 	}
 	h.record("takeover", "headed")
 	h.syncView()
 	return nil
 }
 
+func takeoverTarget(liveURL, preview string, serve func(string) (string, error)) string {
+	liveURL = strings.TrimSpace(liveURL)
+	if isBlankURL(liveURL) {
+		liveURL = ""
+	}
+	preview = strings.TrimSpace(preview)
+	if preview != "" && serve != nil {
+		if u, err := serve(preview); err == nil && !isBlankURL(u) {
+			return strings.TrimSpace(u)
+		}
+	}
+	return liveURL
+}
+
+func isBlankURL(raw string) bool {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return true
+	}
+	low := strings.ToLower(s)
+	return low == "about:blank" || strings.HasPrefix(low, "about:blank?")
+}
+
+func (h *Host) showTakeover(target string) error {
+	if isBlankURL(target) {
+		return fmt.Errorf("browser: blank takeover url")
+	}
+	var last error
+	for i := 0; i < 6; i++ {
+		if err := h.pageNavigate(target); err != nil {
+			last = err
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		time.Sleep(180 * time.Millisecond)
+		href, _ := h.evalOnConn("location.href")
+		if !isBlankURL(cleanJS(href)) {
+			return nil
+		}
+		last = fmt.Errorf("browser: takeover stayed at about:blank")
+		time.Sleep(200 * time.Millisecond)
+	}
+	if last == nil {
+		last = fmt.Errorf("browser: takeover stayed at about:blank")
+	}
+	return last
+}
+
+func (h *Host) openTakeoverSystem(target, preview string) error {
+	opened := false
+	if !isBlankURL(target) && hostopen.URL(target) == nil {
+		opened = true
+	} else if strings.TrimSpace(preview) != "" && hostopen.Path(preview) == nil {
+		opened = true
+	}
+	if !opened {
+		if strings.TrimSpace(preview) != "" {
+			return fmt.Errorf("browser: could not open %s", preview)
+		}
+		return fmt.Errorf("browser: could not open takeover page")
+	}
+	h.record("takeover", "system-browser")
+	h.mu.Lock()
+	h.headed = true
+	if isBlankURL(h.url) {
+		h.url = target
+	}
+	h.mu.Unlock()
+	h.syncView()
+	return nil
+}
+
 func (h *Host) Screenshot(path string) error {
-	if err := h.ensureCDP(); err != nil {
+	if err := h.ensureChrome(h.previewStartURL()); err != nil {
 		return err
 	}
-	raw, err := h.cdp.call("Page.captureScreenshot", map[string]any{"format": "png"})
+	raw, err := h.callCDP("Page.captureScreenshot", map[string]any{"format": "png"})
 	if err != nil {
+		if isCDPGone(err) {
+			return fmt.Errorf("browser screenshot failed: isolated Chrome closed the debug connection; retry after the page loads")
+		}
 		return err
 	}
 	var out struct {

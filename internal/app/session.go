@@ -255,23 +255,15 @@ func (a *App) Client() (runtime.Client, error) {
 }
 
 func (a *App) ClientFor(meta SessionMeta) (runtime.Client, error) {
-	key := ""
-	base := a.Config.BaseURL
-	r := a.connReg()
-	if r != nil {
-		if c, err := a.resolveChatConnection(meta); err == nil {
-			if ep := strings.TrimSpace(c.Endpoint); ep != "" {
-				base = ep
-			}
-			if k, e := r.Lease(c); e == nil {
-				key = k
-			}
+	if routes := a.chatRoutes(meta); len(routes) > 0 {
+		if cl := runtime.NewFailoverClient(routes); cl != nil {
+			return cl, nil
 		}
 	}
-	if strings.TrimSpace(key) == "" && a.Vault != nil {
-		key, _ = a.Vault.Lease("default")
+	if cl := a.envChatFallback(); cl != nil {
+		return cl, nil
 	}
-	return runtime.NewOpenAIClient(base, key), nil
+	return nil, fmt.Errorf("missing API key — paste the token in Settings")
 }
 
 func (a *App) Send(ctx context.Context, sessionID, message string, client runtime.Client, onEvent func(trace.Event)) (string, error) {

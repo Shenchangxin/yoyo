@@ -16,12 +16,12 @@ export function SandboxedFrame({
   return (
     <iframe
       title={title}
-      sandbox={scripts ? "allow-scripts allow-forms" : "allow-forms"}
+      sandbox={scripts ? "allow-scripts allow-forms allow-modals allow-pointer-lock" : "allow-forms"}
       className={cn(
         "block w-full min-w-0 max-w-full bg-background",
         fill ? "h-full min-h-0 flex-1 rounded-none border-0" : "mt-2 h-[28rem] rounded-lg border border-border/70",
       )}
-      style={{ colorScheme: "light" }}
+      style={{ colorScheme: "light", pointerEvents: "auto" }}
       srcDoc={asPreviewDocument(html, { scripts })}
       data-testid="html-preview"
     />

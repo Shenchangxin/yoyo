@@ -357,11 +357,15 @@ func toolIndexes(msgs []Message) []int {
 }
 
 func alreadyStubbed(s string) bool {
-	return strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ")
+	s = strings.TrimSpace(s)
+	return strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ")
 }
 
 func looksLikeContextStub(s string) bool {
-	return strings.Contains(s, "[elided ") || strings.Contains(s, "[collapsed ")
+	if strings.Contains(s, "[elided ") || strings.Contains(s, "[collapsed ") {
+		return true
+	}
+	return strings.Contains(s, "(omitted ") && strings.Contains(s, "Do not paste this placeholder")
 }
 
 func stubTool(id, name string, bytes int) string {
@@ -448,12 +452,13 @@ func compactCallArgs(name, args string, limit int) string {
 		if len([]rune(s)) <= limit {
 			continue
 		}
-		head := callArgHead(s, 120)
 		label := path
 		if label == "" {
 			label = name
 		}
-		m[key] = fmt.Sprintf("[elided %s %d chars path=%s — on disk, read_file that path; do not rewrite from memory]\n%s", key, len(s), label, head)
+		// Never append a copyable file head. Models paste the stub plus the
+		// leaked bytes back into str_replace/write_file (session 6ee466).
+		m[key] = fmt.Sprintf("(omitted %d-char %s already on disk at %s; read_file that path. Do not paste this placeholder as %s.)", len(s), key, label, key)
 		changed = true
 	}
 	if !changed {
@@ -464,17 +469,6 @@ func compactCallArgs(name, args string, limit int) string {
 		return args
 	}
 	return string(b)
-}
-
-func callArgHead(s string, keep int) string {
-	if keep <= 0 {
-		keep = 120
-	}
-	r := []rune(s)
-	if len(r) <= keep {
-		return s
-	}
-	return string(r[:keep])
 }
 
 func writePathsFromMessages(msgs []Message) []string {

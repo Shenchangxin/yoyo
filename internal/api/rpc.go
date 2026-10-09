@@ -1097,7 +1097,11 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	case "browser.view":
 		return a.BrowserView(), nil
 	case "browser.takeover":
-		return map[string]any{"ok": true}, a.BrowserTakeover()
+		var p struct {
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.BrowserTakeoverAt(p.Path)
 	case "phone.status":
 		return a.PhoneStatus(), nil
 	case "phone.approve":

@@ -1706,6 +1706,7 @@ export type BrowserView = {
   live: boolean;
   text: string;
   screenshot: string;
+  preview: string;
   log: { op?: string; detail?: string; url?: string; ts?: string }[];
 };
 
@@ -1721,6 +1722,7 @@ export async function browserView(): Promise<BrowserView> {
     live: bool(pick(raw, "live", "Live")),
     text: str(pick(raw, "text", "Text")),
     screenshot: str(pick(raw, "screenshot", "Screenshot")),
+    preview: str(pick(raw, "preview", "Preview")),
     log: asArray(pick(raw, "log", "Log")).map((row: any) => ({
       op: str(pick(row, "op")),
       detail: str(pick(row, "detail")),
@@ -1730,13 +1732,18 @@ export async function browserView(): Promise<BrowserView> {
   };
 }
 
-export async function browserTakeover(): Promise<void> {
+export async function browserTakeover(path?: string): Promise<void> {
   const s = await wailsService();
+  const rel = (path || "").trim();
+  if (rel && s?.BrowserTakeoverAt) {
+    await s.BrowserTakeoverAt(rel);
+    return;
+  }
   if (s?.BrowserTakeover) {
     await s.BrowserTakeover();
     return;
   }
-  await http("/api/browser/takeover", { method: "POST", body: "{}" });
+  await http("/api/browser/takeover", { method: "POST", body: JSON.stringify({ path: rel }) });
 }
 
 export async function clipboardRead(): Promise<string> {

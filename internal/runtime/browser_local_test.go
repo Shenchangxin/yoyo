@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/browser"
 )
 
 func TestWorkspacePreviewRelAcceptsRelativeAndFileURL(t *testing.T) {
@@ -51,7 +53,12 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, rel), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tools := &WorkspaceTools{Workspace: dir}
+	h, err := browser.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.Close)
+	tools := &WorkspaceTools{Workspace: dir, Browser: h}
 	res := tools.Call("browser_open", `{"url":"index.html"}`)
 	if res.Err != nil {
 		t.Fatal(res.Err)
@@ -61,6 +68,9 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	}
 	if !strings.Contains(res.Content, "index.html") {
 		t.Fatalf("%s", res.Content)
+	}
+	if !strings.Contains(filepath.ToSlash(h.PreviewPath()), "index.html") {
+		t.Fatalf("preview %s", h.PreviewPath())
 	}
 }
 

@@ -76,9 +76,12 @@ function slimToolCallPayload(type: string, name: string, p: Record<string, any>)
       changed = true;
     }
     if (!changed) return p;
-    return { ...p, arguments: JSON.stringify(m), bytes: args.length };
+    const path = String(m.path || p.path || "");
+    return { ...p, arguments: JSON.stringify(m), bytes: args.length, ...(path ? { path } : {}) };
   } catch {
-    return { ...p, arguments: args.slice(0, 400), bytes: args.length };
+    const m = args.match(/"path"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const path = m ? m[1].replace(/\\"/g, '"') : "";
+    return { ...p, arguments: JSON.stringify(path ? { path } : {}), bytes: args.length, ...(path ? { path } : {}) };
   }
 }
 

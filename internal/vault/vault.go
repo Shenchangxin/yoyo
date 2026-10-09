@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -53,26 +54,15 @@ func (s *Store) Set(name, value string) {
 	} else {
 		s.mem[name] = value
 		if s.keychain {
-			if err := keychainSet(name, value); err == nil {
-				delete(s.mem, name)
-			}
+			_ = keychainSet(name, value)
 		}
 	}
 	_ = s.flushLocked()
 }
 
 func (s *Store) Get(name string) (string, error) {
-	s.mu.Lock()
-	if v := s.mem[name]; v != "" {
-		s.mu.Unlock()
+	if v, err := s.GetStored(name); err == nil && strings.TrimSpace(v) != "" {
 		return v, nil
-	}
-	useKeychain := s.keychain
-	s.mu.Unlock()
-	if useKeychain {
-		if v, err := keychainGet(name); err == nil && v != "" {
-			return v, nil
-		}
 	}
 	if name == "openai" || name == "default" {
 		if v := os.Getenv(EnvAPIKey); v != "" {
@@ -87,6 +77,29 @@ func (s *Store) Get(name string) (string, error) {
 		if v := os.Getenv("DEEPSEEK_API_KEY"); v != "" {
 			return v, nil
 		}
+	}
+	return "", fmt.Errorf("vault: missing key %q", name)
+}
+
+// GetStored returns a key that was saved (memory, keychain, or vault.json).
+// It does not fall back to process environment, so a leftover OPENAI_API_KEY
+// cannot overwrite a custom provider's token.
+func (s *Store) GetStored(name string) (string, error) {
+	s.mu.Lock()
+	if v := s.mem[name]; v != "" {
+		s.mu.Unlock()
+		return v, nil
+	}
+	useKeychain := s.keychain
+	path := s.path
+	s.mu.Unlock()
+	if useKeychain {
+		if v, err := keychainGet(name); err == nil && v != "" {
+			return v, nil
+		}
+	}
+	if v := readFileKey(path, name); v != "" {
+		return v, nil
 	}
 	return "", fmt.Errorf("vault: missing key %q", name)
 }
@@ -124,16 +137,12 @@ func (s *Store) migrateToKeychain() {
 	if len(s.mem) == 0 {
 		return
 	}
-	kept := map[string]string{}
 	for k, v := range s.mem {
 		if v == "" {
 			continue
 		}
-		if err := keychainSet(k, v); err != nil {
-			kept[k] = v
-		}
+		_ = keychainSet(k, v)
 	}
-	s.mem = kept
 	_ = s.flushLocked()
 }
 
@@ -150,6 +159,22 @@ func (s *Store) loadFile() {
 		return
 	}
 	s.mem = m
+}
+
+func readFileKey(path, name string) string {
+	name = strings.TrimSpace(name)
+	if path == "" || name == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var m map[string]string
+	if json.Unmarshal(b, &m) != nil || m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[name])
 }
 
 func (s *Store) flushLocked() error {

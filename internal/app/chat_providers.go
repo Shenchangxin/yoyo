@@ -327,3 +327,142 @@ func (a *App) defaultChatSlot() (model, connID string) {
 	}
 	return model, c.ID
 }
+
+func (a *App) chatRoutes(meta SessionMeta) []runtime.ChatRoute {
+	r := a.connReg()
+	if r == nil {
+		return nil
+	}
+	list, err := r.List(connection.CapChat)
+	if err != nil || len(list) == 0 {
+		return nil
+	}
+	defID := r.Defaults()[connection.CapChat]
+	primary, err := a.resolveChatConnection(meta)
+	if err != nil || strings.TrimSpace(primary.ID) == "" {
+		if c, e := r.Active(connection.CapChat, ""); e == nil {
+			primary = c
+		}
+	}
+	primaryModel := strings.TrimSpace(meta.Model)
+	if primaryModel == "" {
+		primaryModel = connection.ModelFor(primary, connection.CapChat)
+	}
+	if primaryModel == "" {
+		primaryModel = strings.TrimSpace(a.Config.Model)
+	}
+
+	var routes []runtime.ChatRoute
+	seen := map[string]bool{}
+	add := func(c connection.Connection, model string) {
+		model = strings.TrimSpace(model)
+		if !c.Active || strings.TrimSpace(c.ID) == "" || model == "" {
+			return
+		}
+		key := c.ID + "\x00" + model
+		if seen[key] {
+			return
+		}
+		cl := a.openAIForConn(c)
+		if cl == nil || strings.TrimSpace(cl.APIKey) == "" {
+			return
+		}
+		seen[key] = true
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			name = c.Vendor
+		}
+		routes = append(routes, runtime.ChatRoute{
+			ID:     c.ID,
+			Name:   name,
+			Model:  model,
+			Client: cl,
+		})
+	}
+
+	if strings.TrimSpace(primary.ID) != "" {
+		add(primary, primaryModel)
+		for _, m := range uniqueStrings([]string{connection.ModelFor(primary, connection.CapChat)}, primary.Models) {
+			add(primary, m)
+		}
+	}
+	var rest []connection.Connection
+	var def *connection.Connection
+	for i := range list {
+		c := list[i]
+		if !c.Active || c.ID == primary.ID {
+			continue
+		}
+		if c.ID == defID {
+			cc := c
+			def = &cc
+			continue
+		}
+		rest = append(rest, c)
+	}
+	if def != nil {
+		rest = append([]connection.Connection{*def}, rest...)
+	}
+	for _, c := range rest {
+		for _, m := range uniqueStrings([]string{connection.ModelFor(c, connection.CapChat)}, c.Models) {
+			add(c, m)
+		}
+	}
+	return routes
+}
+
+func (a *App) openAIForConn(c connection.Connection) *runtime.OpenAIClient {
+	base := strings.TrimSpace(c.Endpoint)
+	if base == "" && a != nil {
+		base = a.Config.BaseURL
+	}
+	key := ""
+	r := a.connReg()
+	if r != nil {
+		if k, e := r.Lease(c); e == nil {
+			key = k
+		}
+	}
+	key = strings.TrimSpace(key)
+	if key == "" && r != nil && a != nil && a.Vault != nil {
+		defID := r.Defaults()[connection.CapChat]
+		if c.ID != "" && c.ID == defID {
+			if stored, err := a.Vault.GetStored("default"); err == nil {
+				key = strings.TrimSpace(stored)
+			}
+		}
+	}
+	if key == "" && chatAllowsEnvKey(c) && a != nil && a.Vault != nil {
+		if k, err := a.Vault.Get("default"); err == nil {
+			key = strings.TrimSpace(k)
+		}
+	}
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	return runtime.NewOpenAIClient(base, key)
+}
+
+func chatAllowsEnvKey(c connection.Connection) bool {
+	v := strings.ToLower(strings.TrimSpace(c.Vendor))
+	if v == "openai" || v == "azure" {
+		return true
+	}
+	ep := strings.ToLower(strings.TrimSpace(c.Endpoint))
+	return strings.Contains(ep, "api.openai.com") || strings.Contains(ep, "openai.azure.com")
+}
+
+func (a *App) envChatFallback() runtime.Client {
+	if a == nil || a.Vault == nil {
+		return nil
+	}
+	c := connection.Connection{Vendor: a.Config.Provider, Endpoint: a.Config.BaseURL}
+	if !chatAllowsEnvKey(c) {
+		return nil
+	}
+	key, err := a.Vault.Get("default")
+	if err != nil || strings.TrimSpace(key) == "" {
+		return nil
+	}
+	return runtime.NewOpenAIClient(a.Config.BaseURL, key)
+}
