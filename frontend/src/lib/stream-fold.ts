@@ -1,5 +1,7 @@
 import { asBool, num, pick, str } from "./normalize";
 import type { Item, ItemType } from "./protocol";
+import { sameUserTurnText } from "./mentions";
+import { pruneHotTurns } from "./transcript-layout";
 
 function payload(raw: any): Record<string, any> {
   const p = pick(raw, "payload", "Payload");
@@ -186,7 +188,7 @@ function openAssistantIndex(list: Item[]): number {
 }
 
 function sameUserText(a: string, b: string): boolean {
-  return a.trim() === b.trim();
+  return sameUserTurnText(a, b);
 }
 
 function steerText(text: string): string {
@@ -241,6 +243,19 @@ function textDeltaIndex(list: Item[], ev: Item): number {
   return -1;
 }
 
+function roundNum(id: string): number {
+  const m = /:r(\d+)$/.exec(id);
+  return m ? Number(m[1]) : 0;
+}
+
+function lastOpenAssistant(list: Item[]): Item | null {
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].type === "user" && list[i].source !== "steer") return null;
+    if (list[i].type === "assistant") return list[i];
+  }
+  return null;
+}
+
 function foldTextDelta(list: Item[], ev: Item): Item[] {
   const idx = textDeltaIndex(list, ev);
   if (idx >= 0) {
@@ -257,6 +272,14 @@ function foldTextDelta(list: Item[], ev: Item): Item[] {
     return next;
   }
   if (!ev.text && !ev.delta) return list;
+  if (ev.delta) {
+    const last = lastOpenAssistant(list);
+    if (last) {
+      const incoming = roundNum(assistantRound(ev));
+      const have = roundNum(assistantRound(last));
+      if (incoming > 0 && have > 0 && incoming < have) return list;
+    }
+  }
   return [...list, ev];
 }
 
@@ -428,15 +451,19 @@ function liveTurnId(it: Item): string {
 }
 
 export function lastUserTurns(items: Item[], users = 3): Item[] {
-  if (users <= 0 || items.length === 0) return items;
+  if (users <= 0 || items.length === 0) return pruneHotTurns(items);
   let n = 0;
+  let sliced = items;
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "user" && items[i].source !== "steer") {
       n++;
-      if (n >= users) return i === 0 ? items : items.slice(i);
+      if (n >= users) {
+        sliced = i === 0 ? items : items.slice(i);
+        break;
+      }
     }
   }
-  return items;
+  return pruneHotTurns(sliced);
 }
 
 export function userTurnCount(items: Item[]): number {

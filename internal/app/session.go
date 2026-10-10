@@ -414,6 +414,13 @@ func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachm
 	if resume {
 		message = ""
 	}
+	if !resume {
+		var err error
+		message, atts, err = a.prepareAttachments(sessionID, message, atts)
+		if err != nil {
+			return err
+		}
+	}
 	if resume && a.Running(sessionID) {
 		return errBusy
 	}
@@ -844,15 +851,25 @@ func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID st
 		return fmt.Errorf("unknown session %s: %w", sessionID, err)
 	}
 	parts := runtime.ImageParts(meta.ToolRoot(), toRuntimeAtts(atts))
-	if text == "" && len(parts) == 0 {
+	if text == "" && len(parts) == 0 && len(atts) == 0 {
 		return nil
 	}
 	if text == "" {
-		text = "(image attached)"
+		if len(parts) > 0 {
+			text = "(image attached)"
+		} else {
+			text = runtime.StampFileMentions("", toRuntimeAtts(atts))
+			if text == "" {
+				text = "(file attached)"
+			}
+		}
 	}
 	payload := map[string]any{"text": text, "id": fmt.Sprintf("%s:user:%s", sessionID, turnID)}
 	if len(parts) > 0 {
 		payload["parts"] = parts
+	}
+	if metas := attachmentMeta(atts); len(metas) > 0 {
+		payload["attachments"] = metas
 	}
 	if turnID != "" {
 		payload["turn_id"] = turnID

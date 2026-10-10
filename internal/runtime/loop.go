@@ -60,7 +60,9 @@ type RunRequest struct {
 	// SoftHorizon is desktop/CLI chat only (I6). Harbor eval and subagents
 	// leave it false so MaxTurns / MaxToolMessages stay hard bounds.
 	// Chat stops on end_turn (with an open-plan continue), cancel, budget,
-	// or overflow — not because a counter ran out while work was progressing.
+	// overflow, a repeating-tool / unchanged-observation circuit breaker,
+	// or ChatSoftGuardTurns — not because Harbor MaxTurns ran out while
+	// the observation was still changing.
 	SoftHorizon bool
 	// ShowThinking streams provider reasoning into the transcript. Off by
 	// default: many OpenAI-compatible endpoints reject thinking fields.
@@ -130,6 +132,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	writeHits := map[string]int{}
 	errorHits := map[string]int{}
 	waitHits := map[string]int{}
+	var watch checkWatch
 	lastPlan := planTextOf(req.Tools)
 	if roundSeq <= 0 {
 		for _, m := range req.History {
@@ -143,6 +146,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		turnLimit = 24
 	}
 	for turn := 0; req.SoftHorizon || turn < turnLimit; turn++ {
+		if req.SoftHorizon && ChatSoftGuardTurns > 0 && turn >= ChatSoftGuardTurns {
+			emit(req, trace.TypeError, "runtime", maxTurnsInfo(ChatSoftGuardTurns).Payload())
+			setStop(&req, StopMaxTurns)
+			return last, maxTurnsErr()
+		}
 		if err := ctx.Err(); err != nil {
 			// Interrupt landed between a tool batch and the next model call.
 			// The UI only learns a turn is over from a terminal event, so do
@@ -314,7 +322,30 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
 		recordToolErrors(errorHits, results)
 		recordWaits(waitHits, msg.ToolCalls)
+		if req.SoftHorizon {
+			watch.note(msg.ToolCalls, results)
+		}
 		kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
+		if req.SoftHorizon && watch.stuck() {
+			emit(req, trace.TypeError, "runtime", stuckLoopInfo(watch.reason()).Payload())
+			setStop(&req, StopStuck)
+			return last, stuckLoopErr(watch.reason())
+		}
+		if req.SoftHorizon && hitMax(writeHits) >= rewriteStallStopHits {
+			emit(req, trace.TypeError, "runtime", stuckLoopInfo("rewrote the same file without progress").Payload())
+			setStop(&req, StopStuck)
+			return last, stuckLoopErr("rewrote the same file without progress")
+		}
+		if req.SoftHorizon && hitMax(errorHits) >= errorRepeatStopHits {
+			emit(req, trace.TypeError, "runtime", stuckLoopInfo("the same tool failure kept repeating").Payload())
+			setStop(&req, StopStuck)
+			return last, stuckLoopErr("the same tool failure kept repeating")
+		}
+		if req.SoftHorizon && hitMax(waitHits) >= waitLoopStopHits {
+			emit(req, trace.TypeError, "runtime", stuckLoopInfo("wait/poll loop").Payload())
+			setStop(&req, StopStuck)
+			return last, stuckLoopErr("wait/poll loop")
+		}
 		if stall := rewriteStallNudge(req, writeHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
@@ -322,6 +353,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if stall := waitLoopNudge(req, waitHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if stall := observationNudge(req, &watch, msg.ToolCalls); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if inj := middlewareNudge(loop, results); inj != "" {

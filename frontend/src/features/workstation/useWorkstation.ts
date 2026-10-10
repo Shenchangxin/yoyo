@@ -137,7 +137,10 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-function localUser(sessionId: string, text: string): Item {
+function localUser(sessionId: string, text: string, attachments?: Attachment[]): Item {
+  const atts = (attachments || [])
+    .map((a) => ({ name: a.name, path: a.path, mime: a.mime }))
+    .filter((a) => a.name || a.path);
   return {
     key: `ui:${sessionId}:${Date.now()}`,
     type: "user",
@@ -147,7 +150,7 @@ function localUser(sessionId: string, text: string): Item {
     text,
     name: "",
     delta: false,
-    payload: { text },
+    payload: { text, ...(atts.length ? { attachments: atts } : {}) },
   };
 }
 
@@ -711,7 +714,7 @@ export function useWorkstation() {
         if (isLiveDelta(item)) {
           const existed = hotItemsRef.current.some((x) => x.key === item.key);
           if (!existed) {
-            hotItemsRef.current = mergeItem(hotItemsRef.current, item);
+            hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, item), HOT_TRANSCRIPT_TURNS);
             if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
             scheduleItems(true);
           }
@@ -724,9 +727,8 @@ export function useWorkstation() {
           scheduleLive();
           return;
         }
-        hotItemsRef.current = mergeItem(hotItemsRef.current, item);
+        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, item), HOT_TRANSCRIPT_TURNS);
         if (item.type === "user" && item.source !== "steer") {
-          hotItemsRef.current = lastUserTurns(hotItemsRef.current, HOT_TRANSCRIPT_TURNS);
           if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
           void refreshOutline();
         } else if (!browsingRef.current) {
@@ -977,7 +979,7 @@ export function useWorkstation() {
         useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
         if (t.id === activeId) {
           hotItemsRef.current = mergeItem(hotItemsRef.current, {
-            ...localUser(t.id, text),
+            ...localUser(t.id, text, opts?.attachments),
             source: "steer",
             key: `ui-steer:${t.id}:${Date.now()}`,
           });
@@ -992,7 +994,7 @@ export function useWorkstation() {
       markStarted(t.id);
       if (t.id === activeId) {
         browsingRef.current = false;
-        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, localUser(t.id, text)), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, localUser(t.id, text, opts?.attachments)), HOT_TRANSCRIPT_TURNS);
         itemsAcc.current = hotItemsRef.current;
         setItems(hotItemsRef.current.slice());
       }

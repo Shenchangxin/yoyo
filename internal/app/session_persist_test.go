@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,5 +204,53 @@ func TestStopTurnStates(t *testing.T) {
 	got := a.StopTurn(sess.ID)
 	if got.State != "cancelled" && got.State != "already_done" {
 		t.Fatalf("state %s", got.State)
+	}
+}
+
+func TestPrepareAttachmentsImportsAndCommit(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ws := t.TempDir()
+	sess, err := a.NewSession(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "novel.md")
+	if err := os.WriteFile(outside, []byte("# chapter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	msg, atts, err := a.prepareAttachments(sess.ID, "@skill:novel-to-game", []Attachment{{Path: outside, Name: "novel.md"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(msg, "@file:.yoyo/uploads/novel.md") {
+		t.Fatalf("message %q", msg)
+	}
+	if err := a.commitUser(sess.ID, msg, atts, "turn-att"); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := a.Traces.Read(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var user trace.Event
+	for _, ev := range evs {
+		if ev.Type == trace.TypeUser {
+			user = ev
+		}
+	}
+	if user.Payload["text"] != msg {
+		t.Fatalf("text %v", user.Payload["text"])
+	}
+	raw, ok := user.Payload["attachments"]
+	if !ok {
+		t.Fatal("missing attachments")
+	}
+	b, _ := json.Marshal(raw)
+	if !strings.Contains(string(b), "novel.md") {
+		t.Fatalf("attachments %s", b)
 	}
 }

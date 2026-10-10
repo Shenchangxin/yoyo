@@ -96,7 +96,7 @@ export function CommandPalette(props: {
                   <Pause className="size-4 text-muted" />
                   {copy.palette.pause}
                 </Command.Item>
-                <Command.Item value={`${copy.palette.openPacks} superpowers skill packs methodology`} onSelect={() => { useUI.getState().openPacks(); props.onClose(); }}>
+                <Command.Item value={`${copy.palette.openPacks} superpowers novel-to-game skill packs methodology domain`} onSelect={() => { useUI.getState().openPacks(); props.onClose(); }}>
                   {copy.palette.openPacks}
                 </Command.Item>
                 <Command.Item value={`${copy.palette.openVideo} video short drama`} onSelect={() => { useUI.getState().openVideo(); props.onClose(); }}>

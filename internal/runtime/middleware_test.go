@@ -52,6 +52,33 @@ func TestWaitLoopNudgeOnSoftHorizon(t *testing.T) {
 	}
 }
 
+func TestErrorRepeatNudgeOnQAFail(t *testing.T) {
+	hits := map[string]int{}
+	results := []Message{
+		{Content: `{"status":"FAIL","outcome":"FAIL","checks":["play.html"]}`},
+		{Content: `{"status": "FAIL", "outcome": "FAIL"}`},
+		{Content: `{"status":"FAIL"}`},
+	}
+	recordToolErrors(hits, results)
+	req := RunRequest{User: "把小说做成游戏", SoftHorizon: true}
+	got := errorRepeatNudge(req, hits)
+	if !strings.Contains(got, errorRepeatPrefixZH) || !strings.Contains(got, "status fail") {
+		t.Fatalf("%q hits=%v", got, hits)
+	}
+}
+
+func TestErrorSignatureContextStubAndTruncatedJSON(t *testing.T) {
+	if got := errorSignature("ERROR: refusing to write a context stub; read_file that path"); got != "context stub" {
+		t.Fatalf("stub %q", got)
+	}
+	if got := errorSignature("ERROR: truncated JSON arguments; refusing a partial write"); got != "write args json" {
+		t.Fatalf("truncated %q", got)
+	}
+	if got := errorSignature("ERROR: websocket: message too big"); got != "payload too big" {
+		t.Fatalf("ws %q", got)
+	}
+}
+
 func TestErrorRepeatNudgeOnEmptyPath(t *testing.T) {
 	hits := map[string]int{}
 	results := []Message{

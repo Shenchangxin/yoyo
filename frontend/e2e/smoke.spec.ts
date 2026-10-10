@@ -80,6 +80,28 @@ test("thread context menu can delete a chat", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Demo thread/ })).toHaveCount(0);
 });
 
+test("user bubble shows an attached markdown next to a skill chip", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      {
+        type: "user",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:00Z",
+        payload: {
+          text: "@skill:novel-to-game",
+          attachments: [{ name: "novel.md", path: ".yoyo/uploads/novel.md" }],
+        },
+      },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Demo thread/ }).click();
+  const bubble = page.locator(".user-bubble");
+  await expect(bubble.getByTestId("user-mention-chip")).toContainText("novel-to-game");
+  await expect(bubble.getByTestId("user-attach-chip")).toContainText("novel.md");
+});
+
 test("clicking a session leaves skills for that chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],

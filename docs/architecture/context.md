@@ -4,7 +4,7 @@
 
 落地状态：**Slice 0–3 已进树。** `Run()` 只消费 `ContextKernel`（`seed` / `prompt` / `checkpoint`）。Chat 前缀 append-only 直到检查点；Dynamic 在 tail；Harbor 仍 Shape-only 且 `ModelWindow=0` 禁止 LLM compact。Playbook 永不进 compact prompt。
 
-本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。Skill Pack（Superpowers）见 [skill-packs.md](skill-packs.md)。
+本文是工程方案，不是文献卡片。文献谱系仍走 [docs/research](../research/README.md)。Harbor / CAS / L4 不变量见 [invariants.md](invariants.md)。Skill Pack（Superpowers / NovelToGame）见 [skill-packs.md](skill-packs.md)。
 
 ---
 

@@ -13,7 +13,7 @@ import (
 func packCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pack",
-		Short: "Install and enable skill packs (Superpowers and later catalogs)",
+		Short: "Install and enable skill packs (Superpowers, NovelToGame, and later catalogs)",
 	}
 	cmd.AddCommand(packListCmd(), packInstallCmd(), packUninstallCmd(), packEnableCmd(), packUpdateCmd())
 	return cmd

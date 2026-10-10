@@ -590,7 +590,11 @@ function PacksList(props: {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-[14px] font-medium text-foreground">{p.name}</h3>
-                  {p.methodology ? <span className="text-[11px] text-muted">{copy.skills.methodology}</span> : null}
+                  {p.methodology ? (
+                    <span className="text-[11px] text-muted">{copy.skills.methodology}</span>
+                  ) : p.known ? (
+                    <span className="text-[11px] text-muted">{copy.skills.domain}</span>
+                  ) : null}
                   {p.enabled ? (
                     <span className="text-[11px] text-muted">{copy.skills.packEnabled}</span>
                   ) : p.installed ? (

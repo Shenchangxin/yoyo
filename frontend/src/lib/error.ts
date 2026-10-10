@@ -11,6 +11,7 @@ export type ErrorKind =
   | "provider"
   | "budget"
   | "max_turns"
+  | "stuck"
   | "unknown";
 
 export type ErrorCopy = {
@@ -32,6 +33,8 @@ export type ErrorCopy = {
   errorBudgetHint: string;
   errorMaxTurns: string;
   errorMaxTurnsHint: string;
+  errorStuck: string;
+  errorStuckHint: string;
   errorUnknown: string;
   errorUnknownHint: string;
 };
@@ -45,7 +48,7 @@ export type ClassifiedError = {
 };
 
 const KINDS: ErrorKind[] = [
-  "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "unknown",
+  "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "stuck", "unknown",
 ];
 
 export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint: string } {
@@ -59,6 +62,7 @@ export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint:
     case "provider": return { title: t.errorProvider, hint: t.errorProviderHint };
     case "budget": return { title: t.errorBudget, hint: t.errorBudgetHint };
     case "max_turns": return { title: t.errorMaxTurns, hint: t.errorMaxTurnsHint };
+    case "stuck": return { title: t.errorStuck, hint: t.errorStuckHint };
     default: return { title: t.errorUnknown, hint: t.errorUnknownHint };
   }
 }
@@ -90,6 +94,7 @@ function inferKind(s: string): ErrorKind {
   if (/(canceled|interrupted|context canceled)/.test(low)) return "canceled";
   if (/(budget exceeded)/.test(low)) return "budget";
   if (/(max turns reached)/.test(low)) return "max_turns";
+  if (/(same tool failure kept repeating|repeating loop|observation did not change|same check kept failing)/.test(low)) return "stuck";
   if (/(all_channel_models_failed|internal server error|502|503|504|overloaded)/.test(low)) return "provider";
   return "unknown";
 }

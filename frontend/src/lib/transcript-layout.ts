@@ -239,17 +239,24 @@ export function processHasReasoning(items: Item[]): boolean {
 }
 
 function agentCopyText(items: Item[]): string {
-  return items
-    .filter((it) => it.type === "assistant")
-    .map((it) => it.text.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].type === "assistant" && items[i].text.trim()) return items[i].text.trim();
+  }
+  return "";
+}
+
+function lastAssistantKey(items: Item[]): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].type === "assistant") return items[i].key;
+  }
+  return "";
 }
 
 export function layoutAgentParts(items: Item[]): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
   let artifacts: Item[] = [];
+  const letterKey = lastAssistantKey(items);
   const pairKind = classifyToolPairs(pairTools(items.filter(isToolish)));
   const flushProcess = () => {
     if (!process.length) return;
@@ -290,6 +297,9 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
         flushArtifacts();
         process.push(it);
       }
+      continue;
+    }
+    if (it.type === "assistant" && it.key !== letterKey) {
       continue;
     }
     if (isProcessItem(it)) {
@@ -341,4 +351,86 @@ export function layoutRows(items: Item[]): LayoutRow[] {
   }
   flushAgent();
   return rows;
+}
+
+/** Renderer cap inside one operator turn. Matches the Go UITrajectory trim. */
+export const HOT_TURN_ASSISTANTS = 1;
+export const HOT_TURN_PROCESS_PAIRS = 40;
+export const HOT_TURN_ARTIFACT_PAIRS = 12;
+
+/**
+ * A SoftHorizon tool loop can emit hundreds of assistants and tool pairs in
+ * a single user turn. lastUserTurns cannot trim that; this keeps the live
+ * React/WebView graph bounded (last letter, last process page, last artifacts).
+ */
+export function pruneHotTurns(items: Item[]): Item[] {
+  if (items.length === 0) return items;
+  const starts: number[] = [];
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type === "user" && items[i].source !== "steer") starts.push(i);
+  }
+  const ranges: Array<[number, number]> = [];
+  if (!starts.length) {
+    ranges.push([0, items.length]);
+  } else {
+    if (starts[0] > 0) ranges.push([0, starts[0]]);
+    for (let i = 0; i < starts.length; i++) {
+      ranges.push([starts[i], i + 1 < starts.length ? starts[i + 1] : items.length]);
+    }
+  }
+  const out: Item[] = [];
+  let changed = false;
+  for (const [a, b] of ranges) {
+    const slice = items.slice(a, b);
+    const kept = pruneTurnSlice(slice);
+    if (kept.length !== slice.length) changed = true;
+    out.push(...kept);
+  }
+  return changed ? out : items;
+}
+
+function pruneTurnSlice(turn: Item[]): Item[] {
+  let lastAsst = -1;
+  let asstN = 0;
+  for (let i = 0; i < turn.length; i++) {
+    if (turn[i].type !== "assistant") continue;
+    lastAsst = i;
+    asstN++;
+  }
+  const pairs = pairTools(turn.filter(isToolish));
+  const kind = classifyToolPairs(pairs);
+  const processKeys: string[] = [];
+  const artifactKeys: string[] = [];
+  for (const p of pairs) {
+    if (kind.get(p.key) === "artifact") artifactKeys.push(p.key);
+    else processKeys.push(p.key);
+  }
+  if (
+    asstN <= HOT_TURN_ASSISTANTS &&
+    processKeys.length <= HOT_TURN_PROCESS_PAIRS &&
+    artifactKeys.length <= HOT_TURN_ARTIFACT_PAIRS
+  ) {
+    return turn;
+  }
+  const keepProcess = new Set(processKeys.slice(-HOT_TURN_PROCESS_PAIRS));
+  const keepArtifact = new Set(artifactKeys.slice(-HOT_TURN_ARTIFACT_PAIRS));
+  const out: Item[] = [];
+  for (let i = 0; i < turn.length; i++) {
+    const it = turn[i];
+    if (it.type === "assistant") {
+      if (i === lastAsst) out.push(it);
+      continue;
+    }
+    if (it.type === "reasoning") {
+      if (lastAsst < 0 || i > lastAsst) out.push(it);
+      continue;
+    }
+    if (isToolish(it)) {
+      const id = String(it.payload?.id || it.key);
+      if (keepProcess.has(id) || keepArtifact.has(id)) out.push(it);
+      continue;
+    }
+    out.push(it);
+  }
+  return out;
 }

@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 	"unicode/utf8"
+
+	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
 type Attachment struct {
@@ -162,9 +165,173 @@ func formatAttachment(label, mime string, raw []byte) string {
 	capped, trunc := capText(string(raw), 800)
 	out := fmt.Sprintf("## attachment:%s\n%s", label, capped)
 	if trunc {
-		out += "\n…[truncated]"
+		out += "\n…[truncated; use read_file for more]"
 	}
 	return out + "\n"
+}
+
+const maxUploadBytes = 64 << 20
+
+// MaterializeAttachments copies operator-picked files into the workspace jail
+// so later read_file / @file mentions succeed. Native pickers often return
+// absolute paths outside the project; File-API uploads arrive as data_b64
+// with no path at all. Both used to vanish from the transcript and the model.
+func MaterializeAttachments(workspace string, atts []Attachment) ([]Attachment, error) {
+	if len(atts) == 0 {
+		return atts, nil
+	}
+	out := make([]Attachment, 0, len(atts))
+	for i, att := range atts {
+		next, err := materializeOne(workspace, att, i)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, next)
+	}
+	return out, nil
+}
+
+// StampFileMentions appends @file:<rel> tokens for non-image attachments so
+// the user bubble peels a chip and ExpandMentions can preview the file.
+func StampFileMentions(message string, atts []Attachment) string {
+	seen := map[string]bool{}
+	for _, m := range ParseMentions(message) {
+		if m.Kind == "file" {
+			seen["@file:"+filepath.ToSlash(m.Ref)] = true
+		}
+	}
+	var extra []string
+	for _, att := range atts {
+		if isImageAtt(att) {
+			continue
+		}
+		rel := strings.TrimSpace(att.Path)
+		if rel == "" {
+			continue
+		}
+		token := "@file:" + filepath.ToSlash(rel)
+		if seen[token] {
+			continue
+		}
+		seen[token] = true
+		extra = append(extra, token)
+	}
+	if len(extra) == 0 {
+		return message
+	}
+	head := strings.Join(extra, " ")
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return head
+	}
+	return msg + "\n" + head
+}
+
+func materializeOne(workspace string, att Attachment, i int) (Attachment, error) {
+	label := att.Name
+	if label == "" {
+		label = filepath.Base(att.Path)
+	}
+	if label == "" || label == "." {
+		label = fmt.Sprintf("attachment-%d", i+1)
+	}
+	att.Name = label
+	if strings.TrimSpace(workspace) == "" {
+		return att, nil
+	}
+	workspace = capability.CanonicalizeToolPath(workspace)
+
+	if strings.TrimSpace(att.Path) != "" {
+		src := capability.CanonicalizeToolPath(att.Path)
+		if p, err := jailPath(workspace, src); err == nil {
+			rel, err := filepath.Rel(workspace, p)
+			if err != nil {
+				return Attachment{}, fmt.Errorf("attach %s: %w", label, err)
+			}
+			att.Path = filepath.ToSlash(rel)
+			att.DataB64 = ""
+			return att, nil
+		}
+		if !filepath.IsAbs(src) {
+			src = filepath.Join(workspace, src)
+		}
+		src = filepath.Clean(src)
+		info, err := os.Stat(src)
+		if err != nil {
+			return Attachment{}, fmt.Errorf("attach %s: %w", label, err)
+		}
+		if info.IsDir() {
+			return Attachment{}, fmt.Errorf("attach %s: is a directory", label)
+		}
+		if info.Size() > maxUploadBytes {
+			return Attachment{}, fmt.Errorf("attach %s: larger than 64MB", label)
+		}
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			return Attachment{}, fmt.Errorf("attach %s: %w", label, err)
+		}
+		rel, err := writeUpload(workspace, label, raw)
+		if err != nil {
+			return Attachment{}, err
+		}
+		att.Path = rel
+		att.DataB64 = ""
+		return att, nil
+	}
+
+	if att.DataB64 == "" {
+		return Attachment{}, fmt.Errorf("attach %s: empty", label)
+	}
+	raw, err := base64.StdEncoding.DecodeString(att.DataB64)
+	if err != nil {
+		return Attachment{}, fmt.Errorf("attach %s: invalid base64", label)
+	}
+	if len(raw) > maxUploadBytes {
+		return Attachment{}, fmt.Errorf("attach %s: larger than 64MB", label)
+	}
+	rel, err := writeUpload(workspace, label, raw)
+	if err != nil {
+		return Attachment{}, err
+	}
+	att.Path = rel
+	att.DataB64 = ""
+	return att, nil
+}
+
+func writeUpload(workspace, label string, raw []byte) (string, error) {
+	dir := filepath.Join(workspace, ".yoyo", "uploads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("attach %s: %w", label, err)
+	}
+	dest := uniqueUploadPath(dir, label)
+	if err := os.WriteFile(dest, raw, 0o644); err != nil {
+		return "", fmt.Errorf("attach %s: %w", label, err)
+	}
+	rel, err := filepath.Rel(workspace, dest)
+	if err != nil {
+		return "", fmt.Errorf("attach %s: %w", label, err)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+func uniqueUploadPath(dir, name string) string {
+	base := sanitizeName(name)
+	dest := filepath.Join(dir, base)
+	if _, err := os.Stat(dest); err != nil {
+		return dest
+	}
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if stem == "" {
+		stem = "file"
+	}
+	for i := 2; i < 10000; i++ {
+		cand := filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, i, ext))
+		if _, err := os.Stat(cand); err != nil {
+			return cand
+		}
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, os.Getpid(), ext))
 }
 
 func isImageMIME(mime string) bool {
@@ -195,14 +362,20 @@ func looksBinary(b []byte) bool {
 
 func sanitizeName(name string) string {
 	name = filepath.Base(name)
-	name = strings.Map(func(r rune) rune {
-		if r == '.' || r == '-' || r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			return r
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r == '.' || r == '-' || r == '_':
+			b.WriteRune(r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
 		}
-		return '_'
-	}, name)
-	if name == "" {
+	}
+	out := strings.Trim(b.String(), "._")
+	if out == "" {
 		return "file"
 	}
-	return name
+	return out
 }

@@ -38,7 +38,7 @@ The scarce resource is the **context window**. Trusted pins (YOYO.md, ACE playbo
 
 **One protocol, many clients** — HTTP + SSE, JSON-RPC on stdio (`yoyo serve --stdio`), WebSocket duplex at `/api/ws`. Set `YOYO_ISOLATE=1` and the desktop UI talks to a worker process so a wedged loop cannot stall the window.
 
-**Skill Packs** — third-party skill trees such as Superpowers install under `~/.yoyo/packs/` and stay off until you enable them for the workspace. Session start preloads the bootstrap skill in-process (not identity). Harbor evals never load packs. See [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md).
+**Skill Packs** — third-party skill trees install under `~/.yoyo/packs/` and stay off until you enable them for the workspace. Methodology packs (Superpowers) preload a bootstrap skill in-process (not identity). Domain packs (NovelToGame) stay catalog-only until `@skill` / `load_skill`. Harbor evals never load packs. See [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md).
 
 ---
 

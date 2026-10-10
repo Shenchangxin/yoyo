@@ -167,6 +167,37 @@ func TestUITrajectoryKeepsTurnsDropsNoise(t *testing.T) {
 	}
 }
 
+func TestUITrajectoryCapsLongTurn(t *testing.T) {
+	var evs []trace.Event
+	evs = append(evs, trace.Event{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "build"}})
+	for i := 0; i < 3; i++ {
+		evs = append(evs, trace.Event{Type: trace.TypeAssistant, Payload: map[string]any{"text": "round", "id": "s:r" + strconv.Itoa(i+1)}})
+		for j := 0; j < 40; j++ {
+			id := "c" + strconv.Itoa(i*40+j)
+			evs = append(evs, trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"id": id, "name": "read_file", "arguments": `{"path":"x"}`}})
+			evs = append(evs, trace.Event{Type: trace.TypeToolResult, Payload: map[string]any{"id": id, "name": "read_file", "content": "ok"}})
+		}
+	}
+	got := UITrajectory(evs)
+	asst, calls := 0, 0
+	var lastID string
+	for _, ev := range got {
+		switch ev.Type {
+		case trace.TypeAssistant:
+			asst++
+			lastID, _ = ev.Payload["id"].(string)
+		case trace.TypeToolCall:
+			calls++
+		}
+	}
+	if asst != 1 || lastID != "s:r3" {
+		t.Fatalf("assistants=%d last=%s", asst, lastID)
+	}
+	if calls != uiTurnToolPairs {
+		t.Fatalf("tool pairs %d want %d n=%d", calls, uiTurnToolPairs, len(got))
+	}
+}
+
 func TestUITrajectoryDropsSupersededErrors(t *testing.T) {
 	stopped := trace.Event{Type: trace.TypeError, Payload: map[string]any{"kind": "canceled", "title": "Stopped", "hint": "This turn was interrupted."}}
 	kept := UITrajectory([]trace.Event{
