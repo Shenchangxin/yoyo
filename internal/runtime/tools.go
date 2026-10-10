@@ -26,6 +26,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/isolation"
 	"github.com/Shenchangxin/yoyo/internal/memory"
+	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
@@ -118,6 +119,8 @@ type WorkspaceTools struct {
 	Browser           *browser.Host
 	Computer          *computeruse.Host
 	Inbox             *inbox.Store
+	Pages             *pages.Store
+	OnCapture         func(kind, path, summary string)
 	LastBrowser       string
 	AllowedConnectors []string
 	Takeover          func(question string) (string, error)

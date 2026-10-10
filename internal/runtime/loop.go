@@ -52,6 +52,7 @@ type RunRequest struct {
 	StopHooks        []FileHook
 	PreCompactHooks  []FileHook
 	ProfileMemory    string
+	PageContext      string
 	// RoundSeq is the highest assistant round already on this session's
 	// JSONL (rN). The next chat call uses N+1 so live UI keys never collide
 	// with bubbles still on screen after a checkpoint rebuild.
@@ -653,7 +654,8 @@ func isReadonlyTool(name string) bool {
 		"list_skills", "view_image", "update_plan", "wait", "ask_user",
 		"office_query", "office_render", "memory_search", "schedule_list",
 		"browser_snapshot", "clipboard_read", "project_list", "connector_read",
-		"read_thread", "read_skill_file", "personal_status", "present_choices":
+		"read_thread", "read_skill_file", "personal_status", "present_choices",
+		"read_page", "list_pages":
 		return true
 	default:
 		return false

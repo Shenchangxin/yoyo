@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, PanelRight } from "lucide-react";
+import { Bell, Pause, Play, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
@@ -29,6 +29,8 @@ export function Titlebar(props: {
   notices?: Notice[];
   onNotice?: (n: Notice) => void;
   onClearNotices?: () => void;
+  paused?: boolean;
+  onPause?: () => void;
 }) {
   const copy = useCopy();
   const [editing, setEditing] = useState(false);
@@ -102,6 +104,20 @@ export function Titlebar(props: {
       ) : null}
       <div className="h-full min-w-4 flex-1" aria-hidden />
       <div className="no-drag flex shrink-0 items-center gap-1">
+        {props.onPause ? (
+          <Tooltip content={props.paused ? copy.titlebar.resume : copy.titlebar.pause}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={props.paused ? copy.titlebar.resume : copy.titlebar.pause}
+              aria-pressed={!!props.paused}
+              onClick={props.onPause}
+              className={cn("shrink-0", props.paused && "bg-lift text-foreground")}
+            >
+              {props.paused ? <Play /> : <Pause />}
+            </Button>
+          </Tooltip>
+        ) : null}
         {props.runningThreads && props.onSelectRunning ? (
           <RunningHub threads={props.runningThreads} status={props.runningStatus} onSelect={props.onSelectRunning} />
         ) : props.runningCount ? (

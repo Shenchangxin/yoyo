@@ -22,6 +22,7 @@ import (
 func Handler(a *app.App, static http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mountPersonal(mux, a)
+	mountSurfaces(mux, a)
 	mountVideo(mux, a)
 	mux.HandleFunc("/rpc", handleRPC(a))
 	mux.HandleFunc("/api/rpc", handleRPC(a))
@@ -474,6 +475,32 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			m, err := a.SetSessionAuthMode(id, body.Mode)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "profile" && r.Method == http.MethodPost {
+			var body struct {
+				Profile string `json:"profile_id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionProfile(id, body.Profile)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, m)
+			return
+		}
+		if len(parts) > 1 && parts[1] == "page" && r.Method == http.MethodPost {
+			var body struct {
+				Page string `json:"page_id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			m, err := a.SetSessionPage(id, body.Page)
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return

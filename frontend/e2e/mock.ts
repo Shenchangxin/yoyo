@@ -14,6 +14,8 @@ export async function mockApi(
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
+  let pages: any[] = [];
+  let paused = false;
   let cfg: any = {
     provider: "openai",
     model: "gpt-4.1",
@@ -193,7 +195,34 @@ export async function mockApi(
     }
 
     if (path.endsWith("/api/health")) {
-      return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace, video_workspace: cfg.video_workspace, video_workspace_ready: true } });
+      return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace, video_workspace: cfg.video_workspace, video_workspace_ready: true, paused } });
+    }
+    if (path.endsWith("/api/pause")) {
+      if (method === "POST") paused = !!body().paused;
+      return route.fulfill({ json: { paused } });
+    }
+    if (path.endsWith("/api/pages") || path.includes("/api/pages?")) {
+      if (method === "POST") {
+        const p = { id: `p${pages.length + 1}`, title: body().title || "Untitled", content: body().content || "", revision: 1, space_id: "home" };
+        pages = [p, ...pages];
+        return route.fulfill({ json: p });
+      }
+      return route.fulfill({ json: pages });
+    }
+    if (path.includes("/api/pages/")) {
+      const id = decodeURIComponent(path.split("/api/pages/")[1] || "").split("?")[0];
+      if (id === "reviews" || id === "propose") {
+        return route.fulfill({ json: id === "reviews" ? [] : { id: "r1", hash: "h1", title: "Note" } });
+      }
+      const pg = pages.find((p) => p.id === id) || { id, title: "Untitled", content: "", revision: 1 };
+      return route.fulfill({ json: pg });
+    }
+    if (path.endsWith("/api/profiles")) {
+      if (method === "POST") return route.fulfill({ json: body() });
+      return route.fulfill({ json: [{ id: "assistant", name: "Assistant", research: true, memory: true }] });
+    }
+    if (path.endsWith("/api/schedule") || path.endsWith("/api/schedule/retry")) {
+      return route.fulfill({ json: method === "GET" ? [] : { id: "job-1", kind: "follow" } });
     }
     if (path.endsWith("/api/config") && method === "GET") {
       return route.fulfill({ json: cfg });
@@ -293,6 +322,14 @@ export async function mockApi(
         const nextWs = String(body().workspace || workspace);
         if (idx >= 0) sessions[idx] = { ...sessions[idx], workspace: nextWs };
         return route.fulfill({ json: sessions[idx] || { id, workspace: nextWs } });
+      }
+      if (method === "POST" && op === "profile") {
+        if (idx >= 0) sessions[idx] = { ...sessions[idx], profile_id: String(body().profile_id || "") };
+        return route.fulfill({ json: sessions[idx] || { id, profile_id: String(body().profile_id || "") } });
+      }
+      if (method === "POST" && op === "page") {
+        if (idx >= 0) sessions[idx] = { ...sessions[idx], page_id: String(body().page_id || "") };
+        return route.fulfill({ json: sessions[idx] || { id, page_id: String(body().page_id || "") } });
       }
     }
     if (path.endsWith("/api/plugins")) {

@@ -235,6 +235,15 @@ func init() {
 	hostFns["remember_fact"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.rememberFact(str(args["text"]))
 	}
+	hostFns["read_page"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.readPage(str(args["id"]), str(args["space_id"]))
+	}
+	hostFns["list_pages"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.listPages(str(args["query"]), str(args["space_id"]))
+	}
+	hostFns["review_page"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.reviewPage(args)
+	}
 }
 
 func specJSON(s artifact.ToolSpec) ToolJSON {

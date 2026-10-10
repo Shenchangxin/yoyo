@@ -40,6 +40,9 @@ func (e *Engine) tick(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	if e.Paused != nil && e.Paused() {
+		return
+	}
 	now := e.now()
 	e.mu.Lock()
 	e.lastTick = now

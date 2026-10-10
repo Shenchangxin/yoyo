@@ -136,6 +136,10 @@ export function threadOf(v: any): Thread {
     queued: num(pick(v, "queued", "Queued")),
     parentId: str(pick(v, "parent_id", "ParentID", "parentId")),
     planText: str(pick(v, "plan_text", "PlanText", "planText")),
+    profileId: str(pick(v, "profile_id", "ProfileID", "profileId")),
+    pageId: str(pick(v, "page_id", "PageID", "pageId")),
+    researchBrief: str(pick(v, "research_brief", "ResearchBrief", "researchBrief")),
+    researchShot: str(pick(v, "research_shot", "ResearchShot", "researchShot")),
   };
 }
 
@@ -154,6 +158,7 @@ export function healthOf(v: any): Health {
     videoWorkspace: str(pick(v, "video_workspace", "VideoWorkspace", "videoWorkspace")),
     videoWorkspaceReady: bool(pick(v, "video_workspace_ready", "videoWorkspaceReady")),
     chatProviders: asArray(pick(v, "chat_providers", "ChatProviders", "chatProviders")).map(chatProviderOf),
+    paused: bool(pick(v, "paused", "Paused")),
   };
 }
 
@@ -205,6 +210,7 @@ export function configOf(v: any): AppConfig {
     crashResume: boolOr(pick(v, "crash_resume", "CrashResume", "crashResume"), true),
     searchUrl: str(pick(v, "search_url", "SearchURL", "searchUrl")),
     searchKey: str(pick(v, "search_key", "SearchKey", "searchKey")),
+    paused: bool(pick(v, "paused", "Paused")),
   };
 }
 
@@ -1755,6 +1761,130 @@ export async function scheduleCancel(id: string): Promise<void> {
   const s = await wailsService();
   if (s?.ScheduleCancel) { await s.ScheduleCancel(id); return; }
   await http(`/api/schedule?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function scheduleRetry(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.ScheduleRetry) return s.ScheduleRetry(id);
+  return http("/api/schedule/retry", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function setPaused(paused: boolean): Promise<void> {
+  const s = await wailsService();
+  if (s?.SetPaused) { await s.SetPaused(paused); return; }
+  await http("/api/pause", { method: "POST", body: JSON.stringify({ paused }) });
+}
+
+export async function pagesList(q = "", spaceId = ""): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.PagesList) return asArray(await s.PagesList(q, spaceId));
+  const qs = new URLSearchParams({ q, space_id: spaceId });
+  return asArray(await http(`/api/pages?${qs}`));
+}
+
+export async function pagesGet(id: string, spaceId = ""): Promise<any> {
+  const s = await wailsService();
+  if (s?.PagesGet) return s.PagesGet(spaceId, id);
+  const qs = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : "";
+  return http(`/api/pages/${encodeURIComponent(id)}${qs}`);
+}
+
+export async function pagesSave(p: any): Promise<any> {
+  const s = await wailsService();
+  const expected = Number(p.expected_revision || p.revision || 0);
+  if (s?.PagesSave) return s.PagesSave(p, expected);
+  return http("/api/pages", { method: "POST", body: JSON.stringify({ ...p, expected_revision: expected }) });
+}
+
+export async function pagesReviews(): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.PagesReviews) return asArray(await s.PagesReviews());
+  return asArray(await http("/api/pages/reviews"));
+}
+
+export async function pagesPropose(session: string, title: string, content: string, pageId = ""): Promise<any> {
+  const s = await wailsService();
+  if (s?.PagesPropose) return s.PagesPropose(session, title, content, pageId, "", "", 0);
+  return http("/api/pages/propose", { method: "POST", body: JSON.stringify({ session, title, content, id: pageId }) });
+}
+
+export async function pagesDecide(id: string, hash: string, approve: boolean): Promise<any> {
+  const s = await wailsService();
+  if (s?.PagesDecide) return s.PagesDecide(id, hash, approve);
+  return http("/api/pages/reviews", { method: "POST", body: JSON.stringify({ id, hash, approve }) });
+}
+
+export async function profilesList(): Promise<any[]> {
+  const s = await wailsService();
+  if (s?.ProfilesList) return asArray(await s.ProfilesList());
+  return asArray(await http("/api/profiles"));
+}
+
+export async function profilesSave(p: any): Promise<any> {
+  const s = await wailsService();
+  if (s?.ProfilesSave) return s.ProfilesSave(p);
+  return http("/api/profiles", { method: "POST", body: JSON.stringify(p) });
+}
+
+export async function setSessionProfile(id: string, profileId: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.SetSessionProfile) return threadOf(await s.SetSessionProfile(id, profileId));
+  return threadOf(await http(`/api/sessions/${encodeURIComponent(id)}/profile`, { method: "POST", body: JSON.stringify({ profile_id: profileId }) }));
+}
+
+export async function setSessionPage(id: string, pageId: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.SetSessionPage) return threadOf(await s.SetSessionPage(id, pageId));
+  return threadOf(await http(`/api/sessions/${encodeURIComponent(id)}/page`, { method: "POST", body: JSON.stringify({ page_id: pageId }) }));
+}
+
+export async function voiceTranscribe(filename: string, audio: string): Promise<string> {
+  const s = await wailsService();
+  if (s?.VoiceTranscribe) return String(await s.VoiceTranscribe(filename, audio) || "");
+  const r = await fetch("/api/voice/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename, audio }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(r.status, body, String(body.error || r.statusText));
+  return String(body.text || "");
+}
+
+export async function voiceSpeak(text: string): Promise<{ audio: string; contentType: string }> {
+  const s = await wailsService();
+  if (s?.VoiceSpeak) {
+    const r = await s.VoiceSpeak(text);
+    return { audio: String(r?.audio || ""), contentType: String(r?.content_type || r?.contentType || "audio/mpeg") };
+  }
+  const r = await fetch("/api/voice/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(120000),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(r.status, body, String(body.error || r.statusText));
+  return { audio: String(body.audio || ""), contentType: String(body.content_type || "audio/mpeg") };
+}
+
+export async function voiceReceipt(session: string, durationSec: number, transcript: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.VoiceReceipt) { s.VoiceReceipt(session, durationSec, transcript); return; }
+  await http("/api/voice/receipt", { method: "POST", body: JSON.stringify({ session, duration_sec: durationSec, transcript }) });
+}
+
+export async function setCompanionCall(on: boolean): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "SetCompanionCall", "setCompanionCall");
+  if (fn) await fn(on);
+}
+
+export async function connectorMention(account: string, text: string): Promise<void> {
+  const s = await wailsService();
+  if (s?.ConnectorMention) { await s.ConnectorMention(account, text); return; }
+  await http("/api/connectors/mention", { method: "POST", body: JSON.stringify({ account, text }) });
 }
 
 export async function projectsList(): Promise<any[]> {

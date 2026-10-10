@@ -4,7 +4,7 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 
 | Path | What |
 |---|---|
-| `config.yaml` | Appearance, workspace, gate, budget, `packs.<id>.enabled`. Partial patches merge; omitted keys stay. |
+| `config.yaml` | Appearance, workspace, gate, budget, `paused`, `packs.<id>.enabled`. Partial patches merge; omitted keys stay. |
 | `packs/<id>/` | Installed skill packs (`pack.json` + `skills/`). Not CAS; origin is GitHub or a local checkout. |
 | `connections/*.json` | Accounts (chat, image, video, speech, storage, search, workflow, OTEL, MCP HTTP). Secrets never live here — only a vault key name. |
 | `connections/_defaults.json` | Default connection id per capability. |
@@ -12,6 +12,11 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 | `cas/objects` | Content-addressed blobs. |
 | `vault.json` / OS keychain | API keys. |
 | `personal/workspace.json` | Durable personal tasks, hashed proposals (with activity), ideas, goals, monitors, artifacts. Atomic temp+rename. |
+| `pages/{spaceId}/{pageId}.md` | Operator knowledge pages (YAML frontmatter + Markdown). Outside the coding workspace. Atomic temp+rename. |
+| `pages/index.json` | Rebuildable page tree for search and navigation. The `.md` files are source of truth. |
+| `pages/reviews.json` | Hashed `page.save` / `page.edit` drafts awaiting operator approval. |
+| `profiles/{id}.json` | Named specialist profiles (role, tool grants, space access). Harbor never loads these. |
+| `sessions/{id}.meta.json` | Thread metadata including `profile_id` and `page_id`. Harbor eval ignores both. |
 
 SQLite remains only as a **reader**:
 

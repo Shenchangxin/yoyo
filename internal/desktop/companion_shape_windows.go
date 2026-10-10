@@ -127,6 +127,11 @@ func applyCompanionShape(win application.Window, caption bool) {
 func setCompanionPassthrough(application.Window, bool) {}
 
 func createCompanionRgn(winW, winH int, caption bool) uintptr {
+	if companionInteractive.Load() && procReady(procCreateRoundRectRgn) {
+		rad := int32(24)
+		rgn, _, _ := procCreateRoundRectRgn.Call(0, 0, uintptr(winW), uintptr(winH), uintptr(rad), uintptr(rad))
+		return rgn
+	}
 	if !procReady(procCreateEllipticRgn) {
 		return 0
 	}

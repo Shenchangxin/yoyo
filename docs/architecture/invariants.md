@@ -13,3 +13,6 @@ These rules are enforced by tests and must not be changed by an evolving agent.
 9. Evolve writes `refs/canary` (and archive) by default. Checkout is the only operator path that moves `refs/active`, unless the operator passes an explicit `--promote`.
 10. Loop instruction copy and declarative middleware are L1 (Harbor-gated). Loop topology (`max_turns`, compaction, plan mode, budget) and policy pack hashes remain L3.
 11. Unsigned WASM cannot be checked out onto `refs/active`. Evolve never compiles WASM.
+12. Harbor eval never loads specialist profiles, Pages pins, or skill packs. Pages and profiles are application objects on the chat loop, not harness topology.
+13. Page bodies, mail, tool output, and voice transcripts are untrusted source data. They must not enter identity or rewrite the playbook.
+14. `page.save` / `page.edit` promotions cannot stick as Always. Identity actions (`send_as_you`, `computer_use`, HighRisk) already cannot.

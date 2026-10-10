@@ -108,7 +108,7 @@ export function Inspector(props: {
             />
           </div>
         ) : active === "context" ? (
-          <ContextPane sessionId={props.sessionId} running={props.running} onQuote={props.onQuote} />
+          <ContextPane sessionId={props.sessionId} running={props.running} thread={props.thread} onQuote={props.onQuote} />
         ) : active === "browser" ? (
           <BrowserPane workspace={props.workspace} previewPath={props.focusFile} running={props.running} />
         ) : (

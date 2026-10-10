@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Ref } from "react";
-import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipboard, FileText, Folder, GitBranch, Paperclip, Plus, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipboard, Clock, FileText, Folder, GitBranch, Paperclip, Phone, Plus, Square, X } from "lucide-react";
+import { ProfileChip } from "./ProfileChip";
 import { Textarea } from "../components/ui/input";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
@@ -11,7 +12,9 @@ import { displayWorkspace } from "../lib/display-title";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
-import type { Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, SkillInfo } from "../lib/protocol";
+import type { Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
+import { profileOf } from "../lib/profile-label";
+import * as api from "../lib/client";
 import type { TaskPlan } from "../lib/plan";
 import { PlanChip } from "./PlanChip";
 import { formatTokens, lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow } from "../lib/models-dev";
@@ -73,6 +76,12 @@ export function Composer(props: {
   taskPlan?: TaskPlan | null;
   methodologyActive?: boolean;
   onBuildPlan?: () => void;
+  sessionId?: string;
+  profileId?: string;
+  onProfile?: (id: string) => void;
+  onSavePage?: () => void;
+  onFollow?: (in_: string) => void;
+  onCall?: () => void;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -86,6 +95,7 @@ export function Composer(props: {
   const [chips, setChips] = useState<MentionPin[]>([]);
   const [fileQ, setFileQ] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const copy = useCopy();
@@ -171,6 +181,11 @@ export function Composer(props: {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, props.hero ? 200 : 112) + "px";
   }, [value, chips, atts, props.hero]);
+
+  useEffect(() => {
+    if (!props.onProfile) return;
+    void api.profilesList().then((rows) => setProfiles((rows || []).map(profileOf))).catch(() => setProfiles([]));
+  }, [props.onProfile]);
 
   function placeCaret(pos: number) {
     setCaret(pos);
@@ -473,6 +488,14 @@ export function Composer(props: {
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}
+            {props.onProfile && profiles.length ? (
+              <ProfileChip
+                profiles={profiles}
+                profileId={props.profileId}
+                disabled={props.disabled}
+                onProfile={props.onProfile}
+              />
+            ) : null}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -511,6 +534,35 @@ export function Composer(props: {
                   <DropdownMenuItem disabled={props.disabled} onSelect={() => { void grabScreenshot(); }}>
                     <Camera className="size-3.5" />
                     {copy.composer.screenshot}
+                  </DropdownMenuItem>
+                ) : null}
+                {props.onSavePage ? (
+                  <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onSavePage?.()}>
+                    <FileText className="size-3.5" />
+                    {copy.composer.savePage}
+                  </DropdownMenuItem>
+                ) : null}
+                {props.onFollow ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1h")}>
+                      <Clock className="size-3.5" />
+                      {copy.composer.follow1h}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1d")}>
+                      <Clock className="size-3.5" />
+                      {copy.composer.follow1d}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1w")}>
+                      <Clock className="size-3.5" />
+                      {copy.composer.follow1w}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+                {props.onCall ? (
+                  <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onCall?.()}>
+                    <Phone className="size-3.5" />
+                    {copy.composer.call}
                   </DropdownMenuItem>
                 ) : null}
                 {props.onIsolate ? (

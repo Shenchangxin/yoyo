@@ -17,6 +17,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/pages"
+	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
@@ -1301,6 +1303,136 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.PersonalMonitorStatus(p.ID, p.Status)
+	case "app.pause.set":
+		var p struct {
+			Paused bool `json:"paused"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true, "paused": p.Paused}, a.SetPaused(p.Paused)
+	case "pages.list":
+		var p struct {
+			Q     string `json:"q"`
+			Space string `json:"space_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PagesList(p.Q, p.Space), nil
+	case "pages.get":
+		var p struct {
+			ID    string `json:"id"`
+			Space string `json:"space_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PagesGet(p.Space, p.ID)
+	case "pages.save":
+		var p struct {
+			pages.Page
+			Expected int `json:"expected_revision"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PagesSave(p.Page, p.Expected)
+	case "pages.search":
+		var p struct {
+			Q     string `json:"q"`
+			Space string `json:"space_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PagesList(p.Q, p.Space), nil
+	case "pages.reviews":
+		return a.PagesReviews(), nil
+	case "pages.propose":
+		var p struct {
+			Session  string `json:"session"`
+			Title    string `json:"title"`
+			Content  string `json:"content"`
+			ID       string `json:"id"`
+			Space    string `json:"space_id"`
+			Parent   string `json:"parent_id"`
+			Expected int    `json:"expected_revision"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.PagesPropose(p.Session, p.Title, p.Content, p.ID, p.Space, p.Parent, p.Expected)
+	case "pages.review.decide":
+		var p struct {
+			ID      string `json:"id"`
+			Hash    string `json:"hash"`
+			Approve bool   `json:"approve"`
+		}
+		_ = json.Unmarshal(params, &p)
+		pg, rev, err := a.PagesDecide(p.ID, p.Hash, p.Approve)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"page": pg, "review": rev}, nil
+	case "profiles.list":
+		return a.ProfilesList(), nil
+	case "profiles.get":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ProfilesGet(p.ID)
+	case "profiles.save":
+		var p profile.Profile
+		_ = json.Unmarshal(params, &p)
+		return a.ProfilesSave(p)
+	case "thread.profile.set":
+		var p struct {
+			Session string `json:"session"`
+			Profile string `json:"profile_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionProfile(p.Session, p.Profile)
+	case "thread.page.set":
+		var p struct {
+			Session string `json:"session"`
+			Page    string `json:"page_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.SetSessionPage(p.Session, p.Page)
+	case "schedule.retry":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return a.ScheduleRetry(p.ID)
+	case "connectors.mention":
+		var p struct {
+			Account string `json:"account"`
+			Text    string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.ConnectorMention(p.Account, p.Text)
+	case "voice.transcribe":
+		var p struct {
+			Filename string `json:"filename"`
+			Audio    string `json:"audio"`
+		}
+		_ = json.Unmarshal(params, &p)
+		raw, err := decodeSkinB64(p.Audio)
+		if err != nil {
+			return nil, err
+		}
+		text, err := a.VoiceTranscribe(p.Filename, raw)
+		return map[string]any{"text": text}, err
+	case "voice.speak":
+		var p struct {
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(params, &p)
+		b, ctype, err := a.VoiceSpeak(p.Text)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"audio": encodeSkinB64(b), "content_type": ctype}, nil
+	case "voice.receipt":
+		var p struct {
+			Session  string `json:"session"`
+			Duration int    `json:"duration_sec"`
+			Text     string `json:"transcript"`
+		}
+		_ = json.Unmarshal(params, &p)
+		a.VoiceReceipt(p.Session, p.Duration, p.Text)
+		return map[string]any{"ok": true}, nil
 	default:
 		return nil, errMethod(method)
 	}

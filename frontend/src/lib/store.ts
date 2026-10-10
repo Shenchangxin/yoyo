@@ -46,6 +46,8 @@ type UIState = {
   openSkills: () => void;
   openPacks: () => void;
   closeSkills: () => void;
+  openPages: () => void;
+  closePages: () => void;
   skillsTab: SkillsTab;
   setSkillsTab: (t: SkillsTab) => void;
   openVideo: () => void;
@@ -258,6 +260,8 @@ export const useUI = create<UIState>((set, get) => ({
   openSkills: () => set({ surface: "skills" }),
   openPacks: () => set({ surface: "skills", skillsTab: "packs" }),
   closeSkills: () => get().showConversation(),
+  openPages: () => set({ surface: "pages" }),
+  closePages: () => get().showConversation(),
   skillsTab: "market",
   setSkillsTab: (skillsTab) => set({ skillsTab }),
   videoMode: readVideoMode(),

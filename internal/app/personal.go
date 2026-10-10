@@ -22,7 +22,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/kernel"
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
+	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
@@ -44,6 +46,26 @@ func (a *App) openPersonal() error {
 		}
 		a.Memory = mem
 		return func() error { a.Memory = nil; return nil }, nil
+	}); err != nil {
+		return err
+	}
+	if err := a.mountFiber("pages", func() (func() error, error) {
+		store, err := pages.Open(a.Home.Pages())
+		if err != nil {
+			return nil, err
+		}
+		a.Pages = store
+		return func() error { a.Pages = nil; return nil }, nil
+	}); err != nil {
+		return err
+	}
+	if err := a.mountFiber("profiles", func() (func() error, error) {
+		store, err := profile.Open(a.Home.Profiles())
+		if err != nil {
+			return nil, err
+		}
+		a.Profiles = store
+		return func() error { a.Profiles = nil; return nil }, nil
 	}); err != nil {
 		return err
 	}
@@ -143,6 +165,7 @@ func (a *App) openPersonal() error {
 					ItemKind: "personal",
 				})
 			},
+			Paused: a.IsPaused,
 		})
 		a.Personal = eng
 		go eng.Run(ctx)
@@ -166,9 +189,14 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	tools.Browser = a.Browser
 	tools.Computer = a.Computer
 	tools.Inbox = a.Inbox
+	tools.Pages = a.Pages
 	tools.SearchAPI = a.searchAPI
 	tools.ChatOverlay = true
 	tools.Advertised = runtime.ApplyChatToolMenu(tools.Advertised)
+	if p := a.sessionProfile(tools.SessionID); p != nil {
+		tools.Advertised = profile.FilterTools(tools.Advertised, *p)
+		tools.AllowedTools = append([]string(nil), tools.Advertised...)
+	}
 	if a.Threads != nil && tools.SessionID != "" {
 		tools.AllowedConnectors = a.Threads.ConnectorAllow(tools.SessionID)
 	}
@@ -413,12 +441,12 @@ func (a *App) scheduleLoop() {
 			return
 		case <-tick.C:
 		}
-		if a.Schedule == nil {
+		if a.IsPaused() || a.Schedule == nil {
 			continue
 		}
 		for _, j := range a.Schedule.Due(time.Now().UTC()) {
 			j := j
-			go a.runIsolatedJob(j)
+			go a.runScheduledJob(j)
 		}
 	}
 }

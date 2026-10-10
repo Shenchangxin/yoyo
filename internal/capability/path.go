@@ -88,7 +88,7 @@ func LooksLikeWindowsSwitch(s string) bool {
 	return true
 }
 
-var diagPlaneNames = []string{"logs", "journal", "observe"}
+var diagPlaneNames = []string{"logs", "journal", "observe", "pages", "profiles"}
 
 // ForbiddenDiagPath is true when p is under YOYO_HOME diagnostic planes
 // (logs, journal, observe) or the vault file. Agent tools must not read them.

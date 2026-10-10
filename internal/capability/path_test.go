@@ -64,6 +64,8 @@ func TestForbiddenDiagPath(t *testing.T) {
 		filepath.Join(home, "logs", "yoyo.log"),
 		filepath.Join(home, "journal", "chain.jsonl"),
 		filepath.Join(home, "observe", "spans.jsonl"),
+		filepath.Join(home, "pages", "home", "note.md"),
+		filepath.Join(home, "profiles", "assistant.json"),
 		filepath.Join(home, "vault.json"),
 	} {
 		if !ForbiddenDiagPath(home, p) {

@@ -298,6 +298,14 @@ func (s *Service) rebuildMenusNow() {
 	tmenu.Add(n.Stop).OnClick(func(ctx *application.Context) {
 		_ = s.Interrupt("")
 	})
+	pauseLabel := n.Pause
+	if s.IsPaused() {
+		pauseLabel = n.Resume
+	}
+	tmenu.Add(pauseLabel).OnClick(func(ctx *application.Context) {
+		_ = s.SetPaused(!s.IsPaused())
+		s.RebuildMenus()
+	})
 	tmenu.Add(n.NewChat).OnClick(func(ctx *application.Context) {
 		showWindow(win)
 		gui.Event.Emit("yoyo:command", "new")

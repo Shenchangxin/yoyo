@@ -28,7 +28,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/memory"
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
 	"github.com/Shenchangxin/yoyo/internal/observe"
+	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
+	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 	"github.com/Shenchangxin/yoyo/internal/project"
@@ -97,6 +99,7 @@ type Config struct {
 	ContextWindow           int                 `yaml:"context_window" json:"context_window"`
 	Packs                   map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
 	Log                     LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
+	Paused                  bool                `yaml:"paused" json:"paused"`
 }
 
 type LogConfig struct {
@@ -150,6 +153,8 @@ type App struct {
 	Inbox      *inbox.Store
 	Connectors *connector.Broker
 	Personal   *personal.Engine
+	Pages      *pages.Store
+	Profiles   *profile.Store
 	Browser    *browser.Host
 	Computer   *computeruse.Host
 	Observe    *observe.Tracer
@@ -381,7 +386,7 @@ func runtimeHookPreTool() string { return "agent.pre_tool" }
 
 func (a *App) approve(ctx context.Context, req capability.Request) (capability.Decision, error) {
 	mode := capability.ParseGateMode(a.Config.GateMode)
-	if mode == capability.GateSkip && !capability.NeverAlways(req.Level) && !req.ForceAsk {
+	if mode == capability.GateSkip && !capability.NeverAlways(req.Level) && !capability.NeverAlwaysAction(req.Action) && !req.ForceAsk {
 		return capability.Always, nil
 	}
 	if mode == capability.GateAutoSafe {
@@ -395,7 +400,7 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 		}
 	}
 	if a.Config.AutoAllow && !req.ForceAsk {
-		if capability.NeverAlways(req.Level) {
+		if capability.NeverAlways(req.Level) || capability.NeverAlwaysAction(req.Action) {
 			return capability.Once, nil
 		}
 		return capability.Always, nil
@@ -475,6 +480,7 @@ func (a *App) Health() map[string]any {
 		"update_channel":        a.Config.UpdateChannel,
 		"isolation":             a.IsolationReport(),
 		"gate_mode":             capability.ParseGateMode(a.Config.GateMode),
+		"paused":                a.Config.Paused,
 		"last_eval":             a.LastEval(),
 		"last_evolve":           a.LastEvolve(),
 		"video":                 a.VideoStatus(),

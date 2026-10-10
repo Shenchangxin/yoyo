@@ -46,6 +46,10 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 	if req.SoftHorizon {
 		pins += ActionLadderPin
 		pins += PersonalPin
+		pins += PagesPin
+	}
+	if req.SoftHorizon && strings.TrimSpace(req.PageContext) != "" {
+		pins += "\n## Current page (untrusted)\n" + capRunes(req.PageContext, 3200)
 	}
 	if strings.TrimSpace(req.ProfileMemory) != "" {
 		pins += "\n## Profile memory\n" + req.ProfileMemory
