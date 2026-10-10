@@ -12,12 +12,18 @@ const (
 	ChatContextBuffer   = 20_000
 	ChatTaskMaxTurns    = 40
 	ChatTaskMaxTools    = 60
+	// ChatSoftGuardTurns is the last-resort desktop ceiling. SoftHorizon
+	// ignores Harbor MaxTurns while work is progressing; identical-failure
+	// and unchanged-observation stalls stop earlier. A nine-step pipeline
+	// that keeps changing the observation must be allowed to finish.
+	ChatSoftGuardTurns = 192
 )
 
 // ApplyChatHorizon is a floor for callers that still use a hard loop.
 // Desktop/CLI chat sets RunRequest.SoftHorizon, so MaxTurns / MaxToolMessages
 // are not a kill switch. MicroKeep / CompactionKeep are raised so snip cannot
 // drop the operator goal and the last read of each hot path (I1, I2).
+// ChatSoftGuardTurns is the nuclear cap if observation never stalls.
 func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	if loop.MaxTurns < ChatMaxTurns {
 		loop.MaxTurns = ChatMaxTurns

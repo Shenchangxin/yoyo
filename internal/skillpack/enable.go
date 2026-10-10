@@ -84,15 +84,16 @@ func List(home, workspace string, global map[string]Pref) []Status {
 		seen[st.ID] = true
 		out = append(out, st)
 	}
+	var extra []Status
 	for _, id := range InstalledIDs(home) {
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
-		out = append(out, statusOf(home, workspace, global, wsPrefs, id, Known{}))
+		extra = append(extra, statusOf(home, workspace, global, wsPrefs, id, Known{}))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	sort.Slice(extra, func(i, j int) bool { return extra[i].ID < extra[j].ID })
+	return append(out, extra...)
 }
 
 func statusOf(home, workspace string, global map[string]Pref, wsPrefs map[string]WorkspacePref, id string, known Known) Status {

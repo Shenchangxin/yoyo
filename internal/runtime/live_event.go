@@ -11,6 +11,8 @@ const (
 	uiResultBytes    = 1_200
 	uiUserBytes      = 8_000
 	uiPatchBytes     = 8_000
+	uiTurnAssistants = 1
+	uiTurnToolPairs  = 40
 )
 
 // slimLiveEvent copies a heavy write_file/str_replace payload for the live
@@ -103,11 +105,95 @@ func SlimTrajectory(evs []trace.Event) []trace.Event {
 	return out
 }
 
-// UITrajectory is the renderer projection: slim write/result bodies and drop
-// ledger noise. Conversation turns and tool pairs stay intact so the UI can
-// virtualize rows and fold steps — it must not drop history.
+// UITrajectory is the renderer projection: slim write/result bodies, drop
+// ledger noise, and cap a single operator turn so a 200-round SoftHorizon
+// loop cannot ship unbounded assistants/tools across Wails.
 func UITrajectory(evs []trace.Event) []trace.Event {
-	return dropSupersededErrors(dropUINoise(SlimTrajectory(evs)))
+	return trimHotTurns(dropSupersededErrors(dropUINoise(SlimTrajectory(evs))))
+}
+
+func trimHotTurns(evs []trace.Event) []trace.Event {
+	if len(evs) == 0 {
+		return evs
+	}
+	ranges := userRanges(evs)
+	if len(ranges) == 0 {
+		return evs
+	}
+	out := make([]trace.Event, 0, len(evs))
+	changed := false
+	for _, r := range ranges {
+		kept := trimTurnEvents(evs[r[0]:r[1]])
+		if len(kept) != r[1]-r[0] {
+			changed = true
+		}
+		out = append(out, kept...)
+	}
+	if !changed {
+		return evs
+	}
+	return out
+}
+
+func trimTurnEvents(evs []trace.Event) []trace.Event {
+	lastAsst := -1
+	asstN := 0
+	var order []string
+	seen := map[string]struct{}{}
+	for i, ev := range evs {
+		switch ev.Type {
+		case trace.TypeAssistant:
+			lastAsst = i
+			asstN++
+		case trace.TypeToolCall, trace.TypeToolResult:
+			id := liveToolID(ev)
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			order = append(order, id)
+		}
+	}
+	if asstN <= uiTurnAssistants && len(order) <= uiTurnToolPairs {
+		return evs
+	}
+	keep := map[string]struct{}{}
+	start := 0
+	if len(order) > uiTurnToolPairs {
+		start = len(order) - uiTurnToolPairs
+	}
+	for _, id := range order[start:] {
+		keep[id] = struct{}{}
+	}
+	out := make([]trace.Event, 0, len(evs))
+	for i, ev := range evs {
+		switch ev.Type {
+		case trace.TypeAssistant:
+			if i != lastAsst {
+				continue
+			}
+		case trace.TypeReasoning:
+			if lastAsst >= 0 && i < lastAsst {
+				continue
+			}
+		case trace.TypeToolCall, trace.TypeToolResult:
+			if _, ok := keep[liveToolID(ev)]; !ok {
+				continue
+			}
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
+func liveToolID(ev trace.Event) string {
+	if ev.Payload == nil {
+		return ""
+	}
+	if id, _ := ev.Payload["id"].(string); id != "" {
+		return id
+	}
+	return ""
 }
 
 func dropUINoise(evs []trace.Event) []trace.Event {

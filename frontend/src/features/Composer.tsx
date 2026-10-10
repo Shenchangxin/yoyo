@@ -280,9 +280,8 @@ export function Composer(props: {
 
   function send(steer?: boolean) {
     const body = composeDraft(chips, value);
-    const caption = body || atts.map((a) => a.name || a.path || "file").join(", ");
-    if (!caption && !atts.length) return;
-    props.onSend({ steer, attachments: atts, text: caption });
+    if (!body && !atts.length) return;
+    props.onSend({ steer, attachments: atts, text: body });
     setAtts([]);
     setChips([]);
     onChange("");
@@ -964,9 +963,18 @@ function isDomFile(v: unknown): v is File {
   return typeof File !== "undefined" && v instanceof File;
 }
 
+function attachmentByteCap(f: File): number {
+  if (f.type.startsWith("image/")) return 2 * 1024 * 1024;
+  const name = f.name || "";
+  if (f.type.startsWith("text/") || /\.(md|markdown|txt|json|csv|tsv|html?|xml|ya?ml|rst|tex)$/i.test(name)) {
+    return 8 * 1024 * 1024;
+  }
+  return 96 * 1024;
+}
+
 async function fileToAttachment(f: File): Promise<Attachment> {
   const buf = await f.arrayBuffer();
-  const cap = f.type.startsWith("image/") ? 2 * 1024 * 1024 : 96 * 1024;
+  const cap = attachmentByteCap(f);
   const slice = buf.byteLength > cap ? buf.slice(0, cap) : buf;
   const bytes = new Uint8Array(slice);
   let bin = "";

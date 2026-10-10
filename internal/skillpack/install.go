@@ -159,14 +159,33 @@ func writePackTree(home, id string, files []PackFile) error {
 }
 
 func writeGeneratedMapping(home, id, goos string) error {
-	dir := filepath.Join(SkillsDir(home, id), "using-superpowers", "references")
-	if _, err := os.Stat(filepath.Join(SkillsDir(home, id), "using-superpowers", "SKILL.md")); err != nil {
+	name := mappingTarget(home, id)
+	if name == "" {
 		return nil
 	}
+	dir := filepath.Join(SkillsDir(home, id), name, "references")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "yoyo-tools.md"), []byte(MappingFile(id, goos)), 0o644)
+}
+
+// mappingTarget is the skill folder that receives install-time yoyo-tools.md.
+// Methodology packs prefer the bootstrap skill; domain packs use a skill
+// whose name matches the pack id. Missing folder → no adapter file.
+func mappingTarget(home, id string) string {
+	id = SanitizeID(id)
+	known, _ := Lookup(id)
+	for _, name := range []string{known.BootstrapSkill, id} {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(SkillsDir(home, id), name, "SKILL.md")); err == nil {
+			return name
+		}
+	}
+	return ""
 }
 
 func readLocal(root, skillsRel string) ([]PackFile, error) {

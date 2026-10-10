@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
-import { layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
+import { HOT_TURN_ASSISTANTS, HOT_TURN_PROCESS_PAIRS, layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
@@ -45,6 +45,20 @@ test("live second user is kept even with blank timestamps and no payload id", ()
   const assistants = list.filter((x) => x.type === "assistant");
   expect(users.map((x) => x.text)).toEqual(["first question", "second question"]);
   expect(assistants.map((x) => x.text)).toEqual(["first answer"]);
+});
+
+test("optimistic skill chip is replaced when live event stamps @file", () => {
+  let list: Item[] = [];
+  list = mergeItem(list, uiUser("@skill:novel-to-game"));
+  list = mergeItem(list, liveUser("@skill:novel-to-game\n@file:.yoyo/uploads/novel.md", {
+    id: "s:user:att",
+    attachments: [{ name: "novel.md", path: ".yoyo/uploads/novel.md" }],
+  }));
+  const users = list.filter((x) => x.type === "user");
+  expect(users).toHaveLength(1);
+  expect(users[0].source).toBe("user");
+  expect(users[0].text).toContain("@file:.yoyo/uploads/novel.md");
+  expect(users[0].payload.attachments?.[0]?.name).toBe("novel.md");
 });
 
 test("same prompt on turn two still adds a second user bubble", () => {
@@ -206,12 +220,13 @@ test("plan and file_change stay inside the agent turn", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["item", "process", "artifact", "item"]);
-  const process = agent.parts[1];
+  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
+  expect(agent.copyText).toBe("done");
+  const process = agent.parts[0];
   expect(process.kind).toBe("process");
   if (process.kind !== "process") return;
   expect(process.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["update_plan"]);
-  const artifacts = agent.parts[2];
+  const artifacts = agent.parts[1];
   expect(artifacts.kind).toBe("artifact");
   if (artifacts.kind !== "artifact") return;
   expect(artifacts.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["apply_patch"]);
@@ -327,7 +342,30 @@ test("ask_user does not split the agent turn", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(2);
+  expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(1);
+  const letter = agent.parts.find((p) => p.kind === "item" && p.item.type === "assistant");
+  expect(letter?.kind === "item" ? letter.item.text : "").toBe("thanks");
+  expect(agent.copyText).toBe("thanks");
+});
+
+test("tool-loop assistants collapse to one letter in a turn", () => {
+  const items = replayEvents([
+    { type: "user", session_id: "s", payload: { text: "adapt the novel" } },
+    { type: "assistant", session_id: "s", payload: { text: "I will write play.html", id: "s:r1" } },
+    { type: "tool_call", session_id: "s", payload: { id: "w1", name: "write_file", arguments: "{\"path\":\"play.html\",\"content\":\"<html>\"}" } },
+    { type: "tool_result", session_id: "s", payload: { id: "w1", name: "write_file", content: "wrote play.html" } },
+    { type: "assistant", session_id: "s", payload: { text: "Ready to play.", id: "s:r2" } },
+  ]);
+  const rows = layoutRows(items);
+  expect(rows.map((r) => r.kind)).toEqual(["user", "agent"]);
+  const agent = rows[1];
+  expect(agent.kind).toBe("agent");
+  if (agent.kind !== "agent") return;
+  const letters = agent.parts.filter((p) => p.kind === "item" && p.item.type === "assistant");
+  expect(letters).toHaveLength(1);
+  expect(letters[0].kind === "item" ? letters[0].item.text : "").toBe("Ready to play.");
+  expect(agent.copyText).toBe("Ready to play.");
+  expect(agent.parts.some((p) => p.kind === "artifact")).toBe(true);
 });
 
 test("process tools batch separately from artifacts", () => {
@@ -647,6 +685,26 @@ test("structureSig ignores token text", () => {
   const a: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "he", name: "", delta: true, payload: {} }];
   const b: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hello", name: "", delta: true, payload: {} }];
   expect(structureSig(a)).toBe(structureSig(b));
+});
+
+test("hot window prunes a runaway tool loop inside one user turn", () => {
+  const raw: any[] = [{ type: "user", session_id: "s", payload: { text: "go", id: "u0" } }];
+  for (let i = 0; i < 90; i++) {
+    raw.push({ type: "assistant", session_id: "s", payload: { text: `narration ${i}`, id: `s:r${i + 1}` } });
+    raw.push({ type: "tool_call", session_id: "s", payload: { id: `c${i}`, name: "read_file", arguments: "{\"path\":\"x\"}" } });
+    raw.push({ type: "tool_result", session_id: "s", payload: { id: `c${i}`, name: "read_file", content: "ok" } });
+  }
+  raw.push({ type: "assistant", session_id: "s", payload: { text: "final letter", id: "s:r91" } });
+  const items = lastUserTurns(replayEvents(raw), HOT_TRANSCRIPT_TURNS);
+  expect(items.filter((x) => x.type === "assistant")).toHaveLength(HOT_TURN_ASSISTANTS);
+  expect(items.find((x) => x.type === "assistant")?.text).toBe("final letter");
+  expect(items.filter((x) => x.type === "tool_call")).toHaveLength(HOT_TURN_PROCESS_PAIRS);
+  const rows = layoutRows(items);
+  const agent = rows[1];
+  expect(agent?.kind).toBe("agent");
+  if (agent?.kind !== "agent") return;
+  expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(1);
+  expect(agent.copyText).toBe("final letter");
 });
 
 test("hot window keeps only the last N user turns", () => {

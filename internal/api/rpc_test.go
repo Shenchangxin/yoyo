@@ -223,6 +223,9 @@ func TestRPCPacksListAndEnable(t *testing.T) {
 	if !strings.Contains(string(raw), `"id":"superpowers"`) {
 		t.Fatalf("%s", raw)
 	}
+	if !strings.Contains(string(raw), `"id":"novel-to-game"`) {
+		t.Fatalf("catalog missing domain pack: %s", raw)
+	}
 	if strings.Contains(string(raw), `"enabled":true`) {
 		t.Fatal("catalog must default off")
 	}

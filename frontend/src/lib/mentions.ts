@@ -91,6 +91,63 @@ export function composeDraft(pins: MentionPin[], prose: string): string {
   return head || body;
 }
 
+type AttachmentPin = { name?: string; path?: string; mime?: string };
+
+export function isImageAttachment(a: AttachmentPin): boolean {
+  const mime = (a.mime || "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  const n = `${a.name || ""} ${a.path || ""}`.toLowerCase();
+  return /\.(png|jpe?g|gif|webp)(?:$|\?)/i.test(n);
+}
+
+export function pinsFromAttachments(atts: AttachmentPin[] | undefined | null): MentionPin[] {
+  if (!atts?.length) return [];
+  const out: MentionPin[] = [];
+  const seen = new Set<string>();
+  for (const a of atts) {
+    if (isImageAttachment(a)) continue;
+    const path = (a.path || "").replace(/\\/g, "/");
+    const name = (a.name || path.split("/").pop() || "file").replace(/^.*[/\\]/, "") || "file";
+    const token = `@file:${path || name}`;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push({ token, kind: "file", label: name, detail: path || name });
+  }
+  return out;
+}
+
+export function mergeMentionPins(a: MentionPin[], b: MentionPin[]): MentionPin[] {
+  const seen = new Set(a.map((p) => p.token));
+  const out = a.slice();
+  for (const p of b) {
+    if (seen.has(p.token)) continue;
+    seen.add(p.token);
+    out.push(p);
+  }
+  return out;
+}
+
+/** Extra suffix/prefix on a live user event is only @file/@folder/@skill tokens. */
+export function extraIsMentions(s: string): boolean {
+  const t = s.trim();
+  if (!t) return true;
+  return t.split(/\s+/).every((tok) => isCompleteMention(tok));
+}
+
+function mentionAugmented(base: string, fuller: string): boolean {
+  if (!base) return extraIsMentions(fuller) && /@file:/.test(fuller);
+  if (fuller.startsWith(base) && extraIsMentions(fuller.slice(base.length))) return true;
+  if (fuller.startsWith(`${base}\n`) && extraIsMentions(fuller.slice(base.length))) return true;
+  return false;
+}
+
+export function sameUserTurnText(a: string, b: string): boolean {
+  const left = a.trim();
+  const right = b.trim();
+  if (left === right) return true;
+  return mentionAugmented(left, right) || mentionAugmented(right, left);
+}
+
 type MentionSkill = {
   name: string;
   description?: string;

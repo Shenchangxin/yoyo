@@ -28,7 +28,7 @@ An operator who wants to run turns against a local workspace, review git hunks, 
   director desk split, not a right column and not an eight-stage factory
   console. Video chats and Agent chats are separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
-- **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree (Superpowers is the first). Methodology packs default off; enabling one is a workspace choice, not a per-turn toggle. Harbor never loads them.
+- **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree. Methodology packs (Superpowers) session-start bootstrap; domain packs (NovelToGame) do not. Everything defaults off; enabling one is a workspace choice, not a per-turn toggle. Harbor never loads them.
 - **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, search, storage, and workflow accounts share one registry. Keys stay in the vault. See [architecture/persist.md](architecture/persist.md).
 
 ## Distinctive, not decorative

@@ -12,6 +12,9 @@ import (
 
 func TestPrefixStableAcrossToolRounds(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var steps []Message
 	for i := 0; i < 8; i++ {
 		id := "r" + itoa(i)

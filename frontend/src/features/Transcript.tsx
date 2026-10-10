@@ -34,7 +34,7 @@ import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
-import { peelCompletedMentions, type MentionKind, type MentionPin } from "../lib/mentions";
+import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
 
 function lastRealUserIndex(items: Item[]): number {
@@ -995,9 +995,17 @@ function MentionGlyph({ kind }: { kind: MentionKind }) {
   return <FileText className={cls} />;
 }
 
-function UserPrompt({ text, parts }: { text: string; parts?: { type?: string; image_url?: string; mime?: string; text?: string }[] }) {
+function UserPrompt({
+  text,
+  parts,
+  attachments,
+}: {
+  text: string;
+  parts?: { type?: string; image_url?: string; mime?: string; text?: string }[];
+  attachments?: { name?: string; path?: string; mime?: string }[];
+}) {
   const peeled = peelCompletedMentions(text);
-  const chips: MentionPin[] = peeled.chips;
+  const chips: MentionPin[] = mergeMentionPins(peeled.chips, pinsFromAttachments(attachments));
   const prose = peeled.text.trim();
   const images = (parts || []).filter((p) => p.image_url && (p.type === "image_url" || (p.mime || "").startsWith("image/")));
   return (
@@ -1019,6 +1027,7 @@ function UserPrompt({ text, parts }: { text: string; parts?: { type?: string; im
           {chips.map((c, i) => (
             <span
               key={`${c.token}-${i}`}
+              data-testid={c.kind === "file" ? "user-attach-chip" : "user-mention-chip"}
               className="inline-flex max-w-[12rem] items-center gap-1 rounded-md bg-background/55 px-1.5 py-0.5 text-[11px]"
               title={c.detail || c.token}
             >
@@ -1067,7 +1076,11 @@ const ItemRow = memo(function ItemRow({
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
-          <UserPrompt text={shown.text} parts={Array.isArray(shown.payload?.parts) ? shown.payload.parts : undefined} />
+          <UserPrompt
+            text={shown.text}
+            parts={Array.isArray(shown.payload?.parts) ? shown.payload.parts : undefined}
+            attachments={Array.isArray(shown.payload?.attachments) ? shown.payload.attachments : undefined}
+          />
           {copyText || onRestore || onFork ? (
             <UserMsgActions text={copyText} from={from} onRestore={onRestore} onFork={onFork} />
           ) : null}

@@ -9,6 +9,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillpack"
 )
 
+func packStatus(t *testing.T, list []skillpack.Status, id string) skillpack.Status {
+	t.Helper()
+	for _, st := range list {
+		if st.ID == id {
+			return st
+		}
+	}
+	t.Fatalf("pack %s missing from %+v", id, list)
+	return skillpack.Status{}
+}
+
 func writePackFixture(t *testing.T, root string) {
 	t.Helper()
 	skill := func(name string) string {
@@ -46,10 +57,11 @@ func TestInstallPackLocalEnablesWorkspace(t *testing.T) {
 		t.Fatalf("%+v", m)
 	}
 	list := a.ListPacks(a.Workspace())
-	if len(list) == 0 || !list[0].Installed || !list[0].Enabled {
-		t.Fatalf("%+v", list)
+	sp := packStatus(t, list, skillpack.SuperpowersID)
+	if !sp.Installed || !sp.Enabled {
+		t.Fatalf("%+v", sp)
 	}
-	if list[0].EnableWorkspace == nil || !*list[0].EnableWorkspace {
+	if sp.EnableWorkspace == nil || !*sp.EnableWorkspace {
 		t.Fatal("install must set workspace enable")
 	}
 	roots := a.skillRoots(a.Workspace())
@@ -69,13 +81,13 @@ func TestInstallPackLocalEnablesWorkspace(t *testing.T) {
 	if err := a.EnablePack(skillpack.SuperpowersID, skillpack.ScopeWorkspace, false); err != nil {
 		t.Fatal(err)
 	}
-	if a.ListPacks(a.Workspace())[0].Enabled {
+	if packStatus(t, a.ListPacks(a.Workspace()), skillpack.SuperpowersID).Enabled {
 		t.Fatal("workspace off")
 	}
 	if err := a.EnablePack(skillpack.SuperpowersID, skillpack.ScopeInherit, true); err != nil {
 		t.Fatal(err)
 	}
-	if a.ListPacks(a.Workspace())[0].EnableWorkspace != nil {
+	if packStatus(t, a.ListPacks(a.Workspace()), skillpack.SuperpowersID).EnableWorkspace != nil {
 		t.Fatal("inherit must clear workspace override")
 	}
 	sk := a.ListSkills(a.Workspace())
@@ -101,6 +113,63 @@ func TestInstallPackLocalEnablesWorkspace(t *testing.T) {
 		t.Fatal("enabled pack skills missing")
 	}
 	if err := a.UninstallPack(skillpack.SuperpowersID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInstallNovelToGamePackIsDomain(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	src := t.TempDir()
+	skill := "---\nname: novel-to-game\ndescription: Fixture orchestrator.\n---\n\nBody.\n"
+	p := filepath.Join(src, "novel-to-game", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(skill), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := a.InstallPack(skillpack.NovelToGameID, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Methodology || m.BootstrapSkill != "" {
+		t.Fatalf("%+v", m)
+	}
+	st := packStatus(t, a.ListPacks(a.Workspace()), skillpack.NovelToGameID)
+	if !st.Installed || !st.Enabled || st.Methodology {
+		t.Fatalf("%+v", st)
+	}
+	if len(a.packSessions(a.Workspace())) != 0 {
+		t.Fatal("domain pack must not bootstrap a session")
+	}
+	roots := a.skillRoots(a.Workspace())
+	found := false
+	for _, r := range roots {
+		if strings.Contains(filepath.ToSlash(r), "/packs/novel-to-game/") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("pack skills dir missing from roots: %v", roots)
+	}
+	sk := a.ListSkills(a.Workspace())
+	var saw bool
+	for _, row := range sk {
+		if row["pack"] == skillpack.NovelToGameID {
+			saw = true
+			if row["source"] != "pack" {
+				t.Fatalf("%+v", row)
+			}
+		}
+	}
+	if !saw {
+		t.Fatal("enabled domain pack skills missing")
+	}
+	if err := a.UninstallPack(skillpack.NovelToGameID); err != nil {
 		t.Fatal(err)
 	}
 }

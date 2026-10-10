@@ -13,6 +13,7 @@ const (
 	StopOverflow   StopReason = "overflow"
 	StopHook       StopReason = "hook_stop"
 	StopModelError StopReason = "model_error"
+	StopStuck      StopReason = "stuck"
 )
 
 type StopError struct {
@@ -57,4 +58,11 @@ func ReasonOf(err error) StopReason {
 
 func maxTurnsErr() error {
 	return stopErr(StopMaxTurns, "max turns reached", fmt.Errorf("max turns reached"))
+}
+
+func stuckLoopErr(detail string) error {
+	if detail == "" {
+		detail = "the same tool failure kept repeating"
+	}
+	return stopErr(StopStuck, detail, fmt.Errorf("%s", detail))
 }

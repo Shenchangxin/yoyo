@@ -33,6 +33,10 @@ type Manifest struct {
 
 // Known is a built-in catalog entry. Installation still copies files; this
 // only describes what Yoyo can fetch and how to bootstrap it.
+//
+// Methodology packs set BootstrapSkill and Methodology. Domain packs leave
+// both empty: skills are catalog-routed and loaded on demand, with no
+// session-start inject.
 type Known struct {
 	ID             string
 	Name           string

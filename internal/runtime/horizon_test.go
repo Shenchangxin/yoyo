@@ -78,6 +78,13 @@ func TestChatConductDoesNotTouchHarborLoop(t *testing.T) {
 	if !strings.Contains(joined, "ask_user") {
 		t.Fatal("ambiguous plan vs implement must go through the agent")
 	}
+	if !strings.Contains(joined, "observation that changed") {
+		t.Fatal("missing observation-vs-instrument law")
+	}
+	method := fragmentText(ChatConduct(ConductOpts{Methodology: true}))
+	if !strings.Contains(method, "observation that changed") {
+		t.Fatal("methodology conduct dropped observation law")
+	}
 	got := DefaultLoop()
 	if got.Execution != base.Execution || got.Bootstrap != base.Bootstrap || got.MaxTurns != 32 {
 		t.Fatalf("harbor loop mutated: %+v", got)

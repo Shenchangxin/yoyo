@@ -395,6 +395,18 @@ export async function mockApi(
             known: true,
             origin: { kind: "github", repo: "obra/superpowers" },
           },
+          {
+            id: "novel-to-game",
+            name: "NovelToGame",
+            description: "Domain pack: turn a novel into a playable game",
+            methodology: false,
+            installed: false,
+            enabled: false,
+            enable_global: false,
+            skill_count: 7,
+            known: true,
+            origin: { kind: "github", repo: "zenstory-ai/novel-to-game" },
+          },
         ],
       });
     }

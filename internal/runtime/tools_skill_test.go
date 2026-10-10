@@ -7,6 +7,34 @@ import (
 	"testing"
 )
 
+func TestLoadSkillPointsAtGeneratedAdapter(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "novel-to-game")
+	if err := os.MkdirAll(filepath.Join(skillDir, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "references", "yoyo-tools.md"), []byte("# Yoyo Tool Mapping\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{
+		Workspace: t.TempDir(),
+		Skills:    map[string]string{"novel-to-game": "Orchestrate stages."},
+		SkillDirs: map[string]string{"novel-to-game": skillDir},
+	}
+	res := tools.Call("load_skill", `{"name":"novel-to-game"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !strings.Contains(res.Content, "references/yoyo-tools.md") {
+		t.Fatalf("missing adapter pointer:\n%s", res.Content)
+	}
+	idxHint := strings.Index(res.Content, "Host adapter")
+	idxBody := strings.Index(res.Content, "Orchestrate stages.")
+	if idxHint < 0 || idxBody < 0 || idxHint > idxBody {
+		t.Fatalf("adapter hint must lead the skill body: %s", res.Content)
+	}
+}
+
 func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "arxiv-watcher")

@@ -284,6 +284,63 @@ func TestSoftHorizonIgnoresTurnAndToolCaps(t *testing.T) {
 	}
 }
 
+func TestSoftHorizonStopsRepeatedToolFailure(t *testing.T) {
+	dir := t.TempDir()
+	var steps []Message
+	for i := 0; i < 12; i++ {
+		steps = append(steps, Message{Role: RoleAssistant, ToolCalls: []ToolCall{{
+			ID: fmt.Sprintf("w%d", i), Name: "write_file", Arguments: `{"path":""}`,
+		}}})
+	}
+	steps = append(steps, Message{Role: RoleAssistant, Content: "should not finish"})
+	client := &ScriptedClient{Steps: steps}
+	_, err := Run(context.Background(), RunRequest{
+		User:        "write it",
+		Workspace:   dir,
+		Tools:       &WorkspaceTools{Workspace: dir},
+		Client:      client,
+		Loop:        DefaultLoop(),
+		SoftHorizon: true,
+	})
+	if err == nil {
+		t.Fatal("expected stuck stop")
+	}
+	if ReasonOf(err) != StopStuck {
+		t.Fatalf("reason %s err=%v", ReasonOf(err), err)
+	}
+	if client.i > errorRepeatStopHits+2 {
+		t.Fatalf("ran too many chats: %d", client.i)
+	}
+	info := ClassifyError(err)
+	if info.Kind != ErrKindStuck || !info.Retryable {
+		t.Fatalf("card %+v", info)
+	}
+}
+
+func TestHarborDoesNotStuckStopOnToolErrors(t *testing.T) {
+	dir := t.TempDir()
+	var steps []Message
+	for i := 0; i < 6; i++ {
+		steps = append(steps, Message{Role: RoleAssistant, ToolCalls: []ToolCall{{
+			ID: fmt.Sprintf("w%d", i), Name: "write_file", Arguments: `{"path":""}`,
+		}}})
+	}
+	steps = append(steps, Message{Role: RoleAssistant, Content: "finished despite errors"})
+	out, err := Run(context.Background(), RunRequest{
+		User:      "write it",
+		Workspace: dir,
+		Tools:     &WorkspaceTools{Workspace: dir},
+		Client:    &ScriptedClient{Steps: steps},
+		Loop:      DefaultLoop(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "finished despite errors" {
+		t.Fatalf("%q", out)
+	}
+}
+
 func TestHardHorizonStillStopsAtMaxTurns(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()

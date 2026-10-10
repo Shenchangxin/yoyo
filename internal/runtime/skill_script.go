@@ -59,7 +59,11 @@ func DecorateSkillBody(name, body, dir string) string {
 	b.WriteString(name)
 	b.WriteString(", script=<file under scripts/>). Read pack files with read_skill_file (skill=")
 	b.WriteString(name)
-	b.WriteString(", path=relative). Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.")
+	b.WriteString(", path=relative).")
+	if packHasRel(files, "references/yoyo-tools.md") {
+		b.WriteString(" Host adapter: read_skill_file path=references/yoyo-tools.md before following pack procedures.")
+	}
+	b.WriteString(" Workspace-relative scripts/ is not this pack — do not glob the workspace for them. Public HTTP: prefer web_fetch (if https returns 406, retry the http URL). Do not write probe scripts or wait-loop a hung process.")
 	if runtime.GOOS == "windows" {
 		if windowsPosixShell() == "" {
 			b.WriteString(" Windows WSL bash.exe cannot run pack .sh — do not call run_skill_script on .sh; use web_fetch for public HTTP.")
@@ -70,6 +74,16 @@ func DecorateSkillBody(name, body, dir string) string {
 	b.WriteString("\n\n")
 	b.WriteString(body)
 	return b.String()
+}
+
+func packHasRel(files []string, want string) bool {
+	want = strings.ToLower(strings.ReplaceAll(want, "\\", "/"))
+	for _, f := range files {
+		if strings.ToLower(strings.ReplaceAll(f, "\\", "/")) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *WorkspaceTools) expandSkillScripts(command string) string {

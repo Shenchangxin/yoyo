@@ -34,6 +34,57 @@ func toRuntimeAtts(atts []Attachment) []runtime.Attachment {
 	return out
 }
 
+func fromRuntimeAtts(atts []runtime.Attachment) []Attachment {
+	out := make([]Attachment, 0, len(atts))
+	for _, a := range atts {
+		out = append(out, Attachment{Path: a.Path, Name: a.Name, MIME: a.MIME, DataB64: a.DataB64})
+	}
+	return out
+}
+
+func attachmentMeta(atts []Attachment) []map[string]string {
+	if len(atts) == 0 {
+		return nil
+	}
+	out := make([]map[string]string, 0, len(atts))
+	for _, a := range atts {
+		m := map[string]string{}
+		if strings.TrimSpace(a.Path) != "" {
+			m["path"] = a.Path
+		}
+		if strings.TrimSpace(a.Name) != "" {
+			m["name"] = a.Name
+		}
+		if strings.TrimSpace(a.MIME) != "" {
+			m["mime"] = a.MIME
+		}
+		if len(m) == 0 {
+			continue
+		}
+		out = append(out, m)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (a *App) prepareAttachments(sessionID, message string, atts []Attachment) (string, []Attachment, error) {
+	if len(atts) == 0 {
+		return message, atts, nil
+	}
+	meta, err := a.GetSession(sessionID)
+	if err != nil {
+		return message, atts, fmt.Errorf("unknown session %s: %w", sessionID, err)
+	}
+	rt, err := runtime.MaterializeAttachments(meta.ToolRoot(), toRuntimeAtts(atts))
+	if err != nil {
+		return message, atts, err
+	}
+	atts = fromRuntimeAtts(rt)
+	return runtime.StampFileMentions(message, rt), atts, nil
+}
+
 func (a *App) DeleteSession(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {

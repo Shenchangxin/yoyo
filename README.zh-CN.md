@@ -38,7 +38,7 @@ Yoyo 对待 harness，就像 Git 对待源码：
 
 **一套协议，多种客户端** — HTTP + SSE、stdio 上的 JSON-RPC（`yoyo serve --stdio`）、`/api/ws` 双向 WebSocket。设置 `YOYO_ISOLATE=1` 时，桌面 UI 只当客户端，loop 跑在子进程，卡住也不会拖死窗口。
 
-**Skill Pack** — Superpowers 这类第三方技能树按包安装到 `~/.yoyo/packs/`，默认关闭。为当前工作区打开后，会话开始预载 bootstrap，并让路「这轮就开始写」。Harbor 评测不加载。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+**Skill Pack** — 第三方技能树按包安装到 `~/.yoyo/packs/`，默认关闭。方法论包（Superpowers）在工作区打开后会话开始预载 bootstrap，并让路「这轮就开始写」；领域包（NovelToGame）不预载，用时 `@skill:novel-to-game`。Harbor 评测不加载。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
 
 ---
 

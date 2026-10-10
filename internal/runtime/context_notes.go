@@ -124,6 +124,12 @@ func isControlUser(text string) bool {
 	if strings.HasPrefix(s, waitLoopPrefixEN) || strings.HasPrefix(s, waitLoopPrefixZH) {
 		return true
 	}
+	if strings.HasPrefix(s, checkFailPrefixEN) || strings.HasPrefix(s, checkFailPrefixZH) {
+		return true
+	}
+	if strings.HasPrefix(s, instrumentPrefixEN) || strings.HasPrefix(s, instrumentPrefixZH) {
+		return true
+	}
 	if strings.Contains(s, "Context checkpoint") {
 		return true
 	}

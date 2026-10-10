@@ -18,6 +18,7 @@ const (
 	ErrKindProvider  = "provider"
 	ErrKindBudget    = "budget"
 	ErrKindMaxTurns  = "max_turns"
+	ErrKindStuck     = "stuck"
 	ErrKindModel     = "model"
 	ErrKindUnknown   = "unknown"
 )
@@ -31,6 +32,23 @@ func maxTurnsInfo(limit int) ErrorInfo {
 		Title:     "Reached the turn limit",
 		Hint:      "The loop stopped before the model finished. Continue this turn to keep going.",
 		Detail:    "max turns reached (" + strconv.Itoa(limit) + ")",
+		Retryable: true,
+	}
+}
+
+// stuckLoopInfo is the terminal card for a SoftHorizon loop that kept
+// repeating the same failure, or kept the same check FAIL, after a stall
+// nudge. Retryable: the operator can steer or continue with a different
+// approach.
+func stuckLoopInfo(detail string) ErrorInfo {
+	if strings.TrimSpace(detail) == "" {
+		detail = "the same tool failure kept repeating"
+	}
+	return ErrorInfo{
+		Kind:      ErrKindStuck,
+		Title:     "Stopped a repeating loop",
+		Hint:      "The observation did not change. Edit the product the check cites, or change approach, then continue this turn.",
+		Detail:    detail,
 		Retryable: true,
 	}
 }
@@ -58,6 +76,10 @@ func (e ErrorInfo) Payload() map[string]any {
 func ClassifyError(err error) ErrorInfo {
 	if err == nil {
 		return ErrorInfo{Kind: ErrKindUnknown, Title: "Something went wrong", Retryable: true}
+	}
+	var stuck *StopError
+	if errors.As(err, &stuck) && stuck.Reason == StopStuck {
+		return stuckLoopInfo(stuck.Error())
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -125,7 +147,7 @@ func FailoverWorthy(err error) bool {
 		return false
 	}
 	switch ClassifyError(err).Kind {
-	case ErrKindOverflow, ErrKindBudget, ErrKindCanceled, ErrKindInvalid, ErrKindMaxTurns:
+	case ErrKindOverflow, ErrKindBudget, ErrKindCanceled, ErrKindInvalid, ErrKindMaxTurns, ErrKindStuck:
 		return false
 	default:
 		return true
