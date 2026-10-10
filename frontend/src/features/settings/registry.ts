@@ -58,6 +58,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },
   { id: "extensions-connectors", tab: "extensions", titleKey: "extensionsConnectors", keywords: "connector oauth gmail feishu" },
   { id: "personal-memory", tab: "personal", titleKey: "personalMemory", keywords: "memory profile staging" },
+  { id: "personal-profiles", tab: "personal", titleKey: "personalProfiles", keywords: "profile identity role tools mcp" },
   { id: "personal-jobs", tab: "personal", titleKey: "personalJobs", keywords: "automation schedule cron job" },
   { id: "personal-work", tab: "personal", titleKey: "personalWork", keywords: "task document proposal lease" },
   { id: "personal-ideas", tab: "personal", titleKey: "personalIdeas", keywords: "ideas mail form meet goal" },

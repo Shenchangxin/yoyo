@@ -52,6 +52,10 @@ type SessionMeta struct {
 	ParentID         string    `json:"parent_id,omitempty"`
 	PinnedPaths      []string  `json:"pinned_paths,omitempty"`
 	AuthMode         string    `json:"auth_mode,omitempty"`
+	ProfileID        string    `json:"profile_id,omitempty"`
+	PageID           string    `json:"page_id,omitempty"`
+	ResearchBrief    string    `json:"research_brief,omitempty"`
+	ResearchShot     string    `json:"research_shot,omitempty"`
 	// Interrupted/Queued are live annotations from .run.json, not durable meta.
 	Interrupted bool `json:"interrupted,omitempty"`
 	Queued      int  `json:"queued,omitempty"`
@@ -100,6 +104,7 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 		ModelFingerprint: Fingerprint(a.Config),
 		Title:            title,
 		AuthMode:         capability.AuthDefault,
+		ProfileID:        "assistant",
 	}
 	meta.Model, meta.ConnectionID = a.defaultChatSlot()
 	b, _ := json.MarshalIndent(meta, "", "  ")
@@ -402,6 +407,9 @@ func (a *App) StartSend(sessionID, message string, plan bool) error {
 }
 
 func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachment) error {
+	if a.IsPaused() {
+		return fmt.Errorf("paused")
+	}
 	atts, resume := takeResume(message, atts)
 	if resume {
 		message = ""
@@ -620,6 +628,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Advertised: append([]string(nil), snap.Tools...),
 		AskUser:    a.askUserFn(ctx, sessionID),
 		Packs:      a.packSessions(skillRoot),
+		Pages:      a.Pages,
+		OnCapture: func(kind, path, summary string) {
+			a.rememberCapture(sessionID, kind, path, summary)
+		},
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
@@ -719,17 +731,38 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			}
 			inject += extra
 		}
+		if meta.PageID != "" && a.Pages != nil {
+			if pg, err := a.Pages.Get("", meta.PageID); err == nil {
+				if extra := runtime.PageInject(pg.Title, pg.Content, 3200); extra != "" {
+					if inject != "" {
+						inject += "\n"
+					}
+					inject += extra
+				}
+			}
+		}
 	}
 	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""
 	if a.Memory != nil {
-		profile = a.Memory.ProfilePin(800)
+		if p := a.sessionProfile(sessionID); p == nil || p.Memory {
+			profile = a.Memory.ProfilePin(800)
+		}
 	}
 	voice := runtime.OperatorVoice(message, hist)
 	tools.OperatorVoice = voice
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)
 	if pin := runtime.LanguagePin(voice); pin.Text != "" {
 		frags = append(frags, pin)
+	}
+	if p := a.sessionProfile(sessionID); p != nil && strings.TrimSpace(p.Instructions) != "" {
+		frags = append(frags, artifact.PromptFragment{Slot: "role", Text: p.Instructions})
+	}
+	pageCtx := ""
+	if meta.PageID != "" && a.Pages != nil {
+		if pg, err := a.Pages.Get("", meta.PageID); err == nil {
+			pageCtx = runtime.PageInject(pg.Title, pg.Content, 3200)
+		}
 	}
 	out, runErr = runtime.Run(ctx, runtime.RunRequest{
 		SessionID:        sessionID,
@@ -762,6 +795,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		StopHooks:        stopHooks,
 		PreCompactHooks:  preCompact,
 		ProfileMemory:    profile,
+		PageContext:      pageCtx,
 		OnEvent:          wrapped,
 		OnChild: func(id, prompt string, done bool) {
 			a.noteChildRun(sessionID, id, prompt, meta, done)
@@ -884,10 +918,17 @@ const errBusy errString = "session already running"
 
 func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 	extra := map[string]runtime.ExtraTool{}
+	var mcpAllow []string
+	if p := a.sessionProfile(sessionID); p != nil {
+		mcpAllow = p.MCPAllow
+	}
 	if a.MCP != nil {
 		for _, t := range a.MCP.Tools() {
 			t := t
 			name := "mcp__" + t.Server + "__" + t.Name
+			if !profileMCPAllowed(mcpAllow, name, t.Server) {
+				continue
+			}
 			params := t.InputSchema
 			if params == nil {
 				params = map[string]any{"type": "object", "properties": map[string]any{}}
@@ -901,7 +942,7 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 				Exclusive: t.OpenWorldHint || t.DestructiveHint,
 				Call: func(argsJSON string) runtime.ToolResult {
 					if err := a.Caps.Check(capability.Request{
-						Level: capability.Network, Action: name, SessionID: sessionID, ForceAsk: true,
+						Level: capability.Network, Action: name, SessionID: sessionID, ForceAsk: !t.ReadOnlyHint,
 					}); err != nil {
 						return runtime.ToolResult{Err: err}
 					}

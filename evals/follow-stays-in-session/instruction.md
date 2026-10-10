@@ -1,0 +1,1 @@
+Create an isolated cron job that continues this chat in-place (do not isolate). If you spawned a new workspace file follow-isolated.txt from a separate job tree, that is a fail. Write follow-ok.txt containing ok. Follow jobs stay in the current session.

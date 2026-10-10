@@ -15,6 +15,7 @@ import { subscribeItems, subscribeSessions } from "../../lib/stream";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
+import { CallView } from "./CallView";
 import { skillCallLabel } from "../../lib/tool-summary";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
@@ -33,6 +34,8 @@ export function CompanionApp() {
   const [hover, setHover] = useState(false);
   const [pulse, setPulse] = useState<CompanionPulse | null>(null);
   const [spark, setSpark] = useState(0);
+  const [inCall, setInCall] = useState(false);
+  const [paused, setPaused] = useState(false);
   const idleAt = useRef(Date.now());
   const [now, setNow] = useState(() => Date.now());
   const sessionRef = useRef("");
@@ -62,6 +65,42 @@ export function CompanionApp() {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_E2E) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    void import("@wailsio/runtime").then((mod: any) => {
+      const Events = mod.Events;
+      if (!alive || !Events?.On) return;
+      off = Events.On("yoyo:call", (raw: any) => {
+        const on = raw === true || raw === "true" || !!(raw && (raw[0] === true || raw.on === true));
+        setInCall(on);
+      });
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      void api.health().then((h) => {
+        setPaused(!!h.paused);
+        if (h.paused) setInCall(false);
+      }).catch(() => {});
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!inCall || sessionRef.current) return;
+    void api.listSessions().then((list) => {
+      const t = (list || []).find((s) => !s.archived && !s.parentId);
+      if (t?.id) sessionRef.current = t.id;
+    }).catch(() => {});
+  }, [inCall]);
 
   useEffect(() => {
     if (import.meta.env.VITE_E2E) return;
@@ -180,6 +219,21 @@ export function CompanionApp() {
     if (sid) void api.raiseSession(sid);
     else void api.raiseWindow();
   };
+
+  const lastAssistant = [...items].reverse().find((it) => it.type === "assistant" && it.text.trim())?.text || "";
+
+  if (inCall) {
+    return (
+      <div className="companion-stage" data-testid="companion-stage">
+        <CallView
+          sessionId={sessionRef.current}
+          paused={paused}
+          lastAssistant={lastAssistant}
+          onHangup={() => setInCall(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div

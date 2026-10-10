@@ -26,6 +26,7 @@ type Bind struct {
 	Poll       time.Duration
 	Lease      time.Duration
 	OnChange   func()
+	Paused     func() bool
 }
 
 type Engine struct {
@@ -39,6 +40,7 @@ type Engine struct {
 	Poll       time.Duration
 	Lease      time.Duration
 	OnChange   func()
+	Paused     func() bool
 
 	mu       sync.Mutex
 	running  bool
@@ -92,6 +94,9 @@ func (e *Engine) Bind(b Bind) {
 	}
 	if b.OnChange != nil {
 		e.OnChange = b.OnChange
+	}
+	if b.Paused != nil {
+		e.Paused = b.Paused
 	}
 }
 

@@ -239,3 +239,43 @@ func TestRPCPacksListAndEnable(t *testing.T) {
 		t.Fatal("uninstalled pack must not report enabled")
 	}
 }
+
+func TestRPCPagesProfilesAndPause(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	created := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: "pages.save", Params: jsonRaw(`{"title":"Brief","content":"hello pages"}`)})
+	if created.Error != nil {
+		t.Fatal(created.Error)
+	}
+	list := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 2, Method: "pages.list"})
+	if list.Error != nil {
+		t.Fatal(list.Error)
+	}
+	raw, _ := json.Marshal(list.Result)
+	if !strings.Contains(string(raw), "Brief") {
+		t.Fatalf("%s", raw)
+	}
+	pro := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "profiles.list"})
+	if pro.Error != nil {
+		t.Fatal(pro.Error)
+	}
+	pr, _ := json.Marshal(pro.Result)
+	if !strings.Contains(string(pr), "researcher") {
+		t.Fatalf("%s", pr)
+	}
+	pause := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 4, Method: "app.pause.set", Params: jsonRaw(`{"paused":true}`)})
+	if pause.Error != nil {
+		t.Fatal(pause.Error)
+	}
+	if !a.IsPaused() {
+		t.Fatal("paused")
+	}
+	health := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 5, Method: "health"})
+	h, _ := json.Marshal(health.Result)
+	if !strings.Contains(string(h), `"paused":true`) {
+		t.Fatalf("%s", h)
+	}
+}

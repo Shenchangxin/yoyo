@@ -5,12 +5,14 @@ import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { SettingEmpty, SettingRow, SettingSection, SettingsPageHeader } from "./SettingChrome";
+import { profileLabel, profileOf } from "../../lib/profile-label";
 
 export function PersonalSettings() {
   const copy = useCopy();
   return (
     <>
       <SettingsPageHeader title={copy.settings.tabs.personal} description={copy.settings.tabHints.personal} />
+      <ProfileSection />
       <MemorySection />
       <JobSection />
       <WorkSection />
@@ -19,6 +21,79 @@ export function PersonalSettings() {
       <GoalSection />
       <WatchSection />
     </>
+  );
+}
+
+function ProfileSection() {
+  const copy = useCopy();
+  const [rows, setRows] = useState<any[]>([]);
+  const [active, setActive] = useState<any | null>(null);
+  const refresh = () => {
+    void api.profilesList().then((list) => {
+      setRows((Array.isArray(list) ? list : []).map(profileOf));
+    }).catch(() => {});
+  };
+  useEffect(() => { refresh(); }, []);
+  return (
+    <SettingSection id="personal-profiles" title={copy.settings.sections.personalProfiles} footnote={copy.profile.hint}>
+      {rows.length === 0 ? (
+        <SettingEmpty>{copy.profile.hint}</SettingEmpty>
+      ) : (
+        rows.map((p: any) => (
+          <SettingRow key={str(p.id)} list title={profileLabel(str(p.id), str(p.name), copy)} description={str(p.id)}>
+            <Button size="sm" variant="ghost" onClick={() => setActive(p)}>{copy.profile.edit}</Button>
+          </SettingRow>
+        ))
+      )}
+      {active ? (
+        <SettingRow stack title={profileLabel(str(active.id), str(active.name), copy)}>
+          <Input
+            className="h-8 w-full text-[13px]"
+            aria-label={copy.profile.name}
+            value={str(active.name)}
+            onChange={(e) => setActive({ ...active, name: e.target.value })}
+          />
+          <Input
+            className="h-8 w-full text-[13px]"
+            aria-label={copy.profile.instructions}
+            value={str(active.instructions)}
+            onChange={(e) => setActive({ ...active, instructions: e.target.value })}
+          />
+          <Input
+            className="h-8 w-full text-[13px]"
+            aria-label={copy.profile.deny}
+            value={(active.deny_tools || []).join(", ")}
+            onChange={(e) => setActive({ ...active, deny_tools: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
+          />
+          <Input
+            className="h-8 w-full text-[13px]"
+            aria-label={copy.profile.mcp}
+            value={(active.mcp_allow || []).join(", ")}
+            onChange={(e) => setActive({ ...active, mcp_allow: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })}
+          />
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={!!active.research} onChange={(e) => setActive({ ...active, research: e.target.checked })} />
+            {copy.profile.research}
+          </label>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={!!active.memory} onChange={(e) => setActive({ ...active, memory: e.target.checked })} />
+            {copy.profile.memory}
+          </label>
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={async () => {
+                await api.profilesSave(active);
+                setActive(null);
+                refresh();
+              }}
+            >
+              {copy.profile.save}
+            </Button>
+          </div>
+        </SettingRow>
+      ) : null}
+    </SettingSection>
   );
 }
 
@@ -65,7 +140,7 @@ function MemorySection() {
             key={str(it.id || i)}
             list
             title={str(it.text).slice(0, 96)}
-            description={str(it.kind) + (it.staging ? " · staging" : "")}
+            description={str(it.kind) + " · " + (it.staging ? copy.settings.memoryStaging : copy.settings.memoryPinned)}
           >
             <Button
               size="sm"
@@ -165,6 +240,17 @@ function JobSection() {
             >
               {copy.settings.unload}
             </Button>
+            {str(j.status) === "interrupted" ? (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  await api.scheduleRetry(str(j.id));
+                  refresh();
+                }}
+              >
+                {copy.settings.retryWork}
+              </Button>
+            ) : null}
             {str(j.kind) === "webhook" ? (
               <Button
                 size="sm"

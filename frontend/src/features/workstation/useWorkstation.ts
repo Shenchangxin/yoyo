@@ -173,6 +173,8 @@ export function useWorkstation() {
   const closeSettings = useUI((s) => s.closeSettings);
   const openSkills = useUI((s) => s.openSkills);
   const closeSkills = useUI((s) => s.closeSkills);
+  const openPages = useUI((s) => s.openPages);
+  const closePages = useUI((s) => s.closePages);
   const openVideo = useUI((s) => s.openVideo);
   const closeVideo = useUI((s) => s.closeVideo);
   const showConversation = useUI((s) => s.showConversation);
@@ -394,7 +396,12 @@ export function useWorkstation() {
 
   const syncRunning = useCallback(async () => {
     try {
-      const [ids, status] = await Promise.all([api.runningIDs(), api.runningStatus().catch(() => [] as RunStatus[])]);
+      const [h, ids, status] = await Promise.all([
+        api.health().catch(() => null),
+        api.runningIDs(),
+        api.runningStatus().catch(() => [] as RunStatus[]),
+      ]);
+      if (h) setHealth((cur) => ({ ...cur, ...h }));
       const live = ids.filter((id) => !settled(endedAt.current, id));
       setRunning((prev) => runningMap(live, prev));
       setRunStatus(status.filter((s) => !settled(endedAt.current, s.id)));
@@ -535,6 +542,14 @@ export function useWorkstation() {
       /* ignore */
     }
   }, [activeId, inspTab]);
+
+  useEffect(() => {
+    if (import.meta.env.VITE_E2E) return;
+    const timer = window.setInterval(() => {
+      void api.health().then((h) => setHealth((cur) => ({ ...cur, ...h }))).catch(() => {});
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (inspTab !== "trace") return;
@@ -1456,7 +1471,7 @@ export function useWorkstation() {
           ui.openVideoPane("chat");
           return;
         }
-        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness") {
+        if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages") {
           showConversation();
           return;
         }
@@ -1525,7 +1540,7 @@ export function useWorkstation() {
   };
 
   return {
-    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
+    copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,

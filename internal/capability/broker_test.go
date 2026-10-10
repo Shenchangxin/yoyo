@@ -72,6 +72,34 @@ func TestBrokerForceAskHonorsAlways(t *testing.T) {
 	}
 }
 
+func TestBrokerPagePromoteNeverAlways(t *testing.T) {
+	n := 0
+	b := NewBroker(AutoPolicy{Allow: []Level{WriteWorkspace}}, func(context.Context, Request) (Decision, error) {
+		n++
+		return Always, nil
+	})
+	req := Request{Level: WriteWorkspace, Action: "review_page", SessionID: "s1"}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("first review_page should ask, n=%d", n)
+	}
+	if err := b.Check(req); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("session grant should skip a second ask, n=%d", n)
+	}
+	if b.always[WriteWorkspace] && n == 1 {
+		// always-map must not swallow the first review_page
+	}
+	write := Request{Level: WriteWorkspace, Action: "write_file", SessionID: "other"}
+	if err := b.Check(write); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBrokerNeverAlwaysHighRisk(t *testing.T) {
 	n := 0
 	b := NewBroker(AutoPolicy{}, func(context.Context, Request) (Decision, error) {

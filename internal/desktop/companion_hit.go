@@ -1,10 +1,18 @@
 package desktop
 
-import "github.com/Shenchangxin/yoyo/internal/winsize"
+import (
+	"sync/atomic"
+
+	"github.com/Shenchangxin/yoyo/internal/winsize"
+)
+
+var companionInteractive atomic.Bool
 
 const (
 	companionW         = 232
 	companionH         = 226
+	companionCallW     = 360
+	companionCallH     = 420
 	companionPad       = 8
 	companionPet       = 148
 	companionPetTop    = 24

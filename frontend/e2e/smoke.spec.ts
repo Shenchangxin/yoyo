@@ -1201,6 +1201,15 @@ test("subagent sessions stay nested in the parent transcript", async ({ page }) 
   await expect(page.getByTestId("process-group")).toBeVisible();
 });
 
+test("pages library opens without an API key", async ({ page }) => {
+  await mockApi(page, "");
+  await page.goto("/");
+  await expect(page.getByRole("dialog", { name: /Set up this workstation/i })).toHaveCount(0);
+  await page.getByRole("button", { name: "Pages", exact: true }).click();
+  await expect(page.getByTestId("pages-surface")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New page" })).toBeVisible();
+});
+
 test("companion bubble shows loading while a turn is running", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "live", created_at: "2026-01-01T00:00:00Z" }],

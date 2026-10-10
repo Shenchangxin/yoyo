@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clapperboard,
   Copy as CopyIcon,
+  FileText,
   Film,
   Folder,
   GitBranch,
@@ -191,6 +192,7 @@ export function ThreadRail(props: {
   onChats: () => void;
   onHarness: () => void;
   onSkills: () => void;
+  onPages: () => void;
   onVideo: () => void;
   onSettings: () => void;
   onCollapse: () => void;
@@ -221,6 +223,7 @@ export function ThreadRail(props: {
   });
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
+  const pagesOn = props.surface === "pages";
   const videoOn = props.surface === "video";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -343,6 +346,14 @@ export function ThreadRail(props: {
           onClick={props.onSkills}
         >
           <BookOpen className="size-4" aria-hidden />
+        </DockIcon>
+        <DockIcon
+          label={copy.rail.pages}
+          hint={copy.rail.pagesHint}
+          on={pagesOn}
+          onClick={props.onPages}
+        >
+          <FileText className="size-4" aria-hidden />
         </DockIcon>
         <DockIcon
           label={copy.rail.video}
@@ -500,7 +511,7 @@ function ThreadRow(props: {
   const copy = useCopy();
   const t = props.thread;
   const run = !!props.running[t.id];
-  const onChat = props.surface === "agent" || props.surface === "video";
+  const onChat = props.surface === "agent" || props.surface === "video" || props.surface === "pages";
   const active = onChat && t.id === props.activeId && threadChannel(t) === (props.surface === "video" ? "video" : "agent");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(t.title || "");

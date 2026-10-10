@@ -35,6 +35,18 @@ func NeverAlways(l Level) bool {
 	return IdentityLevel(l)
 }
 
+// NeverAlwaysAction is for promotions that reuse an existing level (Pages
+// use write_workspace) but must not stick as Always. Same-session continue
+// may still grant Session.
+func NeverAlwaysAction(action string) bool {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "review_page", "page.save", "page.edit":
+		return true
+	default:
+		return false
+	}
+}
+
 func DropSticky(levels []Level) []Level {
 	out := make([]Level, 0, len(levels))
 	for _, l := range levels {

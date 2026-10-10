@@ -2,11 +2,13 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
   Clapperboard,
+  FileText,
   GitCompare,
   History,
   Images,
   Info,
   MessageSquarePlus,
+  Pause,
   PanelsTopLeft,
   Puzzle,
   Search,
@@ -85,6 +87,14 @@ export function CommandPalette(props: {
                 </Command.Item>
                 <Command.Item value={`${copy.palette.openSkills} skills market catalog`} onSelect={() => { useUI.getState().openSkills(); props.onClose(); }}>
                   {copy.palette.openSkills}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.openPages} pages library notes`} onSelect={() => { useUI.getState().openPages(); props.onClose(); }}>
+                  <FileText className="size-4 text-muted" />
+                  {copy.palette.openPages}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.pause} ${copy.palette.resume} workstation`} onSelect={() => { void import("../lib/client").then((api) => api.setPaused(true)); props.onClose(); }}>
+                  <Pause className="size-4 text-muted" />
+                  {copy.palette.pause}
                 </Command.Item>
                 <Command.Item value={`${copy.palette.openPacks} superpowers skill packs methodology`} onSelect={() => { useUI.getState().openPacks(); props.onClose(); }}>
                   {copy.palette.openPacks}

@@ -3,11 +3,12 @@ import { Pin, RefreshCw, Quote } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import * as api from "../lib/client";
-import type { ContextInventory, ContextObject } from "../lib/protocol";
+import type { ContextInventory, ContextObject, Thread } from "../lib/protocol";
 
 export function ContextPane(props: {
   sessionId?: string;
   running?: boolean;
+  thread?: Thread | null;
   onQuote?: (text: string) => void;
 }) {
   const copy = useCopy();
@@ -66,6 +67,16 @@ export function ContextPane(props: {
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+        {props.thread?.researchBrief || props.thread?.researchShot ? (
+          <div className="mb-3 rounded-lg border border-border/70 bg-lift/40 px-2 py-2" data-testid="research-capture">
+            {props.thread.researchBrief ? (
+              <div className="truncate text-[12px] text-foreground/90">{copy.review.researchBrief}: {props.thread.researchBrief}</div>
+            ) : null}
+            {props.thread.researchShot ? (
+              <div className="truncate text-[12px] text-muted">{copy.review.researchShot}: {props.thread.researchShot}</div>
+            ) : null}
+          </div>
+        ) : null}
         {!objects.length ? (
           <Empty title={copy.review.contextEmpty} hint={copy.review.contextEmptyHint} />
         ) : (

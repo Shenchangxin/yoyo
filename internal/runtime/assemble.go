@@ -35,6 +35,19 @@ func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragm
 		b.WriteString("\n\n")
 	}
 	b.WriteString("You are Yoyo, a local personal assistant. Deliver workspace artifacts — code, documents, spreadsheets, slides, and cited research — rather than advice.\n")
+	var role []string
+	for _, f := range fragments {
+		if f.Slot == "role" {
+			role = append(role, f.Text)
+		}
+	}
+	if texts := uniqueSlotTexts(role); len(texts) > 0 {
+		b.WriteString("\n## Role\n")
+		for _, t := range texts {
+			b.WriteString(t)
+			b.WriteByte('\n')
+		}
+	}
 	type slotSpec struct {
 		key   string
 		title string
@@ -53,7 +66,7 @@ func AssembleIdentity(loop artifact.LoopPreset, fragments []artifact.PromptFragm
 		"failure_recovery": {loop.FailureRecovery},
 	}
 	for _, f := range fragments {
-		if f.Slot == "compact" || f.Slot == "voice" {
+		if f.Slot == "compact" || f.Slot == "voice" || f.Slot == "role" {
 			continue
 		}
 		seed[f.Slot] = append(seed[f.Slot], f.Text)

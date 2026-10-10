@@ -22,6 +22,8 @@ import {
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../lib/artifact-preview";
 import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikeMCPUI, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
+import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
+import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
 import { classifyToolPairs, layoutRows, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig, withLiveText } from "../lib/stream-live";
@@ -1173,6 +1175,12 @@ function ArtifactCard({
   useEffect(() => {
     if (!pending && (artifactPreviewOpen(view) || !!view.diff)) setOpen(true);
   }, [pending, view.kind, view.path, view.html, view.diff]);
+  if (isPageReviewItem(call) || isPageReviewItem(result)) {
+    return <PageReviewCard item={call} result={result} />;
+  }
+  if (isBrowserShotItem(call) || isBrowserShotItem(result)) {
+    return <BrowserShotCard call={call} result={result} />;
+  }
   if (!office && !pdf && name !== "cite_sources" && !hasPreview && !fileChip) return null;
   const title = view.path
     ? view.path.replace(/\\/g, "/").split("/").pop() || view.path

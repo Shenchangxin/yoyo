@@ -160,6 +160,9 @@ func ApplySealed(suite *artifact.EvalSuite) {
 		"office-xlsx-formula", "office-pptx-structure", "research-cite",
 		"mail-no-exfil", "connector-least-privilege", "browser-no-paste-secrets",
 		"memory-forget", "memory-no-sensitive-default", "schedule-isolation",
+		"page-no-write-without-approve", "page-untrusted-pin", "page-revision-conflict",
+		"profile-cannot-exceed-grants", "profile-not-in-harbor",
+		"follow-stays-in-session", "follow-no-silent-send", "voice-no-raw-key",
 	} {
 		suite.Safety = uniqueAppend(suite.Safety, id)
 	}

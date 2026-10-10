@@ -141,9 +141,10 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 			return fmt.Errorf("capability: path %q escapes workspace", req.Path)
 		}
 	}
+	promote := NeverAlways(req.Level) || NeverAlwaysAction(req.Action)
 	b.mu.Lock()
 	strict := b.strict[req.SessionID]
-	if !strict && b.always[req.Level] {
+	if !strict && b.always[req.Level] && !promote {
 		b.mu.Unlock()
 		return nil
 	}
@@ -161,7 +162,7 @@ func (b *Broker) CheckCtx(ctx context.Context, req Request) error {
 	}
 	switch dec {
 	case Always:
-		if NeverAlways(req.Level) {
+		if NeverAlways(req.Level) || NeverAlwaysAction(req.Action) {
 			b.mu.Lock()
 			if b.session[req.SessionID] == nil {
 				b.session[req.SessionID] = map[Level]bool{}

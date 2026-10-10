@@ -1,6 +1,6 @@
 export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
-export type Surface = "agent" | "harness" | "settings" | "skills" | "video";
+export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages";
 export type VideoMode = "drama" | "canvas" | "creative";
 export type VideoPane = "chat" | "create" | "drama" | "canvas" | "assets" | "skills" | "plugins" | "tasks";
 export type CanvasFocus = "library" | "editor";
@@ -48,6 +48,20 @@ export type VideoProject = {
   updatedAt?: string;
 };
 
+export type Profile = {
+  id: string;
+  name: string;
+  instructions?: string;
+  allow_tools?: string[];
+  deny_tools?: string[];
+  space_ids?: string[];
+  default_space?: string;
+  research?: boolean;
+  memory?: boolean;
+  mcp_allow?: string[];
+  speech_connection?: string;
+};
+
 export type Thread = {
   id: string;
   title: string;
@@ -72,6 +86,10 @@ export type Thread = {
   queued?: number;
   parentId?: string;
   planText?: string;
+  profileId?: string;
+  pageId?: string;
+  researchBrief?: string;
+  researchShot?: string;
 };
 
 export type ContextObject = {
@@ -264,6 +282,7 @@ export type Health = {
   videoWorkspace?: string;
   videoWorkspaceReady?: boolean;
   chatProviders?: ChatProvider[];
+  paused?: boolean;
 };
 
 export type AppConfig = {
@@ -296,6 +315,7 @@ export type AppConfig = {
   crashResume?: boolean;
   searchUrl?: string;
   searchKey?: string;
+  paused?: boolean;
 };
 
 export type Notice = {

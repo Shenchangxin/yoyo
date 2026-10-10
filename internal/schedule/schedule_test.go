@@ -20,6 +20,35 @@ func TestJobsIsolateByDefault(t *testing.T) {
 	}
 }
 
+func TestFollowStaysInSessionAndDoesNotIsolate(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := s.Create(Job{Kind: KindFollow, Spec: "1h", Prompt: "check in", SessionID: "sess-1", Isolate: true})
+	if j.Isolate {
+		t.Fatal("follow must not isolate")
+	}
+	if j.SessionID != "sess-1" {
+		t.Fatal("session binding lost")
+	}
+	now := time.Now().UTC()
+	if due := s.Due(now); len(due) != 0 {
+		t.Fatalf("follow must wait the delay: %+v", due)
+	}
+	s.Interrupt(j.ID, "lease expired")
+	if due := s.Due(now.Add(time.Hour + time.Second)); len(due) != 0 {
+		t.Fatalf("interrupted follow must wait for retry: %+v", due)
+	}
+	got, ok := s.Retry(j.ID)
+	if !ok || got.Status != "" {
+		t.Fatalf("retry %+v %v", got, ok)
+	}
+	if due := s.Due(now.Add(time.Hour + time.Second)); len(due) != 1 || due[0].SessionID != "sess-1" {
+		t.Fatalf("follow should fire in-session after delay: %+v", due)
+	}
+}
+
 func TestWebhookIsNotTimeDueButTriggerWorks(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

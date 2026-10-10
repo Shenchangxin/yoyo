@@ -124,6 +124,9 @@ func (t *WorkspaceTools) citeSources(rel string, raw string) ToolResult {
 	if err := cite.Write(p, payload.Sources); err != nil {
 		return ToolResult{Err: err}
 	}
+	if t.OnCapture != nil {
+		t.OnCapture("brief", rel, fmt.Sprintf("%d citations", len(payload.Sources)))
+	}
 	return ToolResult{Content: fmt.Sprintf("wrote %d citations to %s", len(payload.Sources), rel), FileChange: &FileChange{Paths: []string{rel}}}
 }
 
@@ -167,7 +170,10 @@ func (t *WorkspaceTools) scheduleCreate(kind, spec, prompt string) ToolResult {
 	if t.Schedule == nil {
 		return ToolResult{Err: fmt.Errorf("no scheduler")}
 	}
-	j := t.Schedule.Create(schedule.Job{Kind: schedule.Kind(kind), Spec: spec, Prompt: prompt, Workspace: t.Workspace, Isolate: true})
+	j := t.Schedule.Create(schedule.Job{
+		Kind: schedule.Kind(kind), Spec: spec, Prompt: prompt,
+		Workspace: t.Workspace, SessionID: t.SessionID,
+	})
 	b, _ := json.Marshal(j)
 	return ToolResult{Content: string(b)}
 }
@@ -518,6 +524,9 @@ func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	}
 	if err := t.Browser.Screenshot(p); err != nil {
 		return ToolResult{Err: err}
+	}
+	if t.OnCapture != nil {
+		t.OnCapture("shot", rel, "browser screenshot")
 	}
 	return t.viewImage(rel)
 }

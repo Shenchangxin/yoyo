@@ -33,6 +33,8 @@ const (
 	ProposalCalendarCreate ProposalKind = "calendar.create"
 	ProposalCalendarUpdate ProposalKind = "calendar.update"
 	ProposalCalendarDelete ProposalKind = "calendar.delete"
+	ProposalPageSave       ProposalKind = "page.save"
+	ProposalPageEdit       ProposalKind = "page.edit"
 )
 
 type ProposalStatus string

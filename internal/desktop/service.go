@@ -35,6 +35,7 @@ type Service struct {
 	companionClosing   atomic.Bool
 	companionClamping  atomic.Bool
 	companionCaption   atomic.Bool
+	companionCall      atomic.Bool
 	companionMenu      *application.MenuItem
 	cursorWatch        atomic.Bool
 	tray               *application.SystemTray

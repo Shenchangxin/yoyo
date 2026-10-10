@@ -17,6 +17,7 @@ const (
 	KindOnce      Kind = "once"
 	KindHeartbeat Kind = "heartbeat"
 	KindWebhook   Kind = "webhook"
+	KindFollow    Kind = "follow"
 )
 
 type Job struct {
@@ -26,8 +27,10 @@ type Job struct {
 	Prompt    string    `json:"prompt"`
 	Workspace string    `json:"workspace,omitempty"`
 	Harness   string    `json:"harness,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
 	Enabled   bool      `json:"enabled"`
 	Isolate   bool      `json:"isolate"`
+	Status    string    `json:"status,omitempty"`
 	LastRun   time.Time `json:"last_run,omitempty"`
 	LastErr   string    `json:"last_err,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -61,7 +64,14 @@ func (s *Service) Create(j Job) Job {
 	if j.Kind == "" {
 		j.Kind = KindOnce
 	}
-	j.Isolate = true
+	if j.Kind == KindFollow {
+		j.Isolate = false
+		if d, err := time.ParseDuration(j.Spec); err == nil && d < time.Minute {
+			j.Spec = "1m"
+		}
+	} else {
+		j.Isolate = true
+	}
 	s.jobs = append(s.jobs, j)
 	_ = s.flush()
 	return j
@@ -117,13 +127,45 @@ func (s *Service) Trigger(id string) (Job, bool) {
 		if s.jobs[i].ID != id && s.jobs[i].Spec != id {
 			continue
 		}
-		if s.jobs[i].Kind != KindWebhook && s.jobs[i].Kind != KindOnce && s.jobs[i].Kind != KindHeartbeat {
+		if s.jobs[i].Kind != KindWebhook && s.jobs[i].Kind != KindOnce && s.jobs[i].Kind != KindHeartbeat && s.jobs[i].Kind != KindFollow {
 			continue
 		}
 		if !s.jobs[i].Enabled {
 			return Job{}, false
 		}
 		s.jobs[i].LastRun = time.Now().UTC()
+		j := s.jobs[i]
+		_ = s.flush()
+		return j, true
+	}
+	return Job{}, false
+}
+
+func (s *Service) Interrupt(id, reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.jobs {
+		if s.jobs[i].ID != id {
+			continue
+		}
+		s.jobs[i].Status = "interrupted"
+		s.jobs[i].LastErr = reason
+		s.jobs[i].LastRun = time.Now().UTC()
+	}
+	_ = s.flush()
+}
+
+func (s *Service) Retry(id string) (Job, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.jobs {
+		if s.jobs[i].ID != id {
+			continue
+		}
+		s.jobs[i].Status = ""
+		s.jobs[i].LastErr = ""
+		s.jobs[i].Enabled = true
+		s.jobs[i].LastRun = time.Time{}
 		j := s.jobs[i]
 		_ = s.flush()
 		return j, true
@@ -144,7 +186,7 @@ func (s *Service) Record(id string, err error) {
 		} else {
 			s.jobs[i].LastErr = ""
 		}
-		if s.jobs[i].Kind == KindOnce {
+		if s.jobs[i].Kind == KindOnce || s.jobs[i].Kind == KindFollow {
 			s.jobs[i].Enabled = false
 		}
 	}
@@ -168,6 +210,34 @@ func due(j Job, now time.Time) bool {
 			return true
 		}
 		return now.Sub(j.LastRun) >= d
+	case KindFollow:
+		if j.Status == "interrupted" {
+			return false
+		}
+		d, err := time.ParseDuration(j.Spec)
+		if err != nil {
+			switch strings.ToLower(strings.TrimSpace(j.Spec)) {
+			case "1h", "hourly":
+				d = time.Hour
+			case "1d", "daily":
+				d = 24 * time.Hour
+			case "1w", "weekly":
+				d = 7 * 24 * time.Hour
+			default:
+				d = time.Hour
+			}
+		}
+		if d < time.Minute {
+			d = time.Minute
+		}
+		anchor := j.LastRun
+		if anchor.IsZero() {
+			anchor = j.CreatedAt
+		}
+		if anchor.IsZero() {
+			return false
+		}
+		return now.Sub(anchor) >= d
 	case KindCron:
 		return cronDue(j.Spec, j.LastRun, now)
 	case KindWebhook:

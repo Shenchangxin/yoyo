@@ -46,6 +46,7 @@ const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => (
 const HarnessWorkspace = lazy(() => import("./features/harness/HarnessWorkspace").then((m) => ({ default: m.HarnessWorkspace })));
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").then((m) => ({ default: m.SkillsWorkspace })));
+const PagesWorkspace = lazy(() => import("./features/pages/PagesWorkspace").then((m) => ({ default: m.PagesWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
@@ -72,6 +73,7 @@ function WorkstationApp() {
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
+  const paging = !popout && ws.surface === "pages";
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
@@ -197,8 +199,8 @@ function WorkstationApp() {
     <Composer
       draftKey={ws.draftKey}
       running={ws.threadRunning}
-      disabled={false}
-      disabledReason=""
+      disabled={!!ws.health.paused}
+      disabledReason={ws.health.paused ? copy.composer.paused : ""}
       model={ws.active?.model || ws.savedCfg.model || ws.health.model}
       models={ws.savedCfg.models}
       provider={ws.savedCfg.provider}
@@ -216,6 +218,28 @@ function WorkstationApp() {
       flush
       hero={home}
       {...bindComposer}
+      sessionId={ws.activeId}
+      profileId={ws.active?.profileId}
+      onProfile={async (id) => {
+        const sid = (await ws.ensureThread()).id;
+        const t = await api.setSessionProfile(sid, id);
+        ws.setActive(t);
+        ws.setThreads((list) => patchThread(list, t.id, t));
+      }}
+      onSavePage={async () => {
+        const sid = (await ws.ensureThread()).id;
+        const last = [...ws.items].reverse().find((it) => it.type === "assistant" && it.text.trim());
+        const draft = useUI.getState().drafts[ws.draftKey] || "";
+        const body = (last?.text || draft).trim();
+        if (!body) return;
+        const title = body.split("\n").find((l) => l.trim())?.trim().slice(0, 80) || copy.pages.untitled;
+        await api.pagesPropose(sid, title, body);
+      }}
+      onFollow={async (in_) => {
+        const sid = (await ws.ensureThread()).id;
+        await api.scheduleCreate({ kind: "follow", spec: in_, prompt: "Check in on this thread.", session_id: sid });
+      }}
+      onCall={() => { void api.setCompanionCall(true); }}
     />
   );
 
@@ -273,6 +297,16 @@ function WorkstationApp() {
         onJump={(turn) => { void ws.jumpToTurn(turn); }}
       />
       <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
+        {ws.health.paused ? (
+          <div className="border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="pause-banner">
+            {copy.pause.banner}
+          </div>
+        ) : null}
+        {ws.active?.pageId && !paging ? (
+          <div className="border-b border-line/50 px-4 py-1.5 text-[12px] text-muted">
+            {copy.pages.banner}
+          </div>
+        ) : null}
         <Transcript
           items={ws.items}
           liveTexts={ws.liveTexts}
@@ -411,6 +445,10 @@ function WorkstationApp() {
         if (ws.surface === "skills") ws.closeSkills();
         else ws.openSkills();
       }}
+      onPages={() => {
+        if (ws.surface === "pages") ws.closePages();
+        else ws.openPages();
+      }}
       onVideo={() => {
         if (ws.surface === "video") ws.closeVideo();
         else ws.openVideo();
@@ -511,6 +549,8 @@ function WorkstationApp() {
     ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
+    : paging
+      ? <span className="text-[13px] font-medium">{copy.pages.library}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -538,6 +578,8 @@ function WorkstationApp() {
               onSelectRunning={(t) => ws.openThread(t)}
               renameTick={ws.renameTick}
               onToggleInspector={() => ws.setInspector((v) => !v)}
+              paused={!!ws.health.paused}
+              onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
               onRename={async (title) => {
                 if (!ws.activeId) return;
                 await api.renameSession(ws.activeId, title);
@@ -550,6 +592,8 @@ function WorkstationApp() {
               inspector={ws.inspector}
               hideInspector={false}
               hideInbox={false}
+              paused={!!ws.health.paused}
+              onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
               title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
@@ -611,6 +655,21 @@ function WorkstationApp() {
   ) : skills ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{skillsPane}</div>
+    </Suspense>
+  ) : paging ? (
+    <Suspense fallback={null}>
+      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
+        <PagesWorkspace
+          sessionId={ws.activeId}
+          onOpenInChat={(pageId) => {
+            if (!ws.activeId) return;
+            void api.setSessionPage(ws.activeId, pageId).then((t) => {
+              ws.setActive(t);
+              ws.setThreads((list) => patchThread(list, t.id, t));
+            });
+          }}
+        />
+      </div>
     </Suspense>
   ) : harnessing ? (
     <Suspense fallback={null}>
@@ -693,8 +752,8 @@ function WorkstationApp() {
                   approvals={ws.approvals}
                   running={ws.threadRunning}
                   draftKey={ws.draftKey}
-                  disabled={false}
-                  disabledReason=""
+                  disabled={!!ws.health.paused}
+                  disabledReason={ws.health.paused ? copy.composer.paused : ""}
                   model={ws.active?.model || ws.savedCfg.model || ws.health.model}
                   models={ws.savedCfg.models}
                   provider={ws.savedCfg.provider}
@@ -815,8 +874,8 @@ function WorkstationApp() {
                         approvals={ws.approvals}
                         running={ws.threadRunning}
                         draftKey={ws.draftKey}
-                        disabled={false}
-                        disabledReason=""
+                        disabled={!!ws.health.paused}
+                        disabledReason={ws.health.paused ? copy.composer.paused : ""}
                         model={ws.active?.model || ws.savedCfg.model || ws.health.model}
                         models={ws.savedCfg.models}
                         provider={ws.savedCfg.provider}

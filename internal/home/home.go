@@ -43,6 +43,9 @@ func Open(root string) (*Dir, error) {
 		d.Schedule(),
 		d.Inbox(),
 		d.Personal(),
+		d.Pages(),
+		filepath.Join(d.Pages(), "home"),
+		d.Profiles(),
 		d.Connectors(),
 		d.Connections(),
 		d.Browser(),
@@ -94,6 +97,8 @@ func (d *Dir) Memory() string     { return filepath.Join(d.Root, "memory") }
 func (d *Dir) Schedule() string   { return filepath.Join(d.Root, "schedule") }
 func (d *Dir) Inbox() string      { return filepath.Join(d.Root, "inbox") }
 func (d *Dir) Personal() string   { return filepath.Join(d.Root, "personal") }
+func (d *Dir) Pages() string      { return filepath.Join(d.Root, "pages") }
+func (d *Dir) Profiles() string   { return filepath.Join(d.Root, "profiles") }
 func (d *Dir) Connectors() string { return filepath.Join(d.Root, "connectors") }
 func (d *Dir) Connections() string {
 	return filepath.Join(d.Root, "connections")

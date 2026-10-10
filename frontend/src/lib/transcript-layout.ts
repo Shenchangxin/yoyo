@@ -78,7 +78,7 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   if (pair.result && isToolFailed(pair.result)) return false;
   if (toolResultUnchanged(pair.result)) return false;
   const path = pairToolPath(pair);
-  if (name === "cite_sources") return true;
+  if (name === "cite_sources" || name === "review_page" || name === "browser_screenshot" || name === "browser_snapshot") return true;
   if (name.startsWith("office_")) return /\.(docx|xlsx|pptx|pdf)$/i.test(path);
   if (name === "write_file" || name === "create_file" || name === "str_replace" || name === "edit_file" || name === "apply_patch") {
     return true;
