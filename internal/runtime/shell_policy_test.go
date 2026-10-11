@@ -82,6 +82,19 @@ func TestShellDeniedDoesNotMatchExportFormat(t *testing.T) {
 	}
 }
 
+func TestShellDeniedAllowsPythonHTTPServerWithLoopbackFetch(t *testing.T) {
+	ws := t.TempDir()
+	cmds := []string{
+		`python -m http.server 8777 --directory build/app`,
+		`powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath python -ArgumentList '-m','http.server','8777','--directory','build/app'; Start-Sleep -Seconds 2; (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8777/index.html).StatusCode"`,
+	}
+	for _, cmd := range cmds {
+		if err := ShellDenied(cmd, ws, nil); err != nil {
+			t.Fatalf("python -m http.server + loopback fetch must pass: %s: %v", cmd, err)
+		}
+	}
+}
+
 func TestShellDeniedAllowsLoopbackWithLocalFilename(t *testing.T) {
 	ws := t.TempDir()
 	cmds := []string{

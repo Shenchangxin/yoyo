@@ -242,6 +242,40 @@ func quoteShellPath(p string) string {
 	return `"` + strings.ReplaceAll(p, `"`, `\"`) + `"`
 }
 
+// relaxRedundantShellQuotes drops quotes around tokens that have no
+// whitespace or cmd metacharacters. cmd /S /C plus Go's extra quoting
+// otherwise turns `node "rel\file.mjs"` into cwd+"\"rel\file.mjs".
+func relaxRedundantShellQuotes(command string) string {
+	if command == "" || !strings.Contains(command, `"`) {
+		return command
+	}
+	var b strings.Builder
+	b.Grow(len(command))
+	for i := 0; i < len(command); {
+		if command[i] != '"' {
+			b.WriteByte(command[i])
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(command) && command[j] != '"' {
+			j++
+		}
+		if j >= len(command) {
+			b.WriteString(command[i:])
+			break
+		}
+		inner := command[i+1 : j]
+		if inner != "" && !strings.ContainsAny(inner, " \t&|<>^") {
+			b.WriteString(inner)
+		} else {
+			b.WriteString(command[i : j+1])
+		}
+		i = j + 1
+	}
+	return b.String()
+}
+
 // unescapeWinPathEscapes applies JSON-style \t \n \r inside a Windows path.
 // Models emit cd "C:\Users\...\Desktop\test"; JSON "\test" becomes a tab and
 // CreateProcess returns ERROR_INVALID_NAME.

@@ -53,6 +53,7 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, rel), []byte("<html></html>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("YOYO_CHROME", filepath.Join(t.TempDir(), "no-chrome.exe"))
 	h, err := browser.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +69,9 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	}
 	if !strings.Contains(res.Content, "index.html") {
 		t.Fatalf("%s", res.Content)
+	}
+	if strings.Contains(res.Content, "Call browser_screenshot to start isolated Chrome") {
+		t.Fatalf("open must not defer Chrome to screenshot: %s", res.Content)
 	}
 	if !strings.Contains(filepath.ToSlash(h.PreviewPath()), "index.html") {
 		t.Fatalf("preview %s", h.PreviewPath())

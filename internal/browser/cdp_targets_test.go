@@ -2,6 +2,7 @@ package browser
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,5 +72,21 @@ func TestPageWSPreferWaitsWhenWantedHTTPMissing(t *testing.T) {
 	_, err := pageWSPrefer(addr, "http://127.0.0.1:9/game.html")
 	if err == nil {
 		t.Fatal("expected wait error while only about:blank exists")
+	}
+}
+
+func TestCDPMaxMessageExceedsDefaultWebsocketLimit(t *testing.T) {
+	if cdpMaxMessage <= 32768 {
+		t.Fatalf("cdpMaxMessage=%d cannot hold a PNG screenshot", cdpMaxMessage)
+	}
+}
+
+func TestCDPMessageTooBigIsNotGone(t *testing.T) {
+	err := fmt.Errorf("failed to read JSON message: failed to read: websocket: message too big: read limited at 32769 bytes")
+	if !isCDPMessageTooBig(err) {
+		t.Fatal("too big")
+	}
+	if isCDPGone(err) {
+		t.Fatal("message too big must not trigger chrome relaunch")
 	}
 }

@@ -209,6 +209,8 @@ export const en = {
     sendAnswer: "Send answer",
     answerPlaceholder: "Type an answer…",
     thoughtFor: "Thought for {n}",
+    progressNote: "Update",
+    progressNotes: "{n} updates",
     citations: "Citations",
     filesCount: "{n} files",
     created: "Created",

@@ -101,11 +101,28 @@ func (h *Host) ensureCDP() error {
 	return h.ensureChrome("")
 }
 
+// headedForAutomation keeps a live takeover window, but drops a dead headed
+// profile so screenshot/click can relaunch isolated Chrome (session ac0738fbdfb801ac).
+func headedForAutomation(headed, cdpAlive bool) bool {
+	if headed && !cdpAlive {
+		return false
+	}
+	return headed
+}
+
 func (h *Host) ensureChrome(startURL string) error {
 	headed := false
+	alive := false
 	if h != nil {
 		h.mu.Lock()
 		headed = h.headed
+		alive = cdpAlive(h.cdp)
+		h.mu.Unlock()
+	}
+	headed = headedForAutomation(headed, alive)
+	if h != nil && !headed {
+		h.mu.Lock()
+		h.headed = false
 		h.mu.Unlock()
 	}
 	err := h.startChromeCDP(startURL, headed)
@@ -113,6 +130,12 @@ func (h *Host) ensureChrome(startURL string) error {
 		return nil
 	}
 	if headed {
+		h.mu.Lock()
+		h.headed = false
+		h.mu.Unlock()
+		if err2 := h.startChromeCDP(startURL, false); err2 == nil {
+			return nil
+		}
 		return err
 	}
 	if err2 := h.startChromeCDP(startURL, true); err2 != nil {
@@ -232,6 +255,11 @@ func readFileTail(path string, n int) string {
 	return s
 }
 
+// cdpMaxMessage is the CDP websocket read cap. coder/websocket defaults to
+// 32KiB+1, which cannot hold Page.captureScreenshot PNG/JPEG (typically 100KiB–8MiB).
+// Playwright/Puppeteer raise this into the 100–256MiB range; 64MiB covers 4K PNG.
+const cdpMaxMessage = 64 << 20
+
 func (h *Host) dialWS(wsURL string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -239,6 +267,7 @@ func (h *Host) dialWS(wsURL string) error {
 	if err != nil {
 		return err
 	}
+	ws.SetReadLimit(cdpMaxMessage)
 	h.mu.Lock()
 	h.cdp = &cdpConn{ws: ws, next: 1}
 	h.mu.Unlock()
@@ -299,11 +328,21 @@ func cdpAlive(c *cdpConn) bool {
 	return ws.Ping(ctx) == nil
 }
 
+func isCDPMessageTooBig(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "message too big")
+}
+
 func isCDPGone(err error) bool {
 	if err == nil {
 		return false
 	}
 	s := strings.ToLower(err.Error())
+	if isCDPMessageTooBig(err) {
+		return false
+	}
 	for _, n := range []string{
 		"use of closed network connection",
 		"failed to write frame",
@@ -476,16 +515,59 @@ func (h *Host) evalOnConn(expr string) (string, error) {
 	return fmt.Sprint(out.Result.Value), nil
 }
 
-func (h *Host) clickCDP(sel string) error {
-	js := fmt.Sprintf(`(() => { const el = document.querySelector(%q); if (!el) return "missing"; el.click(); return "ok"; })()`, sel)
-	out, err := h.evalJS(js)
-	if err != nil {
-		return err
+func (h *Host) waitDocumentComplete(d time.Duration) {
+	if h == nil || d <= 0 {
+		return
 	}
-	if out != "ok" {
-		return fmt.Errorf("browser: selector %s not found", sel)
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		state, err := h.evalOnConn("document.readyState")
+		if err == nil && strings.ToLower(cleanJS(state)) == "complete" {
+			time.Sleep(80 * time.Millisecond)
+			return
+		}
+		time.Sleep(40 * time.Millisecond)
 	}
-	return nil
+}
+
+func (h *Host) clickCDP(sel string) (string, error) {
+	deadline := time.Now().Add(3 * time.Second)
+	var last string
+	for {
+		js := fmt.Sprintf(`(() => {
+  const el = document.querySelector(%q);
+  if (!el) return JSON.stringify({ok:false, reason:"missing"});
+  const r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return JSON.stringify({ok:false, reason:"not visible"});
+  el.scrollIntoView({block:"center", inline:"center"});
+  el.click();
+  const boot = document.getElementById("boot");
+  return JSON.stringify({
+    ok: true,
+    selector: %q,
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+    bootDisplay: boot ? (boot.style.display || getComputedStyle(boot).display) : "",
+    title: document.title,
+    href: location.href
+  });
+})()`, sel, sel)
+		out, err := h.evalJS(js)
+		if err != nil {
+			return out, err
+		}
+		last = cleanJS(out)
+		if strings.Contains(last, `"ok":true`) || strings.Contains(last, `"ok": true`) {
+			return last, nil
+		}
+		if time.Now().After(deadline) {
+			if last == "" {
+				last = "missing"
+			}
+			return last, fmt.Errorf("browser: selector %s not found", sel)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func (h *Host) typeCDP(sel, text string) error {

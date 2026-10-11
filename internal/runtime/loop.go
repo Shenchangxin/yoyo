@@ -132,6 +132,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	writeHits := map[string]int{}
 	errorHits := map[string]int{}
 	waitHits := map[string]int{}
+	idleHits := map[string]int{}
 	var watch checkWatch
 	lastPlan := planTextOf(req.Tools)
 	if roundSeq <= 0 {
@@ -322,6 +323,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
 		recordToolErrors(errorHits, results)
 		recordWaits(waitHits, msg.ToolCalls)
+		recordIdleActions(idleHits, msg.ToolCalls)
 		if req.SoftHorizon {
 			watch.note(msg.ToolCalls, results)
 		}
@@ -346,6 +348,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			setStop(&req, StopStuck)
 			return last, stuckLoopErr("wait/poll loop")
 		}
+		if req.SoftHorizon && hitMax(idleHits) >= idleActionStopHits {
+			emit(req, trace.TypeError, "runtime", stuckLoopInfo("opened the same page without interacting").Payload())
+			setStop(&req, StopStuck)
+			return last, stuckLoopErr("opened the same page without interacting")
+		}
 		if stall := rewriteStallNudge(req, writeHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
@@ -353,6 +360,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if stall := waitLoopNudge(req, waitHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if stall := idleActionNudge(req, idleHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if stall := observationNudge(req, &watch, msg.ToolCalls); stall != "" && !lastUserIs(messages, stall) {

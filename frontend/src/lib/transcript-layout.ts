@@ -167,6 +167,8 @@ export function processToolPairs(items: Item[]): ToolPair[] {
 
 /** Expand a process rail from the tail so a 200-step turn does not mount every row. */
 export const PROCESS_PAGE = 60;
+/** Artifact cards mount from the tail; earlier files stay one click away. */
+export const ARTIFACT_PAGE = 12;
 
 export function tailProcessPairs(pairs: ToolPair[], shown: number): { visible: ToolPair[]; hidden: number } {
   if (shown <= 0 || pairs.length <= shown) return { visible: pairs, hidden: 0 };
@@ -238,6 +240,14 @@ export function processHasReasoning(items: Item[]): boolean {
   return items.some((it) => it.type === "reasoning");
 }
 
+export function processProgressCount(items: Item[]): number {
+  let n = 0;
+  for (const it of items) {
+    if (it.type === "assistant") n++;
+  }
+  return n;
+}
+
 function agentCopyText(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "assistant" && items[i].text.trim()) return items[i].text.trim();
@@ -252,6 +262,10 @@ function lastAssistantKey(items: Item[]): string {
   return "";
 }
 
+/**
+ * Intermediate assistants fold into the process rail (Cursor-style). The last
+ * letter stays a visible bubble. Expand the rail to read earlier replies.
+ */
 export function layoutAgentParts(items: Item[]): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
@@ -300,6 +314,9 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
       continue;
     }
     if (it.type === "assistant" && it.key !== letterKey) {
+      if (!it.text.trim() && !it.delta) continue;
+      flushArtifacts();
+      process.push(it);
       continue;
     }
     if (isProcessItem(it)) {
@@ -353,84 +370,3 @@ export function layoutRows(items: Item[]): LayoutRow[] {
   return rows;
 }
 
-/** Renderer cap inside one operator turn. Matches the Go UITrajectory trim. */
-export const HOT_TURN_ASSISTANTS = 1;
-export const HOT_TURN_PROCESS_PAIRS = 40;
-export const HOT_TURN_ARTIFACT_PAIRS = 12;
-
-/**
- * A SoftHorizon tool loop can emit hundreds of assistants and tool pairs in
- * a single user turn. lastUserTurns cannot trim that; this keeps the live
- * React/WebView graph bounded (last letter, last process page, last artifacts).
- */
-export function pruneHotTurns(items: Item[]): Item[] {
-  if (items.length === 0) return items;
-  const starts: number[] = [];
-  for (let i = 0; i < items.length; i++) {
-    if (items[i].type === "user" && items[i].source !== "steer") starts.push(i);
-  }
-  const ranges: Array<[number, number]> = [];
-  if (!starts.length) {
-    ranges.push([0, items.length]);
-  } else {
-    if (starts[0] > 0) ranges.push([0, starts[0]]);
-    for (let i = 0; i < starts.length; i++) {
-      ranges.push([starts[i], i + 1 < starts.length ? starts[i + 1] : items.length]);
-    }
-  }
-  const out: Item[] = [];
-  let changed = false;
-  for (const [a, b] of ranges) {
-    const slice = items.slice(a, b);
-    const kept = pruneTurnSlice(slice);
-    if (kept.length !== slice.length) changed = true;
-    out.push(...kept);
-  }
-  return changed ? out : items;
-}
-
-function pruneTurnSlice(turn: Item[]): Item[] {
-  let lastAsst = -1;
-  let asstN = 0;
-  for (let i = 0; i < turn.length; i++) {
-    if (turn[i].type !== "assistant") continue;
-    lastAsst = i;
-    asstN++;
-  }
-  const pairs = pairTools(turn.filter(isToolish));
-  const kind = classifyToolPairs(pairs);
-  const processKeys: string[] = [];
-  const artifactKeys: string[] = [];
-  for (const p of pairs) {
-    if (kind.get(p.key) === "artifact") artifactKeys.push(p.key);
-    else processKeys.push(p.key);
-  }
-  if (
-    asstN <= HOT_TURN_ASSISTANTS &&
-    processKeys.length <= HOT_TURN_PROCESS_PAIRS &&
-    artifactKeys.length <= HOT_TURN_ARTIFACT_PAIRS
-  ) {
-    return turn;
-  }
-  const keepProcess = new Set(processKeys.slice(-HOT_TURN_PROCESS_PAIRS));
-  const keepArtifact = new Set(artifactKeys.slice(-HOT_TURN_ARTIFACT_PAIRS));
-  const out: Item[] = [];
-  for (let i = 0; i < turn.length; i++) {
-    const it = turn[i];
-    if (it.type === "assistant") {
-      if (i === lastAsst) out.push(it);
-      continue;
-    }
-    if (it.type === "reasoning") {
-      if (lastAsst < 0 || i > lastAsst) out.push(it);
-      continue;
-    }
-    if (isToolish(it)) {
-      const id = String(it.payload?.id || it.key);
-      if (keepProcess.has(id) || keepArtifact.has(id)) out.push(it);
-      continue;
-    }
-    out.push(it);
-  }
-  return out;
-}

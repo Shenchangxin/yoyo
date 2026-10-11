@@ -37,8 +37,11 @@ func TestLoadSkillDirsOverlay(t *testing.T) {
 }
 
 func TestBlockedHost(t *testing.T) {
-	if !blockedHost("localhost") || !blockedHost("127.0.0.1") || !blockedHost("10.0.0.1") || !blockedHost("::1") {
-		t.Fatal("private hosts must block")
+	if blockedHost("localhost") || blockedHost("127.0.0.1") || blockedHost("::1") {
+		t.Fatal("loopback must be fetchable on a desktop agent")
+	}
+	if !blockedHost("10.0.0.1") || !blockedHost("192.168.1.1") || !blockedHost("metadata.google.internal") {
+		t.Fatal("private LAN and metadata must block")
 	}
 	if blockedHost("8.8.8.8") {
 		t.Fatal("public IP must pass the IP filter")

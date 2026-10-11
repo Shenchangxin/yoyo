@@ -11,6 +11,9 @@ import (
 
 func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 	patch = strings.ReplaceAll(patch, "\r\n", "\n")
+	if looksLikeContextStub(patch) {
+		return t.resolveElidedWrite("", "patch", "")
+	}
 	if strings.TrimSpace(patch) == "" {
 		return ToolResult{Err: fmt.Errorf("empty patch")}
 	}

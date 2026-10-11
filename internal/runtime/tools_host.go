@@ -21,7 +21,15 @@ func init() {
 		if path == "" {
 			return ToolResult{Err: missingWriteArg("path", raw)}
 		}
-		return t.writeFile(path, str(args["content"]))
+		content := str(args["content"])
+		if _, ok := args["_elided"]; ok || looksLikeContextStub(content) || looksLikeContextStub(raw) {
+			recall := str(args["_recall"])
+			if recall == "" {
+				recall = str(args["recall"])
+			}
+			return t.resolveElidedWrite(path, "content", recall)
+		}
+		return t.writeFile(path, content)
 	}
 	hostFns["str_replace"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
@@ -47,6 +55,17 @@ func init() {
 	}
 	hostFns["apply_patch"] = func(t *WorkspaceTools, args map[string]any, raw string) ToolResult {
 		patch := str(args["patch"])
+		if _, ok := args["_elided"]; ok || looksLikeContextStub(patch) || looksLikeContextStub(raw) {
+			path := str(args["path"])
+			if path == "" {
+				path = salvageJSONStringField(raw, "path")
+			}
+			recall := str(args["_recall"])
+			if recall == "" {
+				recall = str(args["recall"])
+			}
+			return t.resolveElidedWrite(path, "patch", recall)
+		}
 		if strings.TrimSpace(patch) == "" {
 			return ToolResult{Err: missingWriteArg("patch", raw)}
 		}

@@ -177,8 +177,13 @@ func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentT
 
 func blockedHost(host string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
-	if h == "localhost" || strings.HasSuffix(h, ".localhost") || h == "metadata.google.internal" {
+	if h == "metadata.google.internal" {
 		return true
+	}
+	// Desktop agent: the operator's own loopback servers (a live game on
+	// 127.0.0.1:port) are in scope. Cloud metadata and RFC1918 stay blocked.
+	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
+		return false
 	}
 	if ip := net.ParseIP(h); ip != nil {
 		return blockedIP(ip)
@@ -196,7 +201,13 @@ func blockedHost(host string) bool {
 }
 
 func blockedIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() {
+		return false
+	}
+	return ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
 func stripTags(s string) string {

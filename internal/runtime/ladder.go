@@ -11,7 +11,7 @@ import (
 
 const ActionLadderPin = `
 ## Action ladder
-1. Workspace HTML/CSS/JS: write_file, then browser_open the relative path. That is the right inspector Browser pane. Do not start a static server, and do not pass file:// or data: URLs to isolated Chrome.
+1. Workspace HTML/CSS/JS: write_file, then browser_open the relative path once. That opens the inspector Browser pane AND isolated Chrome (relative JS/CSS served). browser_screenshot and browser_click use the current page and do not reload — reopening the same file wipes clicks. Do not start a static server, and do not pass file:// or data: URLs to isolated Chrome.
 2. Prefer connector_read / connector_draft / connector_send when a live account exists for that service.
 3. Use the isolated browser (browser_open with http/https) when there is no connector. Default profile is isolated; attached login is opt-in.
 4. computer_act is last resort on the virtual display, never the operator desktop.

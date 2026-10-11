@@ -151,6 +151,89 @@ func TestUnwrapNestedWriteArguments(t *testing.T) {
 	}
 }
 
+func TestWriteFileStubWhenOnDiskIsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	rel := filepath.ToSlash(filepath.Join("docs", "CONCEPT.md"))
+	abs := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte("# real concept\n")
+	if err := os.WriteFile(abs, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir}
+	stub := `(omitted 8405-char content already on disk at ` + rel + `; read_file that path. Do not paste this placeholder as content.)`
+	res := tools.Call("write_file", `{"path":`+mustJSONString(rel)+`,"content":`+mustJSONString(stub)+`}`)
+	if res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	if !strings.Contains(res.Content, "unchanged") {
+		t.Fatalf("%s", res.Content)
+	}
+	got, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("clobbered: %s", got)
+	}
+}
+
+func TestWriteFileStubRecoversFromSpill(t *testing.T) {
+	dir := t.TempDir()
+	spill := NewSpill(t.TempDir())
+	rel := "concepts/CONCEPT.md"
+	body := "# recovered from spill\n\nThe real file body that was compacted."
+	spill.Put("call1:args", `{"path":"`+rel+`","content":`+mustJSONString(body)+`}`)
+	tools := &WorkspaceTools{Workspace: dir, Spill: spill}
+	stub := `(omitted 80-char content already on disk at ` + rel + `; read_file that path. Do not paste this placeholder as content.)`
+	res := tools.Call("write_file", `{"path":`+mustJSONString(rel)+`,"content":`+mustJSONString(stub)+`}`)
+	if res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWriteFileElidedRecallRecoversMatchingPath(t *testing.T) {
+	dir := t.TempDir()
+	spill := NewSpill(t.TempDir())
+	rel := "design/GAME_DESIGN.md"
+	body := "# GAME_DESIGN — recovered via _recall\n"
+	id := "call_00_Ha2Sy21RYPnaJRlNH0p4929:args"
+	spill.Put(id, `{"path":"`+rel+`","content":`+mustJSONString(body)+`}`)
+	tools := &WorkspaceTools{Workspace: dir, Spill: spill}
+	raw := `{"path":"` + rel + `","_elided":[{"field":"content","runes":80}],"_hint":"on disk","_recall":"` + id + `"}`
+	res := tools.Call("write_file", raw)
+	if res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWriteFileElidedRecallWrongPathRefuses(t *testing.T) {
+	dir := t.TempDir()
+	spill := NewSpill(t.TempDir())
+	spill.Put("call_00_other:args", `{"path":"other.md","content":"# other"}`)
+	tools := &WorkspaceTools{Workspace: dir, Spill: spill}
+	res := tools.Call("write_file", `{"path":"design/GAME_DESIGN.md","_elided":[{"field":"content","runes":80}],"recall":"call_00_other:args"}`)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "context stub") {
+		t.Fatalf("%+v", res)
+	}
+}
+
 func TestWriteFileRejectsContextStub(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}

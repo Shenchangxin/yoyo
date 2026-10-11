@@ -501,7 +501,7 @@ func (t *WorkspaceTools) spillOverflow(rel string, b []byte) (string, error) {
 
 func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if looksLikeContextStub(content) {
-		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
+		return t.resolveElidedWrite(rel, "content", "")
 	}
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -528,6 +528,68 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	}
 	t.maybePreviewHTML(rel, p)
 	return ToolResult{Content: "wrote " + rel, FileChange: fileChangeOf(rel, prev, want, created)}
+}
+
+func (t *WorkspaceTools) resolveElidedWrite(rel, field, recall string) ToolResult {
+	rel = strings.TrimSpace(rel)
+	if rel == "" {
+		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; missing path")}
+	}
+	if p, err := t.resolve(rel); err == nil {
+		if st, e := os.Stat(p); e == nil && !st.IsDir() && st.Size() > 0 {
+			return ToolResult{Content: fmt.Sprintf("unchanged %s (%d bytes already on disk). The elided placeholder is not file content — use str_replace or apply_patch.", rel, st.Size())}
+		}
+	}
+	if body, ok := t.recoverElidedField(rel, field, recall); ok {
+		if field == "patch" {
+			return t.applyPatch(body)
+		}
+		return t.writeFile(rel, body)
+	}
+	return ToolResult{Err: fmt.Errorf("refusing to write a context stub for %s; the file is not on disk. Write the real %s — never paste _elided/omitted placeholders", rel, field)}
+}
+
+func (t *WorkspaceTools) recoverElidedField(rel, field, recall string) (string, bool) {
+	if t == nil || t.Spill == nil || strings.TrimSpace(rel) == "" || strings.TrimSpace(field) == "" {
+		return "", false
+	}
+	want := filepath.ToSlash(rel)
+	if body, ok := t.spillArgsField(recall, want, field); ok {
+		return body, true
+	}
+	for _, id := range t.Spill.ListIDs() {
+		if !strings.HasSuffix(strings.ToLower(id), "args") {
+			continue
+		}
+		if body, ok := t.spillArgsField(id, want, field); ok {
+			return body, true
+		}
+	}
+	return "", false
+}
+
+func (t *WorkspaceTools) spillArgsField(id, wantPath, field string) (string, bool) {
+	id = strings.TrimSpace(id)
+	if t == nil || t.Spill == nil || id == "" {
+		return "", false
+	}
+	raw, err := t.Spill.Get(id)
+	if err != nil || looksLikeContextStub(raw) {
+		return "", false
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return "", false
+	}
+	path, _ := m["path"].(string)
+	if filepath.ToSlash(path) != wantPath {
+		return "", false
+	}
+	body, _ := m[field].(string)
+	if body == "" || looksLikeContextStub(body) {
+		return "", false
+	}
+	return body, true
 }
 
 // recoverTruncatedWrite keeps a recovered prefix on disk (Codex/Cursor write
@@ -701,6 +763,9 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	}
 	command = repairWorkspacePathEscapes(command, ws)
 	command = stripRedundantWorkspaceCd(command, ws)
+	if runtime.GOOS == "windows" {
+		command = relaxRedundantShellQuotes(command)
+	}
 	command, cleanupInline := rewriteInlineInterpreters(command, ws)
 	defer cleanupInline()
 	if runtime.GOOS == "windows" && t != nil {
@@ -757,7 +822,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	}
 	posix := looksPosixUnix(command)
 	if runtime.GOOS == "windows" && cmdStartWouldHang(command) {
-		if next, ok := rewriteCmdStart(command); ok {
+		if next, ok := rewriteAnyStart(command); ok {
 			rewriteNote += "rewrote cmd start to Start-Process (captured stdout would hang)\n"
 			command = next
 			argv = SplitShellArgv(command)

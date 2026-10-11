@@ -358,14 +358,20 @@ func toolIndexes(msgs []Message) []int {
 
 func alreadyStubbed(s string) bool {
 	s = strings.TrimSpace(s)
-	return strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ")
+	if strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ") {
+		return true
+	}
+	return strings.Contains(s, `"_elided"`)
 }
 
 func looksLikeContextStub(s string) bool {
 	if strings.Contains(s, "[elided ") || strings.Contains(s, "[collapsed ") {
 		return true
 	}
-	return strings.Contains(s, "(omitted ") && strings.Contains(s, "Do not paste this placeholder")
+	if strings.Contains(s, "(omitted ") && strings.Contains(s, "Do not paste this placeholder") {
+		return true
+	}
+	return strings.Contains(s, `"_elided"`)
 }
 
 func stubTool(id, name string, bytes int) string {
@@ -419,7 +425,11 @@ func stubHeavyCalls(msgs []Message, per int, spill *Spill) int {
 			if !heavyCallName(tc.Name) || alreadyStubbed(tc.Arguments) {
 				continue
 			}
-			compact := compactCallArgs(tc.Name, tc.Arguments, limit)
+			recall := ""
+			if tc.ID != "" {
+				recall = tc.ID + ":args"
+			}
+			compact := compactCallArgsMeta(tc.Name, tc.Arguments, limit, recall)
 			if compact == tc.Arguments || len(compact) >= len(tc.Arguments) {
 				continue
 			}
@@ -434,12 +444,16 @@ func stubHeavyCalls(msgs []Message, per int, spill *Spill) int {
 }
 
 func compactCallArgs(name, args string, limit int) string {
+	return compactCallArgsMeta(name, args, limit, "")
+}
+
+func compactCallArgsMeta(name, args string, limit int, recall string) string {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(args), &m); err != nil {
 		return args
 	}
-	path, _ := m["path"].(string)
 	changed := false
+	var fields []map[string]any
 	keys := []string{"content", "patch", "body"}
 	if name == "str_replace" || name == "edit_file" || name == "office_edit" {
 		keys = append(keys, "old_str", "new_str")
@@ -452,17 +466,20 @@ func compactCallArgs(name, args string, limit int) string {
 		if len([]rune(s)) <= limit {
 			continue
 		}
-		label := path
-		if label == "" {
-			label = name
-		}
-		// Never append a copyable file head. Models paste the stub plus the
-		// leaked bytes back into str_replace/write_file (session 6ee466).
-		m[key] = fmt.Sprintf("(omitted %d-char %s already on disk at %s; read_file that path. Do not paste this placeholder as %s.)", len(s), key, label, key)
+		// Drop the heavy string entirely. An English sentence in `content`
+		// is still a valid write_file argument — models copy it as a
+		// protocol for large files (session 77eb12a42ce43baa).
+		delete(m, key)
+		fields = append(fields, map[string]any{"field": key, "runes": len([]rune(s))})
 		changed = true
 	}
 	if !changed {
 		return args
+	}
+	m["_elided"] = fields
+	m["_hint"] = "on disk; read_file/str_replace; do not paste _elided as content"
+	if recall != "" {
+		m["_recall"] = recall
 	}
 	b, err := json.Marshal(m)
 	if err != nil {

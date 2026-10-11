@@ -8,9 +8,11 @@ import (
 const rewriteStallHits = 3
 const errorRepeatHits = 3
 const waitLoopHits = 2
+const idleActionHits = 3
 const rewriteStallStopHits = 6
 const errorRepeatStopHits = 6
 const waitLoopStopHits = 4
+const idleActionStopHits = 8
 const checkFailNudgeHits = 2
 const checkFailStopHits = 5
 const checkFailIdleStop = 18
@@ -32,6 +34,11 @@ const waitLoopPrefixZH = "你已经在空转等待"
 
 const waitLoopNudgeEN = "You have been waiting in a poll loop. Stop wait/tasklist. If the shell was idle/block fused, it is already stopped. For public HTTP use web_fetch (retry http if https is 406), or finish with what you have."
 const waitLoopNudgeZH = "你已经在空转等待。停止 wait/tasklist。若 shell 已 idle/block fuse，进程已被停掉。公开 HTTP 用 web_fetch（https 返回 406 就改 http），或用已有结果收束。"
+
+const idleActionPrefixEN = "You already opened this page"
+const idleActionPrefixZH = "你已经反复打开同一页面"
+const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_screenshot then browser_click — they do not reload. Do not browser_open the same HTML unless the file changed."
+const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。改用 browser_screenshot 然后 browser_click——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
 
 const checkFailPrefixEN = "The same check still FAILs"
 const checkFailPrefixZH = "检查项仍以同样方式失败"
@@ -164,6 +171,8 @@ func errorSignature(content string) string {
 		return "http 406"
 	case strings.Contains(lower, "host is not allowed"):
 		return "host blocked"
+	case strings.Contains(lower, "chrome debug port did not come up"):
+		return "chrome debug port"
 	case strings.Contains(lower, "message too big"):
 		return "payload too big"
 	default:
@@ -228,6 +237,62 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 		return ""
 	}
 	return voiceNudge(req, waitLoopNudgeEN, waitLoopNudgeZH)
+}
+
+func recordIdleActions(hits map[string]int, calls []ToolCall) {
+	if hits == nil {
+		return
+	}
+	progressed := false
+	for _, tc := range calls {
+		switch tc.Name {
+		case "browser_click", "browser_type", "write_file", "str_replace", "apply_patch":
+			progressed = true
+		}
+	}
+	if progressed {
+		for k := range hits {
+			delete(hits, k)
+		}
+		return
+	}
+	for _, tc := range calls {
+		if key := idleActionKey(tc); key != "" {
+			hits[key]++
+		}
+	}
+}
+
+func idleActionKey(tc ToolCall) string {
+	if tc.Name != "browser_open" {
+		return ""
+	}
+	m := parseToolArgs(tc.Arguments)
+	raw := str(m["url"])
+	if raw == "" {
+		raw = str(m["path"])
+	}
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return ""
+	}
+	return "browser_open:" + raw
+}
+
+func idleActionNudge(req RunRequest, hits map[string]int) string {
+	if !req.SoftHorizon || hits == nil {
+		return ""
+	}
+	key, n := "", 0
+	for k, c := range hits {
+		if c >= idleActionHits && c > n {
+			key, n = k, c
+		}
+	}
+	if key == "" {
+		return ""
+	}
+	return fmt.Sprintf(voiceNudge(req, idleActionNudgeEN, idleActionNudgeZH), key, n)
 }
 
 func planFirstOverlay(t *WorkspaceTools) string {
