@@ -140,7 +140,7 @@ func init() {
 		return t.webSearch(str(args["query"]))
 	}
 	hostFns["ask_user"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.askUser(str(args["question"]))
+		return t.askUserArgs(args)
 	}
 	hostFns["run_skill_script"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.runSkillScript(str(args["skill"]), str(args["script"]), str(args["args"]))

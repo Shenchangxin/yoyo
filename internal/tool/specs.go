@@ -70,7 +70,31 @@ func HostSpecs() []artifact.ToolSpec {
 		spec("view_image", "Inspect an image file under the workspace (size and type). Prefer this over dumping binary via read_file.", "read_workspace", obj(map[string]any{"path": strP()}, "path"), read),
 		spec("web_fetch", "HTTP GET a http(s) URL and return extracted text. Loopback (127.0.0.1, localhost) is allowed so you can inspect the operator's local servers. Private LAN, link-local, and cloud metadata stay blocked. Atom/RSS feeds are compacted to id/title/date/summary. If https returns 406, the tool retries http. Requires network approval. A node -e DOM shim is not a substitute.", "network", obj(map[string]any{"url": strP()}, "url"), net),
 		spec("web_search", "Search the public web and return extracted result text. Requires network approval.", "network", obj(map[string]any{"query": strP()}, "query"), net),
-		spec("ask_user", "Ask the operator a short question and wait for the answer. Use when the task is ambiguous (plan vs implement) or a real choice is blocked. One question per ambiguity.", "", obj(map[string]any{"question": strP()}, "question"), read),
+		spec("ask_user", "Ask without ending the turn. Pass questions: each has id, prompt, options [{id,label}], and recommended (the option id you would take). The desktop shows one card above the composer and pages questions with previous/next. If the operator does not touch the card, the result is your recommended options and you continue in this same turn. A plain question with no options waits until they answer (login, MFA). Do not finish the turn by asking them to reply in a new message. A skill that says to wait for approval means this tool, not a final letter.", "", obj(map[string]any{
+			"question": strP(),
+			"title":    strP(),
+			"questions": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":          strP(),
+						"prompt":      strP(),
+						"recommended": strP(),
+						"options": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"id":    strP(),
+									"label": strP(),
+								},
+							},
+						},
+					},
+				},
+			},
+		}), read),
 		spec("run_skill_script", "Run a helper from a loaded skill pack's scripts/ directory. Pass skill name and script filename (optionally scripts/...). The pack is not inside the workspace. On Windows, .sh and extensionless scripts need Git Bash (WSL bash.exe is ignored); prefer web_fetch for public HTTP.", "shell", obj(map[string]any{"skill": strP(), "script": strP(), "args": strP()}, "skill", "script"), shell),
 		spec("read_skill_file", "Read a file from an installed skill pack (SKILL.md, references/, templates, prompts). Pack directories are outside the workspace jail. Path is relative to the skill root.", "read_workspace", obj(map[string]any{"skill": strP(), "path": strP(), "offset": intP(), "limit": intP()}, "skill", "path"), read),
 		spec("office_create", "Create a real .docx, .xlsx, .pptx, or .pdf under the workspace. Spreadsheets accept formula cells starting with =.", "write_workspace", obj(map[string]any{"path": strP(), "kind": strP(), "title": strP(), "body": strP(), "headings": map[string]any{"type": "array", "items": strP()}, "rows": map[string]any{"type": "array"}, "slides": map[string]any{"type": "array", "items": strP()}}, "path"), write),

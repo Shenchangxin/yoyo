@@ -1,5 +1,6 @@
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
+import { pendingAsk } from "../lib/ask-form";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
 import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
@@ -10,6 +11,7 @@ export function ChatDock(props: {
   showThinking?: boolean;
   taskPlan?: TaskPlan | null;
   approvals: Approval[];
+  sessionId?: string;
   running: boolean;
   draftKey: string;
   disabled: boolean;
@@ -93,6 +95,8 @@ export function ChatDock(props: {
         onClipboard={props.onClipboard}
         onScreenshot={props.onScreenshot}
         taskPlan={props.taskPlan}
+        ask={pendingAsk(props.approvals, props.sessionId)}
+        onResolveAsk={props.onResolve}
         methodologyActive={props.methodologyActive}
         compact
       />

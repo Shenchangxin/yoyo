@@ -273,7 +273,7 @@ export function Transcript(props: {
         ),
       };
     }),
-    ...props.approvals.map((a) => ({
+    ...props.approvals.filter((a) => a.action !== "ask_user").map((a) => ({
       key: `ask:${a.id}`,
       kind: "ask" as const,
       space: "pt-4",

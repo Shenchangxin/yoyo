@@ -37,6 +37,7 @@ import { DEFAULT_KEYMAP, displayShortcut } from "./lib/keymap";
 import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
 import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace";
+import { pendingAsk } from "./lib/ask-form";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 
@@ -215,6 +216,8 @@ function WorkstationApp() {
         ws.setActive(t);
         ws.refreshCtx();
       }}
+      ask={pendingAsk(ws.approvals, ws.activeId)}
+      onResolveAsk={ws.onResolve}
       flush
       hero={home}
       {...bindComposer}
@@ -750,6 +753,7 @@ function WorkstationApp() {
                   liveTexts={ws.liveTexts}
                   showThinking={!!ws.savedCfg.showThinking}
                   approvals={ws.approvals}
+                  sessionId={ws.activeId}
                   running={ws.threadRunning}
                   draftKey={ws.draftKey}
                   disabled={!!ws.health.paused}
@@ -872,6 +876,7 @@ function WorkstationApp() {
                         liveTexts={ws.liveTexts}
                         showThinking={!!ws.savedCfg.showThinking}
                         approvals={ws.approvals}
+                        sessionId={ws.activeId}
                         running={ws.threadRunning}
                         draftKey={ws.draftKey}
                         disabled={!!ws.health.paused}

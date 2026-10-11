@@ -58,7 +58,7 @@ func superpowersMapping() string {
 - Pack scripts live in the pack, not ` + "`workspace/scripts/`" + `. Do not glob the workspace for them.
 - The operator sees the skill name on the live process rail and companion pulse as soon as you ` + "`load_skill`" + `.
 
-**Brainstorming visual companion:** optional. The Node ` + "`start-server.sh`" + ` helper is not required on the Yoyo desktop. Follow the text path in the skill (classify, write back understanding, get approval) unless the operator asked for the visual companion.
+**Brainstorming visual companion:** optional. The Node ` + "`start-server.sh`" + ` helper is not required on the Yoyo desktop. Follow the text path in the skill (classify, write back understanding) unless the operator asked for the visual companion. Get approval with ` + "`ask_user`" + ` (questions, options, recommended) in the same turn. Do not end the turn and wait for a new message.
 
 **User instructions win:** YOYO.md, AGENTS.md, CLAUDE.md, and a direct "skip the skill" request override skills. Default Yoyo "start writing this turn" does **not** override a matching process skill.
 `

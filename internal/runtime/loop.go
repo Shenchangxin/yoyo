@@ -131,6 +131,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	var last string
 	toolCount := 0
 	planContinues := 0
+	askNudges := 0
 	toolsAtPlanContinue := -1
 	overflowFails := 0
 	roundSeq := req.RoundSeq
@@ -304,6 +305,18 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if len(msg.ToolCalls) == 0 {
 			kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
+			if !loop.PlanMode && askNudges < 1 && waitsForNod(msg.Content) {
+				askNudges++
+				if strings.TrimSpace(msg.Content) != "" {
+					messages = append(messages, msg)
+				}
+				nudge := voiceNudge(req, askContinueNudge, askContinueNudgeZH)
+				if !lastUserIs(messages, nudge) {
+					messages = append(messages, Message{Role: RoleUser, Content: nudge})
+				}
+				sinceProgress++
+				continue
+			}
 			if extra := planContinueIfOpen(req, loop.PlanMode, toolCount, &planContinues, &toolsAtPlanContinue); extra != "" {
 				if req.Tools != nil {
 					req.Tools.VerifyHint = true

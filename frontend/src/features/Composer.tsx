@@ -12,11 +12,12 @@ import { displayWorkspace } from "../lib/display-title";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
-import type { Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
+import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
 import { profileOf } from "../lib/profile-label";
 import * as api from "../lib/client";
 import type { TaskPlan } from "../lib/plan";
 import { PlanChip } from "./PlanChip";
+import { AskDeck } from "./AskDeck";
 import { formatTokens, lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow } from "../lib/models-dev";
 import { useModelCatalog } from "../lib/model-catalog";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
@@ -74,6 +75,8 @@ export function Composer(props: {
   onBrowseWorkspace?: () => void;
   onIsolate?: (isolate: boolean) => void;
   taskPlan?: TaskPlan | null;
+  ask?: Approval | null;
+  onResolveAsk?: (id: string, decision: string, answer?: string) => void;
   methodologyActive?: boolean;
   onBuildPlan?: () => void;
   sessionId?: string;
@@ -318,6 +321,11 @@ export function Composer(props: {
               }
               onPick={(item) => insertMention(item)}
             />
+          ) : null}
+          {props.ask && props.onResolveAsk ? (
+            <div className="mb-2">
+              <AskDeck key={props.ask.id} approval={props.ask} onResolve={props.onResolveAsk} />
+            </div>
           ) : null}
         <div
           className="composer-bezel"
