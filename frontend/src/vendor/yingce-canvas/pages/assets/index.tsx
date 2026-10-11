@@ -8,6 +8,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { App, Button, Drawer, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";
 import { useNavigate } from "react-router";
+import { openHostedVideoHref } from "@/features/video/canvas-host/host-nav";
 
 import { CollectionGrid, PageHeader, PaginationBar, WorkspacePage } from "@yingce/components/layout/workspace-page";
 import { WorkspaceState } from "@yingce/components/layout/workspace-state";
@@ -571,7 +572,7 @@ export default function AssetsPage() {
                                             <Button type="primary" icon={<Plus />} onClick={openCreate}>新增素材</Button>
                                             <Button icon={<Images />} onClick={() => setBatchUploadOpen(true)}>上传图片</Button>
                                             <Dropdown trigger={["click"]} menu={{ items: [
-                                                { key: "eagle", icon: <FolderOpen />, label: "Eagle 素材库", onClick: () => navigate("/plugins/eagle") },
+                                                { key: "eagle", icon: <FolderOpen />, label: "Eagle 素材库", onClick: () => { if (!openHostedVideoHref("/plugins/eagle")) navigate("/plugins/eagle"); } },
                                                 { key: "package", icon: <FileUp />, label: "导入素材包", onClick: () => assetInputRef.current?.click() },
                                                 { key: "model", icon: <Upload />, label: "上传 3D 模型", onClick: () => modelInputRef.current?.click() },
                                                 { key: "export", icon: <Download />, label: "导出全部素材", onClick: () => void exportAllAssets() },

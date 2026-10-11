@@ -44,9 +44,24 @@ export const usePluginStore = create<PluginStore>()(
                     return { hydrated: true, installations: [...state.installations.filter((item) => item.manifest.id !== manifest.id), next] };
                 }),
             setEnabled: (pluginId, enabled) =>
-                set((state) => ({
-                    installations: state.installations.map((item) => item.manifest.id === pluginId ? { ...item, enabled, updatedAt: now(), lastError: undefined } : item),
-                })),
+                set((state) => {
+                    const timestamp = now();
+                    const current = state.installations.find((item) => item.manifest.id === pluginId);
+                    if (!current) {
+                        return {
+                            installations: [...state.installations, {
+                                manifest: { id: pluginId, name: pluginId, version: "0", apiVersion: "yingce.plugin/v1", description: "", permissions: [] },
+                                enabled,
+                                config: {},
+                                installedAt: timestamp,
+                                updatedAt: timestamp,
+                            }],
+                        };
+                    }
+                    return {
+                        installations: state.installations.map((item) => item.manifest.id === pluginId ? { ...item, enabled, updatedAt: timestamp, lastError: undefined } : item),
+                    };
+                }),
             setRuntimeStatuses: (runtimeStatuses) => set({ runtimeStatuses }),
             setPluginStates: (pluginStates) => set({ pluginStates }),
             updateConfig: (pluginId, config) =>

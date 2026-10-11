@@ -144,7 +144,6 @@ export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoA
                     trigger={["click"]}
                     placement="topLeft"
                     autoAdjustOverflow
-                    getPopupContainer={() => document.body}
                     menu={{
                         items: [
                             { key: "fit", icon: <Focus strokeWidth={1.55} />, label: "适应画布", onClick: onFitContent },

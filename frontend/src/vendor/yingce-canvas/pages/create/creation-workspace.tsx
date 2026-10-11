@@ -209,16 +209,17 @@ export function CreationWorkspaceToolbar({ shots, onJumpToShot, onNewConversatio
     return toolbar;
 }
 
-export function CreationMessageView({ item, shotNumber, onRetryFailure, onCreateVariant, onEditUserMessage, onContinueCanvas, openingCanvas }: { item: CreationMessage; shotNumber: number; onRetryFailure: () => void; onCreateVariant: () => void; onEditUserMessage: (text: string) => void; onContinueCanvas: (ids?: string[]) => void; openingCanvas: boolean }) {
+export function CreationMessageView({ item, shotNumber, onRetryFailure, onCreateVariant, onEditUserMessage, onContinueCanvas, openingCanvas, onStop }: { item: CreationMessage; shotNumber: number; onRetryFailure: () => void; onCreateVariant: () => void; onEditUserMessage: (text: string) => void; onContinueCanvas: (ids?: string[]) => void; openingCanvas: boolean; onStop?: () => void }) {
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     if (item.role === "user") return <CreationUserMessage item={item} shotNumber={shotNumber} onEditUserMessage={onEditUserMessage} />;
     const mode = item.mode || "text";
     const stateLabel = item.status === "pending" ? "生成中" : item.status === "cancelled" ? "已停止" : item.status === "error" ? "生成失败" : "";
+    const stopButton = (item.status === "pending" || item.status === "streaming") && onStop ? <button type="button" className="creation-message-variant-action" onClick={onStop}>停止</button> : null;
     const heading =
         mode !== "text" ? (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         ) : (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{brandName}</strong>{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{brandName}</strong>{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         );
     const toolStatus: GenerationToolStatus = item.status === "pending" ? "running" : item.status === "error" ? "error" : item.status === "cancelled" ? "cancelled" : "completed";
     return <article className={`creation-assistant-message is-${mode}`}>
@@ -352,6 +353,7 @@ type ComposerProps = {
     onPromptFocus: () => void;
     placeholderOverride?: string;
     onSubmit: () => void;
+    onStop?: () => void;
 };
 
 type CreationReferenceFilter = "all" | "image" | "video" | "audio" | "file";
@@ -370,6 +372,7 @@ export function CreationComposer(props: ComposerProps) {
     const previousAttachmentCountRef = useRef(0);
     const interactionBusy = props.busy || props.referenceReplacementBusy;
     const canSubmit = Boolean(props.prompt.trim()) && !interactionBusy;
+    const showStop = Boolean(props.onStop) && (props.busy || props.generationActive) && !canSubmit;
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const priceChannel = resolveModelChannel(props.config, props.model);
     const quoteRequest = useMemo(() => modelQuoteRequest(props.config, props.model, props.mode, props.modelRequirements), [props.config, props.mode, props.model, props.modelRequirements]);
@@ -403,12 +406,9 @@ export function CreationComposer(props: ComposerProps) {
     const generationCredits = routeQuote ? routeQuote.amountMicrocredits / 1_000_000 : credits;
     const showCost = creditsEnabled && generationCredits !== null && generationCredits !== undefined;
     const formattedCredits = generationCredits?.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
-    const actionLabel = props.referenceReplacementBusy ? "正在替换参考图" : interactionBusy || (props.generationActive && !canSubmit) ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，发送` : "发送";
-    // Send-button working state must span the WHOLE generation (not just the
-    // submit-lock window): spinner + glow stay while a message is pending and
-    // the composer is empty; typing a next prompt returns the arrow so the
-    // user knows a new send is possible.
-    const showWorkingSpinner = interactionBusy || (props.generationActive && !canSubmit);
+    const actionLabel = props.referenceReplacementBusy ? "正在替换参考图" : showStop ? "停止生成" : interactionBusy || (props.generationActive && !canSubmit) ? "生成中" : showCost ? `${routeQuote?.estimated ? "预估" : "消耗"} ${formattedCredits} 积分，发送` : "发送";
+    // 生成还没结束、输入框也是空的时候，按钮是停止。写了下一句之后才变回发送。
+    const showWorkingSpinner = !showStop && (interactionBusy || (props.generationActive && !canSubmit));
     const placeholder = props.mode === "text"
         ? "描述你的故事、角色或想继续讨论的创意"
         : props.mode === "image"
@@ -619,17 +619,17 @@ export function CreationComposer(props: ComposerProps) {
             <Button
                 type="text"
                 className={`creation-submit ${showCost ? "has-cost" : ""}`}
-                disabled={interactionBusy || !canSubmit}
+                disabled={props.referenceReplacementBusy || (!canSubmit && !showStop)}
                 style={{
                     position: "relative",
                     color: "var(--user-ink)",
                 } as CSSProperties}
-                onClick={interactionBusy ? undefined : props.onSubmit}
+                onClick={showStop ? props.onStop : interactionBusy ? undefined : props.onSubmit}
                 aria-label={actionLabel}
-                title={!canSubmit && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
+                title={!canSubmit && !showStop && !interactionBusy ? "输入创作想法后即可生成" : actionLabel}
             >
-                {showCost ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
-                <span className="creation-submit-action" aria-hidden>{showWorkingSpinner ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}<span>{showWorkingSpinner ? "生成中" : "开始创作"}</span></span>
+                {showCost && !showStop ? <span className="creation-submit-cost" title={routeQuote ? modelQuoteDescription(routeQuote) : undefined}><CreditSymbol /><span>{routeQuote?.estimated ? `预估:${formattedCredits}` : formattedCredits}</span></span> : null}
+                <span className="creation-submit-action" aria-hidden>{showStop ? <span>停止</span> : showWorkingSpinner ? <><LoaderCircle className="size-4 animate-spin" /><span>生成中</span></> : <><ArrowUp className="size-4" /><span>开始创作</span></>}</span>
             </Button>
         </footer>
         <CreationMediaPreviewModal url={previewUrl} type={previewType} onClose={() => setPreviewUrl("")} />

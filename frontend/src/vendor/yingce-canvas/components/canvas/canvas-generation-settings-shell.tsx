@@ -1,11 +1,12 @@
 // @ts-nocheck
+import { canvasOverlayHost } from "@/features/video/canvas-host/design-system/popup-container";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
 export type GenerationSettingsPlacement = "topLeft" | "top" | "topRight" | "bottomLeft" | "bottom" | "bottomRight";
 
 export function generationSettingsHost() {
-    return document.body;
+    return canvasOverlayHost();
 }
 
 export function generationSettingsStyle(

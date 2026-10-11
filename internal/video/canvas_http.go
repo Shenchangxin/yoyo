@@ -500,10 +500,11 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		return canvasOK(map[string]any{"plugin": rec})
 	}
 	if p, ok := match("plugins/:id/activation"); ok && method == "PUT" {
-		return canvasOK(map[string]any{"state": map[string]any{
-			"pluginId": p["id"], "platformAvailable": true, "userEnabled": boolAny(bodyMap["enabled"]),
-			"userConfigured": true, "effectiveEnabled": boolAny(bodyMap["enabled"]), "canToggle": true, "canConfigure": true,
-		}})
+		state, err := e.setPluginEnabled(p["id"], boolAny(bodyMap["enabled"]))
+		if err != nil {
+			return canvasFail(400, err.Error(), "bad_request")
+		}
+		return canvasOK(map[string]any{"state": state})
 	}
 
 	if strings.HasPrefix(path, "plugins/eagle") {
@@ -638,6 +639,11 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		return canvasOK(map[string]any{"profile": map[string]any{"id": NewID(), "profileJson": bodyMap["profileJson"]}})
 	}
 	if path == "skills" || strings.HasPrefix(path, "skills/") {
+		if path == "skills/install" && method == "POST" {
+			if err := attachSkillUpload(params, bodyMap); err != nil {
+				return canvasFail(400, err.Error(), "bad_request")
+			}
+		}
 		return e.handleCanvasSkills(method, path, query, bodyMap)
 	}
 	if path == "tools" || strings.HasPrefix(path, "tools/") {

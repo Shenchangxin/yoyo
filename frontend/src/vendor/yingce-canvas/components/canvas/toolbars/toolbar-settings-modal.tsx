@@ -5,6 +5,7 @@ import { GripVertical, RotateCcw, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
+import { canvasOverlayHost } from "@/features/video/canvas-host/design-system/popup-container";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { defaultToolbarPrefs, getToolbarTools, persistToolbarPrefs, readToolbarPrefs, type ToolbarId, type ToolbarPrefs, type ToolContext, type ToolDefinition } from "@yingce/lib/canvas/tool-registry";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
@@ -142,7 +143,7 @@ export function ToolbarSettingsModal({ open, onClose, toolbar }: ToolbarSettings
             width={380}
             centered
             destroyOnClose
-            getContainer={() => document.body}
+            getContainer={() => canvasOverlayHost()}
             styles={{
                 container: { padding: 0, background: theme.spatial.elevated, border: 0, boxShadow: "none" },
                 body: { padding: 0, background: theme.spatial.elevated },

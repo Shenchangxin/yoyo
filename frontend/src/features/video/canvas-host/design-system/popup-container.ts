@@ -1,11 +1,20 @@
+import { useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-store";
+
 const POPUP_ROOT_ID = "yingce-popup-root";
 
 function hostThemeClass(dark: boolean) {
   return dark ? "yoyo-host-dark" : "yoyo-host-light";
 }
 
+function popupThemeDark(explicit?: boolean) {
+  const { active, theme } = useCanvasThemeStore.getState();
+  if (active && (theme === "light" || theme === "dark")) return theme === "dark";
+  if (typeof explicit === "boolean") return explicit;
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
+
 /** Keep portaled Ant/yc overlays on a token-bearing host root, not raw document.body. */
-export function syncYoyoPopupRoot(dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+export function syncYoyoPopupRoot(dark?: boolean) {
   if (typeof document === "undefined") return null;
   let root = document.getElementById(POPUP_ROOT_ID);
   if (!root) {
@@ -13,15 +22,25 @@ export function syncYoyoPopupRoot(dark = typeof document !== "undefined" && docu
     root.id = POPUP_ROOT_ID;
     document.body.appendChild(root);
   }
-  root.className = `yingce-island yingce-popup-root app-user-overlays app-product-overlays ${hostThemeClass(dark)}`;
-  root.style.colorScheme = dark ? "dark" : "light";
+  const { active, theme } = useCanvasThemeStore.getState();
+  const resolvedDark = popupThemeDark(dark);
+  root.className = `yingce-island yingce-popup-root app-user-overlays app-product-overlays ${hostThemeClass(resolvedDark)}`;
+  root.style.colorScheme = resolvedDark ? "dark" : "light";
+  if (active && (theme === "light" || theme === "dark")) root.dataset.canvasColor = theme;
+  else delete root.dataset.canvasColor;
   return root;
 }
 
 export function yoyoCanvasPopupContainer(node?: HTMLElement): HTMLElement {
   if (typeof document === "undefined") return node || (undefined as unknown as HTMLElement);
-  const dark = document.documentElement.classList.contains("dark");
-  return syncYoyoPopupRoot(dark) || document.body;
+  return syncYoyoPopupRoot() || document.body;
+}
+
+/** Menus and inspectors that must escape the canvas viewport, while keeping the canvas color theme. */
+export function canvasOverlayHost(): HTMLElement {
+  if (typeof document === "undefined") return undefined as unknown as HTMLElement;
+  if (isYoyoCanvasHost()) return syncYoyoPopupRoot() || document.body;
+  return document.body;
 }
 
 export function isYoyoCanvasHost(): boolean {

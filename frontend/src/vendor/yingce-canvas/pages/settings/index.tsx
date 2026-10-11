@@ -11,7 +11,7 @@ import { useUserStore } from "@yingce/stores/use-user-store";
 import { PromptPreferencesPane } from "./prompt-preferences-pane";
 import DiagnosticsPanel from "./diagnostics-panel";
 import AgentMemoryPane from "./agent-memory-pane";
-import { RUNNINGHUB_PLUGIN_ID } from "@yingce/lib/plugins/builtin/workflows";
+import { workflowProviderPluginEnabled } from "@yingce/lib/plugins/builtin/workflows";
 import { usePluginStore } from "@yingce/stores/use-plugin-store";
 
 type ConfigSectionKey = "channels" | "models" | "runninghub" | "preferences" | "prompts" | "agent-memory" | "storage" | "diagnostics";
@@ -61,7 +61,7 @@ export default function SettingsPage() {
     const requestedSection = searchParams.get("section");
     const customChannelsEnabled = useUserStore((state) => state.features.customChannelsEnabled);
     const runtimeStatuses = usePluginStore((state) => state.runtimeStatuses);
-    const runningHubPluginEnabled = runtimeStatuses[RUNNINGHUB_PLUGIN_ID] === "enabled";
+    const runningHubPluginEnabled = workflowProviderPluginEnabled(runtimeStatuses, "runninghub");
     const requestedSectionEnabled = requestedSection !== "runninghub" || runningHubPluginEnabled;
     const initialSection = isConfigSection(requestedSection) && requestedSectionEnabled ? requestedSection : customChannelsEnabled ? "channels" : "models";
     const [activeTab, setActiveTab] = useState<ConfigSectionKey>(initialSection === "channels" && !customChannelsEnabled ? "models" : initialSection);

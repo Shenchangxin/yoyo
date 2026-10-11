@@ -1,7 +1,8 @@
 // @ts-nocheck
 export { createGenerationBatchRetryContexts, createGenerationRetryContext, runGenerationOperationOnce } from "@yingce/lib/canvas/canvas-project-generation";
 export { isGenerationTaskCancelled, runBackendGenerationTask, runBackendGenerationTaskBatch } from "@yingce/services/api/generation-task";
-export { subscribeGenerationTasks } from "@yingce/services/api/task-center";
+export { cancelGenerationTask, refreshGenerationTaskStatus, subscribeGenerationTasks } from "@yingce/services/api/task-center";
+export { canCancelGenerationTask } from "@yingce/lib/generation-task-display";
 export { uploadMediaFile } from "@yingce/services/file-storage";
 export { uploadImage } from "@yingce/services/image-storage";
 export { consumeGenerationTaskMessage, generationTaskMaterializedUrls, materializeGenerationTaskAssets, projectGenerationTaskResult } from "@yingce/services/project-asset-sync";

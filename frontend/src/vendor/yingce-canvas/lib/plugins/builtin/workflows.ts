@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { registerPlugin } from "../plugin-registry";
 import { PLUGIN_API_VERSION, type PluginManifest, type RegisteredPlugin } from "../plugin-types";
+import { isPluginEffectivelyEnabled } from "@yingce/stores/use-plugin-store";
 
 export const RUNNINGHUB_PLUGIN_ID = "runninghub-workflow-provider";
 
@@ -11,7 +12,9 @@ export function workflowPluginId(provider: WorkflowProvider) {
 }
 
 export function workflowProviderPluginEnabled(statuses: Record<string, string>, provider: WorkflowProvider) {
-    return statuses[workflowPluginId(provider)] === "enabled";
+    const pluginId = workflowPluginId(provider);
+    if (pluginId in (statuses || {})) return statuses[pluginId] === "enabled";
+    return isPluginEffectivelyEnabled(pluginId);
 }
 
 function workflowContributions(providerId: string, label: string) {
