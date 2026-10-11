@@ -15,8 +15,11 @@ func TestCompactCallArgsOmitsFileBytes(t *testing.T) {
 	if strings.Contains(got, "const GROUND") {
 		t.Fatalf("leaked file bytes: %s", got[:min(240, len(got))])
 	}
-	if !strings.Contains(got, "(omitted") || !strings.Contains(got, "Do not paste this placeholder") {
-		t.Fatalf("%s", got)
+	if !strings.Contains(got, `"_elided"`) {
+		t.Fatalf("want structured elision, got %s", got)
+	}
+	if strings.Contains(got, "(omitted") || strings.Contains(got, `"new_str":`) {
+		t.Fatalf("pasteable content must be gone: %s", got)
 	}
 	if !looksLikeContextStub(got) {
 		t.Fatal("compact stub must be rejected if the model pastes it back")
@@ -167,7 +170,7 @@ func TestUITrajectoryKeepsTurnsDropsNoise(t *testing.T) {
 	}
 }
 
-func TestUITrajectoryCapsLongTurn(t *testing.T) {
+func TestUITrajectoryKeepsLongTurn(t *testing.T) {
 	var evs []trace.Event
 	evs = append(evs, trace.Event{Type: trace.TypeUser, Source: "user", Payload: map[string]any{"text": "build"}})
 	for i := 0; i < 3; i++ {
@@ -190,11 +193,11 @@ func TestUITrajectoryCapsLongTurn(t *testing.T) {
 			calls++
 		}
 	}
-	if asst != 1 || lastID != "s:r3" {
-		t.Fatalf("assistants=%d last=%s", asst, lastID)
+	if asst != 3 || lastID != "s:r3" {
+		t.Fatalf("assistants=%d last=%s want 3 / s:r3", asst, lastID)
 	}
-	if calls != uiTurnToolPairs {
-		t.Fatalf("tool pairs %d want %d n=%d", calls, uiTurnToolPairs, len(got))
+	if calls != 120 {
+		t.Fatalf("tool pairs %d want 120 n=%d", calls, len(got))
 	}
 }
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
-import { HOT_TURN_ASSISTANTS, HOT_TURN_PROCESS_PAIRS, layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
+import { layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
 import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../src/lib/artifact-preview";
@@ -366,6 +366,10 @@ test("tool-loop assistants collapse to one letter in a turn", () => {
   expect(letters[0].kind === "item" ? letters[0].item.text : "").toBe("Ready to play.");
   expect(agent.copyText).toBe("Ready to play.");
   expect(agent.parts.some((p) => p.kind === "artifact")).toBe(true);
+  const process = agent.parts.find((p) => p.kind === "process");
+  expect(process?.kind).toBe("process");
+  if (process?.kind !== "process") return;
+  expect(process.items.some((it) => it.type === "assistant" && it.text.includes("I will write"))).toBe(true);
 });
 
 test("process tools batch separately from artifacts", () => {
@@ -687,7 +691,7 @@ test("structureSig ignores token text", () => {
   expect(structureSig(a)).toBe(structureSig(b));
 });
 
-test("hot window prunes a runaway tool loop inside one user turn", () => {
+test("hot window keeps a long tool loop and folds earlier assistants", () => {
   const raw: any[] = [{ type: "user", session_id: "s", payload: { text: "go", id: "u0" } }];
   for (let i = 0; i < 90; i++) {
     raw.push({ type: "assistant", session_id: "s", payload: { text: `narration ${i}`, id: `s:r${i + 1}` } });
@@ -696,15 +700,20 @@ test("hot window prunes a runaway tool loop inside one user turn", () => {
   }
   raw.push({ type: "assistant", session_id: "s", payload: { text: "final letter", id: "s:r91" } });
   const items = lastUserTurns(replayEvents(raw), HOT_TRANSCRIPT_TURNS);
-  expect(items.filter((x) => x.type === "assistant")).toHaveLength(HOT_TURN_ASSISTANTS);
-  expect(items.find((x) => x.type === "assistant")?.text).toBe("final letter");
-  expect(items.filter((x) => x.type === "tool_call")).toHaveLength(HOT_TURN_PROCESS_PAIRS);
+  expect(items.filter((x) => x.type === "assistant")).toHaveLength(91);
+  expect(items.filter((x) => x.type === "assistant").at(-1)?.text).toBe("final letter");
+  expect(items.filter((x) => x.type === "tool_call")).toHaveLength(90);
   const rows = layoutRows(items);
   const agent = rows[1];
   expect(agent?.kind).toBe("agent");
   if (agent?.kind !== "agent") return;
   expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(1);
   expect(agent.copyText).toBe("final letter");
+  const process = agent.parts.find((p) => p.kind === "process");
+  expect(process?.kind).toBe("process");
+  if (process?.kind !== "process") return;
+  expect(process.items.filter((it) => it.type === "assistant")).toHaveLength(90);
+  expect(process.items.filter((it) => it.type === "tool_call")).toHaveLength(90);
 });
 
 test("hot window keeps only the last N user turns", () => {

@@ -329,7 +329,7 @@ func collectNetworkHosts(lower string) []string {
 	var out []string
 	add := func(h string) {
 		h = strings.TrimSpace(h)
-		if h == "" {
+		if h == "" || isInterpreterModuleHost(h) {
 			return
 		}
 		out = append(out, h)
@@ -344,12 +344,30 @@ func collectNetworkHosts(lower string) []string {
 			add(m[1])
 		}
 	}
-	for _, m := range reBareDNS.FindAllStringSubmatch(lower, -1) {
-		if len(m) > 1 && !isFilenameHost(m[1]) {
-			add(m[1])
+	for _, loc := range reBareDNS.FindAllStringSubmatchIndex(lower, -1) {
+		if len(loc) < 4 || loc[2] < 0 {
+			continue
+		}
+		if loc[2] >= 3 && lower[loc[2]-3:loc[2]] == "-m " {
+			continue
+		}
+		h := lower[loc[2]:loc[3]]
+		if !isFilenameHost(h) {
+			add(h)
 		}
 	}
 	return out
+}
+
+func isInterpreterModuleHost(h string) bool {
+	h = strings.ToLower(strings.TrimSpace(h))
+	switch h {
+	case "http.server", "http.client", "http.cookiejar", "simplehttpserver",
+		"xml.etree", "urllib.request", "urllib.parse", "urllib.error":
+		return true
+	default:
+		return false
+	}
 }
 
 var fileExtLooksLikeTLD = map[string]bool{

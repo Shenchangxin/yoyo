@@ -1,7 +1,6 @@
 import { asBool, num, pick, str } from "./normalize";
 import type { Item, ItemType } from "./protocol";
 import { sameUserTurnText } from "./mentions";
-import { pruneHotTurns } from "./transcript-layout";
 
 function payload(raw: any): Record<string, any> {
   const p = pick(raw, "payload", "Payload");
@@ -451,19 +450,17 @@ function liveTurnId(it: Item): string {
 }
 
 export function lastUserTurns(items: Item[], users = 3): Item[] {
-  if (users <= 0 || items.length === 0) return pruneHotTurns(items);
+  if (users <= 0 || items.length === 0) return items;
   let n = 0;
-  let sliced = items;
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "user" && items[i].source !== "steer") {
       n++;
       if (n >= users) {
-        sliced = i === 0 ? items : items.slice(i);
-        break;
+        return i === 0 ? items : items.slice(i);
       }
     }
   }
-  return pruneHotTurns(sliced);
+  return items;
 }
 
 export function userTurnCount(items: Item[]): number {

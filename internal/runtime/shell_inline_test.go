@@ -182,3 +182,17 @@ func TestRewriteInlineNodeAfterWorkspaceCd(t *testing.T) {
 		t.Fatalf("cd remains: %s", out)
 	}
 }
+
+func TestRelaxRedundantShellQuotes(t *testing.T) {
+	in := `node "game-adaptations\xiyou-tianming-guiling\qa\verify.mjs" && echo "ok done"`
+	got := relaxRedundantShellQuotes(in)
+	if strings.Contains(got, `"game-adaptations`) {
+		t.Fatalf("quoted relative path remains: %s", got)
+	}
+	if !strings.Contains(got, `node game-adaptations\xiyou-tianming-guiling\qa\verify.mjs`) {
+		t.Fatalf("%s", got)
+	}
+	if !strings.Contains(got, `"ok done"`) {
+		t.Fatalf("quoted phrase with space must stay: %s", got)
+	}
+}

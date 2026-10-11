@@ -36,6 +36,32 @@ func TestErrorRepeatNudgeOnSoftHorizon(t *testing.T) {
 	}
 }
 
+func TestIdleActionNudgeOnRepeatedBrowserOpen(t *testing.T) {
+	hits := map[string]int{}
+	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
+	recordIdleActions(hits, []ToolCall{
+		{Name: "browser_open", Arguments: args},
+		{Name: "browser_open", Arguments: args},
+		{Name: "browser_open", Arguments: args},
+	})
+	req := RunRequest{User: "把小说做成游戏", SoftHorizon: true}
+	got := idleActionNudge(req, hits)
+	if !strings.Contains(got, idleActionPrefixZH) || !strings.Contains(got, "index.html") {
+		t.Fatalf("%q hits=%v", got, hits)
+	}
+	if idleActionNudge(RunRequest{User: "把小说做成游戏"}, hits) != "" {
+		t.Fatal("harbor")
+	}
+	hits = map[string]int{}
+	recordIdleActions(hits, []ToolCall{
+		{Name: "browser_open", Arguments: args},
+		{Name: "browser_click", Arguments: `{"selector":"#boot"}`},
+	})
+	if hitMax(hits) != 0 {
+		t.Fatalf("click must reset idle opens: %v", hits)
+	}
+}
+
 func TestWaitLoopNudgeOnSoftHorizon(t *testing.T) {
 	hits := map[string]int{}
 	recordWaits(hits, []ToolCall{{Name: "wait"}, {Name: "wait"}})
@@ -76,6 +102,9 @@ func TestErrorSignatureContextStubAndTruncatedJSON(t *testing.T) {
 	}
 	if got := errorSignature("ERROR: websocket: message too big"); got != "payload too big" {
 		t.Fatalf("ws %q", got)
+	}
+	if got := errorSignature("ERROR: browser: chrome debug port did not come up: open C:\\Users\\scx\\.yoyo\\browser\\profile-headed\\DevToolsActivePort"); got != "chrome debug port" {
+		t.Fatalf("chrome %q", got)
 	}
 }
 

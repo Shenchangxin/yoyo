@@ -56,16 +56,116 @@ func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 		}
 		return Snapshot{}, err
 	}
-	time.Sleep(350 * time.Millisecond)
+	h.waitDocumentComplete(4 * time.Second)
 	h.syncView()
 	h.record("open", raw)
-	h.mu.Lock()
-	snap := Snapshot{URL: h.url, Title: h.title, Text: h.snap, Profile: h.profile}
-	h.mu.Unlock()
+	snap := h.snapshotLocked()
 	if snap.URL == "" {
 		snap.URL = raw
 	}
 	return snap, nil
+}
+
+// EnsureLocal starts isolated Chrome on abs if needed, but does not reload a
+// document already showing that file. Playwright page.screenshot / page.click
+// never call page.goto; session facb2e21ba0b31a3 lost every click because
+// screenshot/click always navigated back to the boot screen.
+func (h *Host) EnsureLocal(abs string) (Snapshot, error) {
+	if h == nil {
+		return Snapshot{}, fmt.Errorf("browser: no host")
+	}
+	abs = filepath.Clean(abs)
+	if !shouldReloadLocal(h.chromeAlive(), h.liveURL(), h.wantLocalURL(abs)) {
+		h.SetPreview(abs)
+		h.syncView()
+		return h.snapshotLocked(), nil
+	}
+	return h.OpenLocal(abs)
+}
+
+func (h *Host) EnsurePreview() error {
+	if h == nil {
+		return fmt.Errorf("browser: no host")
+	}
+	if preview := h.PreviewPath(); preview != "" {
+		_, err := h.EnsureLocal(preview)
+		return err
+	}
+	return h.ensureChrome(h.previewStartURL())
+}
+
+func (h *Host) ShowingLocal(abs string) bool {
+	return !shouldReloadLocal(h.chromeAlive(), h.liveURL(), h.wantLocalURL(abs))
+}
+
+func (h *Host) chromeAlive() bool {
+	if h == nil {
+		return false
+	}
+	h.mu.Lock()
+	c := h.cdp
+	h.mu.Unlock()
+	return cdpAlive(c)
+}
+
+func (h *Host) liveURL() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.url
+}
+
+func (h *Host) wantLocalURL(abs string) string {
+	if h == nil {
+		return ""
+	}
+	abs = filepath.Clean(abs)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.fileSrv == nil || h.fileRoot == "" {
+		return ""
+	}
+	if filepath.Clean(h.fileRoot) != filepath.Clean(filepath.Dir(abs)) {
+		return ""
+	}
+	return h.fileURL + "/" + url.PathEscape(filepath.Base(abs))
+}
+
+func (h *Host) snapshotLocked() Snapshot {
+	if h == nil {
+		return Snapshot{}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return Snapshot{URL: h.url, Title: h.title, Text: h.snap, Profile: h.profile}
+}
+
+func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
+	if !chromeAlive || strings.TrimSpace(wantURL) == "" {
+		return true
+	}
+	return !sameDocumentURL(liveURL, wantURL)
+}
+
+func sameDocumentURL(live, want string) bool {
+	live = strings.TrimSpace(live)
+	want = strings.TrimSpace(want)
+	if live == "" || want == "" {
+		return false
+	}
+	a, err1 := url.Parse(live)
+	b, err2 := url.Parse(want)
+	if err1 != nil || err2 != nil {
+		return strings.TrimRight(live, "/") == strings.TrimRight(want, "/")
+	}
+	if !strings.EqualFold(a.Scheme, b.Scheme) || !strings.EqualFold(a.Host, b.Host) {
+		return false
+	}
+	pa, _ := url.PathUnescape(strings.TrimSuffix(a.Path, "/"))
+	pb, _ := url.PathUnescape(strings.TrimSuffix(b.Path, "/"))
+	return pa == pb
 }
 
 func (h *Host) serveFileURL(abs string) (string, error) {

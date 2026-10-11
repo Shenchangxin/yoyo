@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AtSign, Bot, Brain, ChevronRight, CircleDashed, X } from "lucide-react";
+import { AtSign, Bot, Brain, ChevronRight, CircleDashed, MessageSquare, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
@@ -31,6 +31,7 @@ import {
   processFailedCount,
   processHasReasoning,
   processKindTally,
+  processProgressCount,
   processSpanMs,
   processStartMs,
   tailProcessPairs,
@@ -269,7 +270,7 @@ function ProcessPair({
           item={pair.result || pair.call!}
           call={pair.call}
           result={pair.result}
-          pending={pairState(pair, running) === "running"}
+          pending={pairState(pair, true) === "running"}
           running={running}
           compact={compact}
           highlightFail={highlightFail}
@@ -403,6 +404,27 @@ function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: bo
     if (streaming) setOpen(true);
   }, [streaming]);
   const body = readableExtra(item);
+  if (item.type === "assistant") {
+    if (!body && !streaming) return null;
+    const preview = body.split(/\r?\n/).find((line) => line.trim())?.slice(0, 80) || "";
+    return (
+      <StepRow
+        glyph={<StepGlyph state="note" compact={compact} icon={<MessageSquare className="size-3 text-muted/70" />} />}
+        label={copy.transcript.progressNote}
+        labelTone="font-sans text-[13px] text-muted"
+        detail={preview}
+        open={open && !!body}
+        onToggle={() => setOpen((v) => !v)}
+        testId="progress-note"
+      >
+        {body ? (
+          <div className="md-reasoning min-w-0 max-w-full text-muted">
+            <Markdown text={body} quiet streaming={streaming} />
+          </div>
+        ) : null}
+      </StepRow>
+    );
+  }
   if (item.type === "reasoning") {
     const ms = toolElapsedMs(item);
     const label = ms > 0
@@ -498,6 +520,8 @@ function summarize(items: Item[], t: TranscriptCopy): string {
     const ms = reasoning ? toolElapsedMs(reasoning) : 0;
     return ms > 0 ? t.thoughtFor.replace("{n}", formatElapsed(ms)) : t.thinking;
   }
+  const notes = processProgressCount(items);
+  if (notes) return notes === 1 ? t.progressNote : t.progressNotes.replace("{n}", String(notes));
   if (items.some((it) => it.type === "subagent")) return t.subagent;
   if (items.some((it) => it.type === "context_injection")) return t.live.skill;
   return t.working;

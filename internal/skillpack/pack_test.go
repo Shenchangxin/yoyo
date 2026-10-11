@@ -207,7 +207,9 @@ func TestToolMappingNovelToGameIsDomainNotBootstrap(t *testing.T) {
 		"game-adaptations",
 		"read_skill_file",
 		"_progress.md",
-		"127.0.0.1",
+		"browser_screenshot",
+		"browser_click",
+		"do **not** reload",
 		"present_choices",
 		"profile=explore",
 	} {
@@ -267,6 +269,12 @@ func TestInstallNovelToGameWritesMappingAndStaysOff(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "load_skill") || !strings.Contains(string(raw), "game-adaptations") {
 		t.Fatalf("mapping missing: %s", raw)
+	}
+	if !strings.Contains(string(raw), "browser_screenshot") || !strings.Contains(string(raw), "Do **not** start") {
+		t.Fatalf("playable evidence must prefer browser_screenshot over http.server: %s", raw)
+	}
+	if !strings.Contains(string(raw), "connect to CDP 9333") {
+		t.Fatalf("playable evidence must forbid a second Chrome/CDP: %s", raw)
 	}
 	if strings.Contains(string(raw), "Git Bash") {
 		t.Fatal("linux mapping must not mention Git Bash")

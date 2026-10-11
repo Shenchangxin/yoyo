@@ -215,7 +215,21 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 		t.mu.Lock()
 		t.LastBrowser = "workspace:" + rel
 		t.mu.Unlock()
-		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome was not started. Do not start a local HTTP server or pass file:// / data: URLs to isolated Chrome.", rel)}
+		abs := ""
+		if p, rerr := t.resolve(rel); rerr == nil {
+			abs = p
+		}
+		if t.Browser != nil && abs != "" {
+			snap, err := t.Browser.OpenLocal(abs)
+			if err != nil {
+				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). isolated Chrome did not start (%v). browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
+			}
+			t.mu.Lock()
+			t.LastBrowser = snap.Text
+			t.mu.Unlock()
+			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot then browser_click (neither reloads).\n\n%s", rel, snap.URL, snap.Text)}
+		}
+		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome is unavailable. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel)}
 	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
 		return ToolResult{Err: err}
 	}
@@ -252,8 +266,15 @@ func (t *WorkspaceTools) browserClick(sel string) ToolResult {
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err, Content: "click " + sel}
+	}
 	err := t.Browser.Click(sel)
-	return ToolResult{Content: "recorded click " + sel, Err: err}
+	content := "clicked " + sel + " (page not reloaded)"
+	if obs := t.Browser.LastAction(); obs != "" {
+		content += "\n" + obs
+	}
+	return ToolResult{Content: content, Err: err}
 }
 
 func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
@@ -510,10 +531,8 @@ func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
-	if preview := t.Browser.PreviewPath(); preview != "" {
-		if _, err := t.Browser.OpenLocal(preview); err != nil {
-			return ToolResult{Err: err}
-		}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
 	}
 	if rel == "" {
 		rel = filepath.ToSlash(filepath.Join(".yoyo", "captures", "browser.png"))
@@ -528,7 +547,14 @@ func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	if t.OnCapture != nil {
 		t.OnCapture("shot", rel, "browser screenshot")
 	}
-	return t.viewImage(rel)
+	res := t.viewImage(rel)
+	unchanged, sum, n := t.Browser.ShotMeta()
+	if unchanged {
+		res.Content = fmt.Sprintf("PIXELS_UNCHANGED sha256=%s bytes=%d. Isolated Chrome was not reloaded. If you clicked, paint did not change — do not browser_open; inspect page JS or click another selector.\n%s", sum, n, res.Content)
+	} else if sum != "" {
+		res.Content = fmt.Sprintf("PIXELS_CHANGED sha256=%s bytes=%d\n%s", sum, n, res.Content)
+	}
+	return res
 }
 
 func (t *WorkspaceTools) browserTakeover(question string) ToolResult {

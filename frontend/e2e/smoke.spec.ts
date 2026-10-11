@@ -697,6 +697,34 @@ test("session workspace is on the composer", async ({ page }) => {
   await expect(picker).toContainText("other");
 });
 
+test("earlier assistant updates fold into the process rail until expanded", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "adapt the novel" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "I will write play.html", id: "s1:r1" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { id: "c1", name: "read_file", content: "package main", elapsed_ms: 12 } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { text: "Ready to play.", id: "s1:r2" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByText("Ready to play.")).toBeVisible();
+  await expect(page.getByTestId("progress-note")).toHaveCount(0);
+  await expect(page.getByText("I will write play.html")).toHaveCount(0);
+  const summary = page.getByTestId("process-summary");
+  await expect(summary).toBeVisible();
+  await summary.click();
+  const note = page.getByTestId("progress-note");
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("I will write play.html");
+  await expect(note.getByRole("button").first()).toHaveAttribute("aria-expanded", "false");
+  await note.getByRole("button").first().click();
+  await expect(note.getByRole("button").first()).toHaveAttribute("aria-expanded", "true");
+  await summary.click();
+  await expect(page.getByTestId("progress-note")).toHaveCount(0);
+});
+
 test("settled tools collapse until the operator expands them", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],

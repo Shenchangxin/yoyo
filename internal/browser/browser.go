@@ -23,26 +23,31 @@ type Snapshot struct {
 }
 
 type Host struct {
-	mu       sync.Mutex
-	dir      string
-	url      string
-	title    string
-	profile  string
-	lane     string
-	log      []map[string]any
-	cmd      *exec.Cmd
-	cdp      *cdpConn
-	port     int
-	headed   bool
-	snap     string
-	frame    string
-	frameAt  time.Time
-	syncing  bool
-	preview  string
-	fileSrv  *http.Server
-	fileRoot string
-	fileURL  string
-	killTree func()
+	mu            sync.Mutex
+	dir           string
+	url           string
+	title         string
+	profile       string
+	lane          string
+	log           []map[string]any
+	cmd           *exec.Cmd
+	cdp           *cdpConn
+	port          int
+	headed        bool
+	snap          string
+	frame         string
+	frameAt       time.Time
+	syncing       bool
+	preview       string
+	fileSrv       *http.Server
+	fileRoot      string
+	fileURL       string
+	killTree      func()
+	lastClick     string
+	lastShotSum   [32]byte
+	hasShot       bool
+	lastShotN     int
+	shotUnchanged bool
 }
 
 func Open(dir string) (*Host, error) {
@@ -139,15 +144,47 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 
 func (h *Host) Click(sel string) error {
 	h.record("click", sel)
-	if err := h.clickCDP(sel); err != nil {
+	if err := h.ensureChrome(h.previewStartURL()); err != nil {
 		return fmt.Errorf("browser: isolated profile click failed: %w", err)
 	}
+	out, err := h.clickCDP(sel)
+	h.mu.Lock()
+	h.lastClick = out
+	h.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("browser: isolated profile click failed: %w", err)
+	}
+	time.Sleep(180 * time.Millisecond)
 	h.syncView()
 	return nil
 }
 
+func (h *Host) LastAction() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lastClick
+}
+
+func (h *Host) ShotMeta() (unchanged bool, sum string, n int) {
+	if h == nil {
+		return false, "", 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !h.hasShot {
+		return false, "", 0
+	}
+	return h.shotUnchanged, fmt.Sprintf("%x", h.lastShotSum[:8]), h.lastShotN
+}
+
 func (h *Host) Type(sel, text string) error {
 	h.record("type", sel)
+	if err := h.ensureChrome(h.previewStartURL()); err != nil {
+		return fmt.Errorf("browser: isolated profile type failed: %w", err)
+	}
 	if err := h.typeCDP(sel, text); err != nil {
 		return fmt.Errorf("browser: isolated profile type failed: %w", err)
 	}

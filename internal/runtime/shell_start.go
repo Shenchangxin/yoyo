@@ -63,6 +63,7 @@ func rewriteCmdStart(command string) (string, bool) {
 		return command, false
 	}
 	file, args, wait := parseStartInvocation(inner)
+	args = stripCmdRedirects(args)
 	if file == "" || wait {
 		return command, false
 	}
@@ -71,6 +72,57 @@ func rewriteCmdStart(command string) (string, bool) {
 		after = after[m[1]:]
 	}
 	return strings.TrimSpace(prefix + startProcessCommand(file, args) + after), true
+}
+
+func rewriteAnyStart(command string) (string, bool) {
+	if next, ok := rewriteCmdStart(command); ok {
+		return next, true
+	}
+	return rewriteBareStart(command)
+}
+
+func rewriteBareStart(command string) (string, bool) {
+	loc := reBareStart.FindStringIndex(command)
+	if loc == nil {
+		return command, false
+	}
+	head := command[loc[0]:]
+	idx := strings.Index(strings.ToLower(head), "start")
+	if idx < 0 {
+		return command, false
+	}
+	prefix := command[:loc[0]+idx]
+	rest := head[idx:]
+	inner, consumed, ok := takeStartPayload(rest)
+	if !ok || !startPayloadHangs(inner) {
+		return command, false
+	}
+	file, args, wait := parseStartInvocation(inner)
+	args = stripCmdRedirects(args)
+	if file == "" || wait {
+		return command, false
+	}
+	after := rest[consumed:]
+	if m := reHeadPipe.FindStringIndex(after); m != nil && m[0] == 0 {
+		after = after[m[1]:]
+	}
+	return strings.TrimSpace(prefix + startProcessCommand(file, args) + after), true
+}
+
+func stripCmdRedirects(args []string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := strings.ToLower(strings.TrimSpace(args[i]))
+		switch {
+		case a == ">" || a == ">>" || a == "1>" || a == "2>" || a == "1>>" || a == "2>>":
+			i++
+		case a == "2>&1" || a == ">&1" || a == ">nul" || a == "1>nul" || a == "2>nul" ||
+			strings.HasPrefix(a, ">") || strings.HasPrefix(a, "2>"):
+		default:
+			out = append(out, args[i])
+		}
+	}
+	return out
 }
 
 func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
@@ -84,7 +136,10 @@ func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
 				end = i
 				break
 			}
-			if i+1 < len(rest) && rest[i] == '&' && rest[i+1] == '&' {
+			if rest[i] == '&' {
+				if i > 0 && rest[i-1] == '>' {
+					continue
+				}
 				end = i
 				break
 			}

@@ -70,6 +70,29 @@ func TestRewriteCmdStartUserCommand(t *testing.T) {
 	}
 }
 
+func TestRewriteBareStartHidden(t *testing.T) {
+	in := `start /b python -m http.server 8777 --directory "game-adaptations\build\app" >nul 2>&1 & ping -n 3 127.0.0.1 >nul & echo started`
+	got, ok := rewriteAnyStart(in)
+	if !ok {
+		t.Fatal("bare start /b must rewrite")
+	}
+	if strings.Contains(strings.ToLower(got), "start /b") {
+		t.Fatalf("still start /b: %s", got)
+	}
+	if !strings.Contains(got, "Start-Process") || !strings.Contains(got, "python") {
+		t.Fatalf("missing Start-Process python: %s", got)
+	}
+	if !strings.Contains(got, "http.server") {
+		t.Fatalf("lost module: %s", got)
+	}
+	if strings.Contains(got, `'>nul'`) || strings.Contains(got, `'2>&1'`) {
+		t.Fatalf("redirect leaked into args: %s", got)
+	}
+	if !strings.Contains(got, "echo started") {
+		t.Fatalf("lost trailing probe: %s", got)
+	}
+}
+
 func TestRewriteCmdStartWaitStaysError(t *testing.T) {
 	in := `cmd /c start /WAIT permserver.exe`
 	if _, ok := rewriteCmdStart(in); ok {

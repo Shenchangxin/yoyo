@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+func TestHeadedForAutomationDropsDeadTakeover(t *testing.T) {
+	if !headedForAutomation(true, true) {
+		t.Fatal("live takeover window must stay headed")
+	}
+	if headedForAutomation(true, false) {
+		t.Fatal("dead headed profile must fall back to isolated Chrome")
+	}
+	if headedForAutomation(false, false) {
+		t.Fatal("isolated stays isolated")
+	}
+}
+
 func TestChromeLaunchArgsIncludeDebugAllowlist(t *testing.T) {
 	args := chromeLaunchArgs(`C:\tmp\profile`, 0, false, "")
 	joined := strings.Join(args, " ")

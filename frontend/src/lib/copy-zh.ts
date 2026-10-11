@@ -210,6 +210,8 @@ export const zhCN = {
     sendAnswer: "发送回答",
     answerPlaceholder: "输入回答…",
     thoughtFor: "思考了 {n}",
+    progressNote: "过程回复",
+    progressNotes: "{n} 条过程回复",
     citations: "引用",
     filesCount: "{n} 个文件",
     created: "已创建",

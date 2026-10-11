@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -173,10 +174,17 @@ func (h *Host) Screenshot(path string) error {
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
 		return err
 	}
-	raw, err := h.callCDP("Page.captureScreenshot", map[string]any{"format": "png"})
+	params := map[string]any{"format": "png"}
+	raw, err := h.callCDP("Page.captureScreenshot", params)
+	if err != nil && isCDPMessageTooBig(err) {
+		raw, err = h.callCDP("Page.captureScreenshot", map[string]any{"format": "jpeg", "quality": 72})
+	}
 	if err != nil {
 		if isCDPGone(err) {
 			return fmt.Errorf("browser screenshot failed: isolated Chrome closed the debug connection; retry after the page loads")
+		}
+		if isCDPMessageTooBig(err) {
+			return fmt.Errorf("browser screenshot failed: CDP frame exceeded %d bytes after jpeg fallback", cdpMaxMessage)
 		}
 		return err
 	}
@@ -196,6 +204,13 @@ func (h *Host) Screenshot(path string) error {
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return err
 	}
+	sum := sha256.Sum256(b)
+	h.mu.Lock()
+	h.shotUnchanged = h.hasShot && h.lastShotSum == sum
+	h.lastShotSum = sum
+	h.hasShot = true
+	h.lastShotN = len(b)
+	h.mu.Unlock()
 	h.syncView()
 	return nil
 }

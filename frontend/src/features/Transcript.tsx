@@ -25,7 +25,7 @@ import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
-import { classifyToolPairs, layoutRows, pairTools, processGroupLive, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ARTIFACT_PAGE, classifyToolPairs, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig, withLiveText } from "../lib/stream-live";
 import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
@@ -1126,16 +1126,22 @@ function ArtifactTimeline({
   onOpenReview?: (path?: string) => void;
 }) {
   const copy = useCopy();
+  const [shown, setShown] = useState(ARTIFACT_PAGE);
   const classified = classifyToolPairs(pairTools(items));
   const all = pairTools(items).filter((p) => classified.get(p.key) === "artifact");
   if (!all.length) return null;
-  const cap = 12;
-  const pairs = all.length > cap ? all.slice(-cap) : all;
-  const hidden = all.length - pairs.length;
+  const { visible: pairs, hidden } = tailProcessPairs(all, shown);
   return (
     <div className="u-chrome min-w-0 space-y-1" data-testid="tool-timeline">
       {hidden > 0 ? (
-        <div className="px-1 py-0.5 text-[11px] text-muted">{copy.transcript.earlierSteps.replace("{n}", String(hidden))}</div>
+        <button
+          type="button"
+          className="h-7 w-full rounded-md px-1 text-left text-[12px] text-muted transition-colors hover:bg-lift/50 hover:text-foreground"
+          data-testid="artifact-earlier"
+          onClick={() => setShown((n) => n + ARTIFACT_PAGE)}
+        >
+          {copy.transcript.earlierSteps.replace("{n}", String(hidden))}
+        </button>
       ) : null}
       {pairs.map((p) => (
         <ArtifactCard
