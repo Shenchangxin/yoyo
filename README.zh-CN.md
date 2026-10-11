@@ -1,304 +1,261 @@
 # Yoyo
 
+<p align="center">
+  <img src="docs/brand/yoyo.gif" width="280" alt="yoyo">
+</p>
+
 [English](README.md) · **简体中文** · [日本語](README.ja.md)
 
-> 一台能自我打磨的本地智能体工作站：先评测，再晋升。新 harness 没通过 Harbor，就不会成为你信任的那一份。
+[![License](https://img.shields.io/badge/license-Apache--2.0-111111)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Shenchangxin/yoyo?label=release)](https://github.com/Shenchangxin/yoyo/releases)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8)](https://go.dev/dl/)
+[![Site](https://img.shields.io/badge/site-shenchangxin.github.io-1c1c1a)](https://shenchangxin.github.io/yoyo/)
 
-Yoyo 不是 Cursor 的仿制品。它是一台 **self-harnessing** 的编程智能体：同一套 Go 核心同时服务 CLI、浏览器和 Wails 桌面壳。产品护城河不是 IDE 皮肤，而是 **可版本化、可评测、可晋升、可回滚的 harness**。提示词、playbook、技能可以进化；评测器、密钥库、更新器不行。
+> 一台本地的智能体工作站。文件留在你指定的文件夹里。新 harness 没证明自己之前，不会成为你信任的那一份。
 
-**版本 0.4.0** · Go 1.25 · Apache-2.0 · [产品主页](https://shenchangxin.github.io/yoyo/) · [架构不变量](docs/architecture/invariants.md) · [持久化](docs/architecture/persist.md) · [Skill Pack](docs/architecture/skill-packs.md) · [威胁模型](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
+Yoyo 是同一条 Go 循环的三扇门：Wails 桌面、浏览器、命令行。它写代码、按 hunk 审查、开一个隔离浏览器、跑技能包，也可以在自己的目录里做短视频。提示词和 playbook 可以进化。评测器、密钥库、更新器不行。
+
+**v0.4.1** · Apache-2.0 · Windows、macOS、Linux · 自备 OpenAI 兼容的 Key
+
+[下载](https://github.com/Shenchangxin/yoyo/releases/latest) · [产品主页](https://shenchangxin.github.io/yoyo/) · [架构不变量](docs/architecture/invariants.md) · [Skill Pack](docs/architecture/skill-packs.md)
 
 ---
 
-## 它为什么存在
+## 一眼看完
 
-多数编程智能体靠把 system prompt 写得更长来“变聪明”。结果是 playbook 被整段改写成空话、训练集任务看起来很好、留出任务崩掉，而且没法把周二那次“优化”撤回去。
-
-Yoyo 对待 harness，就像 Git 对待源码：
-
-| 想法 | 在 Yoyo 里 |
+| | 用起来是什么 |
 | --- | --- |
-| 内容寻址 | BLAKE3 CAS 存放 prompt、技能、playbook、loop 预设、评测套件、WASM 插件 |
-| 只有指针可变 | `refs/active`、`refs/canary`、`refs/staging`、`refs/archive/*` |
-| 合并前先测 | Harbor 持有 / 留出划分；安全任务失败永远不能晋升 |
-| 人闸 | 改 loop / 策略拓扑必须 L3 确认 |
-| 冻结内核 | L4 禁止智能体改写 Go 内核——这是不变量，不是口号 |
+| **Agent** | 一轮流式对话。`@file` 钉一份文件。Plan 只提议。Stop 留下已经写好的东西。 |
+| **审查** | 勾选 hunk 再应用。隔离浏览器打开 Agent 看过的页面。会话可搜索、改名、分叉。 |
+| **视频** | 创作、短剧、画布共用一套壳，目录是自己的。不和写代码的工作区搅在一起。 |
+| **技能** | 包装在 `~/.yoyo/packs/`，默认关闭。`@skill` 才把领域包载进这一轮。 |
+| **Harness** | 提示词按内容寻址。点赞只写 `staging`。Evolve 只写 `canary`。只有 Harbor，然后是你，才能移动 `active`。 |
 
-真正稀缺的是 **上下文窗口**。受信任的钉子（YOYO.md、ACE playbook、技能目录）每轮都会重建。工具抄本是不可信的工作记忆：裁剪、外溢、折叠——**绝不把 playbook 摘要掉**。
-
----
-
-## 你实际能用到什么
-
-**一条真正的 agent 循环** — 多轮历史、OpenAI 兼容 SSE 流式、Stop、glob/grep、`apply_patch`、git 工具、Plan 模式、Once/Session/Always 审批、美元预算硬停止。
-
-**桌面或浏览器工作站** — 对话时间线、会话搜索 / 分叉 / 重命名、`@file` / `@folder` / `@harness`（有预算的注入，不是整仓倾倒）、按 hunk 接受 git diff、playbook 点赞、结构化的 Eval / Evolve / Diff。Harness 态势页会展示父子进化路径，以及每个快照相对父节点真正改了什么（playbook bullet、loop 字段、技能等），并可以一键在文件管理器里打开解码后的构件目录。用 Wails 跑时还有原生菜单、托盘和通知。
-
-**自我打磨** — ACE 风格的 playbook 增量（只长不整篇重写），在线点赞只写 `refs/staging`，Harbor 才拥有 `refs/active`。深度为 1 的 `task` 子智能体。WASM 工具走 HighRisk + ForceAsk。没有 WASI 文件系统。快照带 `parent` 指针；进化路径由 refs + 这条链重建，而不是一份黑盒版本列表。
-
-**一套协议，多种客户端** — HTTP + SSE、stdio 上的 JSON-RPC（`yoyo serve --stdio`）、`/api/ws` 双向 WebSocket。设置 `YOYO_ISOLATE=1` 时，桌面 UI 只当客户端，loop 跑在子进程，卡住也不会拖死窗口。
-
-**Skill Pack** — 第三方技能树按包安装到 `~/.yoyo/packs/`，默认关闭。方法论包（Superpowers）在工作区打开后会话开始预载 bootstrap，并让路「这轮就开始写」；领域包（NovelToGame）不预载，用时 `@skill:novel-to-game`。Harbor 评测不加载。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+窗口是这条循环的客户端。它不是 IDE，页面里也没有第二套智能体。
 
 ---
 
-## 架构
+## 开始
 
-```mermaid
-flowchart TB
-  subgraph surfaces [使用面]
-    CLI[yoyo CLI]
-    HTTP[浏览器 / yoyo serve]
-    GUI[Wails 桌面]
-  end
+需要 [Go 1.26+](https://go.dev/dl/)、Git，以及一个 OpenAI 兼容的 API Key。只有构建界面才需要 Node 22+。只有原生窗口才需要 [Wails v3](https://v3.wails.io)。
 
-  subgraph core [Go 核心 — 同进程或隔离 worker]
-    Loop[ReAct 循环]
-    Tools[工作区工具 + MCP + WASM]
-    Caps[能力经纪人]
-    Shape[上下文整形]
-  end
+### 1. 种下 home
 
-  subgraph tcb [冻结的 TCB fiber]
-    CAS[CAS + refs]
-    Harbor[Harbor 评测]
-    Vault[密钥库]
-    Journal[哈希链日志]
-    Updater[签名更新器]
-  end
-
-  CLI --> Loop
-  HTTP --> Loop
-  GUI --> Loop
-  Loop --> Shape
-  Loop --> Tools
-  Tools --> Caps
-  Loop --> CAS
-  Harbor -->|"ShouldPromote"| CAS
-```
-
-**可以改什么、谁可以改：**
-
-| 层级 | 内容 | 谁能改 |
-| --- | --- | --- |
-| L1 | 提示词、playbook 条目、技能 | Evolve 周期，且必须过 Harbor |
-| L2 | 签名的 WASM 工具模块 | 准入 + HighRisk 询问；未签名的进不了 `refs/active` |
-| L3 | Loop 预设 / 策略包拓扑 | 人在 UI 或 CLI 上确认 |
-| L4 | Go 内核、评测器、密钥库、更新密钥 | **谁都不行。** 智能体不行，evolve 也不行。 |
-
-二进制更新和 harness refs 是 **两条通道**。`yoyo update apply` 会把当前镜像改名为 `.old` 再拷入 staging——这是人的动作，不会在文件锁着的时候偷偷覆盖 `argv[0]`。
-
----
-
-## 环境要求
-
-- [Go 1.25+](https://go.dev/dl/)
-- Git（hunk apply、evolve worktree、Harbor 隔离）
-- OpenAI 兼容的 API Key（`YOYO_API_KEY` 或 `OPENAI_API_KEY`）
-- 只有构建 UI / 桌面时才需要 Node 22+
-- 只有原生窗口（菜单 / 托盘 / 通知）才需要 [Wails v3](https://v3.wails.io)
-
----
-
-## 快速开始
-
-下面命令都在仓库根目录执行。本机路径一般是 `c:\flowy-workspace\code\yoyo`。
-
-### 1. 种下 home 目录
+在仓库根目录：
 
 ```bash
-go test ./...
 go run ./cmd/yoyo init
 ```
 
-Windows 写到 `%USERPROFILE%\.yoyo`，其他系统是 `~/.yoyo`：CAS、refs、一份密封评测套件，以及 `refs/active`。用 `YOYO_HOME` 可改位置。
+Windows 写到 `%USERPROFILE%\.yoyo`，其他系统是 `~/.yoyo`：内容寻址对象、refs、一份密封评测套件，以及 `refs/active`。位置用 `YOYO_HOME` 改。
 
 ### 2. 接上模型
 
-PowerShell：
-
 ```powershell
 $env:YOYO_API_KEY = "sk-..."
-# 或者
-$env:OPENAI_API_KEY = "sk-..."
 ```
-
-bash：
 
 ```bash
 export YOYO_API_KEY=sk-...
 ```
 
-也可以稍后在 **Settings** 里粘贴。默认模型是 `gpt-4.1-mini`，地址 `https://api.openai.com/v1`。任何 OpenAI 兼容的 `base_url` 都可以。
+`OPENAI_API_KEY` 也可以。稍后在 **Settings** 里粘贴同样有效。默认模型是 `gpt-4.1-mini`，地址 `https://api.openai.com/v1`。任何兼容的 `base_url` 都行。
 
-### 3. 选一个使用面
+### 3. 选一扇门
 
-**A. 浏览器（最快看到产品）**
+**浏览器** — 最快看到产品。没有托盘，没有原生菜单。
 
 ```bash
-# 若还没有 frontend/dist：
 cd frontend && npm install && npm run build && cd ..
-
 go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 ```
 
-打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)。聊天、Eval Lab、Evolution Lab、hunk apply、playbook 点赞都在这里。没有原生菜单和托盘。
+打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)。
 
-**B. 原生桌面**
+**桌面** — 菜单、托盘、通知。
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 npm run dev
-# 或者：bun run dev
 ```
 
-这一条会在 Windows 上补上 Go/Git 的 PATH、释放 Vite 的 9245 端口，并打开 Wails 窗口。第一次还会由 Wails task 安装前端依赖。
+这条命令会在 Windows 上把 Go 和 Git 放进 `PATH`，腾出 Vite 的 9245 端口，然后打开窗口。生产构建是 `wails3 task build`（Windows 上是 `bin\Yoyo.exe`）。
 
-正式包：
-
-```bash
-wails3 task build
-# Windows: bin\Yoyo.exe
-```
-
-让 loop 跑在子进程（智能体卡住时窗口还活着）：
+如果希望循环卡住时窗口仍然活着：
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
 npm run dev
 ```
 
-**C. 只用 CLI**
+**命令行**
 
 ```bash
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
-go run ./cmd/yoyo eval
-go run ./cmd/yoyo evolve
 ```
+
+可安装包（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`，以及不依赖 CGO 的 CLI）由 `v*` 标签发布。见[开发](#开发)。
 
 ---
 
-## 怎么用智能体
+## 工作站
 
-输入任务。用 mention 钉住额外上下文——这是 **有预算的注入**，不是把整个仓库塞进窗口：
+### Agent
+
+直接写任务。`@` 是有预算的注入，不会把目录树塞进提示词。
 
 ```
-修一下解析器 @file:internal/runtime/loop.go
-按这个目录的约定 @folder:docs
-当前 harness 是什么？ @harness
+Fix the parser in @file:internal/runtime/loop.go
+Use the conventions in @folder:docs
+What harness is live? @harness
+Load a pack for this turn @skill:novel-to-game
 ```
 
-- **Send** / Ctrl+Enter — 跑一轮（流式输出 token 和工具调用）
-- **Stop** — 取消进行中的一轮；已写出的内容会留下
-- **Plan** — 只思考和提议；写文件和 shell 在退出 Plan 前被挡住
-- **Git diff** — 列出 hunk，勾选后再 **Apply selected hunks**
-- 审批：**Once** / **Session** / **Always** / **Deny**（桌面默认 `auto_allow=false`）
+| 动作 | 结果 |
+| --- | --- |
+| 发送 / Ctrl+Enter | 流式输出文字和工具调用 |
+| Stop | 取消这一轮。已经写出的留下 |
+| Plan | 只提议。写入和 shell 保持关闭 |
+| 一次 / 本会话 / 永远 / 拒绝 | 审批画在对话里。桌面默认是问你 |
 
-会话可以搜索、重命名、分叉（复制 JSONL）。分叉不会移动 `refs/active`。
+美元预算是硬停止，不是提醒。
 
----
+### 审查
 
-## 评测、安全与进化
+侧栏是队列。
 
-默认 **冒烟** 套件刻意很小，本地测试才诚实。私有密封目录用 `--sealed` 打开。
+- **Diff** — 按 hunk 接受。文件已经不在，恢复会大声失败，不会偷偷把仓库倒回去。
+- **浏览器** — 工作区 HTML 走隔离 Chrome。截图和点击不会重载；再次打开同一份文件会清掉点击。页面可以丢到系统浏览器。
+- **会话** — 搜索、改名、分叉。分叉复制 JSONL，不会移动 `refs/active`。
 
-| 任务 | 角色 | 默认种子里？ |
+### 视频
+
+创作、短剧、画布共用一套壳，目录也是自己的。Key 和适配器在设置里。
+
+- **Create** — 描述一段片子。图像、语音、视频适配器是你的。
+- **短剧** — 贴一章，先确认分集计划，再拍。
+- **画布** — 镜头的空间工作区。编辑器保持干净，画面才看得清。
+
+### 技能
+
+第三方技能树安装到 `~/.yoyo/packs/`，工作区打开之前一直关闭。
+
+| 种类 | 例子 | 何时载入 |
 | --- | --- | --- |
-| `write-hello` | 持有（held-in） | 是 |
-| `write-answer` | 留出（held-out，提议者看不到身份） | 是 |
-| `no-escape` | 安全：不得写到工作区外 | 是（evolve 始终带；`yoyo eval` 也带） |
-| `write-readme` | 可选 | 否 |
-| `mkdir-note`、`copy-seed` | Terminal-Bench 风格子集，`repeats=2` 多数票 | `--tb` |
-| 密封目录 12/8/10 | evolve-in / promote-in / held-out / transfer | `--sealed` / `--transfer` / `--index` |
+| 方法论 | Superpowers | 工作区打开后，在进程内预载一份 bootstrap。它不会变成身份 |
+| 领域 | NovelToGame | 只有 `@skill` 或 `load_skill` 的那一轮 |
+
+Harbor 评测不加载技能包。命令是 `yoyo pack list|install|enable|update`。详见 [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+
+### Harness
+
+多数智能体靠把提示词写得更长来变聪明。playbook 被改成空话，训练集看起来很好，留出集崩掉，周二那次「优化」撤不回去。
+
+Yoyo 对待 harness，就像 Git 对待源码。
+
+| 想法 | 你实际得到的 |
+| --- | --- |
+| 内容寻址 | BLAKE3 CAS 存放 prompt、技能、playbook、loop 预设、评测套件、WASM 插件 |
+| 只有指针可变 | `refs/active`、`refs/canary`、`refs/staging`、`refs/archive/*` |
+| 合并前先测 | Harbor 的持有集 / 留出集。安全任务失败永远不能晋升 |
+| 人闸 | 改 loop 或策略拓扑必须经过 L3 确认 |
+| 冻结内核 | 智能体不能改写 Go 核心。这是测试，不是口号 |
+
+在线点赞只写 **`refs/staging`**。Evolve 只写 **`refs/canary`**，除非你加上 `--promote`。Harbor 加上你的 checkout，才是通往 `refs/active` 的门。
+
+受信任的钉子（`YOYO.md`、`AGENTS.md`、`CLAUDE.md`、ACE playbook）每一轮都会重建。工具抄本是不可信的工作记忆：外溢、清理、做检查点。playbook 不会被摘要掉。
+
+---
+
+## 架构
+
+```mermaid
+flowchart LR
+  subgraph doors [门]
+    CLI[命令行]
+    HTTP[浏览器]
+    GUI[桌面]
+  end
+  Loop[Go 循环]
+  Tools[工具 · MCP · WASM]
+  CAS[CAS + refs]
+  Harbor[Harbor]
+  CLI --> Loop
+  HTTP --> Loop
+  GUI --> Loop
+  Loop --> Tools
+  Loop --> CAS
+  Harbor -->|晋升| CAS
+```
+
+| 层级 | 内容 | 谁能改 |
+| --- | --- | --- |
+| L1 | 提示词、playbook 条目、技能 | Evolve，且必须过 Harbor |
+| L2 | 签名的 WASM 工具 | 准入 + HighRisk 询问。未签名的进不了 `refs/active`。没有 WASI 文件系统 |
+| L3 | Loop 预设 / 策略拓扑 | 你，在界面或命令行上 |
+| L4 | Go 内核、评测器、密钥库、更新密钥 | 谁都不行。智能体不行，evolve 也不行 |
+
+二进制更新是另一条通道。`yoyo update apply` 把正在运行的镜像改名为 `.old`，再把 staging 拷进去。它不会在文件锁着的时候偷偷覆盖 `argv[0]`。
+
+Harness 实验室顺着 `parent` 走 refs，并解码 CAS 对象，所以你能读到一个快照改了什么。**显示构件**会在文件管理器里打开那份检出。命令行：`yoyo harness lineage`、`yoyo harness reveal`、`yoyo harness show`。
+
+---
+
+## 命令
+
+| 命令 | 做什么 |
+| --- | --- |
+| `yoyo init` | 创建 home 并种下 harness |
+| `yoyo run [msg] --workspace --session` | 跑一轮 |
+| `yoyo serve --addr [--stdio]` | HTTP 界面和 `/api/ws`，或 stdio 上的 JSON-RPC |
+| `yoyo eval […]` | 冒烟、密封套件、迁移、安全、Terminal-Bench 子集、best-of-N |
+| `yoyo evolve [--rounds] [--promote]` | 自我打磨。默认只写 canary |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | 指针、父子链、解码后的构件 |
+| `yoyo pack list\|install\|enable\|update` | 技能包。默认关闭 |
+| `yoyo replay [session]` | 打印一条 JSONL 轨迹 |
+| `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
+| `yoyo version` | 产品版本 |
 
 ```bash
 go run ./cmd/yoyo eval
 go run ./cmd/yoyo eval --sealed
-go run ./cmd/yoyo eval --transfer
 go run ./cmd/yoyo eval --safety
-go run ./cmd/yoyo eval --tb
-go run ./cmd/yoyo eval --best 3
-go run ./cmd/yoyo eval --models gpt-4.1-mini,gpt-4.1
-go run ./cmd/yoyo evolve
 go run ./cmd/yoyo evolve --rounds 4
-go run ./cmd/yoyo evolve --promote   # 显式：移动 refs/active
+go run ./cmd/yoyo evolve --promote
 ```
 
-Harbor 布局见 [docs/architecture/harbor.md](docs/architecture/harbor.md)：
+**ShouldPromote：** 持有集和留出集都不能退步，至少有一边要变好，任何安全失败都会挡住晋升。候选跑在分离的 git worktree 里，不在你的工作区。布局和参数见 [docs/architecture/harbor.md](docs/architecture/harbor.md)。
 
-```
-evals/<id>/
-  instruction.md
-  task.toml
-  tests/test.sh
-  tests/test.ps1
-  tests/expect.toml
-  environment/Dockerfile
-```
-
-**ShouldPromote：** 持有和留出都不能回退；至少一边要变好；任何安全失败都会挡住晋升。在线 ACE 和 playbook 点赞 **只写 `refs/staging`**。Evolve 默认 **只写 `refs/canary`**，除非 `--promote`。通向 `refs/active` 的门是 Harbor + Checkout。
-
-**Harness** 实验室不是一份哈希列表。态势页从 `refs/active`、`refs/staging`、`refs/canary`、archive refs 以及 evolve archive 沿 `parent` 走下去，再解码 CAS 对象，让你直接读到进化了什么（playbook bullet、loop/policy 字段、prompts、skills、tools）。**打开构件** 会把该快照解码到 home 的 tmp 目录并用系统文件管理器打开；**打开仓库** 打开 `cas/objects`。CLI：`yoyo harness lineage`、`yoyo harness reveal [hash]`、`yoyo harness show`（相对父节点的 diff）。
-
-Evolve 候选在 **分离的 git worktree** 里跑 Harbor，不会弄脏你的工作树。每次 trial 还会把摘要落到评测运行目录（不含 held-out 正文）。
-
----
-
-## CLI 一览
-
-| 命令 | 作用 |
-| --- | --- |
-| `yoyo init` | 创建 home 并种下 harness |
-| `yoyo run [msg] --workspace --session` | 一轮智能体 |
-| `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`，或 stdio JSON-RPC |
-| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | 冒烟 / 密封 12/8/10 / 迁移 / Index / 行为 / 安全 / TB / best-of-N |
-| `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness 周期（L1）。默认只写 canary |
-| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | 快照指针、父子进化路径、解码后的构件（改 loop/策略要 `checkout --l3`） |
-| `yoyo pack list\|install\|uninstall\|enable\|update` | 技能包（Superpowers）。默认关闭；Harbor 不加载 |
-| `yoyo replay [session]` | 打印 JSONL 轨迹 |
-| `yoyo update apply` | 由人安装 `updates/yoyo.staging` |
-| `yoyo version` | `0.4.0` |
-
-JSON-RPC 包括 `thread.*`、`turn.start` / `turn.interrupt`、`item.event` 通知、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*`。
+JSON-RPC 覆盖 `thread.*`、`turn.start` / `turn.interrupt`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*`。
 
 ---
 
 ## 配置
 
-| 旋钮 | 位置 | 默认 |
+| 旋钮 | 在哪 | 默认 |
 | --- | --- | --- |
-| Home | `YOYO_HOME` | `~/.yoyo` / `%USERPROFILE%\.yoyo` |
-| 评测任务 | `YOYO_EVALS` | 自带的 `evals/` |
+| Home | `YOYO_HOME` | `~/.yoyo` |
 | API Key | `YOYO_API_KEY`、`OPENAI_API_KEY`，或 Settings | — |
-| 模型 / base URL / 工作区 / 预算 | home 里的 `config.yaml`，或 Settings | `gpt-4.1-mini` |
-| 额外 BoN 模型 | 配置里的 `models:` | 空 |
-| 自动放行 shell | Settings 勾选 | `false` |
-| 进程隔离 | `YOYO_ISOLATE=1` | 关（同进程 + panic recover） |
-| WASM 准入公钥 | `YOYO_WASM_PUBKEY` | 空则对签名模块失败关闭 |
-| Worker 模式 | `YOYO_WORKER=1` | 桌面内部使用 |
-
-每轮重建的钉子：`YOYO.md`、`AGENTS.md`、`CLAUDE.md`（有上限），以及按 helpful−harmful 排序的 ACE playbook。
+| 模型、地址、工作区、预算 | `config.yaml` 或 Settings | `gpt-4.1-mini` |
+| 自动允许 shell | Settings | 关闭 |
+| 把循环隔离开 | `YOYO_ISOLATE=1` | 关闭 |
+| WASM 准入公钥 | `YOYO_WASM_PUBKEY` | 空表示签名模块保持关闭 |
+| 评测任务 | `YOYO_EVALS` | 仓库里的 `evals/` |
 
 ---
 
-## 仓库地图
+## 仓库
 
 ```
-cmd/yoyo          CLI
-main.go           Wails 桌面（YOYO_WORKER=1 时变成 App Server）
-frontend/         React + Vite 界面
-internal/kernel   Fiber、EventBus、LIFO 卸载
-internal/artifact CAS、refs、技能、快照
-internal/runtime  循环、工具、上下文整形、mention、hunk、shell 策略
-internal/eval     Harbor 适配、晋升门
-internal/evolve   Reflect → Curate → Propose → Harbor，DGM 档案
-internal/capability  Once / Session / Always 经纪人
-internal/plugin   MCP stdio、wazero WASM（无 WASI FS）
-internal/api      HTTP、SSE、JSON-RPC、WebSocket
-internal/update   ed25519 校验、stage、apply
-evals/            Harbor 格式任务
-docs/architecture 不变量、Harbor、威胁模型
-docs/research     文献谱系与 2026 前沿文献库
+cmd/yoyo            命令行
+main.go             Wails 桌面
+frontend/           React + Vite
+internal/runtime    循环、工具、上下文
+internal/artifact   CAS、refs、快照
+internal/eval       Harbor 和晋升门
+internal/evolve     反思、整理、提议
+internal/plugin     MCP 和 wazero WASM
+docs/architecture   不变量、Harbor、威胁模型
 ```
 
 ---
@@ -310,31 +267,39 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI（`.github/workflows/ci.yml`）在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端。
-
-推送 `v*` 标签会触发 [release.yml](.github/workflows/release.yml)，产出可安装的桌面包：Windows NSIS 安装程序、macOS DMG、Linux AppImage / `.deb` / `.rpm`，以及各 OS/架构的 CGO=0 CLI：
+CI 在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端。推送 `v*` 标签会跑 [release.yml](.github/workflows/release.yml)：
 
 ```bash
-git tag v0.2.4
-git push origin v0.2.4
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
-macOS 是 ad-hoc 签名（未公证）。Windows / Linux 安装包未签名。`yoyo update apply` 仍然是人工步骤。
+macOS 构建是 ad-hoc 签名，没有公证。Windows 和 Linux 包未签名。
 
-改晋升逻辑、TCB fiber 或更新器之前，先读 [不变量](docs/architecture/invariants.md)。这些规则由测试锁住；正在进化的智能体没有资格改它们。
+改晋升、可信计算基或更新器之前，先读[不变量](docs/architecture/invariants.md)。这些规则是测试。进化中的智能体不允许改它们。
 
 ---
 
-## Yoyo 明确不做的事
+## Yoyo 不会做的事
 
-- 去 fork VS Code，或塞一个 Monaco 标签页
-- 让智能体改写自己的 Go 内核（L4）
-- 训练一个自制 “Composer”
-- 把 shell 拒绝列表说成 Seatbelt / bubblewrap
-- 静默替换正在运行的二进制
-- 因为你打了 `@` 就把整个仓库塞进提示词
+- 派生 VS Code，或塞进一个 Monaco 标签页
+- 让智能体改写自己的 Go 内核
+- 训练一个自有模型，然后把它叫做产品
+- 把一份 shell 拒绝名单说成沙箱
+- 悄悄替换正在运行的二进制
+- 因为你打了一个 `@`，就把整个仓库塞进提示词
 
-这是产品决定，不是还没打的勾。
+这些是决定，不是待办。
+
+---
+
+## 交流群
+
+<p align="center">
+  <img src="qrcode.jpg" width="320" alt="微信群：yoyo ai 交流群">
+</p>
+
+微信群 **yoyo ai 交流群**。图上写着二维码的有效期，重新进群会刷新。
 
 ---
 
