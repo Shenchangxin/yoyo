@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useUI } from "../../lib/store";
-import { yingcePathForPane } from "../../lib/protocol";
+import { yingceHref } from "../../lib/protocol";
 import { useCanvasHost } from "./canvas-host/session";
 import { PresenceModuleLoading } from "../presence";
 
@@ -52,8 +52,9 @@ function CanvasLoading() {
 export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void | Promise<string | void>; onClose?: () => void }) {
   const pane = useUI((s) => s.videoPane);
   const canvasFocus = useUI((s) => s.canvasFocus);
+  const videoEntry = useUI((s) => s.videoEntry);
   const projectId = useCanvasHost((s) => s.projectId);
-  const start = yingcePathForPane(pane, projectId, canvasFocus);
+  const start = yingceHref(pane, projectId, canvasFocus, videoEntry);
 
   useEffect(() => {
     if (typeof window !== "undefined") window.__YOYO_VIDEO_SESSION__ = props.sessionId || "";

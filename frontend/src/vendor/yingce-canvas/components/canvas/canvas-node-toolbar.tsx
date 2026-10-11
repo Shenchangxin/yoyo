@@ -458,7 +458,6 @@ function NodeDockMenuButton({ menuId, label, icon, tools, openMenuId, onOpenChan
             trigger={["click"]}
             placement={placement}
             autoAdjustOverflow
-            getPopupContainer={() => document.body}
             onOpenChange={(nextOpen) => {
                 if (!nextOpen && (keepSplitMenuOpenRef.current || document.querySelector(".canvas-node-toolbar-menu-split:hover, .canvas-grid-split-picker:hover"))) {
                     keepSplitMenuOpenRef.current = false;

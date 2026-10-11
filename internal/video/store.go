@@ -35,6 +35,7 @@ const (
 	fileSessionBinds = "_session_binds.json"
 	fileCanvasBinds  = "_canvas_session_binds.json"
 	fileSkillFlags   = "_skill_flags.json"
+	filePluginFlags  = "_plugin_flags.json"
 )
 
 type dramaRec struct {
@@ -208,6 +209,11 @@ type skillFlagRec struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+type pluginFlagRec struct {
+	Enabled   bool   `json:"enabled"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 func getDoc[T any](e *Engine, col, id string) (T, error) {
 	var v T
 	if e.docs == nil || strings.TrimSpace(id) == "" {
@@ -302,6 +308,19 @@ func (e *Engine) loadSkillFlags() map[string]skillFlagRec {
 
 func (e *Engine) saveSkillFlags(m map[string]skillFlagRec) error {
 	return e.putJSON(fileSkillFlags, m)
+}
+
+func (e *Engine) loadPluginFlags() map[string]pluginFlagRec {
+	m := map[string]pluginFlagRec{}
+	_ = e.getJSON(filePluginFlags, &m)
+	if m == nil {
+		m = map[string]pluginFlagRec{}
+	}
+	return m
+}
+
+func (e *Engine) savePluginFlags(m map[string]pluginFlagRec) error {
+	return e.putJSON(filePluginFlags, m)
 }
 
 func containsID(ids []string, id string) bool {

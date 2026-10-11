@@ -17,7 +17,7 @@ import { inferVideoOperation, modelGroupReferenceLimits, resolveCompatibleModel,
 import type { BackendGenerationResult } from "@yingce/services/api/generation-task";
 import type { Skill } from "@yingce/services/api/skills";
 import type { GenerationTask } from "@yingce/services/api/task-center";
-import { loadCreationConversations, pendingCreationTaskIds, removeCreationConversationSnapshot, saveCreationConversations, updateCreationConversationSnapshot } from "@yingce/services/creation-conversation-store";
+import { mutateCreationConversations, pendingCreationTaskIds, readCreationConversationDocument, removeCreationConversationSnapshot, updateCreationConversationSnapshot } from "@yingce/services/creation-conversation-store";
 import { resolveModelChannel, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
 import { useCreationPreferencesStore } from "@yingce/stores/use-creation-preferences-store";
 import { useAssetStore, type Asset } from "@yingce/stores/use-asset-store";
@@ -31,11 +31,17 @@ import { usePluginStore } from "@yingce/stores/use-plugin-store";
 import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreationAttachmentLimit, reconcileCreationAttachmentLimits, removeCreationReferenceTokens, replaceCreationAttachmentReference, selectedCreationReferences, type CreationReference, type CreationReferenceLimits } from "./creation-references";
 import { creationAttachmentFromAsset, creationAttachmentFromAudio, creationAttachmentFromAudioAsset, creationAttachmentFromDocument, creationAttachmentFromExternalAsset, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentFromVideoAsset, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
 import { defaultCreationMode, modeLabels, type CreationConversation, type CreationMessage, type CreationMode, type CreationRetryContext, type CreationSettings, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
-import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages } from "./creation-conversations";
+import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages, resolveActiveCreationConversationId } from "./creation-conversations";
 import { CreationComposer, CreationEmptySuggest, CreationFeaturedWorks, CreationHistoryDrawer, CreationMessageView, CreationModeTabs, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
 import { CreationAgentEntry } from "./creation-agent-entry";
 import { createCreationSubmitGate } from "./creation-submit-gate";
 import { creationVideoConfig } from "./creation-generation-config";
+import { openHostedVideoHref } from "@/features/video/canvas-host/host-nav";
+
+function openCanvasHref(href: string, navigate: (href: string) => void) {
+    if (openHostedVideoHref(href)) return;
+    navigate(href);
+}
 
 const AssetLibraryPickerModal = lazy(() => import("@yingce/components/assets/asset-library-picker-modal").then((module) => ({ default: module.AssetLibraryPickerModal })));
 const loadCreationRuntime = () => import("./creation-runtime");
@@ -129,6 +135,9 @@ export default function CreatePage() {
     const activeGenerationTaskIdsRef = useRef(new Set<string>());
     const retryPreparingRef = useRef(new Set<string>());
     const submitGateRef = useRef(createCreationSubmitGate());
+    const liveControllersRef = useRef(new Map());
+    const mountedRef = useRef(true);
+    const commitEpochRef = useRef(0);
     const pendingRetryRef = useRef<{ context: CreationRetryContext; lockKey: string } | null>(null);
     const [retrySequence, setRetrySequence] = useState(0);
     const [composerPreferencesInitialized, setComposerPreferencesInitialized] = useState(false);
@@ -256,23 +265,54 @@ export default function CreatePage() {
         if (reconciled.removedReferences.length) setPrompt((current) => removeCreationReferenceTokens(current, reconciled.removedReferences));
     }, [attachments, maxReferences, mentionReferences, mode, videoReferenceLimits]);
 
+    const toastRef = useRef(toast);
+    toastRef.current = toast;
+
     useEffect(() => {
         let cancelled = false;
-        void loadCreationConversations<CreationConversation>().then((stored) => {
+        void readCreationConversationDocument<CreationConversation>().then(async (stored) => {
             if (cancelled) return;
-            const next = stored?.length ? stored : [newConversation()];
+            if (stored.corrupt) toastRef.current.error("本地创作记录已损坏，已保留备份并开始新的创作");
+            let next = stored.conversations;
+            let nextActiveId = resolveActiveCreationConversationId(next, stored.activeId);
+            if (!next.length) {
+                const created = newConversation();
+                const saved = await mutateCreationConversations<CreationConversation>(() => ({ activeId: created.id, conversations: [created] }));
+                if (cancelled) return;
+                next = saved.conversations;
+                nextActiveId = saved.activeId;
+            } else if (nextActiveId !== stored.activeId) {
+                const saved = await mutateCreationConversations<CreationConversation>((doc) => ({ ...doc, activeId: nextActiveId }));
+                if (cancelled) return;
+                next = saved.conversations;
+                nextActiveId = saved.activeId;
+            }
             conversationsRef.current = next;
+            activeIdRef.current = nextActiveId;
             setConversations(next);
-            setActiveId(next[0].id);
+            setActiveId(nextActiveId);
             setHydrated(true);
+        }).catch((error) => {
+            if (cancelled) return;
+            console.warn("创作对话读取失败", error);
+            const created = newConversation();
+            conversationsRef.current = [created];
+            activeIdRef.current = created.id;
+            setConversations([created]);
+            setActiveId(created.id);
+            setHydrated(true);
+            toastRef.current.error("创作记录暂时读不出来，先从新的创作开始");
         });
         return () => {
             cancelled = true;
-            // 页面卸载只停止当前页面的状态更新，后台任务由任务中心继续执行，返回页面后再恢复状态。
         };
     }, []);
 
-    useEffect(() => () => abortRef.current?.abort(), []);
+    useEffect(() => () => {
+        mountedRef.current = false;
+        // 任务还没交给任务中心时，离开页面会取消这次提交。已经接住的任务继续在后台跑。
+        abortRef.current?.abort();
+    }, []);
 
     useEffect(() => {
         activeIdRef.current = activeId;
@@ -280,62 +320,7 @@ export default function CreatePage() {
 
     useEffect(() => {
         conversationsRef.current = conversations;
-        if (hydrated) void saveCreationConversations(conversations);
-    }, [conversations, hydrated]);
-
-    useEffect(() => {
-        if (!hydrated || !recoveryTaskKey || !pendingTaskIds.length) return;
-        // 当前页面主动提交的任务由 submit 自己等待并收尾；恢复监听只接管刷新前遗留的任务，避免同一任务被双重轮询。
-        const recoverableTaskIds = pendingTaskIds.filter((id) => !activeGenerationTaskIdsRef.current.has(id));
-        if (!recoverableTaskIds.length) return;
-        let cancelled = false;
-        const observationController = new AbortController();
-        const applyTasks = async (tasks: GenerationTask[]) => {
-            const runtime = await loadCreationRuntime();
-            const contextual = attachCreationTaskContexts(tasks, conversations);
-            const persistedTasks = await materializeCreationTaskResults(runtime, contextual, observationController.signal);
-            if (cancelled) return;
-            taskSyncWarningRef.current = false;
-            const attachable = persistedTasks.filter((task) => task.status === "succeeded" && Boolean(task.clientContext?.messageId) && Boolean(task.creationResultUrls?.length));
-            for (const task of attachable) {
-                try {
-                    await runtime.consumeGenerationTaskMessage(task, task.clientContext!.messageId!, async ({ effectKey, resultUrls }) => {
-                        if (cancelled) return;
-                        await updateConversationMessage(task.clientContext!.conversationId!, task.clientContext!.messageId!, (item) =>
-                            runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, status: "done" as const, resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) })).value,
-                        );
-                    }, { signal: observationController.signal, materialize: async () => task, materializedUrls: runtime.generationTaskMaterializedUrls });
-                } catch (error) {
-                    if (cancelled || observationController.signal.aborted) return;
-                    console.warn("创作任务结果挂载失败，将使用已物化结果收敛消息状态", error);
-                }
-            }
-            if (!cancelled) setConversations((current) => reconcileCreationTaskMessages(runtime, current, persistedTasks));
-        };
-        const warnSync = (error: unknown) => {
-            if (cancelled || observationController.signal.aborted) return;
-            console.warn("创作任务状态同步失败", error);
-            if (!taskSyncWarningRef.current) {
-                taskSyncWarningRef.current = true;
-                toast.warning("任务状态暂时无法同步，请稍后刷新");
-            }
-        };
-        let applyChain = Promise.resolve();
-        let unsubscribe: () => void = () => {};
-        void loadCreationRuntime()
-            .then((runtime) => {
-                if (cancelled) return;
-                unsubscribe = runtime.subscribeGenerationTasks(recoverableTaskIds, (task) => {
-                    applyChain = applyChain.then(() => applyTasks([task])).catch(warnSync);
-                });
-            })
-            .catch(warnSync);
-        return () => {
-            cancelled = true;
-            observationController.abort();
-            unsubscribe();
-        };
-    }, [hydrated, recoveryTaskKey, toast]);
+    }, [conversations]);
 
     const loadAddedSkills = useCallback(() => {
         if (addedSkillsRequestedRef.current) return;
@@ -355,22 +340,111 @@ export default function CreatePage() {
         return () => window.cancelAnimationFrame(frame);
     }, [activeConversation?.id, activeConversation?.messages, isEmpty]);
 
+    const commitDoc = useCallback((mutator: (doc: { activeId: string; conversations: CreationConversation[] }) => { activeId: string; conversations: CreationConversation[] }, optimistic?: { activeId: string; conversations: CreationConversation[] }) => {
+        const epoch = ++commitEpochRef.current;
+        if (optimistic) {
+            conversationsRef.current = optimistic.conversations;
+            activeIdRef.current = optimistic.activeId;
+            setConversations(optimistic.conversations);
+            setActiveId(optimistic.activeId);
+        }
+        return mutateCreationConversations<CreationConversation>(mutator).then((doc) => {
+            if (!mountedRef.current || commitEpochRef.current !== epoch) return doc;
+            conversationsRef.current = doc.conversations;
+            activeIdRef.current = doc.activeId;
+            setConversations(doc.conversations);
+            setActiveId(doc.activeId);
+            return doc;
+        });
+    }, []);
+
     const updateActive = useCallback((updater: (conversation: CreationConversation) => CreationConversation) => {
-        const next = updateCreationConversationSnapshot(conversationsRef.current, activeId, updater);
-        conversationsRef.current = next;
-        setConversations(next);
-    }, [activeId]);
+        const id = activeIdRef.current;
+        const optimisticConversations = updateCreationConversationSnapshot(conversationsRef.current, id, updater);
+        return commitDoc(
+            (doc) => ({
+                activeId: doc.activeId || id,
+                conversations: updateCreationConversationSnapshot(doc.conversations, doc.activeId || id, updater),
+            }),
+            { conversations: optimisticConversations, activeId: id },
+        );
+    }, [commitDoc]);
 
     const updateConversationMessage = useCallback(async (conversationId: string, id: string, updater: (item: CreationMessage) => CreationMessage) => {
-        const next = updateCreationConversationSnapshot(conversationsRef.current, conversationId, (conversation) => ({
+        const apply = (conversation: CreationConversation) => ({
             ...conversation,
             updatedAt: new Date().toISOString(),
             messages: conversation.messages.map((item) => item.id === id ? updater(item) : item),
-        }));
-        conversationsRef.current = next;
-        setConversations(next);
-        await saveCreationConversations(next);
-    }, []);
+        });
+        const optimisticConversations = updateCreationConversationSnapshot(conversationsRef.current, conversationId, apply);
+        await commitDoc(
+            (doc) => ({ ...doc, conversations: updateCreationConversationSnapshot(doc.conversations, conversationId, apply) }),
+            { conversations: optimisticConversations, activeId: activeIdRef.current },
+        );
+    }, [commitDoc]);
+
+    useEffect(() => {
+        if (!hydrated || !recoveryTaskKey || !pendingTaskIds.length) return;
+        // 当前页面主动提交的任务由 submit 自己等待并收尾；恢复监听只接管刷新前遗留的任务，避免同一任务被双重轮询。
+        const recoverableTaskIds = pendingTaskIds.filter((id) => !activeGenerationTaskIdsRef.current.has(id));
+        if (!recoverableTaskIds.length) return;
+        let cancelled = false;
+        const observationController = new AbortController();
+        const observed = new Map<string, GenerationTask>();
+        const applyTasks = async (tasks: GenerationTask[]) => {
+            const runtime = await loadCreationRuntime();
+            const contextual = attachCreationTaskContexts(tasks, conversationsRef.current);
+            const persistedTasks = await materializeCreationTaskResults(runtime, contextual, observationController.signal);
+            if (cancelled) return;
+            taskSyncWarningRef.current = false;
+            const attachable = persistedTasks.filter((task) => task.status === "succeeded" && Boolean(task.clientContext?.messageId) && Boolean(task.creationResultUrls?.length));
+            for (const task of attachable) {
+                try {
+                    await runtime.consumeGenerationTaskMessage(task, task.clientContext!.messageId!, async ({ effectKey, resultUrls }) => {
+                        if (cancelled) return;
+                        // 只累积结果地址。整批任务都结束前保持 pending，避免第一张成功就把失败的几张盖掉。
+                        await updateConversationMessage(task.clientContext!.conversationId!, task.clientContext!.messageId!, (item) =>
+                            runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) })).value,
+                        );
+                    }, { signal: observationController.signal, materialize: async () => task, materializedUrls: runtime.generationTaskMaterializedUrls });
+                } catch (error) {
+                    if (cancelled || observationController.signal.aborted) return;
+                    console.warn("创作任务结果挂载失败，将使用已物化结果收敛消息状态", error);
+                }
+            }
+            if (!cancelled) {
+                await commitDoc((doc) => ({ ...doc, conversations: reconcileCreationTaskMessages(runtime, doc.conversations, persistedTasks) }));
+            }
+        };
+        const warnSync = (error: unknown) => {
+            if (cancelled || observationController.signal.aborted) return;
+            console.warn("创作任务状态同步失败", error);
+            if (!taskSyncWarningRef.current) {
+                taskSyncWarningRef.current = true;
+                toast.warning("任务状态暂时无法同步，请稍后刷新");
+            }
+        };
+        let applyChain = Promise.resolve();
+        let unsubscribe: () => void = () => {};
+        void loadCreationRuntime()
+            .then((runtime) => {
+                if (cancelled) return;
+                unsubscribe = runtime.subscribeGenerationTasks(recoverableTaskIds, (task) => {
+                    observed.set(task.id, task);
+                    const snapshot = recoverableTaskIds.flatMap((id) => {
+                        const known = observed.get(id);
+                        return known ? [known] : [];
+                    });
+                    applyChain = applyChain.then(() => applyTasks(snapshot)).catch(warnSync);
+                });
+            })
+            .catch(warnSync);
+        return () => {
+            cancelled = true;
+            observationController.abort();
+            unsubscribe();
+        };
+    }, [commitDoc, hydrated, recoveryTaskKey, toast, updateConversationMessage]);
 
     const selectMode = (next: CreationMode) => {
         setMode(next);
@@ -454,12 +528,27 @@ export default function CreatePage() {
     const uploadLibraryAssets = async (files: FileList | File[]) => {
         const next = Array.from(files).filter((file) => creationFileAccepted(mode, file));
         if (!next.length) return [];
-        const settled = await Promise.allSettled(next.map(async (file) => {
-            const { asset } = await uploadCreationAsset(file);
-            return asset ? addAsset(asset) : "";
-        }));
-        const assetIds = settled.flatMap((entry) => entry.status === "fulfilled" && entry.value ? [entry.value] : []);
+        const settled = await Promise.allSettled(next.map((file) => uploadCreationAsset(file)));
         const failed = settled.filter((entry) => entry.status === "rejected");
+        const uploaded = settled.flatMap((entry) => entry.status === "fulfilled" ? [entry.value] : []);
+        const assetIds: string[] = [];
+        const documents: CreationAttachment[] = [];
+        for (const item of uploaded) {
+            if (item.asset) assetIds.push(addAsset(item.asset));
+            else if (item.attachment) documents.push(item.attachment);
+        }
+        if (documents.length) {
+            const current = attachmentsRef.current;
+            const candidates = [...current, ...documents.filter((item) => !current.some((existing) => existing.id === item.id))];
+            const reconciled = mode === "video" && videoReferenceLimits
+                ? reconcileCreationAttachmentLimits(candidates, mentionReferences, videoReferenceLimits)
+                : reconcileCreationAttachmentLimit(candidates, mentionReferences, maxReferences);
+            attachmentsRef.current = reconciled.attachments;
+            setAttachments(reconciled.attachments);
+            if (reconciled.removedReferences.length) setPrompt((value) => removeCreationReferenceTokens(value, reconciled.removedReferences));
+            if (reconciled.attachments.length < candidates.length) toast.warning("部分素材超出当前模型的参考内容上限，未添加到创作中");
+            else toast.success(`${documents.length} 个文档已加入本次创作`);
+        }
         if (assetIds.length) toast.success(`${assetIds.length} 个素材已上传到素材库并自动选中`);
         if (failed.length) toast.error(`${failed.length} 个素材上传失败，请重试`);
         return assetIds;
@@ -560,27 +649,33 @@ export default function CreatePage() {
         const releaseRetryLock = () => {
             if (retryLockKey) retryPreparingRef.current.delete(retryLockKey);
         };
-        if (!submitGateRef.current.tryAcquire()) {
+        const gateToken = submitGateRef.current.tryAcquire();
+        if (!gateToken) {
             releaseRetryLock();
             return;
         }
-        const releaseSubmitGate = () => submitGateRef.current.release();
+        let gateReleased = false;
+        const releaseGateOnce = () => {
+            if (gateReleased) return;
+            gateReleased = true;
+            submitGateRef.current.release(gateToken);
+        };
         const text = prompt.trim();
         if (!text || busy || !activeConversation) {
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
             return;
         }
         if (!selectedModel) {
             toast.warning(`请先在设置中配置${modeLabels[mode]}模型`);
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
             return;
         }
         if (mode === "video" && !videoDurationAllowed(videoProfile, Number(seconds))) {
             toast.error("当前模型不支持所选视频时长，请重新选择");
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
             return;
         }
         const reconciledAttachments = mode === "video" && videoReferenceLimits
@@ -589,7 +684,7 @@ export default function CreatePage() {
         if (reconciledAttachments.attachments !== attachments) {
             toast.warning("参考内容正在按当前模型能力调整，请稍后重试");
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
             return;
         }
         const settings = { ratio, seconds, quality, videoQuality, count };
@@ -604,27 +699,29 @@ export default function CreatePage() {
             characterCount: 0,
         });
         const skillReferences = references.flatMap((reference) => (reference.skill ? [reference.skill] : []));
+        setBusy(true);
+        const controller = new AbortController();
+        abortRef.current = controller;
         let runtime: CreationRuntime;
+        let skillExecution: Awaited<ReturnType<CreationRuntime["skillRuntime"]["prepare"]>>;
         try {
             runtime = await loadCreationRuntime();
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "生成运行时加载失败");
-            releaseRetryLock();
-            releaseSubmitGate();
-            return;
-        }
-        let skillExecution: Awaited<ReturnType<typeof runtime.skillRuntime.prepare>>;
-        try {
+            if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
             skillExecution = await runtime.skillRuntime.prepare({
                 profile: "creation",
                 prompt: expandCreationPrompt(text, references, attachments),
                 skills: skillReferences,
                 selectedSkillIds: skillReferences.map((skill) => skill.skillId),
             });
+            if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "技能上下文加载失败");
+            if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "生成准备失败");
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+                setBusy(false);
+            }
             return;
         }
         const expandedPrompt = skillExecution.prompt;
@@ -633,7 +730,7 @@ export default function CreatePage() {
         const userMessage = newMessage("user", text, { mode, model: selectedModel, attachments, references, settings });
         const assistantMessage = newMessage("assistant", "", { mode, model: selectedModel, status: mode === "text" && textStreaming ? "streaming" : "pending", settings, ...retryContext });
         const originConversationId = activeConversation.id;
-        const updateOriginAssistant = (updater: (item: CreationMessage) => CreationMessage) => updateConversationMessage(originConversationId, assistantMessage.id, updater);
+        const updateOriginAssistant = (updater: (item: CreationMessage) => CreationMessage) => updateConversationMessage(originConversationId, assistantMessage.id, (item) => item.status === "cancelled" ? item : updater(item));
         const boundTaskIds = new Set<string>();
         const boundTaskIdsByBatchIndex = new Map<number, string>();
         const boundTasks = new Map<string, GenerationTask>();
@@ -643,24 +740,37 @@ export default function CreatePage() {
             activeGenerationTaskIdsRef.current.add(task.id);
             boundTasks.set(task.id, task);
             updateOriginAssistant((item) => ({ ...item, generationStage: task.stage, generationOperation: task.operation, generationErrorCode: task.errorCode, taskIds: Array.from(new Set([...(item.taskIds || []), task.id])), clientOperationId: task.clientOperationId, retryOf: task.retryOf, attemptGroupId: task.attemptGroupId }));
+            // 任务已经交给任务中心，输入框可以写下一句。这条生成仍可用消息上的停止按钮取消。
+            if (abortRef.current === controller) abortRef.current = null;
+            setBusy(false);
+            releaseGateOnce();
+        };
+        liveControllersRef.current.set(assistantMessage.id, controller);
+        let requestLifecycle: ReturnType<CreationRuntime["beginGenerationConsumer"]>;
+        try {
+            await updateActive((conversation) => ({
+                ...conversation,
+                title: conversation.messages.length ? conversation.title : text.slice(0, 24),
+                updatedAt: new Date().toISOString(),
+                messages: [...conversation.messages, userMessage, assistantMessage],
+            }));
+            if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+            setPrompt("");
+            setAttachments([]);
+            setDraftReferences([]);
+            requestLifecycle = runtime.beginGenerationConsumer(controller.signal);
+        } catch (error) {
+            liveControllersRef.current.delete(assistantMessage.id);
+            if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "生成准备失败");
+            void updateConversationMessage(originConversationId, assistantMessage.id, (item) => item.status === "cancelled" || item.status === "done" ? item : { ...item, status: controller.signal.aborted ? "cancelled" : "error", content: controller.signal.aborted ? "已停止" : "生成失败", error: controller.signal.aborted ? undefined : (error instanceof Error ? error.message : "生成准备失败") });
+            releaseRetryLock();
+            releaseGateOnce();
             if (abortRef.current === controller) {
                 abortRef.current = null;
                 setBusy(false);
             }
-        };
-        updateActive((conversation) => ({
-            ...conversation,
-            title: conversation.messages.length ? conversation.title : text.slice(0, 24),
-            updatedAt: new Date().toISOString(),
-            messages: [...conversation.messages, userMessage, assistantMessage],
-        }));
-        setPrompt("");
-        setAttachments([]);
-        setDraftReferences([]);
-        setBusy(true);
-        const controller = new AbortController();
-        const requestLifecycle = runtime.beginGenerationConsumer(controller.signal);
-        abortRef.current = controller;
+            return;
+        }
         const normalizedImage = mode === "image" ? normalizeImageValue(imageProfile, { size: ratio, quality, count }) : undefined;
         const requestConfig = {
             ...generationConfig,
@@ -673,6 +783,7 @@ export default function CreatePage() {
                 : {}),
         };
         try {
+            if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
             if (mode === "text") {
                 const result = await runtime.runGenerationOperationOnce(retryContext?.clientOperationId, () => runtime.runBackendGenerationTask({
                     mode: "text",
@@ -721,7 +832,7 @@ export default function CreatePage() {
                     if (!taskId) throw new Error("生成任务缺少稳定任务标识");
                     const task = completedCreationGenerationTask(runtime, { taskId, task: boundTasks.get(taskId), mode: "image", prompt: expandedPrompt, result: { mode: "image", images: [image] }, conversationId: activeConversation.id, messageId: assistantMessage.id, batchIndex, batchCount: taskCount });
                     const materialized = await runtime.consumeGenerationTaskMessage(task, assistantMessage.id, async ({ resultUrls, effectKey }) => {
-                        await updateOriginAssistant((item) => runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, status: "done" as const, content: "图片已生成", resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) })).value);
+                        await updateOriginAssistant((item) => runtime.applyGenerationConsumerEffect(item, effectKey, (current) => ({ ...current, resultUrls: Array.from(new Set([...(current.resultUrls || []), ...resultUrls])) })).value);
                     }, { signal: requestLifecycle.signal });
                     const url = runtime.generationTaskMaterializedUrls(materialized)[0];
                     if (!url) throw new Error("图片结果资源不可用");
@@ -768,9 +879,10 @@ export default function CreatePage() {
             updateOriginAssistant((item) => ({ ...item, status: "error", error: message, generationErrorCode: item.generationErrorCode || generationErrorCode(error), generationOperation: item.generationOperation || (mode === "video" ? videoOperation : mode), createdAt: assistantMessage.createdAt, content: "生成失败" }));
         } finally {
             for (const taskId of boundTaskIds) activeGenerationTaskIdsRef.current.delete(taskId);
+            liveControllersRef.current.delete(assistantMessage.id);
             requestLifecycle.release();
             releaseRetryLock();
-            releaseSubmitGate();
+            releaseGateOnce();
             if (abortRef.current === controller) {
                 abortRef.current = null;
                 setBusy(false);
@@ -786,11 +898,39 @@ export default function CreatePage() {
         void submit(pending.context, pending.lockKey);
     }, [retrySequence]);
 
+    const stopGeneration = async (message?: CreationMessage) => {
+        const conversation = conversationsRef.current.find((item) => item.id === activeIdRef.current);
+        const target = message || [...(conversation?.messages || [])].reverse().find((item) => item.role === "assistant" && (item.status === "pending" || item.status === "streaming"));
+        const controller = target ? liveControllersRef.current.get(target.id) : null;
+        (controller || abortRef.current)?.abort();
+        if (!target || !conversation) return;
+        let uncancellable = false;
+        try {
+            const runtime = await loadCreationRuntime();
+            for (const taskId of target.taskIds || []) {
+                try {
+                    const task = await runtime.refreshGenerationTaskStatus(taskId);
+                    if (task.status !== "queued" && task.status !== "running") continue;
+                    if (runtime.canCancelGenerationTask(task)) await runtime.cancelGenerationTask(taskId);
+                    else uncancellable = true;
+                } catch (error) {
+                    console.warn("创作任务取消失败", error);
+                }
+            }
+        } catch (error) {
+            console.warn("创作运行时加载失败，仅停止本地等待", error);
+        }
+        if (uncancellable) toast.info("上游已开始生成，本地已停止等待，结果不再写回这条消息");
+        await updateConversationMessage(conversation.id, target.id, (item) => item.status === "pending" || item.status === "streaming" ? { ...item, status: "cancelled", content: "已停止", error: undefined } : item);
+    };
+
     const startNewConversation = () => {
-        const next = newConversation();
+        const created = newConversation();
         followLatestMessageRef.current = true;
-        setConversations((current) => [next, ...current]);
-        setActiveId(next.id);
+        void commitDoc(
+            (doc) => ({ activeId: created.id, conversations: [created, ...doc.conversations.filter((item) => item.id !== created.id)] }),
+            { activeId: created.id, conversations: [created, ...conversationsRef.current] },
+        );
         setPrompt("");
         setAttachments([]);
         setDraftReferences([]);
@@ -817,9 +957,10 @@ export default function CreatePage() {
             const result = await continueCreationConversationOnCanvas(source);
             if (scope !== getActiveUserScope()) return;
             const next = updateCreationConversationSnapshot(conversationsRef.current, source.id, (item) => ({ ...item, canvasId: result.id }));
-            conversationsRef.current = next;
-            setConversations(next);
-            await saveCreationConversations(next);
+            await commitDoc(
+                (doc) => ({ ...doc, conversations: updateCreationConversationSnapshot(doc.conversations, source.id, (item) => ({ ...item, canvasId: result.id })) }),
+                { activeId: activeIdRef.current, conversations: next },
+            );
             if (scope !== getActiveUserScope()) return;
             if (result.syncError) toast.warning("会话已保存在本机，工作区保存尚未完成。");
             const params = new URLSearchParams({ conversation: result.sessionId });
@@ -827,7 +968,7 @@ export default function CreatePage() {
                 params.set("mode", "handoff");
                 [...new Set(assetIds)].forEach((id) => params.append("asset", id));
             }
-            navigate(`/canvas/${result.id}?${params.toString()}`);
+            openCanvasHref(`/canvas/${encodeURIComponent(result.id)}?${params.toString()}`, navigate);
         } catch (cause) {
             if (scope === getActiveUserScope()) toast.error(cause instanceof Error ? cause.message : "转入画布失败，原会话已保留");
         } finally { openingCanvasRef.current = false; setOpeningCanvas(false); }
@@ -835,7 +976,10 @@ export default function CreatePage() {
 
     const selectConversation = (conversation: CreationConversation) => {
         followLatestMessageRef.current = true;
-        setActiveId(conversation.id);
+        void commitDoc(
+            (doc) => ({ ...doc, activeId: conversation.id }),
+            { activeId: conversation.id, conversations: conversationsRef.current },
+        );
         setPrompt("");
         setAttachments([]);
         setDraftReferences([]);
@@ -854,17 +998,18 @@ export default function CreatePage() {
             cancelText: "保留",
             onOk: async () => {
                 try {
-                    const remaining = removeCreationConversationSnapshot(conversationsRef.current, conversation.id);
-                    const sortedRemaining = [...remaining].sort((left, right) => conversationTimestamp(right.updatedAt) - conversationTimestamp(left.updatedAt));
-                    const fallback = sortedRemaining.find((item) => item.messages.length > 0) || sortedRemaining[0] || newConversation();
-                    const next = remaining.length ? remaining : [fallback];
-                    await saveCreationConversations(next);
-                    conversationsRef.current = next;
-                    setConversations(next);
-                    if (activeIdRef.current === conversation.id) {
+                    const deletingActive = activeIdRef.current === conversation.id;
+                    await commitDoc((doc) => {
+                        const remaining = removeCreationConversationSnapshot(doc.conversations, conversation.id);
+                        const sortedRemaining = [...remaining].sort((left, right) => conversationTimestamp(right.updatedAt) - conversationTimestamp(left.updatedAt));
+                        const fallback = sortedRemaining.find((item) => item.messages.length > 0) || sortedRemaining[0] || newConversation();
+                        return {
+                            activeId: doc.activeId === conversation.id ? fallback.id : doc.activeId,
+                            conversations: remaining.length ? remaining : [fallback],
+                        };
+                    });
+                    if (deletingActive) {
                         followLatestMessageRef.current = true;
-                        activeIdRef.current = fallback.id;
-                        setActiveId(fallback.id);
                         setPrompt("");
                         setAttachments([]);
                         setDraftReferences([]);
@@ -882,9 +1027,10 @@ export default function CreatePage() {
         const nextTitle = title.trim().slice(0, 120);
         if (!nextTitle || nextTitle === conversation.title.trim()) return;
         const next = updateCreationConversationSnapshot(conversationsRef.current, conversation.id, (item) => ({ ...item, title: nextTitle }));
-        conversationsRef.current = next;
-        setConversations(next);
-        void saveCreationConversations(next).catch((error) => toast.error(error instanceof Error ? error.message : "对话重命名保存失败"));
+        void commitDoc(
+            (doc) => ({ ...doc, conversations: updateCreationConversationSnapshot(doc.conversations, conversation.id, (item) => ({ ...item, title: nextTitle })) }),
+            { activeId: activeIdRef.current, conversations: next },
+        ).catch((error) => toast.error(error instanceof Error ? error.message : "对话重命名保存失败"));
     };
 
     const restoreMessageDraft = (item: CreationMessage) => {
@@ -963,7 +1109,7 @@ export default function CreatePage() {
 
 
 
-    const generationActive = activeConversation.messages.some((message) => message.role === "assistant" && message.status === "pending");
+    const generationActive = activeConversation.messages.some((message) => message.role === "assistant" && (message.status === "pending" || message.status === "streaming"));
 
     const composerProps = {
         mode,
@@ -1008,6 +1154,7 @@ export default function CreatePage() {
         composerFocusRef,
         onPromptFocus: loadAddedSkills,
         onSubmit: () => void submit(),
+        onStop: () => void stopGeneration(),
     };
 
 
@@ -1059,7 +1206,8 @@ export default function CreatePage() {
                         onCreateVariant={() => createVariant(item, index)}
                         onContinueCanvas={(ids) => void continueOnCanvas(ids)}
                         openingCanvas={openingCanvas}
-                        onEditUserMessage={(text) => { setPrompt(text); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
+                        onStop={item.role === "assistant" && (item.status === "pending" || item.status === "streaming") ? () => void stopGeneration(item) : undefined}
+                        onEditUserMessage={() => { restoreMessageDraft(item); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
                     /></div>)}</div></section>
                 </main>
                 <section className="creation-thread-composer"><CreationComposer {...composerProps} variant="thread" /></section>

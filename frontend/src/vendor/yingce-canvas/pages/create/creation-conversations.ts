@@ -137,3 +137,15 @@ export function conversationTimestamp(value: string) {
     const timestamp = new Date(value).getTime();
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
+
+// 显式记录的当前对话优先。旧数据没有这条记录时，空白的新建对话不能盖过已经写过的对话。
+export function resolveActiveCreationConversationId(conversations: Array<{ id: string; updatedAt: string; messages: unknown[] }>, activeId: string) {
+    if (activeId && conversations.some((item) => item.id === activeId)) return activeId;
+    const used = conversations.filter((item) => item.messages.length > 0);
+    const pool = used.length ? used : conversations;
+    let best = pool[0];
+    for (const item of pool) {
+        if (!best || conversationTimestamp(item.updatedAt) > conversationTimestamp(best.updatedAt)) best = item;
+    }
+    return best?.id || "";
+}

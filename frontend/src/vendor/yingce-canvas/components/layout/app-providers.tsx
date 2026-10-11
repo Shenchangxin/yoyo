@@ -11,7 +11,7 @@ import { yoyoHostAntTheme } from "@/features/video/canvas-host/yoyo-ant-theme";
 import { isYoyoCanvasHost, yoyoCanvasPopupContainer, syncYoyoPopupRoot } from "@/features/video/canvas-host/design-system/popup-container";
 import { appQueryClient } from "@yingce/lib/query-client";
 import { isIsolatedDirectorRepro } from "@yingce/lib/dev-repro";
-import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
+import { useActiveTheme, useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 
@@ -41,7 +41,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     const hosted = isYoyoCanvasHost();
     const hostedMode = useHostedColorMode();
     const theme = useActiveTheme();
-    const dark = hosted ? hostedMode === "dark" : theme === "dark";
+    const canvasActive = useCanvasThemeStore((state) => state.active);
+    // 画布编辑器打开时，浮层和控件跟画布主题走；创作页等其它栏目仍跟软件主题。
+    const dark = canvasActive ? theme === "dark" : hosted ? hostedMode === "dark" : theme === "dark";
     const appearance = useAppearanceStore((state) => state.appearance);
 
     useLayoutEffect(() => {

@@ -23,6 +23,67 @@ export function yingcePathForPane(pane: VideoPane, projectId: string, canvasFocu
   if (pane === "canvas" && canvasFocus === "editor" && projectId) return `/canvas/${projectId}`;
   return "/canvas";
 }
+
+export type VideoRouteTarget = {
+  pane: VideoPane;
+  canvasFocus?: CanvasFocus;
+  projectId?: string;
+  entry: string;
+};
+
+function normalizeVideoPath(path: string) {
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path || "/";
+}
+
+// 创作页转入画布时要连同查询参数一起交给岛内路由，否则会话接续和素材交接会丢。
+export function videoRouteFromLocation(to: string): VideoRouteTarget | null {
+  const raw = String(to || "").trim();
+  let path = "/";
+  let search = "";
+  try {
+    const url = new URL(raw, "https://yoyo.local");
+    path = normalizeVideoPath(url.pathname);
+    search = url.search.replace(/^\?/, "");
+  } catch {
+    const [pathname, query] = raw.split("?");
+    path = normalizeVideoPath(pathname || "/");
+    search = query || "";
+  }
+  const parts = path.split("/").filter(Boolean);
+  let pane: VideoPane | null = null;
+  let canvasFocus: CanvasFocus | undefined;
+  let projectId = "";
+  if (path === "/" || path === "/create") pane = "create";
+  else if (parts[0] === "canvas" && parts[1]) {
+    pane = "canvas";
+    canvasFocus = "editor";
+    projectId = decodeURIComponent(parts[1]);
+  } else if (path === "/canvas") {
+    pane = "canvas";
+    canvasFocus = "library";
+  } else if (path === "/drama") pane = "drama";
+  else if (path === "/assets") pane = "assets";
+  else if (path === "/skills") pane = "skills";
+  else if (path === "/plugins" || path === "/plugins/eagle") pane = "plugins";
+  else if (path === "/tasks") pane = "tasks";
+  else return null;
+  const derived = yingcePathForPane(pane, projectId, canvasFocus || "library");
+  let entry = "";
+  if (search || projectId || path !== derived) entry = search ? `${path}?${search}` : path;
+  return { pane, canvasFocus, projectId, entry };
+}
+
+export function yingceHref(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus, entry = ""): string {
+  const derived = yingcePathForPane(pane, projectId, canvasFocus);
+  if (!entry) return derived;
+  const path = entry.split("?")[0] || "/";
+  if (pane === "canvas" && (path === "/canvas" || path.startsWith("/canvas/"))) return entry;
+  if (pane === "create" && (path === "/" || path === "/create")) return entry;
+  if (pane === "plugins" && (path === "/plugins" || path === "/plugins/eagle")) return entry;
+  if (path === derived) return entry;
+  return derived;
+}
 export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed" | "transfer" | "index" | "behavior";
 export type SettingsTab =
   | "general"

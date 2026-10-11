@@ -1,5 +1,6 @@
-import type { CanvasFocus, SettingsTab, VideoPane } from "../../../lib/protocol";
+import { videoRouteFromLocation, type SettingsTab } from "../../../lib/protocol";
 import { useUI } from "../../../lib/store";
+import { useCanvasHost } from "./session";
 
 function normalizePath(to: string): string {
   const raw = String(to || "").trim();
@@ -40,28 +41,22 @@ export function settingsHostTarget(to: string): { tab: SettingsTab; section?: st
   return null;
 }
 
-export function pathToHostPane(to: string): { pane: VideoPane; canvasFocus?: CanvasFocus } | null {
-  const path = parseTo(to).path;
-  if (path === "/" || path === "/create") return { pane: "create" };
-  if (path === "/canvas") return { pane: "canvas", canvasFocus: "library" };
-  if (path === "/drama") return { pane: "drama" };
-  if (path === "/assets") return { pane: "assets" };
-  if (path === "/skills") return { pane: "skills" };
-  if (path === "/plugins" || path === "/plugins/eagle") return { pane: "plugins" };
-  if (path === "/tasks") return { pane: "tasks" };
-  return null;
-}
-
 export function openHostPaneForPath(to: string): boolean {
   const settings = settingsHostTarget(to);
   if (settings) {
     useUI.getState().openSettings(settings.tab, settings.section);
     return true;
   }
-  const mapped = pathToHostPane(to);
+  const mapped = videoRouteFromLocation(to);
   if (!mapped) return false;
-  useUI.getState().openVideoPane(mapped.pane, mapped.canvasFocus ? { canvasFocus: mapped.canvasFocus } : undefined);
+  if (mapped.projectId) useCanvasHost.setState({ projectId: mapped.projectId });
+  useUI.getState().openVideoPane(mapped.pane, { canvasFocus: mapped.canvasFocus, entry: mapped.entry });
   return true;
+}
+
+export function openHostedVideoHref(to: string) {
+  if (typeof window === "undefined" || !(window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__) return false;
+  return openHostPaneForPath(to);
 }
 
 export function installHostNavigation() {

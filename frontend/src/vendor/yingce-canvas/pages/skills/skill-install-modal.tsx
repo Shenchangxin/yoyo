@@ -22,10 +22,12 @@ type InstallFormValues = {
     autoUpdate: boolean;
 };
 
+const hostedCanvas = typeof window !== "undefined" && Boolean((window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__);
+
 const modeOptions = [
     { value: "markdown", label: <span className="inline-flex items-center gap-1.5"><FileText className="size-3.5" />Markdown</span> },
     { value: "zip", label: <span className="inline-flex items-center gap-1.5"><FileArchive className="size-3.5" />ZIP 技能包</span> },
-    { value: "github", label: <span className="inline-flex items-center gap-1.5"><GitBranch className="size-3.5" />GitHub</span> },
+    ...(hostedCanvas ? [] : [{ value: "github", label: <span className="inline-flex items-center gap-1.5"><GitBranch className="size-3.5" />GitHub</span> }]),
 ];
 
 export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }: { open: boolean; onClose: () => void; onInstalled: (skill: Skill) => void; onManualCreate: () => void }) {
@@ -93,7 +95,9 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
                 </div>
             )}
         >
-            <p className="mb-4 text-sm leading-6 text-foreground/55">支持标准 <code>SKILL.md</code>、包含多层目录的 ZIP 技能包，或公开 GitHub 仓库。名称和简介会优先从技能入口自动读取。</p>
+            <p className="mb-4 text-sm leading-6 text-foreground/55">
+                {hostedCanvas ? <>支持标准 <code>SKILL.md</code>，或根目录带 <code>SKILL.md</code> 的 ZIP 技能包。名称和简介会优先从技能入口自动读取。</> : <>支持标准 <code>SKILL.md</code>、包含多层目录的 ZIP 技能包，或公开 GitHub 仓库。名称和简介会优先从技能入口自动读取。</>}
+            </p>
 <SegmentedControl className="skill-install-mode" block options={modeOptions} value={mode} onChange={(value) => { setMode(value as InstallMode); setFileList([]); }} />
 
             <Form form={form} layout="vertical" requiredMark="optional" className="skill-install-form">

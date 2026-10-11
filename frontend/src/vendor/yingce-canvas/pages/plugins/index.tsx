@@ -21,6 +21,7 @@ import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
 import { usePluginStore } from "@yingce/stores/use-plugin-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { debrandYingce } from "@yingce/lib/host-brand";
+import { openHostedVideoHref } from "@/features/video/canvas-host/host-nav";
 
 import { PluginDetailsModal } from "./plugin-documentation-modals";
 import "./plugins.css";
@@ -71,6 +72,10 @@ const protocolSectionMeta = [
 export default function PluginsPage() {
     const { message } = App.useApp();
     const navigate = useNavigate();
+    const hosted = typeof window !== "undefined" && Boolean((window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__);
+    const openHref = (href: string) => {
+        if (!openHostedVideoHref(href)) navigate(href);
+    };
     const brandName = useAppearanceStore((state) => state.appearance.brandName);
     const user = useUserStore((state) => state.user);
     const features = useUserStore((state) => state.features);
@@ -195,7 +200,12 @@ export default function PluginsPage() {
     const detailsPlugin = detailsPluginId ? registeredPlugins.find((plugin) => plugin.manifest.id === detailsPluginId) : undefined;
 
     const hasPluginConfiguration = (plugin: RegisteredPlugin) => Boolean(plugin.manifest.configuration?.fields?.length);
-    const canConfigurePlugin = (plugin: RegisteredPlugin) => Boolean(pluginStates[plugin.manifest.id]?.canConfigure) && (hasPluginConfiguration(plugin) || plugin.manifest.id === RUNNINGHUB_PLUGIN_ID);
+    const canConfigurePlugin = (plugin: RegisteredPlugin) => {
+        const official = isOfficialApplicationPluginId(plugin.manifest.id);
+        const state = pluginStates[plugin.manifest.id];
+        if (official) return state?.canConfigure !== false;
+        return Boolean(state?.canConfigure) && (hasPluginConfiguration(plugin) || plugin.manifest.id === RUNNINGHUB_PLUGIN_ID);
+    };
 
     const isPluginEnabled = (plugin: RegisteredPlugin, installation = installations.find((item) => item.manifest.id === plugin.manifest.id)) => pluginStates[plugin.manifest.id]?.effectiveEnabled ?? Boolean(installation?.enabled);
 
@@ -285,7 +295,7 @@ export default function PluginsPage() {
                                 <Button icon={<RefreshCw className="size-4" />} loading={backendPluginsLoading} onClick={() => void reloadBackendPlugins()}>
                                     刷新插件
                                 </Button>
-                                {user?.role === "admin" ? (
+                                {user?.role === "admin" && !hosted ? (
                                     <Button type="primary" onClick={() => navigate("/admin/plugins")}>
                                         管理员插件管理
                                     </Button>
@@ -426,7 +436,7 @@ export default function PluginsPage() {
                                                                         <PluginEnableSwitch
                                                                             name={plugin.manifest.name}
                                                                             checked={enabled}
-                                                                            disabled={!state?.canToggle}
+                                                                            disabled={state ? !state.canToggle : !isOfficialApplicationPluginId(plugin.manifest.id)}
                                                                             blockedReason={state?.blockedReason}
                                                                             onChange={(checked) => void togglePlugin(plugin, checked)}
                                                                         />
@@ -549,7 +559,7 @@ export default function PluginsPage() {
                                                 <Button type="primary" icon={<CheckCircle2 className="size-4" />} onClick={saveEagleConfig}>
                                                     保存配置
                                                 </Button>
-                                                <Button icon={<FolderOpen className="size-4" />} disabled={!settingsEnabled} onClick={() => navigate("/plugins/eagle")}>
+                                                <Button icon={<FolderOpen className="size-4" />} disabled={!settingsEnabled} onClick={() => openHref("/plugins/eagle")}>
                                                     打开 Eagle 素材库
                                                 </Button>
                                                 <Button icon={<ExternalLink className="size-4" />} href="https://api.eagle.cool/" target="_blank">
@@ -570,7 +580,7 @@ export default function PluginsPage() {
                                                 icon={<ExternalLink className="size-4" />}
                                                 onClick={() => {
                                                     setSettingsPluginId(null);
-                                                    navigate("/settings?section=runninghub");
+                                                    openHref("/settings?section=runninghub");
                                                 }}
                                             >
                                                 打开工作流设置

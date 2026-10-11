@@ -6,7 +6,6 @@ import { CanvasRefreshShell } from "@yingce/pages/canvas/canvas-refresh-shell";
 import RouteErrorPage from "@yingce/pages/route-error";
 import UserLayout from "@yingce/layouts/user-layout";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
-import { useCanvasThemeStore } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { bootstrapAppearance } from "@yingce/services/appearance-bootstrap";
 import { bindCanvasSession, setCanvasHostTitle } from "./session";
 import { installCanvasHub } from "./hub";
@@ -89,12 +88,9 @@ export default function YingceApp({ initialPath = "/create" }: { initialPath?: s
 
   useEffect(() => {
     const syncTheme = () => {
-      const dark = document.documentElement.classList.contains("dark");
-      useCanvasThemeStore.getState().setTheme(dark ? "dark" : "light");
       const island = document.querySelector(".yingce-island") as HTMLElement | null;
       island?.classList.remove("dark", "light");
-      if (island) island.style.colorScheme = dark ? "dark" : "light";
-      syncYoyoPopupRoot(dark);
+      syncYoyoPopupRoot();
     };
     syncTheme();
     const observer = new MutationObserver(syncTheme);

@@ -47,7 +47,7 @@ export default function SkillsPage() {
     const debouncedSearch = useDebouncedValue(search, 250);
     const [tag, setTag] = useState("all");
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(48);
+    const [pageSize, setPageSize] = useState(40);
     const [skills, setSkills] = useState<Skill[]>([]);
     const [categories, setCategories] = useState<SkillCategory[]>(fallbackSkillCategories);
     const [total, setTotal] = useState(0);
@@ -83,7 +83,7 @@ export default function SkillsPage() {
                 if (cancelled) return;
                 setSkills(result.skills);
                 setTotal(result.totalCount);
-                setCounts((prev) => ({ ...prev, [scope]: result.totalCount }));
+                setCounts((prev) => result.scopeCounts || { ...prev, [scope]: result.totalCount });
                 if (result.categories.length) setCategories(result.categories);
             })
             .catch((error) => {

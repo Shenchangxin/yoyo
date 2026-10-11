@@ -56,7 +56,8 @@ type UIState = {
   setVideoMode: (m: VideoMode) => void;
   videoPane: VideoPane;
   canvasFocus: CanvasFocus;
-  openVideoPane: (pane: VideoPane, opts?: { canvasFocus?: CanvasFocus }) => void;
+  videoEntry: string;
+  openVideoPane: (pane: VideoPane, opts?: { canvasFocus?: CanvasFocus; entry?: string }) => void;
   videoBoard: boolean;
   setVideoBoard: (v: boolean | ((p: boolean) => boolean)) => void;
   canvasStage: boolean;
@@ -248,7 +249,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
   },
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
-  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, videoPane: "chat" }),
+  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, videoPane: "chat", videoEntry: "" }),
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -279,20 +280,22 @@ export const useUI = create<UIState>((set, get) => ({
   canvasStage: false,
   videoPane: "chat",
   canvasFocus: "library",
-  openVideo: () => set({ surface: "video", videoBoard: false, canvasStage: true, videoPane: "create" }),
+  videoEntry: "",
+  openVideo: () => set({ surface: "video", videoBoard: false, canvasStage: true, videoPane: "create", videoEntry: "" }),
   closeVideo: () => get().showConversation(),
   openVideoPane: (pane, opts) => {
+    const videoEntry = opts?.entry || "";
     if (pane === "chat") {
-      set({ videoPane: "chat", videoBoard: false, canvasStage: false });
+      set({ videoPane: "chat", videoBoard: false, canvasStage: false, videoEntry: "" });
       return;
     }
     if (pane === "create") {
-      set({ videoPane: "create", videoBoard: false, canvasStage: true });
+      set({ videoPane: "create", videoBoard: false, canvasStage: true, videoEntry });
       return;
     }
     if (pane === "drama") {
       writeVideoMode("drama");
-      set({ videoPane: "drama", videoMode: "drama", videoBoard: false, canvasStage: true });
+      set({ videoPane: "drama", videoMode: "drama", videoBoard: false, canvasStage: true, videoEntry });
       return;
     }
     writeVideoMode("canvas");
@@ -301,6 +304,7 @@ export const useUI = create<UIState>((set, get) => ({
       videoMode: "canvas",
       videoBoard: false,
       canvasStage: true,
+      videoEntry,
       canvasFocus: pane === "canvas" ? (opts?.canvasFocus ?? "library") : s.canvasFocus,
     }));
   },
@@ -309,9 +313,9 @@ export const useUI = create<UIState>((set, get) => ({
       const videoBoard = typeof v === "function" ? v(s.videoBoard) : v;
       if (videoBoard) {
         writeVideoMode("drama");
-        return { videoBoard: true, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const };
+        return { videoBoard: true, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const, videoEntry: "" };
       }
-      return { videoBoard: false, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const };
+      return { videoBoard: false, canvasStage: true, videoPane: "drama" as const, videoMode: "drama" as const, videoEntry: "" };
     }),
   setCanvasStage: (v) =>
     set((s) => {
@@ -332,6 +336,7 @@ export const useUI = create<UIState>((set, get) => ({
         canvasStage: false,
         videoBoard: false,
         videoPane: isYingcePane(s.videoPane) ? ("chat" as const) : s.videoPane,
+        videoEntry: "",
       };
     }),
   setVideoMode: (videoMode) => {
@@ -345,6 +350,7 @@ export const useUI = create<UIState>((set, get) => ({
         videoBoard: false,
         canvasStage: videoPane === "chat" ? false : isYingcePane(videoPane) ? s.canvasStage : false,
         videoPane,
+        videoEntry: videoPane === s.videoPane ? s.videoEntry : "",
       };
     });
   },

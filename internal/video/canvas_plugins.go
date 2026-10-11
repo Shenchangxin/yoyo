@@ -189,32 +189,82 @@ func sourceOrigin(source string) string {
 	return "uploaded"
 }
 
+// 前端内置的应用插件不进协议注册表。只有用户明确拨过开关时才下发状态，
+// 避免用“默认关闭”盖掉这台机器上已经保存的启用记录。
+var desktopApplicationPluginIDs = []string{
+	"eagle-asset-connector",
+	"prompt-optimizer",
+	"runninghub-workflow-provider",
+	"ai-art-critique",
+	"editor-shell",
+}
+
+func pluginStateMap(id string, enabled bool) map[string]any {
+	return map[string]any{
+		"pluginId":          id,
+		"platformAvailable": true,
+		"userEnabled":       enabled,
+		"userConfigured":    true,
+		"effectiveEnabled":  enabled,
+		"canToggle":         true,
+		"canConfigure":      true,
+	}
+}
+
+func (e *Engine) setPluginEnabled(id string, enabled bool) (map[string]any, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, fmt.Errorf("plugin id required")
+	}
+	flags := e.loadPluginFlags()
+	flags[id] = pluginFlagRec{Enabled: enabled, UpdatedAt: Now()}
+	if err := e.savePluginFlags(flags); err != nil {
+		return nil, err
+	}
+	return pluginStateMap(id, enabled), nil
+}
+
 func (e *Engine) listPluginPayload() map[string]any {
 	plugins := []map[string]any{}
 	states := map[string]any{}
 	seen := map[string]struct{}{}
+	flags := e.loadPluginFlags()
 	if e.Proto != nil {
 		for _, meta := range e.Proto.List("", "", true) {
 			if _, ok := seen[meta.ID]; ok {
 				continue
 			}
 			seen[meta.ID] = struct{}{}
-			rec := e.pluginRecord(meta.ID, "bundled", meta.ID+".yingce-plugin", "enabled")
-			plugins = append(plugins, rec)
-			states[meta.ID] = map[string]any{
-				"pluginId":          meta.ID,
-				"platformAvailable": true,
-				"userEnabled":       true,
-				"userConfigured":    true,
-				"effectiveEnabled":  true,
-				"canToggle":         true,
-				"canConfigure":      true,
+			enabled := true
+			if f, ok := flags[meta.ID]; ok {
+				enabled = f.Enabled
 			}
+			status := "enabled"
+			if !enabled {
+				status = "disabled"
+			}
+			rec := e.pluginRecord(meta.ID, "bundled", meta.ID+".yingce-plugin", status)
+			plugins = append(plugins, rec)
+			states[meta.ID] = pluginStateMap(meta.ID, enabled)
 		}
 	}
+	for _, id := range desktopApplicationPluginIDs {
+		if _, ok := states[id]; ok {
+			continue
+		}
+		f, ok := flags[id]
+		if !ok {
+			continue
+		}
+		states[id] = pluginStateMap(id, f.Enabled)
+	}
 	statuses := map[string]any{}
-	for id := range states {
-		statuses[id] = "enabled"
+	for id, raw := range states {
+		if boolAny(asMap(raw)["effectiveEnabled"]) {
+			statuses[id] = "enabled"
+		} else {
+			statuses[id] = "disabled"
+		}
 	}
 	return map[string]any{"plugins": plugins, "states": states, "statuses": statuses}
 }
@@ -562,7 +612,7 @@ func catalogModels(c canvasChannel) []map[string]any {
 			"id": c.ID + ":" + key, "modelKey": key, "name": key, "displayName": key,
 			"capability": cap, "available": c.Enabled || c.HasKey, "sortOrder": i,
 			"pricingMode": "info", "priceLabel": "",
-			"priceTiers": []map[string]any{{"billingMode": "fixed_request", "unitPriceMicrocredits": 0}},
+			"priceTiers":     []map[string]any{{"billingMode": "fixed_request", "unitPriceMicrocredits": 0}},
 			"capabilitySpec": map[string]any{"version": 1, "capability": cap, "operations": defaultOps(cap)},
 		}
 		if c.PluginID != "" {

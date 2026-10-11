@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, AtSign, Check, ChevronRight, Clipboard, CloudUpload, Copy, Folder, FolderPlus, Image as ImageIcon, Layers3, LayoutTemplate, Library, Link2, Maximize2, PanelTop, Pencil, Plus, Redo2, Tags, Trash2, Undo2, Upload, UserRound } from "lucide-react";
 
+import { canvasOverlayHost } from "@/features/video/canvas-host/design-system/popup-container";
 import { CanvasCreateMenu, type CanvasCreateCommand } from "@yingce/components/canvas/canvas-create-menu";
 import { ASSET_CATEGORY_OPTIONS } from "@yingce/lib/asset-category";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
@@ -276,7 +277,7 @@ export function CanvasNodeContextMenu({
                 ) : null}
             </AnimatePresence>
         </>,
-        document.body,
+        canvasOverlayHost(),
     );
 }
 
@@ -319,6 +320,7 @@ function AddNodeContextMenu({ parentPosition, workspaceMode, isProjectLinked, on
     return (
         <div
             className="sg-menu fixed z-[200] w-[280px] max-h-[min(520px,calc(100vh-24px))] origin-top overflow-y-auto overflow-x-hidden p-1"
+            data-canvas-context-menu
             style={{ left, top: parentPosition.top, color: theme.node.text }}
             onContextMenu={(event) => event.preventDefault()}
             onPointerDown={(event) => event.stopPropagation()}

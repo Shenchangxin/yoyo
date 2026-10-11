@@ -2,10 +2,11 @@
 import { Dropdown, Popover, type DropdownProps, type PopoverProps } from "antd";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 
+import { canvasOverlayHost } from "@/features/video/canvas-host/design-system/popup-container";
 import { useDismissOnOutside } from "@yingce/hooks/use-dismiss-on-outside";
 
 /**
- * 画布里的 Ant Dropdown：点空白/画布即可收起（捕获阶段），浮层挂到 body 避免被裁切。
+ * 画布里的 Ant Dropdown：点空白/画布即可收起（捕获阶段），浮层挂到主题宿主避免被裁切。
  */
 export function CanvasDropdown({ children, open: openProp, onOpenChange, getPopupContainer, ...rest }: DropdownProps) {
     const triggerRef = useRef<HTMLSpanElement>(null);
@@ -23,7 +24,7 @@ export function CanvasDropdown({ children, open: openProp, onOpenChange, getPopu
     useDismissOnOutside(Boolean(open), close, triggerRef);
 
     return (
-        <Dropdown {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => document.body)}>
+        <Dropdown {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
             <span ref={triggerRef} className="inline-flex min-w-0 max-w-full align-middle">
                 {children as ReactNode}
             </span>
@@ -48,7 +49,7 @@ export function CanvasPopover({ children, open: openProp, onOpenChange, getPopup
     useDismissOnOutside(Boolean(open), close, triggerRef);
 
     return (
-        <Popover {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => document.body)}>
+        <Popover {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
             <span ref={triggerRef} className="inline-flex min-w-0 max-w-full align-middle">
                 {children as ReactNode}
             </span>

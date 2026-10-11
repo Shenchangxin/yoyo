@@ -117,7 +117,6 @@ export function CanvasTopBar({
                             trigger={["click"]}
                             placement="bottomLeft"
                             autoAdjustOverflow
-                            getPopupContainer={() => document.body}
                             menu={{
                                 items: [
                                     { key: "home", icon: <Home className="size-4" />, label: "主页", onClick: () => { if (!requestHostNavigation("/")) navigate("/"); } },
@@ -205,7 +204,6 @@ export function CanvasTopBar({
                         trigger={["click"]}
                         placement="bottomRight"
                         autoAdjustOverflow
-                        getPopupContainer={() => document.body}
                         menu={{
                             items: [
                                 { key: "libtv", icon: <CopyPlus className="size-4" />, label: "导入 LibTV 画布", onClick: onImportLibTV },

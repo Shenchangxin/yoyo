@@ -3,6 +3,7 @@ import { localForageStorageForScope } from "@yingce/lib/localforage-storage";
 import { getActiveUserScope } from "@yingce/lib/user-scope";
 
 export const CREATION_CONVERSATIONS_KEY = "creation-conversations-v1";
+export const CREATION_CONVERSATIONS_CORRUPT_KEY = "creation-conversations-v1:corrupt";
 
 type PendingCreationMessage = {
     id: string;
@@ -50,21 +51,89 @@ export function pendingCreationTaskIds(conversations: StoredCreationConversation
     return Array.from(new Set(taskIds));
 }
 
-export async function loadCreationConversations<T extends StoredCreationConversation>() {
-    const storage = localForageStorageForScope(getActiveUserScope());
-    const value = await storage.getItem(CREATION_CONVERSATIONS_KEY);
-    if (!value) return null;
+export type CreationConversationDocument<T> = {
+    activeId: string;
+    conversations: T[];
+    corrupt: boolean;
+};
+
+export function parseCreationConversationValue(value: string): CreationConversationDocument<unknown> {
     let parsed: unknown;
     try {
         parsed = JSON.parse(value);
     } catch {
-        throw new Error("创作对话持久状态无效");
+        return { activeId: "", conversations: [], corrupt: true };
     }
-    if (!Array.isArray(parsed)) throw new Error("创作对话持久状态无效");
-    return parsed as T[];
+    if (Array.isArray(parsed)) return { activeId: "", conversations: parsed, corrupt: false };
+    if (parsed && typeof parsed === "object" && Array.isArray((parsed as { conversations?: unknown }).conversations)) {
+        const record = parsed as { activeId?: unknown; conversations: unknown[] };
+        return {
+            activeId: typeof record.activeId === "string" ? record.activeId : "",
+            conversations: record.conversations,
+            corrupt: false,
+        };
+    }
+    return { activeId: "", conversations: [], corrupt: true };
+}
+
+type MemoryDocument = { scope: string; activeId: string; conversations: unknown[]; corrupt: boolean };
+
+let memory: MemoryDocument | null = null;
+let writeTail: Promise<unknown> = Promise.resolve();
+
+async function readCreationDocument<T extends StoredCreationConversation>(): Promise<CreationConversationDocument<T>> {
+    const scope = getActiveUserScope();
+    const storage = localForageStorageForScope(scope);
+    const value = await storage.getItem(CREATION_CONVERSATIONS_KEY);
+    if (!value) return { activeId: "", conversations: [], corrupt: false };
+    const parsed = parseCreationConversationValue(value);
+    if (!parsed.corrupt) return { activeId: parsed.activeId, conversations: parsed.conversations as T[], corrupt: false };
+    try {
+        await storage.setItem(CREATION_CONVERSATIONS_CORRUPT_KEY, value);
+    } catch {
+        // 备份失败不能挡住页面；原始键仍在，直到下一次成功写入。
+    }
+    return { activeId: "", conversations: [], corrupt: true };
+}
+
+function enqueueCreationWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = writeTail.then(operation, operation);
+    writeTail = pending.then(() => undefined, () => undefined);
+    return pending;
+}
+
+export function readCreationConversationDocument<T extends StoredCreationConversation>() {
+    return enqueueCreationWrite(async (): Promise<CreationConversationDocument<T>> => {
+        const scope = getActiveUserScope();
+        if (!memory || memory.scope !== scope) {
+            const loaded = await readCreationDocument<T>();
+            memory = { scope, ...loaded };
+        }
+        return { activeId: memory.activeId, conversations: memory.conversations as T[], corrupt: memory.corrupt };
+    });
+}
+
+// 所有写入串行，并且基于最新文档做修改。页面卸载后的生成收尾不能拿旧数组覆盖新会话。
+export function mutateCreationConversations<T extends StoredCreationConversation>(mutator: (doc: { activeId: string; conversations: T[] }) => { activeId: string; conversations: T[] }) {
+    return enqueueCreationWrite(async (): Promise<CreationConversationDocument<T>> => {
+        const scope = getActiveUserScope();
+        if (!memory || memory.scope !== scope) {
+            const loaded = await readCreationDocument<T>();
+            memory = { scope, ...loaded };
+        }
+        const next = mutator({ activeId: memory.activeId, conversations: memory.conversations as T[] });
+        const doc: CreationConversationDocument<T> = { activeId: next.activeId, conversations: next.conversations, corrupt: false };
+        memory = { scope, ...doc };
+        await localForageStorageForScope(scope).setItem(CREATION_CONVERSATIONS_KEY, JSON.stringify({ activeId: doc.activeId, conversations: doc.conversations }));
+        return doc;
+    });
+}
+
+export async function loadCreationConversations<T extends StoredCreationConversation>() {
+    const doc = await readCreationConversationDocument<T>();
+    return doc.conversations.length ? doc.conversations : null;
 }
 
 export async function saveCreationConversations<T extends StoredCreationConversation>(conversations: T[]) {
-    const storage = localForageStorageForScope(getActiveUserScope());
-    await storage.setItem(CREATION_CONVERSATIONS_KEY, JSON.stringify(conversations));
+    await mutateCreationConversations<T>((doc) => ({ activeId: doc.activeId, conversations }));
 }

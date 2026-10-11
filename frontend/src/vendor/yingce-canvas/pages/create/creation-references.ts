@@ -3,6 +3,7 @@ import { buildSkillMentionReferences } from "@yingce/services/skill-runtime";
 import { canvasResourceMentionToken, type CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource-references";
 import type { Skill } from "@yingce/services/api/skills";
 import { creationAttachmentKind, type CreationAttachment } from "./creation-assets";
+import { promptContainsResolvedReference, removeResolvedReferenceTokens, replaceCreationMentionLabel } from "./creation-mention-match";
 
 export type CreationReference = CanvasResourceReference & {
     attachmentId?: string;
@@ -28,7 +29,7 @@ export function buildCreationMentionReferences(skills: Skill[], attachments: Cre
 }
 
 export function selectedCreationReferences(prompt: string, references: CreationReference[]) {
-    return references.filter((reference) => prompt.includes(canvasResourceMentionToken(reference)) || prompt.includes(`@${reference.label}`));
+    return references.filter((reference) => promptContainsResolvedReference(prompt, reference.label, canvasResourceMentionToken(reference)));
 }
 
 export function reconcileCreationAttachmentLimit(attachments: CreationAttachment[], references: CreationReference[], maxReferences: number) {
@@ -61,7 +62,7 @@ export function reconcileCreationAttachmentLimits(attachments: CreationAttachmen
 }
 
 export function removeCreationReferenceTokens(value: string, references: CreationReference[]) {
-    return references.reduce((current, reference) => current.split(canvasResourceMentionToken(reference)).join("").split(`@${reference.label}`).join(""), value);
+    return removeResolvedReferenceTokens(value, references.map((reference) => ({ label: reference.label, token: canvasResourceMentionToken(reference) })));
 }
 
 export function replaceCreationAttachmentReference(prompt: string, attachments: CreationAttachment[], targetAttachmentId: string, replacement: CreationAttachment) {
@@ -134,6 +135,5 @@ function attachmentReference(attachment: CreationAttachment, index: number): Cre
 }
 
 function replaceVisibleReferenceLabel(value: string, label: string, replacementToken: string) {
-    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return value.replace(new RegExp(`@${escapedLabel}(?=$|\\s|[,.!?;:，。！？；：、)\\]}】）])`, "gu"), replacementToken);
+    return replaceCreationMentionLabel(value, label, replacementToken);
 }
