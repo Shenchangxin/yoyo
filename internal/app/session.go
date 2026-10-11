@@ -1027,12 +1027,13 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 
 func (a *App) askUserFn(ctx context.Context, sessionID string) func(string) (string, error) {
 	return func(question string) (string, error) {
+		shown := runtime.AskPrompt(question)
 		ev := trace.Event{
 			TS:        time.Now().UTC(),
 			Type:      trace.TypeAsk,
 			Source:    "agent",
 			SessionID: sessionID,
-			Payload:   map[string]any{"question": question, "text": question},
+			Payload:   map[string]any{"question": shown, "text": shown, "form": question},
 		}
 		if a.Traces != nil {
 			_ = a.Traces.Append(ev)
@@ -1041,7 +1042,7 @@ func (a *App) askUserFn(ctx context.Context, sessionID string) func(string) (str
 			a.Hub.Publish(ev)
 		}
 		if a.Gate == nil {
-			return "no operator; continue with a reasonable default", nil
+			return runtime.AskIdleAnswer(question), nil
 		}
 		dec, offer, err := a.Gate.AskOffer(ctx, capability.Request{
 			Level: capability.ReadWorkspace, Action: "ask_user", Command: question,

@@ -34,11 +34,11 @@ func (t *WorkspaceTools) askUser(question string) ToolResult {
 	if question == "" {
 		return ToolResult{Err: fmt.Errorf("ask_user: empty question")}
 	}
-	if t != nil && t.AskUser != nil {
-		ans, err := t.AskUser(question)
-		return ToolResult{Content: ans, Err: err}
-	}
-	return ToolResult{Content: "no operator answer; continue with a reasonable default"}
+	return t.askForm(AskForm{Questions: []AskQuestion{{ID: "q1", Prompt: question}}})
+}
+
+func (t *WorkspaceTools) askUserArgs(args map[string]any) ToolResult {
+	return t.askForm(parseAskForm(args))
 }
 
 func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {

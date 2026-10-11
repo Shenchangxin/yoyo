@@ -133,22 +133,29 @@ func (t *WorkspaceTools) presentChoices(title string, raw any) ToolResult {
 		}
 	}
 	c := p.PresentChoices(t.SessionID, title, opts)
-	prompt := c.Title
+	if t.AskUser == nil {
+		b, _ := json.Marshal(c)
+		return ToolResult{Content: string(b)}
+	}
+	q := AskQuestion{ID: "choice", Prompt: c.Title}
+	ids := make([]string, 0, len(c.Options))
 	for _, o := range c.Options {
-		prompt += "\n" + o.ID + ". " + o.Label
+		q.Options = append(q.Options, AskOption{ID: o.ID, Label: o.Label})
+		ids = append(ids, o.ID)
 	}
-	if t.AskUser != nil {
-		ans, err := t.AskUser(prompt)
-		if err != nil {
-			return ToolResult{Err: err}
-		}
-		if got, e := p.SelectChoice(c.ID, strings.TrimSpace(ans)); e == nil {
-			return ToolResult{Content: "selected " + got.Selected}
-		}
-		return ToolResult{Content: "answered " + ans}
+	if len(q.Options) > 0 {
+		q.Recommended = q.Options[0].ID
 	}
-	b, _ := json.Marshal(c)
-	return ToolResult{Content: string(b)}
+	res := t.askForm(AskForm{Title: c.Title, Questions: []AskQuestion{q}})
+	if res.Err != nil {
+		return res
+	}
+	if id := chosenOption(res.Content, ids); id != "" {
+		if got, e := p.SelectChoice(c.ID, id); e == nil {
+			return ToolResult{Content: res.Content + "\nselected " + got.Selected}
+		}
+	}
+	return ToolResult{Content: res.Content}
 }
 
 func (t *WorkspaceTools) personalStatus() ToolResult {

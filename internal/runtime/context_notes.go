@@ -115,6 +115,12 @@ func isControlUser(text string) bool {
 	if s == planContinueNudgeZH || strings.HasPrefix(s, planContinueNudgeZH) {
 		return true
 	}
+	if s == askContinueNudge || strings.HasPrefix(s, askContinueNudge) {
+		return true
+	}
+	if s == askContinueNudgeZH || strings.HasPrefix(s, askContinueNudgeZH) {
+		return true
+	}
 	if strings.HasPrefix(s, rewriteStallPrefixEN) || strings.HasPrefix(s, rewriteStallPrefixZH) {
 		return true
 	}
