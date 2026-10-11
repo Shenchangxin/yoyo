@@ -278,9 +278,9 @@ func writeLikeTool(name string) bool {
 
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	if writeLikeTool(name) && toolArgsTruncated(argsJSON) {
-		if name == "write_file" || name == "create_file" {
-			return t.recoverTruncatedWrite(argsJSON)
-		}
+		// A cut-off payload is never executed. A salvaged prefix on disk looks
+		// finished to the next round and invites str_replace over text that was
+		// never written. The model resends the same work in parts instead.
 		return ToolResult{Err: truncatedWriteErr(argsJSON)}
 	}
 	args := unwrapToolArgs(parseToolArgs(argsJSON))
@@ -530,6 +530,58 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	return ToolResult{Content: "wrote " + rel, FileChange: fileChangeOf(rel, prev, want, created)}
 }
 
+// createFile writes only when the path is new. It is the explicit form of
+// "start a long file" and never clobbers existing work.
+func (t *WorkspaceTools) createFile(rel, content string) ToolResult {
+	p, err := t.resolve(rel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	if _, err := os.Stat(p); err == nil {
+		return ToolResult{Err: fmt.Errorf("refusing write_file mode=create: %s already exists; use mode=overwrite to replace it or mode=append to extend it", rel)}
+	}
+	return t.writeFile(rel, content)
+}
+
+// appendFile extends a file in parts. Long bodies go through here so no single
+// tool call has to carry the whole file inside one model output budget.
+func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
+	if looksLikeContextStub(content) {
+		return ToolResult{Err: fmt.Errorf("refusing to append a context stub to %s; send the real next part", rel)}
+	}
+	p, err := t.resolve(rel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := t.check(capability.WriteWorkspace, "write_file", p, ""); err != nil {
+		return ToolResult{Err: err}
+	}
+	prev, err := os.ReadFile(p)
+	created := false
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return ToolResult{Err: err}
+		}
+		created = true
+		prev = nil
+	}
+	want := make([]byte, 0, len(prev)+len(content))
+	want = append(want, prev...)
+	want = append(want, content...)
+	t.snapshotBeforeWrite(rel, p)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := os.WriteFile(p, want, 0o644); err != nil {
+		return ToolResult{Err: err}
+	}
+	t.maybePreviewHTML(rel, p)
+	return ToolResult{
+		Content:    fmt.Sprintf("appended %d bytes to %s (file is now %d bytes)", len(content), rel, len(want)),
+		FileChange: fileChangeOf(rel, prev, want, created),
+	}
+}
+
 func (t *WorkspaceTools) resolveElidedWrite(rel, field, recall string) ToolResult {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -592,36 +644,6 @@ func (t *WorkspaceTools) spillArgsField(id, wantPath, field string) (string, boo
 	return body, true
 }
 
-// recoverTruncatedWrite keeps a recovered prefix on disk (Codex/Cursor write
-// the bytes they have) instead of leaving a 404 that cascades into retry
-// loops. An existing larger file is not clobbered.
-func (t *WorkspaceTools) recoverTruncatedWrite(raw string) ToolResult {
-	salvaged := salvageJSONObject(raw)
-	path := str(salvaged["path"])
-	content := str(salvaged["content"])
-	if path == "" || len(content) < 40 {
-		return ToolResult{Err: truncatedWriteErr(raw)}
-	}
-	if t == nil {
-		return ToolResult{Err: truncatedWriteErr(raw)}
-	}
-	if abs, err := t.resolve(path); err == nil {
-		if st, e := os.Stat(abs); e == nil && !st.IsDir() && st.Size() > int64(len(content)) {
-			return ToolResult{Err: truncatedWriteErr(raw)}
-		}
-	}
-	res := t.writeFile(path, content)
-	if res.Err != nil {
-		return res
-	}
-	hint := fmt.Sprintf("wrote partial %s from truncated JSON (%d bytes). File is on disk. Do not retry the same blob. Continue with str_replace", path, len(content))
-	if mark := lastCompleteAnchor(content); mark != "" {
-		hint += " from " + mark
-	}
-	res.Content = hint
-	return res
-}
-
 func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
 	if t == nil || t.Browser == nil || abs == "" {
 		return
@@ -635,6 +657,9 @@ func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
 func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	if looksLikeContextStub(old) || looksLikeContextStub(new) {
 		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
+	}
+	if old == "" {
+		return ToolResult{Err: fmt.Errorf("old_str must not be empty; quote the exact existing text to replace")}
 	}
 	p, err := t.resolve(rel)
 	if err != nil {

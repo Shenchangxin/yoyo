@@ -14,14 +14,21 @@ import (
 
 const compactSystem = `You are compacting untrusted working memory for another coding agent that will resume the same task.
 Do NOT mention, quote, rewrite, or summarize any playbook, system policy, evaluator, vault, or secrets.
-Do NOT call tools. Reply with markdown sections exactly:
+Do NOT call tools. Reply with markdown sections exactly, in this order:
 
 ## Objective
+## Plan
 ## Files
 ## Decisions
 ## Errors
 ## Next
 
+## Objective is the operator's ask, in their words.
+## Plan lists each step with its status: complete, in_progress, or pending.
+## Files lists paths that changed. For each path give one line: what changed, and a short hash or byte size if one appears in the transcript. Do not paste file bodies.
+## Decisions lists choices already made that later steps must not reopen.
+## Errors lists unresolved failures, each with the command or check that produced it.
+## Next is the single next action.
 Prefer file paths and spill ids over quoting file bodies. Be concise.`
 
 // PersistCheckpoint writes a lossless (or transcript-only LLM) checkpoint.
@@ -341,7 +348,7 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 		if m.Role == RoleSystem || m.Role == RoleDeveloper {
 			continue
 		}
-		body = append(body, m)
+		body = append(body, slimCompactMessage(m))
 	}
 	if len(body) == 0 {
 		return "", nil
@@ -380,12 +387,31 @@ func LLMTranscriptCompact(ctx context.Context, client Client, model string, msgs
 	if err != nil || out != "" {
 		return out, err
 	}
-	return try(ask + " Your previous reply was missing required sections. Reply with exactly ## Objective, ## Files, ## Decisions, ## Errors, ## Next.")
+	return try(ask + " Your previous reply was missing required sections. Reply with exactly ## Objective, ## Plan, ## Files, ## Decisions, ## Errors, ## Next.")
+}
+
+// slimCompactMessage drops write bodies before they reach the summarizer.
+// The summarizer has no tools, so a placeholder here cannot be copied into a
+// later tool call. The live agent prompt is not passed through this function.
+func slimCompactMessage(m Message) Message {
+	if len(m.ToolCalls) == 0 {
+		return m
+	}
+	out := m
+	out.ToolCalls = append([]ToolCall(nil), m.ToolCalls...)
+	for i := range out.ToolCalls {
+		tc := &out.ToolCalls[i]
+		if !heavyCallName(tc.Name) {
+			continue
+		}
+		tc.Arguments = compactCallArgs(tc.Name, tc.Arguments, heavyCallRunes)
+	}
+	return out
 }
 
 func validCompactMarkdown(s string) bool {
 	lower := strings.ToLower(s)
-	for _, h := range []string{"## objective", "## files", "## decisions", "## errors", "## next"} {
+	for _, h := range []string{"## objective", "## plan", "## files", "## decisions", "## errors", "## next"} {
 		if !strings.Contains(lower, h) {
 			return false
 		}

@@ -50,6 +50,9 @@ type Message struct {
 	CompletionTokens int           `json:"-"`
 	CachedTokens     int           `json:"-"`
 	CacheReported    bool          `json:"-"`
+	// Truncated is true when the provider stopped the reply at the output-token
+	// cap (finish_reason "length"). Tool calls cut off by that stop are not run.
+	Truncated bool `json:"-"`
 }
 
 type ToolJSON struct {
@@ -262,6 +265,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 	maxIdx := -1
 	sawData := false
 	promptTok, completionTok, cachedTok := 0, 0, 0
+	finish := ""
 	for {
 		if err := ctx.Err(); err != nil {
 			return Message{}, err
@@ -279,6 +283,11 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 			sawData = true
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data != "" && data != "[DONE]" {
+				if strings.Contains(data, `"finish_reason"`) {
+					if r := streamFinishReason(data); r != "" {
+						finish = r
+					}
+				}
 				msg, piece, reason, uPrompt, uComp, uCached := applyStreamChunk(data, tools, &maxIdx)
 				if uPrompt > 0 {
 					promptTok = uPrompt
@@ -294,6 +303,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 					msg.CompletionTokens = completionTok
 					msg.CachedTokens = cachedTok
 					msg.CacheReported = cachedTok > 0 || uPrompt > 0
+					msg.Truncated = isOutputLimitStop(finish)
 					if emit != nil && msg.Content != "" {
 						_ = emit(StreamDelta{Text: msg.Content})
 					}
@@ -321,7 +331,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 			return Message{}, err
 		}
 	}
-	out := Message{Role: RoleAssistant, Content: content.String(), PromptTokens: promptTok, CompletionTokens: completionTok, CachedTokens: cachedTok, CacheReported: cachedTok > 0 || promptTok > 0}
+	out := Message{Role: RoleAssistant, Content: content.String(), PromptTokens: promptTok, CompletionTokens: completionTok, CachedTokens: cachedTok, CacheReported: cachedTok > 0 || promptTok > 0, Truncated: isOutputLimitStop(finish)}
 	for i := 0; i <= maxIdx; i++ {
 		a := tools[i]
 		if a == nil {
@@ -442,7 +452,8 @@ func parseOpenAIJSON(raw []byte) (Message, error) {
 			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Role      string `json:"role"`
 				Content   any    `json:"content"`
 				ToolCalls []struct {
@@ -462,7 +473,7 @@ func parseOpenAIJSON(raw []byte) (Message, error) {
 		return Message{}, fmt.Errorf("openai: empty choices")
 	}
 	m := parsed.Choices[0].Message
-	out := Message{Role: Role(m.Role), Content: stringify(m.Content)}
+	out := Message{Role: Role(m.Role), Content: stringify(m.Content), Truncated: isOutputLimitStop(parsed.Choices[0].FinishReason)}
 	if parsed.Usage != nil {
 		out.PromptTokens = parsed.Usage.PromptTokens
 		out.CompletionTokens = parsed.Usage.CompletionTokens

@@ -34,26 +34,16 @@ func TestParseToolArgsClosesTruncatedContent(t *testing.T) {
 	}
 }
 
-func TestWriteFileSavesTruncatedNewFile(t *testing.T) {
+func TestWriteFileRefusesTruncatedNewFile(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
 	raw := "{\"path\": \"game.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\nfunction startGame(){\\npartial"
 	res := tools.Call("write_file", raw)
-	if res.Err != nil {
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "truncated") || !strings.Contains(res.Err.Error(), "mode=append") {
 		t.Fatalf("%+v", res)
 	}
-	if !strings.Contains(res.Content, "partial") || !strings.Contains(res.Content, "game.html") {
-		t.Fatalf("expected partial-write hint: %s", res.Content)
-	}
-	if !strings.Contains(res.Content, "startGame") {
-		t.Fatalf("hint should include last complete marker: %s", res.Content)
-	}
-	b, err := os.ReadFile(filepath.Join(dir, "game.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "<!DOCTYPE html>") || !strings.Contains(string(b), "function startGame") {
-		t.Fatalf("recovered prefix not on disk: %s", b)
+	if _, err := os.Stat(filepath.Join(dir, "game.html")); !os.IsNotExist(err) {
+		t.Fatal("truncated write must not land on disk")
 	}
 }
 

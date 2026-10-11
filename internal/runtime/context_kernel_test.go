@@ -184,7 +184,7 @@ func TestHarborIgnoresModelWindow(t *testing.T) {
 	}
 }
 
-func TestChatPromptStubsHeavyWrites(t *testing.T) {
+func TestChatPromptKeepsWriteArguments(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	origArgs := `{"path":"a.ts","content":"` + body + `"}`
 	msgs := []Message{
@@ -195,7 +195,7 @@ func TestChatPromptStubsHeavyWrites(t *testing.T) {
 	}
 	req := &RunRequest{SoftHorizon: true, Loop: ApplyChatHorizon(DefaultLoop()), ModelWindow: 1_000_000, Tools: &WorkspaceTools{}}
 	k := newContextKernel(req)
-	out, _, rep := k.prompt(msgs, false)
+	out, _, _ := k.prompt(msgs, false)
 	if msgs[2].ToolCalls[0].Arguments != origArgs {
 		t.Fatal("live messages must keep full write")
 	}
@@ -205,18 +205,12 @@ func TestChatPromptStubsHeavyWrites(t *testing.T) {
 			shaped = m.ToolCalls[0].Arguments
 		}
 	}
-	if shaped == origArgs || strings.Contains(shaped, body) {
-		t.Fatalf("chat prompt still has full write body: %s", shaped[:min(180, len(shaped))])
-	}
-	if !strings.Contains(shaped, "read_file") || !strings.Contains(shaped, "a.ts") {
-		t.Fatalf("%s", shaped)
-	}
-	if !strings.Contains(rep.Note, "calls") {
-		t.Fatalf("layers %s", rep.Note)
+	if shaped != origArgs {
+		t.Fatalf("chat prompt must keep the model's own write arguments, got %s", shaped[:min(180, len(shaped))])
 	}
 }
 
-func TestShapeStubsHeavyWriteCalls(t *testing.T) {
+func TestShapeKeepsWriteArguments(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	origArgs := `{"path":"a.ts","content":"` + body + `"}`
 	orig := []Message{
@@ -225,19 +219,12 @@ func TestShapeStubsHeavyWriteCalls(t *testing.T) {
 		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "w1", Name: "write_file", Arguments: origArgs}}},
 		{Role: RoleTool, ToolCallID: "w1", Name: "write_file", Content: "wrote a.ts"},
 	}
-	out, rep := Shape(orig, ShapeOpts{Loop: DefaultLoop()})
+	out, _ := Shape(orig, ShapeOpts{Loop: DefaultLoop()})
 	if orig[2].ToolCalls[0].Arguments != origArgs {
 		t.Fatal("live transcript must keep full write")
 	}
-	shaped := out[2].ToolCalls[0].Arguments
-	if shaped == origArgs || strings.Contains(shaped, body) {
-		t.Fatalf("shaped prompt still has full write body: %s", shaped[:min(180, len(shaped))])
-	}
-	if !strings.Contains(shaped, "read_file") || !strings.Contains(shaped, "a.ts") {
-		t.Fatalf("%s", shaped)
-	}
-	if !strings.Contains(rep.Note, "calls") {
-		t.Fatalf("layers %s", rep.Note)
+	if out[2].ToolCalls[0].Arguments != origArgs {
+		t.Fatal("shaped prompt must keep the model's own write arguments")
 	}
 }
 
@@ -263,29 +250,27 @@ func TestForceFitStubsCallArgsBeforeResults(t *testing.T) {
 	if msgs[2].ToolCalls[0].Arguments != origArgs[0] {
 		t.Fatal("live transcript must keep mid-size writes")
 	}
-	if !strings.Contains(rep.Note, "calls") {
-		t.Fatalf("force path must stub remaining write args first, layers %s", rep.Note)
+	if !strings.Contains(rep.Note, "force") {
+		t.Fatalf("force path must stub tool results, layers %s", rep.Note)
 	}
-	shaped := ""
 	for _, m := range out {
 		if m.Role != RoleAssistant {
 			continue
 		}
 		for _, tc := range m.ToolCalls {
-			if tc.Name == "write_file" {
-				shaped = tc.Arguments
-				break
+			if tc.Name == "write_file" && strings.Count(tc.Arguments, "y") < 500 {
+				t.Fatalf("write args were stubbed: %s", tc.Arguments)
 			}
 		}
-		if shaped != "" {
-			break
+	}
+	stubbed := 0
+	for _, m := range out {
+		if m.Role == RoleTool && alreadyStubbed(m.Content) {
+			stubbed++
 		}
 	}
-	if shaped == "" || strings.Count(shaped, "y") >= 500 {
-		t.Fatalf("write args still full after force: %s", shaped)
-	}
-	if !strings.Contains(shaped, "read_file") {
-		t.Fatalf("stub lost read_file hint: %s", shaped)
+	if stubbed == 0 {
+		t.Fatal("force path must stub tool results, not arguments")
 	}
 }
 

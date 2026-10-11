@@ -304,23 +304,16 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
     }
     if (isToolish(it)) {
       const id = String(it.payload?.id || it.key);
-      if (pairKind.get(id) === "artifact") {
-        flushProcess();
-        artifacts.push(it);
-      } else {
-        flushArtifacts();
-        process.push(it);
-      }
+      if (pairKind.get(id) === "artifact") artifacts.push(it);
+      else process.push(it);
       continue;
     }
     if (it.type === "assistant" && it.key !== letterKey) {
       if (!it.text.trim() && !it.delta) continue;
-      flushArtifacts();
       process.push(it);
       continue;
     }
     if (isProcessItem(it)) {
-      flushArtifacts();
       process.push(it);
       continue;
     }

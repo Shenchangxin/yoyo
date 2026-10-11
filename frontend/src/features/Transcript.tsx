@@ -402,25 +402,6 @@ type TranscriptRow = {
   render: () => ReactNode;
 };
 
-/** Live / current pack stays in document flow so streaming markdown is not virtualized. */
-function lastPackStart(rows: TranscriptRow[]): number {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i].kind === "user") return i;
-  }
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i].kind === "agent") return i;
-  }
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].kind === "ask" || rows[i].kind === "working") return i;
-  }
-  return rows.length;
-}
-
-function cssEscape(s: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(s);
-  return s.replace(/["\\]/g, "\\$&");
-}
-
 function agentEstimate(copyText: string): number {
   return Math.max(520, Math.min(2400, 160 + Math.round((copyText?.length || 0) * 0.48)));
 }
@@ -466,24 +447,33 @@ function TranscriptLane({
   if (jumpNonce && jumpNonce !== appliedJump.current) {
     stick.current = false;
   }
-  const packStart = lastPackStart(rows);
-  const history = packStart > 0 ? rows.slice(0, packStart) : [];
-  const pin = packStart >= 0 ? rows.slice(packStart) : rows;
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
   const virtualizer = useVirtualizer({
-    count: history.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => history[i]?.estimate ?? 96,
+    estimateSize: (i) => rows[i]?.estimate ?? 96,
     overscan,
-    getItemKey: (i) => history[i]?.key ?? i,
+    getItemKey: (i) => rows[i]?.key ?? i,
+    anchorTo: "end",
+    followOnAppend: follow && !escaped,
+    scrollEndThreshold: 80,
+    scrollMargin,
   });
   const followEnd = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || !stick.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, []);
+    if (!stick.current) return;
+    virtualizer.scrollToEnd();
+  }, [virtualizer]);
   const releaseJump = useCallback(() => {
     jumpHeld.current = false;
   }, []);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const scroller = scrollRef.current;
+    if (!list || !scroller) return;
+    const margin = list.offsetTop - scroller.offsetTop;
+    if (margin !== scrollMargin) setScrollMargin(margin);
+  }, [older, rows.length, scrollMargin]);
   useLayoutEffect(() => {
     followEnd();
   }, [followEnd, rows.length, follow, followNonce]);
@@ -509,16 +499,11 @@ function TranscriptLane({
     jumpHeld.current = true;
     const align = () => {
       if (!jumpHeld.current) return;
-      if (idx < history.length) {
-        virtualizer.scrollToIndex(idx, { align: "start" });
-        return;
-      }
-      const el = scrollRef.current?.querySelector(`[data-turn-key="${cssEscape(key)}"]`) as HTMLElement | null;
-      el?.scrollIntoView({ block: "start" });
+      virtualizer.scrollToIndex(idx, { align: "start" });
     };
     align();
     requestAnimationFrame(align);
-  }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, history.length]);
+  }, [jumpTo, rows.length, rows[0]?.key, rows[rows.length - 1]?.key, virtualizer]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -600,7 +585,7 @@ function TranscriptLane({
     <>
       <div
         ref={scrollRef}
-        className={cn('transcript-scroll min-h-0 flex-1 overflow-y-auto', className)}
+        className={cn('transcript-scroll relative min-h-0 flex-1 overflow-y-auto', className)}
         onScroll={onScroll}
       >
         {older ? (
@@ -613,41 +598,30 @@ function TranscriptLane({
             {copy.transcript.loadEarlier}
           </button>
         ) : null}
-        {history.length ? (
-          <div className="relative w-full shrink-0 overflow-clip bg-background" style={{ height: virtualizer.getTotalSize() }}>
-            {virtualizer.getVirtualItems().map((v) => {
-              const row = history[v.index];
-              if (!row) return null;
-              return (
-                <div
-                  key={row.key}
-                  data-index={v.index}
-                  {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
-                  ref={virtualizer.measureElement}
-                  className={cn("bg-background", row.space)}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${v.start}px)`,
-                  }}
-                >
-                  {row.render()}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {pin.map((row) => (
-          <div
-            key={row.key}
-            {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
-            className={cn("bg-background", row.space)}
-          >
-            {row.render()}
-          </div>
-        ))}
+        <div ref={listRef} className="relative w-full shrink-0 overflow-clip bg-background" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((v) => {
+            const row = rows[v.index];
+            if (!row) return null;
+            return (
+              <div
+                key={row.key}
+                data-index={v.index}
+                {...(row.turnKey ? { "data-turn-key": row.turnKey } : {})}
+                ref={virtualizer.measureElement}
+                className={cn("bg-background", row.space)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${v.start - scrollMargin}px)`,
+                }}
+              >
+                {row.render()}
+              </div>
+            );
+          })}
+        </div>
       </div>
       {escaped ? (
         <button

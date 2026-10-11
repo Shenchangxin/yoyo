@@ -80,10 +80,18 @@ func firstOpenPlanStep(plan string) string {
 	return ""
 }
 
-func recordProgress(hits map[string]int, calls []ToolCall, tools *WorkspaceTools, lastPlan *string) {
-	if hits == nil {
-		return
-	}
+// recordProgress updates the rewrite-stall counters for one round and reports
+// whether the round advanced the work. Advancing means a plan step changed or
+// a write actually changed a file. A failed or no-op write counts against its
+// path, because it is an attempt that changed nothing, and that is what a
+// stall is. Counting attempts instead (as this used to) ended turns that were
+// making real edits to one large file.
+//
+// hits counts every write attempt per path since the last plan step. It drives
+// the rewrite nudge, which also applies to productive rewrites: rewriting one
+// file over and over without updating the plan is worth a nudge. fails counts
+// only attempts that changed nothing, and only those can end the turn.
+func recordProgress(hits, fails map[string]int, calls []ToolCall, results []Message, tools *WorkspaceTools, lastPlan *string) bool {
 	advanced := false
 	for _, tc := range calls {
 		if tc.Name != "update_plan" {
@@ -96,19 +104,58 @@ func recordProgress(hits map[string]int, calls []ToolCall, tools *WorkspaceTools
 		}
 	}
 	if advanced {
-		for k := range hits {
-			delete(hits, k)
-		}
-		return
+		clearCounts(hits)
+		clearCounts(fails)
+		return true
 	}
-	for _, tc := range calls {
-		if tc.Name != "write_file" && tc.Name != "str_replace" && tc.Name != "apply_patch" {
+	changed := false
+	for i, tc := range calls {
+		if !isWriteCall(tc.Name) {
 			continue
 		}
+		ok := i < len(results) && writeChanged(results[i].Content)
 		for _, p := range extractWritePaths(tc) {
-			hits[p]++
+			if hits != nil {
+				hits[p]++
+			}
+			if ok {
+				changed = true
+				if fails != nil {
+					delete(fails, p)
+				}
+				continue
+			}
+			if fails != nil {
+				fails[p]++
+			}
 		}
 	}
+	return changed
+}
+
+func clearCounts(m map[string]int) {
+	for k := range m {
+		delete(m, k)
+	}
+}
+
+func isWriteCall(name string) bool {
+	switch name {
+	case "write_file", "str_replace", "apply_patch", "office_edit":
+		return true
+	default:
+		return false
+	}
+}
+
+// writeChanged reports whether a write result describes a file that changed:
+// not an error and not the "unchanged" receipt.
+func writeChanged(content string) bool {
+	c := strings.TrimSpace(content)
+	if c == "" || strings.HasPrefix(c, "ERROR") {
+		return false
+	}
+	return !strings.HasPrefix(c, "unchanged ")
 }
 
 func rewriteStallNudge(req RunRequest, hits map[string]int) string {
@@ -322,21 +369,63 @@ func failCheckIDs(content string) []string {
 	}
 	for _, line := range strings.Split(content, "\n") {
 		s := strings.TrimSpace(line)
-		if !strings.HasPrefix(s, "FAIL") {
+		if strings.HasPrefix(s, "FAIL") {
+			rest := strings.TrimSpace(strings.TrimPrefix(s, "FAIL"))
+			rest = strings.TrimLeft(rest, " \t:")
+			fields := strings.Fields(rest)
+			if len(fields) > 0 && checkIdent(fields[0]) {
+				add(fields[0])
+			}
 			continue
 		}
-		rest := strings.TrimSpace(strings.TrimPrefix(s, "FAIL"))
-		rest = strings.TrimLeft(rest, " \t:")
-		if rest == "" {
-			continue
+		if key, ok := jsonFailKey(s); ok {
+			add(key)
 		}
-		fields := strings.Fields(rest)
-		if len(fields) == 0 || len(fields[0]) > 32 {
-			continue
-		}
-		add(fields[0])
 	}
 	return ids
+}
+
+// checkIdent is a check name such as render or coreLoop. A section heading
+// like "FAIL 明细:" is not one: session 9ec78b5c78561d94 printed that heading
+// on every run, so the watch treated render FAIL and render PASS as the same
+// observation.
+func checkIdent(id string) bool {
+	if id == "" || len(id) > 32 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case i > 0 && (c >= '0' && c <= '9' || c == '_' || c == '-'):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// jsonFailKey reads one `"render": "FAIL"` field. "status" is the rollup, not
+// a check, so a run that fixes render and still fails outcome changes signature.
+func jsonFailKey(line string) (string, bool) {
+	line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ","))
+	if !strings.HasPrefix(line, `"`) {
+		return "", false
+	}
+	end := strings.Index(line[1:], `"`)
+	if end < 1 {
+		return "", false
+	}
+	key := line[1 : 1+end]
+	rest := strings.TrimSpace(line[1+end+1:])
+	if !strings.HasPrefix(rest, ":") {
+		return "", false
+	}
+	rest = strings.Trim(strings.TrimSpace(rest[1:]), `"`)
+	if !strings.EqualFold(rest, "FAIL") || strings.EqualFold(key, "status") || !checkIdent(key) {
+		return "", false
+	}
+	return key, true
 }
 
 type checkWatch struct {
@@ -361,7 +450,10 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 		if sig == w.sig {
 			w.hits++
 		} else {
+			// A different failing set is a changed observation. The idle clock
+			// belongs to the previous set.
 			w.sig, w.hits = sig, 1
+			w.idle = 0
 		}
 		if product {
 			w.idle = 0

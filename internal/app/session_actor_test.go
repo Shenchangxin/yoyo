@@ -257,7 +257,7 @@ func TestSendAppliesChatHorizon(t *testing.T) {
 			ToolCalls: []runtime.ToolCall{{
 				ID:        fmt.Sprintf("c%d", i),
 				Name:      "list_dir",
-				Arguments: `{"path":"."}`,
+				Arguments: fmt.Sprintf(`{"path":".","tag":%d}`, i),
 			}},
 		})
 	}

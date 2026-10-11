@@ -17,7 +17,26 @@ const (
 	// and unchanged-observation stalls stop earlier. A nine-step pipeline
 	// that keeps changing the observation must be allowed to finish.
 	ChatSoftGuardTurns = 192
+	// ChatStallWindow is how many tool rounds may pass without a plan step or a
+	// changed file before a run is ended as stalled. Reaching ChatSoftGuardTurns
+	// inside the window checkpoints and continues the same turn instead.
+	ChatStallWindow = 24
+	// shapeLogEvery samples the per-round projection ledger into the trajectory.
+	shapeLogEvery = 16
 )
+
+// softGuard decides what happens when a desktop run reaches ChatSoftGuardTurns.
+// reset means the counter restarts because work moved inside ChatStallWindow.
+// stop means that window passed with no plan step and no changed file.
+func softGuard(turn, sinceProgress int) (reset, stop bool) {
+	if ChatSoftGuardTurns <= 0 || turn < ChatSoftGuardTurns {
+		return false, false
+	}
+	if sinceProgress < ChatStallWindow {
+		return true, false
+	}
+	return false, true
+}
 
 // ApplyChatHorizon is a floor for callers that still use a hard loop.
 // Desktop/CLI chat sets RunRequest.SoftHorizon, so MaxTurns / MaxToolMessages
@@ -53,6 +72,9 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 		loop.TaskMaxToolMessages = ChatTaskMaxTools
 	}
 	loop.StackAgentsMD = true
+	// Desktop checkpoints ask the model for a structured summary. Harbor and
+	// subagents set this back to false so eval stays deterministic.
+	loop.AllowLLMCompact = true
 	return loop
 }
 

@@ -29,9 +29,24 @@ func init() {
 			}
 			return t.resolveElidedWrite(path, "content", recall)
 		}
-		return t.writeFile(path, content)
+		if _, ok := args["content"]; !ok {
+			return ToolResult{Err: fmt.Errorf("refusing write_file %s: argument \"content\" is missing. Send the full body; for a long file write it in parts with mode=\"append\"", path)}
+		}
+		switch str(args["mode"]) {
+		case "", "overwrite":
+			return t.writeFile(path, content)
+		case "create":
+			return t.createFile(path, content)
+		case "append":
+			return t.appendFile(path, content)
+		default:
+			return ToolResult{Err: fmt.Errorf("write_file mode %q is not supported; use overwrite, create, or append", str(args["mode"]))}
+		}
 	}
 	hostFns["str_replace"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		if err := checkEditArgs("str_replace", args, "path", "old_str", "new_str"); err != nil {
+			return ToolResult{Err: err}
+		}
 		return t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
 	}
 	hostFns["list_dir"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
@@ -137,6 +152,9 @@ func init() {
 		return t.officeCreate(args)
 	}
 	hostFns["office_edit"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		if err := checkEditArgs("office_edit", args, "path", "old_str", "new_str"); err != nil {
+			return ToolResult{Err: err}
+		}
 		return t.officeEdit(str(args["path"]), str(args["old_str"]), str(args["new_str"]))
 	}
 	hostFns["office_query"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {

@@ -31,6 +31,12 @@ func TestApplyChatHorizon(t *testing.T) {
 	if got.RulesTokens < 8000 || got.KeepTokens < 16000 || got.TaskMaxTurns < 40 {
 		t.Fatalf("chat context floors %+v", got)
 	}
+	if !got.AllowLLMCompact {
+		t.Fatal("desktop checkpoints must ask the model for a structured summary")
+	}
+	if DefaultLoop().AllowLLMCompact {
+		t.Fatal("harbor loop must stay deterministic")
+	}
 	wide := DefaultLoop()
 	wide.MaxTurns = 99
 	wide.MaxToolMessages = 120

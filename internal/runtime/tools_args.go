@@ -303,7 +303,7 @@ func truncatedWriteErr(raw string) error {
 	salvaged := salvageJSONObject(raw)
 	path := str(salvaged["path"])
 	content := str(salvaged["content"])
-	msg := "truncated JSON arguments; refusing a partial write. Do not retry the same blob. Split the file or continue from the last complete section with str_replace"
+	msg := "truncated JSON arguments; refusing a partial write. Nothing was written. Do not resend the same blob: write the file in parts — the first part with write_file mode=create (or overwrite), each following part with mode=append, at most about 12 KB per call"
 	if path != "" {
 		msg += fmt.Sprintf(" (path=%s recovered=%d bytes", path, len(content))
 		if mark := lastCompleteAnchor(content); mark != "" {
