@@ -787,6 +787,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		ModelFingerprint: Fingerprint(a.Config),
 		Model:            model,
 		ModelWindow:      window,
+		MaxOutputTokens:  maxOutputTokensFor(model),
 		Loop:             loop,
 		Policy:           pol,
 		Fragments:        frags,

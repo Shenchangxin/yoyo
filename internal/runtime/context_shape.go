@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -44,9 +46,11 @@ func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
 	return out, rep.Note
 }
 
-// projectChat is the desktop-chat prompt projection: Legalize + spill
-// previews + stub heavy write args. It does not snip or forceFit, so the
-// identity/pins prefix stays cache-stable. Live transcript is not mutated.
+// projectChat is the desktop-chat prompt projection: Legalize, spill
+// previews, and receipts for old re-fetchable reads. Write arguments stay
+// intact — replacing them with placeholders taught the model to emit
+// placeholders. It does not snip or forceFit, so the identity/pins prefix
+// stays cache-stable. Live transcript is not mutated.
 func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	rep := ShapeReport{Budget: effectiveBudget(opts)}
 	if len(msgs) == 0 {
@@ -61,12 +65,73 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Layers = append(rep.Layers, "budget")
 		rep.Elided += n
 	}
-	if n := stubHeavyCalls(out, 0, opts.Spill); n > 0 {
-		rep.Layers = append(rep.Layers, "calls")
+	if n := clearStaleReads(out, chatKeepReads); n > 0 {
+		rep.Layers = append(rep.Layers, "reads")
 		rep.Elided += n
 	}
 	rep.Note = strings.Join(rep.Layers, "+")
 	return Legalize(out), rep
+}
+
+// chatKeepReads is how many of the newest read-only results stay verbatim in
+// the desktop prompt. Older ones become receipts (see clearStaleReads).
+const chatKeepReads = 12
+
+// refetchableTool names results that can be produced again from the workspace.
+// Writes, shell output, and browser state are never cleared: they are not
+// reproducible from the workspace alone.
+func refetchableTool(name string) bool {
+	switch name {
+	case "read_file", "grep", "glob", "list_dir", "git_status", "git_diff":
+		return true
+	default:
+		return false
+	}
+}
+
+// clearStaleReads turns older re-fetchable results into receipts. The assistant
+// tool call that produced each result stays in the prompt, so the model keeps
+// the record that it read the file. The receipt carries the path, size, and a
+// hash of what was shown, so the model can tell whether a later read changed
+// anything. This is the cleared-tool-results pattern from Anthropic's context
+// editing, applied with the same rule: the call is kept, the bulky observation
+// is dropped, and it can be recovered by calling the tool again.
+func clearStaleReads(msgs []Message, keep int) int {
+	var ids []int
+	for i, m := range msgs {
+		if m.Role == RoleTool && refetchableTool(m.Name) {
+			ids = append(ids, i)
+		}
+	}
+	if len(ids) <= keep {
+		return 0
+	}
+	cut := ids[len(ids)-keep]
+	n := 0
+	for _, i := range ids {
+		if i >= cut {
+			break
+		}
+		if alreadyStubbed(msgs[i].Content) || len(msgs[i].Content) < 400 {
+			continue
+		}
+		msgs[i].Content = readReceipt(msgs, i)
+		n++
+	}
+	return n
+}
+
+// readReceipt is the replacement body for a cleared read. It is plain prose
+// with real identifiers, so nothing in it can be mistaken for tool arguments.
+func readReceipt(msgs []Message, toolIdx int) string {
+	m := msgs[toolIdx]
+	path := toolResultPath(msgs, toolIdx)
+	if path == "" {
+		path = "(unknown path)"
+	}
+	sum := sha256.Sum256([]byte(m.Content))
+	return fmt.Sprintf("[cleared %s path=%s bytes=%d sha256=%s — this earlier result left the prompt; call read_file again to see the current content]",
+		m.Name, path, len(m.Content), hex.EncodeToString(sum[:6]))
 }
 
 // Shape is a read-time projection. The live transcript is not mutated.
@@ -111,23 +176,15 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Layers = append(rep.Layers, "budget")
 		rep.Elided += n
 	}
-	if n := stubHeavyCalls(out, per, opts.Spill); n > 0 {
-		rep.Layers = append(rep.Layers, "calls")
-		rep.Elided += n
-	}
 	if n := microcompact(out, microKeep, opts.Spill); n > 0 {
 		rep.Layers = append(rep.Layers, "microcompact")
 		rep.Elided += n
 	}
 	if messagesTokens(out)+opts.Overhead > budget {
-		callLimit := forceCallRunes
-		if opts.Aggressive {
-			callLimit = aggressiveCallRunes
-		}
-		if n := stubHeavyCalls(out, callLimit, opts.Spill); n > 0 {
-			rep.Layers = appendLayer(rep.Layers, "calls")
-			rep.Elided += n
-		}
+		// Tool-call arguments are never elided here. A placeholder in the
+		// arguments teaches the model to emit placeholders (session
+		// facb2e21ba0b31a3). Results are stubbed instead, and they carry
+		// recall ids.
 		if n := forceFit(out, budget-opts.Overhead, opts.Spill); n > 0 {
 			rep.Layers = append(rep.Layers, "force")
 			rep.Elided += n
@@ -358,7 +415,7 @@ func toolIndexes(msgs []Message) []int {
 
 func alreadyStubbed(s string) bool {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ") {
+	if strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ") || strings.HasPrefix(s, "[cleared ") {
 		return true
 	}
 	return strings.Contains(s, `"_elided"`)
@@ -384,9 +441,9 @@ func stubTool(id, name string, bytes int) string {
 	return fmt.Sprintf("[elided tool_result id=%s name=%s bytes=%d — call recall_context with this id]", id, name, bytes)
 }
 
+// heavyCallRunes is the UI slimming threshold for write-like arguments (see
+// live_event.go). It never applies to the model prompt.
 const heavyCallRunes = 800
-const forceCallRunes = 240
-const aggressiveCallRunes = 80
 
 func appendLayer(layers []string, name string) []string {
 	for _, l := range layers {
@@ -405,42 +462,6 @@ func heavyCallName(name string) bool {
 	default:
 		return false
 	}
-}
-
-// stubHeavyCalls is a Shape projection: write_file/apply_patch bodies live on
-// disk (I1 via read_file). Keeping every full write in the prompt makes the
-// model go blind on results and rewrite the tree from memory.
-func stubHeavyCalls(msgs []Message, per int, spill *Spill) int {
-	limit := heavyCallRunes
-	if per > 0 && per < limit {
-		limit = per
-	}
-	n := 0
-	for i := range msgs {
-		if msgs[i].Role != RoleAssistant {
-			continue
-		}
-		for j := range msgs[i].ToolCalls {
-			tc := &msgs[i].ToolCalls[j]
-			if !heavyCallName(tc.Name) || alreadyStubbed(tc.Arguments) {
-				continue
-			}
-			recall := ""
-			if tc.ID != "" {
-				recall = tc.ID + ":args"
-			}
-			compact := compactCallArgsMeta(tc.Name, tc.Arguments, limit, recall)
-			if compact == tc.Arguments || len(compact) >= len(tc.Arguments) {
-				continue
-			}
-			if spill != nil && tc.ID != "" {
-				_ = spill.Put(tc.ID+":args", tc.Arguments)
-			}
-			tc.Arguments = compact
-			n++
-		}
-	}
-	return n
 }
 
 func compactCallArgs(name, args string, limit int) string {

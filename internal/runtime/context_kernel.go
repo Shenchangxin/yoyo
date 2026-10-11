@@ -161,11 +161,22 @@ func (k *ContextKernel) usedTokens(report ShapeReport) int {
 	return report.Tokens
 }
 
+// chatCompactAt is where a desktop turn is checkpointed, as a fraction of the
+// effective window. Compacting near the full window leaves the model reasoning
+// over a degraded context for the rest of the turn. Around 65% leaves room for
+// the summary and for the next few rounds. Claude Code's auto-compact sits in
+// the same place (window minus a fixed buffer).
+const chatCompactAt = 0.65
+
 func (k *ContextKernel) shouldCheckpoint(report ShapeReport) bool {
 	if !k.chatMode() || report.Budget <= 0 {
 		return false
 	}
-	return k.usedTokens(report) >= report.Budget
+	limit := report.Budget
+	if k.req != nil && k.req.ModelWindow > 0 {
+		limit = int(float64(report.Budget) * chatCompactAt)
+	}
+	return k.usedTokens(report) >= limit
 }
 
 func (k *ContextKernel) checkpoint(messages []Message, trigger, focus string) []Message {

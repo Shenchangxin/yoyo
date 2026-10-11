@@ -109,6 +109,25 @@ func (c Catalog) WindowFor(model string) int {
 	return e.Model.ContextWindow
 }
 
+// OutputFor returns the model's documented output-token limit from the live
+// catalog, or 0 when it is unknown. Callers leave the provider default in place
+// for 0, so an unknown model is never sent a cap it might reject.
+func OutputFor(model string) int {
+	c := live.Load()
+	if c == nil {
+		return 0
+	}
+	return c.OutputFor(model)
+}
+
+func (c Catalog) OutputFor(model string) int {
+	e := c.lookup(model)
+	if e == nil || e.Model.MaxTokens <= 0 {
+		return 0
+	}
+	return e.Model.MaxTokens
+}
+
 func (c Catalog) lookup(model string) *Entry {
 	id := strings.TrimSpace(model)
 	if id == "" || c.Providers == nil {

@@ -67,6 +67,11 @@ type RunRequest struct {
 	// ShowThinking streams provider reasoning into the transcript. Off by
 	// default: many OpenAI-compatible endpoints reject thinking fields.
 	ShowThinking bool
+	// MaxOutputTokens caps one model reply. Zero leaves the provider default.
+	// Desktop chat sets it from the model catalog so a long file body fits one
+	// reply; when a reply is still cut off, the loop refuses the partial tool
+	// call and asks for it in parts (see truncation.go).
+	MaxOutputTokens int
 	// UserCommitted means the operator row is already on JSONL. seed() still
 	// appends it to the model transcript but must not emit a second TypeUser.
 	UserCommitted bool
@@ -130,6 +135,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	overflowFails := 0
 	roundSeq := req.RoundSeq
 	writeHits := map[string]int{}
+	failHits := map[string]int{}
 	errorHits := map[string]int{}
 	waitHits := map[string]int{}
 	idleHits := map[string]int{}
@@ -146,11 +152,25 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	if turnLimit <= 0 {
 		turnLimit = 24
 	}
+	// sinceProgress counts model rounds since the last plan step or changed file,
+	// including rounds that produced no tool call. The desktop cap is a
+	// checkpoint while that number stays inside ChatStallWindow, and a stop
+	// once it does not. Counting only tool rounds let a cut-off reply extend
+	// the run forever.
+	sinceProgress := 0
+	repeats := newRepeatTracker()
 	for turn := 0; req.SoftHorizon || turn < turnLimit; turn++ {
-		if req.SoftHorizon && ChatSoftGuardTurns > 0 && turn >= ChatSoftGuardTurns {
-			emit(req, trace.TypeError, "runtime", maxTurnsInfo(ChatSoftGuardTurns).Payload())
-			setStop(&req, StopMaxTurns)
-			return last, maxTurnsErr()
+		if req.SoftHorizon {
+			reset, stop := softGuard(turn, sinceProgress)
+			if stop {
+				emit(req, trace.TypeError, "runtime", maxTurnsInfo(ChatSoftGuardTurns).Payload())
+				setStop(&req, StopMaxTurns)
+				return last, maxTurnsErr()
+			}
+			if reset {
+				emit(req, trace.TypeCompact, "runtime", map[string]any{"kind": "budget_continue", "since_progress": sinceProgress, "round": roundSeq})
+				turn = 0
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			// Interrupt landed between a tool batch and the next model call.
@@ -185,12 +205,17 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			req.OnShape(report)
 		}
 		if report.Note != "" {
-			emit(req, trace.TypeCompact, "runtime", reportPayload(report, nil))
+			// The per-round projection ledger is sampled. Logging it every round
+			// wrote one record per model call (257 in session facb2e21ba0b31a3)
+			// without adding information. Checkpoints always log.
+			if roundSeq%shapeLogEvery == 0 || report.Trigger != "" {
+				emit(req, trace.TypeCompact, "runtime", reportPayload(report, nil))
+			}
 			if req.Events != nil {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking, MaxTokens: req.MaxOutputTokens}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		msg, err := chat(ctx, req, chatReq, roundID)
@@ -262,9 +287,20 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				return last, stopErr(StopBudget, err.Error(), err)
 			}
 		}
+		msg, cutNudge := trimTruncatedReply(msg)
 		if msg.Content != "" {
 			last = msg.Content
 			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
+		}
+		if len(msg.ToolCalls) == 0 && cutNudge != "" {
+			// The reply was cut at the output limit. Keep what was said, ask for
+			// the rest, and do not treat the cut as a finished turn.
+			if strings.TrimSpace(msg.Content) != "" {
+				messages = append(messages, msg)
+			}
+			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
+			sinceProgress++
+			continue
 		}
 		if len(msg.ToolCalls) == 0 {
 			kernel.notes = persistWorkingMemory(req, messages, kernel.notes)
@@ -278,6 +314,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				if !lastUserIs(messages, extra) {
 					messages = append(messages, Message{Role: RoleUser, Content: extra})
 				}
+				sinceProgress++
 				continue
 			}
 			if req.Events != nil {
@@ -310,6 +347,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			setStop(&req, StopEndTurn)
 			if block, extra := applyStopHook(req); block {
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
+				sinceProgress++
 				continue
 			}
 			emit(req, trace.TypeTurnEnd, "runtime", end)
@@ -320,7 +358,25 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		results := dispatchTools(ctx, req, msg.ToolCalls, roundID, true)
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
-		recordProgress(writeHits, msg.ToolCalls, req.Tools, &lastPlan)
+		if cutNudge != "" {
+			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
+		}
+		progressed := recordProgress(writeHits, failHits, msg.ToolCalls, results, req.Tools, &lastPlan)
+		if progressed {
+			sinceProgress = 0
+		} else {
+			sinceProgress++
+		}
+		if repeats.note(msg.ToolCalls, results, progressed) {
+			if stall := repeats.nudge(req); stall != "" && !lastUserIs(messages, stall) {
+				messages = append(messages, Message{Role: RoleUser, Content: stall})
+			}
+			if repeats.stuck() {
+				emit(req, trace.TypeError, "runtime", stuckLoopInfo("the same call kept returning the same result").Payload())
+				setStop(&req, StopStuck)
+				return last, stuckLoopErr("the same call kept returning the same result")
+			}
+		}
 		recordToolErrors(errorHits, results)
 		recordWaits(waitHits, msg.ToolCalls)
 		recordIdleActions(idleHits, msg.ToolCalls)
@@ -333,7 +389,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			setStop(&req, StopStuck)
 			return last, stuckLoopErr(watch.reason())
 		}
-		if req.SoftHorizon && hitMax(writeHits) >= rewriteStallStopHits {
+		if req.SoftHorizon && hitMax(failHits) >= rewriteStallStopHits {
 			emit(req, trace.TypeError, "runtime", stuckLoopInfo("rewrote the same file without progress").Payload())
 			setStop(&req, StopStuck)
 			return last, stuckLoopErr("rewrote the same file without progress")

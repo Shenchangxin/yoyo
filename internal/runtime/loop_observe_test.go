@@ -36,6 +36,29 @@ func TestErrorSignatureDoesNotGroupByPassBanner(t *testing.T) {
 	}
 }
 
+func TestFailCheckIDsIgnoresSectionHeading(t *testing.T) {
+	first := "{\n  \"status\": \"FAIL\",\n  \"checks\": {\n    \"render\": \"FAIL\",\n    \"outcome\": \"FAIL\"\n  }\n}\nFAIL 明细:\nrender: missing png\n"
+	second := "{\n  \"status\": \"FAIL\",\n  \"checks\": {\n    \"render\": \"PASS\",\n    \"outcome\": \"FAIL\"\n  }\n}\nFAIL 明细:\n"
+	if got := strings.Join(failCheckIDs(first), ","); got != "render,outcome" {
+		t.Fatalf("first %q", got)
+	}
+	if got := strings.Join(failCheckIDs(second), ","); got != "outcome" {
+		t.Fatalf("second %q", got)
+	}
+	var w checkWatch
+	w.note(nil, []Message{{Content: first}})
+	for i := 0; i < 10; i++ {
+		w.note([]ToolCall{{Name: "read_file", Arguments: `{"path":"build/app/state.js"}`}}, nil)
+	}
+	w.note(nil, []Message{{Content: second}})
+	if w.sig != "check fail:outcome" || w.hits != 1 || w.idle != 1 {
+		t.Fatalf("changed observation must restart the watch: %+v", w)
+	}
+	if w.stuck() {
+		t.Fatal("render passing is progress, not a stuck loop")
+	}
+}
+
 func TestCheckWatchStopsUnchangedFail(t *testing.T) {
 	var w checkWatch
 	fail := []Message{{Content: verifyBanner}}
