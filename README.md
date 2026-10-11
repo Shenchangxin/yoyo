@@ -1,265 +1,232 @@
 # Yoyo
 
+<p align="center">
+  <img src="docs/brand/yoyo.gif" width="280" alt="yoyo">
+</p>
+
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-> A local agent workstation that can improve its own harness — and has to **prove it** before you trust the new one.
+[![License](https://img.shields.io/badge/license-Apache--2.0-111111)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Shenchangxin/yoyo?label=release)](https://github.com/Shenchangxin/yoyo/releases)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8)](https://go.dev/dl/)
+[![Site](https://img.shields.io/badge/site-shenchangxin.github.io-1c1c1a)](https://shenchangxin.github.io/yoyo/)
 
-Yoyo is not another Cursor clone. It is a **self-harnessing** coding agent: one Go core serving CLI, browser, and a Wails desktop shell, with a versioned, evaluable, promotable harness as the product moat. Prompts, playbooks, and skills can evolve. The evaluator, vault, and updater cannot.
+> A local agent workstation. Files stay in a folder you pick. The harness has to prove itself before you trust the new one.
 
-**Version 0.4.0** · Go 1.25 · Apache-2.0 · [Product site](https://shenchangxin.github.io/yoyo/) · [Architecture invariants](docs/architecture/invariants.md) · [Persist](docs/architecture/persist.md) · [Skill Packs](docs/architecture/skill-packs.md) · [Threat model](docs/architecture/threat-model.md) · [Research corpus](docs/research/README.md)
+Yoyo is one Go agent loop with three doors: a Wails desktop, a browser, and a CLI. It writes code, reviews hunks, opens an isolated browser, runs skill packs, and can shoot short-form video in its own folder. Prompts and playbooks may evolve. The evaluator, the vault, and the updater may not.
+
+**v0.4.1** · Apache-2.0 · Windows, macOS, Linux · bring your own OpenAI-compatible key
+
+[Download](https://github.com/Shenchangxin/yoyo/releases/latest) · [Product site](https://shenchangxin.github.io/yoyo/) · [Invariants](docs/architecture/invariants.md) · [Skill packs](docs/architecture/skill-packs.md)
 
 ---
 
-## Why Yoyo exists
+## At a glance
 
-Most coding agents get smarter by shipping a bigger prompt and hoping. That collapses: the playbook rewrites itself into mush, held-in tasks look great, held-out tasks die, and nobody can roll back Tuesday’s “improvement.”
-
-Yoyo treats the harness the way Git treats source:
-
-| Idea | In Yoyo |
+| | What it feels like |
 | --- | --- |
-| Content-addressed objects | BLAKE3 CAS for prompts, skills, playbooks, loop presets, eval suites, WASM plugins |
-| Mutable pointers only | `refs/active`, `refs/canary`, `refs/staging`, `refs/archive/*` |
-| Tests before merge | Harbor held-in / held-out splits; safety failures never promote |
-| Human gate | L3 confirmation before loop/policy topology changes |
-| Frozen kernel | L4 self-rewrite of Go is forbidden — by design, not by promise |
+| **Agent** | A streaming turn. `@file` pins a file. Plan proposes. Stop keeps what already landed. |
+| **Review** | Tick hunks and apply them. An isolated browser for the page the agent opened. Search, rename, fork the thread. |
+| **Video** | Create, Drama, and Canvas share one chrome and their own folder. Not mixed with the code workspace. |
+| **Skills** | Packs live in `~/.yoyo/packs/` and stay off until you enable them. `@skill` loads a domain pack for one turn. |
+| **Harness** | Prompts are content-addressed. Thumbs write `staging`. Evolve writes `canary`. Only Harbor, then you, can move `active`. |
 
-The scarce resource is the **context window**. Trusted pins (YOYO.md, ACE playbook, skill catalog) survive every turn. The tool transcript is untrusted working memory: snip, spill, collapse — never summarize the playbook.
-
----
-
-## What you get
-
-**A real agent loop** — multi-turn history, OpenAI-compatible SSE streaming, Stop, glob/grep, `apply_patch`, git tools, plan mode, Once/Session/Always approvals, USD budget hard-stop.
-
-**A desktop (or browser) workstation** — chat timeline, session search / fork / rename, `@file` / `@folder` / `@harness` mentions (bounded inject, not a repo dump), hunk-level git apply, playbook thumbs, structured Eval / Evolve / Diff labs. Harness Overview shows the parent chain and what each snapshot actually changed (playbook bullets, loop fields, skills), and can open a decoded artifact folder in the OS file manager. Native menus, tray, and notifications when you run the Wails app.
-
-**A self-harness** — ACE-style playbook deltas (grow-and-refine, never a full rewrite), online thumbs write `refs/staging` only, Harbor owns `refs/active`. Depth-1 `task` subagents. Optional WASM tools behind HighRisk + ForceAsk. No WASI filesystem. Snapshots keep a `parent` pointer; lineage is reconstructed from refs + that chain, not from a black-box version list.
-
-**One protocol, many clients** — HTTP + SSE, JSON-RPC on stdio (`yoyo serve --stdio`), WebSocket duplex at `/api/ws`. Set `YOYO_ISOLATE=1` and the desktop UI talks to a worker process so a wedged loop cannot stall the window.
-
-**Skill Packs** — third-party skill trees install under `~/.yoyo/packs/` and stay off until you enable them for the workspace. Methodology packs (Superpowers) preload a bootstrap skill in-process (not identity). Domain packs (NovelToGame) stay catalog-only until `@skill` / `load_skill`. Harbor evals never load packs. See [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md).
+The window is a client of the loop. It is not an IDE, and there is no second agent hiding in the page.
 
 ---
 
-## Architecture
+## Get started
 
-```mermaid
-flowchart TB
-  subgraph surfaces [Surfaces]
-    CLI[yoyo CLI]
-    HTTP[Browser / yoyo serve]
-    GUI[Wails desktop]
-  end
+You need [Go 1.26+](https://go.dev/dl/), Git, and an OpenAI-compatible API key. Node 22+ is only for building the UI. [Wails v3](https://v3.wails.io) is only for the native window.
 
-  subgraph core [Go core — one process or isolated worker]
-    Loop[ReAct loop]
-    Tools[Workspace tools + MCP + WASM]
-    Caps[Capability broker]
-    Shape[Context shaper]
-  end
+### 1. Seed a home
 
-  subgraph tcb [Frozen TCB fiber]
-    CAS[CAS + refs]
-    Harbor[Harbor eval]
-    Vault[Vault]
-    Journal[Hash-chain journal]
-    Updater[Signed updater]
-  end
-
-  CLI --> Loop
-  HTTP --> Loop
-  GUI --> Loop
-  Loop --> Shape
-  Loop --> Tools
-  Tools --> Caps
-  Loop --> CAS
-  Harbor -->|"ShouldPromote"| CAS
-```
-
-**Promotion layers (what may change):**
-
-| Layer | What | Who may change it |
-| --- | --- | --- |
-| L1 | Prompts, playbook bullets, skills | Evolve cycle, after Harbor |
-| L2 | Signed WASM tool modules | Admit + HighRisk ask; unsigned never becomes `refs/active` |
-| L3 | Loop preset / policy pack topology | Human UI/CLI confirmation |
-| L4 | Go kernel, eval, vault, updater keys | **Nobody.** Not the agent. Not evolve. |
-
-Binary updates are a **separate channel** from harness refs. `yoyo update apply` renames the running image to `.old` and copies staging into place — a human action, never a silent overwrite of a locked `argv[0]`.
-
----
-
-## Requirements
-
-- [Go 1.25+](https://go.dev/dl/)
-- Git (hunk apply, evolve worktrees, Harbor isolation)
-- An OpenAI-compatible API key (`YOYO_API_KEY` or `OPENAI_API_KEY`)
-- Node 22+ **only** if you build the UI or Wails desktop
-- [Wails v3](https://v3.wails.io) **only** for the native window (menus / tray / toasts)
-
----
-
-## Quick start
-
-All commands below assume the repo root: `c:\flowy-workspace\code\yoyo` on this machine, or wherever you cloned it.
-
-### 1. Seed a home directory
+From the repo root:
 
 ```bash
-go test ./...
 go run ./cmd/yoyo init
 ```
 
-This writes `%USERPROFILE%\.yoyo` on Windows, or `~/.yoyo` elsewhere: CAS objects, refs, a sealed eval suite, and `refs/active`. Override with `YOYO_HOME`.
+That creates `%USERPROFILE%\.yoyo` on Windows, or `~/.yoyo` elsewhere: content-addressed objects, refs, a sealed eval suite, and `refs/active`. Override the location with `YOYO_HOME`.
 
 ### 2. Point at a model
 
-PowerShell:
-
 ```powershell
 $env:YOYO_API_KEY = "sk-..."
-# or
-$env:OPENAI_API_KEY = "sk-..."
 ```
-
-bash:
 
 ```bash
 export YOYO_API_KEY=sk-...
 ```
 
-You can also paste the key later in **Settings**. Default model is `gpt-4.1-mini` against `https://api.openai.com/v1`. Any OpenAI-compatible `base_url` works.
+`OPENAI_API_KEY` works too. You can paste the key later in **Settings**. The default model is `gpt-4.1-mini` at `https://api.openai.com/v1`. Any compatible `base_url` is fine.
 
-### 3. Pick a surface
+### 3. Open a door
 
-**A. Browser (fastest way to see the product)**
+**Browser** — fastest look at the product. No tray, no native menu.
 
 ```bash
-# first time, if frontend/dist is missing:
 cd frontend && npm install && npm run build && cd ..
-
 go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 ```
 
-Open [http://127.0.0.1:3080](http://127.0.0.1:3080). Chat, Eval Lab, Evolution Lab, hunk apply, playbook thumbs — all here. No native menu or tray.
+Open [http://127.0.0.1:3080](http://127.0.0.1:3080).
 
-**B. Native desktop**
+**Desktop** — menus, tray, notifications.
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 npm run dev
-# or: bun run dev
 ```
 
-That one command prepends Go/Git on Windows, frees Vite port 9245, and opens the Wails window. First run also installs frontend deps via the Wails task.
+That command puts Go and Git on `PATH` on Windows, frees Vite port 9245, and opens the window. A production build is `wails3 task build` (`bin\Yoyo.exe` on Windows).
 
-Production binary:
-
-```bash
-wails3 task build
-# Windows: bin\Yoyo.exe
-```
-
-Run the loop in a child process (GUI stays alive if the agent wedges):
+If you want a wedged loop to leave the window alive:
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
 npm run dev
 ```
 
-**C. CLI only**
+**CLI**
 
 ```bash
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
-go run ./cmd/yoyo eval
-go run ./cmd/yoyo evolve
 ```
+
+Installable builds (Windows NSIS, macOS DMG, Linux AppImage / `.deb` / `.rpm`, plus a CGO-free CLI) are published from a `v*` tag. See [Develop](#develop).
 
 ---
 
-## Using the agent
+## The workstation
 
-Type a task. Pin extra context with mentions — these are **budgeted injections**, not a whole-repo dump:
+### Agent
+
+Type a task. Mentions are budgeted injections, not a dump of the tree.
 
 ```
 Fix the parser in @file:internal/runtime/loop.go
 Use the conventions in @folder:docs
 What harness is live? @harness
+Load a pack for this turn @skill:novel-to-game
 ```
 
-- **Send** / Ctrl+Enter — run a turn (streams tokens and tool calls)
-- **Stop** — cancel the in-flight turn; partial output is kept
-- **Plan** — think and propose; writes and shell stay blocked until you leave plan mode
-- **Git diff** — list hunks, tick the ones you want, **Apply selected hunks**
-- Approvals: **Once** / **Session** / **Always** / **Deny** (desktop defaults to `auto_allow=false`)
+| Gesture | What happens |
+| --- | --- |
+| Send / Ctrl+Enter | Streams tokens and tool calls |
+| Stop | Cancels the turn. Partial output stays |
+| Plan | Proposes. Writes and shell stay blocked |
+| Once / This chat / Always / Deny | Approvals render in the stream. Desktop defaults to ask |
 
-Sessions can be searched, renamed, and forked (JSONL copy). Forking does not move `refs/active`.
+A USD budget is a hard stop, not a suggestion.
+
+### Review
+
+The side pane is a queue.
+
+- **Diff** — accept by hunk. If the files are gone, restore fails out loud. It does not silently rewind the repo.
+- **Browser** — isolated Chrome for workspace HTML. Screenshot and click do not reload; opening the same file again wipes clicks. You can pop the page into the system browser.
+- **Thread** — search, rename, fork. A fork copies the JSONL. It does not move `refs/active`.
+
+### Video
+
+Create, Drama, and Canvas share chrome and a folder of their own. Keys and adapters live in Settings.
+
+- **Create** — describe a clip. Image, speech, and video adapters are yours.
+- **Drama** — paste a chapter, confirm the episode plan, then shoot.
+- **Canvas** — a spatial board for shots. The editor stays plain so the picture stays readable.
+
+### Skills
+
+Third-party skill trees install under `~/.yoyo/packs/` and stay off until the workspace enables them.
+
+| Kind | Example | When it loads |
+| --- | --- | --- |
+| Methodology | Superpowers | A bootstrap skill, in-process, after the workspace opens. It does not become identity |
+| Domain | NovelToGame | Only when you `@skill` or `load_skill` |
+
+Harbor evals never load packs. `yoyo pack list|install|enable|update` is the CLI. Details: [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md).
+
+### Harness
+
+Most agents get smarter by shipping a longer prompt. The playbook turns to mush, held-in tasks look great, held-out tasks die, and Tuesday’s “improvement” cannot be undone.
+
+Yoyo treats the harness the way Git treats source.
+
+| Idea | What you actually get |
+| --- | --- |
+| Content-addressed objects | BLAKE3 CAS for prompts, skills, playbooks, loop presets, eval suites, WASM plugins |
+| Mutable pointers only | `refs/active`, `refs/canary`, `refs/staging`, `refs/archive/*` |
+| Tests before merge | Harbor held-in / held-out. A safety failure never promotes |
+| A human gate | Loop and policy topology changes need L3 confirmation |
+| A frozen kernel | The agent cannot rewrite the Go core. That is a test, not a slogan |
+
+Online thumbs write **`refs/staging` only**. Evolve writes **`refs/canary` only** unless you pass `--promote`. Harbor plus your checkout is the door to `refs/active`.
+
+Trusted pins (`YOYO.md`, `AGENTS.md`, `CLAUDE.md`, the ACE playbook) are rebuilt every turn. The tool transcript is untrusted working memory: spill, clear, checkpoint. The playbook is never summarized away.
 
 ---
 
-## Eval, safety, and evolve
+## Architecture
 
-The default **smoke** suite stays small so local tests stay honest. The private sealed catalog is opt-in (`--sealed`).
+```mermaid
+flowchart LR
+  subgraph doors [Doors]
+    CLI[CLI]
+    HTTP[Browser]
+    GUI[Desktop]
+  end
+  Loop[Go loop]
+  Tools[Tools · MCP · WASM]
+  CAS[CAS + refs]
+  Harbor[Harbor]
+  CLI --> Loop
+  HTTP --> Loop
+  GUI --> Loop
+  Loop --> Tools
+  Loop --> CAS
+  Harbor -->|promote| CAS
+```
 
-| Task | Role | In default seed? |
+| Layer | What | Who may change it |
 | --- | --- | --- |
-| `write-hello` | Held-in | Yes |
-| `write-answer` | Held-out (hidden from the proposer) | Yes |
-| `no-escape` | Safety: must not write outside the workspace | Yes (always on evolve; also on `yoyo eval`) |
-| `write-readme` | Opt-in | No |
-| `mkdir-note`, `copy-seed` | Terminal-Bench-style subset, `repeats=2` majority | `--tb` |
-| sealed catalog 12/8/10 | evolve-in / promote-in / held-out / transfer | `--sealed` / `--transfer` / `--index` |
+| L1 | Prompts, playbook bullets, skills | Evolve, after Harbor |
+| L2 | Signed WASM tools | Admit + a HighRisk ask. Unsigned modules never become `refs/active`. No WASI filesystem |
+| L3 | Loop preset / policy topology | You, in the UI or the CLI |
+| L4 | Go kernel, evaluator, vault, updater keys | Nobody. Not the agent. Not evolve |
+
+Binary updates are a separate channel. `yoyo update apply` renames the running image to `.old` and copies staging into place. It will not silently overwrite a locked `argv[0]`.
+
+The Harness lab walks `parent` from the refs and decodes CAS objects, so you can read what a snapshot changed. **Show artifacts** opens that checkout in the file manager. CLI: `yoyo harness lineage`, `yoyo harness reveal`, `yoyo harness show`.
+
+---
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `yoyo init` | Create home and seed the harness |
+| `yoyo run [msg] --workspace --session` | One turn |
+| `yoyo serve --addr [--stdio]` | HTTP UI and `/api/ws`, or JSON-RPC on stdio |
+| `yoyo eval […]` | Smoke, sealed, transfer, safety, Terminal-Bench subset, best-of-N |
+| `yoyo evolve [--rounds] [--promote]` | Self-harness cycle. Default: canary only |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | Pointers, parent chain, decoded artifacts |
+| `yoyo pack list\|install\|enable\|update` | Skill packs. Off by default |
+| `yoyo replay [session]` | Print a JSONL trajectory |
+| `yoyo update apply` | Human install of `updates/yoyo.staging` |
+| `yoyo version` | Product version |
 
 ```bash
 go run ./cmd/yoyo eval
 go run ./cmd/yoyo eval --sealed
-go run ./cmd/yoyo eval --transfer
 go run ./cmd/yoyo eval --safety
-go run ./cmd/yoyo eval --tb
-go run ./cmd/yoyo eval --best 3
-go run ./cmd/yoyo eval --models gpt-4.1-mini,gpt-4.1
-go run ./cmd/yoyo evolve
 go run ./cmd/yoyo evolve --rounds 4
-go run ./cmd/yoyo evolve --promote   # explicit: move refs/active
+go run ./cmd/yoyo evolve --promote
 ```
 
-Harbor layout (see [docs/architecture/harbor.md](docs/architecture/harbor.md)):
+**ShouldPromote:** held-in and held-out must not regress, at least one split must improve, and any safety fail blocks. Candidates run in a detached git worktree, not in your working tree. Layout and flags: [docs/architecture/harbor.md](docs/architecture/harbor.md).
 
-```
-evals/<id>/
-  instruction.md
-  task.toml
-  tests/test.sh
-  tests/test.ps1
-  tests/expect.toml      # optional
-  environment/Dockerfile # optional
-```
-
-**ShouldPromote:** held-in and held-out must not regress; at least one split must improve; any safety fail blocks promotion. Online ACE and playbook thumbs write **`refs/staging` only**. Evolve writes **`refs/canary` only** unless `--promote`. Harbor + Checkout is the door to `refs/active`.
-
-The **Harness** lab is not a hash list. Overview walks `parent` from `refs/active`, `refs/staging`, `refs/canary`, archive refs, and the evolve archive, then decodes CAS objects so you can read *what* changed (playbook bullets, loop/policy fields, prompts, skills, tools). **Show artifacts** writes a decoded checkout of that snapshot under the home tmp dir and opens it in the file manager; **Show store** opens `cas/objects`. CLI: `yoyo harness lineage`, `yoyo harness reveal [hash]`, `yoyo harness show` (diff vs parent).
-
-Evolve candidates run Harbor inside a **detached git worktree**, not in your working tree. Each trial also logs metrics under the eval-runs directory (held-out bodies omitted).
-
----
-
-## CLI map
-
-| Command | What it does |
-| --- | --- |
-| `yoyo init` | Create home + seed harness |
-| `yoyo run [msg] --workspace --session` | One agent turn |
-| `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`, or JSON-RPC on stdio |
-| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | Smoke / sealed 12/8/10 / transfer / Index / behavior / safety / TB / best-of-N |
-| `yoyo evolve [--k] [--rounds] [--sealed] [--baselines N] [--max-usd] [--promote]` | Self-Harness cycle (L1). Default: canary only |
-| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | Snapshot pointers, parent-chain evolution, and decoded artifacts (`checkout --l3` for loop/policy) |
-| `yoyo pack list\|install\|uninstall\|enable\|update` | Skill packs (Superpowers). Default off; Harbor stays pack-off |
-| `yoyo replay [session]` | Print a JSONL trajectory |
-| `yoyo update apply` | Human install of `updates/yoyo.staging` |
-| `yoyo version` | `0.4.0` |
-
-JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.event` notifications, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`, `packs.*`.
+JSON-RPC covers `thread.*`, `turn.start` / `turn.interrupt`, `playbook.rate`, `workspace.apply_hunks`, `eval.*`, `evolve.run`, `harness.*`, and `packs.*`.
 
 ---
 
@@ -267,38 +234,28 @@ JSON-RPC methods include `thread.*`, `turn.start` / `turn.interrupt`, `item.even
 
 | Knob | Where | Default |
 | --- | --- | --- |
-| Home | `YOYO_HOME` | `~/.yoyo` / `%USERPROFILE%\.yoyo` |
-| Eval tasks | `YOYO_EVALS` | bundled `evals/` |
+| Home | `YOYO_HOME` | `~/.yoyo` |
 | API key | `YOYO_API_KEY`, `OPENAI_API_KEY`, or Settings | — |
-| Model / base URL / workspace / budget | `config.yaml` in home, or Settings | `gpt-4.1-mini` |
-| Extra BoN models | `models:` in config | empty |
-| Auto-allow shell | Settings checkbox | `false` |
-| Process isolation | `YOYO_ISOLATE=1` | off (in-process + panic recover) |
-| WASM admit key | `YOYO_WASM_PUBKEY` | empty = fail-closed on signed modules |
-| Worker mode | `YOYO_WORKER=1` | used internally by the desktop |
-
-Pins the loop re-assembles every turn: `YOYO.md`, `AGENTS.md`, `CLAUDE.md` (capped), plus the ACE playbook ranked by helpful−harmful.
+| Model, base URL, workspace, budget | `config.yaml` or Settings | `gpt-4.1-mini` |
+| Auto-allow shell | Settings | off |
+| Isolate the loop | `YOYO_ISOLATE=1` | off |
+| WASM admit key | `YOYO_WASM_PUBKEY` | empty means signed modules stay closed |
+| Eval tasks | `YOYO_EVALS` | bundled `evals/` |
 
 ---
 
-## Repository map
+## Repository
 
 ```
-cmd/yoyo          CLI
-main.go           Wails desktop (YOYO_WORKER=1 becomes the App Server)
-frontend/         React + Vite UI
-internal/kernel   Fibers, EventBus, LIFO dispose
-internal/artifact CAS, refs, skills, snapshots
-internal/runtime  Loop, tools, context shape, mentions, hunks, shell policy
-internal/eval     Harbor adapter, promotion gate
-internal/evolve   Reflect → Curate → Propose → Harbor, DGM archive
-internal/capability  Once / Session / Always broker
-internal/plugin   MCP stdio host, wazero WASM host (no WASI FS)
-internal/api      HTTP, SSE, JSON-RPC, WebSocket
-internal/update   ed25519 verify, stage, apply
-evals/            Harbor-format tasks
-docs/architecture Invariants, Harbor, threat model
-docs/research     Literature lineage + 2026 frontier corpus
+cmd/yoyo            CLI
+main.go             Wails desktop
+frontend/           React + Vite
+internal/runtime    Loop, tools, context
+internal/artifact   CAS, refs, snapshots
+internal/eval       Harbor and the promotion gate
+internal/evolve     Reflect, curate, propose
+internal/plugin     MCP and wazero WASM
+docs/architecture   Invariants, Harbor, threat model
 ```
 
 ---
@@ -310,31 +267,39 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) runs Go tests on Windows and a frontend build on Ubuntu.
-
-Push a `v*` tag to [release.yml](.github/workflows/release.yml) for installable desktop builds — Windows NSIS setup, macOS DMG, Linux AppImage / `.deb` / `.rpm` — plus a CGO-free CLI for each OS/arch:
+CI runs Go tests on Windows and a frontend build on Ubuntu. Pushing a `v*` tag runs [release.yml](.github/workflows/release.yml):
 
 ```bash
-git tag v0.2.4
-git push origin v0.2.4
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
-macOS is ad-hoc signed (not notarized). Windows and Linux packages are unsigned. `yoyo update apply` stays a human step.
+macOS builds are ad-hoc signed, not notarized. Windows and Linux packages are unsigned.
 
-Read [invariants](docs/architecture/invariants.md) before changing promotion, TCB fibers, or the updater. Those rules are enforced by tests; an evolving agent is not allowed to edit them.
+Read [invariants](docs/architecture/invariants.md) before touching promotion, the trusted computing base, or the updater. Those rules are tests. An evolving agent is not allowed to edit them.
 
 ---
 
 ## What Yoyo will not do
 
-- Fork VS Code or ship a Monaco tab
-- Let the agent rewrite its Go kernel (L4)
-- Train a custom “Composer”
-- Pretend a shell deny-list is Seatbelt / bubblewrap
+- Fork VS Code, or ship a Monaco tab
+- Let the agent rewrite its Go kernel
+- Train a custom model and call it the product
+- Pretend a shell deny-list is a sandbox
 - Silently replace the running binary
-- Stuff the whole repo into the prompt because you typed `@`
+- Stuff the repository into the prompt because you typed `@`
 
-Those are product decisions, not missing checkboxes.
+Those are decisions, not a backlog.
+
+---
+
+## Community
+
+<p align="center">
+  <img src="qrcode.jpg" width="320" alt="WeChat group: yoyo ai">
+</p>
+
+WeChat group **yoyo ai**. The image states how long the code stays valid. Join again to refresh it.
 
 ---
 

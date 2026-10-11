@@ -1,255 +1,232 @@
 # Yoyo
 
+<p align="center">
+  <img src="docs/brand/yoyo.gif" width="280" alt="yoyo">
+</p>
+
 [English](README.md) · [简体中文](README.zh-CN.md) · **日本語**
 
-> 自分のハーネスを磨き、**証明してから**採用するローカルエージェント・ワークステーション。
+[![License](https://img.shields.io/badge/license-Apache--2.0-111111)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Shenchangxin/yoyo?label=release)](https://github.com/Shenchangxin/yoyo/releases)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8)](https://go.dev/dl/)
+[![Site](https://img.shields.io/badge/site-shenchangxin.github.io-1c1c1a)](https://shenchangxin.github.io/yoyo/)
 
-Yoyo は Cursor の複製ではありません。**self-harnessing** なコーディングエージェントです。ひとつの Go コアが CLI・ブラウザ・Wails デスクトップを同時に支え、製品の堀は IDE の見た目ではなく、**版管理でき、評価でき、昇格でき、巻き戻せるハーネス**です。プロンプト・プレイブック・スキルは進化してよい。評価器・保管庫・アップデータは進化してはならない。
+> ローカルなエージェント・ワークステーション。ファイルは選んだフォルダに残る。ハーネスは証明してから採用する。
 
-**バージョン 0.4.0** · Go 1.25 · Apache-2.0 · [製品サイト](https://shenchangxin.github.io/yoyo/) · [不変条件](docs/architecture/invariants.md) · [永続化](docs/architecture/persist.md) · [脅威モデル](docs/architecture/threat-model.md) · [研究文献](docs/research/README.md)
+Yoyo はひとつの Go ループに三つの扉がある。Wails デスクトップ、ブラウザ、CLI。コードを書き、ハンクをレビューし、隔離ブラウザを開き、スキルパックを走らせ、専用フォルダで短い映像も扱える。プロンプトとプレイブックは進化してよい。評価器、保管庫、アップデータは進化しない。
+
+**v0.4.1** · Apache-2.0 · Windows、macOS、Linux · OpenAI 互換のキーは自分で
+
+[ダウンロード](https://github.com/Shenchangxin/yoyo/releases/latest) · [製品サイト](https://shenchangxin.github.io/yoyo/) · [不変条件](docs/architecture/invariants.md) · [スキルパック](docs/architecture/skill-packs.md)
 
 ---
 
-## なぜ Yoyo か
+## 一目で
 
-多くのコーディングエージェントは、システムプロンプトを長くすることで「賢く」なろうとします。結果としてプレイブックは空疎な要約に潰れ、held-in は良く見え、held-out は死に、火曜の「改善」を戻せません。
-
-Yoyo はハーネスを、Git がソースを扱うように扱います。
-
-| 発想 | Yoyo での実装 |
+| | 触るとこう |
 | --- | --- |
-| コンテンツアドレス | プロンプト、スキル、プレイブック、loop プリセット、評価スイート、WASM プラグインを BLAKE3 CAS に格納 |
-| 可変なのはポインタだけ | `refs/active`、`refs/canary`、`refs/staging`、`refs/archive/*` |
-| マージ前にテスト | Harbor の held-in / held-out。安全タスク失敗は昇格しない |
-| 人間のゲート | loop / ポリシー位相の変更は L3 確認 |
-| 凍結カーネル | L4：Go カーネルの自己改変は禁止。スローガンではなく不変条件 |
+| **Agent** | ストリーミングのターン。`@file` でファイルをピン。Plan は提案だけ。Stop はすでに書いたものを残す。 |
+| **審査** | ハンクを選んで適用。隔離ブラウザ。スレッドは検索、改名、分岐。 |
+| **ビデオ** | Create、Drama、Canvas は同じクロムと専用フォルダ。コードの作業場とは混ぜない。 |
+| **スキル** | `~/.yoyo/packs/` に置き、有効にするまでオフ。`@skill` でそのターンだけ領域パックを載せる。 |
+| **Harness** | プロンプトはコンテンツアドレス。評価は `staging`。Evolve は `canary`。`active` を動かすのは Harbor と、そのあとあなただけ。 |
 
-稀少な資源は **コンテキストウィンドウ** です。信頼できるピン（YOYO.md、ACE プレイブック、スキルカタログ）は毎ターン再構築されます。ツールの書き起こしは信頼できない作業記憶です。切る、溢れさせる、畳む——**プレイブックを要約してはいけない**。
-
----
-
-## 手に入るもの
-
-**本物のエージェントループ** — 複数ターン履歴、OpenAI 互換 SSE、Stop、glob/grep、`apply_patch`、git ツール、Plan モード、Once/Session/Always 承認、USD 予算のハードストップ。
-
-**デスクトップ（またはブラウザ）** — チャットタイムライン、セッション検索 / fork / 改名、`@file` / `@folder` / `@harness`（予算付き注入。リポジトリ丸ごとではない）、hunk 単位の git apply、プレイブックの親指、構造化された Eval / Evolve / Diff。Harness Overview は親チェーンと、各スナップショットが実際に何を変えたか（プレイブック、loop フィールド、スキル）を示し、デコードした成果物フォルダを OS のファイルマネージャで開けます。Wails 実行時はネイティブメニュー、トレイ、通知。
-
-**セルフハーネス** — ACE 風のプレイブック差分（全文書き換え禁止）。オンラインの親指は `refs/staging` のみ。`refs/active` の所有者は Harbor。深さ 1 の `task` サブエージェント。WASM は HighRisk + ForceAsk。WASI ファイルシステムは無い。スナップショットは `parent` を持ち、系譜は refs とその鎖から再構成されます。黒箱の版リストではありません。
-
-**ひとつのプロトコル、複数クライアント** — HTTP + SSE、stdio の JSON-RPC（`yoyo serve --stdio`）、`/api/ws` の双方向 WebSocket。`YOYO_ISOLATE=1` ではデスクトップ UI はクライアントに徹し、loop は子プロセス。固まってもウィンドウは死なない。
+窓はループのクライアントだ。IDE ではなく、ページに第二のエージェントもない。
 
 ---
 
-## アーキテクチャ
+## はじめる
 
-```mermaid
-flowchart TB
-  subgraph surfaces [サーフェス]
-    CLI[yoyo CLI]
-    HTTP[ブラウザ / yoyo serve]
-    GUI[Wails デスクトップ]
-  end
+[Go 1.26+](https://go.dev/dl/)、Git、OpenAI 互換の API キーが要る。Node 22+ は UI をビルドするときだけ。[Wails v3](https://v3.wails.io) はネイティブ窓のときだけ。
 
-  subgraph core [Go コア — 同一プロセスまたは隔離 worker]
-    Loop[ReAct ループ]
-    Tools[ワークスペースツール + MCP + WASM]
-    Caps[Capability broker]
-    Shape[コンテキスト整形]
-  end
+### 1. home を蒔く
 
-  subgraph tcb [凍結 TCB fiber]
-    CAS[CAS + refs]
-    Harbor[Harbor 評価]
-    Vault[Vault]
-    Journal[ハッシュチェーン日誌]
-    Updater[署名付きアップデータ]
-  end
-
-  CLI --> Loop
-  HTTP --> Loop
-  GUI --> Loop
-  Loop --> Shape
-  Loop --> Tools
-  Tools --> Caps
-  Loop --> CAS
-  Harbor -->|"ShouldPromote"| CAS
-```
-
-**何を誰が変えてよいか：**
-
-| 層 | 対象 | 変更できる者 |
-| --- | --- | --- |
-| L1 | プロンプト、プレイブック項目、スキル | Harbor 通過後の Evolve |
-| L2 | 署名付き WASM ツール | 承認 + HighRisk 確認。未署名は `refs/active` になれない |
-| L3 | Loop プリセット / ポリシー位相 | 人間が UI または CLI で確認 |
-| L4 | Go カーネル、評価器、Vault、更新鍵 | **誰でもない。** エージェントも Evolve も不可 |
-
-バイナリ更新とハーネス refs は **別チャネル** です。`yoyo update apply` は実行中イメージを `.old` に改名してから staging をコピーします。人間の操作であり、ロック中の `argv[0]` を黙って上書きしません。
-
----
-
-## 必要条件
-
-- [Go 1.25+](https://go.dev/dl/)
-- Git（hunk apply、evolve worktree、Harbor 隔離）
-- OpenAI 互換 API キー（`YOYO_API_KEY` または `OPENAI_API_KEY`）
-- UI / デスクトップをビルドするときだけ Node 22+
-- ネイティブウィンドウ（メニュー / トレイ / 通知）だけ [Wails v3](https://v3.wails.io)
-
----
-
-## クイックスタート
-
-コマンドはリポジトリルートで実行します。このマシンなら `c:\flowy-workspace\code\yoyo` です。
-
-### 1. ホームを初期化
+リポジトリの根で:
 
 ```bash
-go test ./...
 go run ./cmd/yoyo init
 ```
 
-Windows では `%USERPROFILE%\.yoyo`、それ以外は `~/.yoyo`。CAS、refs、密封済み評価スイート、`refs/active` ができます。場所は `YOYO_HOME` で上書き。
+Windows は `%USERPROFILE%\.yoyo`、それ以外は `~/.yoyo`。コンテンツアドレスのオブジェクト、refs、密封された評価スイート、`refs/active`。場所は `YOYO_HOME` で変える。
 
-### 2. モデルを繋ぐ
-
-PowerShell:
+### 2. モデルを向ける
 
 ```powershell
 $env:YOYO_API_KEY = "sk-..."
-# または
-$env:OPENAI_API_KEY = "sk-..."
 ```
-
-bash:
 
 ```bash
 export YOYO_API_KEY=sk-...
 ```
 
-あとから **Settings** に貼っても構いません。既定モデルは `gpt-4.1-mini`、`https://api.openai.com/v1`。OpenAI 互換の `base_url` なら何でも使えます。
+`OPENAI_API_KEY` でもよい。あとから **Settings** に貼っても同じ。既定は `gpt-4.1-mini`、`https://api.openai.com/v1`。互換の `base_url` ならどれでもよい。
 
-### 3. サーフェスを選ぶ
+### 3. 扉を選ぶ
 
-**A. ブラウザ（いちばん早く製品が見える）**
+**ブラウザ** — いちばん早く製品を見る。トレイもネイティブメニューもない。
 
 ```bash
-# frontend/dist が無いとき:
 cd frontend && npm install && npm run build && cd ..
-
 go run ./cmd/yoyo serve --addr 127.0.0.1:3080
 ```
 
-[http://127.0.0.1:3080](http://127.0.0.1:3080) を開きます。チャット、Eval Lab、Evolution Lab、hunk apply、プレイブックの親指が揃います。ネイティブメニューとトレイはありません。
+[http://127.0.0.1:3080](http://127.0.0.1:3080) を開く。
 
-**B. ネイティブデスクトップ**
+**デスクトップ** — メニュー、トレイ、通知。
 
 ```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 npm run dev
-# または: bun run dev
 ```
 
-この 1 本が Windows では Go/Git を PATH に足し、Vite の 9245 を空けて Wails ウィンドウを開きます。初回は Wails task がフロントエンド依存関係も入れます。
+Windows では Go と Git を `PATH` に通し、Vite の 9245 を空けてから窓を開く。製品ビルドは `wails3 task build`（Windows では `bin\Yoyo.exe`）。
 
-本番バイナリ:
-
-```bash
-wails3 task build
-# Windows: bin\Yoyo.exe
-```
-
-loop を子プロセスに（エージェントが固まってもウィンドウは生きる）:
+ループが詰まっても窓を生かしたいとき:
 
 ```powershell
 $env:YOYO_ISOLATE = "1"
 npm run dev
 ```
 
-**C. CLI だけ**
+**CLI**
 
 ```bash
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
-go run ./cmd/yoyo eval
-go run ./cmd/yoyo evolve
 ```
+
+インストール用ビルド（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`、CGO なし CLI）は `v*` タグから出る。[開発](#開発) を見る。
 
 ---
 
-## エージェントの使い方
+## ワークステーション
 
-タスクを書きます。メンションで文脈をピン留めします——これは **予算付きの注入** であり、リポジトリ全体のダンプではありません。
+### Agent
+
+タスクを書く。メンションは予算つきの注入で、木の丸投げではない。
 
 ```
-パーサを直して @file:internal/runtime/loop.go
-このディレクトリの流儀で @folder:docs
-今のハーネスは？ @harness
+Fix the parser in @file:internal/runtime/loop.go
+Use the conventions in @folder:docs
+What harness is live? @harness
+Load a pack for this turn @skill:novel-to-game
 ```
 
-- **Send** / Ctrl+Enter — 1 ターン（トークンとツール呼び出しをストリーム）
-- **Stop** — 進行中のターンを中断。途中出力は残る
-- **Plan** — 考えるだけ。Plan を外すまで書き込みと shell は止まる
-- **Git diff** — hunk を列挙し、欲しいものにチェックして **Apply selected hunks**
-- 承認: **Once** / **Session** / **Always** / **Deny**（デスクトップ既定は `auto_allow=false`）
+| 操作 | 起きること |
+| --- | --- |
+| 送信 / Ctrl+Enter | トークンとツール呼び出しを流す |
+| Stop | ターンを止める。すでに書いたものは残る |
+| Plan | 提案する。書き込みと shell は閉じたまま |
+| 一度 / この会話 / 常に / 拒否 | 承認はストリームに出る。デスクトップの既定は尋ねる |
 
-セッションは検索、改名、fork（JSONL のコピー）ができます。fork は `refs/active` を動かしません。
+USD 予算は提案ではなく、硬い停止だ。
 
----
+### 審査
 
-## 評価・安全・進化
+横のペインはキューだ。
 
-既定の密封スイートは意図的に小さいです。昇格テストを正直に保つためです。
+- **Diff** — ハンク単位で適用する。ファイルがなければ復旧は大声で失敗する。リポジトリを静かに巻き戻さない。
+- **ブラウザ** — ワークスペースの HTML は隔離 Chrome。スクリーンショットとクリックは再読み込みしない。同じファイルを開き直すとクリックは消える。システムブラウザへ出せる。
+- **スレッド** — 検索、改名、分岐。分岐は JSONL のコピーで、`refs/active` は動かない。
 
-| タスク | 役割 | 既定シード？ |
+### ビデオ
+
+Create、Drama、Canvas はクロムとフォルダを共有する。キーとアダプタは設定にある。
+
+- **Create** — クリップを書く。画像、音声、動画のアダプタは自分のもの。
+- **Drama** — 章を貼り、話数計画を確認してから撮る。
+- **Canvas** — ショットの空間。編集器は絵が読めるように素のまま。
+
+### スキル
+
+サードパーティのスキル木は `~/.yoyo/packs/` に入り、ワークスペースが有効にするまでオフだ。
+
+| 種類 | 例 | いつ載るか |
 | --- | --- | --- |
-| `write-hello` | held-in | はい |
-| `write-answer` | held-out（提案者には ID を見せない） | はい |
-| `write-readme` | 任意 | いいえ |
-| `no-escape` | 安全：ワークスペース外へ書いてはいけない | `--safety` |
-| `mkdir-note`、`copy-seed` | Terminal-Bench 風サブセット、`repeats=2` 多数決 | `--tb` |
+| 方法論 | Superpowers | ワークスペースを開いたあと、プロセス内の bootstrap。アイデンティティにはならない |
+| 領域 | NovelToGame | `@skill` または `load_skill` のそのターンだけ |
+
+Harbor の評価はパックを載せない。CLI は `yoyo pack list|install|enable|update`。詳細は [docs/architecture/skill-packs.md](docs/architecture/skill-packs.md)。
+
+### Harness
+
+多くのエージェントはプロンプトを長くして賢く見せる。プレイブックは空疎になり、held-in は良く見え、held-out は死に、火曜の「改善」は戻せない。
+
+Yoyo はハーネスを、Git がソースを扱うように扱う。
+
+| 発想 | 手に入るもの |
+| --- | --- |
+| コンテンツアドレス | プロンプト、スキル、プレイブック、loop プリセット、評価スイート、WASM プラグインを BLAKE3 CAS に |
+| 可変なのはポインタだけ | `refs/active`、`refs/canary`、`refs/staging`、`refs/archive/*` |
+| マージ前にテスト | Harbor の held-in / held-out。安全失敗は昇格しない |
+| 人のゲート | loop とポリシー位相の変更は L3 確認 |
+| 凍結カーネル | エージェントは Go コアを書き換えられない。スローガンではなくテスト |
+
+オンラインの評価は **`refs/staging` だけ**。Evolve は **`refs/canary` だけ**。`--promote` を付けない限り。Harbor とあなたの checkout が `refs/active` への扉だ。
+
+信頼できるピン（`YOYO.md`、`AGENTS.md`、`CLAUDE.md`、ACE プレイブック）は毎ターン組み直す。ツールの書き起こしは信頼できない作業記憶。溢れさせ、消し、チェックポイントする。プレイブックは要約しない。
+
+---
+
+## アーキテクチャ
+
+```mermaid
+flowchart LR
+  subgraph doors [扉]
+    CLI[CLI]
+    HTTP[ブラウザ]
+    GUI[デスクトップ]
+  end
+  Loop[Go ループ]
+  Tools[ツール · MCP · WASM]
+  CAS[CAS + refs]
+  Harbor[Harbor]
+  CLI --> Loop
+  HTTP --> Loop
+  GUI --> Loop
+  Loop --> Tools
+  Loop --> CAS
+  Harbor -->|昇格| CAS
+```
+
+| 層 | 対象 | 変えられる者 |
+| --- | --- | --- |
+| L1 | プロンプト、プレイブック、スキル | Evolve。Harbor のあと |
+| L2 | 署名済み WASM | 受け入れと HighRisk の確認。未署名は `refs/active` にならない。WASI ファイルシステムはない |
+| L3 | loop プリセット / ポリシー位相 | あなた。UI か CLI で |
+| L4 | Go カーネル、評価器、保管庫、更新鍵 | 誰も。エージェントも evolve も |
+
+バイナリ更新は別の経路だ。`yoyo update apply` は実行中のイメージを `.old` に改名し、staging をコピーする。ロックされた `argv[0]` を静かに上書きしない。
+
+Harness ラボは refs の `parent` を歩き、CAS を復号する。スナップショットが何を変えたか読める。**成果物を表示**はそのチェックアウトをファイルマネージャで開く。CLI は `yoyo harness lineage`、`yoyo harness reveal`、`yoyo harness show`。
+
+---
+
+## コマンド
+
+| コマンド | すること |
+| --- | --- |
+| `yoyo init` | home を作りハーネスを蒔く |
+| `yoyo run [msg] --workspace --session` | ひとターン |
+| `yoyo serve --addr [--stdio]` | HTTP UI と `/api/ws`、または stdio の JSON-RPC |
+| `yoyo eval […]` | スモーク、密封、転送、安全、Terminal-Bench の一部、best-of-N |
+| `yoyo evolve [--rounds] [--promote]` | セルフハーネス。既定は canary のみ |
+| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | ポインタ、親鎖、復号した成果物 |
+| `yoyo pack list\|install\|enable\|update` | スキルパック。既定はオフ |
+| `yoyo replay [session]` | JSONL の軌跡を出す |
+| `yoyo update apply` | 人が `updates/yoyo.staging` を入れる |
+| `yoyo version` | 製品バージョン |
 
 ```bash
 go run ./cmd/yoyo eval
+go run ./cmd/yoyo eval --sealed
 go run ./cmd/yoyo eval --safety
-go run ./cmd/yoyo eval --tb
-go run ./cmd/yoyo eval --best 3
-go run ./cmd/yoyo eval --models gpt-4.1-mini,gpt-4.1
-go run ./cmd/yoyo evolve
+go run ./cmd/yoyo evolve --rounds 4
+go run ./cmd/yoyo evolve --promote
 ```
 
-Harbor の配置は [docs/architecture/harbor.md](docs/architecture/harbor.md):
+**ShouldPromote:** held-in と held-out は退行せず、少なくとも一方は改善し、安全失敗は止める。候補は作業ツリーではなく分離した git worktree で走る。配置とフラグは [docs/architecture/harbor.md](docs/architecture/harbor.md)。
 
-```
-evals/<id>/
-  instruction.md
-  task.toml
-  tests/test.sh
-  tests/test.ps1
-```
-
-**ShouldPromote:** held-in と held-out が悪化してはならない。少なくとも一方は良くなる。安全失敗は昇格を止める。オンライン ACE と親指は **`refs/staging` だけ**。Evolve の既定は **`refs/canary` だけ**（`--promote` 以外）。`refs/active` への扉は Harbor + Checkout です。
-
-**Harness** はハッシュの一覧ではありません。Overview は `refs/active` / `staging` / `canary`、archive refs、evolve archive から `parent` を辿り、CAS をデコードして何が変わったかを見せます。**Show artifacts** はそのスナップショットを home の tmp に展開してファイルマネージャで開き、**Show store** は `cas/objects` を開きます。CLI: `yoyo harness lineage`、`yoyo harness reveal [hash]`、`yoyo harness show`。
-
-Evolve 候補は **切り離した git worktree** で Harbor を走らせ、あなたの作業ツリーを汚しません。
-
----
-
-## CLI 一覧
-
-| コマンド | 内容 |
-| --- | --- |
-| `yoyo init` | ホーム作成とハーネス初期化 |
-| `yoyo run [msg] --workspace --session` | エージェント 1 ターン |
-| `yoyo serve --addr [--stdio]` | HTTP UI + `/api/ws`、または stdio JSON-RPC |
-| `yoyo eval [--sealed] [--transfer] [--index] [--behavior] [--safety] [--tb] [--best N] [--models a,b]` | スモーク / 密封 12/8/10 / transfer / Index / behavior / 安全 / TB / best-of-N |
-| `yoyo evolve [--k] [--rounds] [--sealed] [--promote]` | Self-Harness 周期（L1）。既定は canary のみ |
-| `yoyo harness list\|show\|lineage\|reveal\|checkout\|rollback\|diff` | スナップショット、親チェーン、デコード済み成果物（loop/ポリシーは `checkout --l3`） |
-| `yoyo replay [session]` | JSONL 軌跡を表示 |
-| `yoyo update apply` | 人間が `updates/yoyo.staging` を適用 |
-| `yoyo version` | `0.4.0` |
-
-JSON-RPC には `thread.*`、`turn.start` / `turn.interrupt`、`item.event`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*` があります。
+JSON-RPC は `thread.*`、`turn.start` / `turn.interrupt`、`playbook.rate`、`workspace.apply_hunks`、`eval.*`、`evolve.run`、`harness.*`、`packs.*`。
 
 ---
 
@@ -257,37 +234,28 @@ JSON-RPC には `thread.*`、`turn.start` / `turn.interrupt`、`item.event`、`p
 
 | つまみ | 場所 | 既定 |
 | --- | --- | --- |
-| ホーム | `YOYO_HOME` | `~/.yoyo` / `%USERPROFILE%\.yoyo` |
-| 評価タスク | `YOYO_EVALS` | 同梱 `evals/` |
+| Home | `YOYO_HOME` | `~/.yoyo` |
 | API キー | `YOYO_API_KEY`、`OPENAI_API_KEY`、または Settings | — |
-| モデル / base URL / ワークスペース / 予算 | ホームの `config.yaml` または Settings | `gpt-4.1-mini` |
-| 追加 BoN モデル | 設定の `models:` | 空 |
-| shell 自動許可 | Settings のチェック | `false` |
-| プロセス隔離 | `YOYO_ISOLATE=1` | オフ（同一プロセス + panic recover） |
-| Worker モード | `YOYO_WORKER=1` | デスクトップ内部 |
-
-毎ターン組み直すピン: `YOYO.md`、`AGENTS.md`、`CLAUDE.md`（上限あり）、helpful−harmful で並ぶ ACE プレイブック。
+| モデル、URL、作業場、予算 | `config.yaml` または Settings | `gpt-4.1-mini` |
+| shell の自動許可 | Settings | オフ |
+| ループの隔離 | `YOYO_ISOLATE=1` | オフ |
+| WASM の准入鍵 | `YOYO_WASM_PUBKEY` | 空なら署名モジュールは閉じたまま |
+| 評価タスク | `YOYO_EVALS` | 同梱の `evals/` |
 
 ---
 
-## リポジトリ地図
+## リポジトリ
 
 ```
-cmd/yoyo          CLI
-main.go           Wails デスクトップ（YOYO_WORKER=1 で App Server）
-frontend/         React + Vite
-internal/kernel   Fiber、EventBus、LIFO dispose
-internal/artifact CAS、refs、スキル、スナップショット
-internal/runtime  ループ、ツール、整形、メンション、hunk、shell ポリシー
-internal/eval     Harbor、昇格ゲート
-internal/evolve   Reflect → Curate → Propose → Harbor、DGM アーカイブ
-internal/capability  Once / Session / Always
-internal/plugin   MCP stdio、wazero（WASI FS なし）
-internal/api      HTTP、SSE、JSON-RPC、WebSocket
-internal/update   ed25519、stage、apply
-evals/            Harbor 形式タスク
-docs/architecture 不変条件、Harbor、脅威モデル
-docs/research     文献の系譜と 2026 年のフロンティア
+cmd/yoyo            CLI
+main.go             Wails デスクトップ
+frontend/           React + Vite
+internal/runtime    ループ、ツール、コンテキスト
+internal/artifact   CAS、refs、スナップショット
+internal/eval       Harbor と昇格ゲート
+internal/evolve     省みる、整える、提案する
+internal/plugin     MCP と wazero WASM
+docs/architecture   不変条件、Harbor、脅威モデル
 ```
 
 ---
@@ -299,31 +267,39 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI（`.github/workflows/ci.yml`）は Windows で Go テスト、Ubuntu でフロントエンドをビルドします。
-
-`v*` タグを push すると [release.yml](.github/workflows/release.yml) がインストール可能なデスクトップ成果物を公開します。Windows は NSIS インストーラ、macOS は DMG、Linux は AppImage / `.deb` / `.rpm`、加えて各 OS/arch の CGO=0 CLI です。
+CI は Windows で Go テスト、Ubuntu でフロントエンドのビルド。`v*` タグを push すると [release.yml](.github/workflows/release.yml) が走る。
 
 ```bash
-git tag v0.2.4
-git push origin v0.2.4
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
-macOS は ad-hoc 署名（公証なし）。Windows / Linux パッケージは未署名です。`yoyo update apply` は引き続き人手の手順です。
+macOS ビルドは ad-hoc 署名で、公証はない。Windows と Linux のパッケージは未署名。
 
-昇格、TCB fiber、アップデータを触る前に [不変条件](docs/architecture/invariants.md) を読んでください。テストが守っています。進化中のエージェントに編集する資格はありません。
+昇格、信頼計算基盤、アップデータを触る前に[不変条件](docs/architecture/invariants.md)を読む。規則はテストだ。進化中のエージェントはそれを編集できない。
 
 ---
 
-## Yoyo がやらないこと
+## Yoyo がしないこと
 
-- VS Code を fork する、Monaco タブを載せる
-- エージェントに Go カーネルを書き換えさせる（L4）
-- 自前の “Composer” を学習させる
-- shell 拒否リストを Seatbelt / bubblewrap だと偽る
-- 実行中バイナリを黙って置き換える
-- `@` したからといってリポジトリ全体をプロンプトに詰める
+- VS Code を分岐する、Monaco のタブを載せる
+- エージェントに Go カーネルを書き換えさせる
+- 自前のモデルを訓練して、それを製品と呼ぶ
+- shell の拒否リストをサンドボックスだと装う
+- 実行中のバイナリを静かに差し替える
+- `@` を打っただけでリポジトリをプロンプトに詰め込む
 
-欠けたチェックボックスではなく、製品の決断です。
+これは決定であり、未着手リストではない。
+
+---
+
+## コミュニティ
+
+<p align="center">
+  <img src="qrcode.jpg" width="320" alt="WeChat グループ: yoyo ai">
+</p>
+
+WeChat グループ **yoyo ai**。画像にコードの有効期限が書いてある。入り直すと更新される。
 
 ---
 
