@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
     paths:
+      - "site-src/**"
       - "site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -25,6 +26,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site-src/package-lock.json
+      - name: Build site
+        working-directory: site-src
+        run: |
+          npm ci
+          npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yoyo</title>
+    <meta
+      name="description"
+      content="A local workstation. You bring the model; the weights stay put. The harness is content-addressed. Writes ask first. You promote after proof."
+    />
+    <link rel="canonical" href="https://shenchangxin.github.io/yoyo/" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content="Yoyo" />
+    <meta
+      property="og:description"
+      content="A local workstation. You bring the model; the weights stay put. The harness is content-addressed. Writes ask first. You promote after proof."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://shenchangxin.github.io/yoyo/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="theme-color" content="#1c1c1a" />
+    <script>
+      (function () {
+        try {
+          var s = localStorage.getItem("yoyo-site-lang");
+          var n = (navigator.language || "en").toLowerCase();
+          var l = s || (n.indexOf("zh") === 0 ? "zh" : n.indexOf("ja") === 0 ? "ja" : "en");
+          document.documentElement.dataset.lang = l;
+          document.documentElement.lang = l === "zh" ? "zh-Hans" : l;
+        } catch (e) {}
+      })();
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Yoyo",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "url": "https://shenchangxin.github.io/yoyo/",
+        "downloadUrl": "https://github.com/Shenchangxin/yoyo/releases/latest",
+        "codeRepository": "https://github.com/Shenchangxin/yoyo",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
