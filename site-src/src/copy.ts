@@ -1,12 +1,34 @@
 export const LANGS = ["en", "zh", "ja"] as const;
 export type Lang = (typeof LANGS)[number];
 export type GateKind = "once" | "session" | "always" | "deny";
-export type Scene = "ask" | "model" | "diff" | "drama" | "trust";
+export type Scene = "ask" | "diff" | "drama" | "trust";
 
 export type Copy = {
   meta: { title: string; description: string };
-  nav: { workstation: string; model: string; trust: string; download: string };
-  hero: { title: string; dek: string; download: string; github: string; chips: string[] };
+  nav: {
+    workstation: string;
+    video: string;
+    model: string;
+    trust: string;
+    doors: string;
+    download: string;
+    menu: string;
+    close: string;
+    themeToDark: string;
+    themeToLight: string;
+  };
+  hero: { title: string; dek: string; download: string; github: string; builds: string; chips: string[] };
+  stage: { ask: string; diff: string; drama: string; trust: string };
+  turn: { title: string; dek: string; steps: { title: string; body: string }[] };
+  film: {
+    title: string;
+    dek: string;
+    modes: { title: string; body: string }[];
+    phasesTitle: string;
+    phases: { title: string; body: string }[];
+    apart: string;
+  };
+  limits: { title: string; dek: string; items: string[] };
   gate: {
     title: string;
     dek: string;
@@ -90,7 +112,7 @@ export type Copy = {
     note: string;
   };
   pitch: { title: string; dek: string; cards: { title: string; body: string }[] };
-  foot: { product: string; invariants: string; issues: string; license: string };
+    foot: { product: string; invariants: string; issues: string; license: string; stack: string };
   demo: {
     agent: string;
     review: string;
@@ -127,6 +149,14 @@ export type Copy = {
     browserBody: string;
     trailRead: string;
     trailPatch: string;
+    queue: string;
+    queueItem: string;
+    statusFolder: string;
+    local: string;
+    kept: string;
+    keptNote: string;
+    createBody: string;
+    canvasHint: string;
     dramaPrompt: string;
     ep1: string;
     ep2: string;
@@ -139,16 +169,72 @@ export type Copy = {
 export const COPY: Record<Lang, Copy> = {
   zh: {
     meta: {
-      title: "Yoyo",
+      title: "Yoyo — 本地智能体工作站",
       description: "一台本地的智能体工作站。在你指定的文件夹里改代码、审查改动、拍短剧。写之前先问你。新的干活方式要你亲自换成正在用的那一份。",
     },
-    nav: { workstation: "工作站", model: "模型", trust: "信任", download: "下载" },
+    nav: {
+      workstation: "工作站",
+      video: "视频",
+      model: "模型",
+      trust: "信任",
+      doors: "入口",
+      download: "下载",
+      menu: "菜单",
+      close: "关闭菜单",
+      themeToDark: "切换到深色",
+      themeToLight: "切换到浅色",
+    },
     hero: {
       title: "在你选的文件夹里，\n跑一轮智能体。",
       dek: "它改代码，审查每一处改动，也能把一章文字拍成短剧。写文件和跑命令之前先问你。新的干活方式先接受评测，再由你换成正在使用的那一份。",
       download: "下载",
       github: "GitHub",
+      builds: "全部安装包",
       chips: ["Apache-2.0", "Windows · macOS · Linux", "桌面 · 浏览器 · 命令行", "自备模型"],
+    },
+    stage: {
+      ask: "写文件或跑命令之前，问题出现在这一轮里。可以只放行这一次，记住这个对话，记在这台电脑上，或让这一轮停下。",
+      diff: "每一处改动单独勾选。原来的文件如果已经不在，会直接告诉你失败，不会悄悄把仓库倒回去。",
+      drama: "贴上一章，先确认分成几集，再开拍。创作、短剧和画布是同一套界面，目录和代码仓库分开。",
+      trust: "评测通过，只说明这一份可以换。换上去，是你的动作。密钥和更新程序不在它能碰到的范围里。",
+    },
+    turn: {
+      title: "一轮里，事情按这个顺序发生。",
+      dek: "先点名文件，再决定能不能写。改动留在你看得见的地方。花费到顶，这一轮就停。",
+      steps: [
+        { title: "钉住上下文", body: "用 @ 点名一份文件或一个目录。打一个 @，不会把整个文件夹倒进提示词。" },
+        { title: "先问再写", body: "写文件或跑命令时，问题出现在这一轮里。只放行这一次，记住这个对话，记在这台电脑上，或拒绝。" },
+        { title: "按段留下", body: "右侧是待处理的队列。按片段勾选再应用。没勾的不会写进去。" },
+        { title: "到顶就停", body: "预算不是一条提醒。到了就停。Stop 取消这一轮，已经写好的会留下。" },
+      ],
+    },
+    film: {
+      title: "视频是另一场对话。\n片子不进代码仓库。",
+      dek: "创作、短剧、画布共用一套界面。短剧的家在对话里：先把一章拆成几集，确认之后才拍。要看一集，再把导演台从旁边拉开。",
+      modes: [
+        { title: "创作", body: "描述一段片子。图像、语音和视频适配器在设置里，画布用的是同一批。密钥留在这台电脑的保管库，不进对话。" },
+        { title: "短剧", body: "贴上一章，先确认分成几集，再开拍。对话一直留着。打开一集，旁边才分出导演台。短剧里面没有第二块节点画布，也不是一条八步流水线。画幅锁在这一部上。" },
+        { title: "画布", body: "镜头排在同一张空间桌面上。节点是画面。工具停在窗口边缘，画面才看得清。Agent 钉在检查器里，不是另一套聊天。" },
+      ],
+      phasesTitle: "导演台有四段。每一段只有一个往下走的动作。",
+      phases: [
+        { title: "剧本", body: "把这一章拆成集。计划没确认，不开拍。" },
+        { title: "造型", body: "角色和场景的样子在这里定下来。" },
+        { title: "分镜", body: "镜头排成一条胶片。板子上能看，也能改。" },
+        { title: "成片", body: "看片和检查在同一张桌子上。胶片条还在。" },
+      ],
+      apart: "视频会话和写代码的会话不是同一条。Profile 管不到这里。片子有自己的目录，和代码仓库分开。",
+    },
+    limits: {
+      title: "开始之前，这几件事先说清楚。",
+      dek: "它是这台电脑上的工作站，不是一个免注册的云聊天。",
+      items: [
+        "密钥要你自己准备。对话不托管到别人的云上。",
+        "不训练专属模型。权重留在你接上的服务里。",
+        "技能包默认关闭。你为当前文件夹打开，它才进来。评测不加载它们。",
+        "密钥、评测器和更新程序，它改不了。新的干活方式要你亲自换成正在用的那一份。",
+        "Windows 和 Linux 安装包未签名。macOS 是 ad-hoc 签名，未经公证。",
+      ],
     },
     gate: {
       title: "写下去之前，\n它先在对话里问你。",
@@ -249,7 +335,7 @@ export const COPY: Record<Lang, Copy> = {
         { title: "钱花到上限就停", body: "预算不是一条提醒。到了就停。密钥留在这台电脑上。它改不了自己的设置，也换不了正在运行的程序。" },
       ],
     },
-    foot: { product: "产品", invariants: "不变量", issues: "Issues", license: "Apache-2.0" },
+    foot: { product: "产品", invariants: "不变量", issues: "Issues", license: "Apache-2.0", stack: "Go · Wails" },
     demo: {
       agent: "Agent",
       review: "审查",
@@ -286,6 +372,14 @@ export const COPY: Record<Lang, Copy> = {
       browserBody: "解析器现在会把错误返回去。",
       trailRead: "Read",
       trailPatch: "apply_patch",
+      queue: "队列",
+      queueItem: "loop.go · +24 −6",
+      statusFolder: "~/work/parser",
+      local: "本地",
+      kept: "已留下",
+      keptNote: "勾上的留在工作区里。没勾的不会写进去。",
+      createBody: "描述一段片子。图像、语音和视频适配器是你自己的。",
+      canvasHint: "镜头排在同一张桌面上。目录和代码仓库分开。",
       dramaPrompt: "把这一章拍成三集。先确认分集，再拍。",
       ep1: "抵达",
       ep2: "灯",
@@ -296,16 +390,72 @@ export const COPY: Record<Lang, Copy> = {
   },
   en: {
     meta: {
-      title: "Yoyo",
-      description: "A local workstation. You bring the model; the weights stay put. The harness is content-addressed. Writes ask first. You promote after proof.",
+      title: "Yoyo — a local agent workstation",
+      description: "A local workstation. You bring the model; the weights stay put. Writes ask first. A new way of working is tested first. You switch it on.",
     },
-    nav: { workstation: "Workstation", model: "Model", trust: "Trust", download: "Download" },
+    nav: {
+      workstation: "Workstation",
+      video: "Video",
+      model: "Model",
+      trust: "Trust",
+      doors: "Doors",
+      download: "Download",
+      menu: "Menu",
+      close: "Close menu",
+      themeToDark: "Switch to dark",
+      themeToLight: "Switch to light",
+    },
     hero: {
       title: "Run an agent\nin a folder you choose.",
       dek: "It edits code, lets you keep each change, and can turn a chapter into a short film. It asks before it writes or runs a command. A new way of working is tested first. You are the one who switches it on.",
       download: "Download",
       github: "GitHub",
+      builds: "All builds",
       chips: ["Apache-2.0", "Windows · macOS · Linux", "Desktop · browser · CLI", "Bring your own model"],
+    },
+    stage: {
+      ask: "A write or a command asks in the turn. Allow it once, for this chat, on this machine, or stop the turn.",
+      diff: "Keep each change on its own. If the file is already gone, restore fails out loud. Nothing is quietly rolled back.",
+      drama: "Paste a chapter, confirm the episodes, then shoot. Create, drama, and canvas share one shell. The footage has its own folder.",
+      trust: "A passing eval only means this one can be switched on. Switching it on is your action. Keys and the updater stay out of reach.",
+    },
+    turn: {
+      title: "A turn happens in this order.",
+      dek: "Name a file first. Then decide what may be written. Changes stay where you can see them. When the budget is spent, the turn stops.",
+      steps: [
+        { title: "Pin context", body: "Type @ to name one file or one folder. One @ does not pour the whole tree into the prompt." },
+        { title: "Ask, then write", body: "A write or a command asks in the turn. Allow it once, for this chat, on this machine, or turn it down." },
+        { title: "Keep by hunk", body: "The queue sits beside the thread. Tick the pieces you want. What you leave unticked is not written." },
+        { title: "Stop at the cap", body: "The budget is not a warning. When it hits, the turn stops. Stop cancels the turn. What already landed stays." },
+      ],
+    },
+    film: {
+      title: "Video is another conversation.\nFootage stays out of the repo.",
+      dek: "Create, drama, and canvas share one shell. Drama lives in the chat: split a chapter into episodes, confirm the plan, then shoot. Open an episode, and the director desk splits out beside it.",
+      modes: [
+        { title: "Create", body: "Describe a piece. Image, voice, and video adapters live in Settings. Canvas uses the same ones. Keys stay in the vault on this machine." },
+        { title: "Drama", body: "Paste a chapter, confirm the episodes, then shoot. The chat stays mounted. Opening an episode splits a director desk beside it. There is no second node canvas inside drama, and it is not an eight-stage factory. Aspect is locked on the series." },
+        { title: "Canvas", body: "Shots sit on one spatial desk. A node is a picture. Tools stay at the window edge so the frame stays clear. The agent pins to the inspector. It is not a second chat." },
+      ],
+      phasesTitle: "The director desk has four phases. Each one has a single next step.",
+      phases: [
+        { title: "Script", body: "Split the chapter into episodes. Nothing shoots before the plan is confirmed." },
+        { title: "Looks", body: "Characters and places take their shape here." },
+        { title: "Board", body: "Shots line up as a film strip. You can watch the board and change it." },
+        { title: "Cut", body: "The viewer and the inspector share the desk. The film strip stays." },
+      ],
+      apart: "Video chats are not Agent chats. A profile does not apply on this channel. Footage has its own folder, apart from the code workspace.",
+    },
+    limits: {
+      title: "Before you start, five things are already true.",
+      dek: "This is a workstation on your machine. It is not a hosted chat you can use without a key.",
+      items: [
+        "You bring the key. The conversation is not hosted in someone else's cloud.",
+        "Yoyo does not train a model of its own. The weights stay with the service you connect.",
+        "Skill packs start off. You enable one for this folder. Evaluation never loads them.",
+        "It cannot change keys, the evaluator, or the updater. You switch on a new way of working yourself.",
+        "Windows and Linux packages are unsigned. macOS is ad-hoc signed, not notarized.",
+      ],
     },
     gate: {
       title: "The question lands in the turn.",
@@ -406,7 +556,7 @@ export const COPY: Record<Lang, Copy> = {
         { title: "The budget is a stop", body: "When the cap hits, the turn stops. Keys stay on this machine. It cannot edit those settings or replace the running app." },
       ],
     },
-    foot: { product: "Product", invariants: "Invariants", issues: "Issues", license: "Apache-2.0" },
+    foot: { product: "Product", invariants: "Invariants", issues: "Issues", license: "Apache-2.0", stack: "Go · Wails" },
     demo: {
       agent: "Agent",
       review: "Review",
@@ -443,6 +593,14 @@ export const COPY: Record<Lang, Copy> = {
       browserBody: "The parser now returns the error.",
       trailRead: "Read",
       trailPatch: "apply_patch",
+      queue: "Queue",
+      queueItem: "loop.go · +24 −6",
+      statusFolder: "~/work/parser",
+      local: "Local",
+      kept: "Kept",
+      keptNote: "Ticked hunks stay in the folder. The rest are not written.",
+      createBody: "Describe a piece. Image, voice, and video adapters are yours.",
+      canvasHint: "Shots sit on one desk. The folder is not the code workspace.",
       dramaPrompt: "Shoot this chapter as three episodes. Confirm the plan, then shoot.",
       ep1: "Arrival",
       ep2: "The lamp",
@@ -453,16 +611,72 @@ export const COPY: Record<Lang, Copy> = {
   },
   ja: {
     meta: {
-      title: "Yoyo",
-      description: "ローカルの作業台。モデルは自分で持つ。重みは動かない。ハーネスは内容アドレス。書き込みは承認。証明したあと、あなたが昇格する。",
+      title: "Yoyo — ローカルの作業台",
+      description: "ローカルの作業台。モデルは自分で持つ。重みは動かない。書き込みの前に尋ねる。証明したあと、切り替えるのはあなた。",
     },
-    nav: { workstation: "作業台", model: "モデル", trust: "信頼", download: "入手" },
+    nav: {
+      workstation: "作業台",
+      video: "ビデオ",
+      model: "モデル",
+      trust: "信頼",
+      doors: "入口",
+      download: "入手",
+      menu: "メニュー",
+      close: "メニューを閉じる",
+      themeToDark: "ダークに切り替え",
+      themeToLight: "ライトに切り替え",
+    },
     hero: {
       title: "選んだフォルダで、\nエージェントを走らせる。",
       dek: "コードを直し、変更は断片ごとに残し、章を短編にもできる。書く前、コマンドの前に尋ねる。新しい働き方はまず評価され、切り替えるのはあなた。",
       download: "入手",
       github: "GitHub",
+      builds: "すべてのビルド",
       chips: ["Apache-2.0", "Windows · macOS · Linux", "デスクトップ · ブラウザ · CLI", "モデルは自分で"],
+    },
+    stage: {
+      ask: "書き込みもコマンドも、このターンの中で尋ねる。一度、この会話、このマシン、またはここで止める。",
+      diff: "変更は断片ごとに残す。ファイルがもう無いときは、静かに戻さず、失敗してはっきり言う。",
+      drama: "章を貼り、話数を確認してから撮る。作成、ドラマ、キャンバスは一つの殻。映像はコードの作業場と分ける。",
+      trust: "評価が通ったのは、この一份が切り替えられるという意味だけ。切り替えるのはあなた。鍵とアップデータには触れない。",
+    },
+    turn: {
+      title: "一つのターンは、この順で進む。",
+      dek: "まずファイルを名指しする。それから書いてよいかを決める。変更は見える場所に残る。予算の上限で、ターンは止まる。",
+      steps: [
+        { title: "文脈をピンする", body: "@ で一つのファイルかフォルダを名指しする。@ を一つ打っても、木全体はプロンプトに入らない。" },
+        { title: "聞いてから書く", body: "書き込みもコマンドも、このターンで尋ねる。一度、この会話、このマシン、または拒否。" },
+        { title: "断片ごとに残す", body: "キューは会話のそば。残す断片だけを選ぶ。選ばなかったものは書き込まれない。" },
+        { title: "上限で止まる", body: "予算は注意書きではない。達したら止まる。Stop はそのターンを止める。すでに書いたものは残る。" },
+      ],
+    },
+    film: {
+      title: "ビデオは別の会話。\n映像はリポジトリの外。",
+      dek: "作成、ドラマ、キャンバスは一つの殻。ドラマの家は会話の中。章を話に分け、確認してから撮る。一話を開くと、隣に演出机が分かれる。",
+      modes: [
+        { title: "作成", body: "一本を説明する。画像、音声、動画のアダプタは設定にあり、キャンバスと同じものを使う。鍵はこのマシンの保管庫に残る。" },
+        { title: "ドラマ", body: "章を貼り、話数を確認してから撮る。会話はそのまま残る。一話を開くと、隣に演出机が分かれる。ドラマの中に二つ目のノードキャンバスはなく、八段階の工場でもない。画角はそのシリーズにロックされる。" },
+        { title: "キャンバス", body: "ショットは一つの空間の机に並ぶ。ノードは絵だ。道具は窓の縁に置き、画面を空けておく。Agent はインスペクタにピンされ、別のチャットではない。" },
+      ],
+      phasesTitle: "演出机は四つの段階。各段階の次の動作は一つ。",
+      phases: [
+        { title: "脚本", body: "章を話に分ける。計画を確認するまで撮らない。" },
+        { title: "造型", body: "人物と場所の見た目をここで決める。" },
+        { title: "絵コンテ", body: "ショットはフィルムの帯になる。板の上で見て、直せる。" },
+        { title: "完成", body: "試写と検査は同じ机。フィルムの帯は残る。" },
+      ],
+      apart: "ビデオの会話は Agent の会話ではない。プロフィールはこの通道に届かない。映像はコードの作業場とは別のフォルダ。",
+    },
+    limits: {
+      title: "始める前に、決まっていること。",
+      dek: "これはこのマシンの作業台です。鍵なしで使えるホストされたチャットではありません。",
+      items: [
+        "鍵は自分で持つ。会話は他人のクラウドに預けない。",
+        "自前のモデルは訓練しない。重みは接続したサービスに残る。",
+        "スキルパックは最初オフ。このフォルダで有効化してから入る。評価は読み込まない。",
+        "鍵、評価器、アップデータは変更できない。新しい働き方を切り替えるのはあなた。",
+        "Windows と Linux は未署名。macOS はアドホック署名で、公証はない。",
+      ],
     },
     gate: {
       title: "問いはターンの中に出る。",
@@ -563,7 +777,7 @@ export const COPY: Record<Lang, Copy> = {
         { title: "予算は停止", body: "上限に達したらターンは止まる。鍵はこのマシン。設定も実行中のアプリも、自分では替えられない。" },
       ],
     },
-    foot: { product: "製品", invariants: "不変条件", issues: "Issues", license: "Apache-2.0" },
+    foot: { product: "製品", invariants: "不変条件", issues: "Issues", license: "Apache-2.0", stack: "Go · Wails" },
     demo: {
       agent: "Agent",
       review: "審査",
@@ -600,6 +814,14 @@ export const COPY: Record<Lang, Copy> = {
       browserBody: "パーサーはエラーを返すようになった。",
       trailRead: "Read",
       trailPatch: "apply_patch",
+      queue: "キュー",
+      queueItem: "loop.go · +24 −6",
+      statusFolder: "~/work/parser",
+      local: "ローカル",
+      kept: "残した",
+      keptNote: "選んだハンクはフォルダに残る。選ばなかったものは書き込まれない。",
+      createBody: "一本を説明する。画像、音声、動画のアダプタは自分のもの。",
+      canvasHint: "ショットは一つの机に並ぶ。フォルダはコードの作業場とは別。",
       dramaPrompt: "この章を三話で撮る。計画を確認してから撮る。",
       ep1: "到着",
       ep2: "ランプ",
@@ -612,6 +834,8 @@ export const COPY: Record<Lang, Copy> = {
 
 export function detectLang(): Lang {
   try {
+    const q = new URLSearchParams(window.location.search).get("lang");
+    if (q && (LANGS as readonly string[]).includes(q)) return q as Lang;
     const saved = localStorage.getItem("yoyo-site-lang");
     if (saved && (LANGS as readonly string[]).includes(saved)) return saved as Lang;
   } catch {

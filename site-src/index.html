@@ -18,15 +18,29 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://shenchangxin.github.io/yoyo/" />
     <meta name="twitter:card" content="summary" />
-    <meta name="theme-color" content="#1c1c1a" />
+    <meta name="theme-color" content="#f3f0e8" />
     <script>
       (function () {
         try {
-          var s = localStorage.getItem("yoyo-site-lang");
+          var qs = new URLSearchParams(location.search);
+          var s = qs.get("lang") || localStorage.getItem("yoyo-site-lang");
           var n = (navigator.language || "en").toLowerCase();
           var l = s || (n.indexOf("zh") === 0 ? "zh" : n.indexOf("ja") === 0 ? "ja" : "en");
+          if (l !== "en" && l !== "zh" && l !== "ja") l = "en";
           document.documentElement.dataset.lang = l;
           document.documentElement.lang = l === "zh" ? "zh-Hans" : l;
+          var tq = qs.get("theme");
+          var saved = localStorage.getItem("yoyo-site-theme");
+          var dark =
+            tq === "dark" || tq === "light"
+              ? tq === "dark"
+              : saved
+                ? saved === "dark"
+                : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = dark ? "dark" : "light";
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#141413" : "#f3f0e8");
         } catch (e) {}
       })();
     </script>
