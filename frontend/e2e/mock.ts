@@ -536,6 +536,17 @@ export async function mockApi(
     if (path.endsWith("/api/open")) {
       return route.fulfill({ json: { ok: true } });
     }
+    if (path.includes("/api/update")) {
+      return route.fulfill({
+        json: {
+          phase: "idle",
+          staged: false,
+          auto_check: true,
+          feed: "https://www.modelscope.cn/datasets/Shenchangxin/yoyo-releases/resolve/master/channels/nightly.json",
+          current: { version: "0.4.0" },
+        },
+      });
+    }
     if (path.endsWith("/api/inbox")) {
       return route.fulfill({ json: extra?.inbox ?? [] });
     }

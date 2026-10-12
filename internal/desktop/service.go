@@ -18,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
 // Service is the Wails-bound facade. When RPC is set the GUI talks to a
@@ -849,11 +850,51 @@ func (s *Service) UnloadFiber(name string) error {
 }
 
 func (s *Service) ApplyUpdate() error {
+	var (
+		err error
+		out map[string]any
+	)
 	if s.RPC != nil {
-		_, err := s.call("update.apply", map[string]any{"exe": ""})
+		v, callErr := s.call("update.apply", map[string]any{"exe": ""})
+		out, err = decode[map[string]any](v, callErr)
+	} else if s.App != nil {
+		err = s.App.ApplyStagedUpdate("")
+		if errors.Is(err, update.ErrQuitNeeded) {
+			out, err = map[string]any{"ok": true, "quit": true}, nil
+		} else if errors.Is(err, update.ErrOpenedPackage) {
+			out, err = map[string]any{"ok": true, "opened": true}, nil
+		}
+	}
+	if err != nil {
 		return err
 	}
-	return s.App.ApplyStagedUpdate("")
+	if flagTrue(out["quit"]) && s.gui != nil {
+		s.gui.Event.Emit("yoyo:do-quit", nil)
+	}
+	return nil
+}
+
+func flagTrue(v any) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return t == "true" || t == "1"
+	default:
+		return false
+	}
+}
+
+func (s *Service) UpdateStatus() map[string]any {
+	if s.RPC != nil {
+		v, err := s.call("update.status", nil)
+		m, _ := decode[map[string]any](v, err)
+		return m
+	}
+	if s.App != nil {
+		return s.App.UpdateStatus()
+	}
+	return map[string]any{}
 }
 
 func (s *Service) Close() {

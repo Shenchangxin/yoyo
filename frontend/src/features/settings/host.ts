@@ -19,6 +19,7 @@ export type SettingsHost = {
   onReplaceMcp: (servers: { name: string; command: string; args: string[]; endpoint?: string }[]) => Promise<void>;
   onUnload: (name: string) => Promise<void>;
   onCheckUpdate: () => Promise<any>;
+  onUpdateStatus?: () => Promise<any>;
   onApplyUpdate: () => Promise<void>;
   onTestProvider: () => Promise<any>;
   onRevealLogs: () => Promise<void>;

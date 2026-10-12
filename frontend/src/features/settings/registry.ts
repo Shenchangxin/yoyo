@@ -64,7 +64,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "personal-goals", tab: "personal", titleKey: "personalGoals", keywords: "goal milestone plan" },
   { id: "personal-watch", tab: "personal", titleKey: "personalWatch", keywords: "monitor watch page diff price" },
   { id: "personal-proposals", tab: "personal", titleKey: "personalProposals", keywords: "proposal send approval hash" },
-  { id: "advanced-updates", tab: "advanced", titleKey: "advancedUpdates", keywords: "update channel version release" },
+  { id: "advanced-updates", tab: "advanced", titleKey: "advancedUpdates", keywords: "update channel version release ota modelscope" },
   { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support" },
   { id: "advanced-journal", tab: "advanced", titleKey: "advancedJournal", keywords: "journal audit chain" },
   { id: "advanced-doctor", tab: "advanced", titleKey: "advancedDoctor", keywords: "doctor diagnostics health" },

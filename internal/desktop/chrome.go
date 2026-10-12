@@ -97,6 +97,16 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			id = "yoyo-eval"
 		case "evolve":
 			id = "yoyo-evolve"
+		case "update":
+			title = firstPayloadStr(payload, "title", "version")
+			if title == "" {
+				title = n.UpdateReady
+			}
+			body = payloadStr(payload, "text")
+			if body == "" {
+				body = n.UpdateReady
+			}
+			id = "yoyo-update"
 		}
 		notify(id, title, body, session, kind)
 	}

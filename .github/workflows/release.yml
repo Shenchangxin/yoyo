@@ -318,8 +318,128 @@ jobs:
             - **macOS:** `Yoyo-*-darwin-universal.dmg` — open the disk image and drag Yoyo into Applications.
             - **Linux:** `Yoyo-*-linux-amd64.AppImage` (chmod +x, double-click) or install the `.deb` / `.rpm`.
 
-            CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. `yoyo update apply` stays a human step.
+            CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. In-app OTA reads signed channel JSON from the public ModelScope dataset; applying stays a human step.
           files: dist/*
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-modelscope:
+    needs: [meta, release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      MODELSCOPE_API_TOKEN: ${{ secrets.MODELSCOPE_API_TOKEN }}
+      MODELSCOPE_REPO: ${{ secrets.MODELSCOPE_REPO }}
+      YOYO_UPDATE_PRIVKEY: ${{ secrets.YOYO_UPDATE_PRIVKEY }}
+      DEFAULT_MODELSCOPE_REPO: Shenchangxin/yoyo-releases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ls -la
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Require ModelScope secrets
+        run: |
+          set -euo pipefail
+          if [[ -z "${MODELSCOPE_REPO:-}" ]]; then
+            MODELSCOPE_REPO="${DEFAULT_MODELSCOPE_REPO}"
+            echo "MODELSCOPE_REPO=${MODELSCOPE_REPO}" >> "$GITHUB_ENV"
+          fi
+          missing=0
+          for s in MODELSCOPE_API_TOKEN YOYO_UPDATE_PRIVKEY; do
+            if [[ -z "${!s:-}" ]]; then
+              echo "missing GitHub secret ${s}" >&2
+              missing=1
+            fi
+          done
+          if [[ "${missing}" -ne 0 ]]; then
+            echo "Create public dataset ${MODELSCOPE_REPO:-$DEFAULT_MODELSCOPE_REPO}, then set MODELSCOPE_API_TOKEN and YOYO_UPDATE_PRIVKEY (Ed25519 hex from go run ./scripts/ota -keygen)." >&2
+            exit 1
+          fi
+
+      - name: Build signed channel JSON
+        run: |
+          set -euo pipefail
+          go run ./scripts/ota \
+            -dist dist \
+            -version "${VERSION}" \
+            -repo "${MODELSCOPE_REPO}" \
+            -out ota \
+            -notes "Yoyo ${VERSION}"
+
+      - name: Upload artifacts then channel pointers
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade modelscope-hub
+          export MODELSCOPE_SDK_TOKEN="${MODELSCOPE_API_TOKEN}"
+          ms-hub login --token "${MODELSCOPE_API_TOKEN}"
+          ms-hub create "${MODELSCOPE_REPO}" --repo-type dataset --visibility public || true
+          ms-hub upload "${MODELSCOPE_REPO}" "ota/releases/v${VERSION}" "releases/v${VERSION}" \
+            --repo-type dataset \
+            --commit-message "release v${VERSION} artifacts" \
+            --disable-tqdm
+          ms-hub upload "${MODELSCOPE_REPO}" ota/channels channels \
+            --repo-type dataset \
+            --commit-message "release v${VERSION} channels" \
+            --disable-tqdm
+
+      - name: Verify anonymous feed
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, pathlib, urllib.request
+
+          version = os.environ["VERSION"]
+          repo = os.environ["MODELSCOPE_REPO"]
+          channels = sorted(pathlib.Path("ota/channels").glob("*.json"))
+          if not channels:
+              raise SystemExit("no channel json")
+          ch = channels[0].name
+          url = f"https://www.modelscope.cn/datasets/{repo}/resolve/master/channels/{ch}"
+          req = urllib.request.Request(url, headers={
+              "User-Agent": "Yoyo-Updater",
+              "Referer": "https://www.modelscope.cn/",
+              "Cache-Control": "no-cache",
+          })
+          with urllib.request.urlopen(req, timeout=60) as resp:
+              remote = json.loads(resp.read().decode())
+          sig_req = urllib.request.Request(url + ".sig", headers={
+              "User-Agent": "Yoyo-Updater",
+              "Referer": "https://www.modelscope.cn/",
+              "Cache-Control": "no-cache",
+          })
+          with urllib.request.urlopen(sig_req, timeout=60) as resp:
+              sig = resp.read().strip()
+          if len(sig) != 64:
+              raise SystemExit(f"sig length {len(sig)}")
+          expect = json.loads(channels[0].read_text())
+          if remote.get("version") != version:
+              raise SystemExit(f"remote version {remote.get('version')!r} != {version!r}")
+          sums = {}
+          for line in pathlib.Path("dist/SHA256SUMS.txt").read_text().splitlines():
+              parts = line.split()
+              if len(parts) >= 2:
+                  sums[parts[-1]] = parts[0].lower()
+          for key in ("windows-amd64", "darwin-universal", "linux-amd64"):
+              asset = remote["platforms"][key]
+              want = sums[asset["filename"]]
+              if asset["sha256"].lower() != want:
+                  raise SystemExit(f"{key} sha mismatch")
+              if asset["url"] != expect["platforms"][key]["url"]:
+                  raise SystemExit(f"{key} url mismatch")
+          print("ok", url, remote["version"])
+          PY

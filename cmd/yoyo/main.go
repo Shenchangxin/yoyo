@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
+	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
@@ -415,10 +417,10 @@ func shortHash(h string) string {
 }
 
 func updateCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "update", Short: "Stage and apply signed binary updates (never from the agent loop)"}
+	cmd := &cobra.Command{Use: "update", Short: "Check and apply signed updates (never from the agent loop)"}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "check",
-		Short: "Verify the update channel and download into staging if newer",
+		Short: "Verify the signed channel JSON and download a newer package if present",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := openApp()
 			if err != nil {
@@ -432,7 +434,7 @@ func updateCmd() *cobra.Command {
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "apply",
-		Short: "Replace the current binary with updates/yoyo.staging (human/L3 action)",
+		Short: "Install the downloaded package (human/L3 action; CLI replaces argv[0])",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, err := openApp()
 			if err != nil {
@@ -441,7 +443,9 @@ func updateCmd() *cobra.Command {
 			defer a.Close()
 			exe, _ := os.Executable()
 			if err := a.ApplyStagedUpdate(exe); err != nil {
-				return err
+				if !errors.Is(err, update.ErrQuitNeeded) && !errors.Is(err, update.ErrOpenedPackage) {
+					return err
+				}
 			}
 			fmt.Println("applied", a.StagingPath())
 			return nil

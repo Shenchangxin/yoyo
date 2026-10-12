@@ -1078,17 +1078,21 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			"tools":  a.MCP.Tools(),
 		})
 	})
+	mux.HandleFunc("/api/update/status", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.UpdateStatus())
+	})
 	mux.HandleFunc("/api/update", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var body struct {
 				Exe string `json:"exe"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if err := a.ApplyStagedUpdate(body.Exe); err != nil {
+			out, err := applyUpdateResult(a.ApplyStagedUpdate(body.Exe))
+			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return
 			}
-			writeJSON(w, map[string]any{"ok": true})
+			writeJSON(w, out)
 			return
 		}
 		writeJSON(w, a.CheckUpdate())

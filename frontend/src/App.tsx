@@ -963,6 +963,7 @@ function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
         onReplaceMcp: async (servers) => { await api.replaceMCP(servers); await ws.refresh(); },
         onUnload: async (name) => { await api.unloadFiber(name); await ws.refresh(); },
         onCheckUpdate: () => api.checkUpdate(),
+        onUpdateStatus: () => api.updateStatus(),
         onApplyUpdate: async () => {
           try { await api.applyUpdate(); await ws.refresh(); toast.success(copy.app.stagedUpdate); }
           catch (e) { ws.fail(e); }
