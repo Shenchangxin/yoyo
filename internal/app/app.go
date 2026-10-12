@@ -30,9 +30,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
-	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/plugin/mcp"
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
+	"github.com/Shenchangxin/yoyo/internal/profile"
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/safeguard"
@@ -78,6 +78,7 @@ type Config struct {
 	CloseToTray             bool                `yaml:"close_to_tray" json:"close_to_tray"`
 	CompanionEnabled        bool                `yaml:"companion_enabled" json:"companion_enabled"`
 	UpdateURL               string              `yaml:"update_url" json:"update_url"`
+	UpdateAutoCheck         bool                `yaml:"update_auto_check" json:"update_auto_check"`
 	Locale                  string              `yaml:"locale" json:"locale"`
 	Keymap                  map[string]string   `yaml:"keymap" json:"keymap"`
 	AlwaysOnTop             bool                `yaml:"always_on_top" json:"always_on_top"`
@@ -162,6 +163,8 @@ type App struct {
 	Video      *video.Engine
 	Skins      *skin.Store
 	schedStop  chan struct{}
+	updateStop chan struct{}
+	upd        *updateState
 
 	evalMu     sync.Mutex
 	lastEval   eval.RunReport
@@ -190,6 +193,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		AutoAllow:            false,
 		NotificationsEnabled: true,
 		CompanionEnabled:     true,
+		UpdateAutoCheck:      true,
 		UIScale:              1,
 		UpdateChannel:        "nightly",
 		Theme:                "system",
@@ -210,6 +214,9 @@ func Open(root, bundledEvals string) (*App, error) {
 		cfg.UIScale = snapUIScale(cfg.UIScale)
 		if cfg.UpdateChannel == "" {
 			cfg.UpdateChannel = "nightly"
+		}
+		if _, ok := raw["update_auto_check"]; !ok {
+			cfg.UpdateAutoCheck = true
 		}
 		if cfg.GateMode == "" {
 			cfg.GateMode = capability.GateManual
@@ -378,6 +385,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	a.SweepExpiredSessions()
 	runtime.CatalogWindow = modelcatalog.WindowFor
 	go a.warmModelCatalog()
+	a.startUpdateLoop()
 	diaglog.Info("app open", "component", "boot", "home", h.Root, "isolated", isolated(), "isolation_kind", isolationKind(), "crash_resume", a.crashResume())
 	return a, nil
 }
@@ -593,6 +601,13 @@ func (a *App) Close() error {
 			close(a.schedStop)
 		}
 	}
+	if a.updateStop != nil {
+		select {
+		case <-a.updateStop:
+		default:
+			close(a.updateStop)
+		}
+	}
 	diaglog.Info("app close", "component", "boot")
 	if a.Video != nil {
 		_ = a.Video.Close()
@@ -686,7 +701,7 @@ func (a *App) StagingPath() string {
 }
 
 func (a *App) ApplyStagedUpdate(exe string) error {
-	return update.ApplyStaged(exe, a.StagingPath())
+	return a.ApplyUpdate(exe)
 }
 
 func (a *App) restoreRuns() {

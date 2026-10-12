@@ -193,6 +193,7 @@ export function configOf(v: any): AppConfig {
     closeToTray: bool(pick(v, "close_to_tray", "CloseToTray", "closeToTray")),
     companionEnabled: boolOr(pick(v, "companion_enabled", "CompanionEnabled", "companionEnabled"), true),
     updateUrl: str(pick(v, "update_url", "UpdateURL", "updateUrl")),
+    updateAutoCheck: boolOr(pick(v, "update_auto_check", "UpdateAutoCheck", "updateAutoCheck"), true),
     keymap: (pick(v, "keymap", "Keymap") || {}) as Record<string, string>,
     locale: str(pick(v, "locale", "Locale")),
     alwaysOnTop: bool(pick(v, "always_on_top", "AlwaysOnTop", "alwaysOnTop")),
@@ -282,6 +283,7 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     companion_enabled: cfg.companionEnabled !== false,
     CompanionEnabled: cfg.companionEnabled !== false,
     update_url: cfg.updateUrl,
+    update_auto_check: cfg.updateAutoCheck !== false,
     locale: cfg.locale || "",
     Locale: cfg.locale || "",
     keymap: cfg.keymap || {},
@@ -2052,6 +2054,12 @@ export async function checkUpdate(): Promise<any> {
   const s = await wailsService();
   if (s?.CheckUpdate) return s.CheckUpdate();
   return http("/api/update");
+}
+
+export async function updateStatus(): Promise<any> {
+  const s = await wailsService();
+  if (s?.UpdateStatus) return s.UpdateStatus();
+  return http("/api/update/status");
 }
 
 export async function testProvider(id = ""): Promise<any> {

@@ -44,6 +44,9 @@ Thumbs.db
 .env
 .env.*
 
+# OTA signing material (public key is compiled into the binary)
+/secrets/
+
 # Test scratch
 /tmp/
 testdata/tmp/

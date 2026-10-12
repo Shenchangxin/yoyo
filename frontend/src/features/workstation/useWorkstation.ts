@@ -39,6 +39,7 @@ export const emptyCfg: AppConfig = {
   closeToTray: false,
   companionEnabled: true,
   updateUrl: "",
+  updateAutoCheck: true,
   keymap: {},
   locale: "",
   alwaysOnTop: false,

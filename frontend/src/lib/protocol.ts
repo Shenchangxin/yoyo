@@ -362,6 +362,7 @@ export type AppConfig = {
   closeToTray: boolean;
   companionEnabled?: boolean;
   updateUrl: string;
+  updateAutoCheck?: boolean;
   keymap?: Record<string, string>;
   locale?: string;
   alwaysOnTop?: boolean;

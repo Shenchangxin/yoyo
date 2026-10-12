@@ -21,6 +21,9 @@ func TestCompanionPulseKind(t *testing.T) {
 	if companionPulseKind("reasoning", "runtime") != "" {
 		t.Fatal("reasoning deltas must not spam pulses")
 	}
+	if companionPulseKind("system", "update") != "update" {
+		t.Fatal("signed OTA ready pulse")
+	}
 }
 
 func TestCompanionPulseTitleClipsUserText(t *testing.T) {

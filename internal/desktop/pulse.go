@@ -27,6 +27,11 @@ func companionPulseKind(typ, source string) string {
 		return "eval"
 	case "evolve":
 		return "evolve"
+	case "system":
+		if source == "update" {
+			return "update"
+		}
+		return ""
 	default:
 		return ""
 	}

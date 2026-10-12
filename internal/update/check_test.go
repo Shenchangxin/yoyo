@@ -15,6 +15,9 @@ func TestPublicKeyFromEnv(t *testing.T) {
 	if PublicKeyFromEnv() != nil {
 		t.Fatal("empty env")
 	}
+	if len(PublicKey()) != ed25519.PublicKeySize {
+		t.Fatal("embedded key")
+	}
 	pub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -31,13 +34,13 @@ func TestCheckAndStage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := []byte(`{"version":"0.2.0","channel":"nightly","sha256":"abc"}`)
+	payload := []byte(`{"version":"9.0.0","channel":"nightly","sha256":"abc"}`)
 	sig := Sign(priv, payload)
 	res, err := Check(context.Background(), "", payload, sig, pub)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Verified || !res.Newer || res.Manifest.Version != "0.2.0" {
+	if !res.Verified || !res.Newer || res.Manifest.Version != "9.0.0" {
 		t.Fatalf("%+v", res)
 	}
 	bin := []byte("fake-binary")

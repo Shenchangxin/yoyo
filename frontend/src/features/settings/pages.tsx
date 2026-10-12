@@ -441,8 +441,28 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const [applyOpen, setApplyOpen] = useState(false);
   const [level, setLevel] = useState("all");
   const [copiedPath, setCopiedPath] = useState(false);
-  useEffect(() => setUrl(host.cfg.updateUrl), [host.cfg.updateUrl]);
+  const [ota, setOta] = useState<any>(null);
   const channel = host.cfg.updateChannel || "nightly";
+  const phase = String(ota?.phase || "idle");
+  const ready = phase === "ready" || !!ota?.downloaded;
+  const percent = Number(ota?.percent || 0);
+  useEffect(() => setUrl(host.cfg.updateUrl), [host.cfg.updateUrl]);
+  useEffect(() => {
+    let stop = false;
+    void api.updateStatus().then((s) => {
+      if (!stop) setOta(s);
+    }).catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (phase !== "checking" && phase !== "downloading") return;
+    const id = window.setInterval(() => {
+      void api.updateStatus().then(setOta).catch(() => {});
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [phase]);
   const lines = asArray(host.logs?.lines);
   const diagnostic = lines.length
     ? lines
@@ -472,22 +492,36 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
         title={copy.settings.sections.advancedUpdates}
         footnote={copy.settings.updateUrlDesc}
         actions={
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={async () => {
-              const u = await host.onCheckUpdate();
-              if (u?.error) toast.error(String(u.error));
-              else if (u?.downloaded) toast.success(`downloaded ${u.size || 0} bytes`);
-              else if (u?.newer) toast.message("newer build verified — apply staged");
-              else toast.message(u?.staged ? `staged ${u.size || 0} bytes` : copy.settings.noStaged);
-            }}
-          >
-            {copy.settings.checkUpdate}
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                const u = await host.onCheckUpdate();
+                setOta(u);
+                if (u?.error) toast.error(String(u.error));
+                else if (u?.downloaded || u?.phase === "ready") toast.success(copy.settings.updateReady);
+                else if (u?.newer || u?.phase === "downloading") toast.message(copy.settings.downloading);
+                else toast.message(copy.settings.upToDate);
+              }}
+            >
+              {copy.settings.checkUpdate}
+            </Button>
+            {ready ? (
+              <Button size="sm" variant="lift" onClick={() => setApplyOpen(true)}>
+                {copy.settings.applyUpdate}
+              </Button>
+            ) : null}
+          </div>
         }
       >
         <SettingValueRow title={copy.settings.currentVersion} value={host.health.version} mono />
+        <SettingRow title={copy.settings.autoCheck} description={copy.settings.autoCheckDesc}>
+          <Switch
+            checked={host.cfg.updateAutoCheck !== false}
+            onCheckedChange={(v) => void host.patch({ updateAutoCheck: v })}
+          />
+        </SettingRow>
         <SettingRow title={copy.settings.channel}>
           <SettingSegmented
             id="channel"
@@ -501,10 +535,21 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
             onChange={(v) => void host.patch({ updateChannel: v })}
           />
         </SettingRow>
+        {ota?.last_check ? <SettingValueRow title={copy.settings.lastCheck} value={String(ota.last_check)} mono /> : null}
+        {phase === "downloading" || phase === "checking" ? (
+          <SettingValueRow
+            title={copy.settings.installProgress}
+            value={phase === "checking" ? copy.settings.checking : `${percent}%`}
+            mono
+          />
+        ) : null}
+        {ready ? <SettingValueRow title={copy.settings.updateReady} value={String(ota?.manifest?.version || ota?.asset?.filename || "")} mono /> : null}
+        {ota?.error ? <SettingValueRow title="Error" value={String(ota.error)} /> : null}
         <SettingRow title={copy.settings.updateUrl} border={false}>
           <Input
             aria-label={copy.settings.updateUrl}
             className={cn(CONTROL_LG, "font-mono")}
+            placeholder={String(ota?.feed || "")}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onBlur={() => {

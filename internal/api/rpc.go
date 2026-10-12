@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -22,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
+	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
 type RPCRequest struct {
@@ -974,19 +974,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		_ = json.Unmarshal(params, &p)
 		return map[string]any{"ok": true}, a.ReverseWorkspaceHunks(p.Workspace, p.IDs, p.Snapshot)
 	case "update.status":
-		p := a.StagingPath()
-		st, err := os.Stat(p)
-		size := int64(0)
-		if err == nil {
-			size = st.Size()
-		}
-		return map[string]any{"staging": p, "exists": err == nil, "size": size}, nil
+		return a.UpdateStatus(), nil
 	case "update.apply":
 		var p struct {
 			Exe string `json:"exe"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return map[string]any{"ok": true}, a.ApplyStagedUpdate(p.Exe)
+		return applyUpdateResult(a.ApplyStagedUpdate(p.Exe))
 	case "inbox.list":
 		return a.InboxList(), nil
 	case "inbox.dismiss":
@@ -1462,6 +1456,19 @@ func decodeSkinB64(s string) ([]byte, error) {
 
 func encodeSkinB64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+func applyUpdateResult(err error) (map[string]any, error) {
+	if err == nil {
+		return map[string]any{"ok": true}, nil
+	}
+	if errors.Is(err, update.ErrQuitNeeded) {
+		return map[string]any{"ok": true, "quit": true}, nil
+	}
+	if errors.Is(err, update.ErrOpenedPackage) {
+		return map[string]any{"ok": true, "opened": true}, nil
+	}
+	return nil, err
 }
 
 func asMap(params json.RawMessage) map[string]any {

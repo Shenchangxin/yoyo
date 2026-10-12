@@ -35,6 +35,7 @@ func fail(err error) {
 }
 
 func main() {
+	_ = os.Setenv("YOYO_DESKTOP", "1")
 	evals := resolveEvals()
 	home := os.Getenv("YOYO_HOME")
 	if os.Getenv("YOYO_WORKER") == "1" {

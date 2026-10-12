@@ -532,12 +532,19 @@ func TestCheckUpdateNoURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	out := a.CheckUpdate()
+	out := a.UpdateStatus()
 	if out["staged"] != false {
 		t.Fatalf("%+v", out)
 	}
 	if _, ok := out["staging"]; !ok {
 		t.Fatal("missing staging")
+	}
+	feed, _ := out["feed"].(string)
+	if feed == "" {
+		t.Fatal("missing default feed")
+	}
+	if out["auto_check"] != true {
+		t.Fatalf("auto_check %+v", out["auto_check"])
 	}
 }
 

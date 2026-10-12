@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,32 +11,44 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
-const EnvPubkey = "YOYO_UPDATE_PUBKEY"
+const maxManifestBytes = 2 << 20
 
-// PublicKeyFromEnv reads a hex or standard-base64 ed25519 public key.
-// Empty means check-only against already-staged bytes; never apply automatically.
-func PublicKeyFromEnv() ed25519.PublicKey {
-	raw := strings.TrimSpace(os.Getenv(EnvPubkey))
-	if raw == "" {
-		return nil
-	}
-	if b, err := hex.DecodeString(raw); err == nil && len(b) == ed25519.PublicKeySize {
-		return ed25519.PublicKey(b)
-	}
-	if b, err := base64.StdEncoding.DecodeString(raw); err == nil && len(b) == ed25519.PublicKeySize {
-		return ed25519.PublicKey(b)
-	}
-	return nil
+var (
+	httpMu     sync.Mutex
+	httpClient = defaultHTTPClient()
+)
+
+func defaultHTTPClient() *http.Client {
+	// Installers can be hundreds of MB; JSON checks rely on the request context.
+	return &http.Client{Timeout: 30 * time.Minute}
 }
 
-// CheckResult is advisory. Applying a binary is a human/L3 action; this
-// package never overwrites the running executable.
+func SetHTTPClient(c *http.Client) {
+	httpMu.Lock()
+	defer httpMu.Unlock()
+	if c == nil {
+		httpClient = defaultHTTPClient()
+		return
+	}
+	httpClient = c
+}
+
+func client() *http.Client {
+	httpMu.Lock()
+	defer httpMu.Unlock()
+	return httpClient
+}
+
+// CheckResult is advisory. Applying a package is a human/L3 action; this
+// package never overwrites the running executable on its own.
 type CheckResult struct {
 	Current  Status   `json:"current"`
 	Manifest Manifest `json:"manifest"`
+	Asset    Asset    `json:"asset,omitempty"`
 	Newer    bool     `json:"newer"`
 	Verified bool     `json:"verified"`
 }
@@ -46,13 +57,13 @@ func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed2
 	res := CheckResult{Current: Current("")}
 	var err error
 	if len(payload) == 0 {
-		payload, err = httpGet(ctx, manifestURL)
+		payload, err = httpGet(ctx, manifestURL, true)
 		if err != nil {
 			return res, err
 		}
 	}
 	if len(sig) == 0 && manifestURL != "" {
-		sig, err = httpGet(ctx, strings.TrimRight(manifestURL, "/")+".sig")
+		sig, err = httpGet(ctx, SigURL(manifestURL), true)
 		if err != nil {
 			return res, err
 		}
@@ -66,7 +77,10 @@ func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed2
 	}
 	res.Manifest = m
 	res.Verified = true
-	res.Newer = m.Version != "" && m.Version != res.Current.Version
+	res.Newer = IsNewer(m.Version, res.Current.Version)
+	if asset, ok := m.SelectAsset(DesktopOS()); ok {
+		res.Asset = asset
+	}
 	return res, nil
 }
 
@@ -80,31 +94,42 @@ func Stage(destDir string, bin []byte, wantSHA string) (string, error) {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", err
 	}
-	path := filepath.Join(destDir, "yoyo.staging")
+	path := filepath.Join(destDir, StagingName())
 	if err := os.WriteFile(path, bin, 0o755); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-func httpGet(ctx context.Context, url string) ([]byte, error) {
-	return Fetch(ctx, url, 1<<20)
+func httpGet(ctx context.Context, rawURL string, nocache bool) ([]byte, error) {
+	return Fetch(ctx, rawURL, maxManifestBytes, nocache)
 }
 
-// Fetch downloads url up to max bytes. It never writes argv[0].
-func Fetch(ctx context.Context, url string, max int64) ([]byte, error) {
-	if url == "" {
+// Fetch downloads url up to max bytes into memory. It never writes argv[0].
+// ModelScope resolve URLs fall back to the dataset API on failure.
+func Fetch(ctx context.Context, rawURL string, max int64, nocache bool) ([]byte, error) {
+	if rawURL == "" {
 		return nil, fmt.Errorf("update: empty url")
 	}
 	if max <= 0 {
 		max = 1 << 20
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
+	var last error
+	for _, u := range candidateURLs(rawURL) {
+		b, err := fetchOnce(ctx, u, max, nocache)
+		if err == nil {
+			return b, nil
+		}
+		last = err
 	}
-	client := &http.Client{Timeout: 45 * time.Second}
-	resp, err := client.Do(req)
+	if last == nil {
+		last = fmt.Errorf("update: fetch failed")
+	}
+	return nil, last
+}
+
+func fetchOnce(ctx context.Context, rawURL string, max int64, nocache bool) ([]byte, error) {
+	resp, err := doGET(ctx, rawURL, nocache, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -120,4 +145,22 @@ func Fetch(ctx context.Context, url string, max int64) ([]byte, error) {
 		return nil, fmt.Errorf("update: payload too large")
 	}
 	return b, nil
+}
+
+func doGET(ctx context.Context, rawURL string, nocache bool, start int64) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", UpdaterUA)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Referer", UpdaterReferer)
+	if nocache {
+		req.Header.Set("Cache-Control", "no-cache")
+		req.Header.Set("Pragma", "no-cache")
+	}
+	if start > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", start))
+	}
+	return client().Do(req)
 }

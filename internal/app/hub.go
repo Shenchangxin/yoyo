@@ -302,6 +302,8 @@ func keepUnderBackpressure(ev trace.Event) bool {
 	switch ev.Type {
 	case trace.TypeTurnEnd, trace.TypeError, trace.TypeApproval, trace.TypeUser, trace.TypeInject:
 		return true
+	case trace.TypeSystem:
+		return ev.Source == "update"
 	default:
 		return false
 	}
