@@ -1,19 +1,15 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/computeruse"
+	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/connector"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/expert"
@@ -209,8 +205,10 @@ func (a *App) searchAPI(query string) (string, error) {
 		keyName = "search"
 	}
 	key, _ := a.Vault.Lease(keyName)
+	var searchConn connection.Connection
 	if a.Video != nil && a.Video.Conn != nil {
 		if c, err := a.Video.Conn.Active("search", ""); err == nil {
+			searchConn = c
 			if ep := strings.TrimSpace(c.Endpoint); ep != "" {
 				endpoint = ep
 			}
@@ -219,44 +217,17 @@ func (a *App) searchAPI(query string) (string, error) {
 			}
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if searchConn.ID != "" && strings.TrimSpace(searchConn.Endpoint) != "" {
+		return connection.QuerySearch(ctx, searchConn, key, query)
+	}
 	if endpoint == "" {
 		return "", fmt.Errorf("no search_url")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	if strings.Contains(endpoint, "{q}") {
-		u := strings.ReplaceAll(endpoint, "{q}", url.QueryEscape(query))
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			return "", err
-		}
-		if key != "" {
-			req.Header.Set("Authorization", "Bearer "+key)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
-		return string(b), nil
-	}
-	payload, _ := json.Marshal(map[string]any{"query": query, "q": query})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
-	return string(b), nil
+	searchConn.Endpoint = endpoint
+	searchConn.Protocol = "search"
+	return connection.QuerySearch(ctx, searchConn, key, query)
 }
 
 func (a *App) IsolationReport() map[string]any {

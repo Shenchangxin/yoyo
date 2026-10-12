@@ -10,6 +10,7 @@ import {
   MessageSquarePlus,
   Pause,
   PanelsTopLeft,
+  PenLine,
   Puzzle,
   Search,
   Settings,
@@ -125,6 +126,10 @@ export function CommandPalette(props: {
                 <Command.Item data-testid="palette-video-create" value={`${copy.palette.videoCreate} create generation`} onSelect={() => { useUI.getState().openVideoPane("create"); props.onClose(); }}>
                   <Images className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoCreate}
+                </Command.Item>
+                <Command.Item data-testid="palette-video-studio" value={`${copy.palette.videoStudio} studio shorts 短片 trends topics hotlist 热榜`} onSelect={() => { useUI.getState().openStudioDesk(); props.onClose(); }}>
+                  <PenLine className="size-4 text-muted" aria-hidden />
+                  {copy.palette.videoStudio}
                 </Command.Item>
                 <Command.Item data-testid="palette-video-drama" value={`${copy.palette.videoDrama} drama studio episode`} onSelect={() => { useUI.getState().openVideoPane("drama"); props.onClose(); }}>
                   <Clapperboard className="size-4 text-muted" aria-hidden />

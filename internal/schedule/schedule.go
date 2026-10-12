@@ -28,6 +28,9 @@ type Job struct {
 	Workspace string    `json:"workspace,omitempty"`
 	Harness   string    `json:"harness,omitempty"`
 	SessionID string    `json:"session_id,omitempty"`
+	Channel   string    `json:"channel,omitempty"`
+	TopicID   string    `json:"topic_id,omitempty"`
+	StudioID  string    `json:"studio_id,omitempty"`
 	Enabled   bool      `json:"enabled"`
 	Isolate   bool      `json:"isolate"`
 	Status    string    `json:"status,omitempty"`
@@ -69,6 +72,10 @@ func (s *Service) Create(j Job) Job {
 		if d, err := time.ParseDuration(j.Spec); err == nil && d < time.Minute {
 			j.Spec = "1m"
 		}
+	} else if IsStudioJob(j) {
+		// Shorts jobs stay on the video lane. Copying the agent workspace
+		// into a temp worktree hides studio_* tools and trips the shell gate.
+		j.Isolate = false
 	} else {
 		j.Isolate = true
 	}
@@ -245,6 +252,18 @@ func due(j Job, now time.Time) bool {
 	default:
 		return false
 	}
+}
+
+// IsStudioJob reports shorts/topic jobs that must stay on the video lane.
+func IsStudioJob(j Job) bool {
+	if strings.EqualFold(strings.TrimSpace(j.Channel), "video") {
+		return true
+	}
+	if strings.TrimSpace(j.StudioID) != "" || strings.TrimSpace(j.TopicID) != "" {
+		return true
+	}
+	p := strings.TrimSpace(j.Prompt)
+	return strings.HasPrefix(p, "做成短片")
 }
 
 func cronDue(spec string, last, now time.Time) bool {

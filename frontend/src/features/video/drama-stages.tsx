@@ -23,6 +23,7 @@ import {
   type Episode,
   type EpisodePlan,
   type Job,
+  styleLabel,
   type Shot,
 } from "./drama-lib";
 
@@ -125,7 +126,7 @@ export function GenerationSettings(props: {
       <summary className="text-[11px] font-medium text-muted">{c.genSettings}</summary>
       <div className="mt-2 grid gap-1.5">
         <select className={cn(field, "h-7")} value={props.dramaStyle || "3d"} aria-label={c.style} onChange={(e) => props.onStyle(e.target.value)}>
-          {props.styles.map((s) => <option key={s.value} value={s.value}>{s.name}</option>)}
+          {props.styles.map((s) => <option key={s.value} value={s.value}>{styleLabel(c.styleNames, s.value, s.name)}</option>)}
         </select>
         <ProviderModelSelect kind="image" label={c.imageProvider} providers={props.providers} providerId={ep.image_provider_id || ""} model={ep.image_model || ""} onChange={(id, model) => props.onEpisode({ image_provider_id: id, image_model: model })} />
         <ProviderModelSelect kind="video" label={c.videoProvider} providers={props.providers} providerId={ep.video_provider_id || ""} model={ep.video_model || ""} onChange={(id, model) => props.onEpisode({ video_provider_id: id, video_model: model })} />

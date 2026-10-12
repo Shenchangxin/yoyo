@@ -2,11 +2,11 @@ export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
 export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages";
 export type VideoMode = "drama" | "canvas" | "creative";
-export type VideoPane = "chat" | "create" | "drama" | "canvas" | "assets" | "skills" | "plugins" | "tasks";
+export type VideoPane = "chat" | "create" | "studio" | "drama" | "canvas" | "assets" | "skills" | "plugins" | "tasks";
 export type CanvasFocus = "library" | "editor";
 
 export function isYingcePane(pane: VideoPane): boolean {
-  return pane !== "chat";
+  return pane !== "chat" && pane !== "studio";
 }
 
 export function isCanvasWorldPane(pane: VideoPane): boolean {
@@ -15,6 +15,7 @@ export function isCanvasWorldPane(pane: VideoPane): boolean {
 
 export function yingcePathForPane(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus): string {
   if (pane === "create") return "/create";
+  if (pane === "studio") return "/create";
   if (pane === "drama") return "/drama";
   if (pane === "assets") return "/assets";
   if (pane === "skills") return "/skills";
@@ -55,6 +56,7 @@ export function videoRouteFromLocation(to: string): VideoRouteTarget | null {
   let canvasFocus: CanvasFocus | undefined;
   let projectId = "";
   if (path === "/" || path === "/create") pane = "create";
+  else if (path === "/studio") pane = "studio";
   else if (parts[0] === "canvas" && parts[1]) {
     pane = "canvas";
     canvasFocus = "editor";
@@ -101,12 +103,13 @@ export type AuthMode = "default" | "auto_edit" | "full" | "ask";
 export type ThreadChannel = "agent" | "video";
 
 export type VideoProject = {
-  kind: "canvas" | "drama";
+  kind: "canvas" | "drama" | "studio";
   id: string;
   title: string;
   sessionId?: string;
   episodeId?: string;
   updatedAt?: string;
+  status?: string;
 };
 
 export type Profile = {

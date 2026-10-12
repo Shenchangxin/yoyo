@@ -20,6 +20,34 @@ func TestJobsIsolateByDefault(t *testing.T) {
 	}
 }
 
+func TestVideoChannelJobDoesNotIsolate(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := s.Create(Job{Kind: KindOnce, Spec: time.Now().UTC().Add(time.Hour).Format(time.RFC3339), Prompt: "做成短片：x", Channel: "video", SessionID: "vid-1", Isolate: true})
+	if j.Isolate {
+		t.Fatal("video shorts jobs must not isolate")
+	}
+	if j.Channel != "video" || j.SessionID != "vid-1" {
+		t.Fatalf("%+v", j)
+	}
+}
+
+func TestLegacyShortsPromptDoesNotIsolate(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := s.Create(Job{Kind: KindOnce, Spec: time.Now().UTC().Add(time.Hour).Format(time.RFC3339), Prompt: "做成短片：爱用洗衣凝珠的人天塌了", Isolate: true})
+	if j.Isolate {
+		t.Fatal("legacy shorts prompt must not isolate")
+	}
+	if !IsStudioJob(j) {
+		t.Fatal("legacy shorts prompt must route to studio")
+	}
+}
+
 func TestFollowStaysInSessionAndDoesNotIsolate(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

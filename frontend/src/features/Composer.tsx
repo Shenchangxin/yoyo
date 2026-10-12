@@ -25,6 +25,7 @@ import type { Copy } from "../lib/copy";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
 import { DramaProjectChip } from "./video/DramaProjectChip";
 import { CanvasProjectChip } from "./video/CanvasProjectChip";
+import { StudioDeskChip } from "./video/StudioDeskChip";
 import {
   composeDraft,
   isCompleteMention,
@@ -492,6 +493,7 @@ export function Composer(props: {
                 <VideoModeSwitch disabled={props.disabled} />
                 {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
                 {videoMode === "canvas" ? <CanvasProjectChip disabled={props.disabled} /> : null}
+                {videoMode === "creative" ? <StudioDeskChip disabled={props.disabled} /> : null}
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}

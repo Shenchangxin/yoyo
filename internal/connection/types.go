@@ -134,7 +134,18 @@ func InferProtocol(vendor, cap string) string {
 		}
 		return "s3"
 	case CapSearch:
-		return "search"
+		switch v {
+		case "tavily":
+			return "tavily"
+		case "brave":
+			return "brave"
+		case "serper":
+			return "serper"
+		case "bocha":
+			return "bocha"
+		default:
+			return "search"
+		}
 	case CapOTEL:
 		return "otel"
 	case CapMCP:

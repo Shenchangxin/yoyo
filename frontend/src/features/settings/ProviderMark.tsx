@@ -52,6 +52,10 @@ const ALIAS: Record<string, string> = {
   azureai: "azure",
   comfyui: "runninghub",
   openai_compat: "custom",
+  tavily: "search",
+  brave: "search",
+  serper: "search",
+  bocha: "search",
 };
 
 const MARK: Record<string, Mark> = {

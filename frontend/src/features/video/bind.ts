@@ -1,6 +1,6 @@
 import * as api from "../../lib/client";
 import { looksLikeSeries } from "./drama-lib";
-import { useDramaSelection } from "./workshop-store";
+import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 
 /** Bind this video conversation to the workshop episode, if one is selected.
  *  Does not create a series — the project (drama/episode) is independent of
@@ -18,7 +18,7 @@ export async function bindVideoThread(sessionId: string): Promise<void> {
 export async function ensureDrama(opts: { title?: string; ratio?: string } = {}) {
   const sel = useDramaSelection.getState();
   if (sel.dramaId) return sel.dramaId;
-  const d = await api.video.createDrama({ title: opts.title || "", style: "3d", aspect_ratio: opts.ratio || "9:16" });
+  const d = await api.video.createDrama({ title: opts.title || "", style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
   sel.setDramaId(d.id);
   sel.setEpisodeId("");
   return d.id as string;
@@ -40,7 +40,7 @@ export async function ensureDramaEpisode(opts: { title: string; episodeTitle: st
     sel.setEpisodeId(ep.id);
     return ep.id;
   }
-  const d = await api.video.createDrama({ title: opts.title, style: "3d", aspect_ratio: opts.ratio || "9:16" });
+  const d = await api.video.createDrama({ title: opts.title, style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
   sel.setDramaId(d.id);
   const ep = await api.video.createEpisode(d.id, opts.episodeTitle, opts.content || "");
   sel.setEpisodeId(ep.id);
@@ -61,7 +61,7 @@ export async function ingestSeriesText(text: string, title = "") {
   let dramaId = sel.dramaId;
   const occupied = Array.isArray(eps) && eps.length > 0 && plan?.status !== "draft";
   if (!dramaId || plan?.status === "committed" || occupied) {
-    const d = await api.video.createDrama({ title: title || guessSeriesTitle(text), style: "3d", aspect_ratio: "9:16" });
+    const d = await api.video.createDrama({ title: title || guessSeriesTitle(text), style: defaultDramaStyle(), aspect_ratio: "9:16" });
     sel.setDramaId(d.id);
     sel.setEpisodeId("");
     dramaId = d.id;
@@ -78,7 +78,7 @@ export async function ingestSeriesFile(path: string) {
   let dramaId = sel.dramaId;
   const occupied = Array.isArray(eps) && eps.length > 0 && plan?.status !== "draft";
   if (!dramaId || plan?.status === "committed" || occupied) {
-    const d = await api.video.createDrama({ title: "", style: "3d", aspect_ratio: "9:16" });
+    const d = await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
     sel.setDramaId(d.id);
     sel.setEpisodeId("");
     dramaId = d.id;

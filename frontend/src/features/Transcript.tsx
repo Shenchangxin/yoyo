@@ -338,6 +338,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
   const videoing = surface === "video";
+  const openStudioDesk = useUI((s) => s.openStudioDesk);
   const ready = !videoing
     ? copy.transcript.ready
     : videoMode === "canvas"
@@ -376,6 +377,17 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         ))}
       </p>
       <div className="mt-7 flex flex-wrap gap-2">
+        {videoing && videoMode === "creative" ? (
+          <button
+            type="button"
+            data-testid="studio-open-desk-empty"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[13px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
+            onClick={() => openStudioDesk()}
+          >
+            {copy.video.shellStudio}
+            <ArrowUpRight className="size-3 text-muted/60" aria-hidden />
+          </button>
+        ) : null}
         {starters.map((s, i) => (
           <button
             type="button"

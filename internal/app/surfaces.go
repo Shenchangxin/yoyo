@@ -37,9 +37,9 @@ func (a *App) SetPaused(paused bool) error {
 	}
 	if a.Hub != nil {
 		a.Hub.Publish(trace.Event{
-			TS:     time.Now().UTC(),
-			Type:   trace.TypePause,
-			Source: "app",
+			TS:      time.Now().UTC(),
+			Type:    trace.TypePause,
+			Source:  "app",
 			Payload: map[string]any{"paused": paused},
 		})
 	}
@@ -275,6 +275,10 @@ func (a *App) runScheduledJob(j schedule.Job) {
 		if a.Schedule != nil {
 			a.Schedule.Record(j.ID, nil)
 		}
+		return
+	}
+	if schedule.IsStudioJob(j) {
+		a.runStudioJob(j)
 		return
 	}
 	a.runIsolatedJob(j)

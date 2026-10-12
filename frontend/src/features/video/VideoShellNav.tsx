@@ -1,4 +1,4 @@
-import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle } from "lucide-react";
+import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
 import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
@@ -6,8 +6,9 @@ import { useUI } from "../../lib/store";
 import type { VideoPane } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 
-const PRIMARY: { id: Extract<VideoPane, "create" | "drama" | "canvas">; icon: typeof Clapperboard }[] = [
+const PRIMARY: { id: Extract<VideoPane, "create" | "studio" | "drama" | "canvas">; icon: typeof Clapperboard }[] = [
   { id: "create", icon: Images },
+  { id: "studio", icon: Sparkles },
   { id: "drama", icon: Clapperboard },
   { id: "canvas", icon: PanelsTopLeft },
 ];
@@ -28,6 +29,7 @@ export function VideoShellNav() {
   const openVideoPane = useUI((s) => s.openVideoPane);
   const labels: Record<(typeof PRIMARY)[number]["id"] | (typeof LIBRARY)[number]["id"], string> = {
     create: copy.video.shellCreate,
+    studio: copy.video.shellStudio,
     drama: copy.video.shellDrama,
     canvas: copy.video.shellCanvas,
     assets: copy.video.shellAssets,
@@ -38,6 +40,7 @@ export function VideoShellNav() {
 
   function active(id: VideoPane) {
     if (id === "drama") return pane === "drama" || videoBoard;
+    if (id === "studio") return pane === "studio";
     return pane === id;
   }
 

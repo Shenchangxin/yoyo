@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Clapperboard, LayoutGrid, PenLine } from "lucide-react";
+import { Check, ChevronDown, Clapperboard, LayoutGrid, Sparkles } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
@@ -8,14 +8,15 @@ import type { VideoMode } from "../../lib/protocol";
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
-export function VideoModeSwitch(props: { disabled?: boolean }) {
+export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | "bottom" }) {
   const copy = useCopy();
   const mode = useUI((s) => s.videoMode);
   const setMode = useUI((s) => s.setVideoMode);
+  const openStudioDesk = useUI((s) => s.openStudioDesk);
   const modes: { id: VideoMode; label: string; hint: string; icon: typeof Clapperboard; ready: boolean }[] = [
     { id: "drama", label: copy.video.drama, hint: copy.video.dramaHint, icon: Clapperboard, ready: true },
     { id: "canvas", label: copy.video.canvas, hint: copy.video.canvasHint, icon: LayoutGrid, ready: true },
-    { id: "creative", label: copy.video.creative, hint: copy.video.creativeHint, icon: PenLine, ready: false },
+    { id: "creative", label: copy.video.creative, hint: copy.video.creativeHint, icon: Sparkles, ready: true },
   ];
   const current = modes.find((m) => m.id === mode) || modes[0];
   const Icon = current.icon;
@@ -35,13 +36,13 @@ export function VideoModeSwitch(props: { disabled?: boolean }) {
           <ChevronDown className="size-3 shrink-0 opacity-70" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="w-64">
+      <DropdownMenuContent align="start" side={props.menuSide || "top"} className="w-64">
         {modes.map((m) => (
           <DropdownMenuItem
             key={m.id}
             className="items-start"
             data-testid={`video-mode-${m.id}`}
-            onSelect={() => setMode(m.id)}
+            onSelect={() => (m.id === "creative" ? openStudioDesk() : setMode(m.id))}
           >
             <m.icon className="mt-0.5 size-3.5 shrink-0 opacity-70" aria-hidden />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">

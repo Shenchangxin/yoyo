@@ -19,6 +19,12 @@ test("an existing-canvas agent link stays on the library and keeps agent=1", () 
   assert.equal(yingceHref("canvas", "old-board", "library", route?.entry), "/canvas?agent=1");
 });
 
+test("studio is a first-class video pane, not a yingce route", () => {
+  const route = videoRouteFromLocation("/studio");
+  assert.equal(route?.pane, "studio");
+  assert.equal(yingceHref("studio", "", "library", ""), "/create");
+});
+
 test("switching back to create drops a leftover canvas entry", () => {
   assert.equal(yingceHref("create", "board", "editor", "/canvas/board?agent=1"), "/create");
 });

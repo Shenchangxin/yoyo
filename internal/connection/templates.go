@@ -114,6 +114,26 @@ func Templates() []Connection {
 			Active: true,
 		},
 		{
+			Name: "Tavily", Vendor: "tavily", Protocol: "tavily",
+			Endpoint: "https://api.tavily.com/search", Capabilities: []string{CapSearch},
+			Active: true, Priority: 30,
+		},
+		{
+			Name: "Brave Search", Vendor: "brave", Protocol: "brave",
+			Endpoint: "https://api.search.brave.com/res/v1/web/search", Capabilities: []string{CapSearch},
+			Active: true, Priority: 20,
+		},
+		{
+			Name: "Serper", Vendor: "serper", Protocol: "serper",
+			Endpoint: "https://google.serper.dev/search", Capabilities: []string{CapSearch},
+			Active: true, Priority: 15,
+		},
+		{
+			Name: "Bocha", Vendor: "bocha", Protocol: "bocha",
+			Endpoint: "https://api.bocha.cn/v1/web-search", Capabilities: []string{CapSearch},
+			Active: true, Priority: 10,
+		},
+		{
 			Name: "OpenTelemetry", Vendor: "otel", Protocol: "otel",
 			Endpoint: "", Capabilities: []string{CapOTEL},
 			Active: true,

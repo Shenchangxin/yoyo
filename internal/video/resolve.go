@@ -229,5 +229,11 @@ func (e *Engine) SettingsMap() map[string]string {
 	if _, ok := out["content_language"]; !ok {
 		out["content_language"] = "zh"
 	}
+	if _, ok := out["studio_aspect"]; !ok {
+		out["studio_aspect"] = "9:16"
+	}
+	if _, ok := out["studio_publish_platform"]; !ok {
+		out["studio_publish_platform"] = "douyin"
+	}
 	return out
 }

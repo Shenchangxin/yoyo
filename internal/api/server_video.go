@@ -45,6 +45,10 @@ func videoHTTPMethod(rest, httpMethod string) string {
 		return "video.status"
 	case "ffmpeg/install":
 		return "video.ffmpeg.install"
+	case "studio/remotion/status":
+		return "video.studio.remotion.status"
+	case "studio/remotion/install":
+		return "video.studio.remotion.install"
 	case "modes":
 		return "video.modes"
 	case "templates":

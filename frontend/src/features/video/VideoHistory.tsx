@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Clapperboard, LayoutGrid, Plus } from "lucide-react";
+import { Clapperboard, LayoutGrid, Plus, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -13,6 +13,7 @@ import type { VideoProject } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
 import { shownSeriesTitle } from "./drama-lib";
+import { defaultDramaStyle } from "./workshop-store";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
@@ -20,6 +21,7 @@ export function VideoHistory(props: {
   projects: VideoProject[];
   canvasProjectId?: string;
   dramaId?: string;
+  studioId?: string;
   sessionId?: string;
   onOpenProject?: (p: VideoProject) => void;
   onRefresh?: () => void;
@@ -31,6 +33,7 @@ export function VideoHistory(props: {
   const [busy, setBusy] = useState("");
   const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
   const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
+  const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
 
   useEffect(() => {
     props.onRefresh?.();
@@ -53,10 +56,25 @@ export function VideoHistory(props: {
     }
   }
 
+  async function newStudio() {
+    setBusy("studio");
+    try {
+      const cfg = await api.video.settings().catch(() => ({} as Record<string, string>));
+      const aspect = String(cfg?.studio_aspect || "9:16");
+      const p = await api.video.createStudio({ title: copy.video.studio.newProject, aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16" });
+      if (p?.id) props.onOpenProject?.({ kind: "studio", id: p.id, title: p.title || copy.video.studio.newProject });
+      props.onRefresh?.();
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function newDrama() {
     setBusy("drama");
     try {
-      await api.video.createDrama({ title: "", style: "3d", aspect_ratio: "9:16" });
+      await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
       props.onRefresh?.();
     } catch (e) {
       toast.error(api.errMessage(e));
@@ -134,6 +152,25 @@ export function VideoHistory(props: {
               <EmptyState icon={<Clapperboard className="size-5" />} title={copy.video.empty} body={copy.video.emptyHint} />
             )}
           </section>
+          <section className="mb-6">
+            <div className="relative mb-2 flex items-center gap-2">
+              <h2 className="text-[12px] font-medium text-muted">{copy.video.shellStudio}</h2>
+              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "studio"} data-testid="video-history-new-studio" onClick={() => void newStudio()}>
+                <Plus className="size-3.5" aria-hidden />
+                {copy.video.newStudio}
+              </Button>
+              {busy === "studio" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
+            </div>
+            {studios.length ? (
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                {studios.map((p) => (
+                  <HistoryRow key={`studio-${p.id}`} project={p} active={p.id === props.studioId} fallback={copy.video.studio.newProject} onSelect={() => props.onOpenProject?.(p)} />
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<Sparkles className="size-5" />} title={copy.video.creative} body={copy.video.historyEmptyStudio} />
+            )}
+          </section>
           <section>
             <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellCanvas}</h2>
@@ -161,7 +198,7 @@ export function VideoHistory(props: {
 
 function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void }) {
   const p = props.project;
-  const Icon = p.kind === "drama" ? Clapperboard : LayoutGrid;
+  const Icon = p.kind === "drama" ? Clapperboard : p.kind === "studio" ? Sparkles : LayoutGrid;
   return (
     <li>
       <button

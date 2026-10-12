@@ -247,6 +247,29 @@ export function firstLook(bundle: Bundle | null): { kind: string; id: string } |
   return null;
 }
 
+export const PRESET_STYLES = [
+  { value: "3d", name: "3D cinematic" },
+  { value: "anime", name: "Anime" },
+  { value: "ghibli", name: "Ghibli" },
+  { value: "watercolor", name: "Watercolor" },
+  { value: "comic", name: "Graphic novel" },
+  { value: "guofeng", name: "Guofeng 2.5D" },
+  { value: "webtoon", name: "Webtoon" },
+  { value: "noir", name: "Noir ink" },
+  { value: "ink", name: "Ink wash" },
+  { value: "clay", name: "Stop-motion clay" },
+  { value: "painterly", name: "Painterly" },
+  { value: "cyber", name: "Neon noir" },
+] as const;
+
+export function styleLabel(names: object | undefined, value: string, fallback = "") {
+  if (names && value in names) {
+    const label = (names as Record<string, string>)[value];
+    if (label) return label;
+  }
+  return fallback || value;
+}
+
 export function looksLikeSeries(text: string) {
   const n = Array.from((text || "").trim()).length;
   if (n >= 2000) return true;
