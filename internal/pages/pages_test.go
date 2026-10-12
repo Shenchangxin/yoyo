@@ -82,6 +82,163 @@ func TestReviewIdempotentAndApprove(t *testing.T) {
 	}
 }
 
+func TestPathTraversalStaysInsideStore(t *testing.T) {
+	root := t.TempDir()
+	s, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg, err := s.Create(Page{ID: "../../evil", SpaceID: "../out", Title: "x", Content: "y"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(pg.ID, "/") || strings.Contains(pg.ID, "..") || strings.Contains(pg.SpaceID, ".") {
+		t.Fatalf("unsanitized %+v", pg)
+	}
+	for _, p := range []string{
+		filepath.Join(filepath.Dir(root), "evil.md"),
+		filepath.Join(root, "..", "evil.md"),
+		filepath.Join(root, "..", "out", "evil.md"),
+	} {
+		if _, err := os.Stat(p); err == nil {
+			t.Fatalf("escaped write %s", p)
+		}
+	}
+	got, err := s.Get(pg.SpaceID, pg.ID)
+	if err != nil || got.Content != "y" {
+		t.Fatalf("inside store %+v %v", got, err)
+	}
+	want := filepath.Join(root, pg.SpaceID, pg.ID+".md")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("missing in-store file %s: %v", want, err)
+	}
+}
+
+func TestSaveClipsBody(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg, err := s.Create(Page{Title: "clip", Content: "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg.Content = strings.Repeat("字", MaxBody+50)
+	saved, err := s.Save(pg, pg.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len([]rune(saved.Content)); n != MaxBody {
+		t.Fatalf("clipped %d", n)
+	}
+}
+
+func TestApproveOverridesStaleRevision(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg, err := s.Create(Page{Title: "A", Content: "one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := s.Propose(Review{ThreadID: "t", ToolCallID: "c", PageID: pg.ID, Title: "A", Content: "two", ExpectedRevision: pg.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg.Content = "library edit"
+	if _, err := s.Save(pg, pg.Revision); err != nil {
+		t.Fatal(err)
+	}
+	out, done, err := s.Decide(rev.ID, rev.Hash, true)
+	if err != nil || done.Status != ReviewSaved {
+		t.Fatalf("approve %v %+v %v", out, done, err)
+	}
+	if out.Content != "two" {
+		t.Fatalf("operator approve should write the draft, got %q", out.Content)
+	}
+}
+
+func TestProposeKeepsReviewIDWhenContentChanges(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1, err := s.Propose(Review{ThreadID: "t1", ToolCallID: "c1", Title: "Note", Content: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := s.Propose(Review{ThreadID: "t1", ToolCallID: "c1", Title: "Note", Content: "hello world"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2.ID != r1.ID {
+		t.Fatalf("review id changed %s -> %s", r1.ID, r2.ID)
+	}
+	if r2.Hash == r1.Hash {
+		t.Fatal("hash should change with content")
+	}
+}
+
+func TestListIncludesPreview(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(Page{Title: "Brief", Content: "alpha beta gamma"}); err != nil {
+		t.Fatal(err)
+	}
+	list := s.List("")
+	if len(list) != 1 || !strings.Contains(list[0].Preview, "alpha beta gamma") {
+		t.Fatalf("preview %+v", list)
+	}
+}
+
+func TestDeletePromotesChildren(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := s.Create(Page{Title: "Parent", Content: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := s.Create(Page{Title: "Child", Content: "c", ParentID: parent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete("", parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get("", parent.ID); err == nil {
+		t.Fatal("parent still present")
+	}
+	got, err := s.Get("", child.ID)
+	if err != nil || got.ParentID != "" {
+		t.Fatalf("child parent %q %v", got.ParentID, err)
+	}
+}
+
+func TestSaveDashClearsParent(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := s.Create(Page{Title: "Parent", Content: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := s.Create(Page{Title: "Child", Content: "c", ParentID: parent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.ParentID = "-"
+	saved, err := s.Save(child, child.Revision)
+	if err != nil || saved.ParentID != "" {
+		t.Fatalf("parent %q %v", saved.ParentID, err)
+	}
+}
+
 func TestAtomicRenameLeavesReadableMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

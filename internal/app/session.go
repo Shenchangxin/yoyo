@@ -739,16 +739,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			}
 			inject += extra
 		}
-		if meta.PageID != "" && a.Pages != nil {
-			if pg, err := a.Pages.Get("", meta.PageID); err == nil {
-				if extra := runtime.PageInject(pg.Title, pg.Content, 3200); extra != "" {
-					if inject != "" {
-						inject += "\n"
-					}
-					inject += extra
-				}
-			}
-		}
 	}
 	userParts := runtime.ImageParts(toolRoot, toRuntimeAtts(atts))
 	profile := ""

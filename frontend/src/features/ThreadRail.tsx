@@ -348,20 +348,20 @@ export function ThreadRail(props: {
           <BookOpen className="size-4" aria-hidden />
         </DockIcon>
         <DockIcon
-          label={copy.rail.pages}
-          hint={copy.rail.pagesHint}
-          on={pagesOn}
-          onClick={props.onPages}
-        >
-          <FileText className="size-4" aria-hidden />
-        </DockIcon>
-        <DockIcon
           label={copy.rail.video}
           hint={copy.rail.videoHint}
           on={videoOn}
           onClick={props.onVideo}
         >
           <Clapperboard className="size-4" aria-hidden />
+        </DockIcon>
+        <DockIcon
+          label={copy.rail.pages}
+          hint={copy.rail.pagesHint}
+          on={pagesOn}
+          onClick={props.onPages}
+        >
+          <FileText className="size-4" aria-hidden />
         </DockIcon>
         <DockIcon
           label={copy.rail.harness}

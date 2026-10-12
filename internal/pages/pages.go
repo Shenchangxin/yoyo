@@ -43,6 +43,7 @@ type Meta struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 	CreatedAt     time.Time `json:"created_at"`
 	SourceSession string    `json:"source_session,omitempty"`
+	Preview       string    `json:"preview,omitempty"`
 }
 
 type ConflictError struct {
@@ -125,6 +126,42 @@ func (s *Store) Get(spaceID, id string) (Page, error) {
 	return s.getLocked(spaceID, id)
 }
 
+func (s *Store) Delete(spaceID, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deleteLocked(spaceID, id)
+}
+
+func (s *Store) deleteLocked(spaceID, id string) error {
+	pg, err := s.getLocked(spaceID, id)
+	if err != nil {
+		return err
+	}
+	path := s.pagePath(pg.SpaceID, pg.ID)
+	if err := s.ensureInsideRoot(path); err != nil {
+		return err
+	}
+	for _, m := range s.loadIndex() {
+		if m.ParentID != pg.ID || m.ID == pg.ID {
+			continue
+		}
+		child, err := s.getLocked(m.SpaceID, m.ID)
+		if err != nil {
+			continue
+		}
+		child.ParentID = pg.ParentID
+		child.UpdatedAt = time.Now().UTC()
+		if err := s.writePage(child); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	_ = s.rebuildIndexLocked()
+	return nil
+}
+
 func (s *Store) Create(p Page) (Page, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,10 +171,15 @@ func (s *Store) Create(p Page) (Page, error) {
 func (s *Store) createLocked(p Page) (Page, error) {
 	now := time.Now().UTC()
 	p.SpaceID = normalizeSpace(p.SpaceID)
+	p.ID = normalizePageID(p.ID)
+	p.ParentID = normalizePageID(p.ParentID)
+	if p.ParentID == "-" || strings.EqualFold(p.ParentID, "root") {
+		p.ParentID = ""
+	}
 	p.Title = clipTitle(p.Title)
 	p.Content = clipBody(p.Content)
 	if p.ID == "" {
-		p.ID = newID()
+		p.ID = s.uniqueID(p.SpaceID)
 	}
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = now
@@ -167,10 +209,20 @@ func (s *Store) saveLocked(p Page, expectedRevision int) (Page, error) {
 	if expectedRevision > 0 && cur.Revision != expectedRevision {
 		return Page{}, &ConflictError{Page: cur}
 	}
-	p.SpaceID = normalizeSpace(firstNonEmpty(p.SpaceID, cur.SpaceID))
+	p.ID = cur.ID
+	p.SpaceID = cur.SpaceID
 	p.Title = clipTitle(firstNonEmpty(p.Title, cur.Title))
-	if p.ParentID == "" {
+	p.Content = clipBody(p.Content)
+	switch {
+	case p.ParentID == "-" || strings.EqualFold(p.ParentID, "root"):
+		p.ParentID = ""
+	case strings.TrimSpace(p.ParentID) == "":
 		p.ParentID = cur.ParentID
+	default:
+		p.ParentID = normalizePageID(p.ParentID)
+		if p.ParentID == p.ID {
+			p.ParentID = cur.ParentID
+		}
 	}
 	p.CreatedAt = cur.CreatedAt
 	p.SourceSession = firstNonEmpty(p.SourceSession, cur.SourceSession)
@@ -186,9 +238,15 @@ func (s *Store) saveLocked(p Page, expectedRevision int) (Page, error) {
 func (s *Store) ApplyApproved(spaceID, pageID, parentID, title, content, sourceSession string, expectedRevision int) (Page, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.applyApprovedLocked(spaceID, pageID, parentID, title, content, sourceSession, expectedRevision)
+}
+
+func (s *Store) applyApprovedLocked(spaceID, pageID, parentID, title, content, sourceSession string, expectedRevision int) (Page, error) {
 	title = clipTitle(title)
 	content = clipBody(content)
 	spaceID = normalizeSpace(spaceID)
+	pageID = normalizePageID(pageID)
+	parentID = normalizePageID(parentID)
 	draft := Page{
 		ID: pageID, SpaceID: spaceID, ParentID: parentID, Title: title,
 		Content: content, SourceSession: sourceSession,
@@ -219,7 +277,7 @@ func (s *Store) RebuildIndex() error {
 }
 
 func (s *Store) getLocked(spaceID, id string) (Page, error) {
-	id = strings.TrimSpace(id)
+	id = normalizePageID(id)
 	if id == "" {
 		return Page{}, fmt.Errorf("page not found")
 	}
@@ -255,15 +313,18 @@ func (s *Store) getLocked(spaceID, id string) (Page, error) {
 }
 
 func (s *Store) writePage(p Page) error {
-	dir := filepath.Join(s.root, p.SpaceID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	path := s.pagePath(p.SpaceID, p.ID)
+	if err := s.ensureInsideRoot(path); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	raw, err := encodePage(p)
 	if err != nil {
 		return err
 	}
-	return atomicWrite(s.pagePath(p.SpaceID, p.ID), raw, 0o644)
+	return atomicWrite(path, raw, 0o644)
 }
 
 func (s *Store) pagePath(spaceID, id string) string {
@@ -393,15 +454,79 @@ func metaOf(p Page) Meta {
 	return Meta{
 		ID: p.ID, SpaceID: p.SpaceID, ParentID: p.ParentID, Title: p.Title,
 		Revision: p.Revision, UpdatedAt: p.UpdatedAt, CreatedAt: p.CreatedAt, SourceSession: p.SourceSession,
+		Preview: previewOf(p.Content),
 	}
 }
 
+func previewOf(content string) string {
+	s := strings.Join(strings.Fields(content), " ")
+	n := utf8.RuneCountInString(s)
+	if n <= 160 {
+		return s
+	}
+	return string([]rune(s)[:160])
+}
+
 func normalizeSpace(id string) string {
-	id = strings.TrimSpace(id)
+	id = sanitizeSegment(id, false)
 	if id == "" {
 		return DefaultSpace
 	}
 	return id
+}
+
+func normalizePageID(id string) string {
+	id = sanitizeSegment(id, true)
+	for strings.Contains(id, "..") {
+		id = strings.ReplaceAll(id, "..", "")
+	}
+	return id
+}
+
+func sanitizeSegment(id string, allowDot bool) string {
+	id = strings.TrimSpace(id)
+	var b strings.Builder
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		case allowDot && r == '.':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func (s *Store) uniqueID(spaceID string) string {
+	for i := 0; i < 8; i++ {
+		id := newID()
+		if i > 0 {
+			id = fmt.Sprintf("%s-%d", id, i)
+		}
+		if _, err := os.Stat(s.pagePath(spaceID, id)); err != nil {
+			return id
+		}
+	}
+	return newID() + "-x"
+}
+
+func (s *Store) ensureInsideRoot(path string) error {
+	root, err := filepath.Abs(s.root)
+	if err != nil {
+		return err
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil {
+		return fmt.Errorf("page path escapes store")
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("page path escapes store")
+	}
+	return nil
 }
 
 func clipTitle(s string) string {

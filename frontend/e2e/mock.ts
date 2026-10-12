@@ -253,8 +253,19 @@ export async function mockApi(
     }
     if (path.endsWith("/api/pages") || path.includes("/api/pages?")) {
       if (method === "POST") {
-        const p = { id: `p${pages.length + 1}`, title: body().title || "Untitled", content: body().content || "", revision: 1, space_id: "home" };
-        pages = [p, ...pages];
+        const b = body();
+        const preview = String(b.content || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        const p = {
+          id: b.id || `p${pages.length + 1}`,
+          title: b.title || "Untitled",
+          content: b.content || "",
+          revision: 1,
+          space_id: b.space_id || "home",
+          parent_id: b.parent_id || "",
+          preview,
+          updated_at: new Date().toISOString(),
+        };
+        pages = [p, ...pages.filter((x) => x.id !== p.id)];
         return route.fulfill({ json: p });
       }
       return route.fulfill({ json: pages });
@@ -263,6 +274,10 @@ export async function mockApi(
       const id = decodeURIComponent(path.split("/api/pages/")[1] || "").split("?")[0];
       if (id === "reviews" || id === "propose") {
         return route.fulfill({ json: id === "reviews" ? [] : { id: "r1", hash: "h1", title: "Note" } });
+      }
+      if (method === "DELETE") {
+        pages = pages.filter((p) => p.id !== id);
+        return route.fulfill({ json: { ok: true } });
       }
       const pg = pages.find((p) => p.id === id) || { id, title: "Untitled", content: "", revision: 1 };
       return route.fulfill({ json: pg });

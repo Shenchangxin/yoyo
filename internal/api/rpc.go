@@ -1330,6 +1330,13 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		}
 		_ = json.Unmarshal(params, &p)
 		return a.PagesSave(p.Page, p.Expected)
+	case "pages.delete":
+		var p struct {
+			ID    string `json:"id"`
+			Space string `json:"space_id"`
+		}
+		_ = json.Unmarshal(params, &p)
+		return map[string]any{"ok": true}, a.PagesDelete(p.Space, p.ID)
 	case "pages.search":
 		var p struct {
 			Q     string `json:"q"`

@@ -78,9 +78,10 @@ export function htmlToMd(html: string): string {
     .replace(/<h3[^>]*>/gi, "### ")
     .replace(/<\/p>/gi, "\n\n")
     .replace(/<p[^>]*>/gi, "")
+    .replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_m, inner) => numberedList(String(inner)))
+    .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_m, inner) => bulletList(String(inner)))
     .replace(/<li[^>]*>/gi, "- ")
     .replace(/<\/li>/gi, "\n")
-    .replace(/<\/?(ul|ol)[^>]*>/gi, "\n")
     .replace(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, (_m, code) => `\n\`\`\`\n${decodeHtml(String(code))}\n\`\`\`\n`)
     .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**")
     .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**")
@@ -90,6 +91,20 @@ export function htmlToMd(html: string): string {
     .replace(/<[^>]+>/g, "");
   s = decodeHtml(s);
   return s.replace(/\n{3,}/g, "\n\n").trim() + (s.trim() ? "\n" : "");
+}
+
+function numberedList(inner: string): string {
+  let n = 0;
+  const items = inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, li) => {
+    n += 1;
+    return `${n}. ${li}\n`;
+  });
+  return `\n${items}\n`;
+}
+
+function bulletList(inner: string): string {
+  const items = inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, li) => `- ${li}\n`);
+  return `\n${items}\n`;
 }
 
 function inline(s: string): string {

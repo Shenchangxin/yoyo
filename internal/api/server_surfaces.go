@@ -73,6 +73,14 @@ func mountSurfaces(mux *http.ServeMux, a *app.App) {
 			writeJSON(w, a.PagesReviews())
 			return
 		}
+		if r.Method == http.MethodDelete {
+			if err := a.PagesDelete(r.URL.Query().Get("space_id"), id); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			writeJSON(w, map[string]any{"ok": true})
+			return
+		}
 		pg, err := a.PagesGet(r.URL.Query().Get("space_id"), id)
 		if err != nil {
 			http.Error(w, err.Error(), 404)
