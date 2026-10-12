@@ -15,12 +15,13 @@ import { useCopy } from "../../../lib/i18n";
 import { useUI } from "../../../lib/store";
 import { useDramaSelection } from "../workshop-store";
 import { bindVideoThread, ensureDramaEpisode, ingestSeriesFile, ingestSeriesText } from "../bind";
-import { looksLikeSeries, shownEpisodeTitle, shownSeriesTitle } from "../drama-lib";
+import { looksLikeSeries, PRESET_STYLES, shownEpisodeTitle, shownSeriesTitle, styleLabel } from "../drama-lib";
 import { useCanvasHost } from "./session";
 import "@yingce/pages/create/creation-product.css";
 import "@yingce/pages/create/creation-scrollbars.css";
 
-type Drama = { id: string; title: string };
+type Drama = { id: string; title: string; style?: string };
+type StyleOpt = { value: string; name: string };
 type Episode = { id: string; drama_id: string; title: string; episode_number?: number };
 
 function visibleItems(items: Item[]): CreationMessage[] {
@@ -57,8 +58,10 @@ export default function DramaAgentPage() {
   const selectedTextModel = textModels.includes(config.textModel) ? config.textModel : (textModels[0] || "");
   const dramaId = useDramaSelection((s) => s.dramaId);
   const episodeId = useDramaSelection((s) => s.episodeId);
+  const dramaStyle = useDramaSelection((s) => s.dramaStyle);
   const setDramaId = useDramaSelection((s) => s.setDramaId);
   const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
+  const setDramaStyle = useDramaSelection((s) => s.setDramaStyle);
   const composerFocusRef = useRef<HTMLTextAreaElement>(null);
   const threadScrollRef = useRef<HTMLElement>(null);
   const itemsRef = useRef<Item[]>([]);
@@ -67,6 +70,7 @@ export default function DramaAgentPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [styles, setStyles] = useState<StyleOpt[]>(PRESET_STYLES.map((s) => ({ value: s.value, name: s.name })));
 
   const messages = useMemo(() => visibleItems(items), [items]);
   const isEmpty = messages.length === 0;
@@ -80,6 +84,18 @@ export default function DramaAgentPage() {
   useEffect(() => {
     void loadDramas().catch(() => {});
   }, [loadDramas]);
+
+  useEffect(() => {
+    void api.video.styles().then((list) => {
+      const rows = Array.isArray(list) ? list.filter((s: StyleOpt) => s?.value) : [];
+      if (rows.length) setStyles(rows.map((s: StyleOpt) => ({ value: s.value, name: s.name || s.value })));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const hit = dramas.find((d) => d.id === dramaId);
+    if (hit?.style) setDramaStyle(hit.style);
+  }, [dramaId, dramas, setDramaStyle]);
 
   useEffect(() => {
     void refreshSystemChannels().catch(() => {});
@@ -130,6 +146,17 @@ export default function DramaAgentPage() {
     });
     await loadDramas();
     return id;
+  }
+
+  async function pickStyle(value: string) {
+    setDramaStyle(value);
+    if (!dramaId) return;
+    try {
+      await api.video.updateDrama({ id: dramaId, style: value });
+      await loadDramas();
+    } catch (err) {
+      message.error(api.errMessage(err));
+    }
   }
 
   async function send(text = prompt) {
@@ -220,6 +247,16 @@ export default function DramaAgentPage() {
         </div>
         <footer className="creation-chat-dock">
           <div className="creation-chat-controls">
+            <Select
+              size="small"
+              variant="borderless"
+              className="drama-agent-select min-w-28"
+              value={dramaStyle || "3d"}
+              placeholder={copy.video.style}
+              aria-label={copy.video.style}
+              onChange={(value) => void pickStyle(value)}
+              options={styles.map((row) => ({ value: row.value, label: styleLabel(copy.video.styleNames, row.value, row.name) }))}
+            />
             {!isEmpty ? (
               <>
                 <Select
@@ -229,7 +266,12 @@ export default function DramaAgentPage() {
                   value={dramaId || undefined}
                   placeholder={copy.video.pickSeries}
                   aria-label={copy.video.pickSeries}
-                  onChange={(id) => { setDramaId(id); setEpisodeId(""); }}
+                  onChange={(id) => {
+                    setDramaId(id);
+                    setEpisodeId("");
+                    const hit = dramas.find((d) => d.id === id);
+                    if (hit?.style) setDramaStyle(hit.style);
+                  }}
                   options={dramas.map((d) => ({ value: d.id, label: shownSeriesTitle(d.title, copy.video.untitled) }))}
                 />
                 <Select

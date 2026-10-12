@@ -8,34 +8,38 @@ import (
 )
 
 const (
-	colDramas        = "dramas"
-	colEpisodes      = "episodes"
-	colSources       = "sources"
-	colPlans         = "episode_plans"
-	colCharacters    = "characters"
-	colScenes        = "scenes"
-	colProps         = "props"
-	colShots         = "shots"
-	colJobs          = "jobs"
-	colStyles        = "styles"
-	colMerges        = "merges"
-	colProjects      = "canvas_projects"
-	colSnapshots     = "canvas_snapshots"
-	colResources     = "canvas_resources"
-	colFolders       = "canvas_folders"
-	colAssets        = "canvas_assets"
-	colUnits         = "canvas_units"
-	colLessons       = "canvas_lessons"
-	colUploads       = "canvas_uploads"
-	colTaskLogs      = "canvas_task_logs"
-	colTextDeltas    = "canvas_text_deltas"
-	colUserSkills    = "canvas_user_skills"
-	colChannels      = "canvas_channels"
-	fileSettings     = "_settings.json"
-	fileSessionBinds = "_session_binds.json"
-	fileCanvasBinds  = "_canvas_session_binds.json"
-	fileSkillFlags   = "_skill_flags.json"
-	filePluginFlags  = "_plugin_flags.json"
+	colDramas          = "dramas"
+	colEpisodes        = "episodes"
+	colSources         = "sources"
+	colPlans           = "episode_plans"
+	colCharacters      = "characters"
+	colScenes          = "scenes"
+	colProps           = "props"
+	colShots           = "shots"
+	colJobs            = "jobs"
+	colStyles          = "styles"
+	colMerges          = "merges"
+	colProjects        = "canvas_projects"
+	colSnapshots       = "canvas_snapshots"
+	colResources       = "canvas_resources"
+	colFolders         = "canvas_folders"
+	colAssets          = "canvas_assets"
+	colUnits           = "canvas_units"
+	colLessons         = "canvas_lessons"
+	colUploads         = "canvas_uploads"
+	colTaskLogs        = "canvas_task_logs"
+	colTextDeltas      = "canvas_text_deltas"
+	colUserSkills      = "canvas_user_skills"
+	colChannels        = "canvas_channels"
+	colStudioTopics    = "studio_topics"
+	colStudioProjects  = "studio_projects"
+	colStudioPublishes = "studio_publishes"
+	fileSettings       = "_settings.json"
+	fileSessionBinds   = "_session_binds.json"
+	fileCanvasBinds    = "_canvas_session_binds.json"
+	fileStudioBinds    = "_studio_session_binds.json"
+	fileSkillFlags     = "_skill_flags.json"
+	filePluginFlags    = "_plugin_flags.json"
 )
 
 type dramaRec struct {
@@ -295,6 +299,19 @@ func (e *Engine) loadCanvasBinds() map[string]string {
 
 func (e *Engine) saveCanvasBinds(m map[string]string) error {
 	return e.putJSON(fileCanvasBinds, m)
+}
+
+func (e *Engine) loadStudioBinds() map[string]string {
+	m := map[string]string{}
+	_ = e.getJSON(fileStudioBinds, &m)
+	if m == nil {
+		m = map[string]string{}
+	}
+	return m
+}
+
+func (e *Engine) saveStudioBinds(m map[string]string) error {
+	return e.putJSON(fileStudioBinds, m)
 }
 
 func (e *Engine) loadSkillFlags() map[string]skillFlagRec {

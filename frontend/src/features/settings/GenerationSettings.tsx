@@ -38,8 +38,6 @@ type MediaProvider = {
   priority?: number;
 };
 
-type StyleRow = { id: string; name: string; value: string; prompt: string; is_active?: boolean };
-
 type Draft = {
   id?: string;
   service_type: Kind;
@@ -68,6 +66,10 @@ const VENDOR_LABEL: Record<string, string> = {
   cas: "CAS",
   runninghub: "RunningHub",
   search: "Search",
+  tavily: "Tavily",
+  brave: "Brave",
+  serper: "Serper",
+  bocha: "Bocha",
   otel: "OpenTelemetry",
   custom: "Custom",
 };
@@ -212,6 +214,10 @@ function ffmpegBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
 
+function remotionBusyPhase(phase?: string) {
+  return phase === "preparing" || phase === "installing" || phase === "verifying";
+}
+
 type FFmpegInstall = {
   ready?: boolean;
   phase?: string;
@@ -225,8 +231,17 @@ export function GenerationSettings() {
   const v = copy.video;
   const [templates, setTemplates] = useState<MediaProvider[]>([]);
   const [providers, setProviders] = useState<MediaProvider[]>([]);
-  const [styles, setStyles] = useState<StyleRow[]>([]);
   const [lang, setLang] = useState("zh");
+  const [aspect, setAspect] = useState("9:16");
+  const [platform, setPlatform] = useState("douyin");
+  const [pubPlatforms, setPubPlatforms] = useState<{ id: string; label?: string }[]>([]);
+  const [remotion, setRemotion] = useState<{
+    ready?: boolean;
+    hint?: string;
+    node?: string;
+    install?: FFmpegInstall;
+  } | null>(null);
+  const [remotionBusy, setRemotionBusy] = useState(false);
   const [ffmpeg, setFfmpeg] = useState(true);
   const [ffmpegInstall, setFfmpegInstall] = useState<FFmpegInstall>({});
   const [tick, setTick] = useState(0);
@@ -238,28 +253,37 @@ export function GenerationSettings() {
   function applyFFmpegStatus(s: any) {
     setFfmpeg(!!s?.ffmpeg);
     setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
+    const rem = s?.remotion && typeof s.remotion === "object" ? s.remotion : null;
+    if (rem) setRemotion(rem);
   }
 
   useEffect(() => {
     void api.video.templates().then((t) => setTemplates(Array.isArray(t) ? t : [])).catch(() => {});
     void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
-    void api.video.allStyles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {
-      void api.video.styles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {});
-    });
-    void api.video.settings().then((s) => setLang(s?.content_language || "zh")).catch(() => {});
+    void api.video.settings().then((s) => {
+      setLang(s?.content_language || "zh");
+      const nextAspect = String(s?.studio_aspect || "9:16");
+      setAspect(nextAspect === "16:9" || nextAspect === "1:1" ? nextAspect : "9:16");
+      setPlatform(String(s?.studio_publish_platform || "douyin") || "douyin");
+    }).catch(() => {});
     void api.video.status().then(applyFFmpegStatus).catch(() => {});
+    void api.video.publishPlatforms().then((rows) => setPubPlatforms(Array.isArray(rows) ? rows : [])).catch(() => {});
+    void api.video.remotionStatus().then((st) => setRemotion(st && typeof st === "object" ? st : null)).catch(() => setRemotion(null));
   }, [tick]);
 
   const ffmpegPhase = String(ffmpegInstall.phase || "");
   const ffmpegWorking = ffmpegBusy(ffmpegPhase);
+  const remotionInstall = remotion?.install && typeof remotion.install === "object" ? remotion.install : {};
+  const remotionPhase = String(remotionInstall.phase || "");
+  const remotionWorking = remotionBusyPhase(remotionPhase);
 
   useEffect(() => {
-    if (!ffmpegWorking) return;
+    if (!ffmpegWorking && !remotionWorking) return;
     const t = window.setInterval(() => {
       void api.video.status().then(applyFFmpegStatus).catch(() => {});
     }, 400);
     return () => window.clearInterval(t);
-  }, [ffmpegWorking]);
+  }, [ffmpegWorking, remotionWorking]);
 
   async function installFFmpeg() {
     try {
@@ -281,6 +305,40 @@ export function GenerationSettings() {
     }
   }
 
+  async function patchStudioSetting(key: string, value: string) {
+    try {
+      await api.video.setSetting(key, value);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    }
+  }
+
+  async function detectRemotion() {
+    setRemotionBusy(true);
+    try {
+      const st = await api.video.remotionStatus();
+      setRemotion(st && typeof st === "object" ? st : null);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setRemotionBusy(false);
+    }
+  }
+
+  async function installRemotion() {
+    setRemotionBusy(true);
+    try {
+      const st = await api.video.installRemotion();
+      setRemotion(st && typeof st === "object" ? st : null);
+      const inst = st?.install && typeof st.install === "object" ? st.install : {};
+      if (inst.phase === "error" && inst.error) toast.error(String(inst.error));
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setRemotionBusy(false);
+    }
+  }
+
   return (
     <>
       <SettingsPageHeader title={copy.settings.tabs.generation} description={copy.settings.tabHints.generation} />
@@ -288,7 +346,7 @@ export function GenerationSettings() {
       <SettingSection
         id="generation-studio"
         title={copy.settings.sections.generationStudio}
-        footnote={v.dramaHint}
+        footnote={v.workshopFootnote}
       >
         <SettingRow title={v.language}>
           <SettingSegmented
@@ -310,11 +368,12 @@ export function GenerationSettings() {
           />
         </SettingRow>
         {langChoice === "other" ? (
-          <SettingRow title={v.langOther}>
+          <SettingRow title={v.langOther} description={v.langOtherHint}>
             <Input
               className={CONTROL_LG}
               value={lang}
               aria-label={v.language}
+              placeholder={v.langOtherHint}
               onChange={(e) => setLang(e.target.value)}
               onBlur={() => {
                 const next = lang.trim();
@@ -323,7 +382,7 @@ export function GenerationSettings() {
             />
           </SettingRow>
         ) : null}
-        <SettingRow title={v.ffmpeg} description={v.ffmpegHint} border={false} list>
+        <SettingRow title={v.ffmpeg} description={v.ffmpegHint} list>
           <StatusPill
             ok={ffmpeg}
             busy={ffmpegWorking}
@@ -347,6 +406,78 @@ export function GenerationSettings() {
         {ffmpegWorking ? <ProgressHairline value={Number(ffmpegInstall.percent) || 0} /> : null}
         {ffmpegPhase === "error" && !ffmpeg && ffmpegInstall.error ? (
           <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(ffmpegInstall.error)}</p>
+        ) : null}
+        <SettingRow title={v.studioAspect} description={v.studioAspectHint}>
+          <SettingSegmented
+            id="studio-aspect"
+            ariaLabel={v.studioAspect}
+            value={aspect}
+            options={[
+              { value: "9:16", label: "9:16" },
+              { value: "16:9", label: "16:9" },
+              { value: "1:1", label: "1:1" },
+            ]}
+            onChange={(next) => {
+              setAspect(next);
+              void patchStudioSetting("studio_aspect", next);
+            }}
+          />
+        </SettingRow>
+        <SettingRow title={v.studioPlatform} description={v.studioPlatformHint}>
+          <Select
+            value={platform}
+            onValueChange={(next) => {
+              setPlatform(next);
+              void patchStudioSetting("studio_publish_platform", next);
+            }}
+          >
+            <SelectTrigger className={CONTROL_LG} aria-label={v.studioPlatform}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(pubPlatforms.length
+                ? pubPlatforms
+                : [
+                    { id: "douyin", label: "抖音" },
+                    { id: "xhs", label: "小红书" },
+                    { id: "bilibili", label: "B站" },
+                  ]
+              ).map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.label || p.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow title={v.remotionDetect} description={remotion?.ready ? v.remotionUseHint : remotion && !remotion.node ? v.remotionNeedNode : v.remotionDetectHint} border={false} list>
+          <StatusPill
+            ok={!!remotion?.ready}
+            busy={remotionBusy || remotionWorking}
+            label={
+              remotion?.ready
+                ? v.studio.remotionReady
+                : remotionWorking
+                  ? `${v.remotionInstalling} ${Math.max(0, Math.min(100, Math.round(Number(remotionInstall.percent) || 0)))}%`
+                  : remotionPhase === "error"
+                    ? v.remotionInstallFailed
+                    : v.studio.remotionMissing
+            }
+          />
+          {remotion?.ready ? (
+            <Button size="sm" variant="ghost" disabled={remotionBusy} onClick={() => void detectRemotion()}>
+              {v.remotionDetectNow}
+            </Button>
+          ) : (
+            <Button size="sm" variant="lift" disabled={remotionBusy || remotionWorking || !remotion || !remotion.node} onClick={() => void installRemotion()} data-testid="remotion-install">
+              <Download aria-hidden />
+              {v.remotionInstall}
+            </Button>
+          )}
+        </SettingRow>
+        {remotionWorking ? <ProgressHairline value={Number(remotionInstall.percent) || 0} /> : null}
+        {remotionPhase === "error" && !remotion?.ready && remotionInstall.error ? (
+          <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(remotionInstall.error)}</p>
         ) : null}
       </SettingSection>
 
@@ -410,8 +541,6 @@ export function GenerationSettings() {
       />
 
       <CanvasChannelsSection copy={copy} />
-
-      <StylesSection styles={styles} copy={copy} onChanged={refresh} />
     </>
   );
 }
@@ -785,104 +914,6 @@ function AdapterForm({
   );
 }
 
-function StylesSection({
-  styles,
-  copy,
-  onChanged,
-}: {
-  styles: StyleRow[];
-  copy: ReturnType<typeof useCopy>;
-  onChanged: () => void;
-}) {
-  const v = copy.video;
-  const [draft, setDraft] = useState({ name: "", value: "", prompt: "" });
-  const [adding, setAdding] = useState(false);
-  const [pending, setPending] = useState<StyleRow | null>(null);
-
-  return (
-    <SettingSection id="generation-styles" title={copy.settings.sections.generationStyles} footnote={v.styleHint}>
-      {styles.length === 0 ? <SettingEmpty>{v.noAdapter}</SettingEmpty> : null}
-      {styles.map((s) => (
-        <SettingRow
-          key={s.id}
-          list
-          title={s.name}
-          description={s.is_active === false ? `${s.value} · ${v.styleHidden}` : s.value}
-        >
-          {s.is_active === false ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                await api.video.upsertStyle({ ...s, is_active: true });
-                onChanged();
-              }}
-            >
-              {v.restoreStyle}
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => setPending(s)}>
-              {v.hideStyle}
-            </Button>
-          )}
-        </SettingRow>
-      ))}
-      {adding ? (
-        <div className="flex flex-col gap-[var(--space-group)]">
-          <Field label={v.styleName}>
-            <Input className={CONTROL_LG} value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-          </Field>
-          <Field label={v.styleValue}>
-            <Input className={cn(CONTROL_LG, "font-mono")} value={draft.value} onChange={(e) => setDraft((d) => ({ ...d, value: e.target.value }))} />
-          </Field>
-          <Field label={v.finalPrompt}>
-            <Input className={CONTROL_LG} value={draft.prompt} onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))} />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => { setAdding(false); setDraft({ name: "", value: "", prompt: "" }); }}>
-              {copy.settings.discard}
-            </Button>
-            <Button
-              size="sm"
-              disabled={!draft.name.trim() || !draft.value.trim()}
-              onClick={async () => {
-                await api.video.upsertStyle({ name: draft.name, value: draft.value, prompt: draft.prompt, is_active: true });
-                setDraft({ name: "", value: "", prompt: "" });
-                setAdding(false);
-                onChanged();
-                toast.success(copy.app.controlSaved);
-              }}
-            >
-              {v.addStyle}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <SettingActionRow
-          border={false}
-          chevron={false}
-          title={v.addStyle}
-          trailing={<Plus className="size-4" aria-hidden />}
-          onClick={() => setAdding(true)}
-        />
-      )}
-      <ConfirmDialog
-        open={!!pending}
-        title={v.hideStyle}
-        body={v.styleHint}
-        confirmLabel={v.hideStyle}
-        onCancel={() => setPending(null)}
-        onConfirm={async () => {
-          if (!pending) return;
-          await api.video.deleteStyle(pending.id);
-          setPending(null);
-          onChanged();
-        }}
-      />
-    </SettingSection>
-  );
-}
-
 function envelopeData(env: any) {
   return env?.data ?? env ?? {};
 }
@@ -947,7 +978,7 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
   async function test(id: string) {
     try {
       await api.video.canvasHttp("POST", `channels/${id}/test`);
-      toast.success(copy.video.ffmpegReady);
+      toast.success(copy.settings.testConnection);
     } catch (e) {
       toast.error(api.errMessage(e));
     }
@@ -964,12 +995,12 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
           <SettingRow key={ch.id} title={ch.name || ch.pluginId || ch.id} list>
             <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
               <span className="truncate text-[12px] text-muted">{ch.pluginId} · {ch.capability} · {ch.baseUrl}</span>
-              <Button size="sm" variant="ghost" onClick={() => void test(ch.id)}>Test</Button>
+              <Button size="sm" variant="ghost" onClick={() => void test(ch.id)}>{copy.settings.testConnection}</Button>
             </div>
           </SettingRow>
         ))
       )}
-      <SettingRow title={copy.video.canvasMcp}>
+      <SettingRow title={copy.video.canvasMcp} description={copy.video.canvasMcpHint}>
         <Switch
           checked={exposeMcp}
           onCheckedChange={(on) => {
@@ -978,9 +1009,9 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
           }}
         />
       </SettingRow>
-      <SettingRow title="Plugin">
-        <Select value={draft.pluginId || "__none__"} onValueChange={(v) => setDraft((d) => ({ ...d, pluginId: v === "__none__" ? "" : v }))}>
-          <SelectTrigger className={CONTROL_LG}><SelectValue placeholder="plugin" /></SelectTrigger>
+      <SettingRow title={copy.video.canvasPlugin}>
+        <Select value={draft.pluginId || "__none__"} onValueChange={(id) => setDraft((d) => ({ ...d, pluginId: id === "__none__" ? "" : id }))}>
+          <SelectTrigger className={CONTROL_LG} aria-label={copy.video.canvasPlugin}><SelectValue placeholder={copy.video.canvasPlugin} /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">—</SelectItem>
             {plugins.slice(0, 80).map((p) => {
@@ -990,13 +1021,26 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
           </SelectContent>
         </Select>
       </SettingRow>
-      <SettingRow title="Base URL">
-        <Input className={CONTROL_LG} value={draft.baseUrl} onChange={(e) => setDraft((d) => ({ ...d, baseUrl: e.target.value }))} />
+      <SettingRow title={copy.video.canvasCapability}>
+        <SettingSegmented
+          id="canvas-channel-capability"
+          ariaLabel={copy.video.canvasCapability}
+          value={draft.capability}
+          options={[
+            { value: "image", label: copy.video.kindImage },
+            { value: "video", label: copy.video.kindVideo },
+            { value: "tts", label: copy.video.kindSpeech },
+          ]}
+          onChange={(next) => setDraft((d) => ({ ...d, capability: next }))}
+        />
       </SettingRow>
-      <SettingRow title="API key" border={false}>
+      <SettingRow title={copy.video.canvasBaseUrl}>
+        <Input className={CONTROL_LG} value={draft.baseUrl} onChange={(e) => setDraft((d) => ({ ...d, baseUrl: e.target.value }))} aria-label={copy.video.canvasBaseUrl} />
+      </SettingRow>
+      <SettingRow title={copy.video.canvasApiKey} border={false}>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Input className={CONTROL_LG} type="password" value={draft.apiKey} onChange={(e) => setDraft((d) => ({ ...d, apiKey: e.target.value }))} />
-          <Button size="sm" disabled={busy} onClick={() => void save()}>Save</Button>
+          <Input className={CONTROL_LG} type="password" value={draft.apiKey} onChange={(e) => setDraft((d) => ({ ...d, apiKey: e.target.value }))} aria-label={copy.video.canvasApiKey} />
+          <Button size="sm" disabled={busy || (!draft.pluginId && !draft.baseUrl.trim())} onClick={() => void save()}>{copy.video.canvasSave}</Button>
         </div>
       </SettingRow>
     </SettingSection>

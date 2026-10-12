@@ -23,7 +23,7 @@ import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind
 import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
-import { useDramaSelection } from "../video/workshop-store";
+import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -97,13 +97,16 @@ function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: st
 function videoProjectOf(v: any): VideoProject | null {
   const id = str(v?.id);
   if (!id) return null;
+  const raw = str(v?.kind);
+  const kind: VideoProject["kind"] = raw === "drama" ? "drama" : raw === "studio" ? "studio" : "canvas";
   return {
-    kind: str(v?.kind) === "drama" ? "drama" : "canvas",
+    kind,
     id,
     title: str(v?.title),
     sessionId: str(v?.session_id || v?.sessionId),
     episodeId: str(v?.episode_id || v?.episodeId),
     updatedAt: str(v?.updated_at || v?.updatedAt),
+    status: str(v?.status),
   };
 }
 
@@ -890,8 +893,11 @@ export function useWorkstation() {
         if (nextEpisode) useDramaSelection.getState().setEpisodeId(nextEpisode);
       }
       const kind = str(st?.kind);
+      const studioId = str(st?.studio_id || (kind === "studio" ? st?.id : ""));
+      if (studioId) useStudioSelection.getState().setStudioId(studioId);
       if (kind === "canvas") useUI.getState().setVideoMode("canvas");
       else if (kind === "drama") useUI.getState().setVideoMode("drama");
+      else if (kind === "studio") useUI.getState().openStudioDesk();
     } catch {
       /* bind lookup is optional */
     }
@@ -911,6 +917,10 @@ export function useWorkstation() {
         useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
         if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
         else ui.setVideoMode("canvas");
+      } else if (p.kind === "studio") {
+        await api.video.studioBind(t.id, p.id).catch(() => {});
+        useStudioSelection.getState().setStudioId(p.id);
+        ui.openStudioDesk();
       } else {
         if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
         useDramaSelection.getState().setDramaId(p.id);
@@ -926,6 +936,10 @@ export function useWorkstation() {
       await api.video.canvasBind(t.id, p.id).catch(() => {});
       if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
       else ui.setVideoMode("canvas");
+    } else if (p.kind === "studio") {
+      useStudioSelection.getState().setStudioId(p.id);
+      await api.video.studioBind(t.id, p.id).catch(() => {});
+      ui.openStudioDesk();
     } else {
       useDramaSelection.getState().setDramaId(p.id);
       if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);

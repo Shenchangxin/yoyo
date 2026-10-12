@@ -68,6 +68,7 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await page.getByRole("button", { name: "Video" }).click();
   await expect(page.getByTestId("video-shell-nav")).toBeVisible();
   await expect(page.getByTestId("video-shell-create")).toBeVisible();
+  await expect(page.getByTestId("video-shell-studio")).toBeVisible();
   await expect(island(page)).toBeVisible({ timeout: 15_000 });
   await expect(island(page)).toHaveAttribute("data-pane", "create");
   await expect(page.getByText("创作工作台")).toHaveCount(0);
@@ -129,6 +130,45 @@ test("assets skills plugins and history open from the video rail", async ({ page
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByRole("option", { name: "Open Skills" }).click();
   await expect(page.getByTestId("video-shell-nav")).toHaveCount(0);
+});
+
+test("studio workbench opens from the video rail", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await expect(page.getByTestId("video-shell-studio")).toBeVisible();
+  await expect(page.getByTestId("video-shell-studio")).toContainText(/Shorts|短片/);
+  await page.getByTestId("video-shell-studio").click();
+  await expect(page.getByTestId("studio-workbench")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-publish")).toBeVisible();
+  await expect(page.getByTestId("studio-open-settings")).toBeVisible();
+  await expect(page.getByTestId("video-mode-switch")).toHaveCount(0);
+});
+
+test("studio workbench opens from the composer mode switch", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await openVideoChat(page);
+  await expect(page.getByTestId("video-mode-switch")).toBeVisible();
+  await page.getByTestId("video-mode-switch").click();
+  await page.getByTestId("video-mode-creative").click();
+  await expect(page.getByTestId("studio-workbench")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-publish")).toBeVisible();
+});
+
+test("studio workbench opens from creation history", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-tasks").click();
+  await page.getByTestId("video-history-new-studio").click();
+  await expect(page.getByTestId("studio-workbench")).toBeVisible();
 });
 
 test("new canvas appears in creation history and can be opened", async ({ page }) => {

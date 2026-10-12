@@ -643,6 +643,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
+	a.attachStudioTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.ReadFromCheckpoint(id)
 		if err != nil {
@@ -761,6 +762,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)
 	if pin := runtime.LanguagePin(voice); pin.Text != "" {
 		frags = append(frags, pin)
+	}
+	if a.studioLane(sessionID) {
+		loop, frags = applyStudioLanePrompt(loop, frags)
 	}
 	if p := a.sessionProfile(sessionID); p != nil && strings.TrimSpace(p.Instructions) != "" {
 		frags = append(frags, artifact.PromptFragment{Slot: "role", Text: p.Instructions})
@@ -1762,6 +1766,19 @@ func intFromAny(v any) int {
 	default:
 		return 0
 	}
+}
+
+func applyStudioLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragment) (artifact.LoopPreset, []artifact.PromptFragment) {
+	loop.Bootstrap = studioBootstrap
+	kept := make([]artifact.PromptFragment, 0, len(frags)+1)
+	for _, f := range frags {
+		if strings.Contains(strings.ToLower(f.Text), "inspect the workspace") {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	kept = append(kept, artifact.PromptFragment{Slot: "runtime", Text: studioRuntimePin})
+	return loop, kept
 }
 
 func newID() string {

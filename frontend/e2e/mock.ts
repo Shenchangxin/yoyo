@@ -124,11 +124,16 @@ export async function mockApi(
         return ok([
           { id: "drama", title: "Short drama", ready: true },
           { id: "canvas", title: "Infinite canvas", ready: true },
-          { id: "creative", title: "Creative", ready: false },
+          { id: "creative", title: "Shorts", ready: true },
         ]);
       }
       if (rpcMethod === "video.status") {
-        return ok({ ffmpeg: true, media_base: "", ffmpeg_install: { ready: true, phase: "ready", percent: 100 } });
+        return ok({
+          ffmpeg: true,
+          media_base: "",
+          ffmpeg_install: { ready: true, phase: "ready", percent: 100 },
+          remotion: { ready: false, bundled: false, node: "/usr/bin/node", install: { phase: "idle", percent: 0 } },
+        });
       }
       if (rpcMethod === "video.ffmpeg.install") {
         return ok({ ok: true, ffmpeg: true, ffmpeg_install: { ready: true, phase: "ready", percent: 100 } });
@@ -141,6 +146,51 @@ export async function mockApi(
       }
       if (rpcMethod === "video.history") {
         return ok(canvases.map((c) => ({ kind: "canvas", id: c.id, title: c.title, session_id: c.session_id || "" })));
+      }
+      if (rpcMethod === "video.settings.get") {
+        return ok({ content_language: "zh", studio_aspect: "9:16", studio_publish_platform: "douyin" });
+      }
+      if (rpcMethod === "video.settings.set") {
+        return ok({ ok: true });
+      }
+      if (rpcMethod === "video.trends.fetch") {
+        return ok({ trends: [], updated: 0 });
+      }
+      if (rpcMethod === "video.topic.list") {
+        return ok([]);
+      }
+      if (rpcMethod === "video.studio.list") {
+        return ok([]);
+      }
+      if (rpcMethod === "video.studio.bind" || rpcMethod === "video.studio.create") {
+        return ok({ ok: true, id: "studio-mock", title: "Short", status: "draft", storyboard: { shots: [] } });
+      }
+      if (rpcMethod === "video.studio.publish.platforms") {
+        return ok([{ id: "douyin", label: "抖音", creator_url: "https://example.com", analytics_url: "https://example.com" }]);
+      }
+      if (rpcMethod === "video.studio.publish.list") {
+        return ok([]);
+      }
+      if (rpcMethod.startsWith("video.studio.publish.")) {
+        return ok({ ok: true, id: "pub-mock", status: "draft", title: "Short" });
+      }
+      if (rpcMethod === "video.studio.remotion.status") {
+        return ok({ ready: false, bundled: false, hint: "optional", node: "/usr/bin/node", install: { phase: "idle", percent: 0 } });
+      }
+      if (rpcMethod === "video.studio.remotion.install") {
+        return ok({ ready: true, bundled: false, hint: "ready", node: "/usr/bin/node", source: "managed", install: { ready: true, phase: "ready", percent: 100 } });
+      }
+      if (rpcMethod === "video.studio.persona.template") {
+        return ok({ markdown: "# persona" });
+      }
+      if (rpcMethod === "video.studio.persona.create") {
+        return ok({ id: "page-mock", title: "persona", persona_page_id: "page-mock" });
+      }
+      if (rpcMethod === "video.studio.ops.wrap") {
+        return ok({ cas_hash: "wrap", media_url: "" });
+      }
+      if (rpcMethod === "video.studio.media.put") {
+        return ok({ cas_hash: "upload-mock", media_url: "", kind: "image" });
       }
       if (rpcMethod === "video.session.project") {
         const sid = String(params.session_id || "");

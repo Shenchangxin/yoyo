@@ -78,6 +78,7 @@ function WorkstationApp() {
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
+  const studioDesk = useUI((s) => s.studioDesk);
   const moduleLoading = useUI((s) => s.moduleLoading);
   const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
   const idleAt = useRef(Date.now());
@@ -104,7 +105,7 @@ function WorkstationApp() {
       window.clearInterval(t);
     };
   }, []);
-  const staged = videoing && (ws.videoBoard || ws.canvasStage || videoPane !== "chat");
+  const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || videoPane !== "chat");
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
   const three = agent && !popout && ws.inspector && !sheetInspect;

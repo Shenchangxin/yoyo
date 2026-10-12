@@ -6,7 +6,7 @@ import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
-import { useDramaSelection } from "./workshop-store";
+import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 import { bindVideoThread } from "./bind";
 import { shownEpisodeTitle, shownSeriesTitle } from "./drama-lib";
 
@@ -56,7 +56,7 @@ export function DramaProjectChip(props: { disabled?: boolean }) {
 
   async function createDrama() {
     try {
-      const d = await api.video.createDrama({ title: "", style: "3d", aspect_ratio: "9:16" });
+      const d = await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
       setDramaId(d.id);
       const created = await api.video.createEpisode(d.id, "", "");
       setEpisodeId(created.id);

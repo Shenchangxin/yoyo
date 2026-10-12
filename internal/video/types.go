@@ -13,7 +13,7 @@ func Modes() []Mode {
 	return []Mode{
 		{ID: "drama", Title: "Short drama", Hint: "Novel to episode: script, assets, shots, stitch.", Ready: true},
 		{ID: "canvas", Title: "Infinite canvas", Hint: "Spatial generation workspace: nodes, tools, timeline, director.", Ready: true},
-		{ID: "creative", Title: "Creative", Hint: "Single-clip play. Not wired yet.", Ready: false},
+		{ID: "creative", Title: "Shorts", Hint: "Hot lists to a finished short: topics, voice, assemble, handoff.", Ready: true},
 	}
 }
 

@@ -155,6 +155,7 @@ func (e *Engine) Snapshot() map[string]any {
 		"content_language": e.ContentLanguage(),
 		"modes":            Modes(),
 		"missing":          e.missingProviderKinds(),
+		"remotion":         e.RemotionSnapshot(),
 	}
 }
 

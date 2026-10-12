@@ -67,6 +67,17 @@ type Engine struct {
 	ffArchive  string
 	ffErr      string
 	ffWait     chan struct{}
+
+	rmMu      sync.Mutex
+	rmPhase   string
+	rmPercent int
+	rmErr     string
+	rmWait    chan struct{}
+	rmNode    string
+	rmNPM     string
+	rmBin     string
+
+	trendCache map[string]trendCacheEntry
 }
 
 type Bind struct {

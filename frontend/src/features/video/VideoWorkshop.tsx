@@ -5,7 +5,9 @@ import { useUI } from "../../lib/store";
 import { isYingcePane, type VideoProject } from "../../lib/protocol";
 import { CanvasStudio } from "./CanvasStudio";
 import { DramaStudio } from "./DramaStudio";
+import { StudioWorkbench } from "./StudioWorkbench";
 import { VideoHistory } from "./VideoHistory";
+import { useStudioSelection } from "./workshop-store";
 
 export function VideoWorkshop(props: {
   sessionId?: string;
@@ -19,9 +21,9 @@ export function VideoWorkshop(props: {
 }) {
   const copy = useCopy();
   const pane = useUI((s) => s.videoPane);
-  const mode = useUI((s) => s.videoMode);
   const videoBoard = useUI((s) => s.videoBoard);
   const setVideoBoard = useUI((s) => s.setVideoBoard);
+  const studioId = useStudioSelection((s) => s.studioId);
   const showBoard = videoBoard;
   const showYingce = isYingcePane(pane) || showBoard;
 
@@ -31,12 +33,15 @@ export function VideoWorkshop(props: {
       data-testid="video-workshop"
       data-pane={showBoard ? "drama-board" : pane}
     >
-      {pane === "tasks" && !showBoard ? (
+      {pane === "studio" ? (
+        <StudioWorkbench sessionId={props.sessionId} onNeedSession={props.onNeedSession} onClose={props.onClose} />
+      ) : pane === "tasks" && !showBoard ? (
         <div className="flex h-full min-h-0 flex-col" data-testid="canvas-studio-shell" data-pane="tasks">
           <VideoHistory
             projects={props.projects || []}
             canvasProjectId={props.canvasProjectId}
             dramaId={props.dramaId}
+            studioId={studioId}
             sessionId={props.sessionId}
             onOpenProject={props.onOpenProject}
             onRefresh={props.onRefreshHistory}
@@ -56,12 +61,6 @@ export function VideoWorkshop(props: {
             </div>
           ) : null}
         </div>
-      ) : mode === "creative" ? (
-        <EmptyState
-          icon={<PenLine className="size-5" />}
-          title={copy.video.creative}
-          body={copy.video.creativeHint}
-        />
       ) : (
         <EmptyState
           icon={<PenLine className="size-5" />}

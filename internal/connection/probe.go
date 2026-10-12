@@ -202,8 +202,16 @@ func needsKey(c Connection) bool {
 	if c.Protocol == "cas" {
 		return false
 	}
-	if HasCap(c, CapOTEL) || HasCap(c, CapSearch) {
+	if HasCap(c, CapOTEL) {
 		return false
+	}
+	if HasCap(c, CapSearch) {
+		switch strings.ToLower(strings.TrimSpace(c.Protocol)) {
+		case "tavily", "brave", "serper", "bocha":
+			return true
+		default:
+			return false
+		}
 	}
 	if HasCap(c, CapStorage) && c.Protocol == "cas" {
 		return false

@@ -42,7 +42,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
-  { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama" },
+  { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama studio shorts 短片 remotion aspect publish 画幅 平台" },
   { id: "generation-canvas", tab: "generation", titleKey: "generationCanvas", keywords: "canvas protocol plugin channel kling veo seedream" },
   { id: "generation-image", tab: "generation", titleKey: "generationImage", keywords: "image still seedream gemini openai gpt-image" },
   { id: "generation-video", tab: "generation", titleKey: "generationVideo", keywords: "video clip seedance minimax wan hailuo aliyun" },
@@ -50,7 +50,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-storage", tab: "generation", titleKey: "generationStorage", keywords: "s3 oss cas bucket object storage" },
   { id: "generation-search", tab: "generation", titleKey: "generationSearch", keywords: "search web duckduckgo" },
   { id: "generation-workflow", tab: "generation", titleKey: "generationWorkflow", keywords: "runninghub workflow comfy" },
-  { id: "generation-styles", tab: "generation", titleKey: "generationStyles", keywords: "style ghibli guofeng webtoon noir 3d anime" },
   { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow" },
   { id: "policy-budget", tab: "policy", titleKey: "policyBudget", keywords: "budget usd cost mtok" },
   { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature" },
@@ -102,6 +101,7 @@ const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
   "logs-doctor": "advanced-doctor",
   "danger-zone": "advanced-danger",
   "provider-video": "generation-image",
+  "generation-styles": "generation-studio",
 };
 
 export function isSettingsTab(v: string): v is SettingsTab {

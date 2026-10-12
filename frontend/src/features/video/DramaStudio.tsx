@@ -12,7 +12,7 @@ import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
 import { subscribeItems } from "../../lib/stream";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { useDramaSelection } from "./workshop-store";
+import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 import { ingestSeriesFile } from "./bind";
 import { modelOptionName, useConfigStore } from "@yingce/stores/use-config-store";
 import { commitEpisodeTitle, commitSeriesTitle, firstLook, isAgentStep, jobMoving, phaseDone, phaseQueue, pipeStatus, selectedClipIds, shownEpisodeTitle, shownSeriesTitle, type Bundle, type Drama, type Episode, type EpisodePlan, type Job, type Phase, type PhaseStep, type Shot } from "./drama-lib";
@@ -340,7 +340,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
 
   async function createDrama() {
     await run("create", async () => {
-      const d = await api.video.createDrama({ title: commitSeriesTitle(draftTitle), style: "3d", aspect_ratio: ratio });
+      const d = await api.video.createDrama({ title: commitSeriesTitle(draftTitle), style: defaultDramaStyle(), aspect_ratio: ratio });
       setDramaId(d.id);
       const created = await api.video.createEpisode(d.id, "", "");
       setEpisodeId(created.id);
