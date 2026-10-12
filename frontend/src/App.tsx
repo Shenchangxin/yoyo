@@ -665,9 +665,17 @@ function WorkstationApp() {
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="pages-surface">
         <PagesWorkspace
           sessionId={ws.activeId}
+          boundPageId={ws.active?.pageId}
           onOpenInChat={(pageId) => {
             if (!ws.activeId) return;
             void api.setSessionPage(ws.activeId, pageId).then((t) => {
+              ws.setActive(t);
+              ws.setThreads((list) => patchThread(list, t.id, t));
+            });
+          }}
+          onUnbindChat={() => {
+            if (!ws.activeId) return;
+            void api.setSessionPage(ws.activeId, "").then((t) => {
               ws.setActive(t);
               ws.setThreads((list) => patchThread(list, t.id, t));
             });

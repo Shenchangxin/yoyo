@@ -81,6 +81,31 @@ func (a *App) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	return out, err
 }
 
+func (a *App) PagesDelete(spaceID, id string) error {
+	if a.Pages == nil {
+		return fmt.Errorf("pages store unavailable")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("page not found")
+	}
+	if err := a.Pages.Delete(spaceID, id); err != nil {
+		return err
+	}
+	list, _ := a.ListSessions()
+	for _, m := range list {
+		if m.PageID != id {
+			continue
+		}
+		m.PageID = ""
+		_ = a.writeSession(m)
+	}
+	if a.Journal != nil {
+		_, _ = a.Journal.Append("page.delete", map[string]any{"id": id})
+	}
+	return nil
+}
+
 func (a *App) PagesPropose(sessionID, title, content, pageID, spaceID, parentID string, expected int) (pages.Review, error) {
 	if a.Pages == nil {
 		return pages.Review{}, fmt.Errorf("pages store unavailable")

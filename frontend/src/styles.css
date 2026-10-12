@@ -1168,6 +1168,68 @@ html.dark .code-hl span {
 .empty-rise {
   animation: yoyo-rise 320ms var(--ease-out) both;
 }
+
+.page-sheet {
+  background: color-mix(in srgb, var(--background) 88%, var(--lift));
+}
+
+.page-editor {
+  caret-color: var(--foreground);
+}
+.page-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  pointer-events: none;
+}
+.page-editor p { margin: 0.55em 0; }
+.page-editor h1,
+.page-editor h2,
+.page-editor h3 {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+.page-editor h1 { font-size: 1.65rem; margin: 1.4em 0 0.45em; }
+.page-editor h2 { font-size: 1.28rem; margin: 1.25em 0 0.4em; }
+.page-editor h3 { font-size: 1.08rem; margin: 1.1em 0 0.35em; }
+.page-editor ul { list-style: disc; padding-left: 1.35em; margin: 0.45em 0; }
+.page-editor ol { list-style: decimal; padding-left: 1.35em; margin: 0.45em 0; }
+.page-editor li { margin: 0.15em 0; }
+.page-editor li p { margin: 0.15em 0; }
+.page-editor blockquote {
+  margin: 0.7em 0;
+  border-left: 2px solid var(--border);
+  padding-left: 0.9em;
+  color: var(--muted);
+}
+.page-editor hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.4em 0;
+}
+.page-editor code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  background: color-mix(in srgb, var(--lift) 85%, transparent);
+}
+.page-editor pre {
+  margin: 0.8em 0;
+  overflow: auto;
+  border-radius: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--lift);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.page-editor pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
 @keyframes yoyo-rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

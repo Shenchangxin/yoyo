@@ -62,6 +62,14 @@ func (s *Service) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	return s.App.PagesSave(p, expected)
 }
 
+func (s *Service) PagesDelete(spaceID, id string) error {
+	if s.RPC != nil {
+		_, err := s.call("pages.delete", map[string]any{"id": id, "space_id": spaceID})
+		return err
+	}
+	return s.App.PagesDelete(spaceID, id)
+}
+
 func (s *Service) PagesReviews() []pages.Review {
 	if s.RPC != nil {
 		v, _ := s.call("pages.reviews", nil)

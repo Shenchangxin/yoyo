@@ -1796,6 +1796,13 @@ export async function pagesSave(p: any): Promise<any> {
   return http("/api/pages", { method: "POST", body: JSON.stringify({ ...p, expected_revision: expected }) });
 }
 
+export async function pagesDelete(id: string, spaceId = ""): Promise<void> {
+  const s = await wailsService();
+  if (s?.PagesDelete) { await s.PagesDelete(spaceId, id); return; }
+  const qs = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : "";
+  await http(`/api/pages/${encodeURIComponent(id)}${qs}`, { method: "DELETE" });
+}
+
 export async function pagesReviews(): Promise<any[]> {
   const s = await wailsService();
   if (s?.PagesReviews) return asArray(await s.PagesReviews());

@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { parsePageReviewBlob } from "./review.ts";
+
+describe("parsePageReviewBlob", () => {
+  it("reads the awaiting payload and ignores trailing JSON", () => {
+    const payload = {"review_id":"rev-abc","hash":"deadbeef","title":"Note","kind":"page.save"};
+    const blob = `awaiting page review ${JSON.stringify(payload)} {"noise":{"nested":true}}`;
+    const got = parsePageReviewBlob(blob);
+    assert.equal(got?.id, "rev-abc");
+    assert.equal(got?.hash, "deadbeef");
+    assert.equal(got?.title, "Note");
+  });
+
+  it("returns null without a review id", () => {
+    assert.equal(parsePageReviewBlob("not a review"), null);
+  });
+});

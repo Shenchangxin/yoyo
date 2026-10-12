@@ -258,7 +258,7 @@ func TestRPCPagesProfilesAndPause(t *testing.T) {
 		t.Fatal(list.Error)
 	}
 	raw, _ := json.Marshal(list.Result)
-	if !strings.Contains(string(raw), "Brief") {
+	if !strings.Contains(string(raw), "Brief") || !strings.Contains(string(raw), "hello pages") {
 		t.Fatalf("%s", raw)
 	}
 	pro := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "profiles.list"})
