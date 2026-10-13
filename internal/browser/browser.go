@@ -20,6 +20,9 @@ type Snapshot struct {
 	Title   string `json:"title"`
 	Text    string `json:"text"`
 	Profile string `json:"profile"`
+	// Actions lists the visible interactive elements, one per line, each with
+	// the selector browser_click accepts for it.
+	Actions string `json:"actions,omitempty"`
 }
 
 type Host struct {
@@ -44,6 +47,7 @@ type Host struct {
 	fileURL       string
 	killTree      func()
 	lastClick     string
+	actions       string
 	lastShotSum   [32]byte
 	hasShot       bool
 	lastShotN     int
@@ -129,6 +133,7 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 	if err := h.navigateCDP(u.String()); err == nil {
 		time.Sleep(350 * time.Millisecond)
 		h.syncView()
+		h.refreshActions()
 		h.mu.Lock()
 		if h.title != "" {
 			snap.Title = h.title
@@ -136,27 +141,11 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 		if h.snap != "" {
 			snap.Text = h.snap
 		}
+		snap.Actions = h.actions
 		h.mu.Unlock()
 	}
 	h.record("open", raw)
 	return snap, nil
-}
-
-func (h *Host) Click(sel string) error {
-	h.record("click", sel)
-	if err := h.ensureChrome(h.previewStartURL()); err != nil {
-		return fmt.Errorf("browser: isolated profile click failed: %w", err)
-	}
-	out, err := h.clickCDP(sel)
-	h.mu.Lock()
-	h.lastClick = out
-	h.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("browser: isolated profile click failed: %w", err)
-	}
-	time.Sleep(180 * time.Millisecond)
-	h.syncView()
-	return nil
 }
 
 func (h *Host) LastAction() string {
@@ -179,20 +168,6 @@ func (h *Host) ShotMeta() (unchanged bool, sum string, n int) {
 	}
 	return h.shotUnchanged, fmt.Sprintf("%x", h.lastShotSum[:8]), h.lastShotN
 }
-
-func (h *Host) Type(sel, text string) error {
-	h.record("type", sel)
-	if err := h.ensureChrome(h.previewStartURL()); err != nil {
-		return fmt.Errorf("browser: isolated profile type failed: %w", err)
-	}
-	if err := h.typeCDP(sel, text); err != nil {
-		return fmt.Errorf("browser: isolated profile type failed: %w", err)
-	}
-	h.syncView()
-	return nil
-}
-
-func (h *Host) Fill(sel, text string) error { return h.Type(sel, text) }
 
 func (h *Host) Download(raw, dest string) error {
 	u, err := url.Parse(raw)

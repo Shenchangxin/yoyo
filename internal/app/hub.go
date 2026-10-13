@@ -177,17 +177,31 @@ func (h *Hub) Head() int64 {
 	return h.seq
 }
 
-// Since returns recorded events with seq > after, optionally filtered by session.
-func (h *Hub) Since(after int64, sessionID string) []trace.Event {
+// LiveBatch is one pull from the live ring. Gap is the part a caller must
+// not ignore: when set, Events is not the complete tail after its cursor
+// (the ring rolled past the cursor, the batch was cut at liveSinceCap, or
+// the cursor is ahead of a restarted seq space), so the caller has to reload
+// the trajectory instead of trusting the batch. Head is read under the same
+// lock as Events, so every seq <= Head is either in Events or flagged by Gap.
+type LiveBatch struct {
+	Events []trace.Event `json:"events"`
+	Head   int64         `json:"head"`
+	Gap    bool          `json:"gap"`
+}
+
+// Batch returns the recorded events with seq > after, optionally filtered by
+// session, together with the ring head and the gap flag.
+func (h *Hub) Batch(after int64, sessionID string) LiveBatch {
 	if h == nil {
-		return nil
+		return LiveBatch{Events: []trace.Event{}}
 	}
 	h.logMu.Lock()
 	defer h.logMu.Unlock()
-	if len(h.log) == 0 {
-		return nil
-	}
-	out := make([]trace.Event, 0, 16)
+	b := LiveBatch{Events: make([]trace.Event, 0, 16), Head: h.seq}
+	// Seqs in the ring are contiguous and end at h.seq, so the oldest seq
+	// still held is h.seq-len+1. Anything in (after, oldest) was overwritten.
+	oldest := h.seq - int64(len(h.log)) + 1
+	b.Gap = after+1 < oldest || after > h.seq
 	for _, it := range h.log {
 		if it.seq <= after {
 			continue
@@ -195,13 +209,22 @@ func (h *Hub) Since(after int64, sessionID string) []trace.Event {
 		if sessionID != "" && it.ev.SessionID != sessionID && it.ev.SessionID != "" {
 			continue
 		}
-		out = append(out, it.ev)
+		b.Events = append(b.Events, it.ev)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
-	if len(out) > liveSinceCap {
-		out = out[len(out)-liveSinceCap:]
+	sort.Slice(b.Events, func(i, j int) bool { return b.Events[i].Seq < b.Events[j].Seq })
+	if len(b.Events) > liveSinceCap {
+		// Silent truncation was the old hole: the oldest matches vanished
+		// with no signal. Keep the newest and say so.
+		b.Events = b.Events[len(b.Events)-liveSinceCap:]
+		b.Gap = true
 	}
-	return out
+	return b
+}
+
+// Since returns recorded events with seq > after, optionally filtered by
+// session. It drops the gap signal; renderers should use Batch.
+func (h *Hub) Since(after int64, sessionID string) []trace.Event {
+	return h.Batch(after, sessionID).Events
 }
 
 func NoticeOf(ev trace.Event) LiveNotice {

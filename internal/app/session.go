@@ -208,13 +208,17 @@ func (a *App) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.Tra
 	if a.Traces == nil {
 		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
 	}
-	raw, err := a.Traces.PageTurns(id, beforeSeq, turns)
-	if err != nil {
-		return runtime.TrajectoryPage{}, err
-	}
+	// Head before file: an event is persisted before it is published, so any
+	// event with seq <= hubSeq is already on disk when the file is read. The
+	// reverse order let an event land between the two reads and be in neither
+	// the page nor any pull that starts at hubSeq.
 	hubSeq := int64(0)
 	if a.Hub != nil {
 		hubSeq = a.Hub.Head()
+	}
+	raw, err := a.Traces.PageTurns(id, beforeSeq, turns)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
 	}
 	return runtime.ProjectPage(raw, hubSeq, trace.DefaultPageBytes), nil
 }
@@ -230,13 +234,14 @@ func (a *App) TrajectoryAround(id string, userSeq int64, turns int) (runtime.Tra
 	if a.Traces == nil {
 		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
 	}
-	raw, err := a.Traces.PageAroundUser(id, userSeq, turns)
-	if err != nil {
-		return runtime.TrajectoryPage{}, err
-	}
+	// Head before file, for the same reason as TrajectoryPage.
 	hubSeq := int64(0)
 	if a.Hub != nil {
 		hubSeq = a.Hub.Head()
+	}
+	raw, err := a.Traces.PageAroundUser(id, userSeq, turns)
+	if err != nil {
+		return runtime.TrajectoryPage{}, err
 	}
 	return runtime.ProjectPageKeep(raw, hubSeq, trace.DefaultPageBytes, userSeq), nil
 }
@@ -246,6 +251,17 @@ func (a *App) LiveSince(sessionID string, after int64) []trace.Event {
 		return nil
 	}
 	return runtime.SlimTrajectory(a.Hub.Since(after, sessionID))
+}
+
+// LiveSync is LiveSince for callers that must know whether the batch is
+// complete. Events are slimmed the same way.
+func (a *App) LiveSync(sessionID string, after int64) LiveBatch {
+	if a.Hub == nil {
+		return LiveBatch{Events: []trace.Event{}}
+	}
+	b := a.Hub.Batch(after, sessionID)
+	b.Events = runtime.SlimTrajectory(b.Events)
+	return b
 }
 
 func (a *App) ReadTrace(id string) ([]trace.Event, error) {

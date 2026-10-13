@@ -77,6 +77,13 @@ export function artifactPreviewOpen(view: ArtifactView): boolean {
   return artifactShouldShow(view);
 }
 
+const CODE_CHANGE_TOOLS = new Set(["write_file", "create_file", "str_replace", "edit_file", "apply_patch"]);
+
+/** File-mutating tools. Their cards are code-change bubbles and start folded. */
+export function isCodeChangeTool(name: string): boolean {
+  return CODE_CHANGE_TOOLS.has(name);
+}
+
 /** A preview card is only for a changed fragment (or an HTML document). Full-file code dumps are not a change. */
 export function diffHasEdits(diff: string): boolean {
   const plus: string[] = [];

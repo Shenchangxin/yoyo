@@ -19,7 +19,7 @@ import {
   toolDetail,
   toolName,
 } from "../lib/tool-summary";
-import { artifactPreviewOpen, artifactShouldShow, artifactView } from "../lib/artifact-preview";
+import { artifactPreviewOpen, artifactShouldShow, artifactView, isCodeChangeTool } from "../lib/artifact-preview";
 import { extractHTML, looksLikeHTML, looksLikeHTMLFile, looksLikeMCPUI, looksLikePDF } from "../lib/html-preview";
 import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
@@ -863,7 +863,7 @@ function ErrorCard({ item, onRetry }: { item: Item; onRetry?: () => void }) {
   const hint = classified.payloadHint || labels.hint;
   const detail = classified.detail;
   const showDetail = !!detail && detail !== labels.title && detail !== classified.payloadTitle;
-  const soft = classified.kind === "canceled" || classified.kind === "max_turns";
+  const soft = classified.kind === "canceled" || classified.kind === "max_turns" || classified.kind === "plan_open";
   const detailsLabel = soft ? copy.transcript.details : copy.transcript.errorDetails;
   return (
     <div
@@ -1187,7 +1187,10 @@ function ArtifactCard({
   const openCall = !!call && !result;
   const pending = openCall && running;
   const interrupted = openCall && !running;
-  const [open, setOpen] = useState(() => !pending && artifactPreviewOpen(view));
+  // Code-change cards fold until the operator opens the diff. Other previews
+  // (HTML pages, MCP apps, documents) still open on their own.
+  const codeChange = isCodeChangeTool(name);
+  const [open, setOpen] = useState(() => !codeChange && !pending && artifactPreviewOpen(view));
   const detail = toolDetail(result || call || item);
   const body = result ? formatToolBody(result) : formatToolBody(call || item);
   const files = name === "apply_patch" ? patchFileCount(body) : 0;
@@ -1201,8 +1204,9 @@ function ArtifactCard({
   const hasPreview = artifactShouldShow(view) || mcp || ((office || pdf) && !!path && !!workspace) || (htmlish && !!workspace && looksLikeHTMLFile(path)) || !!view.diff;
   const fileChip = isArtifactTool(name) && !!path;
   useEffect(() => {
-    if (!pending && (artifactPreviewOpen(view) || !!view.diff)) setOpen(true);
-  }, [pending, view.kind, view.path, view.html, view.diff]);
+    if (codeChange || pending) return;
+    if (artifactPreviewOpen(view) || !!view.diff) setOpen(true);
+  }, [codeChange, pending, view.kind, view.path, view.html, view.diff]);
   if (isPageReviewItem(call) || isPageReviewItem(result)) {
     return <PageReviewCard item={call} result={result} />;
   }

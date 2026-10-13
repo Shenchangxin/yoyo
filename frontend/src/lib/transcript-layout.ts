@@ -255,9 +255,23 @@ function agentCopyText(items: Item[]): string {
   return "";
 }
 
+/**
+ * The letter is the final assistant text: the last one with no tool call after
+ * it. Text that precedes a tool call is narration and belongs in the rail.
+ * Treating the newest narration as the letter showed a second answer block at
+ * the top of the turn until the next step folded it away. Empty trailing
+ * assistants are skipped so they cannot hide the real answer.
+ */
 function lastAssistantKey(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i].type === "assistant") return items[i].key;
+    const it = items[i];
+    if (it.type === "assistant") {
+      if (it.text.trim() || it.delta) return it.key;
+      continue;
+    }
+    // update_plan is bookkeeping: marking the last step done after the answer
+    // does not make the answer narration.
+    if ((isToolish(it) && toolName(it) !== "update_plan") || it.type === "subagent") return "";
   }
   return "";
 }
@@ -350,6 +364,16 @@ export function layoutRows(items: Item[]): LayoutRow[] {
       continue;
     }
     if (isMentionInject(it)) {
+      continue;
+    }
+    // Neutral: the approval card renders from the pending list. As a solo row it
+    // used to split the turn in two around an empty gap.
+    if (it.type === "approval") {
+      continue;
+    }
+    // A mid-turn context checkpoint is a divider inside the turn, not a new turn.
+    if (it.type === "compaction" && agent.length) {
+      agent.push(it);
       continue;
     }
     if (isAgentItem(it)) {

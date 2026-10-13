@@ -12,6 +12,8 @@ export type ErrorKind =
   | "budget"
   | "max_turns"
   | "stuck"
+  | "plan_open"
+  | "model"
   | "unknown";
 
 export type ErrorCopy = {
@@ -35,6 +37,10 @@ export type ErrorCopy = {
   errorMaxTurnsHint: string;
   errorStuck: string;
   errorStuckHint: string;
+  errorPlanOpen: string;
+  errorPlanOpenHint: string;
+  errorModel: string;
+  errorModelHint: string;
   errorUnknown: string;
   errorUnknownHint: string;
 };
@@ -48,7 +54,7 @@ export type ClassifiedError = {
 };
 
 const KINDS: ErrorKind[] = [
-  "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "stuck", "unknown",
+  "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "stuck", "plan_open", "model", "unknown",
 ];
 
 export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint: string } {
@@ -63,6 +69,8 @@ export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint:
     case "budget": return { title: t.errorBudget, hint: t.errorBudgetHint };
     case "max_turns": return { title: t.errorMaxTurns, hint: t.errorMaxTurnsHint };
     case "stuck": return { title: t.errorStuck, hint: t.errorStuckHint };
+    case "plan_open": return { title: t.errorPlanOpen, hint: t.errorPlanOpenHint };
+    case "model": return { title: t.errorModel, hint: t.errorModelHint };
     default: return { title: t.errorUnknown, hint: t.errorUnknownHint };
   }
 }

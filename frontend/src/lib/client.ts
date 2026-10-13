@@ -633,11 +633,23 @@ export async function trajectoryAround(id: string, seq: number, turns?: number):
   return trajectoryPageOf(await http(`/api/sessions/${id}/trajectory/around${qs ? `?${qs}` : ""}`));
 }
 
-export async function liveSince(id: string, after: number): Promise<any[]> {
+/**
+ * One pull from the hub ring after a global seq. `gap` means `events` is not the
+ * complete tail after `after`; the caller must reload the trajectory instead.
+ */
+export type LiveBatch = { events: any[]; head: number; gap: boolean };
+
+export async function liveSync(id: string, after: number): Promise<LiveBatch> {
   const s = await wailsService();
-  const fn = svcMethod(s, "LiveSince", "liveSince");
-  if (fn) return asArray(await fn(id, after));
-  return asArray(await http(`/api/sessions/${id}/live?after=${encodeURIComponent(String(after))}`));
+  const fn = svcMethod(s, "LiveSync", "liveSync");
+  const raw = fn
+    ? await fn(id, after)
+    : await http(`/api/sessions/${id}/live/sync?after=${encodeURIComponent(String(after))}`);
+  return {
+    events: asArray(raw?.events),
+    head: Number(raw?.head) || 0,
+    gap: raw?.gap === true,
+  };
 }
 
 export async function setRendererMemory(level: "low" | "normal"): Promise<void> {

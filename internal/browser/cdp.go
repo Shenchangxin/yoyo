@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,24 +20,110 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
+// cdpCallTimeout bounds one CDP round trip. A slow page must not tear the
+// connection down; only a dead socket does.
+const cdpCallTimeout = 12 * time.Second
+
+// cdpConn is one CDP websocket. A single readLoop goroutine owns every Read:
+// replies are matched to callers by id and the connection is alive exactly
+// until the reader observes a failure or the host closes it.
+//
+// Liveness used to be probed with ws.Ping. coder/websocket only processes a
+// pong while something is reading, so an idle, healthy connection always
+// looked dead. The host then relaunched Chrome onto about:blank on every
+// click (session 3b9f1bbb660e4236: every click reported "selector not found").
 type cdpConn struct {
-	mu     sync.Mutex
-	callMu sync.Mutex
-	ws     *websocket.Conn
-	next   int
+	ws      *websocket.Conn
+	writeMu sync.Mutex
+
+	mu      sync.Mutex
+	next    int
+	pending map[int]chan cdpReply
+	done    chan struct{}
+	err     error
+}
+
+type cdpReply struct {
+	result json.RawMessage
+	err    error
+}
+
+func newCDPConn(ws *websocket.Conn) *cdpConn {
+	c := &cdpConn{
+		ws:      ws,
+		next:    1,
+		pending: map[int]chan cdpReply{},
+		done:    make(chan struct{}),
+	}
+	go c.readLoop()
+	return c
+}
+
+func (c *cdpConn) readLoop() {
+	for {
+		var msg struct {
+			ID     int             `json:"id"`
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := wsjson.Read(context.Background(), c.ws, &msg); err != nil {
+			c.fail(err)
+			return
+		}
+		if msg.ID == 0 {
+			continue // protocol event; nothing subscribes to events yet
+		}
+		c.mu.Lock()
+		ch := c.pending[msg.ID]
+		delete(c.pending, msg.ID)
+		c.mu.Unlock()
+		if ch == nil {
+			continue
+		}
+		r := cdpReply{result: msg.Result}
+		if msg.Error != nil {
+			r.err = errors.New(msg.Error.Message)
+		}
+		ch <- r
+	}
+}
+
+// fail marks the connection dead exactly once, wakes every waiter, and
+// releases the socket. Waiters receive an error that isCDPGone recognises.
+func (c *cdpConn) fail(cause error) {
+	c.mu.Lock()
+	if c.err != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.err = fmt.Errorf("websocket: closed: %w", cause)
+	e := c.err
+	pending := c.pending
+	c.pending = map[int]chan cdpReply{}
+	close(c.done)
+	c.mu.Unlock()
+	_ = c.ws.CloseNow()
+	for _, ch := range pending {
+		ch <- cdpReply{err: e}
+	}
 }
 
 func (c *cdpConn) close() {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
-	ws := c.ws
-	c.ws = nil
-	c.mu.Unlock()
-	if ws != nil {
-		_ = ws.Close(websocket.StatusNormalClosure, "")
+	c.fail(errors.New("closed by host"))
+}
+
+func (c *cdpConn) alive() bool {
+	if c == nil {
+		return false
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err == nil
 }
 
 func findChrome() string {
@@ -151,6 +238,11 @@ func (h *Host) startChromeCDP(startURL string, headed bool) error {
 	h.mu.Unlock()
 	if same && cdpAlive(c) {
 		return nil
+	}
+	if strings.TrimSpace(startURL) == "" {
+		// A relaunch with no URL used to land on about:blank, silently
+		// replacing the game page the agent was operating on.
+		startURL = h.previewStartURL()
 	}
 	if h.cdp != nil || h.cmd != nil {
 		h.stopChrome()
@@ -268,11 +360,14 @@ func (h *Host) dialWS(wsURL string) error {
 		return err
 	}
 	ws.SetReadLimit(cdpMaxMessage)
+	conn := newCDPConn(ws)
 	h.mu.Lock()
-	h.cdp = &cdpConn{ws: ws, next: 1}
+	old := h.cdp
+	h.cdp = conn
 	h.mu.Unlock()
-	_, _ = h.cdp.call("Page.enable", nil)
-	_, _ = h.cdp.call("Network.enable", nil)
+	old.close() // a replaced socket must not keep its reader or target alive
+	_, _ = conn.call("Page.enable", nil)
+	_, _ = conn.call("Network.enable", nil)
 	return nil
 }
 
@@ -313,19 +408,10 @@ func versionWS(addr string) (string, error) {
 	return doc.WS, nil
 }
 
+// cdpAlive reports whether the connection's reader is still running. It is a
+// local check: no network round trip and no false negatives on idle sockets.
 func cdpAlive(c *cdpConn) bool {
-	if c == nil {
-		return false
-	}
-	c.mu.Lock()
-	ws := c.ws
-	c.mu.Unlock()
-	if ws == nil {
-		return false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
-	defer cancel()
-	return ws.Ping(ctx) == nil
+	return c.alive()
 }
 
 func isCDPMessageTooBig(err error) bool {
@@ -417,45 +503,54 @@ func (c *cdpConn) call(method string, params any) (json.RawMessage, error) {
 	if c == nil {
 		return nil, fmt.Errorf("browser: no CDP")
 	}
-	c.callMu.Lock()
-	defer c.callMu.Unlock()
 	c.mu.Lock()
-	ws := c.ws
-	c.next++
-	id := c.next
-	c.mu.Unlock()
-	if ws == nil {
-		return nil, fmt.Errorf("browser: no CDP")
+	if c.err != nil {
+		err := c.err
+		c.mu.Unlock()
+		return nil, err
 	}
+	id := c.next
+	c.next++
+	ch := make(chan cdpReply, 1)
+	c.pending[id] = ch
+	c.mu.Unlock()
+
 	msg := map[string]any{"id": id, "method": method}
 	if params != nil {
 		msg["params"] = params
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cdpCallTimeout)
 	defer cancel()
-	if err := wsjson.Write(ctx, ws, msg); err != nil {
+	c.writeMu.Lock()
+	err := wsjson.Write(ctx, c.ws, msg)
+	c.writeMu.Unlock()
+	if err != nil {
+		c.drop(id)
 		return nil, err
 	}
-	for {
-		var reply struct {
-			ID     int             `json:"id"`
-			Result json.RawMessage `json:"result"`
-			Error  *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-			Method string `json:"method"`
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return nil, fmt.Errorf("cdp %s: %w", method, r.err)
 		}
-		if err := wsjson.Read(ctx, ws, &reply); err != nil {
-			return nil, err
+		return r.result, nil
+	case <-c.done:
+		// fail() sends to every registered waiter, so this receive completes.
+		r := <-ch
+		if r.err != nil {
+			return nil, r.err
 		}
-		if reply.ID != id {
-			continue
-		}
-		if reply.Error != nil {
-			return nil, fmt.Errorf("cdp %s: %s", method, reply.Error.Message)
-		}
-		return reply.Result, nil
+		return r.result, nil
+	case <-ctx.Done():
+		c.drop(id)
+		return nil, fmt.Errorf("cdp %s: no reply within %s", method, cdpCallTimeout)
 	}
+}
+
+func (c *cdpConn) drop(id int) {
+	c.mu.Lock()
+	delete(c.pending, id)
+	c.mu.Unlock()
 }
 
 func (h *Host) navigateCDP(raw string) error {
@@ -510,8 +605,21 @@ func (h *Host) evalOnConn(expr string) (string, error) {
 		Result struct {
 			Value any `json:"value"`
 		} `json:"result"`
+		ExceptionDetails *struct {
+			Text      string `json:"text"`
+			Exception *struct {
+				Description string `json:"description"`
+			} `json:"exception"`
+		} `json:"exceptionDetails"`
 	}
 	_ = json.Unmarshal(raw, &out)
+	if out.ExceptionDetails != nil {
+		msg := out.ExceptionDetails.Text
+		if e := out.ExceptionDetails.Exception; e != nil && e.Description != "" {
+			msg = e.Description
+		}
+		return "", fmt.Errorf("browser: page script error: %s", strings.TrimSpace(msg))
+	}
 	return fmt.Sprint(out.Result.Value), nil
 }
 
@@ -528,56 +636,4 @@ func (h *Host) waitDocumentComplete(d time.Duration) {
 		}
 		time.Sleep(40 * time.Millisecond)
 	}
-}
-
-func (h *Host) clickCDP(sel string) (string, error) {
-	deadline := time.Now().Add(3 * time.Second)
-	var last string
-	for {
-		js := fmt.Sprintf(`(() => {
-  const el = document.querySelector(%q);
-  if (!el) return JSON.stringify({ok:false, reason:"missing"});
-  const r = el.getBoundingClientRect();
-  if (r.width < 1 || r.height < 1) return JSON.stringify({ok:false, reason:"not visible"});
-  el.scrollIntoView({block:"center", inline:"center"});
-  el.click();
-  const boot = document.getElementById("boot");
-  return JSON.stringify({
-    ok: true,
-    selector: %q,
-    w: Math.round(r.width),
-    h: Math.round(r.height),
-    bootDisplay: boot ? (boot.style.display || getComputedStyle(boot).display) : "",
-    title: document.title,
-    href: location.href
-  });
-})()`, sel, sel)
-		out, err := h.evalJS(js)
-		if err != nil {
-			return out, err
-		}
-		last = cleanJS(out)
-		if strings.Contains(last, `"ok":true`) || strings.Contains(last, `"ok": true`) {
-			return last, nil
-		}
-		if time.Now().After(deadline) {
-			if last == "" {
-				last = "missing"
-			}
-			return last, fmt.Errorf("browser: selector %s not found", sel)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-func (h *Host) typeCDP(sel, text string) error {
-	js := fmt.Sprintf(`(() => { const el = document.querySelector(%q); if (!el) return "missing"; el.focus(); el.value = %q; el.dispatchEvent(new Event("input", {bubbles:true})); return "ok"; })()`, sel, text)
-	out, err := h.evalJS(js)
-	if err != nil {
-		return err
-	}
-	if out != "ok" {
-		return fmt.Errorf("browser: selector %s not found", sel)
-	}
-	return nil
 }
