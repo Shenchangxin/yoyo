@@ -14,6 +14,11 @@ export async function mockApi(
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
+  let studios: any[] = [];
+  let topics: any[] = [
+    { id: "topic-1", title: "春日穿搭", status: "ready", source_platform: "weibo", angle: "通勤怎么穿", scores: { heat: 5, feasibility: 4 } },
+    { id: "topic-2", title: "还没想好", status: "inbox" },
+  ];
   let pages: any[] = [];
   let paused = false;
   let cfg: any = {
@@ -145,7 +150,17 @@ export async function mockApi(
         return ok({ ok: true });
       }
       if (rpcMethod === "video.history") {
-        return ok(canvases.map((c) => ({ kind: "canvas", id: c.id, title: c.title, session_id: c.session_id || "" })));
+        return ok([
+          ...studios.map((s) => ({
+            kind: "studio",
+            id: s.id,
+            title: s.title,
+            session_id: s.session_id || "",
+            status: s.status || "draft",
+            gate: s.gate || "script",
+          })),
+          ...canvases.map((c) => ({ kind: "canvas", id: c.id, title: c.title, session_id: c.session_id || "" })),
+        ]);
       }
       if (rpcMethod === "video.settings.get") {
         return ok({ content_language: "zh", studio_aspect: "9:16", studio_publish_platform: "douyin" });
@@ -157,13 +172,75 @@ export async function mockApi(
         return ok({ trends: [], updated: 0 });
       }
       if (rpcMethod === "video.topic.list") {
-        return ok([]);
+        const status = String(params.status || "");
+        return ok(status ? topics.filter((t) => t.status === status) : topics);
+      }
+      if (rpcMethod === "video.topic.save") {
+        const id = String(params.id || `topic-${topics.length + 1}`);
+        const row = { ...(topics.find((t) => t.id === id) || {}), ...params, id };
+        topics = [row, ...topics.filter((t) => t.id !== id)];
+        return ok(row);
+      }
+      if (rpcMethod === "video.topic.schedule") {
+        const id = String(params.id || "");
+        const hit = topics.find((t) => t.id === id);
+        if (!hit) return ok({ ok: false });
+        if (hit.status === "scheduled") {
+          return ok({ ok: true, duplicate: true, job: { id: "job-sched" }, topic: hit });
+        }
+        hit.status = "scheduled";
+        return ok({ ok: true, job: { id: "job-sched", kind: "once" }, topic: hit });
+      }
+      if (rpcMethod === "video.topic.unschedule") {
+        const id = String(params.id || "");
+        const hit = topics.find((t) => t.id === id);
+        if (hit && hit.status === "scheduled") hit.status = hit.angle ? "ready" : "inbox";
+        return ok({ ok: true, cancelled: 1, topic: hit });
       }
       if (rpcMethod === "video.studio.list") {
-        return ok([]);
+        return ok(studios);
       }
-      if (rpcMethod === "video.studio.bind" || rpcMethod === "video.studio.create") {
-        return ok({ ok: true, id: "studio-mock", title: "Short", status: "draft", storyboard: { shots: [] } });
+      if (rpcMethod === "video.studio.create") {
+        const row = {
+          ok: true,
+          id: `studio-${studios.length + 1}`,
+          title: String(params.title || "Short"),
+          status: "draft",
+          gate: "script",
+          furthest_gate: "script",
+          script_status: "needs_review",
+          storyboard: { shots: [] },
+          delivery: { status: "draft" },
+          session_id: String(params.session_id || ""),
+          topic_id: String(params.topic_id || ""),
+        };
+        studios = [row, ...studios];
+        if (row.topic_id) {
+          topics = topics.map((t) => (t.id === row.topic_id ? { ...t, status: "in_production", studio_project_id: row.id } : t));
+        }
+        return ok(row);
+      }
+      if (rpcMethod === "video.studio.bind") {
+        const id = String(params.project_id || params.id || studios[0]?.id || "studio-1");
+        const hit = studios.find((s) => s.id === id) || studios[0] || { id, title: "Short", status: "draft", gate: "script", furthest_gate: "script", script_status: "needs_review", storyboard: { shots: [] }, delivery: { status: "draft" } };
+        return ok(hit);
+      }
+      if (rpcMethod === "video.studio.get" || rpcMethod === "video.studio.update") {
+        const id = String(params.id || studios[0]?.id || "studio-1");
+        const hit = studios.find((s) => s.id === id);
+        return ok(hit || { id, title: "Short", status: "draft", gate: "script", furthest_gate: "script", script_status: "needs_review", storyboard: { shots: [] }, delivery: { status: "draft" } });
+      }
+      if (rpcMethod === "video.studio.catalog") {
+        return ok({ characters: [], styles: [], presets: [], templates: [], voices: [], platforms: ["douyin", "xhs", "bilibili"], tones: ["natural"] });
+      }
+      if (rpcMethod === "video.studio.preflight") {
+        return ok({ gate: params.gate || "script", ok: true, furthest: "script", spends: [] });
+      }
+      if (rpcMethod === "video.topic.expand") {
+        return ok({ id: params.id, title: "Topic", options: [{ id: "opt-1", title: "Angle A", angle: "clear facts", summary: "no fabricated experience" }] });
+      }
+      if (rpcMethod === "video.topic.choose") {
+        return ok({ id: params.id, title: "Topic", angle: "clear facts" });
       }
       if (rpcMethod === "video.studio.publish.platforms") {
         return ok([{ id: "douyin", label: "抖音", creator_url: "https://example.com", analytics_url: "https://example.com" }]);

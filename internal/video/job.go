@@ -83,7 +83,10 @@ func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 	j := Job{
 		ID: NewID(), Type: "image", Status: "queued",
 		Provider: p.Provider, Model: ResolveProviderModel(p, in.Model), VaultKey: p.VaultKey,
-		Prompt: in.Prompt, Params: marshalJSON(JobParams{Size: first(in.Size, "1920x1080"), AspectRatio: in.AspectRatio, ReferenceImages: in.Refs}),
+		Prompt: in.Prompt, Params: marshalJSON(JobParams{
+			Size: first(in.Size, "1920x1080"), AspectRatio: in.AspectRatio, ReferenceImages: in.Refs,
+			StudioProjectID: in.StudioProjectID, StudioShotID: in.StudioShotID, StudioKind: in.StudioKind,
+		}),
 		DramaID: in.DramaID, EpisodeID: in.EpisodeID, CharacterID: in.CharacterID, SceneID: in.SceneID, PropID: in.PropID,
 		CreatedAt: now, UpdatedAt: now,
 	}

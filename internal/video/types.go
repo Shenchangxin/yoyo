@@ -248,20 +248,26 @@ type JobParams struct {
 	ClientOperationID  string          `json:"client_operation_id,omitempty"`
 	RetryOf            string          `json:"retry_of,omitempty"`
 	RemotePayload      json.RawMessage `json:"remote_payload,omitempty"`
+	StudioProjectID    string          `json:"studio_project_id,omitempty"`
+	StudioShotID       string          `json:"studio_shot_id,omitempty"`
+	StudioKind         string          `json:"studio_kind,omitempty"`
 }
 
 type EnqueueImage struct {
-	Prompt      string
-	Model       string
-	ProviderID  string
-	Size        string
-	AspectRatio string
-	Refs        []string
-	DramaID     string
-	EpisodeID   string
-	CharacterID string
-	SceneID     string
-	PropID      string
+	Prompt          string
+	Model           string
+	ProviderID      string
+	Size            string
+	AspectRatio     string
+	Refs            []string
+	DramaID         string
+	EpisodeID       string
+	CharacterID     string
+	SceneID         string
+	PropID          string
+	StudioProjectID string
+	StudioShotID    string
+	StudioKind      string
 }
 
 type EnqueueVideo struct {

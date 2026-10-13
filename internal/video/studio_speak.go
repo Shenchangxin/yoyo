@@ -26,6 +26,9 @@ func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 	if text == "" {
 		return StudioProject{}, fmt.Errorf("no text to speak")
 	}
+	if p.ScriptStatus != ScriptApproved {
+		return p, fmt.Errorf("approve the script before Speak")
+	}
 	if e.Conn == nil {
 		return StudioProject{}, fmt.Errorf("configure a speech adapter in Settings → Generation")
 	}
@@ -41,7 +44,11 @@ func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 	if model == "" {
 		model = "gpt-4o-mini-tts"
 	}
-	raw, err := e.ttsOpenAI(c.Endpoint, key, model, text)
+	voice := strings.TrimSpace(p.Voice)
+	if voice == "" {
+		voice = "alloy"
+	}
+	raw, err := e.ttsOpenAI(c.Endpoint, key, model, text, voice)
 	if err != nil {
 		return StudioProject{}, err
 	}
@@ -56,14 +63,20 @@ func (e *Engine) SpeakStudio(id, text string) (StudioProject, error) {
 		p.SubtitleHash = sh
 		p.Storyboard.Subtitle = sh
 	}
-	p.UpdatedAt = Now()
-	if err := e.putDoc(colStudioProjects, p.ID, p); err != nil {
+	p.SkipAudio = false
+	p.Gate = GateVisuals
+	e.noteStudio(&p, "speak", "narration ready")
+	saved, err := e.saveStudio(p)
+	if err != nil {
 		return StudioProject{}, err
 	}
-	return p, nil
+	if timed, terr := e.ApplyStudioTiming(saved.ID); terr == nil {
+		return timed, nil
+	}
+	return saved, nil
 }
 
-func (e *Engine) ttsOpenAI(endpoint, key, model, text string) ([]byte, error) {
+func (e *Engine) ttsOpenAI(endpoint, key, model, text, voice string) ([]byte, error) {
 	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if base == "" {
 		base = "https://api.openai.com/v1"
@@ -78,7 +91,10 @@ func (e *Engine) ttsOpenAI(endpoint, key, model, text string) ([]byte, error) {
 			u += "/v1/audio/speech"
 		}
 	}
-	body, _ := json.Marshal(map[string]any{"model": model, "input": text, "voice": "alloy", "format": "mp3"})
+	if strings.TrimSpace(voice) == "" {
+		voice = "alloy"
+	}
+	body, _ := json.Marshal(map[string]any{"model": model, "input": text, "voice": voice, "format": "mp3"})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))

@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clapperboard, Film, ImagePlus, Plus, Radio, RefreshCw, Settings, Share2, Sparkles, Trash2, Video } from "lucide-react";
+import { ChevronRight, Clapperboard, MoreHorizontal, Plus, Radio, RefreshCw, Settings, Share2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Input } from "../../components/ui/input";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
+import { writeClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { PRESET_STYLES, styleLabel } from "./drama-lib";
+import { CreateShortField, ScorePills, StudioIdChip } from "./studio-chrome";
+import { StudioProduce } from "./StudioProduce";
+import { type StudioCatalog, type StudioProject as ProduceProject } from "./studio-model";
+import { studioNext, studioNextCopy, type StudioPane } from "./studio-next";
+import { SCORE_KEYS, TOPIC_FILTERS, topicIsScheduled, topicPrimaryAction, type TopicFilter } from "./studio-topic";
 import { useStudioSelection } from "./workshop-store";
-
-type StudioPane = "radar" | "topics" | "assemble" | "publish";
 
 type TrendItem = { title?: string; hot?: string; url?: string };
 type TrendGroup = { platform?: string; label?: string; items?: TrendItem[]; ok?: boolean };
@@ -29,6 +33,7 @@ type Topic = {
   status?: string;
   studio_project_id?: string;
   persona_page_id?: string;
+  options?: { id: string; title?: string; angle?: string; summary?: string }[];
   updated_at?: string;
 };
 type StudioShot = { image_hash?: string; video_hash?: string; caption?: string; duration?: number; motion?: string; prompt?: string };
@@ -59,6 +64,8 @@ type StudioProject = {
   aspect?: string;
   style?: string;
   script?: string;
+  script_status?: string;
+  skip_audio?: boolean;
   storyboard?: { shots?: StudioShot[]; size?: string };
   narration_hash?: string;
   subtitle_hash?: string;
@@ -69,27 +76,23 @@ type StudioProject = {
   media_url?: string;
   poster_url?: string;
   narration_url?: string;
+  cover_url?: string;
+  cover_hash?: string;
+  copy_text?: string;
+  cover_urls?: { hash?: string; url?: string }[];
+  versions?: { n: number; result_hash?: string }[];
+  delivery?: { status?: string; note?: string; copy_text?: string; files?: { kind?: string; hash?: string }[] };
+  gate?: string;
+  furthest_gate?: string;
+  identity?: { character_id?: string; name?: string };
+  shots?: { image_hash?: string; video_hash?: string }[];
 };
 
 const TREND_PLATFORMS = ["weibo", "douyin", "zhihu", "bilibili", "toutiao", "baidu"] as const;
-const SCORE_KEYS = ["heat", "timing", "uniqueness", "feasibility", "persona", "conversion", "risk"] as const;
 const ASPECTS = ["9:16", "16:9", "1:1"] as const;
 
 function asList<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
-}
-
-function readDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(file);
-  });
-}
-
-function shotReady(sh: StudioShot) {
-  return !!(sh.image_hash || sh.video_hash);
 }
 
 export function StudioWorkbench(props: {
@@ -102,12 +105,14 @@ export function StudioWorkbench(props: {
   const openSettings = useUI((s) => s.openSettings);
   const studioId = useStudioSelection((st) => st.studioId);
   const setStudioId = useStudioSelection((st) => st.setStudioId);
-  const [pane, setPane] = useState<StudioPane>("radar");
+  const setStudioMeta = useStudioSelection((st) => st.setStudioMeta);
+  const [pane, setPane] = useState<StudioPane>(studioId ? "assemble" : "radar");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [platforms, setPlatforms] = useState<string[]>(["weibo", "douyin", "zhihu"]);
   const [trends, setTrends] = useState<TrendGroup[]>([]);
-  const [topicStatus, setTopicStatus] = useState("");
+  const [topicStatus, setTopicStatus] = useState<TopicFilter>("");
+  const [naming, setNaming] = useState(false);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [draftTitle, setDraftTitle] = useState("");
   const [projects, setProjects] = useState<StudioProject[]>([]);
@@ -115,23 +120,15 @@ export function StudioWorkbench(props: {
   const [kill, setKill] = useState(false);
   const [killTopic, setKillTopic] = useState<Topic | null>(null);
   const [mediaBase, setMediaBase] = useState("");
-  const [opsHash, setOpsHash] = useState("");
-  const [opsSub, setOpsSub] = useState("");
-  const [opsResult, setOpsResult] = useState<{ media_url?: string; cas_hash?: string } | null>(null);
   const [pubPlatforms, setPubPlatforms] = useState<PublishPlatform[]>([]);
   const [publishes, setPublishes] = useState<Publish[]>([]);
   const [draftPlatform, setDraftPlatform] = useState("douyin");
   const [draftCaption, setDraftCaption] = useState("");
   const [draftTags, setDraftTags] = useState("");
-  const [postedUrl, setPostedUrl] = useState("");
-  const [pubNote, setPubNote] = useState("");
-  const [reads, setReads] = useState("");
-  const [likes, setLikes] = useState("");
-  const [comments, setComments] = useState("");
   const [wrapTitle, setWrapTitle] = useState("");
   const [defaultAspect, setDefaultAspect] = useState<(typeof ASPECTS)[number]>("9:16");
-  const [styles, setStyles] = useState<{ value: string; name: string }[]>(PRESET_STYLES.map((row) => ({ value: row.value, name: row.name })));
   const [remotionReady, setRemotionReady] = useState(false);
+  const [catalog, setCatalog] = useState<StudioCatalog>({});
 
   const current = project && project.id === studioId ? project : projects.find((p) => p.id === studioId) || project;
 
@@ -189,17 +186,19 @@ export function StudioWorkbench(props: {
       setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
       setRemotionReady(!!st?.remotion?.ready);
     }).catch(() => {});
-    void api.video.styles().then((list) => {
-      const rows = asList<{ value?: string; name?: string }>(list).filter((row) => row.value);
-      if (rows.length) setStyles(rows.map((row) => ({ value: String(row.value), name: String(row.name || row.value) })));
-    }).catch(() => {});
     void api.video.fetchTrends("weibo,douyin,zhihu", 15).then((raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {});
+    void api.video.studioCatalog().then((row) => setCatalog((row || {}) as StudioCatalog)).catch(() => {});
   }, [loadTopics, loadProjects]);
 
   useEffect(() => {
     if (pane !== "publish") return;
     void loadPublishes().catch((e) => toast.error(api.errMessage(e)));
   }, [pane, loadPublishes]);
+
+  useEffect(() => {
+    const text = current?.copy_text || current?.delivery?.copy_text || "";
+    if (text) setDraftCaption(text);
+  }, [current?.id, current?.copy_text, current?.delivery?.copy_text]);
 
   useEffect(() => {
     if (!studioId) {
@@ -218,6 +217,21 @@ export function StudioWorkbench(props: {
       if (/not found/i.test(api.errMessage(e))) setStudioId("");
     });
   }, [props.sessionId, studioId, setStudioId]);
+
+  useEffect(() => {
+    const next = studioNext(current, pane);
+    if (!current) {
+      setStudioMeta({ pane, gate: "", status: "", nextKey: next.key });
+      return;
+    }
+    setStudioMeta({
+      title: current.title || "",
+      pane,
+      gate: next.gate || current.gate || current.furthest_gate || "",
+      status: current.status || "",
+      nextKey: next.key,
+    });
+  }, [current, current?.id, current?.title, current?.gate, current?.furthest_gate, current?.status, current?.script, current?.script_status, current?.narration_hash, current?.skip_audio, current?.result_hash, current?.delivery?.status, pane, setStudioMeta]);
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -267,15 +281,28 @@ export function StudioWorkbench(props: {
     });
   }
 
+  async function openShort(p: StudioProject) {
+    if (!p?.id) return;
+    setStudioId(p.id);
+    setProject(p);
+    setPane("assemble");
+    const sid = await sessionId();
+    if (sid) await api.video.studioBind(sid, p.id).catch(() => {});
+  }
+
   async function produce(t: Topic) {
+    if (t.studio_project_id) {
+      await run("open", async () => {
+        const p = (await api.video.getStudio(t.studio_project_id || "")) as StudioProject;
+        await openShort(p);
+        await loadProjects();
+      });
+      return;
+    }
     await run("produce", async () => {
       const sid = await sessionId();
       const p = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect, session_id: sid })) as StudioProject;
-      if (p?.id) {
-        setStudioId(p.id);
-        setProject(p);
-        setPane("assemble");
-      }
+      await openShort(p);
       await loadTopics();
       await loadProjects();
     });
@@ -283,28 +310,30 @@ export function StudioWorkbench(props: {
 
   async function schedule(t: Topic) {
     await run("schedule", async () => {
-      const sid = await sessionId();
-      const out = (await api.video.scheduleTopic(t.id, sid, defaultAspect)) as { studio?: StudioProject };
-      if (out?.studio?.id) {
-        setStudioId(out.studio.id);
-        setProject(out.studio);
-        setPane("assemble");
-      }
+      const out = (await api.video.scheduleTopic(t.id)) as { duplicate?: boolean };
       await loadTopics();
-      await loadProjects();
-      toast.success(s.schedule);
+      toast.success(out?.duplicate ? s.scheduleExists : s.scheduleQueued);
     });
   }
 
-  async function newProject() {
+  async function unschedule(t: Topic) {
+    await run("unschedule", async () => {
+      await api.video.unscheduleTopic(t.id);
+      await loadTopics();
+    });
+  }
+
+  async function newProject(title: string) {
+    const name = title.trim();
+    if (!name) {
+      toast.error(s.needNamedShort);
+      return;
+    }
     await run("create", async () => {
       const sid = await sessionId();
-      const p = (await api.video.createStudio({ title: s.newProject, aspect: defaultAspect, session_id: sid })) as StudioProject;
-      if (p?.id) {
-        setStudioId(p.id);
-        setProject(p);
-        setPane("assemble");
-      }
+      const p = (await api.video.createStudio({ title: name, aspect: defaultAspect, session_id: sid })) as StudioProject;
+      setNaming(false);
+      await openShort(p);
       await loadProjects();
     });
   }
@@ -324,18 +353,6 @@ export function StudioWorkbench(props: {
     });
   }
 
-  async function speak() {
-    if (!current?.id) return;
-    if (!String(current.script || "").trim()) {
-      toast.error(s.needScript);
-      return;
-    }
-    await run("speak", async () => {
-      const next = (await api.video.speakStudio(current.id, current.script || "")) as StudioProject;
-      setProject(next);
-    });
-  }
-
   async function wrapCurrent() {
     if (!current?.id) return;
     const hash = current.result_hash;
@@ -346,26 +363,10 @@ export function StudioWorkbench(props: {
     const title = wrapTitle.trim() || current.title || s.wrap;
     await run("wrap", async () => {
       const r = await api.video.studioWrap(hash, title);
-      setOpsResult(r);
       if (r?.cas_hash) {
         const next = (await api.video.updateStudio({ id: current.id, result_hash: r.cas_hash })) as StudioProject;
         setProject(next);
       }
-    });
-  }
-
-  async function assemble() {
-    if (!current?.id) return;
-    const list = current.storyboard?.shots || [];
-    if (!list.some(shotReady)) {
-      toast.error(s.needShots);
-      return;
-    }
-    await run("assemble", async () => {
-      const next = (await api.video.assembleStudio(current.id)) as StudioProject;
-      setProject(next);
-      await loadProjects();
-      if (next?.result_hash) setPane("publish");
     });
   }
 
@@ -374,11 +375,15 @@ export function StudioWorkbench(props: {
       toast.error(s.needAssemble);
       return;
     }
+    if (current.delivery?.status !== "publishable") {
+      toast.error(s.desk.needPack);
+      return;
+    }
     await run("draft", async () => {
       await api.video.draftPublish({
         platform: draftPlatform,
         title: current.title || s.newProject,
-        caption: draftCaption || current.script || "",
+        caption: draftCaption || current.copy_text || current.script || "",
         tags: draftTags,
         project_id: current.id,
         topic_id: current.topic_id || "",
@@ -395,39 +400,6 @@ export function StudioWorkbench(props: {
       const out = await api.video.createPersona(label, topicId);
       if (topicId) await loadTopics();
       toast.success(out?.title || s.persona);
-    });
-  }
-
-  const shots = current?.storyboard?.shots || [];
-
-  function setShots(next: StudioShot[], persist = false) {
-    if (!current) return;
-    const storyboard = { ...(current.storyboard || {}), shots: next };
-    setProject({ ...current, storyboard });
-    if (persist) void saveProject({ storyboard });
-  }
-
-  function patchShot(i: number, extra: Partial<StudioShot>, persist = false) {
-    setShots(shots.map((sh, n) => (n === i ? { ...sh, ...extra } : sh)), persist);
-  }
-
-  function addShot(extra: Partial<StudioShot> = {}) {
-    setShots([...shots, { duration: 3, caption: "", ...extra }], true);
-  }
-
-  function removeShot(i: number) {
-    setShots(shots.filter((_, n) => n !== i), true);
-  }
-
-  async function uploadShot(kind: "image" | "video", file: File, index = -1) {
-    await run("upload", async () => {
-      const data = await readDataURL(file);
-      const put = await api.video.putStudioMedia(data, file.type, kind);
-      const hash = String(put?.cas_hash || put?.CASHash || "");
-      if (!hash) throw new Error(s.needShots);
-      const extra: Partial<StudioShot> = kind === "video" ? { video_hash: hash, image_hash: "" } : { image_hash: hash, video_hash: "" };
-      if (index >= 0) patchShot(index, extra, true);
-      else addShot({ ...extra, duration: kind === "video" ? 5 : 3 });
     });
   }
 
@@ -458,16 +430,25 @@ export function StudioWorkbench(props: {
     risk: s.scoreRisk,
   };
 
-  const panes: { id: StudioPane; label: string; hint: string; icon: typeof Radio }[] = [
-    { id: "radar", label: s.radar, hint: s.radarHint, icon: Radio },
-    { id: "topics", label: s.topics, hint: s.topicsHint, icon: Sparkles },
-    { id: "assemble", label: s.assemble, hint: s.assembleHint, icon: Film },
-    { id: "publish", label: s.publish, hint: s.publishHint, icon: Share2 },
+  const panes: { id: StudioPane; label: string; hint: string }[] = [
+    { id: "radar", label: s.radar, hint: s.radarHint },
+    { id: "topics", label: s.topics, hint: s.topicsHint },
+    { id: "assemble", label: s.assemble, hint: s.assembleHint },
+    { id: "publish", label: s.publish, hint: s.publishHint },
   ];
+  const next = studioNext(current, pane);
+  const nextLabel = studioNextCopy(s, next.key);
+  const paneDone: Record<StudioPane, boolean> = {
+    radar: topics.length > 0,
+    topics: !!current,
+    assemble: !!current?.result_hash,
+    publish: publishes.some((p) => p.status === "posted" || p.status === "opened"),
+  };
 
   const statusLabel: Record<string, string> = {
     inbox: s.inbox,
     ready: s.ready,
+    scheduled: s.scheduled,
     in_production: s.inProduction,
     done: s.done,
     draft: s.draft,
@@ -476,19 +457,81 @@ export function StudioWorkbench(props: {
     opened: s.opened,
     posted: s.posted,
   };
+  const gateLabel: Record<string, string> = {
+    setup: s.desk.setup,
+    script: s.desk.script,
+    audio: s.desk.audio,
+    visuals: s.desk.visuals,
+    compose: s.desk.compose,
+    delivery: s.desk.delivery,
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane}>
       {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
       <header className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[14px] font-semibold tracking-[-0.03em]">{current?.title || copy.video.shellStudio}</h1>
-          <p className="truncate text-[12px] text-muted">{panes.find((p) => p.id === pane)?.hint}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            {projects.length > 1 ? (
+              <label className="min-w-0 flex-1">
+                <span className="sr-only">{s.pickShort}</span>
+                <select
+                  className="h-7 w-full max-w-full truncate rounded-md border-0 bg-transparent text-[14px] font-semibold tracking-[-0.03em] outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                  value={studioId}
+                  aria-label={s.pickShort}
+                  data-testid="studio-workbench-bound"
+                  onChange={(e) => {
+                    if (e.target.value) void selectProject(e.target.value);
+                  }}
+                >
+                  {!studioId ? <option value="">{copy.video.shellStudio}</option> : null}
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.title}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <h1 className="truncate text-[14px] font-semibold tracking-[-0.03em]" data-testid="studio-workbench-bound">{current?.title || copy.video.shellStudio}</h1>
+            )}
+          </div>
+          <p className="truncate text-[12px] text-muted" data-testid="studio-next">
+            {[
+              current ? (statusLabel[current.status || ""] || current.status) : "",
+              current ? (gateLabel[current.gate || current.furthest_gate || ""] || "") : "",
+              nextLabel,
+            ].filter(Boolean).join(" · ")}
+          </p>
+          {current?.id ? (
+            <StudioIdChip
+              projectId={current.id}
+              sessionId={props.sessionId}
+              projectLabel={s.projectId}
+              sessionLabel={s.sessionId}
+              copyLabel={s.copyId}
+              copiedLabel={s.copiedId}
+              inspectHint={s.inspectHint}
+            />
+          ) : null}
         </div>
+        {pane !== next.pane ? (
+          <Button
+            size="sm"
+            variant="default"
+            className="h-7 shrink-0 gap-1 text-[12px]"
+            data-testid="studio-next-do"
+            onClick={() => setPane(next.pane)}
+          >
+            {s.nextDo}
+            <ChevronRight className="size-3.5" aria-hidden />
+          </Button>
+        ) : null}
+        <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" disabled={!!busy} title={s.newProject} aria-label={s.newProject} data-testid="studio-new-short" onClick={() => setNaming((v) => !v)}>
+          <Plus className="size-3.5" aria-hidden />
+        </Button>
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 w-7 px-0"
+          className="h-7 w-7 shrink-0 px-0"
           data-testid="studio-open-settings"
           title={copy.video.openWorkshopSettings}
           aria-label={copy.video.openWorkshopSettings}
@@ -496,29 +539,63 @@ export function StudioWorkbench(props: {
         >
           <Settings className="size-3.5" aria-hidden />
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" disabled={!!busy} onClick={() => void newProject()}>
-          <Plus className="size-3.5" aria-hidden />
-          {s.newProject}
-        </Button>
+        {current ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" aria-label={copy.video.delete}>
+                <MoreHorizontal className="size-3.5" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => { void writeClipboard(current.id).then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
+                {s.copyId}
+              </DropdownMenuItem>
+              {props.sessionId ? (
+                <DropdownMenuItem onSelect={() => { void writeClipboard(props.sessionId || "").then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
+                  {s.sessionId}
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem className="text-danger" onSelect={() => setKill(true)}>
+                {copy.video.delete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </header>
-      <div className="flex shrink-0 items-center gap-1 border-b border-border/70 px-2 py-1.5">
-        {panes.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            data-testid={`studio-pane-${p.id}`}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-medium",
-              pane === p.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70 hover:text-foreground",
-            )}
-            onClick={() => setPane(p.id)}
-          >
-            <p.icon className="size-3.5 opacity-70" aria-hidden />
-            {p.label}
-          </button>
+      <nav className="flex shrink-0 items-center gap-0.5 border-b border-border/70 px-2 py-1.5" aria-label={copy.video.shellStudio} data-testid="studio-pipeline">
+        {panes.map((p, i) => (
+          <span key={p.id} className="flex min-w-0 items-center">
+            {i > 0 ? <span className="mx-0.5 text-[11px] text-muted/35" aria-hidden>/</span> : null}
+            <button
+              type="button"
+              data-testid={`studio-pane-${p.id}`}
+              title={p.hint}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium",
+                pane === p.id ? "bg-foreground text-background" : paneDone[p.id] ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
+              )}
+              onClick={() => setPane(p.id)}
+            >
+              <span className="tabular-nums text-[10px] opacity-70">{i + 1}</span>
+              {p.label}
+            </button>
+          </span>
         ))}
         {busy ? <ProgressHairline className="ml-auto w-24" indeterminate /> : null}
-      </div>
+      </nav>
+      {naming ? (
+        <div className="shrink-0 border-b border-border/70 px-4 py-2">
+          <CreateShortField
+            autoFocus
+            disabled={!!busy}
+            placeholder={s.createTitle}
+            submitLabel={s.create}
+            hint={s.createTitleHint}
+            testId="studio-create"
+            onSubmit={(title) => void newProject(title)}
+          />
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
         {pane === "radar" ? (
@@ -546,9 +623,6 @@ export function StudioWorkbench(props: {
                 {s.refresh}
               </Button>
             </div>
-            <button type="button" className="self-start text-[12px] text-muted underline" title={s.searchKeysHint} onClick={() => openSettings("generation", "generation-search")}>
-              {s.searchKeys}
-            </button>
             {trends.length === 0 ? (
               <EmptyState
                 icon={<Radio className="size-5" />}
@@ -588,18 +662,19 @@ export function StudioWorkbench(props: {
 
         {pane === "topics" ? (
           <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(["", "inbox", "ready", "in_production", "done"] as const).map((st) => (
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="studio-topic-filters">
+              {TOPIC_FILTERS.map((st) => (
                 <button
                   key={st || "all"}
                   type="button"
+                  data-testid={`studio-topic-filter-${st || "all"}`}
                   className={cn("rounded-full px-2 py-0.5 text-[11px]", topicStatus === st ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                   onClick={() => {
                     setTopicStatus(st);
                     void loadTopics(st).catch((e) => toast.error(api.errMessage(e)));
                   }}
                 >
-                  {st ? statusLabel[st] : s.topics}
+                  {st ? statusLabel[st] : s.allTopics}
                 </button>
               ))}
             </div>
@@ -622,62 +697,103 @@ export function StudioWorkbench(props: {
               />
             ) : (
               <ul className="flex flex-col gap-2">
-                {topics.map((t) => (
-                  <li key={`${t.id}-${t.updated_at || ""}`} className="rounded-xl border border-border bg-card px-3.5 py-3">
+                {topics.map((t) => {
+                  const primary = topicPrimaryAction(t);
+                  const queued = topicIsScheduled(t);
+                  return (
+                  <li key={`${t.id}-${t.updated_at || ""}`} className="rounded-xl border border-border bg-card px-3.5 py-3" data-testid={`studio-topic-${t.id}`} data-status={t.status || "inbox"}>
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-medium text-foreground">{t.title}</p>
                         <p className="mt-0.5 text-[12px] text-muted">
-                          {[t.source_platform, statusLabel[t.status || "inbox"], t.angle, t.persona_page_id ? s.persona : ""].filter(Boolean).join(" · ")}
+                          {[t.source_platform, statusLabel[t.status || "inbox"], t.angle].filter(Boolean).join(" · ")}
                         </p>
-                        {t.note ? <p className="mt-1 line-clamp-3 text-[12px] leading-[1.5] text-muted">{t.note}</p> : null}
+                        {t.note ? <p className="mt-1 line-clamp-2 text-[12px] leading-[1.5] text-muted">{t.note}</p> : null}
                       </div>
-                      <div className="flex shrink-0 flex-col gap-1">
-                        <Button size="sm" variant="lift" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void produce(t)}>
-                          {s.produce}
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!busy} data-testid={primary === "open" ? "studio-topic-open" : "studio-topic-produce"} onClick={() => void produce(t)}>
+                          {primary === "open" ? s.openShort : s.produce}
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void schedule(t)}>
-                          {s.schedule}
+                        {queued ? (
+                          <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-topic-unschedule" onClick={() => void unschedule(t)}>
+                            {s.unschedule}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {!t.angle && t.status !== "done" && t.status !== "in_production" ? (
+                      <Input
+                        className="mt-2 h-8"
+                        placeholder={s.writeAngle}
+                        defaultValue=""
+                        data-testid="studio-topic-angle"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v) void patchTopic(t, { angle: v, status: queued ? "scheduled" : "ready" });
+                        }}
+                      />
+                    ) : null}
+                    {queued ? <p className="mt-2 text-[11px] text-muted">{s.scheduleHint}</p> : null}
+                    <ScorePills
+                      scores={t.scores}
+                      labels={scoreLabel}
+                      avgLabel={s.scoreAvg}
+                      disabled={!!busy}
+                      onChange={(scores) => void patchTopic(t, { scores })}
+                    />
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[12px] text-muted" data-testid="studio-topic-more">{s.moreTopic}</summary>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("expand", async () => {
+                          await api.video.expandTopic(t.id);
+                          await loadTopics();
+                        })}>
+                          {s.desk.expand}
                         </Button>
+                        {!queued && primary === "produce" ? (
+                          <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-topic-schedule" onClick={() => void schedule(t)}>
+                            {s.schedule}
+                          </Button>
+                        ) : null}
                         <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void makePersona(t.id, t.title)}>
                           {s.persona}
                         </Button>
+                        {t.angle ? (
+                          <Input
+                            className="h-8 min-w-40 flex-1"
+                            placeholder={s.angle}
+                            defaultValue={t.angle}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v !== (t.angle || "")) void patchTopic(t, { angle: v, status: t.status === "inbox" ? "ready" : t.status });
+                            }}
+                          />
+                        ) : null}
                         <Button size="sm" variant="ghost" className="h-7 text-[12px] text-danger" disabled={!!busy} onClick={() => setKillTopic(t)}>
                           {copy.video.delete}
                         </Button>
                       </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {SCORE_KEYS.map((key) => (
-                        <label key={key} className="inline-flex items-center gap-1 text-[11px] text-muted">
-                          {scoreLabel[key]}
-                          <input
-                            type="number"
-                            min={1}
-                            max={5}
-                            className="h-6 w-10 rounded-md border border-border bg-background px-1 text-[12px] text-foreground"
-                            defaultValue={t.scores?.[key] || ""}
-                            onBlur={(e) => {
-                              const n = Number(e.target.value);
-                              const cur = t.scores?.[key] || 0;
-                              if (!Number.isFinite(n) || n === cur) return;
-                              void patchTopic(t, { scores: { ...(t.scores || {}), [key]: n } });
-                            }}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <Input
-                      className="mt-2 h-8"
-                      placeholder={s.angle}
-                      defaultValue={t.angle || ""}
-                      onBlur={(e) => {
-                        const v = e.target.value.trim();
-                        if (v !== (t.angle || "")) void patchTopic(t, { angle: v, status: t.status === "inbox" ? "ready" : t.status });
-                      }}
-                    />
+                      {t.persona_page_id ? <p className="mt-1 text-[11px] text-muted">{s.personaHint}</p> : null}
+                    </details>
+                    {(t.options || []).length ? (
+                      <ul className="mt-2 divide-y divide-border/70 border-t border-border/70" data-testid="studio-topic-options">
+                        {t.options!.map((opt) => (
+                          <li key={opt.id} className="flex items-start gap-2 py-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-medium text-foreground">{opt.title}</p>
+                              <p className="text-[11px] leading-[1.45] text-muted">{[opt.angle, opt.summary].filter(Boolean).join(" · ")}</p>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-7 shrink-0 text-[12px]" disabled={!!busy} onClick={() => void run("choose", async () => {
+                              await api.video.chooseTopicOption(t.id, opt.id);
+                              await loadTopics();
+                            })}>{s.desk.choose}</Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -685,204 +801,41 @@ export function StudioWorkbench(props: {
 
         {pane === "assemble" ? (
           <div className="flex flex-col gap-3">
-            {projects.length ? (
-              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {projects.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      className={cn("flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-[13px]", p.id === studioId ? "bg-lift" : "u-row-hover")}
-                      onClick={() => void selectProject(p.id)}
-                    >
-                      <Film className="size-4 shrink-0 opacity-70" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">{p.title}</span>
-                      <span className="text-[11px] text-muted">{statusLabel[p.status || "draft"] || p.status}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
+            {!current ? (
               <EmptyState
                 icon={<Clapperboard className="size-5" />}
                 title={s.emptyProject}
                 body={s.emptyProjectHint}
                 action={
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void newProject()}>{s.newProject}</Button>
+                  <div className="flex w-full max-w-sm flex-col gap-2">
+                    <CreateShortField
+                      disabled={!!busy}
+                      placeholder={s.createTitle}
+                      submitLabel={s.create}
+                      testId="studio-assemble-create"
+                      onSubmit={(title) => void newProject(title)}
+                    />
                     <Button size="sm" variant="ghost" onClick={() => setPane("topics")}>{s.topics}</Button>
                   </div>
                 }
               />
-            )}
+            ) : null}
             {current ? (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[12px] text-muted">{s.aspect}</span>
-                  <div className="flex rounded-lg bg-lift p-0.5 text-[12px]">
-                    {ASPECTS.map((a) => (
-                      <button
-                        key={a}
-                        type="button"
-                        className={cn("rounded-md px-2 py-1", (current.aspect || defaultAspect) === a ? "bg-card text-foreground" : "text-muted")}
-                        onClick={() => void saveProject({ aspect: a })}
-                      >
-                        {a}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-1 text-[12px] text-muted">{copy.video.style}</span>
-                  {styles.map((row) => (
-                    <button
-                      key={row.value}
-                      type="button"
-                      className={cn("rounded-full px-2 py-0.5 text-[11px]", (current.style || "3d") === row.value ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
-                      onClick={() => void saveProject({ style: row.value })}
-                    >
-                      {styleLabel(copy.video.styleNames, row.value, row.name)}
-                    </button>
-                  ))}
-                </div>
-                <label className="flex flex-col gap-1 text-[12px] font-medium text-foreground">
-                  {s.script}
-                  <textarea
-                    className="no-drag min-h-28 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-[13px] leading-[1.55] text-foreground outline-none focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20"
-                    value={current.script || ""}
-                    onChange={(e) => setProject({ ...current, script: e.target.value })}
-                    onBlur={(e) => void saveProject({ script: e.target.value })}
-                  />
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="lift" disabled={!!busy || !String(current.script || "").trim()} onClick={() => void speak()}>{s.speak}</Button>
-                  <Button size="sm" variant="lift" disabled={!!busy || !shots.some(shotReady)} onClick={() => void assemble()}>{s.assembleBtn}</Button>
-                  <button type="button" className="text-[12px] text-muted underline" onClick={() => openSettings("generation", "generation-speech")}>
-                    {s.speechSettings}
-                  </button>
-                  <Button size="sm" variant="ghost" className="ml-auto text-danger" disabled={!!busy} onClick={() => setKill(true)}>{copy.video.delete}</Button>
-                </div>
-                {current.error ? <p className="text-[12px] text-danger">{current.error}</p> : null}
-                {current.media_url ? (
-                  <video className="max-h-80 w-full rounded-xl bg-black" src={current.media_url} poster={current.poster_url || undefined} controls />
-                ) : null}
-                {current.result_hash ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input className="min-w-40 flex-1" placeholder={s.wrap} value={wrapTitle} onChange={(e) => setWrapTitle(e.target.value)} aria-label={s.wrap} />
-                    <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void wrapCurrent()}>{s.wrap}</Button>
-                    {remotionReady ? (
-                      <span className="text-[11px] text-muted">{s.remotionReady}</span>
-                    ) : (
-                      <button type="button" className="text-[12px] text-muted underline" onClick={() => openSettings("generation", "generation-studio")}>
-                        {s.remotionInstallHint}
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-[12px] font-medium text-muted">{s.shots}</h2>
-                  <label className="ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
-                    <ImagePlus className="size-3.5" aria-hidden />
-                    {s.addStill}
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (f) void uploadShot("image", f);
-                    }} />
-                  </label>
-                  <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
-                    <Video className="size-3.5" aria-hidden />
-                    {s.addClip}
-                    <input type="file" accept="video/*" className="hidden" onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (f) void uploadShot("video", f);
-                    }} />
-                  </label>
-                </div>
-                {shots.length === 0 ? <p className="text-[12px] text-muted">{s.needShots}</p> : null}
-                <ul className="flex flex-col gap-2">
-                  {shots.map((sh, i) => {
-                    const src = mediaSrc(sh.image_hash || sh.video_hash);
-                    return (
-                      <li key={`${i}-${sh.image_hash || ""}-${sh.video_hash || ""}`} className="rounded-xl border border-border bg-card p-3">
-                        <div className="flex items-start gap-3">
-                          {src ? (
-                            sh.video_hash ? (
-                              <video className="h-16 w-16 shrink-0 rounded-md bg-black object-cover" src={src} muted />
-                            ) : (
-                              <img className="h-16 w-16 shrink-0 rounded-md object-cover" src={src} alt="" />
-                            )
-                          ) : (
-                            <div className="grid h-16 w-16 shrink-0 place-items-center rounded-md bg-lift text-muted">
-                              <Film className="size-4" aria-hidden />
-                            </div>
-                          )}
-                          <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-                            <Input placeholder={s.caption} value={sh.caption || ""} onChange={(e) => patchShot(i, { caption: e.target.value })} onBlur={() => patchShot(i, { caption: sh.caption || "" }, true)} />
-                            <Input type="number" min={1} placeholder={s.duration} value={sh.duration || 3} onChange={(e) => patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={() => patchShot(i, { duration: sh.duration || 3 }, true)} />
-                            <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-md border border-border text-[12px] text-muted hover:bg-lift hover:text-foreground">
-                              {s.addStill}
-                              <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                e.target.value = "";
-                                if (f) void uploadShot("image", f, i);
-                              }} />
-                            </label>
-                            <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-md border border-border text-[12px] text-muted hover:bg-lift hover:text-foreground">
-                              {s.addClip}
-                              <input type="file" accept="video/*" className="hidden" onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                e.target.value = "";
-                                if (f) void uploadShot("video", f, i);
-                              }} />
-                            </label>
-                          </div>
-                          <button type="button" className="shrink-0 rounded-md p-1.5 text-muted hover:bg-lift hover:text-danger" title={s.removeShot} aria-label={s.removeShot} onClick={() => removeShot(i)}>
-                            <Trash2 className="size-3.5" aria-hidden />
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <details className="rounded-xl border border-border bg-card p-3" data-testid="studio-ops-tools">
-                  <summary className="cursor-pointer text-[12px] font-medium text-foreground">{copy.video.opsTools}</summary>
-                  <p className="mt-1 mb-2 text-[12px] leading-[1.5] text-muted">{copy.video.opsToolsHint}</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Input placeholder={s.opsHash} value={opsHash} onChange={(e) => setOpsHash(e.target.value)} />
-                    <Input placeholder={s.subtitleHash} value={opsSub} onChange={(e) => setOpsSub(e.target.value)} />
-                    <Input placeholder={s.wrap} value={wrapTitle} onChange={(e) => setWrapTitle(e.target.value)} className="sm:col-span-2" />
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button size="sm" variant="ghost" disabled={!opsHash || !!busy} onClick={() => void run("reframe", async () => {
-                      const r = await api.video.studioReframe(opsHash, current.aspect || defaultAspect);
-                      setOpsResult(r);
-                    })}>{s.reframe}</Button>
-                    <Button size="sm" variant="ghost" disabled={!opsHash || !opsSub || !!busy} onClick={() => void run("burnin", async () => {
-                      const r = await api.video.studioBurnin(opsHash, opsSub);
-                      setOpsResult(r);
-                    })}>{s.burnin}</Button>
-                    <Button size="sm" variant="ghost" disabled={!opsHash || !!busy} onClick={() => void run("slides", async () => {
-                      const hashes = opsHash.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
-                      const r = await api.video.studioSlideshow(hashes, current.aspect || defaultAspect, 3);
-                      setOpsResult(r);
-                    })}>{s.slideshow}</Button>
-                    <Button size="sm" variant="ghost" disabled={!opsHash || !!busy} onClick={() => void run("wrap", async () => {
-                      const r = await api.video.studioWrap(opsHash, wrapTitle || current.title || s.wrap);
-                      setOpsResult(r);
-                      if (r?.cas_hash && opsHash === current.result_hash) {
-                        const next = (await api.video.updateStudio({ id: current.id, result_hash: r.cas_hash })) as StudioProject;
-                        setProject(next);
-                      }
-                    })}>{s.wrap}</Button>
-                    {opsResult?.cas_hash ? (
-                      <Button size="sm" variant="lift" onClick={() => {
-                        void saveProject({ storyboard: { ...(current.storyboard || {}), shots: [...shots, { video_hash: opsResult.cas_hash, duration: 3 }] } });
-                      }}>{s.applyShot}</Button>
-                    ) : null}
-                  </div>
-                  {opsResult?.media_url ? <video className="mt-2 max-h-48 w-full rounded-lg bg-black" src={opsResult.media_url} controls /> : null}
-                </details>
+                <StudioProduce
+                  current={current as ProduceProject}
+                  catalog={catalog}
+                  busy={busy}
+                  mediaSrc={mediaSrc}
+                  onChange={(next) => setProject(next as StudioProject)}
+                  run={run}
+                  saveProject={async (patch) => { await saveProject(patch as Partial<StudioProject>); }}
+                  wrapTitle={wrapTitle}
+                  setWrapTitle={setWrapTitle}
+                  remotionReady={remotionReady}
+                  onWrap={() => wrapCurrent()}
+                  onPublish={() => setPane("publish")}
+                />
               </>
             ) : null}
           </div>
@@ -891,13 +844,16 @@ export function StudioWorkbench(props: {
         {pane === "publish" ? (
           <div className="flex flex-col gap-3">
             <p className="text-[12px] leading-[1.5] text-muted">{s.neverPublish}</p>
-            {current?.result_hash ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Input className="min-w-40 flex-1" placeholder={s.wrap} value={wrapTitle} onChange={(e) => setWrapTitle(e.target.value)} aria-label={s.wrap} />
-                <Button size="sm" variant="lift" disabled={!!busy} onClick={() => void wrapCurrent()}>{s.wrap}</Button>
-                {remotionReady ? <span className="text-[11px] text-muted">{s.remotionReady}</span> : (
-                  <button type="button" className="text-[12px] text-muted underline" onClick={() => openSettings("generation", "generation-studio")}>{s.remotionInstallHint}</button>
-                )}
+            {current ? (
+              <div className="flex flex-col gap-2" data-testid="studio-publish-pack">
+                <p className={cn("text-[12px]", current.delivery?.status === "publishable" ? "text-success" : "text-warning")}>
+                  {current.delivery?.status === "publishable" ? s.desk.publishable : (current.delivery?.note || s.desk.draftPack)}
+                </p>
+                {current.delivery?.status !== "publishable" ? (
+                  <Button size="sm" variant="default" className="self-start" onClick={() => setPane("assemble")}>{s.nextDo}</Button>
+                ) : null}
+                {current.media_url ? <video className="max-h-48 w-full rounded-xl bg-black" src={current.media_url} poster={current.cover_url || current.poster_url || undefined} controls /> : null}
+                {current.copy_text ? <pre className="whitespace-pre-wrap text-[12px] leading-[1.55] text-muted">{current.copy_text}</pre> : null}
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-1.5">
@@ -915,7 +871,7 @@ export function StudioWorkbench(props: {
             </div>
             <Input className="h-8" placeholder={s.caption} value={draftCaption} onChange={(e) => setDraftCaption(e.target.value)} />
             <Input className="h-8" placeholder={s.tags} value={draftTags} onChange={(e) => setDraftTags(e.target.value)} />
-            <Button size="sm" variant="lift" className="self-start" disabled={!!busy || !current?.result_hash} onClick={() => void saveDraftPublish()}>{s.draftPublish}</Button>
+            <Button size="sm" variant="lift" className="self-start" disabled={!!busy || current?.delivery?.status !== "publishable"} onClick={() => void saveDraftPublish()}>{s.draftPublish}</Button>
             {publishes.length === 0 ? (
               <EmptyState
                 icon={<Share2 className="size-5" />}
@@ -929,62 +885,21 @@ export function StudioWorkbench(props: {
               />
             ) : (
               <ul className="flex flex-col gap-2">
-                {publishes.map((p) => (
-                  <li key={p.id} className="rounded-xl border border-border bg-card px-3.5 py-3">
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-medium text-foreground">{p.title}</p>
-                      <p className="mt-0.5 text-[12px] text-muted">
-                        {[p.platform, statusLabel[p.status || "draft"] || p.status].filter(Boolean).join(" · ")}
-                      </p>
-                      {p.posted_url ? <p className="mt-1 truncate text-[12px] text-muted">{p.posted_url}</p> : null}
-                      {p.export_path ? <p className="mt-1 truncate text-[11px] text-muted">{p.export_path}</p> : null}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("export", async () => {
-                        await api.video.exportPublish(p.id);
-                        await loadPublishes();
-                      })}>{s.exportMp4}</Button>
-                      <Button size="sm" variant="lift" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("open", async () => {
-                        await api.video.openPublish(p.id);
-                        await loadPublishes();
-                      })}>{s.openCreator}</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("analytics", async () => {
-                        await api.video.openPublishAnalytics(p.id);
-                      })}>{s.openAnalytics}</Button>
-                      {p.export_path ? (
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" onClick={() => void api.openPath(p.export_path || "")}>{s.reveal}</Button>
-                      ) : null}
-                      <Button size="sm" variant="lift" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("posted", async () => {
-                        await api.video.markPublish(p.id, "posted", {
-                          posted_url: postedUrl,
-                          note: pubNote,
-                          reads: Number(reads) || 0,
-                          likes: Number(likes) || 0,
-                          comments: Number(comments) || 0,
-                        });
-                        await loadPublishes();
-                        await loadTopics();
-                      })}>{s.markPosted}</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-[12px] text-danger" disabled={!!busy} onClick={() => void run("failed", async () => {
-                        await api.video.markPublish(p.id, "failed", { note: pubNote });
-                        await loadPublishes();
-                      })}>{s.markFailed}</Button>
-                    </div>
-                  </li>
+                {publishes.map((row) => (
+                  <PublishDraftCard
+                    key={row.id}
+                    draft={row}
+                    busy={busy}
+                    statusLabel={statusLabel[row.status || "draft"] || row.status || ""}
+                    onRun={run}
+                    onReload={async () => {
+                      await loadPublishes();
+                      await loadTopics();
+                    }}
+                  />
                 ))}
               </ul>
             )}
-            <details className="rounded-xl border border-border bg-card p-3" data-testid="studio-record-stats">
-              <summary className="cursor-pointer text-[12px] font-medium text-foreground">{copy.video.recordStats}</summary>
-              <p className="mt-1 text-[12px] leading-[1.5] text-muted">{s.analyticsNote}</p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <Input className="h-8" placeholder={s.postedUrl} value={postedUrl} onChange={(e) => setPostedUrl(e.target.value)} />
-                <Input className="h-8" placeholder={s.analyticsNote} value={pubNote} onChange={(e) => setPubNote(e.target.value)} />
-                <Input className="h-8" placeholder={s.reads} value={reads} onChange={(e) => setReads(e.target.value)} />
-                <Input className="h-8" placeholder={s.likes} value={likes} onChange={(e) => setLikes(e.target.value)} />
-                <Input className="h-8 sm:col-span-2" placeholder={s.comments} value={comments} onChange={(e) => setComments(e.target.value)} />
-              </div>
-            </details>
           </div>
         ) : null}
       </div>
@@ -1020,5 +935,73 @@ export function StudioWorkbench(props: {
         }}
       />
     </div>
+  );
+}
+
+function PublishDraftCard(props: {
+  draft: Publish;
+  busy: string;
+  statusLabel: string;
+  onRun: (label: string, fn: () => Promise<void>) => Promise<void>;
+  onReload: () => Promise<void>;
+}) {
+  const copy = useCopy();
+  const s = copy.video.studio;
+  const p = props.draft;
+  const [postedUrl, setPostedUrl] = useState(p.posted_url || "");
+  const [note, setNote] = useState(p.note || "");
+  const [reads, setReads] = useState(p.reads ? String(p.reads) : "");
+  const [likes, setLikes] = useState(p.likes ? String(p.likes) : "");
+  const [comments, setComments] = useState(p.comments ? String(p.comments) : "");
+  return (
+    <li className="rounded-xl border border-border bg-card px-3.5 py-3">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-foreground">{p.title}</p>
+        <p className="mt-0.5 text-[12px] text-muted">{[p.platform, props.statusLabel].filter(Boolean).join(" · ")}</p>
+        {p.posted_url ? <p className="mt-1 truncate text-[12px] text-muted">{p.posted_url}</p> : null}
+        {p.export_path ? <p className="mt-1 truncate text-[11px] text-muted">{p.export_path}</p> : null}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("export", async () => {
+          await api.video.exportPublish(p.id);
+          await props.onReload();
+        })}>{s.exportMp4}</Button>
+        <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("open", async () => {
+          await api.video.openPublish(p.id);
+          await props.onReload();
+        })}>{s.openCreator}</Button>
+        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("analytics", async () => {
+          await api.video.openPublishAnalytics(p.id);
+        })}>{s.openAnalytics}</Button>
+        {p.export_path ? (
+          <Button size="sm" variant="ghost" className="h-7 text-[12px]" onClick={() => void api.openPath(p.export_path || "")}>{s.reveal}</Button>
+        ) : null}
+        <Button size="sm" variant="ghost" className="h-7 text-[12px] text-danger" disabled={!!props.busy} onClick={() => void props.onRun("failed", async () => {
+          await api.video.markPublish(p.id, "failed", { note });
+          await props.onReload();
+        })}>{s.markFailed}</Button>
+      </div>
+      <details className="mt-2" data-testid="studio-record-stats">
+        <summary className="cursor-pointer text-[12px] text-muted">{copy.video.recordStats}</summary>
+        <p className="mt-1 text-[11px] leading-[1.45] text-muted">{s.analyticsNote}</p>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <Input className="h-8" placeholder={s.postedUrl} value={postedUrl} onChange={(e) => setPostedUrl(e.target.value)} />
+          <Input className="h-8" placeholder={s.analyticsNote} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input className="h-8" placeholder={s.reads} value={reads} onChange={(e) => setReads(e.target.value)} />
+          <Input className="h-8" placeholder={s.likes} value={likes} onChange={(e) => setLikes(e.target.value)} />
+          <Input className="h-8 sm:col-span-2" placeholder={s.comments} value={comments} onChange={(e) => setComments(e.target.value)} />
+        </div>
+        <Button size="sm" variant="lift" className="mt-2 h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("posted", async () => {
+          await api.video.markPublish(p.id, "posted", {
+            posted_url: postedUrl,
+            note,
+            reads: Number(reads) || 0,
+            likes: Number(likes) || 0,
+            comments: Number(comments) || 0,
+          });
+          await props.onReload();
+        })}>{s.markPosted}</Button>
+      </details>
+    </li>
   );
 }

@@ -47,6 +47,7 @@ func (e *Engine) ProjectHistory() ([]map[string]any, error) {
 			"updated_at": p.UpdatedAt,
 			"session_id": studioSess[p.ID],
 			"status":     p.Status,
+			"gate":       p.Gate,
 		})
 	}
 	return out, nil
@@ -65,6 +66,8 @@ func (e *Engine) SessionProject(sessionID string) map[string]any {
 	if pid, ok := e.StudioSessionBind(sessionID); ok {
 		if p, err := e.GetStudioProject(pid); err == nil {
 			out["studio_id"] = p.ID
+			out["gate"] = p.Gate
+			out["status"] = p.Status
 			if out["kind"] == nil {
 				out["kind"] = "studio"
 				out["id"] = p.ID
@@ -122,6 +125,13 @@ func (e *Engine) latestDramaSessions() map[string]dramaSessionHit {
 		}
 	}
 	return out
+}
+
+func (e *Engine) LatestStudioSession(projectID string) string {
+	if e == nil || projectID == "" {
+		return ""
+	}
+	return e.latestStudioSessions()[projectID]
 }
 
 func (e *Engine) latestStudioSessions() map[string]string {

@@ -105,10 +105,13 @@ export function Composer(props: {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
+  const studioDesk = useUI((s) => s.studioDesk);
   const videoSurface = surface === "video";
   const videoing = videoSurface && !props.compact;
   const placeholder = props.disabled
     ? (props.disabledReason || copy.composer.disabled)
+    : studioDesk
+      ? copy.composer.placeholderStudioDesk
     : videoSurface
       ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
       : copy.composer.placeholder;
@@ -251,6 +254,16 @@ export function Composer(props: {
     props.onSlash?.(cmd, "");
   }
 
+  async function pickAttachments() {
+    if (props.disabled) return;
+    if (props.onPickFiles) {
+      const picked = await props.onPickFiles();
+      if (picked.length) setAtts((prev) => [...prev, ...picked]);
+      return;
+    }
+    fileRef.current?.click();
+  }
+
   async function addFiles(list: FileList | File[] | Attachment[]) {
     if (Array.isArray(list) && list.length && !isDomFile(list[0])) {
       setAtts((prev) => [...prev, ...(list as Attachment[])]);
@@ -291,14 +304,14 @@ export function Composer(props: {
     onChange("");
   }
 
-  const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
+  const pad = props.flush ? "" : props.compact || studioDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const ghostSelect =
     "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
   return (
     <div className="relative no-drag w-full shrink-0" data-testid={props.compact ? undefined : "composer-column"}>
-      <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : props.hero ? "pb-0 pt-0" : "pb-4 pt-1")}>
+      <div className={cn(col, pad, props.compact ? "pb-2 pt-1" : props.hero ? "pb-0 pt-0" : studioDesk ? "pb-2 pt-1" : "pb-4 pt-1")}>
         <div className="composer-stack" data-open={popupWelded ? "true" : "false"}>
           {showPopup && slashOpen ? (
             <CommandWeld
@@ -488,7 +501,7 @@ export function Composer(props: {
           />
           <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-2 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
-            {videoSurface ? (
+            {studioDesk ? null : videoSurface ? (
               <>
                 <VideoModeSwitch disabled={props.disabled} />
                 {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
@@ -497,7 +510,7 @@ export function Composer(props: {
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}
-            {props.onProfile && profiles.length ? (
+            {!studioDesk && props.onProfile && profiles.length ? (
               <ProfileChip
                 profiles={profiles}
                 profileId={props.profileId}
@@ -505,6 +518,18 @@ export function Composer(props: {
                 onProfile={props.onProfile}
               />
             ) : null}
+            {studioDesk ? (
+              <button
+                type="button"
+                className={toolClass()}
+                aria-label={copy.composer.attach}
+                data-testid="studio-copilot-attach"
+                disabled={props.disabled}
+                onClick={() => { void pickAttachments(); }}
+              >
+                <Paperclip className="size-3.5" />
+              </button>
+            ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -519,16 +544,7 @@ export function Composer(props: {
               <DropdownMenuContent align="start" side="top" className="w-60">
                 <DropdownMenuItem
                   disabled={props.disabled}
-                  onSelect={() => {
-                    void (async () => {
-                      if (props.onPickFiles) {
-                        const picked = await props.onPickFiles();
-                        if (picked.length) setAtts((prev) => [...prev, ...picked]);
-                        return;
-                      }
-                      fileRef.current?.click();
-                    })();
-                  }}
+                  onSelect={() => { void pickAttachments(); }}
                 >
                   <Paperclip className="size-3.5" />
                   {copy.composer.attach}
@@ -545,13 +561,13 @@ export function Composer(props: {
                     {copy.composer.screenshot}
                   </DropdownMenuItem>
                 ) : null}
-                {props.onSavePage ? (
+                {!studioDesk && props.onSavePage ? (
                   <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onSavePage?.()}>
                     <FileText className="size-3.5" />
                     {copy.composer.savePage}
                   </DropdownMenuItem>
                 ) : null}
-                {props.onFollow ? (
+                {!studioDesk && props.onFollow ? (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1h")}>
@@ -568,13 +584,13 @@ export function Composer(props: {
                     </DropdownMenuItem>
                   </>
                 ) : null}
-                {props.onCall ? (
+                {!studioDesk && props.onCall ? (
                   <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onCall?.()}>
                     <Phone className="size-3.5" />
                     {copy.composer.call}
                   </DropdownMenuItem>
                 ) : null}
-                {props.onIsolate ? (
+                {!studioDesk && props.onIsolate ? (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -598,6 +614,7 @@ export function Composer(props: {
                 ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -608,7 +625,7 @@ export function Composer(props: {
                 e.target.value = "";
               }}
             />
-            {props.onWorkspace ? (
+            {!studioDesk && props.onWorkspace ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -756,7 +773,7 @@ export function Composer(props: {
             ) : currentModel ? (
               <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[11px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
             ) : null}
-            {props.onAuthMode ? (
+            {!studioDesk && props.onAuthMode ? (
               <Select
                 value={parseComposerAuth(props.authMode)}
                 onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
@@ -804,6 +821,7 @@ export function Composer(props: {
           onReorder={props.onQueueReorder}
           copy={copy}
         />
+        {studioDesk ? null : (
         <ContextMeter
           ctx={props.ctx}
           draftTokens={estimateTokens(composeDraft(chips, value))}
@@ -813,6 +831,7 @@ export function Composer(props: {
           compact={props.compact}
           copy={copy}
         />
+        )}
       </div>
     </div>
   );

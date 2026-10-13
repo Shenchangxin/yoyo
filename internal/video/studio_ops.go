@@ -173,18 +173,31 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	p.ResultHash = hash
 	p.Status = StudioAssembled
 	p.Error = ""
-	p.UpdatedAt = Now()
+	p.Gate = GateCompose
 	if poster, err := e.Poster(final); err == nil {
 		if ph, err := e.PutBytes(poster); err == nil {
 			p.PosterHash = ph
+			if p.CoverHash == "" {
+				p.CoverHash = ph
+			}
 		}
 	}
-	p, err = e.PublishStudioAsset(p)
+	e.noteStudio(&p, "assemble", "cut ready")
+	p.Versions = append(p.Versions, StudioSnapshot{
+		N: len(p.Versions) + 1, ResultHash: p.ResultHash, PosterHash: p.PosterHash,
+		NarrationHash: p.NarrationHash, SubtitleHash: p.SubtitleHash, CoverHash: p.CoverHash,
+		Note: "assemble", CreatedAt: Now(),
+	})
+	saved, err := e.saveStudio(p)
 	if err != nil {
-		_ = e.putDoc(colStudioProjects, p.ID, p)
 		return p, err
 	}
-	return p, nil
+	published, err := e.PublishStudioAsset(saved)
+	if err != nil {
+		_ = e.putDoc(colStudioProjects, saved.ID, saved)
+		return saved, err
+	}
+	return published, nil
 }
 
 func stillFilter(w, h int, dur float64, motion string) string {
