@@ -449,6 +449,25 @@ func (s *Service) LiveSince(sessionID string, after int64) ([]trace.Event, error
 	return s.App.LiveSince(resolved, after), nil
 }
 
+// LiveSync is LiveSince plus the ring head and a gap flag. The renderer uses
+// the flag to choose between applying the batch and reloading the trajectory.
+func (s *Service) LiveSync(sessionID string, after int64) (app.LiveBatch, error) {
+	if s.RPC != nil {
+		return decode[app.LiveBatch](s.call("live.sync", map[string]any{
+			"session": sessionID, "after": after,
+		}))
+	}
+	resolved := strings.TrimSpace(sessionID)
+	if resolved != "" {
+		id, err := s.App.ResolveSessionID(resolved)
+		if err != nil {
+			return app.LiveBatch{}, err
+		}
+		resolved = id
+	}
+	return s.App.LiveSync(resolved, after), nil
+}
+
 func (s *Service) StopTurn(sessionID string) app.InterruptResult {
 	if s.RPC != nil {
 		res, err := decode[app.InterruptResult](s.call("turn.stop", map[string]any{"session": sessionID}))

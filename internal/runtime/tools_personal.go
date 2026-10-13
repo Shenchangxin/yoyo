@@ -222,12 +222,14 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 		if t.Browser != nil && abs != "" {
 			snap, err := t.Browser.OpenLocal(abs)
 			if err != nil {
-				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). isolated Chrome did not start (%v). browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
+				// The preview pane did open, so this is a partial success, not an
+				// error: the workstation pane works without isolated Chrome.
+				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane. Isolated Chrome did not start (%v), so browser_click and browser_type are unavailable until it does; browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
 			}
 			t.mu.Lock()
 			t.LastBrowser = snap.Text
 			t.mu.Unlock()
-			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot then browser_click (neither reloads).\n\n%s", rel, snap.URL, snap.Text)}
+			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot, then browser_click one of the selectors below (neither reloads).\n\n%s", rel, snap.URL, browserBody(snap.Text, snap.Actions))}
 		}
 		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome is unavailable. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel)}
 	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
@@ -246,10 +248,35 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	t.mu.Lock()
 	t.LastBrowser = snap.Text
 	t.mu.Unlock()
-	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, snap.Text)}
+	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, browserBody(snap.Text, snap.Actions))}
 }
 
+// browserBody is the page report the model reads after a browser call: the
+// visible text, then the selectors it can act on next.
+func browserBody(text, actions string) string {
+	if strings.TrimSpace(actions) == "" {
+		return text
+	}
+	return text + "\n\nvisible actions (browser_click selector):\n" + actions
+}
+
+// browserSnapshot reads the live page. The cached text is only a fallback for
+// a page whose Chrome is no longer running; say so instead of passing it off
+// as current.
 func (t *WorkspaceTools) browserSnapshot() ToolResult {
+	if t.Browser != nil {
+		snap, live := t.Browser.Refresh()
+		if snap.URL != "" {
+			t.mu.Lock()
+			t.LastBrowser = snap.Text
+			t.mu.Unlock()
+			body := browserBody(snap.Text, snap.Actions)
+			if !live {
+				body = "(isolated Chrome is not running; this is the last snapshot, not the live page)\n" + body
+			}
+			return ToolResult{Content: body}
+		}
+	}
 	t.mu.Lock()
 	s := t.LastBrowser
 	t.mu.Unlock()
@@ -259,6 +286,9 @@ func (t *WorkspaceTools) browserSnapshot() ToolResult {
 	return ToolResult{Content: s}
 }
 
+// browserClick reports failure as failure. Earlier it returned "clicked …
+// (page not reloaded)" alongside the error, which read as success and sent the
+// agent into a loop of blind retries.
 func (t *WorkspaceTools) browserClick(sel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_click", sel, sel); err != nil {
 		return ToolResult{Err: err}
@@ -267,14 +297,13 @@ func (t *WorkspaceTools) browserClick(sel string) ToolResult {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
 	if err := t.Browser.EnsurePreview(); err != nil {
-		return ToolResult{Err: err, Content: "click " + sel}
+		return ToolResult{Err: err}
 	}
-	err := t.Browser.Click(sel)
-	content := "clicked " + sel + " (page not reloaded)"
-	if obs := t.Browser.LastAction(); obs != "" {
-		content += "\n" + obs
+	obs, err := t.Browser.Click(sel)
+	if err != nil {
+		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: content, Err: err}
+	return ToolResult{Content: obs}
 }
 
 func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
@@ -284,8 +313,11 @@ func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
-	err := t.Browser.Type(sel, text)
-	return ToolResult{Err: err, Content: "recorded type " + sel}
+	obs, err := t.Browser.Type(sel, text)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
 }
 
 func (t *WorkspaceTools) browserDownload(raw, rel string) ToolResult {

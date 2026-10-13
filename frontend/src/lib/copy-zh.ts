@@ -290,6 +290,10 @@ export const zhCN = {
     errorMaxTurnsHint: "循环在模型完成前停下了。点“继续本轮”接着跑。",
     errorStuck: "已停止重复循环",
     errorStuckHint: "观测没有改变。改检查指向的产品文件，或换一种做法，再点“继续本轮”。",
+    errorPlanOpen: "计划尚未完成",
+    errorPlanOpenHint: "智能体在计划完成前停下了。点“继续本轮”接着做剩下的步骤。",
+    errorModel: "当前模型不可用",
+    errorModelHint: "在输入框里换一个模型，或在设置里给该提供方添加这个模型。",
     errorUnknown: "出了点问题",
     errorUnknownHint: "继续本轮即可。",
     starters: [

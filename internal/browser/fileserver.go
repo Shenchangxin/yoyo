@@ -58,6 +58,7 @@ func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 	}
 	h.waitDocumentComplete(4 * time.Second)
 	h.syncView()
+	h.refreshActions()
 	h.record("open", raw)
 	snap := h.snapshotLocked()
 	if snap.URL == "" {
@@ -139,7 +140,7 @@ func (h *Host) snapshotLocked() Snapshot {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return Snapshot{URL: h.url, Title: h.title, Text: h.snap, Profile: h.profile}
+	return Snapshot{URL: h.url, Title: h.title, Text: h.snap, Profile: h.profile, Actions: h.actions}
 }
 
 func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
@@ -163,9 +164,21 @@ func sameDocumentURL(live, want string) bool {
 	if !strings.EqualFold(a.Scheme, b.Scheme) || !strings.EqualFold(a.Host, b.Host) {
 		return false
 	}
-	pa, _ := url.PathUnescape(strings.TrimSuffix(a.Path, "/"))
-	pb, _ := url.PathUnescape(strings.TrimSuffix(b.Path, "/"))
-	return pa == pb
+	return normalizeDocPath(a.Path) == normalizeDocPath(b.Path)
+}
+
+// normalizeDocPath maps the paths of one document to one key. Chrome reports
+// the served index.html as "/" after the file server redirects it, so without
+// this every browser_click or browser_screenshot saw a "different" page and
+// reloaded it, wiping the game state.
+func normalizeDocPath(p string) string {
+	p, _ = url.PathUnescape(strings.TrimSuffix(p, "/"))
+	for _, idx := range []string{"/index.html", "/index.htm"} {
+		if strings.HasSuffix(strings.ToLower(p), idx) {
+			p = p[:len(p)-len(idx)]
+		}
+	}
+	return strings.TrimSuffix(p, "/")
 }
 
 func (h *Host) serveFileURL(abs string) (string, error) {

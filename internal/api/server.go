@@ -313,6 +313,10 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		}
 		if len(parts) > 1 && parts[1] == "live" {
 			after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+			if len(parts) > 2 && parts[2] == "sync" {
+				writeJSON(w, a.LiveSync(id, after))
+				return
+			}
 			writeJSON(w, a.LiveSince(id, after))
 			return
 		}

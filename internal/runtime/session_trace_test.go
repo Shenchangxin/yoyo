@@ -67,12 +67,15 @@ func TestTrimTraceViewDropsNoiseAndTails(t *testing.T) {
 		evs = append(evs, trace.Event{Type: trace.TypeCompact, Payload: map[string]any{"kind": "shape", "tokens": 9}})
 		evs = append(evs, trace.Event{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c", "name": "read_file", "arguments": "{}"}})
 	}
+	evs = append(evs, trace.Event{Type: trace.TypeCompact, Payload: map[string]any{"kind": "checkpoint", "tokens": 9}})
 	view := TrimTraceView(ProjectTrace(evs), 10)
 	if view.Stats.Events != len(evs) {
 		t.Fatalf("stats must stay full: %d != %d", view.Stats.Events, len(evs))
 	}
-	if view.Stats.Compactions != 40 {
-		t.Fatalf("compactions %d", view.Stats.Compactions)
+	// Shape rows are projection samples, not compactions; only the checkpoint
+	// compacts.
+	if view.Stats.Compactions != 1 || view.Stats.Projections != 40 {
+		t.Fatalf("compactions %d projections %d", view.Stats.Compactions, view.Stats.Projections)
 	}
 	if len(view.Events) > 10 {
 		t.Fatalf("timeline %d", len(view.Events))

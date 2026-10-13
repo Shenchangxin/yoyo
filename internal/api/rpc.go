@@ -296,6 +296,21 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			id = resolved
 		}
 		return a.LiveSince(id, p.After), nil
+	case "live.sync":
+		var p struct {
+			Session string `json:"session"`
+			After   int64  `json:"after"`
+		}
+		_ = json.Unmarshal(params, &p)
+		id := p.Session
+		if strings.TrimSpace(id) != "" {
+			resolved, err := a.ResolveSessionID(id)
+			if err != nil {
+				return nil, err
+			}
+			id = resolved
+		}
+		return a.LiveSync(id, p.After), nil
 	case "trajectory.get":
 		var p struct {
 			Session string `json:"session"`

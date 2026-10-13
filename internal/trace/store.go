@@ -26,6 +26,7 @@ const (
 	TypeEval       EventType = "eval"
 	TypeEvolve     EventType = "evolve"
 	TypeTurnEnd    EventType = "turn_end"
+	TypeUsage      EventType = "model_usage"
 	TypeApproval   EventType = "approval"
 	TypePlan       EventType = "plan"
 	TypeFileChange EventType = "file_change"

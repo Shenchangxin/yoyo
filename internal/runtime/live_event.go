@@ -115,7 +115,7 @@ func dropUINoise(evs []trace.Event) []trace.Event {
 	out := make([]trace.Event, 0, len(evs))
 	for _, ev := range evs {
 		switch ev.Type {
-		case trace.TypeFileChange, trace.TypeTurnEnd, trace.TypeSystem, trace.TypeEval, trace.TypeEvolve:
+		case trace.TypeFileChange, trace.TypeTurnEnd, trace.TypeSystem, trace.TypeEval, trace.TypeEvolve, trace.TypeUsage:
 			continue
 		case trace.TypeCompact:
 			if ev.Payload == nil {

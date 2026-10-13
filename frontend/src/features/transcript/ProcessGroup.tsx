@@ -226,6 +226,9 @@ export const ProcessGroup = memo(function ProcessGroup({
   && a.onOpenChild === b.onOpenChild
   && a.items.length === b.items.length
   && a.items.every((it, i) => it === b.items[i])
+  // A live group streams tool output through liveTexts. Ignoring it froze the
+  // shell output at its first chunk until the item list changed.
+  && (!a.live || a.liveTexts === b.liveTexts)
 ));
 
 function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {

@@ -34,7 +34,7 @@ func pageWSPrefer(addr, want string) (string, error) {
 		if fallback == "" {
 			fallback = tab.WS
 		}
-		if wantPage && (tab.URL == want || strings.HasPrefix(tab.URL, want)) {
+		if wantPage && (tab.URL == want || strings.HasPrefix(tab.URL, want) || sameDocumentURL(tab.URL, want)) {
 			return tab.WS, nil
 		}
 		low := strings.ToLower(strings.TrimSpace(tab.URL))

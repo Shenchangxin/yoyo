@@ -6,6 +6,7 @@ import {
   parseLiveNotice,
   replayEvents,
 } from "./stream-fold";
+import { classifyLive } from "./stream-cursor";
 
 export {
   BROWSE_TRANSCRIPT_TURNS,
@@ -52,18 +53,33 @@ export type TrajectoryPageView = {
   hubSeq: number;
 };
 
+/** `resync`: the window on screen is live; merge into it instead of replacing it. */
+export type SeedOptions = { resync: boolean };
+
+// Open session streams by id. While a turn is known to be running the UI asks
+// for a catch-up, so a dropped tail event is repaired without waiting for the
+// next notice to expose the gap.
+const catchUps = new Map<string, Set<() => void>>();
+
+export function catchUpSession(sessionId: string): void {
+  const fns = catchUps.get(sessionId);
+  if (fns) for (const fn of fns) fn();
+}
+
 export function subscribeSession(
   sessionId: string,
   onItem: (item: Item) => void,
-  onSeed?: (items: Item[], page?: TrajectoryPageView) => void,
+  onSeed?: (items: Item[], page: TrajectoryPageView | undefined, opts: SeedOptions) => void,
 ): () => void {
   let alive = true;
   let stopLive = () => {};
+  // Global hub seq applied so far. Advanced only by in-order notices, pulls and
+  // seeds; the rules live in stream-cursor.ts.
+  let cursor = 0;
   let seeded = false;
-  let hubSeq = 0;
   let pulling = false;
   let pullAgain = false;
-  const buffered: { raw: any; item: Item; seq: number }[] = [];
+  let resyncing = false;
   const seen = new Set<string>();
 
   const applyItem = (raw: any, item: Item) => {
@@ -74,74 +90,109 @@ export function subscribeSession(
     onItem(item);
   };
 
-  const applySeed = (raws: any[], page?: TrajectoryPageView) => {
+  const applySeed = (raws: any[], page: TrajectoryPageView | undefined, resync: boolean) => {
     (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
     const items = replayEvents(raws || []);
-    if (onSeed) onSeed(items, page);
+    if (onSeed) onSeed(items, page, { resync });
     else items.forEach(onItem);
     seeded = true;
-    for (const row of buffered) {
-      if (row.seq > 0 && row.seq <= hubSeq) continue;
-      const fp = eventFingerprint(row.raw);
-      if (seen.has(fp)) continue;
-      seen.add(fp);
-      onItem(row.item);
-      if (row.seq > hubSeq) hubSeq = row.seq;
-    }
-    buffered.length = 0;
   };
 
-  const pullSince = async (after: number) => {
-    if (!alive || after < 0) return;
+  // One event from a pull, in seq order. Pulled events are whole trace events,
+  // so their seq travels on the event itself.
+  const applyPulled = (raw: any) => {
+    const notice = parseLiveNotice(raw);
+    const seq = notice.seq;
+    if (seq > 0 && seq <= cursor) return; // already applied via a live notice
+    if (seq > cursor) cursor = seq;
+    if (!notice.event) return;
+    const item = itemFromEvent(notice.event);
+    if (item.sessionId && item.sessionId !== sessionId) return;
+    const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq };
+    applyItem(event, item);
+  };
+
+  // Apply the ring tail after the cursor. A batch that is not complete cannot
+  // be trusted, so it is repaired by a resync. The follow-up pull of a resync
+  // passes mayResync=false: it is best effort, which means a ring that keeps
+  // overflowing cannot make the two loop against each other.
+  const pullSince = async (mayResync = true): Promise<void> => {
+    if (!alive) return;
     if (pulling) {
       pullAgain = true;
       return;
     }
     pulling = true;
+    let gapped = false;
     try {
-      let from = after;
       do {
         pullAgain = false;
-        const batch = await api.liveSince(sessionId, from).catch(() => []);
+        const batch = await api.liveSync(sessionId, cursor).catch(() => null);
         if (!alive) return;
-        for (const raw of batch) {
-          const notice = parseLiveNotice(raw);
-          const event = notice.event;
-          if (notice.seq > hubSeq) hubSeq = notice.seq;
-          if (!event) continue;
-          const item = itemFromEvent(event);
-          if (item.sessionId && item.sessionId !== sessionId) continue;
-          applyItem(event, item);
+        if (!batch) break; // transport error: keep the cursor, a later notice retries
+        if (batch.gap && mayResync) {
+          gapped = true;
+          break;
         }
-        from = hubSeq;
+        for (const raw of batch.events) applyPulled(raw);
+        cursor = Math.max(cursor, batch.head);
       } while (pullAgain && alive);
     } finally {
       pulling = false;
     }
+    if (gapped && alive) void resync();
+  };
+
+  // The trajectory is the durable record. When the live tail has a hole, reload
+  // it and merge it with what is on screen, so streamed text in flight survives.
+  const resync = async (): Promise<void> => {
+    if (resyncing || !alive) return;
+    resyncing = true;
+    try {
+      const page: TrajectoryPageView | null = await api.trajectoryPage(sessionId).catch(() => null);
+      if (!alive || !page) return;
+      // Take the page's cursor even if it is lower: a restarted hub numbers from
+      // zero again, and keeping a higher cursor would freeze the stream.
+      cursor = page.hubSeq || 0;
+      applySeed(page.events, page, true);
+    } finally {
+      resyncing = false;
+    }
+    if (alive) void pullSince(false);
   };
 
   const onLive = (raw: any) => {
+    // Nothing is applied before the seed. The seed's pull replays every event
+    // after the page's hubSeq from the ring, including the ones that arrive now.
+    if (!seeded) return;
     const notice = parseLiveNotice(raw);
-    if (notice.sessionId && notice.sessionId !== sessionId) return;
-    if (!seeded) {
-      if (!notice.event) return;
-      const item = itemFromEvent(notice.event);
-      if (item.sessionId && item.sessionId !== sessionId) return;
-      buffered.push({ raw: notice.event, item, seq: notice.seq });
-      return;
+    const own = !notice.sessionId || notice.sessionId === sessionId;
+    switch (classifyLive(cursor, notice.seq, own, !!notice.event)) {
+      case "stale":
+        return;
+      case "pull":
+        void pullSince();
+        return;
+      case "advance":
+        cursor = Math.max(cursor, notice.seq);
+        return;
+      case "apply": {
+        const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq: notice.seq };
+        const item = itemFromEvent(event);
+        cursor = Math.max(cursor, notice.seq);
+        if (item.sessionId && item.sessionId !== sessionId) return;
+        applyItem(event, item);
+        return;
+      }
     }
-    if (notice.seq > 0 && notice.seq <= hubSeq) return;
-    if (!notice.event) {
-      void pullSince(hubSeq);
-      return;
-    }
-    const item = itemFromEvent(notice.event);
-    if (item.sessionId && item.sessionId !== sessionId) return;
-    const gap = notice.seq > 0 && notice.seq > hubSeq + 1;
-    if (gap) void pullSince(hubSeq);
-    if (notice.seq > hubSeq) hubSeq = notice.seq;
-    const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq: notice.seq };
-    applyItem(event, item);
+  };
+
+  const open = async (): Promise<void> => {
+    const page = await loadSeedPage(sessionId);
+    if (!alive) return;
+    cursor = page.hubSeq || 0;
+    applySeed(page.events, page, false);
+    void pullSince();
   };
 
   (async () => {
@@ -150,11 +201,7 @@ export function subscribeSession(
     if (Events?.On) {
       const off = Events.On("yoyo:item", (e: any) => onLive(e));
       stopLive = typeof off === "function" ? off : () => {};
-      const page = await loadSeedPage(sessionId);
-      if (!alive) return;
-      hubSeq = page.hubSeq || 0;
-      applySeed(page.events, page);
-      if (hubSeq > 0) void pullSince(hubSeq);
+      await open();
       return;
     }
 
@@ -168,30 +215,33 @@ export function subscribeSession(
         }
       };
       stopLive = () => es.close();
-      const page = await loadSeedPage(sessionId);
-      if (!alive) {
-        es.close();
-        return;
-      }
-      hubSeq = page.hubSeq || 0;
-      applySeed(page.events, page);
+      await open();
+      if (!alive) es.close();
       return;
     }
 
     const tick = async () => {
       const page = await loadSeedPage(sessionId);
       if (!alive) return;
-      hubSeq = page.hubSeq || hubSeq;
-      applySeed(page.events, page);
+      applySeed(page.events, page, false);
     };
     await tick();
     const t = window.setInterval(tick, 2500);
     stopLive = () => window.clearInterval(t);
   })();
 
+  const catchUp = () => {
+    if (alive && seeded) void pullSince();
+  };
+  const registry = catchUps.get(sessionId) ?? new Set<() => void>();
+  catchUps.set(sessionId, registry);
+  registry.add(catchUp);
+
   return () => {
     alive = false;
     stopLive();
+    registry.delete(catchUp);
+    if (registry.size === 0 && catchUps.get(sessionId) === registry) catchUps.delete(sessionId);
   };
 }
 

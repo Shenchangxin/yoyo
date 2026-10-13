@@ -453,7 +453,7 @@ func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 		return ToolResult{Err: err}
 	}
 	if offset > 0 || limit > 0 {
-		return ToolResult{Content: numberLines(string(b), offset, limit)}
+		return ToolResult{Content: rangedRead(rel, string(b), offset, limit)}
 	}
 	if len(b) > maxInlineBytes {
 		spill, err := t.spillOverflow(rel, b)
@@ -464,6 +464,24 @@ func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 		return ToolResult{Content: fmt.Sprintf("%s\n[truncated %d bytes; full file at %s — re-read with offset/limit]\n", head, len(b), spill)}
 	}
 	return ToolResult{Content: numberLines(string(b), 0, 0)}
+}
+
+// rangedRead keeps an empty window from reading as a silent success. A model
+// that cannot see the file length re-reads past EOF; session 3b9f1bbb660e4236
+// issued six such reads (offsets 270-296 of a 264-line file) and each came
+// back as "completed with no output", so the turn spun. Name the real extent.
+func rangedRead(rel, text string, offset, limit int) string {
+	total := 0
+	if text != "" {
+		total = len(strings.Split(strings.TrimSuffix(text, "\n"), "\n"))
+	}
+	if total == 0 {
+		return fmt.Sprintf("%s is empty (0 lines).", rel)
+	}
+	if offset > total {
+		return fmt.Sprintf("%s has %d lines; offset %d is past the end. Read offset 1-%d, or omit offset to start from the top.", rel, total, offset, total)
+	}
+	return numberLines(text, offset, limit)
 }
 
 func numberLines(text string, offset, limit int) string {
@@ -755,9 +773,12 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	if pattern == "" {
 		return ToolResult{Err: fmt.Errorf("empty pattern")}
 	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return ToolResult{Err: err}
+	re, compileErr := regexp.Compile(pattern)
+	literal := compileErr != nil
+	if literal {
+		// Pasted code fragments (`})();`, unbalanced `)`) are not regexes. A hard
+		// error here looped the model on the same bad pattern; search the text.
+		re = regexp.MustCompile(regexp.QuoteMeta(pattern))
 	}
 	root := t.Workspace
 	if rel != "" {
@@ -774,10 +795,14 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: err}
 	}
-	if hits == "" {
-		return ToolResult{Content: "no matches"}
+	note := ""
+	if literal {
+		note = "pattern is not a valid regex; matched it as literal text.\n"
 	}
-	return ToolResult{Content: hits}
+	if hits == "" {
+		return ToolResult{Content: note + "no matches"}
+	}
+	return ToolResult{Content: note + hits}
 }
 
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {

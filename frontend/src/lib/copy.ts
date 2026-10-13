@@ -289,6 +289,10 @@ export const en = {
     errorMaxTurnsHint: "The loop stopped before the model finished. Continue this turn to keep going.",
     errorStuck: "Stopped a repeating loop",
     errorStuckHint: "The observation did not change. Edit the product the check cites, or change approach, then continue this turn.",
+    errorPlanOpen: "Plan not finished",
+    errorPlanOpenHint: "The agent stopped before its plan was done. Continue this turn to resume the open steps.",
+    errorModel: "This model is not available",
+    errorModelHint: "Pick another model in the composer, or add it on the provider in Settings.",
     errorUnknown: "Something went wrong",
     errorUnknownHint: "Continue this turn.",
     starters: [

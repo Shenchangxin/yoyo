@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
-import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { asArray, num, str } from "../../lib/normalize";
@@ -623,10 +623,13 @@ export function useWorkstation() {
     // A deliberate Stop lands as a "canceled" error card in the stream; it is
     // not news worth a notice.
     const stopped = item.type === "error" && classifyItem(item).kind === "canceled";
+    // A turn that ends with plan steps open is reported by its plan_open card.
+    // A "turn finished" notice on top of that would contradict it.
+    const planOpenEnd = item.type === "turn_end" && item.payload?.stop === "plan_open";
     if (item.type === "subagent") {
       void refresh();
     }
-    if ((item.type === "turn_end" || item.type === "approval" || item.type === "error") && !stopped) {
+    if ((item.type === "turn_end" || item.type === "approval" || item.type === "error") && !stopped && !planOpenEnd) {
       pushNotice({
         id: item.key || `${item.type}-${Date.now()}`,
         title: item.type === "approval" ? copy.app.approval : item.type === "error" ? copy.app.errorNotice : copy.app.turnFinished,
@@ -800,7 +803,29 @@ export function useWorkstation() {
           void refreshOutline();
         }
       },
-      (seed, page) => {
+      (seed, page, opts) => {
+        if (opts.resync) {
+          // Repair after a hole in the live tail. Only the persisted record was
+          // stale, so keep the streamed text in liveAcc, the browse position and
+          // the review pane as they are.
+          hotItemsRef.current = lastUserTurns(foldLiveIntoSeed(seed, hotItemsRef.current), HOT_TRANSCRIPT_TURNS);
+          // A message that finished during the gap now has its persisted form, which
+          // supersedes the streamed text, as the live path does for a final item.
+          let superseded = false;
+          for (const it of seed) {
+            if (it.key && !isLiveDelta(it) && liveAcc.current[it.key] != null) {
+              delete liveAcc.current[it.key];
+              superseded = true;
+            }
+          }
+          if (superseded) scheduleLive();
+          if (!browsingRef.current) {
+            itemsAcc.current = hotItemsRef.current;
+            setItems(hotItemsRef.current.slice());
+          }
+          void refreshOutline();
+          return;
+        }
         browsingRef.current = false;
         hotItemsRef.current = lastUserTurns(foldLiveIntoSeed(seed, hotItemsRef.current), HOT_TRANSCRIPT_TURNS);
         itemsAcc.current = hotItemsRef.current;
@@ -865,6 +890,9 @@ export function useWorkstation() {
       setRunning((m) => ({ ...m, [activeId]: live && !settled(endedAt.current, activeId) }));
       setApprovals(offers);
       api.contextUsage(activeId).then(setCtx).catch(() => {});
+      // A turn in flight may have lost its tail event; pull the ring so the
+      // transcript catches up within one poll instead of waiting for a notice.
+      if (live) catchUpSession(activeId);
     }, 1500);
     return () => {
       alive = false;
@@ -1248,7 +1276,10 @@ export function useWorkstation() {
 
   async function onStop() {
     if (!activeId) return;
-    markEnded(activeId);
+    // Do not mark the turn ended here. The backend unwinds asynchronously: a
+    // running tool or model stream can still emit output after the click. The
+    // optimistic end made that tail look like a ghost run. The turn closes on
+    // its terminal event (turn_end / error / stopped) or on the runningIDs poll.
     void api.interrupt(activeId).catch(() => {});
   }
 
