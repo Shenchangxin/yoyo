@@ -26,9 +26,8 @@ function versionOf(s: UpdateSnap | null): string {
 function visible(s: UpdateSnap | null): boolean {
   if (!s) return false;
   const phase = String(s.phase || "idle");
-  if (phase === "ready" || phase === "downloading" || phase === "applying") return true;
-  if (s.newer || s.downloaded) return true;
-  return false;
+  if (phase === "ready" || phase === "applying") return true;
+  return !!s.downloaded;
 }
 
 export function UpdateButton() {
@@ -55,7 +54,7 @@ export function UpdateButton() {
       }).catch(() => {});
     };
     pull();
-    const ms = phase === "downloading" || phase === "checking" ? 1200 : 8000;
+    const ms = ready || phase === "downloading" || phase === "checking" ? 1500 : 4000;
     const id = window.setInterval(pull, ms);
     return () => {
       stop = true;
@@ -86,21 +85,11 @@ export function UpdateButton() {
   if (!visible(ota)) return null;
 
   async function onClick() {
-    if (ready) {
-      setApplyOpen(true);
-      return;
-    }
-    if (phase === "downloading" || phase === "checking" || phase === "applying") {
+    if (phase === "applying") {
       toast.message(label);
       return;
     }
-    try {
-      const next = await api.checkUpdate();
-      setOta(next || null);
-      if (next?.error) toast.error(String(next.error));
-    } catch (e) {
-      toast.error(String(e));
-    }
+    setApplyOpen(true);
   }
 
   return (

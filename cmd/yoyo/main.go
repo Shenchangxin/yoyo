@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	if update.HandleNSISHelper() {
+		return
+	}
 	if os.Getenv(diaglog.EnvProcess) == "" && os.Getenv(diaglog.EnvWorker) != "1" {
 		_ = os.Setenv(diaglog.EnvProcess, string(diaglog.ProcessCLI))
 	}

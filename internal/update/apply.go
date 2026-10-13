@@ -130,8 +130,7 @@ func ApplyDownloaded(exePath, dir string) error {
 	}
 	switch kind {
 	case "nsis", "exe":
-		dest := installDir(exePath)
-		if err := applyNSIS(path, dest); err != nil {
+		if err := applyNSIS(path, nsisDestDir(exePath)); err != nil {
 			return err
 		}
 		return ErrQuitNeeded
@@ -184,6 +183,38 @@ func installDir(exePath string) string {
 		}
 	}
 	return ""
+}
+
+// nsisDestDir is the /D= target. Empty means leave NSIS on its compiled
+// InstallDir — used for go run temps and the wails3 `bin/` next to source,
+// where overwriting the live debug exe cannot succeed.
+func nsisDestDir(exePath string) string {
+	dir := strings.TrimRight(installDir(exePath), `/\`)
+	if skipNSISDestDir(dir) {
+		return ""
+	}
+	return dir
+}
+
+func skipNSISDestDir(dir string) bool {
+	if dir == "" {
+		return true
+	}
+	cleaned := filepath.Clean(dir)
+	lower := strings.ToLower(cleaned)
+	if strings.Contains(lower, string(filepath.Separator)+"go-build") {
+		return true
+	}
+	if !strings.EqualFold(filepath.Base(cleaned), "bin") {
+		return false
+	}
+	parent := filepath.Dir(cleaned)
+	for _, name := range []string{"go.mod", "Taskfile.yml"} {
+		if _, err := os.Stat(filepath.Join(parent, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func extractCLIBinary(archive, destDir string) (string, error) {
