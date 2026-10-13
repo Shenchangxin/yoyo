@@ -27,6 +27,34 @@ func TestFeedURL(t *testing.T) {
 	}
 }
 
+func TestDefaultFeedPointsAtInternationalDataset(t *testing.T) {
+	t.Setenv(EnvEndpoint, "")
+	t.Setenv(EnvRepo, "")
+	t.Setenv(EnvRevision, "")
+	want := "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/nightly.json"
+	if got := FeedURL(ChannelNightly); got != want {
+		t.Fatalf("got %s want %s", got, want)
+	}
+	if Referer() != "https://www.modelscope.ai/" {
+		t.Fatal(Referer())
+	}
+}
+
+func TestNormalizeEndpointBareAI(t *testing.T) {
+	t.Setenv(EnvEndpoint, "https://modelscope.ai")
+	if Endpoint() != "https://www.modelscope.ai" {
+		t.Fatal(Endpoint())
+	}
+	t.Setenv(EnvEndpoint, "https://modelscope.ai/")
+	if Endpoint() != "https://www.modelscope.ai" {
+		t.Fatal(Endpoint())
+	}
+	t.Setenv(EnvEndpoint, "https://www.modelscope.cn")
+	if Endpoint() != "https://www.modelscope.cn" {
+		t.Fatal(Endpoint())
+	}
+}
+
 func TestCheckDownloadRoundTrip(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

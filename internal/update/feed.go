@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	DefaultEndpoint = "https://www.modelscope.cn"
-	DefaultRepo     = "Shenchangxin/yoyo-releases"
+	// International ModelScope (modelscope.ai). The China site (modelscope.cn)
+	// is a separate catalog — tokens and datasets do not carry over.
+	DefaultEndpoint = "https://www.modelscope.ai"
+	DefaultRepo     = "yoyo-agent/yoyo"
 	DefaultRevision = "master"
 	UpdaterUA       = "Yoyo-Updater"
-	UpdaterReferer  = "https://www.modelscope.cn/"
+	UpdaterReferer  = "https://www.modelscope.ai/"
 )
 
 const (
@@ -23,9 +25,32 @@ const (
 
 func Endpoint() string {
 	if v := strings.TrimSpace(os.Getenv(EnvEndpoint)); v != "" {
-		return strings.TrimRight(v, "/")
+		return normalizeEndpoint(v)
 	}
 	return DefaultEndpoint
+}
+
+// Referer is the Origin-like header ModelScope's CDN expects on resolve downloads.
+func Referer() string {
+	return strings.TrimRight(Endpoint(), "/") + "/"
+}
+
+func normalizeEndpoint(raw string) string {
+	raw = strings.TrimSpace(strings.TrimRight(raw, "/"))
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	if strings.EqualFold(u.Host, "modelscope.ai") {
+		u.Scheme = "https"
+		u.Host = "www.modelscope.ai"
+		u.Path = strings.TrimRight(u.Path, "/")
+		if u.Path == "/" {
+			u.Path = ""
+		}
+		return u.String()
+	}
+	return raw
 }
 
 func RepoID() string {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/update"
@@ -40,6 +41,7 @@ func TestBuildSignedChannels(t *testing.T) {
 	out := t.TempDir()
 	t.Setenv(update.EnvPrivkey, hex.EncodeToString(priv))
 	t.Setenv(update.EnvRepo, "demo/yoyo-releases")
+	t.Setenv(update.EnvEndpoint, "")
 	if err := run([]string{"-dist", dist, "-version", ver, "-out", out, "-notes", "test"}); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +65,10 @@ func TestBuildSignedChannels(t *testing.T) {
 	}
 	if m.Platforms["linux-amd64-cli"].Kind != "tar.gz" {
 		t.Fatalf("cli %v", m.Platforms)
+	}
+	wantURL := "https://www.modelscope.ai/datasets/demo/yoyo-releases/resolve/master/releases/v" + ver + "/"
+	if !strings.Contains(m.Platforms["windows-amd64"].URL, wantURL) {
+		t.Fatalf("asset url %s", m.Platforms["windows-amd64"].URL)
 	}
 	if _, err := os.Stat(filepath.Join(out, "releases", "v"+ver, files[0])); err != nil {
 		t.Fatal(err)

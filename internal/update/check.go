@@ -154,7 +154,7 @@ func doGET(ctx context.Context, rawURL string, nocache bool, start int64) (*http
 	}
 	req.Header.Set("User-Agent", UpdaterUA)
 	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Referer", UpdaterReferer)
+	req.Header.Set("Referer", Referer())
 	if nocache {
 		req.Header.Set("Cache-Control", "no-cache")
 		req.Header.Set("Pragma", "no-cache")
