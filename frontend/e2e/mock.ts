@@ -619,7 +619,7 @@ export async function mockApi(
           phase: "idle",
           staged: false,
           auto_check: true,
-          feed: "https://www.modelscope.cn/datasets/Shenchangxin/yoyo-releases/resolve/master/channels/nightly.json",
+          feed: "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/nightly.json",
           current: { version: "0.4.0" },
         },
       });
