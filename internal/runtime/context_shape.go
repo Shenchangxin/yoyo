@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
@@ -65,9 +66,11 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Layers = append(rep.Layers, "budget")
 		rep.Elided += n
 	}
-	if n := clearStaleReads(out, chatKeepReads); n > 0 {
-		rep.Layers = append(rep.Layers, "reads")
-		rep.Elided += n
+	if readsUnderPressure(out, opts) {
+		if n := clearStaleReads(out, chatKeepReads, chatReadClearBatch); n > 0 {
+			rep.Layers = append(rep.Layers, "reads")
+			rep.Elided += n
+		}
 	}
 	rep.Note = strings.Join(rep.Layers, "+")
 	return Legalize(out), rep
@@ -76,6 +79,29 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 // chatKeepReads is how many of the newest read-only results stay verbatim in
 // the desktop prompt. Older ones become receipts (see clearStaleReads).
 const chatKeepReads = 12
+
+// chatReadClearAt is the share of the effective budget at which old reads start
+// to become receipts. Below it every read stays verbatim. Clearing buys no room
+// there, and each cleared read rewrites history and breaks the provider's
+// prompt cache from that point on. Checkpointing (chatCompactAt) is later, so
+// clearing is the cheaper relief when pressure does arrive.
+const chatReadClearAt = 0.5
+
+// chatReadClearBatch is how many reads are cleared at once. One clearing per
+// new read moved the cache boundary on every round; a batch moves it once per
+// batch of reads.
+const chatReadClearBatch = 8
+
+// readsUnderPressure reports whether the uncleared prompt has reached the
+// point where clearing old reads is worth its cache cost.
+func readsUnderPressure(msgs []Message, opts ShapeOpts) bool {
+	budget := effectiveBudget(opts)
+	if budget <= 0 {
+		return true
+	}
+	est := messagesTokens(msgs) + opts.Overhead
+	return float64(est) >= float64(budget)*chatReadClearAt
+}
 
 // refetchableTool names results that can be produced again from the workspace.
 // Writes, shell output, and browser state are never cleared: they are not
@@ -91,27 +117,32 @@ func refetchableTool(name string) bool {
 
 // clearStaleReads turns older re-fetchable results into receipts. The assistant
 // tool call that produced each result stays in the prompt, so the model keeps
-// the record that it read the file. The receipt carries the path, size, and a
-// hash of what was shown, so the model can tell whether a later read changed
-// anything. This is the cleared-tool-results pattern from Anthropic's context
-// editing, applied with the same rule: the call is kept, the bulky observation
-// is dropped, and it can be recovered by calling the tool again.
-func clearStaleReads(msgs []Message, keep int) int {
+// the record that it read the file. The receipt carries the path, the line span
+// it showed, size, and a hash of what was shown, so the model can tell which
+// part of the file it saw and whether a later read changed anything. This is the
+// cleared-tool-results pattern from Anthropic's context editing, applied with
+// the same rule: the call is kept, the bulky observation is dropped, and it can
+// be recovered by calling the tool again.
+//
+// Only the first `batch` multiple of the stale reads is cleared. The cleared
+// prefix therefore grows in steps, and the prompt bytes stay identical between
+// steps, so the provider's prompt cache keeps hitting.
+func clearStaleReads(msgs []Message, keep, batch int) int {
 	var ids []int
 	for i, m := range msgs {
 		if m.Role == RoleTool && refetchableTool(m.Name) {
 			ids = append(ids, i)
 		}
 	}
-	if len(ids) <= keep {
+	stale := len(ids) - keep
+	if stale <= 0 {
 		return 0
 	}
-	cut := ids[len(ids)-keep]
+	if batch > 1 {
+		stale -= stale % batch
+	}
 	n := 0
-	for _, i := range ids {
-		if i >= cut {
-			break
-		}
+	for _, i := range ids[:stale] {
 		if alreadyStubbed(msgs[i].Content) || len(msgs[i].Content) < 400 {
 			continue
 		}
@@ -129,9 +160,40 @@ func readReceipt(msgs []Message, toolIdx int) string {
 	if path == "" {
 		path = "(unknown path)"
 	}
+	span := ""
+	if m.Name == "read_file" {
+		if s := numberedSpan(m.Content); s != "" {
+			span = " " + s
+		}
+	}
 	sum := sha256.Sum256([]byte(m.Content))
-	return fmt.Sprintf("[cleared %s path=%s bytes=%d sha256=%s — this earlier result left the prompt; call read_file again to see the current content]",
-		m.Name, path, len(m.Content), hex.EncodeToString(sum[:6]))
+	return fmt.Sprintf("[cleared %s path=%s%s bytes=%d sha256=%s — this earlier result left the prompt; call read_file again to see the current content]",
+		m.Name, path, span, len(m.Content), hex.EncodeToString(sum[:6]))
+}
+
+// numberedSpan reads the "%6d|" line numbers that read_file prefixes and reports
+// the first and last line shown, e.g. "lines=1-264". A partial read otherwise
+// looks like the whole file once it has been cleared.
+func numberedSpan(content string) string {
+	first, last := 0, 0
+	for _, line := range strings.Split(content, "\n") {
+		bar := strings.IndexByte(line, '|')
+		if bar <= 0 {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(line[:bar]))
+		if err != nil || n <= 0 {
+			continue
+		}
+		if first == 0 {
+			first = n
+		}
+		last = n
+	}
+	if first == 0 {
+		return ""
+	}
+	return fmt.Sprintf("lines=%d-%d", first, last)
 }
 
 // Shape is a read-time projection. The live transcript is not mutated.

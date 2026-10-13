@@ -222,6 +222,21 @@ func errorSignature(content string) string {
 		return "chrome debug port"
 	case strings.Contains(lower, "message too big"):
 		return "payload too big"
+	// Browser misses name the selector, so the raw text differs on every
+	// attempt and a repeat of the same failure never reached the threshold
+	// (session 3b9f1bbb660e4236: six selector guesses, no stop). Group by kind.
+	case strings.Contains(lower, "matched no element"):
+		return "browser: no match"
+	case strings.Contains(lower, "is covered by"):
+		return "browser: covered"
+	case strings.Contains(lower, "is not visible"):
+		return "browser: hidden"
+	case strings.Contains(lower, "is disabled"):
+		return "browser: disabled"
+	case strings.Contains(lower, "not a valid css selector"):
+		return "browser: bad selector"
+	case strings.Contains(lower, "page script error"):
+		return "browser: page script error"
 	default:
 		if !strings.HasPrefix(strings.TrimSpace(content), "ERROR:") {
 			return ""

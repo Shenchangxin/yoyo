@@ -19,6 +19,7 @@ const (
 	ErrKindBudget    = "budget"
 	ErrKindMaxTurns  = "max_turns"
 	ErrKindStuck     = "stuck"
+	ErrKindPlanOpen  = "plan_open"
 	ErrKindModel     = "model"
 	ErrKindUnknown   = "unknown"
 )
@@ -49,6 +50,20 @@ func stuckLoopInfo(detail string) ErrorInfo {
 		Title:     "Stopped a repeating loop",
 		Hint:      "The observation did not change. Edit the product the check cites, or change approach, then continue this turn.",
 		Detail:    detail,
+		Retryable: true,
+	}
+}
+
+// planOpenInfo is the terminal card for a chat turn that stopped with plan
+// steps still open. The nudge budget ran out, or the model answered in prose
+// after a nudge. Without this card the turn reads as a finished task. It is
+// retryable: "continue this turn" resumes the open steps.
+func planOpenInfo(open, total int) ErrorInfo {
+	return ErrorInfo{
+		Kind:      ErrKindPlanOpen,
+		Title:     "Plan not finished",
+		Hint:      "The agent stopped before its plan was done. Continue this turn to resume the open steps.",
+		Detail:    strconv.Itoa(open) + " of " + strconv.Itoa(total) + " plan steps still open",
 		Retryable: true,
 	}
 }

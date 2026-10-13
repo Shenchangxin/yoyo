@@ -272,6 +272,15 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if req.OnShape != nil {
 				req.OnShape(report)
 			}
+			// One record per model call. The turn_end row carries only the last
+			// call, so it cannot show whether the prompt cache held across a turn.
+			emit(req, trace.TypeUsage, "model", map[string]any{
+				"round":          roundID,
+				"prompt_tokens":  msg.PromptTokens,
+				"cached_tokens":  msg.CachedTokens,
+				"cache_reported": report.CacheReported,
+				"cache_stable":   report.CacheStable,
+			})
 		}
 		if req.Meter != nil {
 			in, out := messagesTokens(compacted)+toolsJSONTokens(toolsJSON), messageTokens(msg)
@@ -330,6 +339,18 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				sinceProgress++
 				continue
 			}
+			// The nudge budget is spent, or the model answered in prose after a
+			// nudge. A bare end_turn here reads as a finished task while steps are
+			// still open: the "ghost" stop. Chat turns (SoftHorizon, top level only)
+			// keep the end_turn bookkeeping, tag it, and emit a retryable plan_open
+			// card after it so the operator sees why the run stopped.
+			var planOpen *ErrorInfo
+			if req.SoftHorizon && !loop.PlanMode && req.Tools != nil && req.Tools.Depth == 0 {
+				if total, open := planSteps(planTextOf(req.Tools)); open > 0 {
+					info := planOpenInfo(open, total)
+					planOpen = &info
+				}
+			}
 			if req.Events != nil {
 				req.Events.Emit(HookTurnEnd, last)
 			}
@@ -356,14 +377,21 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			if len(report.Layers) > 0 {
 				end["layers"] = report.Layers
 			}
-			end["stop"] = string(StopEndTurn)
-			setStop(&req, StopEndTurn)
+			stop := StopEndTurn
+			if planOpen != nil {
+				stop = StopPlanOpen
+			}
+			end["stop"] = string(stop)
+			setStop(&req, stop)
 			if block, extra := applyStopHook(req); block {
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 				sinceProgress++
 				continue
 			}
 			emit(req, trace.TypeTurnEnd, "runtime", end)
+			if planOpen != nil {
+				emit(req, trace.TypeError, "runtime", planOpen.Payload())
+			}
 			consolidateMemory(req, ParseNotes(kernel.notes))
 			return strings.TrimSpace(msg.Content), nil
 		}
@@ -912,18 +940,23 @@ func planContinueIfOpen(req RunRequest, planMode bool, toolCount int, continues 
 }
 
 func PlanOpen(plan string) bool {
-	n, open := 0, 0
+	total, open := planSteps(plan)
+	return total > 0 && open > 0
+}
+
+// planSteps counts checklist lines in a plan as (total, open).
+func planSteps(plan string) (total, open int) {
 	for _, line := range strings.Split(plan, "\n") {
 		st, ok := planLineStatus(line)
 		if !ok {
 			continue
 		}
-		n++
+		total++
 		if !planStatusDone(st) {
 			open++
 		}
 	}
-	return n > 0 && open > 0
+	return total, open
 }
 
 func planLineStatus(line string) (string, bool) {
@@ -1029,7 +1062,7 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 				return
 			}
 		}
-		if typ == trace.TypeFileChange {
+		if typ == trace.TypeFileChange || typ == trace.TypeUsage {
 			return
 		}
 		req.OnEvent(slimLiveEvent(ev))

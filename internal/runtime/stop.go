@@ -14,6 +14,7 @@ const (
 	StopHook       StopReason = "hook_stop"
 	StopModelError StopReason = "model_error"
 	StopStuck      StopReason = "stuck"
+	StopPlanOpen   StopReason = "plan_open" // chat turn ended with plan steps open after the nudges
 )
 
 type StopError struct {

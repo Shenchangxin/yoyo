@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 func TestPlanOpen(t *testing.T) {
@@ -108,6 +110,112 @@ func TestRunContinuesOpenPlanInsteadOfEndTurn(t *testing.T) {
 	}
 	if client.i < 5 {
 		t.Fatalf("expected continue past the confirm turn, steps used %d", client.i)
+	}
+}
+
+// A chat turn whose plan is still open when the nudges run out keeps the
+// end_turn bookkeeping, but is tagged plan_open and followed by a visible,
+// retryable plan_open error. A bare clean end_turn was the silent "ghost" stop.
+func TestSoftHorizonOpenPlanStopIsVisible(t *testing.T) {
+	dir := t.TempDir()
+	client := &ScriptedClient{Steps: []Message{
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{
+			ID: "p1", Name: "update_plan",
+			Arguments: `{"plan":[{"step":"inspect","status":"in_progress"},{"step":"write","status":"pending"}]}`,
+		}}},
+		{Role: RoleAssistant, Content: "plan ready, please confirm"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{
+			ID: "w1", Name: "write_file",
+			Arguments: `{"path":"out.txt","content":"shipped"}`,
+		}}},
+		{Role: RoleAssistant, Content: "still need the rest"},
+		{Role: RoleAssistant, Content: "stopping now"},
+	}}
+	var stop StopReason
+	var events []trace.Event
+	out, err := Run(context.Background(), RunRequest{
+		User:        "build the thing",
+		Workspace:   dir,
+		Tools:       &WorkspaceTools{Workspace: dir},
+		Client:      client,
+		Loop:        DefaultLoop(),
+		SoftHorizon: true,
+		Stop:        &stop,
+		OnEvent:     func(ev trace.Event) { events = append(events, ev) },
+	})
+	if err != nil {
+		t.Fatalf("open-plan end_turn stays a normal return, got %v", err)
+	}
+	if stop != StopPlanOpen {
+		t.Fatalf("req.Stop %q", stop)
+	}
+	if out != "stopping now" {
+		t.Fatalf("out %q", out)
+	}
+	turnEnd, errAt := -1, -1
+	var errKind string
+	for i, ev := range events {
+		switch ev.Type {
+		case trace.TypeTurnEnd:
+			turnEnd = i
+			if s, _ := ev.Payload["stop"].(string); s != string(StopPlanOpen) {
+				t.Fatalf("turn_end stop %q, want %q", s, StopPlanOpen)
+			}
+		case trace.TypeError:
+			errAt = i
+			errKind, _ = ev.Payload["kind"].(string)
+		}
+	}
+	if turnEnd < 0 || errAt < 0 {
+		t.Fatalf("want turn_end and error events, turn_end=%d error=%d", turnEnd, errAt)
+	}
+	if errAt <= turnEnd {
+		t.Fatalf("plan_open card must follow turn_end (turn_end=%d error=%d)", turnEnd, errAt)
+	}
+	if errKind != ErrKindPlanOpen {
+		t.Fatalf("error kind %q, want %q", errKind, ErrKindPlanOpen)
+	}
+}
+
+func TestPlanOpenNotSurfacedOutsideChat(t *testing.T) {
+	dir := t.TempDir()
+	client := &ScriptedClient{Steps: []Message{
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{
+			ID: "p1", Name: "update_plan",
+			Arguments: `{"plan":[{"step":"inspect","status":"in_progress"}]}`,
+		}}},
+		{Role: RoleAssistant, Content: "done for now"},
+		{Role: RoleAssistant, Content: "done again"},
+	}}
+	var events []trace.Event
+	out, err := Run(context.Background(), RunRequest{
+		User:      "build the thing",
+		Workspace: dir,
+		Tools:     &WorkspaceTools{Workspace: dir},
+		Client:    client,
+		Loop:      DefaultLoop(),
+		OnEvent:   func(ev trace.Event) { events = append(events, ev) },
+	})
+	if err != nil {
+		t.Fatalf("sub-agent / batch runs keep the plain end_turn, got %v", err)
+	}
+	if out == "" {
+		t.Fatal("empty out")
+	}
+	for _, ev := range events {
+		if ev.Type == trace.TypeError {
+			t.Fatalf("no plan_open card outside chat, got %+v", ev.Payload)
+		}
+	}
+}
+
+func TestPlanSteps(t *testing.T) {
+	total, open := planSteps("1. [in_progress] a\n2. [complete] b\n3. [pending] c\n")
+	if total != 3 || open != 2 {
+		t.Fatalf("total=%d open=%d", total, open)
+	}
+	if total, open := planSteps("no checklist here"); total != 0 || open != 0 {
+		t.Fatalf("total=%d open=%d", total, open)
 	}
 }
 

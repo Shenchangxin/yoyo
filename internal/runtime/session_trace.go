@@ -34,6 +34,9 @@ type TraceStats struct {
 	ToolResults int `json:"tool_results"`
 	Errors      int `json:"errors"`
 	Compactions int `json:"compactions"`
+	// Projections counts sampled prompt-projection ledger rows. They are not
+	// compactions: nothing is summarized or removed from the transcript.
+	Projections int `json:"projections"`
 	Deltas      int `json:"deltas"`
 	Tokens      int `json:"tokens,omitempty"`
 	DurationMs  int `json:"duration_ms,omitempty"`
@@ -89,7 +92,16 @@ func ProjectTrace(evs []trace.Event) TraceView {
 		case trace.TypeError:
 			out.Stats.Errors++
 		case trace.TypeCompact:
-			out.Stats.Compactions++
+			// Only a checkpoint compacts: it summarizes history and reseeds the
+			// prompt. The sampled "shape" rows describe how one round's prompt was
+			// projected. Counting them as compactions made a 126-round turn with no
+			// checkpoint report three.
+			switch payloadStr(ev.Payload, "kind") {
+			case "checkpoint":
+				out.Stats.Compactions++
+			case "shape":
+				out.Stats.Projections++
+			}
 			if n := payloadInt(ev.Payload, "tokens"); n > 0 {
 				out.Stats.Tokens = n
 			}
