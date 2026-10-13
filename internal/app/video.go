@@ -195,9 +195,9 @@ func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string)
 
 var studioSkillNames = []string{"studio-script", "studio-storyboard", "studio-assemble", "studio-talking-head"}
 
-const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts project with studio_get, then write the spoken script with studio_update. If shots have no media, stop after the script."
+const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts project with studio_get. Write the spoken script with studio_update, then studio_approve_script before spending TTS or image. Generate stills with studio_generate_shot — never invent CAS hashes."
 
-const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Write the spoken script with studio_update. Do not invent CAS hashes. If shots have no media, stop after the script and tell the operator to upload stills or clips on the Shorts assemble pane."
+const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Approve the script before Speak or image gen. Use studio_generate_shot / studio_generate_missing for stills. Never invent CAS hashes. If generation is not configured, tell the operator to upload stills on the Shorts desk or add an image adapter."
 
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}
 
@@ -243,7 +243,11 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 	if tools.Extra == nil {
 		tools.Extra = map[string]runtime.ExtraTool{}
 	}
-	askNet := map[string]bool{"studio_speak": true, "trends_fetch": true, "studio_remotion_install": true}
+	askNet := map[string]bool{
+		"studio_speak": true, "trends_fetch": true, "studio_remotion_install": true,
+		"studio_generate_shot": true, "studio_generate_missing": true, "studio_cover": true,
+		"studio_ingest": true, "studio_autoclip": true, "studio_copy": true, "studio_expand_topic": true,
+	}
 	askBrowser := map[string]bool{"studio_publish_open": true, "studio_publish_analytics": true}
 	for _, spec := range video.StudioToolSpecs() {
 		spec := spec
@@ -676,7 +680,9 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		_ = json.Unmarshal(b, &t)
 		return eng.SaveTopic(t)
 	case "video.topic.delete":
-		return map[string]any{"ok": true}, eng.DeleteTopic(str("id"))
+		id := str("id")
+		a.cancelPendingTopicJobs(id)
+		return map[string]any{"ok": true}, eng.DeleteTopic(id)
 	case "video.topic.from_trend":
 		return eng.TopicFromTrend(str("platform"), str("title"), str("hot"))
 	case "video.topic.schedule":
@@ -684,36 +690,41 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		proj, err := eng.StudioFromTopic(t.ID, str("aspect"))
+		if job, ok := a.pendingTopicJob(t.ID); ok {
+			return map[string]any{"ok": true, "job": job, "topic": t, "duplicate": true}, nil
+		}
+		t.Status = video.TopicScheduled
+		t, err = eng.SaveTopic(t)
 		if err != nil {
 			return nil, err
-		}
-		sid := str("session_id")
-		if sid != "" {
-			if meta, err := a.GetSession(sid); err != nil || session.NormalizeChannel(meta.Channel) != session.ChannelVideo {
-				sid = ""
-			}
-		}
-		if sid != "" {
-			_ = eng.BindStudioSession(sid, proj.ID)
-			if meta, err := a.GetSession(sid); err == nil {
-				_, _ = a.SetSessionPinnedSkills(sid, uniqueStrings(meta.PinnedSkills, studioSkillNames))
-			}
-		}
-		if latest, err := eng.GetTopic(t.ID); err == nil {
-			t = latest
 		}
 		job := a.ScheduleCreate(schedule.Job{
 			Kind:      schedule.KindOnce,
 			Spec:      time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339),
-			Prompt:    studioJobPrompt(t, proj),
+			Prompt:    studioJobPrompt(t, video.StudioProject{}),
 			Workspace: a.VideoWorkspace(),
-			SessionID: sid,
 			Channel:   session.ChannelVideo,
 			TopicID:   t.ID,
-			StudioID:  proj.ID,
 		})
-		return map[string]any{"ok": true, "job": job, "topic": t, "studio": a.enrichStudio(proj)}, nil
+		return map[string]any{"ok": true, "job": job, "topic": t}, nil
+	case "video.topic.unschedule":
+		t, err := eng.GetTopic(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		cancelled := a.cancelPendingTopicJobs(t.ID)
+		if t.Status == video.TopicScheduled && t.StudioProjectID == "" {
+			if strings.TrimSpace(t.Angle) != "" {
+				t.Status = video.TopicReady
+			} else {
+				t.Status = video.TopicInbox
+			}
+			t, err = eng.SaveTopic(t)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{"ok": true, "cancelled": cancelled, "topic": t}, nil
 	case "video.studio.list":
 		rows := eng.ListStudioProjects()
 		out := make([]map[string]any, 0, len(rows))
@@ -737,6 +748,9 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		if sid := str("session_id"); sid != "" {
 			_ = eng.BindStudioSession(sid, out.ID)
+		}
+		if tid := strings.TrimSpace(out.TopicID); tid != "" {
+			a.cancelPendingTopicJobs(tid)
 		}
 		return a.enrichStudio(out), nil
 	case "video.studio.get":
@@ -889,6 +903,106 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return map[string]any{"markdown": video.PersonaTemplate(firstNonEmptyApp(str("name"), str("title")))}, nil
 	case "video.studio.persona.create":
 		return a.CreateStudioPersona(firstNonEmptyApp(str("name"), str("title")), str("topic_id"))
+	case "video.studio.catalog":
+		return video.StudioCatalog(), nil
+	case "video.studio.preflight":
+		return eng.StudioPreflight(str("id"), str("gate"))
+	case "video.studio.approve":
+		p, err := eng.ApproveStudioScript(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.skip_audio":
+		p, err := eng.SkipStudioAudio(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.preset":
+		p, err := eng.ApplyStudioPreset(str("id"), str("preset_id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.template":
+		p, err := eng.ApplyStudioTemplate(str("id"), str("template_id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.identity":
+		p, err := eng.SetStudioIdentity(str("id"), str("character_id"), str("style_id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.generate.shot":
+		j, err := eng.GenerateStudioShot(str("id"), str("shot_id"))
+		a.journalVideo("studio.generate", map[string]any{"kind": "shot", "id": str("id"), "shot_id": str("shot_id")})
+		return j, err
+	case "video.studio.generate.missing":
+		j, err := eng.GenerateMissingStudioShots(str("id"))
+		a.journalVideo("studio.generate", map[string]any{"kind": "missing", "id": str("id"), "n": len(j)})
+		return j, err
+	case "video.studio.cover":
+		j, err := eng.GenerateStudioCover(str("id"))
+		a.journalVideo("studio.generate", map[string]any{"kind": "cover", "id": str("id")})
+		return j, err
+	case "video.studio.cover.pick":
+		p, err := eng.PickStudioCover(str("id"), str("hash"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.copy":
+		p, err := eng.WriteStudioCopy(str("id"), str("platform"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.package":
+		p, err := eng.PackageStudio(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.restore":
+		p, err := eng.RestoreStudioVersion(str("id"), intArgApp(params["n"]))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.timing":
+		p, err := eng.ApplyStudioTiming(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.ingest":
+		p, err := eng.IngestStudioURL(str("id"), str("url"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.autoclip":
+		clips, err := eng.AutoClip(str("hash"), intArgApp(params["count"]), firstNonEmptyApp(str("duration"), str("window")))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]map[string]any, 0, len(clips))
+		for _, c := range clips {
+			row := objJSON(c)
+			row["media_url"] = a.mediaURL(c.Hash)
+			out = append(out, row)
+		}
+		return out, nil
+	case "video.studio.jobs":
+		return eng.ListStudioJobs(str("id")), nil
+	case "video.topic.expand":
+		return eng.ExpandTopic(str("id"))
+	case "video.topic.choose":
+		return eng.ChooseTopicOption(str("id"), str("option_id"))
 	default:
 		if strings.HasPrefix(method, "canvas.") {
 			return eng.CanvasCall(method, params)
@@ -1042,9 +1156,11 @@ func studioTitleFromPrompt(prompt string) string {
 
 func studioJobPrompt(t video.Topic, p video.StudioProject) string {
 	var b strings.Builder
-	b.WriteString("做成短片。项目已经建好，用 studio_* 工具推进，不要检查代码仓库，不要调用 shell、list_dir 或 glob。\n")
 	if p.ID != "" {
+		b.WriteString("做成短片。项目已经建好，用 studio_* 工具推进，不要检查代码仓库，不要调用 shell、list_dir 或 glob。\n")
 		fmt.Fprintf(&b, "studio_id: %s\n", p.ID)
+	} else {
+		b.WriteString("做成短片。现在才建项目，不要绑到别人正在用的对话，不要检查代码仓库，不要调用 shell、list_dir 或 glob。\n")
 	}
 	if title := strings.TrimSpace(t.Title); title != "" {
 		fmt.Fprintf(&b, "选题：%s\n", title)
@@ -1055,8 +1171,42 @@ func studioJobPrompt(t video.Topic, p video.StudioProject) string {
 	if note := strings.TrimSpace(t.Note); note != "" {
 		fmt.Fprintf(&b, "洞察：%s\n", note)
 	}
-	b.WriteString("先 studio_get，再把口播稿写入 studio_update 的 script。没有镜头素材时不要编造 CAS hash，写完脚本后停下来，让操作者在短片成片页上传静帧或成片。\n")
+	b.WriteString("先 studio_get，再把口播稿写入 studio_update 的 script，然后 studio_approve_script。没有镜头素材时用 studio_generate_shot，不要编造 CAS hash。若图像适配器未配置，停下来让操作者上传静帧。\n")
 	return b.String()
+}
+
+func (a *App) pendingTopicJob(topicID string) (schedule.Job, bool) {
+	topicID = strings.TrimSpace(topicID)
+	if a.Schedule == nil || topicID == "" {
+		return schedule.Job{}, false
+	}
+	for _, j := range a.Schedule.List() {
+		if !schedule.IsStudioJob(j) || strings.TrimSpace(j.TopicID) != topicID {
+			continue
+		}
+		if j.Enabled && j.LastRun.IsZero() {
+			return j, true
+		}
+	}
+	return schedule.Job{}, false
+}
+
+func (a *App) cancelPendingTopicJobs(topicID string) int {
+	topicID = strings.TrimSpace(topicID)
+	if a.Schedule == nil || topicID == "" {
+		return 0
+	}
+	n := 0
+	for _, j := range a.Schedule.List() {
+		if !schedule.IsStudioJob(j) || strings.TrimSpace(j.TopicID) != topicID {
+			continue
+		}
+		if j.Enabled && j.LastRun.IsZero() {
+			a.Schedule.Cancel(j.ID)
+			n++
+		}
+	}
+	return n
 }
 
 func (a *App) runStudioJob(j schedule.Job) {
@@ -1066,6 +1216,23 @@ func (a *App) runStudioJob(j schedule.Job) {
 			a.Schedule.Record(j.ID, err)
 		}
 		return
+	}
+	studioID := strings.TrimSpace(j.StudioID)
+	if studioID == "" && strings.TrimSpace(j.TopicID) != "" {
+		if t, err := eng.GetTopic(j.TopicID); err == nil && t.StudioProjectID != "" {
+			studioID = t.StudioProjectID
+		}
+	}
+	if studioID != "" {
+		if p, err := eng.GetStudioProject(studioID); err == nil && video.StudioJobShouldSkip(p, eng.LatestStudioSession(studioID)) {
+			if a.Inbox != nil {
+				a.Inbox.Push(inbox.Item{Kind: inbox.KindHeartbeat, Title: "Shorts skip " + j.ID, Body: "定时开拍已跳过：这条短片已有对话或已在制作。", SessionID: eng.LatestStudioSession(studioID)})
+			}
+			if a.Schedule != nil {
+				a.Schedule.Record(j.ID, nil)
+			}
+			return
+		}
 	}
 	sessionID := strings.TrimSpace(j.SessionID)
 	if sessionID != "" {
@@ -1087,7 +1254,6 @@ func (a *App) runStudioJob(j schedule.Job) {
 			_ = a.RenameSession(sessionID, title)
 		}
 	}
-	studioID := strings.TrimSpace(j.StudioID)
 	if studioID == "" && strings.TrimSpace(j.TopicID) != "" {
 		if p, err := eng.StudioFromTopic(j.TopicID, ""); err == nil {
 			studioID = p.ID
@@ -1107,6 +1273,15 @@ func (a *App) runStudioJob(j schedule.Job) {
 	}
 	if studioID != "" {
 		_ = eng.BindStudioSession(sessionID, studioID)
+		if p, err := eng.GetStudioProject(studioID); err == nil {
+			t := video.Topic{}
+			if j.TopicID != "" {
+				if got, err := eng.GetTopic(j.TopicID); err == nil {
+					t = got
+				}
+			}
+			j.Prompt = studioJobPrompt(t, p)
+		}
 	}
 	if meta, err := a.GetSession(sessionID); err == nil {
 		_, _ = a.SetSessionPinnedSkills(sessionID, uniqueStrings(meta.PinnedSkills, studioSkillNames))
@@ -1142,6 +1317,21 @@ func (a *App) enrichStudio(p video.StudioProject) map[string]any {
 	m["media_url"] = a.mediaURL(p.ResultHash)
 	m["poster_url"] = a.mediaURL(p.PosterHash)
 	m["narration_url"] = a.mediaURL(p.NarrationHash)
+	m["cover_url"] = a.mediaURL(p.CoverHash)
+	m["furthest_gate"] = p.FurthestGate()
+	covers := make([]map[string]any, 0, len(p.Covers))
+	for _, h := range p.Covers {
+		covers = append(covers, map[string]any{"hash": h, "url": a.mediaURL(h)})
+	}
+	m["cover_urls"] = covers
+	shots := p.Storyboard.Shots
+	enriched := make([]map[string]any, 0, len(shots))
+	for _, s := range shots {
+		row := objJSON(s)
+		row["media_url"] = a.mediaURL(firstNonEmptyApp(s.ImageHash, s.VideoHash))
+		enriched = append(enriched, row)
+	}
+	m["shots"] = enriched
 	return m
 }
 

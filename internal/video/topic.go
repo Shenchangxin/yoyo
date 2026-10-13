@@ -9,6 +9,7 @@ import (
 const (
 	TopicInbox        = "inbox"
 	TopicReady        = "ready"
+	TopicScheduled    = "scheduled"
 	TopicInProduction = "in_production"
 	TopicDone         = "done"
 )
@@ -26,14 +27,26 @@ type Topic struct {
 	Status          string         `json:"status"`
 	PersonaPageID   string         `json:"persona_page_id,omitempty"`
 	StudioProjectID string         `json:"studio_project_id,omitempty"`
+	SourceURL       string         `json:"source_url,omitempty"`
+	SourceHash      string         `json:"source_hash,omitempty"`
+	Options         []TopicOption  `json:"options,omitempty"`
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
+}
+
+type TopicOption struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Angle   string `json:"angle,omitempty"`
+	Summary string `json:"summary,omitempty"`
 }
 
 func normalizeTopicStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case TopicReady:
 		return TopicReady
+	case TopicScheduled, "queued":
+		return TopicScheduled
 	case TopicInProduction, "doing", "in-progress":
 		return TopicInProduction
 	case TopicDone, "published", "complete":
@@ -88,6 +101,15 @@ func (e *Engine) SaveTopic(in Topic) (Topic, error) {
 		}
 		if in.PersonaPageID == "" {
 			in.PersonaPageID = cur.PersonaPageID
+		}
+		if in.SourceURL == "" {
+			in.SourceURL = cur.SourceURL
+		}
+		if in.SourceHash == "" {
+			in.SourceHash = cur.SourceHash
+		}
+		if in.Options == nil {
+			in.Options = cur.Options
 		}
 	} else {
 		in.CreatedAt = now

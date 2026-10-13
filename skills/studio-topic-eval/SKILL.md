@@ -2,7 +2,7 @@
 name: studio-topic-eval
 description: Score a shorts topic on seven dimensions and write an angle plus format. Use for 洞察选题, 选题评分, or when choosing which inbox card to produce.
 license: Apache-2.0
-allowed-tools: topic_get topic_save topic_list studio_persona_template load_skill list_skills update_plan
+allowed-tools: topic_get topic_save topic_list studio_expand_topic studio_choose_option studio_persona_template load_skill list_skills update_plan
 ---
 
 # Topic evaluation
@@ -21,4 +21,4 @@ Score 1–5 integers in `scores`:
 | conversion | Save / follow / comment pull |
 | risk | Invert: 5 = safe, 1 = legal/brand hazard |
 
-Write `angle` as one shooting sentence, `format` as `short` / `talking-head` / `list`, and set `status` to `ready` only when feasibility ≥ 3 and risk ≥ 3. Otherwise leave `inbox` and say why. `topic_save`. Do not create a Studio project until the operator asks.
+Write `angle` as one shooting sentence, `format` as `short` / `talking-head` / `list`, and set `status` to `ready` only when feasibility ≥ 3 and risk ≥ 3. Otherwise leave `inbox` and say why. Optional `studio_expand_topic` then `studio_choose_option` if they want 3–5 angles before locking — that does not replace scores. `topic_save`. Do not create a Studio project until the operator asks.

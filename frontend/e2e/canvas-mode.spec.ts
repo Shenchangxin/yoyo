@@ -139,13 +139,23 @@ test("studio workbench opens from the video rail", async ({ page }) => {
   await expect(page.getByTestId("video-shell-studio")).toBeVisible();
   await expect(page.getByTestId("video-shell-studio")).toContainText(/Shorts|短片/);
   await page.getByTestId("video-shell-studio").click();
+  await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
   await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
   await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
   await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
   await expect(page.getByTestId("studio-pane-publish")).toBeVisible();
   await expect(page.getByTestId("studio-open-settings")).toBeVisible();
+  await expect(page.getByTestId("studio-pipeline")).toBeVisible();
+  await expect(page.getByTestId("studio-next")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot-header")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot-label")).toBeVisible();
   await expect(page.getByTestId("video-mode-switch")).toHaveCount(0);
+  await expect(page.getByTestId("profile-chip")).toHaveCount(0);
+  await expect(page.getByTestId("studio-copilot-attach")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot").getByLabel(/工作空间|Workspace/)).toHaveCount(0);
+  await expect(page.getByTestId("studio-copilot").getByLabel(/授权模式|Authorization/)).toHaveCount(0);
 });
 
 test("studio workbench opens from the composer mode switch", async ({ page }) => {
@@ -155,6 +165,7 @@ test("studio workbench opens from the composer mode switch", async ({ page }) =>
   await expect(page.getByTestId("video-mode-switch")).toBeVisible();
   await page.getByTestId("video-mode-switch").click();
   await page.getByTestId("video-mode-creative").click();
+  await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
   await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
   await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
@@ -167,8 +178,46 @@ test("studio workbench opens from creation history", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Video" }).click();
   await page.getByTestId("video-shell-tasks").click();
+  await page.getByTestId("video-history-studio-title").fill("春日通勤");
   await page.getByTestId("video-history-new-studio").click();
+  await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-id-chip")).toBeVisible();
+  await expect(page.getByTestId("studio-copy-id")).toContainText(/studio-1/);
+  await expect(page.getByTestId("studio-copilot-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-copilot-id")).toHaveText(/studio-1/);
+  await expect(page.getByTestId("studio-copilot-header")).toContainText(/和左侧工台是同一条|Same short as the desk/);
+  await expect(page.getByTestId("studio-copilot-next")).toContainText(/下一步|Next/);
+  await page.getByTestId("studio-pane-assemble").click();
+  await expect(page.getByTestId("studio-step-nav")).toBeVisible();
+  await expect(page.getByTestId("studio-step-setup")).toBeVisible();
+  await expect(page.getByTestId("studio-step-script")).toBeVisible();
+  await expect(page.getByTestId("studio-step-audio")).toBeVisible();
+  await expect(page.getByTestId("studio-step-visuals")).toBeVisible();
+  await expect(page.getByTestId("studio-step-compose")).toBeVisible();
+  await expect(page.getByTestId("studio-step-delivery")).toBeVisible();
+  await expect(page.getByTestId("studio-ops-tools")).toHaveCount(0);
+  await expect(page.getByTestId("studio-collab")).toHaveCount(0);
+  await expect(page.getByTestId("studio-cut-ops")).toHaveCount(0);
+});
+
+test("topic schedule stays on topics and does not steal the desk", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await page.getByTestId("studio-pane-topics").click();
+  await expect(page.getByTestId("studio-topic-filters")).toBeVisible();
+  await expect(page.getByTestId("studio-topic-topic-1")).toBeVisible();
+  const card = page.getByTestId("studio-topic-topic-1");
+  await card.getByTestId("studio-topic-more").click();
+  await card.getByTestId("studio-topic-schedule").click();
+  await expect(page.getByTestId("studio-workbench")).toHaveAttribute("data-pane", "topics");
+  await expect(page.getByTestId("studio-id-chip")).toHaveCount(0);
+  await page.getByTestId("studio-topic-filter-scheduled").click();
+  await expect(page.getByTestId("studio-topic-topic-1")).toHaveAttribute("data-status", "scheduled");
+  await expect(page.getByTestId("studio-topic-unschedule")).toBeVisible();
 });
 
 test("new canvas appears in creation history and can be opened", async ({ page }) => {

@@ -10,6 +10,10 @@ import (
 )
 
 func (e *Engine) writeBack(j Job) error {
+	params := parseParams(j.Params)
+	if params.StudioProjectID != "" {
+		return e.applyStudioJob(j, params)
+	}
 	now := Now()
 	var err error
 	switch {

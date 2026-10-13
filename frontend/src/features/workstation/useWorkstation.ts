@@ -108,6 +108,7 @@ function videoProjectOf(v: any): VideoProject | null {
     episodeId: str(v?.episode_id || v?.episodeId),
     updatedAt: str(v?.updated_at || v?.updatedAt),
     status: str(v?.status),
+    gate: str(v?.gate),
   };
 }
 
@@ -895,7 +896,10 @@ export function useWorkstation() {
       }
       const kind = str(st?.kind);
       const studioId = str(st?.studio_id || (kind === "studio" ? st?.id : ""));
-      if (studioId) useStudioSelection.getState().setStudioId(studioId);
+      if (studioId) {
+        useStudioSelection.getState().setStudioId(studioId);
+        if (title) useStudioSelection.getState().setStudioMeta({ title });
+      }
       if (kind === "canvas") useUI.getState().setVideoMode("canvas");
       else if (kind === "drama") useUI.getState().setVideoMode("drama");
       else if (kind === "studio") useUI.getState().openStudioDesk();
@@ -921,6 +925,7 @@ export function useWorkstation() {
       } else if (p.kind === "studio") {
         await api.video.studioBind(t.id, p.id).catch(() => {});
         useStudioSelection.getState().setStudioId(p.id);
+        useStudioSelection.getState().setStudioMeta({ title: p.title || "" });
         ui.openStudioDesk();
       } else {
         if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
@@ -939,6 +944,7 @@ export function useWorkstation() {
       else ui.setVideoMode("canvas");
     } else if (p.kind === "studio") {
       useStudioSelection.getState().setStudioId(p.id);
+      useStudioSelection.getState().setStudioMeta({ title: p.title || "" });
       await api.video.studioBind(t.id, p.id).catch(() => {});
       ui.openStudioDesk();
     } else {

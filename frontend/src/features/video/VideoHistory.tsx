@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Clapperboard, LayoutGrid, Plus, Sparkles } from "lucide-react";
+import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
+import { writeClipboard } from "../../lib/clipboard";
 import * as api from "../../lib/client";
 import { displayTitle } from "../../lib/display-title";
 import { useCopy } from "../../lib/i18n";
@@ -12,6 +13,7 @@ import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/mo
 import type { VideoProject } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
+import { CreateShortField } from "./studio-chrome";
 import { shownSeriesTitle } from "./drama-lib";
 import { defaultDramaStyle } from "./workshop-store";
 
@@ -56,13 +58,31 @@ export function VideoHistory(props: {
     }
   }
 
-  async function newStudio() {
+  async function newStudio(title: string) {
+    const name = title.trim();
+    if (!name) {
+      toast.error(copy.video.studio.needNamedShort);
+      return;
+    }
     setBusy("studio");
     try {
       const cfg = await api.video.settings().catch(() => ({} as Record<string, string>));
       const aspect = String(cfg?.studio_aspect || "9:16");
-      const p = await api.video.createStudio({ title: copy.video.studio.newProject, aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16" });
-      if (p?.id) props.onOpenProject?.({ kind: "studio", id: p.id, title: p.title || copy.video.studio.newProject });
+      const p = await api.video.createStudio({
+        title: name,
+        aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16",
+        session_id: props.sessionId || "",
+      });
+      if (p?.id) {
+        props.onOpenProject?.({
+          kind: "studio",
+          id: p.id,
+          title: p.title || name,
+          sessionId: props.sessionId,
+          status: p.status,
+          gate: p.gate,
+        });
+      }
       props.onRefresh?.();
     } catch (e) {
       toast.error(api.errMessage(e));
@@ -155,11 +175,18 @@ export function VideoHistory(props: {
           <section className="mb-6">
             <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellStudio}</h2>
-              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "studio"} data-testid="video-history-new-studio" onClick={() => void newStudio()}>
-                <Plus className="size-3.5" aria-hidden />
-                {copy.video.newStudio}
-              </Button>
               {busy === "studio" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
+            </div>
+            <div className="mb-3">
+              <CreateShortField
+                disabled={busy === "studio"}
+                placeholder={copy.video.studio.createTitle}
+                submitLabel={copy.video.studio.create}
+                hint={copy.video.studio.createTitleHint}
+                testId="video-history-new-studio"
+                titleTestId="video-history-studio-title"
+                onSubmit={(title) => void newStudio(title)}
+              />
             </div>
             {studios.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
@@ -197,8 +224,32 @@ export function VideoHistory(props: {
 }
 
 function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void }) {
+  const copy = useCopy();
   const p = props.project;
   const Icon = p.kind === "drama" ? Clapperboard : p.kind === "studio" ? Sparkles : LayoutGrid;
+  const statusLabel: Record<string, string> = {
+    inbox: copy.video.studio.inbox,
+    ready: copy.video.studio.ready,
+    scheduled: copy.video.studio.scheduled,
+    in_production: copy.video.studio.inProduction,
+    done: copy.video.studio.done,
+    draft: copy.video.studio.draft,
+    assembled: copy.video.studio.assembled,
+    failed: copy.video.studio.failed,
+  };
+  const gateLabel: Record<string, string> = {
+    setup: copy.video.studio.desk.setup,
+    script: copy.video.studio.desk.script,
+    audio: copy.video.studio.desk.audio,
+    visuals: copy.video.studio.desk.visuals,
+    compose: copy.video.studio.desk.compose,
+    delivery: copy.video.studio.desk.delivery,
+  };
+  const meta = [
+    p.status ? (statusLabel[p.status] || p.status) : "",
+    p.gate ? (gateLabel[p.gate] || p.gate) : "",
+    p.updatedAt ? p.updatedAt.slice(0, 10) : "",
+  ].filter(Boolean);
   return (
     <li>
       <button
@@ -206,14 +257,46 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
         data-testid={`video-project-${p.kind}-${p.id}`}
         aria-current={props.active ? "page" : undefined}
         className={cn(
-          "flex w-full items-center gap-3 px-3.5 py-3 text-left text-[13px]",
+          "flex w-full items-start gap-3 px-3.5 py-3 text-left text-[13px]",
           props.active ? "bg-lift text-foreground" : "u-row-hover text-foreground",
         )}
         onClick={props.onSelect}
       >
-        <Icon className="size-4 shrink-0 opacity-70" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">{p.kind === "drama" ? shownSeriesTitle(p.title, props.fallback) : displayTitle(p.title, props.fallback)}</span>
-        {p.updatedAt ? <span className="shrink-0 text-[11px] text-muted">{p.updatedAt.slice(0, 10)}</span> : null}
+        <Icon className="mt-0.5 size-4 shrink-0 opacity-70" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{p.kind === "drama" ? shownSeriesTitle(p.title, props.fallback) : displayTitle(p.title, props.fallback)}</span>
+          {p.kind === "studio" ? (
+            <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
+              {meta.length ? <span>{meta.join(" · ")}</span> : null}
+              <span className="inline-flex min-w-0 items-center gap-1 font-mono" title={copy.video.studio.inspectHint}>
+                <span className="truncate">{p.id}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="inline-flex shrink-0 rounded p-0.5 hover:bg-background"
+                  data-testid={`video-project-copy-${p.id}`}
+                  aria-label={copy.video.studio.copyId}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
+                  }}
+                >
+                  <Copy className="size-3 opacity-70" aria-hidden />
+                </span>
+              </span>
+              {p.sessionId ? <span className="truncate font-mono" title={copy.video.studio.sessionId}>{p.sessionId}</span> : null}
+            </span>
+          ) : p.updatedAt ? (
+            <span className="mt-0.5 block text-[11px] text-muted">{p.updatedAt.slice(0, 10)}</span>
+          ) : null}
+        </span>
       </button>
     </li>
   );

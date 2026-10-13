@@ -59,7 +59,7 @@ func TestStudioTitleFromLegacyPrompt(t *testing.T) {
 
 func TestStudioJobPromptNamesProject(t *testing.T) {
 	p := studioJobPrompt(video.Topic{Title: "爱用洗衣凝珠的人天塌了", Angle: "反转"}, video.StudioProject{ID: "proj-1"})
-	for _, want := range []string{"studio_id: proj-1", "studio_get", "studio_update", "不要检查代码仓库"} {
+	for _, want := range []string{"studio_id: proj-1", "studio_get", "studio_update", "studio_approve_script", "studio_generate_shot", "不要检查代码仓库"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("missing %q in %s", want, p)
 		}

@@ -8,6 +8,46 @@ import (
 	"testing"
 )
 
+func TestStudioJobShouldSkip(t *testing.T) {
+	draft := StudioProject{Status: StudioDraft, Gate: GateScript, ScriptStatus: ScriptNeedsReview}
+	if StudioJobShouldSkip(draft, "") {
+		t.Fatal("empty draft should still be shootable")
+	}
+	if !StudioJobShouldSkip(draft, "sess-1") {
+		t.Fatal("bound chat must skip the timer")
+	}
+	approved := StudioProject{ScriptStatus: ScriptApproved, ResultHash: ""}
+	if !StudioJobShouldSkip(approved, "") {
+		t.Fatal("approved script must skip")
+	}
+	cut := StudioProject{ResultHash: "abc"}
+	if !StudioJobShouldSkip(cut, "") {
+		t.Fatal("assembled cut must skip")
+	}
+}
+
+func TestTopicScheduledStatus(t *testing.T) {
+	e := testEngine(t)
+	got, err := e.SaveTopic(Topic{Title: "定时选题", Status: TopicScheduled})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != TopicScheduled {
+		t.Fatalf("status %s", got.Status)
+	}
+	listed := e.ListTopics(TopicScheduled)
+	if len(listed) != 1 || listed[0].ID != got.ID {
+		t.Fatalf("list scheduled %+v", listed)
+	}
+	queued, err := e.SaveTopic(Topic{ID: got.ID, Title: got.Title, Status: "queued"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Status != TopicScheduled {
+		t.Fatalf("queued alias %s", queued.Status)
+	}
+}
+
 func TestTopicCRUDAndTrend(t *testing.T) {
 	e := testEngine(t)
 	got, err := e.TopicFromTrend("weibo", "春日穿搭", "120万")
@@ -282,6 +322,181 @@ func TestUpdateStudioClearsShots(t *testing.T) {
 	}
 	if len(got.Storyboard.Shots) != 0 {
 		t.Fatalf("want no shots, got %+v", got.Storyboard.Shots)
+	}
+}
+
+func TestStudioPipelineGatesApprovePackage(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateStudioProject(StudioProject{Title: "钩子测试", Aspect: "9:16"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.FurthestGate() != GateScript || p.Identity.CharacterID == "" || p.PresetID == "" {
+		t.Fatalf("create %+v furthest=%s", p, p.FurthestGate())
+	}
+	if _, err := e.ApproveStudioScript(p.ID); err == nil {
+		t.Fatal("approve empty script")
+	}
+	p.Script = "开头三秒报选题。中间讲一个可核验的点。结尾告诉你下一步。"
+	if _, err := e.UpdateStudioProject(p); err != nil {
+		t.Fatal(err)
+	}
+	approved, err := e.ApproveStudioScript(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.ScriptStatus != ScriptApproved || approved.FurthestGate() != GateAudio {
+		t.Fatalf("approved %+v gate=%s", approved.ScriptStatus, approved.FurthestGate())
+	}
+	if len(approved.Segments) < 2 || len(approved.Storyboard.Shots) == 0 {
+		t.Fatalf("segments/shots %+v %+v", approved.Segments, approved.Storyboard.Shots)
+	}
+	skipped, err := e.SkipStudioAudio(approved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped.FurthestGate() != GateVisuals {
+		t.Fatalf("skip audio gate %s", skipped.FurthestGate())
+	}
+	ident, err := e.SetStudioIdentity(skipped.ID, "narrator", "paper")
+	if err != nil || ident.Identity.CharacterID != "narrator" {
+		t.Fatalf("identity %+v %v", ident.Identity, err)
+	}
+	preset, err := e.ApplyStudioPreset(ident.ID, "bilibili")
+	if err != nil || preset.Aspect != "16:9" || preset.Platform != "bilibili" {
+		t.Fatalf("preset %+v %v", preset, err)
+	}
+	tpl, err := e.ApplyStudioTemplate(preset.ID, "explainer")
+	if err != nil || tpl.Tone == "" {
+		t.Fatalf("template %+v %v", tpl, err)
+	}
+	h, err := e.PutBytes([]byte("fake-still"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shots := tpl.Storyboard.Shots
+	for i := range shots {
+		shots[i].ImageHash = h
+		shots[i].Stale = false
+	}
+	tpl.Storyboard.Shots = shots
+	tpl, err = e.UpdateStudioProject(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tpl.VisualsReady() || tpl.FurthestGate() != GateCompose {
+		t.Fatalf("visuals gate %s ready=%v", tpl.FurthestGate(), tpl.VisualsReady())
+	}
+	vid, err := e.PutBytes([]byte("fake-mp4-bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl.ResultHash = vid
+	tpl, err = e.UpdateStudioProject(tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packed, err := e.PackageStudio(tpl.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packed.Delivery.Status != DeliveryPublishable || packed.CopyHash == "" || packed.FurthestGate() != GateDelivery {
+		t.Fatalf("pack %+v", packed.Delivery)
+	}
+	if len(packed.Versions) == 0 {
+		t.Fatal("expected snapshot")
+	}
+	n := packed.Versions[0].N
+	restored, err := e.RestoreStudioVersion(packed.ID, n)
+	if err != nil || restored.ResultHash != vid {
+		t.Fatalf("restore %+v %v", restored.ResultHash, err)
+	}
+}
+
+func TestStudioTopicExpandAndCopy(t *testing.T) {
+	e := testEngine(t)
+	tpc, err := e.SaveTopic(Topic{Title: "春日穿搭", Note: "热度高"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp, err := e.ExpandTopic(tpc.ID)
+	if err != nil || len(exp.Options) < 3 {
+		t.Fatalf("expand %+v %v", exp.Options, err)
+	}
+	pick := exp.Options[1]
+	got, err := e.ChooseTopicOption(tpc.ID, pick.ID)
+	if err != nil || got.Angle != pick.Angle {
+		t.Fatalf("choose %+v %v", got, err)
+	}
+	p, err := e.CreateStudioProject(StudioProject{Title: got.Title, Script: "可核验的三点。", Platform: "xhs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := e.WriteStudioCopy(p.ID, "xhs")
+	if err != nil || !strings.Contains(out.CopyText, "小红书") {
+		t.Fatalf("copy %s %v", out.CopyText, err)
+	}
+}
+
+func TestStudioStaleShotOnVisualEdit(t *testing.T) {
+	e := testEngine(t)
+	h, err := e.PutBytes([]byte("still"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := e.CreateStudioProject(StudioProject{
+		Title:      "t",
+		Storyboard: StudioStoryboard{Shots: []StudioShot{{ID: "s1", ImageHash: h, Visual: "desk", Duration: 3}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Storyboard.Shots[0].Visual = "window"
+	got, err := e.UpdateStudioProject(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Storyboard.Shots[0].Stale || got.Storyboard.Shots[0].ImageHash != h {
+		t.Fatalf("want stale keep hash %+v", got.Storyboard.Shots[0])
+	}
+}
+
+func TestStudioCatalogAndTools(t *testing.T) {
+	e := testEngine(t)
+	raw, err := e.StudioTool("", "studio_catalog", nil)
+	if err != nil || !strings.Contains(raw, "douyin-shorts") {
+		t.Fatalf("%s %v", raw, err)
+	}
+	created, err := e.StudioTool("s2", "studio_create", map[string]any{"title": "目录短片", "template_id": "howto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p StudioProject
+	if err := json.Unmarshal([]byte(created), &p); err != nil || p.ID == "" {
+		t.Fatalf("%s %v", created, err)
+	}
+	if p.Identity.CharacterID == "" || p.TemplateID != "howto" {
+		t.Fatalf("identity %+v template %q", p.Identity, p.TemplateID)
+	}
+	names := strings.Join(StudioToolNames(), " ")
+	for _, w := range []string{"studio_approve_script", "studio_generate_shot", "studio_package", "studio_ingest", "studio_autoclip", "studio_expand_topic"} {
+		if !strings.Contains(names, w) {
+			t.Fatalf("missing %s", w)
+		}
+	}
+	pf, err := e.StudioPreflight(p.ID, GateVisuals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pf.Gate != GateVisuals {
+		t.Fatalf("%+v", pf)
+	}
+}
+
+func TestParseSRTDurations(t *testing.T) {
+	got := parseSRTDurations("1\n00:00:00,000 --> 00:00:02,500\nhi\n\n2\n00:00:02,500 --> 00:00:05,000\nthere\n")
+	if len(got) != 2 || got[0] < 2.4 || got[0] > 2.6 || got[1] < 2.4 {
+		t.Fatalf("%v", got)
 	}
 }
 

@@ -36,6 +36,8 @@ import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
+import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
+import { useStudioSelection } from "./video/workshop-store";
 
 function lastRealUserIndex(items: Item[]): number {
   for (let i = items.length - 1; i >= 0; i--) {
@@ -337,35 +339,56 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
+  const studioDesk = useUI((s) => s.studioDesk);
   const videoing = surface === "video";
   const openStudioDesk = useUI((s) => s.openStudioDesk);
-  const ready = !videoing
-    ? copy.transcript.ready
+  const boundTitle = useStudioSelection((s) => s.title);
+  const nextKey = useStudioSelection((s) => s.nextKey);
+  const ready = studioDesk
+    ? (boundTitle
+      ? copy.transcript.studioDeskReadyNamed.replace("{title}", boundTitle)
+      : copy.transcript.studioDeskReady)
+    : !videoing
+      ? copy.transcript.ready
     : videoMode === "canvas"
       ? copy.transcript.canvasReady
       : videoMode === "creative"
         ? copy.transcript.creativeReady
         : copy.transcript.videoReady;
-  const starters = !videoing
-    ? copy.transcript.starters
+  const nextStarter = studioDesk && ["collect", "produce", "setup", "script", "audio", "visuals", "compose", "pack", "open"].includes(nextKey)
+    ? { label: copy.video.studio.nextDo, text: studioNextPrompt(copy.video.studio, nextKey as StudioNextKey) }
+    : null;
+  const starters = studioDesk
+    ? [nextStarter, ...copy.transcript.studioDeskStarters].filter(Boolean) as { label: string; text: string }[]
+    : !videoing
+      ? copy.transcript.starters
     : videoMode === "canvas"
       ? copy.transcript.canvasStarters
       : videoMode === "creative"
         ? copy.transcript.creativeStarters
         : copy.transcript.videoStarters;
   const ws = displayWorkspace(workspace, "");
-  const hints = [
-    ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
-    { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
-    videoing
-      ? { key: "mode", node: copy.transcript.hintVideoMode }
-      : { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
-    videoing ? null : { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
-  ].filter(Boolean) as { key: string; node: ReactNode }[];
+  const hints = (studioDesk
+    ? [
+        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+        { key: "desk", node: copy.transcript.hintStudioDesk },
+      ]
+    : [
+        ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
+        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+        videoing
+          ? { key: "mode", node: copy.transcript.hintVideoMode }
+          : { key: "at", node: <><kbd className="mr-1">@</kbd>{copy.transcript.hintMention}</> },
+        videoing ? null : { key: "plan", node: <><kbd className="mr-1">⇧⇥</kbd>{copy.transcript.hintPlan}</> },
+      ]
+  ).filter(Boolean) as { key: string; node: ReactNode }[];
   return (
     <div className="empty-rise" data-testid="empty-turn">
-      <MarkWell />
-      <h1 className="mt-6 max-w-[16ch] text-[26px] font-semibold leading-[1.15] tracking-[-0.042em] text-pretty text-foreground">
+      {studioDesk ? null : <MarkWell />}
+      <h1 className={cn(
+        "font-semibold leading-[1.15] tracking-[-0.042em] text-pretty text-foreground",
+        studioDesk ? "text-[16px]" : "mt-6 max-w-[16ch] text-[26px]",
+      )}>
         {ready}
       </h1>
       <p className="mt-3 flex max-w-[46ch] flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] leading-[1.6] text-muted">
@@ -376,8 +399,8 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
           </span>
         ))}
       </p>
-      <div className="mt-7 flex flex-wrap gap-2">
-        {videoing && videoMode === "creative" ? (
+      <div className={cn("flex flex-wrap gap-2", studioDesk ? "mt-4" : "mt-7")}>
+        {videoing && videoMode === "creative" && !studioDesk ? (
           <button
             type="button"
             data-testid="studio-open-desk-empty"
@@ -391,7 +414,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         {starters.map((s, i) => (
           <button
             type="button"
-            key={s.label}
+            key={`${s.label}-${i}`}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-transparent py-1.5 pl-3 pr-2.5 text-[13px] text-muted transition-[background-color,color,transform,border-color] duration-200 ease-[var(--ease-out)] hover:border-border hover:bg-lift hover:text-foreground active:scale-[0.98]"
             style={{ animationDelay: `${60 + i * 40}ms` }}
             onClick={() => onPrompt?.(s.text)}

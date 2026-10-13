@@ -49,13 +49,29 @@ export function defaultDramaStyle() {
 
 type StudioSelection = {
   studioId: string;
+  title: string;
+  pane: string;
+  gate: string;
+  status: string;
+  nextKey: string;
   setStudioId: (id: string) => void;
+  setStudioMeta: (meta: Partial<Pick<StudioSelection, "title" | "pane" | "gate" | "status" | "nextKey">>) => void;
 };
 
 export const useStudioSelection = create<StudioSelection>((set) => ({
   studioId: read("yoyo-studio-id"),
+  title: "",
+  pane: "radar",
+  gate: "",
+  status: "",
+  nextKey: "",
   setStudioId: (studioId) => {
     persist("yoyo-studio-id", studioId);
-    set({ studioId });
+    set((s) => (
+      studioId
+        ? { studioId, title: studioId === s.studioId ? s.title : "", gate: studioId === s.studioId ? s.gate : "", status: studioId === s.studioId ? s.status : "", nextKey: studioId === s.studioId ? s.nextKey : "" }
+        : { studioId: "", title: "", pane: "radar", gate: "", status: "", nextKey: "" }
+    ));
   },
+  setStudioMeta: (meta) => set(meta),
 }));

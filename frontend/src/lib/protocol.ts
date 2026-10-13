@@ -110,6 +110,7 @@ export type VideoProject = {
   episodeId?: string;
   updatedAt?: string;
   status?: string;
+  gate?: string;
 };
 
 export type Profile = {

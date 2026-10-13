@@ -40,6 +40,7 @@ import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace"
 import { pendingAsk } from "./lib/ask-form";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
+import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
 
 const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
 const EvolveLab = lazy(() => import("./features/labs/EvolveLab").then((m) => ({ default: m.EvolveLab })));
@@ -294,19 +295,21 @@ function WorkstationApp() {
     </HomeStage>
   ) : (
     <section className="relative flex h-full min-h-0 min-w-0 flex-row">
+      {studioDesk ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
         status={ws.outlineState}
         onJump={(turn) => { void ws.jumpToTurn(turn); }}
       />
+      )}
       <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
         {ws.health.paused ? (
           <div className="border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="pause-banner">
             {copy.pause.banner}
           </div>
         ) : null}
-        {ws.active?.pageId && !paging ? (
+        {ws.active?.pageId && !paging && !studioDesk ? (
           <div className="border-b border-line/50 px-4 py-1.5 text-[12px] text-muted">
             {copy.pages.banner}
           </div>
@@ -826,10 +829,22 @@ function WorkstationApp() {
             ) : null}
             <MainColumn>
             {staged ? (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
-                <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
-                  <Suspense fallback={null}>{workshop}</Suspense>
-                </div>
+              <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
+                {studioDesk ? (
+                  <div className="studio-desk h-full min-h-0 overflow-hidden" data-testid="studio-desk">
+                    <div className="studio-desk-board" data-skin-pane>
+                      <Suspense fallback={null}>{workshop}</Suspense>
+                    </div>
+                    <div className="studio-desk-chat" data-skin-pane data-testid="studio-copilot">
+                      <StudioCopilotHeader />
+                      {agentPane}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
+                    <Suspense fallback={null}>{workshop}</Suspense>
+                  </div>
+                )}
               </div>
             ) : inspectOpen ? (
               <Group
