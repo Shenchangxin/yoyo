@@ -15,7 +15,7 @@ const EnvPrivkey = "YOYO_UPDATE_PRIVKEY"
 // EmbeddedPubkeyHex is the compiled-in Ed25519 public key (32-byte hex).
 // Override at test/runtime with YOYO_UPDATE_PUBKEY. Rotate by replacing this
 // value and the GitHub secret YOYO_UPDATE_PRIVKEY together.
-var EmbeddedPubkeyHex = "92d0f1163610b8a807d9e4641c9f8cdde8dd53dc992756c438b3368c26206e66"
+var EmbeddedPubkeyHex = "34eac26cf404348ba84c1926805745dae32d2e97a98c729569d9ef783cf0a01b"
 
 // PublicKeyFromEnv reads a hex or standard-base64 ed25519 public key.
 // Empty means the compiled-in key should be used via PublicKey.
