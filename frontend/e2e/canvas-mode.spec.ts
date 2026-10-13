@@ -72,10 +72,12 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(island(page)).toBeVisible({ timeout: 15_000 });
   await expect(island(page)).toHaveAttribute("data-pane", "create");
   await expect(page.getByText("创作工作台")).toHaveCount(0);
-  await expect(page.getByText(/聊聊创作想法/)).toBeVisible({ timeout: 30_000 });
-  const featuredCover = page.locator(".creation-featured-media img").first();
-  await expect(featuredCover).toHaveAttribute("src", /\/short-drama-styles\//);
-  await expect.poll(async () => featuredCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
+  await expect(page.getByText(/聊聊创作想法/)).toHaveCount(0);
+  await expect(page.locator(".creation-featured-works")).toHaveCount(0);
+  await expect(page.getByTestId("creation-empty")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("creation-recent-threads")).toBeVisible();
+  await island(page).locator(".creation-mode-button[data-mode='video']").click();
+  await expect(page.getByTestId("creation-shot-structure")).toBeVisible();
   await expect(page.getByRole("button", { name: "New chat" })).toHaveCount(0);
 
   await page.getByTestId("video-shell-drama").click();
@@ -96,36 +98,37 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(page.getByText("创作工作台")).toHaveCount(0);
 });
 
-test("assets skills plugins and history open from the video rail", async ({ page }) => {
+test("assets skills plugins and history open from the command palette", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Video" }).click();
   await expect(page.getByTestId("video-shell-nav")).toBeVisible();
   await expect(page.getByTestId("video-shell-create")).toBeVisible();
-  await expect(page.getByTestId("video-shell-assets")).toBeVisible();
-  await expect(page.getByTestId("video-shell-skills")).toBeVisible();
-  await expect(page.getByTestId("video-shell-plugins")).toBeVisible();
-  await expect(page.getByTestId("video-shell-tasks")).toBeVisible();
-  await page.getByTestId("video-shell-assets").click();
+  await expect(page.getByTestId("video-shell-studio")).toBeVisible();
+  await expect(page.getByTestId("video-shell-assets")).toHaveCount(0);
+  await expect(page.getByTestId("video-shell-skills")).toHaveCount(0);
+  await expect(page.getByTestId("video-shell-plugins")).toHaveCount(0);
+  await expect(page.getByTestId("video-shell-tasks")).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-video-assets").click();
+  await expect(island(page)).toHaveAttribute("data-pane", "assets");
   const assetsCover = page.locator(".assets-empty-banner-frame img").first();
   await expect(assetsCover).toHaveAttribute("src", /\/short-drama-styles\//);
   await expect.poll(async () => assetsCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
 
   for (const [testid, pane] of [
-    ["video-shell-assets", "assets"],
-    ["video-shell-skills", "skills"],
-    ["video-shell-plugins", "plugins"],
-    ["video-shell-tasks", "tasks"],
+    ["palette-video-assets", "assets"],
+    ["palette-video-skills", "skills"],
+    ["palette-video-plugins", "plugins"],
+    ["palette-video-tasks", "tasks"],
   ] as const) {
+    await page.keyboard.press("ControlOrMeta+k");
     await page.getByTestId(testid).click();
     await expect(island(page)).toBeVisible();
     await expect(island(page)).toHaveAttribute("data-pane", pane);
     await expect(page.getByText("创作工作台")).toHaveCount(0);
   }
-
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByTestId("palette-video-assets").click();
-  await expect(island(page)).toHaveAttribute("data-pane", "assets");
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByRole("option", { name: "Open Skills" }).click();
@@ -177,7 +180,8 @@ test("studio workbench opens from creation history", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Video" }).click();
-  await page.getByTestId("video-shell-tasks").click();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-video-tasks").click();
   await page.getByTestId("video-history-studio-title").fill("春日通勤");
   await page.getByTestId("video-history-new-studio").click();
   await expect(page.getByTestId("studio-desk")).toBeVisible();
@@ -225,7 +229,8 @@ test("new canvas appears in creation history and can be opened", async ({ page }
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Video" }).click();
-  await page.getByTestId("video-shell-tasks").click();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-video-tasks").click();
   await expect(page.getByTestId("video-history")).toBeVisible();
   await page.getByTestId("video-history-new-canvas").click();
   await expect(page.getByTestId("video-project-canvas-c1")).toBeVisible();

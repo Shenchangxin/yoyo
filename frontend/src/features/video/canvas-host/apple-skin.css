@@ -250,9 +250,9 @@ html.light .yingce-island {
 }
 
 .yingce-island .creation-agent-copy h2 {
-  font-size: 21px !important;
+  font-size: 15px !important;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
 .yingce-island .creation-agent-actions {
@@ -286,6 +286,211 @@ html.light .yingce-island {
 .yingce-island .creation-home-heading p {
   font-size: 13px;
   color: var(--muted);
+}
+
+.yingce-island .creation-home-heading,
+.yingce-island .creation-featured-works,
+.yingce-island .creation-agent-orb,
+.yingce-island .creation-submit-action::after {
+  display: none !important;
+}
+
+.yingce-island .creation-launchpad,
+.yingce-island .creation-empty-composer,
+.yingce-island .creation-thread-stage,
+.yingce-island .creation-thread-composer {
+  width: 100%;
+  max-width: min(100%, var(--thread-measure, 54rem));
+  margin-inline: auto;
+}
+
+.yingce-island .creation-mode-tabs {
+  min-height: 40px;
+}
+
+.yingce-island .creation-recent-threads {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.yingce-island .creation-recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.yingce-island .creation-recent-head button,
+.yingce-island .creation-recent-row {
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.yingce-island .creation-recent-threads ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.yingce-island .creation-recent-row {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.yingce-island .creation-recent-row:hover {
+  background: var(--lift);
+}
+
+.yingce-island .creation-recent-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.yingce-island .creation-recent-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--lift);
+  color: var(--muted);
+}
+
+.yingce-island .creation-recent-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.yingce-island .creation-shot-structure {
+  margin: 0 12px 8px;
+}
+
+.yingce-island .creation-shot-structure-toggle {
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0;
+}
+
+.yingce-island .creation-shot-structure-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.yingce-island .creation-shot-structure-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.yingce-island .creation-shot-structure-grid input {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--lift);
+  color: var(--foreground);
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.yingce-island .creation-shot-structure-insert {
+  grid-column: 1 / -1;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.yingce-island .creation-media-brick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yingce-island .generation-tool-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .yingce-island .creation-shot-structure-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.yingce-island .creation-shot-filmstrip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.yingce-island .creation-shot-chip {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--lift);
+  color: var(--foreground);
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.yingce-island .creation-shot-filmstrip-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.yingce-island .creation-reference-frame-role {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 1;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--background) 78%, transparent);
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
 }
 
 /* —— Composer = one chrome only. Nested shell/composer both drawing
@@ -324,7 +529,7 @@ html.light .yingce-island {
   padding: 4px;
   border-radius: 12px;
   background: var(--lift);
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .yingce-island .creation-mode-button {

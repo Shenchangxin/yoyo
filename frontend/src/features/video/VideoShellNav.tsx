@@ -1,4 +1,4 @@
-import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle, Sparkles } from "lucide-react";
+import { Clapperboard, Images, PanelsTopLeft, PenLine } from "lucide-react";
 import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
 import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
@@ -8,16 +8,9 @@ import { cn } from "../../lib/utils";
 
 const PRIMARY: { id: Extract<VideoPane, "create" | "studio" | "drama" | "canvas">; icon: typeof Clapperboard }[] = [
   { id: "create", icon: Images },
-  { id: "studio", icon: Sparkles },
+  { id: "studio", icon: PenLine },
   { id: "drama", icon: Clapperboard },
   { id: "canvas", icon: PanelsTopLeft },
-];
-
-const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks">; icon: typeof Clapperboard }[] = [
-  { id: "assets", icon: Folder },
-  { id: "skills", icon: BookOpen },
-  { id: "plugins", icon: Puzzle },
-  { id: "tasks", icon: History },
 ];
 
 export function VideoShellNav() {
@@ -27,15 +20,11 @@ export function VideoShellNav() {
   const pane = useUI((s) => s.videoPane);
   const videoBoard = useUI((s) => s.videoBoard);
   const openVideoPane = useUI((s) => s.openVideoPane);
-  const labels: Record<(typeof PRIMARY)[number]["id"] | (typeof LIBRARY)[number]["id"], string> = {
+  const labels: Record<(typeof PRIMARY)[number]["id"], string> = {
     create: copy.video.shellCreate,
     studio: copy.video.shellStudio,
     drama: copy.video.shellDrama,
     canvas: copy.video.shellCanvas,
-    assets: copy.video.shellAssets,
-    skills: copy.video.shellSkills,
-    plugins: copy.video.shellPlugins,
-    tasks: copy.video.shellTasks,
   };
 
   function active(id: VideoPane) {
@@ -77,9 +66,6 @@ export function VideoShellNav() {
     <nav aria-label={copy.video.shell} data-testid="video-shell-nav" className="relative shrink-0 px-1.5 pb-1">
       <div className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium text-muted">{copy.video.shell}</div>
       {PRIMARY.map(row)}
-      <div className="mx-2 my-1.5 h-px bg-border" />
-      <div className="px-2.5 pb-1 text-[11px] font-medium text-muted">{copy.video.shellLibrary}</div>
-      {LIBRARY.map(row)}
     </nav>
   );
 }

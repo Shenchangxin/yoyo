@@ -7,7 +7,9 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { Dispatch, MouseEvent as ReactMouseEvent, SetStateAction } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router";
-import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
+import { isYoyoCanvasHost, requestHostNavigation } from "@/features/video/canvas-host/design-system";
+import { applyCanvasStoryboardLayout } from "@yingce/lib/canvas/canvas-layout";
+import { useCopy } from "@/lib/i18n";
 import { loadAssetsForUse } from "@yingce/services/user-data-sync";
 import { canvasAssetHandoffIds } from "@yingce/lib/canvas/canvas-asset-handoff";
 import { useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
@@ -111,7 +113,8 @@ import { cancelGenerationTask } from "@yingce/services/api/task-center";
 import { CanvasSyncStatus } from "./canvas-sync-status";
 import { CanvasVersionHistory, useCanvasVersionHistory } from "./canvas-version-history";
 import { CanvasVersionPreview } from "./canvas-version-preview";
-import { CanvasTopBar } from "./canvas-project-top-bar";
+import { CanvasTopBar, type CanvasBoardView } from "./canvas-project-top-bar";
+import { CanvasBoardList } from "./canvas-board-list";
 import { LibTVImportDialog } from "./components/libtv-import-dialog";
 import { TapNowImportDialog } from "./components/tapnow-import-dialog";
 import { CanvasFocusModeBar } from "@yingce/components/canvas/canvas-focus-mode-bar";
@@ -373,6 +376,21 @@ function InfiniteCanvasPage() {
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const viewportRef = useRef(viewport);
     const [workspaceOpen, setWorkspaceOpen] = useState(false);
+    const [boardView, setBoardView] = useState<CanvasBoardView>(() => {
+        try {
+            return localStorage.getItem("yoyo-canvas-board-view") === "list" ? "list" : "stage";
+        } catch {
+            return "stage";
+        }
+    });
+    const handleBoardViewChange = useCallback((view: CanvasBoardView) => {
+        setBoardView(view);
+        try {
+            localStorage.setItem("yoyo-canvas-board-view", view);
+        } catch {
+            /* ignore */
+        }
+    }, []);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string, options?: CanvasNodeGenerationOptions) => Promise<void>) | null>(null);
 
     useEffect(() => {
@@ -826,8 +844,9 @@ function InfiniteCanvasPage() {
                 currentNodes: nodesRef.current,
                 createdNodes,
                 persist: async (nextNodes) => {
-                    nodesRef.current = nextNodes;
-                    updateProject(projectId, { nodes: nextNodes });
+                    const laidOut = isYoyoCanvasHost() ? applyCanvasStoryboardLayout(nextNodes) : nextNodes;
+                    nodesRef.current = laidOut;
+                    updateProject(projectId, { nodes: laidOut });
                     await flushCanvasStorePersistence();
                 },
             });
@@ -1002,6 +1021,7 @@ function InfiniteCanvasPage() {
         setPrimaryVersion,
         shouldPreferCopiedNodes,
         toggleNodeLocked,
+        setNodeShotRole,
     } = useCanvasNodeOperations({
         projectId,
         defaultDrawingEngine,
@@ -2533,18 +2553,20 @@ function InfiniteCanvasPage() {
                 onAddScript={() => createNode(CanvasNodeType.Script)}
             />
         ) : null;
+    const hosted = isYoyoCanvasHost();
+    const boardCopy = useCopy().video.canvasBoard;
     if (!projectLoaded && loadError)
         return (
             <main className="flex h-full flex-col items-center justify-center gap-4">
                 <p role="alert">{loadError}</p>
-                <Button onClick={retryLoad}>重新加载</Button>
+                <Button onClick={retryLoad}>{boardCopy.reload}</Button>
                 <Link
                     to="/canvas"
                     onClick={(event) => {
                         if (requestHostNavigation("/canvas")) event.preventDefault();
                     }}
                 >
-                    返回画布库
+                    {boardCopy.returnLibrary}
                 </Link>
             </main>
         );
@@ -2556,7 +2578,7 @@ function InfiniteCanvasPage() {
                 href="#canvas-main"
                 className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-md focus:border focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg"
             >
-                跳转到画布主内容
+                {boardCopy.skipToMain}
             </a>
             <main id="canvas-main" data-canvas-color={colorTheme} tabIndex={-1} className="flex h-full min-h-0 overflow-hidden outline-none" style={{ background: resolvedCanvasAppearance.background, color: theme.node.text }}>
                 {!focusMode && !versions.preview ? <CanvasWorkspacePanel key={projectId} open={workspaceOpen} onOpen={() => setWorkspaceOpen(true)} onInsertAssets={handleProjectAssetsInsert} projectId={projectId} nodes={nodes} selectedNodeIds={selectedNodeIds} onClose={() => setWorkspaceOpen(false)} onAssets={() => openCanvasAssetLibrary()} onProjectAssets={currentProject?.projectId ? () => openProjectAssets() : undefined} onCancelTask={cancelCanvasTask} onFocus={nodeId => {
@@ -2578,7 +2600,7 @@ function InfiniteCanvasPage() {
                                 syncStatus={<CanvasSyncStatus projectId={projectId} onLoadLatest={reloadLatestCanvasProject} onOpenVersions={openVersions} />}
                                 versionsOpen={versions.open}
                                 onToggleVersions={() => { closeAgent(); setVersionCompareRootId(null); versions.toggle(); }}
-                                title={currentProject?.title || "未命名画布"}
+                                title={currentProject?.title || boardCopy.untitled}
                                 titleDraft={titleDraft}
                                 isTitleEditing={titleEditing}
                                 onTitleDraftChange={setTitleDraft}
@@ -2612,6 +2634,11 @@ function InfiniteCanvasPage() {
                                 }
                                 onEnterFocusMode={enterFocusMode}
                                 shortDramaGuide={shortDramaGuide}
+                                canvasTool={canvasTool}
+                                onToolChange={setCanvasTool}
+                                createCommands={freeformCreateCommands}
+                                boardView={hosted ? boardView : undefined}
+                                onBoardViewChange={hosted ? handleBoardViewChange : undefined}
                             />
                         ) : null}
 
@@ -2784,9 +2811,29 @@ function InfiniteCanvasPage() {
 
                                 <CanvasFileDropOverlay active={fileDropActive} theme={theme} />
 
-                                {emptyCanvasState}
+                                {hosted && boardView === "list" && !focusMode && !versions.preview ? (
+                                    <CanvasBoardList
+                                        nodes={nodes}
+                                        selectedNodeIds={selectedNodeIds}
+                                        onFocus={(nodeId) => {
+                                            handleBoardViewChange("stage");
+                                            const target = nodeById.get(nodeId);
+                                            const parent = target?.parentId ? nodeById.get(target.parentId) : null;
+                                            if (parent?.metadata?.frame?.collapsed) toggleFrameCollapsed(parent.id);
+                                            const batchRoot = target?.metadata?.batchRootId ? nodeById.get(target.metadata.batchRootId) : null;
+                                            if (batchRoot && !batchRoot.metadata?.imageBatchExpanded) toggleBatchExpanded(batchRoot.id);
+                                            const selection = new Set([nodeId]);
+                                            selectedNodeIdsRef.current = selection;
+                                            setSelectedNodeIds(selection);
+                                            setSelectedConnectionId(null);
+                                            focusCanvasNode(nodeId);
+                                        }}
+                                    />
+                                ) : null}
 
-                                {!focusMode || focusDockRevealed ? (
+                                {hosted && boardView === "list" ? null : emptyCanvasState}
+
+                                {!hosted && (!focusMode || focusDockRevealed) ? (
                                     <CanvasToolbar
                                         selectedCount={selectedNodeIds.size}
                                         workspaceMode={workspaceMode}
@@ -3028,6 +3075,7 @@ function InfiniteCanvasPage() {
                             onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                             onToggleLocked={(node) => toggleNodeLocked(node.id)}
                             onDelete={(node) => deleteNodes(new Set([node.id]))}
+                            onSetShotRole={(node, role) => setNodeShotRole(node.id, role)}
                         />
 
 {isMiniMapOpen && !focusMode ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} canvasContainerRef={containerRef} onViewportPreviewChange={previewViewport} onViewportChange={handleViewportChange} /> : null}
