@@ -1193,6 +1193,22 @@ test("appearance palettes keep light off paper yellow by default", async ({ page
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
+test("titlebar hides update button until a package is downloaded", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    update: {
+      phase: "downloading",
+      newer: true,
+      downloaded: false,
+      percent: 40,
+      auto_check: true,
+      manifest: { version: "9.9.9" },
+      current: { version: "0.4.0" },
+    },
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("update-download")).toHaveCount(0);
+});
+
 test("titlebar shows install update when a package is ready", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     update: {

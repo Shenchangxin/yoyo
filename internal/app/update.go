@@ -83,7 +83,7 @@ func (a *App) startUpdateLoop() {
 }
 
 func (a *App) updateLoop() {
-	const startDelay = 60 * time.Second
+	const startDelay = 8 * time.Second
 	const interval = 6 * time.Hour
 	const maxBackoff = 24 * time.Hour
 	timer := time.NewTimer(startDelay)
@@ -293,6 +293,7 @@ func (a *App) downloadUpdate(res update.CheckResult) {
 	a.upd.bytes = size
 	a.upd.total = size
 	a.upd.mu.Unlock()
+	diaglog.Info("update downloaded", "component", "update", "version", res.Manifest.Version, "path", path, "size", size)
 	a.notifyUpdateReady(res.Manifest.Version)
 }
 
@@ -336,6 +337,7 @@ func (a *App) ApplyUpdate(exe string) error {
 		a.upd.phase = "applying"
 		a.upd.mu.Unlock()
 	}
+	diaglog.Info("update apply", "component", "update", "staging", a.StagingPath())
 	err := update.ApplyDownloaded(exe, filepath.Dir(a.StagingPath()))
 	if err != nil && !errors.Is(err, update.ErrQuitNeeded) && !errors.Is(err, update.ErrOpenedPackage) {
 		if a.upd != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/home"
 	"github.com/Shenchangxin/yoyo/internal/skin"
+	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
@@ -35,6 +36,9 @@ func fail(err error) {
 }
 
 func main() {
+	if update.HandleNSISHelper() {
+		return
+	}
 	_ = os.Setenv("YOYO_DESKTOP", "1")
 	evals := resolveEvals()
 	home := os.Getenv("YOYO_HOME")
