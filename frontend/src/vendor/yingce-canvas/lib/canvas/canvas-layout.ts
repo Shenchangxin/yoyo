@@ -142,6 +142,43 @@ export function layoutCanvasAuto(nodes: CanvasNodeData[], connections: CanvasCon
     return hasConnections ? layoutCanvasFlow(candidates, connections) : layoutCanvasNodesByMediaType(candidates);
 }
 
+function isStoryboardAssetNode(node: CanvasNodeData) {
+    const kind = node.metadata?.workflowKind;
+    if (kind === "character" || kind === "scene" || kind === "styleboard" || kind === "script" || kind === "story_input") return true;
+    return node.type === CanvasNodeType.Text || node.type === CanvasNodeType.Script || node.type === CanvasNodeType.Audio;
+}
+
+/** Left column assets, right column shots. Used when Create/Drama opens a board. */
+export function layoutCanvasStoryboard(nodes: CanvasNodeData[], origin: Position = { x: 80, y: 80 }) {
+    const result = new Map<string, Position>();
+    const movable = nodes.filter((node) => !node.metadata?.locked && node.type !== CanvasNodeType.Frame && !node.parentId);
+    if (movable.length < 2) return result;
+    const assets = movable.filter(isStoryboardAssetNode).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+    const shots = movable.filter((node) => !isStoryboardAssetNode(node)).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+    const leftWidth = assets.length ? Math.max(...assets.map((node) => node.width)) + LANE_GAP : 0;
+    let y = origin.y;
+    assets.forEach((node) => {
+        result.set(node.id, { x: origin.x, y });
+        y += node.height + LANE_NODE_GAP;
+    });
+    y = origin.y;
+    shots.forEach((node) => {
+        result.set(node.id, { x: origin.x + leftWidth, y });
+        y += node.height + LANE_NODE_GAP;
+    });
+    return result;
+}
+
+/** Write storyboard positions onto a node list. Empty map leaves nodes unchanged. */
+export function applyCanvasStoryboardLayout(nodes: CanvasNodeData[], origin: Position = { x: 80, y: 80 }): CanvasNodeData[] {
+    const positions = layoutCanvasStoryboard(nodes, origin);
+    if (!positions.size) return nodes;
+    return nodes.map((node) => {
+        const next = positions.get(node.id);
+        return next ? { ...node, position: next } : node;
+    });
+}
+
 export const CANVAS_SPREAD_SCALE = 1.4;
 export const CANVAS_SPREAD_MIN_GAP = 56;
 

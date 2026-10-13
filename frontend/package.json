@@ -12,7 +12,7 @@
     "test:presence": "node --experimental-strip-types --test src/features/presence/*.test.ts src/vendor/emotion-ball/*.test.ts",
     "test:scale": "node --experimental-strip-types --test src/lib/scale.test.ts",
     "test:lib": "node --experimental-strip-types --test src/lib/*.test.ts src/lib/skin/*.test.ts",
-    "test:create": "node --experimental-transform-types --import ./test/register-yingce.mjs --test src/lib/video-route.test.ts src/vendor/yingce-canvas/pages/create/creation-submit-gate.test.ts src/vendor/yingce-canvas/pages/create/creation-mention-match.test.ts src/vendor/yingce-canvas/pages/create/creation-conversations.test.ts src/vendor/yingce-canvas/services/creation-conversation-store.test.ts"
+    "test:create": "node --experimental-transform-types --import ./test/register-yingce.mjs --test src/lib/video-route.test.ts src/vendor/yingce-canvas/pages/create/creation-submit-gate.test.ts src/vendor/yingce-canvas/pages/create/creation-mention-match.test.ts src/vendor/yingce-canvas/pages/create/creation-conversations.test.ts src/vendor/yingce-canvas/services/creation-conversation-store.test.ts src/vendor/yingce-canvas/lib/canvas/canvas-layout.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

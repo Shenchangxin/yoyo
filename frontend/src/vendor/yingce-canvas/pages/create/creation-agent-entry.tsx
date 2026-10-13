@@ -4,7 +4,7 @@ import { App, Button } from "antd";
 import { ArrowUpRight, FolderOpen, Clapperboard } from "lucide-react";
 import { useNavigate } from "react-router";
 import { openHostedVideoHref } from "@/features/video/canvas-host/host-nav";
-import { FluidOrb } from "@yingce/components/ui/fluid-orb";
+import { useCopy } from "@/lib/i18n";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { createCanvasProjectWithRemoteSync, hasRemoteUserDataSyncSession, saveRemoteUserDataNow } from "@yingce/services/user-data-sync";
@@ -13,6 +13,7 @@ import { createCanvasProjectWithRemoteSync, hasRemoteUserDataSyncSession, saveRe
 export function CreationAgentEntry() {
     const navigate = useNavigate();
     const { message } = App.useApp();
+    const create = useCopy().video.create;
     const hydrated = useCanvasStore((state) => state.hydrated);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
@@ -25,14 +26,14 @@ export function CreationAgentEntry() {
         setError("");
         const userId = useUserStore.getState().user?.id;
         try {
-            if (!userId || !hasRemoteUserDataSyncSession()) throw new Error("登录或同步会话尚未就绪，请稍后重试。");
-            if (!hydrated) throw new Error("画布还在恢复中，请稍后重试。");
+            if (!userId || !hasRemoteUserDataSyncSession()) throw new Error(create.agentNeedSession);
+            if (!hydrated) throw new Error(create.agentRestoring);
             if (created.current?.userId !== userId) created.current = null;
             if (!created.current) {
-                const result = await createCanvasProjectWithRemoteSync("Agent 创作");
-                if (!result.id) throw new Error("画布创建未返回有效 ID，请重试。");
+                const result = await createCanvasProjectWithRemoteSync(create.agentTitle);
+                if (!result.id) throw new Error(create.agentCreateFailed);
                 created.current = { id: result.id, userId };
-                if (result.syncError) throw new Error("画布已缓存在本机，但工作区尚未写入完成。请稍后重试再启动 Agent。");
+                if (result.syncError) throw new Error(create.agentSyncFailed);
             } else {
                 await saveRemoteUserDataNow();
             }
@@ -41,16 +42,24 @@ export function CreationAgentEntry() {
             if (!openHostedVideoHref(href)) navigate(href);
         } catch (cause) {
             if (useUserStore.getState().user?.id === userId) {
-                const detail = cause instanceof Error ? cause.message : "启动失败，请重试。";
+                const detail = cause instanceof Error ? cause.message : create.agentStartFailed;
                 setError(detail);
                 message.error(detail);
             }
         } finally { lock.current = false; setBusy(false); }
     };
-    return <section className="creation-agent-entry" aria-label="画布 Agent 模式">
-        <div className="creation-agent-orb" aria-hidden><FluidOrb size={88} /></div>
-        <div className="creation-agent-copy"><span className="creation-agent-eyebrow">CANVAS AGENT</span><h2>不止回答，把想法落到画布上</h2><p>使用画布里的同一个 Agent，结合素材、技能与创作上下文协作。生成与修改仍需经过原有审批和额度检查。</p></div>
-        <div className="creation-agent-actions"><Button type="primary" icon={<Clapperboard />} loading={busy} disabled={!hydrated} onClick={() => void start()}>{created.current ? "重试同步并进入" : "新建画布，与 Agent 创作"}<ArrowUpRight /></Button><Button icon={<FolderOpen />} disabled={busy} onClick={() => { const href = "/canvas?agent=1"; if (!openHostedVideoHref(href)) navigate(href); }}>在已有画布中继续</Button></div>
+    return <section className="creation-agent-entry" aria-label={create.modeAgent} data-testid="creation-agent-entry">
+        <div className="creation-agent-copy">
+            <span className="creation-agent-eyebrow">{create.modeAgent}</span>
+            <h2>{create.agentTitle}</h2>
+            <p>{create.agentBody}</p>
+        </div>
+        <div className="creation-agent-actions">
+            <Button type="primary" icon={<Clapperboard />} loading={busy} disabled={!hydrated} onClick={() => void start()}>
+                {created.current ? create.agentRetry : create.agentStart}<ArrowUpRight />
+            </Button>
+            <Button icon={<FolderOpen />} disabled={busy} onClick={() => { const href = "/canvas?agent=1"; if (!openHostedVideoHref(href)) navigate(href); }}>{create.agentContinue}</Button>
+        </div>
         {error ? <p className="creation-agent-error" role="alert">{error}</p> : null}
     </section>;
 }

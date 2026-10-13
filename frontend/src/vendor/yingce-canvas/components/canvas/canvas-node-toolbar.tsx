@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { App, Button, Input, Modal, Tag, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import { Camera, Check, ChevronDown, ChevronRight, Ellipsis, Film, Grid3x3, Plus, SlidersHorizontal, UserRound } from "lucide-react";
+import { Bookmark, Camera, Check, ChevronDown, ChevronRight, Ellipsis, Film, Grid3x3, Image as ImageIcon, Plus, SlidersHorizontal, Star, UserRound } from "lucide-react";
 
 import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 
@@ -22,6 +22,8 @@ import { useEffectiveConfig } from "@yingce/stores/use-config-store";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeMetadata, type CanvasWorkspaceMode, type ViewportTransform } from "@yingce/types/canvas";
 import { buildImageToolbarTools } from "./canvas-image-toolbar-tools";
 import { CanvasGridSplitPicker } from "./canvas-grid-split-picker";
+import { isYoyoCanvasHost } from "@/features/video/canvas-host/design-system";
+import { useCopy } from "@/lib/i18n";
 
 type CanvasNodeToolbarProps = {
     node: CanvasNodeData | null;
@@ -69,6 +71,7 @@ type CanvasNodeToolbarProps = {
     onDelete: (node: CanvasNodeData) => void;
     onNineGrid: (node: CanvasNodeData, toolId: number, label: string, icon: string) => void;
     workspaceMode?: CanvasWorkspaceMode;
+    onSetShotRole?: (node: CanvasNodeData, role: "keyframe" | "final" | "ref" | undefined) => void;
 };
 
 type CanvasAssetCategory = NonNullable<NonNullable<CanvasNodeData["metadata"]>["assetCategory"]>;
@@ -139,8 +142,11 @@ export function CanvasNodeToolbar({
     onDelete,
     onNineGrid,
     workspaceMode = "professional",
+    onSetShotRole,
 }: CanvasNodeToolbarProps) {
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const board = useCopy().video.canvasBoard;
+    const hosted = isYoyoCanvasHost();
     const [containerWidth, setContainerWidth] = useState(1000);
     const [anchor, setAnchor] = useState<{ left: number; top: number; placement: "above" | "below" } | null>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
@@ -317,15 +323,22 @@ export function CanvasNodeToolbar({
     const narrow = containerWidth < 420;
     const inGroup = (group: NodeToolbarGroup) => allTools.filter((tool) => tool.group === group).sort(compareToolbarTools);
     const primary = inGroup("primary");
-    const primaryTools = narrow ? primary.slice(0, 1) : primary;
-    const portraitTools = compact ? [] : inGroup("portrait");
-    const viewpointLightingTools = compact ? [] : [...inGroup("viewpoint"), ...inGroup("lighting")];
-    const panoramaTools = compact ? [] : inGroup("panorama");
-    const processTools = compact ? [...inGroup("portrait"), ...inGroup("viewpoint"), ...inGroup("lighting"), ...inGroup("panorama"), ...inGroup("process")] : inGroup("process");
-    const nineGridTools = compact ? [] : inGroup("nine_grid");
-    const workspaceTools = narrow ? [] : inGroup("workspace");
-    const utilityTools = inGroup("utility");
-    const moreTools = [...(narrow ? [...primary.slice(1), ...inGroup("workspace")] : []), ...inGroup("more")];
+    const portraitTools = compact || hosted ? [] : inGroup("portrait");
+    const viewpointLightingTools = compact || hosted ? [] : [...inGroup("viewpoint"), ...inGroup("lighting")];
+    const panoramaTools = compact || hosted ? [] : inGroup("panorama");
+    const processTools = hosted ? [] : compact ? [...inGroup("portrait"), ...inGroup("viewpoint"), ...inGroup("lighting"), ...inGroup("panorama"), ...inGroup("process")] : inGroup("process");
+    const nineGridTools = compact || hosted ? [] : inGroup("nine_grid");
+    const workspaceTools = hosted || narrow ? [] : inGroup("workspace");
+    const utilityTools = hosted ? [] : inGroup("utility");
+    const primaryTools = hosted ? primary.slice(0, 4) : narrow ? primary.slice(0, 1) : primary;
+    const shotRoleTools: ToolbarTool[] = hosted && onSetShotRole && node ? [
+        { id: "shot-role-keyframe", label: board.roleKeyframe, icon: <Star strokeWidth={1.55} />, onClick: () => onSetShotRole(node, node.metadata?.shotRole === "keyframe" ? undefined : "keyframe"), group: "more", order: 910, active: node.metadata?.shotRole === "keyframe" },
+        { id: "shot-role-final", label: board.roleFinal, icon: <ImageIcon strokeWidth={1.55} />, onClick: () => onSetShotRole(node, node.metadata?.shotRole === "final" ? undefined : "final"), group: "more", order: 911, active: node.metadata?.shotRole === "final" },
+        { id: "shot-role-ref", label: board.roleRef, icon: <Bookmark strokeWidth={1.55} />, onClick: () => onSetShotRole(node, node.metadata?.shotRole === "ref" ? undefined : "ref"), group: "more", order: 912, active: node.metadata?.shotRole === "ref" },
+    ] : [];
+    const moreTools = hosted
+        ? [...primary.slice(4), ...inGroup("nine_grid"), ...inGroup("panorama"), ...inGroup("portrait"), ...inGroup("viewpoint"), ...inGroup("lighting"), ...inGroup("process"), ...inGroup("workspace"), ...inGroup("utility"), ...inGroup("more"), ...shotRoleTools]
+        : [...(narrow ? [...primary.slice(1), ...inGroup("workspace")] : []), ...inGroup("more")];
     const processMenuLabel = compact ? "工具" : isVideo ? "提取素材" : isImage ? "图片工具" : isAudio ? "音频处理" : "文本调整";
     const menuPlacement = anchor.placement === "below" ? "bottom" : "top";
     const handleMenuOpenChange = (menuId: string, open: boolean) => {
@@ -352,12 +365,12 @@ export function CanvasNodeToolbar({
         >
             <div
                 role="toolbar"
-                aria-label="节点快捷工具"
+                aria-label={board.hud}
                 className="sg-glass-group flex max-w-full items-center overflow-visible"
                 style={{ ...dockStyle, border: 0, background: "transparent", boxShadow: "none" }}
             >
                 {primaryTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
-                {nineGridTools.length ? <NodeDockMenuButton menuId="nine-grid" label="九宫格" icon={<Grid3x3 strokeWidth={1.55} />} tools={nineGridTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
+                {nineGridTools.length ? <NodeDockMenuButton menuId="nine-grid" label={board.grid} icon={<Grid3x3 strokeWidth={1.55} />} tools={nineGridTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
                 {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
                 {portraitTools.length ? <NodeDockMenuButton menuId="portrait" label="人像调整" icon={<UserRound strokeWidth={1.55} />} tools={portraitTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
                 {viewpointLightingTools.length ? <NodeDockMenuButton menuId="viewpoint-lighting" label="视角" icon={<Camera strokeWidth={1.55} />} tools={viewpointLightingTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
@@ -367,7 +380,7 @@ export function CanvasNodeToolbar({
                 {utilityTools.length || moreTools.length ? <span aria-hidden className="aceternity-dock-separator shrink-0" /> : null}
                 {utilityTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
                 {moreTools.length ? (
-                    <NodeDockMenuButton menuId="more" label="更多" icon={<Ellipsis strokeWidth={1.55} />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={anchor.placement === "below" ? "bottomRight" : "topRight"} iconOnly />
+                    <NodeDockMenuButton menuId="more" label={board.more} icon={<Ellipsis strokeWidth={1.55} />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={anchor.placement === "below" ? "bottomRight" : "topRight"} iconOnly />
                 ) : null}
             </div>
         </div>

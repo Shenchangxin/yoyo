@@ -17,6 +17,7 @@ import { canvasThemes, type CanvasBackgroundMode, type CanvasTheme } from "@ying
 import { defaultToolbarPrefs, readToolbarPrefs, resolveToolbarEntries, type ToolContext, type ToolbarHandlers, type ToolbarPrefs } from "@yingce/lib/canvas/tool-registry";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
 import type { CanvasNodeTypeId, CanvasToolMode, CanvasWorkspaceMode } from "@yingce/types/canvas";
+import { isYoyoCanvasHost } from "@/features/video/canvas-host/design-system";
 
 export function CanvasToolbar({
     selectedCount,
@@ -199,6 +200,7 @@ export function CanvasToolbar({
 
     // 中央空白起点与主工具栏共用同一份命令解析，避免素材类型和插件节点逐渐分叉。
     const createCommands = useCanvasCreateCommands(ctx, runAddAction);
+    if (isYoyoCanvasHost()) return null;
 
     return (
         <div
