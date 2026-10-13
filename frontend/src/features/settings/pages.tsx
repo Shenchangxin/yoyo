@@ -442,7 +442,6 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const [level, setLevel] = useState("all");
   const [copiedPath, setCopiedPath] = useState(false);
   const [ota, setOta] = useState<any>(null);
-  const channel = host.cfg.updateChannel || "nightly";
   const phase = String(ota?.phase || "idle");
   const ready = phase === "ready" || !!ota?.downloaded;
   const percent = Number(ota?.percent || 0);
@@ -520,19 +519,6 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
           <Switch
             checked={host.cfg.updateAutoCheck !== false}
             onCheckedChange={(v) => void host.patch({ updateAutoCheck: v })}
-          />
-        </SettingRow>
-        <SettingRow title={copy.settings.channel}>
-          <SettingSegmented
-            id="channel"
-            ariaLabel={copy.settings.channel}
-            value={channel}
-            options={[
-              { value: "stable", label: "Stable" },
-              { value: "beta", label: "Beta" },
-              { value: "nightly", label: "Nightly" },
-            ]}
-            onChange={(v) => void host.patch({ updateChannel: v })}
           />
         </SettingRow>
         {ota?.last_check ? <SettingValueRow title={copy.settings.lastCheck} value={String(ota.last_check)} mono /> : null}

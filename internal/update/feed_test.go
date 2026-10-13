@@ -19,7 +19,7 @@ func TestFeedURL(t *testing.T) {
 	t.Setenv(EnvRepo, "acme/yoyo-releases")
 	t.Setenv(EnvEndpoint, "https://www.modelscope.cn")
 	u := FeedURL(ChannelStable)
-	if !strings.Contains(u, "/datasets/acme/yoyo-releases/resolve/master/channels/stable.json") {
+	if !strings.Contains(u, "/datasets/acme/yoyo-releases/resolve/master/channels/latest.json") {
 		t.Fatal(u)
 	}
 	if SigURL(u) != u+".sig" {
@@ -31,8 +31,8 @@ func TestDefaultFeedPointsAtInternationalDataset(t *testing.T) {
 	t.Setenv(EnvEndpoint, "")
 	t.Setenv(EnvRepo, "")
 	t.Setenv(EnvRevision, "")
-	want := "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/nightly.json"
-	if got := FeedURL(ChannelNightly); got != want {
+	want := "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/latest.json"
+	if got := FeedURL(ChannelLatest); got != want {
 		t.Fatalf("got %s want %s", got, want)
 	}
 	if Referer() != "https://www.modelscope.ai/" {

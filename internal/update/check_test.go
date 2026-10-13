@@ -5,8 +5,11 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +29,53 @@ func TestPublicKeyFromEnv(t *testing.T) {
 	got := PublicKeyFromEnv()
 	if len(got) != ed25519.PublicKeySize {
 		t.Fatalf("%d", len(got))
+	}
+}
+
+func TestFetchRejectsEmptyBody(t *testing.T) {
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("/empty.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+	})
+	SetHTTPClient(srv.Client())
+	defer SetHTTPClient(nil)
+	_, err := Fetch(t.Context(), srv.URL+"/empty.json", 1<<20, true)
+	if err == nil || !strings.Contains(err.Error(), "empty body") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCheckFallsBackFromEmptyLatest(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(`{"version":"9.9.9","channel":"nightly"}`)
+	sig := Sign(priv, payload)
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("/datasets/acme/yoyo/resolve/master/channels/latest.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+	})
+	mux.HandleFunc("/datasets/acme/yoyo/resolve/master/channels/latest.json.sig", func(w http.ResponseWriter, r *http.Request) {})
+	mux.HandleFunc("/datasets/acme/yoyo/resolve/master/channels/nightly.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	})
+	mux.HandleFunc("/datasets/acme/yoyo/resolve/master/channels/nightly.json.sig", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(sig)
+	})
+	SetHTTPClient(srv.Client())
+	defer SetHTTPClient(nil)
+	url := srv.URL + "/datasets/acme/yoyo/resolve/master/channels/latest.json"
+	res, err := Check(t.Context(), url, nil, nil, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Verified || res.Manifest.Version != "9.9.9" {
+		t.Fatalf("%+v", res)
 	}
 }
 

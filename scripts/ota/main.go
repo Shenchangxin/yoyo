@@ -35,7 +35,7 @@ func run(args []string) error {
 	endpoint := fs.String("endpoint", "", "ModelScope endpoint")
 	out := fs.String("out", "ota", "output directory")
 	priv := fs.String("privkey", "", "Ed25519 private key hex (default YOYO_UPDATE_PRIVKEY)")
-	channels := fs.String("channels", "", "comma-separated channels (default derived from version)")
+	channels := fs.String("channels", "", "ignored; OTA publishes a single latest feed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -64,9 +64,10 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	chs := parseChannels(*channels, ver)
+	_ = *channels
+	chs := update.ChannelsForVersion(ver)
 	if len(chs) == 0 {
-		return fmt.Errorf("ota: no channels for %s", ver)
+		return fmt.Errorf("ota: no feed for %s", ver)
 	}
 	relDir := filepath.Join(*out, "releases", "v"+ver)
 	if err := copyRelease(*dist, relDir); err != nil {
@@ -129,16 +130,8 @@ func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 }
 
 func parseChannels(raw, version string) []update.Channel {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return update.ChannelsForVersion(version)
-	}
-	var out []update.Channel
-	for _, p := range strings.Split(raw, ",") {
-		ch := update.NormalizeChannel(p)
-		out = append(out, ch)
-	}
-	return out
+	_ = raw
+	return update.ChannelsForVersion(version)
 }
 
 func readSHA256SUMS(path string) (map[string]string, error) {

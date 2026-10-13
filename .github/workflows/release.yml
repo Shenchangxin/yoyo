@@ -318,7 +318,7 @@ jobs:
             - **macOS:** `Yoyo-*-darwin-universal.dmg` — open the disk image and drag Yoyo into Applications.
             - **Linux:** `Yoyo-*-linux-amd64.AppImage` (chmod +x, double-click) or install the `.deb` / `.rpm`.
 
-            CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. In-app OTA reads signed channel JSON from https://modelscope.ai/datasets/yoyo-agent/yoyo; applying stays a human step.
+            CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. In-app OTA reads signed latest.json from https://modelscope.ai/datasets/yoyo-agent/yoyo; applying stays a human step.
           files: dist/*
           fail_on_unmatched_files: true
         env:

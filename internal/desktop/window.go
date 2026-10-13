@@ -284,6 +284,7 @@ func PersistWindow(svc *Service, win application.Window) {
 		if svc.CloseToTray() || svc.CompanionEnabled() {
 			e.Cancel()
 			win.Hide()
+			svc.refreshChrome()
 			return
 		}
 		saveWindowState(svc, win)

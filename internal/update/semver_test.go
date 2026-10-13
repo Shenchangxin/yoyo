@@ -24,13 +24,13 @@ func TestIsNewer(t *testing.T) {
 }
 
 func TestChannelsForVersion(t *testing.T) {
-	if got := ChannelsForVersion("0.5.0"); len(got) != 3 || got[0] != ChannelStable {
-		t.Fatalf("%v", got)
+	for _, ver := range []string{"0.5.0", "0.5.0-beta.1", "0.0.0-dev.abc1234"} {
+		got := ChannelsForVersion(ver)
+		if len(got) != 1 || got[0] != DefaultChannel {
+			t.Fatalf("%s -> %v", ver, got)
+		}
 	}
-	if got := ChannelsForVersion("0.5.0-beta.1"); len(got) != 2 || got[0] != ChannelBeta {
-		t.Fatalf("%v", got)
-	}
-	if got := ChannelsForVersion("0.0.0-dev.abc1234"); len(got) != 1 || got[0] != ChannelNightly {
-		t.Fatalf("%v", got)
+	if ChannelsForVersion("") != nil {
+		t.Fatal("empty version publishes nothing")
 	}
 }

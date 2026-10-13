@@ -195,7 +195,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		CompanionEnabled:     true,
 		UpdateAutoCheck:      true,
 		UIScale:              1,
-		UpdateChannel:        "nightly",
+		UpdateChannel:        string(update.DefaultChannel),
 		Theme:                "system",
 		CrashResume:          true,
 		SessionRetentionDays: 30,
@@ -213,7 +213,7 @@ func Open(root, bundledEvals string) (*App, error) {
 		}
 		cfg.UIScale = snapUIScale(cfg.UIScale)
 		if cfg.UpdateChannel == "" {
-			cfg.UpdateChannel = "nightly"
+			cfg.UpdateChannel = string(update.DefaultChannel)
 		}
 		if _, ok := raw["update_auto_check"]; !ok {
 			cfg.UpdateAutoCheck = true
@@ -485,7 +485,7 @@ func (a *App) Health() map[string]any {
 		"video_workspace":       a.VideoWorkspace(),
 		"video_workspace_ready": WorkspaceReady(a.VideoWorkspace()),
 		"vault":                 a.Vault.Status(),
-		"update_channel":        a.Config.UpdateChannel,
+		"update_channel":        string(update.DefaultChannel),
 		"isolation":             a.IsolationReport(),
 		"gate_mode":             capability.ParseGateMode(a.Config.GateMode),
 		"paused":                a.Config.Paused,

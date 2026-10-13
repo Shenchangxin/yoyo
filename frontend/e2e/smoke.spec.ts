@@ -1193,6 +1193,27 @@ test("appearance palettes keep light off paper yellow by default", async ({ page
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
+test("titlebar shows install update when a package is ready", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    update: {
+      phase: "ready",
+      newer: true,
+      downloaded: true,
+      percent: 100,
+      auto_check: true,
+      feed: "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/latest.json",
+      manifest: { version: "9.9.9" },
+      current: { version: "0.4.0" },
+    },
+  });
+  await page.goto("/");
+  const btn = page.getByTestId("update-download");
+  await expect(btn).toBeVisible();
+  await expect(btn).toHaveAttribute("aria-label", /Install Yoyo 9.9.9/);
+  await btn.click();
+  await expect(page.getByRole("button", { name: "Install and restart" })).toBeVisible();
+});
+
 test("advanced diagnostics is not the journal", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
@@ -1216,6 +1237,18 @@ test("companion surface does not render the workstation", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
   await expect(page.locator("html.companion")).toHaveCount(1);
   await expect(page.locator("html[data-skin-wallpaper]")).toHaveCount(0);
+  const pet = page.getByTestId("companion-pet-wrap");
+  await expect(pet).toBeVisible();
+  await expect(pet).toHaveAttribute("data-context-menu", "yoyo-companion");
+  const menuVars = await pet.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      custom: s.getPropertyValue("--custom-contextmenu").trim(),
+      def: s.getPropertyValue("--default-contextmenu").trim(),
+    };
+  });
+  expect(menuVars.custom).toBe("yoyo-companion");
+  expect(menuVars.def).toBe("hide");
 });
 
 test("subagent sessions stay nested in the parent transcript", async ({ page }) => {

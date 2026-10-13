@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -55,19 +56,40 @@ type CheckResult struct {
 
 func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed25519.PublicKey) (CheckResult, error) {
 	res := CheckResult{Current: Current("")}
-	var err error
-	if len(payload) == 0 {
-		payload, err = httpGet(ctx, manifestURL, true)
+	if len(payload) > 0 {
+		return finishCheck(res, payload, sig, pub)
+	}
+	var last error
+	for _, u := range feedAttemptURLs(manifestURL) {
+		body, err := httpGet(ctx, u, true)
 		if err != nil {
-			return res, err
+			last = err
+			continue
+		}
+		gotSig := sig
+		if len(gotSig) == 0 {
+			gotSig, err = httpGet(ctx, SigURL(u), true)
+			if err != nil {
+				last = err
+				continue
+			}
+		}
+		out, err := finishCheck(res, body, gotSig, pub)
+		if err == nil {
+			return out, nil
+		}
+		last = err
+		if signedManifestRejected(body, err) {
+			return out, err
 		}
 	}
-	if len(sig) == 0 && manifestURL != "" {
-		sig, err = httpGet(ctx, SigURL(manifestURL), true)
-		if err != nil {
-			return res, err
-		}
+	if last == nil {
+		last = fmt.Errorf("update: empty url")
 	}
+	return res, last
+}
+
+func finishCheck(res CheckResult, payload, sig []byte, pub ed25519.PublicKey) (CheckResult, error) {
 	if err := Verify(pub, payload, sig); err != nil {
 		return res, err
 	}
@@ -82,6 +104,33 @@ func Check(ctx context.Context, manifestURL string, payload, sig []byte, pub ed2
 		res.Asset = asset
 	}
 	return res, nil
+}
+
+func feedAttemptURLs(manifestURL string) []string {
+	manifestURL = strings.TrimSpace(manifestURL)
+	if manifestURL == "" {
+		return nil
+	}
+	out := []string{manifestURL}
+	if !strings.HasSuffix(strings.TrimRight(manifestURL, "/"), "/channels/latest.json") {
+		return out
+	}
+	base := strings.TrimSuffix(strings.TrimRight(manifestURL, "/"), "latest.json")
+	for _, name := range []string{"nightly.json", "stable.json"} {
+		u := base + name
+		if u != manifestURL {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+func signedManifestRejected(payload []byte, err error) bool {
+	if err == nil || !strings.Contains(err.Error(), "signature rejected") {
+		return false
+	}
+	m, perr := ParseManifest(payload)
+	return perr == nil && strings.TrimSpace(m.Version) != ""
 }
 
 // Stage writes a verified payload to destDir. It never replaces argv[0].
@@ -143,6 +192,9 @@ func fetchOnce(ctx context.Context, rawURL string, max int64, nocache bool) ([]b
 	}
 	if int64(len(b)) > max {
 		return nil, fmt.Errorf("update: payload too large")
+	}
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, fmt.Errorf("update: empty body")
 	}
 	return b, nil
 }

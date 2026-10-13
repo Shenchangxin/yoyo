@@ -10,7 +10,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any },
+  extra?: { sessions?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
@@ -615,11 +615,11 @@ export async function mockApi(
     }
     if (path.includes("/api/update")) {
       return route.fulfill({
-        json: {
+        json: extra?.update ?? {
           phase: "idle",
           staged: false,
           auto_check: true,
-          feed: "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/nightly.json",
+          feed: "https://www.modelscope.ai/datasets/yoyo-agent/yoyo/resolve/master/channels/latest.json",
           current: { version: "0.4.0" },
         },
       });

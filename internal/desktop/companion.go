@@ -4,6 +4,7 @@ import (
 	"errors"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -108,17 +109,115 @@ func (s *Service) companionShown() bool {
 	return s.companion != nil && !s.companionDismissed.Load()
 }
 
-func (s *Service) syncCompanionMenu() {
-	item := s.companionMenu
-	if item == nil {
+func (s *Service) companionIgnoresHits() bool {
+	return s.companionFocus.Load() && !s.companionCall.Load()
+}
+
+func (s *Service) SetCompanionFocus(on bool) {
+	if s.companionFocus.Swap(on) == on {
 		return
 	}
-	n := nativeCopy(s.menuLocale)
-	if s.companionShown() {
-		item.SetLabel(n.HideCompanion)
+	s.syncCompanionClickThrough()
+	s.refreshChrome()
+}
+
+func (s *Service) syncCompanionClickThrough() {
+	through := s.companionIgnoresHits()
+	companionClickThrough.Store(through)
+	win := s.companion
+	if win == nil {
 		return
 	}
-	item.SetLabel(n.ShowCompanion)
+	applyCompanionShape(win, s.companionCaption.Load() || s.companionCall.Load())
+	if through {
+		setCompanionPassthrough(win, true)
+	}
+}
+
+func (s *Service) ResetCompanion() {
+	win := s.companion
+	if win == nil {
+		return
+	}
+	nx, ny := companionOrigin()
+	win.SetPosition(nx, ny)
+}
+
+func (s *Service) beginCompanionCall() {
+	if s.companionCall.Swap(true) {
+		companionInteractive.Store(true)
+		return
+	}
+	companionInteractive.Store(true)
+	if s.gui != nil {
+		s.gui.Event.Emit("yoyo:call", true)
+	}
+	s.applyCompanionCallGeometry()
+	s.refreshChrome()
+}
+
+func (s *Service) endCompanionCall(resizeAndRefresh bool) {
+	was := s.companionCall.Swap(false)
+	companionInteractive.Store(false)
+	if !was {
+		return
+	}
+	if s.gui != nil {
+		s.gui.Event.Emit("yoyo:call", false)
+	}
+	if !resizeAndRefresh {
+		return
+	}
+	if win := s.companion; win != nil {
+		win.SetSize(companionW, companionH)
+		s.syncCompanionClickThrough()
+	}
+	s.refreshChrome()
+}
+
+func (s *Service) applyCompanionCallGeometry() {
+	win := s.companion
+	on := s.companionCall.Load()
+	companionInteractive.Store(on)
+	if win == nil {
+		return
+	}
+	if on {
+		win.SetSize(companionCallW, companionCallH)
+		s.syncCompanionClickThrough()
+		setCompanionPassthrough(win, false)
+		applyCompanionShape(win, true)
+		return
+	}
+	win.SetSize(companionW, companionH)
+	s.syncCompanionClickThrough()
+	if !s.companionIgnoresHits() {
+		setCompanionPassthrough(win, true)
+	}
+}
+
+func (s *Service) replayCompanionCall() {
+	if s.gui == nil {
+		return
+	}
+	s.gui.Event.Emit("yoyo:call", s.companionCall.Load())
+}
+
+func (s *Service) OpenCompanionChat() {
+	if sid, _ := s.lastPulseSession.Load().(string); strings.TrimSpace(sid) != "" {
+		s.RaiseSession(sid)
+		s.refreshChrome()
+		return
+	}
+	if s.App != nil || s.RPC != nil {
+		if ids := s.RunningIDs(); len(ids) > 0 {
+			s.RaiseSession(ids[0])
+			s.refreshChrome()
+			return
+		}
+	}
+	s.RaiseWindow()
+	s.refreshChrome()
 }
 
 func (s *Service) ToggleCompanion() {
@@ -138,6 +237,7 @@ func (s *Service) syncCompanion(cfg app.Config) {
 	}
 	if s.companionDismissed.Load() {
 		s.CloseCompanion()
+		s.refreshChrome()
 		return
 	}
 	_ = s.OpenCompanion()
@@ -148,6 +248,7 @@ func (s *Service) PrepareCompanion() {
 }
 
 func (s *Service) CloseCompanion() {
+	s.endCompanionCall(false)
 	win := s.companion
 	s.companion = nil
 	if win != nil {
@@ -155,7 +256,6 @@ func (s *Service) CloseCompanion() {
 		win.Close()
 		s.companionClosing.Store(false)
 	}
-	s.syncCompanionMenu()
 }
 
 func (s *Service) DismissCompanion() {
@@ -177,11 +277,10 @@ func (s *Service) ShowCompanion() error {
 }
 
 func (s *Service) emitCompanion(action string) {
-	if s.gui == nil {
-		return
+	if s.gui != nil {
+		s.gui.Event.Emit("yoyo:companion", action)
 	}
-	s.gui.Event.Emit("yoyo:companion", action)
-	s.syncCompanionMenu()
+	s.refreshChrome()
 }
 
 func (s *Service) OpenCompanion() error {
@@ -194,9 +293,9 @@ func (s *Service) OpenCompanion() error {
 		s.companion.Show()
 		s.companion.SetAlwaysOnTop(true)
 		hideCompanionTaskbar(s.companion)
-		applyCompanionShape(s.companion, s.companionCaption.Load())
-		setCompanionPassthrough(s.companion, true)
+		s.applyCompanionCallGeometry()
 		s.pinCompanion(s.companion)
+		s.replayCompanionCall()
 		s.emitCompanion("shown")
 		return nil
 	}
@@ -251,9 +350,11 @@ func (s *Service) OpenCompanion() error {
 			s.companion = nil
 		}
 		if s.Quitting() || s.companionClosing.Load() {
+			s.endCompanionCall(false)
 			return
 		}
 		s.companionDismissed.Store(true)
+		s.endCompanionCall(false)
 		s.emitCompanion("hidden")
 	})
 	win.OnWindowEvent(events.Common.WindowDidMove, func(*application.WindowEvent) {
@@ -267,20 +368,21 @@ func (s *Service) OpenCompanion() error {
 	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
 		if s.companionPlaced.CompareAndSwap(false, true) {
 			px, py := companionOrigin()
-			win.SetSize(companionW, companionH)
+			s.applyCompanionCallGeometry()
 			win.SetPosition(px, py)
 			win.SetAlwaysOnTop(true)
 		}
 		if !s.GetConfig().CompanionEnabled || s.companionDismissed.Load() {
 			s.CloseCompanion()
+			s.refreshChrome()
 			return
 		}
 		win.Show()
 		win.SetAlwaysOnTop(true)
 		hideCompanionTaskbar(win)
-		applyCompanionShape(win, s.companionCaption.Load())
-		setCompanionPassthrough(win, true)
+		s.applyCompanionCallGeometry()
 		s.pinCompanion(win)
+		s.replayCompanionCall()
 		s.emitCompanion("shown")
 	})
 	return nil
@@ -314,21 +416,30 @@ func (s *Service) startCursorWatch() {
 			lx, ly, ww, wh, locOK := companionCursorLocal(win)
 			hit := locOK && CompanionHit(lx, ly, ww, wh, caption)
 			down := leftMouseDown()
+			ignore := s.companionIgnoresHits()
+			inCall := s.companionCall.Load()
 			want := true
-			if locOK {
-				want = !(hit || dragging || (armed && down))
+			if locOK && !ignore {
+				if inCall {
+					want = false
+				} else {
+					want = !(hit || dragging || (armed && down))
+				}
 			}
 			if runtime.GOOS == "windows" {
 				if locOK && (caption != lastCap || absF(ww-lastWW) > 1 || absF(wh-lastWH) > 1) {
 					lastCap, lastWW, lastWH = caption, ww, wh
-					applyCompanionShape(win, caption)
+					applyCompanionShape(win, caption || s.companionCall.Load())
 				}
 			} else if want != passthrough {
 				passthrough = want
 				setCompanionPassthrough(win, want)
 			}
 			cx, cy, curOK := desktopCursorCSS()
-			if down && !downPrev && hit && curOK {
+			if ignore || inCall {
+				armed, dragging = false, false
+			}
+			if down && !downPrev && hit && curOK && !ignore && !inCall {
 				wx, wy := win.Position()
 				armed = true
 				grabX = cx - float64(wx)

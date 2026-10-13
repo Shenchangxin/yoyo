@@ -8,7 +8,11 @@ const (
 	ChannelStable  Channel = "stable"
 	ChannelBeta    Channel = "beta"
 	ChannelNightly Channel = "nightly"
+	ChannelLatest  Channel = "latest"
 )
+
+// DefaultChannel is the only feed we publish and poll.
+const DefaultChannel = ChannelLatest
 
 // BinaryChannel is independent from harness CAS refs. Agent evolution must
 // never rotate updater keys or rewrite this package.
@@ -18,8 +22,6 @@ type Status struct {
 }
 
 func Current(ch Channel) Status {
-	if ch == "" {
-		ch = ChannelNightly
-	}
-	return Status{Version: version.Version, Channel: ch}
+	_ = ch
+	return Status{Version: version.Version, Channel: DefaultChannel}
 }

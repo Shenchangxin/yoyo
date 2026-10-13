@@ -45,11 +45,11 @@ func TestBuildSignedChannels(t *testing.T) {
 	if err := run([]string{"-dist", dist, "-version", ver, "-out", out, "-notes", "test"}); err != nil {
 		t.Fatal(err)
 	}
-	body, err := os.ReadFile(filepath.Join(out, "channels", "stable.json"))
+	body, err := os.ReadFile(filepath.Join(out, "channels", "latest.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := os.ReadFile(filepath.Join(out, "channels", "stable.json.sig"))
+	sig, err := os.ReadFile(filepath.Join(out, "channels", "latest.json.sig"))
 	if err != nil {
 		t.Fatal(err)
 	}
