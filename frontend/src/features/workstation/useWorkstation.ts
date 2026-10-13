@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError, classifyItem, shortError } from "../../lib/error";
-import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, userTurnCount, withLiveTail } from "../../lib/stream";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { asArray, num, str } from "../../lib/normalize";
@@ -48,7 +48,7 @@ export const emptyCfg: AppConfig = {
   notifyWhenUnfocusedOnly: false,
   uiScale: 1,
   showThinking: false,
-  updateChannel: "nightly",
+  updateChannel: "latest",
   theme: "system",
   paletteDark: "ink",
   paletteLight: "neutral",
@@ -577,9 +577,9 @@ export function useWorkstation() {
         const mod: any = await import("@wailsio/runtime");
         const Events = mod.Events;
         if (!alive || !Events?.On) return;
-        offs.push(Events.On("yoyo:about", (info: any) => { setAboutInfo(info || {}); setAboutOpen(true); }));
+        offs.push(Events.On("yoyo:about", (info: any) => { setAboutInfo(unwrapEvent(info) || {}); setAboutOpen(true); }));
         offs.push(Events.On("yoyo:workspace", (path: any) => {
-          const p = typeof path === "string" ? path : "";
+          const p = eventText(path);
           if (!p) return;
           setSavedCfg((cfg) => {
             const next = { ...cfg, workspace: p };
@@ -593,11 +593,11 @@ export function useWorkstation() {
             setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
           }).catch(() => {});
         }));
-        offs.push(Events.On("yoyo:command", (cmd: any) => handlers.current.command(String(cmd || ""))));
+        offs.push(Events.On("yoyo:command", (cmd: any) => handlers.current.command(eventText(cmd))));
         offs.push(Events.On("yoyo:quit", () => handlers.current.quit()));
-        offs.push(Events.On("yoyo:focus", (session: any) => handlers.current.focus(typeof session === "string" ? session : "")));
-        offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(info || {}); openSettings("advanced", "advanced-doctor"); }));
-        offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(info || {}); openSettings("advanced", "advanced-logs"); }));
+        offs.push(Events.On("yoyo:focus", (session: any) => handlers.current.focus(eventText(session))));
+        offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(unwrapEvent(info) || {}); openSettings("advanced", "advanced-doctor"); }));
+        offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(unwrapEvent(info) || {}); openSettings("advanced", "advanced-logs"); }));
       } catch {
         /* browser */
       }
@@ -1552,7 +1552,10 @@ export function useWorkstation() {
     else if (c === "palette") setPalette(true);
     else if (c === "control") openSettings();
     else if (c === "rename") useUI.getState().requestRename();
-    else if (c === "new") void onNew();
+    else if (c === "new") {
+      useUI.getState().showConversation();
+      void onNewIn();
+    }
     else void onSlash("/" + c, "");
   };
   handlers.current.quit = requestQuit;

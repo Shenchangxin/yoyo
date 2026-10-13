@@ -16,6 +16,7 @@ const (
 	vkLButton               = 0x01
 	wsExLayered             = 0x00080000
 	wsExNoRedirectionBitmap = 0x00200000
+	wsExTransparent         = 0x00000020
 	rgnOr                   = 2
 )
 
@@ -98,7 +99,15 @@ func restoreCompanionComposition(win application.Window) {
 		return
 	}
 	style := w32.GetWindowLongPtr(hwnd, w32.GWL_EXSTYLE)
-	next := (style | wsExNoRedirectionBitmap) &^ wsExLayered
+	next := style | wsExNoRedirectionBitmap
+	if companionClickThrough.Load() {
+		// Persistent click-through for Focus Mode. Hover-toggling WS_EX_TRANSPARENT
+		// un-paints the WebView2 blob; a stable flag does not.
+		next |= wsExLayered | wsExTransparent
+	} else {
+		next &^= wsExLayered
+		next &^= wsExTransparent
+	}
 	if next != style {
 		w32.SetWindowLongPtr(hwnd, w32.GWL_EXSTYLE, next)
 		w32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE|w32.SWP_FRAMECHANGED)

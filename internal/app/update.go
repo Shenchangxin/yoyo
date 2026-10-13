@@ -69,11 +69,7 @@ func (a *App) feedURL() string {
 	if a != nil && strings.TrimSpace(a.Config.UpdateURL) != "" {
 		return strings.TrimSpace(a.Config.UpdateURL)
 	}
-	ch := update.ChannelNightly
-	if a != nil {
-		ch = update.NormalizeChannel(a.Config.UpdateChannel)
-	}
-	return update.FeedURL(ch)
+	return update.FeedURL(update.DefaultChannel)
 }
 
 func (a *App) startUpdateLoop() {
@@ -138,7 +134,7 @@ func (a *App) updateSnapshot() map[string]any {
 		"size":              size,
 		"url":               a.Config.UpdateURL,
 		"feed":              a.feedURL(),
-		"channel":           a.Config.UpdateChannel,
+		"channel":           string(update.DefaultChannel),
 		"auto_check":        a.Config.UpdateAutoCheck,
 		"pubkey_configured": len(pub) == 32,
 	}
@@ -207,7 +203,7 @@ func (a *App) CheckUpdate() map[string]any {
 		a.finishUpdateErr(err.Error())
 		return a.updateSnapshot()
 	}
-	res.Current = update.Current(update.NormalizeChannel(a.Config.UpdateChannel))
+	res.Current = update.Current(update.DefaultChannel)
 	res.Newer = update.IsNewer(res.Manifest.Version, res.Current.Version)
 	diaglog.Info("update check", "component", "update", "verified", res.Verified, "newer", res.Newer, "version", res.Manifest.Version)
 
@@ -329,7 +325,7 @@ func (a *App) notifyUpdateReady(ver string) {
 		Payload: map[string]any{
 			"version": ver,
 			"title":   "Yoyo " + ver,
-			"text":    "Update downloaded. Install from Settings when ready.",
+			"text":    "Update downloaded. Install from the download icon when ready.",
 		},
 	})
 }

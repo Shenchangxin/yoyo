@@ -19,7 +19,7 @@ func (s *Service) SetPaused(paused bool) error {
 	if paused {
 		s.SetCompanionCall(false)
 	}
-	s.RebuildMenus()
+	s.refreshChrome()
 	return err
 }
 
@@ -187,23 +187,11 @@ func (s *Service) VoiceReceipt(sessionID string, durationSec int, transcript str
 }
 
 func (s *Service) SetCompanionCall(on bool) {
-	s.companionCall.Store(on)
-	companionInteractive.Store(on)
-	if s.gui != nil {
-		s.gui.Event.Emit("yoyo:call", on)
-	}
-	win := s.companion
-	if win == nil {
-		return
-	}
 	if on {
-		win.SetSize(companionCallW, companionCallH)
-		setCompanionPassthrough(win, false)
-		applyCompanionShape(win, true)
+		s.beginCompanionCall()
 		return
 	}
-	win.SetSize(companionW, companionH)
-	applyCompanionShape(win, s.companionCaption.Load())
+	s.endCompanionCall(true)
 }
 
 func decodeSkinB64Local(s string) ([]byte, error) {

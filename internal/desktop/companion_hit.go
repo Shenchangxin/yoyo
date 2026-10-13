@@ -7,6 +7,7 @@ import (
 )
 
 var companionInteractive atomic.Bool
+var companionClickThrough atomic.Bool
 
 const (
 	companionW         = 232

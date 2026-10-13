@@ -68,25 +68,16 @@ func Revision() string {
 }
 
 func NormalizeChannel(ch string) Channel {
-	switch Channel(strings.ToLower(strings.TrimSpace(ch))) {
-	case ChannelStable:
-		return ChannelStable
-	case ChannelBeta:
-		return ChannelBeta
-	case ChannelNightly:
-		return ChannelNightly
-	default:
-		return ChannelStable
-	}
+	_ = ch
+	return DefaultChannel
 }
 
-// FeedURL is the public channel JSON on ModelScope. Override with a full
-// update_url in config; this is what an empty URL resolves to.
+// FeedURL is the public latest JSON on ModelScope. Override with a full
+// update_url in config; this is what an empty URL resolves to. Check still
+// tries nightly.json / stable.json if latest.json is missing or empty.
 func FeedURL(ch Channel) string {
-	if ch == "" {
-		ch = ChannelStable
-	}
-	return ResolveURL("channels/" + string(ch) + ".json")
+	_ = ch
+	return ResolveURL("channels/" + string(DefaultChannel) + ".json")
 }
 
 func ResolveURL(file string) string {

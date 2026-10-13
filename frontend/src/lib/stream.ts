@@ -26,6 +26,7 @@ export {
   parseLiveNotice,
   replayEvents,
   unwrapEvent,
+  eventText,
   userTurnCount,
 } from "./stream-fold";
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,10 +38,13 @@ type Service struct {
 	companionClamping  atomic.Bool
 	companionCaption   atomic.Bool
 	companionCall      atomic.Bool
-	companionMenu      *application.MenuItem
+	companionFocus     atomic.Bool
+	agentBusy          atomic.Bool
+	lastPulseSession   atomic.Value
 	cursorWatch        atomic.Bool
 	tray               *application.SystemTray
 	menuLocale         string
+	chromeMu           sync.Mutex
 	quitting           atomic.Bool
 	workerLog          *os.File
 }

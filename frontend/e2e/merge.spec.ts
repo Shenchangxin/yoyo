@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { dropTurnErrors, eventFingerprint, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
+import { dropTurnErrors, eventFingerprint, eventText, foldLiveIntoSeed, foldTurnErrors, HOT_TRANSCRIPT_TURNS, itemFromEvent, lastUserTurns, mergeItem, mergePendingUsers, parseLiveNotice, replayEvents, UI_TEXT_CAP, unwrapEvent, userTurnCount, withLiveTail } from "../src/lib/stream-fold";
 import { layoutRows, processGroupLive, tailProcessPairs, type AgentPart } from "../src/lib/transcript-layout";
 import { latestTaskPlan, parsePlanText } from "../src/lib/plan";
 import { toolDetail, toolName, isArtifactTool, isToolFailed } from "../src/lib/tool-summary";
@@ -108,6 +108,12 @@ test("WailsEvent envelope unwraps to the trace payload", () => {
   expect(it.text).toBe("round two");
   expect(it.payload.id).toBe("s:r2");
   expect(unwrapEvent({ name: "yoyo:item", data: [inner] }).type).toBe("assistant");
+});
+
+test("WailsEvent string commands unwrap to the payload", () => {
+  expect(eventText({ name: "yoyo:command", data: "new" })).toBe("new");
+  expect(eventText({ name: "yoyo:command", data: ["control"] })).toBe("control");
+  expect(eventText("new")).toBe("new");
 });
 
 test("unwrap does not walk into a typed event's nested data field", () => {

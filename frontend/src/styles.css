@@ -2348,6 +2348,10 @@ html.companion body {
   overflow: visible;
 }
 
+html.companion {
+  --custom-contextmenu: yoyo-companion;
+  --default-contextmenu: hide;
+}
 .companion-stage {
   position: relative;
   display: flex;
@@ -2361,6 +2365,8 @@ html.companion body {
   -webkit-user-select: none;
   pointer-events: none;
   background: transparent !important;
+  --custom-contextmenu: yoyo-companion;
+  --default-contextmenu: hide;
 }
 .companion-pet-wrap {
   position: relative;
@@ -2372,6 +2378,8 @@ html.companion body {
   cursor: grab;
   background: transparent !important;
   border-radius: 50%;
+  --custom-contextmenu: yoyo-companion;
+  --default-contextmenu: hide;
 }
 .companion-pet-wrap:active {
   cursor: grabbing;
@@ -2385,6 +2393,8 @@ html.companion .presence-engine svg {
 .companion-bubble {
   position: relative;
   z-index: 2;
+  --custom-contextmenu: yoyo-companion;
+  --default-contextmenu: hide;
   width: max-content;
   max-width: min(196px, calc(100% - 8px));
   margin-top: 6px;

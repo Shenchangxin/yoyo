@@ -534,3 +534,10 @@ export function unwrapEvent(e: any, depth = 0): any {
   if (named && e.data != null) return unwrapEvent(e.data, depth + 1);
   return e;
 }
+
+export function eventText(raw: any): string {
+  const d = unwrapEvent(raw);
+  if (typeof d === "string") return d.trim();
+  if (typeof d === "number" || typeof d === "boolean") return String(d);
+  return "";
+}

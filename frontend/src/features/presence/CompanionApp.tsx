@@ -224,7 +224,7 @@ export function CompanionApp() {
 
   if (inCall) {
     return (
-      <div className="companion-stage" data-testid="companion-stage">
+      <div className="companion-stage" data-testid="companion-stage" data-context-menu="yoyo-companion">
         <CallView
           sessionId={sessionRef.current}
           paused={paused}
@@ -239,12 +239,16 @@ export function CompanionApp() {
     <div
       className="companion-stage"
       data-testid="companion-stage"
+      data-context-menu="yoyo-companion"
     >
       <div
         className="companion-pet-wrap"
+        data-testid="companion-pet-wrap"
+        data-context-menu="yoyo-companion"
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
         onPointerDown={(e) => {
+          if (e.button !== 0) return;
           dragged.current = false;
           grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
           e.currentTarget.setPointerCapture(e.pointerId);

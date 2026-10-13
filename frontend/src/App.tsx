@@ -13,6 +13,7 @@ import { PageHeader } from "./features/shell/PageHeader";
 import { CommandPalette } from "./features/CommandPalette";
 import { ResizeHandle } from "./features/ResizeHandle";
 import { Titlebar } from "./features/Titlebar";
+import { UpdateButton } from "./features/UpdateButton";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
 import { TurnOutline } from "./features/TurnOutline";
@@ -549,6 +550,7 @@ function WorkstationApp() {
       >
         <Kbd>{displayShortcut(DEFAULT_KEYMAP.palette)}</Kbd>
       </button>
+      <UpdateButton />
     </>
   );
 

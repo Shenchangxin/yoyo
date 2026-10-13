@@ -43,6 +43,12 @@ func Verify(pub ed25519.PublicKey, payload, sig []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("update: bad public key")
 	}
+	if len(payload) == 0 {
+		return fmt.Errorf("update: empty body")
+	}
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("update: bad signature")
+	}
 	if !ed25519.Verify(pub, payload, sig) {
 		return fmt.Errorf("update: signature rejected")
 	}
