@@ -16,8 +16,6 @@ import type { CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource
 import { ART_CRITIQUE_NODE_TYPE } from "@yingce/lib/art-critique/contracts";
 import { getNodeDefinition, getNodeMinSize, shouldKeepAspectRatio } from "@yingce/lib/canvas/node-registry";
 import { CanvasNodeContent, CanvasNodeImageInfo, CanvasNodeProducedModel } from "./canvas-node-content";
-import { canvasNodeTypeMark } from "@yingce/lib/canvas/canvas-node-mark";
-import { useCopy } from "@/lib/i18n";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 type CanvasTheme = (typeof canvasThemes)[keyof typeof canvasThemes];
@@ -670,12 +668,10 @@ function NodeExternalHeader({ node, scale, dimensionLabel, active, editable, edi
     onCommit: () => void;
     onCancel: () => void;
 }) {
-    const board = useCopy().video.canvasBoard;
     // 标题保持屏幕尺寸只适用于近景；远景继续反向缩放会遮住节点和连线。
     if (scale < NODE_EXTERNAL_HEADER_MIN_SCALE && !editing) return null;
-    const shotRole = node.metadata?.shotRole;
-    const shotRoleLabel = shotRole === "keyframe" ? board.roleKeyframe : shotRole === "final" ? board.roleFinal : shotRole === "ref" ? board.roleRef : "";
     const inverseScale = 1 / Math.max(scale, 0.05);
+    const Icon = nodeTypeIcon(node.type);
     const maxHeaderWidth = Math.min(240, node.width * scale);
 
     return (
@@ -713,8 +709,7 @@ function NodeExternalHeader({ node, scale, dimensionLabel, active, editable, edi
                 >
                     {node.metadata?.locked ? <Lock className="size-3" /> : <GripVertical className="size-3" strokeWidth={1.8} />}
                 </button>
-                <span className="canvas-node-type-mark" aria-hidden>{canvasNodeTypeMark(node.type)}</span>
-                {shotRoleLabel ? <span className="canvas-node-shot-role">{shotRoleLabel}</span> : null}
+                <Icon className="size-3 shrink-0" strokeWidth={1.8} />
                 {editing ? (
                     <input
                         autoFocus

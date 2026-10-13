@@ -32,9 +32,7 @@ import { buildCreationMentionReferences, expandCreationPrompt, reconcileCreation
 import { creationAttachmentFromAsset, creationAttachmentFromAudio, creationAttachmentFromAudioAsset, creationAttachmentFromDocument, creationAttachmentFromExternalAsset, creationAttachmentFromImage, creationAttachmentFromVideo, creationAttachmentFromVideoAsset, creationAttachmentKind, creationAudioAsset, creationFileAccepted, creationImageAsset, creationMediaAspectRatio, creationUploadAccept, creationVideoAsset, removeCreationAttachment, splitCreationAttachments, type CreationAttachment } from "./creation-assets";
 import { defaultCreationMode, modeLabels, type CreationConversation, type CreationMessage, type CreationMode, type CreationRetryContext, type CreationSettings, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
 import { attachCreationTaskContexts, completedCreationGenerationTask, conversationTimestamp, creationShotRail, creationVideoShotOrdinal, isImageAttachment, isVideoAttachment, materializeCreationTaskResults, newConversation, newMessage, reconcileCreationTaskMessages, resolveActiveCreationConversationId } from "./creation-conversations";
-import { CreationComposer, CreationEmptySuggest, CreationHistoryDrawer, CreationMessageView, CreationModeTabs, CreationRecentThreads, CreationShotFilmstrip, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
-import { useCopy } from "@/lib/i18n";
-import { isYoyoCanvasHost } from "@/features/video/canvas-host/design-system";
+import { CreationComposer, CreationEmptySuggest, CreationFeaturedWorks, CreationHistoryDrawer, CreationMessageView, CreationModeTabs, CreationWorkspaceToolbar, creationAssetCategoryLabels } from "./creation-workspace";
 import { CreationAgentEntry } from "./creation-agent-entry";
 import { createCreationSubmitGate } from "./creation-submit-gate";
 import { creationVideoConfig } from "./creation-generation-config";
@@ -81,8 +79,6 @@ function writeComposerPref(key: string, value: boolean) {
 
 export default function CreatePage() {
     const [agentMode, setAgentMode] = useState(false);
-    const create = useCopy().video.create;
-    const hosted = isYoyoCanvasHost();
     const { message: toast, modal } = App.useApp();
     const navigate = useNavigate();
     const [openingCanvas, setOpeningCanvas] = useState(false);
@@ -991,13 +987,15 @@ export default function CreatePage() {
     };
 
     const confirmDeleteConversation = (conversation: CreationConversation) => {
+        const title = conversation.title.trim() || "新创作";
+        const label = title.length > 32 ? `${title.slice(0, 32)}...` : title;
         modal.confirm({
             className: "workspace-modal workspace-modal-compact",
-            title: create.deleteThread,
-            content: create.deleteThreadBody,
-            okText: create.deleteThreadOk,
+            title: "删除历史对话？",
+            content: `确定删除「${label}」吗？这只会删除历史对话记录，不会删除已上传或生成的任何素材。此操作不可撤销。`,
+            okText: "删除对话",
             okButtonProps: { danger: true },
-            cancelText: create.keep,
+            cancelText: "保留",
             onOk: async () => {
                 try {
                     const deletingActive = activeIdRef.current === conversation.id;
@@ -1016,9 +1014,9 @@ export default function CreatePage() {
                         setAttachments([]);
                         setDraftReferences([]);
                     }
-                    toast.success(create.threadDeleted);
+                    toast.success("历史对话已删除，素材仍保留");
                 } catch (error) {
-                    toast.error(error instanceof Error ? error.message : create.threadDeleteFailed);
+                    toast.error(error instanceof Error ? error.message : "历史对话删除失败");
                     throw error;
                 }
             },
@@ -1032,7 +1030,7 @@ export default function CreatePage() {
         void commitDoc(
             (doc) => ({ ...doc, conversations: updateCreationConversationSnapshot(doc.conversations, conversation.id, (item) => ({ ...item, title: nextTitle })) }),
             { activeId: activeIdRef.current, conversations: next },
-        ).catch((error) => toast.error(error instanceof Error ? error.message : create.threadRenameFailed));
+        ).catch((error) => toast.error(error instanceof Error ? error.message : "对话重命名保存失败"));
     };
 
     const restoreMessageDraft = (item: CreationMessage) => {
@@ -1064,7 +1062,7 @@ export default function CreatePage() {
             updateActive((conversation) => {
                 const messages = conversation.messages.filter((message) => !removedIds.has(message.id));
                 const firstPrompt = messages.find((message) => message.role === "user")?.content.trim();
-                return { ...conversation, title: firstPrompt ? firstPrompt.slice(0, 24) : create.untitledThread, updatedAt: new Date().toISOString(), messages };
+                return { ...conversation, title: firstPrompt ? firstPrompt.slice(0, 24) : "新创作", updatedAt: new Date().toISOString(), messages };
             });
         };
         if (!retryOf) {
@@ -1164,7 +1162,7 @@ export default function CreatePage() {
         <div className="creation-home relative flex h-full min-h-0 flex-col overflow-hidden">
             {isEmpty ? <>
                 <div className="creation-top-actions">
-                    <Tooltip title={create.history}><button type="button" aria-label={create.historyAria} aria-expanded={historyOpen} className="creation-top-action" onClick={() => setHistoryOpen(true)}><History /></button></Tooltip>
+                    <Tooltip title="历史对话"><button type="button" aria-label="查看历史对话" aria-expanded={historyOpen} className="creation-top-action" onClick={() => setHistoryOpen(true)}><History /></button></Tooltip>
                 </div>
                 <AnimatePresence>
                     {launchpadCondensed && !agentMode ? <motion.div className="creation-floating-prompt" key="floating-prompt"
@@ -1172,21 +1170,19 @@ export default function CreatePage() {
                         initial={{ opacity: 0, y: -12, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .98 }}
                         transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 32, mass: .8 }}>
                         <Clapperboard aria-hidden="true" />
-                        <input aria-label={create.continuePrompt} placeholder={create.continuePrompt} value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
-                        <Tooltip title={create.expandComposer}><button type="button" aria-label={create.expandComposer} onClick={() => {
+                        <input aria-label="快捷编辑提示词" placeholder="继续描述你的创作想法…" value={prompt} disabled={busy || referenceReplacementBusy} onChange={(event) => setPrompt(event.target.value)} />
+                        <Tooltip title="展开完整创作区"><button type="button" aria-label="展开完整创作区" onClick={() => {
                             threadScrollRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
                             composerFocusRef.current?.focus({ preventScroll: true });
                         }}><Maximize2 /></button></Tooltip>
                     </motion.div> : null}
                 </AnimatePresence>
-                <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-empty-workspace creation-scrollbar" data-testid="creation-empty">
-                {hosted ? null : (
+                <main ref={threadScrollRef} onScroll={handleThreadScroll} className="creation-empty-workspace creation-scrollbar">
                 <div className="creation-home-heading">
                     <h1>和{brandName}聊聊创作想法</h1>
                     <p>从一个画面、一个角色或一句话开始，继续你的创作。</p>
                 </div>
-                )}
-                <section ref={launchpadRef} className="creation-launchpad" aria-label={create.hint}>
+                <section ref={launchpadRef} className="creation-launchpad" aria-label="开始创作">
                     <div className={cn("creation-composer-stage is-home-mode", agentMode && "is-agent-mode")}>
                         <CreationModeTabs mode={mode} agentActive={agentMode} onAgentSelect={() => setAgentMode(true)} onModeChange={(next) => { setAgentMode(false); selectMode(next); }} />
                         {agentMode ? <CreationAgentEntry /> : <div className="creation-empty-composer"><CreationComposer {...composerProps} variant="empty" /></div>}
@@ -1195,8 +1191,10 @@ export default function CreatePage() {
                         onStartPrompt={(nextMode, prompt) => { setAgentMode(false); selectMode(nextMode); setPrompt(prompt); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
                         onOpenLibrary={() => { setAgentMode(false); selectMode("image"); setLibraryOpen(true); }}
                     />
-                    <CreationRecentThreads conversations={historyConversations} onSelect={selectConversation} onNew={startNewConversation} />
                 </section>
+                <CreationFeaturedWorks
+                    onStartPrompt={(nextMode, prompt) => { setAgentMode(false); selectMode(nextMode); setPrompt(prompt); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
+                />
             </main>
             </> : <div className="creation-thread-workbench">
                 <CreationWorkspaceToolbar onNewConversation={startNewConversation} onOpenHistory={() => setHistoryOpen(true)} shots={videoShots} onJumpToShot={jumpToShot} onContinueCanvas={() => void continueOnCanvas()} openingCanvas={openingCanvas} />
@@ -1212,7 +1210,6 @@ export default function CreatePage() {
                         onEditUserMessage={() => { restoreMessageDraft(item); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
                     /></div>)}</div></section>
                 </main>
-                <CreationShotFilmstrip shots={videoShots} onJumpToShot={jumpToShot} />
                 <section className="creation-thread-composer"><CreationComposer {...composerProps} variant="thread" /></section>
             </div>}
         </div>

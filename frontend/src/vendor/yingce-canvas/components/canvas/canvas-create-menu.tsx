@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from "react";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { cn } from "@yingce/lib/utils";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
-import { useCopy } from "@/lib/i18n";
 
 export type CanvasCreateCommand = {
     id: string;
@@ -15,15 +14,15 @@ export type CanvasCreateCommand = {
     onClick: () => void;
 };
 
+const SECTION_LABEL = {
+    node: "节点",
+    workflow: "工作流",
+    resource: "资源",
+    project: "项目",
+} as const;
+
 export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[] }) {
     const theme = canvasThemes[useActiveTheme()];
-    const board = useCopy().video.canvasBoard;
-    const sectionLabel = {
-        node: board.sectionNode,
-        workflow: board.sectionWorkflow,
-        resource: board.sectionResource,
-        project: board.sectionProject,
-    } as const;
     const groups: Array<CanvasCreateCommand["section"]> = ["node", "workflow", "resource", "project"];
     const uniqueCommands = uniqueCreateCommands(commands);
 
@@ -34,7 +33,7 @@ export function CanvasCreateMenu({ commands }: { commands: CanvasCreateCommand[]
                 if (!items.length) return null;
                 return (
                     <section key={section}>
-                        <h3 className="sg-eyebrow">{sectionLabel[section]}</h3>
+                        <h3 className="sg-eyebrow">{SECTION_LABEL[section]}</h3>
                         {items.map((command) => (
                             <button
                                 key={command.id}

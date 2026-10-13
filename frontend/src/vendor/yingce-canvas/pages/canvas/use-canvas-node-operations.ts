@@ -6,9 +6,7 @@ import { nanoid } from "nanoid";
 
 import { NODE_DEFAULT_SIZE } from "@yingce/constant/canvas";
 import { FOLDER_COLLAPSED_HEIGHT, FOLDER_COLLAPSED_WIDTH, FRAME_HEADER_HEIGHT, getFrameChildIds, getFrameChildren, isFrameNode } from "@yingce/lib/canvas/canvas-frame";
-import { alignCanvasNodes, layoutCanvasAuto, layoutCanvasFlow, layoutCanvasNodes, layoutCanvasStoryboard, nextCanvasVersionLabel, spreadCanvasNodes, type CanvasAlignmentMode } from "@yingce/lib/canvas/canvas-layout";
-import { isYoyoCanvasHost } from "@/features/video/canvas-host/design-system";
-import { useCopy } from "@/lib/i18n";
+import { alignCanvasNodes, layoutCanvasAuto, layoutCanvasFlow, layoutCanvasNodes, nextCanvasVersionLabel, spreadCanvasNodes, type CanvasAlignmentMode } from "@yingce/lib/canvas/canvas-layout";
 import { applyCanvasConnectionPromptSync } from "@yingce/lib/canvas/canvas-resource-references";
 import { createCanvasNode, isHiddenBatchChild, removeCanvasNodes } from "@yingce/lib/canvas/canvas-project-domain";
 import { isolateCopiedNodeMetadata, nextCopiedNodeTitle } from "@yingce/lib/canvas/canvas-node-copy";
@@ -61,7 +59,6 @@ export function useCanvasNodeOperations({
     onNodesDeleted,
 }: UseCanvasNodeOperationsOptions) {
     const { message } = App.useApp();
-    const board = useCopy().video.canvasBoard;
     const effectiveConfig = useEffectiveConfig();
     const tldrawLicenseKey = useUserStore((state) => state.drawingEngine.tldrawLicenseKey);
     const runtimeStatuses = usePluginStore((state) => state.runtimeStatuses);
@@ -199,14 +196,14 @@ export function useCanvasNodeOperations({
             return !node.parentId;
         });
         if (candidates.length < 2) {
-            message.info(hasSelection ? board.arrangeNeedTwo : board.arrangeNeedTwoBoard);
+            message.info(hasSelection ? "请至少选择两个可整理节点" : "画布中至少需要两个可整理节点");
             return;
         }
 
-        const positions = isYoyoCanvasHost() ? layoutCanvasStoryboard(candidates) : layoutCanvasAuto(candidates, connectionsRef.current);
+        const positions = layoutCanvasAuto(candidates, connectionsRef.current);
         commitNodes(currentNodes.map((node) => positions.has(node.id) ? { ...node, position: positions.get(node.id)! } : node));
-        message.success(hasSelection ? (isYoyoCanvasHost() ? board.arrangedStoryboardSelection : board.arrangedMediaSelection) : (isYoyoCanvasHost() ? board.arrangedStoryboard : board.arrangedMedia));
-    }, [board, commitNodes, connectionsRef, message, nodesRef, selectedNodeIdsRef]);
+        message.success(hasSelection ? "已按媒体分类整理选中节点" : "已按媒体分类整理画布");
+    }, [commitNodes, connectionsRef, message, nodesRef, selectedNodeIdsRef]);
 
     const spreadSelectedNodes = useCallback(() => {
         const currentNodes = nodesRef.current;
@@ -338,18 +335,6 @@ export function useCanvasNodeOperations({
         commitNodes(nodesRef.current.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, locked } } : node));
         message.success(locked ? "节点已锁定位置和尺寸" : "节点已解锁");
     }, [commitNodes, message, nodesRef]);
-
-    const setNodeShotRole = useCallback((nodeId: string, role: "keyframe" | "final" | "ref" | undefined) => {
-        const target = nodesRef.current.find((node) => node.id === nodeId);
-        if (!target) return;
-        commitNodes(nodesRef.current.map((node) => {
-            if (node.id !== nodeId) return node;
-            const metadata = { ...node.metadata };
-            if (role) metadata.shotRole = role;
-            else delete metadata.shotRole;
-            return { ...node, metadata };
-        }));
-    }, [commitNodes, nodesRef]);
 
     const deleteNodes = useCallback((ids: Set<string>) => {
         if (!ids.size) return;
@@ -586,6 +571,5 @@ export function useCanvasNodeOperations({
         setPrimaryVersion,
         shouldPreferCopiedNodes,
         toggleNodeLocked,
-        setNodeShotRole,
     };
 }

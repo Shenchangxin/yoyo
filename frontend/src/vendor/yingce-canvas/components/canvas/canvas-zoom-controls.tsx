@@ -8,7 +8,6 @@ import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
 import { canvasThemes } from "@yingce/lib/canvas-theme";
 import { subscribeCanvasViewportPreview } from "@yingce/lib/canvas/canvas-live-viewport";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
-import { useCopy } from "@/lib/i18n";
 import { GenerationSettingsPortal } from "./canvas-generation-settings-shell";
 
 type CanvasZoomControlsProps = {
@@ -27,7 +26,6 @@ type CanvasZoomControlsProps = {
 const QUICK_ZOOM_LEVELS = [0.25, 0.5, 1, 2] as const;
 
 export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoArrange, hideNodeConnections = false, onHideNodeConnectionsChange, isMiniMapOpen, onToggleMiniMap, onOpenShortcuts, containerRef }: CanvasZoomControlsProps) {
-    const copy = useCopy().video.canvasBoard;
     const theme = canvasThemes[useActiveTheme()];
     const rootRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -89,7 +87,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoA
                 <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement="topLeft" width={220} estimatedHeight={180}>
                     <div className="p-2.5" style={{ color: theme.node.text }}>
                         <div className="flex items-center justify-between gap-3">
-                            <span className="text-[13px] font-medium">{copy.zoomTitle}</span>
+                            <span className="text-[13px] font-medium">缩放</span>
                             <span ref={panelLabelRef} className="text-[12.5px] font-medium tabular-nums" style={{ color: theme.accent.primary }}>
                                 {Math.round(scale * 100)}%
                             </span>
@@ -104,7 +102,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoA
                             className="aceternity-zoom-range mt-3 h-4 w-full"
                             style={{ accentColor: theme.accent.primary }}
                             onChange={(event) => commitScale(Number(event.target.value) / 100)}
-                            aria-label={copy.zoomExact}
+                            aria-label="精确缩放画布"
                         />
                         <div className="mt-2.5 grid grid-cols-4 gap-1">
                             {QUICK_ZOOM_LEVELS.map((level) => (
@@ -122,22 +120,22 @@ export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoA
                 </GenerationSettingsPortal>
             ) : null}
 
-            <div className="canvas-zoom-capsule sg-island pointer-events-auto inline-flex items-center" role="toolbar" aria-label={copy.zoom} style={{ color: theme.node.text }}>
-                <Tooltip title={copy.zoomOut} placement="top" mouseEnterDelay={0.15}>
-                <button type="button" className="sg-ghost" aria-label={copy.zoomOut} onClick={() => commitScale(liveScaleRef.current - 0.1)}>
+            <div className="canvas-zoom-capsule sg-island pointer-events-auto inline-flex items-center" role="toolbar" aria-label="画布视图控制" style={{ color: theme.node.text }}>
+                <Tooltip title="缩小画布" placement="top" mouseEnterDelay={0.15}>
+                <button type="button" className="sg-ghost" aria-label="缩小画布" onClick={() => commitScale(liveScaleRef.current - 0.1)}>
                     <Minus strokeWidth={1.55} />
                 </button>
                 </Tooltip>
                 <span className="canvas-zoom-sep" aria-hidden />
-                <Tooltip title={copy.zoomExact} placement="top" mouseEnterDelay={0.15}>
-                <button type="button" className="sg-ghost canvas-zoom-pct" aria-label={copy.zoomExact} aria-expanded={precisionOpen} onClick={() => setPrecisionOpen((value) => !value)}>
+                <Tooltip title="精确缩放" placement="top" mouseEnterDelay={0.15}>
+                <button type="button" className="sg-ghost canvas-zoom-pct" aria-label="精确缩放" aria-expanded={precisionOpen} onClick={() => setPrecisionOpen((value) => !value)}>
                     <span ref={dockLabelRef}>{Math.round(scale * 100)}</span>
                     <span className="ml-px text-[10px] font-medium opacity-45">%</span>
                 </button>
                 </Tooltip>
                 <span className="canvas-zoom-sep" aria-hidden />
-                <Tooltip title={copy.zoomIn} placement="top" mouseEnterDelay={0.15}>
-                <button type="button" className="sg-ghost" aria-label={copy.zoomIn} onClick={() => commitScale(liveScaleRef.current + 0.1)}>
+                <Tooltip title="放大画布" placement="top" mouseEnterDelay={0.15}>
+                <button type="button" className="sg-ghost" aria-label="放大画布" onClick={() => commitScale(liveScaleRef.current + 0.1)}>
                     <Plus strokeWidth={1.55} />
                 </button>
                 </Tooltip>
@@ -148,17 +146,17 @@ export function CanvasZoomControls({ scale, onScaleChange, onFitContent, onAutoA
                     autoAdjustOverflow
                     menu={{
                         items: [
-                            { key: "fit", icon: <Focus strokeWidth={1.55} />, label: copy.fit, onClick: onFitContent },
-                            ...(onAutoArrange ? [{ key: "arrange", icon: <LayoutTemplate strokeWidth={1.55} />, label: copy.arrange, onClick: onAutoArrange }] : []),
-                            { key: "minimap", icon: <Compass strokeWidth={1.55} />, label: isMiniMapOpen ? copy.minimapOff : copy.minimapOn, onClick: onToggleMiniMap },
-                            ...(onHideNodeConnectionsChange ? [{ key: "wires", icon: hideNodeConnections ? <Eye strokeWidth={1.55} /> : <EyeOff strokeWidth={1.55} />, label: hideNodeConnections ? copy.wiresOn : copy.wiresOff, onClick: () => onHideNodeConnectionsChange(!hideNodeConnections) }] : []),
+                            { key: "fit", icon: <Focus strokeWidth={1.55} />, label: "适应画布", onClick: onFitContent },
+                            ...(onAutoArrange ? [{ key: "arrange", icon: <LayoutTemplate strokeWidth={1.55} />, label: "自动整理", onClick: onAutoArrange }] : []),
+                            { key: "minimap", icon: <Compass strokeWidth={1.55} />, label: isMiniMapOpen ? "关闭小地图" : "打开小地图", onClick: onToggleMiniMap },
+                            ...(onHideNodeConnectionsChange ? [{ key: "wires", icon: hideNodeConnections ? <Eye strokeWidth={1.55} /> : <EyeOff strokeWidth={1.55} />, label: hideNodeConnections ? "显示连线" : "隐藏连线", onClick: () => onHideNodeConnectionsChange(!hideNodeConnections) }] : []),
                             { type: "divider" },
-                            { key: "shortcuts", icon: <HelpCircle strokeWidth={1.55} />, label: copy.shortcuts, onClick: onOpenShortcuts },
+                            { key: "shortcuts", icon: <HelpCircle strokeWidth={1.55} />, label: "快捷键", onClick: onOpenShortcuts },
                         ],
                     }}
                 >
-                    <Tooltip title={copy.zoom} placement="top" mouseEnterDelay={0.15}>
-                    <button type="button" className="sg-ghost" aria-label={copy.zoom}>
+                    <Tooltip title="视图" placement="top" mouseEnterDelay={0.15}>
+                    <button type="button" className="sg-ghost" aria-label="视图">
                         <Ellipsis strokeWidth={1.55} />
                     </button>
                     </Tooltip>

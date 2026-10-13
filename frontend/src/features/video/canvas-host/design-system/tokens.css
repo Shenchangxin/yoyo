@@ -265,30 +265,11 @@ html.light .yingce-popup-root {
 
 /* Top bar */
 .yingce-island .canvas-topbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
   height: var(--canvas-topbar-h);
   padding-inline: var(--canvas-inset-x);
   background: transparent;
   border: 0;
   backdrop-filter: none;
-}
-
-.yingce-island .canvas-topbar-project-cluster {
-  justify-self: start;
-}
-
-.yingce-island .canvas-topbar-tools-cluster {
-  justify-self: center;
-}
-
-.yingce-island .canvas-topbar-trailing-cluster {
-  justify-self: end;
-}
-
-.yingce-island [data-canvas-main-dock] {
-  display: none !important;
 }
 
 .yingce-island .canvas-topbar-cluster {
@@ -333,7 +314,7 @@ html.light .yingce-popup-root {
 }
 
 .yingce-island [data-canvas-main-dock] {
-  display: none !important;
+  overflow: visible;
 }
 
 .yingce-island [data-canvas-focus-mode="true"] {
@@ -514,9 +495,9 @@ html.light .yingce-popup-root {
 }
 
 .yingce-island .canvas-workspace-rail {
-  width: 36px;
-  padding: 6px 2px;
-  gap: 4px;
+  width: 48px;
+  padding: 8px 6px;
+  gap: 6px;
 }
 
 .yingce-island .canvas-workspace-rail-button span {
@@ -629,99 +610,6 @@ html.light .yingce-popup-root {
   font-weight: 510;
   letter-spacing: -0.02em;
   color: var(--foreground);
-}
-
-.yingce-island .canvas-node-type-mark,
-.yingce-island .canvas-node-shot-role {
-  display: inline-grid;
-  min-width: 14px;
-  height: 14px;
-  place-items: center;
-  border-radius: 4px;
-  background: var(--lift);
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
-
-.yingce-island .canvas-node-shot-role {
-  min-width: 0;
-  padding: 0 4px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.yingce-island .canvas-board-list {
-  position: absolute;
-  inset: var(--canvas-topbar-offset) var(--canvas-inset-x) var(--canvas-inset-y);
-  z-index: var(--z-panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  overflow: hidden;
-  border-radius: var(--sg-radius-card);
-  background: color-mix(in srgb, var(--background) 92%, transparent);
-  border: 1px solid var(--border);
-  padding: 12px;
-}
-
-.yingce-island .canvas-board-list-search input {
-  width: 100%;
-  height: 36px;
-  border: 1px solid var(--border);
-  border-radius: var(--sg-radius-control);
-  background: var(--lift);
-  color: var(--foreground);
-  padding: 0 10px;
-  font-size: 13px;
-}
-
-.yingce-island .canvas-board-list ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  overflow: auto;
-}
-
-.yingce-island .canvas-board-list button {
-  display: flex;
-  width: 100%;
-  min-height: 36px;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  border-radius: var(--sg-radius-control);
-  background: transparent;
-  color: var(--foreground);
-  padding: 6px 8px;
-  text-align: left;
-  font-size: 13px;
-}
-
-.yingce-island .canvas-board-list button.is-selected,
-.yingce-island .canvas-board-list button:hover {
-  background: var(--lift);
-}
-
-.yingce-island .canvas-board-list-title {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.yingce-island .canvas-board-list-role {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.yingce-island .canvas-board-view-toggle {
-  display: inline-flex;
-  align-items: center;
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -6,8 +6,7 @@ import type { InsertAssetPayload } from "./asset-picker-modal";
 import { useDeferredValue, useState } from "react";
 import { Button, Grid } from "antd";
 import { Home, PanelLeftClose, PanelLeftOpen, Layers, Images, ListChecks, History, X } from "lucide-react";
-import { isYoyoCanvasHost, requestHostNavigation } from "@/features/video/canvas-host/design-system";
-import { useCopy } from "@/lib/i18n";
+import { requestHostNavigation } from "@/features/video/canvas-host/design-system";
 import { AppDrawer } from "@yingce/components/ui/product/app-drawer";
 import { searchCanvasNodes } from "@yingce/lib/canvas/canvas-node-search";
 import { useEffectiveConfig } from "@yingce/stores/use-config-store";
@@ -47,8 +46,6 @@ export function CanvasWorkspacePanel({
     onCancelTask: (task: GenerationTask) => void;
 }) {
     const [tab, setTab] = useState("nodes");
-    const board = useCopy().video.canvasBoard;
-    const hosted = isYoyoCanvasHost();
     const theme = canvasThemes[useActiveTheme()];
     const [query, setQuery] = useState("");
     const history = tab === "history";
@@ -59,8 +56,8 @@ export function CanvasWorkspacePanel({
     const content = (
         <div className="canvas-workspace-panel flex h-full min-h-0 flex-col bg-background text-foreground" data-canvas-no-zoom data-canvas-wheel-scroll onWheel={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
             <header className="flex h-8 items-center justify-between border-b border-border px-3">
-                <strong className="sg-eyebrow m-0">{board.workspace}</strong>
-                <button aria-label={board.closeWorkspace} onClick={onClose}>
+                <strong className="sg-eyebrow m-0">工作区</strong>
+                <button aria-label="关闭工作区" onClick={onClose}>
                     <X className="size-4" />
                 </button>
             </header>
@@ -72,10 +69,10 @@ export function CanvasWorkspacePanel({
                 <>
                     {tasks.error ? (
                         <div role="alert" className="p-4">
-                            {board.taskLoadFailed}<Button onClick={() => void tasks.refetch()}>{board.retry}</Button>
+                            任务加载失败。<Button onClick={() => void tasks.refetch()}>重试</Button>
                         </div>
                     ) : tasks.loading ? (
-                        <p className="p-4">{board.loadingTasks}</p>
+                        <p className="p-4">正在加载任务…</p>
                     ) : history ? (
                         <CanvasWorkspaceHistoryPanel tasks={tasks.allTasks} refreshing={tasks.refreshing} onRefresh={() => void tasks.refetch()} onCancelTask={onCancelTask} />
                     ) : (
@@ -91,38 +88,34 @@ export function CanvasWorkspacePanel({
         </div>
     );
     const entries = [
-        { id: "nodes", label: board.nodes, icon: Layers },
-        { id: "assets", label: board.assets, icon: Images },
-        { id: "tasks", label: board.tasks, icon: ListChecks },
-        { id: "history", label: board.history, icon: History },
+        { id: "nodes", label: "节点", icon: Layers },
+        { id: "assets", label: "资产", icon: Images },
+        { id: "tasks", label: "任务", icon: ListChecks },
+        { id: "history", label: "历史", icon: History },
     ];
     return (
         <>
-            <nav className="canvas-workspace-rail" style={{ ...canvasDockStyle(theme), boxShadow: "none" }} aria-label={board.workspace} data-canvas-no-zoom onWheel={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
-                {hosted ? null : (
-                    <>
+            <nav className="canvas-workspace-rail" style={{ ...canvasDockStyle(theme), boxShadow: "none" }} aria-label="画布左侧菜单" data-canvas-no-zoom onWheel={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                 <Link
                     to="/"
                     className="canvas-workspace-rail-button"
-                    aria-label={board.home}
-                    title={board.home}
+                    aria-label="主页"
+                    title="返回主页"
                     onClick={(event) => {
                         if (requestHostNavigation("/")) event.preventDefault();
                     }}
                 >
                     <Home />
-                    <span>{board.home}</span>
+                    <span>主页</span>
                 </Link>
                 <div className="canvas-workspace-rail-divider" aria-hidden="true" />
-                    </>
-                )}
                 <div className="canvas-workspace-rail-items">
                     {entries.map(({ id, label, icon: Icon }) => (
                         <button
                             key={id}
                             type="button"
                             className="canvas-workspace-rail-button"
-                            title={open && tab === id ? board.collapsePanel : label}
+                            title={open && tab === id ? `收起${label}` : `打开${label}`}
                             aria-pressed={open && tab === id}
                             onClick={() => {
                                 if (open && tab === id) onClose();
@@ -142,16 +135,16 @@ export function CanvasWorkspacePanel({
                     type="button"
                     onClick={open ? onClose : onOpen}
                     aria-expanded={open}
-                    aria-label={open ? board.collapsePanel : board.expandPanel}
-                    title={open ? board.collapsePanel : board.expandPanel}
+                    aria-label={open ? "折叠面板" : "展开面板"}
+                    title={open ? "收起面板，扩大画布" : "展开工作区面板"}
                 >
                     {open ? <PanelLeftClose /> : <PanelLeftOpen />}
-                    <span>{open ? board.collapsePanel : board.expandPanel}</span>
+                    <span>{open ? "收起" : "展开"}</span>
                 </button>
             </nav>
             {open &&
                 (screens.lg ? (
-                    <aside className="w-80 shrink-0 border-r border-border min-h-0" aria-label={board.workspace}>
+                    <aside className="w-80 shrink-0 border-r border-border min-h-0" aria-label="画布工作区">
                         {content}
                     </aside>
                 ) : (

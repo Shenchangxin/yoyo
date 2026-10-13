@@ -41,7 +41,6 @@ import { AgentWelcome } from "./canvas-agent-welcome";
 import { DEFAULT_CANVAS_APPEARANCE, agentCopy } from "@yingce/lib/canvas/agent-appearance";
 import { live2DModelURL } from "@yingce/services/api/appearance";
 import { Live2DAvatar } from "./live2d-avatar";
-import { isYoyoCanvasHost } from "@/features/video/canvas-host/design-system";
 import "./canvas-cloud-agent.css";
 
 type CloudAgentPanelProps = { canvasId: string; domainProjectId?: string; nodeCount: number; references: CanvasResourceReference[]; open: boolean; prefillPrompt?: string; onOpen: () => void; onCollapse: () => void; onFocusNode?: (nodeId: string) => void };
@@ -950,7 +949,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
 
 function AgentLauncher({ theme, statusColor, approvalPending, reducedMotion, onOpen }: { theme: CanvasTheme; statusColor: string; approvalPending: boolean; reducedMotion: boolean; onOpen: () => void }) {
     const appearance = useAppearanceStore((state) => state.appearance.canvas) || DEFAULT_CANVAS_APPEARANCE;
-    const live = !isYoyoCanvasHost() && appearance.avatarType === "live2d" && Boolean(appearance.live2dResourceId && appearance.live2dEntry);
+    const live = appearance.avatarType === "live2d" && Boolean(appearance.live2dResourceId && appearance.live2dEntry);
     const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
     useEffect(() => {
         const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });

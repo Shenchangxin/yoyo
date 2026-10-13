@@ -318,8 +318,6 @@ export type CanvasNodeMetadata = {
     assetTags?: string[];
     assetCategory?: AssetCategory;
     workflowKind?: CanvasWorkflowKind;
-    /** How this node is used on a shot: keyframe, finished clip, or reference. */
-    shotRole?: "keyframe" | "final" | "ref";
     workflowTitle?: string;
     workflowDescription?: string;
     stylePresetId?: string;

@@ -1,7 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import {
-  BookOpen,
   Clapperboard,
   FileText,
   GitCompare,
@@ -143,10 +142,6 @@ export function CommandPalette(props: {
                 <Command.Item data-testid="palette-video-assets" value={`${copy.palette.videoAssets} library stills`} onSelect={() => { useUI.getState().openVideoPane("assets"); props.onClose(); }}>
                   <Images className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoAssets}
-                </Command.Item>
-                <Command.Item data-testid="palette-video-skills" value={`${copy.palette.videoSkills} video skills library`} onSelect={() => { useUI.getState().openVideoPane("skills"); props.onClose(); }}>
-                  <BookOpen className="size-4 text-muted" aria-hidden />
-                  {copy.palette.videoSkills}
                 </Command.Item>
                 <Command.Item data-testid="palette-video-plugins" value={`${copy.palette.videoPlugins} wasm fibers`} onSelect={() => { useUI.getState().openVideoPane("plugins"); props.onClose(); }}>
                   <Puzzle className="size-4 text-muted" aria-hidden />
