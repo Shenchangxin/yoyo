@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { cn } from "../lib/utils";
+import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import type { FileHit } from "../lib/protocol";
 
 export type FileMark = "M" | "A" | "D";
@@ -88,20 +89,26 @@ export function FileTree(props: {
   selected?: string;
   marks: Record<string, FileMark>;
   expandPaths?: string[];
+  persistKey?: string;
   onSelect: (path: string, kind: "dir" | "file") => void;
 }) {
+  const persistKey = props.persistKey ? `yoyo-file-tree:${props.persistKey}` : "";
   const expandKey = (props.expandPaths || []).join("\0");
+  const openRef = useRef<Record<string, boolean>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
-    setOpen((prev) => {
-      const next = { ...prev };
-      for (const n of props.nodes) {
-        if (n.kind === "dir" && next[n.path] === undefined) next[n.path] = true;
-      }
-      for (const p of expandKey.split("\0")) if (p) next[p] = true;
-      return next;
-    });
-  }, [props.nodes, expandKey]);
+    const saved = readLocalMap(persistKey);
+    const next = { ...saved };
+    const seeded = Object.keys(saved).length > 0;
+    for (const n of props.nodes) {
+      if (n.kind === "dir" && next[n.path] === undefined) next[n.path] = !seeded;
+    }
+    for (const p of expandKey.split("\0")) if (p) next[p] = true;
+    openRef.current = next;
+    setOpen(next);
+    writeLocalMap(persistKey, next);
+  }, [persistKey, props.nodes, expandKey]);
 
   if (!props.nodes.length) return null;
   return (
@@ -114,7 +121,12 @@ export function FileTree(props: {
           selected={props.selected}
           marks={props.marks}
           open={open}
-          onToggle={(path) => setOpen((s) => ({ ...s, [path]: !s[path] }))}
+          onToggle={(path) => {
+            const next = { ...openRef.current, [path]: !openRef.current[path] };
+            openRef.current = next;
+            setOpen(next);
+            writeLocalMap(persistKey, next);
+          }}
           onSelect={props.onSelect}
         />
       ))}

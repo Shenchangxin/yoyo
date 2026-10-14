@@ -3,8 +3,8 @@ import {
   Activity,
   ExternalLink,
   Files,
+  Gauge,
   Globe,
-  Layers,
   RefreshCw,
   TextQuote,
 } from "lucide-react";
@@ -14,7 +14,7 @@ import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
 import type { DiffMode } from "../lib/split-diff";
 import * as api from "../lib/client";
-import type { FileHit, Hunk, SessionTrace, SpillBlob, Thread } from "../lib/protocol";
+import type { ContextUsage, FileHit, Hunk, SessionTrace, SpillBlob } from "../lib/protocol";
 import { coerceInspTab, type InspTab } from "../lib/store";
 import { ancestorPaths, FileTree, fileMarks, nestHits, normPath } from "./FileTree";
 import { TracePanel } from "./TracePanel";
@@ -39,7 +39,8 @@ export function Inspector(props: {
   trace?: SessionTrace | null;
   onRefreshTrace?: () => void;
   onLoadSpill?: (id: string) => Promise<SpillBlob>;
-  thread?: Thread | null;
+  ctx?: ContextUsage;
+  onRefreshUsage?: () => void;
   onOpenPath?: (path: string) => void;
   workspace?: string;
   focusFile?: string;
@@ -52,7 +53,7 @@ export function Inspector(props: {
   const dirty = files.length || props.hunks.length;
   const tabs: { id: InspTab; label: string; icon: typeof Files; count?: number }[] = [
     { id: "files", label: copy.review.files, icon: Files, count: dirty || undefined },
-    { id: "context", label: copy.review.contextTab, icon: Layers },
+    { id: "context", label: copy.review.contextTab, icon: Gauge },
     { id: "browser", label: copy.review.browser, icon: Globe },
     { id: "trace", label: copy.trace.tab, icon: Activity },
   ];
@@ -108,7 +109,13 @@ export function Inspector(props: {
             />
           </div>
         ) : active === "context" ? (
-          <ContextPane sessionId={props.sessionId} running={props.running} thread={props.thread} onQuote={props.onQuote} />
+          <ContextPane
+            sessionId={props.sessionId}
+            running={props.running}
+            ctx={props.ctx}
+            trace={props.trace}
+            onRefresh={props.onRefreshUsage}
+          />
         ) : active === "browser" ? (
           <BrowserPane workspace={props.workspace} previewPath={props.focusFile} running={props.running} />
         ) : (
@@ -225,6 +232,7 @@ function FilesPane(props: FilesPaneProps) {
       selected={open}
       marks={marks}
       expandPaths={expandPaths}
+      persistKey={props.workspace || ""}
       onSelect={(path) => {
         setOpen(path);
         props.onPreviewFile?.(path);

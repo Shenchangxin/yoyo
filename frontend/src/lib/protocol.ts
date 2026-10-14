@@ -290,6 +290,11 @@ export type TraceEvent = {
   elapsedMs: number;
   spillId: string;
   tokens: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  cachedTokens?: number;
+  ttftMs?: number;
+  cacheReported?: boolean;
   error: boolean;
 };
 

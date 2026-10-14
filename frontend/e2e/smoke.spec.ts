@@ -436,6 +436,32 @@ test("continue this turn posts retry instead of a new user message", async ({ pa
   expect(await leaked).toBe(false);
 });
 
+test("review pane stays closed on launch even with html in the transcript", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "build the page" } },
+      {
+        type: "tool_call",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01Z",
+        payload: {
+          id: "w1",
+          name: "write_file",
+          arguments: JSON.stringify({
+            path: "web/index.html",
+            content: "<!doctype html><html><body><h1>Hi</h1></body></html>",
+          }),
+        },
+      },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "w1", name: "write_file", content: "wrote web/index.html" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Toggle review" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("tablist", { name: "Review" })).toHaveCount(0);
+});
+
 test("review pane has files browser and trace", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
@@ -444,17 +470,66 @@ test("review pane has files browser and trace", async ({ page }) => {
   await expect(page.getByRole("tab", { name: /^Files/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Browser/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Trace/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Usage/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Changes/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^Diff/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^Queue/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^Memory/ })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: /Context/ })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /Ask/ })).toHaveCount(0);
   await expect(page.getByTestId("review-file-tree")).toBeVisible();
   await expect(page.getByTestId("file-tree-src/main.go")).toBeVisible();
   await page.getByRole("button", { name: "Notifications" }).click();
   await expect(page.getByTestId("inbox-menu")).toBeVisible();
   await expect(page.getByTestId("inbox-menu")).toContainText("Nothing is waiting on you.");
+});
+
+test("usage tab shows token spend, cache hit, and model latency", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    context: {
+      tokens: 12000,
+      budget: 30000,
+      window: 32000,
+      prefix_tokens: 4000,
+      schema_tokens: 2000,
+      dynamic_tokens: 1000,
+      provider_prompt: 12100,
+      cached_tokens: 9800,
+      cache_reported: true,
+      cache_stable: true,
+      note: "",
+      layers: [],
+      elided: 0,
+    },
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00.000Z", payload: { text: "hi" } },
+      {
+        type: "model_usage",
+        session_id: "s1",
+        ts: "2026-01-01T00:00:01.240Z",
+        payload: {
+          round: "s1:r1",
+          prompt_tokens: 12100,
+          completion_tokens: 860,
+          cached_tokens: 9800,
+          cache_reported: true,
+          elapsed_ms: 1240,
+          ttft_ms: 180,
+        },
+      },
+      { type: "turn_end", session_id: "s1", ts: "2026-01-01T00:00:02.000Z", payload: { ok: true } },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle review" }).click();
+  await page.getByRole("tab", { name: /^Usage/ }).click();
+  const pane = page.getByTestId("context-pane");
+  await expect(pane).toBeVisible();
+  await expect(pane.getByTestId("usage-tokens")).toContainText("Hit rate");
+  await expect(pane.getByTestId("usage-tokens")).toContainText("81%");
+  await expect(pane.getByTestId("usage-timing")).toContainText("1.2s");
+  await expect(pane.getByTestId("usage-timing")).toContainText("180ms");
+  await expect(pane.getByTestId("usage-calls")).toContainText("r1");
 });
 
 test("trace tab shows trajectory and artifacts", async ({ page }) => {

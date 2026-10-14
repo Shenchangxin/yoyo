@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -54,11 +55,16 @@ type TraceEvent struct {
 	ID        string `json:"id,omitempty"`
 	Summary   string `json:"summary"`
 	Detail    string `json:"detail,omitempty"`
-	Bytes     int    `json:"bytes,omitempty"`
-	ElapsedMs int    `json:"elapsed_ms,omitempty"`
-	SpillID   string `json:"spill_id,omitempty"`
-	Tokens    int    `json:"tokens,omitempty"`
-	Error     bool   `json:"error,omitempty"`
+	Bytes            int    `json:"bytes,omitempty"`
+	ElapsedMs        int    `json:"elapsed_ms,omitempty"`
+	SpillID          string `json:"spill_id,omitempty"`
+	Tokens           int    `json:"tokens,omitempty"`
+	PromptTokens     int    `json:"prompt_tokens,omitempty"`
+	CompletionTokens int    `json:"completion_tokens,omitempty"`
+	CachedTokens     int    `json:"cached_tokens,omitempty"`
+	TtftMs           int    `json:"ttft_ms,omitempty"`
+	CacheReported    bool   `json:"cache_reported,omitempty"`
+	Error            bool   `json:"error,omitempty"`
 }
 
 func ProjectTrace(evs []trace.Event) TraceView {
@@ -255,6 +261,31 @@ func projectTraceEvent(i int, ev trace.Event) TraceEvent {
 			row.Error = true
 		}
 		row.Detail = capTrace(text, traceDetailRunes)
+	case trace.TypeUsage:
+		row.PromptTokens = payloadInt(p, "prompt_tokens", "tokens")
+		row.CompletionTokens = payloadInt(p, "completion_tokens")
+		row.CachedTokens = payloadInt(p, "cached_tokens")
+		row.TtftMs = payloadInt(p, "ttft_ms")
+		if row.ElapsedMs == 0 {
+			row.ElapsedMs = payloadInt(p, "elapsed_ms")
+		}
+		row.Tokens = row.PromptTokens
+		row.CacheReported = payloadBool(p, "cache_reported") || row.CachedTokens > 0
+		row.Name = firstNonEmpty(name, "model")
+		summary := "model"
+		if row.ElapsedMs > 0 {
+			summary += " · " + strconv.Itoa(row.ElapsedMs) + "ms"
+		}
+		if row.TtftMs > 0 {
+			summary += " · ttft " + strconv.Itoa(row.TtftMs) + "ms"
+		}
+		if row.PromptTokens > 0 && row.CacheReported {
+			pct := (row.CachedTokens * 100) / row.PromptTokens
+			summary += " · cache " + strconv.Itoa(pct) + "%"
+		}
+		row.Summary = summary
+		row.Detail = capTrace(fmt.Sprintf("prompt=%d completion=%d cached=%d elapsed_ms=%d ttft_ms=%d",
+			row.PromptTokens, row.CompletionTokens, row.CachedTokens, row.ElapsedMs, row.TtftMs), traceDetailRunes)
 	default:
 		row.Summary = firstNonEmpty(oneLine(text, 120), string(ev.Type))
 		row.Detail = capTrace(firstNonEmpty(text, content, note), traceDetailRunes)

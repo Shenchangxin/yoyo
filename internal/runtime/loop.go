@@ -219,10 +219,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking, MaxTokens: req.MaxOutputTokens}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
-		msg, err := chat(ctx, req, chatReq, roundID)
-		if err != nil && isStreamErr(err) {
-			msg, err = req.Client.Chat(ctx, chatReq)
-		}
+		msg, err := completeChat(ctx, req, chatReq, roundID)
 		if err != nil && IsContextOverflow(err) {
 			overflowFails++
 			if overflowFails >= 2 {
@@ -240,7 +237,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				chatReq.Messages = compacted
 				chatReq.Tools = toolsJSON
 				chatReq.CacheKey = PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)
-				msg, err = chat(ctx, req, chatReq, roundID)
+				msg, err = completeChat(ctx, req, chatReq, roundID)
 				if err != nil && IsContextOverflow(err) {
 					err = stopErr(StopOverflow, "context overflow circuit breaker", err)
 				}
@@ -275,11 +272,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			// One record per model call. The turn_end row carries only the last
 			// call, so it cannot show whether the prompt cache held across a turn.
 			emit(req, trace.TypeUsage, "model", map[string]any{
-				"round":          roundID,
-				"prompt_tokens":  msg.PromptTokens,
-				"cached_tokens":  msg.CachedTokens,
-				"cache_reported": report.CacheReported,
-				"cache_stable":   report.CacheStable,
+				"round":             roundID,
+				"prompt_tokens":     msg.PromptTokens,
+				"completion_tokens": msg.CompletionTokens,
+				"cached_tokens":     msg.CachedTokens,
+				"cache_reported":    report.CacheReported,
+				"cache_stable":      report.CacheStable,
+				"elapsed_ms":        msg.ElapsedMs,
+				"ttft_ms":           msg.FirstTokenMs,
 			})
 		}
 		if req.Meter != nil {
@@ -498,7 +498,42 @@ func spillOf(req RunRequest) *Spill {
 	return nil
 }
 
+func completeChat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (Message, error) {
+	msg, err := chat(ctx, req, chatReq, roundID)
+	if err != nil && isStreamErr(err) {
+		started := time.Now()
+		msg, err = req.Client.Chat(ctx, chatReq)
+		if msg.ElapsedMs <= 0 {
+			msg.ElapsedMs = elapsedMsSince(started)
+		}
+	}
+	return msg, err
+}
+
+func elapsedMsSince(started time.Time) int {
+	n := int(time.Since(started).Milliseconds())
+	if n <= 0 {
+		return 1
+	}
+	return n
+}
+
 func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (msg Message, err error) {
+	started := time.Now()
+	firstMs := 0
+	markFirst := func() {
+		if firstMs == 0 {
+			firstMs = elapsedMsSince(started)
+		}
+	}
+	defer func() {
+		if msg.ElapsedMs <= 0 {
+			msg.ElapsedMs = elapsedMsSince(started)
+		}
+		if msg.FirstTokenMs <= 0 && firstMs > 0 {
+			msg.FirstTokenMs = firstMs
+		}
+	}()
 	var sp observe.Span
 	if req.Observe != nil {
 		parent := observe.SpanFrom(ctx)
@@ -525,6 +560,9 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 		var reason strings.Builder
 		var prog toolProgressGate
 		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
+			if d.Text != "" || d.Reasoning != "" || d.Tool.Name != "" {
+				markFirst()
+			}
 			if d.Text != "" {
 				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
 			}

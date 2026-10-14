@@ -581,7 +581,7 @@ export function useWorkstation() {
   }, []);
 
   useEffect(() => {
-    if (inspTab !== "trace") return;
+    if (inspTab !== "trace" && inspTab !== "context") return;
     void refreshTrace();
     if (!threadRunning) return;
     const timer = window.setInterval(() => { void refreshTrace(); }, 4000);
@@ -842,11 +842,7 @@ export function useWorkstation() {
         setLiveTexts({});
         setItems(hotItemsRef.current.slice());
         const html = latestWorkspaceHTMLPath(hotItemsRef.current);
-        if (html) {
-          setReviewFile(html);
-          setInspector(true);
-          setInspTab("browser");
-        }
+        if (html) setReviewFile(html);
         if (page) {
           headSeqRef.current = page.headSeq || 0;
           olderRef.current = !!page.older;
@@ -1412,7 +1408,6 @@ export function useWorkstation() {
       setDiff(h.diff);
       setHunks(h.hunks);
       setHunkSel({});
-      if (h.hunks.length) setInspector(true);
     } catch (e) {
       fail(e);
     }

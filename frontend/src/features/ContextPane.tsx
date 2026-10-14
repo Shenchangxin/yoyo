@@ -1,56 +1,50 @@
-import { useEffect, useState } from "react";
-import { Pin, RefreshCw, Quote } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useCopy } from "../lib/i18n";
-import * as api from "../lib/client";
-import type { ContextInventory, ContextObject, Thread } from "../lib/protocol";
+import { formatTokens } from "../lib/models-dev";
+import {
+  cacheHitPct,
+  callStats,
+  contextBreakdown,
+  formatDurationMs,
+  formatHitPct,
+  lastTurnMs,
+  modelCallsOf,
+  type CtxSliceId,
+} from "../lib/context-usage";
+import type { ContextUsage, SessionTrace } from "../lib/protocol";
+import type { Copy } from "../lib/copy";
+
+const SLICE_TONE: Record<CtxSliceId, string> = {
+  system: "bg-[var(--ctx-system)]",
+  tools: "bg-[var(--ctx-tools)]",
+  dynamic: "bg-[var(--ctx-dynamic)]",
+  chat: "bg-[var(--ctx-chat)]",
+  free: "bg-[var(--ctx-free)]",
+};
 
 export function ContextPane(props: {
   sessionId?: string;
   running?: boolean;
-  thread?: Thread | null;
-  onQuote?: (text: string) => void;
+  ctx?: ContextUsage;
+  trace?: SessionTrace | null;
+  onRefresh?: () => void;
 }) {
   const copy = useCopy();
-  const [inv, setInv] = useState<ContextInventory | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function load() {
-    if (!props.sessionId) {
-      setInv(null);
-      return;
-    }
-    setBusy(true);
-    try {
-      setInv(await api.contextInventory(props.sessionId));
-    } catch {
-      setInv(null);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, [props.sessionId, props.running]);
-
-  async function togglePin(obj: ContextObject) {
-    if (!props.sessionId) return;
-    const kind = obj.kind === "hot" ? "file" : obj.kind;
-    const key = obj.path || obj.title;
-    if (kind !== "skill" && kind !== "file") return;
-    try {
-      await api.contextPin(props.sessionId, kind, key, !obj.pinned);
-      await load();
-    } catch {
-      /* keep current */
-    }
-  }
+  const br = contextBreakdown(props.ctx);
+  const calls = modelCallsOf(props.trace);
+  const stats = callStats(calls);
+  const hit = cacheHitPct(br.cachedTokens, br.providerPrompt, br.cacheReported);
+  const turnMs = lastTurnMs(props.trace?.events);
+  const sessionMs = props.trace?.stats.durationMs || 0;
+  const hasTokens = br.used > 0 || br.capacity > 0 || br.providerPrompt > 0;
+  const hasTiming = !!(stats.last?.elapsedMs || stats.last?.ttftMs || turnMs || sessionMs);
+  const empty = !hasTokens && !hasTiming && !calls.length;
 
   if (!props.sessionId) {
     return <Empty title={copy.review.contextEmpty} hint={copy.review.contextEmptyHint} />;
   }
-  const objects = inv?.objects || [];
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="context-pane">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-2.5">
@@ -58,72 +52,155 @@ export function ContextPane(props: {
         <button
           type="button"
           className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
-          onClick={() => { void load(); }}
-          disabled={busy}
+          onClick={() => props.onRefresh?.()}
           aria-label={copy.review.refreshContext}
         >
-          <RefreshCw className={cn("size-3", busy && "animate-spin")} aria-hidden />
+          <RefreshCw className={cn("size-3", props.running && "animate-spin")} aria-hidden />
           {copy.review.refresh}
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
-        {props.thread?.researchBrief || props.thread?.researchShot ? (
-          <div className="mb-3 rounded-lg border border-border/70 bg-lift/40 px-2 py-2" data-testid="research-capture">
-            {props.thread.researchBrief ? (
-              <div className="truncate text-[12px] text-foreground/90">{copy.review.researchBrief}: {props.thread.researchBrief}</div>
-            ) : null}
-            {props.thread.researchShot ? (
-              <div className="truncate text-[12px] text-muted">{copy.review.researchShot}: {props.thread.researchShot}</div>
-            ) : null}
-          </div>
-        ) : null}
-        {!objects.length ? (
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+        {empty ? (
           <Empty title={copy.review.contextEmpty} hint={copy.review.contextEmptyHint} />
         ) : (
-          <ul className="flex flex-col gap-0.5">
-            {objects.map((obj) => (
-              <li
-                key={obj.id}
-                className="group flex min-w-0 items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-lift/60"
-              >
-                <span className="mt-0.5 w-12 shrink-0 text-[10px] uppercase tracking-[0.04em] text-muted/65">{obj.kind}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] text-foreground/90">{obj.title}</span>
-                  {obj.detail ? <span className="mt-0.5 block truncate text-[11px] text-muted">{obj.detail}</span> : null}
-                  {obj.stale ? <span className="mt-0.5 block text-[10px] text-danger/80">{copy.review.stale}</span> : null}
-                </span>
-                <span className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                  {obj.path || obj.title ? (
-                    <button
-                      type="button"
-                      className="grid size-6 place-items-center rounded-md text-muted hover:bg-background hover:text-foreground"
-                      aria-label={copy.review.quoteContext}
-                      onClick={() => {
-                        const token = obj.path ? `@file:${obj.path}` : obj.title;
-                        props.onQuote?.(token);
-                      }}
-                    >
-                      <Quote className="size-3" aria-hidden />
-                    </button>
-                  ) : null}
-                  {obj.kind === "skill" || obj.kind === "file" || obj.kind === "hot" ? (
-                    <button
-                      type="button"
-                      className={cn(
-                        "grid size-6 place-items-center rounded-md hover:bg-background",
-                        obj.pinned ? "text-foreground" : "text-muted hover:text-foreground",
-                      )}
-                      aria-label={obj.pinned ? copy.review.unpin : copy.review.pin}
-                      onClick={() => { void togglePin(obj); }}
-                    >
-                      <Pin className="size-3" aria-hidden />
-                    </button>
-                  ) : null}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-4">
+            {hasTokens ? (
+              <section className="flex flex-col gap-2.5" data-testid="usage-tokens">
+                <WindowMeter br={br} copy={copy} />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <Fact label={copy.review.usageInput} value={formatTokens(br.providerPrompt || br.used)} />
+                  <Fact
+                    label={copy.review.usageOutput}
+                    value={stats.last?.completionTokens || stats.totalCompletion ? formatTokens(stats.last?.completionTokens || stats.totalCompletion) : "—"}
+                  />
+                  <Fact
+                    label={copy.composer.ctxCache}
+                    value={br.cacheReported ? formatTokens(br.cachedTokens) : copy.review.usageUnknown}
+                  />
+                  <Fact
+                    label={copy.review.usageHitRate}
+                    value={formatHitPct(hit)}
+                    tone={hit == null ? undefined : hit >= 70 ? "good" : hit >= 40 ? undefined : "warn"}
+                  />
+                </div>
+                <p className="text-[11px] leading-[1.5] text-muted">
+                  {br.cacheReported
+                    ? (br.cacheStable ? copy.review.usageStable : copy.review.usageUnstable)
+                    : copy.composer.ctxCacheUnknown}
+                  {br.elided > 0 ? ` · ${copy.review.elided} ${br.elided}` : ""}
+                  {br.layers.length ? ` · ${br.layers.join(" + ")}` : ""}
+                </p>
+                {br.note ? <p className="text-[11px] text-muted">{br.note}</p> : null}
+              </section>
+            ) : null}
+
+            <section className="flex flex-col gap-2.5" data-testid="usage-timing">
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.trace.duration}</h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Fact label={copy.review.usageLastCall} value={formatDurationMs(stats.last?.elapsedMs || 0)} />
+                <Fact label={copy.review.usageFirstToken} value={formatDurationMs(stats.last?.ttftMs || 0)} />
+                <Fact label={copy.review.usageAvgCall} value={formatDurationMs(stats.avgElapsed)} />
+                <Fact label={copy.review.usageTurn} value={formatDurationMs(turnMs)} />
+              </div>
+              {sessionMs > 0 ? (
+                <p className="text-[11px] tabular-nums text-muted">
+                  {copy.review.usageSession} {formatDurationMs(sessionMs)}
+                  {stats.avgTtft ? ` · ${copy.review.usageFirstToken} ${formatDurationMs(stats.avgTtft)}` : ""}
+                </p>
+              ) : null}
+            </section>
+
+            {calls.length ? (
+              <section className="flex flex-col gap-1.5" data-testid="usage-calls">
+                <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">
+                  {copy.review.usageRecent}
+                  <span className="ml-1.5 font-normal normal-case tracking-normal text-muted/55">{calls.length}</span>
+                </h3>
+                <ol className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+                  {calls.slice(-8).reverse().map((c, i) => {
+                    const pct = cacheHitPct(c.cachedTokens, c.promptTokens, c.cacheReported);
+                    const label = c.round.replace(/^.*:r/, "r") || `#${calls.length - i}`;
+                    return (
+                      <li key={`${c.round}-${c.ts}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 text-[12px]">
+                        <span className="w-8 shrink-0 font-mono text-[11px] text-muted">{label}</span>
+                        <span className="min-w-0 flex-1 truncate tabular-nums text-foreground/85">
+                          {formatDurationMs(c.elapsedMs)}
+                          {c.ttftMs ? ` · ${copy.review.usageFirstToken} ${formatDurationMs(c.ttftMs)}` : ""}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-[11px] text-muted">{formatHitPct(pct)}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>
+            ) : null}
+          </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; copy: Copy }) {
+  const visible = br.slices.filter((s) => s.tokens > 0);
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[12px] tabular-nums">
+        <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted/70">{copy.composer.ctxWindow}</span>
+        <span className={cn(br.pct >= 90 ? "text-danger" : "text-foreground/85")}>
+          {br.pct}% · {formatTokens(br.used)} / {formatTokens(br.capacity)}
+        </span>
+      </div>
+      <div
+        className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--ctx-free)]"
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={br.pct}
+        aria-label={`${copy.composer.context} ${br.pct}%`}
+      >
+        {visible.map((s) => (
+          <span
+            key={s.id}
+            className={cn("h-full min-w-[2px]", SLICE_TONE[s.id], s.id === "free" && "min-w-0")}
+            style={{ flexGrow: Math.max(s.tokens, 1), flexBasis: 0 }}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] tabular-nums text-muted">
+        {visible.filter((s) => s.id !== "free").map((s) => (
+          <span key={s.id} className="inline-flex items-center gap-1.5">
+            <i className={cn("size-1.5 rounded-full", SLICE_TONE[s.id])} aria-hidden />
+            <span>{sliceLabel(s.id, copy)}</span>
+            <span className="text-foreground/75">{formatTokens(s.tokens)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function sliceLabel(id: CtxSliceId, copy: Copy): string {
+  if (id === "system") return copy.composer.ctxSystem;
+  if (id === "tools") return copy.composer.ctxTools;
+  if (id === "dynamic") return copy.composer.ctxDynamic;
+  if (id === "chat") return copy.composer.ctxChat;
+  return copy.composer.ctxFree;
+}
+
+function Fact({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-lift/30 px-2.5 py-2">
+      <div className="text-[10px] font-medium uppercase tracking-[0.05em] text-muted/70">{label}</div>
+      <div
+        className={cn(
+          "mt-0.5 text-[13px] font-medium tabular-nums",
+          tone === "good" && "text-emerald-500",
+          tone === "warn" && "text-amber-500",
+          !tone && "text-foreground/90",
+        )}
+      >
+        {value}
       </div>
     </div>
   );

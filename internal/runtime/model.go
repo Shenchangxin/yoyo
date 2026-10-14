@@ -50,6 +50,8 @@ type Message struct {
 	CompletionTokens int           `json:"-"`
 	CachedTokens     int           `json:"-"`
 	CacheReported    bool          `json:"-"`
+	ElapsedMs        int           `json:"-"`
+	FirstTokenMs     int           `json:"-"`
 	// Truncated is true when the provider stopped the reply at the output-token
 	// cap (finish_reason "length"). Tool calls cut off by that stop are not run.
 	Truncated bool `json:"-"`

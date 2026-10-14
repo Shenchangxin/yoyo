@@ -288,7 +288,11 @@ function WorkstationApp() {
       sessionId={ws.activeId}
       running={ws.threadRunning}
       trace={ws.trace}
-      thread={ws.active}
+      ctx={ws.ctx}
+      onRefreshUsage={() => {
+        ws.refreshCtx();
+        void ws.refreshTrace();
+      }}
       workspace={toolRoot}
       focusFile={reviewFile}
       peekInline={sheetInspect}
