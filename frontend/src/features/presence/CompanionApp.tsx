@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useBusyMs } from "./busy";
 import { presenceLine, presenceOf } from "./director";
 import { PresenceSprite } from "./PresenceRuntime";
 import {
@@ -183,6 +184,7 @@ export function CompanionApp() {
   const idleMs = running ? 0 : now - idleAt.current;
   const activePulse = pulse && now < pulse.until ? pulse : null;
   const loading = showLoading(running, pulse, approvals, now);
+  const busyMs = useBusyMs(running || loading, `${running}:${loading}`);
   const interrupted = !running && items.some((it) => it.type === "error" && /interrupt|cancel|stopped/i.test(`${it.text || ""} ${it.name || ""}`));
   const emotion = useMemo(() => presenceOf({
     booted,
@@ -195,7 +197,8 @@ export function CompanionApp() {
     now,
     moduleLoading: loading && !running,
     interrupted,
-  }), [booted, running, items, approvals, idleMs, now, voicePhase, loading, interrupted]);
+    busyMs,
+  }), [booted, running, items, approvals, idleMs, now, voicePhase, loading, interrupted, busyMs]);
 
   const emotionLine = presenceLine(emotion, copy.presence);
   const line = bubbleLine({
@@ -245,6 +248,9 @@ export function CompanionApp() {
         className="companion-pet-wrap"
         data-testid="companion-pet-wrap"
         data-context-menu="yoyo-companion"
+        data-emotion={emotion.emotionId}
+        data-live={emotion.live ? "true" : undefined}
+        data-loading={loading ? "true" : undefined}
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
         onPointerDown={(e) => {

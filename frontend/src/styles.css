@@ -2337,6 +2337,39 @@ html.companion body {
   height: 100%;
 }
 
+.presence-float {
+  animation: presence-float 6.2s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes presence-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -5px, 0); }
+}
+
+.presence-module-shell {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.presence-module-shell::after {
+  content: "";
+  position: absolute;
+  inset: -16%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 20%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 42%,
+    transparent 72%
+  );
+  animation: presence-halo 2.8s ease-in-out infinite;
+}
+@keyframes presence-halo {
+  0%, 100% { opacity: 0.42; transform: scale(0.94); }
+  50% { opacity: 0.9; transform: scale(1.04); }
+}
+
 .presence-stamp {
   overflow: visible;
   border-radius: 50%;
@@ -2346,6 +2379,27 @@ html.companion body {
 .presence-stamp svg {
   display: block;
   overflow: visible;
+}
+.presence-stamp-face {
+  animation: presence-stamp-breathe 4.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 58%;
+}
+.presence-stamp-eye {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: presence-stamp-blink 6.4s ease-in-out infinite;
+}
+.presence-stamp-eye + .presence-stamp-eye {
+  animation-delay: 70ms;
+}
+@keyframes presence-stamp-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(0.35px); }
+}
+@keyframes presence-stamp-blink {
+  0%, 84%, 91%, 100% { transform: scaleY(1); }
+  87.5% { transform: scaleY(0.12); }
 }
 
 html.companion {
@@ -2378,11 +2432,41 @@ html.companion {
   cursor: grab;
   background: transparent !important;
   border-radius: 50%;
+  transition: transform 420ms cubic-bezier(0.32, 0.72, 0, 1);
   --custom-contextmenu: yoyo-companion;
   --default-contextmenu: hide;
 }
+.companion-pet-wrap:hover {
+  transform: translateY(-3px);
+}
 .companion-pet-wrap:active {
   cursor: grabbing;
+  transform: translateY(0) scale(0.985);
+}
+.companion-pet-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 22%, transparent) 0%,
+    transparent 70%
+  );
+  transition: opacity 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.companion-pet-wrap[data-live="true"]::after,
+.companion-pet-wrap[data-loading="true"]::after {
+  opacity: 1;
+  animation: presence-halo 2.8s ease-in-out infinite;
+}
+.companion-pet-wrap .presence-engine {
+  position: relative;
+  z-index: 1;
+  animation: presence-float 6.4s ease-in-out infinite;
 }
 html.companion .presence-engine,
 html.companion .presence-engine svg {
@@ -2476,6 +2560,20 @@ html.companion .presence-engine svg {
   .companion-bubble.is-loading::before {
     animation: none;
     opacity: 0.7;
+    transform: none;
+  }
+  .presence-float,
+  .presence-module-shell::after,
+  .presence-stamp-face,
+  .presence-stamp-eye,
+  .companion-pet-wrap .presence-engine,
+  .companion-pet-wrap[data-live="true"]::after,
+  .companion-pet-wrap[data-loading="true"]::after {
+    animation: none;
+    transform: none;
+  }
+  .companion-pet-wrap:hover,
+  .companion-pet-wrap:active {
     transform: none;
   }
 }

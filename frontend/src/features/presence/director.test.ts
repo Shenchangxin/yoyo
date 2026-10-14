@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { presenceLine, presenceOf, wanderEmotion, type PresenceInput } from "./director.ts";
+import { afterDoneEmotion, loadEmotion, presenceLine, presenceOf, thinkEmotion, wanderEmotion, type PresenceInput } from "./director.ts";
 import type { Item } from "../../lib/protocol.ts";
 
 function item(partial: Partial<Item> & Pick<Item, "type">): Item {
@@ -137,7 +137,7 @@ describe("presenceOf", () => {
         items: [item({ type: "error", text: "request denied by gate", ts: new Date(999_000).toISOString() })],
         now: 1_000_000,
       })).emotionId,
-      "21",
+      "38",
     );
     assert.equal(presenceOf(base({ moduleLoading: true })).emotionId, "36");
     assert.equal(
@@ -153,7 +153,7 @@ describe("presenceOf", () => {
         now: 1_000_000,
         items: [item({ type: "eval", ts: new Date(999_000).toISOString() })],
       })).emotionId,
-      "36",
+      "43",
     );
     assert.equal(
       presenceOf(base({
@@ -175,6 +175,24 @@ describe("wanderEmotion", () => {
     assert.equal(wanderEmotion(0, 60_000), "15");
     assert.equal(wanderEmotion(0, 140_000), "06");
     assert.equal(wanderEmotion(0, 200_000), "00");
+    assert.equal(wanderEmotion(20 * 6200, 0), "09");
+  });
+});
+
+describe("loadEmotion / thinkEmotion / afterDoneEmotion", () => {
+  it("keeps first-beat faces, then walks a slower choreography", () => {
+    assert.equal(loadEmotion(0), "36");
+    assert.equal(loadEmotion(3000), "45");
+    assert.equal(loadEmotion(6000), "43");
+    assert.equal(loadEmotion(9000), "42");
+    assert.equal(thinkEmotion(0), "30");
+    assert.equal(thinkEmotion(4000), "16");
+    assert.equal(thinkEmotion(9000), "37");
+    assert.equal(afterDoneEmotion(400), "33");
+    assert.equal(afterDoneEmotion(2500), "10");
+    assert.equal(afterDoneEmotion(4000), "19");
+    assert.equal(afterDoneEmotion(6000), "23");
+    assert.equal(afterDoneEmotion(9000), null);
   });
 });
 

@@ -27,6 +27,11 @@ export function createMate(el: HTMLElement, opts: MoodMateCreateOpts = {}): Mood
     }
     return this;
   };
+  ball.flourish = function () {
+    this.nudge();
+    this.spin(1);
+    return this;
+  };
   ball.signature = function () {
     this.spin(1);
     return true;

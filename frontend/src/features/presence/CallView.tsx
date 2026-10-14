@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
 import * as api from "../../lib/client";
+import { useMotionReduced } from "../../lib/motion";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
+import { useBusyMs } from "./busy";
+import { voiceEmotion } from "./director";
+import { PresenceSprite } from "./PresenceRuntime";
 import type { VoicePhase } from "./types";
 
 const MAX_TURNS = 6;
@@ -16,8 +20,10 @@ export function CallView(props: {
   lastAssistant?: string;
 }) {
   const copy = useCopy();
+  const reduced = useMotionReduced();
   const setPhase = useUI((s) => s.setVoicePhase);
   const phase = useUI((s) => s.voicePhase);
+  const busyMs = useBusyMs(phase !== "off", phase);
   const [muteMic, setMuteMic] = useState(false);
   const [muteSpk, setMuteSpk] = useState(false);
   const [caption, setCaption] = useState("");
@@ -139,6 +145,13 @@ export function CallView(props: {
   return (
     <div className="flex h-full flex-col items-center justify-between px-4 py-3" data-testid="call-view">
       <div className="text-[12px] text-muted">{mm}:{ss} · {copy.voice[phase] || phase}</div>
+      <PresenceSprite
+        emotionId={voiceEmotion(phase, busyMs)}
+        size={120}
+        reduced={reduced}
+        followPointer
+        className="presence-float"
+      />
       {setup ? <div className="text-center text-[12px] text-warning">{setup}</div> : null}
       <p className="max-h-24 overflow-auto text-center text-[13px] text-foreground/90">{caption || copy.voice.listening}</p>
       <div className="flex items-center gap-2">

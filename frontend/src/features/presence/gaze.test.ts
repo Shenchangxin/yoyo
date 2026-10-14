@@ -53,5 +53,7 @@ describe("lingerId", () => {
     assert.equal(lingerId("02", true), "14");
     assert.equal(lingerId("02", false), "03");
     assert.equal(lingerId("30", true), "30");
+    assert.equal(lingerId("02", true, 3000), "09");
+    assert.equal(lingerId("02", true, 5000), "22");
   });
 });

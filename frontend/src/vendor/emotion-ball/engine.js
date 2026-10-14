@@ -58,6 +58,9 @@
   /* 弹跳：4 段递减抛物线（高度 48/28/14/6，时长 0.5/0.382/0.27/0.177s） */
   var BOUNCE_SEGS = [{ h: 48, d: 0.5 }, { h: 28, d: 0.382 }, { h: 14, d: 0.27 }, { h: 6, d: 0.177 }];
   var BOUNCE_TOTAL = BOUNCE_SEGS.reduce(function (s, q) { return s + q.d; }, 0);
+  /* 轻点：两段短抛物线，用于点头确认 / 待机微动，不抢主表情 */
+  var NUDGE_SEGS = [{ h: 14, d: 0.3 }, { h: 6, d: 0.2 }];
+  var NUDGE_TOTAL = NUDGE_SEGS.reduce(function (s, q) { return s + q.d; }, 0);
 
   function hexToRgb(hex) {
     var h = hex.replace('#', '');
@@ -173,6 +176,38 @@
       var p = (t + (a.phaseMs || 0) + (eng ? eng._seed * 97 : 0)) % interval;
       if (p >= dur) return 0;
       return -(a.depth == null ? 1 : a.depth) * Math.sin(Math.PI * (p / dur));
+    },
+    /** 两端缓入缓出的往复，比正弦在折返处更“停得住” */
+    ease: function (a, t) {
+      var per = a.period || 2000;
+      var p = ((t + (a.phaseMs || 0)) % per) / per;
+      var tri = p < 0.5 ? p * 2 : 2 - p * 2;
+      return a.amp * (easeInOutCubic(tri) * 2 - 1);
+    },
+    /** 两拍点头：先深后浅，中间留白，像轻轻答应 */
+    nod: function (a, t) {
+      var per = a.period || 1480;
+      var p = ((t + (a.phaseMs || 0)) % per) / per;
+      if (p < 0.22) return -a.amp * Math.sin(Math.PI * p / 0.22);
+      if (p < 0.38) return 0;
+      if (p < 0.56) return -a.amp * 0.58 * Math.sin(Math.PI * (p - 0.38) / 0.18);
+      return 0;
+    },
+    /** 慢 8 字摆动，身体用 x、眼睛用 lookX 都合适 */
+    sway: function (a, t) {
+      var per = a.period || 3200;
+      var ph = TAU * ((t + (a.phaseMs || 0)) / per) + (a.phase || 0);
+      return a.amp * Math.sin(ph) * Math.cos(ph * 0.5);
+    },
+    /** 抬起、停住、落下；适合呼吸高光或轻轻举起 */
+    hold: function (a, t) {
+      var per = a.period || 2400;
+      var p = ((t + (a.phaseMs || 0)) % per) / per;
+      var rise = a.rise != null ? a.rise : 0.18;
+      var fall = a.fall != null ? a.fall : 0.22;
+      if (p < rise) return a.amp * easeInOutCubic(p / rise);
+      if (p < 1 - fall) return a.amp;
+      return a.amp * (1 - easeInOutCubic((p - (1 - fall)) / fall));
     }
   };
 
@@ -365,6 +400,7 @@
     /* ---- 待机小动作 ---- */
     this._anticNext = 0;
     this._bounceAt = -1;
+    this._nudgeAt = -1;
     this._gazeHeld = false;
     this._gazeHoldUntil = 0;
 
@@ -554,6 +590,12 @@
       if (this._bounceAt < 0) this._bounceAt = performance.now();
       return this;
     },
+    /* 轻点：比 bounce 短一截，不打断自旋 */
+    nudge: function () {
+      if (this._bounceAt >= 0 || this._nudgeAt >= 0) return this;
+      this._nudgeAt = performance.now();
+      return this;
+    },
 
     /* 切换眼环目标：把当前插值冻结为新起点，弹簧从 0 重新弹向 1 */
     _setExpr: function (idx, speed) {
@@ -710,13 +752,14 @@
 
       /* ---- 待机小动作：9~18s 随机自旋 / 弹跳 ---- */
       if (this._active && def.antics && now >= this._anticNext) {
-        if (!this._spin && this._bounceAt < 0) {
+        if (!this._spin && this._bounceAt < 0 && this._nudgeAt < 0) {
           var pick = Math.random();
-          if (pick < 0.45) this.spin(1);
+          if (pick < 0.28) this.spin(1);
+          else if (pick < 0.58) this.nudge();
           else if (pick < 0.8) this.bounce();
           else this._blinkNow(now);
         }
-        this._anticNext = now + rand(4500, 10000);
+        this._anticNext = now + rand(5200, 12000);
       }
 
       /* ---- 弹簧整步（子步 1/120 保稳定）：形变 / 开合 / 自旋 ---- */
@@ -746,6 +789,18 @@
           var seg = BOUNCE_SEGS[Math.min(bi, BOUNCE_SEGS.length - 1)];
           var bn = (be - acc) / seg.d;
           pose.body.y += -4 * seg.h * bn * (1 - bn);
+        }
+      }
+      if (this._nudgeAt >= 0) {
+        var ne = (now - this._nudgeAt) / 1000;
+        if (ne >= NUDGE_TOTAL) {
+          this._nudgeAt = -1;
+        } else {
+          var nacc = 0, ni = 0;
+          while (ni < NUDGE_SEGS.length && ne >= nacc + NUDGE_SEGS[ni].d) { nacc += NUDGE_SEGS[ni].d; ni++; }
+          var nseg = NUDGE_SEGS[Math.min(ni, NUDGE_SEGS.length - 1)];
+          var nn = (ne - nacc) / nseg.d;
+          pose.body.y += -4 * nseg.h * nn * (1 - nn);
         }
       }
 

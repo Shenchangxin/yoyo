@@ -1,7 +1,11 @@
 import { useLayoutEffect, useRef } from "react";
 import type { MoodMate } from "./types";
 
-const AMBIENT = new Set(["00", "01", "02", "04", "06", "10", "11", "12", "14", "15", "18", "19", "20"]);
+const AMBIENT = new Set([
+  "00", "01", "02", "04", "06", "08", "09",
+  "10", "11", "12", "14", "15", "18", "19", "20",
+  "22", "23", "24", "25", "29", "48",
+]);
 /** Pointer speed in CSS pixels per millisecond that reads as a dart. */
 const DART_SPEED = 1.85;
 const GAZE_EPS = 0.004;
@@ -56,8 +60,10 @@ export function dartId(id: string, speed: number): string {
   return "13";
 }
 
-export function lingerId(id: string, lingering: boolean): string {
+export function lingerId(id: string, lingering: boolean, heldMs = SHY_MS): string {
   if (!lingering || !isIdleEmotion(id)) return curiousId(id);
+  if (heldMs >= 4600) return "22";
+  if (heldMs >= 2800) return "09";
   return "14";
 }
 
@@ -85,7 +91,7 @@ export function usePresencePointer(opts: {
   const onAct = useRef(opts.onActivity);
   onAct.current = opts.onActivity;
 
-  const face = (hovering: boolean, speed = 0, lingering = false) => {
+  const face = (hovering: boolean, speed = 0, lingering = false, heldMs = 0) => {
     const mate = opts.mateRef.current;
     if (!mate || opts.reduced || opts.glyph) return;
     const now = Date.now();
@@ -97,7 +103,7 @@ export function usePresencePointer(opts: {
         dartUntil.current = now + 900;
         dartFace.current = darted;
         next = darted;
-      } else if (hovering) next = lingerId(next, lingering);
+      } else if (hovering) next = lingerId(next, lingering, heldMs);
     }
     if (next === lastFace.current) return;
     lastFace.current = next;
@@ -153,20 +159,22 @@ export function usePresencePointer(opts: {
         actAt.current = now;
         onAct.current();
       }
-      const lingering = near && now - nearSince.current >= SHY_MS;
+      const heldMs = near ? now - nearSince.current : 0;
+      const lingering = near && heldMs >= SHY_MS;
       if (near !== lastNear) {
         lastNear = near;
         hoverRef.current = near;
         if (near) nearSince.current = now;
-        face(near, speed, false);
+        face(near, speed, false, 0);
         if (near && now - bounceAt.current > 1600 && now >= dartUntil.current) {
           bounceAt.current = now;
-          mate.bounce();
+          if (typeof mate.nudge === "function") mate.nudge();
+          else mate.bounce();
         }
       } else if (speed >= DART_SPEED && now >= dartUntil.current) {
-        face(near, speed, lingering);
+        face(near, speed, lingering, heldMs);
       } else if (lingering) {
-        face(near, speed, true);
+        face(near, speed, true, heldMs);
       }
     };
 

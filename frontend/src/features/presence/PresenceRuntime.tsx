@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { createMate } from "./engine";
+import { entryMotion, playMotion } from "./flourish";
 import { usePresencePointer } from "./gaze";
 import type { MoodMate } from "./types";
 import type { PresenceSlotId } from "./types";
@@ -36,6 +37,7 @@ export function PresenceRuntime(props: {
   }
   const mateRef = useRef<MoodMate | null>(null);
   const kindRef = useRef<string | null>(null);
+  const faceRef = useRef("");
 
   const active = useMemo(() => {
     let best: Slot | null = null;
@@ -76,6 +78,7 @@ export function PresenceRuntime(props: {
     host.style.height = `${active.size}px`;
     if (host.parentElement !== active.el) active.el.appendChild(host);
     const visible = typeof document === "undefined" || document.visibilityState === "visible";
+    host.dataset.emotion = props.emotionId;
     if (!mateRef.current || kindRef.current !== kind) {
       mateRef.current?.destroy();
       host.replaceChildren();
@@ -86,9 +89,15 @@ export function PresenceRuntime(props: {
         autostart: !props.reduced && visible,
       });
       kindRef.current = kind;
+      faceRef.current = props.emotionId;
       if (props.reduced) mateRef.current.renderStatic();
-    } else {
+    } else if (faceRef.current !== props.emotionId) {
       mateRef.current.setEmotion(props.emotionId);
+      mateRef.current.setActive(!props.reduced && visible);
+      if (props.reduced) mateRef.current.renderStatic();
+      else playMotion(mateRef.current, entryMotion(props.emotionId));
+      faceRef.current = props.emotionId;
+    } else {
       mateRef.current.setActive(!props.reduced && visible);
       if (props.reduced) mateRef.current.renderStatic();
     }
@@ -176,7 +185,7 @@ export function PresenceAnchor(props: {
   return (
     <div
       ref={ref}
-      className={cn("presence-anchor relative shrink-0", props.className)}
+      className={cn("presence-anchor relative shrink-0", props.size >= 96 && "presence-float", props.className)}
       style={{ width: props.size, height: props.size }}
       data-presence-slot={props.id}
       data-presence-active={active ? "true" : "false"}
@@ -205,6 +214,7 @@ export function PresenceSprite(props: {
 }) {
   const box = useRef<HTMLDivElement>(null);
   const mate = useRef<MoodMate | null>(null);
+  const faceRef = useRef("");
   const size = props.size ?? 140;
   const glyph = size < 64;
 
@@ -218,6 +228,7 @@ export function PresenceSprite(props: {
       autostart: !props.reduced,
     });
     mate.current = inst;
+    faceRef.current = props.emotionId;
     if (props.reduced) inst.renderStatic();
     const vis = () => {
       inst.setActive(document.visibilityState === "visible" && !props.reduced);
@@ -231,13 +242,20 @@ export function PresenceSprite(props: {
   }, [glyph, props.lite, props.reduced, size]);
 
   useLayoutEffect(() => {
-    mate.current?.setEmotion(props.emotionId);
-  }, [props.emotionId]);
+    if (!mate.current) return;
+    if (faceRef.current === props.emotionId) return;
+    mate.current.setEmotion(props.emotionId);
+    if (!props.reduced) playMotion(mate.current, entryMotion(props.emotionId));
+    faceRef.current = props.emotionId;
+  }, [props.emotionId, props.reduced]);
 
   useLayoutEffect(() => {
     if (!props.spark) return;
-    mate.current?.celebrate(1);
-  }, [props.spark]);
+    const motion = entryMotion(props.emotionId);
+    if (motion === "celebrate" || motion === "flourish") return;
+    if (typeof mate.current?.nudge === "function") mate.current.nudge();
+    else mate.current?.bounce();
+  }, [props.spark, props.emotionId]);
 
   const instRef = mate;
   usePresencePointer({
@@ -257,6 +275,7 @@ export function PresenceSprite(props: {
       className={cn("presence-engine", props.className)}
       style={{ width: size, height: size }}
       data-testid="presence-sprite"
+      data-emotion={props.emotionId}
       onClick={() => {
         mate.current?.celebrate(1);
         props.onClick?.();
@@ -299,13 +318,15 @@ export function PresenceModuleLoading(props: { label?: string; className?: strin
   return (
     <div
       className={cn(
-        "flex min-h-[min(28rem,calc(100vh-12rem))] w-full flex-1 flex-col items-center justify-center gap-4",
+        "presence-module-loading flex min-h-[min(28rem,calc(100vh-12rem))] w-full flex-1 flex-col items-center justify-center gap-4",
         props.className,
       )}
       data-testid="presence-module-loading"
       aria-busy="true"
     >
-      <PresenceAnchor id="module" size={props.size ?? MODULE_PRESENCE_SIZE} />
+      <div className="presence-module-shell">
+        <PresenceAnchor id="module" size={props.size ?? MODULE_PRESENCE_SIZE} />
+      </div>
       {props.label ? <p className="text-[13px] text-muted">{props.label}</p> : null}
     </div>
   );
