@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Clapperboard, MoreHorizontal, Plus, Radio, RefreshCw, Settings, Share2, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Clapperboard, List, MoreHorizontal, Plus, Radio, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Input } from "../../components/ui/input";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { writeClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
-import { useUI } from "../../lib/store";
 import * as api from "../../lib/client";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { CreateShortField, ScorePills, StudioIdChip } from "./studio-chrome";
+import { CreateShortField, StudioIdChip } from "./studio-chrome";
+import { TopicCard } from "./studio-topic-card";
 import { StudioProduce } from "./StudioProduce";
 import { type StudioCatalog, type StudioProject as ProduceProject } from "./studio-model";
 import { studioNext, studioNextCopy, type StudioPane } from "./studio-next";
-import { SCORE_KEYS, TOPIC_FILTERS, topicIsScheduled, topicPrimaryAction, type TopicFilter } from "./studio-topic";
+import { SCORE_KEYS, TOPIC_FILTERS, topicMatchesQuery, trendMatchesQuery, type TopicFilter } from "./studio-topic";
+import { asStudioProject, studioSessionId } from "./studio-session";
 import { useStudioSelection } from "./workshop-store";
+import type { VideoProject } from "../../lib/protocol";
 
 type TrendItem = { title?: string; hot?: string; url?: string };
 type TrendGroup = { platform?: string; label?: string; items?: TrendItem[]; ok?: boolean };
@@ -97,12 +99,14 @@ function asList<T>(v: unknown): T[] {
 
 export function StudioWorkbench(props: {
   sessionId?: string;
+  projects?: VideoProject[];
   onNeedSession: () => void | Promise<string | void>;
+  onOpenProject?: (p: VideoProject) => void | Promise<void>;
+  onRefreshHistory?: () => void;
   onClose?: () => void;
 }) {
   const copy = useCopy();
   const s = copy.video.studio;
-  const openSettings = useUI((s) => s.openSettings);
   const studioId = useStudioSelection((st) => st.studioId);
   const setStudioId = useStudioSelection((st) => st.setStudioId);
   const setStudioMeta = useStudioSelection((st) => st.setStudioMeta);
@@ -117,7 +121,8 @@ export function StudioWorkbench(props: {
   const [draftTitle, setDraftTitle] = useState("");
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [project, setProject] = useState<StudioProject | null>(null);
-  const [kill, setKill] = useState(false);
+  const [kill, setKill] = useState<StudioProject | null>(null);
+  const [switchOpen, setSwitchOpen] = useState(false);
   const [killTopic, setKillTopic] = useState<Topic | null>(null);
   const [mediaBase, setMediaBase] = useState("");
   const [pubPlatforms, setPubPlatforms] = useState<PublishPlatform[]>([]);
@@ -129,13 +134,21 @@ export function StudioWorkbench(props: {
   const [defaultAspect, setDefaultAspect] = useState<(typeof ASPECTS)[number]>("9:16");
   const [remotionReady, setRemotionReady] = useState(false);
   const [catalog, setCatalog] = useState<StudioCatalog>({});
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const current = project && project.id === studioId ? project : projects.find((p) => p.id === studioId) || project;
+  const copilotSessionId = studioSessionId(studioId, props.projects || []);
 
-  async function sessionId() {
-    if (props.sessionId) return props.sessionId;
-    const id = await props.onNeedSession();
-    return typeof id === "string" && id ? id : "";
+  async function attachCopilot(p: { id: string; title?: string; status?: string; gate?: string }) {
+    if (!p?.id || !props.onOpenProject) return;
+    await props.onOpenProject(asStudioProject({
+      id: p.id,
+      title: p.title || "",
+      sessionId: studioSessionId(p.id, props.projects || []),
+      status: p.status,
+      gate: p.gate,
+    }));
   }
 
   const loadTopics = useCallback(async (status = topicStatus) => {
@@ -147,12 +160,7 @@ export function StudioWorkbench(props: {
     const list = await api.video.listStudio();
     const rows = asList<StudioProject>(list);
     setProjects(rows);
-    const currentId = useStudioSelection.getState().studioId;
-    if (currentId && !rows.some((row) => row.id === currentId)) {
-      setStudioId("");
-      setProject(null);
-    }
-  }, [setStudioId]);
+  }, []);
 
   const loadProject = useCallback(async (id: string) => {
     if (!id) {
@@ -205,18 +213,36 @@ export function StudioWorkbench(props: {
       setProject(null);
       return;
     }
-    void loadProject(studioId).catch(() => {
+    const id = studioId;
+    void loadProject(id).catch(() => {
+      if (useStudioSelection.getState().studioId !== id) return;
       setProject(null);
       setStudioId("");
     });
   }, [studioId, loadProject, setStudioId]);
 
   useEffect(() => {
-    if (!props.sessionId || !studioId) return;
-    void api.video.studioBind(props.sessionId, studioId).catch((e) => {
-      if (/not found/i.test(api.errMessage(e))) setStudioId("");
+    if (!studioId) return;
+    const hit = (props.projects || []).find((row) => row.kind === "studio" && row.id === studioId);
+    void attachCopilot({
+      id: studioId,
+      title: hit?.title || useStudioSelection.getState().title,
+      status: hit?.status,
+      gate: hit?.gate,
+    }).catch(() => {
+      /* copilot bind must not bounce the short back home */
     });
-  }, [props.sessionId, studioId, setStudioId]);
+    // Attach once per short. Switching shorts changes studioId; creating one does too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- attachCopilot is stable enough via studioId
+  }, [studioId]);
+
+  useEffect(() => {
+    if (studioId) {
+      setPane((p) => (p === "radar" || p === "topics" ? "assemble" : p));
+      return;
+    }
+    setPane((p) => (p === "assemble" || p === "publish" ? "radar" : p));
+  }, [studioId]);
 
   useEffect(() => {
     const next = studioNext(current, pane);
@@ -286,8 +312,11 @@ export function StudioWorkbench(props: {
     setStudioId(p.id);
     setProject(p);
     setPane("assemble");
-    const sid = await sessionId();
-    if (sid) await api.video.studioBind(sid, p.id).catch(() => {});
+    try {
+      await attachCopilot(p);
+    } catch {
+      /* stay on this short even if the copilot session fails to bind */
+    }
   }
 
   async function produce(t: Topic) {
@@ -300,11 +329,46 @@ export function StudioWorkbench(props: {
       return;
     }
     await run("produce", async () => {
-      const sid = await sessionId();
-      const p = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect, session_id: sid })) as StudioProject;
+      const p = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect })) as StudioProject;
       await openShort(p);
       await loadTopics();
       await loadProjects();
+      props.onRefreshHistory?.();
+    });
+  }
+
+  function goHome() {
+    setStudioId("");
+    setProject(null);
+    setPane("radar");
+    setNaming(false);
+  }
+
+  function togglePick(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function produceSelected() {
+    const rows = topics.filter((t) => picked.has(t.id) && !t.studio_project_id);
+    if (!rows.length) {
+      toast.error(s.needTopicFirst);
+      return;
+    }
+    await run("produce", async () => {
+      let last: StudioProject | null = null;
+      for (const t of rows) {
+        last = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect })) as StudioProject;
+      }
+      setPicked(new Set());
+      if (last) await openShort(last);
+      await loadTopics();
+      await loadProjects();
+      props.onRefreshHistory?.();
     });
   }
 
@@ -330,19 +394,40 @@ export function StudioWorkbench(props: {
       return;
     }
     await run("create", async () => {
-      const sid = await sessionId();
-      const p = (await api.video.createStudio({ title: name, aspect: defaultAspect, session_id: sid })) as StudioProject;
+      const p = (await api.video.createStudio({ title: name, aspect: defaultAspect })) as StudioProject;
       setNaming(false);
       await openShort(p);
       await loadProjects();
+      props.onRefreshHistory?.();
     });
   }
 
   async function selectProject(id: string) {
+    const hit = projects.find((row) => row.id === id);
     setStudioId(id);
-    const sid = await sessionId();
-    if (sid) await api.video.studioBind(sid, id).catch(() => {});
     setPane("assemble");
+    try {
+      await attachCopilot({ id, title: hit?.title, status: hit?.status, gate: hit?.gate });
+    } catch {
+      /* stay on this short even if the copilot session fails to bind */
+    }
+  }
+
+  function shortLabel(title?: string) {
+    return (title || "").trim() || s.newProject;
+  }
+
+  function askDelete(p: StudioProject) {
+    setSwitchOpen(false);
+    setKill(p);
+  }
+
+  async function removeShort(id: string) {
+    await api.video.deleteStudio(id);
+    setKill(null);
+    if (studioId === id) goHome();
+    await loadProjects();
+    props.onRefreshHistory?.();
   }
 
   async function saveProject(patch: Partial<StudioProject>) {
@@ -465,46 +550,94 @@ export function StudioWorkbench(props: {
     compose: s.desk.compose,
     delivery: s.desk.delivery,
   };
+  const atHome = !studioId;
+  const navPanes = panes.filter((p) => atHome ? p.id === "radar" || p.id === "topics" : p.id === "assemble" || p.id === "publish");
+  const shownTopics = topics.filter((t) => topicMatchesQuery(t, query));
+  const shownTrends = trends
+    .map((g) => ({ ...g, items: (g.items || []).filter((item) => trendMatchesQuery(item, query)) }))
+    .filter((g) => (g.items || []).length);
+  const pickCount = [...picked].filter((id) => topics.some((t) => t.id === id && !t.studio_project_id)).length;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane}>
+    <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane} data-bound={current ? "true" : "false"} data-home={atHome ? "true" : "false"}>
       {err ? <div className="border-b border-danger/20 bg-danger/[0.11] px-3 py-1.5 text-[12px] text-danger">{err}</div> : null}
       <header className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            {projects.length > 1 ? (
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">{s.pickShort}</span>
-                <select
-                  className="h-7 w-full max-w-full truncate rounded-md border-0 bg-transparent text-[14px] font-semibold tracking-[-0.03em] outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                  value={studioId}
-                  aria-label={s.pickShort}
-                  data-testid="studio-workbench-bound"
-                  onChange={(e) => {
-                    if (e.target.value) void selectProject(e.target.value);
-                  }}
-                >
-                  {!studioId ? <option value="">{copy.video.shellStudio}</option> : null}
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.title}</option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <h1 className="truncate text-[14px] font-semibold tracking-[-0.03em]" data-testid="studio-workbench-bound">{current?.title || copy.video.shellStudio}</h1>
-            )}
+          <div className="flex min-w-0 items-center gap-0.5">
+            {current ? (
+              <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" data-testid="studio-back-home" title={s.backHome} aria-label={s.backHome} onClick={goHome}>
+                <ArrowLeft className="size-3.5" aria-hidden />
+              </Button>
+            ) : null}
+            <h1 className="min-w-0 truncate text-[14px] font-semibold tracking-[-0.03em]" data-testid="studio-workbench-bound">
+              {current?.title || copy.video.shellStudio}
+            </h1>
+            {projects.length > 0 ? (
+              <DropdownMenu open={switchOpen} onOpenChange={setSwitchOpen}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 shrink-0 px-0"
+                    aria-label={s.pickShort}
+                    title={s.pickShort}
+                    data-testid="studio-switch-short"
+                  >
+                    <ChevronDown className="size-3.5 text-muted" aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-80 max-h-80 overflow-y-auto">
+                  <DropdownMenuItem data-testid="studio-switch-new" onSelect={() => setNaming(true)}>
+                    <Plus className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                    {s.newProject}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>{s.recentShorts}</DropdownMenuLabel>
+                  {projects.map((p) => {
+                    const meta = [
+                      statusLabel[p.status || ""] || p.status || "",
+                      gateLabel[p.gate || p.furthest_gate || ""] || "",
+                    ].filter(Boolean).join(" · ");
+                    return (
+                      <div key={p.id} className="flex items-start gap-0.5">
+                        <DropdownMenuItem
+                          className="min-w-0 flex-1 items-start"
+                          data-testid={`studio-switch-${p.id}`}
+                          onSelect={() => { void selectProject(p.id); }}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px]">{shortLabel(p.title)}</span>
+                            {meta ? <span className="mt-0.5 block truncate text-[11px] text-muted">{meta}</span> : null}
+                          </span>
+                          {p.id === studioId ? <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden /> : null}
+                        </DropdownMenuItem>
+                        <button
+                          type="button"
+                          className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-danger/10 hover:text-danger"
+                          data-testid={`studio-delete-${p.id}`}
+                          aria-label={s.deleteShort}
+                          title={s.deleteShort}
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={() => askDelete(p)}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
           <p className="truncate text-[12px] text-muted" data-testid="studio-next">
-            {[
-              current ? (statusLabel[current.status || ""] || current.status) : "",
-              current ? (gateLabel[current.gate || current.furthest_gate || ""] || "") : "",
-              nextLabel,
-            ].filter(Boolean).join(" · ")}
+            {current
+              ? [statusLabel[current.status || ""] || current.status, gateLabel[current.gate || current.furthest_gate || ""] || "", nextLabel].filter(Boolean).join(" · ")
+              : s.homeHint}
           </p>
           {current?.id ? (
             <StudioIdChip
               projectId={current.id}
-              sessionId={props.sessionId}
+              sessionId={copilotSessionId}
               projectLabel={s.projectId}
               sessionLabel={s.sessionId}
               copyLabel={s.copyId}
@@ -513,7 +646,7 @@ export function StudioWorkbench(props: {
             />
           ) : null}
         </div>
-        {pane !== next.pane ? (
+        {!atHome && pane !== next.pane ? (
           <Button
             size="sm"
             variant="default"
@@ -525,24 +658,16 @@ export function StudioWorkbench(props: {
             <ChevronRight className="size-3.5" aria-hidden />
           </Button>
         ) : null}
-        <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" disabled={!!busy} title={s.newProject} aria-label={s.newProject} data-testid="studio-new-short" onClick={() => setNaming((v) => !v)}>
-          <Plus className="size-3.5" aria-hidden />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 w-7 shrink-0 px-0"
-          data-testid="studio-open-settings"
-          title={copy.video.openWorkshopSettings}
-          aria-label={copy.video.openWorkshopSettings}
-          onClick={() => openSettings("generation", "generation-studio")}
-        >
-          <Settings className="size-3.5" aria-hidden />
-        </Button>
+        {atHome ? (
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 text-[12px]" disabled={!!busy} data-testid="studio-new-short" onClick={() => setNaming(true)}>
+            <Plus className="size-3.5" aria-hidden />
+            {s.newProject}
+          </Button>
+        ) : null}
         {current ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" aria-label={copy.video.delete}>
+              <Button size="sm" variant="ghost" className="h-7 w-7 shrink-0 px-0" data-testid="studio-more" aria-label={copy.video.more}>
                 <MoreHorizontal className="size-3.5" aria-hidden />
               </Button>
             </DropdownMenuTrigger>
@@ -550,54 +675,66 @@ export function StudioWorkbench(props: {
               <DropdownMenuItem onSelect={() => { void writeClipboard(current.id).then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
                 {s.copyId}
               </DropdownMenuItem>
-              {props.sessionId ? (
-                <DropdownMenuItem onSelect={() => { void writeClipboard(props.sessionId || "").then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
+              {copilotSessionId ? (
+                <DropdownMenuItem onSelect={() => { void writeClipboard(copilotSessionId).then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
                   {s.sessionId}
                 </DropdownMenuItem>
               ) : null}
-              <DropdownMenuItem className="text-danger" onSelect={() => setKill(true)}>
-                {copy.video.delete}
+              <DropdownMenuItem className="text-danger" data-testid="studio-delete-menu" onSelect={() => askDelete(current)}>
+                {s.deleteShort}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
       </header>
-      <nav className="flex shrink-0 items-center gap-0.5 border-b border-border/70 px-2 py-1.5" aria-label={copy.video.shellStudio} data-testid="studio-pipeline">
-        {panes.map((p, i) => (
-          <span key={p.id} className="flex min-w-0 items-center">
-            {i > 0 ? <span className="mx-0.5 text-[11px] text-muted/35" aria-hidden>/</span> : null}
-            <button
-              type="button"
-              data-testid={`studio-pane-${p.id}`}
-              title={p.hint}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium",
-                pane === p.id ? "bg-foreground text-background" : paneDone[p.id] ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
-              )}
-              onClick={() => setPane(p.id)}
-            >
-              <span className="tabular-nums text-[10px] opacity-70">{i + 1}</span>
-              {p.label}
-            </button>
-          </span>
+      <nav className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border/70 px-2 py-1.5" aria-label={copy.video.shellStudio} data-testid="studio-pipeline">
+        {navPanes.map((p, i) => (
+          <button
+            key={p.id}
+            type="button"
+            data-testid={`studio-pane-${p.id}`}
+            title={p.hint}
+            aria-current={pane === p.id ? "page" : undefined}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium",
+              pane === p.id ? "bg-foreground text-background" : paneDone[p.id] ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
+            )}
+            onClick={() => setPane(p.id)}
+          >
+            <span className="tabular-nums text-[10px] opacity-70">{i + 1}</span>
+            {p.label}
+          </button>
         ))}
-        {busy ? <ProgressHairline className="ml-auto w-24" indeterminate /> : null}
+        {atHome ? (
+          <div className="relative ml-auto min-w-40 flex-1">
+            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
+            <Input
+              className="h-7 border-transparent bg-lift/80 pl-7 text-[12px]"
+              value={query}
+              placeholder={s.searchTopics}
+              aria-label={s.searchTopics}
+              data-testid="studio-home-search"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        ) : null}
+        {busy ? <ProgressHairline className={cn("w-24", atHome ? "" : "ml-auto")} indeterminate /> : null}
       </nav>
       {naming ? (
-        <div className="shrink-0 border-b border-border/70 px-4 py-2">
+        <div className="shrink-0 border-b border-border/70 px-4 py-3" data-testid="studio-start">
           <CreateShortField
             autoFocus
             disabled={!!busy}
             placeholder={s.createTitle}
             submitLabel={s.create}
-            hint={s.createTitleHint}
+            hint={s.startHint}
             testId="studio-create"
             onSubmit={(title) => void newProject(title)}
           />
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-3" data-testid={atHome ? "studio-home" : "studio-project"}>
         {pane === "radar" ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -623,7 +760,7 @@ export function StudioWorkbench(props: {
                 {s.refresh}
               </Button>
             </div>
-            {trends.length === 0 ? (
+            {shownTrends.length === 0 ? (
               <EmptyState
                 icon={<Radio className="size-5" />}
                 title={s.emptyRadar}
@@ -635,7 +772,7 @@ export function StudioWorkbench(props: {
                 }
               />
             ) : (
-              trends.map((g) => (
+              shownTrends.map((g) => (
                 <section key={g.platform || g.label} className="overflow-hidden rounded-xl border border-border bg-card">
                   <h2 className="flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium text-muted">
                     {g.label || g.platform}
@@ -679,14 +816,22 @@ export function StudioWorkbench(props: {
               ))}
             </div>
             <div className="flex gap-2">
-              <Input className="h-8" placeholder={s.title} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveDraftTopic()} />
+              <Input className="h-8" placeholder={s.newTopicPh} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveDraftTopic()} />
               <Button size="sm" variant="lift" className="h-8" disabled={!draftTitle.trim() || !!busy} onClick={() => void saveDraftTopic()}>
                 {s.newTopic}
               </Button>
             </div>
-            {topics.length === 0 ? (
+            {pickCount > 0 ? (
+              <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2" data-testid="studio-topic-picked">
+                <p className="min-w-0 flex-1 text-[12px] text-muted">{s.selectedCount.replace("{n}", String(pickCount))}</p>
+                <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-new-from-topics" onClick={() => void produceSelected()}>
+                  {s.newFromTopics}
+                </Button>
+              </div>
+            ) : null}
+            {shownTopics.length === 0 ? (
               <EmptyState
-                icon={<Sparkles className="size-5" />}
+                icon={<List className="size-5" />}
                 title={s.emptyTopics}
                 body={s.emptyTopicsHint}
                 action={
@@ -697,103 +842,33 @@ export function StudioWorkbench(props: {
               />
             ) : (
               <ul className="flex flex-col gap-2">
-                {topics.map((t) => {
-                  const primary = topicPrimaryAction(t);
-                  const queued = topicIsScheduled(t);
-                  return (
-                  <li key={`${t.id}-${t.updated_at || ""}`} className="rounded-xl border border-border bg-card px-3.5 py-3" data-testid={`studio-topic-${t.id}`} data-status={t.status || "inbox"}>
-                    <div className="flex items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium text-foreground">{t.title}</p>
-                        <p className="mt-0.5 text-[12px] text-muted">
-                          {[t.source_platform, statusLabel[t.status || "inbox"], t.angle].filter(Boolean).join(" · ")}
-                        </p>
-                        {t.note ? <p className="mt-1 line-clamp-2 text-[12px] leading-[1.5] text-muted">{t.note}</p> : null}
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!busy} data-testid={primary === "open" ? "studio-topic-open" : "studio-topic-produce"} onClick={() => void produce(t)}>
-                          {primary === "open" ? s.openShort : s.produce}
-                        </Button>
-                        {queued ? (
-                          <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-topic-unschedule" onClick={() => void unschedule(t)}>
-                            {s.unschedule}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    {!t.angle && t.status !== "done" && t.status !== "in_production" ? (
-                      <Input
-                        className="mt-2 h-8"
-                        placeholder={s.writeAngle}
-                        defaultValue=""
-                        data-testid="studio-topic-angle"
-                        onBlur={(e) => {
-                          const v = e.target.value.trim();
-                          if (v) void patchTopic(t, { angle: v, status: queued ? "scheduled" : "ready" });
-                        }}
-                      />
-                    ) : null}
-                    {queued ? <p className="mt-2 text-[11px] text-muted">{s.scheduleHint}</p> : null}
-                    <ScorePills
-                      scores={t.scores}
-                      labels={scoreLabel}
-                      avgLabel={s.scoreAvg}
-                      disabled={!!busy}
-                      onChange={(scores) => void patchTopic(t, { scores })}
-                    />
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[12px] text-muted" data-testid="studio-topic-more">{s.moreTopic}</summary>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void run("expand", async () => {
-                          await api.video.expandTopic(t.id);
-                          await loadTopics();
-                        })}>
-                          {s.desk.expand}
-                        </Button>
-                        {!queued && primary === "produce" ? (
-                          <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-topic-schedule" onClick={() => void schedule(t)}>
-                            {s.schedule}
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={!!busy} onClick={() => void makePersona(t.id, t.title)}>
-                          {s.persona}
-                        </Button>
-                        {t.angle ? (
-                          <Input
-                            className="h-8 min-w-40 flex-1"
-                            placeholder={s.angle}
-                            defaultValue={t.angle}
-                            onBlur={(e) => {
-                              const v = e.target.value.trim();
-                              if (v !== (t.angle || "")) void patchTopic(t, { angle: v, status: t.status === "inbox" ? "ready" : t.status });
-                            }}
-                          />
-                        ) : null}
-                        <Button size="sm" variant="ghost" className="h-7 text-[12px] text-danger" disabled={!!busy} onClick={() => setKillTopic(t)}>
-                          {copy.video.delete}
-                        </Button>
-                      </div>
-                      {t.persona_page_id ? <p className="mt-1 text-[11px] text-muted">{s.personaHint}</p> : null}
-                    </details>
-                    {(t.options || []).length ? (
-                      <ul className="mt-2 divide-y divide-border/70 border-t border-border/70" data-testid="studio-topic-options">
-                        {t.options!.map((opt) => (
-                          <li key={opt.id} className="flex items-start gap-2 py-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[12px] font-medium text-foreground">{opt.title}</p>
-                              <p className="text-[11px] leading-[1.45] text-muted">{[opt.angle, opt.summary].filter(Boolean).join(" · ")}</p>
-                            </div>
-                            <Button size="sm" variant="ghost" className="h-7 shrink-0 text-[12px]" disabled={!!busy} onClick={() => void run("choose", async () => {
-                              await api.video.chooseTopicOption(t.id, opt.id);
-                              await loadTopics();
-                            })}>{s.desk.choose}</Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </li>
-                  );
-                })}
+                {shownTopics.map((t) => (
+                  <TopicCard
+                    key={t.id}
+                    topic={t}
+                    busy={!!busy}
+                    picked={picked.has(t.id)}
+                    statusLabel={statusLabel[t.status || "inbox"] || t.status || ""}
+                    deleteLabel={copy.video.delete}
+                    scoreLabels={scoreLabel}
+                    copy={s}
+                    onPick={() => togglePick(t.id)}
+                    onProduce={() => void produce(t)}
+                    onUnschedule={() => void unschedule(t)}
+                    onPatch={(extra) => void patchTopic(t, extra)}
+                    onExpand={() => void run("expand", async () => {
+                      await api.video.expandTopic(t.id);
+                      await loadTopics();
+                    })}
+                    onSchedule={() => void schedule(t)}
+                    onPersona={() => void makePersona(t.id, t.title)}
+                    onChoose={(optionId) => void run("choose", async () => {
+                      await api.video.chooseTopicOption(t.id, optionId);
+                      await loadTopics();
+                    })}
+                    onDelete={() => setKillTopic(t)}
+                  />
+                ))}
               </ul>
             )}
           </div>
@@ -807,16 +882,7 @@ export function StudioWorkbench(props: {
                 title={s.emptyProject}
                 body={s.emptyProjectHint}
                 action={
-                  <div className="flex w-full max-w-sm flex-col gap-2">
-                    <CreateShortField
-                      disabled={!!busy}
-                      placeholder={s.createTitle}
-                      submitLabel={s.create}
-                      testId="studio-assemble-create"
-                      onSubmit={(title) => void newProject(title)}
-                    />
-                    <Button size="sm" variant="ghost" onClick={() => setPane("topics")}>{s.topics}</Button>
-                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setPane("topics")}>{s.topics}</Button>
                 }
               />
             ) : null}
@@ -905,19 +971,19 @@ export function StudioWorkbench(props: {
       </div>
 
       <ConfirmDialog
-        open={kill}
-        title={copy.video.delete}
-        body={s.deleteProject}
+        open={!!kill}
+        title={s.deleteShort}
+        body={s.deleteNamed.replace("{title}", shortLabel(kill?.title))}
         danger
-        confirmLabel={copy.video.delete}
-        onCancel={() => setKill(false)}
+        confirmLabel={s.deleteShort}
+        onCancel={() => setKill(null)}
         onConfirm={async () => {
-          if (!current?.id) return;
-          await api.video.deleteStudio(current.id);
-          setKill(false);
-          setStudioId("");
-          setProject(null);
-          await loadProjects();
+          if (!kill?.id) return;
+          try {
+            await removeShort(kill.id);
+          } catch (e) {
+            toast.error(api.errMessage(e));
+          }
         }}
       />
       <ConfirmDialog

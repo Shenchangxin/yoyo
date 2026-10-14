@@ -2272,7 +2272,7 @@ export const video = {
   getStudio: (id: string) => videoCall("video.studio.get", { id }),
   updateStudio: (p: Record<string, any>) => videoCall("video.studio.update", p),
   deleteStudio: (id: string) => videoCall("video.studio.delete", { id }),
-  studioBind: (sessionId: string, projectId: string) => videoCall("video.studio.bind", { session_id: sessionId, project_id: projectId }),
+  studioBind: (sessionId: string, projectId: string) => videoCall("video.studio.bind", { session_id: sessionId, id: projectId, project_id: projectId }),
   assembleStudio: (id: string) => videoCall("video.studio.assemble", { id }),
   speakStudio: (id: string, text = "") => videoCall("video.studio.speak", { id, text }),
   studioReframe: (hash: string, aspect = "9:16") => videoCall("video.studio.ops.reframe", { hash, aspect }),

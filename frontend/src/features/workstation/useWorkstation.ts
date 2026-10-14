@@ -25,6 +25,7 @@ import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind
 import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
+import { asStudioProject, studioSessionId } from "../video/studio-session";
 import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
@@ -227,7 +228,14 @@ export function useWorkstation() {
   const [videoProjects, setVideoProjects] = useState<VideoProject[]>([]);
   const canvasProjectId = useCanvasHost((s) => s.projectId);
   const dramaId = useDramaSelection((s) => s.dramaId);
+  const videoProjectsRef = useRef(videoProjects);
+  videoProjectsRef.current = videoProjects;
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
+  const studioThreadJobs = useRef<Record<string, Promise<Thread>>>({});
   const [active, setActive] = useState<Thread | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
   const hotItemsRef = useRef<Item[]>([]);
@@ -511,10 +519,14 @@ export function useWorkstation() {
   const loadVideoHistory = useCallback(async () => {
     try {
       const raw = await api.video.history();
-      const list = Array.isArray(raw) ? raw : raw?.items || raw?.projects || [];
-      setVideoProjects(asArray(list).map(videoProjectOf).filter((p): p is VideoProject => !!p));
+      const list = asArray(Array.isArray(raw) ? raw : raw?.items || raw?.projects || []).map(videoProjectOf).filter((p): p is VideoProject => !!p);
+      videoProjectsRef.current = list;
+      setVideoProjects(list);
+      return list;
     } catch {
+      videoProjectsRef.current = [];
       setVideoProjects([]);
+      return [] as VideoProject[];
     }
   }, []);
   useEffect(() => {
@@ -933,7 +945,84 @@ export function useWorkstation() {
     }
   }
 
+  function rememberStudioProject(p: VideoProject, sessionId: string) {
+    const row = asStudioProject({ ...p, sessionId });
+    setVideoProjects((prev) => {
+      const next = [row, ...prev.filter((x) => !(x.kind === "studio" && x.id === p.id))];
+      videoProjectsRef.current = next;
+      return next;
+    });
+  }
+
+  async function ensureStudioThread(p: VideoProject): Promise<Thread> {
+    const projectId = str(p.id);
+    if (!projectId) {
+      throw new Error("studio project required");
+    }
+    const inflight = studioThreadJobs.current[projectId];
+    if (inflight) return inflight;
+    const job = (async () => {
+      const ch: ThreadChannel = "video";
+      let boundId = studioSessionId(projectId, videoProjectsRef.current) || str(p.sessionId);
+      if (!boundId) {
+        const hist = await loadVideoHistory();
+        boundId = studioSessionId(projectId, hist);
+      }
+      let t = boundId
+        ? threadsRef.current.find((x) => x.id === boundId) || (activeRef.current?.id === boundId ? activeRef.current : null)
+        : null;
+      if (boundId && !t) {
+        const fresh = await api.listSessions().catch(() => threadsRef.current);
+        setThreads(fresh);
+        threadsRef.current = fresh;
+        t = fresh.find((x) => x.id === boundId) || null;
+      }
+      if (!t) {
+        const pending = useUI.getState().pendingAuthMode;
+        const created = await api.createSession(channelWorkspace(ch), ch);
+        t = created.channel ? created : { ...created, channel: ch };
+        if (pending) {
+          t = await adoptPendingAuthMode(t);
+        } else if (t.authMode !== "full") {
+          t = await api.setSessionAuthMode(t.id, "full").catch(() => t!);
+        }
+        if (p.title) {
+          await api.renameSession(t.id, p.title).catch(() => {});
+          t = { ...t, title: p.title };
+        }
+        setThreads((prev) => {
+          const next = [t!, ...prev.filter((x) => x.id !== t!.id)];
+          threadsRef.current = next;
+          return next;
+        });
+      }
+      await api.video.studioBind(t.id, projectId);
+      rememberStudioProject(p, t.id);
+      useStudioSelection.getState().setStudioId(projectId);
+      useStudioSelection.getState().setStudioMeta({ title: p.title || "" });
+      useUI.getState().openStudioDesk();
+      if (activeRef.current?.id !== t.id) {
+        itemsAcc.current = [];
+        setItems([]);
+        setQueued(0);
+        openThread(t, { keepPane: true });
+      }
+      void loadVideoHistory();
+      return t;
+    })();
+    studioThreadJobs.current[projectId] = job;
+    try {
+      return await job;
+    } finally {
+      delete studioThreadJobs.current[projectId];
+    }
+  }
+
   async function openVideoProject(p: VideoProject) {
+    if (p.kind === "studio") {
+      await ensureStudioThread(p);
+      return;
+    }
     const ch: ThreadChannel = "video";
     const ui = useUI.getState();
     const staged = ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat";
@@ -947,11 +1036,6 @@ export function useWorkstation() {
         useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
         if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
         else ui.setVideoMode("canvas");
-      } else if (p.kind === "studio") {
-        await api.video.studioBind(t.id, p.id).catch(() => {});
-        useStudioSelection.getState().setStudioId(p.id);
-        useStudioSelection.getState().setStudioMeta({ title: p.title || "" });
-        ui.openStudioDesk();
       } else {
         if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
         useDramaSelection.getState().setDramaId(p.id);
@@ -967,11 +1051,6 @@ export function useWorkstation() {
       await api.video.canvasBind(t.id, p.id).catch(() => {});
       if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
       else ui.setVideoMode("canvas");
-    } else if (p.kind === "studio") {
-      useStudioSelection.getState().setStudioId(p.id);
-      useStudioSelection.getState().setStudioMeta({ title: p.title || "" });
-      await api.video.studioBind(t.id, p.id).catch(() => {});
-      ui.openStudioDesk();
     } else {
       useDramaSelection.getState().setDramaId(p.id);
       if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);
@@ -1012,13 +1091,28 @@ export function useWorkstation() {
     }
     setErr("");
     try {
-      const t = await ensureThread();
-      if (useUI.getState().surface === "video" && useUI.getState().videoMode === "drama") {
-        await bindVideoThread(t.id).catch(() => {});
-      }
-      if (useUI.getState().surface === "video" && useUI.getState().videoMode === "canvas") {
-        await ensureCanvasProject(t.id).catch(() => {});
-        void loadVideoHistory();
+      const ui = useUI.getState();
+      let t: Thread;
+      if (ui.studioDesk) {
+        const studioId = useStudioSelection.getState().studioId;
+        if (!studioId) {
+          toast.message(copy.video.studio.needShortFirst);
+          return;
+        }
+        t = await ensureStudioThread(asStudioProject({
+          id: studioId,
+          title: useStudioSelection.getState().title,
+          sessionId: studioSessionId(studioId, videoProjectsRef.current),
+        }));
+      } else {
+        t = await ensureThread();
+        if (ui.surface === "video" && ui.videoMode === "drama") {
+          await bindVideoThread(t.id).catch(() => {});
+        }
+        if (ui.surface === "video" && ui.videoMode === "canvas") {
+          await ensureCanvasProject(t.id).catch(() => {});
+          void loadVideoHistory();
+        }
       }
       if (opts?.steer && running[t.id]) {
         await api.steer(t.id, text);

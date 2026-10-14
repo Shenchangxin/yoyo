@@ -34,7 +34,14 @@ export function VideoWorkshop(props: {
       data-pane={showBoard ? "drama-board" : pane}
     >
       {pane === "studio" ? (
-        <StudioWorkbench sessionId={props.sessionId} onNeedSession={props.onNeedSession} onClose={props.onClose} />
+        <StudioWorkbench
+          sessionId={props.sessionId}
+          projects={props.projects}
+          onNeedSession={props.onNeedSession}
+          onOpenProject={props.onOpenProject}
+          onRefreshHistory={props.onRefreshHistory}
+          onClose={props.onClose}
+        />
       ) : pane === "tasks" && !showBoard ? (
         <div className="flex h-full min-h-0 flex-col" data-testid="canvas-studio-shell" data-pane="tasks">
           <VideoHistory

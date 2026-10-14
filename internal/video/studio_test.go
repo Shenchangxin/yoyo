@@ -147,6 +147,54 @@ func TestStudioFromTopicBindAndHistory(t *testing.T) {
 	}
 }
 
+func TestStudioBindOneToOne(t *testing.T) {
+	e := testEngine(t)
+	a, err := e.CreateStudioProject(StudioProject{Title: "短片A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.CreateStudioProject(StudioProject{Title: "短片B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.BindStudioSession("sess-a", a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.BindStudioSession("sess-b", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if id, ok := e.StudioSessionBind("sess-a"); !ok || id != a.ID {
+		t.Fatalf("a bind %s %v", id, ok)
+	}
+	if id, ok := e.StudioSessionBind("sess-b"); !ok || id != b.ID {
+		t.Fatalf("b bind %s %v", id, ok)
+	}
+	if got := e.LatestStudioSession(a.ID); got != "sess-a" {
+		t.Fatalf("latest a %s", got)
+	}
+	if got := e.LatestStudioSession(b.ID); got != "sess-b" {
+		t.Fatalf("latest b %s", got)
+	}
+	if err := e.BindStudioSession("sess-a", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := e.StudioSessionBind("sess-a"); !ok {
+		t.Fatal("session should stay bound")
+	}
+	if id, _ := e.StudioSessionBind("sess-a"); id != b.ID {
+		t.Fatalf("rebind moved to b, got %s", id)
+	}
+	if _, ok := e.StudioSessionBind("sess-b"); ok {
+		t.Fatal("short b should keep one copilot; previous session must unbind")
+	}
+	if got := e.LatestStudioSession(a.ID); got != "" {
+		t.Fatalf("short a must not keep the stolen chat, got %s", got)
+	}
+	if got := e.LatestStudioSession(b.ID); got != "sess-a" {
+		t.Fatalf("short b copilot %s", got)
+	}
+}
+
 func TestStudioToolDispatcher(t *testing.T) {
 	e := testEngine(t)
 	raw, err := e.StudioTool("s1", "topic_save", map[string]any{"title": "热点一", "angle": "反常识"})

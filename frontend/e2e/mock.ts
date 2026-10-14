@@ -200,20 +200,31 @@ export async function mockApi(
       if (rpcMethod === "video.studio.list") {
         return ok(studios);
       }
+      if (rpcMethod === "video.studio.delete") {
+        const id = String(params.id || "");
+        studios = studios.filter((s) => s.id !== id);
+        return ok({ ok: true });
+      }
       if (rpcMethod === "video.studio.create") {
+        const sid = String(params.session_id || "");
+        const topicId = String(params.topic_id || "");
+        const fromTopic = topics.find((t) => t.id === topicId);
         const row = {
           ok: true,
           id: `studio-${studios.length + 1}`,
-          title: String(params.title || "Short"),
+          title: String(params.title || fromTopic?.title || "Short"),
           status: "draft",
           gate: "script",
           furthest_gate: "script",
           script_status: "needs_review",
           storyboard: { shots: [] },
           delivery: { status: "draft" },
-          session_id: String(params.session_id || ""),
+          session_id: sid,
           topic_id: String(params.topic_id || ""),
         };
+        if (sid) {
+          studios = studios.map((s) => (s.session_id === sid ? { ...s, session_id: "" } : s));
+        }
         studios = [row, ...studios];
         if (row.topic_id) {
           topics = topics.map((t) => (t.id === row.topic_id ? { ...t, status: "in_production", studio_project_id: row.id } : t));
@@ -222,7 +233,13 @@ export async function mockApi(
       }
       if (rpcMethod === "video.studio.bind") {
         const id = String(params.project_id || params.id || studios[0]?.id || "studio-1");
-        const hit = studios.find((s) => s.id === id) || studios[0] || { id, title: "Short", status: "draft", gate: "script", furthest_gate: "script", script_status: "needs_review", storyboard: { shots: [] }, delivery: { status: "draft" } };
+        const sid = String(params.session_id || "");
+        studios = studios.map((s) => {
+          if (s.id === id) return { ...s, session_id: sid };
+          if (sid && s.session_id === sid) return { ...s, session_id: "" };
+          return s;
+        });
+        const hit = studios.find((s) => s.id === id) || studios[0] || { id, title: "Short", status: "draft", gate: "script", furthest_gate: "script", script_status: "needs_review", storyboard: { shots: [] }, delivery: { status: "draft" }, session_id: sid };
         return ok(hit);
       }
       if (rpcMethod === "video.studio.get" || rpcMethod === "video.studio.update") {
@@ -271,6 +288,18 @@ export async function mockApi(
       }
       if (rpcMethod === "video.session.project") {
         const sid = String(params.session_id || "");
+        const studio = studios.find((s) => s.session_id === sid);
+        if (studio) {
+          return ok({
+            session_id: sid,
+            kind: "studio",
+            id: studio.id,
+            studio_id: studio.id,
+            title: studio.title,
+            gate: studio.gate,
+            status: studio.status,
+          });
+        }
         const hit = canvases.find((c) => c.session_id === sid);
         return ok(hit ? { session_id: sid, kind: "canvas", id: hit.id, canvas_id: hit.id, title: hit.title } : { session_id: sid });
       }
@@ -375,7 +404,7 @@ export async function mockApi(
     }
     if (path.endsWith("/api/sessions") && method === "POST") {
       const ch = String(body().channel || "agent") === "video" ? "video" : "agent";
-      const t = { id: `s${sessions.length + 1}`, title: "New chat", workspace, channel: ch };
+      const t = { id: `s${sessions.length + 1}`, title: "New chat", workspace, channel: ch, auth_mode: "full" };
       sessions = [t, ...sessions];
       return route.fulfill({ json: t });
     }

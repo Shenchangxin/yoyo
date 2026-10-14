@@ -36,3 +36,28 @@ export function cycleScore(n: number): number {
   const cur = Number.isFinite(n) ? Math.max(0, Math.min(5, Math.round(n))) : 0;
   return cur >= 5 ? 0 : cur + 1;
 }
+
+export function setScore(scores: Record<string, number> | undefined, key: string, n: number): Record<string, number> {
+  const cur = Number(scores?.[key] || 0);
+  const v = Number.isFinite(n) ? Math.max(0, Math.min(5, Math.round(n))) : 0;
+  const next = { ...(scores || {}) };
+  if (!v || v === cur) delete next[key];
+  else next[key] = v;
+  return next;
+}
+
+function hay(parts: Array<string | undefined>) {
+  return parts.map((x) => String(x || "")).join(" ").toLowerCase();
+}
+
+export function topicMatchesQuery(t: { title?: string; angle?: string; note?: string; source_title?: string; source_platform?: string }, q: string) {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  return hay([t.title, t.angle, t.note, t.source_title, t.source_platform]).includes(needle);
+}
+
+export function trendMatchesQuery(item: { title?: string; hot?: string }, q: string) {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return true;
+  return hay([item.title, item.hot]).includes(needle);
+}

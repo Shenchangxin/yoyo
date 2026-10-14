@@ -43,6 +43,8 @@ import { pendingAsk } from "./lib/ask-form";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
+import { useStudioSelection } from "./features/video/workshop-store";
+import { studioSessionId } from "./features/video/studio-session";
 
 const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
 const EvolveLab = lazy(() => import("./features/labs/EvolveLab").then((m) => ({ default: m.EvolveLab })));
@@ -83,6 +85,9 @@ function WorkstationApp() {
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
   const studioDesk = useUI((s) => s.studioDesk);
+  const studioId = useStudioSelection((s) => s.studioId);
+  const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
+  const studioCopilotForeign = studioDesk && (!studioId || (!!studioCopilotSession && studioCopilotSession !== ws.activeId));
   const moduleLoading = useUI((s) => s.moduleLoading);
   const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
   const idleAt = useRef(Date.now());
@@ -112,6 +117,7 @@ function WorkstationApp() {
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || videoPane !== "chat");
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
+  const copilotItems = studioCopilotForeign ? [] : ws.items;
   const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
@@ -153,7 +159,9 @@ function WorkstationApp() {
     files: ws.files,
     skills: ws.skills,
     // Before the first chat exists, show the permission the next chat will get.
-    authMode: ws.active?.authMode || pendingAuthMode || "full",
+    authMode: studioDesk && (studioCopilotForeign || !ws.activeId)
+      ? (pendingAuthMode || "full")
+      : (ws.active?.authMode || pendingAuthMode || "full"),
     workspace: toolRoot,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
@@ -323,7 +331,7 @@ function WorkstationApp() {
           </div>
         ) : null}
         <Transcript
-          items={ws.items}
+          items={copilotItems}
           liveTexts={ws.liveTexts}
           showThinking={!!ws.savedCfg.showThinking}
           approvals={ws.approvals}
@@ -447,6 +455,7 @@ function WorkstationApp() {
       videoProjects={ws.videoProjects}
       canvasProjectId={ws.canvasProjectId}
       dramaId={ws.dramaId}
+      studioId={studioId}
       onNew={ws.onNew}
       onNewIn={(path) => { void ws.onNewIn(path); }}
       workspace={ws.surface === "video" ? (ws.savedCfg.videoWorkspace || ws.health.videoWorkspace || ws.savedCfg.workspace) : ws.savedCfg.workspace}
@@ -843,15 +852,23 @@ function WorkstationApp() {
             {staged ? (
               <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
                 {studioDesk ? (
-                  <div className="studio-desk h-full min-h-0 overflow-hidden" data-testid="studio-desk">
-                    <div className="studio-desk-board" data-skin-pane>
-                      <Suspense fallback={null}>{workshop}</Suspense>
+                  studioId ? (
+                    <div className="studio-desk h-full min-h-0 overflow-hidden" data-testid="studio-desk">
+                      <div className="studio-desk-board" data-skin-pane>
+                        <Suspense fallback={null}>{workshop}</Suspense>
+                      </div>
+                      <div className="studio-desk-chat" data-skin-pane data-testid="studio-copilot">
+                        <StudioCopilotHeader />
+                        {agentPane}
+                      </div>
                     </div>
-                    <div className="studio-desk-chat" data-skin-pane data-testid="studio-copilot">
-                      <StudioCopilotHeader />
-                      {agentPane}
+                  ) : (
+                    <div className="h-full min-h-0 overflow-hidden" data-testid="studio-desk" data-home="true">
+                      <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
+                        <Suspense fallback={null}>{workshop}</Suspense>
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
                     <Suspense fallback={null}>{workshop}</Suspense>

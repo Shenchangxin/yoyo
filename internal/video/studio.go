@@ -405,8 +405,15 @@ func (e *Engine) BindStudioSession(sessionID, projectID string) error {
 		return err
 	}
 	m := e.loadStudioBinds()
-	m[sessionID] = projectID
-	return e.saveStudioBinds(m)
+	next := make(map[string]string, len(m)+1)
+	for sid, pid := range m {
+		if sid == sessionID || pid == projectID {
+			continue
+		}
+		next[sid] = pid
+	}
+	next[sessionID] = projectID
+	return e.saveStudioBinds(next)
 }
 
 func (e *Engine) StudioSessionBind(sessionID string) (string, bool) {

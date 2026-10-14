@@ -141,21 +141,23 @@ test("studio workbench opens from the video rail", async ({ page }) => {
   await page.getByTestId("video-shell-studio").click();
   await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
+  await expect(page.getByTestId("studio-home")).toBeVisible();
   await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
   await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
-  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
-  await expect(page.getByTestId("studio-pane-publish")).toBeVisible();
-  await expect(page.getByTestId("studio-open-settings")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-assemble")).toHaveCount(0);
+  await expect(page.getByTestId("studio-pane-publish")).toHaveCount(0);
+  await expect(page.getByTestId("studio-home-search")).toBeVisible();
+  await expect(page.getByTestId("studio-open-settings")).toHaveCount(0);
+  await expect(page.getByTestId("studio-new-short")).toBeVisible();
+  await expect(page.getByTestId("studio-new-short")).toContainText(/New short|新建短片/);
+  await expect(page.getByTestId("studio-delete-current")).toHaveCount(0);
   await expect(page.getByTestId("studio-pipeline")).toBeVisible();
   await expect(page.getByTestId("studio-next")).toBeVisible();
-  await expect(page.getByTestId("studio-copilot")).toBeVisible();
-  await expect(page.getByTestId("studio-copilot-header")).toBeVisible();
-  await expect(page.getByTestId("studio-copilot-label")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
   await expect(page.getByTestId("video-mode-switch")).toHaveCount(0);
   await expect(page.getByTestId("profile-chip")).toHaveCount(0);
-  await expect(page.getByTestId("studio-copilot-attach")).toBeVisible();
-  await expect(page.getByTestId("studio-copilot").getByLabel(/工作空间|Workspace/)).toHaveCount(0);
-  await expect(page.getByTestId("studio-copilot").getByLabel(/授权模式|Authorization/)).toHaveCount(0);
+  await expect(page.getByTestId("studio-start")).toHaveCount(0);
+  await expect(page.getByTestId("studio-lane-make")).toHaveCount(0);
 });
 
 test("studio workbench opens from the composer mode switch", async ({ page }) => {
@@ -167,10 +169,11 @@ test("studio workbench opens from the composer mode switch", async ({ page }) =>
   await page.getByTestId("video-mode-creative").click();
   await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
+  await expect(page.getByTestId("studio-home")).toBeVisible();
   await expect(page.getByTestId("studio-pane-radar")).toBeVisible();
   await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
-  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
-  await expect(page.getByTestId("studio-pane-publish")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-assemble")).toHaveCount(0);
+  await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
 });
 
 test("studio workbench opens from creation history", async ({ page }) => {
@@ -189,6 +192,7 @@ test("studio workbench opens from creation history", async ({ page }) => {
   await expect(page.getByTestId("studio-copilot-id")).toHaveText(/studio-1/);
   await expect(page.getByTestId("studio-copilot-header")).toContainText(/和左侧工台是同一条|Same short as the desk/);
   await expect(page.getByTestId("studio-copilot-next")).toContainText(/下一步|Next/);
+  await expect(page.getByTestId("studio-copilot-auth")).toContainText(/完全访问|Full access/);
   await page.getByTestId("studio-pane-assemble").click();
   await expect(page.getByTestId("studio-step-nav")).toBeVisible();
   await expect(page.getByTestId("studio-step-setup")).toBeVisible();
@@ -200,6 +204,113 @@ test("studio workbench opens from creation history", async ({ page }) => {
   await expect(page.getByTestId("studio-ops-tools")).toHaveCount(0);
   await expect(page.getByTestId("studio-collab")).toHaveCount(0);
   await expect(page.getByTestId("studio-cut-ops")).toHaveCount(0);
+  await expect(page.getByTestId("studio-new-short")).toHaveCount(0);
+  await expect(page.getByTestId("studio-delete-current")).toHaveCount(0);
+  await expect(page.getByTestId("studio-brief")).toBeVisible();
+  await expect(page.getByTestId("studio-brief")).toContainText(/Who it's for|给谁看/);
+  await expect(page.getByTestId("studio-brief")).toContainText(/Length|时长/);
+  await expect(page.getByTestId("studio-brief-audience")).toBeVisible();
+  await expect(page.getByText(/Audience and length|观众和时长/)).toHaveCount(0);
+  await page.getByTestId("studio-step-script").click();
+  await expect(page.getByTestId("studio-lines")).toBeVisible();
+  await expect(page.getByTestId("studio-lines")).toContainText(/Hook|钩子/);
+  await expect(page.getByTestId("studio-lines")).toContainText(/Close|收束/);
+  await expect(page.getByTestId("studio-lines")).toContainText(/Tone|语气/);
+  await expect(page.getByTestId("studio-lines-hook")).toBeVisible();
+  await expect(page.getByTestId("studio-lines-cta")).toBeVisible();
+  await expect(page.getByText(/Hook, close, tone|钩子、收束、语气/)).toHaveCount(0);
+});
+
+test("each short keeps its own copilot chat", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await page.getByTestId("studio-new-short").click();
+  await page.getByTestId("studio-create-title").fill("春日通勤");
+  await page.getByTestId("studio-create").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-copy-session")).toContainText(/s1/);
+  await expect(page.getByTestId("studio-new-short")).toHaveCount(0);
+  await page.getByTestId("studio-switch-short").click();
+  await page.getByTestId("studio-switch-new").click();
+  await page.getByTestId("studio-create-title").fill("夜路回访");
+  await page.getByTestId("studio-create").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/夜路回访/);
+  await expect(page.getByTestId("studio-copilot-bound")).toHaveText(/夜路回访/);
+  await expect(page.getByTestId("studio-copy-session")).toContainText(/s2/);
+  await expect(page.getByTestId("studio-copy-session")).not.toContainText(/s1/);
+  await page.getByTestId("studio-switch-short").click();
+  await expect(page.getByTestId("studio-switch-studio-1")).toBeVisible();
+  await expect(page.getByTestId("studio-switch-studio-2")).toBeVisible();
+  await page.getByTestId("studio-switch-studio-1").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-copilot-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-copy-session")).toContainText(/s1/);
+  await expect(page.getByTestId("studio-copilot-auth")).toContainText(/完全访问|Full access/);
+});
+
+test("a topic starts a short project with its own copilot", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await expect(page.getByTestId("studio-home")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
+  await page.getByTestId("studio-pane-topics").click();
+  await page.getByTestId("studio-topic-topic-1").getByTestId("studio-topic-produce").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日穿搭/);
+  await expect(page.getByTestId("studio-project")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
+  await expect(page.getByTestId("studio-pane-radar")).toHaveCount(0);
+  await expect(page.getByTestId("studio-copilot")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot-bound")).toHaveText(/春日穿搭/);
+  await expect(page.getByTestId("studio-copilot-auth")).toContainText(/完全访问|Full access/);
+  await page.getByTestId("studio-back-home").click();
+  await expect(page.getByTestId("studio-home")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
+  await expect(page.getByTestId("studio-pane-topics")).toBeVisible();
+  await page.getByTestId("studio-pane-topics").click();
+  await page.getByTestId("studio-topic-topic-1").getByTestId("studio-topic-open").click();
+  await expect(page.getByTestId("studio-project")).toBeVisible();
+  await expect(page.getByTestId("studio-home")).toHaveCount(0);
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日穿搭/);
+  await expect(page.getByTestId("studio-pane-assemble")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toBeVisible();
+});
+
+test("several topics can start shorts together", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await page.getByTestId("studio-pane-topics").click();
+  await page.getByTestId("studio-topic-pick-topic-1").click();
+  await page.getByTestId("studio-topic-pick-topic-2").click();
+  await expect(page.getByTestId("studio-topic-picked")).toBeVisible();
+  await page.getByTestId("studio-new-from-topics").click();
+  await expect(page.getByTestId("studio-copilot")).toBeVisible();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/还没想好|Short/);
+  await page.getByTestId("studio-back-home").click();
+  await page.getByTestId("studio-pane-topics").click();
+  await expect(page.getByTestId("studio-topic-topic-1").getByTestId("studio-topic-open")).toBeVisible();
+  await expect(page.getByTestId("studio-topic-topic-2").getByTestId("studio-topic-open")).toBeVisible();
+});
+
+test("topic score stays on the topic card", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await page.getByTestId("studio-pane-topics").click();
+  const card = page.getByTestId("studio-topic-topic-1");
+  await expect(card.getByTestId("studio-topic-scores")).toContainText(/Worth filming|值不值得拍/);
+  await card.getByTestId("studio-topic-scores").click();
+  await expect(card.getByTestId("studio-topic-score-heat")).toBeVisible();
+  await card.getByTestId("studio-topic-score-heat-3").click();
+  await expect(page.getByTestId("studio-workbench")).toHaveAttribute("data-pane", "topics");
+  await expect(card.getByTestId("studio-topic-more")).toBeVisible();
+  await expect(card.getByText(/Scores and persona|打分与人设/)).toHaveCount(0);
 });
 
 test("topic schedule stays on topics and does not steal the desk", async ({ page }) => {
@@ -212,12 +323,68 @@ test("topic schedule stays on topics and does not steal the desk", async ({ page
   await expect(page.getByTestId("studio-topic-topic-1")).toBeVisible();
   const card = page.getByTestId("studio-topic-topic-1");
   await card.getByTestId("studio-topic-more").click();
-  await card.getByTestId("studio-topic-schedule").click();
+  await page.getByTestId("studio-topic-schedule").click();
   await expect(page.getByTestId("studio-workbench")).toHaveAttribute("data-pane", "topics");
   await expect(page.getByTestId("studio-id-chip")).toHaveCount(0);
   await page.getByTestId("studio-topic-filter-scheduled").click();
   await expect(page.getByTestId("studio-topic-topic-1")).toHaveAttribute("data-status", "scheduled");
   await expect(page.getByTestId("studio-topic-unschedule")).toBeVisible();
+});
+
+test("shorts can be created and a history item can be deleted", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-studio").click();
+  await expect(page.getByTestId("studio-new-short")).toBeVisible();
+  await page.getByTestId("studio-new-short").click();
+  await page.getByTestId("studio-create-title").fill("春日通勤");
+  await page.getByTestId("studio-create").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/春日通勤/);
+  await expect(page.getByTestId("studio-new-short")).toHaveCount(0);
+  await expect(page.getByTestId("studio-delete-current")).toHaveCount(0);
+  await page.getByTestId("studio-switch-short").click();
+  await page.getByTestId("studio-switch-new").click();
+  await page.getByTestId("studio-create-title").fill("夜路回访");
+  await page.getByTestId("studio-create").click();
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/夜路回访/);
+  await page.getByTestId("studio-switch-short").click();
+  await expect(page.getByTestId("studio-switch-new")).toBeVisible();
+  await expect(page.getByTestId("studio-delete-studio-1")).toBeVisible();
+  await page.getByTestId("studio-delete-studio-1").click();
+  await expect(page.getByRole("dialog")).toContainText(/春日通勤/);
+  await page.getByRole("dialog").getByRole("button", { name: /Delete short|删除短片/ }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/夜路回访/);
+  await page.getByTestId("studio-switch-short").click();
+  await expect(page.getByTestId("studio-switch-studio-1")).toHaveCount(0);
+  await expect(page.getByTestId("studio-switch-studio-2")).toBeVisible();
+  await page.getByTestId("studio-switch-studio-2").click();
+  await page.getByTestId("studio-more").click();
+  await page.getByTestId("studio-delete-menu").click();
+  await expect(page.getByRole("dialog")).toContainText(/夜路回访/);
+  await page.getByRole("dialog").getByRole("button", { name: /Delete short|删除短片/ }).click();
+  await expect(page.getByTestId("studio-home")).toBeVisible();
+  await expect(page.getByTestId("studio-copilot")).toHaveCount(0);
+  await expect(page.getByTestId("studio-delete-current")).toHaveCount(0);
+  await expect(page.getByTestId("studio-workbench-bound")).toHaveText(/Shorts|短片/);
+});
+
+test("creation history can delete a short", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-tasks").click();
+  await page.getByTestId("video-history-studio-title").fill("春日通勤");
+  await page.getByTestId("video-history-new-studio").click();
+  await expect(page.getByTestId("studio-desk")).toBeVisible();
+  await page.getByTestId("video-shell-tasks").click();
+  await expect(page.getByTestId("video-history")).toBeVisible();
+  await expect(page.getByTestId("video-project-studio-studio-1")).toBeVisible();
+  await page.getByTestId("video-history-delete-studio-1").click();
+  await expect(page.getByRole("dialog")).toContainText(/春日通勤/);
+  await page.getByRole("dialog").getByRole("button", { name: /Delete short|删除短片/ }).click();
+  await expect(page.getByTestId("video-project-studio-studio-1")).toHaveCount(0);
 });
 
 test("new canvas appears in creation history and can be opened", async ({ page }) => {

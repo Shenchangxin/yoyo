@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles } from "lucide-react";
+import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -15,7 +15,8 @@ import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
 import { CreateShortField } from "./studio-chrome";
 import { shownSeriesTitle } from "./drama-lib";
-import { defaultDramaStyle } from "./workshop-store";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { defaultDramaStyle, useStudioSelection } from "./workshop-store";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
@@ -33,6 +34,8 @@ export function VideoHistory(props: {
   const tabMotion = motionTransition(reduced, DURATION_SHELL);
   const [tab, setTab] = useState<"projects" | "jobs">("projects");
   const [busy, setBusy] = useState("");
+  const [kill, setKill] = useState<VideoProject | null>(null);
+  const setStudioId = useStudioSelection((s) => s.setStudioId);
   const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
   const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
   const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
@@ -71,14 +74,12 @@ export function VideoHistory(props: {
       const p = await api.video.createStudio({
         title: name,
         aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16",
-        session_id: props.sessionId || "",
       });
       if (p?.id) {
         props.onOpenProject?.({
           kind: "studio",
           id: p.id,
           title: p.title || name,
-          sessionId: props.sessionId,
           status: p.status,
           gate: p.gate,
         });
@@ -191,7 +192,14 @@ export function VideoHistory(props: {
             {studios.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
                 {studios.map((p) => (
-                  <HistoryRow key={`studio-${p.id}`} project={p} active={p.id === props.studioId} fallback={copy.video.studio.newProject} onSelect={() => props.onOpenProject?.(p)} />
+                  <HistoryRow
+                    key={`studio-${p.id}`}
+                    project={p}
+                    active={p.id === props.studioId}
+                    fallback={copy.video.studio.newProject}
+                    onSelect={() => props.onOpenProject?.(p)}
+                    onDelete={() => setKill(p)}
+                  />
                 ))}
               </ul>
             ) : (
@@ -219,11 +227,30 @@ export function VideoHistory(props: {
           </section>
         </div>
       )}
+      <ConfirmDialog
+        open={!!kill}
+        title={copy.video.studio.deleteShort}
+        body={copy.video.studio.deleteNamed.replace("{title}", (kill?.title || "").trim() || copy.video.studio.newProject)}
+        danger
+        confirmLabel={copy.video.studio.deleteShort}
+        onCancel={() => setKill(null)}
+        onConfirm={async () => {
+          if (!kill?.id) return;
+          try {
+            await api.video.deleteStudio(kill.id);
+            if (kill.id === props.studioId) setStudioId("");
+            setKill(null);
+            props.onRefresh?.();
+          } catch (e) {
+            toast.error(api.errMessage(e));
+          }
+        }}
+      />
     </div>
   );
 }
 
-function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void }) {
+function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void; onDelete?: () => void }) {
   const copy = useCopy();
   const p = props.project;
   const Icon = p.kind === "drama" ? Clapperboard : p.kind === "studio" ? Sparkles : LayoutGrid;
@@ -251,13 +278,13 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
     p.updatedAt ? p.updatedAt.slice(0, 10) : "",
   ].filter(Boolean);
   return (
-    <li>
+    <li className="flex items-stretch">
       <button
         type="button"
         data-testid={`video-project-${p.kind}-${p.id}`}
         aria-current={props.active ? "page" : undefined}
         className={cn(
-          "flex w-full items-start gap-3 px-3.5 py-3 text-left text-[13px]",
+          "flex min-w-0 flex-1 items-start gap-3 px-3.5 py-3 text-left text-[13px]",
           props.active ? "bg-lift text-foreground" : "u-row-hover text-foreground",
         )}
         onClick={props.onSelect}
@@ -298,6 +325,22 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
           ) : null}
         </span>
       </button>
+      {props.onDelete ? (
+        <button
+          type="button"
+          className="grid w-10 shrink-0 place-items-center text-muted hover:bg-danger/10 hover:text-danger"
+          data-testid={`video-history-delete-${p.id}`}
+          aria-label={copy.video.studio.deleteShort}
+          title={copy.video.studio.deleteShort}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onDelete?.();
+          }}
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
     </li>
   );
 }
