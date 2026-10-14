@@ -64,7 +64,7 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 		}
 	}
 	if dir == "" {
-		return ToolResult{Err: fmt.Errorf("skill %s has no on-disk directory", skill)}
+		return ToolResult{Err: t.noSkillDirError(skill)}
 	}
 	relSlash, err := normalizeSkillScript(script)
 	if err != nil {

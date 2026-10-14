@@ -43,7 +43,7 @@ func TestIdleActionNudgeOnRepeatedBrowserOpen(t *testing.T) {
 		{Name: "browser_open", Arguments: args},
 		{Name: "browser_open", Arguments: args},
 		{Name: "browser_open", Arguments: args},
-	})
+	}, nil)
 	req := RunRequest{User: "把小说做成游戏", SoftHorizon: true}
 	got := idleActionNudge(req, hits)
 	if !strings.Contains(got, idleActionPrefixZH) || !strings.Contains(got, "index.html") {
@@ -56,9 +56,40 @@ func TestIdleActionNudgeOnRepeatedBrowserOpen(t *testing.T) {
 	recordIdleActions(hits, []ToolCall{
 		{Name: "browser_open", Arguments: args},
 		{Name: "browser_click", Arguments: `{"selector":"#boot"}`},
-	})
+	}, []Message{{Content: ""}, {Content: `clicked #boot → <button> "Start" at (10,20); page text changed`}})
 	if hitMax(hits) != 0 {
-		t.Fatalf("click must reset idle opens: %v", hits)
+		t.Fatalf("a click that worked must reset idle opens: %v", hits)
+	}
+}
+
+// A failed edit or click moved nothing, so it must not clear the idle count.
+func TestIdleActionFailedProgressDoesNotReset(t *testing.T) {
+	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
+	hits := map[string]int{}
+	for i := 0; i < 2; i++ {
+		recordIdleActions(hits, []ToolCall{{Name: "browser_open", Arguments: args}}, nil)
+	}
+	recordIdleActions(hits, []ToolCall{
+		{Name: "str_replace", Arguments: `{"path":"a.html"}`},
+		{Name: "browser_click", Arguments: `{"selector":"#gone"}`},
+	}, []Message{
+		{Content: "ERROR: str_replace: old_str not found in a.html"},
+		{Content: "ERROR: browser: #gone matched no element"},
+	})
+	if hitMax(hits) != 2 {
+		t.Fatalf("failed progress must not reset the idle count: %v", hits)
+	}
+}
+
+// A write that changes nothing ("unchanged ...") is not progress either.
+func TestIdleActionUnchangedWriteDoesNotReset(t *testing.T) {
+	args := `{"url":"game-adaptations/xiyou-tianming-guiling/build/app/index.html"}`
+	hits := map[string]int{}
+	recordIdleActions(hits, []ToolCall{{Name: "browser_open", Arguments: args}}, nil)
+	recordIdleActions(hits, []ToolCall{{Name: "write_file", Arguments: `{"path":"a.html"}`}},
+		[]Message{{Content: "unchanged a.html"}})
+	if hitMax(hits) != 1 {
+		t.Fatalf("an unchanged write must not reset the idle count: %v", hits)
 	}
 }
 

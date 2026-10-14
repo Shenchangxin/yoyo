@@ -41,6 +41,10 @@ type cdpConn struct {
 	pending map[int]chan cdpReply
 	done    chan struct{}
 	err     error
+
+	// errs holds the JavaScript errors the page raised since the last browser
+	// call. The reader fills it from protocol events; the host drains it.
+	errs pageErrors
 }
 
 type cdpReply struct {
@@ -63,6 +67,8 @@ func (c *cdpConn) readLoop() {
 	for {
 		var msg struct {
 			ID     int             `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
 			Result json.RawMessage `json:"result"`
 			Error  *struct {
 				Message string `json:"message"`
@@ -73,7 +79,11 @@ func (c *cdpConn) readLoop() {
 			return
 		}
 		if msg.ID == 0 {
-			continue // protocol event; nothing subscribes to events yet
+			// Protocol event. Only page errors are kept; the rest is ignored.
+			if msg.Method != "" {
+				c.errs.add(msg.Method, msg.Params)
+			}
+			continue
 		}
 		c.mu.Lock()
 		ch := c.pending[msg.ID]
@@ -368,6 +378,9 @@ func (h *Host) dialWS(wsURL string) error {
 	old.close() // a replaced socket must not keep its reader or target alive
 	_, _ = conn.call("Page.enable", nil)
 	_, _ = conn.call("Network.enable", nil)
+	// Runtime events carry uncaught exceptions and console.error calls. They
+	// are the only signal a page failure leaves behind; see page_errors.go.
+	_, _ = conn.call("Runtime.enable", nil)
 	return nil
 }
 

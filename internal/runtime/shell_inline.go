@@ -232,19 +232,35 @@ func writeInlineScript(workspace, script, ext string) (string, func(), error) {
 	return path, func() { _ = os.Remove(path) }, nil
 }
 
+// quoteShellPath quotes a path the shell would otherwise split or mangle. A
+// Windows path needs quotes even without spaces: Git Bash reads an unquoted
+// backslash as an escape, so C:\Users\x reached node as C:Usersx. The
+// workspace temp script always has backslashes on Windows.
 func quoteShellPath(p string) string {
 	if p == "" {
 		return p
 	}
-	if !strings.ContainsAny(p, " \t\"'") {
+	if !strings.ContainsAny(p, " \t\"'\\") {
 		return p
 	}
 	return `"` + strings.ReplaceAll(p, `"`, `\"`) + `"`
 }
 
+// normalizeWindowsQuotes is the quote cleanup for a Windows command. Commands
+// that will run under Git Bash keep their quotes, because bash eats the
+// backslashes of an unquoted path. Everything else goes to cmd, which takes
+// the relaxed form.
+func normalizeWindowsQuotes(command string) string {
+	if looksPosixUnix(command) {
+		return command
+	}
+	return relaxRedundantShellQuotes(command)
+}
+
 // relaxRedundantShellQuotes drops quotes around tokens that have no
 // whitespace or cmd metacharacters. cmd /S /C plus Go's extra quoting
-// otherwise turns `node "rel\file.mjs"` into cwd+"\"rel\file.mjs".
+// otherwise turns `node "rel\file.mjs"` into cwd+"\"rel\file.mjs". Only call
+// it for cmd commands; see normalizeWindowsQuotes.
 func relaxRedundantShellQuotes(command string) string {
 	if command == "" || !strings.Contains(command, `"`) {
 		return command

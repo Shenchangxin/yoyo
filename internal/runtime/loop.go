@@ -420,7 +420,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		recordToolErrors(errorHits, results)
 		recordWaits(waitHits, msg.ToolCalls)
-		recordIdleActions(idleHits, msg.ToolCalls)
+		recordIdleActions(idleHits, msg.ToolCalls, results)
 		if req.SoftHorizon {
 			watch.note(msg.ToolCalls, results)
 		}

@@ -64,6 +64,9 @@ func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 	if snap.URL == "" {
 		snap.URL = raw
 	}
+	// Page errors are not drained here. EnsurePreview discards this snapshot,
+	// so errors taken here would be lost; the caller that reports the open
+	// takes them with PageErrors.
 	return snap, nil
 }
 

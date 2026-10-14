@@ -184,7 +184,7 @@ func (h *Host) Click(sel string) (string, error) {
 	}
 	obs := fmt.Sprintf("clicked %s → <%s> %q at (%d,%d); %s", sel, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), note)
 	h.setLastAction(obs)
-	return obs + h.actionsNote(), nil
+	return obs + h.pageErrorsNote() + h.actionsNote(), nil
 }
 
 // Type focuses sel (when given) and sends each character as a real key
@@ -209,7 +209,7 @@ func (h *Host) Type(sel, text string) (string, error) {
 	if strings.TrimSpace(target) == "" {
 		target = "the focused element"
 	}
-	return fmt.Sprintf("typed %d key(s) into %s; %s%s", utf8.RuneCountInString(text), target, note, h.actionsNote()), nil
+	return fmt.Sprintf("typed %d key(s) into %s; %s%s%s", utf8.RuneCountInString(text), target, note, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
 // Fill is the historical name for Type.
@@ -224,7 +224,11 @@ func (h *Host) Refresh() (snap Snapshot, live bool) {
 		h.syncView()
 		h.refreshActions()
 	}
-	return h.snapshotLocked(), live
+	snap = h.snapshotLocked()
+	if live {
+		snap.Errors = h.takePageErrors()
+	}
+	return snap, live
 }
 
 func (h *Host) clickCDP(sel string) (probe, error) {
@@ -289,6 +293,17 @@ func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
 	return p, nil
 }
 
+// coveredWhy words a failed hit test. An empty hit means elementFromPoint
+// returned null at the element's centre: the centre is outside the viewport or
+// clipped by an ancestor. Nothing covers it, so "covered by nothing" misled
+// the agent into hunting for an overlay that does not exist.
+func coveredWhy(sel, by string) string {
+	if by == "" || by == "nothing" {
+		return fmt.Sprintf("%s has no hit-test element at its centre (outside the viewport or clipped by an ancestor), so a real click would not reach it", sel)
+	}
+	return fmt.Sprintf("%s is covered by %s, so a real click would not reach it", sel, by)
+}
+
 // explainMiss turns a probe failure into a message that names the actual
 // actions on the page, so the next selector is chosen from ground truth.
 func (h *Host) explainMiss(sel string, p probe) error {
@@ -301,7 +316,7 @@ func (h *Host) explainMiss(sel string, p probe) error {
 	case "disabled":
 		why = fmt.Sprintf("%s is disabled", sel)
 	case "covered":
-		why = fmt.Sprintf("%s is covered by %s, so a real click would not reach it", sel, p.By)
+		why = coveredWhy(sel, p.By)
 	case "bad-selector":
 		why = fmt.Sprintf("%s is not a valid CSS selector (%s); use CSS or text=<visible text>", sel, p.Error)
 	default:

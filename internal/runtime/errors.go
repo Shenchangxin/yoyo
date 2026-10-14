@@ -140,6 +140,11 @@ func ClassifyError(err error) ErrorInfo {
 	case containsAny(low, "timeout", "deadline exceeded", "i/o timeout"):
 		info.Kind, info.Title, info.Hint = ErrKindTimeout, "Request timed out", "The model did not respond in time."
 		info.Retryable = true
+	case containsAny(low, "unexpected eof", "connection reset by peer", "broken pipe", "http2: response body closed", "stream error"):
+		// A cut stream is a transport failure, not an unknown one. Without this
+		// the card read "Something went wrong" and gave no cause.
+		info.Kind, info.Title, info.Hint = ErrKindProvider, "The model connection dropped", "The model stopped mid-answer. Retry the turn."
+		info.Retryable = true
 	case containsAny(low, "connection refused", "no such host", "network is unreachable", "dial tcp"):
 		info.Kind, info.Title, info.Hint = ErrKindProvider, "The model endpoint failed", "The provider returned an error. Retry in a moment."
 		info.Retryable = true
