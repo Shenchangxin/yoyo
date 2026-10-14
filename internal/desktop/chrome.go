@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/icons"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
@@ -55,27 +56,33 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		forceQuit(gui, svc, win)
 	})
 
-	notify := func(id, title, body, session, kind string) {
+	// group is the conversation name: Windows shows it as the toast header and
+	// the Action Center group, where a raw session id would read as noise.
+	notify := func(id, title, body, session, group, kind string, toast bool) {
 		gui.Event.Emit("yoyo:pulse", map[string]any{
 			"kind":    kind,
 			"title":   title,
 			"body":    body,
 			"session": session,
 		})
-		if kind == "loading" || ns == nil || !svc.NotifyAllowed() {
+		if kind == "loading" || !toast || ns == nil || !svc.toastAllowed(kind) {
 			return
 		}
 		if session != "" && !strings.Contains(id, session) {
 			id = id + "-" + session
 		}
-		_ = ns.SendNotification(notifications.NotificationOptions{
+		if err := ns.SendNotification(notifications.NotificationOptions{
 			ID:       id,
 			Title:    title,
 			Body:     body,
-			ThreadID: session,
+			ThreadID: group,
 			Data:     map[string]any{"session": session},
-		})
+		}); err == nil {
+			svc.noteToastSent()
+		}
 	}
+	// Coming back to the window is when the user has seen the toasts, so Action Center is emptied then.
+	win.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) { svc.clearToastHistoryOnFocus() })
 	if ns != nil {
 		_, _ = ns.RequestNotificationAuthorization()
 		ns.OnNotificationResponse(func(result notifications.NotificationResult) {
@@ -85,11 +92,24 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 		})
 	}
 	dispatch := func(typ, source, session string, payload map[string]any) {
+		if answeredOrAsk(typ, payload) {
+			return
+		}
 		kind := companionPulseKind(typ, source)
 		if kind == "" {
 			return
 		}
 		n := nativeCopy(svc.GetConfig().Locale)
+		// Only the kinds that show a conversation name pay for the session lookup;
+		// loading pulses fire on every tool call.
+		name := ""
+		group := "Yoyo"
+		if kind == "done" || kind == "approval" || kind == "error" {
+			name = svc.sessionTitle(session)
+			if name != "" {
+				group = name
+			}
+		}
 		title := "Yoyo"
 		body := n.TurnFinished
 		id := "yoyo-turn"
@@ -98,13 +118,24 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			title = companionPulseTitle(kind, typ, n.Working, payloadStr(payload, "text"), firstPayloadStr(payload, "skill", "name"), payloadStr(payload, "arguments"))
 			body = n.Working
 			id = "yoyo-load"
+		case "done":
+			if name != "" {
+				title = name
+			}
+			if s := oneLine(payloadStr(payload, "text"), 140); s != "" {
+				body = s
+			}
 		case "approval":
 			title = n.Approval
-			body = payloadStr(payload, "action")
+			body = lineJoin(name, approvalLine(payload))
 			id = "yoyo-ask"
+			if typ == "ask_user" {
+				title = n.Ask
+				body = lineJoin(name, oneLine(payloadStr(payload, "question"), 140))
+			}
 		case "error":
 			title = n.ErrTitle
-			body = notifyError(payload)
+			body = lineJoin(name, notifyError(payload))
 			id = "yoyo-err"
 		case "eval":
 			id = "yoyo-eval"
@@ -121,7 +152,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 			}
 			id = "yoyo-update"
 		}
-		notify(id, title, body, session, kind)
+		notify(id, title, body, session, group, kind, !quietOutcome(typ, payload))
 		svc.noteDesktopPulse(kind, session)
 	}
 	if svc.App != nil {
@@ -211,9 +242,22 @@ func notifyError(p map[string]any) string {
 	if title != "" {
 		return title
 	}
-	err := payloadStr(p, "error")
-	if len(err) > 160 {
-		return err[:160] + "…"
+	return oneLine(payloadStr(p, "error"), 160)
+}
+
+// sessionTitle is the name of a conversation for notification text. It is ""
+// when the session is unknown (remote RPC mode) or still has a placeholder title.
+func (s *Service) sessionTitle(id string) string {
+	if id == "" || s.App == nil {
+		return ""
 	}
-	return err
+	m, err := s.App.GetSession(id)
+	if err != nil {
+		return ""
+	}
+	t := oneLine(m.Title, 60)
+	if t == "session" || t == "video" {
+		return ""
+	}
+	return t
 }

@@ -253,8 +253,13 @@ stops the moment `running` is false.
   tick. The pane stays freely scrollable. Stick-to-bottom follows the live
   tail solely while the operator is at the bottom; "Jump to latest" reseeds
   the live window. Do not index from the virtualizer DOM.
-- **Composer** — brightest object on the stage. Toolbar is ghost controls;
-  send is a filled circle that flips to a stop square while running.
+- **Composer** — brightest object on the stage. Toolbar is ghost controls and
+  stays to one row of four or five: profile, `+` (attach, paste, screenshot, and
+  a `More` submenu for save-as-page, follow-up, call), workspace, and one mode
+  control that carries Agent/Plan, permission and worktree. Permission only
+  shows on the trigger when it is not `default`; `full` uses `warning`. While a
+  turn runs, the circle is a stop square until the draft has text; with text it
+  queues (Enter), and a ghost `Steer` sits beside it (Ctrl/⌘ Enter).
 
 ---
 

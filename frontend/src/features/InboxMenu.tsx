@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, X } from "lucide-react";
 import { useCopy } from "../lib/i18n";
 import * as api from "../lib/client";
 import { asArray, str } from "../lib/normalize";
@@ -8,7 +8,10 @@ import type { Notice } from "../lib/protocol";
 
 export function InboxMenu(props: {
   notices?: Notice[];
+  /** Human name of a conversation, for the line above each notice. */
+  titleOf?: (sessionId: string) => string | undefined;
   onNotice?: (n: Notice) => void;
+  onDismissNotice?: (id: string) => void;
   onClearNotices?: () => void;
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string, answer?: string) => void;
@@ -19,7 +22,7 @@ export function InboxMenu(props: {
   useEffect(() => { refresh(); }, []);
   const drafts = asArray(q.drafts);
   const inbox = asArray(q.inbox);
-  const offers = asArray(q.offers);
+  const offers = asArray(q.offers).filter(isApprovalOffer);
   const notices = props.notices || [];
   if (!drafts.length && !inbox.length && !offers.length && !notices.length) {
     return (
@@ -35,18 +38,38 @@ export function InboxMenu(props: {
         <section>
           <MenuLabel count={notices.length}>{copy.rail.notifications}</MenuLabel>
           <ul>
-            {notices.slice(0, 12).map((n) => (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-lift/50"
-                  onClick={() => props.onNotice?.(n)}
-                >
-                  <span className="truncate text-[13px] font-medium text-foreground">{n.title}</span>
-                  {n.body ? <span className="mt-0.5 line-clamp-2 text-[12px] leading-[1.5] text-muted">{n.body}</span> : null}
-                </button>
-              </li>
-            ))}
+            {notices.map((n) => {
+              const when = noticeTime(n.ts);
+              const where = n.sessionId ? props.titleOf?.(n.sessionId) : undefined;
+              return (
+                <li key={n.id} className="flex items-start gap-1 pr-1">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 flex-col px-3 py-2.5 text-left hover:bg-lift/50"
+                    onClick={() => {
+                      props.onDismissNotice?.(n.id);
+                      props.onNotice?.(n);
+                    }}
+                  >
+                    {where || when ? (
+                      <span className="flex min-w-0 items-center gap-2 text-[11px] text-muted">
+                        <span className="min-w-0 truncate">{where}</span>
+                        {when ? <span className="ml-auto shrink-0 tabular-nums">{when}</span> : null}
+                      </span>
+                    ) : null}
+                    <span className="mt-0.5 truncate text-[13px] font-medium text-foreground">{n.title}</span>
+                    {n.body ? <span className="mt-0.5 line-clamp-2 text-[12px] leading-[1.5] text-muted">{n.body}</span> : null}
+                  </button>
+                  {props.onDismissNotice ? (
+                    <span className="mt-2 shrink-0">
+                      <IconAction label={copy.review.dismiss} onClick={() => props.onDismissNotice?.(n.id)}>
+                        <X className="size-3.5" aria-hidden />
+                      </IconAction>
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           {props.onClearNotices ? (
             <div className="px-3 pb-2">
@@ -143,9 +166,21 @@ export function InboxMenu(props: {
 
 export function inboxBadgeCount(inbox: any[], queue: any, notices = 0): number {
   const unread = inbox.filter((it: any) => it.unread || it.Unread).length;
-  const offers = asArray(queue?.offers).length;
+  const offers = asArray(queue?.offers).filter(isApprovalOffer).length;
   const drafts = asArray(queue?.drafts).length;
   return unread + offers + drafts + notices;
+}
+
+/** A question from ask_user is answered on its own card above the composer, not here. */
+function isApprovalOffer(o: any): boolean {
+  const req = o?.request || o?.Request || {};
+  return str(req.action || req.Action) !== "ask_user";
+}
+
+function noticeTime(ts: string): string {
+  const d = ts ? new Date(ts) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 function MenuLabel({ children, count }: { children: ReactNode; count?: number }) {

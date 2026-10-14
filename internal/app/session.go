@@ -103,8 +103,9 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 		HarnessPolicy:    session.FollowActive,
 		ModelFingerprint: Fingerprint(a.Config),
 		Title:            title,
-		AuthMode:         capability.AuthDefault,
-		ProfileID:        "assistant",
+		// New chats start in full access. Existing sessions keep the mode they were saved with.
+		AuthMode:  capability.AuthFull,
+		ProfileID: "assistant",
 	}
 	meta.Model, meta.ConnectionID = a.defaultChatSlot()
 	b, _ := json.MarshalIndent(meta, "", "  ")
@@ -112,7 +113,7 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 	if err := os.WriteFile(path, b, 0o644); err != nil {
 		return meta, err
 	}
-	a.applySessionAuth(id, capability.AuthDefault)
+	a.applySessionAuth(id, capability.AuthFull)
 	return a.attachAuthMode(meta), nil
 }
 

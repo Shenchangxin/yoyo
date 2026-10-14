@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { CanvasFocus, HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode, VideoPane } from "./protocol";
+import type { AuthMode, CanvasFocus, HarnessTab, Lab, Notice, SettingsTab, Surface, Thread, ThreadChannel, VideoMode, VideoPane } from "./protocol";
 import { isCanvasWorldPane, isYingcePane, threadChannel } from "./protocol";
+import { noticeExpired } from "./notices";
 import { isHarnessTab, labFromTab, surfaceForLab, tabFromLab } from "./surface";
 import type { VoicePhase } from "../features/presence/types";
 
@@ -35,6 +36,8 @@ type UIState = {
   outlineCollapsed: boolean;
   notices: Notice[];
   noticesOpen: boolean;
+  /** Permission picked while no chat exists yet; applied to the next session created. */
+  pendingAuthMode: AuthMode | null;
   renameTick: number;
   setLab: (lab: Lab) => void;
   openHarness: (tab?: HarnessTab) => void;
@@ -83,8 +86,12 @@ type UIState = {
   setSidebarHover: (v: boolean) => void;
   setOutlineCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   pushNotice: (n: Notice) => void;
+  dismissNotice: (id: string) => void;
+  dismissNoticesFor: (sessionId: string) => void;
+  pruneNotices: (now?: number) => void;
   setNoticesOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   clearNotices: () => void;
+  setPendingAuthMode: (mode: AuthMode | null) => void;
   voicePhase: VoicePhase;
   setVoicePhase: (v: VoicePhase) => void;
   moduleLoading: boolean;
@@ -235,6 +242,7 @@ export const useUI = create<UIState>((set, get) => ({
   outlineCollapsed: readOutlineCollapsed(),
   notices: [],
   noticesOpen: false,
+  pendingAuthMode: null,
   renameTick: 0,
   setLab: (lab) =>
     set((s) => {
@@ -423,9 +431,22 @@ export const useUI = create<UIState>((set, get) => ({
       writeFlag("yoyo-outline-collapsed", outlineCollapsed);
       return { outlineCollapsed };
     }),
-  pushNotice: (n) => set((s) => ({ notices: [n, ...s.notices].slice(0, 30) })),
+  // The same item can reach the store twice (live catch-up plus stream); one row per id.
+  // A replayed event older than the window is dropped here; the rest age out through pruneNotices.
+  pushNotice: (n) => set((s) => (s.notices.some((x) => x.id === n.id) || noticeExpired(n)
+    ? s
+    : { notices: [n, ...s.notices.filter((x) => !noticeExpired(x))].slice(0, 30) })),
+  dismissNotice: (id) => set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
+  dismissNoticesFor: (sessionId) => set((s) => (s.notices.some((n) => n.sessionId === sessionId)
+    ? { notices: s.notices.filter((n) => n.sessionId !== sessionId) }
+    : s)),
+  pruneNotices: (now = Date.now()) => set((s) => {
+    const kept = s.notices.filter((n) => !noticeExpired(n, now));
+    return kept.length === s.notices.length ? s : { notices: kept };
+  }),
   setNoticesOpen: (v) => set((s) => ({ noticesOpen: typeof v === "function" ? v(s.noticesOpen) : v })),
   clearNotices: () => set({ notices: [] }),
+  setPendingAuthMode: (mode) => set({ pendingAuthMode: mode }),
   voicePhase: "off",
   setVoicePhase: (voicePhase) => set({ voicePhase }),
   moduleLoading: false,

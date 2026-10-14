@@ -47,3 +47,51 @@ func TestCompanionPulseTitleShowsSkillName(t *testing.T) {
 		t.Fatal("read_skill_file")
 	}
 }
+
+func TestAnsweredOrAskSkipsRepeats(t *testing.T) {
+	if !answeredOrAsk("approval", map[string]any{"id": "a1", "decision": "once"}) {
+		t.Fatal("a decision event answers an approval; it must not notify again")
+	}
+	if !answeredOrAsk("approval", map[string]any{"id": "a2", "action": "ask_user", "command": "which file?"}) {
+		t.Fatal("the approval mirror of an ask_user question must not double the toast")
+	}
+	if answeredOrAsk("approval", map[string]any{"id": "a3", "action": "shell", "command": "npm test"}) {
+		t.Fatal("a pending shell approval must notify")
+	}
+	if answeredOrAsk("ask_user", map[string]any{"question": "which file?"}) {
+		t.Fatal("the ask_user item is the announcement itself")
+	}
+}
+
+func TestQuietOutcomeKeepsStopAndPlanOpenOutOfToasts(t *testing.T) {
+	if !quietOutcome("error", map[string]any{"kind": "canceled", "error": "Stopped"}) {
+		t.Fatal("a Stop is not news")
+	}
+	if quietOutcome("error", map[string]any{"kind": "provider"}) {
+		t.Fatal("a real provider error must toast")
+	}
+	if !quietOutcome("turn_end", map[string]any{"stop": "plan_open"}) {
+		t.Fatal("a plan_open turn is reported by its plan card")
+	}
+	if quietOutcome("turn_end", map[string]any{"stop": "end_turn"}) {
+		t.Fatal("a finished turn must toast")
+	}
+}
+
+func TestToastLinesStayReadable(t *testing.T) {
+	if got := approvalLine(map[string]any{"action": "shell", "command": "npm   test\n --watch"}); got != "shell: npm test --watch" {
+		t.Fatalf("got %q", got)
+	}
+	if got := approvalLine(map[string]any{"action": "write_file", "path": "a.txt"}); got != "write_file: a.txt" {
+		t.Fatalf("got %q", got)
+	}
+	if got := approvalLine(map[string]any{"action": "shell"}); got != "shell" {
+		t.Fatalf("got %q", got)
+	}
+	if got := lineJoin("", " 修复登录 ", "shell"); got != "修复登录 · shell" {
+		t.Fatalf("got %q", got)
+	}
+	if got := oneLine("", 10); got != "" {
+		t.Fatalf("empty summary must stay empty, got %q", got)
+	}
+}

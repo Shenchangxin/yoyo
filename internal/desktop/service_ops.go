@@ -623,6 +623,16 @@ func (s *Service) NotifyAllowed() bool {
 	return true
 }
 
+// toastAllowed gates one OS toast by kind. A finished turn is not announced
+// while the window is in front: the user is already in the app, and the bell
+// keeps the record. Approvals and errors always reach the OS.
+func (s *Service) toastAllowed(kind string) bool {
+	if !s.NotifyAllowed() {
+		return false
+	}
+	return !(kind == "done" && s.win != nil && s.win.IsFocused())
+}
+
 func (s *Service) PickFolder() (string, error) {
 	if s.gui == nil {
 		return "", errors.New("native dialog unavailable")
