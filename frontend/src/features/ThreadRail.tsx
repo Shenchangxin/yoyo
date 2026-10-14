@@ -45,6 +45,7 @@ import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
 import { isSubagentThread, threadChannel } from "../lib/protocol";
 import { SidebarCard } from "./shell/AppFrame";
 import { YoyoMark } from "./shell/YoyoMark";
+import { SettingsRailNav } from "./settings/SettingsSidebar";
 import { VideoShellNav } from "./video/VideoShellNav";
 import { shownSeriesTitle } from "./video/drama-lib";
 import type { Copy } from "../lib/copy";
@@ -229,6 +230,7 @@ export function ThreadRail(props: {
   const skillsOn = props.surface === "skills";
   const pagesOn = props.surface === "pages";
   const videoOn = props.surface === "video";
+  const settingsOn = props.surface === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readLocalMap("yoyo-rail-collapsed"));
   useEffect(() => {
@@ -292,7 +294,11 @@ export function ThreadRail(props: {
           </button>
         </Tooltip>
       </div>
-      {videoOn ? <VideoShellNav /> : (
+      {videoOn ? <VideoShellNav /> : settingsOn ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <SettingsRailNav />
+        </div>
+      ) : (
       <div className="px-2.5 pb-2">
         <Button className="h-9 w-full justify-start gap-2 rounded-xl text-[13px]" onClick={props.onNew}>
           <MessageSquarePlus className="size-4" aria-hidden />
@@ -322,7 +328,7 @@ export function ThreadRail(props: {
         ) : null}
       </div>
       )}
-      {videoOn ? null : (
+      {videoOn || settingsOn ? null : (
       <nav aria-label={copy.rail.chats} className="min-h-0 flex-1 overflow-hidden px-1.5 pb-1">
         {empty ? (
           <EmptyState icon={<YoyoMark compact />} title={copy.rail.noChats} />

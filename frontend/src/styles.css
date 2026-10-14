@@ -1265,6 +1265,14 @@ html.dark .code-hl span {
   box-shadow: var(--shadow-card);
 }
 
+[data-settings-content] {
+  width: 100%;
+  max-width: none;
+}
+html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
+  background: color-mix(in srgb, var(--background) 82%, transparent) !important;
+}
+
 .media-surface {
   background: var(--media-surface);
   color: var(--media-foreground, #f4f4f0);
@@ -1519,7 +1527,6 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-workshop"],
 html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-history"],
 html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-board"],
 html[data-skin-wallpaper="1"]:not(.companion) [data-testid="video-board"] > *,
-html[data-skin-wallpaper="1"]:not(.companion) [data-settings-page-header],
 html[data-skin-wallpaper="1"]:not(.companion) .drama-studio,
 html[data-skin-wallpaper="1"]:not(.companion) [data-slot="sheet-content"],
 html[data-skin-wallpaper="1"]:not(.companion) .bg-sidebar.fixed {

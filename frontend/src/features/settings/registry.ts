@@ -22,7 +22,6 @@ export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "agent", "system"];
 export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
-  { key: "shortcuts", group: "app", icon: "keyboard" },
   { key: "provider", group: "agent", icon: "cpu" },
   { key: "generation", group: "agent", icon: "film" },
   { key: "policy", group: "agent", icon: "shield" },
@@ -35,11 +34,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "general-workspace", tab: "general", titleKey: "generalWorkspace", keywords: "workspace folder directory" },
   { id: "general-notifications", tab: "general", titleKey: "generalNotifications", keywords: "notifications toast" },
   { id: "general-desktop", tab: "general", titleKey: "generalDesktop", keywords: "tray login always on top" },
+  { id: "shortcuts-map", tab: "general", titleKey: "shortcutsMap", keywords: "keymap hotkey binding shortcuts" },
   { id: "appearance-theme", tab: "appearance", titleKey: "appearanceTheme", keywords: "theme dark light color mode" },
   { id: "appearance-palette", tab: "appearance", titleKey: "appearancePalette", keywords: "palette paper mist ink dim slate neutral stone charcoal blue" },
   { id: "appearance-skins", tab: "appearance", titleKey: "appearanceSkins", keywords: "wallpaper background picture image veil" },
   { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "language locale scale zoom thinking reasoning" },
-  { id: "shortcuts-map", tab: "shortcuts", titleKey: "shortcutsMap", keywords: "keymap hotkey binding" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
   { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama studio shorts 短片 remotion aspect publish 画幅 平台" },
@@ -68,11 +67,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support" },
   { id: "advanced-journal", tab: "advanced", titleKey: "advancedJournal", keywords: "journal audit chain" },
   { id: "advanced-doctor", tab: "advanced", titleKey: "advancedDoctor", keywords: "doctor diagnostics health" },
-  { id: "advanced-danger", tab: "advanced", titleKey: "advancedDanger", keywords: "danger irreversible apply update" },
 ];
 
-/** Tabs that existed before the nine-tab regroup. Deep links and menus still use them. */
+/** Tabs that existed before the current grouping. Deep links and menus still use them. */
 const LEGACY_TABS: Readonly<Record<string, { tab: SettingsTab; section: string }>> = {
+  shortcuts: { tab: "general", section: "shortcuts-map" },
   isolation: { tab: "policy", section: "policy-isolation" },
   connectors: { tab: "extensions", section: "extensions-connectors" },
   memory: { tab: "personal", section: "personal-memory" },
@@ -81,7 +80,7 @@ const LEGACY_TABS: Readonly<Record<string, { tab: SettingsTab; section: string }
   plugins: { tab: "extensions", section: "extensions-fibers" },
   updates: { tab: "advanced", section: "advanced-updates" },
   logs: { tab: "advanced", section: "advanced-logs" },
-  danger: { tab: "advanced", section: "advanced-danger" },
+  danger: { tab: "advanced", section: "advanced-updates" },
 };
 
 const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
@@ -99,7 +98,8 @@ const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
   "updates-channel": "advanced-updates",
   "logs-journal": "advanced-journal",
   "logs-doctor": "advanced-doctor",
-  "danger-zone": "advanced-danger",
+  "danger-zone": "advanced-updates",
+  "advanced-danger": "advanced-updates",
   "provider-video": "generation-image",
   "generation-styles": "generation-studio",
 };

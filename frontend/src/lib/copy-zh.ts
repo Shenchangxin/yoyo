@@ -702,7 +702,7 @@ export const zhCN = {
       advanced: "高级",
     },
     tabHints: {
-      general: "任务在哪里跑，以及桌面应用的行为。",
+      general: "工作区、桌面行为，以及键位。",
       appearance: "模式、色板、壁纸、语言和界面尺寸。Agent 不会改这些。",
       shortcuts: "可重映射的键盘路径。Agent 不能改键位。",
       provider: "新对话走默认账户。Key 只留在 vault 里。",
@@ -747,6 +747,8 @@ export const zhCN = {
       personalGoals: "目标",
       personalWatch: "监视",
       personalProposals: "发送审阅",
+      personalIdentity: "档案",
+      personalActivity: "工作台",
       advancedUpdates: "更新",
       advancedLogs: "诊断",
       advancedJournal: "Journal",

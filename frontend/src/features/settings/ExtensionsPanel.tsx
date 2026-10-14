@@ -13,7 +13,6 @@ import {
   SettingEmpty,
   SettingRow,
   SettingSection,
-  SettingsPageHeader,
 } from "./SettingChrome";
 import type { SettingsHost } from "./host";
 
@@ -27,10 +26,8 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 }
 
 export function ExtensionsSettings({ host }: { host: SettingsHost }) {
-  const copy = useCopy();
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.extensions} description={copy.settings.tabHints.extensions} />
       <McpSection host={host} />
       <FiberSection host={host} />
       <ConnectorSection />

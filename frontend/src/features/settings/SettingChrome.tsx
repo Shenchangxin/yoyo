@@ -11,26 +11,11 @@ export const CONTROL_SM = "h-8 w-full text-[13px]";
 export const CONTROL_MD = "h-8 w-full text-[13px]";
 export const CONTROL_LG = "h-8 w-full text-[13px]";
 
-export function SettingsPageHeader({
-  title,
-  description,
-  actions,
-}: {
-  title: string;
-  description?: string;
-  actions?: ReactNode;
-}) {
+export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   return (
-    <header
-      data-settings-page-header
-      className="sticky top-0 z-10 -mx-8 mb-[var(--space-section)] border-b border-border/60 px-8 pb-4 pt-6"
-    >
-      <h1 className="text-[21px] font-semibold tracking-[-0.03em] text-pretty text-foreground">{title}</h1>
-      {description ? (
-        <p className="mt-[var(--space-item)] max-w-[46ch] text-[14px] leading-[1.6] text-muted">{description}</p>
-      ) : null}
-      {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
-    </header>
+    <div className="mb-2 text-[11px] font-medium text-muted">
+      {children}
+    </div>
   );
 }
 
@@ -40,6 +25,7 @@ export function SettingSection({
   description,
   footnote,
   actions,
+  headerActions,
   children,
   bare,
   compact,
@@ -49,46 +35,69 @@ export function SettingSection({
   description?: string;
   footnote?: string;
   actions?: ReactNode;
+  headerActions?: ReactNode;
   children: ReactNode;
   /** Drop the card shell when the section owns its own surface (code panels, grids). */
   bare?: boolean;
   /** Inside a disclosure: no extra module gap. */
   compact?: boolean;
 }) {
-  return (
-    <section className={cn(!compact && "mb-[var(--space-section)]", "scroll-mt-6")} data-setting-section-highlight-target={id}>
+  const heading = title || headerActions ? (
+    <div className={cn("flex items-center gap-3", (description || !bare) && "mb-[var(--space-item)]")}>
       {title ? (
-        <h2 id={id} className="mb-[var(--space-item)] text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+        <h2 id={id} className="min-w-0 flex-1 text-[12px] font-medium text-muted">
           {title}
         </h2>
-      ) : null}
-      {description ? <p className="mb-[var(--space-group)] text-[13px] leading-[1.55] text-muted">{description}</p> : null}
-      <div
-        id={title ? undefined : id}
-        data-setting-section-id={id}
-        className={cn(
-          "flex flex-col gap-[var(--space-group)]",
-          !bare && "rounded-[12px] bg-card px-4 py-1 shadow-[var(--shadow-card)]",
-        )}
-      >
-        {children}
-      </div>
-      {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
-      {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
+      ) : (
+        <div className="min-w-0 flex-1" />
+      )}
+      {headerActions ? <div className="flex shrink-0 items-center gap-2">{headerActions}</div> : null}
+    </div>
+  ) : null;
+  const desc = description ? (
+    <p className="mb-[var(--space-group)] text-[12px] leading-[1.55] text-muted">{description}</p>
+  ) : null;
+  return (
+    <section className={cn(!compact && "mb-6", "w-full min-w-0 scroll-mt-6")} data-setting-section-highlight-target={id}>
+      {bare ? (
+        <>
+          {heading}
+          {desc}
+          <div id={title ? undefined : id} data-setting-section-id={id} className="flex w-full min-w-0 flex-col gap-[var(--space-group)]">
+            {children}
+          </div>
+          {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
+          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
+        </>
+      ) : (
+        <>
+          <div
+            id={title ? undefined : id}
+            data-setting-section-id={id}
+            className="flex w-full min-w-0 flex-col gap-[var(--space-group)] rounded-[12px] bg-card px-5 py-3 shadow-[var(--shadow-card)]"
+          >
+            {heading}
+            {desc}
+            {children}
+            {actions ? <div className="flex items-center justify-end gap-2">{actions}</div> : null}
+          </div>
+          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
+        </>
+      )}
     </section>
   );
 }
 
 /**
- * Form field: label above the control, left aligned, full measure of the group.
- * Pass `list` for a list row (title leading, trailing control, one row height).
+ * Form field. Default is a full-width split: label left, control right.
+ * Pass `stack` when the control should take the whole row (paths, text areas).
  */
 export function SettingRow({
   title,
   description,
   children,
   border: _border = true,
-  stack: _stack,
+  stack = false,
   align: _align = "center",
   list = false,
 }: {
@@ -96,34 +105,34 @@ export function SettingRow({
   description?: string;
   children?: ReactNode;
   border?: boolean;
-  /** Kept so existing call sites stay valid. Form rows always stack. */
   stack?: boolean;
   align?: "center" | "start";
-  /** List row: primary text first, auxiliary control on the right, vertically centered. */
   list?: boolean;
 }) {
-  if (list) {
+  if (!stack && (list || title)) {
     return (
-      <div className="flex min-h-10 items-center gap-4">
+      <div className="flex min-h-10 w-full min-w-0 items-center gap-6">
         {title ? (
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
-            {description ? <div className="mt-0.5 truncate text-[12px] leading-[1.45] text-muted">{description}</div> : null}
+          <div className="min-w-0 flex-[1_1_16rem]">
+            <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
+            {description ? <div className="mt-0.5 text-[12px] leading-[1.45] text-muted">{description}</div> : null}
           </div>
         ) : null}
-        {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
+        {children ? (
+          <div className="flex min-w-0 flex-[1_1_18rem] items-center justify-end gap-2">{children}</div>
+        ) : null}
       </div>
     );
   }
   return (
-    <div className="flex flex-col items-stretch gap-[var(--space-item)]">
+    <div className="flex w-full min-w-0 flex-col items-stretch gap-[var(--space-item)]">
       {title ? (
         <div className="min-w-0">
           <div className="text-[13px] font-medium leading-[1.4] text-foreground">{title}</div>
           {description ? <div className="mt-1 text-[13px] leading-[1.5] text-muted">{description}</div> : null}
         </div>
       ) : null}
-      {children ? <div className="flex w-full flex-wrap items-center justify-start gap-2">{children}</div> : null}
+      {children ? <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2">{children}</div> : null}
     </div>
   );
 }

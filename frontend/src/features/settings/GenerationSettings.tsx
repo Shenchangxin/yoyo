@@ -17,7 +17,6 @@ import {
   SettingRow,
   SettingSection,
   SettingSegmented,
-  SettingsPageHeader,
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
 
@@ -341,8 +340,6 @@ export function GenerationSettings() {
 
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.generation} description={copy.settings.tabHints.generation} />
-
       <SettingSection
         id="generation-studio"
         title={copy.settings.sections.generationStudio}

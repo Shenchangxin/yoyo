@@ -62,7 +62,7 @@ test("prove tab has one primary eval button", async ({ page }) => {
   await expect(page.getByRole("button", { name: "TB subset" })).toHaveCount(0);
 });
 
-test("settings keeps the thread rail so a session can return", async ({ page }) => {
+test("settings replaces the thread list and returns via sessions", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     events: [
@@ -71,10 +71,11 @@ test("settings keeps the thread rail so a session can return", async ({ page }) 
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Shortcuts" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
-  await page.getByRole("button", { name: /Demo thread/ }).click();
-  await expect(page.getByRole("button", { name: "Shortcuts" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "General", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Demo thread/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sessions", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Demo thread/ })).toBeVisible();
   await expect(page.getByTestId("conversation-column").getByText("hello from demo")).toBeVisible();
 });
