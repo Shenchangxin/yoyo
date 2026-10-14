@@ -4,7 +4,7 @@
  * ID 分段规则（十位 = 分组前缀，组间空号为扩展预留位，编号即对外契约不可重排）：
  *   00-09 生命周期 · 10-29 情绪反应 · 30-49 代理工作状态 · 50+ 自定义
  *
- * 32 套表情的完整定义，配置字段：
+ * 50 套表情的完整定义，配置字段：
  *   pool      眼环索引池（25 组轮廓眼环，逐点弹簧插值切换）
  *   poolMs    池内轮换间隔 [min, max] ms
  *   poolSpeed 形变弹簧频率（检索 / 兴奋类 10，默认 6）
@@ -17,6 +17,7 @@
  *   body.orbit 常驻水平环带（头顶彩带持续环绕）
  *   sequence  关键帧序列，settle: 'base' 回落基础姿态 / 'hold' 定格末帧
  *             / { next } 播完切换到下一个表情
+ *   anims     sine / pulse / jitter / scan / glance / blink / ease / nod / sway / hold
  *   en        英文文案 { name, desc }（界面双语用，引擎不消费）
  *
  * 眼环池速查：
@@ -77,7 +78,8 @@ window.EMOTION_SEED = [
     body: { breathe: 0.012 },
     anims: [
       { target: 'eyes', prop: 'lookX', type: 'glance', amp: 10, period: 4800 },
-      { target: 'eyes', prop: 'lookY', type: 'sine', amp: 2, period: 4100, phase: 1.1 }
+      { target: 'eyes', prop: 'lookY', type: 'sine', amp: 2, period: 4100, phase: 1.1 },
+      { target: 'body', prop: 'x', type: 'sway', amp: 1.1, period: 5400 }
     ]
   },
   {
@@ -119,7 +121,8 @@ window.EMOTION_SEED = [
     anims: [
       { target: 'left',  prop: 'open', type: 'blink', interval: 1600, dur: 700 },
       { target: 'right', prop: 'open', type: 'blink', interval: 1600, dur: 700, phaseMs: 800 },
-      { target: 'eyes',  prop: 'scale', type: 'pulse', amp: 0.04, period: 1600 }
+      { target: 'eyes',  prop: 'scale', type: 'pulse', amp: 0.04, period: 1600 },
+      { target: 'body', prop: 'scale', type: 'hold', amp: 0.018, period: 2400 }
     ]
   },
   {
@@ -357,7 +360,8 @@ window.EMOTION_SEED = [
     body: { rotate: -3, breathe: 0.01, orbit: 1 },
     eyes: { both: { lookY: -6, y: -2 } },
     anims: [
-      { target: 'eyes', prop: 'lookX', type: 'sine', amp: 9, period: 2600 }
+      { target: 'eyes', prop: 'lookX', type: 'ease', amp: 9, period: 2800 },
+      { target: 'body', prop: 'rotate', type: 'sway', amp: 1.2, period: 3600 }
     ]
   },
   {
@@ -458,7 +462,8 @@ window.EMOTION_SEED = [
     anims: [
       { target: 'left',  prop: 'open', type: 'blink', interval: 1200, dur: 380 },
       { target: 'right', prop: 'open', type: 'blink', interval: 1200, dur: 380, phaseMs: 600 },
-      { target: 'eyes',  prop: 'lookX', type: 'sine', amp: 2, period: 2400 }
+      { target: 'eyes',  prop: 'lookX', type: 'sine', amp: 2, period: 2400 },
+      { target: 'body', prop: 'x', type: 'sway', amp: 1.4, period: 2600 }
     ]
   },
   {
@@ -535,6 +540,306 @@ window.EMOTION_SEED = [
       frames: [
         { at: 0 },
         { at: 1500, eyes: { both: { scaleX: 0.6, scaleY: 0.6, open: 0.35, y: 3 } }, body: { y: 4, scale: 0.97 } }
+      ]
+    }
+  },
+
+  /* ==================== 4）生命周期补完（08-09） ==================== */
+
+  {
+    id: '08', name: '伸懒腰', group: 'life',
+    desc: '闭眼向上舒展，再轻轻落下，像刚醒过来活动一下',
+    en: { name: 'Stretching', desc: 'Eyes close as the body lifts and lengthens, then settles back down' },
+    transition: 520,
+    mouth: 'o',
+    pool: [13, 22, 2], poolMs: [4000, 7000], blinkMs: null,
+    body: { breathe: 0.008 },
+    sequence: {
+      settle: 'base',
+      frames: [
+        { at: 0,    eyes: { both: { open: 0.35, y: 2 } }, body: { y: 2, scale: 0.98 } },
+        { at: 420,  eyes: { both: { open: 0.12, y: -2 } }, body: { y: -8, scale: 1.07, rotate: -3 } },
+        { at: 980,  eyes: { both: { open: 0.2, y: -1 } }, body: { y: -5, scale: 1.04, rotate: 2 } },
+        { at: 1500, eyes: { both: { open: 1, y: 0 } }, body: { y: 0, scale: 1, rotate: 0 } }
+      ]
+    },
+    anims: [
+      { target: 'body', prop: 'y', type: 'sine', amp: 1.1, period: 2400 }
+    ]
+  },
+  {
+    id: '09', name: '偷瞄', group: 'life',
+    desc: '身体微侧，一眼睁大一眼收细，目光悄悄瞟过去',
+    en: { name: 'Peeking', desc: 'A slight lean, one eye wide and one narrowed, glancing aside' },
+    transition: 380,
+    mouth: 'dot',
+    pool: [14, 5, 3], poolMs: [2200, 4000], blinkMs: [2800, 5600],
+    body: { rotate: 9, breathe: 0.01 },
+    eyes: {
+      left:  { scaleX: 1.12, scaleY: 1.12, lookX: 8, lookY: -1 },
+      right: { scaleX: 0.82, scaleY: 0.82, open: 0.72, lookX: 7, y: 2 }
+    },
+    anims: [
+      { target: 'eyes', prop: 'lookX', type: 'ease', amp: 1.8, period: 2600 },
+      { target: 'body', prop: 'rotate', type: 'sine', amp: 1.2, period: 3000 }
+    ]
+  },
+
+  /* ==================== 5）情绪反应补完（22-29） ==================== */
+
+  {
+    id: '22', name: '眨眼', group: 'emotion',
+    desc: '右眼定时轻轻一眨，带一点笑意，像偷偷打招呼',
+    en: { name: 'Winking', desc: 'The right eye winks on a slow beat, with a small smile' },
+    transition: 320,
+    mouth: 'smile',
+    pool: [2, 11, 19], poolMs: [3200, 5600], blinkMs: null,
+    body: { rotate: 4, breathe: 0.012, color: '#F5EFE6' },
+    eyes: { both: { y: -1 } },
+    anims: [
+      { target: 'right', prop: 'open', type: 'blink', interval: 2600, dur: 220 },
+      { target: 'body', prop: 'rotate', type: 'sine', amp: 1.1, period: 2800 }
+    ]
+  },
+  {
+    id: '23', name: '心动', group: 'emotion',
+    desc: '笑眼轻轻放大，面颊慢慢染上一层暖粉',
+    en: { name: 'Fond', desc: 'Smiling eyes soften as a warm blush settles on the face' },
+    transition: 640,
+    mouth: 'pout',
+    pool: [2, 11, 17], poolMs: [2800, 4800], blinkMs: [3200, 6400],
+    body: { y: -1, breathe: 0.014, color: '#F4D8D4' },
+    eyes: { both: { y: -2, scaleX: 1.06, scaleY: 1.06 } },
+    anims: [
+      { target: 'body', prop: 'scale', type: 'pulse', amp: 0.016, period: 1800 },
+      { target: 'eyes', prop: 'scale', type: 'pulse', amp: 0.03, period: 1800, phase: 0.4 }
+    ],
+    sequence: {
+      settle: 'hold',
+      frames: [
+        { at: 0,    body: { color: '#F3F0EA' } },
+        { at: 900,  body: { color: '#F4D8D4' } }
+      ]
+    }
+  },
+  {
+    id: '24', name: '得意', group: 'emotion',
+    desc: '头微扬，一眼略眯，像把事情做成了还不愿明说',
+    en: { name: 'Smug', desc: 'Chin up, one eye slightly narrowed, pleased but understated' },
+    transition: 440,
+    mouth: 'smile',
+    pool: [11, 2, 14], poolMs: [2800, 5000], blinkMs: [3600, 7000], antics: true,
+    body: { rotate: -6, y: -2, breathe: 0.01, color: '#F6F1E8' },
+    eyes: {
+      left:  { y: -3, lookY: -2 },
+      right: { y: -1, scaleY: 0.88, lookY: -1 }
+    },
+    anims: [
+      { target: 'body', prop: 'y', type: 'sine', amp: 1.2, period: 2200 }
+    ]
+  },
+  {
+    id: '25', name: '轻笑', group: 'emotion',
+    desc: '笑眼轮换，身体用很轻的节奏上下颤一下',
+    en: { name: 'Giggling', desc: 'Smiling rings with a tiny rhythmic bob, like a quiet laugh' },
+    transition: 300,
+    mouth: 'grin',
+    pool: [2, 17, 19, 11], poolMs: [1600, 2800], blinkMs: [2200, 4200], antics: true,
+    body: { breathe: 0.008, color: '#F6EFE4' },
+    eyes: { both: { y: -2 } },
+    anims: [
+      { target: 'body', prop: 'y', type: 'sine', amp: 1.6, period: 640 },
+      { target: 'eyes', prop: 'y', type: 'sine', amp: 0.8, period: 640, phase: 0.5 }
+    ]
+  },
+  {
+    id: '26', name: '坚定', group: 'emotion',
+    desc: '双眼微微内聚，身体略前倾，几乎不晃',
+    en: { name: 'Determined', desc: 'Eyes converge and the body leans in, almost still' },
+    transition: 280,
+    mouth: 'flat',
+    pool: [7, 16, 10], poolMs: [2000, 3600], blinkMs: [3000, 5800],
+    body: { y: -2, scale: 1.02, breathe: 0.005 },
+    eyes: {
+      left:  { x: 3, y: -1 },
+      right: { x: -3, y: -1 }
+    },
+    anims: [
+      { target: 'body', prop: 'y', type: 'hold', amp: -1.2, period: 2200, rise: 0.2, fall: 0.25 }
+    ]
+  },
+  {
+    id: '27', name: '惊叹', group: 'emotion',
+    desc: '眼睛慢慢睁圆，比惊讶更慢、更轻，像看见了好东西',
+    en: { name: 'Awe', desc: 'Eyes widen slowly, softer than surprise, as if something lovely appeared' },
+    transition: 520,
+    mouth: 'o',
+    pool: [3, 21, 19], poolMs: [2400, 4200], blinkMs: [2800, 5200],
+    body: { y: -2, scale: 1.02, breathe: 0.008, color: '#F7F3EB' },
+    eyes: { both: { y: -2, lookY: -3 } },
+    sequence: {
+      settle: 'base',
+      frames: [
+        { at: 0,    eyes: { both: { scaleX: 0.96, scaleY: 0.96 } } },
+        { at: 420,  eyes: { both: { scaleX: 1.22, scaleY: 1.22, y: -3 } }, body: { y: -4, scale: 1.03 } },
+        { at: 900,  eyes: { both: { scaleX: 1.1, scaleY: 1.1, y: -2 } } }
+      ]
+    }
+  },
+  {
+    id: '28', name: '喷嚏', group: 'emotion',
+    desc: '先吸气闭眼，再轻轻一震，随后若无其事',
+    en: { name: 'Sneeze', desc: 'A small inhale, a tiny shake, then composure returns' },
+    transition: 220,
+    mouth: 'o',
+    pool: [13, 3], poolMs: [4000, 7000], blinkMs: null,
+    body: { breathe: 0.004 },
+    sequence: {
+      settle: 'base',
+      frames: [
+        { at: 0,    eyes: { both: { open: 0.85 } }, body: { scale: 1 } },
+        { at: 280,  eyes: { both: { open: 0.08, y: 2 } }, body: { scale: 1.06, y: -2 } },
+        { at: 460,  eyes: { both: { open: 0.1 } }, body: { scale: 0.97, y: 3, x: 3 } },
+        { at: 620,  eyes: { both: { open: 0.2 } }, body: { scale: 1.01, y: 0, x: -2 } },
+        { at: 900,  eyes: { both: { open: 1, y: 0 } }, body: { scale: 1, x: 0 } }
+      ]
+    }
+  },
+  {
+    id: '29', name: '俏皮', group: 'emotion',
+    desc: '歪头、目光左右跳，偶尔自己弹一下',
+    en: { name: 'Playful', desc: 'Head tilted, gaze hopping side to side, with an occasional bounce' },
+    transition: 340,
+    mouth: 'grin',
+    pool: [3, 2, 19, 11], poolMs: [1800, 3200], blinkMs: [2200, 4800], antics: true,
+    body: { rotate: 7, breathe: 0.012, color: '#F6F0E6' },
+    eyes: { both: { y: -1 } },
+    anims: [
+      { target: 'eyes', prop: 'lookX', type: 'glance', amp: 8, period: 2200 },
+      { target: 'body', prop: 'rotate', type: 'ease', amp: 2.2, period: 2600 }
+    ]
+  },
+
+  /* ==================== 6）代理工作状态补完（42-49） ==================== */
+
+  {
+    id: '42', name: '耐心等待', group: 'agent',
+    desc: '慢眨眼，嘴角微弯，像在安静地等结果',
+    en: { name: 'Waiting', desc: 'Slow blinks and a small smile, patiently holding still' },
+    transition: 560,
+    mouth: 'smile',
+    pool: [0, 8, 10], poolMs: [4000, 7200], blinkMs: [3800, 7200],
+    body: { breathe: 0.014 },
+    eyes: { both: { y: 1 } },
+    anims: [
+      { target: 'eyes', prop: 'lookY', type: 'ease', amp: 2.2, period: 3600 },
+      { target: 'body', prop: 'scale', type: 'pulse', amp: 0.012, period: 2800 }
+    ]
+  },
+  {
+    id: '43', name: '构建中', group: 'agent',
+    desc: '专注眼环配有节奏的轻轻起伏，像一层层叠上去',
+    en: { name: 'Building', desc: 'Focused rings with a measured rise and fall, like work stacking up' },
+    transition: 360,
+    mouth: 'flat',
+    pool: [7, 16, 11], poolMs: [1600, 2800], blinkMs: [2600, 5000],
+    body: { breathe: 0.006 },
+    eyes: { both: { y: -1 } },
+    anims: [
+      { target: 'body', prop: 'y', type: 'hold', amp: -2.2, period: 1600, rise: 0.22, fall: 0.2 },
+      { target: 'eyes', prop: 'scale', type: 'pulse', amp: 0.04, period: 1600 }
+    ]
+  },
+  {
+    id: '44', name: '同步中', group: 'agent',
+    desc: '目光平稳左右扫，身体跟着画一个很慢的圆',
+    en: { name: 'Syncing', desc: 'Gaze sweeps evenly while the body traces a slow circle' },
+    transition: 420,
+    mouth: 'dot',
+    pool: [15, 9, 12, 18], poolMs: [1800, 3000], blinkMs: [2800, 5600],
+    body: { breathe: 0.008 },
+    anims: [
+      { target: 'eyes', prop: 'lookX', type: 'scan', amp: 7, period: 1400 },
+      { target: 'body', prop: 'x', type: 'sine', amp: 1.6, period: 1800 },
+      { target: 'body', prop: 'y', type: 'sine', amp: 1.1, period: 1800, phase: 1.57 }
+    ]
+  },
+  {
+    id: '45', name: '接通中', group: 'agent',
+    desc: '头顶细环缓缓转，双眼交替亮起，比加载更轻',
+    en: { name: 'Connecting', desc: 'A thin orbit and alternating eyes, lighter than the loading hop' },
+    transition: 480,
+    mouth: 'dot',
+    pool: [0, 10, 8], poolMs: [5000, 8000], blinkMs: null,
+    body: { breathe: 0.01, orbit: 1, color: '#F1EFE8' },
+    anims: [
+      { target: 'left',  prop: 'open', type: 'blink', interval: 1800, dur: 520 },
+      { target: 'right', prop: 'open', type: 'blink', interval: 1800, dur: 520, phaseMs: 900 },
+      { target: 'body', prop: 'rotate', type: 'sway', amp: 1.4, period: 3200 }
+    ]
+  },
+  {
+    id: '46', name: '低语', group: 'agent',
+    desc: '身体略侧，嘴巴小小开合，像贴着耳朵说话',
+    en: { name: 'Whispering', desc: 'Leaning in with a tiny mouth pulse, as if speaking close' },
+    transition: 400,
+    mouth: 'o',
+    pool: [10, 1, 15], poolMs: [3000, 5400], blinkMs: [3200, 6400],
+    body: { rotate: 8, scale: 0.98, breathe: 0.01 },
+    eyes: { both: { lookX: 4, y: 1 } },
+    face: { mouthSX: 0.78, mouthSY: 0.78 },
+    anims: [
+      { target: 'body', prop: 'y', type: 'sine', amp: 0.9, period: 720 },
+      { target: 'eyes', prop: 'lookX', type: 'sine', amp: 1.4, period: 2400 }
+    ]
+  },
+  {
+    id: '47', name: '礼成', group: 'agent',
+    desc: '轻轻一抬，甩一条彩带，不撒花，把完成收得很干净',
+    en: { name: 'Flourish', desc: 'A small lift and a single ribbon, celebration without confetti' },
+    transition: 280,
+    mouth: 'smile',
+    pool: [2, 17, 8], poolMs: [1800, 3200], blinkMs: [2400, 4800],
+    body: { ribbons: 1, color: '#F6F0E6' },
+    eyes: { both: { y: -2 } },
+    sequence: {
+      settle: 'base',
+      frames: [
+        { at: 0,    body: { y: 0, scale: 1 } },
+        { at: 260,  eyes: { both: { scaleX: 1.08, scaleY: 1.08, y: -4 } }, body: { y: -5, scale: 1.03 } },
+        { at: 640,  eyes: { both: { y: -2 } }, body: { y: -1, scale: 1 } },
+        { at: 980,  body: { y: 0 } }
+      ]
+    }
+  },
+  {
+    id: '48', name: '附和', group: 'agent',
+    desc: '两拍点头，目光稳定，像在说“嗯，是的”',
+    en: { name: 'Agreeing', desc: 'A two-beat nod with a steady gaze: a quiet yes' },
+    transition: 360,
+    mouth: 'smile',
+    pool: [8, 2, 15], poolMs: [3200, 5600], blinkMs: [3400, 6800],
+    body: { breathe: 0.01 },
+    anims: [
+      { target: 'body', prop: 'y', type: 'nod', amp: 5.5, period: 1680 },
+      { target: 'eyes', prop: 'y', type: 'nod', amp: 3.2, period: 1680 }
+    ]
+  },
+  {
+    id: '49', name: '回神', group: 'agent',
+    desc: '从半闭到睁清，肩膀一正，把走神收回来',
+    en: { name: 'Snapping To', desc: 'Half-closed eyes clear and the posture squares, coming back' },
+    transition: 300,
+    mouth: 'o',
+    pool: [4, 0, 8], poolMs: [4000, 7000], blinkMs: null,
+    body: { breathe: 0.006 },
+    sequence: {
+      settle: 'base',
+      frames: [
+        { at: 0,    eyes: { both: { open: 0.4, y: 4 } }, body: { rotate: -5, y: 3 } },
+        { at: 360,  eyes: { left: { open: 0.85, y: 1 }, right: { open: 0.35, y: 3 } } },
+        { at: 720,  eyes: { both: { open: 1, scaleX: 1.1, scaleY: 1.1, y: -2 } }, body: { rotate: 0, y: -2 } },
+        { at: 1100, eyes: { both: { open: 1, y: 0 } }, body: { y: 0 } }
       ]
     }
   }

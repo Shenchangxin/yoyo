@@ -383,7 +383,7 @@ dismisses HUD popovers. Chrome never raises itself above the node HUD.
 
 One live SVG engine per window (`PresenceRuntime` in the main webview;
 `PresenceSprite` in the companion). The actor is Emotion Ball’s spherical
-robot (`shape: 'blob'`): cream body, spherical-projection eyes, 32-emotion
+robot (`shape: 'blob'`): cream body, spherical-projection eyes, 50-emotion
 motion, ribbons on spin. Slot priority: boot → module loading → live process
 → live transcript stamp → empty home. Historical turns are static.
 `prefers-reduced-motion` freezes a static frame. Do not load Mood Mates on

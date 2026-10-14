@@ -13,6 +13,8 @@ export type PresenceInput = {
   waking?: boolean;
   voicePhase?: VoicePhase;
   now?: number;
+  /** How long the current live/loading bout has been held. 0 keeps first-beat faces. */
+  busyMs?: number;
 };
 
 export type PresenceOut = {
@@ -33,6 +35,8 @@ const WANDER = [
   "02", "10", "02", "03", "19", "02", "04", "11",
   "02", "14", "16", "02", "12", "18", "20", "02",
   "10", "19", "02", "03",
+  "09", "24", "02", "25", "29", "02", "23", "08",
+  "02", "22", "19", "11", "02", "27", "04", "48",
 ] as const;
 
 /** Ambient idle face. Cycles through glances, moods, then drowsy sleep. */
@@ -44,6 +48,40 @@ export function wanderEmotion(now: number, idleMs: number): string {
     return Math.floor(now / WANDER_MS) % 3 === 0 ? "03" : "04";
   }
   return WANDER[Math.floor(now / WANDER_MS) % WANDER.length]!;
+}
+
+/** Module / companion loading: hop-blink, then connect → build → wait. */
+export function loadEmotion(busyMs: number): string {
+  if (busyMs < 2200) return "36";
+  if (busyMs < 5200) return "45";
+  if (busyMs < 8600) return "43";
+  const beat = Math.floor((busyMs - 8600) / 3800) % 3;
+  return (["42", "44", "36"] as const)[beat]!;
+}
+
+/** Bare thinking: orbit, then focus, recall, patience. */
+export function thinkEmotion(busyMs: number): string {
+  if (busyMs < 3600) return "30";
+  if (busyMs < 7800) return "16";
+  if (busyMs < 12_800) return "37";
+  const beat = Math.floor((busyMs - 12_800) / 4200) % 3;
+  return (["42", "30", "16"] as const)[beat]!;
+}
+
+export function afterDoneEmotion(age: number): string | null {
+  if (age < 0) return null;
+  if (age < DONE_MS) return "33";
+  if (age < DONE_MS + 1800) return "10";
+  if (age < DONE_MS + 3600) return "19";
+  if (age < DONE_MS + PLEASED_MS) return "23";
+  return null;
+}
+
+export function voiceEmotion(phase: VoicePhase | undefined, busyMs = 0): string {
+  if (phase === "listening") return busyMs > 5000 ? "42" : "35";
+  if (phase === "speaking") return busyMs > 4000 ? "46" : "39";
+  if (phase === "thinking") return thinkEmotion(busyMs);
+  return "02";
 }
 
 function toolName(item: Item): string {
@@ -70,9 +108,11 @@ function skillTip(item: Item): string {
   return name;
 }
 
-function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "office" | "other" {
+function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "office" | "media" | "skill" | "other" {
   const n = name.toLowerCase();
-  if (/(office_|connector_|browser_|computer_act|clipboard)/.test(n)) return "office";
+  if (/(office_|connector_|computer_act|clipboard)/.test(n)) return "office";
+  if (/(load_skill|read_skill|run_skill)/.test(n)) return "skill";
+  if (/(image|video|ffmpeg|screenshot|canvas|draw|render)/.test(n)) return "media";
   if (/(search|grep|glob|find|query|lookup)/.test(n)) return "search";
   if (/(web|http|fetch|browser|url|crawl)/.test(n)) return "web";
   if (/(^|_)(read|view|cat|open)(_|$)/.test(n)) return "read";
@@ -132,13 +172,23 @@ function emotionForTool(item: Item): string {
     case "list":
       return "16";
     case "run":
-    case "edit":
       return "32";
+    case "edit":
+      return "26";
     case "office":
       return "36";
+    case "media":
+      return "27";
+    case "skill":
+      return "03";
     default:
       return "32";
   }
+}
+
+function sustainWork(id: string, age: number): string {
+  if (!(age > 10_000)) return id;
+  return Math.floor((age - 10_000) / 5600) % 2 === 0 ? id : "42";
 }
 
 /** Map workstation state onto a Mood Mates emotionId. One id at a time. */
@@ -146,26 +196,28 @@ export function presenceOf(input: PresenceInput): PresenceOut {
   const now = input.now ?? Date.now();
   const items = input.items || [];
   const voice = input.voicePhase || "off";
+  const busyMs = input.busyMs || 0;
 
   if (!input.booted) return { emotionId: "05", live: true, tips: "booting" };
 
-  if (voice === "listening") return { emotionId: "35", live: true, tips: "listening" };
-  if (voice === "speaking") return { emotionId: "39", live: true, tips: "speaking" };
-  if (voice === "thinking") return { emotionId: "30", live: true, tips: "thinking" };
+  if (voice === "listening") return { emotionId: voiceEmotion(voice, busyMs), live: true, tips: "listening" };
+  if (voice === "speaking") return { emotionId: voiceEmotion(voice, busyMs), live: true, tips: "speaking" };
+  if (voice === "thinking") return { emotionId: voiceEmotion(voice, busyMs), live: true, tips: "thinking" };
 
   if (input.approvals > 0) return { emotionId: "35", live: true, tips: "approval" };
 
   const lastError = lastOf(items, (it) => it.type === "error");
   if (lastError && (input.running || now - ts(lastError) < 4000)) {
-    if (refused(lastError)) return { emotionId: "21", live: true, tips: "refused" };
+    if (refused(lastError)) return { emotionId: "38", live: true, tips: "refused" };
     return { emotionId: "34", live: true, tips: "error" };
   }
   if (lastError && !input.running && now - ts(lastError) < RECOVER_MS) {
-    return { emotionId: "18", live: false, tips: "recover" };
+    const age = now - ts(lastError);
+    return { emotionId: age > 5600 ? "12" : "18", live: false, tips: "recover" };
   }
 
   if (input.moduleLoading && !input.running) {
-    return { emotionId: "36", live: true, tips: "loading" };
+    return { emotionId: loadEmotion(busyMs), live: true, tips: "loading" };
   }
 
   const leftover = openTool(items);
@@ -182,36 +234,38 @@ export function presenceOf(input: PresenceInput): PresenceOut {
       return { emotionId: "31", live: true, tips: "receive" };
     }
     const streaming = lastOf(items, (it) => it.type === "assistant" && !!it.delta);
-    if (streaming) return { emotionId: "39", live: true, tips: "reply" };
+    if (streaming) {
+      const age = now - ts(streaming);
+      return { emotionId: age > 5200 ? "46" : "39", live: true, tips: "reply" };
+    }
     const tool = openTool(items);
-    if (tool) return { emotionId: emotionForTool(tool), live: true, tips: skillTip(tool) };
-    return { emotionId: "30", live: true, tips: "think" };
+    if (tool) return { emotionId: sustainWork(emotionForTool(tool), now - ts(tool)), live: true, tips: skillTip(tool) };
+    return { emotionId: thinkEmotion(busyMs), live: true, tips: "think" };
   }
 
   const lastEnd = lastOf(items, (it) => it.type === "turn_end");
-  if (lastEnd && now - ts(lastEnd) < DONE_MS && !input.interrupted) {
-    return { emotionId: "33", live: false, tips: "done" };
-  }
-  if (lastEnd && now - ts(lastEnd) < DONE_MS + PLEASED_MS && !input.interrupted) {
-    return { emotionId: "10", live: false, tips: "pleased" };
+  if (lastEnd && !input.interrupted) {
+    const done = afterDoneEmotion(now - ts(lastEnd));
+    if (done === "33") return { emotionId: "33", live: false, tips: "done" };
+    if (done) return { emotionId: done, live: false, tips: "pleased" };
   }
   if (input.interrupted && lastEnd && now - ts(lastEnd) < STOP_MS) {
     return { emotionId: "17", live: false, tips: "stop" };
   }
 
-  if (input.waking) return { emotionId: "01", live: false, tips: "wake" };
+  if (input.waking) return { emotionId: busyMs > 900 ? "08" : "01", live: false, tips: "wake" };
 
   const lastAsk = lastOf(items, (it) => it.type === "ask_user");
   if (lastAsk && now - ts(lastAsk) < 12_000) {
-    return { emotionId: "35", live: true, tips: "ask" };
+    return { emotionId: now - ts(lastAsk) > 5000 ? "42" : "35", live: true, tips: "ask" };
   }
   const lastEval = lastOf(items, (it) => it.type === "eval");
   if (lastEval && now - ts(lastEval) < 4000) {
-    return { emotionId: "36", live: true, tips: "eval" };
+    return { emotionId: "43", live: true, tips: "eval" };
   }
   const lastEvolve = lastOf(items, (it) => it.type === "evolve");
   if (lastEvolve && now - ts(lastEvolve) < 4000) {
-    return { emotionId: "30", live: true, tips: "evolve" };
+    return { emotionId: "37", live: true, tips: "evolve" };
   }
 
   const idleMs = input.idleMs || 0;
