@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { cn } from "../lib/utils";
+import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import { useCopy } from "../lib/i18n";
 import { writeClipboard } from "../lib/clipboard";
 import { isMac } from "../lib/chrome";
@@ -229,7 +230,10 @@ export function ThreadRail(props: {
   const pagesOn = props.surface === "pages";
   const videoOn = props.surface === "video";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readLocalMap("yoyo-rail-collapsed"));
+  useEffect(() => {
+    writeLocalMap("yoyo-rail-collapsed", collapsed);
+  }, [collapsed]);
   const entries = visibleEntries(
     videoOn
       ? videoRailEntries(list, props.videoProjects || [], copy, q)

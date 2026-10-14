@@ -726,7 +726,12 @@ function mockTrace(id: string, extra?: { sessions?: any[]; events?: any[]; artif
       bytes: p.bytes || 0,
       elapsed_ms: p.elapsed_ms || 0,
       spill_id: p.spill_id || "",
-      tokens: p.tokens || 0,
+      tokens: p.tokens || p.prompt_tokens || 0,
+      prompt_tokens: p.prompt_tokens || 0,
+      completion_tokens: p.completion_tokens || 0,
+      cached_tokens: p.cached_tokens || 0,
+      ttft_ms: p.ttft_ms || 0,
+      cache_reported: !!p.cache_reported || (p.cached_tokens || 0) > 0,
       error: ev.type === "error",
     });
   }

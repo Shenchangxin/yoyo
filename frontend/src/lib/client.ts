@@ -694,6 +694,11 @@ export function sessionTraceOf(v: any): SessionTrace {
     elapsedMs: num(pick(ev, "elapsed_ms", "ElapsedMs")),
     spillId: str(pick(ev, "spill_id", "SpillID", "spillId")),
     tokens: num(pick(ev, "tokens", "Tokens")),
+    promptTokens: num(pick(ev, "prompt_tokens", "PromptTokens")),
+    completionTokens: num(pick(ev, "completion_tokens", "CompletionTokens")),
+    cachedTokens: num(pick(ev, "cached_tokens", "CachedTokens")),
+    ttftMs: num(pick(ev, "ttft_ms", "TtftMs")),
+    cacheReported: bool(pick(ev, "cache_reported", "CacheReported")),
     error: bool(pick(ev, "error", "Error")),
   }));
   const artifacts: TraceArtifact[] = asArray(pick(v, "artifacts", "Artifacts")).map((art: any) => ({

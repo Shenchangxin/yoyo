@@ -102,6 +102,37 @@ func TestProjectTraceRecoversSpillIDFromStub(t *testing.T) {
 	}
 }
 
+func TestProjectTraceUsageCarriesLatencyAndCache(t *testing.T) {
+	ts := time.Date(2026, 1, 1, 0, 0, 1, 0, time.UTC)
+	view := ProjectTrace([]trace.Event{{
+		TS:     ts,
+		Type:   trace.TypeUsage,
+		Source: "model",
+		Payload: map[string]any{
+			"round":             "s1:r2",
+			"prompt_tokens":     200,
+			"completion_tokens": 40,
+			"cached_tokens":     160,
+			"cache_reported":    true,
+			"elapsed_ms":        1240,
+			"ttft_ms":           180,
+		},
+	}})
+	if len(view.Events) != 1 {
+		t.Fatalf("events %d", len(view.Events))
+	}
+	ev := view.Events[0]
+	if ev.Type != "model_usage" || ev.PromptTokens != 200 || ev.CompletionTokens != 40 || ev.CachedTokens != 160 {
+		t.Fatalf("tokens %+v", ev)
+	}
+	if ev.ElapsedMs != 1240 || ev.TtftMs != 180 || !ev.CacheReported {
+		t.Fatalf("timing %+v", ev)
+	}
+	if !strings.Contains(ev.Summary, "1240ms") || !strings.Contains(ev.Summary, "cache 80%") {
+		t.Fatalf("summary %q", ev.Summary)
+	}
+}
+
 func TestIngestReturnsSpillID(t *testing.T) {
 	sp := NewSpill(t.TempDir())
 	full := strings.Repeat("TAIL", 20_000)
