@@ -423,7 +423,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	str := func(k string) string { return strings.TrimSpace(fmt.Sprint(params[k])) }
+	str := func(k string) string { return rpcString(params, k) }
 	switch method {
 	case "video.status":
 		return a.VideoStatus(), nil
@@ -790,7 +790,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.studio.delete":
 		return map[string]any{"ok": true}, eng.DeleteStudioProject(str("id"))
 	case "video.studio.bind":
-		return map[string]any{"ok": true}, eng.BindStudioSession(str("session_id"), firstNonEmptyApp(str("id"), str("project_id")))
+		return map[string]any{"ok": true}, eng.BindStudioSession(str("session_id"), firstNonEmptyApp(str("project_id"), str("id")))
 	case "video.studio.assemble":
 		p, err := eng.AssembleStudio(str("id"))
 		if err != nil {
@@ -1026,6 +1026,17 @@ func firstNonEmptyApp(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+func rpcString(params map[string]any, key string) string {
+	if params == nil {
+		return ""
+	}
+	v, ok := params[key]
+	if !ok || v == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(v))
 }
 
 func (a *App) enrichBundle(b video.EpisodeBundle) map[string]any {

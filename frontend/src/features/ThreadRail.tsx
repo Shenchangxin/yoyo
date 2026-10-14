@@ -154,6 +154,7 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   const bound = new Set(projects.map((p) => p.sessionId).filter(Boolean));
   const canvases = projects.filter((p) => p.kind === "canvas" && match(p.title || "", p.id));
   const dramas = projects.filter((p) => p.kind === "drama" && match(p.title || "", p.id));
+  const studios = projects.filter((p) => p.kind === "studio" && match(p.title || "", p.id));
   const chats = threads.filter((t) => !bound.has(t.id) && match(t.title || "", t.id));
   const out: RailEntry[] = [];
   const push = (path: string, label: string, items: RailEntry[]) => {
@@ -161,6 +162,7 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
     out.push({ kind: "space", id: "g-" + path, label, path });
     for (const item of items) out.push(item);
   };
+  push("studio", copy.video.shellStudio, studios.map((project) => ({ kind: "project", project })));
   push("canvas", copy.video.canvas, canvases.map((project) => ({ kind: "project", project })));
   push("drama", copy.video.drama, dramas.map((project) => ({ kind: "project", project })));
   push("chats", copy.rail.chats, chats.map((thread) => ({ kind: "thread", thread })));
@@ -185,6 +187,7 @@ export function ThreadRail(props: {
   videoProjects?: VideoProject[];
   canvasProjectId?: string;
   dramaId?: string;
+  studioId?: string;
   onNew: () => void;
   onNewIn?: (path: string) => void;
   workspace?: string;
@@ -254,7 +257,8 @@ export function ThreadRail(props: {
       const p = e.project;
       const active = (p.sessionId && p.sessionId === props.activeId)
         || (p.kind === "canvas" && p.id === props.canvasProjectId)
-        || (p.kind === "drama" && p.id === props.dramaId);
+        || (p.kind === "drama" && p.id === props.dramaId)
+        || (p.kind === "studio" && p.id === props.studioId);
       return (
         <ProjectRow
           key={`${p.kind}-${p.id}`}
@@ -404,8 +408,8 @@ function RailLabel({ label }: { label: string }) {
 function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: () => void }) {
   const copy = useCopy();
   const p = props.project;
-  const Icon = p.kind === "drama" ? Film : LayoutGrid;
-  const fallback = p.kind === "drama" ? copy.video.untitled : copy.video.canvas;
+  const Icon = p.kind === "drama" ? Film : p.kind === "studio" ? Clapperboard : LayoutGrid;
+  const fallback = p.kind === "drama" ? copy.video.untitled : p.kind === "studio" ? copy.video.studio.newProject : copy.video.canvas;
   return (
     <button
       type="button"

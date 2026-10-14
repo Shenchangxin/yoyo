@@ -5,6 +5,7 @@ import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/mo
 import { useUI } from "../../lib/store";
 import type { VideoPane } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
+import { useStudioSelection } from "./workshop-store";
 
 const PRIMARY: { id: Extract<VideoPane, "create" | "studio" | "drama" | "canvas">; icon: typeof Clapperboard }[] = [
   { id: "create", icon: Images },
@@ -57,7 +58,10 @@ export function VideoShellNav() {
           "relative mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
           on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
         )}
-        onClick={() => openVideoPane(item.id)}
+        onClick={() => {
+          if (item.id === "studio") useStudioSelection.getState().setStudioId("");
+          openVideoPane(item.id);
+        }}
       >
         {on ? (
           <motion.span

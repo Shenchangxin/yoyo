@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cycleScore, topicIsScheduled, topicPrimaryAction, topicScoreAvg } from "./studio-topic.ts";
+import { cycleScore, setScore, topicIsScheduled, topicMatchesQuery, topicPrimaryAction, topicScoreAvg, trendMatchesQuery } from "./studio-topic.ts";
 
 describe("topic card helpers", () => {
   it("averages filled scores only", () => {
@@ -24,5 +24,18 @@ describe("topic card helpers", () => {
     assert.equal(cycleScore(0), 1);
     assert.equal(cycleScore(5), 0);
     assert.equal(cycleScore(3), 4);
+  });
+
+  it("sets a score and clears the same tick", () => {
+    assert.deepEqual(setScore({ heat: 5 }, "heat", 3), { heat: 3 });
+    assert.deepEqual(setScore({ heat: 3 }, "heat", 3), {});
+    assert.deepEqual(setScore({ heat: 5, feasibility: 4 }, "timing", 2), { heat: 5, feasibility: 4, timing: 2 });
+  });
+
+  it("filters topics and hot rows by query", () => {
+    assert.equal(topicMatchesQuery({ title: "春日穿搭", angle: "通勤" }, "穿搭"), true);
+    assert.equal(topicMatchesQuery({ title: "春日穿搭" }, "夜路"), false);
+    assert.equal(trendMatchesQuery({ title: "热搜A", hot: "120w" }, "热搜"), true);
+    assert.equal(trendMatchesQuery({ title: "热搜A" }, ""), true);
   });
 });

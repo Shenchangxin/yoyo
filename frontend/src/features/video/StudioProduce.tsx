@@ -17,6 +17,8 @@ import {
 } from "./studio-model";
 
 const MOTIONS = ["ken-burns", "static", "push-in", "pan-left", "zoom-out"];
+const ASPECTS = ["9:16", "16:9", "1:1"];
+const LENGTHS = [15, 30, 45, 60];
 
 export type StudioProduceProps = {
   current: StudioProject;
@@ -39,16 +41,25 @@ export function StudioProduce(props: StudioProduceProps) {
   const p = s.desk;
   const cur = props.current;
   const furthest = gateIndex(cur.furthest_gate);
-  const [step, setStep] = useState<StudioGate>(() => (cur.gate as StudioGate) || "script");
+  const [step, setStep] = useState<StudioGate>(() => {
+    if (!String(cur.script || "").trim() && cur.script_status !== "approved") return "setup";
+    return (cur.gate as StudioGate) || "script";
+  });
   const shots = projectShots(cur);
   const onChangeRef = useRef(props.onChange);
   onChangeRef.current = props.onChange;
   const pendingKey = shots.filter((sh) => sh.job_id && (!shotReady(sh) || sh.stale)).map((sh) => sh.job_id).join(",");
 
   useEffect(() => {
+    if (!String(cur.script || "").trim() && cur.script_status !== "approved") {
+      setStep("setup");
+      return;
+    }
     const next = (cur.gate as StudioGate) || "script";
     if (gateIndex(next) <= furthest) setStep(next);
-  }, [cur.gate, cur.id, furthest]);
+    // Only reset the visible gate when the short changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur.id]);
 
   useEffect(() => {
     if (!pendingKey || !cur.id) return;
@@ -66,27 +77,30 @@ export function StudioProduce(props: StudioProduceProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <nav className="flex flex-wrap gap-1" aria-label={p.setup} data-testid="studio-step-nav">
+      <nav className="flex flex-wrap items-center gap-0.5" aria-label={p.setup} data-testid="studio-step-nav">
         {STUDIO_GATES.map((g, i) => {
           const locked = i > furthest;
           const done = i < furthest;
           const active = step === g;
           return (
-            <button
-              key={g}
-              type="button"
-              data-testid={`studio-step-${g}`}
-              disabled={locked}
-              title={locked ? p.locked : p[`${g}Hint` as "setupHint"]}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px]",
-                active ? "bg-lift text-foreground" : locked ? "text-muted/50" : "text-muted hover:bg-lift/70 hover:text-foreground",
-              )}
-              onClick={() => go(g)}
-            >
-              <span className="tabular-nums text-[11px]">{done ? <Check className="size-3" aria-hidden /> : i + 1}</span>
-              {p[g]}
-            </button>
+            <span key={g} className="flex items-center">
+              {i > 0 ? <span className="mx-0.5 text-[11px] text-muted/35" aria-hidden>/</span> : null}
+              <button
+                type="button"
+                data-testid={`studio-step-${g}`}
+                disabled={locked}
+                title={locked ? p.locked : p[`${g}Hint` as "setupHint"]}
+                aria-current={active ? "step" : undefined}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px]",
+                  active ? "bg-foreground text-background" : locked ? "text-muted/50" : done ? "text-foreground hover:bg-lift/70" : "text-muted hover:bg-lift/70 hover:text-foreground",
+                )}
+                onClick={() => go(g)}
+              >
+                <span className="tabular-nums text-[11px]">{done ? <Check className="size-3" aria-hidden /> : i + 1}</span>
+                {p[g]}
+              </button>
+            </span>
           );
         })}
       </nav>
@@ -123,73 +137,99 @@ function SetupStep(props: {
   const p = s.desk;
   const cur = props.current;
   const cat = props.catalog;
+  const look = (cat.templates || []).length + (cat.characters || []).length + (cat.styles || []).length > 0;
   return (
     <div className="flex flex-col gap-3">
-      {(cat.templates || []).length ? (
-        <Field label={p.template}>
+      <section className="overflow-hidden rounded-xl border border-border/70 bg-card" data-testid="studio-brief">
+        <FormRow label={s.aspect}>
           <ChipRow
-            items={cat.templates!.map((t) => ({ id: t.id, label: t.title }))}
-            value={cur.template_id || ""}
-            onPick={(id) => void props.run("template", async () => {
-              props.onChange(await api.video.applyStudioTemplate(cur.id, id) as StudioProject);
-            })}
+            items={ASPECTS.map((id) => ({ id, label: id }))}
+            value={cur.aspect || "9:16"}
+            onPick={(id) => void props.saveProject({ aspect: id })}
           />
-        </Field>
-      ) : null}
-      {(cat.characters || []).length ? (
-        <Field label={p.character}>
-          <ChipRow
-            items={cat.characters!.map((t) => ({ id: t.id, label: t.name }))}
-            value={cur.identity?.character_id || ""}
-            onPick={(id) => void props.run("identity", async () => {
-              props.onChange(await api.video.setStudioIdentity(cur.id, id, cur.identity?.style_id || "") as StudioProject);
-            })}
+        </FormRow>
+        <FormRow label={p.duration} hint={s.durationHint}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ChipRow
+              items={LENGTHS.map((n) => ({ id: String(n), label: String(n) }))}
+              value={cur.target_duration ? String(cur.target_duration) : ""}
+              onPick={(id) => void props.saveProject({ target_duration: Number(id) })}
+            />
+            <label className="flex items-center gap-1">
+              <Input
+                className="h-7 w-14"
+                type="number"
+                min={5}
+                max={180}
+                value={cur.target_duration || ""}
+                data-testid="studio-brief-duration"
+                aria-label={p.duration}
+                onChange={(e) => props.onChange({ ...cur, target_duration: Number(e.target.value) || 0 })}
+                onBlur={(e) => void props.saveProject({ target_duration: Number(e.target.value) || 0 })}
+              />
+              <span className="text-[11px] text-muted">{copy.video.durationLabel}</span>
+            </label>
+          </div>
+        </FormRow>
+        <FormRow label={p.audience} hint={s.audienceHint}>
+          <Input
+            value={cur.audience || ""}
+            placeholder={s.audiencePh}
+            data-testid="studio-brief-audience"
+            aria-label={p.audience}
+            onChange={(e) => props.onChange({ ...cur, audience: e.target.value })}
+            onBlur={(e) => void props.saveProject({ audience: e.target.value })}
           />
-        </Field>
-      ) : null}
-      {(cat.styles || []).length ? (
-        <Field label={p.style}>
-          <ChipRow
-            items={cat.styles!.map((t) => ({ id: t.id, label: t.name }))}
-            value={cur.identity?.style_id || cur.style || ""}
-            onPick={(id) => void props.run("style", async () => {
-              props.onChange(await api.video.setStudioIdentity(cur.id, cur.identity?.character_id || "", id) as StudioProject);
-            })}
-          />
-        </Field>
-      ) : null}
-      <details>
-        <summary className="cursor-pointer text-[12px] text-muted">{s.moreLook}</summary>
-        <div className="mt-2 flex flex-col gap-2">
-          {(cat.presets || []).length ? (
-            <Field label={p.preset}>
+        </FormRow>
+        {(cat.presets || []).length ? (
+          <FormRow label={p.preset}>
+            <ChipRow
+              items={cat.presets!.map((t) => ({ id: t.id, label: t.name }))}
+              value={cur.preset_id || ""}
+              onPick={(id) => void props.run("preset", async () => {
+                props.onChange(await api.video.applyStudioPreset(cur.id, id) as StudioProject);
+              })}
+            />
+          </FormRow>
+        ) : null}
+      </section>
+      {look ? (
+        <div className="flex flex-col gap-3">
+          {(cat.templates || []).length ? (
+            <Field label={p.template}>
               <ChipRow
-                items={cat.presets!.map((t) => ({ id: t.id, label: t.name }))}
-                value={cur.preset_id || ""}
-                onPick={(id) => void props.run("preset", async () => {
-                  props.onChange(await api.video.applyStudioPreset(cur.id, id) as StudioProject);
+                items={cat.templates!.map((t) => ({ id: t.id, label: t.title }))}
+                value={cur.template_id || ""}
+                onPick={(id) => void props.run("template", async () => {
+                  props.onChange(await api.video.applyStudioTemplate(cur.id, id) as StudioProject);
                 })}
               />
             </Field>
           ) : null}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Input
-              placeholder={p.audience}
-              value={cur.audience || ""}
-              onChange={(e) => props.onChange({ ...cur, audience: e.target.value })}
-              onBlur={(e) => void props.saveProject({ audience: e.target.value })}
-            />
-            <Input
-              type="number"
-              min={5}
-              placeholder={p.duration}
-              value={cur.target_duration || ""}
-              onChange={(e) => props.onChange({ ...cur, target_duration: Number(e.target.value) || 0 })}
-              onBlur={(e) => void props.saveProject({ target_duration: Number(e.target.value) || 0 })}
-            />
-          </div>
+          {(cat.characters || []).length ? (
+            <Field label={p.character}>
+              <ChipRow
+                items={cat.characters!.map((t) => ({ id: t.id, label: t.name }))}
+                value={cur.identity?.character_id || ""}
+                onPick={(id) => void props.run("identity", async () => {
+                  props.onChange(await api.video.setStudioIdentity(cur.id, id, cur.identity?.style_id || "") as StudioProject);
+                })}
+              />
+            </Field>
+          ) : null}
+          {(cat.styles || []).length ? (
+            <Field label={p.style}>
+              <ChipRow
+                items={cat.styles!.map((t) => ({ id: t.id, label: t.name }))}
+                value={cur.identity?.style_id || cur.style || ""}
+                onPick={(id) => void props.run("style", async () => {
+                  props.onChange(await api.video.setStudioIdentity(cur.id, cur.identity?.character_id || "", id) as StudioProject);
+                })}
+              />
+            </Field>
+          ) : null}
         </div>
-      </details>
+      ) : null}
       {cur.identity?.preserve ? (
         <p className="text-[12px] leading-[1.5] text-muted">
           <span className="text-foreground/85">{p.identity}</span> · {cur.identity.preserve}
@@ -226,29 +266,44 @@ function ScriptStep(props: {
           onBlur={(e) => void props.saveProject({ script: e.target.value })}
         />
       </label>
-      <details>
-        <summary className="cursor-pointer text-[12px] text-muted">{s.moreLines}</summary>
-        <div className="mt-2 flex flex-col gap-2">
-          <div className="flex flex-wrap gap-2">
-            <ChipRow
-              items={(props.catalog.platforms || ["douyin", "xhs", "bilibili"]).map((id) => ({ id, label: platLabel(id, s) }))}
-              value={cur.platform || "douyin"}
-              onPick={(id) => void props.saveProject({ platform: id })}
-            />
-            <ChipRow
-              items={(props.catalog.tones || ["natural", "professional", "energetic", "storytelling"]).map((id) => ({
-                id, label: (p as Record<string, string>)[id] || id,
-              }))}
-              value={cur.tone || "natural"}
-              onPick={(id) => void props.saveProject({ tone: id })}
-            />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Input placeholder={p.hook} value={cur.hook || ""} onChange={(e) => props.onChange({ ...cur, hook: e.target.value })} onBlur={(e) => void props.saveProject({ hook: e.target.value })} />
-            <Input placeholder={p.cta} value={cur.cta || ""} onChange={(e) => props.onChange({ ...cur, cta: e.target.value })} onBlur={(e) => void props.saveProject({ cta: e.target.value })} />
-          </div>
-        </div>
-      </details>
+      <section className="overflow-hidden rounded-xl border border-border/70 bg-card" data-testid="studio-lines">
+        <FormRow label={p.platform} hint={s.platformHint}>
+          <ChipRow
+            items={(props.catalog.platforms || ["douyin", "xhs", "bilibili"]).map((id) => ({ id, label: platLabel(id, s) }))}
+            value={cur.platform || "douyin"}
+            onPick={(id) => void props.saveProject({ platform: id })}
+          />
+        </FormRow>
+        <FormRow label={p.tone} hint={s.toneHint}>
+          <ChipRow
+            items={(props.catalog.tones || ["natural", "professional", "energetic", "storytelling"]).map((id) => ({
+              id, label: (p as Record<string, string>)[id] || id,
+            }))}
+            value={cur.tone || "natural"}
+            onPick={(id) => void props.saveProject({ tone: id })}
+          />
+        </FormRow>
+        <FormRow label={p.hook} hint={s.hookHint}>
+          <Input
+            value={cur.hook || ""}
+            placeholder={s.hookPh}
+            data-testid="studio-lines-hook"
+            aria-label={p.hook}
+            onChange={(e) => props.onChange({ ...cur, hook: e.target.value })}
+            onBlur={(e) => void props.saveProject({ hook: e.target.value })}
+          />
+        </FormRow>
+        <FormRow label={p.cta} hint={s.ctaHint}>
+          <Input
+            value={cur.cta || ""}
+            placeholder={s.ctaPh}
+            data-testid="studio-lines-cta"
+            aria-label={p.cta}
+            onChange={(e) => props.onChange({ ...cur, cta: e.target.value })}
+            onBlur={(e) => void props.saveProject({ cta: e.target.value })}
+          />
+        </FormRow>
+      </section>
       {(cur.segments || []).length ? (
         <ul className="divide-y divide-border/70 border-y border-border/70">
           {cur.segments!.map((seg) => (
@@ -612,6 +667,18 @@ function ContinueButton(props: { label: string; disabled?: boolean; onClick: () 
       {props.label}
       <ChevronRight className="size-3.5" aria-hidden />
     </Button>
+  );
+}
+
+function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-border/50 px-3 py-2.5 first:border-t-0">
+      <div>
+        <span className="text-[13px] text-foreground/85">{props.label}</span>
+        {props.hint ? <p className="mt-0.5 text-[11px] leading-[1.4] text-muted">{props.hint}</p> : null}
+      </div>
+      {props.children}
+    </div>
   );
 }
 

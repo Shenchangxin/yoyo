@@ -1,11 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Copy } from "lucide-react";
+import { ChevronDown, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { writeClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
-import { SCORE_KEYS, cycleScore, topicScoreAvg, type ScoreKey } from "./studio-topic";
+import { SCORE_KEYS, setScore, topicScoreAvg, type ScoreKey } from "./studio-topic";
 
 export function CreateShortField(props: {
   disabled?: boolean;
@@ -93,43 +93,69 @@ export function StudioIdChip(props: {
   );
 }
 
-export function ScorePills(props: {
+export function TopicScoreSheet(props: {
   scores?: Record<string, number>;
   labels: Record<ScoreKey, string>;
   avgLabel: string;
+  emptyLabel: string;
+  hint: string;
   disabled?: boolean;
   onChange: (scores: Record<string, number>) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const avg = topicScoreAvg(props.scores);
   return (
-    <details className="mt-2">
-      <summary className="cursor-pointer text-[12px] text-muted" data-testid="studio-topic-scores">
-        {props.avgLabel}
-        {avg ? ` ${avg}` : ""}
-      </summary>
-      <div className="mt-2 flex flex-wrap gap-1">
-        {SCORE_KEYS.map((key) => {
-          const n = props.scores?.[key] || 0;
-          return (
-            <button
-              key={key}
-              type="button"
-              disabled={props.disabled}
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[11px]",
-                n ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70",
-              )}
-              onClick={() => {
-                const next = { ...(props.scores || {}), [key]: cycleScore(n) };
-                if (!next[key]) delete next[key];
-                props.onChange(next);
-              }}
-            >
-              {props.labels[key]}{n ? ` ${n}` : ""}
-            </button>
-          );
-        })}
-      </div>
-    </details>
+    <div className="mt-1.5">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-md py-0.5 text-left text-[12px] text-muted hover:text-foreground"
+        aria-expanded={open}
+        data-testid="studio-topic-scores"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{props.avgLabel}</span>
+        {avg ? (
+          <span className="tabular-nums text-foreground">{avg}</span>
+        ) : (
+          <span>{props.emptyLabel}</span>
+        )}
+        <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", open && "rotate-180")} aria-hidden />
+      </button>
+      {open ? (
+        <div className="mt-1.5 space-y-1">
+          <p className="text-[11px] leading-[1.45] text-muted">{props.hint}</p>
+          {SCORE_KEYS.map((key) => {
+            const n = props.scores?.[key] || 0;
+            return (
+              <div key={key} className="flex items-center gap-2" data-testid={`studio-topic-score-${key}`}>
+                <span className="w-[4.5rem] shrink-0 text-[12px] text-muted">{props.labels[key]}</span>
+                <div className="flex gap-0.5" role="radiogroup" aria-label={props.labels[key]}>
+                  {[1, 2, 3, 4, 5].map((tick) => {
+                    const on = n === tick;
+                    return (
+                      <button
+                        key={tick}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        disabled={props.disabled}
+                        data-testid={`studio-topic-score-${key}-${tick}`}
+                        className={cn(
+                          "grid size-6 place-items-center rounded-md text-[11px] tabular-nums",
+                          on ? "bg-foreground text-background" : "text-muted hover:bg-lift/70 hover:text-foreground",
+                        )}
+                        onClick={() => props.onChange(setScore(props.scores, key, tick))}
+                      >
+                        {tick}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

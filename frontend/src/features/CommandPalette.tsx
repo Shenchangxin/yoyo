@@ -26,6 +26,7 @@ import { SETTINGS_SECTIONS, SETTINGS_TABS } from "./settings/registry";
 import { useUI } from "../lib/store";
 import { Kbd } from "../components/ui/kbd";
 import { shownSeriesTitle } from "./video/drama-lib";
+import { useStudioSelection } from "./video/workshop-store";
 
 export function CommandPalette(props: {
   open: boolean;
@@ -127,7 +128,7 @@ export function CommandPalette(props: {
                   <Images className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoCreate}
                 </Command.Item>
-                <Command.Item data-testid="palette-video-studio" value={`${copy.palette.videoStudio} studio shorts 短片 trends topics hotlist 热榜`} onSelect={() => { useUI.getState().openStudioDesk(); props.onClose(); }}>
+                <Command.Item data-testid="palette-video-studio" value={`${copy.palette.videoStudio} studio shorts 短片 trends topics hotlist 热榜`} onSelect={() => { useStudioSelection.getState().setStudioId(""); useUI.getState().openStudioDesk(); props.onClose(); }}>
                   <PenLine className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoStudio}
                 </Command.Item>

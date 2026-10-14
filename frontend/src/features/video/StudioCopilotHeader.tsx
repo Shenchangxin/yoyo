@@ -28,7 +28,7 @@ export function StudioCopilotHeader() {
           </p>
         ) : null}
         <p className="truncate text-[12px] text-muted" data-testid="studio-copilot-next">
-          {title ? `${s.desk.boundHint} · ${nextLabel}` : (nextLabel || s.desk.unboundHint)}
+          {title ? `${s.desk.boundHint} · ${nextLabel}` : (s.desk.unboundHint)}
         </p>
       </div>
     </header>

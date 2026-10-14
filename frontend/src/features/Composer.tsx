@@ -811,13 +811,17 @@ export function Composer(props: {
                 </Tooltip>
               </>
             ) : null}
-            {!studioDesk && props.onAuthMode ? (
+            {props.onAuthMode ? (
               <Select
                 value={parseComposerAuth(props.authMode)}
                 onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
                 disabled={props.disabled}
               >
-                <SelectTrigger className={cn(ghostSelect, "max-w-[7.5rem]")} aria-label={copy.composer.authMode}>
+                <SelectTrigger
+                  className={cn(ghostSelect, "max-w-[7.5rem]")}
+                  aria-label={copy.composer.authMode}
+                  data-testid={studioDesk ? "studio-copilot-auth" : "composer-auth"}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
