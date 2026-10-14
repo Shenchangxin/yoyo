@@ -34,7 +34,7 @@ import { CompanionApp, PresenceLayer } from "./features/presence";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
-import { PanelLeft } from "lucide-react";
+import { ChevronLeft, PanelLeft } from "lucide-react";
 import { DEFAULT_KEYMAP, displayShortcut } from "./lib/keymap";
 import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
@@ -541,7 +541,11 @@ function WorkstationApp() {
     />
   );
 
-  const headerLeft = ws.sidebarCollapsed || railNarrow ? (
+  const headerLeft = settings && !showRail ? (
+    <Button size="icon" variant="ghost" aria-label={copy.settings.back} onClick={() => ws.closeSettings()}>
+      <ChevronLeft />
+    </Button>
+  ) : ws.sidebarCollapsed || railNarrow ? (
     <Button size="icon" variant="ghost" aria-label={copy.rail.expand} onClick={() => { ws.setSidebarCollapsed(false); ws.setSidebarHover(true); }}>
       <PanelLeft />
     </Button>
@@ -575,7 +579,7 @@ function WorkstationApp() {
   );
 
   const headerTitle = settings
-    ? <span className="text-[13px] font-medium">{copy.settings.title}</span>
+    ? null
     : skills
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
     : paging
@@ -680,8 +684,8 @@ function WorkstationApp() {
 
   const workspace = settings ? (
     <Suspense fallback={null}>
-      <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>
-        <SettingsSurface ws={ws} />
+      <div className="no-drag flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+        <SettingsSurface ws={ws} navInRail={showRail} />
       </div>
     </Suspense>
   ) : skills ? (
@@ -968,7 +972,7 @@ function WorkstationApp() {
           </div>
         </Panel>
       </Group>
-      {!showRail && !popout ? (
+      {!showRail && !popout && !settings ? (
         <div
           className={overlayRail
             ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
@@ -984,10 +988,11 @@ function WorkstationApp() {
   );
 }
 
-function SettingsSurface({ ws }: { ws: ReturnType<typeof useWorkstation> }) {
+function SettingsSurface({ ws, navInRail }: { ws: ReturnType<typeof useWorkstation>; navInRail?: boolean }) {
   const copy = ws.copy;
   return (
     <SettingsPage
+      navInRail={navInRail}
       host={{
         cfg: ws.savedCfg,
         health: ws.health,

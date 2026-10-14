@@ -4,16 +4,17 @@ import * as api from "../../lib/client";
 import { str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { SettingEmpty, SettingRow, SettingSection, SettingsPageHeader } from "./SettingChrome";
+import { SettingEmpty, SettingRow, SettingSection, SettingsGroupLabel } from "./SettingChrome";
 import { profileLabel, profileOf } from "../../lib/profile-label";
 
 export function PersonalSettings() {
   const copy = useCopy();
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.personal} description={copy.settings.tabHints.personal} />
+      <SettingsGroupLabel>{copy.settings.sections.personalIdentity}</SettingsGroupLabel>
       <ProfileSection />
       <MemorySection />
+      <SettingsGroupLabel>{copy.settings.sections.personalActivity}</SettingsGroupLabel>
       <JobSection />
       <WorkSection />
       <ProposalSection />

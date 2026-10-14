@@ -19,13 +19,11 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import {
   CONTROL_LG,
   CONTROL_SM,
-  SettingActionRow,
   SettingCodePanel,
   SettingRow,
   SettingSection,
   SettingSegmented,
   SettingValueRow,
-  SettingsPageHeader,
   SettingsSaveBar,
 } from "./SettingChrome";
 import { cn } from "../../lib/utils";
@@ -41,8 +39,6 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
   const notifications = cfg.notificationsEnabled !== false;
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.general} description={copy.settings.tabHints.general} />
-
       <SettingSection
         id="general-workspace"
         title={copy.settings.sections.generalWorkspace}
@@ -125,6 +121,8 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
           />
         </SettingRow>
       </SettingSection>
+
+      <ShortcutsSettings host={host} />
     </>
   );
 }
@@ -141,8 +139,6 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
   ];
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.appearance} description={copy.settings.tabHints.appearance} />
-
       <SettingSection
         id="appearance-theme"
         title={copy.settings.sections.appearanceTheme}
@@ -256,41 +252,38 @@ export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   const [armed, setArmed] = useState<KeymapId | null>(null);
   const ids = Object.keys(DEFAULT_KEYMAP) as KeymapId[];
   return (
-    <>
-      <SettingsPageHeader title={copy.settings.tabs.shortcuts} description={copy.settings.tabHints.shortcuts} />
-      <SettingSection
-        id="shortcuts-map"
-        title={copy.settings.sections.shortcutsMap}
-        footnote={copy.settings.recordHint}
-      >
-        {ids.map((id, i) => (
-          <SettingRow key={id} list title={copy.settings.keys[id] || id}>
-            <button
-              type="button"
-              aria-label={id}
-              className={cn(
-                "h-8 min-w-[7.5rem] rounded-md border px-3 text-[12px] tabular-nums transition-colors",
-                armed === id
-                  ? "border-accent/70 bg-accent/10 text-foreground"
-                  : "border-border bg-background text-foreground hover:bg-lift/60",
-              )}
-              onClick={() => setArmed(id)}
-              onBlur={() => setArmed(null)}
-              onKeyDown={(e) => {
-                if (armed !== id) return;
-                e.preventDefault();
-                const spec = formatShortcut(e);
-                if (!spec) return;
-                void host.patch({ keymap: { ...keymap, [id]: spec } });
-                setArmed(null);
-              }}
-            >
-              {armed === id ? copy.settings.recording : keymap[id]}
-            </button>
-          </SettingRow>
-        ))}
-      </SettingSection>
-    </>
+    <SettingSection
+      id="shortcuts-map"
+      title={copy.settings.sections.shortcutsMap}
+      footnote={copy.settings.recordHint}
+    >
+      {ids.map((id) => (
+        <SettingRow key={id} list title={copy.settings.keys[id] || id}>
+          <button
+            type="button"
+            aria-label={id}
+            className={cn(
+              "h-8 min-w-[7.5rem] rounded-md border px-3 text-[12px] tabular-nums transition-colors",
+              armed === id
+                ? "border-accent/70 bg-accent/10 text-foreground"
+                : "border-border bg-background text-foreground hover:bg-lift/60",
+            )}
+            onClick={() => setArmed(id)}
+            onBlur={() => setArmed(null)}
+            onKeyDown={(e) => {
+              if (armed !== id) return;
+              e.preventDefault();
+              const spec = formatShortcut(e);
+              if (!spec) return;
+              void host.patch({ keymap: { ...keymap, [id]: spec } });
+              setArmed(null);
+            }}
+          >
+            {armed === id ? copy.settings.recording : keymap[id]}
+          </button>
+        </SettingRow>
+      ))}
+    </SettingSection>
   );
 }
 
@@ -307,8 +300,6 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
   const dirty = budget !== savedBudget || rate !== savedRate;
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.policy} description={copy.settings.tabHints.policy} />
-
       <SettingSection id="policy-gate" title={copy.settings.sections.policyGate}>
         <SettingRow title={copy.settings.gateMode} description={copy.settings.gateModeDesc} align="start">
           <SettingSegmented
@@ -484,8 +475,6 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
 
   return (
     <>
-      <SettingsPageHeader title={copy.settings.tabs.advanced} description={copy.settings.tabHints.advanced} />
-
       <SettingSection
         id="advanced-updates"
         title={copy.settings.sections.advancedUpdates}
@@ -655,16 +644,6 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
         <SettingCodePanel className="max-h-64 min-h-[96px]">
           {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
         </SettingCodePanel>
-      </SettingSection>
-
-      <SettingSection id="advanced-danger" title={copy.settings.sections.advancedDanger}>
-        <SettingActionRow
-          danger
-          border={false}
-          title={copy.settings.applyUpdate}
-          description={copy.settings.applyUpdateConfirm}
-          onClick={() => setApplyOpen(true)}
-        />
       </SettingSection>
 
       <ConfirmDialog

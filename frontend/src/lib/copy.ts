@@ -701,7 +701,7 @@ export const en = {
       advanced: "Advanced",
     },
     tabHints: {
-      general: "Where turns run, and how the desktop app behaves.",
+      general: "Workspace, desktop behavior, and the keymap.",
       appearance: "Mode, palette, wallpaper, language, and interface size. The agent never changes these.",
       shortcuts: "Remappable keyboard paths. The agent cannot edit the keymap.",
       provider: "New chats use the default account. Keys stay in the vault.",
@@ -746,6 +746,8 @@ export const en = {
       personalGoals: "Goals",
       personalWatch: "Watches",
       personalProposals: "Send reviews",
+      personalIdentity: "Identity",
+      personalActivity: "Activity",
       advancedUpdates: "Updates",
       advancedLogs: "Diagnostics",
       advancedJournal: "Journal",

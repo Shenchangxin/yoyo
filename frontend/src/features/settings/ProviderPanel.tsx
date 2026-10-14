@@ -18,7 +18,6 @@ import {
   CONTROL_LG,
   SettingRow,
   SettingSection,
-  SettingsPageHeader,
   SettingsSaveBar,
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
@@ -212,21 +211,17 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
 
   return (
     <>
-      <SettingsPageHeader
-        title={copy.settings.tabs.provider}
-        description={copy.settings.tabHints.provider}
-        actions={
-          empty ? null : (
+      {empty ? null : (
+        <SettingSection
+          id="provider-account"
+          title={copy.settings.sections.providerAccount}
+          headerActions={
             <Button size="sm" variant="lift" onClick={startAdd}>
               <Plus aria-hidden />
               {copy.settings.addProvider}
             </Button>
-          )
-        }
-      />
-
-      {empty ? null : (
-        <SettingSection id="provider-account" title={copy.settings.sections.providerAccount}>
+          }
+        >
           {rows.map((p) => {
             const open = draft?.id === p.id;
             return (
@@ -291,7 +286,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
               title={copy.settings.pickVendor}
               description={copy.settings.providerTemplateHint}
             >
-              <div className="grid grid-cols-2 gap-1.5 py-2 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-1.5 py-2 sm:grid-cols-3 xl:grid-cols-4">
                 {PROVIDER_PRESETS.map((p) => (
                   <button
                     type="button"

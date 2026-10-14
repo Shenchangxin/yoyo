@@ -12,12 +12,11 @@ import {
   PolicySettings,
   ProviderSettings,
   GenerationSettings,
-  ShortcutsSettings,
 } from "./pages";
 import { ExtensionsSettings } from "./ExtensionsPanel";
 import { PersonalSettings } from "./PersonalPanel";
 
-export function SettingsPage({ host }: { host: SettingsHost }) {
+export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRail?: boolean }) {
   const copy = useCopy();
   const tab = useUI((s) => s.settingsTab);
   const section = useUI((s) => s.settingsSection);
@@ -41,11 +40,9 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
         if (cancelled) return;
         const el = root.querySelector(`[data-setting-section-highlight-target="${section}"]`);
         if (!(el instanceof HTMLElement)) return;
-        const sticky = root.querySelector("[data-settings-page-header]");
-        const headerH = sticky instanceof HTMLElement ? sticky.getBoundingClientRect().height : 0;
         const rootRect = root.getBoundingClientRect();
         const elRect = el.getBoundingClientRect();
-        const gap = headerH + 16;
+        const gap = 16;
         const inView = elRect.top >= rootRect.top + gap - 12 && elRect.top < rootRect.bottom - 48;
         if (!inView) {
           const top = root.scrollTop + (elRect.top - rootRect.top) - gap;
@@ -67,23 +64,28 @@ export function SettingsPage({ host }: { host: SettingsHost }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <SettingsSidebar
-        tab={tab}
-        onTab={onTab}
-        onSection={(t, id) => openSettings(t, id)}
-        compact={compact}
-      />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-skin-pane>
+    <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden">
+      {navInRail ? null : (
+        <SettingsSidebar
+          tab={tab}
+          onTab={onTab}
+          onSection={(t, id) => openSettings(t, id)}
+          compact={compact}
+        />
+      )}
+      <div
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+        data-settings-content
+      >
         <div
           ref={scroller}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"
-          style={{ scrollPaddingTop: "5.5rem" }}
+          className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"
+          style={{ scrollPaddingTop: "1.25rem" }}
         >
-          <div className="mx-auto max-w-[42rem] px-8 pb-10 pt-8">
+          <div className="box-border mx-0 min-h-full w-full max-w-none px-6 py-5">
+            <h1 className="sr-only">{copy.settings.tabs[tab]}</h1>
             {tab === "general" ? <GeneralSettings host={host} /> : null}
             {tab === "appearance" ? <AppearanceSettings host={host} /> : null}
-            {tab === "shortcuts" ? <ShortcutsSettings host={host} /> : null}
             {tab === "provider" ? <ProviderSettings host={host} /> : null}
             {tab === "generation" ? <GenerationSettings /> : null}
             {tab === "policy" ? <PolicySettings host={host} /> : null}

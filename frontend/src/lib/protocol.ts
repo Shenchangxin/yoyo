@@ -90,7 +90,6 @@ export type HarborKind = "suite" | "safety" | "tb" | "bon" | "models" | "sealed"
 export type SettingsTab =
   | "general"
   | "appearance"
-  | "shortcuts"
   | "provider"
   | "generation"
   | "policy"

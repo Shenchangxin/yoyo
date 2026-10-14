@@ -4,7 +4,6 @@ import {
   Blocks,
   Brain,
   Cpu,
-  Keyboard,
   Palette,
   Search,
   Shield,
@@ -16,13 +15,13 @@ import {
 import { useCopy } from "../../lib/i18n";
 import { DURATION, motionTransition, useMotionReduced } from "../../lib/motion";
 import type { SettingsTab } from "../../lib/protocol";
+import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, SETTINGS_TABS, tabsInGroup } from "./registry";
 
 const ICONS = {
   sliders: SlidersHorizontal,
   palette: Palette,
-  keyboard: Keyboard,
   cpu: Cpu,
   film: Clapperboard,
   shield: Shield,
@@ -35,11 +34,26 @@ function iconFor(key: string) {
   return ICONS[key as keyof typeof ICONS] || SlidersHorizontal;
 }
 
+export function SettingsRailNav() {
+  const tab = useUI((s) => s.settingsTab);
+  const openSettings = useUI((s) => s.openSettings);
+  const setSettingsTab = useUI((s) => s.setSettingsTab);
+  return (
+    <SettingsSidebar
+      tab={tab}
+      onTab={setSettingsTab}
+      onSection={(t, id) => openSettings(t, id)}
+      variant="rail"
+    />
+  );
+}
+
 export function SettingsSidebar(props: {
   tab: SettingsTab;
   onTab: (tab: SettingsTab) => void;
   onSection: (tab: SettingsTab, section: string) => void;
   compact?: boolean;
+  variant?: "page" | "rail";
 }) {
   const copy = useCopy();
   const [query, setQuery] = useState("");
@@ -83,8 +97,15 @@ export function SettingsSidebar(props: {
     );
   }
 
+  const rail = props.variant === "rail";
   return (
-    <nav className="glass-chrome flex h-full min-h-0 w-[228px] shrink-0 flex-col overflow-hidden" aria-label={copy.settings.title}>
+    <nav
+      className={cn(
+        "flex h-full min-h-0 shrink-0 flex-col overflow-hidden",
+        rail ? "w-full" : "glass-chrome w-[228px]",
+      )}
+      aria-label={copy.settings.title}
+    >
       <div className="px-3 pb-1.5 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />

@@ -62,7 +62,7 @@ test("control shortcuts section is reachable", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Shortcuts" }).click();
+  await expect(page.getByRole("button", { name: "General", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "palette" })).toHaveText("Mod+K");
 });
 
