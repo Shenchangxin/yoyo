@@ -28,7 +28,11 @@ export function Titlebar(props: {
   onResolve?: (id: string, decision: string, answer?: string) => void;
   notices?: Notice[];
   onNotice?: (n: Notice) => void;
+  onDismissNotice?: (id: string) => void;
   onClearNotices?: () => void;
+  threadTitleOf?: (sessionId: string) => string | undefined;
+  /** Pending approvals; a change refreshes the bell badge at once instead of on the next poll. */
+  approvalCount?: number;
   paused?: boolean;
   onPause?: () => void;
 }) {
@@ -127,7 +131,10 @@ export function Titlebar(props: {
           <NoticeButton
             notices={props.notices || []}
             onNotice={props.onNotice}
+            onDismissNotice={props.onDismissNotice}
             onClearNotices={props.onClearNotices}
+            threadTitleOf={props.threadTitleOf}
+            approvalCount={props.approvalCount || 0}
             onOpenThread={props.onOpenThread}
             onResolve={props.onResolve}
           />
@@ -154,7 +161,10 @@ export function Titlebar(props: {
 function NoticeButton(props: {
   notices: Notice[];
   onNotice?: (n: Notice) => void;
+  onDismissNotice?: (id: string) => void;
   onClearNotices?: () => void;
+  threadTitleOf?: (sessionId: string) => string | undefined;
+  approvalCount: number;
   onOpenThread?: (id: string) => void;
   onResolve?: (id: string, decision: string, answer?: string) => void;
 }) {
@@ -170,7 +180,7 @@ function NoticeButton(props: {
     tick();
     const id = window.setInterval(tick, 15000);
     return () => window.clearInterval(id);
-  }, [open, props.notices.length]);
+  }, [open, props.notices.length, props.approvalCount]);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -190,10 +200,12 @@ function NoticeButton(props: {
       <DropdownMenuContent align="end" className="w-[22rem] p-0">
         <InboxMenu
           notices={props.notices}
+          titleOf={props.threadTitleOf}
           onNotice={(n) => {
             props.onNotice?.(n);
             setOpen(false);
           }}
+          onDismissNotice={props.onDismissNotice}
           onClearNotices={props.onClearNotices}
           onOpenThread={(id) => {
             props.onOpenThread?.(id);

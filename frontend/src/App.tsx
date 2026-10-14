@@ -8,6 +8,7 @@ import { writeClipboard } from "./lib/clipboard";
 import { readLayout, writeLayout } from "./lib/layout";
 import { useMedia } from "./lib/media";
 import { useUI } from "./lib/store";
+import { adoptPendingAuthMode } from "./lib/pending-auth";
 import { AppFrame, MainColumn } from "./features/shell/AppFrame";
 import { PageHeader } from "./features/shell/PageHeader";
 import { CommandPalette } from "./features/CommandPalette";
@@ -72,6 +73,7 @@ function WorkstationApp() {
   const [layout, setLayout] = useState(readLayout);
   const reviewFile = useUI((s) => s.reviewFile);
   const setReviewFile = useUI((s) => s.setReviewFile);
+  const pendingAuthMode = useUI((s) => s.pendingAuthMode);
   const sheetInspect = useMedia("(max-width: 799px)");
   const railNarrow = useMedia("(max-width: 799px)");
   const settings = !popout && ws.surface === "settings";
@@ -138,7 +140,7 @@ function WorkstationApp() {
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
-      const t = await api.createSession(path, videoing ? "video" : "agent");
+      const t = await adoptPendingAuthMode(await api.createSession(path, videoing ? "video" : "agent"));
       ws.setActive(t);
       ws.setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
       return;
@@ -150,7 +152,8 @@ function WorkstationApp() {
   const bindComposer = {
     files: ws.files,
     skills: ws.skills,
-    authMode: ws.active?.authMode || "default",
+    // Before the first chat exists, show the permission the next chat will get.
+    authMode: ws.active?.authMode || pendingAuthMode || "full",
     workspace: toolRoot,
     workspaces: recentWorkspaces([sessionWs, ws.savedCfg.workspace, ...ws.threads.map((t) => t.workspace)]),
     isolate: !!ws.active?.isolate,
@@ -171,7 +174,11 @@ function WorkstationApp() {
       return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
     },
     onAuthMode: async (mode: AuthMode) => {
-      if (!ws.activeId) return;
+      if (!ws.activeId) {
+        // No chat yet: keep the choice for the first chat created (see adoptPendingAuthMode).
+        useUI.getState().setPendingAuthMode(mode);
+        return;
+      }
       const t = await api.setSessionAuthMode(ws.activeId, mode);
       ws.setActive(t);
       ws.setThreads((list) => patchThread(list, t.id, t));
@@ -612,6 +619,9 @@ function WorkstationApp() {
               onToggleInspector={() => ws.setInspector((v) => !v)}
               notices={ws.notices}
               onClearNotices={ws.clearNotices}
+              onDismissNotice={ws.dismissNotice}
+              threadTitleOf={(id) => ws.threads.find((x) => x.id === id)?.title}
+              approvalCount={ws.approvals.length}
               onNotice={(n) => {
                 if (n.sessionId) {
                   const t = ws.threads.find((x) => x.id === n.sessionId);

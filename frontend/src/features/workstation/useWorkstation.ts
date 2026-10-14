@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as api from "../../lib/client";
-import { bannerError, classifyItem, shortError } from "../../lib/error";
+import { bannerError } from "../../lib/error";
+import { noticeFromItem } from "../../lib/notices";
 import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
@@ -10,6 +11,7 @@ import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { coerceInspTab, useUI } from "../../lib/store";
+import { adoptPendingAuthMode } from "../../lib/pending-auth";
 import { looksLikeHTMLFile, workspacePreviewPath } from "../../lib/html-preview";
 import { pathFromPatch } from "../../lib/artifact-preview";
 import { toolArgs, toolName } from "../../lib/tool-summary";
@@ -209,8 +211,15 @@ export function useWorkstation() {
   const setSidebarHover = useUI((s) => s.setSidebarHover);
   const notices = useUI((s) => s.notices);
   const pushNotice = useUI((s) => s.pushNotice);
+  const dismissNotice = useUI((s) => s.dismissNotice);
   const clearNotices = useUI((s) => s.clearNotices);
+  const pruneNotices = useUI((s) => s.pruneNotices);
   const renameTick = useUI((s) => s.renameTick);
+  // Notices age out on their own; a minute of slack is fine for a window that lasts a day.
+  useEffect(() => {
+    const id = window.setInterval(() => pruneNotices(), 60_000);
+    return () => window.clearInterval(id);
+  }, [pruneNotices]);
 
   const [health, setHealth] = useState<Health>(emptyHealth);
   const [savedCfg, setSavedCfg] = useState<AppConfig>(emptyCfg);
@@ -620,24 +629,12 @@ export function useWorkstation() {
     if (item.type === "approval") {
       api.approvals().then(setApprovals).catch(() => {});
     }
-    // A deliberate Stop lands as a "canceled" error card in the stream; it is
-    // not news worth a notice.
-    const stopped = item.type === "error" && classifyItem(item).kind === "canceled";
-    // A turn that ends with plan steps open is reported by its plan_open card.
-    // A "turn finished" notice on top of that would contradict it.
-    const planOpenEnd = item.type === "turn_end" && item.payload?.stop === "plan_open";
     if (item.type === "subagent") {
       void refresh();
     }
-    if ((item.type === "turn_end" || item.type === "approval" || item.type === "error") && !stopped && !planOpenEnd) {
-      pushNotice({
-        id: item.key || `${item.type}-${Date.now()}`,
-        title: item.type === "approval" ? copy.app.approval : item.type === "error" ? copy.app.errorNotice : copy.app.turnFinished,
-        body: item.type === "error" ? shortError(item, copy.transcript) : (item.text || item.type),
-        ts: item.ts,
-        sessionId: item.sessionId,
-      });
-    }
+    const viewing = item.sessionId === activeIdRef.current && typeof document !== "undefined" && document.hasFocus();
+    const notice = noticeFromItem(item, copy, viewing);
+    if (notice) pushNotice(notice);
   }), [pushNotice, markEnded, markStarted, refresh, copy]);
 
   useEffect(() => subscribeStopped((id) => markEnded(id)), [markEnded]);
@@ -942,7 +939,7 @@ export function useWorkstation() {
     const staged = ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat";
     let t = p.sessionId ? threads.find((x) => x.id === p.sessionId) || null : null;
     if (!t) {
-      const created = await api.createSession(channelWorkspace(ch), ch);
+      const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace(ch), ch));
       t = created.channel ? created : { ...created, channel: ch };
       setThreads((prev) => [t!, ...prev.filter((x) => x.id !== t!.id)]);
       if (p.kind === "canvas") {
@@ -992,7 +989,7 @@ export function useWorkstation() {
   async function ensureThread(): Promise<Thread> {
     const ch = await currentChannel();
     if (active && threadChannel(active) === ch) return active;
-    const created = await api.createSession(channelWorkspace(ch), ch);
+    const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace(ch), ch));
     const t = created.channel ? created : { ...created, channel: ch };
     setThreads((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
     setActive(t);
@@ -1358,7 +1355,7 @@ export function useWorkstation() {
 
   async function onNewIn(workspace?: string) {
     const ch = channelForSurface(useUI.getState().surface);
-    const created = await api.createSession(workspace || channelWorkspace(ch), ch);
+    const created = await adoptPendingAuthMode(await api.createSession(workspace || channelWorkspace(ch), ch));
     const t = created.channel ? created : { ...created, channel: ch };
     setThreads((list) => [t, ...list.filter((x) => x.id !== t.id)]);
     itemsAcc.current = [];
@@ -1378,6 +1375,9 @@ export function useWorkstation() {
   function openThread(t: Thread, opts?: { keepPane?: boolean }) {
     const ui = useUI.getState();
     ui.rememberThread(t);
+    // Looking at a conversation reads its notices, and a pending pick belonged to a fresh chat, not this one.
+    ui.dismissNoticesFor(t.id);
+    ui.setPendingAuthMode(null);
     if (threadChannel(t) === "video") {
       if (opts?.keepPane) {
         if (ui.surface !== "video") useUI.setState({ surface: "video" });
@@ -1601,7 +1601,7 @@ export function useWorkstation() {
     chatDock, setChatDock,
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
-    notices, clearNotices, renameTick,
+    notices, dismissNotice, clearNotices, renameTick,
     health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
     outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     searchHits, showArchived, setShowArchived,

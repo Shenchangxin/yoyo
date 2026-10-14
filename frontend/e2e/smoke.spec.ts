@@ -484,6 +484,11 @@ test("composer exposes steer while a turn is running", async ({ page }) => {
     events: [{ type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "go" } }],
   });
   await page.goto("/");
+  // Empty draft: the orb is the stop control and steer is not offered yet.
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Steer" })).toHaveCount(0);
+  // With a draft: steer appears beside the queue orb, and stop stays reachable.
+  await page.getByRole("textbox", { name: "Message" }).fill("hurry up");
   await expect(page.getByRole("button", { name: "Steer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
 });
@@ -656,16 +661,32 @@ test("installed skills do not need pinning to a chat", async ({ page }) => {
   await expect(page.getByRole("button", { name: "钉到对话" })).toHaveCount(0);
 });
 
-test("session authorization mode is on the composer", async ({ page }) => {
+test("session permission is a select beside the send button", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws", auth_mode: "default" }],
   });
   await page.goto("/");
-  const auth = page.getByRole("combobox", { name: "Authorization" });
-  await expect(auth).toBeVisible();
-  await auth.click();
+  const mode = page.getByRole("button", { name: "Mode" });
+  await expect(mode).toContainText("Agent");
+  await expect(mode).not.toContainText("Full access");
+  const permission = page.getByRole("combobox", { name: "Authorization" });
+  await expect(permission).toContainText("Default");
+  await permission.click();
   await page.getByRole("option", { name: "Full access" }).click();
-  await expect(auth).toHaveText("Full access");
+  await expect(permission).toContainText("Full access");
+});
+
+test("plus menu keeps input sources and tucks session actions under More", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByRole("menuitem", { name: "Attach files" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "In 1 hour" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "More" }).click();
+  await expect(page.getByRole("menuitem", { name: "Save as page" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "In 1 hour" })).toBeVisible();
 });
 
 test("composer mode menu switches agent and plan", async ({ page }) => {

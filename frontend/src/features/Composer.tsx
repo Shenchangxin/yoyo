@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Ref } from "react";
-import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipboard, Clock, FileText, Folder, GitBranch, Paperclip, Phone, Plus, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Boxes, Camera, Check, ChevronDown, ChevronUp, Clipboard, Clock, FileText, Folder, GitBranch, MoreHorizontal, Paperclip, Phone, Plus, Square, X } from "lucide-react";
 import { ProfileChip } from "./ProfileChip";
 import { Textarea } from "../components/ui/input";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
 import { displayWorkspace } from "../lib/display-title";
@@ -117,6 +117,11 @@ export function Composer(props: {
       : copy.composer.placeholder;
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
   const canSend = !props.disabled && hasPayload;
+  // The orb is the single primary control: it stops a running turn until there is
+  // something to queue, then it queues. Steer is a sibling action that only exists with a draft.
+  const orbStops = !!props.running && !hasPayload;
+  // The mode menu holds Agent/Plan and the worktree items. Permission keeps its own select beside the send orb.
+  const modeMenu = !studioDesk && (!videoing || !!props.onIsolate);
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
   const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
@@ -561,55 +566,50 @@ export function Composer(props: {
                     {copy.composer.screenshot}
                   </DropdownMenuItem>
                 ) : null}
-                {!studioDesk && props.onSavePage ? (
-                  <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onSavePage?.()}>
-                    <FileText className="size-3.5" />
-                    {copy.composer.savePage}
-                  </DropdownMenuItem>
-                ) : null}
-                {!studioDesk && props.onFollow ? (
+                {!studioDesk && (props.onSavePage || props.onFollow || props.onCall) ? (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1h")}>
-                      <Clock className="size-3.5" />
-                      {copy.composer.follow1h}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1d")}>
-                      <Clock className="size-3.5" />
-                      {copy.composer.follow1d}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1w")}>
-                      <Clock className="size-3.5" />
-                      {copy.composer.follow1w}
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-                {!studioDesk && props.onCall ? (
-                  <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onCall?.()}>
-                    <Phone className="size-3.5" />
-                    {copy.composer.call}
-                  </DropdownMenuItem>
-                ) : null}
-                {!studioDesk && props.onIsolate ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      disabled={props.disabled || props.running}
-                      onSelect={() => props.onIsolate?.(!props.isolate)}
-                    >
-                      <GitBranch className="size-3.5" />
-                      <span className="min-w-0 flex-1 truncate">{props.isolate ? copy.composer.isolateOn : copy.composer.isolate}</span>
-                      {props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
-                    </DropdownMenuItem>
-                    {props.isolate && props.onApplyWorktree ? (
-                      <DropdownMenuItem
-                        disabled={props.disabled || props.running}
-                        onSelect={() => props.onApplyWorktree?.()}
-                      >
-                        <GitBranch className="size-3.5" />
-                        <span className="min-w-0 flex-1 truncate">{copy.composer.applyWorktree}</span>
-                      </DropdownMenuItem>
-                    ) : null}
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger disabled={props.disabled}>
+                        <MoreHorizontal className="size-3.5" />
+                        {copy.composer.more}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-52">
+                        {props.onSavePage ? (
+                          <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onSavePage?.()}>
+                            <FileText className="size-3.5" />
+                            {copy.composer.savePage}
+                          </DropdownMenuItem>
+                        ) : null}
+                        {props.onFollow ? (
+                          <>
+                            {props.onSavePage ? <DropdownMenuSeparator /> : null}
+                            <DropdownMenuLabel>{copy.composer.follow}</DropdownMenuLabel>
+                            <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1h")}>
+                              <Clock className="size-3.5" />
+                              {copy.composer.follow1h}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1d")}>
+                              <Clock className="size-3.5" />
+                              {copy.composer.follow1d}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onFollow?.("1w")}>
+                              <Clock className="size-3.5" />
+                              {copy.composer.follow1w}
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
+                        {props.onCall ? (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem disabled={props.disabled} onSelect={() => props.onCall?.()}>
+                              <Phone className="size-3.5" />
+                              {copy.composer.call}
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   </>
                 ) : null}
               </DropdownMenuContent>
@@ -659,7 +659,7 @@ export function Composer(props: {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
-            {videoing ? null : (
+            {modeMenu ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -667,39 +667,77 @@ export function Composer(props: {
                   className={cn(
                     ghostSelect,
                     "inline-flex items-center",
-                    plan && "bg-lift text-foreground hover:text-foreground",
+                    plan && !videoing && "bg-lift text-foreground hover:text-foreground",
                   )}
-                  aria-label={copy.composer.mode}
+                  aria-label={videoing ? copy.composer.location : copy.composer.mode}
+                  title={videoing ? copy.composer.location : plan ? copy.composer.plan : copy.composer.agent}
                   disabled={props.disabled}
                 >
-                  {plan ? copy.composer.plan : copy.composer.agent}
-                  <ChevronDown className="size-3 opacity-70" />
+                  <span className="truncate">{videoing ? copy.composer.location : plan ? copy.composer.plan : copy.composer.agent}</span>
+                  {props.isolate ? <GitBranch className="size-3 shrink-0 opacity-70" aria-hidden /> : null}
+                  <ChevronDown className="size-3 shrink-0 opacity-70" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-56">
-                <DropdownMenuItem
-                  className="items-start"
-                  onSelect={() => setPlan(false)}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span>{copy.composer.agent}</span>
-                    <span className="text-[11px] text-muted">{copy.composer.agentHint}</span>
-                  </span>
-                  {!plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="items-start"
-                  onSelect={() => setPlan(true)}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span>{copy.composer.plan}</span>
-                    <span className="text-[11px] text-muted">{copy.composer.planHint}</span>
-                  </span>
-                  {plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
-                </DropdownMenuItem>
+              <DropdownMenuContent align="start" side="top" className="w-60">
+                {!videoing ? (
+                  <>
+                    <DropdownMenuLabel>{copy.composer.mode}</DropdownMenuLabel>
+                    <DropdownMenuItem
+                      className="items-start"
+                      onSelect={() => setPlan(false)}
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span>{copy.composer.agent}</span>
+                        <span className="text-[11px] text-muted">{copy.composer.agentHint}</span>
+                      </span>
+                      {!plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="items-start"
+                      onSelect={() => setPlan(true)}
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span>{copy.composer.plan}</span>
+                        <span className="text-[11px] text-muted">{copy.composer.planHint}</span>
+                      </span>
+                      {plan ? <Check className="mt-0.5 size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+                {!studioDesk && props.onIsolate ? (
+                  <>
+                    {!videoing ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuLabel>{copy.composer.location}</DropdownMenuLabel>
+                    <DropdownMenuItem
+                      disabled={props.disabled || props.running}
+                      onSelect={() => props.onIsolate?.(false)}
+                    >
+                      <Folder className="size-3.5" />
+                      <span className="min-w-0 flex-1 truncate">{copy.composer.isolateOff}</span>
+                      {!props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={props.disabled || props.running}
+                      onSelect={() => props.onIsolate?.(true)}
+                    >
+                      <GitBranch className="size-3.5" />
+                      <span className="min-w-0 flex-1 truncate">{copy.composer.isolateOn}</span>
+                      {props.isolate ? <Check className="size-3.5 shrink-0" /> : null}
+                    </DropdownMenuItem>
+                    {props.isolate && props.onApplyWorktree ? (
+                      <DropdownMenuItem
+                        disabled={props.disabled || props.running}
+                        onSelect={() => props.onApplyWorktree?.()}
+                      >
+                        <GitBranch className="size-3.5" />
+                        <span className="min-w-0 flex-1 truncate">{copy.composer.applyWorktree}</span>
+                      </DropdownMenuItem>
+                    ) : null}
+                  </>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
-            )}
+            ) : null}
             {props.methodologyActive && !videoing ? (
               <Tooltip content={copy.composer.methodologyHint}>
                 <button
@@ -715,32 +753,6 @@ export function Composer(props: {
             ) : null}
             </div>
             <span className="ml-auto" />
-            {props.running ? (
-              <>
-                <button
-                  type="button"
-                  className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                  disabled={props.disabled || !hasPayload}
-                  onClick={() => send()}
-                  aria-label={copy.composer.queueNow}
-                  data-testid="composer-queue-btn"
-                >
-                  {copy.composer.queueNow}
-                </button>
-                <Tooltip content={copy.composer.steerHint}>
-                  <button
-                    type="button"
-                    className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                    disabled={props.disabled || !hasPayload}
-                    onClick={() => send(true)}
-                    aria-label={copy.composer.steerNow}
-                    data-testid="composer-steer"
-                  >
-                    {copy.composer.steerNow}
-                  </button>
-                </Tooltip>
-              </>
-            ) : null}
             {grouped && props.onModel ? (
               <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={props.disabled}>
                 <SelectTrigger className={cn(ghostSelect, "max-w-[16rem]")} aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
@@ -773,6 +785,32 @@ export function Composer(props: {
             ) : currentModel ? (
               <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[11px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
             ) : null}
+            {props.running && hasPayload ? (
+              <>
+                <button
+                  type="button"
+                  className="grid size-6 place-items-center rounded-md text-muted transition-colors hover:bg-lift hover:text-foreground"
+                  onClick={() => props.onStop()}
+                  aria-label={copy.composer.stop}
+                  title={copy.composer.stop}
+                  data-testid="composer-stop"
+                >
+                  <Square className="size-2.5 fill-current" />
+                </button>
+                <Tooltip content={copy.composer.steerHint}>
+                  <button
+                    type="button"
+                    className="h-6 rounded-md px-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                    disabled={props.disabled}
+                    onClick={() => send(true)}
+                    aria-label={copy.composer.steer}
+                    data-testid="composer-steer"
+                  >
+                    {copy.composer.steer}
+                  </button>
+                </Tooltip>
+              </>
+            ) : null}
             {!studioDesk && props.onAuthMode ? (
               <Select
                 value={parseComposerAuth(props.authMode)}
@@ -796,16 +834,17 @@ export function Composer(props: {
               data-live={props.running || canSend ? "true" : "false"}
               disabled={props.running ? false : !canSend}
               onClick={() => {
-                if (props.running) {
+                if (orbStops) {
                   props.onStop();
                   return;
                 }
                 send();
               }}
-              aria-label={props.running ? copy.composer.stop : copy.composer.send}
+              aria-label={orbStops ? copy.composer.stop : props.running ? copy.composer.queueNow : copy.composer.send}
+              title={props.running && hasPayload ? copy.composer.queueHint : undefined}
             >
               <IconSwap
-                on={props.running}
+                on={orbStops}
                 className="size-3.5"
                 off={<ArrowUp className="size-3.5" />}
                 live={<Square className="size-2.5 fill-current" />}

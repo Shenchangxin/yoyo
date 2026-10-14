@@ -900,11 +900,14 @@ func TestSessionAuthMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sess.AuthMode != capability.AuthDefault {
+	if sess.AuthMode != capability.AuthFull {
 		t.Fatalf("new session auth %q", sess.AuthMode)
 	}
-	if lv := capability.AuthModeLevels(sess.AuthMode); len(lv) != 0 {
-		t.Fatalf("default must not auto-grant shell/network: %v", lv)
+	if !hasLevel(capability.AuthModeLevels(sess.AuthMode), capability.Shell) {
+		t.Fatal("new chats start in full access, which grants shell")
+	}
+	if hasLevel(capability.AuthModeLevels(capability.AuthDefault), capability.Shell) {
+		t.Fatal("default must not auto-grant shell")
 	}
 	got, err := a.SetSessionAuthMode(sess.ID, capability.AuthAsk)
 	if err != nil {
@@ -924,6 +927,15 @@ func TestSessionAuthMode(t *testing.T) {
 	if fork.AuthMode != capability.AuthAsk {
 		t.Fatalf("fork auth %q", fork.AuthMode)
 	}
+}
+
+func hasLevel(levels []capability.Level, want capability.Level) bool {
+	for _, l := range levels {
+		if l == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSessionWorkspace(t *testing.T) {

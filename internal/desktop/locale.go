@@ -24,7 +24,7 @@ type nativeStrings struct {
 	ReviewApproval, StartAtLogin, StopTask, SettingsEllipsis                                 string
 	StatusIdle, StatusPaused, StatusApproval, WakeHint                                       string
 	ChooseWorkspace, AttachFiles                                                             string
-	TurnFinished, Approval, ErrTitle, Working, UpdateReady                                   string
+	TurnFinished, Approval, Ask, ErrTitle, Working, UpdateReady                              string
 }
 
 var nativeEN = nativeStrings{
@@ -38,7 +38,7 @@ var nativeEN = nativeStrings{
 	ReviewApproval: "Review approval…", StartAtLogin: "Start at login", StopTask: "Stop current task", SettingsEllipsis: "Settings…",
 	StatusIdle: "Idle", StatusPaused: "Paused", StatusApproval: "Needs approval", WakeHint: "Ctrl+Shift+Y to show",
 	ChooseWorkspace: "Choose workspace", AttachFiles: "Attach files",
-	TurnFinished: "Turn finished", Approval: "Yoyo approval", ErrTitle: "Yoyo error", Working: "Working", UpdateReady: "Update ready",
+	TurnFinished: "Turn finished", Approval: "Yoyo approval", Ask: "Yoyo question", ErrTitle: "Yoyo error", Working: "Working", UpdateReady: "Update ready",
 }
 
 var nativeZH = nativeStrings{
@@ -52,7 +52,7 @@ var nativeZH = nativeStrings{
 	ReviewApproval: "处理审批…", StartAtLogin: "开机启动", StopTask: "停止当前任务", SettingsEllipsis: "设置…",
 	StatusIdle: "空闲", StatusPaused: "已暂停", StatusApproval: "待审批", WakeHint: "Ctrl+Shift+Y 显示窗口",
 	ChooseWorkspace: "选择工作区", AttachFiles: "附加文件",
-	TurnFinished: "轮次结束", Approval: "Yoyo 审批", ErrTitle: "Yoyo 错误", Working: "处理中", UpdateReady: "更新已就绪",
+	TurnFinished: "轮次结束", Approval: "Yoyo 审批", Ask: "Yoyo 提问", ErrTitle: "Yoyo 错误", Working: "处理中", UpdateReady: "更新已就绪",
 }
 
 func (n nativeStrings) chromeWord(st chromeStatus) string {

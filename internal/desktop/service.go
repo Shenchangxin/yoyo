@@ -46,6 +46,7 @@ type Service struct {
 	menuLocale         string
 	chromeMu           sync.Mutex
 	quitting           atomic.Bool
+	toastsSinceClear   atomic.Bool
 	workerLog          *os.File
 }
 
