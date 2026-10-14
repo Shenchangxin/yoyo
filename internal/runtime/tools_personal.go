@@ -226,10 +226,11 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 				// error: the workstation pane works without isolated Chrome.
 				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane. Isolated Chrome did not start (%v), so browser_click and browser_type are unavailable until it does; browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
 			}
+			snap.Errors = t.Browser.PageErrors()
 			t.mu.Lock()
 			t.LastBrowser = snap.Text
 			t.mu.Unlock()
-			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot, then browser_click one of the selectors below (neither reloads).\n\n%s", rel, snap.URL, browserBody(snap.Text, snap.Actions))}
+			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot, then browser_click one of the selectors below (neither reloads).\n\n%s", rel, snap.URL, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
 		}
 		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome is unavailable. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel)}
 	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
@@ -248,7 +249,7 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	t.mu.Lock()
 	t.LastBrowser = snap.Text
 	t.mu.Unlock()
-	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, browserBody(snap.Text, snap.Actions))}
+	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
 }
 
 // browserBody is the page report the model reads after a browser call: the
@@ -258,6 +259,16 @@ func browserBody(text, actions string) string {
 		return text
 	}
 	return text + "\n\nvisible actions (browser_click selector):\n" + actions
+}
+
+// withPageErrors puts the JavaScript errors the page raised since the last
+// browser call next to the report they came from. Without it, a page whose
+// handlers threw looked the same as a page that did nothing.
+func withPageErrors(body, errs string) string {
+	if strings.TrimSpace(errs) == "" {
+		return body
+	}
+	return body + "\n\n" + errs
 }
 
 // browserSnapshot reads the live page. The cached text is only a fallback for
@@ -270,7 +281,7 @@ func (t *WorkspaceTools) browserSnapshot() ToolResult {
 			t.mu.Lock()
 			t.LastBrowser = snap.Text
 			t.mu.Unlock()
-			body := browserBody(snap.Text, snap.Actions)
+			body := withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors)
 			if !live {
 				body = "(isolated Chrome is not running; this is the last snapshot, not the live page)\n" + body
 			}

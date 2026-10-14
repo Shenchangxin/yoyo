@@ -301,14 +301,32 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 	return voiceNudge(req, waitLoopNudgeEN, waitLoopNudgeZH)
 }
 
-func recordIdleActions(hits map[string]int, calls []ToolCall) {
+// idleProgressCall reports whether one call moved the task forward. A click or
+// keypress must have worked, and a write must have changed a file. A failed
+// str_replace moved nothing, so it must not clear the idle count; before this,
+// any write call did, and an agent could loop on failing edits forever.
+func idleProgressCall(tc ToolCall, result string) bool {
+	switch tc.Name {
+	case "browser_click", "browser_type":
+		return !strings.HasPrefix(strings.TrimSpace(result), "ERROR")
+	case "write_file", "str_replace", "apply_patch":
+		return writeChanged(result)
+	default:
+		return false
+	}
+}
+
+func recordIdleActions(hits map[string]int, calls []ToolCall, results []Message) {
 	if hits == nil {
 		return
 	}
 	progressed := false
-	for _, tc := range calls {
-		switch tc.Name {
-		case "browser_click", "browser_type", "write_file", "str_replace", "apply_patch":
+	for i, tc := range calls {
+		res := ""
+		if i < len(results) {
+			res = results[i].Content
+		}
+		if idleProgressCall(tc, res) {
 			progressed = true
 		}
 	}

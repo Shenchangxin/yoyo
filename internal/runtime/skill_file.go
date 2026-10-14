@@ -9,6 +9,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// noSkillDirError explains why a skill has no files to read or run. A skill
+// with instructions but no directory is built in: its text is already in
+// context and it ships no scripts. "has no on-disk directory" alone left the
+// agent guessing script names.
+func (t *WorkspaceTools) noSkillDirError(skill string) error {
+	if t != nil && (strings.TrimSpace(t.Skills[skill]) != "" || strings.TrimSpace(t.BootstrapBodies[skill]) != "") {
+		return fmt.Errorf("skill %s is instruction-only: it is built in and ships no scripts or files. Its instructions are already in your context; check the work with read_file, glob or grep", skill)
+	}
+	return fmt.Errorf("skill %s has no on-disk directory", skill)
+}
+
 func (t *WorkspaceTools) readSkillFile(skill, rel string, offset, limit int) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("no tools")}
@@ -20,7 +31,7 @@ func (t *WorkspaceTools) readSkillFile(skill, rel string, offset, limit int) Too
 	}
 	dir := t.skillDir(skill)
 	if dir == "" {
-		return ToolResult{Err: fmt.Errorf("skill %s has no on-disk directory", skill)}
+		return ToolResult{Err: t.noSkillDirError(skill)}
 	}
 	relSlash := strings.ReplaceAll(rel, "\\", "/")
 	relSlash = strings.TrimPrefix(relSlash, "./")

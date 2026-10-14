@@ -23,6 +23,9 @@ type Snapshot struct {
 	// Actions lists the visible interactive elements, one per line, each with
 	// the selector browser_click accepts for it.
 	Actions string `json:"actions,omitempty"`
+	// Errors reports the JavaScript errors the page raised since the previous
+	// browser call. It is empty when the page raised none.
+	Errors string `json:"errors,omitempty"`
 }
 
 type Host struct {
@@ -134,6 +137,7 @@ func (h *Host) OpenURL(raw string) (Snapshot, error) {
 		time.Sleep(350 * time.Millisecond)
 		h.syncView()
 		h.refreshActions()
+		snap.Errors = h.takePageErrors()
 		h.mu.Lock()
 		if h.title != "" {
 			snap.Title = h.title

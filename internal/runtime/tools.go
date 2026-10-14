@@ -545,7 +545,11 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 		return ToolResult{Err: err}
 	}
 	t.maybePreviewHTML(rel, p)
-	return ToolResult{Content: "wrote " + rel, FileChange: fileChangeOf(rel, prev, want, created)}
+	out := "wrote " + rel
+	if w := htmlOverwriteWarning(rel, string(want)); w != "" {
+		out += "\n" + w
+	}
+	return ToolResult{Content: out, FileChange: fileChangeOf(rel, prev, want, created)}
 }
 
 // createFile writes only when the path is new. It is the explicit form of
@@ -586,6 +590,9 @@ func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
 	want := make([]byte, 0, len(prev)+len(content))
 	want = append(want, prev...)
 	want = append(want, content...)
+	if msg := htmlAppendRefusal(rel, string(want)); msg != "" {
+		return ToolResult{Err: fmt.Errorf("%s", msg)}
+	}
 	t.snapshotBeforeWrite(rel, p)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return ToolResult{Err: err}
@@ -814,7 +821,7 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	command = repairWorkspacePathEscapes(command, ws)
 	command = stripRedundantWorkspaceCd(command, ws)
 	if runtime.GOOS == "windows" {
-		command = relaxRedundantShellQuotes(command)
+		command = normalizeWindowsQuotes(command)
 	}
 	command, cleanupInline := rewriteInlineInterpreters(command, ws)
 	defer cleanupInline()
