@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/pwsh"
 )
 
 const dynMarker = "YOYO_WORKING_MEMORY"
@@ -100,13 +101,18 @@ func AssembleEnvironment(workspace string) string {
 		fmt.Fprintf(&b, "workspace: %s\n", workspace)
 	}
 	fmt.Fprintf(&b, "shell: %s\n", environmentShell())
+	if runtime.GOOS == "windows" {
+		if sh := windowsPosixShell(); sh != "" {
+			fmt.Fprintf(&b, "posix: git-bash %s\n", sh)
+		}
+	}
 	return b.String()
 }
 
 func environmentShell() string {
 	if runtime.GOOS == "windows" {
-		if sh := windowsPosixShell(); sh != "" {
-			return "git-bash " + sh
+		if f := pwsh.Fact(); f != "" {
+			return f
 		}
 		return "cmd"
 	}

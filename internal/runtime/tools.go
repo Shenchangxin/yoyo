@@ -29,6 +29,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/pages"
 	"github.com/Shenchangxin/yoyo/internal/personal"
 	"github.com/Shenchangxin/yoyo/internal/project"
+	"github.com/Shenchangxin/yoyo/internal/pwsh"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 	"github.com/Shenchangxin/yoyo/internal/tool"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -908,7 +909,10 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if fuse {
 		bindCtx = nil
 	}
-	cmd, err := bindShell(bindCtx, command, argv, posix)
+	cmd, cleanup, err := bindShell(bindCtx, command, argv, posix, ws)
+	if cleanup != nil {
+		defer cleanup()
+	}
 	if err != nil {
 		return ToolResult{Err: err}
 	}
@@ -1015,7 +1019,8 @@ func (t *WorkspaceTools) emitStdout(p []byte) {
 	})
 }
 
-func bindShell(ctx context.Context, command string, argv []string, posix bool) (*exec.Cmd, error) {
+func bindShell(ctx context.Context, command string, argv []string, posix bool, workspace string) (*exec.Cmd, func(), error) {
+	nop := func() {}
 	newCmd := func(name string, args ...string) *exec.Cmd {
 		if ctx != nil {
 			return exec.CommandContext(ctx, name, args...)
@@ -1024,26 +1029,34 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool) (
 	}
 	if runtime.GOOS == "windows" {
 		if looksLikePowerShell(command) {
-			return newCmd("powershell", "-NoProfile", "-Command", powershellCommandArg(command)), nil
+			exe := pwsh.Look()
+			if exe == "" {
+				exe = pwsh.Fallback()
+			}
+			name, args, cleanup, err := materializePowerShell(exe, command, workspace)
+			if err != nil {
+				return nil, nop, err
+			}
+			return newCmd(name, args...), cleanup, nil
 		}
 		if posix || looksPosixUnix(command) {
 			sh := windowsPosixShell()
 			if sh == "" {
-				return nil, fmt.Errorf("unix shell syntax on Windows and bash is not on PATH; use list_dir/glob/grep or cmd builtins")
+				return nil, nop, fmt.Errorf("unix shell syntax on Windows and bash is not on PATH; use list_dir/glob/grep or cmd builtins")
 			}
-			return newCmd(sh, "-lc", "set +m; trap '' HUP; "+command), nil
+			return newCmd(sh, "-lc", "set +m; trap '' HUP; "+command), nop, nil
 		}
 		if !shellNeedsWrapper(command, argv) {
-			return newCmd(argv[0], argv[1:]...), nil
+			return newCmd(argv[0], argv[1:]...), nop, nil
 		}
 		// /S keeps quoted tokens (findstr /C:"--- PASS") from being split
 		// when Go's Windows argv joining wraps the command.
-		return newCmd("cmd", "/S", "/C", command), nil
+		return newCmd("cmd", "/S", "/C", command), nop, nil
 	}
 	if !shellNeedsWrapper(command, argv) {
-		return newCmd(argv[0], argv[1:]...), nil
+		return newCmd(argv[0], argv[1:]...), nop, nil
 	}
-	return newCmd("sh", "-lc", command), nil
+	return newCmd("sh", "-lc", command), nop, nil
 }
 
 func isExecNotFound(err error) bool {

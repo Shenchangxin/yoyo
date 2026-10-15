@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/pwsh"
 )
 
 func (t *WorkspaceTools) skillDirRoots() []string {
@@ -234,11 +235,14 @@ func scriptInterpreter(path string) string {
 		}
 		return ""
 	case ".ps1":
+		if p := pwsh.Look(); p != "" {
+			return p
+		}
+		if runtime.GOOS == "windows" {
+			return pwsh.Fallback()
+		}
 		if lookPath("pwsh") != "" {
 			return "pwsh"
-		}
-		if lookPath("powershell") != "" {
-			return "powershell"
 		}
 		return ""
 	default:

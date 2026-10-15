@@ -362,6 +362,7 @@ func Open(root, bundledEvals string) (*App, error) {
 	if err := a.openVideo(); err != nil {
 		return nil, err
 	}
+	a.configurePwsh()
 	_, _ = a.Kernel.Plugin("hooks", func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {
 			off := c.Events().On(runtimeHookPreTool(), func(payload any) (any, error) {

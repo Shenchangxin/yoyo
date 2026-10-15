@@ -47,6 +47,9 @@ Thumbs.db
 # OTA signing material (public key is compiled into the binary)
 /secrets/
 
+# Official PowerShell zip mirrors (upload to ModelScope; do not commit)
+/dist/pwsh/*.zip
+
 # Test scratch
 /tmp/
 testdata/tmp/
