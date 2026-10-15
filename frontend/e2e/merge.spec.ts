@@ -697,6 +697,13 @@ test("structureSig ignores token text", () => {
   expect(structureSig(a)).toBe(structureSig(b));
 });
 
+test("structureSig ignores the delta bit and includes running", () => {
+  const a: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hi", name: "", delta: true, payload: {} }];
+  const b: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hi", name: "", delta: false, payload: {} }];
+  expect(structureSig(a)).toBe(structureSig(b));
+  expect(structureSig(a, true)).not.toBe(structureSig(a, false));
+});
+
 test("hot window keeps a long tool loop and folds earlier assistants", () => {
   const raw: any[] = [{ type: "user", session_id: "s", payload: { text: "go", id: "u0" } }];
   for (let i = 0; i < 90; i++) {

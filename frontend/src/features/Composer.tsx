@@ -13,6 +13,8 @@ import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Profile, SkillInfo } from "../lib/protocol";
+import type { TurnStatus } from "../lib/turn-status";
+import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import { profileOf } from "../lib/profile-label";
 import * as api from "../lib/client";
 import type { TaskPlan } from "../lib/plan";
@@ -86,6 +88,7 @@ export function Composer(props: {
   onSavePage?: () => void;
   onFollow?: (in_: string) => void;
   onCall?: () => void;
+  turnStatus?: TurnStatus | null;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -346,6 +349,7 @@ export function Composer(props: {
               <AskDeck key={props.ask.id} approval={props.ask} onResolve={props.onResolveAsk} />
             </div>
           ) : null}
+          {props.running ? <TurnStatusBar status={props.turnStatus ?? null} compact={props.compact} /> : null}
         <div
           className="composer-bezel"
           data-focused={focused ? "true" : "false"}

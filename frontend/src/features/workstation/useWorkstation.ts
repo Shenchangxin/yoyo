@@ -5,6 +5,7 @@ import { bannerError } from "../../lib/error";
 import { noticeFromItem } from "../../lib/notices";
 import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
+import { deriveTurnStatus } from "../../lib/turn-status";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
@@ -322,6 +323,10 @@ export function useWorkstation() {
     () => outlineStatus({ running: threadRunning, waiting: approvals.length > 0 }),
     [threadRunning, approvals.length],
   );
+  const turnStatus = useMemo(
+    () => deriveTurnStatus(items, threadRunning, liveTexts),
+    [items, threadRunning, liveTexts],
+  );
   outlineRef.current = outlineTurns;
   activeTurnRef.current = activeTurn;
 
@@ -581,12 +586,13 @@ export function useWorkstation() {
   }, []);
 
   useEffect(() => {
+    if (!inspector) return;
     if (inspTab !== "trace" && inspTab !== "context") return;
     void refreshTrace();
     if (!threadRunning) return;
     const timer = window.setInterval(() => { void refreshTrace(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [inspTab, refreshTrace, threadRunning]);
+  }, [inspector, inspTab, refreshTrace, threadRunning]);
 
   useEffect(() => {
     if (import.meta.env.VITE_E2E) return;
@@ -755,8 +761,10 @@ export function useWorkstation() {
           delete liveAcc.current[item.key];
           scheduleLive();
         }
-        const batch = item.type === "tool_call" || item.type === "tool_result";
-        scheduleItems(!batch);
+        // tool_call must land in the same frame as the assistant that produced
+        // it; delaying it 120ms used to promote narration into a letter.
+        const delayed = item.type === "tool_result";
+        scheduleItems(!delayed);
         if (item.type === "compaction") {
           const p = item.payload || {};
           setCtx((prev) => ({
@@ -1691,7 +1699,7 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, dismissNotice, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
     outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,

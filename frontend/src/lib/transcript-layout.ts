@@ -17,11 +17,14 @@ import { looksLikeHTMLFile } from "./html-preview";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
+export type LayoutOpts = { running?: boolean };
+
 export type AgentPart =
   | { key: string; kind: "item"; item: Item }
   | { key: string; kind: "process"; items: Item[]; live: boolean }
   | { key: string; kind: "artifact"; items: Item[] }
-  | { key: string; kind: "subagent"; items: Item[]; child: string; live: boolean };
+  | { key: string; kind: "subagent"; items: Item[]; child: string; live: boolean }
+  | { key: string; kind: "stream"; item: Item };
 
 export type LayoutRow =
   | { key: string; kind: "user"; item: Item; turnKey: string }
@@ -169,6 +172,22 @@ export function processToolPairs(items: Item[]): ToolPair[] {
 export const PROCESS_PAGE = 60;
 /** Artifact cards mount from the tail; earlier files stay one click away. */
 export const ARTIFACT_PAGE = 12;
+/** Compact tool output in the rail — Codex uses 5; full body stays on disk/spill. */
+export const TOOL_PREVIEW_LINES = 5;
+
+/** Head + tail preview so a 4k shell dump does not mount as a wall of text. */
+export function clipPreview(text: string, maxLines = TOOL_PREVIEW_LINES): { text: string; hidden: number } {
+  if (!text) return { text: "", hidden: 0 };
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) return { text, hidden: 0 };
+  const head = Math.ceil(maxLines / 2);
+  const tail = maxLines - head;
+  const hidden = lines.length - head - tail;
+  return {
+    text: `${lines.slice(0, head).join("\n")}\n…\n${lines.slice(-tail).join("\n")}`,
+    hidden,
+  };
+}
 
 export function tailProcessPairs(pairs: ToolPair[], shown: number): { visible: ToolPair[]; hidden: number } {
   if (shown <= 0 || pairs.length <= shown) return { visible: pairs, hidden: 0 };
@@ -277,14 +296,18 @@ function lastAssistantKey(items: Item[]): string {
 }
 
 /**
- * Intermediate assistants fold into the process rail (Cursor-style). The last
- * letter stays a visible bubble. Expand the rail to read earlier replies.
+ * Intermediate assistants fold into the process rail. The last letter stays a
+ * visible bubble once the turn has settled. While `running`, that same key is
+ * a stream tail — never a letter — so a tool round cannot flash a second reply.
  */
-export function layoutAgentParts(items: Item[]): AgentPart[] {
+export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
   let artifacts: Item[] = [];
-  const letterKey = lastAssistantKey(items);
+  let streamItem: Item | undefined;
+  const finalKey = lastAssistantKey(items);
+  const letterKey = opts?.running ? "" : finalKey;
+  const streamKey = opts?.running ? finalKey : "";
   const pairKind = classifyToolPairs(pairTools(items.filter(isToolish)));
   const flushProcess = () => {
     if (!process.length) return;
@@ -322,6 +345,11 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
       else process.push(it);
       continue;
     }
+    if (it.type === "assistant" && it.key === streamKey) {
+      if (!it.text.trim() && !it.delta) continue;
+      streamItem = it;
+      continue;
+    }
     if (it.type === "assistant" && it.key !== letterKey) {
       if (!it.text.trim() && !it.delta) continue;
       process.push(it);
@@ -337,20 +365,23 @@ export function layoutAgentParts(items: Item[]): AgentPart[] {
   }
   flushProcess();
   flushArtifacts();
+  if (streamItem) {
+    parts.push({ key: `stream:${streamItem.key}`, kind: "stream", item: streamItem });
+  }
   return parts;
 }
 
 /** One visual row per operator turn. Agent text/tools between users stay together. */
-export function layoutRows(items: Item[]): LayoutRow[] {
+export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];
   let turnKey = "";
-  const flushAgent = () => {
+  const flushAgent = (live: boolean) => {
     if (!agent.length) return;
     rows.push({
       key: `turn:${agent[0].key}`,
       kind: "agent",
-      parts: layoutAgentParts(agent),
+      parts: layoutAgentParts(agent, { running: live }),
       copyText: agentCopyText(agent),
       turnKey,
     });
@@ -358,7 +389,7 @@ export function layoutRows(items: Item[]): LayoutRow[] {
   };
   for (const it of items) {
     if (it.type === "user" && it.source !== "steer") {
-      flushAgent();
+      flushAgent(false);
       turnKey = itemTurnKey(it);
       rows.push({ key: it.key, kind: "user", item: it, turnKey });
       continue;
@@ -380,10 +411,10 @@ export function layoutRows(items: Item[]): LayoutRow[] {
       agent.push(it);
       continue;
     }
-    flushAgent();
+    flushAgent(false);
     rows.push({ key: it.key, kind: "solo", item: it });
   }
-  flushAgent();
+  flushAgent(!!opts?.running);
   return rows;
 }
 

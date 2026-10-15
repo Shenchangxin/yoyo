@@ -158,6 +158,14 @@ export const Markdown = memo(function Markdown({
   }, [decorate]);
   const capped = text && text.length > UI_MARKDOWN_CAP ? `${text.slice(0, UI_MARKDOWN_CAP)}\n…` : text;
   if (!capped && !streaming) return null;
+  if (live) {
+    return (
+      <div className={cn("md-body md-stream-plain space-y-2", quiet && "md-body-quiet")} data-testid="markdown-stream">
+        <span className="whitespace-pre-wrap break-words">{capped || ""}</span>
+        <span className="ml-px inline-block h-[1.05em] w-[0.45em] translate-y-px bg-foreground/55" aria-hidden />
+      </div>
+    );
+  }
   const settled = highlight && !live;
   return (
     <MarkdownBoundary text={capped || ""} fallback={copy.review.previewFailed}>

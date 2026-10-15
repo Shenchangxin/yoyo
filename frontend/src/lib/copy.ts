@@ -253,7 +253,9 @@ export const en = {
       skill: "Loading skill",
       think: "Thinking",
       other: "Using {name}",
+      stopHint: "Esc stops",
     },
+    moreLines: "+{n} lines",
     tally: {
       read: ["Read 1 file", "Read {n} files"],
       edit: ["Edited 1 file", "Edited {n} files"],

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Item, ItemType } from "./protocol.ts";
-import { layoutRows, type AgentPart, type LayoutRow } from "./transcript-layout.ts";
+import { clipPreview, layoutRows, type AgentPart, type LayoutRow } from "./transcript-layout.ts";
 
 function item(p: Partial<Item> & { key: string; type: ItemType }): Item {
   return {
@@ -139,5 +139,54 @@ describe("layoutAgentParts: only the final text is a letter", () => {
     const parts = agentParts(rows);
     assert.deepEqual(parts.map((p) => p.kind), ["item"]);
     assert.ok(parts[0].kind === "item" && parts[0].item.key === "a1");
+  });
+
+  it("a running turn never promotes narration to a letter before tools arrive", () => {
+    const rows = layoutRows([
+      user,
+      assistant("a0", "I'll start by loading the pipeline."),
+    ], { running: true });
+    const parts = agentParts(rows);
+    assert.deepEqual(parts.map((p) => p.kind), ["stream"]);
+    assert.ok(parts[0].kind === "stream" && parts[0].item.key === "a0");
+  });
+
+  it("a running tool round keeps prior narration in the rail and streams the open assistant", () => {
+    const rows = layoutRows([
+      user,
+      assistant("a0", "reading first"),
+      ...read("r1"),
+      item({ key: "a1", type: "assistant", text: "still working", delta: true }),
+    ], { running: true });
+    const parts = agentParts(rows);
+    assert.deepEqual(parts.map((p) => p.kind), ["process", "stream"]);
+    assert.ok(!parts.some((p) => p.kind === "item"));
+  });
+
+  it("settling the same turn promotes the stream to a single letter", () => {
+    const items = [
+      user,
+      assistant("a0", "reading first"),
+      ...read("r1"),
+      assistant("a1", "done"),
+    ];
+    const live = agentParts(layoutRows(items, { running: true }));
+    assert.deepEqual(live.map((p) => p.kind), ["process", "stream"]);
+    const settled = agentParts(layoutRows(items));
+    assert.deepEqual(settled.map((p) => p.kind), ["process", "item"]);
+    assert.ok(settled[1].kind === "item" && settled[1].item.key === "a1");
+  });
+});
+
+describe("clipPreview", () => {
+  it("keeps short bodies intact", () => {
+    assert.deepEqual(clipPreview("a\nb\nc"), { text: "a\nb\nc", hidden: 0 });
+  });
+
+  it("keeps a head and a tail when the body is long", () => {
+    const text = ["1", "2", "3", "4", "5", "6", "7", "8"].join("\n");
+    const got = clipPreview(text, 5);
+    assert.equal(got.hidden, 3);
+    assert.equal(got.text, "1\n2\n3\n…\n7\n8");
   });
 });

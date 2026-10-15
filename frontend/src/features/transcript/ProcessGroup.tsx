@@ -36,6 +36,7 @@ import {
   processStartMs,
   tailProcessPairs,
   PROCESS_PAGE,
+  clipPreview,
   type PairState,
   type ToolPair,
 } from "../../lib/transcript-layout";
@@ -59,13 +60,23 @@ export function useNow(active: boolean): number {
  * is the last user message so the clock does not restart at every batch
  * (Codex falls back to the user timestamp the same way).
  */
-export function WorkingLine({ since, label }: { since?: number; label?: string }) {
+export function WorkingLine({
+  since,
+  label,
+  detail,
+  hint,
+}: {
+  since?: number;
+  label?: string;
+  detail?: string;
+  hint?: string;
+}) {
   const copy = useCopy();
   const now = useNow(!!since);
   const elapsed = since && now > since ? formatSpan(now - since) : "";
   return (
     <div
-      className="flex h-7 items-center gap-2.5 text-[13px]"
+      className="flex h-7 min-w-0 items-center gap-2.5 text-[13px]"
       role="status"
       aria-live="polite"
       data-testid="working-line"
@@ -73,8 +84,10 @@ export function WorkingLine({ since, label }: { since?: number; label?: string }
       <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
         <span className="pulse-dot" />
       </span>
-      <span className="shimmer-text font-medium">{label || copy.transcript.working}</span>
-      {elapsed ? <span className="tabular-nums text-[12px] text-muted/70">{elapsed}</span> : null}
+      <span className="shimmer-text shrink-0 font-medium">{label || copy.transcript.working}</span>
+      {detail ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{detail}</span> : null}
+      {elapsed ? <span className="shrink-0 tabular-nums text-[12px] text-muted/70">{elapsed}</span> : null}
+      {hint ? <span className="ml-auto shrink-0 text-[11px] text-muted/55">{hint}</span> : null}
     </div>
   );
 }
@@ -566,6 +579,7 @@ export function ToolLine({
 }) {
   const copy = useCopy();
   const [open, setOpen] = useState(false);
+  const [fullOut, setFullOut] = useState(false);
   const name = toolName(item);
   const source = result || call || item;
   const detail = toolDetail(call || source);
@@ -586,7 +600,9 @@ export function ToolLine({
         ? copy.transcript.toolInterrupted
         : "";
   const input = argsPreview(call);
-  const output = result ? formatToolBody(result) : "";
+  const rawOut = result ? formatToolBody(result) : "";
+  const clipped = fullOut ? { text: rawOut, hidden: 0 } : clipPreview(rawOut);
+  const output = clipped.text;
   const hasBody = !!(input || output);
   const path = String(toolArgs(call || item).path || toolArgs(result || item).path || "");
   const pathLang = langFromPath(path);
@@ -631,6 +647,16 @@ export function ToolLine({
           ) : (
             <CodeSurface text={output} lang={outLang} />
           )
+        ) : null}
+        {clipped.hidden > 0 ? (
+          <button
+            type="button"
+            className="h-6 text-left text-[11px] text-muted hover:text-foreground"
+            data-testid="tool-more-lines"
+            onClick={() => setFullOut(true)}
+          >
+            {copy.transcript.moreLines.replace("{n}", String(clipped.hidden))}
+          </button>
         ) : null}
       </div>
     </StepRow>

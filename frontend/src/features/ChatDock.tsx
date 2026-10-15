@@ -2,6 +2,7 @@ import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import { pendingAsk } from "../lib/ask-form";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
+import type { TurnStatus } from "../lib/turn-status";
 import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
 
@@ -49,6 +50,7 @@ export function ChatDock(props: {
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
   methodologyActive?: boolean;
+  turnStatus?: TurnStatus | null;
 }) {
   const copy = useCopy();
   return (
@@ -98,6 +100,7 @@ export function ChatDock(props: {
         ask={pendingAsk(props.approvals, props.sessionId)}
         onResolveAsk={props.onResolve}
         methodologyActive={props.methodologyActive}
+        turnStatus={props.turnStatus}
         compact
       />
     </aside>
