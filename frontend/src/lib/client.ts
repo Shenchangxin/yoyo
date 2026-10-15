@@ -2194,6 +2194,11 @@ export async function videoCall(method: string, params: Record<string, any> = {}
   return body?.result ?? body;
 }
 
+export const runtime = {
+  pwshStatus: () => videoCall("runtime.pwsh.status"),
+  pwshInstall: () => videoCall("runtime.pwsh.install"),
+};
+
 export const video = {
   status: () => videoCall("video.status"),
   installFFmpeg: () => videoCall("video.ffmpeg.install"),

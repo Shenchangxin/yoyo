@@ -51,6 +51,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-workflow", tab: "generation", titleKey: "generationWorkflow", keywords: "runninghub workflow comfy" },
   { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow" },
   { id: "policy-budget", tab: "policy", titleKey: "policyBudget", keywords: "budget usd cost mtok" },
+  { id: "policy-shell", tab: "policy", titleKey: "policyShell", keywords: "pwsh powershell 7 runtime sidecar modelscope agent shell" },
   { id: "policy-isolation", tab: "policy", titleKey: "policyIsolation", keywords: "isolation sandbox vault signature" },
   { id: "extensions-mcp", tab: "extensions", titleKey: "extensionsMcp", keywords: "mcp server stdio http json" },
   { id: "extensions-fibers", tab: "extensions", titleKey: "extensionsFibers", keywords: "plugin fiber wasm" },

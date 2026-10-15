@@ -14,6 +14,7 @@ import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { IconSwap } from "../../components/ui/icon-swap";
 import { Input } from "../../components/ui/input";
+import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { Switch } from "../../components/ui/switch";
 import { ConfirmDialog } from "../ConfirmDialog";
 import {
@@ -325,6 +326,8 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
+      <PwshSection />
+
       <details className="mb-[var(--space-section)]">
         <summary className="fold-summary">{copy.settings.sections.policyBudget}</summary>
         <div className="mt-[var(--space-group)] flex flex-col gap-[var(--space-group)]">
@@ -377,6 +380,92 @@ export function PolicySettings({ host }: { host: SettingsHost }) {
         }}
       />
     </>
+  );
+}
+
+type PwshInstall = {
+  ready?: boolean;
+  needed?: boolean;
+  phase?: string;
+  percent?: number;
+  error?: string;
+  bin?: string;
+  version?: string;
+  shell?: string;
+};
+
+function pwshBusy(phase?: string) {
+  return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
+}
+
+function PwshSection() {
+  const copy = useCopy();
+  const [st, setSt] = useState<PwshInstall>({});
+  function apply(s: any) {
+    setSt(s && typeof s === "object" ? s : {});
+  }
+  useEffect(() => {
+    void api.runtime.pwshStatus().then(apply).catch(() => {});
+  }, []);
+  const phase = String(st.phase || "");
+  const working = pwshBusy(phase);
+  useEffect(() => {
+    if (!working) return;
+    const t = window.setInterval(() => {
+      void api.runtime.pwshStatus().then(apply).catch(() => {});
+    }, 400);
+    return () => window.clearInterval(t);
+  }, [working]);
+  const needed = st.needed !== false;
+  const ready = !!st.ready;
+  return (
+    <SettingSection
+      id="policy-shell"
+      title={copy.settings.sections.policyShell}
+      footnote={needed ? copy.settings.pwshHint : copy.settings.pwshNotNeeded}
+    >
+      <SettingRow title={copy.settings.pwsh} description={st.shell || st.bin || copy.settings.pwshFallback} list>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium",
+            ready ? "bg-success/15 text-success" : working ? "bg-accent/15 text-accent" : "bg-danger/10 text-danger",
+          )}
+        >
+          <span
+            className={cn("size-1.5 rounded-full", ready ? "bg-success" : working ? "bg-accent" : "bg-danger")}
+            aria-hidden
+          />
+          {ready
+            ? copy.settings.pwshReady
+            : working
+              ? `${copy.settings.pwshInstalling} ${Math.max(0, Math.min(100, Math.round(Number(st.percent) || 0)))}%`
+              : phase === "error"
+                ? copy.settings.pwshInstallFailed
+                : needed
+                  ? copy.settings.pwshMissing
+                  : copy.settings.pwshReady}
+        </span>
+        {needed && !ready && !working ? (
+          <Button
+            size="sm"
+            variant="lift"
+            onClick={() => {
+              void api.runtime
+                .pwshInstall()
+                .then(apply)
+                .catch((e) => toast.error(api.errMessage(e)));
+            }}
+          >
+            <Download aria-hidden />
+            {copy.settings.pwshInstall}
+          </Button>
+        ) : null}
+      </SettingRow>
+      {working ? <ProgressHairline value={Number(st.percent) || 0} /> : null}
+      {phase === "error" && !ready && st.error ? (
+        <p className="pb-2 text-[12px] leading-[1.45] text-danger">{String(st.error)}</p>
+      ) : null}
+    </SettingSection>
   );
 }
 

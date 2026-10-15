@@ -132,6 +132,17 @@ export async function mockApi(
           { id: "creative", title: "Shorts", ready: true },
         ]);
       }
+      if (rpcMethod === "runtime.pwsh.status" || rpcMethod === "runtime.pwsh.install") {
+        return ok({
+          ok: true,
+          needed: false,
+          ready: true,
+          phase: "ready",
+          percent: 100,
+          version: "7.6.7",
+          shell: "posix",
+        });
+      }
       if (rpcMethod === "video.status") {
         return ok({
           ffmpeg: true,

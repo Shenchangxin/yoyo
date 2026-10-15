@@ -65,6 +65,7 @@ func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, o
 	}
 	apply(cmd)
 	preparePythonUTF8(cmd)
+	preparePwshEnv(cmd)
 	sp := &spool{last: time.Now(), onChunk: onChunk}
 	if cmd.Stdout == nil {
 		cmd.Stdout = sp
@@ -141,6 +142,19 @@ func preparePythonUTF8(cmd *exec.Cmd) {
 	}
 	env = withDefaultEnv(env, "PYTHONUTF8", "1")
 	env = withDefaultEnv(env, "PYTHONIOENCODING", "utf-8")
+	cmd.Env = env
+}
+
+func preparePwshEnv(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	env = withDefaultEnv(env, "POWERSHELL_TELEMETRY_OPTOUT", "1")
+	env = withDefaultEnv(env, "POWERSHELL_UPDATECHECK", "Off")
 	cmd.Env = env
 }
 

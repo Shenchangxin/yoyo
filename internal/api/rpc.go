@@ -1103,6 +1103,10 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return map[string]any{"ok": true}, a.TriggerWebhook(p.ID)
 	case "isolation.report":
 		return a.IsolationReport(), nil
+	case "runtime.pwsh.status":
+		return a.PwshStatus(), nil
+	case "runtime.pwsh.install":
+		return a.PwshInstall(), nil
 	case "review.queue":
 		return a.ReviewQueue(), nil
 	case "browser.view":

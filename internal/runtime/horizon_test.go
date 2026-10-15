@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -254,5 +255,10 @@ func TestAssembleEnvironmentIsFacts(t *testing.T) {
 	}
 	if strings.Contains(got, "Start-Process") || strings.Contains(got, "用中文") {
 		t.Fatalf("instructions leaked into env: %s", got)
+	}
+	if goruntime.GOOS == "windows" {
+		if !strings.Contains(got, "pwsh") && !strings.Contains(got, "powershell") {
+			t.Fatalf("windows shell fact: %s", got)
+		}
 	}
 }
