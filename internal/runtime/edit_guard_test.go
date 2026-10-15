@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,34 @@ func TestWriteFileAppendParts(t *testing.T) {
 	}
 	if string(got) != "const a = 1;\nconst b = 2;\n" {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestWriteFileRejectsHugePart(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	body := strings.Repeat("a", writeFilePartMax+1)
+	raw := `{"path":"big.js","content":"` + body + `"}`
+	res := tools.Call("write_file", raw)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), fmt.Sprintf("%d", writeFilePartMax)) {
+		t.Fatalf("%+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "big.js")); !os.IsNotExist(err) {
+		t.Fatal("nothing should have been written")
+	}
+	ok := strings.Repeat("b", writeFilePartMax)
+	if res := tools.Call("write_file", `{"path":"ok.js","content":"`+ok+`"}`); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+}
+
+func TestWriteFileAllowsTypicalMarkdownPart(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	body := strings.Repeat("文", 7000) // ~21 KB UTF-8, used to trip the 12 KB gate
+	raw := `{"path":"SOURCE_BIBLE.md","content":"` + body + `"}`
+	if res := tools.Call("write_file", raw); res.Err != nil {
+		t.Fatal(res.Err)
 	}
 }
 

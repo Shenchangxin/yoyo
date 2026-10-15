@@ -212,6 +212,12 @@ func init() {
 	hostFns["browser_screenshot"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.browserScreenshot(str(args["path"]))
 	}
+	hostFns["browser_act"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserAct(args)
+	}
+	hostFns["browser_verify"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserVerify(args)
+	}
 	hostFns["browser_takeover"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.browserTakeover(str(args["question"]))
 	}

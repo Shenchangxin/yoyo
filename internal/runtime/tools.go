@@ -451,7 +451,7 @@ func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 	}
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return ToolResult{Err: err}
+		return ToolResult{Err: missingReadErr(rel, p, err)}
 	}
 	if offset > 0 || limit > 0 {
 		return ToolResult{Content: rangedRead(rel, string(b), offset, limit)}
@@ -465,6 +465,42 @@ func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 		return ToolResult{Content: fmt.Sprintf("%s\n[truncated %d bytes; full file at %s — re-read with offset/limit]\n", head, len(b), spill)}
 	}
 	return ToolResult{Content: numberLines(string(b), 0, 0)}
+}
+
+func missingReadErr(rel, abs string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+	rel = filepath.ToSlash(rel)
+	msg := fmt.Sprintf("read_file %s: path does not exist", rel)
+	slash := strings.ToLower(rel)
+	if strings.HasSuffix(slash, "qa/verification.json") || strings.HasSuffix(slash, "qa/evidence/run.json") {
+		msg += ". browser_verify writes those under the game project directory inferred from the HTML path — pass root as that directory, not a CSS selector"
+	}
+	parent := filepath.Dir(abs)
+	ents, e := os.ReadDir(parent)
+	if e != nil {
+		return fmt.Errorf("%s", msg)
+	}
+	names := make([]string, 0, 8)
+	for i, ent := range ents {
+		if i >= 8 {
+			names = append(names, "…")
+			break
+		}
+		n := ent.Name()
+		if ent.IsDir() {
+			n += "/"
+		}
+		names = append(names, n)
+	}
+	if len(names) > 0 {
+		msg += ". nearby: " + strings.Join(names, ", ")
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // rangedRead keeps an empty window from reading as a silent success. A model
@@ -518,9 +554,19 @@ func (t *WorkspaceTools) spillOverflow(rel string, b []byte) (string, error) {
 	return filepath.ToSlash(filepath.Join(".yoyo", "overflow", name)), nil
 }
 
+func refuseHugeWrite(rel, content string) error {
+	if len(content) <= writeFilePartMax {
+		return nil
+	}
+	return fmt.Errorf("refusing write_file %s: content is %d bytes (max %d per call). Split the body: first part mode=create or overwrite, each following part mode=append, at most %d bytes per call", rel, len(content), writeFilePartMax, writeFilePartMax)
+}
+
 func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if looksLikeContextStub(content) {
 		return t.resolveElidedWrite(rel, "content", "")
+	}
+	if err := refuseHugeWrite(rel, content); err != nil {
+		return ToolResult{Err: err}
 	}
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -571,6 +617,9 @@ func (t *WorkspaceTools) createFile(rel, content string) ToolResult {
 func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
 	if looksLikeContextStub(content) {
 		return ToolResult{Err: fmt.Errorf("refusing to append a context stub to %s; send the real next part", rel)}
+	}
+	if err := refuseHugeWrite(rel, content); err != nil {
+		return ToolResult{Err: err}
 	}
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -1028,7 +1077,7 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool, w
 		return exec.Command(name, args...)
 	}
 	if runtime.GOOS == "windows" {
-		if looksLikePowerShell(command) {
+		if looksLikePowerShell(command) || shellHasStatementSep(command) {
 			exe := pwsh.Look()
 			if exe == "" {
 				exe = pwsh.Fallback()

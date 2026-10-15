@@ -215,6 +215,22 @@ func (h *Host) Type(sel, text string) (string, error) {
 // Fill is the historical name for Type.
 func (h *Host) Fill(sel, text string) (string, error) { return h.Type(sel, text) }
 
+// WaitVisible waits until sel is actionable. It does not click. browser_act
+// uses this for assert steps so a sequence can stop before a covered target.
+func (h *Host) WaitVisible(sel string) (string, error) {
+	h.record("wait", sel)
+	if err := h.ensureChrome(h.previewStartURL()); err != nil {
+		return "", fmt.Errorf("browser: wait %s: %w", sel, err)
+	}
+	p, err := h.waitFor(sel, false)
+	if err != nil {
+		return "", err
+	}
+	h.syncView()
+	h.refreshActions()
+	return fmt.Sprintf("visible %s → <%s> %q at (%d,%d)%s%s", sel, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), h.pageErrorsNote(), h.actionsNote()), nil
+}
+
 // Refresh re-reads the live page (URL, title, text, actions) without
 // navigating. It is what browser_snapshot reports. live is false when Chrome
 // is not running, in which case the snapshot is the last one taken.

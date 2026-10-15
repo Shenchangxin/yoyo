@@ -151,6 +151,39 @@ func powershellCommandArg(command string) string {
 	return command
 }
 
+// shellHasStatementSep reports an unquoted ';' so Windows does not send
+// `node --version; node -p 1` through cmd /C, which treats the semicolon as
+// part of the flag. Quoted semicolons (findstr /C:"a;b") stay on cmd.
+func shellHasStatementSep(command string) bool {
+	inSingle, inDouble := false, false
+	escape := false
+	for _, r := range command {
+		if escape {
+			escape = false
+			continue
+		}
+		if r == '\\' && !inSingle {
+			escape = true
+			continue
+		}
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+			}
+		case ';':
+			if !inSingle && !inDouble {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func looksSimpleArgv(argv []string) bool {
 	if len(argv) == 0 {
 		return false

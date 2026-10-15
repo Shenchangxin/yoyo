@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/modelcatalog"
+	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
 func (a *App) catalogDir() string {
@@ -22,12 +23,27 @@ func (a *App) ModelCatalog(refresh bool) (modelcatalog.Catalog, error) {
 // provider's own ceiling is not the first thing the request hits.
 const chatMaxOutputTokens = 32_000
 
+// chatLargeWindowOutput is the floor for a large-window custom model whose
+// catalog still lists 8k output. 32 KB write_file parts need headroom; 16k is
+// conservative if a provider rejects a higher cap.
+const chatLargeWindowOutput = 16_384
+
 // maxOutputTokensFor returns the reply cap for a desktop turn, or 0 to keep the
 // provider default when the model's limit is not known.
 func maxOutputTokensFor(model string) int {
-	n := modelcatalog.OutputFor(model)
+	return capOutputTokens(modelcatalog.OutputFor(model), runtime.ModelContextWindow(model))
+}
+
+func capOutputTokens(catalogOut, window int) int {
+	n := catalogOut
+	if n <= 0 {
+		return 0
+	}
 	if n > chatMaxOutputTokens {
 		n = chatMaxOutputTokens
+	}
+	if window >= 200_000 && n < chatLargeWindowOutput {
+		n = chatLargeWindowOutput
 	}
 	return n
 }

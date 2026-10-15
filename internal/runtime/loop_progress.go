@@ -37,8 +37,14 @@ const waitLoopNudgeZH = "你已经在空转等待。停止 wait/tasklist。若 s
 
 const idleActionPrefixEN = "You already opened this page"
 const idleActionPrefixZH = "你已经反复打开同一页面"
-const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_screenshot then browser_click — they do not reload. Do not browser_open the same HTML unless the file changed."
-const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。改用 browser_screenshot 然后 browser_click——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
+const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_act for the remaining path, or browser_screenshot then browser_click — they do not reload. Do not browser_open the same HTML unless the file changed."
+const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。剩余路径用 browser_act，或 browser_screenshot 然后 browser_click——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
+
+const clickMicroHits = 8
+const clickMicroPrefixEN = "You have been clicking one selector per turn"
+const clickMicroPrefixZH = "你已经连续微步点击"
+const clickMicroNudgeEN = "You have been clicking one selector per turn (%d times). Pack the remaining path into one browser_act (click/wait/assert/screenshot). Do not open a new model round for each known click."
+const clickMicroNudgeZH = "你已经连续微步点击（%d 轮）。把剩余路径放进一次 browser_act（click/wait/assert/screenshot）。不要为已知点击再开一轮模型。"
 
 const checkFailPrefixEN = "The same check still FAILs"
 const checkFailPrefixZH = "检查项仍以同样方式失败"
@@ -307,7 +313,7 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 // any write call did, and an agent could loop on failing edits forever.
 func idleProgressCall(tc ToolCall, result string) bool {
 	switch tc.Name {
-	case "browser_click", "browser_type":
+	case "browser_click", "browser_type", "browser_act", "browser_verify":
 		return !strings.HasPrefix(strings.TrimSpace(result), "ERROR")
 	case "write_file", "str_replace", "apply_patch":
 		return writeChanged(result)
@@ -373,6 +379,54 @@ func idleActionNudge(req RunRequest, hits map[string]int) string {
 		return ""
 	}
 	return fmt.Sprintf(voiceNudge(req, idleActionNudgeEN, idleActionNudgeZH), key, n)
+}
+
+func clickMicroRound(calls []ToolCall) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	hasClick := false
+	for _, tc := range calls {
+		switch tc.Name {
+		case "browser_click":
+			hasClick = true
+		case "browser_screenshot", "browser_snapshot":
+		default:
+			return false
+		}
+	}
+	return hasClick
+}
+
+func recordClickMicro(n *int, calls []ToolCall) {
+	if n == nil || len(calls) == 0 {
+		return
+	}
+	if clickMicroRound(calls) {
+		*n++
+		return
+	}
+	onlyObserve := true
+	for _, tc := range calls {
+		switch tc.Name {
+		case "browser_screenshot", "browser_snapshot":
+		case "browser_act", "browser_verify":
+			*n = 0
+			return
+		default:
+			onlyObserve = false
+		}
+	}
+	if !onlyObserve {
+		*n = 0
+	}
+}
+
+func clickMicroNudge(req RunRequest, n int) string {
+	if !req.SoftHorizon || n < clickMicroHits {
+		return ""
+	}
+	return fmt.Sprintf(voiceNudge(req, clickMicroNudgeEN, clickMicroNudgeZH), n)
 }
 
 func planFirstOverlay(t *WorkspaceTools) string {

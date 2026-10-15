@@ -1,10 +1,12 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestExpandMentionsFileAndJail(t *testing.T) {
@@ -28,6 +30,32 @@ func TestExpandMentionsFileAndJail(t *testing.T) {
 	inject, _ = ExpandMentions(dir, "@file:"+filepath.ToSlash(outside), "", 2400)
 	if !strings.Contains(inject, "escapes") {
 		t.Fatalf("expected jail, got %s", inject)
+	}
+}
+
+func TestExpandMentionsPrimarySourceOutline(t *testing.T) {
+	dir := t.TempDir()
+	var b strings.Builder
+	b.WriteString("# 西游记\n\n")
+	for i := 1; i <= 12; i++ {
+		fmt.Fprintf(&b, "第%d回 标题\n这段正文要写得很长以便超过主源阈值。%s\n", i, strings.Repeat("文", 400))
+	}
+	name := "novel.txt"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs := ExpandMentions(dir, "@file:novel.txt 做成游戏", "", 3200)
+	if len(refs) != 1 {
+		t.Fatalf("refs=%+v", refs)
+	}
+	if !strings.Contains(inject, "source of truth") || !strings.Contains(inject, "read_file") {
+		t.Fatalf("inject=%s", inject)
+	}
+	if !strings.Contains(inject, "第1回") || !strings.Contains(inject, "Outline:") {
+		t.Fatalf("missing outline: %s", inject)
+	}
+	if utf8.RuneCountInString(inject) < 1000 {
+		t.Fatalf("primary inject too small: %d", utf8.RuneCountInString(inject))
 	}
 }
 

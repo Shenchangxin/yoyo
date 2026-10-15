@@ -35,6 +35,20 @@ func TestLoadSkillPointsAtGeneratedAdapter(t *testing.T) {
 	}
 }
 
+func TestLoadSkillAnalyzeHintsTaskExplore(t *testing.T) {
+	tools := &WorkspaceTools{
+		Workspace: t.TempDir(),
+		Skills:    map[string]string{"novel-game-analyze": "Extract a SOURCE_BIBLE."},
+	}
+	res := tools.Call("load_skill", `{"name":"novel-game-analyze"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !strings.Contains(res.Content, "profile=explore") || !strings.Contains(res.Content, "chapter") {
+		t.Fatalf("missing task hint:\n%s", res.Content)
+	}
+}
+
 func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "arxiv-watcher")
