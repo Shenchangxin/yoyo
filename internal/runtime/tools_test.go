@@ -74,6 +74,22 @@ func TestCompactDoesNotMutateInput(t *testing.T) {
 	}
 }
 
+func TestReadFileMissingQAPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "game-adaptations", "tianming-guiling", "build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir}
+	res := tools.Call("read_file", `{"path":"game-adaptations/tianming-guiling/qa/verification.json"}`)
+	if res.Err == nil {
+		t.Fatal("expected missing path")
+	}
+	msg := res.Err.Error()
+	if !strings.Contains(msg, "path does not exist") || !strings.Contains(msg, "not a CSS selector") {
+		t.Fatalf("%s", msg)
+	}
+}
+
 func TestReadFileOverflow(t *testing.T) {
 	dir := t.TempDir()
 	big := strings.Repeat("line\n", 80_000)

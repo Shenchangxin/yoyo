@@ -1,11 +1,48 @@
 package runtime
 
 import (
+	"context"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestBindShellStatementSepUsesPowerShellFile(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("cmd vs PowerShell routing is Windows-only")
+	}
+	command := `node --version; node -p 1`
+	cmd, cleanup, err := bindShell(context.Background(), command, SplitShellArgv(command), false, t.TempDir())
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.ToLower(strings.Join(cmd.Args, " "))
+	if !strings.Contains(joined, "-file") {
+		t.Fatalf("want PowerShell -File, got %v", cmd.Args)
+	}
+	if strings.Contains(joined, "cmd") && strings.Contains(joined, "/c") {
+		t.Fatalf("must not use cmd /C: %v", cmd.Args)
+	}
+}
+
+func TestShellHasStatementSep(t *testing.T) {
+	if !shellHasStatementSep(`node --version; node -p 1`) {
+		t.Fatal("trailing/command sep")
+	}
+	if !shellHasStatementSep(`node --version;`) {
+		t.Fatal("trailing semicolon")
+	}
+	if shellHasStatementSep(`findstr /C:"a;b" file.txt`) {
+		t.Fatal("quoted semicolon is not a statement sep")
+	}
+	if shellHasStatementSep(`echo hello`) {
+		t.Fatal("no sep")
+	}
+}
 
 func TestShellNeedsWrapper(t *testing.T) {
 	cases := []struct {

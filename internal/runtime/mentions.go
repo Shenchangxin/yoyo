@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
@@ -58,6 +59,12 @@ func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string
 	return ExpandMentionsPacks(workspace, text, harnessNote, skills, nil, budget)
 }
 
+const (
+	mentionFileRunes    = 800
+	mentionPrimaryRunes = 12_000
+	mentionPrimaryBytes = 8 * 1024
+)
+
 func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]string, skillDirs map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
 	if budget <= 0 {
@@ -66,7 +73,15 @@ func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]
 	var b strings.Builder
 	used := 0
 	for _, m := range refs {
-		chunk := mentionChunk(workspace, harnessNote, skills, skillDirs, m, budget-used)
+		if m.Kind == "file" && fileLooksPrimary(workspace, m.Ref) {
+			chunk := mentionPrimaryFile(workspace, m.Ref)
+			if chunk != "" {
+				b.WriteString(chunk)
+			}
+			continue
+		}
+		remain := budget - used
+		chunk := mentionChunk(workspace, harnessNote, skills, skillDirs, m, remain)
 		if chunk == "" {
 			continue
 		}
@@ -159,8 +174,11 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 		if err != nil {
 			return fmt.Sprintf("## @file:%s\nERROR: %s\n", m.Ref, err)
 		}
+		if looksPrimaryBytes(raw) {
+			return mentionPrimaryFile(workspace, m.Ref)
+		}
 		body := string(raw)
-		capped, trunc := capText(body, 800)
+		capped, trunc := capText(body, mentionFileRunes)
 		var b strings.Builder
 		fmt.Fprintf(&b, "## @file:%s\n", m.Ref)
 		b.WriteString(capped)
@@ -170,6 +188,103 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 		b.WriteByte('\n')
 		return b.String()
 	}
+}
+
+func fileLooksPrimary(workspace, rel string) bool {
+	p, err := jailPath(workspace, rel)
+	if err != nil {
+		return false
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	return looksPrimaryBytes(raw)
+}
+
+func looksPrimaryBytes(raw []byte) bool {
+	if len(raw) > mentionPrimaryBytes {
+		return true
+	}
+	return utf8.RuneCount(raw) > 4000
+}
+
+func mentionPrimaryFile(workspace, rel string) string {
+	p, err := jailPath(workspace, rel)
+	if err != nil {
+		return fmt.Sprintf("## @file:%s\nERROR: %s\n", rel, err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return fmt.Sprintf("## @file:%s\nERROR: %s\n", rel, err)
+	}
+	runes := utf8.RuneCount(raw)
+	var b strings.Builder
+	fmt.Fprintf(&b, "## @file:%s\n%d bytes, %d runes. This is the task source of truth — call read_file on this path (or task profile=explore for chapter batches). Do not invent chapters from this outline.\n", rel, len(raw), runes)
+	if !looksTextBytes(raw) {
+		b.WriteString("(binary or non-text; use read_file / view_image)\n")
+		return b.String()
+	}
+	outline := fileOutline(string(raw), mentionPrimaryRunes)
+	b.WriteString(outline)
+	if !strings.HasSuffix(outline, "\n") {
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func looksTextBytes(raw []byte) bool {
+	n := len(raw)
+	if n > 1024 {
+		n = 1024
+	}
+	for _, c := range raw[:n] {
+		if c == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+var reOutlineLine = regexp.MustCompile(`(?m)^(#{1,6}\s+\S+|第.{0,12}[回章节卷篇].+)$`)
+
+func fileOutline(body string, maxRunes int) string {
+	var lines []string
+	seen := map[string]bool{}
+	for _, m := range reOutlineLine.FindAllString(body, 80) {
+		s := strings.TrimSpace(m)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		lines = append(lines, s)
+	}
+	var b strings.Builder
+	if len(lines) > 0 {
+		b.WriteString("Outline:\n")
+		for _, s := range lines {
+			b.WriteString("- ")
+			b.WriteString(s)
+			b.WriteByte('\n')
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString("Head:\n")
+	n := 0
+	for _, line := range strings.Split(body, "\n") {
+		if n >= 80 {
+			break
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		n++
+	}
+	out := b.String()
+	capped, trunc := capText(out, maxRunes)
+	if trunc {
+		capped += "\n…[outline truncated; use read_file for the rest]"
+	}
+	return capped
 }
 
 func jailPath(workspace, rel string) (string, error) {

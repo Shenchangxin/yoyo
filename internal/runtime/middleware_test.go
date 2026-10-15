@@ -153,3 +153,23 @@ func TestErrorRepeatNudgeOnEmptyPath(t *testing.T) {
 		t.Fatalf("%q hits=%v", got, hits)
 	}
 }
+
+func TestClickMicroNudgeAfterConsecutiveClicks(t *testing.T) {
+	n := 0
+	click := []ToolCall{{Name: "browser_click", Arguments: `{"selector":"#a"}`}}
+	for i := 0; i < clickMicroHits; i++ {
+		recordClickMicro(&n, click)
+	}
+	req := RunRequest{User: "把小说做成游戏", SoftHorizon: true}
+	got := clickMicroNudge(req, n)
+	if !strings.Contains(got, clickMicroPrefixZH) || !strings.Contains(got, "browser_act") {
+		t.Fatalf("%q n=%d", got, n)
+	}
+	recordClickMicro(&n, []ToolCall{{Name: "browser_act", Arguments: `{"steps":[]}`}})
+	if n != 0 {
+		t.Fatalf("browser_act must reset micro count, n=%d", n)
+	}
+	if clickMicroNudge(RunRequest{User: "把小说做成游戏"}, clickMicroHits) != "" {
+		t.Fatal("harbor")
+	}
+}

@@ -4,7 +4,12 @@ import "encoding/json"
 
 // outputCutNudge is sent when a reply stopped at the output-token limit. It
 // names the protocol the model should use instead of retrying the same blob.
-const outputCutNudge = "Your last reply hit the output limit before it finished, and any tool call cut off at that point was not run. Continue from where it stopped. For a file write, split the body: write_file with mode=create (or overwrite) for the first part and mode=append for each following part, about 12 KB per call."
+const outputCutNudge = "Your last reply hit the output limit before it finished, and any tool call cut off at that point was not run. Continue from where it stopped. For a file write, split the body: write_file with mode=create (or overwrite) for the first part and mode=append for each following part, at most 32 KB per call (hard limit)."
+
+// writeFilePartMax is the hard per-call body cap. 12 KB refused complete
+// SOURCE_BIBLE / GAME_DESIGN drafts (~13 KB) that this model's 16k output
+// cap can emit in one shot. 32 KB still splits a truncated 35 KB+ dump.
+const writeFilePartMax = 32 * 1024
 
 // trimTruncatedReply keeps only the tool calls whose arguments are complete.
 // A call cut off by the output limit is never executed, and its partial text is

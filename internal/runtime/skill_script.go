@@ -39,10 +39,19 @@ func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 
 // DecorateSkillBody prepends pack routing so @mention inject and load_skill
 // both see it before a truncated skill body.
+func skillLoadHint(name string) string {
+	switch strings.TrimSpace(name) {
+	case "novel-game-analyze":
+		return "\n\nLong source: after this body, dispatch task profile=explore for non-overlapping chapter batches that return fact tables only. Do not reconstruct the novel from an @file excerpt; read_file the path or send chapter ranges to children."
+	default:
+		return ""
+	}
+}
+
 func DecorateSkillBody(name, body, dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
-		return body
+		return body + skillLoadHint(name)
 	}
 	files := SkillPackFiles(dir)
 	var b strings.Builder
@@ -74,6 +83,7 @@ func DecorateSkillBody(name, body, dir string) string {
 	}
 	b.WriteString("\n\n")
 	b.WriteString(body)
+	b.WriteString(skillLoadHint(name))
 	return b.String()
 }
 

@@ -209,9 +209,12 @@ func TestToolMappingNovelToGameIsDomainNotBootstrap(t *testing.T) {
 		"_progress.md",
 		"browser_screenshot",
 		"browser_click",
+		"browser_act",
+		"browser_verify",
 		"do **not** reload",
 		"present_choices",
 		"profile=explore",
+		"ask_user",
 	} {
 		if !strings.Contains(got, needle) {
 			t.Fatalf("missing %q in:\n%s", needle, got)

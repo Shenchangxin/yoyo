@@ -28,7 +28,7 @@ Skills speak in actions. On Yoyo those resolve to the host tools below. Never in
 | List skills | The Skills catalog is already pinned. ` + "`list_skills`" + ` if you need names only |
 | Read a workspace file | ` + "`read_file`" + ` |
 | Read a file inside a skill pack (` + "`references/`" + `, templates, prompts) | ` + "`read_skill_file`" + ` with ` + "`skill`" + ` + ` + "`path`" + ` (pack dirs are outside the workspace jail) |
-| Create / overwrite a workspace file | ` + "`write_file`" + ` |
+| Create / overwrite a workspace file | ` + "`write_file`" + ` (≤32 KB per call; ` + "`mode=append`" + ` for the rest) |
 | Targeted edit | ` + "`str_replace`" + ` (preferred) or ` + "`apply_patch`" + ` |
 | List / find / search files | ` + "`list_dir`" + `, ` + "`glob`" + `, ` + "`grep`" + ` |
 | Run a shell command | ` + "`shell`" + `. Prefer grep/glob/read_file for reading source |
@@ -38,6 +38,8 @@ Skills speak in actions. On Yoyo those resolve to the host tools below. Never in
 | Ask the human | ` + "`ask_user`" + ` |
 | Numbered operator choice | ` + "`present_choices`" + ` |
 | Dispatch a subagent | ` + "`task`" + ` |
+| Multi-step isolated Chrome path | ` + "`browser_act`" + ` (click/wait/assert/screenshot in one call) |
+| Playable evidence / QA fact | ` + "`browser_verify`" + ` (host writes ` + "`<project>/qa/verification.json`" + `; ` + "`root`" + ` is that project dir or omit it — not a CSS selector; do not hand-write PASS) |
 `
 }
 
@@ -75,11 +77,11 @@ func novelToGameMapping() string {
 
 **Workspace artifacts** go under ` + "`game-adaptations/<project>/`" + `: ` + "`PRODUCT_BRIEF.md`" + `, ` + "`analysis/SOURCE_BIBLE.md`" + `, ` + "`concepts/CONCEPT.md`" + `, ` + "`design/GAME_DESIGN.md`" + `, ` + "`design/ART_DIRECTION.md`" + `, ` + "`build/`" + `, ` + "`qa/verification.json`" + `, ` + "`_progress.md`" + `. Do not write these into Pages.
 
-**Modes:** ` + "`quick`" + ` / ` + "`director`" + ` / ` + "`resume`" + ` follow the orchestrator. High-risk intake (rights, rating, platform) uses ` + "`ask_user`" + `. An unresolved director concept choice uses ` + "`present_choices`" + `. Resume reads ` + "`_progress.md`" + ` and on-disk artifacts — not a chat summary. ` + "`qa/verification.json`" + ` is the only QA fact source.
+**Modes:** ` + "`quick`" + ` / ` + "`director`" + ` / ` + "`resume`" + ` follow the orchestrator. High-risk intake (rights, rating, platform) uses ` + "`ask_user`" + `. An unresolved director concept choice uses ` + "`present_choices`" + `. After a whitebox playable, ` + "`quick`" + ` must ` + "`ask_user`" + ` once: full remaining chapters vs stop at this sample (recommend the sample). Resume reads ` + "`_progress.md`" + ` and on-disk artifacts — not a chat summary. ` + "`qa/verification.json`" + ` is the only QA fact source and is written by ` + "`browser_verify`" + `, never by hand.
 
-**Subagents (` + "`task`" + `):** ` + "`profile=explore`" + ` for non-overlapping chapter batches that return fact tables only. Children do not inherit pack bootstrap and return a short ` + "`SUBAGENT_SUMMARY`" + ` — do not send the whole novel or expect a child to finish the pipeline. Depth is capped. Do not invent a ` + "`Task`" + ` tool.
+**Subagents (` + "`task`" + `):** ` + "`profile=explore`" + ` for non-overlapping chapter batches that return fact tables only. After ` + "`load_skill`" + ` ` + "`novel-game-analyze`" + ` on a long source, dispatch those batches instead of reconstructing the novel from an @file excerpt. Children do not inherit pack bootstrap and return a short ` + "`SUBAGENT_SUMMARY`" + ` — do not send the whole novel or expect a child to finish the pipeline. Depth is capped. Do not invent a ` + "`Task`" + ` tool.
 
-**Playable evidence:** ` + "`browser_open`" + ` the workspace HTML (` + "`index.html`" + `) once — that navigates isolated Chrome and serves relative JS/CSS. Then ` + "`browser_screenshot`" + ` and ` + "`browser_click`" + ` the real controls. Screenshot and click do **not** reload; reopening the same HTML wipes clicks. Inspector srcdoc and a ` + "`node -e`" + ` / ` + "`vm`" + ` DOM shim are not play evidence. Do **not** start ` + "`python -m http.server`" + `, spawn Chrome, or connect to CDP 9333/9222 — Yoyo owns the isolated browser. If the operator pastes ` + "`http://127.0.0.1:port/`" + `, ` + "`web_fetch`" + ` that URL then ` + "`browser_open`" + ` it. The six QA checks do not prove fun, balance, rights, or ship quality.
+**Playable evidence:** ` + "`browser_open`" + ` the workspace HTML (` + "`index.html`" + `) once — that navigates isolated Chrome and serves relative JS/CSS. Then ` + "`browser_act`" + ` the known path (click/wait/assert/screenshot). One-off ` + "`browser_screenshot`" + ` / ` + "`browser_click`" + ` are only for discovering selectors. Screenshot, click, and act do **not** reload; reopening the same HTML wipes clicks. Playthrough and QA are the **same** instrumented run: call ` + "`browser_verify`" + ` with ` + "`open`" + ` set to that HTML. Omit ` + "`root`" + ` (or pass ` + "`game-adaptations/<project>`" + `) — never a CSS selector such as ` + "`#stage`" + `. The host writes ` + "`game-adaptations/<project>/qa/verification.json`" + `. Do not click through once, then click through again for QA, and do not hand-write PASS. Inspector srcdoc and a ` + "`node -e`" + ` / ` + "`vm`" + ` DOM shim are not play evidence. Do **not** start ` + "`python -m http.server`" + `, spawn Chrome, or connect to CDP 9333/9222 — Yoyo owns the isolated browser. If the operator pastes ` + "`http://127.0.0.1:port/`" + `, ` + "`web_fetch`" + ` that URL then ` + "`browser_open`" + ` it. HTML HUD: hotspot layer above ` + "`#deck`" + `; ` + "`#deck`" + ` max-height ~28vh (see ` + "`references/html-hud-contract.md`" + `). The six QA checks do not prove fun, balance, rights, or ship quality.
 
 **Skill loading:** ` + "`load_skill`" + ` a stage before acting on it. After compaction, load again if this session has not loaded it. Pack scripts (if any) use ` + "`run_skill_script`" + `. Public HTTP: ` + "`web_fetch`" + ` / ` + "`web_search`" + `. The operator sees the skill name on the live process rail as soon as you ` + "`load_skill`" + `.
 

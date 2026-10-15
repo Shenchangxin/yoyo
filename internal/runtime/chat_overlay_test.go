@@ -24,6 +24,9 @@ func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	if !strings.Contains(joined, "office_create") || !strings.Contains(joined, "browser_open") || !strings.Contains(joined, "connector_read") {
 		t.Fatalf("office ladder must be first-class: %v", got)
 	}
+	if !strings.Contains(joined, "browser_act") || !strings.Contains(joined, "browser_verify") {
+		t.Fatalf("browser_act/verify must be first-class: %v", got)
+	}
 	if !strings.Contains(joined, "delegate_work") || !strings.Contains(joined, "personal_status") {
 		t.Fatalf("personal-os tools must be first-class: %v", got)
 	}

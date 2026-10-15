@@ -132,6 +132,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	toolCount := 0
 	planContinues := 0
 	askNudges := 0
+	languageRewrites := 0
+	clickHits := 0
 	toolsAtPlanContinue := -1
 	overflowFails := 0
 	roundSeq := req.RoundSeq
@@ -244,6 +246,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 		if err != nil {
+			logModelRound(ctx, roundSeq, msg, err)
 			reason := StopModelError
 			classErr := err
 			if IsContextOverflow(err) {
@@ -258,6 +261,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			return last, stopErr(reason, "", err)
 		}
 		overflowFails = 0
+		logModelRound(ctx, roundSeq, msg, nil)
 		if msg.PromptTokens > 0 {
 			report.ProviderPrompt = msg.PromptTokens
 			if msg.CachedTokens > 0 {
@@ -298,6 +302,20 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 		}
 		msg, cutNudge := trimTruncatedReply(msg)
+		langNudge := ""
+		if req.SoftHorizon && languageRewrites < 2 {
+			if pin := pinVisibleLanguage(&msg, OperatorVoice(req.User, req.History)); pin != "" {
+				languageRewrites++
+				langNudge = pin
+				if len(msg.ToolCalls) == 0 && cutNudge == "" {
+					if !lastUserIs(messages, pin) {
+						messages = append(messages, Message{Role: RoleUser, Content: pin})
+					}
+					sinceProgress++
+					continue
+				}
+			}
+		}
 		if msg.Content != "" {
 			last = msg.Content
 			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
@@ -399,6 +417,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		results := dispatchTools(ctx, req, msg.ToolCalls, roundID, true)
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
+		logToolRound(ctx, roundSeq, results)
 		if cutNudge != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
 		}
@@ -421,6 +440,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		recordToolErrors(errorHits, results)
 		recordWaits(waitHits, msg.ToolCalls)
 		recordIdleActions(idleHits, msg.ToolCalls, results)
+		recordClickMicro(&clickHits, msg.ToolCalls)
 		if req.SoftHorizon {
 			watch.note(msg.ToolCalls, results)
 		}
@@ -464,6 +484,12 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if stall := observationNudge(req, &watch, msg.ToolCalls); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if stall := clickMicroNudge(req, clickHits); stall != "" && !lastUserIs(messages, stall) {
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if langNudge != "" && !lastUserIs(messages, langNudge) {
+			messages = append(messages, Message{Role: RoleUser, Content: langNudge})
 		}
 		if inj := middlewareNudge(loop, results); inj != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: inj})

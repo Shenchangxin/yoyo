@@ -24,7 +24,8 @@ var ChatCoreTools = []string{
 var ChatOfficeTools = []string{
 	"office_create", "office_edit", "office_query", "office_render",
 	"browser_open", "browser_snapshot", "browser_click", "browser_type",
-	"browser_fill", "browser_download", "browser_screenshot", "browser_takeover",
+	"browser_fill", "browser_download", "browser_screenshot", "browser_act",
+	"browser_verify", "browser_takeover",
 	"browser_cookies",
 	"connector_read", "connector_draft", "connector_send",
 	"computer_act",
