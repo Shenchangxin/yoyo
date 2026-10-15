@@ -13,7 +13,6 @@ import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread"
 import {
   formatToolBody,
   isArtifactTool,
-  itemTimeMs,
   patchFileCount,
   toolArgs,
   toolDetail,
@@ -26,8 +25,8 @@ import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
 import { ARTIFACT_PAGE, classifyToolPairs, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
-import { structureSig, withLiveText } from "../lib/stream-live";
-import { ProcessGroup, ToolLine, WorkingLine } from "./transcript/ProcessGroup";
+import { structureSig } from "../lib/stream-live";
+import { ProcessGroup, ToolLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
 import { SandboxedFrame } from "./transcript/SandboxedFrame";
@@ -39,44 +38,23 @@ import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outl
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
 import { useStudioSelection } from "./video/workshop-store";
 
-function lastRealUserIndex(items: Item[]): number {
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i].type === "user" && items[i].source !== "steer") return i;
+function lastStreamKey(rows: LayoutRow[]): string {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    if (row.kind !== "agent") continue;
+    for (let j = row.parts.length - 1; j >= 0; j--) {
+      const part = row.parts[j];
+      if (part.kind === "stream") return part.item.key;
+    }
+  }
+  return "";
+}
+
+function lastProcessIndex(parts: AgentPart[]): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].kind === "process") return i;
   }
   return -1;
-}
-
-function lastMeaningful(items: Item[]): Item | null {
-  const start = lastRealUserIndex(items);
-  for (let i = items.length - 1; i > start; i--) {
-    const it = items[i];
-    if (it.type === "error" || it.type === "compaction") continue;
-    if (it.source === "steer") continue;
-    return it;
-  }
-  return null;
-}
-
-/** Start of the live clock: the operator's last real message. */
-function lastUserTimeMs(items: Item[]): number {
-  const i = lastRealUserIndex(items);
-  return i >= 0 ? itemTimeMs(items[i]) : 0;
-}
-
-/**
- * The tail part of the tail agent row owns the live indicator. A process
- * group there narrates itself ("Reading …" / "Thinking"); an artifact with an
- * open call shows its own pending state; anything else gets the working line.
- */
-function tailOwnsActivity(rows: LayoutRow[]): boolean {
-  const row = rows[rows.length - 1];
-  if (!row || row.kind !== "agent") return false;
-  const part = row.parts[row.parts.length - 1];
-  if (!part) return false;
-  if (part.kind === "process") return processGroupLive(part.items);
-  if (part.kind === "subagent") return part.live;
-  if (part.kind === "artifact") return processGroupLive(part.items);
-  return false;
 }
 
 function lastErrorKey(items: Item[]): string {
@@ -118,6 +96,7 @@ function partSpace(parts: AgentPart[], i: number): string {
   if (cur.kind === "process") return prev.kind === "item" ? "pt-2.5" : "pt-1.5";
   if (cur.kind === "subagent") return "pt-1.5";
   if (cur.kind === "artifact") return "pt-2";
+  if (cur.kind === "stream") return prev.kind === "process" || prev.kind === "artifact" || prev.kind === "subagent" ? "pt-3" : "pt-2";
   if (cur.kind === "item" && cur.item.type === "assistant") {
     if (prev.kind === "process" || prev.kind === "artifact" || prev.kind === "subagent") return "pt-3";
     return "pt-2";
@@ -149,21 +128,16 @@ export function Transcript(props: {
   onRestoreFiles?: (from: string) => void | Promise<void>;
   onForkFrom?: (from: string) => void | Promise<void>;
 }) {
-  const copy = useCopy();
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
   const visible = useMemo(
     () => (props.showThinking ? props.items : props.items.filter((it) => it.type !== "reasoning")),
     [props.items, props.showThinking],
   );
-  const layout = useStableLayout(visible);
+  const layout = useStableLayout(visible, props.running);
   const empty = visible.length === 0 && !props.running && props.approvals.length === 0;
-  const live = lastMeaningful(visible);
-  const liveItem = live ? withLiveText(live, props.liveTexts) : null;
-  const streamingKey = props.running && liveItem?.type === "assistant" && liveItem.delta ? liveItem.key : "";
+  const streamingKey = props.running ? lastStreamKey(layout) : "";
   const liveLen = streamingKey ? (props.liveTexts?.[streamingKey]?.length || 0) : 0;
-  const showWorking = props.running && !streamingKey && !tailOwnsActivity(layout);
-  const since = props.running ? lastUserTimeMs(visible) : 0;
   const retryKey = lastErrorKey(visible);
   const pinnedTurn = lastAgentKey(layout);
 
@@ -190,10 +164,10 @@ export function Transcript(props: {
         };
       }
       if (row.kind === "agent") {
-        const liveHere = row.parts.some((p) => p.kind === "item" && p.item.key === streamingKey);
+        const liveHere = row.parts.some((p) => (p.kind === "item" || p.kind === "stream") && p.item.key === streamingKey);
         const last = row.key === pinnedTurn;
-        const workingHere = last && showWorking;
-        const tail = row.parts.length - 1;
+        const lastProcessAt = lastProcessIndex(row.parts);
+        const hasStream = row.parts.some((p) => p.kind === "stream");
         return {
           key: row.key,
           kind: "agent" as const,
@@ -210,13 +184,17 @@ export function Transcript(props: {
                   className={cn(
                     partSpace(row.parts, pi),
                     part.kind === "item" && part.item.type === "assistant" && "assistant-block min-w-0",
+                    part.kind === "stream" && "assistant-stream min-w-0",
                     (part.kind === "process" || part.kind === "artifact" || part.kind === "subagent") && "u-chrome",
                   )}
                 >
                   {part.kind === "process" ? (
                     <ProcessGroup
                       items={part.items}
-                      live={props.running && last && pi === tail && part.live}
+                      live={props.running && last && (
+                        processGroupLive(part.items)
+                        || (pi === lastProcessAt && !hasStream)
+                      )}
                       running={props.running}
                       compact={props.compact}
                       liveTexts={props.liveTexts}
@@ -231,21 +209,23 @@ export function Transcript(props: {
                     />
                   ) : part.kind === "artifact" ? (
                     <ArtifactTimeline items={part.items} running={props.running} workspace={props.workspace} onOpenReview={props.onOpenReview} />
+                  ) : part.kind === "stream" ? (
+                    <ItemRow
+                      item={part.item}
+                      streaming={!!part.item.delta || !!props.liveTexts?.[part.item.key]}
+                      liveText={props.liveTexts?.[part.item.key]}
+                      rich={false}
+                    />
                   ) : (
                     <ItemRow
                       item={part.item}
-                      streaming={part.item.key === streamingKey}
+                      streaming={false}
                       liveText={props.liveTexts?.[part.item.key]}
-                      rich={part.item.type === "assistant" && part.item.key !== streamingKey}
+                      rich={part.item.type === "assistant"}
                     />
                   )}
                 </div>
               ))}
-              {workingHere ? (
-                <div className={row.parts.length ? "pt-1.5" : undefined}>
-                  <WorkingLine since={since} label={copy.transcript.live.think} />
-                </div>
-              ) : null}
               {row.copyText && !props.compact ? (
                 <div className="u-chrome">
                   <TurnActions
@@ -283,16 +263,6 @@ export function Transcript(props: {
       render: () => <ApprovalCard item={a} onResolve={props.onResolve} />,
     })),
   ];
-  if (showWorking && !pinnedTurn) {
-    rows.push({
-      key: "working",
-      kind: "working",
-      space: "pt-3",
-      estimate: 40,
-      render: () => <WorkingLine since={since} label={copy.transcript.live.think} />,
-    });
-  }
-
   return (
     <div
       className="prose-select relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -322,11 +292,11 @@ export function Transcript(props: {
   );
 }
 
-function useStableLayout(items: Item[]): LayoutRow[] {
-  const sig = structureSig(items);
+function useStableLayout(items: Item[], running: boolean): LayoutRow[] {
+  const sig = structureSig(items, running);
   const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
   if (ref.current.sig !== sig) {
-    ref.current = { sig, rows: layoutRows(items) };
+    ref.current = { sig, rows: layoutRows(items, { running }) };
   }
   return ref.current.rows;
 }

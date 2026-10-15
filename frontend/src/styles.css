@@ -556,6 +556,12 @@ kbd,
   max-width: none;
   min-width: 0;
 }
+.assistant-stream {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
 .assistant-letter .u-chrome,
 .assistant-letter .u-chrome * {
   -webkit-user-select: none;

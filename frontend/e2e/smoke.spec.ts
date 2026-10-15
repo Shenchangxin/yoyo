@@ -413,8 +413,51 @@ test("a finished round keeps one letter and thinks at the foot", async ({ page }
   const turn = page.getByTestId("agent-turn");
   await expect(turn.getByText("looking around")).toBeVisible();
   await expect(turn.locator(".assistant-live")).toHaveCount(0);
-  await expect(turn.getByTestId("working-line")).toBeVisible();
+  await expect(turn.locator(".assistant-block")).toHaveCount(0);
+  await expect(turn.getByTestId("working-line")).toHaveCount(0);
   await expect(page.getByTestId("working-line")).toHaveCount(1);
+  await expect(page.getByTestId("turn-status")).toBeVisible();
+});
+
+test("a running tool loop does not mint a second letter", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    running: true,
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "inspect the pipeline" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "I'll start by loading the pipeline.", id: "s1:r1" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+      { type: "tool_result", session_id: "s1", ts: "2026-01-01T00:00:03Z", payload: { id: "c1", name: "read_file", content: "package main" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:04Z", payload: { text: "next I'll read the tests", id: "s1:r2", delta: true } },
+    ],
+  });
+  await page.goto("/");
+  const turn = page.getByTestId("agent-turn");
+  await expect(turn).toHaveCount(1);
+  await expect(turn.locator(".assistant-block")).toHaveCount(0);
+  await expect(turn.locator(".assistant-stream")).toHaveCount(1);
+  await expect(turn.getByText("next I'll read the tests")).toBeVisible();
+  await expect(page.getByTestId("working-line")).toHaveCount(0);
+  await expect(page.getByTestId("process-group")).toHaveAttribute("data-live", "false");
+});
+
+test("composer status names the in-flight tool", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    running: true,
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "read it" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "opening the file", id: "s1:r1" } },
+      { type: "tool_call", session_id: "s1", ts: "2026-01-01T00:00:02Z", payload: { id: "c1", name: "read_file", arguments: "{\"path\":\"src/main.go\"}" } },
+    ],
+  });
+  await page.goto("/");
+  const bar = page.getByTestId("turn-status");
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText("Reading");
+  await expect(bar).toContainText("src/main.go");
+  await expect(page.getByTestId("working-line")).toHaveCount(1);
+  await expect(page.getByTestId("process-group")).toHaveAttribute("data-live", "true");
 });
 
 test("continue this turn posts retry instead of a new user message", async ({ page }) => {

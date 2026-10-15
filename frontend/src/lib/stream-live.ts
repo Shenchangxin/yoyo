@@ -7,10 +7,10 @@ export function isLiveDelta(it: Item): boolean {
 }
 
 /** Identity of the transcript graph without token text — layoutRows key. */
-export function structureSig(list: Item[]): string {
-  let s = "";
+export function structureSig(list: Item[], running = false): string {
+  let s = running ? "1\n" : "0\n";
   for (const it of list) {
-    s += `${it.key}\t${it.type}\t${it.delta ? "1" : "0"}\t${it.name}\n`;
+    s += `${it.key}\t${it.type}\t${it.name}\n`;
   }
   return s;
 }

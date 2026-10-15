@@ -261,6 +261,7 @@ function WorkstationApp() {
         await api.scheduleCreate({ kind: "follow", spec: in_, prompt: "Check in on this thread.", session_id: sid });
       }}
       onCall={() => { void api.setCompanionCall(true); }}
+      turnStatus={ws.turnStatus}
     />
   );
 
@@ -796,6 +797,7 @@ function WorkstationApp() {
                   approvals={ws.approvals}
                   sessionId={ws.activeId}
                   running={ws.threadRunning}
+                  turnStatus={ws.turnStatus}
                   draftKey={ws.draftKey}
                   disabled={!!ws.health.paused}
                   disabledReason={ws.health.paused ? copy.composer.paused : ""}
@@ -939,6 +941,7 @@ function WorkstationApp() {
                         approvals={ws.approvals}
                         sessionId={ws.activeId}
                         running={ws.threadRunning}
+                        turnStatus={ws.turnStatus}
                         draftKey={ws.draftKey}
                         disabled={!!ws.health.paused}
                         disabledReason={ws.health.paused ? copy.composer.paused : ""}

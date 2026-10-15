@@ -254,7 +254,9 @@ export const zhCN = {
       skill: "正在加载技能",
       think: "正在思考",
       other: "正在调用 {name}",
+      stopHint: "Esc 停止",
     },
+    moreLines: "另 {n} 行",
     tally: {
       read: ["读取 1 个文件", "读取 {n} 个文件"],
       edit: ["编辑 1 个文件", "编辑 {n} 个文件"],
