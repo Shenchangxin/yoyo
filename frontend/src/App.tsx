@@ -85,6 +85,7 @@ function WorkstationApp() {
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
   const studioDesk = useUI((s) => s.studioDesk);
+  const createDesk = videoing && videoPane === "create";
   const studioId = useStudioSelection((s) => s.studioId);
   const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
   const studioCopilotForeign = studioDesk && (!studioId || (!!studioCopilotSession && studioCopilotSession !== ws.activeId));
@@ -114,7 +115,7 @@ function WorkstationApp() {
       window.clearInterval(t);
     };
   }, []);
-  const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || videoPane !== "chat");
+  const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create"));
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
   const copilotItems = studioCopilotForeign ? [] : ws.items;
@@ -316,7 +317,7 @@ function WorkstationApp() {
     </HomeStage>
   ) : (
     <section className="relative flex h-full min-h-0 min-w-0 flex-row">
-      {studioDesk ? null : (
+      {studioDesk || createDesk ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
@@ -330,7 +331,7 @@ function WorkstationApp() {
             {copy.pause.banner}
           </div>
         ) : null}
-        {ws.active?.pageId && !paging && !studioDesk ? (
+        {ws.active?.pageId && !paging && !studioDesk && !createDesk ? (
           <div className="border-b border-line/50 px-4 py-1.5 text-[12px] text-muted">
             {copy.pages.banner}
           </div>
@@ -605,7 +606,7 @@ function WorkstationApp() {
               inspector={ws.inspector}
               hideInspector
               hideInbox
-              title={home ? "" : (ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : copy.rail.newChat)}
+              title=""
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}
@@ -614,11 +615,7 @@ function WorkstationApp() {
               onToggleInspector={() => ws.setInspector((v) => !v)}
               paused={!!ws.health.paused}
               onPause={() => { void api.setPaused(!ws.health.paused).then(() => ws.refresh()); }}
-              onRename={async (title) => {
-                if (!ws.activeId) return;
-                await api.renameSession(ws.activeId, title);
-                await ws.refresh();
-              }}
+              onRename={() => {}}
             />
         )
       : (
@@ -720,6 +717,10 @@ function WorkstationApp() {
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{labPane}</div>
     </Suspense>
+  ) : createDesk ? (
+    <div className="relative h-full min-h-0 overflow-hidden" data-testid="create-desk" data-skin-pane>
+      {agentPane}
+    </div>
   ) : agentPane;
 
   return (

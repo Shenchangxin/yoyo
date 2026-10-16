@@ -660,7 +660,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
+	a.attachCutTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
+	a.attachConductorTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.ReadFromCheckpoint(id)
 		if err != nil {
@@ -772,6 +774,8 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	if a.studioLane(sessionID) {
 		loop, frags = applyStudioLanePrompt(loop, frags)
+	} else if a.conductorLane(sessionID) {
+		loop, frags = applyConductorLanePrompt(loop, frags)
 	}
 	if p := a.sessionProfile(sessionID); p != nil && strings.TrimSpace(p.Instructions) != "" {
 		frags = append(frags, artifact.PromptFragment{Slot: "role", Text: p.Instructions})
@@ -1785,6 +1789,19 @@ func applyStudioLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFrag
 		kept = append(kept, f)
 	}
 	kept = append(kept, artifact.PromptFragment{Slot: "runtime", Text: studioRuntimePin})
+	return loop, kept
+}
+
+func applyConductorLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragment) (artifact.LoopPreset, []artifact.PromptFragment) {
+	loop.Bootstrap = conductorBootstrap
+	kept := make([]artifact.PromptFragment, 0, len(frags)+1)
+	for _, f := range frags {
+		if strings.Contains(strings.ToLower(f.Text), "inspect the workspace") {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	kept = append(kept, artifact.PromptFragment{Slot: "runtime", Text: conductorRuntimePin})
 	return loop, kept
 }
 

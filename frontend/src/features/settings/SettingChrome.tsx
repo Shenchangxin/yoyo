@@ -29,6 +29,7 @@ export function SettingSection({
   children,
   bare,
   compact,
+  tight,
 }: {
   id: string;
   title?: string;
@@ -41,9 +42,11 @@ export function SettingSection({
   bare?: boolean;
   /** Inside a disclosure: no extra module gap. */
   compact?: boolean;
+  /** Title, intro, and rows sit on a tighter rhythm (Generation catalog). */
+  tight?: boolean;
 }) {
   const heading = title || headerActions ? (
-    <div className={cn("flex items-center gap-3", (description || !bare) && "mb-[var(--space-item)]")}>
+    <div className="flex items-center gap-3">
       {title ? (
         <h2 id={id} className="min-w-0 flex-1 text-[12px] font-medium text-muted">
           {title}
@@ -55,33 +58,38 @@ export function SettingSection({
     </div>
   ) : null;
   const desc = description ? (
-    <p className="mb-[var(--space-group)] text-[12px] leading-[1.55] text-muted">{description}</p>
+    <p className={cn("text-[12px] text-muted", tight ? "leading-[1.4]" : "leading-[1.55]")}>{description}</p>
   ) : null;
+  const header = heading || desc ? (
+    <div className={cn("flex flex-col", tight ? "gap-1" : "gap-[var(--space-item)]")}>
+      {heading}
+      {desc}
+    </div>
+  ) : null;
+  const stackGap = tight ? "gap-2" : "gap-[var(--space-group)]";
   return (
-    <section className={cn(!compact && "mb-6", "w-full min-w-0 scroll-mt-6")} data-setting-section-highlight-target={id}>
+    <section className={cn(!compact && (tight ? "mb-4" : "mb-6"), "w-full min-w-0 scroll-mt-6")} data-setting-section-highlight-target={id}>
       {bare ? (
         <>
-          {heading}
-          {desc}
-          <div id={title ? undefined : id} data-setting-section-id={id} className="flex w-full min-w-0 flex-col gap-[var(--space-group)]">
+          {header}
+          <div id={title ? undefined : id} data-setting-section-id={id} className={cn("flex w-full min-w-0 flex-col", stackGap, tight && header && "mt-2")}>
             {children}
           </div>
-          {actions ? <div className="mt-[var(--space-group)] flex items-center justify-end gap-2">{actions}</div> : null}
-          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
+          {actions ? <div className="mt-[var(--space-item)] flex items-center justify-end gap-2">{actions}</div> : null}
+          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.45] text-muted">{footnote}</p> : null}
         </>
       ) : (
         <>
           <div
             id={title ? undefined : id}
             data-setting-section-id={id}
-            className="flex w-full min-w-0 flex-col gap-[var(--space-group)] rounded-[12px] bg-card px-5 py-3 shadow-[var(--shadow-card)]"
+            className={cn("flex w-full min-w-0 flex-col rounded-[12px] bg-card shadow-[var(--shadow-card)]", stackGap, tight ? "px-5 py-2.5" : "px-5 py-3")}
           >
-            {heading}
-            {desc}
+            {header}
             {children}
             {actions ? <div className="flex items-center justify-end gap-2">{actions}</div> : null}
           </div>
-          {footnote ? <p className="mt-[var(--space-item)] text-[12px] leading-[1.55] text-muted">{footnote}</p> : null}
+          {footnote ? <p className="mt-1.5 text-[12px] leading-[1.45] text-muted">{footnote}</p> : null}
         </>
       )}
     </section>
@@ -194,8 +202,8 @@ export function SettingActionRow({
 }
 
 /** Empty copy inside a card, kept on the same rhythm as a row. */
-export function SettingEmpty({ children, border: _border }: { children: ReactNode; border?: boolean }) {
-  return <p className="py-6 text-left text-[13px] text-muted">{children}</p>;
+export function SettingEmpty({ children, compact }: { children: ReactNode; compact?: boolean }) {
+  return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-[13px] text-muted")}>{children}</p>;
 }
 
 /** Monospace output block with an optional toolbar — journal, doctor, JSON. */

@@ -244,6 +244,59 @@ func TestProviderTemplatesIncludeSearchVendors(t *testing.T) {
 	}
 }
 
+func TestProviderTemplatesIncludeMusicStockAsr(t *testing.T) {
+	type hit struct{ kind, vendor, name string }
+	seen := map[hit]bool{}
+	for _, p := range ProviderTemplates() {
+		seen[hit{p.ServiceType, p.Provider, p.Name}] = true
+		if p.ServiceType == "music" && strings.Contains(strings.ToLower(p.Model), "tts") {
+			t.Fatalf("music template still points at a speech model: %+v", p)
+		}
+	}
+	for _, want := range []hit{
+		{"music", "minimax", "MiniMax Music"},
+		{"music", "elevenlabs", "ElevenLabs Sound"},
+		{"music", "stability", "Stability Audio"},
+		{"music", "gemini", "Google Lyria"},
+		{"music", "suno", "Suno compatible"},
+		{"stock", "unsplash", "Unsplash"},
+		{"stock", "pexels", "Pexels Photos"},
+		{"stock", "pexels", "Pexels Videos"},
+		{"stock", "pixabay", "Pixabay Photos"},
+		{"stock", "pixabay", "Pixabay Videos"},
+		{"stock", "giphy", "Giphy"},
+		{"asr", "openai", "OpenAI Transcription"},
+		{"asr", "groq", "Groq Whisper"},
+		{"asr", "deepgram", "Deepgram"},
+		{"asr", "assemblyai", "AssemblyAI"},
+		{"asr", "azure", "Azure Transcription"},
+		{"asr", "aliyun", "DashScope Paraformer"},
+		{"image", "aliyun", "Qwen Image"},
+		{"image", "jimeng", "Jimeng Image"},
+		{"image", "kolors", "Kolors"},
+		{"image", "zhipu", "CogView"},
+		{"image", "tencent", "Hunyuan Image"},
+		{"video", "jimeng", "Jimeng Video"},
+		{"video", "vidu", "Vidu"},
+		{"video", "tencent", "Hunyuan Video"},
+		{"video", "zhipu", "CogVideoX"},
+		{"video", "kling", "Kling Video"},
+		{"tts", "aliyun", "Qwen CosyVoice"},
+		{"tts", "spark", "Spark Speech"},
+		{"music", "mureka", "Mureka"},
+		{"asr", "volcengine", "Volcengine ASR"},
+		{"asr", "spark", "Spark ASR"},
+		{"asr", "tencent", "Tencent ASR"},
+		{"search", "metaso", "Metaso"},
+		{"storage", "aliyun", "Aliyun OSS"},
+		{"storage", "tencent", "Tencent COS"},
+	} {
+		if !seen[want] {
+			t.Fatalf("missing template %+v", want)
+		}
+	}
+}
+
 func TestMediaRefValid(t *testing.T) {
 	if (MediaRef{Kind: "video"}).Valid() {
 		t.Fatal("empty hash must be invalid")

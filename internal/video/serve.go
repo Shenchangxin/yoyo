@@ -156,6 +156,8 @@ func (e *Engine) Snapshot() map[string]any {
 		"modes":            Modes(),
 		"missing":          e.missingProviderKinds(),
 		"remotion":         e.RemotionSnapshot(),
+		"whisper":          strings.TrimSpace(e.WHISPER) != "",
+		"whisper_bin":      e.WHISPER,
 	}
 }
 

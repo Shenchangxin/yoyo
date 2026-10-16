@@ -12,7 +12,6 @@ import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { cn } from "../../lib/utils";
 import {
   CONTROL_LG,
-  SettingActionRow,
   SettingEmpty,
   SettingRow,
   SettingSection,
@@ -20,7 +19,7 @@ import {
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
 
-type Kind = "image" | "video" | "tts" | "storage" | "search" | "workflow";
+type Kind = "image" | "video" | "tts" | "music" | "stock" | "asr" | "storage" | "search" | "workflow";
 
 type MediaProvider = {
   id: string;
@@ -71,16 +70,41 @@ const VENDOR_LABEL: Record<string, string> = {
   bocha: "Bocha",
   otel: "OpenTelemetry",
   custom: "Custom",
+  elevenlabs: "ElevenLabs",
+  azure: "Azure",
+  pexels: "Pexels",
+  pixabay: "Pixabay",
+  unsplash: "Unsplash",
+  giphy: "Giphy",
+  groq: "Groq",
+  deepgram: "Deepgram",
+  assemblyai: "AssemblyAI",
+  stability: "Stability",
+  suno: "Suno",
+  kling: "Kling",
+  runway: "Runway",
+  jimeng: "Jimeng",
+  vidu: "Vidu",
+  tencent: "Tencent",
+  hunyuan: "Hunyuan",
+  zhipu: "Zhipu",
+  kolors: "Kolors",
+  spark: "Spark",
+  mureka: "Mureka",
+  metaso: "Metaso",
 };
 
 function usesModels(kind: Kind): boolean {
-  return kind === "image" || kind === "video" || kind === "tts";
+  return kind === "image" || kind === "video" || kind === "tts" || kind === "music" || kind === "asr";
 }
 
 function serviceKind(p: { service_type?: string; serviceType?: string } | string): string {
   const raw = typeof p === "string" ? p : String(p.service_type || p.serviceType || "");
   const s = raw.toLowerCase().trim();
   if (s === "speech" || s === "audio") return "tts";
+  if (s === "stt" || s === "whisper" || s === "transcribe" || s === "transcription") return "asr";
+  if (s === "bgm" || s === "soundtrack" || s === "score") return "music";
+  if (s === "pexels" || s === "pixabay" || s === "unsplash" || s === "giphy" || s === "footage") return "stock";
   if (s === "llm" || s === "text") return "chat";
   return s;
 }
@@ -126,6 +150,29 @@ function hostOf(url: string): string {
   } catch {
     return raw.replace(/^https?:\/\//, "").split("/")[0] || raw;
   }
+}
+
+function hostPath(url: string): string {
+  const raw = (url || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    const path = u.pathname.replace(/\/$/, "");
+    return path && path !== "/" ? `${u.host}${path}` : u.host;
+  } catch {
+    return hostOf(raw);
+  }
+}
+
+function templateKey(t: MediaProvider): string {
+  return [t.provider, t.service_type, t.name, t.base_url, t.model].join(":");
+}
+
+function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): string | undefined {
+  if (kind === "music") return v.musicUrlHint;
+  if (kind === "stock") return v.stockUrlHint;
+  if (kind === "asr") return v.asrUrlHint;
+  return v.adapterUrlHint;
 }
 
 function vendorLabel(id: string): string {
@@ -243,6 +290,7 @@ export function GenerationSettings() {
   const [remotionBusy, setRemotionBusy] = useState(false);
   const [ffmpeg, setFfmpeg] = useState(true);
   const [ffmpegInstall, setFfmpegInstall] = useState<FFmpegInstall>({});
+  const [whisper, setWhisper] = useState(false);
   const [tick, setTick] = useState(0);
 
   function refresh() {
@@ -252,6 +300,7 @@ export function GenerationSettings() {
   function applyFFmpegStatus(s: any) {
     setFfmpeg(!!s?.ffmpeg);
     setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
+    setWhisper(!!s?.whisper);
     const rem = s?.remotion && typeof s.remotion === "object" ? s.remotion : null;
     if (rem) setRemotion(rem);
   }
@@ -344,6 +393,7 @@ export function GenerationSettings() {
         id="generation-studio"
         title={copy.settings.sections.generationStudio}
         footnote={v.workshopFootnote}
+        tight
       >
         <SettingRow title={v.language}>
           <SettingSegmented
@@ -356,10 +406,7 @@ export function GenerationSettings() {
               { value: "other", label: v.langOther },
             ]}
             onChange={(next) => {
-              if (next === "other") {
-                if (langChoice !== "other") setLang("");
-                return;
-              }
+              if (next === "other") return;
               void setLanguage(next);
             }}
           />
@@ -507,6 +554,49 @@ export function GenerationSettings() {
         footnote={v.speechHint}
       />
       <AdapterSection
+        id="generation-music"
+        title={copy.settings.sections.generationMusic}
+        kind="music"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        description={v.musicLead}
+        footnote={v.musicHint}
+      />
+      <AdapterSection
+        id="generation-stock"
+        title={copy.settings.sections.generationStock}
+        kind="stock"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        description={v.stockLead}
+        footnote={v.stockHint}
+      />
+      <AdapterSection
+        id="generation-asr"
+        title={copy.settings.sections.generationAsr}
+        kind="asr"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        description={v.asrLead}
+        footnote={v.asrHint}
+        lead={
+          <div data-testid="generation-whisper">
+            <SettingRow title={v.whisper} description={v.whisperHint} list>
+              <StatusPill
+                ok={whisper}
+                label={whisper ? v.whisperReady : v.whisperMissing}
+              />
+            </SettingRow>
+          </div>
+        }
+      />
+      <AdapterSection
         id="generation-storage"
         title={copy.settings.sections.generationStorage}
         kind="storage"
@@ -550,7 +640,9 @@ function AdapterSection(props: {
   templates: MediaProvider[];
   copy: ReturnType<typeof useCopy>;
   onChanged: () => void;
+  description?: string;
   footnote?: string;
+  lead?: ReactNode;
 }) {
   const v = props.copy.video;
   const rows = useMemo(
@@ -638,8 +730,9 @@ function AdapterSection(props: {
   const showPicker = picking || (rows.length === 0 && !draft);
 
   return (
-    <SettingSection id={props.id} title={props.title} footnote={props.footnote || v.multiAdapterHint}>
-      {rows.length === 0 && !draft ? <SettingEmpty>{v.noAdapter}</SettingEmpty> : null}
+    <SettingSection id={props.id} title={props.title} description={props.description} footnote={props.footnote || v.multiAdapterHint} tight>
+      {props.lead}
+      {rows.length === 0 && !draft ? <SettingEmpty compact>{v.noAdapter}</SettingEmpty> : null}
 
       {rows.map((p) => {
         const open = draft?.id === p.id;
@@ -647,11 +740,11 @@ function AdapterSection(props: {
         if (p.model && !models.includes(p.model)) models.unshift(p.model);
         return (
           <div key={p.id} className={cn("rounded-xl px-1", open && "bg-background/40")}>
-            <div className="flex items-center gap-3 py-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
               <ProviderMark id={p.provider} className="size-8" />
               <button
                 type="button"
-                className="min-w-0 flex-1 text-left"
+                className="min-w-0 flex-1 basis-[12rem] text-left"
                 onClick={() => {
                   setPicking(false);
                   setDraft(open ? null : fromRow(p));
@@ -659,10 +752,10 @@ function AdapterSection(props: {
               >
                 <div className="truncate text-[13px] font-medium leading-[1.4] text-foreground">{p.name}</div>
                 <div className="mt-0.5 truncate font-mono text-[11px] leading-[1.4] text-muted">
-                  {[vendorLabel(p.provider), hostOf(p.base_url)].filter(Boolean).join(" · ")}
+                  {[vendorLabel(p.provider), hostPath(p.base_url)].filter(Boolean).join(" · ")}
                 </div>
               </button>
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                 {p.is_default ? (
                   <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] font-medium text-foreground">{v.makeDefault}</span>
                 ) : (
@@ -746,31 +839,26 @@ function AdapterSection(props: {
 
       {showPicker && !draft ? (
         <div className="flex flex-col gap-0.5">
-          <p className="px-1 pb-1 text-[12px] text-muted">{v.templateHint}</p>
+          <p className="px-1 text-[12px] leading-[1.4] text-muted">{v.templateHint}</p>
           {kindTemplates.map((t) => (
-            <button
-              key={t.provider + t.service_type + t.model}
-              type="button"
-              className="flex min-h-10 w-full items-center gap-3 rounded-md px-1 text-left transition-colors hover:bg-lift/70"
+            <AdapterPickRow
+              key={templateKey(t)}
+              testId={`adapter-template-${(t.name || t.provider).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+              mark={t.provider}
+              title={t.name}
+              subtitle={[vendorLabel(t.provider), t.model || hostPath(t.base_url) || v.pasteGateway].filter(Boolean).join(" · ")}
               onClick={() => {
                 setDraft(fromTemplate(props.kind, t));
                 setPicking(false);
               }}
-            >
-              <ProviderMark id={t.provider} className="size-8" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium leading-[1.4] text-foreground">{t.name}</span>
-                <span className="mt-0.5 block truncate font-mono text-[12px] leading-[1.5] text-muted">
-                  {[vendorLabel(t.provider), t.model || hostOf(t.base_url)].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-            </button>
+            />
           ))}
-          <SettingActionRow
-            border={false}
-            chevron={false}
+          <AdapterPickRow
+            testId="adapter-custom"
+            mark="custom"
             title={v.customProvider}
-            trailing={<Plus className="size-4" aria-hidden />}
+            subtitle={v.customProviderHint}
+            trailing={<Plus className="size-3.5 text-muted" aria-hidden />}
             onClick={() => {
               setDraft(emptyDraft(props.kind));
               setPicking(false);
@@ -778,13 +866,16 @@ function AdapterSection(props: {
           />
         </div>
       ) : rows.length > 0 && !draft ? (
-        <SettingActionRow
-          border={false}
-          chevron={false}
-          title={v.addAdapter}
-          trailing={<Plus className="size-4" aria-hidden />}
+        <button
+          type="button"
+          className="flex min-h-9 w-full items-center gap-3 rounded-md px-1 text-left text-muted transition-colors hover:bg-lift/70 hover:text-foreground"
           onClick={() => setPicking(true)}
-        />
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-[22%] bg-lift text-muted">
+            <Plus className="size-3.5" aria-hidden />
+          </span>
+          <span className="text-[13px] font-medium">{v.addAdapter}</span>
+        </button>
       ) : null}
 
       <ConfirmDialog
@@ -803,6 +894,40 @@ function AdapterSection(props: {
         }}
       />
     </SettingSection>
+  );
+}
+
+function AdapterPickRow({
+  mark,
+  title,
+  subtitle,
+  onClick,
+  testId,
+  trailing,
+}: {
+  mark: string;
+  title: string;
+  subtitle?: string;
+  onClick: () => void;
+  testId?: string;
+  trailing?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      className="flex min-h-10 w-full items-center gap-3 rounded-md px-1 text-left transition-colors hover:bg-lift/70"
+      onClick={onClick}
+    >
+      <ProviderMark id={mark} className="size-8" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-medium leading-[1.4] text-foreground">{title}</span>
+        {subtitle ? (
+          <span className="mt-0.5 block truncate font-mono text-[12px] leading-[1.4] text-muted">{subtitle}</span>
+        ) : null}
+      </span>
+      {trailing ? <span className="flex shrink-0 text-muted">{trailing}</span> : null}
+    </button>
   );
 }
 
@@ -826,6 +951,7 @@ function AdapterForm({
   const v = copy.video;
   const models = parseModels(draft.models);
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
+  const canSave = !!draft.name.trim() && (draft.provider === "cas" || !!draft.base_url.trim());
   return (
     <div className="flex flex-col gap-[var(--space-group)] border-t border-border/60 px-1 py-3">
       <Field label={v.adapterName}>
@@ -834,8 +960,8 @@ function AdapterForm({
       <Field label={v.vendor}>
         <Input className={cn(CONTROL_LG, "font-mono")} value={draft.provider} onChange={(e) => patch({ provider: e.target.value })} />
       </Field>
-      <Field label={copy.settings.baseUrl}>
-        <Input className={cn(CONTROL_LG, "font-mono")} value={draft.base_url} onChange={(e) => patch({ base_url: e.target.value })} />
+      <Field label={copy.settings.baseUrl} hint={!draft.base_url.trim() ? adapterUrlHint(draft.service_type, v) : undefined}>
+        <Input className={cn(CONTROL_LG, "font-mono")} value={draft.base_url} placeholder={!draft.base_url.trim() ? v.pasteGateway : undefined} onChange={(e) => patch({ base_url: e.target.value })} />
       </Field>
       {usesModels(draft.service_type) ? (
         <>
@@ -896,14 +1022,13 @@ function AdapterForm({
       </SettingRow>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {onDelete ? (
-          <Button size="sm" variant="ghost" onClick={onDelete}>{v.delete}</Button>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>{copy.settings.discard}</Button>
-        )}
+          <Button size="sm" variant="ghost" className="mr-auto text-danger" onClick={onDelete}>{v.delete}</Button>
+        ) : null}
+        <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>{copy.settings.discard}</Button>
         {onTest && draft.id ? (
           <Button size="sm" variant="lift" disabled={!!busy} onClick={onTest}>{copy.settings.testConnection}</Button>
         ) : null}
-        <Button size="sm" disabled={!!busy || !draft.name.trim() || !draft.base_url.trim()} onClick={onSave}>
+        <Button size="sm" disabled={!!busy || !canSave} title={!canSave ? v.needBaseUrl : undefined} onClick={onSave}>
           {copy.settings.saveChanges}
         </Button>
       </div>
@@ -984,9 +1109,9 @@ function CanvasChannelsSection(props: { copy: ReturnType<typeof useCopy> }) {
   const extras = channels.filter((ch) => !String(ch.id || "").startsWith("ch-"));
 
   return (
-    <SettingSection id="generation-canvas" title={copy.settings.sections.generationCanvas} footnote={copy.video.canvasChannelsHint}>
+    <SettingSection id="generation-canvas" title={copy.settings.sections.generationCanvas} footnote={copy.video.canvasChannelsHint} tight>
       {extras.length === 0 ? (
-        <SettingEmpty>{copy.video.canvasChannelsEmpty}</SettingEmpty>
+        <SettingEmpty compact>{copy.video.canvasChannelsEmpty}</SettingEmpty>
       ) : (
         extras.map((ch) => (
           <SettingRow key={ch.id} title={ch.name || ch.pluginId || ch.id} list>

@@ -67,6 +67,8 @@ type UIState = {
   canvasStage: boolean;
   setCanvasStage: (v: boolean | ((p: boolean) => boolean)) => void;
   studioDesk: boolean;
+  footageOpen: boolean;
+  setFootageOpen: (v: boolean) => void;
   agentThreadId: string;
   videoThreadId: string;
   rememberThread: (t: Thread | null) => void;
@@ -259,7 +261,7 @@ export const useUI = create<UIState>((set, get) => ({
     set({ harnessTab, lab: labFromTab(harnessTab), surface: "harness" });
   },
   requestRename: () => set((s) => ({ renameTick: s.renameTick + 1 })),
-  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, studioDesk: false, videoPane: "chat", videoEntry: "" }),
+  showConversation: () => set({ lab: "agent", surface: "agent", videoBoard: false, canvasStage: false, studioDesk: false, footageOpen: false, videoPane: "chat", videoEntry: "" }),
   openSettings: (tab, section) =>
     set((s) => ({
       surface: "settings",
@@ -289,20 +291,22 @@ export const useUI = create<UIState>((set, get) => ({
   videoBoard: false,
   canvasStage: false,
   studioDesk: false,
+  footageOpen: false,
+  setFootageOpen: (v) => set({ footageOpen: v }),
   videoPane: "chat",
   canvasFocus: "library",
   videoEntry: "",
-  openVideo: () => set({ surface: "video", videoBoard: false, canvasStage: true, studioDesk: false, videoPane: "create", videoEntry: "" }),
+  openVideo: () => set({ surface: "video", videoBoard: false, canvasStage: false, studioDesk: false, footageOpen: false, videoPane: "create", videoEntry: "" }),
   closeVideo: () => get().showConversation(),
   openStudioDesk: () => get().openVideoPane("studio"),
   openVideoPane: (pane, opts) => {
     const videoEntry = opts?.entry || "";
     if (pane === "chat") {
-      set({ surface: "video", videoPane: "chat", videoBoard: false, canvasStage: false, studioDesk: false, videoEntry: "" });
+      set({ surface: "video", videoPane: "chat", videoBoard: false, canvasStage: false, studioDesk: false, footageOpen: false, videoEntry: "" });
       return;
     }
     if (pane === "create") {
-      set({ surface: "video", videoPane: "create", videoBoard: false, canvasStage: true, studioDesk: false, videoEntry });
+      set({ surface: "video", videoPane: "create", videoBoard: false, canvasStage: false, studioDesk: false, videoEntry });
       return;
     }
     if (pane === "studio") {
@@ -314,13 +318,14 @@ export const useUI = create<UIState>((set, get) => ({
         videoBoard: false,
         canvasStage: false,
         studioDesk: true,
+        footageOpen: false,
         videoEntry: "",
       });
       return;
     }
     if (pane === "drama") {
       writeVideoMode("drama");
-      set({ surface: "video", videoPane: "drama", videoMode: "drama", videoBoard: false, canvasStage: true, studioDesk: false, videoEntry });
+      set({ surface: "video", videoPane: "drama", videoMode: "drama", videoBoard: false, canvasStage: true, studioDesk: false, footageOpen: false, videoEntry });
       return;
     }
     writeVideoMode("canvas");
@@ -331,6 +336,7 @@ export const useUI = create<UIState>((set, get) => ({
       videoBoard: false,
       canvasStage: true,
       studioDesk: false,
+      footageOpen: false,
       videoEntry,
       canvasFocus: pane === "canvas" ? (opts?.canvasFocus ?? "library") : s.canvasFocus,
     }));

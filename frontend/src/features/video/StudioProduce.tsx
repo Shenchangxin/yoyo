@@ -15,6 +15,7 @@ import {
   type StudioProject,
   type StudioShot,
 } from "./studio-model";
+import { requestSendToCut } from "./open-cut";
 
 const MOTIONS = ["ken-burns", "static", "push-in", "pan-left", "zoom-out"];
 const ASPECTS = ["9:16", "16:9", "1:1"];
@@ -540,7 +541,8 @@ function ComposeStep(props: {
   onWrap: () => Promise<void>;
   onContinue: () => void;
 }) {
-  const s = useCopy().video.studio;
+  const copy = useCopy();
+  const s = copy.video.studio;
   const cur = props.current;
   return (
     <div className="flex flex-col gap-2">
@@ -575,6 +577,14 @@ function ComposeStep(props: {
             <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.onWrap()}>{s.wrap}</Button>
           </div>
           {!props.remotionReady ? <p className="text-[11px] text-muted">{s.wrapHint}</p> : null}
+          <Button
+            size="sm"
+            variant="default"
+            className="self-start"
+            data-testid="studio-send-to-cut"
+            disabled={!!props.busy || !cur.result_hash}
+            onClick={() => requestSendToCut({ hash: cur.result_hash, title: cur.title || copy.video.conductor.cutTitle })}
+          >{copy.video.conductor.sendToCut}</Button>
         </div>
       ) : null}
       {cur.result_hash ? <ContinueButton label={s.continueTo.replace("{step}", s.desk.delivery)} onClick={props.onContinue} /> : null}
@@ -601,6 +611,16 @@ function DeliveryStep(props: {
       <Preflight id={cur.id} gate="delivery" />
       <p className={cn("text-[12px]", ready ? "text-success" : "text-warning")}>{ready ? p.publishable : (cur.delivery?.note || p.draftPack)}</p>
       {cur.media_url ? <video className="max-h-56 w-full rounded-xl bg-black" src={cur.media_url} poster={cur.cover_url || cur.poster_url || undefined} controls /> : null}
+      {cur.result_hash ? (
+        <Button
+          size="sm"
+          variant="default"
+          className="self-start"
+          data-testid="studio-delivery-send-to-cut"
+          disabled={!!props.busy}
+          onClick={() => requestSendToCut({ hash: cur.result_hash, title: cur.title || copy.video.conductor.cutTitle })}
+        >{copy.video.conductor.sendToCut}</Button>
+      ) : null}
       {cur.copy_text ? <pre className="whitespace-pre-wrap rounded-lg bg-lift/50 px-3 py-2 text-[12px] leading-[1.55]">{cur.copy_text}</pre> : null}
       {(cur.delivery?.files || []).length ? (
         <p className="text-[12px] text-muted">{cur.delivery!.files!.map((f) => f.kind).filter(Boolean).join(" · ")}</p>

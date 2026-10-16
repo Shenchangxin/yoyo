@@ -6,7 +6,7 @@ export type VideoPane = "chat" | "create" | "studio" | "drama" | "canvas" | "ass
 export type CanvasFocus = "library" | "editor";
 
 export function isYingcePane(pane: VideoPane): boolean {
-  return pane !== "chat" && pane !== "studio";
+  return pane !== "chat" && pane !== "studio" && pane !== "create";
 }
 
 export function isCanvasWorldPane(pane: VideoPane): boolean {
@@ -14,7 +14,7 @@ export function isCanvasWorldPane(pane: VideoPane): boolean {
 }
 
 export function yingcePathForPane(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus): string {
-  if (pane === "create") return "/create";
+  if (pane === "create") return "/canvas";
   if (pane === "studio") return "/create";
   if (pane === "drama") return "/drama";
   if (pane === "assets") return "/assets";

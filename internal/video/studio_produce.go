@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
 func (e *Engine) shotPrompt(p StudioProject, shot StudioShot) string {
@@ -335,13 +337,13 @@ func (e *Engine) fetchMediaURL(rawURL string) (hash, mime string, err error) {
 }
 
 type StudioClip struct {
-	ID       string  `json:"id"`
-	Hash     string  `json:"hash"`
-	Start    float64 `json:"start"`
-	End      float64 `json:"end"`
-	Title    string  `json:"title,omitempty"`
+	ID       string         `json:"id"`
+	Hash     string         `json:"hash"`
+	Start    float64        `json:"start"`
+	End      float64        `json:"end"`
+	Title    string         `json:"title,omitempty"`
 	Scores   map[string]int `json:"scores,omitempty"`
-	MediaURL string  `json:"media_url,omitempty"`
+	MediaURL string         `json:"media_url,omitempty"`
 }
 
 func (e *Engine) AutoClip(hash string, count int, window string) ([]StudioClip, error) {
@@ -376,32 +378,23 @@ func (e *Engine) AutoClip(hash string, count int, window string) ([]StudioClip, 
 		return nil, err
 	}
 	defer os.Remove(src)
-	out := make([]StudioClip, 0, count)
-	step := total / float64(count)
-	if step < span {
-		span = step
+	bd, _ := e.cutBin().Analyze(src)
+	if bd.Duration <= 0 {
+		bd.Duration = total
 	}
-	for i := 0; i < count; i++ {
-		start := float64(i) * step
-		if start+span > total {
-			span = total - start
-		}
-		if span < 3 {
-			break
-		}
-		tag := hash
-		if len(tag) > 8 {
-			tag = tag[:8]
-		}
-		clip := filepath.Join(e.Dir, fmt.Sprintf("clip-%s-%d.mp4", tag, i))
-		cmd := exec.Command(e.FFMPEG, "-y", "-ss", fmt.Sprintf("%.2f", start), "-t", fmt.Sprintf("%.2f", span),
-			"-i", src, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip)
-		if b, err := cmd.CombinedOutput(); err != nil {
-			_ = os.Remove(clip)
-			return out, fmt.Errorf("%s", ffmpegErr(b, err))
+	proposed := cut.Propose(bd.Duration, bd.Scenes, bd.Silences, count, span)
+	tmp, err := os.MkdirTemp(e.Dir, "autoclip-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	out := make([]StudioClip, 0, len(proposed))
+	for i, c := range proposed {
+		clip := filepath.Join(tmp, fmt.Sprintf("c%d.mp4", i))
+		if err := e.cutBin().Extract(src, c.Start, c.Dur(), clip); err != nil {
+			return out, err
 		}
 		raw, err := os.ReadFile(clip)
-		_ = os.Remove(clip)
 		if err != nil {
 			return out, err
 		}
@@ -409,14 +402,13 @@ func (e *Engine) AutoClip(hash string, count int, window string) ([]StudioClip, 
 		if err != nil {
 			return out, err
 		}
-		complete := 5
-		if span < 15 {
-			complete = 3
+		scores := c.Scores
+		if scores == nil {
+			scores = map[string]int{"energy": 3, "completeness": 3}
 		}
 		out = append(out, StudioClip{
-			ID: NewID(), Hash: h, Start: start, End: start + span,
-			Title: fmt.Sprintf("clip %d", i+1),
-			Scores: map[string]int{"hook": 3, "information": 3, "emotion": 3, "completeness": complete},
+			ID: NewID(), Hash: h, Start: c.Start, End: c.End,
+			Title: c.Title, Scores: scores,
 		})
 	}
 	if out == nil {

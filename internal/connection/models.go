@@ -10,16 +10,29 @@ var videoModelNeedles = []string{
 	"gen-3", "gen3", "hunyuan-video", "hunyuanvideo", "cogvideo", "mochi",
 	"latte", "stable-video", "animatediff", "ltx-video", "ltxvideo",
 	"minimax-video", "abab-video", "wanx", "wan2", "wan3", "wan-video",
+	"jimeng_v", "vgfm", "vidu",
 }
 
 var imageModelNeedles = []string{
 	"seedream", "gpt-image", "dall-e", "dalle", "imagen", "flux", "sdxl",
 	"stable-diffusion", "midjourney", "nano-banana", "nanobanana", "ideogram",
 	"recraft", "playground", "leonardo",
+	"qwen-image", "jimeng_t2i", "kolors", "cogview", "hunyuan-image",
 }
 
 var speechModelNeedles = []string{
-	"tts", "speech", "voice", "audio", "music", "sound",
+	"tts", "speech", "voice", "seed-tts", "cosyvoice",
+}
+
+var musicModelNeedles = []string{
+	"lyria", "stable-audio", "suno", "udio", "chirp-v", "chirp-auk",
+	"eleven_music", "text_to_sound", "music-1", "music-2", "musicgen", "riffusion",
+	"mureka", "skymusic",
+}
+
+var asrModelNeedles = []string{
+	"whisper", "transcribe", "stt", "paraformer", "sensevoice", "nova-2", "nova-3",
+	"seed-asr", "spark-asr",
 }
 
 // CapOfModel infers a generation capability from a model id.
@@ -27,6 +40,12 @@ func CapOfModel(model string) string {
 	s := strings.ToLower(strings.TrimSpace(model))
 	if s == "" {
 		return CapChat
+	}
+	if isAsrModelName(s) {
+		return CapASR
+	}
+	if isMusicModelName(s) {
+		return CapMusic
 	}
 	if isSpeechModelName(s) {
 		return CapSpeech
@@ -59,7 +78,7 @@ func isVideoModelName(s string) bool {
 }
 
 func isImageModelName(s string) bool {
-	if isVideoModelName(s) || isSpeechModelName(s) {
+	if isVideoModelName(s) || isSpeechModelName(s) || isMusicModelName(s) || isAsrModelName(s) {
 		return false
 	}
 	if strings.Contains(s, "image") {
@@ -82,9 +101,27 @@ func isSpeechModelName(s string) bool {
 	return false
 }
 
+func isMusicModelName(s string) bool {
+	for _, n := range musicModelNeedles {
+		if strings.Contains(s, n) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAsrModelName(s string) bool {
+	for _, n := range asrModelNeedles {
+		if strings.Contains(s, n) {
+			return true
+		}
+	}
+	return false
+}
+
 func generationCap(cap string) bool {
 	switch NormalizeCap(cap) {
-	case CapChat, CapImage, CapVideo, CapSpeech:
+	case CapChat, CapImage, CapVideo, CapSpeech, CapMusic, CapStock, CapASR:
 		return true
 	default:
 		return false

@@ -107,9 +107,6 @@ func (e *Engine) runCanvasTimeline(j *Job) error {
 }
 
 func (e *Engine) runCanvasTranscribe(j *Job) error {
-	if e.WHISPER == "" {
-		return fmt.Errorf("whisper is not available — set WHISPER_BIN or install whisper.cpp")
-	}
 	p := parseParams(j.Params)
 	res, err := e.getCanvasResource(p.ResourceID)
 	if err != nil {
@@ -124,13 +121,23 @@ func (e *Engine) runCanvasTranscribe(j *Job) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	out := filepath.Join(tmp, "out")
-	cmd := exec.Command(e.WHISPER, "-f", path, "-otxt", "-of", out)
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("whisper: %s", strings.TrimSpace(string(b)))
+	cues, text, err := e.cutBin().Transcribe(path, tmp)
+	if err != nil {
+		return err
 	}
-	text, _ := os.ReadFile(out + ".txt")
-	p.TextDraft = strings.TrimSpace(string(text))
+	if text == "" && len(cues) > 0 {
+		var b strings.Builder
+		for _, c := range cues {
+			if c.Text != "" {
+				if b.Len() > 0 {
+					b.WriteByte(' ')
+				}
+				b.WriteString(c.Text)
+			}
+		}
+		text = b.String()
+	}
+	p.TextDraft = strings.TrimSpace(text)
 	p.ResultState = "READY"
 	j.Params = marshalJSON(p)
 	j.Status = "succeeded"

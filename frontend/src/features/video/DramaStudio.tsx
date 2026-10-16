@@ -14,6 +14,7 @@ import { subscribeItems } from "../../lib/stream";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 import { ingestSeriesFile } from "./bind";
+import { requestSendToCut } from "./open-cut";
 import { modelOptionName, useConfigStore } from "@yingce/stores/use-config-store";
 import { commitEpisodeTitle, commitSeriesTitle, firstLook, isAgentStep, jobMoving, phaseDone, phaseQueue, pipeStatus, selectedClipIds, shownEpisodeTitle, shownSeriesTitle, type Bundle, type Drama, type Episode, type EpisodePlan, type Job, type Phase, type PhaseStep, type Shot } from "./drama-lib";
 import { BoardInspector, CastGrid, CastInspector, CutInspector, EmptyDesk, EpisodeMap, GenerationSettings, JobDrawer, ScriptStage } from "./drama-stages";
@@ -709,6 +710,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                       if (s?.ffmpeg_install && typeof s.ffmpeg_install === "object") setFfmpegInstall(s.ffmpeg_install);
                     }).catch((e) => toast.error(api.errMessage(e)));
                   }}
+                  onSendToCut={(hash, title) => requestSendToCut({ hash, title })}
                 />
               ) : null}
               {ep ? (

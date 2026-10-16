@@ -23,13 +23,17 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Follow** jobs continue an existing thread. Isolated cron/heartbeat/webhook jobs stay a separate class and still isolate.
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
-- **Video** is a conversation surface. Create / Drama / Canvas share one
-  chrome. Drama chat stays the home; the episode board is an on-demand
-  director desk split, not a right column and not an eight-stage factory
-  console. Video chats and Agent chats are separate session channels.
+- **Video** is one chrome with four lanes. **创作** is the conductor
+  agent: a main chat (empty: talk through a piece, featured cases below;
+  attach a clip in the box to cut or analyze). **短片 / 短剧 / 画布** are workshops that
+  still own T2V. Shared post (`internal/video/cut`: Breakdown, EditList,
+  Stems, Captions) is infrastructure, not a fourth product. Assembled
+  shorts, stitched episodes, and canvas video nodes send to 创作 with
+  one **去剪辑** action, then finish the film on the conductor.
+  Video chats and Agent chats stay separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
 - **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree. Methodology packs (Superpowers) session-start bootstrap; domain packs (NovelToGame) do not. Everything defaults off; enabling one is a workspace choice, not a per-turn toggle. Harbor never loads them.
-- **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, search, storage, and workflow accounts share one registry. Keys stay in the vault. See [architecture/persist.md](architecture/persist.md).
+- **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, music, stock, asr, search, storage, and workflow accounts share one registry. Generation catalogs domestic vendors (Qwen / Jimeng / Kolors / CogView / Hunyuan / Vidu / Kling / CosyVoice / Spark / Mureka / DashScope / Volcengine / Tencent COS) alongside international ones. Keys stay in the vault. The conductor only sees enabled rows that have a key. See [architecture/persist.md](architecture/persist.md).
 
 ## Distinctive, not decorative
 

@@ -195,18 +195,40 @@ func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string)
 
 var studioSkillNames = []string{"studio-script", "studio-storyboard", "studio-assemble", "studio-talking-head"}
 
+var conductorSkillNames = []string{"studio-conductor"}
+
 const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts project with studio_get. Write the spoken script with studio_update, then studio_approve_script before spending TTS or image. Generate stills with studio_generate_shot — never invent CAS hashes."
 
 const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Approve the script before Speak or image gen. Use studio_generate_shot / studio_generate_missing for stills. Never invent CAS hashes. If generation is not configured, tell the operator to upload stills on the Shorts desk or add an image adapter."
 
+const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route only after they pick 短片 / 短剧 / 画布. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
+
+const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu only, until a workshop is bound. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布."
+
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}
+
+func (a *App) videoChannel(sessionID string) bool {
+	if a == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	meta, err := a.GetSession(sessionID)
+	return err == nil && session.NormalizeChannel(meta.Channel) == session.ChannelVideo
+}
 
 func (a *App) studioLane(sessionID string) bool {
 	if a == nil || a.Video == nil || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
+	_, ok := a.Video.StudioSessionBind(sessionID)
+	return ok
+}
+
+func (a *App) conductorLane(sessionID string) bool {
+	if a == nil || a.Video == nil || !a.videoChannel(sessionID) {
+		return false
+	}
 	if _, ok := a.Video.StudioSessionBind(sessionID); ok {
-		return true
+		return false
 	}
 	if _, ok := a.Video.SessionBind(sessionID); ok {
 		return false
@@ -214,31 +236,93 @@ func (a *App) studioLane(sessionID string) bool {
 	if _, ok := a.Video.CanvasSessionBind(sessionID); ok {
 		return false
 	}
-	if meta, err := a.GetSession(sessionID); err == nil && session.NormalizeChannel(meta.Channel) == session.ChannelVideo {
-		return true
+	return true
+}
+
+func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || a.Video == nil {
+		return
 	}
-	return false
+	_, studioBound := a.Video.StudioSessionBind(sessionID)
+	_, dramaBound := a.Video.SessionBind(sessionID)
+	_, canvasBound := a.Video.CanvasSessionBind(sessionID)
+	if !studioBound && !dramaBound && !canvasBound && !a.videoChannel(sessionID) {
+		return
+	}
+	if tools.Extra == nil {
+		tools.Extra = map[string]runtime.ExtraTool{}
+	}
+	askNet := map[string]bool{"cut_dub": true, "cut_ingest": true}
+	for _, spec := range video.CutToolSpecs() {
+		spec := spec
+		tools.Extra[spec.Name] = runtime.ExtraTool{
+			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
+			}},
+			ReadOnly:  spec.ReadOnly,
+			OpenWorld: askNet[spec.Name],
+			Exclusive: askNet[spec.Name],
+			Call: func(argsJSON string) runtime.ToolResult {
+				var args map[string]any
+				if argsJSON != "" {
+					_ = json.Unmarshal([]byte(argsJSON), &args)
+				}
+				if askNet[spec.Name] && a.Caps != nil {
+					if err := a.Caps.Check(capability.Request{
+						Level: capability.Network, Action: spec.Name, SessionID: sessionID, ForceAsk: true,
+					}); err != nil {
+						return runtime.ToolResult{Err: err}
+					}
+				}
+				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				return runtime.ToolResult{Content: out, Err: err}
+			},
+		}
+	}
+	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.CutToolNames())
+}
+
+func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || a.Video == nil || !a.conductorLane(sessionID) {
+		return
+	}
+	if tools.Extra == nil {
+		tools.Extra = map[string]runtime.ExtraTool{}
+	}
+	for _, spec := range video.ConductorToolSpecs() {
+		spec := spec
+		tools.Extra[spec.Name] = runtime.ExtraTool{
+			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
+			}},
+			ReadOnly: spec.ReadOnly,
+			Call: func(argsJSON string) runtime.ToolResult {
+				var args map[string]any
+				if argsJSON != "" {
+					_ = json.Unmarshal([]byte(argsJSON), &args)
+				}
+				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				return runtime.ToolResult{Content: out, Err: err}
+			},
+		}
+	}
+	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, video.ConductorToolNames())
+	tools.MarkSkillsLoaded(conductorSkillNames...)
+	a.pinConductorLane(tools)
+	if meta, err := a.GetSession(sessionID); err == nil {
+		next := uniqueStrings(meta.PinnedSkills, conductorSkillNames)
+		if len(next) > len(meta.PinnedSkills) {
+			_, _ = a.SetSessionPinnedSkills(sessionID, next)
+		}
+	}
 }
 
 func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil {
 		return
 	}
-	_, studioBound := a.Video.StudioSessionBind(sessionID)
-	if !studioBound {
-		if _, ok := a.Video.SessionBind(sessionID); ok {
-			return
-		}
-		if _, ok := a.Video.CanvasSessionBind(sessionID); ok {
-			return
-		}
-		videoChan := false
-		if meta, err := a.GetSession(sessionID); err == nil && session.NormalizeChannel(meta.Channel) == session.ChannelVideo {
-			videoChan = true
-		}
-		if !videoChan {
-			return
-		}
+	if _, studioBound := a.Video.StudioSessionBind(sessionID); !studioBound {
+		return
 	}
 	if tools.Extra == nil {
 		tools.Extra = map[string]runtime.ExtraTool{}
@@ -325,7 +409,28 @@ func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
 		advertised = append(advertised, n)
 	}
 	tools.Advertised = advertised
-	tools.AllowedTools = uniqueStrings(advertised, video.StudioToolNames(), []string{
+	tools.AllowedTools = uniqueStrings(advertised, video.StudioToolNames(), video.CutToolNames(), []string{
+		"load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_skill_file",
+	})
+}
+
+func (a *App) pinConductorLane(tools *runtime.WorkspaceTools) {
+	if tools == nil {
+		return
+	}
+	deny := map[string]bool{}
+	for _, n := range studioDeniedTools {
+		deny[n] = true
+	}
+	var advertised []string
+	for _, n := range tools.Advertised {
+		if deny[n] {
+			continue
+		}
+		advertised = append(advertised, n)
+	}
+	tools.Advertised = advertised
+	tools.AllowedTools = uniqueStrings(advertised, video.CutToolNames(), video.ConductorToolNames(), []string{
 		"load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_skill_file",
 	})
 }
@@ -997,6 +1102,145 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			out = append(out, row)
 		}
 		return out, nil
+	case "video.cut.list":
+		list := eng.ListCutProjects()
+		out := make([]map[string]any, 0, len(list))
+		for _, p := range list {
+			out = append(out, a.enrichCut(p))
+		}
+		return out, nil
+	case "video.cut.open":
+		p, err := eng.OpenCut(video.CutOpen{
+			Title:      str("title"),
+			Hash:       firstNonEmptyApp(str("hash"), str("source_hash")),
+			ResourceID: firstNonEmptyApp(str("resource_id"), str("resourceId"), str("storage_key"), str("storageKey")),
+			SessionID:  str("session_id"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.create":
+		p, err := eng.CreateCutProject(video.CutProject{Title: str("title"), SourceHash: str("hash")})
+		if err != nil {
+			return nil, err
+		}
+		if h := str("hash"); h != "" {
+			p, err = eng.CutIngest(p.ID, h, p.Title)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if sid := str("session_id"); sid != "" {
+			_ = eng.BindCutSession(sid, p.ID)
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.get":
+		p, err := eng.GetCutProject(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.bind":
+		return map[string]any{"ok": true}, eng.BindCutSession(str("session_id"), firstNonEmptyApp(str("id"), str("project_id")))
+	case "video.cut.session":
+		id, ok := eng.CutSessionBind(str("session_id"))
+		if !ok {
+			return map[string]any{}, nil
+		}
+		p, err := eng.GetCutProject(id)
+		if err != nil {
+			return map[string]any{"id": id}, nil
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.ingest":
+		p, err := eng.CutIngest(str("id"), str("hash"), str("title"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.analyze":
+		p, err := eng.CutAnalyze(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.propose":
+		p, err := eng.CutPropose(str("id"), intArgApp(params["count"]), firstNonEmptyApp(str("window"), str("duration")))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.apply":
+		p, err := eng.CutApply(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.extract":
+		p, err := eng.CutExtractAudio(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.enhance":
+		p, err := eng.CutEnhance(str("id"), str("preset"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.mix":
+		duck := true
+		if params["duck"] == false || str("duck") == "0" {
+			duck = false
+		}
+		p, err := eng.CutMix(str("id"), duck)
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.transcribe":
+		p, err := eng.CutTranscribe(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.captions":
+		p, err := eng.CutCaptions(str("id"), str("text"), firstNonEmptyApp(str("language"), str("lang")))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.burnin":
+		p, err := eng.CutBurnin(str("id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.dub":
+		p, err := eng.CutDub(str("id"), str("text"), str("voice"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.grade":
+		p, err := eng.CutGrade(str("id"), str("preset"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.stem":
+		p, err := eng.CutSetStem(str("id"), str("kind"), str("hash"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.delete":
+		return map[string]any{"ok": true}, eng.DeleteCutProject(str("id"))
+	case "video.route":
+		return eng.VideoRoute(str("session_id"), str("dest"), firstNonEmptyApp(str("id"), str("project_id")), str("title"))
+	case "video.providers.menu":
+		return eng.ProviderMenu(firstNonEmptyApp(str("capability"), str("service_type"))), nil
 	case "video.studio.jobs":
 		return eng.ListStudioJobs(str("id")), nil
 	case "video.topic.expand":
@@ -1350,5 +1594,21 @@ func (a *App) enrichMedia(ref video.MediaRef) map[string]any {
 	m := objJSON(ref)
 	m["media_url"] = a.mediaURL(ref.CASHash)
 	m["poster_url"] = a.mediaURL(ref.PosterHash)
+	return m
+}
+
+func (a *App) enrichCut(p video.CutProject) map[string]any {
+	m := objJSON(p)
+	m["media_url"] = a.mediaURL(firstNonEmptyApp(p.ResultHash, p.SourceHash))
+	m["source_url"] = a.mediaURL(p.SourceHash)
+	m["result_url"] = a.mediaURL(p.ResultHash)
+	m["poster_url"] = a.mediaURL(p.PosterHash)
+	clips := make([]map[string]any, 0, len(p.Breakdown.Clips))
+	for _, c := range p.Breakdown.Clips {
+		row := objJSON(c)
+		row["media_url"] = a.mediaURL(c.Hash)
+		clips = append(clips, row)
+	}
+	m["clips"] = clips
 	return m
 }
