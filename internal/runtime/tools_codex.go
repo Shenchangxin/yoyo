@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
@@ -99,7 +100,41 @@ func (t *WorkspaceTools) listSkills() ToolResult {
 		return ToolResult{Content: "no skills loaded"}
 	}
 	sort.Strings(names)
-	return ToolResult{Content: strings.Join(names, "\n")}
+	if t == nil || t.SkillMeta == nil {
+		return ToolResult{Content: strings.Join(names, "\n")}
+	}
+	budget := DefaultSkillCatalogBudget
+	if t.SkillCatalogBudget > 0 {
+		budget = t.SkillCatalogBudget
+	}
+	var b strings.Builder
+	b.WriteString("Skills catalog (also pinned). load_skill by name.\n")
+	used := 0
+	omitted := 0
+	for _, name := range names {
+		desc := ""
+		if s, ok := t.SkillMeta[name]; ok {
+			desc = strings.TrimSpace(s.Description)
+		}
+		line := name
+		if desc != "" {
+			if utf8.RuneCountInString(desc) > skillCatalogDescCap {
+				desc = capRunes(desc, skillCatalogDescCap)
+			}
+			line = name + ": " + desc
+		}
+		line += "\n"
+		if used+len(line) > budget && used > 0 {
+			omitted++
+			continue
+		}
+		b.WriteString(line)
+		used += len(line)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "… %d more omitted. Name one with load_skill or @skill.\n", omitted)
+	}
+	return ToolResult{Content: strings.TrimSpace(b.String())}
 }
 
 func (t *WorkspaceTools) viewImage(rel string) ToolResult {

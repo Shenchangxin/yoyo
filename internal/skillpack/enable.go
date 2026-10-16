@@ -181,7 +181,12 @@ func EnabledSkillDirs(home, workspace string, global map[string]Pref) []string {
 func RuntimeFor(home, workspace string, global map[string]Pref, goos string) []Session {
 	var out []Session
 	for _, st := range List(home, workspace, global) {
-		if !st.Enabled || st.BootstrapSkill == "" {
+		if !st.Enabled {
+			continue
+		}
+		// Domain packs have no BootstrapSkill. They still join the session so
+		// the host can pin a short routing line and match the orchestrator.
+		if st.Methodology && st.BootstrapSkill == "" {
 			continue
 		}
 		out = append(out, Session{

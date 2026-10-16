@@ -95,6 +95,34 @@ func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]
 	return strings.TrimSpace(b.String()), refs
 }
 
+func ExpandNamedSkills(skills, skillDirs map[string]string, names []string, budget int) string {
+	if budget <= 0 {
+		budget = 2400
+	}
+	var b strings.Builder
+	used := 0
+	seen := map[string]bool{}
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		remain := budget - used
+		chunk := mentionChunk("", "", skills, skillDirs, Mention{Kind: "skill", Ref: name}, remain)
+		if chunk == "" {
+			continue
+		}
+		if used+len(chunk) > budget && used > 0 {
+			b.WriteString("…[mentions truncated]\n")
+			break
+		}
+		b.WriteString(chunk)
+		used += len(chunk)
+	}
+	return strings.TrimSpace(b.String())
+}
+
 func MentionSkillNames(refs []Mention) []string {
 	var out []string
 	seen := map[string]bool{}

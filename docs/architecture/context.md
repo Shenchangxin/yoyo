@@ -154,7 +154,7 @@ Harbor 不设 `ModelWindow`，预算钉死 `CompactionTokens`（默认 24k），
 | Spill-first ingest | `context_ingest.go` | 先落盘再预览，对证优于 Codex 丢字节 |
 | 重写调用体 stub | `stubHeavyCalls` | 防「凭记忆整树重写」 |
 | 配对边界 snip | `pairingBoundary` + `Legalize` | 不会把半个 tool_call 交给 Chat Completions |
-| Skill catalog / `load_skill` | `AssemblePins` | progressive disclosure |
+| Skill catalog / `load_skill` | `AssemblePins` | progressive disclosure; chat catalog has trigger rules + budget; domain packs add a short routing pin |
 | Skill Pack bootstrap | `ApplyPackBootstrap` + `BootstrapBodies` | Shape B：进程内预载，不进 identity；child `Depth>0` 跳过 |
 | `read_skill_file` | `skill_file.go` | 包目录在工作区 jail 外 |
 | Chat 工具菜单 + `tool_search` | `chat_menu.go` | 主机工具不全量广告 |

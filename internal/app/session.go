@@ -623,24 +623,26 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		a.MCP.SetRoots([]string{toolRoot})
 	}
 	tools := &runtime.WorkspaceTools{
-		Workspace:  toolRoot,
-		Home:       a.Home.Root,
-		SessionID:  sessionID,
-		Caps:       a.Caps,
-		Skills:     skillBodies,
-		SkillDirs:  skillDirs,
-		SkillMeta:  skillMeta,
-		Loaded:     uniqueStrings(meta.PinnedSkills, meta.LoadedSkills),
-		Policy:     pol,
-		PlanMode:   loop.PlanMode,
-		Ctx:        ctx,
-		Extra:      a.extraTools(sessionID),
-		Spill:      runtime.BindSpill(a.Home.Root, toolRoot, sessionID),
-		PlanText:   sessionPlanText(meta, toolRoot),
-		Advertised: append([]string(nil), snap.Tools...),
-		AskUser:    a.askUserFn(ctx, sessionID),
-		Packs:      a.packSessions(skillRoot),
-		Pages:      a.Pages,
+		Workspace:          toolRoot,
+		Home:               a.Home.Root,
+		SessionID:          sessionID,
+		Caps:               a.Caps,
+		Skills:             skillBodies,
+		SkillDirs:          skillDirs,
+		SkillMeta:          skillMeta,
+		Loaded:             uniqueStrings(meta.PinnedSkills, meta.LoadedSkills),
+		Policy:             pol,
+		PlanMode:           loop.PlanMode,
+		Ctx:                ctx,
+		Extra:              a.extraTools(sessionID),
+		Spill:              runtime.BindSpill(a.Home.Root, toolRoot, sessionID),
+		PlanText:           sessionPlanText(meta, toolRoot),
+		Advertised:         append([]string(nil), snap.Tools...),
+		AskUser:            a.askUserFn(ctx, sessionID),
+		Packs:              a.packSessions(skillRoot),
+		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
+		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
+		Pages:              a.Pages,
 		OnCapture: func(kind, path, summary string) {
 			a.rememberCapture(sessionID, kind, path, summary)
 		},
@@ -725,9 +727,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 
 	inject := ""
+	voice := runtime.OperatorVoice(message, hist)
 	if resume {
 		message = ""
 		atts = nil
+		voice = runtime.OperatorVoice(message, hist)
 	} else {
 		if meta.Title == "" || meta.Title == "session" {
 			meta.Title = titleFrom(message)
@@ -739,7 +743,30 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 		var refs []runtime.Mention
 		inject, refs = runtime.ExpandMentionsPacks(toolRoot, message, note, skillBodies, skillDirs, 3200)
-		tools.MarkSkillsLoaded(runtime.MentionSkillNames(refs)...)
+		mentioned := runtime.MentionSkillNames(refs)
+		tools.MarkSkillsLoaded(mentioned...)
+		remain := 3200 - len(inject)
+		if remain < 400 {
+			remain = 400
+		}
+		autoInject, hints, auto := runtime.ApplySkillMatch(runtime.SkillMatchReq{
+			Voice:     voice,
+			Skills:    skills,
+			Packs:     tools.Packs,
+			Loaded:    tools.Loaded,
+			Mentioned: mentioned,
+			Depth:     tools.Depth,
+			Mode:      tools.SkillAutoInvoke,
+		}, skillBodies, skillDirs, remain)
+		tools.SkillHints = hints
+		tools.Autoloaded = auto
+		if autoInject != "" {
+			if inject != "" {
+				inject += "\n"
+			}
+			inject += autoInject
+			tools.MarkSkillsLoaded(auto...)
+		}
 		if extra := runtime.ExpandAttachments(toolRoot, toRuntimeAtts(atts), 2400); extra != "" {
 			if inject != "" {
 				inject += "\n"
@@ -754,7 +781,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			profile = a.Memory.ProfilePin(800)
 		}
 	}
-	voice := runtime.OperatorVoice(message, hist)
 	tools.OperatorVoice = voice
 	frags = append(append([]artifact.PromptFragment(nil), frags...), runtime.ChatConduct(runtime.ConductOpts{Plan: loop.PlanMode, Methodology: runtime.HasMethodologyPack(tools.Packs)})...)
 	if pin := runtime.LanguagePin(voice); pin.Text != "" {

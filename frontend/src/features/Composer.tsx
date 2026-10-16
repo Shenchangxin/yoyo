@@ -37,6 +37,7 @@ import {
   mentionableSkills,
   peelCompletedMentions,
   pinFromToken,
+  suggestSkills,
   type MentionKind,
   type MentionPin,
 } from "../lib/mentions";
@@ -82,6 +83,7 @@ export function Composer(props: {
   ask?: Approval | null;
   onResolveAsk?: (id: string, decision: string, answer?: string) => void;
   methodologyActive?: boolean;
+  autoSkills?: { name: string; loaded?: boolean }[];
   onBuildPlan?: () => void;
   sessionId?: string;
   profileId?: string;
@@ -101,6 +103,8 @@ export function Composer(props: {
   const [focused, setFocused] = useState(false);
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [chips, setChips] = useState<MentionPin[]>([]);
+  const [dismissedSuggest, setDismissedSuggest] = useState<string[]>([]);
+  const [dismissedAuto, setDismissedAuto] = useState<string[]>([]);
   const [fileQ, setFileQ] = useState<string | null>(null);
   const [caret, setCaret] = useState(0);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -180,6 +184,24 @@ export function Composer(props: {
   const popup = hint === "slash"
     ? slashItems.map((s) => ({ token: s.cmd, label: s.cmd, hint: s.hint, kind: undefined as MentionKind | undefined }))
     : mentionItems;
+  const pinnedSkillNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const c of chips) {
+      if (c.kind === "skill") names.add(c.token.replace(/^@skill:/, ""));
+    }
+    for (const m of value.matchAll(/@skill:(\S+)/g)) names.add(m[1]);
+    return names;
+  }, [chips, value]);
+  const suggestedSkills = useMemo(() => {
+    if (hint || props.disabled) return [];
+    const prose = value.replace(/@(?:file|folder|skill):\S+|@harness\b/g, " ").trim();
+    if (prose.length < 2) return [];
+    return suggestSkills(props.skills || [], prose).filter((s) => !pinnedSkillNames.has(s.name) && !dismissedSuggest.includes(s.name));
+  }, [hint, props.disabled, props.skills, value, pinnedSkillNames, dismissedSuggest]);
+  const autoSkillChips = useMemo(
+    () => (props.autoSkills || []).filter((s) => s.name && !dismissedAuto.includes(s.name) && !pinnedSkillNames.has(s.name)),
+    [props.autoSkills, dismissedAuto, pinnedSkillNames],
+  );
   const showPopup = hint === "mention" || (!!hint && popup.length > 0);
   const popupWelded = showPopup && (slashOpen || hint === "mention");
 
@@ -188,6 +210,8 @@ export function Composer(props: {
     setHi(0);
     setAtts([]);
     setChips([]);
+    setDismissedSuggest([]);
+    setDismissedAuto([]);
     setFileQ(null);
   }, [props.draftKey]);
 
@@ -384,6 +408,44 @@ export function Composer(props: {
         >
           {props.taskPlan ? (
             <PlanChip key={props.draftKey} plan={props.taskPlan} running={props.running} compact={props.compact} onBuild={props.onBuildPlan} />
+          ) : null}
+          {suggestedSkills.length || autoSkillChips.length ? (
+            <div className="flex flex-wrap items-center gap-1 px-3 pt-2.5">
+              {autoSkillChips.map((s) => (
+                <Tooltip key={`auto-${s.name}`} content={copy.composer.autoLoadedSkillHint}>
+                  <button
+                    type="button"
+                    data-testid="auto-skill-chip"
+                    className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-lift px-1.5 py-0.5 text-[11px] text-foreground hover:bg-lift/80"
+                    onClick={() => setDismissedAuto((prev) => prev.includes(s.name) ? prev : [...prev, s.name])}
+                  >
+                    <BookOpen className="size-3 shrink-0 opacity-70" />
+                    <span className="truncate">{copy.composer.autoLoadedSkill.replace("{name}", s.name)}</span>
+                    <X className="size-3 shrink-0 opacity-70" />
+                  </button>
+                </Tooltip>
+              ))}
+              {suggestedSkills.map((s) => (
+                <Tooltip key={`suggest-${s.name}`} content={s.description || copy.composer.suggestSkillHint}>
+                  <button
+                    type="button"
+                    data-testid="suggest-skill-chip"
+                    className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-line/70 bg-transparent px-1.5 py-0.5 text-[11px] text-muted hover:bg-lift hover:text-foreground"
+                    onClick={() => insertMention(`@skill:${s.name}`)}
+                  >
+                    <BookOpen className="size-3 shrink-0 opacity-70" />
+                    <span className="truncate">{copy.composer.suggestSkill} · {s.displayName || s.name}</span>
+                    <X
+                      className="size-3 shrink-0 opacity-70"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDismissedSuggest((prev) => prev.includes(s.name) ? prev : [...prev, s.name]);
+                      }}
+                    />
+                  </button>
+                </Tooltip>
+              ))}
+            </div>
           ) : null}
           {chips.length || atts.length ? (
             <div className="flex flex-wrap items-center gap-1 px-3 pt-2.5">

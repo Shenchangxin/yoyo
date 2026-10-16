@@ -105,6 +105,48 @@ func HasMethodologyPack(packs []PackSession) bool {
 	return false
 }
 
+func DomainOrchestrators(packs []PackSession) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range packs {
+		if p.Methodology || strings.TrimSpace(p.BootstrapSkill) != "" {
+			continue
+		}
+		if id := strings.TrimSpace(p.ID); id != "" {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// DomainRoutingPin is a short, cache-stable hint for enabled domain packs.
+// It does not preload SKILL.md or the full ToolMapping adapter.
+func DomainRoutingPin(packs []PackSession) string {
+	var lines []string
+	for _, p := range packs {
+		if p.Methodology || strings.TrimSpace(p.BootstrapSkill) != "" {
+			continue
+		}
+		id := strings.TrimSpace(p.ID)
+		if id == "" {
+			continue
+		}
+		lines = append(lines, domainRoutingLine(id))
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n## Enabled domain packs\n" + strings.Join(lines, "\n") + "\n"
+}
+
+func domainRoutingLine(id string) string {
+	switch id {
+	case "novel-to-game":
+		return "- novel-to-game: load_skill novel-to-game when adapting a novel into a playable game. Stage siblings: novel-game-analyze, game-concept, game-world-design, game-art-direction, game-build, game-qa. @skill is an override, not a prerequisite."
+	default:
+		return "- " + id + ": load_skill " + id + " when the task matches this pack's catalog descriptions. @skill is an override, not a prerequisite."
+	}
+}
+
 type SessionStart struct {
 	SessionID         string
 	Workspace         string

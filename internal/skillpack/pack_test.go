@@ -290,8 +290,8 @@ func TestInstallNovelToGameWritesMappingAndStaysOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt := RuntimeFor(home, ws, nil, "linux")
-	if len(rt) != 0 {
-		t.Fatalf("domain pack must not session-bootstrap: %+v", rt)
+	if len(rt) != 1 || rt[0].ID != NovelToGameID || rt[0].BootstrapSkill != "" || rt[0].Methodology {
+		t.Fatalf("domain pack must be routable without bootstrap: %+v", rt)
 	}
 	dirs := EnabledSkillDirs(home, ws, nil)
 	if len(dirs) != 1 {

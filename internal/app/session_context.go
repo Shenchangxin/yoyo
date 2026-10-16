@@ -37,17 +37,19 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	skillBodies, _, _ := runtime.MapSkills(skills)
 	spill := runtime.BindSpill(a.Home.Root, ws, sessionID)
 	tools := &runtime.WorkspaceTools{
-		Workspace: ws,
-		SessionID: sessionID,
-		Caps:      a.Caps,
-		Skills:    skillBodies,
-		Loaded:    append([]string(nil), meta.LoadedSkills...),
-		Policy:    pol,
-		PlanMode:  loop.PlanMode,
-		Extra:     a.extraTools(sessionID),
-		Spill:     spill,
-		PlanText:  meta.PlanText,
-		Packs:     a.packSessions(ws),
+		Workspace:          ws,
+		SessionID:          sessionID,
+		Caps:               a.Caps,
+		Skills:             skillBodies,
+		Loaded:             append([]string(nil), meta.LoadedSkills...),
+		Policy:             pol,
+		PlanMode:           loop.PlanMode,
+		Extra:              a.extraTools(sessionID),
+		Spill:              spill,
+		PlanText:           meta.PlanText,
+		Packs:              a.packSessions(ws),
+		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
+		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)

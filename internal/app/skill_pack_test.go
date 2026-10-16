@@ -143,8 +143,9 @@ func TestInstallNovelToGamePackIsDomain(t *testing.T) {
 	if !st.Installed || !st.Enabled || st.Methodology {
 		t.Fatalf("%+v", st)
 	}
-	if len(a.packSessions(a.Workspace())) != 0 {
-		t.Fatal("domain pack must not bootstrap a session")
+	ps := a.packSessions(a.Workspace())
+	if len(ps) != 1 || ps[0].ID != skillpack.NovelToGameID || ps[0].BootstrapSkill != "" || ps[0].Methodology {
+		t.Fatalf("domain pack must join session without bootstrap: %+v", ps)
 	}
 	roots := a.skillRoots(a.Workspace())
 	found := false

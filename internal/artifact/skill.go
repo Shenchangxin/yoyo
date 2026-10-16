@@ -11,15 +11,16 @@ import (
 )
 
 type skillFrontmatter struct {
-	Name          string `yaml:"name"`
-	Description   string `yaml:"description"`
-	DescriptionZH string `yaml:"description_zh"`
-	DisplayName   string `yaml:"display_name"`
-	Icon          string `yaml:"icon"`
-	License       string `yaml:"license"`
-	Compatibility string `yaml:"compatibility"`
-	Metadata      any    `yaml:"metadata"`
-	AllowedTools  any    `yaml:"allowed-tools"`
+	Name                   string `yaml:"name"`
+	Description            string `yaml:"description"`
+	DescriptionZH          string `yaml:"description_zh"`
+	DisplayName            string `yaml:"display_name"`
+	Icon                   string `yaml:"icon"`
+	License                string `yaml:"license"`
+	Compatibility          string `yaml:"compatibility"`
+	Metadata               any    `yaml:"metadata"`
+	AllowedTools           any    `yaml:"allowed-tools"`
+	DisableModelInvocation bool   `yaml:"disable-model-invocation"`
 }
 
 // ParseSkillMD parses an Agent Skills SKILL.md document.
@@ -56,18 +57,45 @@ func ParseSkillMD(raw, source string) (Skill, error) {
 		return Skill{}, fmt.Errorf("skill: description too long")
 	}
 	return Skill{
-		Name:          meta.Name,
-		Description:   desc,
-		DisplayName:   strings.TrimSpace(meta.DisplayName),
-		Icon:          SafeIconURL(meta.Icon),
-		License:       meta.License,
-		Compatibility: meta.Compatibility,
-		Metadata:      flattenMeta(meta.Metadata),
-		AllowedTools:  anyString(meta.AllowedTools),
-		Body:          body,
-		Source:        source,
-		Dir:           skillDir(source),
+		Name:                   meta.Name,
+		Description:            desc,
+		DisplayName:            strings.TrimSpace(meta.DisplayName),
+		Icon:                   SafeIconURL(meta.Icon),
+		License:                meta.License,
+		Compatibility:          meta.Compatibility,
+		Metadata:               flattenMeta(meta.Metadata),
+		AllowedTools:           anyString(meta.AllowedTools),
+		DisableModelInvocation: meta.DisableModelInvocation,
+		Body:                   body,
+		Source:                 source,
+		Dir:                    skillDir(source),
 	}, nil
+}
+
+// AllowsImplicit reports whether the host or model may load this skill
+// without an explicit @skill / $skill / slash invocation.
+func (s Skill) AllowsImplicit() bool {
+	if s.DisableModelInvocation {
+		return false
+	}
+	for k, v := range s.Metadata {
+		kl := strings.ToLower(k)
+		vl := strings.ToLower(strings.TrimSpace(v))
+		if vl == "" {
+			continue
+		}
+		if strings.HasSuffix(kl, "allow_implicit_invocation") || strings.HasSuffix(kl, "allow-implicit-invocation") {
+			if vl == "false" || vl == "0" || vl == "no" || vl == "off" {
+				return false
+			}
+		}
+		if strings.HasSuffix(kl, "disable-model-invocation") || strings.HasSuffix(kl, "disable_model_invocation") {
+			if vl == "true" || vl == "1" || vl == "yes" || vl == "on" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func skillDir(source string) string {

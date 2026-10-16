@@ -34,17 +34,18 @@ type PromptFragment struct {
 }
 
 type Skill struct {
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	DisplayName   string            `json:"display_name,omitempty"`
-	Icon          string            `json:"icon,omitempty"`
-	License       string            `json:"license,omitempty"`
-	Compatibility string            `json:"compatibility,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	AllowedTools  string            `json:"allowed_tools,omitempty"`
-	Body          string            `json:"body"`
-	Source        string            `json:"source,omitempty"`
-	Dir           string            `json:"dir,omitempty"`
+	Name                   string            `json:"name"`
+	Description            string            `json:"description"`
+	DisplayName            string            `json:"display_name,omitempty"`
+	Icon                   string            `json:"icon,omitempty"`
+	License                string            `json:"license,omitempty"`
+	Compatibility          string            `json:"compatibility,omitempty"`
+	Metadata               map[string]string `json:"metadata,omitempty"`
+	AllowedTools           string            `json:"allowed_tools,omitempty"`
+	DisableModelInvocation bool              `json:"disable_model_invocation,omitempty"`
+	Body                   string            `json:"body"`
+	Source                 string            `json:"source,omitempty"`
+	Dir                    string            `json:"dir,omitempty"`
 }
 
 type PlaybookBullet struct {

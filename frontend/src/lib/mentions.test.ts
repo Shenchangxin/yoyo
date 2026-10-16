@@ -4,6 +4,7 @@ import {
   mergeMentionPins,
   pinsFromAttachments,
   sameUserTurnText,
+  suggestSkills,
 } from "./mentions.ts";
 
 test("pinsFromAttachments skips images and uses the basename", () => {
@@ -29,4 +30,15 @@ test("sameUserTurnText treats stamped @file as the same optimistic turn", () => 
   assert.equal(sameUserTurnText("", "@file:.yoyo/uploads/novel.md"), true);
   assert.equal(sameUserTurnText("@skill:novel-to-game", "@skill:other-skill"), false);
   assert.equal(sameUserTurnText("adapt this", "adapt this\n@file:.yoyo/uploads/novel.md"), true);
+});
+
+test("suggestSkills matches Chinese novel-to-game intent", () => {
+  const hits = suggestSkills(
+    [
+      { name: "plan-first", description: "Keep a visible task plan." },
+      { name: "novel-to-game", description: "Turn a novel into a playable game.", slug: "novel-to-game" },
+    ],
+    "把这本小说做成游戏",
+  );
+  assert.equal(hits[0]?.name, "novel-to-game");
 });
