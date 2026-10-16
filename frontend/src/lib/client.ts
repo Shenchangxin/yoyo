@@ -1362,6 +1362,7 @@ export async function listSkills(workspace?: string): Promise<SkillInfo[]> {
     slug: str(pick(v, "slug", "Slug")),
     incomplete: str(pick(v, "incomplete", "Incomplete")) === "1" || bool(pick(v, "incomplete", "Incomplete")),
     pack: str(pick(v, "pack", "Pack")),
+    installId: str(pick(v, "install_id", "InstallID", "installId")),
   })).filter((x) => x.name);
 }
 
@@ -1382,9 +1383,19 @@ export async function getSkill(workspace: string, name: string): Promise<SkillIn
     slug: str(pick(raw, "slug", "Slug")),
     incomplete: str(pick(raw, "incomplete", "Incomplete")) === "1" || bool(pick(raw, "incomplete", "Incomplete")),
     pack: str(pick(raw, "pack", "Pack")),
+    installId: str(pick(raw, "install_id", "InstallID", "installId")),
   };
   return info.name ? info : null;
 }
+
+export type SkillMarketHub = {
+  id: string;
+  name: string;
+  homepage: string;
+  attribution: string;
+  browse: boolean;
+  search: boolean;
+};
 
 export type SkillMarketItem = {
   slug: string;
@@ -1397,22 +1408,56 @@ export type SkillMarketItem = {
   displayName?: string;
   version?: string;
   hasScripts?: boolean;
+  hub?: string;
+  id?: string;
+  owner?: string;
+  pageUrl?: string;
+  repo?: string;
+  downloads?: number;
+  stars?: number;
 };
 
 export type SkillMarketCatalog = {
   source: string;
   fetchedAt: string;
   items: SkillMarketItem[];
+  hub?: string;
+  hubs?: SkillMarketHub[];
+  query?: string;
+  searchOnly?: boolean;
+  warning?: string;
+  attribution?: string;
+  total?: number;
+  truncated?: boolean;
 };
 
-export async function skillMarket(refresh = false): Promise<SkillMarketCatalog> {
+export async function skillMarket(refresh = false, hub = "", query = ""): Promise<SkillMarketCatalog> {
   const s = await wailsService();
+  const qs = new URLSearchParams();
+  if (refresh) qs.set("refresh", "1");
+  if (hub) qs.set("hub", hub);
+  if (query) qs.set("q", query);
   const raw = s?.SkillMarket
-    ? await s.SkillMarket(refresh)
-    : await http(`/api/skills/market${refresh ? "?refresh=1" : ""}`);
+    ? await s.SkillMarket(refresh, hub || "", query || "")
+    : await http(`/api/skills/market${qs.toString() ? `?${qs}` : ""}`);
   return {
     source: str(pick(raw, "source", "Source"), "infometa/workbuddyskills"),
     fetchedAt: str(pick(raw, "fetched_at", "FetchedAt")),
+    hub: str(pick(raw, "hub", "Hub")),
+    query: str(pick(raw, "query", "Query")),
+    searchOnly: bool(pick(raw, "search_only", "SearchOnly", "searchOnly")),
+    warning: str(pick(raw, "warning", "Warning")),
+    attribution: str(pick(raw, "attribution", "Attribution")),
+    total: num(pick(raw, "total", "Total")),
+    truncated: bool(pick(raw, "truncated", "Truncated")),
+    hubs: asArray(pick(raw, "hubs", "Hubs")).map((v) => ({
+      id: str(pick(v, "id", "ID")),
+      name: str(pick(v, "name", "Name")),
+      homepage: str(pick(v, "homepage", "Homepage")),
+      attribution: str(pick(v, "attribution", "Attribution")),
+      browse: bool(pick(v, "browse", "Browse")),
+      search: bool(pick(v, "search", "Search")),
+    })).filter((h) => h.id),
     items: asArray(pick(raw, "items", "Items")).map((v) => ({
       slug: str(pick(v, "slug", "Slug")),
       name: str(pick(v, "name", "Name")),
@@ -1424,6 +1469,13 @@ export async function skillMarket(refresh = false): Promise<SkillMarketCatalog> 
       displayName: str(pick(v, "display_name", "DisplayName", "displayName")),
       version: str(pick(v, "version", "Version")),
       hasScripts: bool(pick(v, "has_scripts", "HasScripts", "hasScripts")),
+      hub: str(pick(v, "hub", "Hub")),
+      id: str(pick(v, "id", "ID")),
+      owner: str(pick(v, "owner", "Owner")),
+      pageUrl: str(pick(v, "page_url", "PageURL", "pageUrl")),
+      repo: str(pick(v, "repo", "Repo")),
+      downloads: num(pick(v, "downloads", "Downloads")),
+      stars: num(pick(v, "stars", "Stars")),
     })).filter((x) => x.slug),
   };
 }

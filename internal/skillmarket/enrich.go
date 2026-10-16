@@ -10,10 +10,12 @@ import (
 )
 
 type gitTree struct {
-	Truncated bool `json:"truncated"`
+	SHA       string `json:"sha"`
+	Truncated bool   `json:"truncated"`
 	Tree      []struct {
 		Path string `json:"path"`
 		Type string `json:"type"`
+		Size int    `json:"size"`
 	} `json:"tree"`
 }
 
@@ -43,19 +45,23 @@ func mergeCachedMeta(items, previous []Item) {
 	}
 }
 
-func enrichFromTree(items []Item) {
-	u := derivedTreeURL(Base)
-	if u == "" {
-		return
-	}
-	raw, err := Get(u)
-	if err != nil {
-		return
-	}
+func enrichFromTree(items []Item) []Item {
 	var tree gitTree
-	if json.Unmarshal(raw, &tree) != nil || len(tree.Tree) == 0 {
-		return
+	if u := derivedTreeURL(Base); u != "" {
+		raw, err := Get(u)
+		if err == nil {
+			_ = json.Unmarshal(raw, &tree)
+		}
 	}
+	if len(tree.Tree) == 0 && strings.Contains(Base, "infometa/workbuddyskills") {
+		if t, err := loadGitTree("infometa/workbuddyskills", "main"); err == nil {
+			tree = t
+		}
+	}
+	if len(tree.Tree) == 0 {
+		return items
+	}
+	items = appendTreeSkills(items, tree)
 	idx := map[string]int{}
 	for i := range items {
 		idx[items[i].Slug] = i
@@ -84,6 +90,29 @@ func enrichFromTree(items []Item) {
 			items[i].Icon = packFileURL(slug, rest)
 		}
 	}
+	return items
+}
+
+func appendTreeSkills(items []Item, tree gitTree) []Item {
+	idx := map[string]bool{}
+	for _, it := range items {
+		idx[it.Slug] = true
+	}
+	for _, node := range tree.Tree {
+		if node.Type != "blob" {
+			continue
+		}
+		slug, rest, ok := skillRel(node.Path)
+		if !ok || !strings.EqualFold(rest, "SKILL.md") {
+			continue
+		}
+		if idx[slug] {
+			continue
+		}
+		idx[slug] = true
+		items = append(items, Item{Slug: slug, Name: slug, Category: "Skills"})
+	}
+	return items
 }
 
 func skillRel(p string) (slug, rest string, ok bool) {

@@ -313,6 +313,7 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 			"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
 			"slug":         filepath.Base(item.Dir),
 			"pack":         skillPackID(item.Dir, a.Home.Root),
+			"install_id":   skillInstallID(item.Dir),
 		}
 		if skillmarket.PackIncomplete(item.Dir, item.Body) {
 			row["incomplete"] = "1"
@@ -325,7 +326,7 @@ func (a *App) ListSkills(workspace string) []map[string]string {
 func (a *App) GetSkill(workspace, name string) map[string]string {
 	name = strings.TrimSpace(name)
 	for _, item := range a.collectSkills(workspace) {
-		if item.Name == name || filepath.Base(item.Dir) == name {
+		if item.Name == name || filepath.Base(item.Dir) == name || strings.EqualFold(item.Name, name) || strings.EqualFold(item.DisplayName, name) || strings.EqualFold(filepath.Base(item.Dir), name) {
 			row := map[string]string{
 				"name":         item.Name,
 				"description":  item.Description,
@@ -337,6 +338,7 @@ func (a *App) GetSkill(workspace, name string) map[string]string {
 				"files":        strings.Join(runtime.SkillPackFiles(item.Dir), ","),
 				"slug":         filepath.Base(item.Dir),
 				"pack":         skillPackID(item.Dir, a.Home.Root),
+				"install_id":   skillInstallID(item.Dir),
 			}
 			if skillmarket.PackIncomplete(item.Dir, item.Body) {
 				row["incomplete"] = "1"

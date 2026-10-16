@@ -72,6 +72,7 @@ func (t *WorkspaceTools) readSkillFile(skill, rel string, offset, limit int) Too
 }
 
 func (t *WorkspaceTools) skillDir(skill string) string {
+	skill = t.resolveSkillName(skill)
 	if t == nil || t.SkillDirs == nil {
 		return ""
 	}
@@ -84,4 +85,48 @@ func (t *WorkspaceTools) skillDir(skill string) string {
 		}
 	}
 	return ""
+}
+
+func (t *WorkspaceTools) resolveSkillName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || t == nil {
+		return name
+	}
+	if t.SkillMeta != nil {
+		if sk, ok := t.SkillMeta[name]; ok && strings.TrimSpace(sk.Name) != "" {
+			return sk.Name
+		}
+		for _, sk := range t.SkillMeta {
+			if strings.EqualFold(sk.Name, name) && sk.Name != "" {
+				return sk.Name
+			}
+			if sk.DisplayName != "" && strings.EqualFold(sk.DisplayName, name) {
+				return sk.Name
+			}
+			if sk.Dir != "" && strings.EqualFold(filepath.Base(sk.Dir), name) {
+				return sk.Name
+			}
+		}
+	}
+	if t.Skills != nil {
+		if _, ok := t.Skills[name]; ok {
+			return name
+		}
+		for k := range t.Skills {
+			if strings.EqualFold(k, name) {
+				return k
+			}
+		}
+	}
+	if t.SkillDirs != nil {
+		if _, ok := t.SkillDirs[name]; ok {
+			return name
+		}
+		for k, d := range t.SkillDirs {
+			if strings.EqualFold(k, name) || (d != "" && strings.EqualFold(filepath.Base(d), name)) {
+				return k
+			}
+		}
+	}
+	return name
 }

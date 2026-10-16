@@ -33,6 +33,26 @@ func TestSkillRootsOrder(t *testing.T) {
 	}
 }
 
+func TestMapSkillsAliasesInstallSlug(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "dev-god")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := "---\nname: coding-god\ndisplay_name: 编程大神\ndescription: Fixture coding skill.\n---\n\nBe a coding god.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sk := LoadSkillDirs(root)
+	bodies, dirs, meta := MapSkills(sk)
+	if bodies["coding-god"] == "" || bodies["dev-god"] == "" || bodies["编程大神"] == "" {
+		t.Fatalf("aliases missing: %v", bodies)
+	}
+	if dirs["dev-god"] != dir || meta["dev-god"].Name != "coding-god" {
+		t.Fatalf("dir alias %+v meta %+v", dirs, meta["dev-god"])
+	}
+}
+
 func TestLoadSkillDirsLaterRootWins(t *testing.T) {
 	a := t.TempDir()
 	b := t.TempDir()

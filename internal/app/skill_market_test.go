@@ -54,12 +54,15 @@ func TestInstallMarketSkill(t *testing.T) {
 	if out["ok"] != true {
 		t.Fatalf("%+v", out)
 	}
-	sk := a.GetSkill("", "demo-skill")
+	sk := a.GetSkill("", "DEMO-SKILL")
 	if sk == nil || sk["source"] != "market" {
 		t.Fatalf("%+v", sk)
 	}
 	if sk["incomplete"] == "1" {
 		t.Fatalf("pack still incomplete: %+v", sk)
+	}
+	if sk["install_id"] != "demo-skill" && sk["install_id"] != "workbuddy:demo-skill" {
+		t.Fatalf("install_id=%q", sk["install_id"])
 	}
 	if _, err := os.Stat(filepath.Join(a.Home.Skills(), "demo-skill", "scripts", "hello.py")); err != nil {
 		t.Fatal(err)

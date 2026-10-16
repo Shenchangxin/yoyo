@@ -281,14 +281,14 @@ func (s *Service) GetSkill(workspace, name string) map[string]string {
 	return sk
 }
 
-func (s *Service) SkillMarket(refresh bool) (any, error) {
+func (s *Service) SkillMarket(refresh bool, hub string, query string) (any, error) {
 	if s.RPC != nil {
-		return s.call("skills.market", map[string]any{"refresh": refresh})
+		return s.call("skills.market", map[string]any{"refresh": refresh, "hub": hub, "query": query})
 	}
 	if s.App == nil {
 		return nil, errors.New("no app")
 	}
-	return s.App.SkillMarket(refresh)
+	return s.App.SkillMarket(refresh, hub, query)
 }
 
 func (s *Service) ModelCatalog(refresh bool) (any, error) {

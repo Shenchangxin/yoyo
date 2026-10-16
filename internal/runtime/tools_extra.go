@@ -45,24 +45,12 @@ func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("no tools")}
 	}
-	skill = strings.TrimSpace(skill)
+	skill = t.resolveSkillName(strings.TrimSpace(skill))
 	script = strings.TrimSpace(script)
 	if skill == "" || script == "" {
 		return ToolResult{Err: fmt.Errorf("run_skill_script: skill and script required")}
 	}
-	dir := ""
-	if t.SkillDirs != nil {
-		dir = t.SkillDirs[skill]
-		if dir == "" {
-			for name, d := range t.SkillDirs {
-				if strings.EqualFold(name, skill) {
-					dir = d
-					skill = name
-					break
-				}
-			}
-		}
-	}
+	dir := t.skillDir(skill)
 	if dir == "" {
 		return ToolResult{Err: t.noSkillDirError(skill)}
 	}

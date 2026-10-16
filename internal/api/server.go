@@ -658,7 +658,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			writeJSON(w, out)
 			return
 		}
-		c, err := a.SkillMarket(r.URL.Query().Get("refresh") == "1")
+		c, err := a.SkillMarket(r.URL.Query().Get("refresh") == "1", r.URL.Query().Get("hub"), r.URL.Query().Get("q"))
 		if err != nil {
 			http.Error(w, err.Error(), 502)
 			return

@@ -590,10 +590,12 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		return sk, nil
 	case "skills.market":
 		var p struct {
-			Refresh bool `json:"refresh"`
+			Refresh bool   `json:"refresh"`
+			Hub     string `json:"hub"`
+			Query   string `json:"query"`
 		}
 		_ = json.Unmarshal(params, &p)
-		return a.SkillMarket(p.Refresh)
+		return a.SkillMarket(p.Refresh, p.Hub, p.Query)
 	case "models.catalog":
 		var p struct {
 			Refresh bool `json:"refresh"`

@@ -1215,6 +1215,7 @@ func isWSLPosixStub(p string) bool {
 }
 
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {
+	name = t.resolveSkillName(name)
 	if t.Skills == nil && (t.BootstrapBodies == nil || t.BootstrapBodies[name] == "") {
 		return ToolResult{Err: fmt.Errorf("no skills")}
 	}

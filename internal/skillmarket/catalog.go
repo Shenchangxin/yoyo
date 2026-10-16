@@ -2,9 +2,6 @@ package skillmarket
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,12 +36,27 @@ type Item struct {
 	DisplayName   string `json:"display_name,omitempty"`
 	Version       string `json:"version,omitempty"`
 	HasScripts    bool   `json:"has_scripts,omitempty"`
+	Hub           string `json:"hub,omitempty"`
+	ID            string `json:"id,omitempty"`
+	Owner         string `json:"owner,omitempty"`
+	PageURL       string `json:"page_url,omitempty"`
+	Repo          string `json:"repo,omitempty"`
+	Downloads     int    `json:"downloads,omitempty"`
+	Stars         int    `json:"stars,omitempty"`
 }
 
 type Catalog struct {
-	Source    string    `json:"source"`
-	FetchedAt time.Time `json:"fetched_at"`
-	Items     []Item    `json:"items"`
+	Source      string    `json:"source"`
+	FetchedAt   time.Time `json:"fetched_at"`
+	Items       []Item    `json:"items"`
+	Hub         string    `json:"hub,omitempty"`
+	Hubs        []HubInfo `json:"hubs,omitempty"`
+	Query       string    `json:"query,omitempty"`
+	SearchOnly  bool      `json:"search_only,omitempty"`
+	Warning     string    `json:"warning,omitempty"`
+	Attribution string    `json:"attribution,omitempty"`
+	Total       int       `json:"total,omitempty"`
+	Truncated   bool      `json:"truncated,omitempty"`
 }
 
 func CatalogURL() string { return strings.TrimRight(Base, "/") + "/CATALOG.md" }
@@ -54,19 +66,23 @@ func SkillURL(slug string) string {
 }
 
 func Load(cacheDir string, refresh bool) (Catalog, error) {
+	return LoadHub(cacheDir, LoadOpts{Hub: HubWorkBuddy, Refresh: refresh})
+}
+
+func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {
 	cachePath := filepath.Join(cacheDir, cacheName)
 	var previous Catalog
 	if prev, ok := readCache(cachePath); ok {
 		previous = prev
 		if !refresh {
-			return prev, nil
+			return stampWorkBuddy(prev), nil
 		}
 	}
 	raw, err := Get(CatalogURL())
 	if err != nil {
 		if previous.Items != nil {
 			previous.Source = previous.Source + " (stale)"
-			return previous, nil
+			return stampWorkBuddy(previous), nil
 		}
 		return Catalog{}, err
 	}
@@ -75,14 +91,28 @@ func Load(cacheDir string, refresh bool) (Catalog, error) {
 	c.FetchedAt = time.Now().UTC()
 	markFeatured(c.Items)
 	mergeCachedMeta(c.Items, previous.Items)
-	enrichFromTree(c.Items)
+	c.Items = enrichFromTree(c.Items)
 	enrichFrontmatter(c.Items)
+	c = stampWorkBuddy(c)
 	if err := os.MkdirAll(cacheDir, 0o755); err == nil {
 		if b, err := json.MarshalIndent(c, "", "  "); err == nil {
 			_ = os.WriteFile(cachePath, b, 0o644)
 		}
 	}
 	return c, nil
+}
+
+func stampWorkBuddy(c Catalog) Catalog {
+	c.Hub = HubWorkBuddy
+	for i := range c.Items {
+		c.Items[i].Hub = HubWorkBuddy
+		c.Items[i].ID = ItemID(HubWorkBuddy, c.Items[i].Slug)
+		if c.Items[i].PageURL == "" {
+			c.Items[i].PageURL = "https://github.com/infometa/workbuddyskills/tree/main/skills/" + c.Items[i].Slug
+		}
+		c.Items[i].Repo = "infometa/workbuddyskills"
+	}
+	return c
 }
 
 func ParseCatalogMD(md string) Catalog {
@@ -160,28 +190,13 @@ func SanitizeSlug(s string) string {
 	return s
 }
 
-func defaultGet(url string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
+func githubAuthToken() string {
+	for _, k := range []string{"YOYO_GITHUB_TOKEN", "GITHUB_TOKEN"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
 	}
-	req.Header.Set("User-Agent", "Yoyo-Workstation")
-	if strings.Contains(url, "api.github.com") {
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	} else {
-		req.Header.Set("Accept", "text/plain, text/markdown, application/json, */*")
-	}
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("skill market: %s", resp.Status)
-	}
-	return io.ReadAll(io.LimitReader(resp.Body, MaxBody))
+	return ""
 }
 
 func readCache(path string) (Catalog, bool) {
