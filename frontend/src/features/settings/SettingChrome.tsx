@@ -202,7 +202,7 @@ export function SettingActionRow({
 }
 
 /** Empty copy inside a card, kept on the same rhythm as a row. */
-export function SettingEmpty({ children, compact }: { children: ReactNode; compact?: boolean }) {
+export function SettingEmpty({ children, compact, border: _border }: { children: ReactNode; compact?: boolean; border?: boolean }) {
   return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-[13px] text-muted")}>{children}</p>;
 }
 
