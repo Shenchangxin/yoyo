@@ -610,22 +610,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			toolRoot = meta.ToolRoot()
 		}
 	}
-	skillBodies := map[string]string{}
-	for _, s := range skills {
-		skillBodies[s.Name] = s.Body
-	}
 	disk := runtime.LoadSkillDirs(a.skillRoots(skillRoot)...)
 	skills = runtime.MergeSkills(skills, disk)
 	skills = runtime.FilterSkills(skills, loop.PlanMode || plan)
-	skillDirs := map[string]string{}
-	skillMeta := map[string]artifact.Skill{}
-	for _, s := range skills {
-		skillBodies[s.Name] = s.Body
-		if s.Dir != "" {
-			skillDirs[s.Name] = s.Dir
-		}
-		skillMeta[s.Name] = s
-	}
+	skillBodies, skillDirs, skillMeta := runtime.MapSkills(skills)
 	model := a.Config.Model
 	if meta.Model != "" {
 		model = meta.Model

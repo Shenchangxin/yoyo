@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -38,41 +39,59 @@ func FetchPack(slug string) ([]PackFile, string, error) {
 	if slug == "" {
 		return nil, "", fmt.Errorf("invalid skill slug")
 	}
-	files, err := listAndDownload(slug)
+	files, warn, err := listAndDownload(slug)
 	if err == nil && packHasSkillMD(files) {
-		return files, "", nil
+		return files, warn, nil
 	}
 	raw, getErr := Get(SkillURL(slug))
 	if getErr != nil {
 		if err != nil {
-			return nil, "", fmt.Errorf("%w", err)
+			return nil, warn, err
 		}
-		return nil, "", getErr
+		return nil, warn, getErr
 	}
-	warn := "installed SKILL.md only"
+	if len(files) > 0 {
+		c := collectorFrom(files)
+		if addErr := c.add("SKILL.md", raw); addErr != nil {
+			return nil, joinWarn(warn, c.warn()), addErr
+		}
+		msg := "catalog tree had no SKILL.md"
+		if err != nil {
+			msg = "pack listing incomplete"
+		}
+		return c.files, joinWarn(msg, warn, c.warn()), nil
+	}
+	msg := "installed SKILL.md only"
 	if err != nil {
-		warn = "pack listing failed; " + warn
+		msg = "pack listing failed; " + msg
 	} else {
-		warn = "catalog tree had no SKILL.md; " + warn
+		msg = "catalog tree had no SKILL.md; " + msg
 	}
-	return []PackFile{{Rel: "SKILL.md", Data: raw}}, warn, nil
+	return []PackFile{{Rel: "SKILL.md", Data: raw}}, joinWarn(warn, msg), nil
 }
 
-func listAndDownload(slug string) ([]PackFile, error) {
-	var files []PackFile
-	var total int
+func listAndDownload(slug string) ([]PackFile, string, error) {
+	c := packCollector{}
 	var walk func(rel string, depth int) error
 	walk = func(rel string, depth int) error {
 		if depth > maxPackDepth {
-			return fmt.Errorf("pack nested too deep")
+			c.skip(rel, "nested too deep")
+			return nil
 		}
 		entries, err := listContents(slug, rel)
 		if err != nil {
-			return err
+			if rel == "" {
+				return err
+			}
+			c.skip(rel, err.Error())
+			return nil
 		}
 		for _, e := range entries {
 			name := SanitizeRelPart(e.Name)
 			if name == "" {
+				if strings.TrimSpace(e.Name) != "" {
+					c.skip(e.Name, "unsafe file name")
+				}
 				continue
 			}
 			child := name
@@ -88,38 +107,36 @@ func listAndDownload(slug string) ([]PackFile, error) {
 				if !packAllowed(child) {
 					continue
 				}
-				if e.Size > maxFileBytes {
-					return fmt.Errorf("%s larger than 1MiB", child)
+				if e.Size > maxFileBytes && !isSkillMDRel(child) {
+					c.skip(child, "larger than 1MiB")
+					continue
 				}
 				raw, err := downloadPackFile(slug, child, e.DownloadURL)
 				if err != nil {
-					return fmt.Errorf("%s: %w", child, err)
+					if isSkillMDRel(child) {
+						return fmt.Errorf("%s: %w", child, err)
+					}
+					c.skip(child, err.Error())
+					continue
 				}
-				if len(raw) > maxFileBytes {
-					return fmt.Errorf("%s larger than 1MiB", child)
+				if err := c.add(child, raw); err != nil {
+					return err
 				}
-				if err := scanPackFile(child, raw); err != nil {
-					return fmt.Errorf("%s: %w", child, err)
-				}
-				total += len(raw)
-				if total > maxPackBytes {
-					return fmt.Errorf("pack larger than 8MiB")
-				}
-				if len(files) >= maxPackFiles {
-					return fmt.Errorf("pack has more than %d files", maxPackFiles)
-				}
-				files = append(files, PackFile{Rel: child, Data: raw})
 			}
 		}
 		return nil
 	}
 	if err := walk("", 0); err != nil {
-		return nil, err
+		if packHasSkillMD(c.files) {
+			c.skip(".", err.Error())
+			return c.files, c.warn(), nil
+		}
+		return c.files, c.warn(), err
 	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("empty pack")
+	if len(c.files) == 0 {
+		return nil, c.warn(), fmt.Errorf("empty pack")
 	}
-	return files, nil
+	return c.files, c.warn(), nil
 }
 
 func listContents(slug, rel string) ([]ghEntry, error) {
@@ -153,17 +170,30 @@ func contentsURL(slug, rel string) string {
 	if base == "" {
 		base = derivedContentsBase(Base)
 	}
-	u := base + "/skills/" + slug
-	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
-	if rel != "" {
-		u += "/" + rel
-	}
-	return u
+	return joinEscapedPath(base, "skills", slug, rel)
 }
 
 func packFileURL(slug, rel string) string {
-	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
-	return strings.TrimRight(Base, "/") + "/skills/" + slug + "/" + rel
+	return joinEscapedPath(strings.TrimRight(Base, "/"), "skills", slug, rel)
+}
+
+func joinEscapedPath(base string, segs ...string) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimRight(base, "/"))
+	for _, s := range segs {
+		s = strings.Trim(strings.ReplaceAll(s, "\\", "/"), "/")
+		if s == "" {
+			continue
+		}
+		for _, part := range strings.Split(s, "/") {
+			if part == "" {
+				continue
+			}
+			b.WriteByte('/')
+			b.WriteString(url.PathEscape(part))
+		}
+	}
+	return b.String()
 }
 
 func derivedContentsBase(rawBase string) string {
@@ -218,11 +248,19 @@ func packAllowed(rel string) bool {
 		return false
 	}
 	if ext == "" {
-		return base == "license" || base == "notice" || base == "readme" || base == "makefile" || strings.EqualFold(base, "skill.md")
+		if strings.HasPrefix(rel, "scripts/") {
+			return true
+		}
+		switch base {
+		case "license", "notice", "readme", "makefile", "dockerfile", "gemfile", "procfile":
+			return true
+		}
+		return strings.EqualFold(base, "skill.md")
 	}
 	switch ext {
-	case ".md", ".txt", ".py", ".js", ".ts", ".mjs", ".cjs", ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".css",
+	case ".md", ".txt", ".py", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs", ".json", ".yaml", ".yml", ".toml", ".xml", ".html", ".css",
 		".sh", ".ps1", ".rb", ".pl", ".r", ".sql", ".csv", ".tsv",
+		".go", ".rs", ".java", ".kt", ".swift", ".cs", ".vue",
 		".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico",
 		".jinja", ".j2", ".template":
 		return true
@@ -231,15 +269,20 @@ func packAllowed(rel string) bool {
 	}
 }
 
+func isSkillMDRel(rel string) bool {
+	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
+	return strings.EqualFold(rel, "SKILL.md")
+}
+
 // SanitizeRelPart allows a single path segment for pack files.
 func SanitizeRelPart(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, "/\\")
-	if s == "" || s == "." || s == ".." || strings.ContainsAny(s, "/\\") {
+	if s == "" || s == "." || s == ".." || strings.ContainsAny(s, `/\:*?"<>|`) {
 		return ""
 	}
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ' ' || r == '+' || r == '(' || r == ')' || r == '[' || r == ']' {
 			continue
 		}
 		return ""
@@ -248,6 +291,105 @@ func SanitizeRelPart(s string) string {
 		return ""
 	}
 	return s
+}
+
+type packCollector struct {
+	files []PackFile
+	total int
+	skips []string
+}
+
+func collectorFrom(files []PackFile) packCollector {
+	c := packCollector{files: append([]PackFile(nil), files...)}
+	for _, f := range files {
+		c.total += len(f.Data)
+	}
+	return c
+}
+
+func (c *packCollector) skip(rel, reason string) {
+	rel = strings.TrimSpace(rel)
+	if rel == "" {
+		return
+	}
+	msg := rel
+	if reason = strings.TrimSpace(reason); reason != "" {
+		msg += ": " + reason
+	}
+	c.skips = append(c.skips, msg)
+}
+
+func (c *packCollector) add(rel string, data []byte) error {
+	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
+	required := isSkillMDRel(rel)
+	if !packAllowed(rel) {
+		if required {
+			return fmt.Errorf("%s not allowed", rel)
+		}
+		return nil
+	}
+	if len(data) > maxFileBytes {
+		if required {
+			return fmt.Errorf("%s larger than 1MiB", rel)
+		}
+		c.skip(rel, "larger than 1MiB")
+		return nil
+	}
+	if err := scanPackFile(rel, data); err != nil {
+		if required {
+			return fmt.Errorf("%s: %w", rel, err)
+		}
+		c.skip(rel, err.Error())
+		return nil
+	}
+	if c.total+len(data) > maxPackBytes || len(c.files) >= maxPackFiles {
+		if required {
+			return fmt.Errorf("pack too large")
+		}
+		c.skip(rel, "pack budget")
+		return nil
+	}
+	for i, f := range c.files {
+		if strings.EqualFold(f.Rel, rel) {
+			c.total += len(data) - len(f.Data)
+			c.files[i] = PackFile{Rel: rel, Data: data}
+			return nil
+		}
+	}
+	c.files = append(c.files, PackFile{Rel: rel, Data: data})
+	c.total += len(data)
+	return nil
+}
+
+func (c *packCollector) warn() string {
+	if len(c.skips) == 0 {
+		return ""
+	}
+	shown := c.skips
+	extra := ""
+	if len(shown) > 4 {
+		shown = shown[:4]
+		extra = "; …"
+	}
+	msg := "skipped " + strconv.Itoa(len(c.skips)) + " file"
+	if len(c.skips) != 1 {
+		msg += "s"
+	}
+	return msg + " (" + strings.Join(shown, "; ") + extra + ")"
+}
+
+func joinWarn(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return strings.Join(out, "; ")
 }
 
 func packRels(files []PackFile) []string {

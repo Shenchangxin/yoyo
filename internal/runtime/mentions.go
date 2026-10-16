@@ -108,22 +108,50 @@ func MentionSkillNames(refs []Mention) []string {
 	return out
 }
 
+func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, dir string, ok bool) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || skills == nil {
+		return "", "", false
+	}
+	if body, ok = skills[ref]; ok {
+		if skillDirs != nil {
+			dir = skillDirs[ref]
+		}
+		return body, dir, true
+	}
+	for k, v := range skills {
+		if strings.EqualFold(k, ref) {
+			if skillDirs != nil {
+				dir = skillDirs[k]
+			}
+			return v, dir, true
+		}
+	}
+	if skillDirs == nil {
+		return "", "", false
+	}
+	for k, d := range skillDirs {
+		if strings.EqualFold(k, ref) || (d != "" && strings.EqualFold(filepath.Base(d), ref)) {
+			if body, ok = skills[k]; ok {
+				return body, d, true
+			}
+		}
+	}
+	return "", "", false
+}
+
 func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]string, m Mention, remain int) string {
 	if remain < 32 {
 		return ""
 	}
 	switch m.Kind {
 	case "skill":
+		body, dir, ok := lookupSkillMention(skills, skillDirs, m.Ref)
 		if skills == nil {
 			return fmt.Sprintf("## @skill:%s\nERROR: no skill catalog\n", m.Ref)
 		}
-		body, ok := skills[m.Ref]
 		if !ok {
 			return fmt.Sprintf("## @skill:%s\nERROR: unknown skill\n", m.Ref)
-		}
-		dir := ""
-		if skillDirs != nil {
-			dir = skillDirs[m.Ref]
 		}
 		body = DecorateSkillBody(m.Ref, body, dir)
 		capped, trunc := capText(body, remain)

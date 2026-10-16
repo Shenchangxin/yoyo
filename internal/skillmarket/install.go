@@ -15,6 +15,7 @@ type Record struct {
 	Source    string    `json:"source"`
 	Catalog   string    `json:"catalog"`
 	URL       string    `json:"url"`
+	Remote    string    `json:"remote,omitempty"`
 	Icon      string    `json:"icon,omitempty"`
 	Files     []string  `json:"files,omitempty"`
 	Installed time.Time `json:"installed_at"`
@@ -22,6 +23,10 @@ type Record struct {
 }
 
 func Install(homeSkills, slug string, scan Scan, files []PackFile) (string, error) {
+	return InstallRecord(homeSkills, slug, scan, files, Record{})
+}
+
+func InstallRecord(homeSkills, slug string, scan Scan, files []PackFile, rec Record) (string, error) {
 	slug = SanitizeSlug(slug)
 	if slug == "" {
 		return "", fmt.Errorf("invalid skill slug")
@@ -59,17 +64,21 @@ func Install(homeSkills, slug string, scan Scan, files []PackFile) (string, erro
 			return "", err
 		}
 	}
-	rec := Record{
-		Slug:      slug,
-		Name:      scan.Name,
-		Source:    "workbuddy",
-		Catalog:   "infometa/workbuddyskills",
-		URL:       SkillURL(slug),
-		Icon:      scan.Icon,
-		Files:     packRels(files),
-		Installed: time.Now().UTC(),
-		Scan:      scan,
+	if rec.Source == "" {
+		rec.Source = HubWorkBuddy
 	}
+	if rec.Catalog == "" && rec.Source == HubWorkBuddy {
+		rec.Catalog = "infometa/workbuddyskills"
+	}
+	if rec.URL == "" && rec.Source == HubWorkBuddy {
+		rec.URL = SkillURL(slug)
+	}
+	rec.Slug = slug
+	rec.Name = scan.Name
+	rec.Icon = scan.Icon
+	rec.Files = packRels(files)
+	rec.Installed = time.Now().UTC()
+	rec.Scan = scan
 	b, _ := json.MarshalIndent(rec, "", "  ")
 	if err := os.WriteFile(filepath.Join(tmp, ".market.json"), b, 0o644); err != nil {
 		return "", err
@@ -185,11 +194,10 @@ func withinDir(root, p string) bool {
 func isScriptRel(rel string) bool {
 	rel = strings.ToLower(filepath.ToSlash(rel))
 	switch filepath.Ext(rel) {
-	case ".sh", ".py", ".ps1", ".rb", ".js", ".mjs":
+	case ".sh", ".py", ".ps1", ".rb", ".js", ".mjs", ".ts":
 		return true
-	default:
-		return false
 	}
+	return filepath.Ext(rel) == "" && strings.HasPrefix(rel, "scripts/")
 }
 
 func stringsJoin(s []string) string {

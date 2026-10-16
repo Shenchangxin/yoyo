@@ -82,6 +82,10 @@ func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	if idxRoute < 0 || idxBody < 0 || idxRoute > idxBody {
 		t.Fatalf("routing must lead body: %s", inject)
 	}
+	inject, refs = ExpandMentionsPacks(dir, "@skill:ARXIV-WATCHER", "", skills, dirs, 3200)
+	if len(refs) != 1 || !strings.Contains(inject, "search_arxiv.sh") {
+		t.Fatalf("case-insensitive mention failed: %s refs=%+v", inject, refs)
+	}
 }
 
 func TestShellPolicy(t *testing.T) {

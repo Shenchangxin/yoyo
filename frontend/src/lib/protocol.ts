@@ -415,6 +415,7 @@ export type SkillInfo = {
   incomplete?: boolean;
   slug?: string;
   pack?: string;
+  installId?: string;
 };
 
 export type PackOrigin = {

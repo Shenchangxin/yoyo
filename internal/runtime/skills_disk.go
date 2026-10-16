@@ -86,6 +86,67 @@ func SkillPackFiles(dir string) []string {
 	return out
 }
 
+// SkillAliasKeys are names the operator or model may use to load a skill:
+// frontmatter name, display name, and the on-disk directory slug.
+func SkillAliasKeys(s artifact.Skill) []string {
+	var keys []string
+	add := func(k string) {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			return
+		}
+		for _, e := range keys {
+			if e == k {
+				return
+			}
+		}
+		keys = append(keys, k)
+	}
+	add(s.Name)
+	add(s.DisplayName)
+	if s.Dir != "" {
+		add(filepath.Base(s.Dir))
+	}
+	return keys
+}
+
+// MapSkills indexes skills by primary name, then by unused aliases so
+// load_skill / @skill can use the install slug when it differs from YAML name.
+func MapSkills(skills []artifact.Skill) (bodies map[string]string, dirs map[string]string, meta map[string]artifact.Skill) {
+	bodies = map[string]string{}
+	dirs = map[string]string{}
+	meta = map[string]artifact.Skill{}
+	for _, s := range skills {
+		if s.Name == "" {
+			continue
+		}
+		bodies[s.Name] = s.Body
+		meta[s.Name] = s
+		if s.Dir != "" {
+			dirs[s.Name] = s.Dir
+		}
+	}
+	for _, s := range skills {
+		if s.Name == "" {
+			continue
+		}
+		for _, k := range SkillAliasKeys(s) {
+			if k == s.Name {
+				continue
+			}
+			if _, taken := bodies[k]; taken {
+				continue
+			}
+			bodies[k] = s.Body
+			meta[k] = s
+			if s.Dir != "" {
+				dirs[k] = s.Dir
+			}
+		}
+	}
+	return bodies, dirs, meta
+}
+
 func MergeSkills(base, extra []artifact.Skill) []artifact.Skill {
 	idx := map[string]int{}
 	out := append([]artifact.Skill(nil), base...)

@@ -144,6 +144,79 @@ func TestFetchPackFromContentsAPI(t *testing.T) {
 	}
 }
 
+func TestFetchPackSkipsOptionalFailures(t *testing.T) {
+	md := "## 1. 技能包 skills/\n\n### Tools（1）\n\n| 目录 | 名称 | 用来做什么 | 前置条件 |\n|------|------|------------|----------|\n| `arxiv-watcher` | arxiv-watcher | papers | 无 |\n"
+	skill := "---\nname: arxiv-watcher\ndescription: Search arxiv papers from the public API.\n---\n\nUse `scripts/search_arxiv.sh` and `scripts/run helper`.\n"
+	script := "#!/usr/bin/env bash\necho \"$1\"\n"
+	helper := "#!/usr/bin/env bash\necho helper\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/CATALOG.md":
+			_, _ = w.Write([]byte(md))
+		case "/skills/arxiv-watcher/SKILL.md":
+			_, _ = w.Write([]byte(skill))
+		case "/skills/arxiv-watcher/scripts/search_arxiv.sh":
+			_, _ = w.Write([]byte(script))
+		case "/skills/arxiv-watcher/scripts/run helper":
+			_, _ = w.Write([]byte(helper))
+		case "/contents/skills/arxiv-watcher":
+			_, _ = w.Write([]byte(`[
+			  {"name":"SKILL.md","path":"skills/arxiv-watcher/SKILL.md","type":"file","size":120},
+			  {"name":"scripts","path":"skills/arxiv-watcher/scripts","type":"dir"},
+			  {"name":"references","path":"skills/arxiv-watcher/references","type":"dir"},
+			  {"name":"LICENSE","path":"skills/arxiv-watcher/LICENSE","type":"file","size":0}
+			]`))
+		case "/contents/skills/arxiv-watcher/scripts":
+			_, _ = w.Write([]byte(`[
+			  {"name":"search_arxiv.sh","path":"skills/arxiv-watcher/scripts/search_arxiv.sh","type":"file","size":40},
+			  {"name":"run helper","path":"skills/arxiv-watcher/scripts/run helper","type":"file","size":30}
+			]`))
+		case "/contents/skills/arxiv-watcher/references":
+			_, _ = w.Write([]byte(`[
+			  {"name":"huge.md","path":"skills/arxiv-watcher/references/huge.md","type":"file","size":2000000}
+			]`))
+		case "/skills/arxiv-watcher/LICENSE":
+			_, _ = w.Write(nil)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldBase, oldContents := Base, ContentsBase
+	Base = srv.URL
+	ContentsBase = srv.URL + "/contents"
+	t.Cleanup(func() { Base, ContentsBase = oldBase, oldContents })
+	files, warn, err := FetchPack("arxiv-watcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if warn == "" {
+		t.Fatal("expected skip warning for oversized/empty files")
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f.Rel] = true
+	}
+	if !got["SKILL.md"] || !got["scripts/search_arxiv.sh"] || !got["scripts/run helper"] {
+		t.Fatalf("incomplete pack: %+v warn=%q", packRels(files), warn)
+	}
+	if got["references/huge.md"] || got["LICENSE"] {
+		t.Fatalf("optional failures should be skipped: %+v", packRels(files))
+	}
+}
+
+func TestPackAllowedExtensionlessScripts(t *testing.T) {
+	if !packAllowed("scripts/run helper") || !packAllowed("scripts/search") || !packAllowed("LICENSE") {
+		t.Fatal("expected scripts/ and LICENSE")
+	}
+	if packAllowed("bin/search") || packAllowed("scripts/evil.exe") {
+		t.Fatal("blocked unexpected files")
+	}
+	if SanitizeRelPart("run helper") != "run helper" || SanitizeRelPart("search_arxiv.sh") == "" {
+		t.Fatal("sanitize")
+	}
+}
+
 func TestRejectsBinaryPackFile(t *testing.T) {
 	if err := scanPackFile("scripts/helper.py", []byte("print(1)\n")); err != nil {
 		t.Fatal(err)

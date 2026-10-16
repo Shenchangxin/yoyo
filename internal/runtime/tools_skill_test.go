@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
 func TestLoadSkillPointsAtGeneratedAdapter(t *testing.T) {
@@ -72,6 +74,39 @@ func TestLoadSkillDecoratesPackPath(t *testing.T) {
 	}
 	if strings.Index(res.Content, "run_skill_script") > strings.Index(res.Content, "Use scripts/search_arxiv.sh") {
 		t.Fatal("routing must lead the skill body")
+	}
+}
+
+func TestLoadSkillResolvesInstallSlug(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "dev-god")
+	if err := os.MkdirAll(filepath.Join(skillDir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "scripts", "hint.py"), []byte("print(1)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{
+		Workspace: t.TempDir(),
+		Skills:    map[string]string{"coding-god": "Use scripts/hint.py"},
+		SkillDirs: map[string]string{"coding-god": skillDir},
+		SkillMeta: map[string]artifact.Skill{
+			"coding-god": {Name: "coding-god", DisplayName: "编程大神", Dir: skillDir},
+		},
+	}
+	res := tools.Call("load_skill", `{"name":"dev-god"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if !strings.Contains(res.Content, "scripts/hint.py") {
+		t.Fatalf("missing pack files:\n%s", res.Content)
+	}
+	listed := tools.Call("list_skills", `{}`)
+	if listed.Err != nil || !strings.Contains(listed.Content, "coding-god") {
+		t.Fatalf("%+v", listed)
+	}
+	if strings.Contains(listed.Content, "dev-god") {
+		t.Fatalf("list_skills leaked alias: %s", listed.Content)
 	}
 }
 

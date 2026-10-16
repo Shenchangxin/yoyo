@@ -32,15 +32,9 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		return overlayPrompt(runtime.ShapeFromEvents(evs, window), a.liveShape(sessionID))
 	}
 	loop = runtime.ApplyChatHorizon(loop)
-	skillBodies := map[string]string{}
-	for _, s := range skills {
-		skillBodies[s.Name] = s.Body
-	}
 	disk := runtime.LoadSkillDirs(a.skillRoots(ws)...)
 	skills = runtime.MergeSkills(skills, disk)
-	for _, s := range disk {
-		skillBodies[s.Name] = s.Body
-	}
+	skillBodies, _, _ := runtime.MapSkills(skills)
 	spill := runtime.BindSpill(a.Home.Root, ws, sessionID)
 	tools := &runtime.WorkspaceTools{
 		Workspace: ws,

@@ -15,6 +15,8 @@ import { useUI, type SkillsTab } from "../../lib/store";
 
 type Pane = SkillsTab;
 
+const REMOTE_SEARCH_HUBS = new Set(["clawhub", "clawskillhub", "skillhubcn", "skillsmp", "mdr", "tessl"]);
+
 function SkillsLoading() {
   useEffect(() => {
     useUI.getState().setModuleLoading(true);
@@ -41,17 +43,18 @@ export function SkillsWorkspace(props: {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
-  const [catalog, setCatalog] = useState<api.SkillMarketCatalog>({ source: "", fetchedAt: "", items: [] });
+  const [hub, setHub] = useState("workbuddy");
+  const [catalog, setCatalog] = useState<api.SkillMarketCatalog>({ source: "", fetchedAt: "", items: [], hubs: [] });
   const [packs, setPacks] = useState<PackStatus[]>([]);
   const [packsLoading, setPacksLoading] = useState(true);
 
   useEffect(() => { setPane(skillsTab); }, [skillsTab]);
 
-  const loadMarket = (refresh = false) => {
+  const loadMarket = (refresh = false, nextHub = hub, nextQ = "") => {
     setErr("");
     setLoading(true);
-    void api.skillMarket(refresh)
-      .then(setCatalog)
+    void api.skillMarket(refresh, nextHub, nextQ)
+      .then((c) => setCatalog((prev) => ({ ...c, hubs: c.hubs?.length ? c.hubs : prev.hubs })))
       .catch((e) => setErr(api.errMessage(e)))
       .finally(() => setLoading(false));
   };
@@ -64,7 +67,13 @@ export function SkillsWorkspace(props: {
       .finally(() => setPacksLoading(false));
   };
 
-  useEffect(() => { loadMarket(false); }, []);
+  const hubSearches = Boolean((catalog.hubs || []).find((h) => h.id === hub)?.search) || REMOTE_SEARCH_HUBS.has(hub);
+  const fetchQ = hubSearches ? q.trim() : "";
+  useEffect(() => {
+    const delay = hubSearches && fetchQ ? 400 : 0;
+    const t = window.setTimeout(() => loadMarket(false, hub, fetchQ), delay);
+    return () => window.clearTimeout(t);
+  }, [hub, fetchQ]);
   useEffect(() => { loadPacks(); }, [props.workspace]);
 
   const installedNames = useMemo(() => {
@@ -82,6 +91,14 @@ export function SkillsWorkspace(props: {
       if (!s.incomplete) continue;
       set.add(s.name);
       if (s.slug) set.add(s.slug);
+      if (s.installId) set.add(s.installId);
+    }
+    return set;
+  }, [props.installed]);
+  const installedIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of props.installed) {
+      if (s.installId) set.add(s.installId);
     }
     return set;
   }, [props.installed]);
@@ -94,12 +111,13 @@ export function SkillsWorkspace(props: {
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    const remote = hubSearches;
     return catalog.items.filter((it) => {
       if (cat && it.category !== cat) return false;
-      if (!needle) return true;
-      return (it.slug + it.name + (it.displayName || "") + it.purpose + it.category).toLowerCase().includes(needle);
+      if (!needle || remote) return true;
+      return (it.slug + it.name + (it.displayName || "") + it.purpose + it.category + (it.owner || "")).toLowerCase().includes(needle);
     });
-  }, [catalog.items, q, cat]);
+  }, [catalog.items, q, cat, hubSearches]);
 
   const featured = filtered.filter((it) => it.featured);
   const grouped = useMemo(() => {
@@ -113,11 +131,11 @@ export function SkillsWorkspace(props: {
     return [...map.entries()];
   }, [filtered, copy.skills.market]);
 
-  async function install(slug: string, repairing = false) {
-    setBusy(slug);
+  async function install(id: string, repairing = false) {
+    setBusy(id);
     setErr("");
     try {
-      const out = await api.installMarketSkill(slug);
+      const out = await api.installMarketSkill(id);
       props.onRefreshInstalled();
       if (out.warning) toast.message(copy.skills.installPartial);
       else if (repairing) toast.success(copy.skills.repaired);
@@ -239,16 +257,16 @@ export function SkillsWorkspace(props: {
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
                   <Input
                     className="h-8 rounded-lg border-transparent bg-lift/50 pl-8 text-[13px]"
-                    placeholder={copy.skills.search}
+                    placeholder={hubSearches ? copy.skills.searchRemote : copy.skills.search}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    aria-label={copy.skills.search}
+                    aria-label={hubSearches ? copy.skills.searchRemote : copy.skills.search}
                     autoComplete="off"
                     name="skill-catalog-search"
                     spellCheck={false}
                   />
                 </div>
-                <Button size="sm" variant="outline" onClick={() => loadMarket(true)}>
+                <Button size="sm" variant="outline" onClick={() => loadMarket(true, hub, fetchQ)}>
                   <RefreshCw className="size-3.5" aria-hidden />
                   {copy.skills.refresh}
                 </Button>
@@ -256,6 +274,7 @@ export function SkillsWorkspace(props: {
             ) : null}
           </div>
           {err ? <p className="mb-4 text-[13px] text-danger" role="alert">{err}</p> : null}
+          {!err && catalog.warning ? <p className="mb-4 text-[13px] text-muted" role="status">{catalog.warning}</p> : null}
           {pane === "installed" ? (
             <InstalledList
               skills={props.installed}
@@ -283,12 +302,25 @@ export function SkillsWorkspace(props: {
               categories={categories}
               cat={cat}
               onCat={setCat}
+              hubs={catalog.hubs || []}
+              hub={hub}
+              onHub={(id) => {
+                setHub(id);
+                setCat("");
+                setCatalog((prev) => ({ ...prev, items: [], searchOnly: false, warning: "", source: "" }));
+              }}
+              searchOnly={Boolean(catalog.searchOnly) && !q.trim()}
+              attribution={catalog.attribution || copy.skills.attribution}
               installed={installedNames}
+              installedIds={installedIds}
               incomplete={incomplete}
               busy={busy}
               onInstall={install}
               query={q}
               loading={loading}
+              shown={catalog.items.length}
+              total={catalog.total || 0}
+              truncated={Boolean(catalog.truncated)}
             />
           )}
         </div>
@@ -345,8 +377,8 @@ function InstalledList(props: {
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                       {s.incomplete && s.source === "market" ? (
-                        <Button size="sm" variant="outline" disabled={props.busy === slug} onClick={() => props.onRepair(slug)}>
-                          {props.busy === slug ? copy.skills.repairing : copy.skills.repair}
+                        <Button size="sm" variant="outline" disabled={props.busy === packInstallKey(s) || props.busy === slug} onClick={() => props.onRepair(packInstallKey(s))}>
+                          {props.busy === packInstallKey(s) || props.busy === slug ? copy.skills.repairing : copy.skills.repair}
                         </Button>
                       ) : null}
                       <Button size="sm" variant="ghost" onClick={() => props.onOpen(expanded ? "" : s.name)}>{copy.skills.inspect}</Button>
@@ -383,22 +415,39 @@ function MarketList(props: {
   categories: string[];
   cat: string;
   onCat: (v: string) => void;
+  hubs: api.SkillMarketHub[];
+  hub: string;
+  onHub: (id: string) => void;
+  searchOnly: boolean;
+  attribution: string;
   installed: Set<string>;
+  installedIds: Set<string>;
   incomplete: Set<string>;
   busy: string;
-  onInstall: (slug: string, repairing?: boolean) => void;
+  onInstall: (id: string, repairing?: boolean) => void;
   query: string;
   loading: boolean;
+  shown: number;
+  total: number;
+  truncated: boolean;
 }) {
   const copy = useCopy();
-  if (props.loading && !props.grouped.length) {
-    return <SkillsLoading />;
-  }
-  if (!props.grouped.length) {
-    return <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyMarket} />;
-  }
+  const empty = !props.grouped.length;
+  const countLabel = props.total > props.shown
+    ? copy.skills.countOf.replace("{n}", String(props.shown)).replace("{total}", String(props.total))
+    : copy.skills.count.replace("{n}", String(props.shown));
   return (
     <div>
+      {props.hubs.length ? (
+        <div className="mb-4 flex flex-wrap gap-1.5" role="tablist" aria-label={copy.skills.hubs}>
+          {props.hubs.map((h) => (
+            <Chip key={h.id} on={props.hub === h.id} title={h.attribution} onClick={() => props.onHub(h.id)}>{h.name}</Chip>
+          ))}
+        </div>
+      ) : null}
+      {!empty ? (
+        <p className="mb-3 text-[11px] tabular-nums text-muted">{countLabel}{props.truncated ? " · …" : ""}</p>
+      ) : null}
       {props.categories.length > 1 ? (
         <div className="mb-5 flex flex-wrap gap-1.5">
           <Chip on={!props.cat} onClick={() => props.onCat("")}>{copy.skills.all}</Chip>
@@ -407,49 +456,59 @@ function MarketList(props: {
           ))}
         </div>
       ) : null}
-      {!props.query && !props.cat && props.featured.length ? (
-        <section className="mb-6">
-          <div className="mb-2 flex items-baseline justify-between px-0.5">
-            <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
-            <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
-          </div>
-          <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
-            {props.featured.map((it, i) => (
-              <MarketRow
-                key={it.slug}
-                item={it}
-                installed={props.installed.has(it.slug) || props.installed.has(it.name)}
-                incomplete={props.incomplete.has(it.slug) || props.incomplete.has(it.name)}
-                busy={props.busy === it.slug}
-                onInstall={props.onInstall}
-                className={i > 0 ? "border-t border-border/70" : undefined}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-      {props.grouped.map(([category, items]) => (
-        <section key={category} className="mb-6">
-          <div className="mb-2 flex items-baseline justify-between px-0.5">
-            <h3 className="text-[13px] font-medium">{category}</h3>
-            <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
-          </div>
-          <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
-            {items.map((it, i) => (
-              <MarketRow
-                key={it.slug}
-                item={it}
-                installed={props.installed.has(it.slug) || props.installed.has(it.name)}
-                incomplete={props.incomplete.has(it.slug) || props.incomplete.has(it.name)}
-                busy={props.busy === it.slug}
-                onInstall={props.onInstall}
-                className={i > 0 ? "border-t border-border/70" : undefined}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
-      <p className="mt-2 max-w-[68ch] text-[12px] leading-5 text-muted">{copy.skills.attribution}</p>
+      {props.loading && empty ? (
+        <SkillsLoading />
+      ) : props.searchOnly ? (
+        <EmptyState icon={<YoyoMark compact />} title={copy.skills.searchOnly} />
+      ) : empty ? (
+        <EmptyState icon={<YoyoMark compact />} title={copy.skills.emptyMarket} />
+      ) : (
+        <>
+          {!props.query && !props.cat && props.featured.length ? (
+            <section className="mb-6">
+              <div className="mb-2 flex items-baseline justify-between px-0.5">
+                <h3 className="text-[13px] font-medium">{copy.skills.featured}</h3>
+                <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(props.featured.length))}</span>
+              </div>
+              <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
+                {props.featured.map((it, i) => (
+                  <MarketRow
+                    key={itemInstallID(it)}
+                    item={it}
+                    installed={itemInstalled(it, props.installed, props.installedIds)}
+                    incomplete={itemIncomplete(it, props.incomplete)}
+                    busy={props.busy === itemInstallID(it)}
+                    onInstall={props.onInstall}
+                    className={i > 0 ? "border-t border-border/70" : undefined}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {props.grouped.map(([category, items]) => (
+            <section key={category} className="mb-6">
+              <div className="mb-2 flex items-baseline justify-between px-0.5">
+                <h3 className="text-[13px] font-medium">{category}</h3>
+                <span className="text-[11px] tabular-nums text-muted">{copy.skills.count.replace("{n}", String(items.length))}</span>
+              </div>
+              <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)]">
+                {items.map((it, i) => (
+                  <MarketRow
+                    key={itemInstallID(it)}
+                    item={it}
+                    installed={itemInstalled(it, props.installed, props.installedIds)}
+                    incomplete={itemIncomplete(it, props.incomplete)}
+                    busy={props.busy === itemInstallID(it)}
+                    onInstall={props.onInstall}
+                    className={i > 0 ? "border-t border-border/70" : undefined}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </>
+      )}
+      <p className="mt-2 max-w-[68ch] text-[12px] leading-5 text-muted">{props.attribution || copy.skills.attribution}</p>
     </div>
   );
 }
@@ -459,12 +518,17 @@ function MarketRow(props: {
   installed: boolean;
   incomplete: boolean;
   busy: boolean;
-  onInstall: (slug: string, repairing?: boolean) => void;
+  onInstall: (id: string, repairing?: boolean) => void;
   className?: string;
 }) {
   const copy = useCopy();
   const it = props.item;
   const title = it.displayName || it.name || it.slug;
+  const id = itemInstallID(it);
+  const meta: string[] = [];
+  if (it.owner) meta.push("@" + it.owner);
+  if (it.downloads) meta.push(copy.skills.downloads.replace("{n}", String(it.downloads)));
+  if (it.stars) meta.push(copy.skills.stars.replace("{n}", String(it.stars)));
   return (
     <div className={cn("flex items-start gap-3 px-3.5 py-3 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:bg-lift/40", props.className)}>
       <SkillAvatar name={title} icon={it.icon} />
@@ -475,18 +539,21 @@ function MarketRow(props: {
           {props.incomplete ? <span className="text-[11px] text-warning">{copy.skills.incomplete}</span> : null}
         </div>
         <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-muted">{it.purpose || it.slug}</p>
+        {meta.length ? (
+          <p className="mt-1 text-[11px] leading-4 text-muted">{meta.join(" · ")}</p>
+        ) : null}
         {it.prerequisites && it.prerequisites !== "无" ? (
           <p className="mt-1 text-[11px] leading-4 text-muted">{it.prerequisites}</p>
         ) : null}
       </div>
       {props.incomplete ? (
-        <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(it.slug, true)}>
+        <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(id, true)}>
           {props.busy ? copy.skills.repairing : copy.skills.repair}
         </Button>
       ) : props.installed ? (
         <span className="mt-0.5 shrink-0 text-[11px] text-muted">{copy.skills.installedBadge}</span>
       ) : (
-        <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(it.slug)}>
+        <Button size="sm" variant="outline" className="mt-0.5 shrink-0 rounded-md" disabled={props.busy} onClick={() => props.onInstall(id)}>
           {props.busy ? copy.skills.installing : copy.skills.install}
         </Button>
       )}
@@ -533,10 +600,34 @@ function packSlug(s: SkillInfo): string {
   return s.name;
 }
 
-function Chip(props: { on: boolean; onClick: () => void; children: string }) {
+function packInstallKey(s: SkillInfo): string {
+  return s.installId || packSlug(s);
+}
+
+function itemInstallID(it: api.SkillMarketItem): string {
+  if (it.id) return it.id;
+  if (it.hub && it.owner && it.slug) return `${it.hub}:${it.owner}/${it.slug}`;
+  if (it.hub && it.slug) return `${it.hub}:${it.slug}`;
+  return it.slug;
+}
+
+function itemInstalled(it: api.SkillMarketItem, names: Set<string>, ids: Set<string>): boolean {
+  const id = itemInstallID(it);
+  if (id && ids.has(id)) return true;
+  return names.has(it.slug) || names.has(it.name);
+}
+
+function itemIncomplete(it: api.SkillMarketItem, incomplete: Set<string>): boolean {
+  const id = itemInstallID(it);
+  if (id && incomplete.has(id)) return true;
+  return incomplete.has(it.slug) || incomplete.has(it.name);
+}
+
+function Chip(props: { on: boolean; onClick: () => void; children: string; title?: string }) {
   return (
     <button
       type="button"
+      title={props.title}
       className={cn(
         "rounded-md border px-2 py-1 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         props.on ? "border-border bg-lift text-foreground" : "border-transparent text-muted hover:bg-lift/50 hover:text-foreground",

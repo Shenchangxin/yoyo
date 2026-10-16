@@ -10,25 +10,27 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillmarket"
 )
 
-func (a *App) SkillMarket(refresh bool) (skillmarket.Catalog, error) {
+func (a *App) SkillMarket(refresh bool, hub, query string) (skillmarket.Catalog, error) {
 	dir := filepath.Join(a.Home.Root, "skill-market")
-	return skillmarket.Load(dir, refresh)
+	return skillmarket.LoadHub(dir, skillmarket.LoadOpts{Hub: hub, Query: query, Refresh: refresh})
 }
 
 func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
-	slug = skillmarket.SanitizeSlug(slug)
-	if slug == "" {
+	hub, remote := skillmarket.ParseInstallID(slug)
+	local := skillmarket.InstallSlug(remote)
+	if local == "" {
 		return nil, fmt.Errorf("invalid skill slug")
 	}
-	files, warn, err := skillmarket.FetchPack(slug)
+	pack, err := skillmarket.FetchFrom(hub, remote)
 	if err != nil {
 		return nil, err
 	}
+	files, warn := pack.Files, pack.Warn
 	raw := packSkillMD(files)
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("pack missing SKILL.md")
 	}
-	skParsed, scan := skillmarket.ScanSkillMD(raw, slug)
+	skParsed, scan := skillmarket.ScanSkillMD(raw, local)
 	if !scan.OK {
 		return map[string]any{"scan": scan, "ok": false}, fmt.Errorf("scan blocked: %s", strings.Join(scan.Reasons, "; "))
 	}
@@ -38,7 +40,17 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 			warn = "skill references scripts/ but the downloaded pack has none"
 		}
 	}
-	dir, err := skillmarket.Install(a.Home.Skills(), slug, scan, files)
+	info, _ := skillmarket.LookupHub(hub)
+	rec := skillmarket.Record{
+		Source:  hub,
+		Catalog: info.Name,
+		URL:     pack.URL,
+		Remote:  remote,
+	}
+	if pack.Catalog != "" {
+		rec.Catalog = pack.Catalog
+	}
+	dir, err := skillmarket.InstallRecord(a.Home.Skills(), local, scan, files, rec)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +63,7 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	}
 	mcpNote := ""
 	if mcpURL != "" {
-		if err := a.StartMCPHTTP(slug, mcpURL); err != nil {
+		if err := a.StartMCPHTTP(local, mcpURL); err != nil {
 			mcpNote = err.Error()
 		} else {
 			mcpNote = "mcp started"
@@ -59,7 +71,7 @@ func (a *App) InstallMarketSkill(slug string) (map[string]any, error) {
 	}
 	sk := a.GetSkill("", scan.Name)
 	if sk == nil {
-		sk = a.GetSkill("", slug)
+		sk = a.GetSkill("", local)
 	}
 	return map[string]any{
 		"ok":      true,
@@ -109,6 +121,20 @@ func skillmarketFiles(files []skillmarket.PackFile) []string {
 		out = append(out, f.Rel)
 	}
 	return out
+}
+
+func skillInstallID(dir string) string {
+	rec, ok := skillmarket.ReadRecord(dir)
+	if !ok {
+		return ""
+	}
+	if rec.Remote != "" && rec.Source != "" {
+		return skillmarket.ItemID(rec.Source, rec.Remote)
+	}
+	if rec.Slug != "" && rec.Source != "" && rec.Source != skillmarket.HubWorkBuddy {
+		return skillmarket.ItemID(rec.Source, rec.Slug)
+	}
+	return rec.Slug
 }
 
 func skillOrigin(dir, home, bundled string) string {

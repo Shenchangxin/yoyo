@@ -73,12 +73,30 @@ func (t *WorkspaceTools) wait(seconds int) ToolResult {
 }
 
 func (t *WorkspaceTools) listSkills() ToolResult {
-	if len(t.Skills) == 0 {
-		return ToolResult{Content: "no skills loaded"}
-	}
-	names := make([]string, 0, len(t.Skills))
-	for name := range t.Skills {
+	seen := map[string]bool{}
+	var names []string
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
 		names = append(names, name)
+	}
+	if t != nil && t.SkillMeta != nil {
+		for _, s := range t.SkillMeta {
+			if s.Name != "" {
+				add(s.Name)
+			}
+		}
+	}
+	if len(names) == 0 && t != nil {
+		for name := range t.Skills {
+			add(name)
+		}
+	}
+	if len(names) == 0 {
+		return ToolResult{Content: "no skills loaded"}
 	}
 	sort.Strings(names)
 	return ToolResult{Content: strings.Join(names, "\n")}
