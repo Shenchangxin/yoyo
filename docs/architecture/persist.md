@@ -6,10 +6,11 @@ Yoyo persists operator data as JSON files under `$YOYO_HOME` (default `~/.yoyo`)
 |---|---|
 | `config.yaml` | Appearance, workspace, gate, budget, `paused`, `packs.<id>.enabled`. Partial patches merge; omitted keys stay. |
 | `packs/<id>/` | Installed skill packs (`pack.json` + `skills/`). Not CAS; origin is GitHub or a local checkout. |
-| `connections/*.json` | Accounts (chat, image, video, speech, storage, search, workflow, OTEL, MCP HTTP). Secrets never live here — only a vault key name. |
+| `connections/*.json` | Accounts (chat, image, video, speech, music, stock, asr, storage, search, workflow, OTEL, MCP HTTP). Secrets never live here — only a vault key name. |
 | `connections/_defaults.json` | Default connection id per capability. |
-| `video/docs/{collection}/{id}.json` | Dramas, episodes, assets, jobs, canvas projects, `studio_topics`, `studio_projects`, `studio_publishes`. Atomic temp+rename. |
+| `video/docs/{collection}/{id}.json` | Dramas, episodes, assets, jobs, canvas projects, `studio_topics`, `studio_projects`, `studio_publishes`, `cut_projects`. Atomic temp+rename. |
 | `video/docs/_studio_session_binds.json` | Video session id → Studio project id. |
+| `video/docs/_cut_session_binds.json` | Video session id → cut/footage project id. |
 | `video/exports/{id}.mp4` | Operator-facing copies of assembled shorts for drag-drop onto creator pages. |
 | `cas/objects` | Content-addressed blobs. |
 | `vault.json` / OS keychain | API keys. |

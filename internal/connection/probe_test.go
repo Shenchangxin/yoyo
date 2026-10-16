@@ -96,6 +96,80 @@ func TestProbeChatCompletionsTreatsModel400AsReachable(t *testing.T) {
 	}
 }
 
+func TestProbePexelsUsesRawAuthorization(t *testing.T) {
+	isolateVaultEnv(t)
+	var gotAuth, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"photos":[]}`))
+	}))
+	defer srv.Close()
+
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Set("default", "px-secret")
+	out := TestConnection(Connection{
+		Vendor: "pexels", Protocol: "pexels", Endpoint: srv.URL + "/v1",
+		Capabilities: []string{CapStock},
+	}, r)
+	if out["ok"] != true {
+		t.Fatalf("%+v auth=%q path=%s", out, gotAuth, gotPath)
+	}
+	if gotAuth != "px-secret" {
+		t.Fatalf("pexels must send the raw key, got %q", gotAuth)
+	}
+	if !strings.Contains(gotPath, "/curated") {
+		t.Fatalf("path %s", gotPath)
+	}
+}
+
+func TestProbePixabayAndUnsplashAuth(t *testing.T) {
+	isolateVaultEnv(t)
+	var pixKey, unsplashAuth string
+	pix := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pixKey = r.URL.Query().Get("key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"hits":[]}`))
+	}))
+	defer pix.Close()
+	uns := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		unsplashAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"1"}`))
+	}))
+	defer uns.Close()
+
+	v := vault.NewFileOnly(t.TempDir())
+	r, err := Open(t.TempDir(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Set("default", "stock-key")
+	if out := TestConnection(Connection{
+		Vendor: "pixabay", Protocol: "pixabay", Endpoint: pix.URL,
+		Capabilities: []string{CapStock},
+	}, r); out["ok"] != true {
+		t.Fatalf("pixabay %+v", out)
+	}
+	if pixKey != "stock-key" {
+		t.Fatalf("pixabay key %q", pixKey)
+	}
+	if out := TestConnection(Connection{
+		Vendor: "unsplash", Protocol: "unsplash", Endpoint: uns.URL,
+		Capabilities: []string{CapStock},
+	}, r); out["ok"] != true {
+		t.Fatalf("unsplash %+v", out)
+	}
+	if unsplashAuth != "Client-ID stock-key" {
+		t.Fatalf("unsplash auth %q", unsplashAuth)
+	}
+}
+
 func TestProbeChatCompletionsFailsAuth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

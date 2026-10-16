@@ -274,6 +274,29 @@ export const nodeHoverToolbarTools: ToolDefinition[] = [
         run: (ctx) => ctx.handlers.onNodeTimeline(ctx.node!),
     },
     {
+        id: "send-to-cut",
+        toolbar: "node-hover",
+        category: "node-state",
+        label: "送到创作剪辑",
+        displayLabel: "去剪辑",
+        icon: <Scissors className="size-3.5" />,
+        defaultVisible: true,
+        defaultOrder: 149,
+        nodeToolbar: { group: "workspace", order: 31, section: "后期", description: "把节点视频送到创作总控，用共用剪辑引擎成片" },
+        applicable: (ctx) => hasVideo(ctx),
+        run: (ctx) => {
+            const node = ctx.node;
+            if (typeof window === "undefined" || !node) return;
+            window.dispatchEvent(new CustomEvent("yoyo:send-to-cut", {
+                detail: {
+                    storageKey: node.metadata?.storageKey || "",
+                    url: node.metadata?.content || "",
+                    title: String(node.metadata?.prompt || node.metadata?.fileName || "画布成片").slice(0, 40),
+                },
+            }));
+        },
+    },
+    {
         id: "uploadAudio",
         toolbar: "node-hover",
         category: "node-state",

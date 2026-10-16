@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
 func parseSize(size, aspect string) (int, int) {
@@ -213,9 +215,9 @@ func stillFilter(w, h int, dur float64, motion string) string {
 }
 
 func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol float64) (string, error) {
-	out := filepath.Join(tmp, "mixed.mp4")
-	args := []string{"-y", "-i", video}
-	nInputs := 1
+	if narrationHash == "" && bgmHash == "" {
+		return video, nil
+	}
 	var narr, bgm string
 	var err error
 	if narrationHash != "" {
@@ -224,8 +226,6 @@ func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol floa
 			return "", err
 		}
 		defer os.Remove(narr)
-		args = append(args, "-i", narr)
-		nInputs++
 	}
 	if bgmHash != "" {
 		bgm, err = e.materialize(bgmHash, ".mp3")
@@ -233,30 +233,18 @@ func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol floa
 			return "", err
 		}
 		defer os.Remove(bgm)
-		args = append(args, "-i", bgm)
-		nInputs++
-	}
-	if nInputs == 1 {
-		return video, nil
 	}
 	if bgmVol <= 0 {
-		bgmVol = 0.25
+		bgmVol = 0.22
 	}
-	filter := ""
-	switch {
-	case narr != "" && bgm != "":
-		filter = fmt.Sprintf("[2:a]volume=%.2f[bg];[1:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]", bgmVol)
-		args = append(args, "-filter_complex", filter, "-map", "0:v:0", "-map", "[a]")
-	case narr != "":
-		args = append(args, "-map", "0:v:0", "-map", "1:a:0")
-	default:
-		filter = fmt.Sprintf("[1:a]volume=%.2f[a]", bgmVol)
-		args = append(args, "-filter_complex", filter, "-map", "0:v:0", "-map", "[a]")
-	}
-	args = append(args, "-c:v", "copy", "-c:a", "aac", "-shortest", out)
-	cmd := exec.Command(e.FFMPEG, args...)
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("%s", ffmpegErr(b, err))
+	out := filepath.Join(tmp, "mixed.mp4")
+	if err := e.cutBin().Mix(video, narr, bgm, out, cut.MixOpts{
+		Duck:        narr != "" && bgm != "",
+		ReplaceOrig: narr != "",
+		MusicVol:    bgmVol,
+		SpeechVol:   1,
+	}); err != nil {
+		return "", err
 	}
 	return out, nil
 }

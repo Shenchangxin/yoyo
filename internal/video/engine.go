@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -207,6 +208,33 @@ func (e *Engine) putBind(b Bind) error {
 	e.binds[b.SessionID] = b
 	e.mu.Unlock()
 	return nil
+}
+
+// ReleaseWorkshopBinds drops 短片 / 短剧 / 画布 binds so the session
+// returns to the conductor lane (cut_* plus video_route).
+func (e *Engine) ReleaseWorkshopBinds(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	sm := e.loadStudioBinds()
+	if _, ok := sm[sessionID]; ok {
+		delete(sm, sessionID)
+		_ = e.saveStudioBinds(sm)
+	}
+	cm := e.loadCanvasBinds()
+	if _, ok := cm[sessionID]; ok {
+		delete(cm, sessionID)
+		_ = e.saveCanvasBinds(cm)
+	}
+	bm := e.loadBinds()
+	if _, ok := bm[sessionID]; ok {
+		delete(bm, sessionID)
+		_ = e.saveBinds(bm)
+		e.mu.Lock()
+		delete(e.binds, sessionID)
+		e.mu.Unlock()
+	}
 }
 
 func (e *Engine) SessionBind(sessionID string) (Bind, bool) {

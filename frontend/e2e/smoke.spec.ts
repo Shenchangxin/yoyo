@@ -66,6 +66,38 @@ test("control shortcuts section is reachable", async ({ page }) => {
   await expect(page.getByRole("button", { name: "palette" })).toHaveText("Mod+K");
 });
 
+test("generation tab lists music stock and transcription templates", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Generation", exact: true }).click();
+  const image = page.locator('[data-setting-section-highlight-target="generation-image"]');
+  await image.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("adapter-template-qwen-image")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-jimeng-image")).toBeVisible();
+  const video = page.locator('[data-setting-section-highlight-target="generation-video"]');
+  await video.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("adapter-template-vidu")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-jimeng-video")).toBeVisible();
+  const music = page.locator('[data-setting-section-highlight-target="generation-music"]');
+  await music.scrollIntoViewIfNeeded();
+  await expect(music).toBeVisible();
+  await expect(page.getByTestId("adapter-template-minimax-music")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-mureka")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-elevenlabs-sound")).toBeVisible();
+  await expect(music.getByTestId("adapter-custom")).toBeVisible();
+  const stock = page.locator('[data-setting-section-highlight-target="generation-stock"]');
+  await stock.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("adapter-template-unsplash")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-pexels-photos")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-pexels-videos")).toBeVisible();
+  const asr = page.locator('[data-setting-section-highlight-target="generation-asr"]');
+  await asr.scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("generation-whisper")).toContainText("whisper.cpp");
+  await expect(page.getByTestId("adapter-template-groq-whisper")).toBeVisible();
+  await expect(page.getByTestId("adapter-template-deepgram")).toBeVisible();
+});
+
 test("thread context menu can delete a chat", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],

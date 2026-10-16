@@ -11,32 +11,24 @@ async function openVideo(page: Page) {
 
 async function openVideoChat(page: Page) {
   await openVideo(page);
-  await expect(island(page)).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(island(page)).toHaveCount(0);
+  await expect(page.getByTestId("create-desk")).toBeVisible();
 }
 
-test("infinite canvas starts as a conversation like short drama", async ({ page }) => {
+test("infinite canvas opens from the video rail", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Video" })).toBeVisible();
-  await openVideoChat(page);
-  await expect(page.getByTestId("video-mode-switch")).toBeVisible();
-  await page.getByTestId("video-mode-switch").click();
-  await page.getByTestId("video-mode-canvas").click();
-  await expect(page.getByTestId("canvas-project-chip")).toBeVisible();
-  await expect(page.getByTestId("empty-turn")).toBeVisible();
-  await expect(page.getByTestId("canvas-studio")).toHaveCount(0);
+  await openVideo(page);
+  await page.getByTestId("video-shell-canvas").click();
+  await expect(island(page)).toBeVisible();
+  await expect(page.getByText("创作工作台")).toHaveCount(0);
 });
 
 test("opening the canvas board mounts the canvas studio", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await openVideoChat(page);
-  await page.getByTestId("video-mode-switch").click();
-  await page.getByTestId("video-mode-canvas").click();
-  await page.getByTestId("canvas-project-chip").click();
-  await page.getByTestId("canvas-open-board").click();
+  await openVideo(page);
+  await page.getByTestId("video-shell-canvas").click();
   await expect(island(page)).toBeVisible();
   await expect(page.getByText("创作工作台")).toHaveCount(0);
 });
@@ -69,13 +61,19 @@ test("video rail hosts the canvas workspace shell instead of the inner create wo
   await expect(page.getByTestId("video-shell-nav")).toBeVisible();
   await expect(page.getByTestId("video-shell-create")).toBeVisible();
   await expect(page.getByTestId("video-shell-studio")).toBeVisible();
-  await expect(island(page)).toBeVisible({ timeout: 15_000 });
-  await expect(island(page)).toHaveAttribute("data-pane", "create");
+  await expect(page.getByTestId("create-desk")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("empty-turn")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Talk through a piece." })).toBeVisible();
+  await expect(page.getByTestId("creation-featured")).toBeVisible();
+  await expect(page.getByRole("button", { name: /雨港记忆诊所/ })).toBeVisible();
+  await page.getByRole("button", { name: /雨港记忆诊所/ }).click();
+  await expect(page.getByLabel("Message")).toHaveValue(/雨夜东亚都市十字路口/);
+  await expect(page.getByTestId("profile-chip")).toHaveCount(0);
+  await expect(page.getByLabel("Where it runs")).toHaveCount(0);
+  await expect(page.getByTestId("create-open-footage")).toHaveCount(0);
+  await expect(page.getByTestId("footage-desk")).toHaveCount(0);
+  await expect(island(page)).toHaveCount(0);
   await expect(page.getByText("创作工作台")).toHaveCount(0);
-  await expect(page.getByText(/聊聊创作想法/)).toBeVisible({ timeout: 30_000 });
-  const featuredCover = page.locator(".creation-featured-media img").first();
-  await expect(featuredCover).toHaveAttribute("src", /\/short-drama-styles\//);
-  await expect.poll(async () => featuredCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
   await expect(page.getByRole("button", { name: "New chat" })).toHaveCount(0);
 
   await page.getByTestId("video-shell-drama").click();
@@ -107,6 +105,7 @@ test("assets skills plugins and history open from the video rail", async ({ page
   await expect(page.getByTestId("video-shell-plugins")).toBeVisible();
   await expect(page.getByTestId("video-shell-tasks")).toBeVisible();
   await page.getByTestId("video-shell-assets").click();
+  await expect(island(page)).toBeVisible();
   const assetsCover = page.locator(".assets-empty-banner-frame img").first();
   await expect(assetsCover).toHaveAttribute("src", /\/short-drama-styles\//);
   await expect.poll(async () => assetsCover.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(40);
@@ -163,10 +162,8 @@ test("studio workbench opens from the video rail", async ({ page }) => {
 test("studio workbench opens from the composer mode switch", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws");
   await page.goto("/");
-  await openVideoChat(page);
-  await expect(page.getByTestId("video-mode-switch")).toBeVisible();
-  await page.getByTestId("video-mode-switch").click();
-  await page.getByTestId("video-mode-creative").click();
+  await openVideo(page);
+  await page.getByTestId("video-shell-studio").click();
   await expect(page.getByTestId("studio-desk")).toBeVisible();
   await expect(page.getByTestId("studio-workbench")).toBeVisible();
   await expect(page.getByTestId("studio-home")).toBeVisible();
@@ -219,6 +216,34 @@ test("studio workbench opens from creation history", async ({ page }) => {
   await expect(page.getByTestId("studio-lines-hook")).toBeVisible();
   await expect(page.getByTestId("studio-lines-cta")).toBeVisible();
   await expect(page.getByText(/Hook, close, tone|钩子、收束、语气/)).toHaveCount(0);
+});
+
+test("assembled short sends to create cut", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    studios: [{
+      id: "studio-cut",
+      title: "春日成片",
+      status: "assembled",
+      gate: "compose",
+      furthest_gate: "compose",
+      script: "口播稿",
+      script_status: "approved",
+      result_hash: "cas-assembled",
+      storyboard: { shots: [{ id: "s1", image_hash: "img-1" }] },
+      delivery: { status: "draft" },
+    }],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Video" }).click();
+  await page.getByTestId("video-shell-tasks").click();
+  await page.getByTestId("video-project-studio-studio-cut").click();
+  await expect(page.getByTestId("studio-desk")).toBeVisible();
+  await page.getByTestId("studio-step-compose").click();
+  await expect(page.getByTestId("studio-send-to-cut")).toBeVisible();
+  await page.getByTestId("studio-send-to-cut").click();
+  await expect(page.getByTestId("create-desk")).toBeVisible();
+  await expect(page.getByLabel("Message")).toHaveValue(/cut_id=cut-1/);
+  await expect(page.getByLabel("Message")).toHaveValue(/cas=cas-assembled/);
 });
 
 test("each short keeps its own copilot chat", async ({ page }) => {

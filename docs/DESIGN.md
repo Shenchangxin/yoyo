@@ -52,9 +52,9 @@ functional layer above opaque media. Do not mix Regular and Clear glass.
 6. **Truth in the audit trail.** Narration (“Read 3 files”) lives in summaries;
    raw tool names, paths and commands stay visible in expanded rows and diffs
    in monospace with ligatures off.
-7. **One chrome.** PageHeader is the only toolbar. Video is Create | Drama |
-   Canvas in that header. The rail on Video is projects, not a second product
-   nav. Assets, plugins, and creation history jump from the command palette.
+7. **One chrome.** PageHeader is the only toolbar. Video is 创作 | 短片 |
+   短剧 | 画布 in the rail. 创作 is the conductor, not Yingce `/create`.
+   Assets, plugins, and creation history jump from the command palette.
    Skills is the Yoyo Skills surface.
 
 ---
@@ -176,12 +176,22 @@ stops the moment `running` is false.
 
 - App frame padding 8px; rail, review, Settings, Skills, and Harness are
   glass cards on `sidebar`; Agent and Video stages are bare `background`.
-- **Video** is one chrome. Create / Drama / Canvas plus Assets / Skills /
-  Plugins / History live in the left rail (`VideoShellNav`). Drama series and
-  canvas boards live in Creation history, not a second workspace list under
-  the rail. Yoyo Skills in the dock is the skill market; Video → Skills is
-  the hosted island library. Studio image / video / speech adapters in
-  Settings are the same providers Create and Canvas pick from.
+- **Video** is one chrome. 创作 / 短片 / 短剧 / 画布 plus Assets / Skills /
+  Plugins / History live in the left rail (`VideoShellNav`). 创作 is the
+  conductor chat (empty: 聊聊创作想法, composer, chips 剪这条 / 配音 /
+  做短片 / 做短剧 / 去画布, featured cases below). Attach a clip in the
+  composer to cut or analyze. Workshop outputs (短片 assemble, 短剧
+  stitch, 画布 video nodes) jump here with **去剪辑**. No identity chip,
+  location menu, Footage header, or thread title in the Video chrome
+  (titles leaked across 创作 / 短片 / 短剧 / 画布). Yingce Create is not
+  that lane; the canvas island stays on 画布. Drama series and canvas
+  boards live in
+  Creation history. Settings Generation is the vendor catalog (image,
+  video, speech, music, stock, asr). Domestic starters include Qwen, Jimeng,
+  Kolors, CogView, Hunyuan, Vidu, Kling, CosyVoice, Spark, and Mureka;
+  music also lists MiniMax / ElevenLabs / Stability / Lyria; stock from
+  Unsplash / Pexels / Pixabay / Giphy; transcription from local whisper.cpp
+  then cloud ASR. Missing keys do not appear to the agent.
 - **Drama** is conversation-first. Chat stays mounted. Opening an episode
   splits a director desk beside it: four phases (script / looks / board /
   cut), viewer plus inspector, film strip on board and cut. Factory stages
@@ -244,7 +254,7 @@ stops the moment `running` is false.
 - **Error** — `danger` bar and tint for provider failures; neutral card for
   soft stops with a `Continue this turn` CTA when retryable.
 - **Empty thread** — bottom-anchored above the composer: 140px spherical robot,
-  greeting (`Ready when you are.` / Video: `Paste a chapter.`), one hint line,
+  greeting (`Ready when you are.` / 创作: `聊聊创作想法` / Drama: `Paste a chapter.`), one hint line,
   starter **pills** (not a 3-column marketing grid). No headline larger than 21px.
   Click the sphere to bounce and spin.
 - **Turn outline** — left of the letter, default ticks. Accent marks only the

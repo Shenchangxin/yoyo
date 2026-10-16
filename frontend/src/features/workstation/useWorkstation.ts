@@ -25,6 +25,7 @@ import { readPopoutId } from "../../lib/popout";
 import type { AppConfig, Approval, Attachment, ContextUsage, FileHit, HarborKind, Health, Hunk, Item, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, VideoProject } from "../../lib/protocol";
 import { channelForSurface, isSubagentThread, parentSessionId, threadChannel } from "../../lib/protocol";
 import { bindVideoThread } from "../video/bind";
+import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type SendToCutRequest } from "../video/open-cut";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { asStudioProject, studioSessionId } from "../video/studio-session";
 import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
@@ -237,6 +238,7 @@ export function useWorkstation() {
   const [active, setActive] = useState<Thread | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const sendToCutRef = useRef<(detail: SendToCutRequest) => Promise<void>>(async () => {});
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
   const hotItemsRef = useRef<Item[]>([]);
@@ -516,6 +518,7 @@ export function useWorkstation() {
   useEffect(() => {
     if (active) useUI.getState().rememberThread(active);
   }, [active?.id]);
+  useEffect(() => installSendToCut((detail) => sendToCutRef.current(detail)), []);
   useEffect(() => {
     const ch = channelForSurface(surface);
     const preferred = useUI.getState().lastThreadId(ch);
@@ -1142,7 +1145,21 @@ export function useWorkstation() {
         itemsAcc.current = hotItemsRef.current;
         setItems(hotItemsRef.current.slice());
       }
-      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: opts?.attachments });
+      const rawAtts = opts?.attachments || [];
+      const sendAtts: Attachment[] = [];
+      if (useUI.getState().videoPane === "create") {
+        for (const a of rawAtts) {
+          const m = /^yoyo-cut:([^:]+):/.exec(String(a.path || ""));
+          if (m) {
+            await api.video.cutBind(t.id, m[1]).catch(() => {});
+            continue;
+          }
+          sendAtts.push(a);
+        }
+      } else {
+        sendAtts.push(...rawAtts);
+      }
+      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: sendAtts });
       if (wasRunning || res.queued) {
         const q = await api.queueList(t.id).catch(() => []);
         setQueueItems(q);
@@ -1486,6 +1503,58 @@ export function useWorkstation() {
     }
     setActive(t);
   }
+
+  sendToCutRef.current = async (detail) => {
+    const c = copy.video.conductor;
+    let hash = String(detail.hash || "").trim();
+    const resourceId = resourceIdFromSend(detail);
+    if (!hash && !resourceId && detail.url) {
+      toast.message(c.sendingToCut);
+      hash = await ingestClipUrl(String(detail.url));
+    }
+    if (!hash && !resourceId) {
+      toast.message(c.sendNeedVideo);
+      return;
+    }
+    let t = activeRef.current;
+    if (!t || threadChannel(t) !== "video") {
+      const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace("video"), "video"));
+      t = created.channel ? created : { ...created, channel: "video" as ThreadChannel };
+      setThreads((prev) => {
+        const next = [t!, ...prev.filter((x) => x.id !== t!.id)];
+        threadsRef.current = next;
+        return next;
+      });
+    }
+    toast.message(c.sendingToCut);
+    let p: { id?: string; source_hash?: string };
+    try {
+      p = await api.video.cutOpen({
+        title: String(detail.title || "").trim() || c.cutTitle,
+        hash,
+        resource_id: resourceId,
+        session_id: t.id,
+      }) as { id?: string; source_hash?: string };
+    } catch (err) {
+      if (!hash && detail.url) {
+        hash = await ingestClipUrl(String(detail.url));
+        p = await api.video.cutOpen({
+          title: String(detail.title || "").trim() || c.cutTitle,
+          hash,
+          session_id: t.id,
+        }) as { id?: string; source_hash?: string };
+      } else {
+        throw err;
+      }
+    }
+    const id = String(p?.id || "");
+    const src = String(p?.source_hash || hash);
+    if (!id) throw new Error("cut project was not created");
+    useUI.getState().setDraft(t.id, cutPrompt(copy, id, src));
+    openThread(t, { keepPane: true });
+    useUI.getState().openVideoPane("create");
+    toast.success(c.sentToCut);
+  };
 
   async function runHarbor(kind: HarborKind) {
     setHarborKind(kind);

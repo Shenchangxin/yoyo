@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { videoRouteFromLocation, yingceHref } from "./protocol.ts";
+import { isYingcePane, videoRouteFromLocation, yingceHref } from "./protocol.ts";
 
 test("canvas project handoff keeps the query on the editor route", () => {
   const route = videoRouteFromLocation("/canvas/board%201?conversation=creation%3A1&mode=handoff&asset=a&asset=b");
@@ -25,8 +25,9 @@ test("studio is a first-class video pane, not a yingce route", () => {
   assert.equal(yingceHref("studio", "", "library", ""), "/create");
 });
 
-test("switching back to create drops a leftover canvas entry", () => {
-  assert.equal(yingceHref("create", "board", "editor", "/canvas/board?agent=1"), "/create");
+test("create is the conductor, not a yingce workbench", () => {
+  assert.equal(isYingcePane("create"), false);
+  assert.equal(yingceHref("create", "board", "editor", "/canvas/board?agent=1"), "/canvas");
 });
 
 test("eagle library stays on the plugins pane across a remount", () => {

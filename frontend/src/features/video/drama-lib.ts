@@ -22,6 +22,7 @@ export type Episode = {
   tts_provider_id?: string;
   tts_model?: string;
   video_url?: string;
+  video_hash?: string;
   poster_url?: string;
 };
 
@@ -51,6 +52,7 @@ export type Shot = {
   duration: number;
   status: string;
   video_url?: string;
+  video_hash?: string;
   poster_url?: string;
   character_ids?: string[];
   scene_id?: string;

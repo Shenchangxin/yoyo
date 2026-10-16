@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
 import { displayWorkspace } from "../lib/display-title";
+import { toast } from "sonner";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
@@ -109,12 +110,16 @@ export function Composer(props: {
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
   const studioDesk = useUI((s) => s.studioDesk);
+  const videoPane = useUI((s) => s.videoPane);
   const videoSurface = surface === "video";
   const videoing = videoSurface && !props.compact;
+  const createDesk = videoPane === "create";
   const placeholder = props.disabled
     ? (props.disabledReason || copy.composer.disabled)
     : studioDesk
       ? copy.composer.placeholderStudioDesk
+    : videoPane === "create"
+      ? copy.composer.placeholderConductor
     : videoSurface
       ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
       : copy.composer.placeholder;
@@ -124,7 +129,7 @@ export function Composer(props: {
   // something to queue, then it queues. Steer is a sibling action that only exists with a draft.
   const orbStops = !!props.running && !hasPayload;
   // The mode menu holds Agent/Plan and the worktree items. Permission keeps its own select beside the send orb.
-  const modeMenu = !studioDesk && (!videoing || !!props.onIsolate);
+  const modeMenu = !studioDesk && !createDesk && (!videoing || !!props.onIsolate);
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
   const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
@@ -264,7 +269,7 @@ export function Composer(props: {
 
   async function pickAttachments() {
     if (props.disabled) return;
-    if (props.onPickFiles) {
+    if (!createDesk && props.onPickFiles) {
       const picked = await props.onPickFiles();
       if (picked.length) setAtts((prev) => [...prev, ...picked]);
       return;
@@ -279,8 +284,13 @@ export function Composer(props: {
     }
     const files = Array.isArray(list) ? (list as File[]) : Array.from(list);
     const next: Attachment[] = [];
-    for (const f of files) {
-      next.push(await fileToAttachment(f));
+    try {
+      for (const f of files) {
+        next.push(createDesk && isVideoFile(f) ? await ingestCreateClip(f, props.sessionId) : await fileToAttachment(f));
+      }
+    } catch (e) {
+      toast.error(api.errMessage(e));
+      return;
     }
     setAtts((prev) => [...prev, ...next]);
   }
@@ -304,7 +314,8 @@ export function Composer(props: {
   }
 
   function send(steer?: boolean) {
-    const body = composeDraft(chips, value);
+    const stamp = footageStamp(atts);
+    const body = [composeDraft(chips, value), stamp].filter(Boolean).join("\n\n");
     if (!body && !atts.length) return;
     props.onSend({ steer, attachments: atts, text: body });
     setAtts([]);
@@ -510,7 +521,7 @@ export function Composer(props: {
           />
           <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-2 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
-            {studioDesk ? null : videoSurface ? (
+            {studioDesk || videoPane === "create" ? null : videoSurface ? (
               <>
                 <VideoModeSwitch disabled={props.disabled} />
                 {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
@@ -519,7 +530,7 @@ export function Composer(props: {
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}
-            {!studioDesk && props.onProfile && profiles.length ? (
+            {!studioDesk && !createDesk && props.onProfile && profiles.length ? (
               <ProfileChip
                 profiles={profiles}
                 profileId={props.profileId}
@@ -570,7 +581,7 @@ export function Composer(props: {
                     {copy.composer.screenshot}
                   </DropdownMenuItem>
                 ) : null}
-                {!studioDesk && (props.onSavePage || props.onFollow || props.onCall) ? (
+                {!studioDesk && !createDesk && (props.onSavePage || props.onFollow || props.onCall) ? (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuSub>
@@ -623,13 +634,14 @@ export function Composer(props: {
               ref={fileRef}
               type="file"
               multiple
+              accept={createDesk ? "video/*,audio/*,image/*" : undefined}
               className="hidden"
               onChange={(e) => {
                 if (e.target.files) void addFiles(e.target.files);
                 e.target.value = "";
               }}
             />
-            {!studioDesk && props.onWorkspace ? (
+            {!studioDesk && !createDesk && props.onWorkspace ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -815,7 +827,7 @@ export function Composer(props: {
                 </Tooltip>
               </>
             ) : null}
-            {props.onAuthMode ? (
+            {props.onAuthMode && !createDesk ? (
               <Select
                 value={parseComposerAuth(props.authMode)}
                 onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
@@ -868,7 +880,7 @@ export function Composer(props: {
           onReorder={props.onQueueReorder}
           copy={copy}
         />
-        {studioDesk ? null : (
+        {studioDesk || createDesk ? null : (
         <ContextMeter
           ctx={props.ctx}
           draftTokens={estimateTokens(composeDraft(chips, value))}
@@ -1056,6 +1068,42 @@ async function fileToAttachment(f: File): Promise<Attachment> {
   let bin = "";
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return { name: f.name || (f.type.startsWith("image/") ? "image.png" : "file"), mime: f.type, data_b64: btoa(bin) };
+}
+
+function isVideoFile(f: File): boolean {
+  if (f.type.startsWith("video/")) return true;
+  return /\.(mp4|mov|mkv|webm|avi|m4v|mpeg|mpg)$/i.test(f.name || "");
+}
+
+function parseCutRef(path?: string): { id: string; hash: string } | null {
+  const m = /^yoyo-cut:([^:]+):(.+)$/.exec(String(path || ""));
+  return m ? { id: m[1], hash: m[2] } : null;
+}
+
+function footageStamp(atts: Attachment[]): string {
+  const lines = atts.flatMap((a) => {
+    const ref = parseCutRef(a.path);
+    if (!ref) return [];
+    return [`源片已入库。cut_id=${ref.id} cas=${ref.hash}。用 cut_analyze / cut_propose / cut_apply。不要检查代码仓库。`];
+  });
+  return lines.join("\n");
+}
+
+async function ingestCreateClip(f: File, sessionId?: string): Promise<Attachment> {
+  const data = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+  const b64 = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
+  const ref = await api.video.putStudioMedia(b64, f.type || "video/mp4", "video");
+  const hash = String(ref?.cas_hash || ref?.hash || "");
+  if (!hash) throw new Error("upload did not return a CAS hash");
+  const p = await api.video.cutCreate(f.name.replace(/\.[^.]+$/, ""), hash, sessionId || "") as { id?: string };
+  const id = String(p?.id || "");
+  if (!id) throw new Error("cut project was not created");
+  return { name: f.name, mime: f.type || "video/mp4", path: `yoyo-cut:${id}:${hash}` };
 }
 
 function ingestPasteFiles(e: ClipboardEvent<HTMLTextAreaElement>, add: (files: File[]) => void): boolean {

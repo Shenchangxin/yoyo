@@ -10,6 +10,9 @@ const (
 	CapImage    = "image"
 	CapVideo    = "video"
 	CapSpeech   = "speech"
+	CapMusic    = "music"
+	CapStock    = "stock"
+	CapASR      = "asr"
 	CapSearch   = "search"
 	CapStorage  = "storage"
 	CapWorkflow = "workflow"
@@ -45,6 +48,12 @@ func NormalizeCap(s string) string {
 		return CapChat
 	case "tts", "audio", "speech":
 		return CapSpeech
+	case "bgm", "soundtrack", "score", "music":
+		return CapMusic
+	case "stock", "pexels", "pixabay", "unsplash", "giphy", "footage":
+		return CapStock
+	case "asr", "whisper", "stt", "transcribe", "transcription":
+		return CapASR
 	case "runninghub", "workflow":
 		return CapWorkflow
 	case "oss", "s3", "cas", "storage":
@@ -143,6 +152,8 @@ func InferProtocol(vendor, cap string) string {
 			return "serper"
 		case "bocha":
 			return "bocha"
+		case "metaso":
+			return "search"
 		default:
 			return "search"
 		}
@@ -160,6 +171,10 @@ func InferProtocol(vendor, cap string) string {
 			return "google-gemini-image"
 		case "volcengine":
 			return "volcengine-ark-seedream"
+		case "jimeng":
+			return "volcengine-jimeng-image"
+		case "tencent", "hunyuan":
+			return "hunyuan-image"
 		default:
 			return "openai-images"
 		}
@@ -175,11 +190,71 @@ func InferProtocol(vendor, cap string) string {
 			return "dashscope-wan-video"
 		case "volcengine", "seedance":
 			return "volcengine-ark-seedance"
+		case "kling", "kuaishou", "kolors":
+			return "openai-videos"
+		case "runway":
+			return "openai-videos"
+		case "jimeng":
+			return "volcengine-jimeng-video"
+		case "vidu":
+			return "vidu"
+		case "tencent", "hunyuan":
+			return "hunyuan-video"
 		default:
 			return "openai-videos"
 		}
 	case CapSpeech:
-		return "openai-audio"
+		switch v {
+		case "azure", "microsoft":
+			return "openai-audio"
+		case "elevenlabs":
+			return "openai-audio"
+		default:
+			return "openai-audio"
+		}
+	case CapMusic:
+		switch v {
+		case "minimax", "hailuo":
+			return "minimax-music"
+		case "elevenlabs":
+			return "elevenlabs-sound"
+		case "stability":
+			return "stability-audio"
+		case "suno":
+			return "suno"
+		case "gemini", "google":
+			return "google-lyria"
+		case "mureka", "skywork":
+			return "mureka"
+		default:
+			return "openai-audio"
+		}
+	case CapStock:
+		switch v {
+		case "pixabay":
+			return "pixabay"
+		case "unsplash":
+			return "unsplash"
+		case "giphy":
+			return "giphy"
+		default:
+			return "pexels"
+		}
+	case CapASR:
+		switch v {
+		case "deepgram":
+			return "deepgram"
+		case "assemblyai":
+			return "assemblyai"
+		case "azure", "microsoft":
+			return "azure-stt"
+		case "aliyun", "dashscope", "qwen":
+			return "dashscope-asr"
+		case "tencent", "hunyuan":
+			return "tencent-asr"
+		default:
+			return "openai-audio"
+		}
 	default:
 		switch v {
 		case "claude", "anthropic":

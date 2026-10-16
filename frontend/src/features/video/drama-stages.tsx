@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { ProgressHairline } from "../../components/ui/progress-hairline";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
+import { requestSendToCut } from "./open-cut";
 import { useUI } from "../../lib/store";
 import { DramaMentionField, type MentionAsset } from "./DramaMentionField";
 import {
@@ -380,6 +381,11 @@ export function BoardInspector(props: {
       <div className="flex flex-wrap items-center gap-2">
         {s.video_url ? <a className="text-[11px] underline" href={s.video_url} download>{c.download}</a> : null}
         <Button size="sm" variant="lift" onClick={props.onGen}>{c.anotherTake}</Button>
+        {s.video_hash ? (
+          <Button size="sm" variant="ghost" data-testid="drama-shot-send-to-cut" onClick={() => requestSendToCut({ hash: s.video_hash, title: s.title || c.conductor.cutTitle })}>
+            {c.conductor.sendToCut}
+          </Button>
+        ) : null}
       </div>
       <div>
         <div className="mb-1 text-[11px] text-muted">{c.history}</div>
@@ -406,12 +412,17 @@ export function CutInspector(props: {
   ffmpeg: boolean;
   ffmpegInstall?: { phase?: string; percent?: number; error?: string };
   onInstall: () => void;
+  onSendToCut?: (hash: string, title: string) => void;
 }) {
   const c = props.copy.video;
   const shots = props.bundle.shots || [];
   const n = selectedClipIds(shots, props.sel).length;
   const phase = String(props.ffmpegInstall?.phase || "");
   const installing = phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
+  const epHash = String(props.bundle.episode?.video_hash || "").trim();
+  const shotHash = String(shots.find((s) => props.sel[s.id] !== false && s.video_hash)?.video_hash || "").trim();
+  const hash = epHash || shotHash;
+  const title = props.bundle.episode?.title || props.bundle.drama?.title || c.conductor.cutTitle;
   return (
     <div>
       {!props.ffmpeg ? (
@@ -433,6 +444,17 @@ export function CutInspector(props: {
           props.setSel(next);
         }}>{c.selectNone}</button>
       </div>
+      {props.onSendToCut ? (
+        <Button
+          size="sm"
+          variant="default"
+          className="mt-1"
+          data-testid="drama-send-to-cut"
+          disabled={!hash}
+          title={c.conductor.sendToCutHint}
+          onClick={() => { if (hash) props.onSendToCut?.(hash, title); }}
+        >{c.conductor.sendToCut}</Button>
+      ) : null}
     </div>
   );
 }

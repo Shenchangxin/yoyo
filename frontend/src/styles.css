@@ -1266,6 +1266,166 @@ html.dark .code-hl span {
   transform: scale(0.985);
 }
 
+.creation-gallery {
+  width: 100%;
+  max-width: min(100%, 72rem);
+  margin-inline: auto;
+  padding: 1.75rem 1.25rem 3.25rem;
+}
+.creation-gallery-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+.creation-gallery-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lift) 55%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.creation-gallery-filter span {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.creation-gallery-filter[aria-pressed="true"] {
+  background: var(--lift);
+  color: var(--foreground);
+}
+.creation-gallery-filter:hover {
+  background: var(--lift);
+  color: var(--foreground);
+}
+.creation-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.creation-gallery-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--lift) 40%, var(--background));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.creation-gallery-card:hover {
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+.creation-gallery-card.is-hero {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.creation-gallery-media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: var(--lift);
+  aspect-ratio: 16 / 10;
+}
+.creation-gallery-card.is-hero .creation-gallery-media {
+  flex: 1 1 auto;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+.creation-gallery-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.creation-gallery-card.is-hero .creation-gallery-media img {
+  position: absolute;
+  inset: 0;
+}
+.creation-gallery-use {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  opacity: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  padding: 0.28rem 0.65rem;
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 550;
+}
+.creation-gallery-card:hover .creation-gallery-use,
+.creation-gallery-card:focus-visible .creation-gallery-use {
+  opacity: 1;
+}
+.creation-gallery-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem 0.85rem;
+}
+.creation-gallery-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.creation-gallery-copy > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.creation-gallery-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 12px;
+}
+.creation-gallery-more {
+  border-radius: 999px;
+  background: var(--lift);
+  padding: 0.35rem 0.8rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+@media (max-width: 860px) {
+  .creation-gallery-card.is-hero {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .creation-gallery-card.is-hero .creation-gallery-media {
+    flex: none;
+    aspect-ratio: 16 / 9;
+  }
+  .creation-gallery-card.is-hero .creation-gallery-media img {
+    position: static;
+  }
+}
+@media (max-width: 640px) {
+  .creation-gallery-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .creation-gallery-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .glass-chrome {
   background: var(--sidebar);
   box-shadow: var(--shadow-card);
@@ -1325,6 +1485,7 @@ html[data-skin-wallpaper="1"]:not(.companion) [data-settings-content] {
   }
   .pulse-dot::after { animation: none; opacity: 0; }
   .empty-rise { animation: none; }
+  .creation-gallery-card:hover { transform: none; }
   .starter-tile { animation: none; }
   .skeleton-sweep {
     animation: none;

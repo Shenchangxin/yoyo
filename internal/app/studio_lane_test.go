@@ -11,7 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
-func TestStudioLaneDropsWorkspaceInspectTools(t *testing.T) {
+func TestConductorLaneGetsCutToolsNotStudio(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,9 @@ func TestStudioLaneDropsWorkspaceInspectTools(t *testing.T) {
 		Advertised: append([]string(nil), runtime.ChatCoreTools...),
 	}
 	a.attachPersonal(tools)
+	a.attachCutTools(tools, sess.ID)
 	a.attachStudioTools(tools, sess.ID)
+	a.attachConductorTools(tools, sess.ID)
 	for _, n := range []string{"shell", "list_dir", "glob", "grep"} {
 		for _, got := range tools.Advertised {
 			if got == n {
@@ -39,15 +41,118 @@ func TestStudioLaneDropsWorkspaceInspectTools(t *testing.T) {
 			}
 		}
 	}
+	foundCut, foundRoute, foundStudio := false, false, false
+	for _, n := range tools.ExtraEnabled {
+		if n == "cut_get" {
+			foundCut = true
+		}
+		if n == "video_route" {
+			foundRoute = true
+		}
+		if n == "studio_get" {
+			foundStudio = true
+		}
+	}
+	if !foundCut || !foundRoute {
+		t.Fatalf("conductor tools missing: %v", tools.ExtraEnabled)
+	}
+	if foundStudio {
+		t.Fatalf("unbound video channel should not attach studio tools: %v", tools.ExtraEnabled)
+	}
+}
+
+func TestStudioBoundAttachesStudioTools(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Video == nil {
+		t.Skip("video engine missing")
+	}
+	p, err := a.Video.CreateStudioProject(video.StudioProject{Title: "通勤穿搭"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := a.NewSessionOn("", session.ChannelVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Video.BindStudioSession(sess.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	tools := &runtime.WorkspaceTools{
+		SessionID:  sess.ID,
+		Advertised: append([]string(nil), runtime.ChatCoreTools...),
+	}
+	a.attachCutTools(tools, sess.ID)
+	a.attachStudioTools(tools, sess.ID)
+	a.attachConductorTools(tools, sess.ID)
 	found := false
 	for _, n := range tools.ExtraEnabled {
 		if n == "studio_get" {
 			found = true
-			break
+		}
+		if n == "video_route" {
+			t.Fatalf("bound shorts should not keep conductor video_route: %v", tools.ExtraEnabled)
 		}
 	}
 	if !found {
 		t.Fatalf("studio tools not enabled: %v", tools.ExtraEnabled)
+	}
+}
+
+func TestOpenCutReturnsConductorLane(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Video == nil {
+		t.Skip("video engine missing")
+	}
+	p, err := a.Video.CreateStudioProject(video.StudioProject{Title: "通勤穿搭"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := a.NewSessionOn("", session.ChannelVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Video.BindStudioSession(sess.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := a.Video.PutBytes([]byte("open-cut-source"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Video.OpenCut(video.CutOpen{Title: "通勤穿搭", Hash: hash, SessionID: sess.ID}); err != nil {
+		t.Fatal(err)
+	}
+	tools := &runtime.WorkspaceTools{
+		SessionID:  sess.ID,
+		Advertised: append([]string(nil), runtime.ChatCoreTools...),
+	}
+	a.attachCutTools(tools, sess.ID)
+	a.attachStudioTools(tools, sess.ID)
+	a.attachConductorTools(tools, sess.ID)
+	foundCut, foundRoute, foundStudio := false, false, false
+	for _, n := range tools.ExtraEnabled {
+		if n == "cut_get" {
+			foundCut = true
+		}
+		if n == "video_route" {
+			foundRoute = true
+		}
+		if n == "studio_get" {
+			foundStudio = true
+		}
+	}
+	if !foundCut || !foundRoute {
+		t.Fatalf("conductor tools missing after send-to-cut: %v", tools.ExtraEnabled)
+	}
+	if foundStudio {
+		t.Fatalf("studio tools should drop after send-to-cut: %v", tools.ExtraEnabled)
 	}
 }
 
@@ -84,5 +189,16 @@ func TestApplyStudioLanePromptDropsInspect(t *testing.T) {
 	}
 	if !sawPin {
 		t.Fatal("missing studio runtime pin")
+	}
+}
+
+func TestApplyConductorLanePrompt(t *testing.T) {
+	loop := runtime.DefaultLoop()
+	loop, frags := applyConductorLanePrompt(loop, nil)
+	if loop.Bootstrap != conductorBootstrap {
+		t.Fatal(loop.Bootstrap)
+	}
+	if len(frags) == 0 || frags[len(frags)-1].Text != conductorRuntimePin {
+		t.Fatalf("%+v", frags)
 	}
 }

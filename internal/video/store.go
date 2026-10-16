@@ -34,10 +34,12 @@ const (
 	colStudioTopics    = "studio_topics"
 	colStudioProjects  = "studio_projects"
 	colStudioPublishes = "studio_publishes"
+	colCutProjects     = "cut_projects"
 	fileSettings       = "_settings.json"
 	fileSessionBinds   = "_session_binds.json"
 	fileCanvasBinds    = "_canvas_session_binds.json"
 	fileStudioBinds    = "_studio_session_binds.json"
+	fileCutBinds       = "_cut_session_binds.json"
 	fileSkillFlags     = "_skill_flags.json"
 	filePluginFlags    = "_plugin_flags.json"
 )

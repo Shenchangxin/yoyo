@@ -35,23 +35,18 @@ func TestConnection(c Connection, r *Registry) map[string]any {
 	if needsKey(c) && key == "" {
 		return map[string]any{"ok": false, "error": "missing vault key"}
 	}
-	url := strings.TrimRight(strings.TrimSpace(c.Endpoint), "/")
+	url := probeURL(c)
 	if url == "" {
 		return map[string]any{"ok": false, "error": "endpoint empty"}
 	}
 	if HasCap(c, CapChat) || c.Protocol == "openai-chat-completions" {
-		return ProbeChatCompletions(url, key, ModelFor(c, CapChat), c.Vendor)
+		return ProbeChatCompletions(strings.TrimRight(strings.TrimSpace(c.Endpoint), "/"), key, ModelFor(c, CapChat), c.Vendor)
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-		if chatVendorUsesGoogleKey(c.Vendor, url) {
-			req.Header.Set("x-goog-api-key", key)
-		}
-	}
+	applyProbeAuth(req, c, key)
 	cli := &http.Client{Timeout: 8 * time.Second}
 	res, err := cli.Do(req)
 	if err != nil {
@@ -181,6 +176,81 @@ func jsonErrorString(raw json.RawMessage) string {
 		}
 	}
 	return strings.TrimSpace(string(raw))
+}
+
+func probeURL(c Connection) string {
+	base := strings.TrimRight(strings.TrimSpace(c.Endpoint), "/")
+	if base == "" {
+		return ""
+	}
+	v := strings.ToLower(strings.TrimSpace(c.Vendor))
+	p := strings.ToLower(strings.TrimSpace(c.Protocol))
+	switch {
+	case v == "pexels" || p == "pexels":
+		if strings.Contains(base, "/videos") {
+			return base + "/popular?per_page=1"
+		}
+		return base + "/curated?per_page=1"
+	case v == "pixabay" || p == "pixabay":
+		return base
+	case v == "unsplash" || p == "unsplash":
+		return base + "/photos/random"
+	case v == "giphy" || p == "giphy":
+		return base + "/gifs/trending?limit=1"
+	case v == "deepgram" || p == "deepgram":
+		if strings.HasSuffix(base, "/v1") {
+			return base + "/projects"
+		}
+		return base + "/v1/projects"
+	case v == "assemblyai" || p == "assemblyai":
+		if strings.Contains(base, "/v2") {
+			return base + "/transcript"
+		}
+		return base + "/v2/transcript"
+	default:
+		return base
+	}
+}
+
+func applyProbeAuth(req *http.Request, c Connection, key string) {
+	if req == nil || strings.TrimSpace(key) == "" {
+		return
+	}
+	v := strings.ToLower(strings.TrimSpace(c.Vendor))
+	p := strings.ToLower(strings.TrimSpace(c.Protocol))
+	switch {
+	case v == "pexels" || p == "pexels":
+		req.Header.Set("Authorization", key)
+	case v == "pixabay" || p == "pixabay":
+		q := req.URL.Query()
+		q.Set("key", key)
+		if q.Get("q") == "" {
+			q.Set("q", "yellow")
+		}
+		if q.Get("per_page") == "" {
+			q.Set("per_page", "3")
+		}
+		req.URL.RawQuery = q.Encode()
+	case v == "unsplash" || p == "unsplash":
+		req.Header.Set("Authorization", "Client-ID "+key)
+	case v == "giphy" || p == "giphy":
+		q := req.URL.Query()
+		q.Set("api_key", key)
+		req.URL.RawQuery = q.Encode()
+	case v == "deepgram" || p == "deepgram":
+		req.Header.Set("Authorization", "Token "+key)
+	case v == "assemblyai" || p == "assemblyai":
+		req.Header.Set("Authorization", key)
+	case v == "elevenlabs":
+		req.Header.Set("xi-api-key", key)
+	case v == "azure" || v == "microsoft":
+		req.Header.Set("Ocp-Apim-Subscription-Key", key)
+	default:
+		req.Header.Set("Authorization", "Bearer "+key)
+		if chatVendorUsesGoogleKey(c.Vendor, c.Endpoint) {
+			req.Header.Set("x-goog-api-key", key)
+		}
+	}
 }
 
 func chatVendorUsesGoogleKey(vendor, base string) bool {

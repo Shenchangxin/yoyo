@@ -1,19 +1,32 @@
 import type { ComponentType, SVGProps } from "react";
 import AlibabaCloud from "@lobehub/icons/es/AlibabaCloud/components/Mono";
+import AssemblyAIColor from "@lobehub/icons/es/AssemblyAI/components/Color";
 import Aws from "@lobehub/icons/es/Aws/components/Mono";
 import AzureColor from "@lobehub/icons/es/Azure/components/Color";
 import Claude from "@lobehub/icons/es/Claude/components/Mono";
 import ComfyUI from "@lobehub/icons/es/ComfyUI/components/Mono";
 import DeepSeek from "@lobehub/icons/es/DeepSeek/components/Mono";
 import DoubaoColor from "@lobehub/icons/es/Doubao/components/Color";
+import ElevenLabs from "@lobehub/icons/es/ElevenLabs/components/Mono";
 import GeminiColor from "@lobehub/icons/es/Gemini/components/Color";
 import Grok from "@lobehub/icons/es/Grok/components/Mono";
 import Groq from "@lobehub/icons/es/Groq/components/Mono";
+import HunyuanColor from "@lobehub/icons/es/Hunyuan/components/Color";
+import JimengColor from "@lobehub/icons/es/Jimeng/components/Color";
 import Kimi from "@lobehub/icons/es/Kimi/components/Mono";
+import KlingColor from "@lobehub/icons/es/Kling/components/Color";
+import KolorsColor from "@lobehub/icons/es/Kolors/components/Color";
 import Minimax from "@lobehub/icons/es/Minimax/components/Mono";
 import OpenAI from "@lobehub/icons/es/OpenAI/components/Mono";
 import OpenRouter from "@lobehub/icons/es/OpenRouter/components/Mono";
 import Qwen from "@lobehub/icons/es/Qwen/components/Mono";
+import Runway from "@lobehub/icons/es/Runway/components/Mono";
+import SkyworkColor from "@lobehub/icons/es/Skywork/components/Color";
+import SparkColor from "@lobehub/icons/es/Spark/components/Color";
+import StabilityColor from "@lobehub/icons/es/Stability/components/Color";
+import Suno from "@lobehub/icons/es/Suno/components/Mono";
+import TencentCloudColor from "@lobehub/icons/es/TencentCloud/components/Color";
+import ViduColor from "@lobehub/icons/es/Vidu/components/Color";
 import ZAI from "@lobehub/icons/es/ZAI/components/Mono";
 import { cn } from "../../lib/utils";
 
@@ -56,6 +69,17 @@ const ALIAS: Record<string, string> = {
   brave: "search",
   serper: "search",
   bocha: "search",
+  microsoft: "azure",
+  kuaishou: "kling",
+  lyria: "gemini",
+  iflytek: "spark",
+  xfyun: "spark",
+  xunfei: "spark",
+  mureka: "skywork",
+  skywork: "skywork",
+  hunyuan: "hunyuan",
+  metaso: "search",
+  cos: "tencent",
 };
 
 const MARK: Record<string, Mark> = {
@@ -78,6 +102,24 @@ const MARK: Record<string, Mark> = {
   cas: { Icon: CasGlyph, bg: "#3F3F46", fg: "#fff", scale: 0.7 },
   search: { Icon: SearchGlyph, bg: "#2563EB", fg: "#fff", scale: 0.68 },
   otel: { Icon: OtelGlyph, bg: "#425CC7", fg: "#fff", scale: 0.7 },
+  elevenlabs: { Icon: ElevenLabs, bg: "#000", fg: "#fff", scale: 0.7 },
+  suno: { Icon: Suno, bg: "#000", fg: "#fff", scale: 0.7 },
+  stability: { Icon: StabilityColor, bg: "#fff", painted: true, scale: 0.74 },
+  runway: { Icon: Runway, bg: "#111", fg: "#fff", scale: 0.7 },
+  kling: { Icon: KlingColor, bg: "#fff", painted: true, scale: 0.74 },
+  assemblyai: { Icon: AssemblyAIColor, bg: "#fff", painted: true, scale: 0.74 },
+  pexels: { Icon: PexelsGlyph, bg: "#05A081", fg: "#fff", scale: 0.7 },
+  pixabay: { Icon: PixabayGlyph, bg: "#2EC66D", fg: "#fff", scale: 0.7 },
+  unsplash: { Icon: UnsplashGlyph, bg: "#111", fg: "#fff", scale: 0.68 },
+  giphy: { Icon: GiphyGlyph, bg: "#111", fg: "#fff", scale: 0.7 },
+  deepgram: { Icon: DeepgramGlyph, bg: "#0B0B0F", fg: "#13EF93", scale: 0.7 },
+  jimeng: { Icon: JimengColor, bg: "#fff", painted: true, scale: 0.74 },
+  vidu: { Icon: ViduColor, bg: "#fff", painted: true, scale: 0.74 },
+  kolors: { Icon: KolorsColor, bg: "#fff", painted: true, scale: 0.74 },
+  hunyuan: { Icon: HunyuanColor, bg: "#fff", painted: true, scale: 0.74 },
+  tencent: { Icon: TencentCloudColor, bg: "#fff", painted: true, scale: 0.7 },
+  spark: { Icon: SparkColor, bg: "#fff", painted: true, scale: 0.74 },
+  skywork: { Icon: SkyworkColor, bg: "#fff", painted: true, scale: 0.74 },
   custom: { Icon: CustomGlyph, bg: "#52525B", fg: "#fff", scale: 0.7 },
 };
 
@@ -154,6 +196,47 @@ function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
       <path d="M12 3.4 20.4 8.2v7.6L12 20.6 3.6 15.8V8.2L12 3.4Z" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
       <circle cx="12" cy="12" r="2.15" fill={color} />
+    </svg>
+  );
+}
+
+function PexelsGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <rect x="4.2" y="6.2" width="15.6" height="11.6" rx="2.2" stroke={color} strokeWidth="1.7" />
+      <circle cx="12" cy="12" r="2.6" stroke={color} strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function PixabayGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <path d="M5 16.4 9.4 8.6 12 13.2 14.6 8.6 19 16.4" stroke={color} strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function UnsplashGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
+      <path d="M8.4 7.2h7.2v3.2H14V9.2h-4v5.6h4v-1.2h1.6v3.2H8.4V7.2Z" />
+    </svg>
+  );
+}
+
+function GiphyGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <path d="M7 6.4h6.2v2.2H9.2v6.8H7V6.4Zm6.2 2.2H17V17.6h-3.8v-2.2H15v-4.6h-1.8V8.6Z" fill={color} />
+    </svg>
+  );
+}
+
+function DeepgramGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
+      <path d="M5 12h2.2M9.2 7.4v9.2M12.6 5.6v12.8M16 7.4v9.2M19 12h-2.2" stroke={color} strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }

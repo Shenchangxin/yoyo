@@ -10,11 +10,11 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any },
+  extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
-  let studios: any[] = [];
+  let studios: any[] = [...(extra?.studios || [])];
   let topics: any[] = [
     { id: "topic-1", title: "春日穿搭", status: "ready", source_platform: "weibo", angle: "通勤怎么穿", scores: { heat: 5, feasibility: 4 } },
     { id: "topic-2", title: "还没想好", status: "inbox" },
@@ -149,7 +149,26 @@ export async function mockApi(
           media_base: "",
           ffmpeg_install: { ready: true, phase: "ready", percent: 100 },
           remotion: { ready: false, bundled: false, node: "/usr/bin/node", install: { phase: "idle", percent: 0 } },
+          whisper: false,
+          whisper_bin: "",
         });
+      }
+      if (rpcMethod === "video.templates") {
+        return ok([
+          { service_type: "image", provider: "aliyun", name: "Qwen Image", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-image-plus", models: "[]" },
+          { service_type: "image", provider: "jimeng", name: "Jimeng Image", base_url: "https://visual.volcengineapi.com", model: "jimeng_t2i_v40", models: "[]" },
+          { service_type: "video", provider: "vidu", name: "Vidu", base_url: "https://api.vidu.cn", model: "viduq2", models: "[]" },
+          { service_type: "video", provider: "jimeng", name: "Jimeng Video", base_url: "https://visual.volcengineapi.com", model: "jimeng_vgfm_t2v_l20", models: "[]" },
+          { service_type: "music", provider: "minimax", name: "MiniMax Music", base_url: "https://api.minimax.io", model: "music-2.0", models: '["music-2.0","music-1.5"]' },
+          { service_type: "music", provider: "mureka", name: "Mureka", base_url: "https://api.mureka.ai", model: "mureka-6", models: "[]" },
+          { service_type: "music", provider: "elevenlabs", name: "ElevenLabs Sound", base_url: "https://api.elevenlabs.io/v1", model: "eleven_text_to_sound_v2", models: "[]" },
+          { service_type: "music", provider: "stability", name: "Stability Audio", base_url: "https://api.stability.ai", model: "stable-audio-2.5", models: "[]" },
+          { service_type: "stock", provider: "unsplash", name: "Unsplash", base_url: "https://api.unsplash.com", model: "", models: "[]" },
+          { service_type: "stock", provider: "pexels", name: "Pexels Photos", base_url: "https://api.pexels.com/v1", model: "", models: "[]" },
+          { service_type: "stock", provider: "pexels", name: "Pexels Videos", base_url: "https://api.pexels.com/videos", model: "", models: "[]" },
+          { service_type: "asr", provider: "groq", name: "Groq Whisper", base_url: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo", models: "[]" },
+          { service_type: "asr", provider: "deepgram", name: "Deepgram", base_url: "https://api.deepgram.com", model: "nova-3", models: "[]" },
+        ]);
       }
       if (rpcMethod === "video.ffmpeg.install") {
         return ok({ ok: true, ffmpeg: true, ffmpeg_install: { ready: true, phase: "ready", percent: 100 } });
@@ -207,6 +226,17 @@ export async function mockApi(
         const hit = topics.find((t) => t.id === id);
         if (hit && hit.status === "scheduled") hit.status = hit.angle ? "ready" : "inbox";
         return ok({ ok: true, cancelled: 1, topic: hit });
+      }
+      if (rpcMethod === "video.cut.open" || rpcMethod === "video.cut.create") {
+        return ok({
+          id: "cut-1",
+          title: String(params.title || "Cut"),
+          source_hash: String(params.hash || "cas-assembled"),
+          session_id: String(params.session_id || ""),
+        });
+      }
+      if (rpcMethod === "video.cut.bind") {
+        return ok({ ok: true });
       }
       if (rpcMethod === "video.studio.list") {
         return ok(studios);

@@ -310,7 +310,9 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
   const studioDesk = useUI((s) => s.studioDesk);
+  const videoPane = useUI((s) => s.videoPane);
   const videoing = surface === "video";
+  const createDesk = videoing && videoPane === "create";
   const openStudioDesk = useUI((s) => s.openStudioDesk);
   const boundTitle = useStudioSelection((s) => s.title);
   const nextKey = useStudioSelection((s) => s.nextKey);
@@ -318,6 +320,8 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? (boundTitle
       ? copy.transcript.studioDeskReadyNamed.replace("{title}", boundTitle)
       : copy.transcript.studioDeskReady)
+    : createDesk
+      ? copy.transcript.conductorReady
     : !videoing
       ? copy.transcript.ready
     : videoMode === "canvas"
@@ -330,6 +334,8 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     : null;
   const starters = studioDesk
     ? [nextStarter, ...copy.transcript.studioDeskStarters].filter(Boolean) as { label: string; text: string }[]
+    : createDesk
+      ? copy.transcript.conductorStarters
     : !videoing
       ? copy.transcript.starters
     : videoMode === "canvas"
@@ -342,6 +348,11 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? [
         { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
         { key: "desk", node: copy.transcript.hintStudioDesk },
+      ]
+    : createDesk
+    ? [
+        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+        { key: "desk", node: copy.transcript.hintConductor },
       ]
     : [
         ws ? { key: "ws", node: <><span className="text-muted">{copy.transcript.workingIn}</span><span className="ml-1.5 font-mono text-[12px] text-foreground/80">{ws}</span></> } : null,
@@ -357,7 +368,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
       {studioDesk ? null : <MarkWell />}
       <h1 className={cn(
         "font-semibold leading-[1.15] tracking-[-0.042em] text-pretty text-foreground",
-        studioDesk ? "text-[16px]" : "mt-6 max-w-[16ch] text-[26px]",
+        studioDesk ? "text-[16px]" : "mt-6 max-w-[16ch] text-[21px]",
       )}>
         {ready}
       </h1>
@@ -370,7 +381,7 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
         ))}
       </p>
       <div className={cn("flex flex-wrap gap-2", studioDesk ? "mt-4" : "mt-7")}>
-        {videoing && videoMode === "creative" && !studioDesk ? (
+        {videoing && videoMode === "creative" && !studioDesk && !createDesk ? (
           <button
             type="button"
             data-testid="studio-open-desk-empty"
