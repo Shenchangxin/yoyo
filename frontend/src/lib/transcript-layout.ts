@@ -44,6 +44,21 @@ export function isMentionInject(it: Item): boolean {
   return it.type === "context_injection" && it.source !== "skill";
 }
 
+export function liveAutoSkills(items: Item[] | undefined | null): { name: string; loaded: boolean }[] {
+  if (!items?.length) return [];
+  const out: { name: string; loaded: boolean }[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    if (it.type !== "context_injection" || it.source !== "skill") continue;
+    if (!it.payload?.auto) continue;
+    const name = String(it.payload?.name || "").trim();
+    if (!name || name === "load_skill" || seen.has(name)) continue;
+    seen.add(name);
+    out.push({ name, loaded: true });
+  }
+  return out;
+}
+
 /** Duplicate of a tool already in the turn — keep in the agent block, never render. */
 export function isTranscriptDuplicate(it: Item): boolean {
   if (it.type === "plan" || it.type === "file_change" || it.type === "ask_user") return true;

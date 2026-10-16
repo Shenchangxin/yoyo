@@ -71,6 +71,21 @@ func TestSkillParseNestedMetadataAndIcon(t *testing.T) {
 	}
 }
 
+func TestSkillAllowsImplicitFromFrontmatter(t *testing.T) {
+	raw := "---\nname: verify\ndescription: Run verify only when asked.\ndisable-model-invocation: true\nmetadata:\n  allow_implicit_invocation: false\n---\n\nManual only.\n"
+	sk, err := ParseSkillMD(raw, "skills/verify/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sk.DisableModelInvocation || sk.AllowsImplicit() {
+		t.Fatalf("%+v", sk)
+	}
+	ok, err := ParseSkillMD("---\nname: pdf\ndescription: Handle PDFs.\n---\n\nGo.\n", "skills/pdf/SKILL.md")
+	if err != nil || !ok.AllowsImplicit() {
+		t.Fatalf("%+v %v", ok, err)
+	}
+}
+
 func TestPlaybookDeltaNoCollapse(t *testing.T) {
 	p := Playbook{ID: "main", Bullets: []PlaybookBullet{{ID: "1", Text: "create output early", Helpful: 2}}}
 	p = p.ApplyDelta([]PlaybookBullet{{ID: "2", Text: "do not retry the same failing command"}}, nil)

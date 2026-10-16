@@ -66,7 +66,7 @@ func HostSpecs() []artifact.ToolSpec {
 			},
 		}, "plan"), read),
 		spec("wait", "Pause up to 30 seconds. Not for hung HTTP clients — use web_fetch/web_search instead of wait/tasklist.", "", obj(map[string]any{"seconds": intP()}), read),
-		spec("list_skills", "List skill names available via load_skill.", "", obj(map[string]any{}), read),
+		spec("list_skills", "List available skills as name: description. The same catalog is already pinned; use load_skill to load a body.", "", obj(map[string]any{}), read),
 		spec("view_image", "Inspect an image file under the workspace (size and type). Prefer this over dumping binary via read_file.", "read_workspace", obj(map[string]any{"path": strP()}, "path"), read),
 		spec("web_fetch", "HTTP GET a http(s) URL and return extracted text. Loopback (127.0.0.1, localhost) is allowed so you can inspect the operator's local servers. Private LAN, link-local, and cloud metadata stay blocked. Atom/RSS feeds are compacted to id/title/date/summary. If https returns 406, the tool retries http. Requires network approval. A node -e DOM shim is not a substitute.", "network", obj(map[string]any{"url": strP()}, "url"), net),
 		spec("web_search", "Search the public web and return extracted result text. Requires network approval.", "network", obj(map[string]any{"query": strP()}, "query"), net),

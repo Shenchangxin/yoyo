@@ -87,6 +87,9 @@ func spawnTask(ctx context.Context, parent RunRequest, prompt string, isolate bo
 			cp.Advertised = readOnlyAdvertised(cp.Advertised)
 		}
 		StripPackBootstrap(&cp)
+		cp.SkillHints = nil
+		cp.Autoloaded = nil
+		cp.SkillAutoInvoke = "off"
 		childTools = &cp
 	}
 	user := prompt

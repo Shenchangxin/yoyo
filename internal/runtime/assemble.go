@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/pwsh"
@@ -136,7 +137,29 @@ func uniqueSlotTexts(in []string) []string {
 	return out
 }
 
+const (
+	DefaultSkillCatalogBudget = 8000
+	skillCatalogDescCap       = 1024
+)
+
+const skillCatalogRules = `The list below is the skills available this session (name + description). Bodies stay out of this prefix — load them with load_skill.
+- Trigger: if the operator names a skill (` + "`@skill`" + ` or plain text) OR the task clearly matches a description, you must load_skill that skill this turn before acting. Multiple matches: take the minimal set and state the order.
+- After load_skill, follow the full SKILL.md. Read pack files with read_skill_file; run pack scripts with run_skill_script. Do not delegate reading or interpreting a skill to a task subagent.
+- If you skip an obvious catalog match, say why in one line. YOYO.md / AGENTS.md / a direct skip request still win.
+- Progressive disclosure: do not preload unrelated references. @skill is an override, not a prerequisite.`
+
+// PinsOpts controls catalog budget and chat-only trigger rules.
+type PinsOpts struct {
+	CatalogBudget int
+	Routing       string
+	ChatCatalog   bool
+}
+
 func AssemblePins(loop artifact.LoopPreset, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string) string {
+	return AssemblePinsOpts(loop, playbook, skills, rules, rulesSrc, PinsOpts{})
+}
+
+func AssemblePinsOpts(loop artifact.LoopPreset, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string, opts PinsOpts) string {
 	var b strings.Builder
 	pbBudget := loop.PlaybookTokens
 	if pbBudget <= 0 {
@@ -147,12 +170,11 @@ func AssemblePins(loop artifact.LoopPreset, playbook artifact.Playbook, skills [
 		b.WriteString(rendered)
 	}
 	if len(skills) > 0 {
-		sorted := append([]artifact.Skill(nil), skills...)
-		sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
-		b.WriteString("\n## Skills (load with load_skill when relevant — catalog only, bodies are dynamic context)\n")
-		for _, s := range sorted {
-			b.WriteString("- ")
-			b.WriteString(s.CatalogLine())
+		b.WriteString(renderSkillCatalog(skills, opts))
+	}
+	if strings.TrimSpace(opts.Routing) != "" {
+		b.WriteString(opts.Routing)
+		if !strings.HasSuffix(opts.Routing, "\n") {
 			b.WriteByte('\n')
 		}
 	}
@@ -170,13 +192,81 @@ func AssemblePins(loop artifact.LoopPreset, playbook artifact.Playbook, skills [
 	return b.String()
 }
 
+func renderSkillCatalog(skills []artifact.Skill, opts PinsOpts) string {
+	sorted := append([]artifact.Skill(nil), skills...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
+	budget := opts.CatalogBudget
+	if budget <= 0 {
+		budget = DefaultSkillCatalogBudget
+	}
+	var b strings.Builder
+	if opts.ChatCatalog {
+		b.WriteString("\n## Skills\n")
+		b.WriteString(skillCatalogRules)
+		b.WriteByte('\n')
+	} else {
+		b.WriteString("\n## Skills (load with load_skill when relevant — catalog only, bodies are dynamic context)\n")
+	}
+	used := 0
+	omitted := 0
+	for _, s := range sorted {
+		line := "- " + catalogLineCapped(s) + "\n"
+		if used+len(line) > budget && used > 0 {
+			omitted++
+			continue
+		}
+		b.WriteString(line)
+		used += len(line)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "- … %d more skills omitted to fit the catalog budget. Use list_skills or name one with @skill / load_skill.\n", omitted)
+	}
+	return b.String()
+}
+
+func catalogLineCapped(s artifact.Skill) string {
+	desc := strings.TrimSpace(s.Description)
+	if utf8.RuneCountInString(desc) > skillCatalogDescCap {
+		desc = capRunes(desc, skillCatalogDescCap)
+	}
+	if desc == "" {
+		return s.Name
+	}
+	return s.Name + ": " + desc
+}
+
+func pinsOptsFromTools(tools *WorkspaceTools, chat bool) PinsOpts {
+	opts := PinsOpts{CatalogBudget: DefaultSkillCatalogBudget, ChatCatalog: chat}
+	if tools == nil {
+		return opts
+	}
+	if tools.SkillCatalogBudget > 0 {
+		opts.CatalogBudget = tools.SkillCatalogBudget
+	}
+	opts.Routing = DomainRoutingPin(tools.Packs)
+	if tools.ChatOverlay {
+		opts.ChatCatalog = true
+	}
+	return opts
+}
+
 // AssemblePrefix is the cache-stable system head: identity + trusted pins.
 func AssemblePrefix(loop artifact.LoopPreset, fragments []artifact.PromptFragment, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string) string {
 	return AssembleIdentity(loop, fragments) + AssemblePins(loop, playbook, skills, rules, rulesSrc)
 }
 
 func AssembleDynamic(planText string, loaded []string, notes, checkpoint, today string) string {
+	return AssembleDynamicHint(planText, loaded, notes, checkpoint, today, "")
+}
+
+func AssembleDynamicHint(planText string, loaded []string, notes, checkpoint, today, suggested string) string {
 	var b strings.Builder
+	if strings.TrimSpace(suggested) != "" {
+		b.WriteString(suggested)
+		if !strings.HasSuffix(suggested, "\n") {
+			b.WriteByte('\n')
+		}
+	}
 	if len(loaded) > 0 {
 		b.WriteString("\n## Loaded skills (re-injected after compaction)\n")
 		for _, body := range loaded {

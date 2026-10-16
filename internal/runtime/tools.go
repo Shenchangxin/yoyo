@@ -135,6 +135,14 @@ type WorkspaceTools struct {
 	Methodology bool
 	// BootstrapBodies are wrapped session-start skill texts (not the catalog body).
 	BootstrapBodies map[string]string
+	// SkillAutoInvoke is off | hint | on. Empty means on.
+	SkillAutoInvoke string
+	// SkillCatalogBudget caps catalog lines in pins (bytes). Zero uses default.
+	SkillCatalogBudget int
+	// SkillHints are this-turn matcher results (hint + autoload).
+	SkillHints []SkillSuggestion
+	// Autoloaded is the subset the host injected as implicit @skill.
+	Autoloaded []string
 }
 
 func BuiltinToolJSON() []ToolJSON {

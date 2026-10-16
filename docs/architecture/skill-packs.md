@@ -1,8 +1,8 @@
 # Skill Packs
 
-最后审阅：**2026-10-10**。这是 Yoyo 对 Agent Skills 第三方库的长期运行时，不是一次 Superpowers 移植。
+最后审阅：**2026-10-17**。这是 Yoyo 对 Agent Skills 第三方库的长期运行时，不是一次 Superpowers 移植。
 
-Harbor 评测、HeuristicSolver、默认套件 **永不**加载 pack。个人助手默认关闭方法论。领域包同样默认关闭，且 **没有** session-start bootstrap。
+Harbor 评测、HeuristicSolver、默认套件 **永不**加载 pack。个人助手默认关闭方法论。领域包同样默认关闭，且 **没有** session-start 全文 bootstrap；启用后由 catalog + 短路由针 + 宿主匹配自动 `load_skill`。
 
 ---
 
@@ -15,8 +15,8 @@ Claude Code 用 `hooks.json` session-start 注入 `using-superpowers`；Codex �
 1. Pack 是分发单元（`~/.yoyo/packs/<id>/`），不是 vendored 技能正文。
 2. 启用解析：工作区 `.yoyo/packs.json` > 全局 `config.yaml` `packs.<id>.enabled` > **默认 false**。
 3. **方法论 pack**（Superpowers）：会话开始把 bootstrap skill（`using-superpowers`）包进 Dynamic loaded-skills，外加生成的 `yoyo-tools.md` 映射。不写进 identity，不改 system prompt。
-4. **领域 pack**（NovelToGame）：无 BootstrapSkill。技能只进目录，由 `@skill` / `load_skill` 按需加载。安装器仍在编排 skill 的 `references/yoyo-tools.md` 写入宿主映射。
-5. 方法论 pack 让路 chatConduct 的「这轮就开始写」；`plan-first` overlay 关掉。领域 pack 不抢这条。YOYO.md / AGENTS.md / 用户直接跳过仍赢。
+4. **领域 pack**（NovelToGame）：无 BootstrapSkill。技能进目录；已启用时 pins 里有短路由针。匹配 description 或宿主高置信命中编排器时 `load_skill`（可视同隐式 `@skill`）。`@skill` 是覆盖，不是前提。完整 `yoyo-tools.md` 仍在 load 之后再读。
+5. 方法论 pack 让路 chatConduct 的「这轮就开始写」；`plan-first` overlay 关掉。默认 conduct 在 catalog 命中时先 `load_skill`，但不要求 Superpowers 过程技能。YOYO.md / AGENTS.md / 用户直接跳过仍赢。
 6. `task` 子会话 **结构上**跳过 bootstrap（`Depth>0` + `StripPackBootstrap`），不靠模型自觉。
 7. 包文件在工作区 jail 外：读 `read_skill_file`，跑 `run_skill_script`。无扩展名脚本走 Git Bash，不用 WSL `bash.exe`。
 
@@ -35,6 +35,8 @@ Claude Code 用 `hooks.json` session-start 注入 `using-superpowers`；Codex �
 | `.../<bootstrap-or-pack-id>/references/yoyo-tools.md` | 安装时生成的宿主映射，不进上游仓库。方法论包写在 bootstrap skill 下；领域包写在与 pack id 同名的 skill 下 |
 | `.yoyo/packs.json` | 工作区开关覆盖 |
 | `config.yaml` `packs.<id>.enabled` | 全局回退 |
+| `config.yaml` `skills.auto_invoke` | `off` / `hint` / `on`（默认 `on`）：是否 hint、是否对领域编排器高置信 autoload |
+| `config.yaml` `skills.catalog_budget_chars` | 目录行字节帽，默认 8000 |
 
 `SkillRoots` 顺序：bundled < `~/.yoyo/skills` < **enabled packs** < 工作区 `.yoyo/skills` / `.agents/skills` / `skills`。同名后写覆盖。
 

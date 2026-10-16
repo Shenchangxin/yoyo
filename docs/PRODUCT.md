@@ -32,7 +32,7 @@ An operator who wants to run turns against a local workspace, review git hunks, 
   one **去剪辑** action, then finish the film on the conductor.
   Video chats and Agent chats stay separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
-- **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree. Methodology packs (Superpowers) session-start bootstrap; domain packs (NovelToGame) do not. Everything defaults off; enabling one is a workspace choice, not a per-turn toggle. Harbor never loads them.
+- **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree. Methodology packs (Superpowers) session-start bootstrap; domain packs (NovelToGame) do not preload bodies. Enabling a pack is a workspace choice. Chat matches catalog descriptions and may auto-load a domain orchestrator; `@skill` is an override. Harbor never loads packs.
 - **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, music, stock, asr, search, storage, and workflow accounts share one registry. Generation catalogs domestic vendors (Qwen / Jimeng / Kolors / CogView / Hunyuan / Vidu / Kling / CosyVoice / Spark / Mureka / DashScope / Volcengine / Tencent COS) alongside international ones. Keys stay in the vault. The conductor only sees enabled rows that have a key. See [architecture/persist.md](architecture/persist.md).
 
 ## Distinctive, not decorative

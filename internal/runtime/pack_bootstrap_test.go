@@ -146,6 +146,12 @@ func TestChatConductMethodologyYieldsWriteNow(t *testing.T) {
 	if strings.Contains(plain, "invoke the matching process skill") {
 		t.Fatal("default must not require process skills")
 	}
+	if !strings.Contains(plain, "load_skill for that skill before writing") {
+		t.Fatal("default must load a matching catalog skill")
+	}
+	if !strings.Contains(plain, "Do not load methodology process skills") {
+		t.Fatal("default must keep process skills methodology-only")
+	}
 	meth := fragmentText(ChatConduct(ConductOpts{Methodology: true}))
 	if strings.Contains(meth, "start writing those workspace artifacts this turn") {
 		t.Fatal("methodology must yield write-now")
@@ -251,6 +257,19 @@ func TestRunSkillScriptExtensionless(t *testing.T) {
 	res := tools.runSkillScript("demo", "start-server", "")
 	if res.Err != nil && strings.Contains(res.Err.Error(), "missing script") {
 		t.Fatal(res.Err)
+	}
+}
+
+func TestDomainRoutingPinSkipsMethodology(t *testing.T) {
+	if pin := DomainRoutingPin([]PackSession{{ID: "superpowers", BootstrapSkill: "using-superpowers", Methodology: true}}); pin != "" {
+		t.Fatalf("methodology must not get a domain pin: %s", pin)
+	}
+	pin := DomainRoutingPin([]PackSession{{ID: "novel-to-game"}})
+	if !strings.Contains(pin, "## Enabled domain packs") || !strings.Contains(pin, "load_skill novel-to-game") {
+		t.Fatal(pin)
+	}
+	if strings.Contains(pin, "Tool Mapping") {
+		t.Fatal("must not dump full mapping")
 	}
 }
 

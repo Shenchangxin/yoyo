@@ -26,6 +26,7 @@ export function ChatDock(props: {
   queued?: number;
   files?: FileHit[];
   skills?: SkillInfo[];
+  autoSkills?: { name: string; loaded?: boolean }[];
   authMode?: AuthMode | string;
   onSearchFiles?: (q: string) => void;
   onPickFiles?: () => Promise<Attachment[]>;
@@ -79,6 +80,7 @@ export function ChatDock(props: {
         onQueueReorder={props.onQueueReorder}
         files={props.files}
         skills={props.skills}
+        autoSkills={props.autoSkills}
         authMode={props.authMode}
         onSearchFiles={props.onSearchFiles}
         onPickFiles={props.onPickFiles}

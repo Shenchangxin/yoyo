@@ -42,7 +42,7 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 	if env := AssembleEnvironment(req.Workspace); env != "" {
 		identity += "\n## Environment\n" + env
 	}
-	pins := AssemblePins(loop, req.Playbook, req.Skills, rules, src)
+	pins := AssemblePinsOpts(loop, req.Playbook, req.Skills, rules, src, pinsOptsFromTools(req.Tools, req.SoftHorizon))
 	if req.SoftHorizon {
 		pins += ActionLadderPin
 		pins += PersonalPin
@@ -91,6 +91,15 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	if inject != "" {
 		emit(*k.req, trace.TypeInject, "mention", map[string]any{"text": inject})
 	}
+	if k.req.Tools != nil {
+		for _, name := range k.req.Tools.Autoloaded {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			emit(*k.req, trace.TypeInject, "skill", map[string]any{"name": name, "auto": true})
+		}
+	}
 	if user != "" {
 		messages = append(messages, Message{Role: RoleUser, Content: AttachMention(user, inject), Parts: k.req.UserParts})
 	} else if inject != "" {
@@ -119,7 +128,11 @@ func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 		ckpt = lastCheckpoint(messages)
 	}
 	loaded := capLoadedSkills(loadedFrom(k.req.Tools))
-	k.dyn = AssembleDynamic(planTextOf(k.req.Tools), loaded, k.notes, ckpt, AssembleToday(k.req.Tools))
+	suggested := ""
+	if k.req.Tools != nil {
+		suggested = FormatSkillHints(k.req.Tools.SkillHints)
+	}
+	k.dyn = AssembleDynamicHint(planTextOf(k.req.Tools), loaded, k.notes, ckpt, AssembleToday(k.req.Tools), suggested)
 	if k.req != nil {
 		k.dyn = languageDynPin(OperatorVoice(k.req.User, k.req.History)) + k.dyn
 	}

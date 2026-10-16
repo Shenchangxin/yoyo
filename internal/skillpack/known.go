@@ -32,7 +32,7 @@ func NovelToGameKnown() Known {
 	return Known{
 		ID:          NovelToGameID,
 		Name:        "NovelToGame",
-		Description: "Source-grounded novel-to-game workflow: deconstruct a novel, pick a playable concept, design world and art, build for the approved runtime, and QA with recorded play evidence. Domain pack — not a session-start methodology. Enable per workspace, then @skill:novel-to-game when the operator asks to turn a book into a game.",
+		Description: "Source-grounded novel-to-game workflow: deconstruct a novel, pick a playable concept, design world and art, build for the approved runtime, and QA with recorded play evidence. Domain pack — not a session-start methodology. Enable per workspace; the host matches the intent and load_skill novel-to-game. @skill:novel-to-game is an override, not a prerequisite.",
 		License:     "MIT",
 		DefaultRepo: "zenstory-ai/novel-to-game",
 		DefaultRef:  "main",

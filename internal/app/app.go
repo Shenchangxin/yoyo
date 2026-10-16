@@ -99,8 +99,16 @@ type Config struct {
 	SearchKey               string              `yaml:"search_key" json:"search_key"`
 	ContextWindow           int                 `yaml:"context_window" json:"context_window"`
 	Packs                   map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
+	Skills                  SkillsConfig        `yaml:"skills,omitempty" json:"skills,omitempty"`
 	Log                     LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
 	Paused                  bool                `yaml:"paused" json:"paused"`
+}
+
+// SkillsConfig is optional host routing for Agent Skills.
+// AutoInvoke: off | hint | on (default on).
+type SkillsConfig struct {
+	AutoInvoke         string `yaml:"auto_invoke,omitempty" json:"auto_invoke,omitempty"`
+	CatalogBudgetChars int    `yaml:"catalog_budget_chars,omitempty" json:"catalog_budget_chars,omitempty"`
 }
 
 type LogConfig struct {

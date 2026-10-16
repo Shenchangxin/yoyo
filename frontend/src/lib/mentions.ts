@@ -174,3 +174,59 @@ export function mentionableSkills<T extends MentionSkill>(skills: T[], query: st
     .slice()
     .sort((a, b) => skillRank(a) - skillRank(b) || a.name.localeCompare(b.name));
 }
+
+const ROUTE_LEX: [string, string][] = [
+  ["novel", "小说"],
+  ["book", "小说"],
+  ["game", "游戏"],
+  ["weekly", "周报"],
+  ["report", "周报"],
+  ["minutes", "纪要"],
+  ["meeting", "会议"],
+  ["drama", "短剧"],
+  ["script", "剧本"],
+];
+
+function suggestTokens(text: string): Set<string> {
+  const out = new Set<string>();
+  const fold = text.toLowerCase();
+  for (const part of fold.split(/[^a-z0-9\u4e00-\u9fff]+/)) {
+    if (part.length >= 2) out.add(part);
+  }
+  for (const [en, zh] of ROUTE_LEX) {
+    if (fold.includes(en) || text.includes(zh)) {
+      out.add(en);
+      out.add(zh);
+    }
+  }
+  return out;
+}
+
+/** Cheap composer hint — mirrors host lexical match, not embeddings. */
+export function suggestSkills<T extends MentionSkill>(skills: T[], voice: string, limit = 3): T[] {
+  const q = voice.trim();
+  if (q.length < 2) return [];
+  const toks = suggestTokens(q);
+  const fold = q.toLowerCase();
+  const ranked = skills
+    .map((s) => {
+      const hay = skillHaystack(s);
+      let score = 0;
+      if (fold.includes(s.name.toLowerCase()) || (s.slug && fold.includes(s.slug.toLowerCase()))) score += 80;
+      for (const tok of toks) {
+        if (tok.length >= 2 && hay.includes(tok)) score += tok.length >= 3 ? 12 : 6;
+      }
+      return { s, score };
+    })
+    .filter((x) => x.score >= 24)
+    .sort((a, b) => b.score - a.score || skillRank(a.s) - skillRank(b.s) || a.s.name.localeCompare(b.s.name));
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of ranked) {
+    if (seen.has(row.s.name)) continue;
+    seen.add(row.s.name);
+    out.push(row.s);
+    if (out.length >= limit) break;
+  }
+  return out;
+}

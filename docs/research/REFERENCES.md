@@ -106,7 +106,7 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 - Yoyo 落地：
   - `internal/capability` — Once / Session / Always；`send_as_you` / computer use 是 NeverAlways。
   - `internal/runtime/context_shape.go` — legalize → budget/spill → microcompact → forceFit → snip。LLM 摘要不是 Shape 的一部分。
-  - Skills：目录只注入 catalog line，`load_skill` 才加载正文（progressive disclosure）。第三方库（Superpowers）是 Skill Pack：默认关闭、工作区启用、会话开始预载 bootstrap，不 vendor 正文。见 [architecture/skill-packs.md](../architecture/skill-packs.md)。
+  - Skills：目录只注入 catalog line，`load_skill` 才加载正文（progressive disclosure）。聊天目录带 trigger rules；领域包启用后宿主可按意图 hint / 高置信 autoload 编排器。`@skill` 是覆盖。第三方库（Superpowers）是 Skill Pack：默认关闭、工作区启用、会话开始预载 bootstrap，不 vendor 正文。见 [architecture/skill-packs.md](../architecture/skill-packs.md)。
   - `task` 子智能体 **depth-1**。
 - 我们拒绝：把审批交给隐藏的 ML classifier；在前端再做一个 LangChain / Vercel AI 循环。
 

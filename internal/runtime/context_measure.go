@@ -28,7 +28,8 @@ type MeasureOpts struct {
 func MeasureContext(opts MeasureOpts) ShapeReport {
 	loop := opts.Loop
 	rules, src := LoadWorkspaceRules(opts.Workspace, loop.RulesTokens)
-	prefix := AssemblePrefix(loop, opts.Fragments, opts.Playbook, opts.Skills, rules, src)
+	pinOpts := pinsOptsFromTools(opts.Tools, false)
+	prefix := AssembleIdentity(loop, opts.Fragments) + AssemblePinsOpts(loop, opts.Playbook, opts.Skills, rules, src, pinOpts)
 	notes := opts.Notes
 	if notes == "" && opts.Spill != nil {
 		notes = ReadNotes(opts.Spill)
@@ -37,9 +38,13 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	if plan == "" {
 		plan = planTextOf(opts.Tools)
 	}
-	dyn := AssembleDynamic(plan, loadedFrom(opts.Tools), notes, "", AssembleToday(opts.Tools))
+	suggested := ""
+	if opts.Tools != nil {
+		suggested = FormatSkillHints(opts.Tools.SkillHints)
+	}
+	dyn := AssembleDynamicHint(plan, loadedFrom(opts.Tools), notes, "", AssembleToday(opts.Tools), suggested)
 	msgs := []Message{{Role: RoleSystem, Content: AssembleIdentity(loop, opts.Fragments)}}
-	pins := AssemblePins(loop, opts.Playbook, opts.Skills, rules, src)
+	pins := AssemblePinsOpts(loop, opts.Playbook, opts.Skills, rules, src, pinOpts)
 	if strings.TrimSpace(pins) != "" {
 		msgs = append(msgs, Message{Role: RoleDeveloper, Content: pins})
 	}

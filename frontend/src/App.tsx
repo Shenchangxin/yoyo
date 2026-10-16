@@ -42,6 +42,7 @@ import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace"
 import { pendingAsk } from "./lib/ask-form";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
+import { liveAutoSkills } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
 import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
@@ -159,6 +160,7 @@ function WorkstationApp() {
   const bindComposer = {
     files: ws.files,
     skills: ws.skills,
+    autoSkills: liveAutoSkills(ws.items),
     // Before the first chat exists, show the permission the next chat will get.
     authMode: studioDesk && (studioCopilotForeign || !ws.activeId)
       ? (pendingAuthMode || "full")
