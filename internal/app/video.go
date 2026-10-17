@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/game"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
@@ -33,6 +35,21 @@ func (a *App) openVideo() error {
 	eng.OnJob = a.onVideoJob
 	eng.OnHub = a.onCanvasHub
 	a.Video = eng
+	ge, gerr := game.Open(filepath.Join(a.Home.Video(), "docs"), func() string { return a.VideoWorkspace() })
+	if gerr != nil {
+		return gerr
+	}
+	ge.Enqueue = func(prompt, projectID, assetID string) (string, error) {
+		j, err := eng.EnqueueImage(video.EnqueueImage{Prompt: prompt, Size: "1024x1024", StudioProjectID: projectID, StudioShotID: assetID, StudioKind: "game"})
+		if err != nil {
+			return "", err
+		}
+		return j.ID, nil
+	}
+	a.Game = ge
+	eng.RouteGame = func(sessionID, id, title, intent string) (map[string]any, error) {
+		return a.routeGame(sessionID, id, title, intent)
+	}
 	a.seedConnections()
 	if a.Observe != nil {
 		a.Observe.SetEndpoint(a.otelEndpoint())
@@ -201,9 +218,29 @@ const studioBootstrap = "Do not inspect the git workspace. Open the bound shorts
 
 const studioRuntimePin = "This is a Shorts turn. Use studio_* tools on the bound shorts project. Do not inspect the git workspace. Do not call shell, list_dir, glob, or grep. Approve the script before Speak or image gen. Use studio_generate_shot / studio_generate_missing for stills. Never invent CAS hashes. If generation is not configured, tell the operator to upload stills on the Shorts desk or add an image adapter."
 
-const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route only after they pick 短片 / 短剧 / 画布. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, or canvas as needed. Never invent CAS hashes or API keys."
+const conductorBootstrap = "You are the Video conductor. Ask what kind of piece they want, or ingest a source clip. Do not inspect the git workspace. Use cut_* on footage. Use video_route after they pick 短片 / 短剧 / 画布. For 游戏世界 call game_create with the play intent (or video_route dest=game with title/intent) — the host compiles a sealed 3D playable. Do not write_file HTML games. Use provider_menu before spending a vendor — missing Settings accounts do not exist. load_skill for cut-edit, cut-dub, studio-script, canvas, or yoyo-game as needed. Never invent CAS hashes or API keys."
 
-const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route and provider_menu only, until a workshop is bound. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布."
+const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route, provider_menu, and game_create/game_list/game_get. A bound workshop drops this pin. Do not call shell, list_dir, glob, or grep. Do not dump 短片 six-gate tools until video_route dest=studio. Do not write game-worlds HTML. Prefer Chinese chips: 剪这条, 配音, 做短片, 做短剧, 去画布, 做游戏世界."
+
+const gameBootstrap = "A game-world project is bound. Drive THIS world with game_analyze_scene, game_plan_rules, game_extract_candidates, game_place, game_realize_assets, game_compile. Then game_play and game_verify. Do not call game_create. Do not write_file playable/ or game-worlds/*/index.html. Do not start a static server. Do not load_skill novel-to-game."
+
+const gameRuntimePin = "This is a game-world turn. The playable is host-owned Three.js in playable/. Call game_* on the bound id. Never game_create a second world. Never hand-write a 2D canvas HTML game. Never load_skill novel-to-game. browser_open only the path from game_play."
+
+func gameLaneBootstrap(p game.Project) string {
+	id := strings.TrimSpace(p.ID)
+	if id == "" {
+		return gameBootstrap
+	}
+	intent := strings.TrimSpace(p.Intent)
+	if n := len([]rune(intent)); n > 96 {
+		intent = string([]rune(intent)[:96]) + "…"
+	}
+	title := strings.TrimSpace(p.Title)
+	stage := strings.TrimSpace(p.Stage)
+	return "Bound game world id=" + id + " title=" + strconvQuote(title) + " stage=" + stage + ". Intent: " + intent + ". Drive THIS id with game_analyze_scene, game_plan_rules, game_extract_candidates, game_place, game_realize_assets, game_compile. Then game_play and game_verify. Do not call game_create. Do not write_file playable/ or game-worlds/*/index.html. Do not start a static server. Do not load_skill novel-to-game."
+}
+
+var gameConductorTools = []string{"game_create", "game_list", "game_get"}
 
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}
 
@@ -223,8 +260,19 @@ func (a *App) studioLane(sessionID string) bool {
 	return ok
 }
 
+func (a *App) gameLane(sessionID string) bool {
+	if a == nil || a.Game == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	_, ok := a.Game.SessionBind(sessionID)
+	return ok
+}
+
 func (a *App) conductorLane(sessionID string) bool {
 	if a == nil || a.Video == nil || !a.videoChannel(sessionID) {
+		return false
+	}
+	if a.gameLane(sessionID) {
 		return false
 	}
 	if _, ok := a.Video.StudioSessionBind(sessionID); ok {
@@ -302,6 +350,9 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 					_ = json.Unmarshal([]byte(argsJSON), &args)
 				}
 				out, err := a.Video.CutTool(sessionID, spec.Name, args)
+				if err == nil && spec.Name == "video_route" {
+					a.promoteGameTools(tools, sessionID)
+				}
 				return runtime.ToolResult{Content: out, Err: err}
 			},
 		}
@@ -393,6 +444,190 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 	}
 }
 
+var gameSkillNames = []string{"yoyo-game", "game-world-analyze", "game-world-rules", "game-world-place", "game-world-build", "game-world-qa"}
+
+func (a *App) requireGame() (*game.Engine, error) {
+	if a.Game == nil {
+		return nil, fmt.Errorf("game engine is not open")
+	}
+	return a.Game, nil
+}
+
+func (a *App) routeGame(sessionID, id, title, intent string) (map[string]any, error) {
+	eng, err := a.requireGame()
+	if err != nil {
+		return nil, err
+	}
+	var p game.Project
+	if strings.TrimSpace(id) != "" {
+		p, err = eng.Get(id)
+	} else {
+		raw, cerr := eng.Tool(sessionID, "game_create", map[string]any{
+			"title":  firstNonEmptyApp(title, "Game world"),
+			"intent": firstNonEmptyApp(intent, title),
+		})
+		if cerr != nil {
+			return nil, cerr
+		}
+		var snap map[string]any
+		_ = json.Unmarshal([]byte(raw), &snap)
+		pid := strings.TrimSpace(fmt.Sprint(snap["id"]))
+		if pid == "" || pid == "<nil>" {
+			return nil, fmt.Errorf("game create returned no id")
+		}
+		p, err = eng.Get(pid)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sessionID != "" {
+		if err := eng.Bind(sessionID, p.ID); err != nil {
+			return nil, err
+		}
+	}
+	return map[string]any{"dest": "game", "pane": "game", "id": p.ID, "project": eng.Snapshot(p)}, nil
+}
+
+func (a *App) promoteGameTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if a.gameLane(sessionID) {
+		a.attachGameTools(tools, sessionID)
+	}
+}
+
+func (a *App) attachGameTools(tools *runtime.WorkspaceTools, sessionID string) {
+	if tools == nil || a.Game == nil {
+		return
+	}
+	bound := a.gameLane(sessionID)
+	if !bound && !a.conductorLane(sessionID) {
+		return
+	}
+	if tools.Extra == nil {
+		tools.Extra = map[string]runtime.ExtraTool{}
+	}
+	askNet := map[string]bool{"game_realize_assets": true, "game_analyze_scene": true, "game_plan_rules": true, "game_place": true}
+	askBrowser := map[string]bool{"game_play": true, "game_verify": true}
+	for _, spec := range game.ToolSpecs() {
+		spec := spec
+		openWorld := askNet[spec.Name] || askBrowser[spec.Name]
+		tools.Extra[spec.Name] = runtime.ExtraTool{
+			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
+				"name": spec.Name, "description": spec.Desc, "parameters": spec.Params,
+			}},
+			ReadOnly:  spec.ReadOnly,
+			OpenWorld: openWorld,
+			Exclusive: askBrowser[spec.Name],
+			Call: func(argsJSON string) runtime.ToolResult {
+				var args map[string]any
+				if argsJSON != "" {
+					_ = json.Unmarshal([]byte(argsJSON), &args)
+				}
+				if err := a.checkGameTool(sessionID, spec.Name, askBrowser[spec.Name], askNet[spec.Name]); err != nil {
+					return runtime.ToolResult{Err: err}
+				}
+				out, err := a.Game.Tool(sessionID, spec.Name, args)
+				if err != nil {
+					return runtime.ToolResult{Content: out, Err: err}
+				}
+				var row map[string]any
+				_ = json.Unmarshal([]byte(out), &row)
+				gid := strings.TrimSpace(fmt.Sprint(row["id"]))
+				if gid == "<nil>" {
+					gid = ""
+				}
+				if spec.Name == "game_create" {
+					a.promoteGameTools(tools, sessionID)
+				}
+				if a.Video != nil && a.Video.OnHub != nil && gid != "" {
+					kind := "game_sync"
+					if spec.Name == "game_create" {
+						kind = "video_route"
+					}
+					a.Video.OnHub(kind, map[string]any{"dest": "game", "pane": "game", "id": gid, "stage": row["stage"], "tool": spec.Name})
+				}
+				if spec.Name == "game_play" {
+					open := strings.TrimSpace(fmt.Sprint(row["open"]))
+					if open != "" && open != "<nil>" {
+						return tools.Call("browser_open", `{"url":`+strconvQuote(open)+`}`)
+					}
+				}
+				if spec.Name == "game_verify" {
+					return tools.Call("browser_verify", out)
+				}
+				return runtime.ToolResult{Content: out}
+			},
+		}
+	}
+	if bound {
+		tools.Packs = runtime.WithoutNovelGamePack(tools.Packs)
+		tools.Loaded = runtime.WithoutNovelGameSkills(tools.Loaded)
+		tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, game.ToolNames())
+		tools.MarkSkillsLoaded(gameSkillNames...)
+		a.pinGameLane(tools)
+		if meta, err := a.GetSession(sessionID); err == nil {
+			next := uniqueStrings(meta.PinnedSkills, gameSkillNames)
+			if len(next) > len(meta.PinnedSkills) {
+				_, _ = a.SetSessionPinnedSkills(sessionID, next)
+			}
+		}
+		return
+	}
+	tools.ExtraEnabled = uniqueStrings(tools.ExtraEnabled, gameConductorTools)
+}
+
+func (a *App) pinGameLane(tools *runtime.WorkspaceTools) {
+	if tools == nil {
+		return
+	}
+	deny := map[string]bool{}
+	for _, n := range studioDeniedTools {
+		deny[n] = true
+	}
+	var advertised []string
+	for _, n := range tools.Advertised {
+		if deny[n] {
+			continue
+		}
+		advertised = append(advertised, n)
+	}
+	tools.Advertised = advertised
+	keep := map[string]bool{"video_route": true, "provider_menu": true}
+	for _, n := range game.ToolNames() {
+		keep[n] = true
+	}
+	var enabled []string
+	for _, n := range tools.ExtraEnabled {
+		if keep[n] {
+			enabled = append(enabled, n)
+		}
+	}
+	tools.ExtraEnabled = uniqueStrings(enabled, game.ToolNames())
+	tools.AllowedTools = uniqueStrings(advertised, game.ToolNames(), []string{
+		"video_route", "provider_menu",
+		"load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_skill_file",
+		"read_file", "view_image",
+		"browser_open", "browser_act", "browser_verify", "browser_screenshot", "browser_click", "browser_snapshot", "browser_type",
+	})
+}
+
+func (a *App) checkGameTool(sessionID, name string, browser, net bool) error {
+	if a == nil || a.Caps == nil {
+		return nil
+	}
+	if browser {
+		return a.Caps.Check(capability.Request{Level: capability.Browser, Action: name, SessionID: sessionID})
+	}
+	if net && a.Game != nil && a.Game.Complete != nil {
+		return a.Caps.Check(capability.Request{Level: capability.Network, Action: name, SessionID: sessionID})
+	}
+	return nil
+}
+
+func strconvQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -430,7 +665,7 @@ func (a *App) pinConductorLane(tools *runtime.WorkspaceTools) {
 		advertised = append(advertised, n)
 	}
 	tools.Advertised = advertised
-	tools.AllowedTools = uniqueStrings(advertised, video.CutToolNames(), video.ConductorToolNames(), []string{
+	tools.AllowedTools = uniqueStrings(advertised, video.CutToolNames(), video.ConductorToolNames(), gameConductorTools, []string{
 		"load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_skill_file",
 	})
 }
@@ -770,9 +1005,172 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "canvas.bind":
 		return map[string]any{"ok": true}, a.CanvasBind(str("session_id"), firstNonEmptyApp(str("project_id"), str("canvas_id")))
 	case "video.history":
-		return eng.ProjectHistory()
+		rows, err := eng.ProjectHistory()
+		if err != nil {
+			return nil, err
+		}
+		if a.Game != nil {
+			rows = append(rows, a.Game.HistoryRows()...)
+		}
+		return rows, nil
 	case "video.session.project":
-		return eng.SessionProject(str("session_id")), nil
+		out := eng.SessionProject(str("session_id"))
+		if a.Game != nil {
+			if id, ok := a.Game.SessionBind(str("session_id")); ok {
+				if p, err := a.Game.Get(id); err == nil {
+					out["game_id"] = p.ID
+					out["game_stage"] = p.Stage
+					if out["kind"] == nil {
+						out["kind"] = "game"
+						out["id"] = p.ID
+						out["title"] = p.Title
+					}
+				}
+			}
+		}
+		return out, nil
+	case "game.list":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		rows := ge.List()
+		out := make([]map[string]any, 0, len(rows))
+		for _, p := range rows {
+			out = append(out, ge.Receipt(p))
+		}
+		return out, nil
+	case "game.create":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		p, err := ge.Create(game.Project{Title: str("title"), Intent: firstNonEmptyApp(str("intent"), str("prompt")), Genre: str("genre"), Camera: str("camera")})
+		if err != nil {
+			return nil, err
+		}
+		if sid := str("session_id"); sid != "" {
+			if _, ok := ge.SessionBind(sid); !ok {
+				_ = ge.Bind(sid, p.ID)
+			}
+		}
+		if strings.EqualFold(str("seed"), "demo") || strings.TrimSpace(p.Intent) != "" {
+			if strings.EqualFold(str("seed"), "demo") && p.Intent == "" {
+				p.Intent = "Collect three relics and reach the shrine."
+				p, _ = ge.Update(p)
+			}
+			if _, err := ge.AnalyzeScene(str("session_id"), p.ID, p.Intent); err == nil {
+				if _, err := ge.PlanRules(str("session_id"), p.ID, p.Intent); err == nil {
+					_, _ = ge.ExtractCandidates(str("session_id"), p.ID)
+					if _, err := ge.Place(str("session_id"), p.ID); err == nil {
+						_, _ = ge.RealizeAssets(str("session_id"), p.ID)
+						p, _ = ge.Compile(str("session_id"), p.ID)
+					}
+				}
+			}
+		}
+		snap := ge.Snapshot(p)
+		if a.Video != nil && a.Video.OnHub != nil {
+			a.Video.OnHub("video_route", map[string]any{"dest": "game", "pane": "game", "id": p.ID, "project": snap})
+		}
+		return snap, nil
+	case "game.get":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		p, err := ge.Get(firstNonEmptyApp(str("id"), str("project_id")))
+		if err != nil {
+			if sid := str("session_id"); sid != "" {
+				if id, ok := ge.SessionBind(sid); ok {
+					p, err = ge.Get(id)
+				}
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		return ge.Snapshot(p), nil
+	case "game.update":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		p, err := ge.Get(firstNonEmptyApp(str("id"), str("project_id")))
+		if err != nil {
+			return nil, err
+		}
+		p.Title = firstNonEmptyApp(str("title"), p.Title)
+		p.Intent = firstNonEmptyApp(str("intent"), p.Intent)
+		p.Genre = firstNonEmptyApp(str("genre"), p.Genre)
+		p.Camera = firstNonEmptyApp(str("camera"), p.Camera)
+		p, err = ge.Update(p)
+		if err != nil {
+			return nil, err
+		}
+		return ge.Snapshot(p), nil
+	case "game.delete":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, ge.Delete(firstNonEmptyApp(str("id"), str("project_id")))
+	case "game.bind":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		id := firstNonEmptyApp(str("id"), str("project_id"))
+		if err := ge.Bind(str("session_id"), id); err != nil {
+			return nil, err
+		}
+		if id == "" {
+			return map[string]any{"ok": true}, nil
+		}
+		p, err := ge.Get(id)
+		if err != nil {
+			return nil, err
+		}
+		return ge.Snapshot(p), nil
+	case "game.analyze", "game.rules", "game.candidates", "game.place", "game.assets", "game.compile", "game.repair":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		id := firstNonEmptyApp(str("id"), str("project_id"))
+		sid := str("session_id")
+		var p game.Project
+		switch method {
+		case "game.analyze":
+			p, err = ge.AnalyzeScene(sid, id, firstNonEmptyApp(str("intent"), str("prompt")))
+		case "game.rules":
+			p, err = ge.PlanRules(sid, id, firstNonEmptyApp(str("intent"), str("prompt")))
+		case "game.candidates":
+			p, err = ge.ExtractCandidates(sid, id)
+		case "game.place":
+			p, err = ge.Place(sid, id)
+		case "game.assets":
+			p, err = ge.RealizeAssets(sid, id)
+		case "game.compile":
+			p, err = ge.Compile(sid, id)
+		case "game.repair":
+			p, err = ge.Repair(sid, id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		return ge.Snapshot(p), nil
+	case "game.preview":
+		ge, err := a.requireGame()
+		if err != nil {
+			return nil, err
+		}
+		p, err := ge.Get(firstNonEmptyApp(str("id"), str("project_id")))
+		if err != nil {
+			return nil, err
+		}
+		snap := ge.Snapshot(p)
+		return map[string]any{"html": snap["preview_html"], "playable": snap["playable"], "root": snap["root"]}, nil
 	case "video.trends.fetch":
 		return eng.FetchTrends(splitCSVApp(str("platforms")), intArgApp(params["limit"]))
 	case "video.topic.list":
@@ -1238,7 +1636,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "video.cut.delete":
 		return map[string]any{"ok": true}, eng.DeleteCutProject(str("id"))
 	case "video.route":
-		return eng.VideoRoute(str("session_id"), str("dest"), firstNonEmptyApp(str("id"), str("project_id")), str("title"))
+		return eng.VideoRoute(str("session_id"), str("dest"), firstNonEmptyApp(str("id"), str("project_id")), str("title"), str("intent"))
 	case "video.providers.menu":
 		return eng.ProviderMenu(firstNonEmptyApp(str("capability"), str("service_type"))), nil
 	case "video.studio.jobs":

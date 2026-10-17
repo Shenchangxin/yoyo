@@ -52,6 +52,7 @@ type Engine struct {
 	cancel   context.CancelFunc
 	OnJob    func(Job)
 	OnHub    func(kind string, payload map[string]any)
+	RouteGame func(sessionID, id, title, intent string) (map[string]any, error)
 
 	Proto     *protocol.Registry
 	PluginDir string

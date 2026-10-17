@@ -6,6 +6,7 @@ import { isYingcePane, type VideoProject } from "../../lib/protocol";
 import { CanvasStudio } from "./CanvasStudio";
 import { DramaStudio } from "./DramaStudio";
 import { StudioWorkbench } from "./StudioWorkbench";
+import { GameWorkbench } from "../game/GameWorkbench";
 import { VideoHistory } from "./VideoHistory";
 import { useStudioSelection } from "./workshop-store";
 
@@ -18,6 +19,7 @@ export function VideoWorkshop(props: {
   dramaId?: string;
   onOpenProject?: (p: VideoProject) => void;
   onRefreshHistory?: () => void;
+  onAskAgent?: (text: string) => void;
 }) {
   const copy = useCopy();
   const pane = useUI((s) => s.videoPane);
@@ -41,6 +43,15 @@ export function VideoWorkshop(props: {
           onOpenProject={props.onOpenProject}
           onRefreshHistory={props.onRefreshHistory}
           onClose={props.onClose}
+        />
+      ) : pane === "game" ? (
+        <GameWorkbench
+          sessionId={props.sessionId}
+          projects={props.projects}
+          onNeedSession={props.onNeedSession}
+          onOpenProject={props.onOpenProject}
+          onRefreshHistory={props.onRefreshHistory}
+          onAskAgent={props.onAskAgent}
         />
       ) : pane === "tasks" && !showBoard ? (
         <div className="flex h-full min-h-0 flex-col" data-testid="canvas-studio-shell" data-pane="tasks">

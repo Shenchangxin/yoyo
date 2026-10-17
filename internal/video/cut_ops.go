@@ -585,7 +585,7 @@ func (e *Engine) ProviderMenu(cap string) []map[string]any {
 	return out
 }
 
-func (e *Engine) VideoRoute(sessionID, dest, id, title string) (map[string]any, error) {
+func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[string]any, error) {
 	dest = strings.ToLower(strings.TrimSpace(dest))
 	sessionID = strings.TrimSpace(sessionID)
 	id = strings.TrimSpace(id)
@@ -625,6 +625,19 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title string) (map[string]any, 
 			}
 		}
 		out["pane"] = "canvas"
+		out["id"] = id
+	case "game", "游戏", "游戏世界", "game-world":
+		if e.RouteGame != nil {
+			got, err := e.RouteGame(sessionID, id, title, intent)
+			if err != nil {
+				return nil, err
+			}
+			if e.OnHub != nil {
+				e.OnHub("video_route", got)
+			}
+			return got, nil
+		}
+		out["pane"] = "game"
 		out["id"] = id
 	default:
 		if id == "" {

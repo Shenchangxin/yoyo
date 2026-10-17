@@ -1,17 +1,18 @@
-import { BookOpen, Clapperboard, Folder, History, Images, PanelsTopLeft, Puzzle, Sparkles } from "lucide-react";
+import { BookOpen, Clapperboard, Folder, Gamepad2, History, Images, PanelsTopLeft, Puzzle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useCopy } from "../../lib/i18n";
 import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/motion";
 import { useUI } from "../../lib/store";
 import type { VideoPane } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
-import { useStudioSelection } from "./workshop-store";
+import { useGameSelection, useStudioSelection } from "./workshop-store";
 
-const PRIMARY: { id: Extract<VideoPane, "create" | "studio" | "drama" | "canvas">; icon: typeof Clapperboard }[] = [
+const PRIMARY: { id: Extract<VideoPane, "create" | "studio" | "drama" | "canvas" | "game">; icon: typeof Clapperboard }[] = [
   { id: "create", icon: Images },
   { id: "studio", icon: Sparkles },
   { id: "drama", icon: Clapperboard },
   { id: "canvas", icon: PanelsTopLeft },
+  { id: "game", icon: Gamepad2 },
 ];
 
 const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks">; icon: typeof Clapperboard }[] = [
@@ -33,6 +34,7 @@ export function VideoShellNav() {
     studio: copy.video.shellStudio,
     drama: copy.video.shellDrama,
     canvas: copy.video.shellCanvas,
+    game: copy.video.shellGame,
     assets: copy.video.shellAssets,
     skills: copy.video.shellSkills,
     plugins: copy.video.shellPlugins,
@@ -60,6 +62,7 @@ export function VideoShellNav() {
         )}
         onClick={() => {
           if (item.id === "studio") useStudioSelection.getState().setStudioId("");
+          if (item.id === "game" && pane !== "game") useGameSelection.getState().setGameId("");
           openVideoPane(item.id);
         }}
       >

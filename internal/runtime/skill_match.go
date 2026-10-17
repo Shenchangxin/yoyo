@@ -35,6 +35,7 @@ type SkillMatchReq struct {
 	Mentioned []string
 	Depth     int
 	Mode      string
+	Lane      string
 }
 
 func NormalizeAutoInvoke(mode string) string {
@@ -61,6 +62,36 @@ func skipSkillRequest(voice string) bool {
 		}
 	}
 	return false
+}
+
+func hasSpatialGameLoaded(loaded []string) bool {
+	for _, n := range loaded {
+		switch strings.ToLower(strings.TrimSpace(n)) {
+		case "yoyo-game", "game-world-analyze", "game-world-rules", "game-world-place", "game-world-build", "game-world-qa":
+			return true
+		}
+	}
+	return false
+}
+
+func novelAdaptVoice(voice string) bool {
+	s := strings.ToLower(strings.TrimSpace(voice))
+	if s == "" {
+		return false
+	}
+	for _, p := range []string{"小说", "改编小说", "这本书", "novel", "adapt this book", "adapt the novel", "adapt a novel", "adapt this novel"} {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func novelPackAllowed(name, voice string) bool {
+	if !IsNovelGameSkill(name) {
+		return true
+	}
+	return novelAdaptVoice(voice)
 }
 
 func isProcessSkill(name string) bool {
@@ -97,6 +128,7 @@ func MatchSkills(req SkillMatchReq) []SkillSuggestion {
 	}
 	orch := DomainOrchestrators(req.Packs)
 	method := HasMethodologyPack(req.Packs)
+	spatialLoaded := hasSpatialGameLoaded(req.Loaded) || strings.EqualFold(strings.TrimSpace(req.Lane), "game")
 	voiceToks := matchTokens(voice)
 	type scored struct {
 		SkillSuggestion
@@ -108,6 +140,9 @@ func MatchSkills(req SkillMatchReq) []SkillSuggestion {
 			continue
 		}
 		if !sk.AllowsImplicit() {
+			continue
+		}
+		if spatialLoaded && IsNovelGameSkill(sk.Name) {
 			continue
 		}
 		proc := isProcessSkill(sk.Name)
@@ -165,7 +200,7 @@ func MatchSkills(req SkillMatchReq) []SkillSuggestion {
 					rival = r.Score
 				}
 			}
-			if best.Score-rival >= skillAutoloadMargin {
+			if best.Score-rival >= skillAutoloadMargin && novelPackAllowed(best.Name, voice) {
 				best.Action = SkillActionAutoload
 			}
 		}
@@ -286,7 +321,9 @@ var routeLex = [][2]string{
 	{"novel", "小说"},
 	{"book", "小说"},
 	{"game", "游戏"},
+	{"game-world", "游戏世界"},
 	{"playable", "可玩"},
+	{"3d", "3d"},
 	{"weekly", "周报"},
 	{"report", "周报"},
 	{"minutes", "纪要"},

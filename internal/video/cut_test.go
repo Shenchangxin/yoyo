@@ -101,7 +101,7 @@ func TestOpenCutFromCanvasResource(t *testing.T) {
 
 func TestVideoRouteCreatesCut(t *testing.T) {
 	e := testEngine(t)
-	out, err := e.VideoRoute("sess-route", "cut", "", "胶片")
+	out, err := e.VideoRoute("sess-route", "cut", "", "胶片", "")
 	if err != nil {
 		t.Fatal(err)
 	}

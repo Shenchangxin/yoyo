@@ -21,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/game"
 	"github.com/Shenchangxin/yoyo/internal/home"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/journal"
@@ -169,6 +170,7 @@ type App struct {
 	Observe    *observe.Tracer
 	Log        *diaglog.Logger
 	Video      *video.Engine
+	Game       *game.Engine
 	Skins      *skin.Store
 	schedStop  chan struct{}
 	updateStop chan struct{}

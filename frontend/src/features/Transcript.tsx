@@ -36,7 +36,8 @@ import { displayWorkspace } from "../lib/display-title";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
-import { useStudioSelection } from "./video/workshop-store";
+import { useGameSelection, useStudioSelection } from "./video/workshop-store";
+import { copilotHint, deskPage, deskStarters, pageLead } from "./game/game-desk";
 
 function lastStreamKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -313,6 +314,12 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   const videoPane = useUI((s) => s.videoPane);
   const videoing = surface === "video";
   const createDesk = videoing && videoPane === "create";
+  const gameId = useGameSelection((s) => s.gameId);
+  const gameTitle = useGameSelection((s) => s.title);
+  const gameFocus = useGameSelection((s) => s.focus);
+  const gameHome = videoing && videoPane === "game" && !gameId;
+  const gameBound = videoing && videoPane === "game" && !!gameId;
+  const gamePage = deskPage(null, gameFocus || "play");
   const openStudioDesk = useUI((s) => s.openStudioDesk);
   const boundTitle = useStudioSelection((s) => s.title);
   const nextKey = useStudioSelection((s) => s.nextKey);
@@ -320,6 +327,10 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? (boundTitle
       ? copy.transcript.studioDeskReadyNamed.replace("{title}", boundTitle)
       : copy.transcript.studioDeskReady)
+    : gameBound
+      ? pageLead(gamePage, copy.video.gameDesk)
+    : gameHome
+      ? copy.transcript.gameReady
     : createDesk
       ? copy.transcript.conductorReady
     : !videoing
@@ -334,6 +345,10 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     : null;
   const starters = studioDesk
     ? [nextStarter, ...copy.transcript.studioDeskStarters].filter(Boolean) as { label: string; text: string }[]
+    : gameBound
+      ? deskStarters(gamePage, { id: gameId, title: gameTitle }, copy.video.gameDesk)
+    : gameHome
+      ? copy.transcript.gameStarters
     : createDesk
       ? copy.transcript.conductorStarters
     : !videoing
@@ -348,6 +363,16 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? [
         { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
         { key: "desk", node: copy.transcript.hintStudioDesk },
+      ]
+    : gameBound
+    ? [
+        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+        { key: "desk", node: copilotHint(gamePage, copy.video.gameDesk) },
+      ]
+    : gameHome
+    ? [
+        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
+        { key: "desk", node: copy.transcript.hintGame },
       ]
     : createDesk
     ? [

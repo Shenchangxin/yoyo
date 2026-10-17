@@ -1,0 +1,7 @@
+[[file]]
+path = "game-worlds/collect/playable/game.json"
+contains = "schema_version"
+
+[[file]]
+path = "game-worlds/collect/playable/game.json"
+contains = "collectible"

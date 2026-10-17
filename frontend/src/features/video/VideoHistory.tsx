@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Clapperboard, Copy, Gamepad2, LayoutGrid, Plus, Sparkles, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -13,6 +13,8 @@ import { DURATION_SHELL, motionTransition, useMotionReduced } from "../../lib/mo
 import type { VideoProject } from "../../lib/protocol";
 import { cn } from "../../lib/utils";
 import { bindCanvasSession, useCanvasHost } from "./canvas-host/session";
+import { useGameSelection } from "./workshop-store";
+import { createGameWorld } from "../game/game-actions";
 import { CreateShortField } from "./studio-chrome";
 import { shownSeriesTitle } from "./drama-lib";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -39,6 +41,8 @@ export function VideoHistory(props: {
   const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
   const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
   const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
+  const games = useMemo(() => props.projects.filter((p) => p.kind === "game"), [props.projects]);
+  const setGameId = useGameSelection((s) => s.setGameId);
 
   useEffect(() => {
     props.onRefresh?.();
@@ -96,6 +100,19 @@ export function VideoHistory(props: {
     setBusy("drama");
     try {
       await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
+      props.onRefresh?.();
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function newGame() {
+    setBusy("game");
+    try {
+      const row = await createGameWorld({ title: copy.video.newGame });
+      props.onOpenProject?.({ kind: "game", id: row.id, title: row.title || copy.video.newGame });
       props.onRefresh?.();
     } catch (e) {
       toast.error(api.errMessage(e));
@@ -208,6 +225,31 @@ export function VideoHistory(props: {
           </section>
           <section>
             <div className="relative mb-2 flex items-center gap-2">
+              <h2 className="text-[12px] font-medium text-muted">{copy.video.shellGame}</h2>
+              <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "game"} data-testid="video-history-new-game" onClick={() => void newGame()}>
+                <Plus className="size-3.5" aria-hidden />
+                {copy.video.newGame}
+              </Button>
+              {busy === "game" ? <ProgressHairline className="absolute inset-x-0 -bottom-px rounded-none" indeterminate /> : null}
+            </div>
+            {games.length ? (
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                {games.map((p) => (
+                  <HistoryRow
+                    key={`game-${p.id}`}
+                    project={p}
+                    active={p.id === useGameSelection.getState().gameId}
+                    fallback={copy.video.newGame}
+                    onSelect={() => { setGameId(p.id, p.title); props.onOpenProject?.(p); }}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<Gamepad2 className="size-5" />} title={copy.video.shellGame} body={copy.video.historyEmptyGame} />
+            )}
+          </section>
+          <section>
+            <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellCanvas}</h2>
               <Button size="sm" variant="ghost" className="ml-auto h-7 gap-1 text-[12px]" disabled={busy === "canvas"} data-testid="video-history-new-canvas" onClick={() => void newCanvas()}>
                 <Plus className="size-3.5" aria-hidden />
@@ -253,7 +295,7 @@ export function VideoHistory(props: {
 function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void; onDelete?: () => void }) {
   const copy = useCopy();
   const p = props.project;
-  const Icon = p.kind === "drama" ? Clapperboard : p.kind === "studio" ? Sparkles : LayoutGrid;
+  const Icon = p.kind === "drama" ? Clapperboard : p.kind === "studio" ? Sparkles : p.kind === "game" ? Gamepad2 : LayoutGrid;
   const statusLabel: Record<string, string> = {
     inbox: copy.video.studio.inbox,
     ready: copy.video.studio.ready,

@@ -23,11 +23,13 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Follow** jobs continue an existing thread. Isolated cron/heartbeat/webhook jobs stay a separate class and still isolate.
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
-- **Video** is one chrome with four lanes. **创作** is the conductor
+- **Video** is one chrome with five lanes. **创作** is the conductor
   agent: a main chat (empty: talk through a piece, featured cases below;
-  attach a clip in the box to cut or analyze). **短片 / 短剧 / 画布** are workshops that
-  still own T2V. Shared post (`internal/video/cut`: Breakdown, EditList,
-  Stems, Captions) is infrastructure, not a fourth product. Assembled
+  attach a clip in the box to cut or analyze). **短片 / 短剧 / 画布 / 游戏** are workshops.
+  短片 / 短剧 / 画布 still own T2V. **游戏** turns a play intent into a sealed
+  HTML/WebGL playable under `game-worlds/` (not a novel adaptation — that stays
+  NovelToGame). Shared post (`internal/video/cut`: Breakdown, EditList,
+  Stems, Captions) is infrastructure, not a product lane. Assembled
   shorts, stitched episodes, and canvas video nodes send to 创作 with
   one **去剪辑** action, then finish the film on the conductor.
   Video chats and Agent chats stay separate session channels.
