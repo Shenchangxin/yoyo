@@ -175,6 +175,7 @@ describe("layoutAgentParts: only the final text is a letter", () => {
     const settled = agentParts(layoutRows(items));
     assert.deepEqual(settled.map((p) => p.kind), ["process", "item"]);
     assert.ok(settled[1].kind === "item" && settled[1].item.key === "a1");
+    assert.equal(live[1].key, settled[1].key);
   });
 });
 

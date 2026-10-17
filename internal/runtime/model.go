@@ -77,6 +77,10 @@ type StreamDelta struct {
 	Reasoning string
 	Tool      ToolCall
 	ToolDone  bool
+	// Index is 1-based within the current block for this round. LiveNotice.frame
+	// carries it so a reconnect can skip duplicates and rebaseline on a gap.
+	Index int
+	Block string
 }
 
 type Client interface {
@@ -265,6 +269,8 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 	var content strings.Builder
 	tools := map[int]*streamAcc{}
 	maxIdx := -1
+	textIndex := 0
+	reasonIndex := 0
 	sawData := false
 	promptTok, completionTok, cachedTok := 0, 0, 0
 	finish := ""
@@ -314,11 +320,13 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 				if piece != "" {
 					content.WriteString(piece)
 					if emit != nil {
-						_ = emit(StreamDelta{Text: piece})
+						textIndex++
+						_ = emit(StreamDelta{Text: piece, Index: textIndex, Block: "text"})
 					}
 				}
 				if reason != "" && emit != nil {
-					_ = emit(StreamDelta{Reasoning: reason})
+					reasonIndex++
+					_ = emit(StreamDelta{Reasoning: reason, Index: reasonIndex, Block: "reasoning"})
 				}
 				if emit != nil {
 					emitCompletedTools(tools, emit)

@@ -551,6 +551,14 @@ kbd,
 .assistant-live {
   --streamdown-caret: color-mix(in srgb, var(--foreground) 55%, transparent);
 }
+.md-stream-caret {
+  vertical-align: text-bottom;
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-stream-caret {
+    opacity: 0.7;
+  }
+}
 .assistant-letter {
   width: 100%;
   max-width: none;
@@ -2050,6 +2058,105 @@ details[open] > .fold-summary::before {
 }
 .drama-open-existing:hover {
   color: var(--foreground);
+}
+
+.creation-home.drama-agent-page[data-empty="true"] {
+  justify-content: center;
+  overflow: auto;
+}
+
+.creation-home.drama-agent-page[data-empty="true"] .creation-empty-workspace {
+  flex: 0 0 auto !important;
+  width: min(1120px, calc(100% - 48px));
+  min-height: 0 !important;
+  margin: 0 auto;
+  padding: 24px 0 0;
+  overflow: visible !important;
+}
+
+.creation-home.drama-agent-page .creation-composer-stage.is-home-mode {
+  display: block;
+  width: min(820px, calc(100% - 28px));
+  margin: 20px auto 0;
+  flex: none;
+  overflow: visible;
+}
+
+.drama-agent-page .creation-empty-composer,
+.drama-agent-page .creation-empty-composer .sc-root,
+.drama-agent-page .creation-thread-composer .sc-root {
+  width: 100%;
+  overflow: visible;
+}
+
+.drama-agent-page .creation-thread-composer {
+  width: min(820px, calc(100% - 28px));
+  margin-left: auto;
+  margin-right: auto;
+  overflow: visible;
+}
+
+.drama-agent-page .sc-card {
+  overflow: visible;
+  background: var(--input-bar);
+  box-shadow: var(--shadow-composer);
+}
+
+.drama-agent-page .sc-chip-btn {
+  width: auto;
+}
+
+.drama-agent-page .sc-accessory {
+  width: 100%;
+  min-width: 0;
+}
+
+.drama-agent-page .sc-accessory .drama-agent-select,
+.drama-agent-page .sc-accessory .creation-model-picker,
+.drama-agent-page .sc-accessory .canvas-composer-model-picker {
+  box-sizing: border-box;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  min-width: 0 !important;
+  max-width: min(11rem, 100%);
+  width: auto !important;
+  padding: 0 8px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--muted) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.drama-agent-page .sc-accessory .canvas-composer-model-picker:hover,
+.drama-agent-page .sc-accessory .canvas-composer-model-picker[aria-expanded="true"],
+.drama-agent-page .sc-accessory .drama-agent-select:hover {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.drama-agent-page .sc-accessory .canvas-model-picker-trigger-icon {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 4px !important;
+}
+
+.drama-agent-page .sc-accessory .drama-agent-select .ant-select-selector,
+.drama-agent-page .sc-accessory .drama-agent-select .yc-select-selector {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.drama-agent-page[data-empty="true"] .drama-open-existing {
+  width: min(820px, calc(100% - 28px));
+  margin: 16px auto 32px;
 }
 .drama-guide {
   flex-shrink: 0;

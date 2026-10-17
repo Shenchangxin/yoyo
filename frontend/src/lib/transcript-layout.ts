@@ -134,6 +134,31 @@ export function subagentLive(items: Item[]): boolean {
   return phase !== "complete";
 }
 
+/** Prompt of the live subagent, for the session header breadcrumb. */
+export function liveSubagentCrumb(items: Item[] | undefined | null): string {
+  if (!items?.length) return "";
+  const groups = new Map<string, Item[]>();
+  for (const it of items) {
+    if (it.type !== "subagent") continue;
+    const child = subagentChildId(it) || it.key;
+    if (!child) continue;
+    const list = groups.get(child) || [];
+    list.push(it);
+    groups.set(child, list);
+  }
+  let crumb = "";
+  for (const list of groups.values()) {
+    if (!subagentLive(list)) continue;
+    for (const it of list) {
+      const raw = String(it.payload?.prompt || it.payload?.summary || it.text || "").trim();
+      if (!raw) continue;
+      crumb = raw.split(/\r?\n/).find((l) => l.trim())?.trim() || raw;
+      break;
+    }
+  }
+  return crumb;
+}
+
 export function isAgentItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
   return (
@@ -381,7 +406,8 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
   flushProcess();
   flushArtifacts();
   if (streamItem) {
-    parts.push({ key: `stream:${streamItem.key}`, kind: "stream", item: streamItem });
+    // Keep the letter's item key while streaming so settle does not remount.
+    parts.push({ key: streamItem.key, kind: "stream", item: streamItem });
   }
   return parts;
 }

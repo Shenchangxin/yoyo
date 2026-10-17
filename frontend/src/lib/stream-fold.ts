@@ -255,18 +255,30 @@ function lastOpenAssistant(list: Item[]): Item | null {
   return null;
 }
 
+function streamIndexRange(p: Record<string, any> | undefined): { from: number; to: number } {
+  const to = num(p?.index);
+  const from = num(p?.index_from) || to;
+  return { from, to };
+}
+
 function foldTextDelta(list: Item[], ev: Item): Item[] {
   const idx = textDeltaIndex(list, ev);
   if (idx >= 0) {
     const cur = list[idx];
     if (ev.delta && cur.text && !cur.delta) return list;
+    if (ev.delta) {
+      const have = num(cur.payload?.index);
+      const { to } = streamIndexRange(ev.payload);
+      if (to > 0 && have > 0 && to <= have) return list;
+    }
     const text = ev.delta ? cur.text + (ev.text || "") : (ev.text || cur.text);
     const next = list.slice();
+    const { to } = streamIndexRange(ev.payload);
     next[idx] = {
       ...cur,
       text,
       delta: ev.delta,
-      payload: { ...cur.payload, ...ev.payload, text, delta: ev.delta },
+      payload: { ...cur.payload, ...ev.payload, text, delta: ev.delta, ...(to ? { index: to } : {}) },
     };
     return next;
   }
@@ -483,11 +495,37 @@ function isTraceEnvelopeType(t: unknown): boolean {
   return typeof t === "string" && t.length > 0 && !t.startsWith("yoyo:");
 }
 
+export type StreamFrame = {
+  kind?: string;
+  index?: number;
+  index_from?: number;
+  block?: string;
+  delta?: string;
+  committed_seq?: number;
+};
+
 export type LiveNotice = {
   seq: number;
   sessionId: string;
   event?: any;
+  frame?: StreamFrame;
 };
+
+function readStreamFrame(raw: any): StreamFrame | undefined {
+  const src = raw?.frame ?? raw?.Frame;
+  if (!src || typeof src !== "object") return undefined;
+  const index = num(src.index ?? src.Index);
+  const from = num(src.index_from ?? src.IndexFrom ?? src.indexFrom);
+  const committed = num(src.committed_seq ?? src.CommittedSeq ?? src.committedSeq);
+  return {
+    kind: str(src.kind ?? src.Kind) || undefined,
+    index: index || undefined,
+    index_from: from || index || undefined,
+    block: str(src.block ?? src.Block) || undefined,
+    delta: str(src.delta ?? src.Delta) || undefined,
+    committed_seq: committed || undefined,
+  };
+}
 
 /** Peel a notify/pull envelope without treating `type` as the event itself. */
 export function parseLiveNotice(raw: any): LiveNotice {
@@ -496,13 +534,14 @@ export function parseLiveNotice(raw: any): LiveNotice {
   const seq = num(e.seq ?? e.Seq);
   const nested = e.event ?? e.Event;
   const sessionId = str(pick(e, "session_id", "SessionID", "sessionId") || pick(nested, "session_id", "SessionID", "sessionId"));
+  const frame = readStreamFrame(e) || readStreamFrame(nested);
   if (nested && typeof nested === "object" && (nested.type || nested.Type || nested.payload || nested.Payload)) {
-    return { seq, sessionId, event: nested };
+    return { seq, sessionId, event: nested, frame };
   }
   if (e.payload != null || e.Payload != null) {
-    return { seq, sessionId, event: e };
+    return { seq, sessionId, event: e, frame };
   }
-  return { seq, sessionId };
+  return { seq, sessionId, frame };
 }
 
 /**

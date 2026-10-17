@@ -585,16 +585,28 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 		var wg sync.WaitGroup
 		var reason strings.Builder
 		var prog toolProgressGate
+		textIndex, reasonIndex := 0, 0
 		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
 			if d.Text != "" || d.Reasoning != "" || d.Tool.Name != "" {
 				markFirst()
 			}
 			if d.Text != "" {
-				emit(req, trace.TypeAssistant, "model", map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID})
+				if d.Index > 0 {
+					textIndex = d.Index
+				} else {
+					textIndex++
+				}
+				payload := map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID, "index": textIndex, "block": "text"}
+				emit(req, trace.TypeAssistant, "model", payload)
 			}
 			if req.ShowThinking && d.Reasoning != "" {
 				reason.WriteString(d.Reasoning)
-				emit(req, trace.TypeReasoning, "model", map[string]any{"text": d.Reasoning, "delta": true, "id": roundID, "round": roundID})
+				if d.Index > 0 {
+					reasonIndex = d.Index
+				} else {
+					reasonIndex++
+				}
+				emit(req, trace.TypeReasoning, "model", map[string]any{"text": d.Reasoning, "delta": true, "id": roundID, "round": roundID, "index": reasonIndex, "block": "reasoning"})
 			}
 			if d.Tool.Name != "" && !d.ToolDone && prog.allow(d.Tool.ID, len(d.Tool.Arguments), time.Now()) {
 				emitToolProgress(req, roundID, d.Tool)

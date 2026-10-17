@@ -49,9 +49,22 @@ type liveItem struct {
 }
 
 type deltaBuf struct {
-	ev   trace.Event
-	key  string
-	text strings.Builder
+	ev        trace.Event
+	key       string
+	text      strings.Builder
+	indexFrom int
+	index     int
+}
+
+// StreamFrame is the live-only dual-write of a token/tool chunk. It does not
+// enter JSONL; EventType names stay the durable ledger.
+type StreamFrame struct {
+	Kind         string `json:"kind,omitempty"`
+	Index        int    `json:"index,omitempty"`
+	IndexFrom    int    `json:"index_from,omitempty"`
+	Block        string `json:"block,omitempty"`
+	Delta        string `json:"delta,omitempty"`
+	CommittedSeq int64  `json:"committed_seq,omitempty"`
 }
 
 // LiveNotice is the Wails payload. Small events travel inline; larger ones
@@ -61,6 +74,7 @@ type LiveNotice struct {
 	SessionID string       `json:"session_id"`
 	Type      string       `json:"type"`
 	Event     *trace.Event `json:"event,omitempty"`
+	Frame     *StreamFrame `json:"frame,omitempty"`
 }
 
 func NewHub() *Hub {
@@ -105,14 +119,25 @@ func (h *Hub) holdDelta(ev trace.Event, key string) {
 	h.cMu.Lock()
 	defer h.cMu.Unlock()
 	text := payloadDeltaText(ev)
+	idx := payloadInt(ev.Payload, "index")
+	from := payloadInt(ev.Payload, "index_from")
+	if from == 0 {
+		from = idx
+	}
 	if h.pending != nil {
 		if h.pending.key == key {
 			h.pending.text.WriteString(text)
+			if h.pending.indexFrom == 0 {
+				h.pending.indexFrom = from
+			}
+			if idx > h.pending.index {
+				h.pending.index = idx
+			}
 			return
 		}
 		h.flushPendingLocked()
 	}
-	buf := &deltaBuf{ev: cloneEvent(ev), key: key}
+	buf := &deltaBuf{ev: cloneEvent(ev), key: key, indexFrom: from, index: idx}
 	buf.text.WriteString(text)
 	h.pending = buf
 	if h.timer != nil {
@@ -131,6 +156,15 @@ func (h *Hub) flushPendingLocked() {
 	}
 	ev := h.pending.ev
 	setDeltaText(&ev, h.pending.text.String())
+	if h.pending.index > 0 {
+		if ev.Payload == nil {
+			ev.Payload = map[string]any{}
+		}
+		ev.Payload["index"] = h.pending.index
+		if h.pending.indexFrom > 0 {
+			ev.Payload["index_from"] = h.pending.indexFrom
+		}
+	}
 	h.pending = nil
 	h.cMu.Unlock()
 	h.fanout(ev)
@@ -232,6 +266,7 @@ func NoticeOf(ev trace.Event) LiveNotice {
 	if liveDelta(ev) {
 		e := ev
 		n.Event = &e
+		n.Frame = frameOf(ev)
 		return n
 	}
 	if !mayInlineNotice(ev) {
@@ -348,6 +383,34 @@ func coalesceKey(ev trace.Event) (string, bool) {
 	id, _ := ev.Payload["id"].(string)
 	round, _ := ev.Payload["round"].(string)
 	return ev.SessionID + "\x00" + string(ev.Type) + "\x00" + id + "\x00" + round, true
+}
+
+func frameOf(ev trace.Event) *StreamFrame {
+	block := "text"
+	switch ev.Type {
+	case trace.TypeReasoning:
+		block = "reasoning"
+	case trace.TypeToolResult:
+		block = "tool"
+	}
+	if ev.Payload != nil {
+		if s, _ := ev.Payload["block"].(string); s != "" {
+			block = s
+		}
+	}
+	from := payloadInt(ev.Payload, "index_from")
+	idx := payloadInt(ev.Payload, "index")
+	if from == 0 {
+		from = idx
+	}
+	return &StreamFrame{
+		Kind:         "chunk",
+		Index:        idx,
+		IndexFrom:    from,
+		Block:        block,
+		Delta:        payloadDeltaText(ev),
+		CommittedSeq: ev.Seq,
+	}
 }
 
 func payloadDeltaText(ev trace.Event) string {

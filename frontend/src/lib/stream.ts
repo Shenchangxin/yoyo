@@ -81,6 +81,17 @@ export function subscribeSession(
   let pullAgain = false;
   let resyncing = false;
   const seen = new Set<string>();
+  const lastIndex = new Map<string, number>();
+
+  const noteFrame = (item: Item, frame?: { index?: number; index_from?: number }) => {
+    const from = frame?.index_from || 0;
+    if (!from || !item.delta) return false;
+    const rid = String(item.payload?.id || item.payload?.round || item.key);
+    const have = lastIndex.get(rid) || 0;
+    const gapped = have > 0 && from > have + 1;
+    lastIndex.set(rid, Math.max(have, frame?.index || from));
+    return gapped;
+  };
 
   const applyItem = (raw: any, item: Item) => {
     if (seen.size > 4000) seen.clear();
@@ -93,6 +104,7 @@ export function subscribeSession(
   const applySeed = (raws: any[], page: TrajectoryPageView | undefined, resync: boolean) => {
     (raws || []).forEach((raw) => seen.add(eventFingerprint(raw)));
     const items = replayEvents(raws || []);
+    lastIndex.clear();
     if (onSeed) onSeed(items, page, { resync });
     else items.forEach(onItem);
     seeded = true;
@@ -181,6 +193,9 @@ export function subscribeSession(
         const item = itemFromEvent(event);
         cursor = Math.max(cursor, notice.seq);
         if (item.sessionId && item.sessionId !== sessionId) return;
+        if (noteFrame(item, notice.frame)) {
+          void pullSince();
+        }
         applyItem(event, item);
         return;
       }

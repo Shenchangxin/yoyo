@@ -7,6 +7,7 @@ import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurn
 import { isLiveDelta, liveBody } from "../../lib/stream-live";
 import { deriveTurnStatus } from "../../lib/turn-status";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
+import { deriveSessionStats } from "../../lib/session-stats";
 import { asArray, num, str } from "../../lib/normalize";
 import { pathReady, workspaceReady } from "../../lib/workspace";
 import { applyLocale, useCopy } from "../../lib/i18n";
@@ -328,6 +329,10 @@ export function useWorkstation() {
   const anyRun = Object.values(running).some(Boolean);
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
   const outlineTurns = useMemo(() => pendingOutline(outline, items), [outline, items]);
+  const sessionStats = useMemo(
+    () => deriveSessionStats({ outlineTurns, items, trace }),
+    [outlineTurns, items, trace],
+  );
   const outlineState = useMemo(
     () => outlineStatus({ running: threadRunning, waiting: approvals.length > 0 }),
     [threadRunning, approvals.length],
@@ -600,6 +605,10 @@ export function useWorkstation() {
   }, []);
 
   useEffect(() => {
+    void refreshTrace();
+  }, [refreshTrace]);
+
+  useEffect(() => {
     if (!inspector) return;
     if (inspTab !== "trace" && inspTab !== "context") return;
     void refreshTrace();
@@ -607,6 +616,13 @@ export function useWorkstation() {
     const timer = window.setInterval(() => { void refreshTrace(); }, 4000);
     return () => window.clearInterval(timer);
   }, [inspector, inspTab, refreshTrace, threadRunning]);
+
+  useEffect(() => {
+    if (!activeId || !threadRunning) return;
+    if (inspector && (inspTab === "trace" || inspTab === "context")) return;
+    const timer = window.setInterval(() => { void refreshTrace(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeId, threadRunning, refreshTrace, inspector, inspTab]);
 
   useEffect(() => {
     if (import.meta.env.VITE_E2E) return;
@@ -832,6 +848,7 @@ export function useWorkstation() {
             setQueued(q.length);
           }).catch(() => { setQueued(0); setQueueItems([]); });
           void refreshOutline();
+          void refreshTrace();
         }
       },
       (seed, page, opts) => {
@@ -889,7 +906,7 @@ export function useWorkstation() {
         itemsRaf.current = 0;
       }
     };
-  }, [activeId, markEnded, refreshOutline]);
+  }, [activeId, markEnded, refreshOutline, refreshTrace]);
 
   useEffect(() => {
     const q = query.trim();
@@ -1957,7 +1974,7 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, dismissNotice, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, sessionStats, err, setErr,
     outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
