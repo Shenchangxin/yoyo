@@ -122,6 +122,70 @@ func TestFormatSkillHintsOmitsAutoload(t *testing.T) {
 	}
 }
 
+func TestMatchSkillsPrefersYoyoGameWorldOverNovel(t *testing.T) {
+	skills := []artifact.Skill{
+		{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."},
+		{Name: "yoyo-game", Description: "Generate a spatial 3D game world (游戏世界) from a play intent. Use when the operator wants a playable game world or third-person collect."},
+	}
+	got := MatchSkills(SkillMatchReq{
+		Voice:  "生成一个第三人称收集游戏世界",
+		Skills: skills,
+		Mode:   "on",
+	})
+	if len(got) == 0 {
+		t.Fatal("expected hints")
+	}
+	if got[0].Name != "yoyo-game" {
+		t.Fatalf("want yoyo-game first, got %+v", got)
+	}
+}
+
+func TestMatchSkillsDoesNotAutoloadNovelOnSpatialGame(t *testing.T) {
+	skills := []artifact.Skill{
+		{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."},
+		{Name: "yoyo-game", Description: "Generate a spatial 3D game world (游戏世界) from a play intent."},
+	}
+	got := MatchSkills(SkillMatchReq{
+		Voice:  "按这个玩法生成世界：神庙逃亡主题的第三人称3D跑酷小游戏",
+		Skills: skills,
+		Packs:  []PackSession{{ID: "novel-to-game"}},
+		Loaded: []string{"yoyo-game", "game-world-analyze"},
+		Lane:   "game",
+		Mode:   "on",
+	})
+	for _, s := range got {
+		if s.Name == "novel-to-game" {
+			t.Fatalf("spatial game lane leaked novel-to-game: %+v", got)
+		}
+	}
+}
+
+func TestMatchSkillsDoesNotAutoloadNovelWithoutNovelVoice(t *testing.T) {
+	got := MatchSkills(SkillMatchReq{
+		Voice:  "按这个玩法生成世界：神庙逃亡主题的第三人称3D跑酷小游戏",
+		Skills: []artifact.Skill{{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."}},
+		Packs:  []PackSession{{ID: "novel-to-game"}},
+		Mode:   "on",
+	})
+	for _, s := range got {
+		if s.Name == "novel-to-game" && s.Action == SkillActionAutoload {
+			t.Fatalf("game intent autoloaded novel-to-game: %+v", got)
+		}
+	}
+}
+
+func TestMatchSkillsStillAutoloadsNovelAdapt(t *testing.T) {
+	got := MatchSkills(SkillMatchReq{
+		Voice:  "把这本小说做成游戏",
+		Skills: []artifact.Skill{{Name: "novel-to-game", Description: "Turn a novel into a playable game. Use when adapting a book into a game."}},
+		Packs:  []PackSession{{ID: "novel-to-game"}},
+		Mode:   "on",
+	})
+	if len(got) == 0 || got[0].Name != "novel-to-game" || got[0].Action != SkillActionAutoload {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestHarborDoesNotCallMatcher(t *testing.T) {
 	// Matcher is session-path only. Harbor tools have no SkillHints unless set.
 	tools := &WorkspaceTools{}

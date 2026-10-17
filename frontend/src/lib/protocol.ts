@@ -2,11 +2,11 @@ export type Lab = "agent" | "harbor" | "evolve" | "harness";
 export type HarnessTab = "overview" | "propose" | "prove" | "promote";
 export type Surface = "agent" | "harness" | "settings" | "skills" | "video" | "pages";
 export type VideoMode = "drama" | "canvas" | "creative";
-export type VideoPane = "chat" | "create" | "studio" | "drama" | "canvas" | "assets" | "skills" | "plugins" | "tasks";
+export type VideoPane = "chat" | "create" | "studio" | "drama" | "canvas" | "game" | "assets" | "skills" | "plugins" | "tasks";
 export type CanvasFocus = "library" | "editor";
 
 export function isYingcePane(pane: VideoPane): boolean {
-  return pane !== "chat" && pane !== "studio" && pane !== "create";
+  return pane !== "chat" && pane !== "studio" && pane !== "create" && pane !== "game";
 }
 
 export function isCanvasWorldPane(pane: VideoPane): boolean {
@@ -102,7 +102,7 @@ export type AuthMode = "default" | "auto_edit" | "full" | "ask";
 export type ThreadChannel = "agent" | "video";
 
 export type VideoProject = {
-  kind: "canvas" | "drama" | "studio";
+  kind: "canvas" | "drama" | "studio" | "game";
   id: string;
   title: string;
   sessionId?: string;

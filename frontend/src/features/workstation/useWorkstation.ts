@@ -28,7 +28,10 @@ import { bindVideoThread } from "../video/bind";
 import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type SendToCutRequest } from "../video/open-cut";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { asStudioProject, studioSessionId } from "../video/studio-session";
-import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
+import { asGameProject, exclusiveGameProjects, gameSessionId, sessionBoundToOtherGame } from "../video/game-session";
+import { createGameWorld, titleFromIntent } from "../game/game-actions";
+import { laneAcceptsSession, lastLaneThread, rememberLaneThread, type VideoLane } from "../video/video-lanes";
+import { useDramaSelection, useGameSelection, useStudioSelection } from "../video/workshop-store";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -104,7 +107,7 @@ function videoProjectOf(v: any): VideoProject | null {
   const id = str(v?.id);
   if (!id) return null;
   const raw = str(v?.kind);
-  const kind: VideoProject["kind"] = raw === "drama" ? "drama" : raw === "studio" ? "studio" : "canvas";
+  const kind: VideoProject["kind"] = raw === "drama" ? "drama" : raw === "studio" ? "studio" : raw === "game" ? "game" : "canvas";
   return {
     kind,
     id,
@@ -235,6 +238,10 @@ export function useWorkstation() {
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
   const studioThreadJobs = useRef<Record<string, Promise<Thread>>>({});
+  const gameThreadJobs = useRef<Record<string, Promise<Thread>>>({});
+  const laneThreadJobs = useRef<Record<string, Promise<Thread>>>({});
+  const videoPane = useUI((s) => s.videoPane);
+  const gameId = useGameSelection((s) => s.gameId);
   const [active, setActive] = useState<Thread | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -316,7 +323,7 @@ export function useWorkstation() {
 
   const activeId = active?.id || "";
   activeIdRef.current = activeId;
-  const draftKey = activeId || "_new";
+  const draftKey = videoPane === "game" && !gameId ? "_game_home" : (activeId || "_new");
   const threadRunning = !!running[activeId];
   const anyRun = Object.values(running).some(Boolean);
   const needsSetup = !workspaceReady(health.workspaceReady, savedCfg.workspace);
@@ -545,6 +552,10 @@ export function useWorkstation() {
     if (surface !== "video" || !active?.id || threadChannel(active) !== "video") return;
     void restoreVideoProject(active.id);
   }, [surface, active?.id]);
+  useEffect(() => {
+    if (surface !== "video") return;
+    void adoptVideoLane(videoPane);
+  }, [surface, videoPane, gameId]);
   useEffect(() => {
     if (!booted) return;
     const path = active?.workspace || savedCfg.workspace;
@@ -925,6 +936,142 @@ export function useWorkstation() {
     return savedCfg.workspace;
   }
 
+  function activateLaneThread(t: Thread, lane: VideoLane) {
+    rememberLaneThread(lane, t.id);
+    if (activeRef.current?.id === t.id) return;
+    itemsAcc.current = [];
+    setItems([]);
+    setQueued(0);
+    openThread(t, { keepPane: true });
+  }
+
+  async function mintVideoThread(): Promise<Thread> {
+    const ch: ThreadChannel = "video";
+    const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace(ch), ch));
+    const t = created.channel ? created : { ...created, channel: ch };
+    setThreads((prev) => {
+      const next = [t, ...prev.filter((x) => x.id !== t.id)];
+      threadsRef.current = next;
+      return next;
+    });
+    return t;
+  }
+
+  async function ensureLaneThread(lane: VideoLane): Promise<Thread> {
+    const inflight = laneThreadJobs.current[lane];
+    if (inflight) return inflight;
+    const job = (async () => {
+      const projects = videoProjectsRef.current;
+      const chats = threadsRef.current.filter((t) => !isSubagentThread(t) && threadChannel(t) === "video");
+      const remembered = lastLaneThread(lane);
+      const pick = (id: string) => {
+        const hit = chats.find((t) => t.id === id) || (activeRef.current?.id === id ? activeRef.current : null);
+        if (!hit || !laneAcceptsSession(lane, hit.id, projects)) return null;
+        return hit;
+      };
+      let t = pick(remembered)
+        || (lane === "create" ? chats.find((x) => laneAcceptsSession(lane, x.id, projects)) || null : null)
+        || (activeRef.current && threadChannel(activeRef.current) === "video" && laneAcceptsSession(lane, activeRef.current.id, projects) ? activeRef.current : null);
+      if (!t) t = await mintVideoThread();
+      activateLaneThread(t, lane);
+      return t;
+    })();
+    laneThreadJobs.current[lane] = job;
+    try {
+      return await job;
+    } finally {
+      delete laneThreadJobs.current[lane];
+    }
+  }
+
+  function rememberGameProject(p: VideoProject, sessionId: string) {
+    setVideoProjects((prev) => {
+      const next = exclusiveGameProjects(prev, p, sessionId);
+      videoProjectsRef.current = next;
+      return next;
+    });
+  }
+
+  async function ensureGameThread(p: VideoProject): Promise<Thread> {
+    const projectId = str(p.id);
+    if (!projectId) {
+      throw new Error("game project required");
+    }
+    const inflight = gameThreadJobs.current[projectId];
+    if (inflight) return inflight;
+    const job = (async () => {
+      const hinted = str(p.sessionId);
+      const local = videoProjectsRef.current;
+      let boundId = gameSessionId(projectId, local);
+      if (!boundId && hinted && !sessionBoundToOtherGame(hinted, projectId, local)) {
+        boundId = hinted;
+      }
+      if (!boundId) {
+        const hist = await loadVideoHistory();
+        boundId = gameSessionId(projectId, hist);
+        if (boundId && sessionBoundToOtherGame(boundId, projectId, hist)) boundId = "";
+      }
+      let t = boundId
+        ? threadsRef.current.find((x) => x.id === boundId) || (activeRef.current?.id === boundId ? activeRef.current : null)
+        : null;
+      if (boundId && !t) {
+        const fresh = await api.listSessions().catch(() => threadsRef.current);
+        setThreads(fresh);
+        threadsRef.current = fresh;
+        t = fresh.find((x) => x.id === boundId) || null;
+      }
+      if (!t) {
+        t = await mintVideoThread();
+        if (p.title) {
+          await api.renameSession(t.id, p.title).catch(() => {});
+          t = { ...t, title: p.title };
+          setThreads((prev) => {
+            const next = prev.map((x) => (x.id === t!.id ? t! : x));
+            threadsRef.current = next;
+            return next;
+          });
+        }
+      }
+      await api.video.bindGame(t.id, projectId);
+      rememberGameProject(p, t.id);
+      useGameSelection.getState().setGameId(projectId, p.title || "");
+      useUI.getState().openVideoPane("game");
+      rememberLaneThread("game", t.id);
+      activateLaneThread(t, "game");
+      void loadVideoHistory();
+      return t;
+    })();
+    gameThreadJobs.current[projectId] = job;
+    try {
+      return await job;
+    } finally {
+      delete gameThreadJobs.current[projectId];
+    }
+  }
+
+  async function adoptVideoLane(pane: string) {
+    if (pane === "studio" || pane === "assets" || pane === "skills" || pane === "plugins" || pane === "tasks") return;
+    if (pane === "game") {
+      const id = useGameSelection.getState().gameId;
+      if (!id) return;
+      await ensureGameThread(asGameProject({
+        id,
+        title: useGameSelection.getState().title,
+        sessionId: gameSessionId(id, videoProjectsRef.current),
+      }));
+      return;
+    }
+    if (pane === "drama") {
+      await ensureLaneThread("drama");
+      return;
+    }
+    if (pane === "canvas") {
+      await ensureLaneThread("canvas");
+      return;
+    }
+    await ensureLaneThread("create");
+  }
+
   async function restoreVideoProject(sessionId: string) {
     if (!sessionId) return;
     try {
@@ -943,6 +1090,19 @@ export function useWorkstation() {
       if (studioId) {
         useStudioSelection.getState().setStudioId(studioId);
         if (title) useStudioSelection.getState().setStudioMeta({ title });
+      }
+      const pane = useUI.getState().videoPane;
+      if (pane === "game" || pane === "create" || pane === "studio") {
+        const selected = useGameSelection.getState().gameId;
+        const gameId = str(st?.game_id || (kind === "game" ? st?.id : ""));
+        if (pane === "game" && selected && gameId === selected) {
+          useGameSelection.getState().setGameId(gameId, title);
+        }
+        return;
+      }
+      const gameId = str(st?.game_id || (kind === "game" ? st?.id : ""));
+      if (gameId && useGameSelection.getState().gameId) {
+        useGameSelection.getState().setGameId(gameId, title);
       }
       if (kind === "canvas") useUI.getState().setVideoMode("canvas");
       else if (kind === "drama") useUI.getState().setVideoMode("drama");
@@ -1030,6 +1190,10 @@ export function useWorkstation() {
       await ensureStudioThread(p);
       return;
     }
+    if (p.kind === "game") {
+      await ensureGameThread(p);
+      return;
+    }
     const ch: ThreadChannel = "video";
     const ui = useUI.getState();
     const staged = ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat";
@@ -1111,6 +1275,30 @@ export function useWorkstation() {
           title: useStudioSelection.getState().title,
           sessionId: studioSessionId(studioId, videoProjectsRef.current),
         }));
+      } else if (ui.surface === "video" && ui.videoPane === "game") {
+        let gid = useGameSelection.getState().gameId;
+        let gtitle = useGameSelection.getState().title;
+        if (!gid) {
+          const created = await createGameWorld({
+            title: titleFromIntent(text, copy.video.newGame),
+          });
+          gid = created.id;
+          gtitle = created.title || gtitle;
+        }
+        t = await ensureGameThread(asGameProject({
+          id: gid,
+          title: gtitle,
+          sessionId: gameSessionId(gid, videoProjectsRef.current),
+        }));
+      } else if (ui.surface === "video" && ui.videoPane === "create") {
+        t = await ensureLaneThread("create");
+      } else if (ui.surface === "video" && ui.videoPane === "drama") {
+        t = await ensureLaneThread("drama");
+        await bindVideoThread(t.id).catch(() => {});
+      } else if (ui.surface === "video" && ui.videoPane === "canvas") {
+        t = await ensureLaneThread("canvas");
+        await ensureCanvasProject(t.id).catch(() => {});
+        void loadVideoHistory();
       } else {
         t = await ensureThread();
         if (ui.surface === "video" && ui.videoMode === "drama") {
@@ -1123,7 +1311,7 @@ export function useWorkstation() {
       }
       if (opts?.steer && running[t.id]) {
         await api.steer(t.id, text);
-        useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
+        useUI.getState().patchDrafts({ [t.id]: "", _new: "", _game_home: "" });
         if (t.id === activeId) {
           hotItemsRef.current = mergeItem(hotItemsRef.current, {
             ...localUser(t.id, text, opts?.attachments),
@@ -1137,7 +1325,7 @@ export function useWorkstation() {
         return;
       }
       const wasRunning = !!running[t.id];
-      useUI.getState().patchDrafts({ [t.id]: "", _new: "" });
+      useUI.getState().patchDrafts({ [t.id]: "", _new: "", _game_home: "" });
       markStarted(t.id);
       if (t.id === activeId) {
         browsingRef.current = false;
@@ -1666,8 +1854,9 @@ export function useWorkstation() {
       }
       if (matchKey(e, km.toggleReview)) {
         e.preventDefault();
-        if (useUI.getState().surface === "video") return;
-        if (useUI.getState().surface === "harness") setChatDock((v) => !v);
+        const ui = useUI.getState();
+        if (ui.surface === "video" && ui.videoPane !== "game") return;
+        if (ui.surface === "harness") setChatDock((v) => !v);
         else setInspector((v) => !v);
       }
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && !typing && useUI.getState().surface === "harness") {

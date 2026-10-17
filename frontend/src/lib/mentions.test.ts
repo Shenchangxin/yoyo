@@ -42,3 +42,14 @@ test("suggestSkills matches Chinese novel-to-game intent", () => {
   );
   assert.equal(hits[0]?.name, "novel-to-game");
 });
+
+test("suggestSkills matches game-world intent without stealing novel-to-game", () => {
+  const hits = suggestSkills(
+    [
+      { name: "novel-to-game", description: "Turn a novel into a playable game.", slug: "novel-to-game" },
+      { name: "yoyo-game", description: "Generate a spatial 3D game world (游戏世界) from a play intent.", slug: "yoyo-game" },
+    ],
+    "生成一个第三人称收集游戏世界",
+  );
+  assert.equal(hits[0]?.name, "yoyo-game");
+});

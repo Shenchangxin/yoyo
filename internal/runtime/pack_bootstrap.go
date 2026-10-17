@@ -105,6 +105,44 @@ func HasMethodologyPack(packs []PackSession) bool {
 	return false
 }
 
+func IsNovelGameSkill(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "novel-to-game", "novel-game-analyze", "game-concept", "game-world-design",
+		"game-art-direction", "game-build", "game-qa":
+		return true
+	default:
+		return false
+	}
+}
+
+func WithoutNovelGamePack(packs []PackSession) []PackSession {
+	if len(packs) == 0 {
+		return packs
+	}
+	out := make([]PackSession, 0, len(packs))
+	for _, p := range packs {
+		if IsNovelGameSkill(p.ID) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func WithoutNovelGameSkills(names []string) []string {
+	if len(names) == 0 {
+		return names
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if IsNovelGameSkill(n) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 func DomainOrchestrators(packs []PackSession) map[string]bool {
 	out := map[string]bool{}
 	for _, p := range packs {
@@ -142,6 +180,8 @@ func domainRoutingLine(id string) string {
 	switch id {
 	case "novel-to-game":
 		return "- novel-to-game: load_skill novel-to-game when adapting a novel into a playable game. Stage siblings: novel-game-analyze, game-concept, game-world-design, game-art-direction, game-build, game-qa. @skill is an override, not a prerequisite."
+	case "yoyo-game":
+		return "- yoyo-game: load_skill yoyo-game when generating a spatial playable game world from an intent (not a novel). Stage siblings: game-world-analyze, game-world-rules, game-world-place, game-world-build, game-world-qa."
 	default:
 		return "- " + id + ": load_skill " + id + " when the task matches this pack's catalog descriptions. @skill is an override, not a prerequisite."
 	}

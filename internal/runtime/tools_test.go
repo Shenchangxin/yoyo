@@ -217,3 +217,33 @@ func TestReadFileDeniesDiagPlane(t *testing.T) {
 		t.Fatalf("secret leaked: %s", res.Content)
 	}
 }
+
+func TestSealedGameWorldWrite(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir}
+	html := tools.Call("write_file", `{"path":"game-worlds/world-x/index.html","content":"<html><body>nope</body></html>"}`)
+	if html.Err == nil || !strings.Contains(html.Err.Error(), "host-owned") {
+		t.Fatalf("root html should be refused: %+v", html)
+	}
+	rt := tools.Call("write_file", `{"path":"game-worlds/world-x/playable/runtime.js","content":"window.x=1"}`)
+	if rt.Err == nil || !strings.Contains(rt.Err.Error(), "sealed") {
+		t.Fatalf("runtime.js should be refused: %+v", rt)
+	}
+	ok := tools.Call("write_file", `{"path":"game-worlds/world-x/DESIGN.md","content":"# spec\n"}`)
+	if ok.Err != nil {
+		t.Fatal(ok.Err)
+	}
+}
+
+func TestToolSearchMatchesAnyNamedGameTool(t *testing.T) {
+	tools := &WorkspaceTools{
+		Extra: map[string]ExtraTool{
+			"game_analyze_scene": {JSON: ToolJSON{Function: map[string]any{"name": "game_analyze_scene", "description": "Build a scene packet"}}},
+			"video_route":        {JSON: ToolJSON{Function: map[string]any{"name": "video_route", "description": "Open a workshop"}}},
+		},
+	}
+	res := tools.Call("tool_search", `{"query":"game_analyze_scene game_plan_rules game_compile"}`)
+	if res.Err != nil || !strings.Contains(res.Content, "game_analyze_scene") {
+		t.Fatalf("%+v", res)
+	}
+}

@@ -179,6 +179,7 @@ const ROUTE_LEX: [string, string][] = [
   ["novel", "小说"],
   ["book", "小说"],
   ["game", "游戏"],
+  ["game-world", "游戏世界"],
   ["weekly", "周报"],
   ["report", "周报"],
   ["minutes", "纪要"],

@@ -25,6 +25,7 @@ import { formatTokens, lookupCatalogModel, composerModelIds, composerModelGroups
 import { useModelCatalog } from "../lib/model-catalog";
 import { contextBreakdown, estimateTokens, type CtxSliceId } from "../lib/context-usage";
 import type { Copy } from "../lib/copy";
+import { useGameSelection } from "./video/workshop-store";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
 import { DramaProjectChip } from "./video/DramaProjectChip";
 import { CanvasProjectChip } from "./video/CanvasProjectChip";
@@ -117,9 +118,26 @@ export function Composer(props: {
   const videoPane = useUI((s) => s.videoPane);
   const videoSurface = surface === "video";
   const videoing = videoSurface && !props.compact;
+  const gameId = useGameSelection((s) => s.gameId);
+  const gameFocus = useGameSelection((s) => s.focus);
   const createDesk = videoPane === "create";
+  const gameHome = videoPane === "game" && !gameId;
+  const gameBound = videoPane === "game" && !!gameId;
+  const talkDesk = createDesk || gameHome;
+  const copilotDesk = studioDesk || gameBound;
+  const gamePlaceholder = gameFocus === "intent"
+    ? copy.composer.placeholderGameIntent
+    : gameFocus === "build"
+      ? copy.composer.placeholderGameBuild
+      : gameFocus === "check"
+        ? copy.composer.placeholderGameCheck
+        : copy.composer.placeholderGamePlay;
   const placeholder = props.disabled
     ? (props.disabledReason || copy.composer.disabled)
+    : gameBound
+      ? gamePlaceholder
+    : gameHome
+      ? copy.composer.placeholderGame
     : studioDesk
       ? copy.composer.placeholderStudioDesk
     : videoPane === "create"
@@ -133,7 +151,7 @@ export function Composer(props: {
   // something to queue, then it queues. Steer is a sibling action that only exists with a draft.
   const orbStops = !!props.running && !hasPayload;
   // The mode menu holds Agent/Plan and the worktree items. Permission keeps its own select beside the send orb.
-  const modeMenu = !studioDesk && !createDesk && (!videoing || !!props.onIsolate);
+  const modeMenu = !copilotDesk && !talkDesk && (!videoing || !!props.onIsolate);
   const currentModel = (props.model || "").trim();
   const catalog = useModelCatalog((s) => s.catalog);
   const groups = composerModelGroups(props.chatProviders, currentModel, props.connectionId);
@@ -347,7 +365,7 @@ export function Composer(props: {
     onChange("");
   }
 
-  const pad = props.flush ? "" : props.compact || studioDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
+  const pad = props.flush ? "" : props.compact || copilotDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const ghostSelect =
     "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
@@ -583,7 +601,7 @@ export function Composer(props: {
           />
           <div className="flex flex-nowrap items-center gap-x-0.5 px-2 pb-2 pt-0.5">
             <div className="flex min-w-0 items-center gap-x-0.5">
-            {studioDesk || videoPane === "create" ? null : videoSurface ? (
+            {copilotDesk || talkDesk ? null : videoSurface ? (
               <>
                 <VideoModeSwitch disabled={props.disabled} />
                 {videoMode === "drama" ? <DramaProjectChip disabled={props.disabled} /> : null}
@@ -592,7 +610,7 @@ export function Composer(props: {
                 <span className="mx-0.5 h-3.5 w-px bg-border/70" aria-hidden />
               </>
             ) : null}
-            {!studioDesk && !createDesk && props.onProfile && profiles.length ? (
+            {!copilotDesk && !talkDesk && props.onProfile && profiles.length ? (
               <ProfileChip
                 profiles={profiles}
                 profileId={props.profileId}
@@ -643,7 +661,7 @@ export function Composer(props: {
                     {copy.composer.screenshot}
                   </DropdownMenuItem>
                 ) : null}
-                {!studioDesk && !createDesk && (props.onSavePage || props.onFollow || props.onCall) ? (
+                {!copilotDesk && !talkDesk && (props.onSavePage || props.onFollow || props.onCall) ? (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuSub>
@@ -703,7 +721,7 @@ export function Composer(props: {
                 e.target.value = "";
               }}
             />
-            {!studioDesk && !createDesk && props.onWorkspace ? (
+            {!copilotDesk && !talkDesk && props.onWorkspace ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -889,7 +907,7 @@ export function Composer(props: {
                 </Tooltip>
               </>
             ) : null}
-            {props.onAuthMode && !createDesk ? (
+            {props.onAuthMode && !talkDesk ? (
               <Select
                 value={parseComposerAuth(props.authMode)}
                 onValueChange={(v) => props.onAuthMode?.(v as AuthMode)}
@@ -942,7 +960,7 @@ export function Composer(props: {
           onReorder={props.onQueueReorder}
           copy={copy}
         />
-        {studioDesk || createDesk ? null : (
+        {copilotDesk || talkDesk ? null : (
         <ContextMeter
           ctx={props.ctx}
           draftTokens={estimateTokens(composeDraft(chips, value))}

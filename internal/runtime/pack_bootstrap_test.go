@@ -273,6 +273,22 @@ func TestDomainRoutingPinSkipsMethodology(t *testing.T) {
 	}
 }
 
+func TestWithoutNovelGamePack(t *testing.T) {
+	got := WithoutNovelGamePack([]PackSession{
+		{ID: "superpowers", Methodology: true},
+		{ID: "novel-to-game"},
+	})
+	if len(got) != 1 || got[0].ID != "superpowers" {
+		t.Fatalf("%+v", got)
+	}
+	if !IsNovelGameSkill("game-qa") || IsNovelGameSkill("game-world-qa") {
+		t.Fatal("sibling names")
+	}
+	if names := WithoutNovelGameSkills([]string{"yoyo-game", "novel-to-game", "game-build"}); len(names) != 1 || names[0] != "yoyo-game" {
+		t.Fatalf("%v", names)
+	}
+}
+
 func TestHasMethodologyPack(t *testing.T) {
 	if HasMethodologyPack(nil) {
 		t.Fatal("empty")

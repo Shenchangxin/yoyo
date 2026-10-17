@@ -576,6 +576,9 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if err := refuseHugeWrite(rel, content); err != nil {
 		return ToolResult{Err: err}
 	}
+	if err := sealedGameWorldWrite(rel); err != nil {
+		return ToolResult{Err: err}
+	}
 	p, err := t.resolve(rel)
 	if err != nil {
 		return ToolResult{Err: err}
@@ -627,6 +630,9 @@ func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
 		return ToolResult{Err: fmt.Errorf("refusing to append a context stub to %s; send the real next part", rel)}
 	}
 	if err := refuseHugeWrite(rel, content); err != nil {
+		return ToolResult{Err: err}
+	}
+	if err := sealedGameWorldWrite(rel); err != nil {
 		return ToolResult{Err: err}
 	}
 	p, err := t.resolve(rel)
@@ -740,6 +746,9 @@ func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
 func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	if looksLikeContextStub(old) || looksLikeContextStub(new) {
 		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
+	}
+	if err := sealedGameWorldWrite(rel); err != nil {
+		return ToolResult{Err: err}
 	}
 	if old == "" {
 		return ToolResult{Err: fmt.Errorf("old_str must not be empty; quote the exact existing text to replace")}
@@ -1331,6 +1340,18 @@ func recallNoStub(name, content string) bool {
 	return utf8.RuneCountInString(content) <= 2000
 }
 
+func extraSearchHit(name, blob, q string) bool {
+	if strings.Contains(blob, q) {
+		return true
+	}
+	for _, tok := range strings.Fields(q) {
+		if len(tok) >= 3 && strings.Contains(name, tok) {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	q = strings.ToLower(strings.TrimSpace(q))
 	var b strings.Builder
@@ -1341,7 +1362,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 			if d, _ := extra.JSON.Function["description"].(string); d != "" {
 				blob += " " + strings.ToLower(d)
 			}
-			if q != "" && !strings.Contains(blob, q) {
+			if q != "" && !extraSearchHit(name, blob, q) {
 				continue
 			}
 			matched = append(matched, name)

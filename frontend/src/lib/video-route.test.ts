@@ -30,6 +30,10 @@ test("create is the conductor, not a yingce workbench", () => {
   assert.equal(yingceHref("create", "board", "editor", "/canvas/board?agent=1"), "/canvas");
 });
 
+test("game is a first-class video pane, not a yingce route", () => {
+  assert.equal(isYingcePane("game"), false);
+});
+
 test("eagle library stays on the plugins pane across a remount", () => {
   const route = videoRouteFromLocation("/plugins/eagle");
   assert.equal(route?.pane, "plugins");

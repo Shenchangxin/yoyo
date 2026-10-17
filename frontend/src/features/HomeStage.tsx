@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";

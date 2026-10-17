@@ -22,7 +22,7 @@ Claude Code 用 `hooks.json` session-start 注入 `using-superpowers`；Codex �
 
 不要 fork 上游正文。适配器只有映射表；方法论包另加 bootstrap 包装。
 
-内置目录（`internal/skillpack/known.go`）：`superpowers`（`obra/superpowers`，methodology）与 `novel-to-game`（`zenstory-ai/novel-to-game`，domain）。添加目录项不 vendor 技能正文。
+内置目录（`internal/skillpack/known.go`）：`superpowers`（`obra/superpowers`，methodology）与 `novel-to-game`（`zenstory-ai/novel-to-game`，domain）。添加目录项不 vendor 技能正文。Yoyo 自有的空间游戏世界走 bundled skills（`yoyo-game` / `game-world-*`），不是第三方 pack。创作车道在绑定前就把 `game_*` 登记进 Extra（`game_create` 立刻可用，整条流水线可被 `tool_search` 命中）；`video_route dest=game` 当轮解锁并编译密封 3D playable。手写 `game-worlds/*/index.html` 会被拒绝。
 
 ---
 
@@ -78,4 +78,4 @@ CLI：`yoyo pack list|install|uninstall|enable|update`。GitHub 拉取可用 `YO
 
 Harbor `Engine.runTask` 不设 `Packs`，也不走 `App.Send`。BehaviorIDs 与密封套件不变。
 
-可选 live 探针 `evals/superpowers-brainstorm-first/` **不在** BehaviorIDs。需要先在一次性 home 里 `yoyo pack install superpowers` 并启用，再手动把该 id 放进套件 HeldIn。默认 CI 不跑。
+可选 live 探针 `evals/superpowers-brainstorm-first/` 与 `evals/game-world-collect/` **不在** BehaviorIDs。前者需要先在一次性 home 里 `yoyo pack install superpowers` 并启用，再手动把该 id 放进套件 HeldIn。游戏世界探针只检查 `game-worlds/collect/playable/game.json` 合同，默认 CI 不跑。
