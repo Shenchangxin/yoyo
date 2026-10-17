@@ -2,6 +2,7 @@ import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import { pendingAsk } from "../lib/ask-form";
 import type { Approval, Attachment, AuthMode, ChatProvider, ContextUsage, FileHit, Item, SkillInfo } from "../lib/protocol";
+import type { MentionSessionRef } from "../lib/mentions";
 import type { TurnStatus } from "../lib/turn-status";
 import type { SessionStats } from "../lib/session-stats";
 import type { TaskPlan } from "../lib/plan";
@@ -26,6 +27,7 @@ export function ChatDock(props: {
   ctx?: ContextUsage;
   queued?: number;
   files?: FileHit[];
+  sessions?: MentionSessionRef[];
   skills?: SkillInfo[];
   autoSkills?: { name: string; loaded?: boolean }[];
   authMode?: AuthMode | string;
@@ -81,6 +83,7 @@ export function ChatDock(props: {
         onQueueCancel={props.onQueueCancel}
         onQueueReorder={props.onQueueReorder}
         files={props.files}
+        sessions={props.sessions}
         skills={props.skills}
         autoSkills={props.autoSkills}
         authMode={props.authMode}

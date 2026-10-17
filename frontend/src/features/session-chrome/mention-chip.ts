@@ -33,15 +33,18 @@ export const MentionChip = Node.create({
     return [{ tag: "span[data-mention-chip]" }];
   },
   renderHTML({ HTMLAttributes }) {
+    const token = String(HTMLAttributes.token || "");
     return [
       "span",
       mergeAttributes({
         "data-mention-chip": "",
+        "data-testid": "mention-chip",
         "data-kind": HTMLAttributes.kind,
         class: "sc-mention",
-        "data-token": HTMLAttributes.token,
+        "data-token": token,
+        "aria-label": token,
       }),
-      String(HTMLAttributes.label || HTMLAttributes.token || ""),
+      String(HTMLAttributes.label || token),
     ];
   },
   addCommands() {

@@ -1,4 +1,4 @@
-export type MentionKind = "file" | "folder" | "skill" | "harness";
+export type MentionKind = "file" | "folder" | "skill" | "harness" | "session";
 
 export type MentionPin = {
   token: string;
@@ -7,27 +7,56 @@ export type MentionPin = {
   detail: string;
 };
 
-const COMPLETE_RE = /@(?:file|folder|skill):\S+|@harness\b/g;
+export type MentionQuery = {
+  kind: "any" | MentionKind;
+  query: string;
+  quoted: boolean;
+};
+
+export type MentionSessionRef = {
+  id: string;
+  title: string;
+  workspace?: string;
+  parentId?: string;
+};
+
+export type MentionFileHit = {
+  path: string;
+  kind: string;
+};
+
+const COMPLETE_RE = /@(?:file|folder|skill|session):\S+|@harness\b/g;
+
+/** Active `@` token at the end of `before`, including `@"quoted` paths. */
+export function activeAtTail(before: string): string | null {
+  const quoted = /(?:^|\s)(@"([^"]*))$/u.exec(before);
+  if (quoted?.[1]) return quoted[1];
+  const plain = /(?:^|\s)(@[^\s]*)$/u.exec(before);
+  return plain?.[1] ?? null;
+}
 
 export function keepMentionOpen(token: string) {
-  return token === "@file:" || token === "@folder:" || token === "@skill:";
+  return token === "@file:" || token === "@folder:" || token === "@skill:" || token === "@session:";
 }
 
 export function mentionKind(token: string): MentionKind | null {
   if (token.startsWith("@file:")) return "file";
   if (token.startsWith("@folder:")) return "folder";
   if (token.startsWith("@skill:")) return "skill";
-  if (token === "@harness" || token.startsWith("@harness")) return "harness";
+  if (token.startsWith("@session:")) return "session";
+  if (token === "@harness") return "harness";
   return null;
 }
 
 export function mentionLabel(token: string): string {
   const kind = mentionKind(token);
   if (kind === "harness") return "harness";
-  const ref = token.replace(/^@(?:file|folder|skill):/, "");
+  const ref = token.replace(/^@(?:file|folder|skill|session):/, "");
   if (!ref) return kind || token;
+  if (kind === "session") return ref;
   const parts = ref.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || ref;
+  const name = parts[parts.length - 1] || ref;
+  return kind === "folder" ? `${name}/` : name;
 }
 
 export function mentionDetail(token: string): string {
@@ -35,24 +64,89 @@ export function mentionDetail(token: string): string {
     return token.replace(/^@(?:file|folder):/, "");
   }
   if (token.startsWith("@skill:")) return token.slice("@skill:".length);
+  if (token.startsWith("@session:")) return token.slice("@session:".length);
   return "";
 }
 
-export function pinFromToken(token: string): MentionPin {
+export function pinFromToken(token: string, label?: string): MentionPin {
   const kind = mentionKind(token) || "file";
-  return { token, kind, label: mentionLabel(token), detail: mentionDetail(token) };
+  return { token, kind, label: label || mentionLabel(token), detail: mentionDetail(token) };
 }
 
 export function isCompleteMention(token: string): boolean {
-  return /@(?:file|folder|skill):\S+/.test(token) || token === "@harness";
+  return /@(?:file|folder|skill|session):\S+/.test(token) || token === "@harness";
 }
 
-/** Token the caret is inside, including incomplete `@file:` prefixes. */
+export function mentionQueryOf(token: string): MentionQuery {
+  if (token.startsWith("@file:")) return { kind: "file", query: token.slice("@file:".length), quoted: false };
+  if (token.startsWith("@folder:")) return { kind: "folder", query: token.slice("@folder:".length), quoted: false };
+  if (token.startsWith("@skill:")) return { kind: "skill", query: token.slice("@skill:".length), quoted: false };
+  if (token.startsWith("@session:")) return { kind: "session", query: token.slice("@session:".length), quoted: false };
+  if (token === "@harness") {
+    return { kind: "harness", query: "harness", quoted: false };
+  }
+  if (token.startsWith("@\"")) {
+    return { kind: "any", query: token.slice(2).replace(/"$/, ""), quoted: true };
+  }
+  return { kind: "any", query: token.startsWith("@") ? token.slice(1) : token, quoted: false };
+}
+
+/** Descent text left in the draft while browsing a folder (`@src/` or `@"src/`). */
+export function formatTriggerPath(path: string, quoted: boolean, directory: boolean): string {
+  const body = directory ? `${path.replace(/\/+$/, "")}/` : path;
+  const needQuote = quoted || /\s/.test(body);
+  if (!needQuote) return `@${body}`;
+  if (directory) return `@"${body}`;
+  return `@"${body}"`;
+}
+
+/** Immediate children of `dir/` from a fuzzy hit list. */
+export function childPaths<T extends MentionFileHit>(hits: T[], dir: string): T[] {
+  const prefix = `${dir.replace(/\/+$/, "")}/`;
+  if (prefix === "/") return hits;
+  return hits.filter((f) => {
+    if (!f.path.startsWith(prefix)) return false;
+    return !f.path.slice(prefix.length).includes("/");
+  });
+}
+
+export type MentionCrumb = {
+  label: string;
+  query: string;
+  current?: boolean;
+};
+
+/** Breadcrumb of a drilled directory listing (typed paths carry their own context). */
+export function mentionCrumbs(query: string, quoted: boolean, drilled: boolean, rootLabel: string): MentionCrumb[] | undefined {
+  if (!drilled) return undefined;
+  const slash = query.lastIndexOf("/");
+  if (slash < 0) return undefined;
+  const segments = query.slice(0, slash).split("/").filter((s) => s !== "");
+  const crumbs: MentionCrumb[] = [{
+    label: rootLabel,
+    query: quoted ? "@\"" : "@",
+  }];
+  for (let i = 0; i < segments.length; i++) {
+    const path = segments.slice(0, i + 1).join("/");
+    crumbs.push({
+      label: segments[i],
+      query: formatTriggerPath(path, quoted, true),
+      current: i === segments.length - 1,
+    });
+  }
+  return crumbs;
+}
+
+/** Token the caret is inside, including incomplete `@` / `@file:` prefixes. */
 export function mentionTokenAt(value: string, caret: number): { start: number; end: number; token: string } | null {
   const pos = Math.max(0, Math.min(caret, value.length));
   const left = value.slice(0, pos);
-  const m = left.match(/(?:^|\s)(@(?:file:|folder:|skill:)?[^\s]*)$/);
-  if (!m) return null;
+  const quoted = /(?:^|\s)(@"([^"]*))$/u.exec(left);
+  if (quoted?.[1]) {
+    return { start: pos - quoted[1].length, end: pos, token: quoted[1] };
+  }
+  const m = /(?:^|\s)(@[^\s]*)$/u.exec(left);
+  if (!m?.[1]) return null;
   const head = m[1];
   const extra = value.slice(pos).match(/^([^\s]*)/)?.[1] || "";
   return { start: pos - head.length, end: pos + extra.length, token: head + extra };
@@ -86,9 +180,34 @@ export function peelCompletedMentions(text: string, caret = text.length): { text
 
 export function composeDraft(pins: MentionPin[], prose: string): string {
   const head = pins.map((p) => p.token).join(" ");
-  const body = prose.trim();
+  const sessionNotes = pins
+    .filter((p) => p.kind === "session")
+    .map((p) => p.label || p.detail)
+    .filter(Boolean);
+  const note = sessionNotes.length ? `sessions: ${sessionNotes.join("; ")}` : "";
+  const body = [note, prose.trim()].filter(Boolean).join("\n");
   if (head && body) return `${head}\n${body}`;
   return head || body;
+}
+
+/**
+ * Turn leftover harness-style `@path` text into wire tokens the host expands.
+ * Only exact hits from the current file list are rewritten; Go still Stats
+ * unmatched paths on send.
+ */
+export function settleBareAtPaths(text: string, files: MentionFileHit[]): string {
+  if (!text || !files.length) return text;
+  const byPath = new Map(files.map((f) => [f.path.replace(/\\/g, "/"), f]));
+  return text.replace(/(^|\s)(@(?:"[^"]*|[^\s]+))/g, (all, pre: string, token: string) => {
+    const parsed = mentionQueryOf(token);
+    if (parsed.kind !== "any") return all;
+    const path = parsed.query.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (!path) return all;
+    const hit = byPath.get(path);
+    if (!hit) return all;
+    const folder = hit.kind === "dir" || parsed.query.endsWith("/");
+    return `${pre}${folder ? "@folder:" : "@file:"}${hit.path}`;
+  });
 }
 
 type AttachmentPin = { name?: string; path?: string; mime?: string };
@@ -230,4 +349,11 @@ export function suggestSkills<T extends MentionSkill>(skills: T[], voice: string
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/** Keep overlay highlight on the same token when the list refreshes. */
+export function overlayActiveIndex(items: { token: string }[], token: string): number {
+  if (!items.length) return 0;
+  const i = token ? items.findIndex((x) => x.token === token) : -1;
+  return i >= 0 ? i : 0;
 }

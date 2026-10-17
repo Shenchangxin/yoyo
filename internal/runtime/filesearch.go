@@ -12,8 +12,14 @@ type FileHit struct {
 	Kind string `json:"kind"`
 }
 
+// dirListingCap is the overlay budget for one directory's children. Typeahead
+// across the tree stays at the caller limit (typically 40); a drilled folder
+// must list its own entries or Tab into src/ is useless.
+const dirListingCap = 200
+
 // FuzzySearch lists workspace files and directories matching q (substring,
-// case-insensitive). Results are bounded; gitignored and skip dirs are omitted.
+// case-insensitive). A query with a slash whose prefix is a real directory
+// lists that directory's children instead of a capped whole-tree walk.
 func FuzzySearch(root, q string, limit int) []FileHit {
 	if limit <= 0 {
 		limit = 40
@@ -23,7 +29,16 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 	if err != nil || !st.IsDir() {
 		return nil
 	}
-	q = strings.ToLower(strings.TrimSpace(q))
+	q = strings.TrimSpace(q)
+	q = filepath.ToSlash(q)
+	if dir, rest, ok := listingPrefix(root, q); ok {
+		cap := limit
+		if cap < dirListingCap {
+			cap = dirListingCap
+		}
+		return listDirChildren(root, dir, rest, cap)
+	}
+	q = strings.ToLower(q)
 	ign := loadIgnore(root)
 	var hits []FileHit
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -55,6 +70,72 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 		}
 		return nil
 	})
+	return rankHits(hits, q, limit)
+}
+
+func listingPrefix(root, q string) (dir, rest string, ok bool) {
+	if q == "" || !strings.Contains(q, "/") {
+		return "", "", false
+	}
+	slash := strings.LastIndex(q, "/")
+	dir = strings.Trim(q[:slash], "/")
+	rest = q[slash+1:]
+	if dir == "" {
+		return "", "", false
+	}
+	p, err := jailPath(root, dir)
+	if err != nil {
+		return "", "", false
+	}
+	st, err := os.Stat(p)
+	if err != nil || !st.IsDir() {
+		return "", "", false
+	}
+	return dir, rest, true
+}
+
+func listDirChildren(root, dir, rest string, limit int) []FileHit {
+	p, err := jailPath(root, dir)
+	if err != nil {
+		return nil
+	}
+	ents, err := os.ReadDir(p)
+	if err != nil {
+		return nil
+	}
+	ign := loadIgnore(root)
+	fold := strings.ToLower(strings.TrimSpace(rest))
+	hits := make([]FileHit, 0, len(ents))
+	for _, e := range ents {
+		name := e.Name()
+		rel := filepath.ToSlash(filepath.Join(dir, name))
+		if e.IsDir() {
+			if ign.skipDir(name) {
+				continue
+			}
+		} else if ign.skipFile(rel, name) {
+			continue
+		}
+		if fold != "" && !strings.Contains(strings.ToLower(name), fold) {
+			continue
+		}
+		kind := "file"
+		if e.IsDir() {
+			kind = "dir"
+		}
+		hits = append(hits, FileHit{Path: rel, Kind: kind})
+	}
+	return rankHits(hits, fold, limit)
+}
+
+func ListTree(root string, limit int) []FileHit {
+	if limit <= 0 {
+		limit = 4000
+	}
+	return FuzzySearch(root, "", limit)
+}
+
+func rankHits(hits []FileHit, q string, limit int) []FileHit {
 	sort.Slice(hits, func(i, j int) bool {
 		si := scoreHit(hits[i], q)
 		sj := scoreHit(hits[j], q)
@@ -63,17 +144,10 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 		}
 		return hits[i].Path < hits[j].Path
 	})
-	if len(hits) > limit {
+	if limit > 0 && len(hits) > limit {
 		hits = hits[:limit]
 	}
 	return hits
-}
-
-func ListTree(root string, limit int) []FileHit {
-	if limit <= 0 {
-		limit = 4000
-	}
-	return FuzzySearch(root, "", limit)
 }
 
 func scoreHit(h FileHit, q string) int {

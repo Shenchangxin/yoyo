@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { BookOpen, Check, ChevronDown, Folder, GitBranch, Plus, X } from "lucide-react";
 import { ProfileChip } from "./ProfileChip";
 import { Tooltip } from "../components/ui/tooltip";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { THREAD_COL, THREAD_GUTTER, THREAD_GUTTER_COMPACT } from "../lib/thread";
 import { cn } from "../lib/utils";
-import { displayWorkspace } from "../lib/display-title";
+import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { pathReady } from "../lib/workspace";
 import { toast } from "sonner";
 import { useCopy } from "../lib/i18n";
@@ -27,15 +27,24 @@ import { DramaProjectChip } from "./video/DramaProjectChip";
 import { CanvasProjectChip } from "./video/CanvasProjectChip";
 import { StudioDeskChip } from "./video/StudioDeskChip";
 import {
+  childPaths,
   composeDraft,
+  formatTriggerPath,
   isCompleteMention,
   keepMentionOpen,
+  mentionCrumbs,
+  mentionQueryOf,
   mentionTokenAt,
   mentionableSkills,
+  mergeMentionPins,
+  overlayActiveIndex,
+  peelCompletedMentions,
   pinFromToken,
+  settleBareAtPaths,
   suggestSkills,
   type MentionKind,
   type MentionPin,
+  type MentionSessionRef,
 } from "../lib/mentions";
 import "./session-chrome/composer.css";
 import { QueueDock } from "./session-chrome/QueueDock";
@@ -70,6 +79,7 @@ export function Composer(props: {
   onApplyWorktree?: () => void;
   skills?: SkillInfo[];
   files?: FileHit[];
+  sessions?: MentionSessionRef[];
   onSearchFiles?: (q: string) => void;
   onSend: (opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) => void;
   onStop: () => void;
@@ -112,15 +122,18 @@ export function Composer(props: {
   const setDraft = useUI((s) => s.setDraft);
   const setPlan = useUI((s) => s.setPlan);
   const onChange = (v: string) => setDraft(props.draftKey, v);
-  const [hint, setHint] = useState<"mention" | "slash" | "plus" | null>(null);
-  const [hi, setHi] = useState(0);
+  const [hint, setHint] = useState<"plus" | null>(null);
+  const [hiToken, setHiToken] = useState("");
+  const overlayQueryRef = useRef("");
   const [focused, setFocused] = useState(false);
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [chips, setChips] = useState<MentionPin[]>([]);
   const [dismissedSuggest, setDismissedSuggest] = useState<string[]>([]);
   const [dismissedAuto, setDismissedAuto] = useState<string[]>([]);
   const [fileQ, setFileQ] = useState<string | null>(null);
+  const [drilled, setDrilled] = useState(false);
   const [caret, setCaret] = useState(0);
+  const [before, setBefore] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [drop, setDrop] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -172,7 +185,9 @@ export function Composer(props: {
       ? copy.composer.placeholderConductor
     : videoSurface
       ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
-      : copy.composer.placeholder;
+      : props.hero
+        ? copy.composer.placeholderHero
+        : copy.composer.placeholder;
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
   const canSend = !disabled && hasPayload;
   const orbStops = !!props.running && !hasPayload;
@@ -189,39 +204,77 @@ export function Composer(props: {
   const meta = lookupCatalogModel(catalog, catalogProvider, currentModel);
   const fallbackWindow = resolveContextWindow(catalog, catalogProvider, currentModel) || UNKNOWN_MODEL_WINDOW;
   const modelLabel = meta?.model.name || currentModel;
-  const slashPrefix = slashQuery(value);
+  const caretText = before;
+  const slashPrefix = slashQuery(caretText);
+  const mentionHit = mentionTokenAt(caretText, caretText.length);
+  const mentionParsed = mentionQueryOf(mentionHit?.token || "");
+  const mentionOpen = !!mentionHit && !(mentionParsed.kind === "harness" && isCompleteMention(mentionHit.token));
+  const overlayKind: "plus" | "slash" | "mention" | null = slashPrefix
+    ? "slash"
+    : mentionOpen
+      ? "mention"
+      : hint === "plus"
+        ? "plus"
+        : null;
   const slashItems = slashPrefix ? filterSlash(slashPrefix, slashCatalog(copy)) : [];
   const mentionItems = useMemo(() => {
-    const token = mentionTokenAt(value, caret)?.token || "";
-    if (token.startsWith("@file:") || token.startsWith("@folder:")) {
-      const folder = token.startsWith("@folder:");
-      return (props.files || [])
-        .filter((f) => (folder ? f.kind === "dir" : true))
-        .map((f) => ({
-          token: `${folder ? "@folder:" : "@file:"}${f.path}`,
-          label: pinFromToken(`${folder ? "@folder:" : "@file:"}${f.path}`).label,
-          hint: f.path,
-          kind: (folder ? "folder" : "file") as MentionKind,
-        }));
-    }
-    if (token.startsWith("@skill:")) {
-      const q = token.slice("@skill:".length);
-      return mentionableSkills(props.skills || [], q).map((s) => ({
+    const token = mentionHit?.token || "";
+    const parsed = mentionQueryOf(token);
+    if (parsed.kind === "harness") return [];
+    if (parsed.kind === "skill") {
+      return mentionableSkills(props.skills || [], parsed.query).map((s) => ({
         token: `@skill:${s.name}`,
         label: s.displayName || s.name,
-        hint: s.description,
+        alias: s.displayName && s.displayName.toLowerCase() !== s.name.toLowerCase() ? s.name : undefined,
+        hint: s.description || "",
         kind: "skill" as MentionKind,
+        section: copy.composer.sectionSkills,
       }));
     }
-    const mentions = [
-      { token: "@file:", label: copy.composer.mentionKindFile, hint: copy.composer.mentionFile, kind: "file" as MentionKind },
-      { token: "@folder:", label: copy.composer.mentionKindFolder, hint: copy.composer.mentionFolder, kind: "folder" as MentionKind },
-      { token: "@skill:", label: copy.composer.mentionKindSkill, hint: copy.composer.mentionSkill, kind: "skill" as MentionKind },
-      { token: "@harness", label: copy.composer.mentionKindHarness, hint: copy.composer.mentionHarness, kind: "harness" as MentionKind },
-    ];
-    if (!token || token === "@") return mentions;
-    return mentions.filter((x) => x.token.startsWith(token));
-  }, [value, caret, props.files, props.skills, copy]);
+    const q = parsed.query;
+    const dirListing = q.endsWith("/");
+    const dir = dirListing ? q.replace(/\/+$/, "") : "";
+    let files = props.files || [];
+    if (parsed.kind === "folder") files = files.filter((f) => f.kind === "dir");
+    if (parsed.kind === "file") files = files.filter((f) => f.kind !== "dir");
+    if (dirListing && dir) files = childPaths(files, dir);
+    const withLocation = !(drilled && dirListing);
+    const fileRows: OverlayItem[] = files.map((f) => {
+      const directory = f.kind === "dir";
+      const slash = f.path.lastIndexOf("/");
+      const name = slash < 0 ? f.path : f.path.slice(slash + 1);
+      const parent = slash < 0 ? "" : f.path.slice(0, slash);
+      return {
+        token: directory ? `@folder:${f.path}` : `@file:${f.path}`,
+        label: `${name}${directory ? "/" : ""}`,
+        hint: withLocation && parent ? parent : "",
+        kind: directory ? "folder" : "file",
+        section: copy.composer.sectionFiles,
+        drill: directory,
+        drillPath: directory ? f.path : undefined,
+      };
+    });
+    if (parsed.kind === "file" || parsed.kind === "folder" || parsed.quoted) return fileRows;
+    const needle = q.trim().toLowerCase();
+    const sessionRows: OverlayItem[] = (props.sessions || [])
+      .filter((s) => s.id !== props.sessionId)
+      .filter((s) => !needle || displayTitle(s.title, s.id).toLowerCase().includes(needle))
+      .map((s) => {
+        const child = !!s.parentId && s.parentId === props.sessionId;
+        const otherWs = s.workspace && s.workspace !== props.workspace ? displayWorkspace(s.workspace, s.workspace) : "";
+        return {
+          token: `@session:${s.id}`,
+          label: displayTitle(s.title, copy.rail.untitled),
+          hint: otherWs,
+          kind: "session" as MentionKind,
+          section: child ? copy.composer.sectionSubagents : copy.composer.sectionSessions,
+        };
+      })
+      .sort((a, b) => Number(a.section === copy.composer.sectionSessions) - Number(b.section === copy.composer.sectionSessions))
+      .slice(0, 8);
+    if (parsed.kind === "session") return sessionRows;
+    return [...fileRows, ...sessionRows];
+  }, [mentionHit?.token, drilled, props.files, props.sessions, props.sessionId, props.workspace, copy, props.skills]);
 
   const plusItems: OverlayItem[] = [
     { token: "__file__", label: copy.composer.attach, hint: "", kind: "attach", section: copy.composer.sectionAdd },
@@ -235,11 +288,28 @@ export function Composer(props: {
       section: copy.composer.commands,
     })),
   ];
-  const popup: OverlayItem[] = hint === "plus"
+  const slashPopup: OverlayItem[] = [
+    ...slashItems.map((s) => ({ token: s.cmd, label: s.cmd, hint: s.hint, kind: "command" as const, section: copy.composer.commands })),
+    ...mentionableSkills(props.skills || [], (slashPrefix || "").slice(1)).map((s) => ({
+      token: `@skill:${s.name}`,
+      label: s.displayName || s.name,
+      alias: s.displayName && s.displayName.toLowerCase() !== s.name.toLowerCase() ? s.name : undefined,
+      hint: s.description || "",
+      kind: "skill" as const,
+      section: copy.composer.sectionSkills,
+    })),
+  ];
+  const popup: OverlayItem[] = overlayKind === "plus"
     ? plusItems
-    : hint === "slash"
-      ? slashItems.map((s) => ({ token: s.cmd, label: s.cmd, hint: s.hint, kind: "command" as const, section: copy.composer.commands }))
-      : mentionItems;
+    : overlayKind === "slash"
+      ? slashPopup
+      : overlayKind === "mention"
+        ? mentionItems
+        : [];
+  const hi = overlayActiveIndex(popup, hiToken);
+  const mentionTrail = overlayKind === "mention"
+    ? mentionCrumbs(mentionParsed.query, mentionParsed.quoted, drilled, copy.composer.crumbWorkspace)
+    : undefined;
   const pinnedSkillNames = useMemo(() => {
     const names = new Set<string>();
     for (const c of chips) {
@@ -249,32 +319,38 @@ export function Composer(props: {
     return names;
   }, [chips, value]);
   const suggestedSkills = useMemo(() => {
-    if (hint || disabled) return [];
-    const prose = value.replace(/@(?:file|folder|skill):\S+|@harness\b/g, " ").trim();
+    if (overlayKind || disabled) return [];
+    const prose = value.replace(/@(?:file|folder|skill|session):\S+|@harness\b/g, " ").trim();
     if (prose.length < 2) return [];
     return suggestSkills(props.skills || [], prose).filter((s) => !pinnedSkillNames.has(s.name) && !dismissedSuggest.includes(s.name));
-  }, [hint, disabled, props.skills, value, pinnedSkillNames, dismissedSuggest]);
+  }, [overlayKind, disabled, props.skills, value, pinnedSkillNames, dismissedSuggest]);
   const autoSkillChips = useMemo(
     () => (props.autoSkills || []).filter((s) => s.name && !dismissedAuto.includes(s.name) && !pinnedSkillNames.has(s.name)),
     [props.autoSkills, dismissedAuto, pinnedSkillNames],
   );
-  const showPopup = hint === "mention" || (!!hint && popup.length > 0);
+  const showPopup = overlayKind === "mention" || (!!overlayKind && popup.length > 0);
   const toolApproval = (props.approvals || []).find((a) => a.action !== "ask_user" && (!props.sessionId || !a.sessionId || a.sessionId === props.sessionId));
   const takeover = (props.ask && props.onResolveAsk) || (toolApproval && props.onResolveAsk);
 
   useEffect(() => {
     setHint(null);
-    setHi(0);
+    setHiToken("");
+    setBefore("");
     setAtts([]);
     setChips([]);
     setDismissedSuggest([]);
     setDismissedAuto([]);
     setFileQ(null);
+    setDrilled(false);
+    overlayQueryRef.current = "";
   }, [props.draftKey]);
 
   useEffect(() => {
-    if (popup.length && hi >= popup.length) setHi(0);
-  }, [hi, popup.length]);
+    const q = overlayKind === "slash" ? slashPrefix || "" : overlayKind === "mention" ? (mentionHit?.token || "") : overlayKind || "";
+    if (q === overlayQueryRef.current) return;
+    overlayQueryRef.current = q;
+    setHiToken("");
+  }, [overlayKind, slashPrefix, mentionHit?.token]);
 
   useEffect(() => {
     if (hint !== "plus") return;
@@ -293,41 +369,54 @@ export function Composer(props: {
   }, [props.onProfile]);
 
   useEffect(() => {
-    const snap = editorRef.current?.snapshot();
-    if (!snap) return;
-    if (snap.text !== value) editorRef.current?.setPlain(value);
+    const ed = editorRef.current;
+    if (!ed) return;
+    const snap = ed.snapshot();
+    if (snap.text === value) return;
+    ed.setPlain(value);
+    const next = ed.snapshot();
+    setChips(next.chips);
+    setCaret(next.caret);
+    setBefore(next.before);
   }, [value]);
 
-  function applySnapshot(snap: DraftSnapshot) {
-    setChips(snap.chips);
+  function applyCaret(snap: DraftSnapshot) {
     setCaret(snap.caret);
-    onChange(snap.text);
-    const slash = slashQuery(snap.text);
+    setBefore(snap.before);
+    const slash = slashQuery(snap.before);
     if (slash) {
-      setHint("slash");
-      setHi(0);
+      if (hint === "plus") setHint(null);
       return;
     }
     const tokenHit = mentionTokenAt(snap.before, snap.before.length);
     if (tokenHit) {
-      setHint("mention");
-      if (tokenHit.token.startsWith("@file:") || tokenHit.token.startsWith("@folder:")) {
-        const q = tokenHit.token.replace(/^@(?:file|folder):/, "");
+      const parsed = mentionQueryOf(tokenHit.token);
+      if (parsed.kind === "harness" && isCompleteMention(tokenHit.token)) {
+        setDrilled(false);
+        return;
+      }
+      if (hint === "plus") setHint(null);
+      if (parsed.kind !== "skill" && parsed.kind !== "harness" && parsed.kind !== "session") {
+        const q = parsed.query;
         if (q !== fileQ) {
           setFileQ(q);
           props.onSearchFiles?.(q);
         }
       }
-      setHi(0);
       return;
     }
-    setHint((h) => (h === "plus" ? "plus" : null));
+    setDrilled(false);
   }
 
-  function insertMention(token: string) {
+  function applySnapshot(snap: DraftSnapshot) {
+    setChips(snap.chips);
+    onChange(snap.text);
+    applyCaret(snap);
+  }
+
+  function insertMention(token: string, label?: string) {
     if (keepMentionOpen(token)) {
-      editorRef.current?.insertText(token.endsWith(":") ? token : token);
-      setHint("mention");
+      editorRef.current?.replaceTrigger(token.endsWith(":") ? token : token);
       if (token === "@file:" || token === "@folder:") {
         setFileQ("");
         props.onSearchFiles?.("");
@@ -336,14 +425,38 @@ export function Composer(props: {
       return;
     }
     if (isCompleteMention(token)) {
-      editorRef.current?.replaceMention(pinFromToken(token));
+      editorRef.current?.replaceMention(pinFromToken(token, label));
       setHint(null);
-      setHi(0);
+      setHiToken("");
+      setDrilled(false);
       editorRef.current?.focus();
       return;
     }
     editorRef.current?.insertText(token + " ");
     setHint(null);
+    setDrilled(false);
+    editorRef.current?.focus();
+  }
+
+  function drillMention(item: OverlayItem) {
+    const path = item.drillPath || pinFromToken(item.token).detail;
+    if (!path) return;
+    const parsed = mentionQueryOf(mentionHit?.token || "@");
+    setDrilled(true);
+    editorRef.current?.replaceTrigger(formatTriggerPath(path, parsed.quoted, true));
+    setFileQ(`${path}/`);
+    props.onSearchFiles?.(`${path}/`);
+    setHiToken("");
+    editorRef.current?.focus();
+  }
+
+  function applyTrigger(text: string) {
+    setDrilled(text !== "@" && text !== "@\"");
+    editorRef.current?.replaceTrigger(text);
+    const parsed = mentionQueryOf(text);
+    setFileQ(parsed.query);
+    props.onSearchFiles?.(parsed.query);
+    setHiToken("");
     editorRef.current?.focus();
   }
 
@@ -354,32 +467,37 @@ export function Composer(props: {
     props.onSlash?.(cmd, "");
   }
 
-  function pickOverlay(token: string) {
-    if (token === "__file__") {
+  function pickOverlay(item: OverlayItem) {
+    if (item.token === "__file__") {
       setHint(null);
       void pickAttachments();
       return;
     }
-    if (token === "__clipboard__") {
+    if (item.token === "__clipboard__") {
       setHint(null);
       void pasteOsClipboard();
       return;
     }
-    if (token === "__screenshot__") {
+    if (item.token === "__screenshot__") {
       setHint(null);
       void grabScreenshot();
       return;
     }
-    if (hint === "mention") {
-      insertMention(token);
+    if (item.token.startsWith("@")) {
+      if (overlayKind === "slash") editorRef.current?.replaceSlash();
+      insertMention(item.token, item.label);
       return;
     }
-    applySlash(token);
+    if (overlayKind === "mention") {
+      insertMention(item.token, item.label);
+      return;
+    }
+    applySlash(item.token);
   }
 
   function togglePlus() {
     if (disabled) return;
-    setHi(0);
+    setHiToken("");
     setHint((h) => (h === "plus" ? null : "plus"));
     editorRef.current?.focus();
   }
@@ -428,8 +546,11 @@ export function Composer(props: {
 
   function send(steer?: boolean) {
     const snap = editorRef.current?.snapshot() || { text: value, chips, caret, before: value };
+    const settled = settleBareAtPaths(snap.text, props.files || []);
+    const peeled = peelCompletedMentions(settled);
+    const pins = mergeMentionPins(snap.chips, peeled.chips);
     const stamp = footageStamp(atts);
-    const body = [composeDraft(snap.chips, snap.text), stamp].filter(Boolean).join("\n\n");
+    const body = [composeDraft(pins, peeled.text), stamp].filter(Boolean).join("\n\n");
     if (!body && !atts.length) return;
     props.onSend({ steer, attachments: atts, text: body });
     setAtts([]);
@@ -438,7 +559,7 @@ export function Composer(props: {
     editorRef.current?.setPlain("");
   }
 
-  function onEditorKey(e: ReactKeyboardEvent, snap: DraftSnapshot, before: string): boolean {
+  function onEditorKey(e: KeyboardEvent, snap: DraftSnapshot, _before: string): boolean {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
       void grabScreenshot();
       return true;
@@ -447,22 +568,37 @@ export function Composer(props: {
       void pasteOsClipboard();
       return true;
     }
-    if (hint && popup.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-      setHi((n) => (e.key === "ArrowDown" ? (n + 1) % popup.length : (n + popup.length - 1) % popup.length));
+    const composing = e.isComposing;
+    if (overlayKind && popup.length && !composing && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      const cur = overlayActiveIndex(popup, hiToken);
+      const next = e.key === "ArrowDown" ? (cur + 1) % popup.length : (cur + popup.length - 1) % popup.length;
+      setHiToken(popup[next]?.token || "");
       return true;
     }
-    if (hint && popup.length && (e.key === "Tab" || e.key === "Enter") && !e.shiftKey) {
+    if (overlayKind && popup.length && e.key === "Tab" && !e.shiftKey && !composing) {
       const item = popup[hi] || popup[0];
-      pickOverlay(item.token);
+      if (item.drill) {
+        drillMention(item);
+        return true;
+      }
+      if (overlayKind !== "mention") {
+        pickOverlay(item);
+        return true;
+      }
+      return true;
+    }
+    if (overlayKind && popup.length && e.key === "Enter" && !e.shiftKey && !composing) {
+      pickOverlay(popup[hi] || popup[0]);
       return true;
     }
     if (e.key === "Escape") {
       setHint(null);
+      setDrilled(false);
       return true;
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      const slash = slashQuery(snap.text);
-      if (slash && slashItems[0] && snap.text.trim() === slashItems[0].cmd) {
+    if (e.key === "Enter" && !e.shiftKey && !composing) {
+      const slash = slashQuery(snap.before);
+      if (slash && slashItems[0] && slash === slashItems[0].cmd) {
         applySlash(slashItems[0].cmd);
         return true;
       }
@@ -481,7 +617,6 @@ export function Composer(props: {
       send(props.running && (e.metaKey || e.ctrlKey));
       return true;
     }
-    void before;
     return false;
   }
 
@@ -578,27 +713,30 @@ export function Composer(props: {
               }}
             >
               <DropOverlay active={drop} />
-              {showPopup && (hint === "slash" || hint === "plus") ? (
+              {showPopup && (overlayKind === "slash" || overlayKind === "plus") ? (
                 <CommandOverlay
-                  label={hint === "plus" ? copy.composer.addFilesOrCommands : copy.composer.commands}
+                  label={overlayKind === "plus" ? copy.composer.addFilesOrCommands : copy.composer.mentionSuggestions}
                   items={popup}
                   hi={hi}
                   onPick={pickOverlay}
-                  onHover={setHi}
+                  onHover={(i) => setHiToken(popup[i]?.token || "")}
                 />
               ) : null}
-              {showPopup && hint === "mention" ? (
+              {showPopup && overlayKind === "mention" ? (
                 <CommandOverlay
-                  label={copy.composer.mentions}
+                  label={copy.composer.mentionSuggestions}
                   items={popup}
                   hi={hi}
-                  empty={
-                    mentionTokenAt(value, caret)?.token.startsWith("@file:") || mentionTokenAt(value, caret)?.token.startsWith("@folder:")
-                      ? copy.composer.mentionType
-                      : copy.composer.mentionEmpty
-                  }
+                  crumbs={mentionTrail}
+                  crumbsLabel={copy.composer.mentionCrumbs}
+                  drillHint={copy.composer.mentionDrill}
+                  drillKey={copy.composer.mentionDrillKey}
+                  drillAria={copy.composer.mentionDrill}
+                  empty={fileQ === null || (props.files || []).length === 0 ? copy.composer.mentionType : copy.composer.mentionEmpty}
                   onPick={pickOverlay}
-                  onHover={setHi}
+                  onDrill={drillMention}
+                  onCrumb={(crumb) => applyTrigger(crumb.query)}
+                  onHover={(i) => setHiToken(popup[i]?.token || "")}
                 />
               ) : null}
               {suggestedSkills.length || autoSkillChips.length ? (
@@ -651,6 +789,7 @@ export function Composer(props: {
                 workspaceTrigger={workspaceTrigger}
                 pickerOpen={pickerOpen}
                 onSnapshot={applySnapshot}
+                onCaret={applyCaret}
                 onKeyDown={onEditorKey}
                 onPasteFiles={(files) => { void addFiles(files); }}
               />

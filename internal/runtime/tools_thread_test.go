@@ -32,4 +32,8 @@ func TestReadThreadListsAndSends(t *testing.T) {
 	if send.Err != nil || sent != "abc:steer please" {
 		t.Fatalf("%+v sent=%s", send, sent)
 	}
+	overlay := FormatSessionMentions([]Mention{{Kind: "session", Ref: "abc"}}, "here", tools, 1600)
+	if !strings.Contains(overlay, "Weekly") || !strings.Contains(overlay, "hello from abc") {
+		t.Fatalf("overlay=%s", overlay)
+	}
 }

@@ -112,6 +112,7 @@ function WorkstationApp() {
   const moduleLoading = useUI((s) => s.moduleLoading);
   const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
   const idleAt = useRef(Date.now());
+  const fileSearchGen = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [waking, setWaking] = useState(false);
   const sawBoot = useRef(false);
@@ -184,6 +185,12 @@ function WorkstationApp() {
   };
   const bindComposer = {
     files: ws.files,
+    sessions: ws.threads.map((t) => ({
+      id: t.id,
+      title: t.title,
+      workspace: t.workspace,
+      parentId: t.parentId,
+    })),
     skills: ws.skills,
     autoSkills: liveAutoSkills(ws.items),
     // Before the first chat exists, show the permission the next chat will get.
@@ -204,7 +211,12 @@ function WorkstationApp() {
       ws.setActive(t);
       ws.setThreads((list) => patchThread(list, t.id, t));
     },
-    onSearchFiles: (q: string) => { void api.searchFiles(toolRoot, q).then(ws.setFiles).catch(() => {}); },
+    onSearchFiles: (q: string) => {
+      const n = ++fileSearchGen.current;
+      void api.searchFiles(toolRoot, q).then((hits) => {
+        if (n === fileSearchGen.current) ws.setFiles(hits);
+      }).catch(() => {});
+    },
     onPickFiles: async () => {
       const paths = await api.pickFiles();
       return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));

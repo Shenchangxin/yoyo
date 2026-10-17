@@ -88,6 +88,80 @@ func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	}
 }
 
+func TestExpandBareAtPathAndSession(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs := ExpandMentions(dir, "see @pin.txt and @src/", "", 2400)
+	if len(refs) != 2 {
+		t.Fatalf("refs=%+v", refs)
+	}
+	if !strings.Contains(inject, "hello pin") || !strings.Contains(inject, "## @folder:src") {
+		t.Fatalf("inject=%s", inject)
+	}
+	inject, refs = ExpandMentions(dir, "see @file:pin.txt and @pin.txt", "", 2400)
+	if len(refs) != 1 {
+		t.Fatalf("dedupe refs=%+v", refs)
+	}
+	inject, refs = ExpandMentions(dir, "mail a@b.test @missing", "", 2400)
+	if len(refs) != 0 {
+		t.Fatalf("email/missing should not expand: refs=%+v inject=%s", refs, inject)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "loop.go"), []byte("package src\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
+	if len(refs) != 1 || refs[0].Ref != "src/loop.go" {
+		t.Fatalf("unique basename refs=%+v", refs)
+	}
+	if !strings.Contains(inject, "package src") {
+		t.Fatalf("unique basename inject=%s", inject)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pkg", "loop.go"), []byte("package pkg\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
+	if len(refs) != 0 {
+		t.Fatalf("ambiguous basename should not expand: refs=%+v inject=%s", refs, inject)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "loop.go"), []byte("package root\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inject, refs = ExpandMentions(dir, "fix @loop.go", "", 2400)
+	if len(refs) != 1 || refs[0].Ref != "loop.go" {
+		t.Fatalf("exact root path must win over unique walk: refs=%+v", refs)
+	}
+	inject, refs = ExpandMentions(dir, `see @"pin.txt"`, "", 2400)
+	if len(refs) != 1 || refs[0].Ref != "pin.txt" {
+		t.Fatalf("quoted refs=%+v", refs)
+	}
+	inject, refs = ExpandMentions(dir, "continue @session:s2", "", 2400)
+	if len(refs) != 1 || refs[0].Kind != "session" {
+		t.Fatalf("session refs=%+v", refs)
+	}
+	tools := &WorkspaceTools{
+		ListThreads: func() []ThreadRef { return []ThreadRef{{ID: "s2", Title: "Earlier chat"}} },
+		Sessions: func(id string) []Message {
+			return []Message{{Role: RoleUser, Content: "remember the parser"}, {Role: RoleAssistant, Content: "fixed loop.go"}}
+		},
+	}
+	extra := FormatSessionMentions(refs, "s1", tools, 1600)
+	if !strings.Contains(extra, "Earlier chat") || !strings.Contains(extra, "remember the parser") || !strings.Contains(extra, "read_thread") {
+		t.Fatalf("session overlay=%s", extra)
+	}
+	self := FormatSessionMentions(refs, "s2", tools, 1600)
+	if !strings.Contains(self, "current chat") || strings.Contains(self, "remember the parser") {
+		t.Fatalf("current session should not dump: %s", self)
+	}
+}
+
 func TestShellPolicy(t *testing.T) {
 	dir := t.TempDir()
 	if err := ShellDenied("curl https://example.com", dir, nil); err == nil {
