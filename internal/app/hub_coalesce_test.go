@@ -28,6 +28,28 @@ func TestHubCoalescesAssistantDeltas(t *testing.T) {
 	if delta, _ := ev.Payload["delta"].(bool); !delta {
 		t.Fatal("delta flag dropped")
 	}
+}
+
+func TestHubCoalesceKeepsIndexRange(t *testing.T) {
+	h := NewHub()
+	ch, off := h.Subscribe("s")
+	defer off()
+	h.Publish(trace.Event{
+		SessionID: "s", Type: trace.TypeAssistant,
+		Payload: map[string]any{"text": "he", "delta": true, "id": "s:r1", "round": "s:r1", "index": 1, "block": "text"},
+	})
+	h.Publish(trace.Event{
+		SessionID: "s", Type: trace.TypeAssistant,
+		Payload: map[string]any{"text": "llo", "delta": true, "id": "s:r1", "round": "s:r1", "index": 2, "block": "text"},
+	})
+	h.FlushCoalesce()
+	ev := recv(t, ch)
+	if got, _ := ev.Payload["text"].(string); got != "hello" {
+		t.Fatalf("coalesced text %q", got)
+	}
+	if payloadInt(ev.Payload, "index") != 2 || payloadInt(ev.Payload, "index_from") != 1 {
+		t.Fatalf("index range %+v", ev.Payload)
+	}
 	select {
 	case extra := <-ch:
 		t.Fatalf("extra event %+v", extra)

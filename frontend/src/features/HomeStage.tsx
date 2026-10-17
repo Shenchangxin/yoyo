@@ -1,4 +1,3 @@
-import { type ReactNode } from "react";
 import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";
@@ -29,70 +28,81 @@ function readyOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: b
   return copy.transcript.videoReady;
 }
 
-export function HomeStage(props: {
-  onPrompt?: (text: string) => void;
-  onContinueLast?: () => void;
-  children: ReactNode;
-}) {
+function useHomeCopy() {
   const copy = useCopy();
   const surface = useUI((s) => s.surface);
   const videoMode = useUI((s) => s.videoMode);
   const videoPane = useUI((s) => s.videoPane);
   const videoing = surface === "video";
   const createDesk = videoing && videoPane === "create";
-  const starters = startersOf(copy, videoing, videoMode, createDesk);
+  return { copy, videoing, videoMode, createDesk };
+}
 
+/** Empty-session brand block. Composer stays a sibling so Hero→active keeps the same input DOM. */
+export function HomeHero(_props: {
+  workspace?: string;
+  onBrowseWorkspace?: () => void;
+}) {
+  const { copy, videoing, videoMode, createDesk } = useHomeCopy();
   return (
-    <section className="@container relative flex h-full min-h-0 min-w-0 flex-col" data-testid="conversation-column">
-      <div className="home-stage empty-rise flex min-h-0 flex-1 flex-col overflow-auto" data-testid="empty-turn">
-        <div
-          className={cn(
-            "mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8",
-            createDesk ? "shrink-0 pb-3 pt-6" : "flex-1 justify-center py-10",
-          )}
-        >
-          <PresenceAnchor id="home" size={createDesk ? 96 : 140} className="mx-auto cursor-pointer" />
-          <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
-            {hello(copy)}
-          </p>
-          <h1 className="mt-1.5 text-center text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground">
-            {readyOf(copy, videoing, videoMode, createDesk)}
-          </h1>
-          {createDesk ? (
-            <p className="mx-auto mt-2 max-w-[36ch] text-center text-[13px] leading-[1.55] text-muted">
-              {copy.video.conductor.lead}
-            </p>
-          ) : null}
-          <div className="mt-8 w-full">
-            {props.children}
+    <div
+      className={cn(
+        "mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8",
+        createDesk ? "shrink-0 pb-3 pt-6" : "pt-2",
+      )}
+      data-testid="empty-turn"
+    >
+      <PresenceAnchor id="home" size={createDesk ? 96 : 140} className="mx-auto cursor-pointer" />
+      <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
+        {hello(copy)}
+      </p>
+      <h1 className="mt-1.5 text-center text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground">
+        {readyOf(copy, videoing, videoMode, createDesk)}
+      </h1>
+      {createDesk ? (
+        <p className="mx-auto mt-2 max-w-[36ch] text-center text-[13px] leading-[1.55] text-muted">
+          {copy.video.conductor.lead}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function HomeStarters(props: {
+  onPrompt?: (text: string) => void;
+  onContinueLast?: () => void;
+}) {
+  const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const starters = startersOf(copy, videoing, videoMode, createDesk);
+  return (
+    <>
+      <div className="mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8 pb-8">
+        {props.onContinueLast ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              className="text-[12px] text-muted hover:text-foreground"
+              onClick={() => props.onContinueLast?.()}
+            >
+              {copy.rail.continueLast}
+            </button>
           </div>
-          {props.onContinueLast ? (
-            <div className="mt-3 flex justify-center">
-              <button
-                type="button"
-                className="text-[12px] text-muted hover:text-foreground"
-                onClick={() => props.onContinueLast?.()}
-              >
-                {copy.rail.continueLast}
-              </button>
-            </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-            {starters.map((s, i) => (
-              <button
-                type="button"
-                key={s.label}
-                className="starter-tile"
-                style={{ animationDelay: `${80 + i * 50}ms` }}
-                onClick={() => props.onPrompt?.(s.text)}
-              >
-                <span className="text-[13px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
-              </button>
-            ))}
-          </div>
+        ) : null}
+        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+          {starters.map((s, i) => (
+            <button
+              type="button"
+              key={s.label}
+              className="starter-tile"
+              style={{ animationDelay: `${80 + i * 50}ms` }}
+              onClick={() => props.onPrompt?.(s.text)}
+            >
+              <span className="text-[13px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
+            </button>
+          ))}
         </div>
-        {createDesk ? <CreationGallery onStartPrompt={(prompt) => props.onPrompt?.(prompt)} /> : null}
       </div>
-    </section>
+      {createDesk ? <CreationGallery onStartPrompt={(prompt) => props.onPrompt?.(prompt)} /> : null}
+    </>
   );
 }

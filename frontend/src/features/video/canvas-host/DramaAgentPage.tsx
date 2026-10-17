@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Select } from "antd";
-import { ArrowUp, Film, LayoutGrid, Paperclip } from "lucide-react";
+import { Film, LayoutGrid, Paperclip } from "lucide-react";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { refreshSystemChannels } from "@yingce/lib/user-session";
 import { modelOptionName, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
-import { CreationMessageView } from "@yingce/pages/create/creation-workspace";
-import type { CreationMessage } from "@yingce/pages/create/creation-types";
-import { cn } from "@yingce/lib/utils";
 import * as api from "../../../lib/client";
 import type { Item } from "../../../lib/protocol";
 import { mergeItem, subscribeSession } from "../../../lib/stream";
 import { useCopy } from "../../../lib/i18n";
 import { useUI } from "../../../lib/store";
+import { Composer } from "../../Composer";
+import { Transcript } from "../../Transcript";
 import { useDramaSelection } from "../workshop-store";
 import { bindVideoThread, ensureDramaEpisode, ingestSeriesFile, ingestSeriesText } from "../bind";
 import { looksLikeSeries, PRESET_STYLES, shownEpisodeTitle, shownSeriesTitle, styleLabel } from "../drama-lib";
@@ -23,28 +22,6 @@ import "@yingce/pages/create/creation-scrollbars.css";
 type Drama = { id: string; title: string; style?: string };
 type StyleOpt = { value: string; name: string };
 type Episode = { id: string; drama_id: string; title: string; episode_number?: number };
-
-function visibleItems(items: Item[]): CreationMessage[] {
-  const out: CreationMessage[] = [];
-  for (const item of items) {
-    if (item.type === "user" && item.source !== "steer") {
-      out.push({ id: item.key, role: "user", mode: "text", content: item.text, createdAt: item.ts || new Date().toISOString(), status: "done" });
-    } else if (item.type === "assistant") {
-      out.push({
-        id: item.key,
-        role: "assistant",
-        mode: "text",
-        content: item.text,
-        createdAt: item.ts || new Date().toISOString(),
-        status: item.delta ? "streaming" : "done",
-        reasoning: typeof item.payload?.reasoning === "string" ? item.payload.reasoning : undefined,
-      });
-    } else if (item.type === "error") {
-      out.push({ id: item.key, role: "assistant", mode: "text", content: "", createdAt: item.ts || new Date().toISOString(), status: "error", error: item.text || "失败" });
-    }
-  }
-  return out;
-}
 
 export default function DramaAgentPage() {
   const { message } = App.useApp();
@@ -62,19 +39,16 @@ export default function DramaAgentPage() {
   const setDramaId = useDramaSelection((s) => s.setDramaId);
   const setEpisodeId = useDramaSelection((s) => s.setEpisodeId);
   const setDramaStyle = useDramaSelection((s) => s.setDramaStyle);
-  const composerFocusRef = useRef<HTMLTextAreaElement>(null);
   const threadScrollRef = useRef<HTMLElement>(null);
   const itemsRef = useRef<Item[]>([]);
-  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [styles, setStyles] = useState<StyleOpt[]>(PRESET_STYLES.map((s) => ({ value: s.value, name: s.name })));
 
-  const messages = useMemo(() => visibleItems(items), [items]);
-  const isEmpty = messages.length === 0;
-  const canSubmit = Boolean(prompt.trim()) && !busy;
+  const isEmpty = items.length === 0;
+  const draftKey = `drama:${sessionId || "new"}`;
 
   const loadDramas = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
@@ -159,7 +133,7 @@ export default function DramaAgentPage() {
     }
   }
 
-  async function send(text = prompt) {
+  async function send(text = "") {
     const next = text.trim();
     if (!next || busy) return;
     const session = await sid();
@@ -167,7 +141,6 @@ export default function DramaAgentPage() {
       message.error(copy.video.failed);
       return;
     }
-    setPrompt("");
     setBusy(true);
     try {
       if (looksLikeSeries(next)) {
@@ -178,6 +151,7 @@ export default function DramaAgentPage() {
         }
         await api.video.stage(session, "", "outline", drama);
         await loadDramas();
+        setBusy(false);
         setVideoBoard(true);
         return;
       }
@@ -213,6 +187,7 @@ export default function DramaAgentPage() {
       }
       await api.video.stage(session, "", "outline", drama);
       await loadDramas();
+      setBusy(false);
       setVideoBoard(true);
     } catch (err) {
       setBusy(false);
@@ -220,132 +195,91 @@ export default function DramaAgentPage() {
     }
   }
 
+  const dramaLeading = (
+    <>
+      <Select
+        size="small"
+        variant="borderless"
+        popupMatchSelectWidth={false}
+        className="drama-agent-select"
+        value={dramaStyle || "3d"}
+        placeholder={copy.video.style}
+        aria-label={copy.video.style}
+        onChange={(value) => void pickStyle(value)}
+        options={styles.map((row) => ({ value: row.value, label: styleLabel(copy.video.styleNames, row.value, row.name) }))}
+      />
+      {!isEmpty ? (
+        <>
+          <Select
+            size="small"
+            variant="borderless"
+            popupMatchSelectWidth={false}
+            className="drama-agent-select"
+            value={dramaId || undefined}
+            placeholder={copy.video.pickSeries}
+            aria-label={copy.video.pickSeries}
+            onChange={(id) => {
+              setDramaId(id);
+              setEpisodeId("");
+              const hit = dramas.find((d) => d.id === id);
+              if (hit?.style) setDramaStyle(hit.style);
+            }}
+            options={dramas.map((d) => ({ value: d.id, label: shownSeriesTitle(d.title, copy.video.untitled) }))}
+          />
+          <Select
+            size="small"
+            variant="borderless"
+            popupMatchSelectWidth={false}
+            className="drama-agent-select"
+            value={episodeId || undefined}
+            placeholder={copy.video.pickEpisode}
+            aria-label={copy.video.pickEpisode}
+            disabled={!dramaId}
+            onChange={setEpisodeId}
+            options={episodes.map((e) => ({ value: e.id, label: shownEpisodeTitle(e.title, e.episode_number, copy.video.episodeN) }))}
+          />
+        </>
+      ) : null}
+      <ModelPicker
+        config={config}
+        value={selectedTextModel}
+        onChange={(model) => {
+          updateConfig("textModel", model);
+          const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
+          if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
+        }}
+        capability="text"
+        variant="creation"
+        className="creation-model-picker"
+        placeholder={copy.video.textModel}
+        showSelectedPrice={false}
+        showOptionPrices={false}
+        onMissingConfig={() => openSettings("provider")}
+      />
+      <Tooltip title={copy.video.ingestFileHint}>
+        <button type="button" className="sc-chip-btn" data-testid="drama-import-novel" aria-label={copy.video.mapFile} disabled={busy} onClick={() => void importNovel()}>
+          <Paperclip className="size-3.5" />
+          <span>{copy.video.mapFile}</span>
+        </button>
+      </Tooltip>
+    </>
+  );
+
   const composer = (
-    <div className="creation-composer-shell">
-      <div className={`creation-chat-composer is-${isEmpty ? "empty" : "thread"}`}>
-        <div className="creation-chat-writing-surface">
-          <div className="creation-chat-editor">
-            <textarea
-              ref={composerFocusRef}
-              className="creation-chat-mention-editor creation-scrollbar"
-              style={{ color: "var(--creation-text)" }}
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void send();
-                }
-              }}
-              placeholder={copy.video.agentPlaceholder}
-              aria-label={copy.video.drama}
-              spellCheck={false}
-              disabled={busy}
-              data-testid="drama-agent-input"
-            />
-          </div>
-        </div>
-        <footer className="creation-chat-dock">
-          <div className="creation-chat-controls">
-            <Select
-              size="small"
-              variant="borderless"
-              className="drama-agent-select min-w-28"
-              value={dramaStyle || "3d"}
-              placeholder={copy.video.style}
-              aria-label={copy.video.style}
-              onChange={(value) => void pickStyle(value)}
-              options={styles.map((row) => ({ value: row.value, label: styleLabel(copy.video.styleNames, row.value, row.name) }))}
-            />
-            {!isEmpty ? (
-              <>
-                <Select
-                  size="small"
-                  variant="borderless"
-                  className="drama-agent-select min-w-28"
-                  value={dramaId || undefined}
-                  placeholder={copy.video.pickSeries}
-                  aria-label={copy.video.pickSeries}
-                  onChange={(id) => {
-                    setDramaId(id);
-                    setEpisodeId("");
-                    const hit = dramas.find((d) => d.id === id);
-                    if (hit?.style) setDramaStyle(hit.style);
-                  }}
-                  options={dramas.map((d) => ({ value: d.id, label: shownSeriesTitle(d.title, copy.video.untitled) }))}
-                />
-                <Select
-                  size="small"
-                  variant="borderless"
-                  className="drama-agent-select min-w-24"
-                  value={episodeId || undefined}
-                  placeholder={copy.video.pickEpisode}
-                  aria-label={copy.video.pickEpisode}
-                  disabled={!dramaId}
-                  onChange={setEpisodeId}
-                  options={episodes.map((e) => ({ value: e.id, label: shownEpisodeTitle(e.title, e.episode_number, copy.video.episodeN) }))}
-                />
-                <ModelPicker
-                  config={config}
-                  value={selectedTextModel}
-                  onChange={(model) => {
-                    updateConfig("textModel", model);
-                    const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
-                    if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
-                  }}
-                  capability="text"
-                  variant="creation"
-                  className="creation-model-picker"
-                  placeholder={copy.video.textModel}
-                  showSelectedPrice={false}
-                  showOptionPrices={false}
-                  onMissingConfig={() => openSettings("provider")}
-                />
-                <Tooltip title={copy.video.openBoard}>
-                  <button type="button" className="creation-chat-control" data-testid="drama-open-board" aria-label={copy.video.openBoard} onClick={() => setVideoBoard(true)}>
-                    <LayoutGrid /><span>{copy.video.openBoard}</span>
-                  </button>
-                </Tooltip>
-              </>
-            ) : !selectedTextModel ? (
-              <ModelPicker
-                config={config}
-                value={selectedTextModel}
-                onChange={(model) => {
-                  updateConfig("textModel", model);
-                  const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
-                  if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
-                }}
-                capability="text"
-                variant="creation"
-                className="creation-model-picker"
-                placeholder={copy.video.textModel}
-                showSelectedPrice={false}
-                showOptionPrices={false}
-                onMissingConfig={() => openSettings("provider")}
-              />
-            ) : null}
-            <Tooltip title={copy.video.ingestFileHint}>
-              <button type="button" className="creation-chat-control" data-testid="drama-import-novel" aria-label={copy.video.mapFile} disabled={busy} onClick={() => void importNovel()}>
-                <Paperclip /><span>{copy.video.mapFile}</span>
-              </button>
-            </Tooltip>
-          </div>
-          <Button
-            type="text"
-            className="creation-submit"
-            disabled={!canSubmit}
-            onClick={() => void send()}
-            aria-label={busy ? copy.video.agentSending : copy.video.agentSend}
-          >
-            <span className="creation-submit-action" aria-hidden>
-              <ArrowUp className="size-4" />
-              <span>{busy ? copy.video.agentSending : copy.video.agentSend}</span>
-            </span>
-          </Button>
-        </footer>
-      </div>
-    </div>
+    <Composer
+      draftKey={draftKey}
+      running={false}
+      disabled={busy}
+      disabledReason={copy.video.agentSending}
+      onSend={(opts) => { void send(opts?.text || ""); }}
+      onStop={() => setBusy(false)}
+      model={selectedTextModel ? modelOptionName(selectedTextModel) : undefined}
+      flush
+      compact={!isEmpty}
+      hero={isEmpty}
+      inputTestId="drama-agent-input"
+      leading={dramaLeading}
+    />
   );
 
   const path = [
@@ -355,7 +289,11 @@ export default function DramaAgentPage() {
   ];
 
   return (
-    <div className="creation-home relative flex h-full min-h-0 flex-col overflow-hidden" data-testid="drama-agent-page">
+    <div
+      className="creation-home drama-agent-page relative flex h-full min-h-0 flex-col overflow-hidden"
+      data-testid="drama-agent-page"
+      data-empty={isEmpty ? "true" : "false"}
+    >
       {isEmpty ? (
         <main ref={threadScrollRef} className="creation-empty-workspace creation-scrollbar">
           <div className="creation-home-heading">
@@ -374,21 +312,10 @@ export default function DramaAgentPage() {
                 </li>
               ))}
             </ol>
-            <div className="creation-composer-stage is-home-mode">
-              <div className="creation-empty-composer">{composer}</div>
-            </div>
-            <button
-              type="button"
-              className="drama-open-existing"
-              data-testid="drama-open-board"
-              onClick={() => setVideoBoard(true)}
-            >
-              {copy.video.openBoardExisting}
-            </button>
           </section>
         </main>
       ) : (
-        <div className="creation-thread-workbench">
+        <div className="creation-thread-workbench min-h-0 flex-1">
           <header className="creation-thread-toolbar">
             <div className="creation-toolbar-shots">
               <span className="creation-rail-trigger"><Film />{copy.video.drama}</span>
@@ -398,27 +325,35 @@ export default function DramaAgentPage() {
             </div>
           </header>
           <main ref={threadScrollRef} className="creation-thread-scroll creation-scrollbar">
-            <section className="creation-thread-stage">
-              <div className="creation-results">
-                {messages.map((item) => (
-                  <div key={item.id} className="creation-thread-message">
-                    <CreationMessageView
-                      item={item}
-                      shotNumber={0}
-                      onRetryFailure={() => { setPrompt(item.content); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
-                      onCreateVariant={() => {}}
-                      onContinueCanvas={() => {}}
-                      openingCanvas={false}
-                      onEditUserMessage={(text) => { setPrompt(text); window.requestAnimationFrame(() => composerFocusRef.current?.focus()); }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
+            <Transcript
+              items={items}
+              approvals={[]}
+              running={busy}
+              compact
+              flush
+              onResolve={() => {}}
+              onPrompt={(text) => useUI.getState().setDraft(draftKey, text)}
+              onRetry={() => {
+                const last = [...items].reverse().find((it) => it.type === "user");
+                if (last?.text) useUI.getState().setDraft(draftKey, last.text);
+              }}
+            />
           </main>
-          <section className={cn("creation-thread-composer")}>{composer}</section>
         </div>
       )}
+      <section className={isEmpty ? "creation-composer-stage is-home-mode" : "creation-thread-composer"}>
+        <div className={isEmpty ? "creation-empty-composer" : undefined}>{composer}</div>
+      </section>
+      {isEmpty ? (
+        <button
+          type="button"
+          className="drama-open-existing"
+          data-testid="drama-open-board"
+          onClick={() => setVideoBoard(true)}
+        >
+          {copy.video.openBoardExisting}
+        </button>
+      ) : null}
     </div>
   );
 }

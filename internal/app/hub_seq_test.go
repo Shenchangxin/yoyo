@@ -40,6 +40,10 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 	if delta.Event == nil {
 		t.Fatal("tiny token slice should inline")
 	}
+	indexed := NoticeOf(trace.Event{Seq: 4, SessionID: "s", Type: trace.TypeAssistant, Payload: map[string]any{"text": "hi", "delta": true, "id": "r1", "index": 3, "index_from": 1, "block": "text"}})
+	if indexed.Frame == nil || indexed.Frame.Index != 3 || indexed.Frame.IndexFrom != 1 || indexed.Frame.Block != "text" {
+		t.Fatalf("frame %+v", indexed.Frame)
+	}
 	body := make([]byte, 4000)
 	for i := range body {
 		body[i] = 'x'

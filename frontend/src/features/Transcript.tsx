@@ -33,6 +33,7 @@ import { SandboxedFrame } from "./transcript/SandboxedFrame";
 import { PresenceStamp } from "./presence";
 import { MarkWell } from "./shell/YoyoMark";
 import { displayWorkspace } from "../lib/display-title";
+import { formatMessageClock } from "../lib/session-stats";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
@@ -1088,6 +1089,7 @@ const ItemRow = memo(function ItemRow({
         </div>
       );
     }
+    const clock = formatMessageClock(Date.parse(shown.ts), { md: copy.transcript.clockMd, ymd: copy.transcript.clockYmd });
     return (
       <div className="flex justify-end">
         <div className="group/msg w-fit max-w-[80%]">
@@ -1096,9 +1098,12 @@ const ItemRow = memo(function ItemRow({
             parts={Array.isArray(shown.payload?.parts) ? shown.payload.parts : undefined}
             attachments={Array.isArray(shown.payload?.attachments) ? shown.payload.attachments : undefined}
           />
-          {copyText || onRestore || onFork ? (
-            <UserMsgActions text={copyText} from={from} onRestore={onRestore} onFork={onFork} />
-          ) : null}
+          <div className="mt-0.5 flex min-h-5 items-center justify-end gap-1.5">
+            {clock ? <span className="text-[11px] tabular-nums text-muted/65">{clock}</span> : null}
+            {copyText || onRestore || onFork ? (
+              <UserMsgActions text={copyText} from={from} onRestore={onRestore} onFork={onFork} />
+            ) : null}
+          </div>
         </div>
       </div>
     );

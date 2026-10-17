@@ -1,8 +1,10 @@
-import { Component, memo, useEffect, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
+import { Component, memo, useEffect, useRef, useState, type ErrorInfo, type HTMLAttributes, type ReactNode } from "react";
 import { Streamdown, TableCopyDropdown, type Components, type ExtraProps } from "streamdown";
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
 import { codePlugin } from "./code-plugin";
+import { IncrementalMarkdownParser } from "./incremental-md";
+import { parseGfm } from "./parse-gfm";
 
 type MdProps<T extends HTMLElement> = HTMLAttributes<T> & ExtraProps & { children?: ReactNode };
 
@@ -160,10 +162,9 @@ export const Markdown = memo(function Markdown({
   if (!capped && !streaming) return null;
   if (live) {
     return (
-      <div className={cn("md-body md-stream-plain space-y-2", quiet && "md-body-quiet")} data-testid="markdown-stream">
-        <span className="whitespace-pre-wrap break-words">{capped || ""}</span>
-        <span className="ml-px inline-block h-[1.05em] w-[0.45em] translate-y-px bg-foreground/55" aria-hidden />
-      </div>
+      <MarkdownBoundary text={capped || ""} fallback={copy.review.previewFailed}>
+        <StreamingMarkdown text={capped || ""} quiet={quiet} />
+      </MarkdownBoundary>
     );
   }
   const settled = highlight && !live;
@@ -204,3 +205,75 @@ export const Markdown = memo(function Markdown({
     </MarkdownBoundary>
   );
 });
+
+const streamControls = {
+  code: { copy: false, download: false },
+  table: { copy: false, download: false, fullscreen: false },
+  mermaid: false,
+  image: { download: false },
+} as const;
+
+const FrozenMarkdown = memo(function FrozenMarkdown({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <Streamdown
+      className="md-body space-y-2"
+      mode="streaming"
+      parseIncompleteMarkdown={false}
+      isAnimating={false}
+      animated={false}
+      lineNumbers={false}
+      codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
+      tableMaxHeight="none"
+      components={mdComponents}
+      controls={streamControls}
+    >
+      {text}
+    </Streamdown>
+  );
+});
+
+const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <Streamdown
+      className="md-body space-y-2"
+      mode="streaming"
+      parseIncompleteMarkdown
+      remend={{}}
+      isAnimating={false}
+      animated={false}
+      lineNumbers={false}
+      codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
+      tableMaxHeight="none"
+      components={mdComponents}
+      controls={streamControls}
+    >
+      {text}
+    </Streamdown>
+  );
+});
+
+function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
+  const parser = useRef<IncrementalMarkdownParser | null>(null);
+  if (!parser.current) parser.current = new IncrementalMarkdownParser(parseGfm);
+  let frozen = "";
+  let tail = text;
+  let generation = 0;
+  try {
+    const blocks = parser.current.update(text);
+    frozen = text.slice(0, blocks.tailStart);
+    tail = text.slice(blocks.tailStart);
+    generation = blocks.generation;
+  } catch {
+    frozen = "";
+    tail = text;
+  }
+  return (
+    <div className={cn("md-body md-stream space-y-2", quiet && "md-body-quiet")} data-testid="markdown-stream">
+      {frozen ? <FrozenMarkdown key={generation} text={frozen} /> : null}
+      {tail ? <TailMarkdown key={`tail-${generation}`} text={tail} /> : null}
+      <span className="md-stream-caret ml-px inline-block h-[1.05em] w-[0.45em] translate-y-px bg-foreground/55" aria-hidden />
+    </div>
+  );
+}

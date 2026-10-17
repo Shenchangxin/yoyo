@@ -533,7 +533,7 @@ test("html file bubbles show each real change; reads and no-ops stay in the proc
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact", "process", "artifact", "process", "item"]);
+  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
   const artifactCalls = agent.parts.filter((p) => p.kind === "artifact").flatMap((p) => p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
   expect(artifactCalls).toEqual(["w1", "e1"]);
   const processCalls = agent.parts.flatMap((p) => p.kind === "process" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
@@ -554,7 +554,7 @@ test("unchanged source dumps stay in the process rail, not preview cards", () =>
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact", "process", "artifact"]);
+  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact"]);
   const dump = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "w1"));
   const noop = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e1"));
   const edit = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e2"));
@@ -689,6 +689,26 @@ test("live notices peel nested events and leave pull-only seqs", () => {
   const pull = parseLiveNotice({ seq: 8, session_id: "s", type: "assistant" });
   expect(pull.seq).toBe(8);
   expect(pull.event).toBeUndefined();
+  const framed = parseLiveNotice({
+    seq: 9,
+    session_id: "s",
+    type: "assistant",
+    event: { type: "assistant", session_id: "s", payload: { text: "wo", delta: true, id: "r1", index: 2, index_from: 1 } },
+    frame: { kind: "chunk", index: 2, index_from: 1, block: "text", delta: "wo", committed_seq: 9 },
+  });
+  expect(framed.frame?.index).toBe(2);
+  expect(framed.frame?.index_from).toBe(1);
+  expect(framed.frame?.block).toBe("text");
+});
+
+test("duplicate stream index does not double-append", () => {
+  let list = replayEvents([
+    { type: "assistant", session_id: "s", payload: { text: "he", delta: true, id: "r1", index: 1 } },
+  ]);
+  list = mergeItem(list, itemFromEvent({ type: "assistant", session_id: "s", payload: { text: "llo", delta: true, id: "r1", index: 2, index_from: 2 } }));
+  list = mergeItem(list, itemFromEvent({ type: "assistant", session_id: "s", payload: { text: "llo", delta: true, id: "r1", index: 2, index_from: 2 } }));
+  expect(list).toHaveLength(1);
+  expect(list[0].text).toBe("hello");
 });
 
 test("structureSig ignores token text", () => {

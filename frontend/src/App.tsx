@@ -18,9 +18,11 @@ import { UpdateButton } from "./features/UpdateButton";
 import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
 import { TurnOutline } from "./features/TurnOutline";
-import { HomeStage } from "./features/HomeStage";
+import { HomeHero, HomeStarters } from "./features/HomeStage";
 import { GameHome } from "./features/game/GameHome";
 import { Composer } from "./features/Composer";
+import { SessionHeader } from "./features/session-chrome/SessionHeader";
+import { useConversationWidth } from "./features/session-chrome/WidthControls";
 import { Inspector } from "./features/Inspector";
 import { FilePeek } from "./features/FilePeek";
 import { ChatDock } from "./features/ChatDock";
@@ -43,7 +45,7 @@ import { recentWorkspaces, joinWorkspace, sessionFsRoot } from "./lib/workspace"
 import { pendingAsk } from "./lib/ask-form";
 import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
-import { liveAutoSkills } from "./lib/transcript-layout";
+import { liveAutoSkills, liveSubagentCrumb } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
 import { GameCopilotHeader } from "./features/game/GameCopilotHeader";
 import { useVideoRoute } from "./features/game/useVideoRoute";
@@ -102,7 +104,6 @@ function WorkstationApp() {
   const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
   const studioCopilotForeign = studioDesk && (!studioId || (!!studioCopilotSession && studioCopilotSession !== ws.activeId));
   const gameCopilotSession = gameSessionId(gameId, ws.videoProjects || []);
-  const gameCopilotForeign = gameBound && gameCopilotSession !== ws.activeId;
   const activeLane = sessionLane(ws.activeId, ws.videoProjects || []);
   const paneMismatch = (createDesk && !!activeLane)
     || (gameBound && !!activeLane && activeLane !== "game")
@@ -137,7 +138,12 @@ function WorkstationApp() {
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || gameBound || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
-  const copilotItems = studioCopilotForeign || gameCopilotForeign || paneMismatch ? [] : ws.items;
+  const convWidth = useConversationWidth(!home && !studioDesk && !talkDesk && !gameBound);
+  const copilotItems = paneMismatch ? [] : ws.items;
+  const boundCopilotId = studioDesk ? studioCopilotSession : gameBound ? gameCopilotSession : "";
+  const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
+  const boundCopilotThread = foreignSession ? ws.threads.find((t) => t.id === boundCopilotId) : undefined;
+  const subagentCrumb = liveSubagentCrumb(copilotItems);
   const three = agent && !popout && ws.inspector && !sheetInspect;
   const dock = harnessing && ws.chatDock && !sheetInspect;
   const inspectOpen = three || dock;
@@ -257,6 +263,7 @@ function WorkstationApp() {
         ws.refreshCtx();
       }}
       ask={pendingAsk(ws.approvals, ws.activeId)}
+      approvals={ws.approvals}
       onResolveAsk={ws.onResolve}
       flush
       hero={home}
@@ -284,6 +291,7 @@ function WorkstationApp() {
       }}
       onCall={() => { void api.setCompanionCall(true); }}
       turnStatus={ws.turnStatus}
+      sessionStats={ws.sessionStats}
     />
   );
 
@@ -329,16 +337,9 @@ function WorkstationApp() {
     />
   );
 
-  const agentPane = home ? (
-    <HomeStage
-      onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-      onContinueLast={() => { void ws.onContinueLast(); }}
-    >
-      {composer}
-    </HomeStage>
-  ) : (
+  const agentPane = (
     <section className="relative flex h-full min-h-0 min-w-0 flex-row">
-      {studioDesk || talkDesk || gameBound ? null : (
+      {home || studioDesk || talkDesk || gameBound ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
@@ -346,7 +347,27 @@ function WorkstationApp() {
         onJump={(turn) => { void ws.jumpToTurn(turn); }}
       />
       )}
-      <div className="@container flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
+        data-testid={home ? "conversation-column" : undefined}
+      >
+        {!home && !studioDesk && !talkDesk && !gameBound ? <div {...convWidth.bind("left")} /> : null}
+        {!home && !studioDesk && !talkDesk && !gameBound ? <div {...convWidth.bind("right")} /> : null}
+        {home || studioDesk || talkDesk || gameBound ? null : (
+          <SessionHeader
+            view={ws.inspector ? "trajectory" : "chat"}
+            crumb={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : undefined}
+            trail={subagentCrumb || undefined}
+            onView={(view) => {
+              if (view === "trajectory") {
+                ws.setInspector(true);
+                ws.setInspTab("trace");
+                return;
+              }
+              ws.setInspector(false);
+            }}
+          />
+        )}
         {ws.health.paused ? (
           <div className="border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="pause-banner">
             {copy.pause.banner}
@@ -357,39 +378,73 @@ function WorkstationApp() {
             {copy.pages.banner}
           </div>
         ) : null}
-        <Transcript
-          items={copilotItems}
-          liveTexts={ws.liveTexts}
-          showThinking={!!ws.savedCfg.showThinking}
-          approvals={ws.approvals}
-          running={ws.threadRunning}
-          workspace={toolRoot}
-          older={ws.older}
-          loadingOlder={ws.loadingOlder}
-          idle={ws.idle}
-          onLoadOlder={ws.loadOlder}
-          onResolve={ws.onResolve}
-          onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-          onRetry={() => { void ws.onRetryLast(); }}
-          onOpenReview={(path) => {
-            ws.setInspector(true);
-            if (path) {
-              setReviewFile(path);
-              ws.setInspTab(/\.(html?|xhtml)$/i.test(path) ? "browser" : "files");
-            } else {
-              ws.setInspTab("files");
-            }
-            void ws.refreshDiff();
-          }}
-          jumpTo={ws.jumpTo}
-          latestNonce={ws.latestNonce}
-          onActiveTurn={ws.setActiveTurn}
-          onRestoreFiles={(from) => { void ws.onRestoreFiles(from); }}
-          onForkFrom={(from) => { void ws.onForkFrom(from); }}
-          onJumpLatest={ws.jumpToLatest}
-        />
-        <div className={cn(THREAD_COL, THREAD_GUTTER)}>
+        {foreignSession ? (
+          <div className="flex items-center gap-3 border-b border-line/50 bg-lift px-4 py-1.5 text-[12px] text-muted" data-testid="foreign-session-banner">
+            <span className="min-w-0 flex-1">{copy.composer.foreignSession}</span>
+            {boundCopilotThread ? (
+              <button
+                type="button"
+                className="shrink-0 text-[11px] font-medium text-foreground underline"
+                data-testid="foreign-session-switch"
+                onClick={() => ws.openThread(boundCopilotThread)}
+              >
+                {copy.composer.switchSession}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 flex-col",
+            home && "home-stage empty-rise overflow-auto",
+            home && !createDesk && "justify-center py-10",
+          )}
+          style={!home && convWidth.width ? { maxWidth: convWidth.width, marginLeft: "auto", marginRight: "auto", width: "100%" } : undefined}
+        >
+        {home ? (
+          <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
+        ) : (
+          <Transcript
+            items={copilotItems}
+            liveTexts={ws.liveTexts}
+            showThinking={!!ws.savedCfg.showThinking}
+            approvals={ws.approvals}
+            running={ws.threadRunning}
+            workspace={toolRoot}
+            older={ws.older}
+            loadingOlder={ws.loadingOlder}
+            idle={ws.idle}
+            onLoadOlder={ws.loadOlder}
+            onResolve={ws.onResolve}
+            onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+            onRetry={() => { void ws.onRetryLast(); }}
+            onOpenReview={(path) => {
+              ws.setInspector(true);
+              if (path) {
+                setReviewFile(path);
+                ws.setInspTab(/\.(html?|xhtml)$/i.test(path) ? "browser" : "files");
+              } else {
+                ws.setInspTab("files");
+              }
+              void ws.refreshDiff();
+            }}
+            jumpTo={ws.jumpTo}
+            latestNonce={ws.latestNonce}
+            onActiveTurn={ws.setActiveTurn}
+            onRestoreFiles={(from) => { void ws.onRestoreFiles(from); }}
+            onForkFrom={(from) => { void ws.onForkFrom(from); }}
+            onJumpLatest={ws.jumpToLatest}
+          />
+        )}
+        <div className={cn("sc-seat", home ? "mx-auto mt-8 w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8" : cn(THREAD_COL, THREAD_GUTTER))}>
           {composer}
+        </div>
+        {home ? (
+          <HomeStarters
+            onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+            onContinueLast={() => { void ws.onContinueLast(); }}
+          />
+        ) : null}
         </div>
       </div>
     </section>
@@ -868,6 +923,7 @@ function WorkstationApp() {
                   sessionId={ws.activeId}
                   running={ws.threadRunning}
                   turnStatus={ws.turnStatus}
+                  sessionStats={ws.sessionStats}
                   draftKey={ws.draftKey}
                   disabled={!!ws.health.paused}
                   disabledReason={ws.health.paused ? copy.composer.paused : ""}
@@ -986,6 +1042,7 @@ function WorkstationApp() {
                         sessionId={ws.activeId}
                         running={ws.threadRunning}
                         turnStatus={ws.turnStatus}
+                        sessionStats={ws.sessionStats}
                         draftKey={ws.draftKey}
                         disabled={!!ws.health.paused}
                         disabledReason={ws.health.paused ? copy.composer.paused : ""}

@@ -405,6 +405,41 @@ function ShellTerminal({ text, live }: { text: string; live?: boolean }) {
   );
 }
 
+function TypedToolBody(props: {
+  kind: "read" | "search" | "web";
+  text: string;
+  path?: string;
+  lang?: string;
+  query?: string;
+  url?: string;
+}) {
+  if (props.kind === "read") {
+    return (
+      <div data-testid="tool-card-read">
+        {props.path ? <div className="mb-1 truncate font-mono text-[11px] text-muted">{props.path}</div> : null}
+        <CodePreview text={props.text} lang={props.lang} />
+      </div>
+    );
+  }
+  if (props.kind === "search") {
+    const hits = props.text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 40);
+    return (
+      <div data-testid="tool-card-search" className="space-y-0.5">
+        {props.query ? <div className="mb-1 font-mono text-[11px] text-muted">{props.query}</div> : null}
+        {hits.map((line, i) => (
+          <div key={i} className="truncate font-mono text-[11px] leading-[1.5] text-foreground/85">{line}</div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div data-testid="tool-card-web" className="space-y-1">
+      {props.url ? <div className="truncate font-mono text-[11px] text-accent">{props.url}</div> : null}
+      <div className="whitespace-pre-wrap break-words text-[12px] leading-[1.55] text-foreground/85">{props.text}</div>
+    </div>
+  );
+}
+
 function guessLang(text: string): string {
   const t = text.trim();
   if (t.startsWith("{") || t.startsWith("[")) return "json";
@@ -606,8 +641,11 @@ export function ToolLine({
   const hasBody = !!(input || output);
   const path = String(toolArgs(call || item).path || toolArgs(result || item).path || "");
   const pathLang = langFromPath(path);
+  const kind = toolKind(name);
   const outLang = name === "read_file" || name === "write_file" ? pathLang : guessLang(output);
   const inLang = name === "write_file" || name === "str_replace" || name === "apply_patch" ? (name === "apply_patch" ? "diff" : pathLang || "json") : "json";
+  const query = String(toolArgs(call || item).pattern || toolArgs(call || item).query || toolArgs(call || item).q || "");
+  const url = String(toolArgs(call || item).url || toolArgs(call || item).uri || "");
   return (
     <StepRow
       testId="tool-row"
@@ -640,10 +678,20 @@ export function ToolLine({
       onToggle={() => setOpen((v) => !v)}
     >
       <div className="space-y-1">
-        {input ? <CodeSurface text={input} cap={800} dim={!!output} lang={inLang} /> : null}
+        {input && kind !== "read" && kind !== "search" && kind !== "web" ? (
+          <CodeSurface text={input} cap={800} dim={!!output} lang={inLang} />
+        ) : null}
         {output ? (
-          name === "shell" ? (
+          kind === "run" || name === "shell" ? (
             <ShellTerminal text={output} live={streamingOut || !!pending} />
+          ) : kind === "read" ? (
+            <TypedToolBody kind="read" path={path} text={output} lang={outLang} />
+          ) : kind === "search" ? (
+            <TypedToolBody kind="search" query={query} path={path} text={output} />
+          ) : kind === "web" ? (
+            <TypedToolBody kind="web" url={url} text={output} />
+          ) : kind === "edit" && (name === "str_replace" || name === "apply_patch" || guessLang(output) === "diff") ? (
+            <CodeSurface text={output} lang="diff" />
           ) : (
             <CodeSurface text={output} lang={outLang} />
           )
