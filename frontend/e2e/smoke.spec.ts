@@ -735,23 +735,29 @@ test("conversation and composer share a fluid stage column", async ({ page }) =>
 
 test("insert mention keeps the popup open and pins a file token", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
-    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    sessions: [
+      { id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" },
+      { id: "s2", title: "Earlier chat", workspace: "C:/tmp/other" },
+    ],
   });
   await page.goto("/");
   const box = page.getByRole("textbox", { name: "Message" });
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
   await box.pressSequentially("@");
-  const list = page.getByRole("listbox", { name: "Mentions" });
+  const list = page.getByRole("listbox", { name: "Trigger suggestions" });
   await expect(list).toBeVisible();
-  const core = page.locator(".composer-core");
+  await expect(list.getByText("Files & folders")).toBeVisible();
+  await expect(list.getByRole("option", { name: /main\.go/ })).toBeVisible();
+  await expect(list.getByRole("option", { name: /^src\/$/ })).toBeVisible();
+  await expect(list.getByText("Sessions")).toBeVisible();
+  await expect(list.getByRole("option", { name: /Earlier chat/ })).toBeVisible();
+  const core = page.locator("[data-composer-card]");
   const listBox = await list.boundingBox();
   const coreBox = await core.boundingBox();
   expect(listBox && coreBox).toBeTruthy();
   expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(coreBox!.y + 8);
-  await page.getByRole("option", { name: /@file:/ }).first().click();
-  await expect(page.getByRole("option", { name: /@file:src\/main.go/ })).toBeVisible();
-  await page.getByRole("option", { name: /@file:src\/main.go/ }).click();
+  await page.getByRole("option", { name: /main\.go/ }).click();
   await expect(page.getByTestId("mention-chip")).toHaveAttribute("aria-label", "@file:src/main.go");
   await expect(page.getByTestId("mention-chip")).toContainText("main.go");
   await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
@@ -779,12 +785,16 @@ test("installed skills appear in @skill and keyboard highlight stays in view", a
   const box = page.getByRole("textbox", { name: "Message" });
   await expect(box).toBeEnabled({ timeout: 15_000 });
   await box.click();
-  await box.pressSequentially("@");
-  await page.getByRole("option", { name: /@skill:/ }).click();
-  await expect(page.getByRole("option", { name: /@skill:arxiv-watcher/ })).toBeVisible();
+  await box.pressSequentially("/");
+  const slashList = page.getByRole("listbox", { name: "Trigger suggestions" });
+  await expect(slashList.getByText("Skills", { exact: true })).toBeVisible();
+  await expect(slashList.getByRole("option", { name: /arxiv-watcher|Arxiv Watcher/ })).toBeVisible();
+  await box.fill("");
+  await box.pressSequentially("@skill:");
+  await expect(page.getByRole("option", { name: /arxiv-watcher|Arxiv Watcher/ })).toBeVisible();
   await box.pressSequentially("pack-17");
-  const list = page.getByRole("listbox", { name: "Mentions" });
-  await expect(list.getByRole("option", { name: /@skill:pack-17/ })).toBeVisible();
+  const list = page.getByRole("listbox", { name: "Trigger suggestions" });
+  await expect(list.getByRole("option", { name: /pack-17/ })).toBeVisible();
   await box.fill("");
   await box.pressSequentially("@skill:");
   for (let i = 0; i < 16; i++) await box.press("ArrowDown");

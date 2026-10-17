@@ -15,9 +15,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
-	"github.com/Shenchangxin/yoyo/internal/game"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/game"
 	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -745,6 +745,12 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 		var refs []runtime.Mention
 		inject, refs = runtime.ExpandMentionsPacks(toolRoot, message, note, skillBodies, skillDirs, 3200)
+		if extra := runtime.FormatSessionMentions(refs, sessionID, tools, 1600); extra != "" {
+			if inject != "" {
+				inject += "\n"
+			}
+			inject += extra
+		}
 		mentioned := runtime.MentionSkillNames(refs)
 		tools.MarkSkillsLoaded(mentioned...)
 		remain := 3200 - len(inject)

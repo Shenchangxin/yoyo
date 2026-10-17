@@ -5,13 +5,14 @@
  * Internalized DraftEditor surface (scrollport + placeholder + chips).
  * Lexical is replaced with TipTap, which Yoyo already vendors.
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import { MentionChip } from "./mention-chip";
-import { pinFromToken, type MentionPin } from "../../lib/mentions";
+import { activeAtTail, pinFromToken, type MentionPin } from "../../lib/mentions";
 import { cn } from "../../lib/utils";
 
 export type DraftSnapshot = { text: string; chips: MentionPin[]; caret: number; before: string };
@@ -23,6 +24,8 @@ export type DraftEditorHandle = {
   focus: () => void;
   snapshot: () => DraftSnapshot;
   replaceMention: (pin: MentionPin) => void;
+  replaceTrigger: (text: string) => void;
+  replaceSlash: () => void;
 };
 
 function snapshotOf(editor: Editor | null): DraftSnapshot {
@@ -33,7 +36,10 @@ function snapshotOf(editor: Editor | null): DraftSnapshot {
     if (index > 0) parts.push("\n");
     block.forEach((node) => {
       if (node.type.name === "mentionChip") {
-        chips.push(pinFromToken(String(node.attrs.token || "")));
+        const token = String(node.attrs.token || "");
+        const pin = pinFromToken(token);
+        const label = String(node.attrs.label || pin.label);
+        chips.push({ ...pin, label });
         return;
       }
       if (node.isText) parts.push(node.text || "");
@@ -66,7 +72,8 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   placeholder: string;
   ariaLabel: string;
   onSnapshot: (snap: DraftSnapshot) => void;
-  onKeyDown?: (e: ReactKeyboardEvent, snap: DraftSnapshot, before: string) => boolean;
+  onCaret?: (snap: DraftSnapshot) => void;
+  onKeyDown?: (e: KeyboardEvent, snap: DraftSnapshot, before: string) => boolean;
   onPasteFiles?: (files: File[]) => void;
   testId?: string;
   workspaceTrigger?: boolean;
@@ -74,7 +81,16 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
 }>(function DraftEditor(props, ref) {
   const placeholderRef = useRef(props.placeholder);
   placeholderRef.current = props.placeholder;
+  const onSnapshotRef = useRef(props.onSnapshot);
+  onSnapshotRef.current = props.onSnapshot;
+  const onCaretRef = useRef(props.onCaret);
+  onCaretRef.current = props.onCaret;
+  const onPasteRef = useRef(props.onPasteFiles);
+  onPasteRef.current = props.onPasteFiles;
   const skipUpdate = useRef(false);
+  const editorHolder = useRef<Editor | null>(null);
+  const onKeyDownRef = useRef(props.onKeyDown);
+  onKeyDownRef.current = props.onKeyDown;
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -98,18 +114,35 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       attributes: editorAttrs(props),
       handlePaste: (_view, event) => {
         const files = filesFromClipboard(event);
-        if (files.length && props.onPasteFiles) {
-          props.onPasteFiles(files);
+        if (files.length && onPasteRef.current) {
+          onPasteRef.current(files);
           return true;
         }
         return false;
       },
+      handleKeyDown: (_view, event) => {
+        const ed = editorHolder.current;
+        if (!ed) return false;
+        if (onKeyDownRef.current?.(event, snapshotOf(ed), textBeforeCaret(ed))) return true;
+        return handleChipSelection(ed, event);
+      },
+    },
+    onCreate: ({ editor: ed }) => {
+      editorHolder.current = ed;
+    },
+    onDestroy: () => {
+      editorHolder.current = null;
     },
     onUpdate: ({ editor: ed }) => {
       if (skipUpdate.current) return;
-      props.onSnapshot(snapshotOf(ed));
+      onSnapshotRef.current(snapshotOf(ed));
+    },
+    onSelectionUpdate: ({ editor: ed }) => {
+      if (skipUpdate.current) return;
+      onCaretRef.current?.(snapshotOf(ed));
     },
   });
+  editorHolder.current = editor;
 
   useEffect(() => {
     if (!editor) return;
@@ -149,29 +182,40 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     snapshot: () => snapshotOf(editor),
     replaceMention: (pin) => {
       if (!editor) return;
-      const before = textBeforeCaret(editor);
-      const m = before.match(/(?:^|\s)(@(?:file:|folder:|skill:)?[^\s]*)$/);
-      if (!m) {
+      const token = activeAtTail(textBeforeCaret(editor));
+      if (!token) {
         editor.chain().focus().insertMentionChip(pin).run();
         return;
       }
-      const token = m[1];
       const from = editor.state.selection.from - token.length;
       const to = editor.state.selection.from;
       editor.chain().focus().deleteRange({ from, to }).insertMentionChip(pin).run();
     },
+    replaceTrigger: (text) => {
+      if (!editor) return;
+      const token = activeAtTail(textBeforeCaret(editor));
+      if (!token) {
+        editor.chain().focus().insertContent(text).run();
+        return;
+      }
+      const from = editor.state.selection.from - token.length;
+      const to = editor.state.selection.from;
+      editor.chain().focus().deleteRange({ from, to }).insertContent(text).run();
+    },
+    replaceSlash: () => {
+      if (!editor) return;
+      const before = textBeforeCaret(editor);
+      const m = /(?:^|\s)(\/[^\s]*)$/.exec(before);
+      if (!m?.[1]) return;
+      const token = m[1];
+      const from = editor.state.selection.from - token.length;
+      const to = editor.state.selection.from;
+      editor.chain().focus().deleteRange({ from, to }).run();
+    },
   }), [editor]);
 
   return (
-    <div
-      className={cn("sc-scroll")}
-      data-input-scroll
-      onKeyDown={(e) => {
-        if (!props.onKeyDown || !editor) return;
-        const handled = props.onKeyDown(e, snapshotOf(editor), textBeforeCaret(editor));
-        if (handled) e.preventDefault();
-      }}
-    >
+    <div className={cn("sc-scroll")} data-input-scroll>
       <div className="sc-grow">
         <EditorContent editor={editor} />
       </div>
@@ -195,6 +239,43 @@ function editorAttrs(props: {
     attrs["aria-expanded"] = props.pickerOpen ? "true" : "false";
   }
   return attrs;
+}
+
+const PASSIVE_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "Unidentified", "Process"]);
+
+function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
+  if (event.key !== "Backspace" && event.key !== "Delete") {
+    if (!PASSIVE_KEYS.has(event.key) && event.key.length) clearChipSelected(editor);
+    return false;
+  }
+  const sel = editor.state.selection;
+  if (sel instanceof NodeSelection && sel.node.type.name === "mentionChip") return false;
+  const backward = event.key === "Backspace";
+  const $from = sel.$from;
+  if (!sel.empty) return false;
+  const node = backward ? $from.nodeBefore : $from.nodeAfter;
+  if (!node || node.type.name !== "mentionChip") {
+    clearChipSelected(editor);
+    return false;
+  }
+  const pos = backward ? $from.pos - node.nodeSize : $from.pos;
+  const dom = editor.view.nodeDOM(pos);
+  const el = dom instanceof HTMLElement ? (dom.closest("[data-mention-chip]") || (dom.hasAttribute("data-mention-chip") ? dom : null)) : null;
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.hasAttribute("data-selected")) {
+    clearChipSelected(editor);
+    editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
+    return true;
+  }
+  clearChipSelected(editor);
+  el.setAttribute("data-selected", "");
+  editor.view.dom.setAttribute("data-composer-chip-selected", "");
+  return true;
+}
+
+function clearChipSelected(editor: Editor) {
+  editor.view.dom.removeAttribute("data-composer-chip-selected");
+  editor.view.dom.querySelectorAll("[data-mention-chip][data-selected]").forEach((n) => n.removeAttribute("data-selected"));
 }
 
 function filesFromClipboard(e: ClipboardEvent): File[] {

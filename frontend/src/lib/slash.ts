@@ -30,11 +30,10 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
   ];
 }
 
+/** `/token` at the caret: line start or after whitespace, same as harness. */
 export function slashQuery(value: string): string | null {
-  const last = (value.split("\n").pop() || "");
-  if (!last.startsWith("/")) return null;
-  if (/\s/.test(last.slice(1))) return null;
-  return last.toLowerCase();
+  const m = /(?:^|\s)(\/[^\s]*)$/.exec(value);
+  return m?.[1] ? m[1].toLowerCase() : null;
 }
 
 export function filterSlash(prefix: string, items: SlashCommand[]): SlashCommand[] {

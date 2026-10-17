@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, RotateCcw, ShieldAlert } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, Boxes, Check, CircleDashed, Copy, FileText, Folder, GitFork, MessageSquare, RotateCcw, ShieldAlert } from "lucide-react";
 import { IconSwap } from "../components/ui/icon-swap";
 import { Tooltip } from "../components/ui/tooltip";
 import { toast } from "sonner";
@@ -1008,6 +1008,7 @@ function MentionGlyph({ kind }: { kind: MentionKind }) {
   if (kind === "folder") return <Folder className={cls} />;
   if (kind === "skill") return <BookOpen className={cls} />;
   if (kind === "harness") return <Boxes className={cls} />;
+  if (kind === "session") return <MessageSquare className={cls} />;
   return <FileText className={cls} />;
 }
 

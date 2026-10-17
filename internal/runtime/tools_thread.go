@@ -31,9 +31,17 @@ func (t *WorkspaceTools) readThread(sessionID, query, message string) ToolResult
 		return ToolResult{Err: fmt.Errorf("read_thread cannot target the current session")}
 	}
 	msgs := t.Sessions(sessionID)
-	if len(msgs) == 0 {
-		return ToolResult{Content: "no messages in that session"}
+	body, hits := formatThreadSnippets(msgs, query, 8, 400, 2000)
+	if hits == 0 {
+		if len(msgs) == 0 {
+			return ToolResult{Content: "no messages in that session"}
+		}
+		return ToolResult{Content: "no matching snippets"}
 	}
+	return ToolResult{Content: body}
+}
+
+func formatThreadSnippets(msgs []Message, query string, maxHits, perMsg, total int) (string, int) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	var b strings.Builder
 	hits := 0
@@ -47,16 +55,78 @@ func (t *WorkspaceTools) readThread(sessionID, query, message string) ToolResult
 		if q != "" && !strings.Contains(strings.ToLower(m.Content), q) {
 			continue
 		}
-		fmt.Fprintf(&b, "## %s\n%s\n\n", m.Role, capRunes(m.Content, 400))
+		fmt.Fprintf(&b, "## %s\n%s\n\n", m.Role, capRunes(m.Content, perMsg))
 		hits++
-		if hits >= 8 {
+		if hits >= maxHits {
 			break
 		}
 	}
-	if hits == 0 {
-		return ToolResult{Content: "no matching snippets"}
+	return capRunes(b.String(), total), hits
+}
+
+// FormatSessionMentions injects bounded excerpts for @session pins using the
+// same snippet policy as read_thread. It does not dump a full trajectory.
+func FormatSessionMentions(refs []Mention, currentID string, tools *WorkspaceTools, budget int) string {
+	if budget <= 0 {
+		budget = 1600
 	}
-	return ToolResult{Content: capRunes(b.String(), 2000)}
+	var b strings.Builder
+	used := 0
+	for _, ref := range refs {
+		if ref.Kind != "session" || ref.Ref == "" {
+			continue
+		}
+		remain := budget - used
+		if remain < 64 {
+			break
+		}
+		chunk := sessionMentionChunk(ref.Ref, currentID, tools, remain)
+		if chunk == "" {
+			continue
+		}
+		if used+len(chunk) > budget && used > 0 {
+			b.WriteString("…[session mentions truncated]\n")
+			break
+		}
+		b.WriteString(chunk)
+		used += len(chunk)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func sessionMentionChunk(id, currentID string, tools *WorkspaceTools, remain int) string {
+	id = strings.TrimSpace(id)
+	title := id
+	if tools != nil && tools.ListThreads != nil {
+		for _, t := range tools.ListThreads() {
+			if t.ID == id {
+				if s := strings.TrimSpace(t.Title); s != "" {
+					title = s
+				}
+				break
+			}
+		}
+	}
+	if id == currentID {
+		return fmt.Sprintf("## @session:%s\nThis is the current chat (%s).\n", id, title)
+	}
+	var msgs []Message
+	if tools != nil && tools.Sessions != nil {
+		msgs = tools.Sessions(id)
+	}
+	body, hits := formatThreadSnippets(msgs, "", 8, 400, remain-80)
+	var b strings.Builder
+	fmt.Fprintf(&b, "## @session:%s\n%s\n", id, title)
+	if hits == 0 {
+		b.WriteString("No messages loaded. Call read_thread with this session_id for snippets.\n")
+		return b.String()
+	}
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") {
+		b.WriteByte('\n')
+	}
+	b.WriteString("Use read_thread with this session_id for more.\n")
+	return b.String()
 }
 
 func (t *WorkspaceTools) listThreads(query string) ToolResult {

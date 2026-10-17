@@ -14,15 +14,18 @@ import (
 // Mentions are user-designated pins. They are working memory, not harness
 // pins: expand into a bounded inject block instead of dumping the repo.
 type Mention struct {
-	Kind string `json:"kind"` // file | folder | harness | skill
+	Kind string `json:"kind"` // file | folder | harness | skill | session
 	Ref  string `json:"ref"`
 }
 
 var (
-	reFile    = regexp.MustCompile(`@file:(\S+)`)
-	reFolder  = regexp.MustCompile(`@folder:(\S+)`)
-	reSkill   = regexp.MustCompile(`@skill:(\S+)`)
-	reHarness = regexp.MustCompile(`@harness\b`)
+	reFile       = regexp.MustCompile(`@file:(\S+)`)
+	reFolder     = regexp.MustCompile(`@folder:(\S+)`)
+	reSkill      = regexp.MustCompile(`@skill:(\S+)`)
+	reSession    = regexp.MustCompile(`@session:(\S+)`)
+	reHarness    = regexp.MustCompile(`@harness\b`)
+	reBareQuoted = regexp.MustCompile(`(?:^|\s)@"([^"]+)"`)
+	reBareAt     = regexp.MustCompile(`(?:^|\s)@([^\s"]+)`)
 )
 
 func ParseMentions(text string) []Mention {
@@ -45,10 +48,139 @@ func ParseMentions(text string) []Mention {
 	for _, m := range reSkill.FindAllStringSubmatch(text, 8) {
 		add(Mention{Kind: "skill", Ref: strings.Trim(m[1], `'"`)})
 	}
+	for _, m := range reSession.FindAllStringSubmatch(text, 8) {
+		add(Mention{Kind: "session", Ref: strings.Trim(m[1], `'"`)})
+	}
 	if reHarness.MatchString(text) {
 		add(Mention{Kind: "harness", Ref: "active"})
 	}
 	return out
+}
+
+func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []Mention {
+	if workspace == "" || text == "" {
+		return nil
+	}
+	var extra []Mention
+	for _, raw := range bareAtTokens(text) {
+		if raw == "" || raw == "harness" {
+			continue
+		}
+		if i := strings.IndexByte(raw, ':'); i >= 0 {
+			switch raw[:i] {
+			case "file", "folder", "skill", "session":
+				continue
+			}
+		}
+		rel, kind, ok := resolveWorkspaceRef(workspace, raw)
+		if !ok {
+			continue
+		}
+		key := kind + ":" + rel
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		extra = append(extra, Mention{Kind: kind, Ref: rel})
+	}
+	return extra
+}
+
+func bareAtTokens(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(raw string) {
+		raw = strings.TrimSpace(strings.Trim(raw, `"'`))
+		raw = strings.TrimSuffix(filepath.ToSlash(raw), "/")
+		if raw == "" || seen[raw] {
+			return
+		}
+		seen[raw] = true
+		out = append(out, raw)
+	}
+	for _, m := range reBareQuoted.FindAllStringSubmatch(text, 8) {
+		add(m[1])
+	}
+	for _, m := range reBareAt.FindAllStringSubmatch(text, 8) {
+		add(m[1])
+	}
+	return out
+}
+
+// resolveWorkspaceRef maps a typed @path onto a workspace relative path.
+// Exact jail+Stat wins. A slash-free name expands only when exactly one
+// file or directory in the ignore-aware tree has that basename — never when two match.
+func resolveWorkspaceRef(root, raw string) (rel, kind string, ok bool) {
+	raw = strings.TrimSpace(filepath.ToSlash(raw))
+	raw = strings.TrimSuffix(raw, "/")
+	if raw == "" {
+		return "", "", false
+	}
+	if p, err := jailPath(root, raw); err == nil {
+		if st, err := os.Stat(p); err == nil {
+			kind = "file"
+			if st.IsDir() {
+				kind = "folder"
+			}
+			return raw, kind, true
+		}
+	}
+	if strings.Contains(raw, "/") {
+		return "", "", false
+	}
+	hit, ok := uniqueBaseHit(root, raw)
+	if !ok {
+		return "", "", false
+	}
+	return hit.Path, hit.Kind, true
+}
+
+func uniqueBaseHit(root, base string) (FileHit, bool) {
+	want := strings.ToLower(base)
+	root = filepath.Clean(root)
+	ign := loadIgnore(root)
+	n := 0
+	var hit FileHit
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		if path == root {
+			return nil
+		}
+		if info.IsDir() && ign.skipDir(info.Name()) {
+			return filepath.SkipDir
+		}
+		if strings.ToLower(info.Name()) != want {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if !info.IsDir() && ign.skipFile(relSlash, info.Name()) {
+			return nil
+		}
+		n++
+		kind := "file"
+		if info.IsDir() {
+			kind = "dir"
+		}
+		hit = FileHit{Path: relSlash, Kind: kind}
+		if n > 1 {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if n != 1 {
+		return FileHit{}, false
+	}
+	kind := "file"
+	if hit.Kind == "dir" {
+		kind = "folder"
+	}
+	return FileHit{Path: hit.Path, Kind: kind}, true
 }
 
 func ExpandMentions(workspace, text, harnessNote string, budget int) (inject string, refs []Mention) {
@@ -67,6 +199,11 @@ const (
 
 func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]string, skillDirs map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
+	seen := map[string]bool{}
+	for _, m := range refs {
+		seen[m.Kind+":"+m.Ref] = true
+	}
+	refs = append(refs, parseBareWorkspaceMentions(workspace, text, seen)...)
 	if budget <= 0 {
 		budget = 2400
 	}
@@ -194,6 +331,8 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 			note = "refs/active"
 		}
 		return "## @harness\n" + note + "\n"
+	case "session":
+		return ""
 	case "folder":
 		p, err := jailPath(workspace, m.Ref)
 		if err != nil {
