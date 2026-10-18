@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Film, ImagePlus } from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { EmptyState } from "../../components/ui/empty-state";
 import { Input, Textarea } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { ProgressHairline } from "../../components/ui/progress-hairline";
@@ -521,17 +520,13 @@ export function EmptyDesk(props: {
 }) {
   const c = props.copy.video;
   return (
-    <EmptyState
-      className="flex-1"
-      icon={<Film className="size-5" />}
-      title={c.empty}
-      body={c.emptyChatFirst}
-      action={
-        <Button type="button" variant="ghost" onClick={props.onNameSeries}>
-          {c.nameFirst}
-        </Button>
-      }
-    />
+    <div className="drama-empty-desk" data-testid="drama-empty-desk">
+      <p className="drama-empty-kicker">{c.empty}</p>
+      <p className="drama-empty-body">{c.emptyChatFirst}</p>
+      <button type="button" className="drama-empty-link" onClick={props.onNameSeries}>
+        {c.nameFirst}
+      </button>
+    </div>
   );
 }
 

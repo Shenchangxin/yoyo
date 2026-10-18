@@ -248,6 +248,28 @@
   position: relative;
 }
 
+.sc-placeholder {
+  position: absolute;
+  inset: 0 auto auto 0;
+  right: 0;
+  z-index: 1;
+  padding: 4px 8px 0 14px;
+  color: color-mix(in srgb, var(--foreground) 46%, transparent);
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  line-height: inherit;
+}
+
+.sc-root[data-hero="true"] .sc-placeholder {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding-top: 0;
+}
+
 .sc-input {
   box-sizing: border-box;
   min-height: 36px;
@@ -266,24 +288,21 @@
   margin: 0;
 }
 
+.sc-input.ProseMirror,
 .sc-input .ProseMirror {
   outline: none;
   min-height: 28px;
 }
 
-.sc-input .ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  color: color-mix(in srgb, var(--muted) 70%, transparent);
-  pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+.sc-input p.is-editor-empty:first-child::before,
+.sc-input p.is-empty:first-child::before,
+.sc-input .ProseMirror p.is-editor-empty:first-child::before,
+.sc-input .ProseMirror p.is-empty:first-child::before {
+  content: none;
 }
 
 .sc-root[data-hero="true"] .sc-input,
+.sc-root[data-hero="true"] .sc-input.ProseMirror,
 .sc-root[data-hero="true"] .sc-input .ProseMirror {
   min-height: 52px;
 }
@@ -311,6 +330,13 @@
   align-items: center;
   min-width: 0;
   gap: 12px;
+}
+
+.sc-toolbar-leading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
 }
 
 .sc-trailing {

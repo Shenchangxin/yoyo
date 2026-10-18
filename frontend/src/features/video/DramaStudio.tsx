@@ -538,9 +538,11 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             );
           })}
         </div>
-        <Button size="sm" data-testid="drama-phase-cta" disabled={!!busy || (!showDesk && !showMap)} onClick={() => showMap ? void confirmMap() : void runPhase()}>
-          {busy ? copy.video.stageBusy : showMap ? copy.video.mapConfirm : ctaLabel}
-        </Button>
+        {showDesk || showMap ? (
+          <Button size="sm" data-testid="drama-phase-cta" disabled={!!busy} onClick={() => showMap ? void confirmMap() : void runPhase()}>
+            {busy ? copy.video.stageBusy : showMap ? copy.video.mapConfirm : ctaLabel}
+          </Button>
+        ) : null}
         <button
           type="button"
           className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
