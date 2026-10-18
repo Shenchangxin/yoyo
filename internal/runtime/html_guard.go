@@ -57,9 +57,8 @@ func htmlAppendRefusal(rel, want string) string {
 		"Put the new code before the closing </script> with str_replace, or rewrite the whole file with write_file mode=overwrite."
 }
 
-// sealedGameWorldWrite refuses host-owned playable files. The agent specifies
-// intent through game_* tools; compile writes playable/ and must not be
-// replaced by a hand-rolled 2D canvas page.
+// sealedGameWorldWrite refuses leftover game-world playable files so agents
+// cannot rewrite sealed HTML or runtime.js.
 func sealedGameWorldWrite(rel string) error {
 	slash := filepath.ToSlash(rel)
 	parts := strings.Split(slash, "/")
@@ -75,13 +74,13 @@ func sealedGameWorldWrite(rel string) error {
 	}
 	rest := parts[idx+2:]
 	if len(rest) == 1 && strings.EqualFold(rest[0], "index.html") {
-		return fmt.Errorf("refusing write %s: game-world HTML is host-owned. Call game_compile (or game_create with an intent). Do not write a 2D canvas game", rel)
+		return fmt.Errorf("refusing write %s: game-world HTML is not a supported product", rel)
 	}
 	if len(rest) >= 2 && strings.EqualFold(rest[0], "playable") {
 		leaf := strings.ToLower(rest[len(rest)-1])
 		switch leaf {
 		case "runtime.js", "index.html", "game.json":
-			return fmt.Errorf("refusing write %s: sealed playable. Call game_compile; do not rewrite runtime.js", rel)
+			return fmt.Errorf("refusing write %s: sealed playable is not writable", rel)
 		}
 	}
 	return nil

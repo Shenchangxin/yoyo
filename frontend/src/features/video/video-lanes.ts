@@ -1,6 +1,6 @@
 import type { VideoProject } from "../../lib/protocol";
 
-export type VideoLane = "create" | "game" | "drama" | "canvas";
+export type VideoLane = "create" | "drama" | "canvas";
 
 const KEY = "yoyo-video-lane-threads";
 
@@ -36,7 +36,6 @@ export function sessionLane(
   const hit = projects.find((p) => (p.sessionId || "").trim() === id);
   if (!hit) return "";
   if (hit.kind === "studio") return "studio";
-  if (hit.kind === "game") return "game";
   if (hit.kind === "drama") return "drama";
   if (hit.kind === "canvas") return "canvas";
   return "";

@@ -98,6 +98,10 @@ func TestInferVerifyRoot(t *testing.T) {
 	if !strings.HasSuffix(strings.ReplaceAll(got, "\\", "/"), "game-adaptations/xiyou") {
 		t.Fatalf("%q", got)
 	}
+	sealed := inferVerifyRoot("game-worlds/world-769afeeb/playable/index.html")
+	if sealed != "game-worlds/world-769afeeb" {
+		t.Fatalf("sealed playable root %q", sealed)
+	}
 }
 
 func TestParseVerifyPlanDropsCSSRoot(t *testing.T) {

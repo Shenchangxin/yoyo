@@ -58,35 +58,6 @@ type StudioSelection = {
   setStudioMeta: (meta: Partial<Pick<StudioSelection, "title" | "pane" | "gate" | "status" | "nextKey">>) => void;
 };
 
-type GameFocus = "intent" | "build" | "play" | "check" | "";
-
-type GameSelection = {
-  gameId: string;
-  title: string;
-  focus: GameFocus;
-  rev: number;
-  setGameId: (id: string, title?: string) => void;
-  setGameFocus: (focus: GameFocus) => void;
-  touch: (id: string) => void;
-};
-
-export const useGameSelection = create<GameSelection>((set) => ({
-  gameId: read("yoyo-game-id"),
-  title: "",
-  focus: "",
-  rev: 0,
-  setGameId: (gameId, title) => {
-    persist("yoyo-game-id", gameId);
-    set((s) => ({
-      gameId,
-      title: gameId ? (title !== undefined ? title : (gameId === s.gameId ? s.title : "")) : "",
-      focus: gameId && gameId === s.gameId ? s.focus : "",
-    }));
-  },
-  setGameFocus: (focus) => set({ focus }),
-  touch: (id) => set((s) => (id && id === s.gameId ? { rev: s.rev + 1 } : s)),
-}));
-
 export const useStudioSelection = create<StudioSelection>((set) => ({
   studioId: read("yoyo-studio-id"),
   title: "",

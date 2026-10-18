@@ -81,12 +81,12 @@ func TestCheckWatchIdleStopsWithoutProductEdit(t *testing.T) {
 	var w checkWatch
 	fail := []Message{{Content: verifyBanner}}
 	w.note(nil, fail)
-	read := []ToolCall{{Name: "read_file", Arguments: `{"path":"qa/verify.mjs"}`}}
+	wait := []ToolCall{{Name: "wait", Arguments: `{"ms":1000}`}}
 	for w.idle < checkFailIdleStop {
 		if w.stuck() {
 			t.Fatalf("stuck before idle cap idle=%d", w.idle)
 		}
-		w.note(read, nil)
+		w.note(wait, nil)
 	}
 	if !w.stuck() {
 		t.Fatalf("idle %d must stop", w.idle)
@@ -166,6 +166,25 @@ func TestIsHarnessAndProductPath(t *testing.T) {
 	}
 	if !isProductPath("build/app/game.js") || !isProductPath("build/app/index.html") {
 		t.Fatal("game surface is product")
+	}
+}
+
+func TestCheckWatchIgnoresReadFileOfVerificationJSON(t *testing.T) {
+	var w checkWatch
+	fail := []Message{{Content: "{\n  \"outcome\": \"FAIL\",\n  \"render\": \"PASS\"\n}"}}
+	w.note([]ToolCall{{Name: "browser_verify", Arguments: `{"id":"world-x"}`}}, fail)
+	dump := []ToolCall{{Name: "read_file", Arguments: `{"path":"qa/verification.json"}`}}
+	for i := 0; i < checkFailIdleStop+2; i++ {
+		w.note(dump, fail)
+	}
+	if w.hits != 1 {
+		t.Fatalf("reading verification.json must not re-count the check, hits=%d", w.hits)
+	}
+	if w.idle != 1 {
+		t.Fatalf("inspect-only rounds must not tick idle, idle=%d", w.idle)
+	}
+	if w.stuck() {
+		t.Fatal("inspect-only rounds must not trip the same-check stop")
 	}
 }
 

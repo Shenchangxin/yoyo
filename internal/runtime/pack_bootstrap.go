@@ -180,8 +180,6 @@ func domainRoutingLine(id string) string {
 	switch id {
 	case "novel-to-game":
 		return "- novel-to-game: load_skill novel-to-game when adapting a novel into a playable game. Stage siblings: novel-game-analyze, game-concept, game-world-design, game-art-direction, game-build, game-qa. @skill is an override, not a prerequisite."
-	case "yoyo-game":
-		return "- yoyo-game: load_skill yoyo-game when generating a spatial playable game world from an intent (not a novel). Stage siblings: game-world-analyze, game-world-rules, game-world-place, game-world-build, game-world-qa."
 	default:
 		return "- " + id + ": load_skill " + id + " when the task matches this pack's catalog descriptions. @skill is an override, not a prerequisite."
 	}

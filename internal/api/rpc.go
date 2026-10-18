@@ -184,7 +184,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 	if method == "" {
 		return map[string]any{"ok": true}, nil
 	}
-	if strings.HasPrefix(method, "video.") || strings.HasPrefix(method, "drama.") || strings.HasPrefix(method, "media.") || strings.HasPrefix(method, "canvas.") || strings.HasPrefix(method, "connections.") || strings.HasPrefix(method, "game.") {
+	if strings.HasPrefix(method, "video.") || strings.HasPrefix(method, "drama.") || strings.HasPrefix(method, "media.") || strings.HasPrefix(method, "canvas.") || strings.HasPrefix(method, "connections.") {
 		return a.VideoCall(method, asMap(params))
 	}
 	switch method {

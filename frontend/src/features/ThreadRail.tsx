@@ -11,7 +11,6 @@ import {
   FileText,
   Film,
   Folder,
-  Gamepad2,
   GitBranch,
   LayoutGrid,
   MessageSquare,
@@ -38,7 +37,6 @@ import {
 import { cn } from "../lib/utils";
 import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import { useCopy } from "../lib/i18n";
-import { useGameSelection } from "./video/workshop-store";
 import { writeClipboard } from "../lib/clipboard";
 import { isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
@@ -159,7 +157,6 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   const canvases = projects.filter((p) => p.kind === "canvas" && match(p.title || "", p.id));
   const dramas = projects.filter((p) => p.kind === "drama" && match(p.title || "", p.id));
   const studios = projects.filter((p) => p.kind === "studio" && match(p.title || "", p.id));
-  const games = projects.filter((p) => p.kind === "game" && match(p.title || "", p.id));
   const chats = threads.filter((t) => !bound.has(t.id) && match(t.title || "", t.id));
   const out: RailEntry[] = [];
   const push = (path: string, label: string, items: RailEntry[]) => {
@@ -170,7 +167,6 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   push("studio", copy.video.shellStudio, studios.map((project) => ({ kind: "project", project })));
   push("canvas", copy.video.canvas, canvases.map((project) => ({ kind: "project", project })));
   push("drama", copy.video.drama, dramas.map((project) => ({ kind: "project", project })));
-  push("game", copy.video.shellGame, games.map((project) => ({ kind: "project", project })));
   push("chats", copy.rail.chats, chats.map((thread) => ({ kind: "thread", thread })));
   return out;
 }
@@ -268,8 +264,7 @@ export function ThreadRail(props: {
       const active = (p.sessionId && p.sessionId === props.activeId)
         || (p.kind === "canvas" && p.id === props.canvasProjectId)
         || (p.kind === "drama" && p.id === props.dramaId)
-        || (p.kind === "studio" && p.id === props.studioId)
-        || (p.kind === "game" && p.id === useGameSelection.getState().gameId);
+        || (p.kind === "studio" && p.id === props.studioId);
       return (
         <ProjectRow
           key={`${p.kind}-${p.id}`}
@@ -423,8 +418,8 @@ function RailLabel({ label }: { label: string }) {
 function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: () => void }) {
   const copy = useCopy();
   const p = props.project;
-  const Icon = p.kind === "drama" ? Film : p.kind === "studio" ? Clapperboard : p.kind === "game" ? Gamepad2 : LayoutGrid;
-  const fallback = p.kind === "drama" ? copy.video.untitled : p.kind === "studio" ? copy.video.studio.newProject : p.kind === "game" ? copy.video.newGame : copy.video.canvas;
+  const Icon = p.kind === "drama" ? Film : p.kind === "studio" ? Clapperboard : LayoutGrid;
+  const fallback = p.kind === "drama" ? copy.video.untitled : p.kind === "studio" ? copy.video.studio.newProject : copy.video.canvas;
   return (
     <button
       type="button"

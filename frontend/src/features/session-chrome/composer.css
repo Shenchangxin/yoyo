@@ -26,7 +26,27 @@
 }
 
 .sc-root[data-compact="true"] {
-  --sc-text-max: 14rem;
+  --sc-text-max: 8rem;
+  --sc-dock-inset: 4px;
+}
+.sc-root[data-compact="true"] .sc-card {
+  gap: 6px;
+  padding-top: 4px;
+}
+.sc-root[data-compact="true"] .sc-row {
+  gap: 6px;
+  padding: 0 6px 4px;
+}
+.sc-root[data-compact="true"] .sc-tools,
+.sc-root[data-compact="true"] .sc-modes,
+.sc-root[data-compact="true"] .sc-trailing {
+  gap: 6px;
+}
+.sc-root[data-compact="true"] .sc-trailing .sc-chip-btn {
+  max-width: 6.75rem;
+}
+.sc-root[data-compact="true"] .sc-dock {
+  display: none;
 }
 
 .sc-hero-ws {

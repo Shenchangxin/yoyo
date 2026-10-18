@@ -461,7 +461,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				return last, stuckLoopErr("the same call kept returning the same result")
 			}
 		}
-		recordToolErrors(errorHits, results)
+		if !inspectsOnly(msg.ToolCalls) {
+			recordToolErrors(errorHits, results)
+		}
 		recordWaits(waitHits, msg.ToolCalls)
 		recordIdleActions(idleHits, msg.ToolCalls, results)
 		recordClickMicro(&clickHits, msg.ToolCalls)

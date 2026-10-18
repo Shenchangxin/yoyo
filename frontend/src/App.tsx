@@ -19,7 +19,6 @@ import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
 import { TurnOutline } from "./features/TurnOutline";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
-import { GameHome } from "./features/game/GameHome";
 import { Composer } from "./features/Composer";
 import { SessionHeader } from "./features/session-chrome/SessionHeader";
 import { Inspector } from "./features/Inspector";
@@ -46,11 +45,8 @@ import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 import { liveAutoSkills, liveSubagentCrumb } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
-import { GameCopilotHeader } from "./features/game/GameCopilotHeader";
-import { useVideoRoute } from "./features/game/useVideoRoute";
-import { useGameSelection, useStudioSelection } from "./features/video/workshop-store";
+import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
-import { gameSessionId } from "./features/video/game-session";
 import { sessionLane } from "./features/video/video-lanes";
 
 const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
@@ -93,21 +89,13 @@ function WorkstationApp() {
   const videoPane = useUI((s) => s.videoPane);
   const studioDesk = useUI((s) => s.studioDesk);
   const createDesk = videoing && videoPane === "create";
-  const gameId = useGameSelection((s) => s.gameId);
-  const gameTitle = useGameSelection((s) => s.title);
-  const gameHome = videoing && videoPane === "game" && !gameId;
-  const gameBound = videoing && videoPane === "game" && !!gameId;
-  const gameChrome = gameHome || gameBound;
-  const talkDesk = createDesk || gameHome;
+  const talkDesk = createDesk;
   const studioId = useStudioSelection((s) => s.studioId);
   const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
   const studioCopilotForeign = studioDesk && (!studioId || (!!studioCopilotSession && studioCopilotSession !== ws.activeId));
-  const gameCopilotSession = gameSessionId(gameId, ws.videoProjects || []);
   const activeLane = sessionLane(ws.activeId, ws.videoProjects || []);
   const paneMismatch = (createDesk && !!activeLane)
-    || (gameBound && !!activeLane && activeLane !== "game")
     || (videoPane === "drama" && !!activeLane && activeLane !== "drama");
-  useVideoRoute();
   const moduleLoading = useUI((s) => s.moduleLoading);
   const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
   const idleAt = useRef(Date.now());
@@ -135,11 +123,11 @@ function WorkstationApp() {
       window.clearInterval(t);
     };
   }, []);
-  const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || gameBound || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
+  const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
   const copilotItems = paneMismatch ? [] : ws.items;
-  const boundCopilotId = studioDesk ? studioCopilotSession : gameBound ? gameCopilotSession : "";
+  const boundCopilotId = studioDesk ? studioCopilotSession : "";
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
   const boundCopilotThread = foreignSession ? ws.threads.find((t) => t.id === boundCopilotId) : undefined;
   const subagentCrumb = liveSubagentCrumb(copilotItems);
@@ -153,8 +141,7 @@ function WorkstationApp() {
   const stagePct = showRail ? Math.max(66, 100 - layout.rail) : 100;
   const innerInspect = Math.min(46, Math.max(22, (layout.inspect / stagePct) * 100));
   const refs = parseHarnessRefs(ws.harness, ws.health.harness);
-  const gameSheet = gameChrome && !!ws.inspector;
-  const sheetRight = (sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock))) || gameSheet;
+  const sheetRight = sheetInspect && ((agent && ws.inspector) || (harnessing && ws.chatDock));
   const presenceInput = useMemo(() => ({
     booted: ws.booted,
     running: ws.threadRunning,
@@ -348,8 +335,8 @@ function WorkstationApp() {
   );
 
   const agentPane = (
-    <section className="relative flex h-full min-h-0 min-w-0 flex-row">
-      {home || studioDesk || talkDesk || gameBound ? null : (
+    <section className={cn("relative flex min-h-0 min-w-0 flex-row", studioDesk ? "flex-1" : "h-full")}>
+      {home || studioDesk || talkDesk ? null : (
       <TurnOutline
         turns={ws.outlineTurns}
         activeKey={ws.activeTurn}
@@ -361,7 +348,7 @@ function WorkstationApp() {
         className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={home ? "conversation-column" : undefined}
       >
-        {home || studioDesk || talkDesk || gameBound ? null : (
+        {home || studioDesk || talkDesk ? null : (
           <SessionHeader
             view={ws.inspector ? "trajectory" : "chat"}
             trail={subagentCrumb || undefined}
@@ -380,7 +367,7 @@ function WorkstationApp() {
             {copy.pause.banner}
           </div>
         ) : null}
-        {ws.active?.pageId && !paging && !studioDesk && !talkDesk && !gameBound ? (
+        {ws.active?.pageId && !paging && !studioDesk && !talkDesk ? (
           <div className="border-b border-line/50 px-4 py-1.5 text-[12px] text-muted">
             {copy.pages.banner}
           </div>
@@ -423,7 +410,9 @@ function WorkstationApp() {
             idle={ws.idle}
             onLoadOlder={ws.loadOlder}
             onResolve={ws.onResolve}
-            onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+            onPrompt={(text) => {
+              useUI.getState().setDraft(ws.draftKey, text);
+            }}
             onRetry={() => { void ws.onRetryLast(); }}
             onOpenReview={(path) => {
               ws.setInspector(true);
@@ -687,9 +676,9 @@ function WorkstationApp() {
         ? (
             <Titlebar
               inspector={ws.inspector}
-              hideInspector={!gameChrome}
-              hideInbox={!gameChrome}
-              title={gameHome ? copy.video.shellGame : gameBound ? (gameTitle || copy.video.shellGame) : ""}
+              hideInspector={true}
+              hideInbox={true}
+              title=""
               runningCount={Object.values(ws.running).filter(Boolean).length}
               runningThreads={ws.threads.filter((t) => ws.running[t.id])}
               runningStatus={ws.runStatus}
@@ -757,10 +746,6 @@ function WorkstationApp() {
       onOpenProject={(p) => { void ws.openVideoProject(p); }}
       onRefreshHistory={ws.loadVideoHistory}
       onNeedSession={async () => (await ws.ensureThread()).id}
-      onAskAgent={(text) => {
-        useUI.getState().setDraft(ws.draftKey, text);
-        void ws.onSend({ text });
-      }}
       onClose={() => {
         useUI.getState().openVideoPane("chat");
       }}
@@ -787,16 +772,6 @@ function WorkstationApp() {
             </div>
           </div>
         )
-      ) : gameBound ? (
-        <div className="game-desk h-full min-h-0 overflow-hidden" data-testid="game-desk">
-          <div className="studio-desk-board" data-skin-pane>
-            <Suspense fallback={null}>{workshop}</Suspense>
-          </div>
-          <div className="studio-desk-chat" data-skin-pane data-testid="game-copilot">
-            <GameCopilotHeader onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)} />
-            {agentPane}
-          </div>
-        </div>
       ) : (
         <div className="h-full min-h-0 overflow-hidden" data-skin-pane>
           <Suspense fallback={null}>{workshop}</Suspense>
@@ -842,12 +817,6 @@ function WorkstationApp() {
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{labPane}</div>
     </Suspense>
-  ) : gameHome ? (
-    <GameHome
-      composer={composer}
-      onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
-      onOpenWorld={(p) => { void ws.openVideoProject(p); }}
-    />
   ) : talkDesk ? (
     <div className="relative h-full min-h-0 overflow-hidden" data-testid="create-desk" data-skin-pane>
       {agentPane}
@@ -915,13 +884,13 @@ function WorkstationApp() {
             }}
           />
           <Sheet modal={false} open={sheetRight} onOpenChange={(open) => {
-            if (agent || gameChrome) ws.setInspector(open);
+            if (agent) ws.setInspector(open);
             else ws.setChatDock(open);
           }}>
-            <SheetContent side="right" overlay={false} className={cn("flex flex-col p-0", gameChrome && "w-[min(440px,92%)]")}>
-              <SheetTitle className="sr-only">{agent || gameChrome ? copy.review.toggle : copy.dock.toggle}</SheetTitle>
-              <SheetDescription className="sr-only">{agent || gameChrome ? copy.review.toggle : copy.dock.toggle}</SheetDescription>
-              {agent || gameChrome ? inspect : (
+            <SheetContent side="right" overlay={false} className="flex flex-col p-0">
+              <SheetTitle className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetTitle>
+              <SheetDescription className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetDescription>
+              {agent ? inspect : (
                 <ChatDock
                   items={ws.items}
                   showThinking={!!ws.savedCfg.showThinking}
