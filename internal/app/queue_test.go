@@ -182,3 +182,38 @@ func TestPinArchiveDelete(t *testing.T) {
 		}
 	}
 }
+
+func TestInboxEnqueueRecord(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	a.runs[sess.ID] = &runSlot{cancel: func() {}}
+	a.mu.Unlock()
+	if err := a.StartSendOpts(sess.ID, "hello", false, nil); !errors.Is(err, ErrQueued) {
+		t.Fatalf("want queued, got %v", err)
+	}
+	evs, err := a.Traces.Read(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ev := range evs {
+		if ev.Type != "inbox" {
+			continue
+		}
+		if ev.Payload["kind"] == "enqueue" && ev.Payload["lane"] == "next-turn" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing next-turn enqueue in %+v", evs)
+	}
+}

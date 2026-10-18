@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
-import { DiffBlock } from "../../lib/split-diff";
+import { CHAT_DIFF_MAX_LINES, DiffBlock } from "../../lib/split-diff";
 import { langFromPath, type ArtifactView } from "../../lib/artifact-preview";
 import {
   blobFromBase64,
@@ -401,7 +401,7 @@ export function ArtifactBody({
     <div className="min-w-0 overflow-hidden" data-testid="artifact-body">
       {view.diff && (!wantHtml || source) ? (
         <div className="mt-2 min-w-0 overflow-hidden rounded-lg border border-border/70 bg-sidebar/50" data-testid="artifact-diff">
-          <DiffBlock src={view.diff} mode="unified" className="max-h-[28rem]" />
+          <DiffBlock src={view.diff} mode="unified" maxLines={CHAT_DIFF_MAX_LINES} />
         </div>
       ) : null}
       {wantHtml && source && view.diff ? null : wantHtml && source && workspace && view.path ? (

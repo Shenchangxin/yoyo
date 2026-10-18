@@ -38,9 +38,42 @@ export function prefixLines(text: string, mark: string): string {
   return text.split("\n").map((ln) => mark + ln).join("\n");
 }
 
+function splitPreviewLines(s: string): string[] {
+  const n = (s || "").replace(/\r\n/g, "\n");
+  if (!n) return [];
+  return n.replace(/\n$/, "").split("\n");
+}
+
+/** Unified hunk of a replacement. Prefix/suffix-equal lines stay context, not −/+. */
 export function strReplaceToDiff(path: string, oldStr: string, newStr: string): string {
   const file = path || "file";
-  return [`--- a/${file}`, `+++ b/${file}`, "@@", prefixLines(oldStr, "-"), prefixLines(newStr, "+")].join("\n");
+  const a = splitPreviewLines(oldStr);
+  const b = splitPreviewLines(newStr);
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
+  let asuf = a.length;
+  let bsuf = b.length;
+  while (asuf > pre && bsuf > pre && a[asuf - 1] === b[bsuf - 1]) {
+    asuf--;
+    bsuf--;
+  }
+  const minus = a.slice(pre, asuf);
+  const plus = b.slice(pre, bsuf);
+  const ctx = 2;
+  const start = Math.max(0, pre - ctx);
+  const head = a.slice(start, pre);
+  const tail = a.slice(asuf, Math.min(a.length, asuf + ctx));
+  const oldAt = start + 1;
+  const newAt = start + 1;
+  return [
+    `--- a/${file}`,
+    `+++ b/${file}`,
+    `@@ -${oldAt},${minus.length + head.length + tail.length} +${newAt},${plus.length + head.length + tail.length} @@`,
+    ...head.map((ln) => ` ${ln}`),
+    ...minus.map((ln) => `-${ln}`),
+    ...plus.map((ln) => `+${ln}`),
+    ...tail.map((ln) => ` ${ln}`),
+  ].join("\n");
 }
 
 export function applyPatchToDiff(patch: string): string {

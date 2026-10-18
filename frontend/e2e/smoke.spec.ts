@@ -712,25 +712,34 @@ test("conversation and composer share a fluid stage column", async ({ page }) =>
   const thread = page.getByTestId("conversation-column");
   const composer = page.getByTestId("composer-column");
   const turn = page.getByTestId("agent-turn");
+  const header = page.getByTestId("session-header");
+  const outline = page.getByTestId("turn-outline");
   await expect(thread).toBeVisible();
   await expect(composer).toBeVisible();
   await expect(turn).toBeVisible();
+  await expect(header).toBeVisible();
+  await expect(outline).toBeVisible();
+  await expect(page.getByTestId("turn-outline-item")).toHaveCount(1);
 
   await page.setViewportSize({ width: 1200, height: 900 });
   const narrowPane = await thread.boundingBox();
+  const narrowHeader = await header.boundingBox();
   const narrowComposer = await composer.boundingBox();
   const narrowTurn = await turn.boundingBox();
-  expect(narrowPane && narrowComposer && narrowTurn).toBeTruthy();
+  expect(narrowPane && narrowHeader && narrowComposer && narrowTurn).toBeTruthy();
   expect(narrowComposer!.width).toBeGreaterThan(narrowPane!.width * 0.8);
   expect(narrowComposer!.width).toBeLessThanOrEqual(narrowPane!.width + 1);
   expect(narrowTurn!.width).toBeGreaterThan(narrowComposer!.width * 0.9);
+  expect(narrowTurn!.width).toBeGreaterThan(narrowHeader!.width * 0.82);
 
   await page.setViewportSize({ width: 1680, height: 900 });
+  const wideHeader = await header.boundingBox();
   const wideComposer = await composer.boundingBox();
   const wideTurn = await turn.boundingBox();
-  expect(wideComposer && wideTurn).toBeTruthy();
+  expect(wideHeader && wideComposer && wideTurn).toBeTruthy();
   expect(wideComposer!.width).toBeGreaterThan(narrowComposer!.width + 40);
   expect(wideTurn!.width).toBeGreaterThan(narrowTurn!.width + 40);
+  expect(wideTurn!.width).toBeGreaterThan(wideHeader!.width * 0.82);
 });
 
 test("insert mention keeps the popup open and pins a file token", async ({ page }) => {
@@ -831,6 +840,9 @@ test("session permission is a select beside the send button", async ({ page }) =
   await expect(mode).not.toContainText("Full access");
   const permission = page.getByRole("combobox", { name: "Authorization" });
   await expect(permission).toContainText("Default");
+  const box = await permission.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.width).toBeLessThanOrEqual(120);
   await permission.click();
   await page.getByRole("option", { name: "Full access" }).click();
   await expect(permission).toContainText("Full access");
@@ -876,6 +888,20 @@ test("session workspace is on the composer", async ({ page }) => {
   await picker.click();
   await page.getByRole("menuitem", { name: /other/ }).click();
   await expect(picker).toContainText("other");
+});
+
+test("live session hides workspace switcher in the composer", async ({ page }) => {
+  await mockApi(page, "C:/tmp/ws", {
+    sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
+    events: [
+      { type: "user", session_id: "s1", ts: "2026-01-01T00:00:00Z", payload: { text: "hello" } },
+      { type: "assistant", session_id: "s1", ts: "2026-01-01T00:00:01Z", payload: { text: "hi", id: "s1:r1" } },
+    ],
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("agent-turn")).toBeVisible();
+  await expect(page.getByTestId("workspace-chip")).toHaveCount(0);
+  await expect(page.getByTestId("composer-column").getByRole("button", { name: "Workspace" })).toHaveCount(0);
 });
 
 test("earlier assistant updates fold into the process rail until expanded", async ({ page }) => {

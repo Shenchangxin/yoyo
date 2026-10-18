@@ -51,6 +51,7 @@ func slimLiveEvent(ev trace.Event) trace.Event {
 		ev = slimPayloadString(ev, "content", uiResultBytes)
 		return slimPayloadString(ev, "patch", uiPatchBytes)
 	case trace.TypeAssistant, trace.TypeReasoning:
+		ev = dropStreamTape(ev)
 		if delta, _ := ev.Payload["delta"].(bool); delta {
 			return ev
 		}
@@ -68,6 +69,19 @@ func slimLiveEvent(ev trace.Event) trace.Event {
 	default:
 		return ev
 	}
+}
+
+func dropStreamTape(ev trace.Event) trace.Event {
+	if ev.Payload == nil {
+		return ev
+	}
+	if _, ok := ev.Payload["stream"]; !ok {
+		return ev
+	}
+	p := clonePayload(ev.Payload)
+	delete(p, "stream")
+	ev.Payload = p
+	return ev
 }
 
 func slimPayloadString(ev trace.Event, key string, cap int) trace.Event {
@@ -141,7 +155,7 @@ func dropSupersededErrors(evs []trace.Event) []trace.Event {
 		switch ev.Type {
 		case trace.TypeError:
 			hasError = true
-		case trace.TypeUser, trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolCall, trace.TypeToolResult:
+		case trace.TypeUser, trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolCall, trace.TypeToolResult, trace.TypeTurnStart, trace.TypeStepStart, trace.TypeStepEnd:
 			lastProgress = i
 		}
 	}

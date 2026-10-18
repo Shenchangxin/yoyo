@@ -3,8 +3,8 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError } from "../../lib/error";
 import { noticeFromItem } from "../../lib/notices";
-import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, lastUserTurns, mergeItem, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
-import { isLiveDelta, liveBody } from "../../lib/stream-live";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, foldTurnErrors, lastUserTurns, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
+import { ConversationFold } from "../../lib/conversation-fold";
 import { deriveTurnStatus } from "../../lib/turn-status";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
 import { deriveSessionStats } from "../../lib/session-stats";
@@ -14,7 +14,7 @@ import { applyLocale, useCopy } from "../../lib/i18n";
 import { mergeKeymap, matchKey } from "../../lib/keymap";
 import { coerceInspTab, useUI } from "../../lib/store";
 import { adoptPendingAuthMode } from "../../lib/pending-auth";
-import { looksLikeHTMLFile, workspacePreviewPath } from "../../lib/html-preview";
+import { workspacePreviewPath } from "../../lib/html-preview";
 import { pathFromPatch } from "../../lib/artifact-preview";
 import { toolArgs, toolName } from "../../lib/tool-summary";
 import { HARNESS_TABS } from "../../lib/surface";
@@ -57,6 +57,8 @@ export const emptyCfg: AppConfig = {
   notifyWhenUnfocusedOnly: false,
   uiScale: 1,
   showThinking: false,
+  transcriptView: "standard",
+  collapseTiming: "completion",
   updateChannel: "latest",
   theme: "system",
   paletteDark: "ink",
@@ -151,12 +153,29 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-function localUser(sessionId: string, text: string, attachments?: Attachment[]): Item {
+function newRequestId(): string {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {
+    /* ignore */
+  }
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function commitHot(fold: ConversationFold, list: Item[]): Item[] {
+  const next = foldTurnErrors(list);
+  const trimmed = lastUserTurns(next, HOT_TRANSCRIPT_TURNS);
+  if (trimmed.length !== next.length) fold.trim(trimmed);
+  return trimmed;
+}
+
+function localUser(sessionId: string, text: string, attachments?: Attachment[], requestId?: string): Item {
   const atts = (attachments || [])
     .map((a) => ({ name: a.name, path: a.path, mime: a.mime }))
     .filter((a) => a.name || a.path);
+  const id = requestId || newRequestId();
   return {
-    key: `ui:${sessionId}:${Date.now()}`,
+    key: `ui:${sessionId}:${id}`,
     type: "user",
     sessionId,
     source: "ui",
@@ -164,7 +183,7 @@ function localUser(sessionId: string, text: string, attachments?: Attachment[]):
     text,
     name: "",
     delta: false,
-    payload: { text, ...(atts.length ? { attachments: atts } : {}) },
+    payload: { text, request_id: id, ...(atts.length ? { attachments: atts } : {}) },
   };
 }
 
@@ -250,9 +269,7 @@ export function useWorkstation() {
   const [items, setItems] = useState<Item[]>([]);
   const itemsAcc = useRef<Item[]>([]);
   const hotItemsRef = useRef<Item[]>([]);
-  const [liveTexts, setLiveTexts] = useState<Record<string, string>>({});
-  const liveAcc = useRef<Record<string, string>>({});
-  const liveRaf = useRef(0);
+  const foldRef = useRef(new ConversationFold());
   const itemsRaf = useRef(0);
   const headSeqRef = useRef(0);
   const olderRef = useRef(false);
@@ -338,8 +355,8 @@ export function useWorkstation() {
     [threadRunning, approvals.length],
   );
   const turnStatus = useMemo(
-    () => deriveTurnStatus(items, threadRunning, liveTexts),
-    [items, threadRunning, liveTexts],
+    () => deriveTurnStatus(items, threadRunning),
+    [items, threadRunning],
   );
   outlineRef.current = outlineTurns;
   activeTurnRef.current = activeTurn;
@@ -390,7 +407,8 @@ export function useWorkstation() {
       if (!hotItemsRef.current.length) {
         const page = await api.trajectoryPage(activeId);
         if (activeIdRef.current !== activeId) return;
-        hotItemsRef.current = lastUserTurns(replayEvents(page.events), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = commitHot(foldRef.current, replayEvents(page.events));
+        foldRef.current.replace(hotItemsRef.current);
         headSeqRef.current = page.headSeq || 0;
         olderRef.current = !!page.older;
         setOlder(!!page.older);
@@ -701,10 +719,9 @@ export function useWorkstation() {
     if (!activeId) {
       itemsAcc.current = [];
       hotItemsRef.current = [];
-      liveAcc.current = {};
+      foldRef.current = new ConversationFold();
       browsingRef.current = false;
       setItems([]);
-      setLiveTexts({});
       setOlder(false);
       olderRef.current = false;
       headSeqRef.current = 0;
@@ -716,10 +733,9 @@ export function useWorkstation() {
     }
     itemsAcc.current = [];
     hotItemsRef.current = [];
-    liveAcc.current = {};
+    foldRef.current = new ConversationFold();
     browsingRef.current = false;
     setItems([]);
-    setLiveTexts({});
     setQueued(0);
     setQueueItems([]);
     setCtx(emptyCtx);
@@ -729,20 +745,8 @@ export function useWorkstation() {
     setOutline([]);
     setActiveTurn("");
     setFiles([]);
-    const flushLive = () => {
-      liveRaf.current = 0;
-      setLiveTexts({ ...liveAcc.current });
-    };
-    const scheduleLive = () => {
-      if (liveRaf.current) return;
-      liveRaf.current = window.setTimeout(flushLive, 32);
-    };
     const flushItems = () => {
       itemsRaf.current = 0;
-      const keys = new Set(hotItemsRef.current.map((x) => x.key));
-      for (const k of Object.keys(liveAcc.current)) {
-        if (!keys.has(k)) delete liveAcc.current[k];
-      }
       if (browsingRef.current) {
         setItems(withLiveTail(itemsAcc.current, hotItemsRef.current));
       } else {
@@ -759,41 +763,22 @@ export function useWorkstation() {
         return;
       }
       if (itemsRaf.current) return;
-      itemsRaf.current = window.setTimeout(flushItems, 120);
+      itemsRaf.current = window.setTimeout(flushItems, 50);
     };
     const unsub = subscribeSession(
       activeId,
       (item) => {
-        if (isLiveDelta(item)) {
-          const existed = hotItemsRef.current.some((x) => x.key === item.key);
-          if (!existed) {
-            hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, item), HOT_TRANSCRIPT_TURNS);
-            if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
-            scheduleItems(true);
-          }
-          const piece = liveBody(item);
-          const prev = liveAcc.current[item.key] ?? "";
-          const cap = item.type === "tool_result" ? 8_000 : 48_000;
-          let next = item.delta ? prev + piece : piece;
-          if (next.length > cap) next = next.slice(0, cap);
-          liveAcc.current[item.key] = next;
-          scheduleLive();
-          return;
-        }
-        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, item), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = commitHot(foldRef.current, foldRef.current.accept(item));
         if (item.type === "user" && item.source !== "steer") {
           if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
           void refreshOutline();
         } else if (!browsingRef.current) {
           itemsAcc.current = hotItemsRef.current;
         }
-        if (item.key && liveAcc.current[item.key] != null) {
-          delete liveAcc.current[item.key];
-          scheduleLive();
-        }
-        // tool_call must land in the same frame as the assistant that produced
-        // it; delaying it 120ms used to promote narration into a letter.
-        const delayed = item.type === "tool_result";
+        const delayed = item.type === "tool_result"
+          || item.type === "tool_call"
+          || item.type === "assistant_stream"
+          || (item.type === "assistant" && !!(item.delta || item.payload?.streaming || item.payload?.delta));
         scheduleItems(!delayed);
         if (item.type === "compaction") {
           const p = item.payload || {};
@@ -824,7 +809,7 @@ export function useWorkstation() {
           const args = toolArgs(item);
           const path = String(args.path || pathFromPatch(String(args.patch || args.diff || "")) || "");
           const preview = workspacePreviewPath(name, { ...args, url: args.url || item.payload?.path }) || path;
-          if (name === "browser_open" || name === "browser_takeover" || looksLikeHTMLFile(preview)) {
+          if (name === "browser_open" || name === "browser_takeover") {
             if (preview) setReviewFile(preview);
             setInspector(true);
             setInspTab("browser");
@@ -853,20 +838,10 @@ export function useWorkstation() {
       },
       (seed, page, opts) => {
         if (opts.resync) {
-          // Repair after a hole in the live tail. Only the persisted record was
-          // stale, so keep the streamed text in liveAcc, the browse position and
-          // the review pane as they are.
-          hotItemsRef.current = lastUserTurns(foldLiveIntoSeed(seed, hotItemsRef.current), HOT_TRANSCRIPT_TURNS);
-          // A message that finished during the gap now has its persisted form, which
-          // supersedes the streamed text, as the live path does for a final item.
-          let superseded = false;
-          for (const it of seed) {
-            if (it.key && !isLiveDelta(it) && liveAcc.current[it.key] != null) {
-              delete liveAcc.current[it.key];
-              superseded = true;
-            }
-          }
-          if (superseded) scheduleLive();
+          // Repair after a hole in the live tail. The seat fold already holds
+          // streamed text, so keep the browse position and the review pane.
+          hotItemsRef.current = commitHot(foldRef.current, foldLiveIntoSeed(seed, hotItemsRef.current));
+          foldRef.current.replace(hotItemsRef.current);
           if (!browsingRef.current) {
             itemsAcc.current = hotItemsRef.current;
             setItems(hotItemsRef.current.slice());
@@ -875,10 +850,9 @@ export function useWorkstation() {
           return;
         }
         browsingRef.current = false;
-        hotItemsRef.current = lastUserTurns(foldLiveIntoSeed(seed, hotItemsRef.current), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = commitHot(foldRef.current, foldLiveIntoSeed(seed, hotItemsRef.current));
+        foldRef.current.replace(hotItemsRef.current);
         itemsAcc.current = hotItemsRef.current;
-        liveAcc.current = {};
-        setLiveTexts({});
         setItems(hotItemsRef.current.slice());
         const html = latestWorkspaceHTMLPath(hotItemsRef.current);
         if (html) setReviewFile(html);
@@ -897,10 +871,6 @@ export function useWorkstation() {
       .catch(() => {});
     return () => {
       unsub();
-      if (liveRaf.current) {
-        window.clearTimeout(liveRaf.current);
-        liveRaf.current = 0;
-      }
       if (itemsRaf.current) {
         window.clearTimeout(itemsRaf.current);
         itemsRaf.current = 0;
@@ -1330,11 +1300,11 @@ export function useWorkstation() {
         await api.steer(t.id, text);
         useUI.getState().patchDrafts({ [t.id]: "", _new: "", _game_home: "" });
         if (t.id === activeId) {
-          hotItemsRef.current = mergeItem(hotItemsRef.current, {
+          hotItemsRef.current = commitHot(foldRef.current, foldRef.current.accept({
             ...localUser(t.id, text, opts?.attachments),
             source: "steer",
             key: `ui-steer:${t.id}:${Date.now()}`,
-          });
+          }));
           if (!browsingRef.current) itemsAcc.current = hotItemsRef.current;
           setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
         }
@@ -1344,9 +1314,10 @@ export function useWorkstation() {
       const wasRunning = !!running[t.id];
       useUI.getState().patchDrafts({ [t.id]: "", _new: "", _game_home: "" });
       markStarted(t.id);
+      const requestId = newRequestId();
       if (t.id === activeId) {
         browsingRef.current = false;
-        hotItemsRef.current = lastUserTurns(mergeItem(hotItemsRef.current, localUser(t.id, text, opts?.attachments)), HOT_TRANSCRIPT_TURNS);
+        hotItemsRef.current = commitHot(foldRef.current, foldRef.current.accept(localUser(t.id, text, opts?.attachments, requestId)));
         itemsAcc.current = hotItemsRef.current;
         setItems(hotItemsRef.current.slice());
       }
@@ -1364,7 +1335,7 @@ export function useWorkstation() {
       } else {
         sendAtts.push(...rawAtts);
       }
-      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: sendAtts });
+      const res = await api.send(t.id, text, { plan: useUI.getState().plan, attachments: sendAtts, requestId });
       if (wasRunning || res.queued) {
         const q = await api.queueList(t.id).catch(() => []);
         setQueueItems(q);
@@ -1398,6 +1369,7 @@ export function useWorkstation() {
     if (running[hit.id]) return;
     if (hit.id === activeId) {
       hotItemsRef.current = dropTurnErrors(hotItemsRef.current);
+      foldRef.current.replace(hotItemsRef.current);
       itemsAcc.current = browsingRef.current ? dropTurnErrors(itemsAcc.current) : hotItemsRef.current;
       setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
       markStarted(hit.id);
@@ -1417,6 +1389,7 @@ export function useWorkstation() {
     setErr("");
     markStarted(activeId);
     hotItemsRef.current = dropTurnErrors(hotItemsRef.current);
+    foldRef.current.replace(hotItemsRef.current);
     itemsAcc.current = browsingRef.current ? dropTurnErrors(itemsAcc.current) : hotItemsRef.current;
     setItems(browsingRef.current ? withLiveTail(itemsAcc.current, hotItemsRef.current) : hotItemsRef.current.slice());
     try {
@@ -1974,7 +1947,7 @@ export function useWorkstation() {
     palette, setPalette, query, setQuery, inspTab, setInspTab, diffMode, setDiffMode,
     sidebarCollapsed, setSidebarCollapsed, sidebarHover, setSidebarHover,
     notices, dismissNotice, clearNotices, renameTick,
-    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, liveTexts, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, sessionStats, err, setErr,
+    health, savedCfg, setSavedCfg, threads, videoProjects, canvasProjectId, dramaId, active, setActive, items, turnStatus, presenceItems, older, loadingOlder, loadOlder, idle, approvals, running, runStatus, queued, queueItems, ctx, trace, sessionStats, err, setErr,
     outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,

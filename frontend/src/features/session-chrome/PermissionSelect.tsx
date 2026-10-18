@@ -6,6 +6,7 @@
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import type { AuthMode } from "../../lib/protocol";
+import type { Copy } from "../../lib/copy";
 import { useCopy } from "../../lib/i18n";
 
 export function parseComposerAuth(mode?: string): AuthMode {
@@ -16,6 +17,13 @@ export function parseComposerAuth(mode?: string): AuthMode {
   return "default";
 }
 
+function authLabel(copy: Copy["composer"], mode: AuthMode): string {
+  if (mode === "auto_edit") return copy.authAutoEdit;
+  if (mode === "full") return copy.authFull;
+  if (mode === "ask") return copy.authAsk;
+  return copy.authDefault;
+}
+
 export function PermissionSelect(props: {
   value?: AuthMode | string;
   disabled?: boolean;
@@ -24,6 +32,7 @@ export function PermissionSelect(props: {
 }) {
   const copy = useCopy();
   const current = parseComposerAuth(props.value);
+  const label = authLabel(copy.composer, current);
   return (
     <Select
       value={current}
@@ -36,8 +45,15 @@ export function PermissionSelect(props: {
       }}
       disabled={props.disabled}
     >
-      <SelectTrigger className="sc-chip-btn max-w-[7.5rem] border-0 shadow-none" aria-label={copy.composer.authMode} data-testid={props.testId}>
-        <SelectValue />
+      <SelectTrigger
+        className="sc-chip-btn sc-perm h-7 min-w-0 w-auto max-w-[6.75rem] justify-start gap-1 border-0 px-2 shadow-none"
+        aria-label={copy.composer.authMode}
+        title={label}
+        data-testid={props.testId}
+      >
+        <span className="sc-perm-label">
+          <SelectValue />
+        </span>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="default">{copy.composer.authDefault}</SelectItem>

@@ -255,8 +255,8 @@ func (a *App) LiveSince(sessionID string, after int64) []trace.Event {
 	return runtime.SlimTrajectory(a.Hub.Since(after, sessionID))
 }
 
-// LiveSync is LiveSince for callers that must know whether the batch is
-// complete. Events are slimmed the same way.
+// LiveSync is LiveSince for callers that must know whether the batch is a
+// hole (Gap) or a page (More). Events are slimmed the same way.
 func (a *App) LiveSync(sessionID string, after int64) LiveBatch {
 	if a.Hub == nil {
 		return LiveBatch{Events: []trace.Event{}}
@@ -429,6 +429,7 @@ func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachm
 		return fmt.Errorf("paused")
 	}
 	atts, resume := takeResume(message, atts)
+	atts, requestID := takeRequestID(atts)
 	if resume {
 		message = ""
 	}
@@ -439,6 +440,7 @@ func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachm
 			return err
 		}
 	}
+	atts = WithRequestID(atts, requestID)
 	if resume && a.Running(sessionID) {
 		return errBusy
 	}
@@ -456,6 +458,40 @@ func (a *App) RetrySession(sessionID string) error {
 		return errBusy
 	}
 	return a.launchSend(sessionID, "", false, nil, true)
+}
+
+const requestIDName = "__request_id__"
+
+// WithRequestID stamps the compositor's optimistic send id onto attachments
+// so StartSendOpts does not need a new Wails signature.
+func WithRequestID(atts []Attachment, id string) []Attachment {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return atts
+	}
+	kept, _ := takeRequestID(atts)
+	return append(kept, Attachment{Name: requestIDName, Path: id})
+}
+
+func requestIDOf(atts []Attachment) string {
+	_, id := takeRequestID(atts)
+	return id
+}
+
+func takeRequestID(atts []Attachment) ([]Attachment, string) {
+	if len(atts) == 0 {
+		return atts, ""
+	}
+	kept := make([]Attachment, 0, len(atts))
+	id := ""
+	for _, a := range atts {
+		if a.Name == requestIDName {
+			id = strings.TrimSpace(a.Path)
+			continue
+		}
+		kept = append(kept, a)
+	}
+	return kept, id
 }
 
 func takeResume(message string, atts []Attachment) ([]Attachment, bool) {
@@ -828,6 +864,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Observe:          a.Observe,
 		User:             message,
 		UserCommitted:    userCommitted && !resume,
+		RequestID:        requestIDOf(atts),
 		UserParts:        userParts,
 		Inject:           inject,
 		Workspace:        toolRoot,
@@ -918,6 +955,10 @@ func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID st
 	payload := map[string]any{"text": text, "id": fmt.Sprintf("%s:user:%s", sessionID, turnID)}
 	if len(parts) > 0 {
 		payload["parts"] = parts
+	}
+	atts, requestID := takeRequestID(atts)
+	if requestID != "" {
+		payload["request_id"] = requestID
 	}
 	if metas := attachmentMeta(atts); len(metas) > 0 {
 		payload["attachments"] = metas

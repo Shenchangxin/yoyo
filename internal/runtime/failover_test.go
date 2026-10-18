@@ -10,7 +10,7 @@ import (
 type scriptClient struct {
 	err    error
 	msg    Message
-	stream []StreamDelta
+	stream []StreamChunk
 	calls  *int
 	model  *string
 }
@@ -19,7 +19,7 @@ func (s *scriptClient) Chat(ctx context.Context, req ChatRequest) (Message, erro
 	return s.ChatStream(ctx, req, nil)
 }
 
-func (s *scriptClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (s *scriptClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if s.calls != nil {
 		*s.calls++
 	}
@@ -74,13 +74,13 @@ func TestFailoverClientModelNotFoundTriesSibling(t *testing.T) {
 func TestFailoverClientDoesNotMixStreamedTokens(t *testing.T) {
 	c := NewFailoverClient([]ChatRoute{
 		{ID: "a", Name: "A", Model: "m1", Client: &scriptClient{
-			stream: []StreamDelta{{Text: "hello"}},
+			stream: []StreamChunk{{Type: ChunkTextDelta, Index: 0, Text: "hello"}},
 			err:    fmt.Errorf("openai: 502 Bad Gateway"),
 		}},
 		{ID: "b", Name: "B", Model: "n", Client: &scriptClient{msg: Message{Content: "other"}}},
 	})
 	var got strings.Builder
-	_, err := c.(Streamer).ChatStream(context.Background(), ChatRequest{Model: "m1"}, func(d StreamDelta) error {
+	_, err := c.(Streamer).ChatStream(context.Background(), ChatRequest{Model: "m1"}, func(d StreamChunk) error {
 		got.WriteString(d.Text)
 		return nil
 	})

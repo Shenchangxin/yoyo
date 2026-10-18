@@ -1,6 +1,7 @@
 import * as api from "./client";
 import type { Item } from "./protocol";
 import {
+  attachStreamFrame,
   eventFingerprint,
   itemFromEvent,
   parseLiveNotice,
@@ -83,15 +84,20 @@ export function subscribeSession(
   const seen = new Set<string>();
   const lastIndex = new Map<string, number>();
 
-  const noteFrame = (item: Item, frame?: { index?: number; index_from?: number }) => {
-    const from = frame?.index_from || 0;
-    if (!from || !item.delta) return false;
-    const rid = String(item.payload?.id || item.payload?.round || item.key);
+  const noteFrame = (item: Item, frame?: { index?: number; index_from?: number; kind?: string; attempt_id?: string }) => {
+    const kind = frame?.kind || String(item.payload?.kind || "");
+    if (item.type === "assistant_stream" && kind !== "chunk") return false;
+    if (item.type !== "assistant_stream" && !item.delta) return false;
+    const from = frame?.index_from ?? Number(item.payload?.index_from ?? 0);
+    const to = frame?.index ?? Number(item.payload?.index ?? from);
+    const rid = String(frame?.attempt_id || item.payload?.attempt_id || item.payload?.id || item.payload?.round || item.key);
     const have = lastIndex.get(rid) || 0;
     const gapped = have > 0 && from > have + 1;
-    lastIndex.set(rid, Math.max(have, frame?.index || from));
+    lastIndex.set(rid, Math.max(have, to));
     return gapped;
   };
+
+  const toItem = (event: any, frame?: Parameters<typeof attachStreamFrame>[1]) => attachStreamFrame(itemFromEvent(event), frame);
 
   const applyItem = (raw: any, item: Item) => {
     if (seen.size > 4000) seen.clear();
@@ -118,16 +124,16 @@ export function subscribeSession(
     if (seq > 0 && seq <= cursor) return; // already applied via a live notice
     if (seq > cursor) cursor = seq;
     if (!notice.event) return;
-    const item = itemFromEvent(notice.event);
+    const item = toItem(notice.event, notice.frame);
     if (item.sessionId && item.sessionId !== sessionId) return;
     const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq };
     applyItem(event, item);
   };
 
-  // Apply the ring tail after the cursor. A batch that is not complete cannot
-  // be trusted, so it is repaired by a resync. The follow-up pull of a resync
-  // passes mayResync=false: it is best effort, which means a ring that keeps
-  // overflowing cannot make the two loop against each other.
+  // Apply the ring tail after the cursor. A hole (gap) reloads the trajectory.
+  // A page (more) is applied in order, then pulled again — jumping to head
+  // would skip the rest of a long turn. The follow-up pull of a resync
+  // passes mayResync=false so an overflowing ring cannot loop against itself.
   const pullSince = async (mayResync = true): Promise<void> => {
     if (!alive) return;
     if (pulling) {
@@ -136,6 +142,7 @@ export function subscribeSession(
     }
     pulling = true;
     let gapped = false;
+    let pages = 0;
     try {
       do {
         pullAgain = false;
@@ -147,6 +154,14 @@ export function subscribeSession(
           break;
         }
         for (const raw of batch.events) applyPulled(raw);
+        if (batch.more && !batch.gap) {
+          if (!batch.events.length || ++pages >= 32) {
+            cursor = Math.max(cursor, batch.head);
+            break;
+          }
+          pullAgain = true;
+          continue;
+        }
         cursor = Math.max(cursor, batch.head);
       } while (pullAgain && alive);
     } finally {
@@ -190,7 +205,7 @@ export function subscribeSession(
         return;
       case "apply": {
         const event = notice.event.seq || notice.event.Seq ? notice.event : { ...notice.event, seq: notice.seq };
-        const item = itemFromEvent(event);
+        const item = toItem(event, notice.frame);
         cursor = Math.max(cursor, notice.seq);
         if (item.sessionId && item.sessionId !== sessionId) return;
         if (noteFrame(item, notice.frame)) {
@@ -287,7 +302,7 @@ export function subscribeItems(onItem: (item: Item) => void): () => void {
     off = Events.On("yoyo:item", (e: any) => {
       const notice = parseLiveNotice(e);
       if (!notice.event) return;
-      onItem(itemFromEvent(notice.event));
+      onItem(attachStreamFrame(itemFromEvent(notice.event), notice.frame));
     });
   })();
   return () => {

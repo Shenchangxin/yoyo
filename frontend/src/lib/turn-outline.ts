@@ -14,7 +14,7 @@ export type OutlineTurn = {
 
 export type OutlineStatus = "idle" | "working" | "waiting" | "failed";
 
-export const MIN_OUTLINE_TURNS = 2;
+export const MIN_OUTLINE_TURNS = 1;
 export const OUTLINE_SEARCH_AT = 8;
 const TITLE_RUNES = 42;
 

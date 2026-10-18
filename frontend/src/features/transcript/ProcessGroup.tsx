@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { AtSign, Bot, Brain, ChevronRight, CircleDashed, MessageSquare, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
@@ -22,8 +22,8 @@ import {
 import { langFromPath } from "../../lib/artifact-preview";
 import { CodePreview } from "./FilePreview";
 import type { Item } from "../../lib/protocol";
-import { withLiveText } from "../../lib/stream-live";
 import * as api from "../../lib/client";
+import { reasoningText } from "../../lib/transcript-layout";
 import { writeClipboard } from "../../lib/clipboard";
 import {
   pairState,
@@ -42,6 +42,32 @@ import {
 } from "../../lib/transcript-layout";
 
 type TranscriptCopy = Copy["transcript"];
+
+/** Harness process title hold: the live verb cannot flip faster than this. */
+const PROCESS_TITLE_MINIMUM_MS = 150;
+
+function useStableLiveKey(key: string, live: boolean): string {
+  const [shown, setShown] = useState(key);
+  const heldAt = useRef(Date.now());
+  useEffect(() => {
+    if (!live) {
+      setShown(key);
+      heldAt.current = Date.now();
+      return;
+    }
+    if (shown === key) {
+      heldAt.current = Date.now();
+      return;
+    }
+    const wait = Math.max(0, PROCESS_TITLE_MINIMUM_MS - (Date.now() - heldAt.current));
+    const id = window.setTimeout(() => {
+      heldAt.current = Date.now();
+      setShown(key);
+    }, wait);
+    return () => window.clearTimeout(id);
+  }, [key, live, shown]);
+  return live ? shown : key;
+}
 
 /** One-second clock that only ticks while something is live. */
 export function useNow(active: boolean): number {
@@ -97,29 +123,33 @@ export const ProcessGroup = memo(function ProcessGroup({
   live,
   running,
   compact,
-  liveTexts,
+  grouped = true,
+  liveDetail = true,
   onOpenChild,
 }: {
   items: Item[];
   live: boolean;
   running: boolean;
   compact?: boolean;
-  liveTexts?: Record<string, string>;
+  grouped?: boolean;
+  liveDetail?: boolean;
   onOpenChild?: (id: string) => void;
 }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
   const swap = motionTransition(reduced, DURATION_FAST);
-  const [open, setOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? !grouped;
   const [shown, setShown] = useState(PROCESS_PAGE);
-  const items = useMemo(
-    () => (liveTexts ? rawItems.map((it) => withLiveText(it, liveTexts)) : rawItems),
-    [rawItems, liveTexts],
-  );
+  const items = rawItems;
   const pairs = useMemo(() => pairTools(items), [items]);
   const tools = useMemo(() => pairs.filter((p) => p.call || p.result), [pairs]);
   const pending = tools.filter((p) => pairState(p, running) === "running");
   const current = live ? pending[pending.length - 1] : undefined;
+  const shownKey = useStableLiveKey(current?.key || (live ? "composing" : ""), live);
+  const livePair = shownKey === "composing" || !shownKey
+    ? undefined
+    : tools.find((p) => p.key === shownKey) || current;
   const failed = processFailedCount(items);
   const interrupted = !running && tools.some((p) => pairState(p, false) === "interrupted");
   const start = processStartMs(items);
@@ -138,7 +168,7 @@ export const ProcessGroup = memo(function ProcessGroup({
         data-testid={live ? undefined : "process-summary"}
         aria-expanded={open}
         title={open ? copy.transcript.hideSteps : copy.transcript.showSteps}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setUserOpen(!(userOpen ?? !grouped))}
       >
         <span className="grid size-[22px] shrink-0 place-items-center" aria-hidden>
           {live ? (
@@ -155,15 +185,15 @@ export const ProcessGroup = memo(function ProcessGroup({
           <AnimatePresence initial={false} mode="popLayout">
             {live ? (
               <motion.span
-                key={current?.key || "composing"}
+                key={livePair?.key || "composing"}
                 className="flex min-w-0 items-center gap-2 truncate"
                 initial={reduced ? false : { opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={reduced ? undefined : { opacity: 0, y: -4 }}
                 transition={swap}
-                data-testid={current ? "tool-row" : undefined}
+                data-testid={livePair ? "tool-row" : undefined}
               >
-                <LiveLabel pair={current} t={copy.transcript} />
+                <LiveLabel pair={livePair} t={copy.transcript} detail={liveDetail} />
               </motion.span>
             ) : (
               <motion.span
@@ -212,7 +242,7 @@ export const ProcessGroup = memo(function ProcessGroup({
             transition={motionTransition(reduced)}
             className="overflow-hidden"
           >
-            <div className={cn("step-rail min-w-0 pb-1 pt-0.5", compact && "pt-1")}>
+            <div className={cn("step-rail min-w-0 pb-1 pt-0.5", compact && "pt-1", live && "step-rail-live")}>
               {hidden > 0 ? (
                 <button
                   type="button"
@@ -236,15 +266,14 @@ export const ProcessGroup = memo(function ProcessGroup({
   a.live === b.live
   && a.running === b.running
   && a.compact === b.compact
+  && a.grouped === b.grouped
+  && a.liveDetail === b.liveDetail
   && a.onOpenChild === b.onOpenChild
   && a.items.length === b.items.length
   && a.items.every((it, i) => it === b.items[i])
-  // A live group streams tool output through liveTexts. Ignoring it froze the
-  // shell output at its first chunk until the item list changed.
-  && (!a.live || a.liveTexts === b.liveTexts)
 ));
 
-function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
+function LiveLabel({ pair, t, detail }: { pair?: ToolPair; t: TranscriptCopy; detail?: boolean }) {
   if (!pair?.call && !pair?.result) {
     return <span className="shimmer-text font-medium">{t.live.think}</span>;
   }
@@ -252,16 +281,15 @@ function LiveLabel({ pair, t }: { pair?: ToolPair; t: TranscriptCopy }) {
   const name = toolName(item);
   const kind = toolKind(name);
   const skill = skillCallLabel(pair.call || item);
-  const detail = skill || toolDetail(pair.call || item) || String(item.payload?.path || "");
+  const path = skill || toolDetail(pair.call || item) || String(item.payload?.path || "");
   const verb = kind === "other" ? t.live.other.replace("{name}", name) : t.live[kind];
   const bytes = Number(item.payload?.bytes || 0);
   const size = item.payload?.progress && bytes > 2048 ? `${Math.round(bytes / 1024)}KB` : "";
+  const extra = detail !== false ? [path || (kind === "other" ? "" : name), size].filter(Boolean).join(" · ") : "";
   return (
     <>
       <span className="shrink-0 shimmer-text font-medium">{verb}</span>
-      <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">
-        {[detail || (kind === "other" ? "" : name), size].filter(Boolean).join(" · ")}
-      </span>
+      {extra ? <span className="min-w-0 truncate font-mono text-[12px] text-muted/80">{extra}</span> : null}
     </>
   );
 }
@@ -286,14 +314,14 @@ function ProcessPair({
           item={pair.result || pair.call!}
           call={pair.call}
           result={pair.result}
-          pending={pairState(pair, true) === "running"}
+          pending={pairState(pair, running) === "running"}
           running={running}
           compact={compact}
           highlightFail={highlightFail}
         />
       ) : null}
-      {pair.extra.map((it) => (
-        <ProcessExtra key={it.key} item={it} compact={compact} onOpenChild={onOpenChild} />
+      {pair.extra.map((it, i) => (
+        <ProcessExtra key={`${it.key}:${it.payload?.groupPart || i}`} item={it} compact={compact} onOpenChild={onOpenChild} />
       ))}
     </>
   );
@@ -449,12 +477,35 @@ function guessLang(text: string): string {
 
 function ProcessExtra({ item, compact, onOpenChild }: { item: Item; compact?: boolean; onOpenChild?: (id: string) => void }) {
   const copy = useCopy();
-  const streaming = !!item.delta;
+  const streaming = !!item.delta || !!item.payload?.streaming;
   const [open, setOpen] = useState(streaming);
   useEffect(() => {
     if (streaming) setOpen(true);
   }, [streaming]);
   const body = readableExtra(item);
+  if (item.type === "assistant" && item.payload?.groupPart === "reasoning") {
+    const thought = reasoningText(item);
+    const ms = toolElapsedMs(item);
+    const label = ms > 0
+      ? copy.transcript.thoughtFor.replace("{n}", formatElapsed(ms))
+      : copy.transcript.thinking;
+    return (
+      <StepRow
+        glyph={<StepGlyph state="note" compact={compact} icon={<Brain className="size-3 text-muted/70" />} />}
+        label={label}
+        labelTone="font-sans text-[13px] italic text-muted"
+        open={open && !!thought}
+        onToggle={() => setOpen((v) => !v)}
+        testId="reasoning-block"
+      >
+        {thought ? (
+          <div className="md-reasoning min-w-0 max-w-full text-muted">
+            <Markdown text={thought} quiet streaming={streaming} />
+          </div>
+        ) : null}
+      </StepRow>
+    );
+  }
   if (item.type === "assistant") {
     if (!body && !streaming) return null;
     const preview = body.split(/\r?\n/).find((line) => line.trim())?.slice(0, 80) || "";
@@ -579,6 +630,9 @@ function summarize(items: Item[], t: TranscriptCopy): string {
 }
 
 function readableExtra(item: Item): string {
+  if (item.payload?.groupPart === "reasoning" || item.type === "reasoning") {
+    return reasoningText(item);
+  }
   const p = item.payload || {};
   const bits = [item.text, p.summary, p.prompt, p.note, p.question];
   for (const b of bits) {
@@ -622,8 +676,8 @@ export function ToolLine({
   const elapsed = formatElapsed(ms);
   const streamingOut = !!(result?.delta || result?.payload?.delta);
   useEffect(() => {
-    if (pending || streamingOut) setOpen(true);
-  }, [pending, streamingOut]);
+    if (pending && running) setOpen(true);
+  }, [pending, running]);
   const state: PairState = pending
     ? (running ? "running" : "interrupted")
     : isToolFailed(result) ? "failed" : "done";

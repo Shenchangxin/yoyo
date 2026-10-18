@@ -347,11 +347,12 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 				Text        string           `json:"text"`
 				Async       bool             `json:"async"`
 				Plan        bool             `json:"plan"`
+				RequestID   string           `json:"request_id"`
 				Attachments []app.Attachment `json:"attachments"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if body.Async {
-				if err := a.StartSendOpts(id, body.Text, body.Plan, body.Attachments); err != nil {
+				if err := a.StartSendOpts(id, body.Text, body.Plan, app.WithRequestID(body.Attachments, body.RequestID)); err != nil {
 					if errors.Is(err, app.ErrQueued) {
 						writeJSON(w, map[string]any{"ok": true, "queued": true})
 						return
@@ -1187,12 +1188,6 @@ func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID stri
 	w.Header().Set("Connection", "keep-alive")
 	ch, unsub := a.Hub.Subscribe(sessionID)
 	defer unsub()
-	if evs, err := a.Trajectory(sessionID); err == nil {
-		for _, ev := range evs {
-			writeSSE(w, ev)
-		}
-		flusher.Flush()
-	}
 	for {
 		select {
 		case <-r.Context().Done():
@@ -1201,14 +1196,14 @@ func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID stri
 			if !ok {
 				return
 			}
-			writeSSE(w, ev)
+			writeSSENotice(w, ev)
 			flusher.Flush()
 		}
 	}
 }
 
-func writeSSE(w http.ResponseWriter, ev trace.Event) {
-	b, _ := json.Marshal(ev)
+func writeSSENotice(w http.ResponseWriter, ev trace.Event) {
+	b, _ := json.Marshal(app.NoticeOf(ev))
 	fmt.Fprintf(w, "data: %s\n\n", b)
 }
 

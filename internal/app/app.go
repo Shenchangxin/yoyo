@@ -88,6 +88,8 @@ type Config struct {
 	NotifyWhenUnfocusedOnly bool                `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
 	UIScale                 float64             `yaml:"ui_scale" json:"ui_scale"`
 	ShowThinking            bool                `yaml:"show_thinking" json:"show_thinking"`
+	TranscriptView          string              `yaml:"transcript_view" json:"transcript_view"`
+	CollapseTiming          string              `yaml:"collapse_timing" json:"collapse_timing"`
 	UpdateChannel           string              `yaml:"update_channel" json:"update_channel"`
 	Theme                   string              `yaml:"theme" json:"theme"`
 	PaletteDark             string              `yaml:"palette_dark" json:"palette_dark"`

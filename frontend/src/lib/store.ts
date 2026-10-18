@@ -146,11 +146,9 @@ function readCollapsed(): boolean {
 
 function readOutlineCollapsed(): boolean {
   try {
-    const v = localStorage.getItem("yoyo-outline-collapsed");
-    if (v === "0") return false;
-    return true;
+    return localStorage.getItem("yoyo-outline-collapsed") === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 

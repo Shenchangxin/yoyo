@@ -60,16 +60,26 @@ func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 					return
 				}
 				mu.Lock()
+				n := app.NoticeOf(ev)
+				params := map[string]any{
+					"seq":        n.Seq,
+					"type":       n.Type,
+					"item_kind":  ev.ItemKind,
+					"session":    ev.SessionID,
+					"session_id": ev.SessionID,
+					"source":     ev.Source,
+					"payload":    ev.Payload,
+				}
+				if n.Event != nil {
+					params["event"] = n.Event
+				}
+				if n.Frame != nil {
+					params["frame"] = n.Frame
+				}
 				_ = enc.Encode(map[string]any{
 					"jsonrpc": "2.0",
 					"method":  "item.event",
-					"params": map[string]any{
-						"type":      string(ev.Type),
-						"item_kind": ev.ItemKind,
-						"session":   ev.SessionID,
-						"source":    ev.Source,
-						"payload":   ev.Payload,
-					},
+					"params":  params,
 				})
 				if ev.Type == "approval" && ev.Source == "gate" {
 					_ = enc.Encode(map[string]any{
@@ -200,6 +210,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			Text        string `json:"text"`
 			Plan        bool   `json:"plan"`
 			Wait        bool   `json:"wait"`
+			RequestID   string `json:"request_id"`
 			Attachments []any  `json:"attachments"`
 		}
 		if err := json.Unmarshal(params, &p); err != nil {
@@ -213,6 +224,7 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 				_ = json.Unmarshal(b, &att)
 				atts = append(atts, att)
 			}
+			atts = app.WithRequestID(atts, p.RequestID)
 			if err := a.StartSendOpts(p.Session, p.Text, p.Plan, atts); err != nil {
 				if errors.Is(err, app.ErrQueued) {
 					return map[string]any{"ok": true, "queued": true}, nil

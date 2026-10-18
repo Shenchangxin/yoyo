@@ -1,6 +1,7 @@
 import { asBool, num, pick, str } from "./normalize";
 import type { Item, ItemType } from "./protocol";
 import { sameUserTurnText } from "./mentions";
+import { ConversationFold } from "./conversation-fold";
 
 function payload(raw: any): Record<string, any> {
   const p = pick(raw, "payload", "Payload");
@@ -45,6 +46,10 @@ export function itemKey(opts: {
   if (type === "assistant" || type === "reasoning") {
     const rid = id || round;
     if (rid) return `${sessionId}:${type}:${rid}`;
+  }
+  if (type === "assistant_stream") {
+    const rid = id || round;
+    return `${sessionId}:${type}:${rid}:${idx}:${opts.delta ? "d" : "f"}`;
   }
   if (id && round && id !== round) return `${sessionId}:${type}:${round}:${id}`;
   if (id) return `${sessionId}:${type}:${id}`;
@@ -110,6 +115,10 @@ export function itemFromEvent(raw: any, idx = 0): Item {
   const id = str(pick(p, "id", "Id", "ID"));
   const round = str(pick(p, "round", "Round", "round_id", "roundId", "RoundID"));
   let slim = slimToolCallPayload(type, name, p);
+  if (slim.stream != null) {
+    slim = { ...slim };
+    delete slim.stream;
+  }
   const text = delta ? rawText : capText(rawText, type === "tool_result" ? UI_RESULT_CAP : UI_TEXT_CAP);
   if (!delta && type === "tool_result" && typeof slim.content === "string" && slim.content.length > UI_RESULT_CAP) {
     slim = { ...slim, content: capText(slim.content, UI_RESULT_CAP), bytes: slim.content.length };
@@ -157,6 +166,7 @@ export function isTranscriptNoise(ev: Item): boolean {
   if (
     ev.type === "system" ||
     ev.type === "turn_end" ||
+    ev.type === "inbox" ||
     ev.type === "eval" ||
     ev.type === "evolve" ||
     ev.type === "file_change" ||
@@ -173,25 +183,8 @@ export function isTranscriptNoise(ev: Item): boolean {
   return true;
 }
 
-function assistantRound(ev: Item): string {
-  return str(ev.payload?.id) || str(ev.payload?.round);
-}
-
-function openAssistantIndex(list: Item[]): number {
-  for (let i = list.length - 1; i >= 0; i--) {
-    const t = list[i].type;
-    if (t === "assistant") return i;
-    if (closesAssistant(t)) return -1;
-  }
-  return -1;
-}
-
 function sameUserText(a: string, b: string): boolean {
   return sameUserTurnText(a, b);
-}
-
-function steerText(text: string): string {
-  return text.replace(/^User steering \(apply now\):\s*/i, "").trim();
 }
 
 /** True if the open turn (after the last assistant) already has this user text. */
@@ -204,174 +197,12 @@ export function turnHasUserText(list: Item[], text: string): boolean {
   return false;
 }
 
-function dropTrailingOptimistic(list: Item[], text: string, steer: boolean): Item[] {
-  const out = list.slice();
-  while (out.length) {
-    const last = out[out.length - 1];
-    if (last.type !== "user") break;
-    if (steer) {
-      if (last.source === "steer" && sameUserText(steerText(last.text), text)) {
-        out.pop();
-        continue;
-      }
-      break;
-    }
-    if (last.source === "ui" && sameUserText(last.text, text)) {
-      out.pop();
-      continue;
-    }
-    break;
-  }
-  return out;
-}
-
-function textDeltaIndex(list: Item[], ev: Item): number {
-  const rid = assistantRound(ev);
-  if (rid) {
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].type === "user") return -1;
-      if (list[i].type === ev.type && assistantRound(list[i]) === rid) return i;
-    }
-    return -1;
-  }
-  if (ev.type === "assistant") return openAssistantIndex(list);
-  for (let i = list.length - 1; i >= 0; i--) {
-    if (list[i].type === ev.type) return i;
-    if (closesAssistant(list[i].type)) return -1;
-  }
-  return -1;
-}
-
-function roundNum(id: string): number {
-  const m = /:r(\d+)$/.exec(id);
-  return m ? Number(m[1]) : 0;
-}
-
-function lastOpenAssistant(list: Item[]): Item | null {
-  for (let i = list.length - 1; i >= 0; i--) {
-    if (list[i].type === "user" && list[i].source !== "steer") return null;
-    if (list[i].type === "assistant") return list[i];
-  }
-  return null;
-}
-
-function streamIndexRange(p: Record<string, any> | undefined): { from: number; to: number } {
-  const to = num(p?.index);
-  const from = num(p?.index_from) || to;
-  return { from, to };
-}
-
-function foldTextDelta(list: Item[], ev: Item): Item[] {
-  const idx = textDeltaIndex(list, ev);
-  if (idx >= 0) {
-    const cur = list[idx];
-    if (ev.delta && cur.text && !cur.delta) return list;
-    if (ev.delta) {
-      const have = num(cur.payload?.index);
-      const { to } = streamIndexRange(ev.payload);
-      if (to > 0 && have > 0 && to <= have) return list;
-    }
-    const text = ev.delta ? cur.text + (ev.text || "") : (ev.text || cur.text);
-    const next = list.slice();
-    const { to } = streamIndexRange(ev.payload);
-    next[idx] = {
-      ...cur,
-      text,
-      delta: ev.delta,
-      payload: { ...cur.payload, ...ev.payload, text, delta: ev.delta, ...(to ? { index: to } : {}) },
-    };
-    return next;
-  }
-  if (!ev.text && !ev.delta) return list;
-  if (ev.delta) {
-    const last = lastOpenAssistant(list);
-    if (last) {
-      const incoming = roundNum(assistantRound(ev));
-      const have = roundNum(assistantRound(last));
-      if (incoming > 0 && have > 0 && incoming < have) return list;
-    }
-  }
-  return [...list, ev];
-}
-
-function foldToolResult(list: Item[], ev: Item): Item[] {
-  const idx = ev.key ? list.findIndex((x) => x.key === ev.key) : -1;
-  if (idx >= 0) {
-    const cur = list[idx];
-    const curBody = String(cur.payload?.content ?? cur.text ?? "");
-    if (ev.delta && curBody && !cur.delta) return list;
-    const add = String(ev.payload?.content ?? ev.text ?? "");
-    const body = ev.delta ? curBody + add : (add || curBody);
-    const next = list.slice();
-    next[idx] = {
-      ...cur,
-      ...ev,
-      text: body,
-      delta: ev.delta,
-      payload: { ...cur.payload, ...ev.payload, content: body, delta: ev.delta },
-    };
-    return next;
-  }
-  return [...list, ev];
-}
-
 /**
  * Fold a live or replayed event into the transcript.
- * Assistant deltas only join the in-progress bubble of the current round —
- * never the previous user turn (Codex/Claude API-round grouping).
+ * Assistant deltas join the in-progress attempt of the current round.
  */
 export function mergeItem(list: Item[], ev: Item): Item[] {
-  return foldTurnErrors(mergeItemCore(list, ev));
-}
-
-function mergeItemCore(list: Item[], ev: Item): Item[] {
-  if (!ev) return list;
-  if (ev.type === "turn_end" || ev.type === "system" || ev.type === "eval" || ev.type === "evolve" || ev.type === "file_change" || ev.type === "ask_user") {
-    return list;
-  }
-  if (ev.type === "compaction" && isTranscriptNoise(ev)) return list;
-
-  if (ev.type === "user") {
-    const steer = ev.source === "steer" || ev.name === "steer";
-    const incoming = steer ? steerText(ev.text) : ev.text;
-    const row = steer ? { ...ev, source: "steer", text: incoming } : ev;
-    if (row.source === "ui") {
-      if (turnHasUserText(list, incoming)) return list;
-      return [...list, row];
-    }
-    const next = dropTrailingOptimistic(list, incoming, steer);
-    if (row.key && next.some((x) => x.key === row.key)) return next;
-    return [...next, row];
-  }
-
-  if (ev.type === "assistant" || ev.type === "reasoning") {
-    return foldTextDelta(list, ev);
-  }
-
-  if (ev.type === "tool_result") {
-    return foldToolResult(list, ev);
-  }
-
-  if (ev.type === "tool_call") {
-    return foldToolCall(list, ev);
-  }
-
-  if (ev.key && list.some((x) => x.key === ev.key)) return list;
-  return [...list, ev];
-}
-
-function foldToolCall(list: Item[], ev: Item): Item[] {
-  const idx = ev.key ? list.findIndex((x) => x.key === ev.key) : -1;
-  if (idx < 0) return [...list, ev];
-  const cur = list[idx];
-  const curProg = !!cur.payload?.progress;
-  const nextProg = !!ev.payload?.progress;
-  if (nextProg && !curProg) return list;
-  const payload = { ...cur.payload, ...ev.payload };
-  if (!nextProg) delete payload.progress;
-  const next = list.slice();
-  next[idx] = { ...cur, ...ev, payload };
-  return next;
+  return foldTurnErrors(ConversationFold.from(list).accept(ev));
 }
 
 function isTurnProgress(it: Item): boolean {
@@ -427,9 +258,9 @@ export function mergePendingUsers(seed: Item[], live: Item[]): Item[] {
 /** Replay live items onto a trajectory seed so a late seed cannot drop round 2. */
 export function foldLiveIntoSeed(seed: Item[], live: Item[]): Item[] {
   if (!live.length) return seed;
-  let out = seed;
-  for (const it of live) out = mergeItem(out, it);
-  return out;
+  const fold = ConversationFold.from(seed);
+  for (const it of live) fold.accept(it);
+  return foldTurnErrors(fold.items());
 }
 
 /**
@@ -484,11 +315,30 @@ export function userTurnCount(items: Item[]): number {
 }
 
 export function replayEvents(raws: any[]): Item[] {
-  let acc: Item[] = [];
-  raws.forEach((raw, i) => {
-    acc = mergeItem(acc, itemFromEvent(raw, i));
+  const fold = new ConversationFold();
+  (raws || []).forEach((raw, i) => {
+    fold.accept(itemFromEvent(raw, i));
   });
-  return acc;
+  return foldTurnErrors(fold.items());
+}
+
+export function attachStreamFrame(item: Item, frame?: StreamFrame): Item {
+  if (!item || !frame) return item;
+  if (item.type !== "assistant_stream" && frame.kind !== "start" && frame.kind !== "chunk" && frame.kind !== "end") {
+    return item;
+  }
+  const p = { ...item.payload };
+  if (frame.kind) p.kind = frame.kind;
+  if (frame.attempt_id) p.attempt_id = frame.attempt_id;
+  if (frame.revision) p.revision = frame.revision;
+  if (frame.index != null) p.index = frame.index;
+  if (frame.index_from != null) p.index_from = frame.index_from;
+  if (frame.chunk) p.chunk = frame.chunk;
+  if (frame.turn) p.turn = frame.turn;
+  if (frame.step) p.step = frame.step;
+  if (frame.outcome) p.outcome = frame.outcome;
+  const type = item.type === "assistant_stream" || item.type === "system" ? "assistant_stream" as const : item.type;
+  return { ...item, type, payload: p };
 }
 
 function isTraceEnvelopeType(t: unknown): boolean {
@@ -497,10 +347,16 @@ function isTraceEnvelopeType(t: unknown): boolean {
 
 export type StreamFrame = {
   kind?: string;
+  attempt_id?: string;
+  revision?: number;
   index?: number;
   index_from?: number;
   block?: string;
   delta?: string;
+  chunk?: Record<string, any>;
+  turn?: number;
+  step?: number;
+  outcome?: string;
   committed_seq?: number;
 };
 
@@ -514,15 +370,23 @@ export type LiveNotice = {
 function readStreamFrame(raw: any): StreamFrame | undefined {
   const src = raw?.frame ?? raw?.Frame;
   if (!src || typeof src !== "object") return undefined;
+  const hasIndex = src.index != null || src.Index != null;
+  const hasFrom = src.index_from != null || src.IndexFrom != null || src.indexFrom != null;
   const index = num(src.index ?? src.Index);
   const from = num(src.index_from ?? src.IndexFrom ?? src.indexFrom);
   const committed = num(src.committed_seq ?? src.CommittedSeq ?? src.committedSeq);
   return {
     kind: str(src.kind ?? src.Kind) || undefined,
-    index: index || undefined,
-    index_from: from || index || undefined,
+    attempt_id: str(src.attempt_id ?? src.AttemptID ?? src.attemptId) || undefined,
+    revision: num(src.revision ?? src.Revision) || undefined,
+    index: hasIndex ? index : undefined,
+    index_from: hasFrom ? from : hasIndex ? index : undefined,
     block: str(src.block ?? src.Block) || undefined,
     delta: str(src.delta ?? src.Delta) || undefined,
+    chunk: src.chunk ?? src.Chunk,
+    turn: num(src.turn ?? src.Turn) || undefined,
+    step: num(src.step ?? src.Step) || undefined,
+    outcome: str(src.outcome ?? src.Outcome) || undefined,
     committed_seq: committed || undefined,
   };
 }

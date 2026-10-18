@@ -8,6 +8,10 @@ import { structureSig } from "../src/lib/stream-live";
 import type { Item } from "../src/lib/protocol";
 import { itemMatchesTurn, isOutlineActive, itemTurnKey, neighborTurn, outlineTitle, outlineTurnKey, pendingOutline, pickActiveTurnKey, rowMatchesJump, turnJumpAliases } from "../src/lib/turn-outline";
 
+function visibleParts(parts: AgentPart[]): AgentPart[] {
+  return parts.flatMap((p) => (p.kind === "work" ? p.parts : [p]));
+}
+
 function liveUser(text: string, extra?: Record<string, any>): Item {
   return itemFromEvent({
     type: "user",
@@ -226,13 +230,15 @@ test("plan and file_change stay inside the agent turn", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
+  expect(agent.parts.map((p) => p.kind)).toEqual(["work", "item"]);
   expect(agent.copyText).toBe("done");
-  const process = agent.parts[0];
+  const nested = visibleParts(agent.parts);
+  expect(nested.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
+  const process = nested[0];
   expect(process.kind).toBe("process");
   if (process.kind !== "process") return;
   expect(process.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["update_plan"]);
-  const artifacts = agent.parts[1];
+  const artifacts = nested[1];
   expect(artifacts.kind).toBe("artifact");
   if (artifacts.kind !== "artifact") return;
   expect(artifacts.items.filter((it) => it.type === "tool_call").map((it) => it.name)).toEqual(["apply_patch"]);
@@ -259,7 +265,7 @@ test("skill runtime tools show on the live transcript and process rail", () => {
   const agent = rows.find((r) => r.kind === "agent");
   expect(agent?.kind).toBe("agent");
   if (agent?.kind !== "agent") return;
-  const names = agent.parts.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
+  const names = visibleParts(agent.parts).flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
   expect(names).toEqual(["load_skill", "read_skill_file", "web_search"]);
 });
 
@@ -280,9 +286,10 @@ test("parallel subagents nest in the parent turn instead of as process rows", ()
   const agent = rows.find((r) => r.kind === "agent");
   expect(agent?.kind).toBe("agent");
   if (agent?.kind !== "agent") return;
-  const sub = agent.parts.filter((p): p is Extract<AgentPart, { kind: "subagent" }> => p.kind === "subagent");
+  const nested = visibleParts(agent.parts);
+  const sub = nested.filter((p): p is Extract<AgentPart, { kind: "subagent" }> => p.kind === "subagent");
   expect(sub.map((p) => p.child)).toEqual(["s--task--aa", "s--task--bb"]);
-  const processNames = agent.parts.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
+  const processNames = nested.flatMap((p) => p.kind === "process" || p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.name);
   expect(processNames).not.toContain("task");
 });
 
@@ -349,7 +356,7 @@ test("ask_user does not split the agent turn", () => {
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
   expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(1);
-  const letter = agent.parts.find((p) => p.kind === "item" && p.item.type === "assistant");
+  const letter = visibleParts(agent.parts).find((p) => p.kind === "item" && p.item.type === "assistant");
   expect(letter?.kind === "item" ? letter.item.text : "").toBe("thanks");
   expect(agent.copyText).toBe("thanks");
 });
@@ -367,12 +374,13 @@ test("tool-loop assistants collapse to one letter in a turn", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  const letters = agent.parts.filter((p) => p.kind === "item" && p.item.type === "assistant");
+  const nested = visibleParts(agent.parts);
+  const letters = nested.filter((p) => p.kind === "item" && p.item.type === "assistant");
   expect(letters).toHaveLength(1);
   expect(letters[0].kind === "item" ? letters[0].item.text : "").toBe("Ready to play.");
   expect(agent.copyText).toBe("Ready to play.");
-  expect(agent.parts.some((p) => p.kind === "artifact")).toBe(true);
-  const process = agent.parts.find((p) => p.kind === "process");
+  expect(nested.some((p) => p.kind === "artifact")).toBe(true);
+  const process = nested.find((p) => p.kind === "process");
   expect(process?.kind).toBe("process");
   if (process?.kind !== "process") return;
   expect(process.items.some((it) => it.type === "assistant" && it.text.includes("I will write"))).toBe(true);
@@ -394,8 +402,10 @@ test("process tools batch separately from artifacts", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
-  const process = agent.parts[0];
+  expect(agent.parts.map((p) => p.kind)).toEqual(["work", "item"]);
+  const nested = visibleParts(agent.parts);
+  expect(nested.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
+  const process = nested[0];
   expect(process.kind).toBe("process");
   if (process.kind !== "process") return;
   expect(process.live).toBe(false);
@@ -411,10 +421,11 @@ test("unmatched tool call marks the process group live", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts).toHaveLength(1);
-  expect(agent.parts[0].kind).toBe("process");
-  if (agent.parts[0].kind !== "process") return;
-  expect(agent.parts[0].live).toBe(true);
+  const nested = visibleParts(agent.parts);
+  expect(nested).toHaveLength(1);
+  expect(nested[0].kind).toBe("process");
+  if (nested[0].kind !== "process") return;
+  expect(nested[0].live).toBe(true);
 });
 
 test("steer stays inside the running agent turn", () => {
@@ -452,7 +463,7 @@ test("elided html write_file still lands as an artifact card", () => {
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  expect(visibleParts(agent.parts).map((p) => p.kind)).toEqual(["artifact"]);
   const view = artifactView(items.find((it) => it.type === "tool_call"), items.find((it) => it.type === "tool_result"));
   expect(view.kind).toBe("html");
   expect(view.path).toBe("pelican-bike.html");
@@ -472,7 +483,7 @@ test("write_file and str_replace land as artifacts with a rendered diff", () => 
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  expect(visibleParts(agent.parts).map((p) => p.kind)).toEqual(["artifact"]);
   const view = artifactView(items.find((it) => it.type === "tool_call" && it.name === "write_file"), items.find((it) => it.type === "tool_result" && it.name === "write_file"));
   expect(view.kind).toBe("html");
   expect(view.path).toBe("web/index.html");
@@ -506,7 +517,7 @@ test("write_file chip uses result patch as the change region", () => {
   const agent = rows[1];
   expect(agent?.kind).toBe("agent");
   if (agent?.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["artifact"]);
+  expect(visibleParts(agent.parts).map((p) => p.kind)).toEqual(["artifact"]);
   const view = artifactView(items.find((it) => it.type === "tool_call"), items.find((it) => it.type === "tool_result"));
   expect(view.kind).toBe("diff");
   expect(view.created).toBe(true);
@@ -533,11 +544,12 @@ test("html file bubbles show each real change; reads and no-ops stay in the proc
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact", "item"]);
-  const artifactCalls = agent.parts.filter((p) => p.kind === "artifact").flatMap((p) => p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
+  const nested = visibleParts(agent.parts);
+  const artifactCalls = nested.filter((p) => p.kind === "artifact").flatMap((p) => p.kind === "artifact" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
   expect(artifactCalls).toEqual(["w1", "e1"]);
-  const processCalls = agent.parts.flatMap((p) => p.kind === "process" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
+  const processCalls = nested.flatMap((p) => p.kind === "process" ? p.items : []).filter((it) => it.type === "tool_call").map((it) => it.payload?.id);
   expect(processCalls).toEqual(["r1", "e2", "b1"]);
+  expect(nested.some((p) => p.kind === "item" && p.item.type === "assistant")).toBe(true);
 });
 
 test("unchanged source dumps stay in the process rail, not preview cards", () => {
@@ -554,7 +566,7 @@ test("unchanged source dumps stay in the process rail, not preview cards", () =>
   const agent = rows[1];
   expect(agent.kind).toBe("agent");
   if (agent.kind !== "agent") return;
-  expect(agent.parts.map((p) => p.kind)).toEqual(["process", "artifact"]);
+  expect(visibleParts(agent.parts).map((p) => p.kind)).toEqual(["artifact", "process", "artifact"]);
   const dump = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "w1"));
   const noop = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e1"));
   const edit = artifactView(items.find((it) => it.type === "tool_call" && it.payload?.id === "e2"));
@@ -717,10 +729,10 @@ test("structureSig ignores token text", () => {
   expect(structureSig(a)).toBe(structureSig(b));
 });
 
-test("structureSig ignores the delta bit and includes running", () => {
+test("structureSig includes the delta bit so a settlement can leave the stream seat", () => {
   const a: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hi", name: "", delta: true, payload: {} }];
   const b: Item[] = [{ key: "1", type: "assistant", sessionId: "s", source: "", ts: "", text: "hi", name: "", delta: false, payload: {} }];
-  expect(structureSig(a)).toBe(structureSig(b));
+  expect(structureSig(a)).not.toBe(structureSig(b));
   expect(structureSig(a, true)).not.toBe(structureSig(a, false));
 });
 
@@ -740,9 +752,10 @@ test("hot window keeps a long tool loop and folds earlier assistants", () => {
   const agent = rows[1];
   expect(agent?.kind).toBe("agent");
   if (agent?.kind !== "agent") return;
-  expect(agent.parts.filter((p) => p.kind === "item")).toHaveLength(1);
+  const nested = visibleParts(agent.parts);
+  expect(nested.filter((p) => p.kind === "item")).toHaveLength(1);
   expect(agent.copyText).toBe("final letter");
-  const process = agent.parts.find((p) => p.kind === "process");
+  const process = nested.find((p) => p.kind === "process");
   expect(process?.kind).toBe("process");
   if (process?.kind !== "process") return;
   expect(process.items.filter((it) => it.type === "assistant")).toHaveLength(90);

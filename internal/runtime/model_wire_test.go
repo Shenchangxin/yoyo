@@ -93,14 +93,14 @@ func TestShowThinkingOmitsDisableFields(t *testing.T) {
 func TestApplyStreamChunkReasoning(t *testing.T) {
 	tools := map[int]*streamAcc{}
 	max := -1
-	_, text, reason, _, _, _ := applyStreamChunk(
+	_, text, reason, _, _, _, _ := applyStreamChunk(
 		`{"choices":[{"delta":{"reasoning_content":"think ","content":"hi"}}]}`,
 		tools, &max,
 	)
 	if text != "hi" || reason != "think " {
 		t.Fatalf("text=%q reason=%q", text, reason)
 	}
-	_, _, reason, _, _, _ = applyStreamChunk(
+	_, _, reason, _, _, _, _ = applyStreamChunk(
 		`{"choices":[{"delta":{"content":[{"type":"thinking","text":"why"},{"type":"text","text":"ok"}]}}]}`,
 		tools, &max,
 	)

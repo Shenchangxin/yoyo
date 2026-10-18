@@ -117,11 +117,11 @@ describe("notice expiry in the store", () => {
   it("drops a replayed notice that is already past its time, and prunes the rest as time passes", () => {
     const { clearNotices, pushNotice, pruneNotices } = useUI.getState();
     clearNotices();
-    const at = Date.parse("2026-10-14T04:00:00Z");
-    const row = (id: string, ts: string) => ({ id, title: "t", body: "", ts, sessionId: "s1" });
-    pushNotice(row("stale", "2026-10-10T00:00:00Z"));
+    const at = Date.now();
+    const row = (id: string, ts: number) => ({ id, title: "t", body: "", ts: new Date(ts).toISOString(), sessionId: "s1" });
+    pushNotice(row("stale", at - NOTICE_TTL_MS - 1));
     assert.equal(useUI.getState().notices.length, 0);
-    pushNotice(row("fresh", "2026-10-14T04:00:00Z"));
+    pushNotice(row("fresh", at));
     assert.deepEqual(useUI.getState().notices.map((n) => n.id), ["fresh"]);
     pruneNotices(at + NOTICE_TTL_MS - 1);
     assert.deepEqual(useUI.getState().notices.map((n) => n.id), ["fresh"]);

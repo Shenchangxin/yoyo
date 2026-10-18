@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -28,9 +29,25 @@ func TestHubAssignsSeqAndSince(t *testing.T) {
 }
 
 func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
-	call := NoticeOf(trace.Event{Seq: 2, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "read_file", "arguments": `{"path":"a.go"}`}})
-	if call.Event != nil {
-		t.Fatal("tool_call must be pull-only")
+	call := NoticeOf(trace.Event{Seq: 2, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "read_file", "id": "c1", "arguments": `{"path":"a.go"}`}})
+	if call.Event == nil || call.Event.Payload["name"] != "read_file" {
+		t.Fatalf("compact tool_call must inline, got %+v", call)
+	}
+	huge := strings.Repeat("x", 8000)
+	fat := NoticeOf(trace.Event{Seq: 2, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{
+		"name": "write_file", "id": "c2", "path": "a.html", "arguments": `{"path":"a.html","content":"` + huge + `"}`,
+	}})
+	if fat.Event == nil || fat.Event.Payload["name"] != "write_file" {
+		t.Fatalf("fat tool_call must still inline a compact notice, got %+v", fat)
+	}
+	if _, ok := fat.Event.Payload["arguments"]; ok {
+		t.Fatal("fat arguments must not ride the Wails notice")
+	}
+	settled := NoticeOf(trace.Event{Seq: 2, SessionID: "s", Type: trace.TypeToolResult, Payload: map[string]any{
+		"id": "c1", "name": "shell", "content": "hello", "added": 1, "removed": 1,
+	}})
+	if settled.Event == nil || settled.Event.Payload["delta"] != false {
+		t.Fatalf("settled tool_result must inline with delta=false, got %+v", settled.Event)
 	}
 	letter := NoticeOf(trace.Event{Seq: 3, SessionID: "s", Type: trace.TypeAssistant, Payload: map[string]any{"text": "done", "id": "r1"}})
 	if letter.Event != nil {
@@ -55,6 +72,19 @@ func TestNoticeOmitsToolCallAndSettledAssistant(t *testing.T) {
 	prog := NoticeOf(trace.Event{Seq: 6, SessionID: "s", Type: trace.TypeToolCall, Payload: map[string]any{"name": "write_file", "id": "c1", "progress": true, "bytes": 1200, "path": "a.html", "arguments": `{"path":"a.html"}`}})
 	if prog.Event == nil {
 		t.Fatal("tiny tool-arg progress must inline")
+	}
+	stream := NoticeOf(trace.Event{Seq: 7, SessionID: "s", Type: trace.TypeAssistantStream, Payload: map[string]any{
+		"kind": "chunk", "attempt_id": "a1", "index": 0, "index_from": 0,
+		"chunk": map[string]any{"type": "text-delta", "index": 0, "text": "hi"},
+	}})
+	if stream.Event == nil || stream.Frame == nil || stream.Frame.Kind != "chunk" || stream.Frame.IndexFrom != 0 {
+		t.Fatalf("assistant_stream notice %+v", stream)
+	}
+	start := NoticeOf(trace.Event{Seq: 8, SessionID: "s", Type: trace.TypeAssistantStream, Payload: map[string]any{
+		"kind": "start", "attempt_id": "a1", "turn": 1, "step": 1,
+	}})
+	if start.Event == nil || start.Frame == nil || start.Frame.Kind != "start" {
+		t.Fatalf("assistant_stream start %+v", start)
 	}
 }
 

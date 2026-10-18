@@ -202,6 +202,8 @@ export function configOf(v: any): AppConfig {
     notifyWhenUnfocusedOnly: bool(pick(v, "notify_when_unfocused_only", "NotifyWhenUnfocusedOnly", "notifyWhenUnfocusedOnly")),
     uiScale: snapUiScale(num(pick(v, "ui_scale", "UIScale", "uiScale"), 1) || 1),
     showThinking: bool(pick(v, "show_thinking", "ShowThinking", "showThinking")),
+    transcriptView: str(pick(v, "transcript_view", "TranscriptView", "transcriptView")),
+    collapseTiming: str(pick(v, "collapse_timing", "CollapseTiming", "collapseTiming")),
     updateChannel: str(pick(v, "update_channel", "UpdateChannel", "updateChannel"), "latest"),
     theme: str(pick(v, "theme", "Theme"), "system"),
     paletteDark: str(pick(v, "palette_dark", "PaletteDark", "paletteDark"), "ink"),
@@ -293,6 +295,8 @@ export async function setConfig(cfg: AppConfig): Promise<void> {
     notify_when_unfocused_only: !!cfg.notifyWhenUnfocusedOnly,
     ui_scale: snapUiScale(cfg.uiScale || 1),
     show_thinking: !!cfg.showThinking,
+    transcript_view: cfg.transcriptView || "",
+    collapse_timing: cfg.collapseTiming || "",
     update_channel: "latest",
     theme: cfg.theme || "system",
     palette_dark: cfg.paletteDark || "ink",
@@ -634,10 +638,10 @@ export async function trajectoryAround(id: string, seq: number, turns?: number):
 }
 
 /**
- * One pull from the hub ring after a global seq. `gap` means `events` is not the
- * complete tail after `after`; the caller must reload the trajectory instead.
+ * One pull from the hub ring after a global seq. `gap` is a hole (reload).
+ * `more` is a page: apply `events` in order, then pull again.
  */
-export type LiveBatch = { events: any[]; head: number; gap: boolean };
+export type LiveBatch = { events: any[]; head: number; gap: boolean; more: boolean };
 
 export async function liveSync(id: string, after: number): Promise<LiveBatch> {
   const s = await wailsService();
@@ -646,9 +650,10 @@ export async function liveSync(id: string, after: number): Promise<LiveBatch> {
     ? await fn(id, after)
     : await http(`/api/sessions/${id}/live/sync?after=${encodeURIComponent(String(after))}`);
   return {
-    events: asArray(raw?.events),
-    head: Number(raw?.head) || 0,
-    gap: raw?.gap === true,
+    events: asArray(raw?.events ?? raw?.Events),
+    head: Number(raw?.head ?? raw?.Head) || 0,
+    gap: raw?.gap === true || raw?.Gap === true,
+    more: raw?.more === true || raw?.More === true,
   };
 }
 
@@ -771,11 +776,21 @@ export async function retry(sessionID: string): Promise<void> {
   }
 }
 
-export async function send(sessionID: string, text: string, opts?: { plan?: boolean; attachments?: Attachment[] }): Promise<{ queued?: boolean }> {
+const REQUEST_ID_NAME = "__request_id__";
+
+function withRequestId(atts: Attachment[], requestId?: string): Attachment[] {
+  const id = String(requestId || "").trim();
+  const kept = (atts || []).filter((a) => a.name !== REQUEST_ID_NAME);
+  if (!id) return kept;
+  return [...kept, { name: REQUEST_ID_NAME, path: id }];
+}
+
+export async function send(sessionID: string, text: string, opts?: { plan?: boolean; attachments?: Attachment[]; requestId?: string }): Promise<{ queued?: boolean }> {
   const s = await wailsService();
+  const atts = withRequestId(opts?.attachments || [], opts?.requestId);
   try {
     if (s?.StartSendOpts) {
-      const raw = await s.StartSendOpts(sessionID, text, !!opts?.plan, opts?.attachments || []);
+      const raw = await s.StartSendOpts(sessionID, text, !!opts?.plan, atts);
       return { queued: isQueuedResult(raw) };
     }
     if (s?.StartSend) {
@@ -784,7 +799,7 @@ export async function send(sessionID: string, text: string, opts?: { plan?: bool
     }
     const raw = await http<any>(`/api/sessions/${sessionID}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, async: true, plan: !!opts?.plan, attachments: opts?.attachments || [] }),
+      body: JSON.stringify({ text, async: true, plan: !!opts?.plan, request_id: opts?.requestId || "", attachments: atts }),
     });
     return { queued: !!raw?.queued || isQueuedResult(raw) };
   } catch (e) {

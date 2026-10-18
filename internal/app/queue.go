@@ -2,11 +2,13 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/session"
+	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
 // ErrQueued means the session is already running and the turn was enqueued.
@@ -41,11 +43,12 @@ func (a *App) Enqueue(sessionID string, turn QueuedTurn) {
 	}
 	if a.Threads != nil {
 		a.Threads.Enqueue(sessionID, toSessionQueued(turn))
-		return
+	} else {
+		a.queueMu.Lock()
+		a.queue[sessionID] = append(a.queue[sessionID], turn)
+		a.queueMu.Unlock()
 	}
-	a.queueMu.Lock()
-	a.queue[sessionID] = append(a.queue[sessionID], turn)
-	a.queueMu.Unlock()
+	a.recordInbox(sessionID, "enqueue", "next-turn", turn.ID, turn.Text)
 }
 
 func (a *App) QueueList(sessionID string) []QueuedTurn {
@@ -151,6 +154,7 @@ func (a *App) kickQueue(sessionID string) {
 	if !ok {
 		return
 	}
+	a.recordInbox(sessionID, "claim", "next-turn", next.ID, next.Text)
 	if next.Resume {
 		_ = a.launchSend(sessionID, "", next.Plan, nil, true)
 		return
@@ -171,14 +175,15 @@ func (a *App) Steer(sessionID, text string) error {
 	a.queueMu.Lock()
 	a.steers[sessionID] = append(a.steers[sessionID], text)
 	a.queueMu.Unlock()
+	a.recordInbox(sessionID, "enqueue", "next-step", "", text)
 	return nil
 }
 
 func (a *App) pullSteer(sessionID string) string {
 	a.queueMu.Lock()
-	defer a.queueMu.Unlock()
 	items := a.steers[sessionID]
 	if len(items) == 0 {
+		a.queueMu.Unlock()
 		return ""
 	}
 	a.steers[sessionID] = nil
@@ -189,5 +194,26 @@ func (a *App) pullSteer(sessionID string) string {
 		}
 		out += s
 	}
+	a.queueMu.Unlock()
+	a.recordInbox(sessionID, "claim", "next-step", "", out)
 	return out
+}
+
+func (a *App) recordInbox(sessionID, kind, lane, id, text string) {
+	if a == nil || a.Traces == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	payload := map[string]any{"kind": kind, "lane": lane}
+	if id != "" {
+		payload["id"] = id
+	}
+	if text != "" {
+		payload["text"] = text
+	}
+	_ = a.Traces.Append(trace.Event{
+		Type:      trace.TypeInbox,
+		Source:    "runtime",
+		SessionID: sessionID,
+		Payload:   payload,
+	})
 }

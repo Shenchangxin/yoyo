@@ -72,25 +72,8 @@ type ChatRequest struct {
 	ShowThinking bool       `json:"-"`
 }
 
-type StreamDelta struct {
-	Text      string
-	Reasoning string
-	Tool      ToolCall
-	ToolDone  bool
-	// Index is 1-based within the current block for this round. LiveNotice.frame
-	// carries it so a reconnect can skip duplicates and rebaseline on a gap.
-	Index int
-	Block string
-}
-
 type Client interface {
 	Chat(ctx context.Context, req ChatRequest) (Message, error)
-}
-
-// Streamer is an optional capability. The loop uses it when present so the
-// UI can render tokens without pulling a heavy agent SDK.
-type Streamer interface {
-	ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error)
 }
 
 type OpenAIClient struct {
@@ -149,7 +132,7 @@ func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, erro
 	return c.ChatStream(ctx, req, nil)
 }
 
-func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	msg, err := c.doChat(ctx, req, true, emit)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "stream") {
 		return c.doChat(ctx, req, false, emit)
@@ -157,7 +140,7 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit fun
 	return msg, err
 }
 
-func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool, emit func(StreamDelta) error) (Message, error) {
+func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool, emit func(StreamChunk) error) (Message, error) {
 	payload := map[string]any{
 		"model":    req.Model,
 		"messages": wireMessages(req.Messages),
@@ -200,7 +183,7 @@ func thinkingRejected(msg string) bool {
 	return strings.Contains(s, "thinking") || strings.Contains(s, "enable_thinking") || strings.Contains(s, "reasoning_effort")
 }
 
-func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, stream bool, emit func(StreamDelta) error) (Message, error) {
+func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, stream bool, emit func(StreamChunk) error) (Message, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return Message{}, err
@@ -241,8 +224,8 @@ func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, str
 			return Message{}, err
 		}
 		msg, err := parseOpenAIJSON(raw)
-		if err == nil && emit != nil && msg.Content != "" {
-			_ = emit(StreamDelta{Text: msg.Content})
+		if err == nil && emit != nil {
+			_ = emitMessageChunks(emit, msg)
 		}
 		return msg, err
 	}
@@ -251,10 +234,184 @@ func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, str
 
 type streamAcc struct {
 	id, name, args string
-	done           bool
 }
 
-func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamDelta) error) (Message, error) {
+type openaiEmitter struct {
+	emit      func(StreamChunk) error
+	next      int
+	textIdx   int
+	text      strings.Builder
+	textOn    bool
+	reasonIdx int
+	reason    strings.Builder
+	reasonOn  bool
+	tools     map[int]*toolSlot
+}
+
+type toolSlot struct {
+	ourIndex int
+	id, name, args string
+	started  bool
+	ended    bool
+}
+
+func newOpenAIEmitter(emit func(StreamChunk) error) *openaiEmitter {
+	return &openaiEmitter{emit: emit, textIdx: -1, reasonIdx: -1, tools: map[int]*toolSlot{}}
+}
+
+func (e *openaiEmitter) out(ch StreamChunk) error {
+	if e == nil || e.emit == nil {
+		return nil
+	}
+	return e.emit(ch)
+}
+
+func (e *openaiEmitter) textDelta(s string) error {
+	if s == "" {
+		return nil
+	}
+	if !e.textOn {
+		if err := e.closeReason(); err != nil {
+			return err
+		}
+		e.textIdx = e.next
+		e.next++
+		e.textOn = true
+		if err := e.out(StreamChunk{Type: ChunkBlockStart, Index: e.textIdx, BlockType: BlockText}); err != nil {
+			return err
+		}
+	}
+	e.text.WriteString(s)
+	return e.out(StreamChunk{Type: ChunkTextDelta, Index: e.textIdx, Text: s})
+}
+
+func (e *openaiEmitter) reasonDelta(s string) error {
+	if s == "" {
+		return nil
+	}
+	if !e.reasonOn {
+		e.reasonIdx = e.next
+		e.next++
+		e.reasonOn = true
+		if err := e.out(StreamChunk{Type: ChunkBlockStart, Index: e.reasonIdx, BlockType: BlockReasoning}); err != nil {
+			return err
+		}
+	}
+	e.reason.WriteString(s)
+	return e.out(StreamChunk{Type: ChunkReasoningDelta, Index: e.reasonIdx, Text: s})
+}
+
+func (e *openaiEmitter) closeText() error {
+	if !e.textOn {
+		return nil
+	}
+	err := e.out(StreamChunk{Type: ChunkBlockEnd, Index: e.textIdx, Block: &ContentBlock{Type: BlockText, Text: e.text.String()}})
+	e.textOn = false
+	return err
+}
+
+func (e *openaiEmitter) closeReason() error {
+	if !e.reasonOn {
+		return nil
+	}
+	err := e.out(StreamChunk{Type: ChunkBlockEnd, Index: e.reasonIdx, Block: &ContentBlock{Type: BlockReasoning, Text: e.reason.String()}})
+	e.reasonOn = false
+	return err
+}
+
+func (e *openaiEmitter) toolDelta(providerIdx int, id, name, argDelta string) error {
+	if err := e.closeReason(); err != nil {
+		return err
+	}
+	if err := e.closeText(); err != nil {
+		return err
+	}
+	slot := e.tools[providerIdx]
+	if slot == nil {
+		slot = &toolSlot{ourIndex: e.next}
+		e.next++
+		e.tools[providerIdx] = slot
+	}
+	if !slot.started {
+		slot.started = true
+		if err := e.out(StreamChunk{Type: ChunkBlockStart, Index: slot.ourIndex, BlockType: BlockToolCall}); err != nil {
+			return err
+		}
+	}
+	if id != "" {
+		slot.id = id
+	}
+	if name != "" {
+		slot.name = name
+	}
+	if argDelta != "" {
+		slot.args += argDelta
+	}
+	ch := StreamChunk{Type: ChunkToolCallDelta, Index: slot.ourIndex, ID: slot.id, ArgumentsDelta: argDelta}
+	if name != "" {
+		ch.Name = name
+	}
+	if err := e.out(ch); err != nil {
+		return err
+	}
+	if slot.ended || slot.name == "" || slot.args == "" || !json.Valid([]byte(slot.args)) {
+		return nil
+	}
+	slot.ended = true
+	return e.out(StreamChunk{Type: ChunkBlockEnd, Index: slot.ourIndex, Block: &ContentBlock{
+		Type: BlockToolCall, ID: slot.id, Name: slot.name, Arguments: slot.args,
+	}})
+}
+
+func (e *openaiEmitter) closeOpen() error {
+	if err := e.closeReason(); err != nil {
+		return err
+	}
+	if err := e.closeText(); err != nil {
+		return err
+	}
+	for i := 0; i < len(e.tools)+8; i++ {
+		slot := e.tools[i]
+		if slot == nil || !slot.started || slot.ended {
+			continue
+		}
+		slot.ended = true
+		if err := e.out(StreamChunk{Type: ChunkBlockEnd, Index: slot.ourIndex, Block: &ContentBlock{
+			Type: BlockToolCall, ID: slot.id, Name: slot.name, Arguments: slot.args,
+		}}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func emitMessageChunks(emit func(StreamChunk) error, msg Message) error {
+	if emit == nil {
+		return nil
+	}
+	e := newOpenAIEmitter(emit)
+	if err := e.textDelta(msg.Content); err != nil {
+		return err
+	}
+	for i, tc := range msg.ToolCalls {
+		if err := e.toolDelta(i, tc.ID, tc.Name, tc.Arguments); err != nil {
+			return err
+		}
+	}
+	if err := e.closeOpen(); err != nil {
+		return err
+	}
+	kind := FinishStop
+	if len(msg.ToolCalls) > 0 {
+		kind = FinishToolCalls
+	}
+	if msg.Truncated {
+		kind = FinishMaxTokens
+	}
+	return emit(StreamChunk{Type: ChunkFinish, Reason: &FinishReason{Kind: kind}})
+}
+
+func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamChunk) error) (Message, error) {
 	defer body.Close()
 	stop := make(chan struct{})
 	defer close(stop)
@@ -269,11 +426,10 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 	var content strings.Builder
 	tools := map[int]*streamAcc{}
 	maxIdx := -1
-	textIndex := 0
-	reasonIndex := 0
 	sawData := false
 	promptTok, completionTok, cachedTok := 0, 0, 0
 	finish := ""
+	em := newOpenAIEmitter(emit)
 	for {
 		if err := ctx.Err(); err != nil {
 			return Message{}, err
@@ -283,7 +439,11 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 			trim := strings.TrimSpace(line)
 			if !sawData && trim != "" && !strings.HasPrefix(trim, "data:") {
 				rest, _ := io.ReadAll(br)
-				return parseOpenAIJSON(append([]byte(line), rest...))
+				msg, perr := parseOpenAIJSON(append([]byte(line), rest...))
+				if perr == nil {
+					_ = emitMessageChunks(emit, msg)
+				}
+				return msg, perr
 			}
 			line = trim
 		}
@@ -296,7 +456,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 						finish = r
 					}
 				}
-				msg, piece, reason, uPrompt, uComp, uCached := applyStreamChunk(data, tools, &maxIdx)
+				msg, piece, reason, tds, uPrompt, uComp, uCached := applyStreamChunk(data, tools, &maxIdx)
 				if uPrompt > 0 {
 					promptTok = uPrompt
 				}
@@ -312,25 +472,26 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 					msg.CachedTokens = cachedTok
 					msg.CacheReported = cachedTok > 0 || uPrompt > 0
 					msg.Truncated = isOutputLimitStop(finish)
-					if emit != nil && msg.Content != "" {
-						_ = emit(StreamDelta{Text: msg.Content})
-					}
+					_ = emitMessageChunks(emit, *msg)
 					return *msg, nil
 				}
 				if piece != "" {
 					content.WriteString(piece)
-					if emit != nil {
-						textIndex++
-						_ = emit(StreamDelta{Text: piece, Index: textIndex, Block: "text"})
-					}
+					_ = em.textDelta(piece)
 				}
-				if reason != "" && emit != nil {
-					reasonIndex++
-					_ = emit(StreamDelta{Reasoning: reason, Index: reasonIndex, Block: "reasoning"})
+				if reason != "" {
+					_ = em.reasonDelta(reason)
 				}
-				if emit != nil {
-					emitCompletedTools(tools, emit)
-					emitToolArgProgress(tools, emit)
+				for _, td := range tds {
+					_ = em.toolDelta(td.index, td.id, td.name, td.args)
+				}
+				if uPrompt > 0 || uComp > 0 {
+					_ = em.out(StreamChunk{Type: ChunkUsage, Usage: &TokenUsage{
+						InputTokens:     promptTok - cachedTok,
+						OutputTokens:    completionTok,
+						TotalTokens:     promptTok + completionTok,
+						CacheReadTokens: cachedTok,
+					}})
 				}
 			}
 		}
@@ -341,6 +502,7 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 			return Message{}, err
 		}
 	}
+	_ = em.closeOpen()
 	out := Message{Role: RoleAssistant, Content: content.String(), PromptTokens: promptTok, CompletionTokens: completionTok, CachedTokens: cachedTok, CacheReported: cachedTok > 0 || promptTok > 0, Truncated: isOutputLimitStop(finish)}
 	for i := 0; i <= maxIdx; i++ {
 		a := tools[i]
@@ -349,33 +511,23 @@ func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamD
 		}
 		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: a.id, Name: a.name, Arguments: a.args})
 	}
+	kind := FinishStop
+	if len(out.ToolCalls) > 0 {
+		kind = FinishToolCalls
+	}
+	if out.Truncated {
+		kind = FinishMaxTokens
+	}
+	_ = em.out(StreamChunk{Type: ChunkFinish, Reason: &FinishReason{Kind: kind}})
 	return out, nil
 }
 
-func emitCompletedTools(tools map[int]*streamAcc, emit func(StreamDelta) error) {
-	for i := 0; i < len(tools)+8; i++ {
-		a := tools[i]
-		if a == nil || a.done || a.name == "" {
-			continue
-		}
-		if a.args != "" && json.Valid([]byte(a.args)) {
-			a.done = true
-			_ = emit(StreamDelta{Tool: ToolCall{ID: a.id, Name: a.name, Arguments: a.args}, ToolDone: true})
-		}
-	}
+type toolWireDelta struct {
+	index      int
+	id, name, args string
 }
 
-func emitToolArgProgress(tools map[int]*streamAcc, emit func(StreamDelta) error) {
-	for i := 0; i < len(tools)+8; i++ {
-		a := tools[i]
-		if a == nil || a.done || a.name == "" || a.id == "" {
-			continue
-		}
-		_ = emit(StreamDelta{Tool: ToolCall{ID: a.id, Name: a.name, Arguments: a.args}})
-	}
-}
-
-func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, string, int, int, int) {
+func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, string, []toolWireDelta, int, int, int) {
 	var chunk struct {
 		Usage *struct {
 			PromptTokens         int `json:"prompt_tokens"`
@@ -413,7 +565,7 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-		return nil, "", "", 0, 0, 0
+		return nil, "", "", nil, 0, 0, 0
 	}
 	uPrompt, uComp, uCached := 0, 0, 0
 	if chunk.Usage != nil {
@@ -421,7 +573,7 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		uCached = usageCached(chunk.Usage.CacheReadInputTokens, chunk.Usage.PromptTokensDetails)
 	}
 	if len(chunk.Choices) == 0 {
-		return nil, "", "", uPrompt, uComp, uCached
+		return nil, "", "", nil, uPrompt, uComp, uCached
 	}
 	ch := chunk.Choices[0]
 	if ch.Message != nil && (textFromContent(ch.Message.Content) != "" || len(ch.Message.ToolCalls) > 0) {
@@ -429,8 +581,9 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 		for _, tc := range ch.Message.ToolCalls {
 			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
 		}
-		return &msg, "", "", uPrompt, uComp, uCached
+		return &msg, "", "", nil, uPrompt, uComp, uCached
 	}
+	var tds []toolWireDelta
 	for _, tc := range ch.Delta.ToolCalls {
 		a := tools[tc.Index]
 		if a == nil {
@@ -447,8 +600,9 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 			a.name = tc.Function.Name
 		}
 		a.args += tc.Function.Arguments
+		tds = append(tds, toolWireDelta{index: tc.Index, id: tc.ID, name: tc.Function.Name, args: tc.Function.Arguments})
 	}
-	return nil, textFromContent(ch.Delta.Content), reasoningFromDelta(ch.Delta.Content, ch.Delta.ReasoningContent, ch.Delta.Reasoning, ch.Delta.Thinking), uPrompt, uComp, uCached
+	return nil, textFromContent(ch.Delta.Content), reasoningFromDelta(ch.Delta.Content, ch.Delta.ReasoningContent, ch.Delta.Reasoning, ch.Delta.Thinking), tds, uPrompt, uComp, uCached
 }
 
 func parseOpenAIJSON(raw []byte) (Message, error) {

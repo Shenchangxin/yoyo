@@ -10,8 +10,9 @@ import { useCopy } from "../lib/i18n";
 
 export function ChatDock(props: {
   items: Item[];
-  liveTexts?: Record<string, string>;
   showThinking?: boolean;
+  transcriptView?: string;
+  collapseTiming?: string;
   taskPlan?: TaskPlan | null;
   approvals: Approval[];
   sessionId?: string;
@@ -66,7 +67,7 @@ export function ChatDock(props: {
           {copy.dock.expand}
         </button>
       </div>
-      <Transcript items={props.items} liveTexts={props.liveTexts} showThinking={props.showThinking} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
+      <Transcript items={props.items} showThinking={props.showThinking} transcriptView={props.transcriptView} collapseTiming={props.collapseTiming} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
       <Composer
         draftKey={props.draftKey}
         running={props.running}
