@@ -2138,15 +2138,11 @@ details[open] > .fold-summary::before {
   flex: 1;
   grid-template-columns: minmax(260px, 36%) minmax(0, 1fr);
 }
-.studio-desk,
-.game-desk {
+.studio-desk {
   display: grid;
   min-height: 0;
   flex: 1;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
-}
-.game-desk {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 36%);
 }
 .studio-desk-chat,
 .studio-desk-board {
@@ -2466,15 +2462,6 @@ details[open] > .fold-summary::before {
   .drama-desk-board,
   .studio-desk-board {
     border-left: 0;
-  }
-  .game-desk {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(200px, 38%);
-  }
-  .game-desk .studio-desk-chat {
-    display: flex;
-    border-left: 0;
-    border-top: 1px solid var(--border);
   }
 }
 

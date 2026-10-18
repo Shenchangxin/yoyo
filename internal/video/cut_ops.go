@@ -627,18 +627,7 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 		out["pane"] = "canvas"
 		out["id"] = id
 	case "game", "游戏", "游戏世界", "game-world":
-		if e.RouteGame != nil {
-			got, err := e.RouteGame(sessionID, id, title, intent)
-			if err != nil {
-				return nil, err
-			}
-			if e.OnHub != nil {
-				e.OnHub("video_route", got)
-			}
-			return got, nil
-		}
-		out["pane"] = "game"
-		out["id"] = id
+		return nil, fmt.Errorf("game worlds are no longer available; pick 短片, 短剧, or 画布")
 	default:
 		if id == "" {
 			p, err := e.CreateCutProject(CutProject{Title: firstNonEmpty(title, "胶片")})

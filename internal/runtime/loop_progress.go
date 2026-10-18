@@ -525,6 +525,13 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 	if w == nil {
 		return
 	}
+	// Reading qa/verification.json (or any FAIL dump) is not re-running the
+	// check. Counting those reads as hits stopped harbor turns after one
+	// failed Watch: the JSON still said "outcome":"FAIL", so SoftHorizon
+	// fired "the same check kept failing" before the product could change.
+	if inspectsOnly(calls) {
+		return
+	}
 	sig := ""
 	for _, m := range results {
 		if ids := failCheckIDs(m.Content); len(ids) > 0 {
@@ -638,6 +645,20 @@ func writesProduct(calls []ToolCall) bool {
 		}
 	}
 	return false
+}
+
+func inspectsOnly(calls []ToolCall) bool {
+	if len(calls) == 0 {
+		return false
+	}
+	for _, tc := range calls {
+		switch tc.Name {
+		case "read_file", "list_dir", "grep", "glob", "search_files", "read_artifact":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func isHarnessPath(p string) bool {

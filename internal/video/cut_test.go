@@ -99,6 +99,13 @@ func TestOpenCutFromCanvasResource(t *testing.T) {
 	}
 }
 
+func TestVideoRouteRejectsGame(t *testing.T) {
+	e := testEngine(t)
+	if _, err := e.VideoRoute("sess-route", "game", "", "世界", "collect three relics"); err == nil {
+		t.Fatal("expected game dest to fail")
+	}
+}
+
 func TestVideoRouteCreatesCut(t *testing.T) {
 	e := testEngine(t)
 	out, err := e.VideoRoute("sess-route", "cut", "", "胶片", "")

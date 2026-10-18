@@ -14,7 +14,12 @@ function flush() {
   void reportFrontend(events).catch(() => {});
 }
 
+function ignoreFront(msg: string) {
+  return /ResizeObserver loop/i.test(msg);
+}
+
 export function reportRenderer(ev: FrontEv) {
+  if (ignoreFront(ev.msg || "")) return;
   const now = Date.now();
   if (now - last < 40 && buf.length > 24) return;
   last = now;

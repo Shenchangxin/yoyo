@@ -322,17 +322,7 @@ export const useUI = create<UIState>((set, get) => ({
       return;
     }
     if (pane === "game") {
-      writeVideoMode("creative");
-      set({
-        surface: "video",
-        videoPane: "game",
-        videoMode: "creative",
-        videoBoard: false,
-        canvasStage: false,
-        studioDesk: false,
-        footageOpen: false,
-        videoEntry: "",
-      });
+      get().openVideoPane("create", opts);
       return;
     }
     if (pane === "drama") {
@@ -392,7 +382,8 @@ export const useUI = create<UIState>((set, get) => ({
       let videoPane = s.videoPane;
       if (videoMode !== "drama" && videoPane === "drama") videoPane = "chat";
       if (videoMode !== "canvas" && isCanvasWorldPane(videoPane)) videoPane = "chat";
-      if (videoMode !== "creative" && (videoPane === "studio" || videoPane === "game")) videoPane = "chat";
+      if (videoMode !== "creative" && videoPane === "studio") videoPane = "chat";
+      if (videoPane === "game") videoPane = "create";
       return {
         videoMode,
         videoBoard: false,

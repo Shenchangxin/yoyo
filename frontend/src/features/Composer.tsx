@@ -21,7 +21,6 @@ import type { TaskPlan } from "../lib/plan";
 import { lookupCatalogModel, composerModelIds, composerModelGroups, decodeChatModel, encodeChatModel, resolveComposerModelValue, resolveContextWindow, UNKNOWN_MODEL_WINDOW } from "../lib/models-dev";
 import { useModelCatalog } from "../lib/model-catalog";
 import { estimateTokens } from "../lib/context-usage";
-import { useGameSelection } from "./video/workshop-store";
 import { VideoModeSwitch } from "./video/VideoModeSwitch";
 import { DramaProjectChip } from "./video/DramaProjectChip";
 import { CanvasProjectChip } from "./video/CanvasProjectChip";
@@ -150,13 +149,9 @@ export function Composer(props: {
   const videoSurface = surface === "video";
   const dramaDesk = videoPane === "drama";
   const videoing = videoSurface && !props.compact && !dramaDesk;
-  const gameId = useGameSelection((s) => s.gameId);
-  const gameFocus = useGameSelection((s) => s.focus);
   const createDesk = videoPane === "create";
-  const gameHome = videoPane === "game" && !gameId;
-  const gameBound = videoPane === "game" && !!gameId;
-  const talkDesk = createDesk || gameHome;
-  const copilotDesk = studioDesk || gameBound;
+  const talkDesk = createDesk;
+  const copilotDesk = studioDesk;
   const needWorkspace = !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
   const disabled = props.disabled || needWorkspace;
   const workspaceTrigger = needWorkspace && !props.disabled;
@@ -165,21 +160,10 @@ export function Composer(props: {
     ...(pathReady(props.workspace) ? [props.workspace as string] : []),
     ...(props.workspaces || []).filter((p) => pathReady(p)),
   ])];
-  const gamePlaceholder = gameFocus === "intent"
-    ? copy.composer.placeholderGameIntent
-    : gameFocus === "build"
-      ? copy.composer.placeholderGameBuild
-      : gameFocus === "check"
-        ? copy.composer.placeholderGameCheck
-        : copy.composer.placeholderGamePlay;
   const placeholder = props.disabled
     ? (props.disabledReason || copy.composer.disabled)
     : needWorkspace
       ? copy.composer.placeholderWorkspace
-    : gameBound
-      ? gamePlaceholder
-    : gameHome
-      ? copy.composer.placeholderGame
     : studioDesk
       ? copy.composer.placeholderStudioDesk
     : videoPane === "create"
@@ -819,6 +803,7 @@ export function Composer(props: {
                       onProfile={props.onProfile}
                     />
                   ) : null}
+                  {props.compact ? null : (
                   <Tooltip content={copy.composer.addFilesOrCommands}>
                     <button
                       type="button"
@@ -833,6 +818,7 @@ export function Composer(props: {
                       <Plus className="size-3.5" />
                     </button>
                   </Tooltip>
+                  )}
                   <input
                     ref={fileRef}
                     type="file"
@@ -845,7 +831,7 @@ export function Composer(props: {
                     }}
                   />
                   <div className="sc-modes">
-                    {props.onAuthMode && !talkDesk && !dramaDesk ? (
+                    {props.onAuthMode && !talkDesk && !dramaDesk && !copilotDesk ? (
                       <PermissionSelect
                         value={props.authMode}
                         disabled={disabled}
@@ -978,6 +964,7 @@ export function Composer(props: {
                 </div>
               </div>
             </div>
+            {props.compact ? null : (
             <div className="sc-dock" data-composer-dock>
               <StatsPills
                 stats={props.sessionStats}
@@ -992,6 +979,7 @@ export function Composer(props: {
                 copy={copy}
               />
             </div>
+            )}
           </>
         )}
       </div>

@@ -17,7 +17,6 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
-	"github.com/Shenchangxin/yoyo/internal/game"
 	"github.com/Shenchangxin/yoyo/internal/observe"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
@@ -689,7 +688,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	a.attachCanvasTools(tools, sessionID)
 	a.attachCutTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
-	a.attachGameTools(tools, sessionID)
 	a.attachConductorTools(tools, sessionID)
 	tools.Sessions = func(id string) []runtime.Message {
 		evs, err := a.Traces.ReadFromCheckpoint(id)
@@ -794,9 +792,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			remain = 400
 		}
 		lane := ""
-		if a.gameLane(sessionID) {
-			lane = "game"
-		}
 		autoInject, hints, auto := runtime.ApplySkillMatch(runtime.SkillMatchReq{
 			Voice:     voice,
 			Skills:    skills,
@@ -837,14 +832,6 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	if a.studioLane(sessionID) {
 		loop, frags = applyStudioLanePrompt(loop, frags)
-	} else if a.gameLane(sessionID) {
-		var bound game.Project
-		if a.Game != nil {
-			if id, ok := a.Game.SessionBind(sessionID); ok {
-				bound, _ = a.Game.Get(id)
-			}
-		}
-		loop, frags = applyGameLanePrompt(loop, frags, bound)
 	} else if a.conductorLane(sessionID) {
 		loop, frags = applyConductorLanePrompt(loop, frags)
 	}
@@ -1878,19 +1865,6 @@ func applyConductorLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptF
 		kept = append(kept, f)
 	}
 	kept = append(kept, artifact.PromptFragment{Slot: "runtime", Text: conductorRuntimePin})
-	return loop, kept
-}
-
-func applyGameLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragment, bound game.Project) (artifact.LoopPreset, []artifact.PromptFragment) {
-	loop.Bootstrap = gameLaneBootstrap(bound)
-	kept := make([]artifact.PromptFragment, 0, len(frags)+1)
-	for _, f := range frags {
-		if strings.Contains(strings.ToLower(f.Text), "inspect the workspace") {
-			continue
-		}
-		kept = append(kept, f)
-	}
-	kept = append(kept, artifact.PromptFragment{Slot: "runtime", Text: gameRuntimePin})
 	return loop, kept
 }
 

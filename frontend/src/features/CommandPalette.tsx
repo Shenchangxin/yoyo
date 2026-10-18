@@ -3,7 +3,6 @@ import { Command } from "cmdk";
 import {
   Clapperboard,
   FileText,
-  Gamepad2,
   GitCompare,
   History,
   Images,
@@ -27,7 +26,7 @@ import { SETTINGS_SECTIONS, SETTINGS_TABS } from "./settings/registry";
 import { useUI } from "../lib/store";
 import { Kbd } from "../components/ui/kbd";
 import { shownSeriesTitle } from "./video/drama-lib";
-import { useGameSelection, useStudioSelection } from "./video/workshop-store";
+import { useStudioSelection } from "./video/workshop-store";
 
 export function CommandPalette(props: {
   open: boolean;
@@ -141,10 +140,6 @@ export function CommandPalette(props: {
                   <PanelsTopLeft className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoCanvas}
                 </Command.Item>
-                <Command.Item data-testid="palette-video-game" value={`${copy.palette.videoGame} game world 游戏世界 playable`} onSelect={() => { useGameSelection.getState().setGameId(""); useUI.getState().openVideoPane("game"); props.onClose(); }}>
-                  <Gamepad2 className="size-4 text-muted" aria-hidden />
-                  {copy.palette.videoGame}
-                </Command.Item>
                 <Command.Item data-testid="palette-video-assets" value={`${copy.palette.videoAssets} library stills`} onSelect={() => { useUI.getState().openVideoPane("assets"); props.onClose(); }}>
                   <Images className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoAssets}
@@ -157,7 +152,7 @@ export function CommandPalette(props: {
                   <History className="size-4 text-muted" aria-hidden />
                   {copy.palette.videoTasks}
                 </Command.Item>
-                {(props.videoProjects || []).slice(0, 12).map((p) => {
+                {(props.videoProjects || []).filter((p) => p.kind !== "game").slice(0, 12).map((p) => {
                   const title = p.kind === "drama" ? shownSeriesTitle(p.title, copy.video.untitled) : (p.title || p.id);
                   return (
                   <Command.Item

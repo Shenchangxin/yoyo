@@ -55,7 +55,6 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
-	a.attachGameTools(tools, sessionID)
 	runtime.ApplyPackBootstrap(tools)
 	rep := runtime.MeasureContext(runtime.MeasureOpts{
 		Loop:        loop,

@@ -57,7 +57,7 @@ func ConductorToolSpecs() []ToolSpec {
 		return m
 	}
 	return []ToolSpec{
-		{Name: "video_route", Desc: "Open or bind a workshop. dest is studio (短片), drama (短剧), canvas (画布), game (游戏世界), or cut (胶片/创作). Creates a shorts, game-world, or cut project when id is empty. dest=game compiles a sealed 3D playable when title or intent is set — do not write_file HTML.", Params: obj(map[string]any{"dest": str, "id": str, "title": str, "intent": str}, "dest")},
+		{Name: "video_route", Desc: "Open or bind a workshop. dest is studio (短片), drama (短剧), canvas (画布), or cut (胶片/创作). Creates a shorts or cut project when id is empty.", Params: obj(map[string]any{"dest": str, "id": str, "title": str, "intent": str}, "dest")},
 		{Name: "provider_menu", ReadOnly: true, Desc: "List Settings accounts that are enabled and have a vault key. Missing vendors do not exist. Optional capability filter: speech, music, stock, asr, image, video.", Params: obj(map[string]any{"capability": str})},
 	}
 }

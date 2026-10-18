@@ -92,7 +92,7 @@ export function FootageDesk(props: {
         if (kind === "cut_state" && payload.id) void load(String(payload.id));
         if (kind === "video_route") {
           const pane = String(payload.pane || "");
-          if (pane === "studio" || pane === "drama" || pane === "canvas" || pane === "game") openVideoPane(pane as any);
+          if (pane === "studio" || pane === "drama" || pane === "canvas") openVideoPane(pane as any);
         }
       });
     }).catch(() => {});

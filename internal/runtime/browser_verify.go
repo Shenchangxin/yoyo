@@ -287,6 +287,9 @@ func inferVerifyRoot(open string) string {
 		if base == "build" {
 			return filepath.ToSlash(parent)
 		}
+		if base == "playable" {
+			return filepath.ToSlash(parent)
+		}
 		if dir == parent {
 			break
 		}

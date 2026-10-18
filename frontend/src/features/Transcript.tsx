@@ -39,8 +39,7 @@ import { formatMessageClock } from "../lib/session-stats";
 import { mergeMentionPins, peelCompletedMentions, pinsFromAttachments, type MentionKind, type MentionPin } from "../lib/mentions";
 import { itemTurnKey, pickActiveTurnKey, rowMatchesJump } from "../lib/turn-outline";
 import { studioNextPrompt, type StudioNextKey } from "./video/studio-next";
-import { useGameSelection, useStudioSelection } from "./video/workshop-store";
-import { copilotHint, deskPage, deskStarters, pageLead } from "./game/game-desk";
+import { useStudioSelection } from "./video/workshop-store";
 
 function lastStreamKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -98,10 +97,14 @@ function isUserRow(row: LayoutRow): boolean {
   return row.kind === "user";
 }
 
-function rowSpace(rows: LayoutRow[], i: number): string {
+function rowSpace(rows: LayoutRow[], i: number, compact?: boolean): string {
   const row = rows[i];
   const prev = rows[i - 1];
   if (!prev) return "pt-0";
+  if (compact) {
+    if (isUserRow(row)) return "pt-4";
+    return "pt-2";
+  }
   if (isUserRow(row)) return "pt-10";
   if (row.kind === "agent" && prev.kind === "user") return "pt-4";
   if (row.kind === "agent") return "pt-5";
@@ -178,7 +181,7 @@ export function Transcript(props: {
           key: row.key,
           kind: "user" as const,
           turnKey: row.turnKey || itemTurnKey(row.item),
-          space: rowSpace(layout, i),
+          space: rowSpace(layout, i, props.compact),
           estimate: 96,
           render: () => (
             <div className="group/user relative">
@@ -202,11 +205,11 @@ export function Transcript(props: {
           key: row.key,
           kind: "agent" as const,
           turnKey: row.turnKey,
-          space: rowSpace(layout, i),
+          space: rowSpace(layout, i, props.compact),
           estimate: agentEstimate(row.copyText),
           render: () => (
-            <article className="assistant-letter group/turn flex gap-2.5" data-testid="agent-turn">
-              <PresenceStamp size={22} className="mt-0.5" />
+            <article className={cn("assistant-letter group/turn flex min-w-0", props.compact ? "gap-0" : "gap-2.5")} data-testid="agent-turn">
+              {props.compact ? null : <PresenceStamp size={22} className="mt-0.5 shrink-0" />}
               <div className="min-w-0 flex-1">
               {row.parts.map((part, pi) => (
                 <div
@@ -285,7 +288,7 @@ export function Transcript(props: {
       return {
         key: row.key,
         kind: "solo" as const,
-        space: rowSpace(layout, i),
+        space: rowSpace(layout, i, props.compact),
         estimate: 96,
         render: () => (
           <ItemRow
@@ -312,9 +315,12 @@ export function Transcript(props: {
         <div className={cn(col, "transcript-scroll flex min-h-full flex-col justify-end overflow-y-auto pb-8 pt-10")}>
           <EmptyTurn workspace={props.workspace} onPrompt={props.onPrompt} />
         </div>
+      ) : visible.length === 0 && props.approvals.length === 0 && props.compact ? (
+        <CompactCopilotEmpty className={col} />
       ) : (
         <TranscriptLane
-          className={cn(col, "min-h-0 flex-1 pb-4 pt-5")}
+          className={cn(col, props.compact ? "min-h-0 flex-1 py-2" : "min-h-0 flex-1 pb-4 pt-5")}
+          compact={props.compact}
           rows={rows}
           older={!!props.older}
           loadingOlder={!!props.loadingOlder}
@@ -414,6 +420,10 @@ function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typ
   return hydrateLayout(ref.current.rows, items);
 }
 
+function CompactCopilotEmpty({ className }: { className: string }) {
+  return <div className={cn(className, "min-h-0 flex-1")} />;
+}
+
 /**
  * Empty thread. Sits just above the composer so the greeting, the hints and
  * the input read as one block instead of a headline floating in a void.
@@ -426,12 +436,6 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
   const videoPane = useUI((s) => s.videoPane);
   const videoing = surface === "video";
   const createDesk = videoing && videoPane === "create";
-  const gameId = useGameSelection((s) => s.gameId);
-  const gameTitle = useGameSelection((s) => s.title);
-  const gameFocus = useGameSelection((s) => s.focus);
-  const gameHome = videoing && videoPane === "game" && !gameId;
-  const gameBound = videoing && videoPane === "game" && !!gameId;
-  const gamePage = deskPage(null, gameFocus || "play");
   const openStudioDesk = useUI((s) => s.openStudioDesk);
   const boundTitle = useStudioSelection((s) => s.title);
   const nextKey = useStudioSelection((s) => s.nextKey);
@@ -439,10 +443,6 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? (boundTitle
       ? copy.transcript.studioDeskReadyNamed.replace("{title}", boundTitle)
       : copy.transcript.studioDeskReady)
-    : gameBound
-      ? pageLead(gamePage, copy.video.gameDesk)
-    : gameHome
-      ? copy.transcript.gameReady
     : createDesk
       ? copy.transcript.conductorReady
     : !videoing
@@ -457,10 +457,6 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     : null;
   const starters = studioDesk
     ? [nextStarter, ...copy.transcript.studioDeskStarters].filter(Boolean) as { label: string; text: string }[]
-    : gameBound
-      ? deskStarters(gamePage, { id: gameId, title: gameTitle }, copy.video.gameDesk)
-    : gameHome
-      ? copy.transcript.gameStarters
     : createDesk
       ? copy.transcript.conductorStarters
     : !videoing
@@ -475,16 +471,6 @@ function EmptyTurn({ workspace, onPrompt }: { workspace?: string; onPrompt?: (te
     ? [
         { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
         { key: "desk", node: copy.transcript.hintStudioDesk },
-      ]
-    : gameBound
-    ? [
-        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
-        { key: "desk", node: copilotHint(gamePage, copy.video.gameDesk) },
-      ]
-    : gameHome
-    ? [
-        { key: "enter", node: <><kbd className="mr-1">↵</kbd>{copy.transcript.hintSend}</> },
-        { key: "desk", node: copy.transcript.hintGame },
       ]
     : createDesk
     ? [
@@ -561,6 +547,7 @@ function agentEstimate(copyText: string): number {
 
 function TranscriptLane({
   className,
+  compact,
   rows,
   older,
   loadingOlder,
@@ -574,6 +561,7 @@ function TranscriptLane({
   onJumpLatest,
 }: {
   className?: string;
+  compact?: boolean;
   rows: TranscriptRow[];
   older: boolean;
   loadingOlder: boolean;
@@ -760,7 +748,7 @@ function TranscriptLane({
     <>
       <div
         ref={scrollRef}
-        className={cn('transcript-scroll relative min-h-0 flex-1 overflow-y-auto', className)}
+        className={cn('transcript-scroll relative min-h-0 flex-1', compact ? 'overflow-y-scroll overflow-x-hidden' : 'overflow-y-auto', className)}
         onScroll={onScroll}
       >
         {older ? (
@@ -773,7 +761,7 @@ function TranscriptLane({
             {copy.transcript.loadEarlier}
           </button>
         ) : null}
-        <div ref={listRef} className="relative w-full shrink-0 overflow-clip bg-background" style={{ height: virtualizer.getTotalSize() }}>
+        <div ref={listRef} className="relative w-full shrink-0 overflow-hidden bg-background" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((v) => {
             const row = rows[v.index];
             if (!row) return null;

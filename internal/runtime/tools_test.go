@@ -222,7 +222,7 @@ func TestSealedGameWorldWrite(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
 	html := tools.Call("write_file", `{"path":"game-worlds/world-x/index.html","content":"<html><body>nope</body></html>"}`)
-	if html.Err == nil || !strings.Contains(html.Err.Error(), "host-owned") {
+	if html.Err == nil || !strings.Contains(html.Err.Error(), "not a supported product") {
 		t.Fatalf("root html should be refused: %+v", html)
 	}
 	rt := tools.Call("write_file", `{"path":"game-worlds/world-x/playable/runtime.js","content":"window.x=1"}`)
