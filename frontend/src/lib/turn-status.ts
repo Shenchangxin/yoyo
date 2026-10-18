@@ -1,5 +1,4 @@
 import type { Item } from "./protocol";
-import { withLiveText } from "./stream-live";
 import {
   isSteer,
   isToolish,
@@ -16,8 +15,9 @@ export type TurnPhase = "thinking" | "tool" | "streaming";
 
 /**
  * Live projection of the in-flight turn. Derived from the transcript; never
- * stored. `live` means the trailing assistant is still growing — the composer
- * hides the bar then so the caret is the status.
+ * stored. `live` means the trailing assistant is still growing. The composer
+ * keeps the bar while the thread is running so a frozen letter cannot hide
+ * that work is still in flight.
  */
 export type TurnStatus = {
   phase: TurnPhase;
@@ -71,11 +71,10 @@ function toolBytes(pair: ToolPair): number {
 export function deriveTurnStatus(
   items: Item[],
   running: boolean,
-  liveTexts?: Record<string, string>,
 ): TurnStatus | null {
   if (!running) return null;
   const since = lastUserTimeMs(items);
-  const slice = turnSlice(items).map((it) => withLiveText(it, liveTexts));
+  const slice = turnSlice(items);
   const current = pendingTool(pairTools(slice.filter(isToolish)), true);
   if (current?.call || current?.result) {
     const item = current.call || current.result!;
@@ -92,7 +91,7 @@ export function deriveTurnStatus(
     };
   }
   const assistant = lastAssistant(slice);
-  const growing = !!(assistant && (assistant.delta || (liveTexts && liveTexts[assistant.key] != null)));
+  const growing = !!(assistant && (assistant.delta || assistant.payload?.streaming));
   const hasText = !!(assistant && (assistant.text.trim() || growing));
   if (hasText) {
     return {
@@ -116,9 +115,7 @@ export function deriveTurnStatus(
   };
 }
 
-/** Hide the bar when the stream tail already shows a caret. */
-export function statusBarVisible(status: TurnStatus | null): status is TurnStatus {
-  if (!status) return false;
-  if (status.phase === "streaming" && status.live) return false;
-  return true;
+/** Show the bar whenever the thread has a live status — including streaming. */
+export function statusBarVisible(status: TurnStatus | null | undefined): status is TurnStatus {
+  return status != null;
 }

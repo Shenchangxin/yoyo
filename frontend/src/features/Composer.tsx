@@ -59,6 +59,7 @@ import { SendGlyph, StopGlyph } from "./session-chrome/icons";
 import { PermissionSelect } from "./session-chrome/PermissionSelect";
 import { WorkspaceChip } from "./session-chrome/WorkspaceChip";
 import { WorkspacePicker } from "./session-chrome/WorkspacePicker";
+import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
 
 export function Composer(props: {
@@ -672,6 +673,7 @@ export function Composer(props: {
               />
             ) : null}
             <div className="sc-upper">
+              <TurnStatusBar status={props.turnStatus} compact={props.compact} />
               <TodoPanel plan={props.taskPlan} copy={copy} />
               <QueueDock
                 items={props.queueItems || []}
@@ -907,40 +909,6 @@ export function Composer(props: {
                                 </DropdownMenuItem>
                               ) : null}
                             </>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
-                    {!showWorkspaceChip && !copilotDesk && !talkDesk && !dramaDesk && props.onWorkspace ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="sc-chip-btn max-w-[9.5rem]"
-                            aria-label={copy.composer.workspace}
-                            title={props.workspace || copy.composer.workspaceHint}
-                            disabled={props.disabled}
-                          >
-                            <Folder className="size-3 shrink-0 opacity-70" />
-                            <span className="truncate">{displayWorkspace(props.workspace, copy.composer.workspace)}</span>
-                            <ChevronDown className="size-3 shrink-0 opacity-70" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" side="top" className="w-64">
-                          {(props.workspaces || []).map((p) => (
-                            <DropdownMenuItem key={p} onSelect={() => props.onWorkspace?.(p)}>
-                              <span className="flex min-w-0 flex-1 flex-col">
-                                <span className="truncate">{displayWorkspace(p, p)}</span>
-                                <span className="truncate text-[11px] text-muted">{p}</span>
-                              </span>
-                              {p === props.workspace ? <Check className="size-3.5 shrink-0" /> : null}
-                            </DropdownMenuItem>
-                          ))}
-                          {(props.workspaces?.length && props.onBrowseWorkspace) ? <DropdownMenuSeparator /> : null}
-                          {props.onBrowseWorkspace ? (
-                            <DropdownMenuItem onSelect={() => props.onBrowseWorkspace?.()}>
-                              {copy.composer.browseWorkspace}
-                            </DropdownMenuItem>
                           ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>

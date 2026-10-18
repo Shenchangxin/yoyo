@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { artifactPreviewOpen, artifactView, isCodeChangeTool } from "./artifact-preview.ts";
+import { artifactPreviewOpen, artifactView, isCodeChangeTool, strReplaceToDiff } from "./artifact-preview.ts";
 import type { Item } from "./protocol.ts";
 
 function call(name: string, args: Record<string, unknown>): Item {
@@ -28,6 +28,19 @@ describe("isCodeChangeTool", () => {
     for (const name of ["read_file", "shell", "browser_open", "web_fetch"]) {
       assert.equal(isCodeChangeTool(name), false, name);
     }
+  });
+});
+
+describe("strReplaceToDiff", () => {
+  it("keeps equal prefix/suffix as context instead of rewriting the fragment", () => {
+    const oldStr = "a\nb\nc\nd\n";
+    const newStr = "a\nB\nc\nd\n";
+    const diff = strReplaceToDiff("app.js", oldStr, newStr);
+    const lines = diff.split("\n");
+    assert.equal(lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length, 1);
+    assert.equal(lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length, 1);
+    assert.match(diff, /^-b$/m);
+    assert.match(diff, /^\+B$/m);
   });
 });
 

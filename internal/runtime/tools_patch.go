@@ -18,6 +18,7 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 		return ToolResult{Err: fmt.Errorf("empty patch")}
 	}
 	var reports []string
+	var changes []*FileChange
 	for _, block := range splitPatches(patch) {
 		kind, path, body, err := parsePatchBlock(block)
 		if err != nil {
@@ -30,12 +31,18 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 				return res
 			}
 			reports = append(reports, "added "+path)
+			if res.FileChange != nil {
+				changes = append(changes, res.FileChange)
+			}
 		case "update":
 			res := t.applyUpdate(path, body)
 			if res.Err != nil {
 				return res
 			}
 			reports = append(reports, res.Content)
+			if res.FileChange != nil {
+				changes = append(changes, res.FileChange)
+			}
 		default:
 			return ToolResult{Err: fmt.Errorf("unknown patch op %s", kind)}
 		}
@@ -43,9 +50,22 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 	if len(reports) == 0 {
 		return ToolResult{Err: fmt.Errorf("no patch hunks")}
 	}
+	added, removed := 0, 0
+	created := false
+	for _, r := range changes {
+		added += r.Added
+		removed += r.Removed
+		created = created || r.Created
+	}
 	return ToolResult{
-		Content:    strings.Join(reports, "\n"),
-		FileChange: &FileChange{Paths: pathsFromReports(reports), Patch: patch},
+		Content: strings.Join(reports, "\n"),
+		FileChange: &FileChange{
+			Paths:   pathsFromReports(reports),
+			Patch:   patch,
+			Added:   added,
+			Removed: removed,
+			Created: created,
+		},
 	}
 }
 
@@ -95,7 +115,7 @@ func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: "updated " + rel}
+	return ToolResult{Content: "updated " + rel, FileChange: fileChangeOf(rel, raw, []byte(next), false)}
 }
 
 func splitPatches(s string) []string {

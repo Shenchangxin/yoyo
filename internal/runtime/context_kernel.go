@@ -85,6 +85,9 @@ func (k *ContextKernel) seed() ([]Message, error) {
 		if len(k.req.UserParts) > 0 {
 			payload["parts"] = k.req.UserParts
 		}
+		if rid := strings.TrimSpace(k.req.RequestID); rid != "" {
+			payload["request_id"] = rid
+		}
 		emit(*k.req, trace.TypeUser, "user", payload)
 	}
 	inject := strings.TrimSpace(k.req.Inject)

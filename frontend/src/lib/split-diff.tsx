@@ -74,18 +74,50 @@ function marker(kind: Kind): { glyph: string; tone: string } {
 
 const LINE = "diff-line grid min-w-0 grid-cols-[14px_minmax(0,1fr)] items-baseline gap-1.5 whitespace-pre-wrap break-words px-2 py-px";
 
+/** Chat mutation bubble: harness `CHAT_DIFF_MAX_LINES`. Review panes pass 0. */
+export const CHAT_DIFF_MAX_LINES = 9;
+
+function foldRows(rows: Line[], maxLines: number): Line[] {
+  if (maxLines <= 0 || rows.length <= maxLines) return rows;
+  const body = rows.filter((r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx");
+  if (body.length <= maxLines) return rows;
+  const head = Math.ceil(maxLines / 2);
+  const tail = maxLines - head;
+  const keep = new Set<Line>([...body.slice(0, head), ...body.slice(body.length - tail)]);
+  const out: Line[] = [];
+  let gap = false;
+  for (const row of rows) {
+    if (row.kind === "meta" || row.kind === "hunk") {
+      out.push(row);
+      continue;
+    }
+    if (keep.has(row)) {
+      out.push(row);
+      gap = false;
+      continue;
+    }
+    if (!gap) {
+      out.push({ kind: "hunk", text: "⋯" });
+      gap = true;
+    }
+  }
+  return out;
+}
+
 export function DiffBlock({
   src,
   mode,
   onLineClick,
   className,
+  maxLines = 0,
 }: {
   src: string;
   mode: DiffMode;
   onLineClick?: (text: string) => void;
   className?: string;
+  maxLines?: number;
 }) {
-  const rows = linesOf(src);
+  const rows = foldRows(linesOf(src), maxLines);
   const click = (text: string) => {
     if (!onLineClick || !text.trim()) return;
     onLineClick(text);

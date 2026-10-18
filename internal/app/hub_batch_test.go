@@ -50,19 +50,29 @@ func TestBatchFlagsGapWhenRingRolledPastCursor(t *testing.T) {
 	}
 }
 
-func TestBatchFlagsGapWhenCutAtSinceCap(t *testing.T) {
+func TestBatchPagesOldestAndSetsMore(t *testing.T) {
 	h := NewHub()
 	publishN(h, "a", liveSinceCap+5)
 
 	b := h.Batch(0, "a")
-	if !b.Gap {
-		t.Fatal("truncated batch must be flagged")
+	if b.Gap {
+		t.Fatal("a full ring must page, not report a hole")
+	}
+	if !b.More {
+		t.Fatal("truncated page must set More")
 	}
 	if len(b.Events) != liveSinceCap {
 		t.Fatalf("kept %d events, want %d", len(b.Events), liveSinceCap)
 	}
-	if last := b.Events[len(b.Events)-1].Seq; last != b.Head {
-		t.Fatalf("truncation must keep the newest; last=%d head=%d", last, b.Head)
+	if b.Events[0].Seq != 1 {
+		t.Fatalf("page must keep the oldest first; seq=%d", b.Events[0].Seq)
+	}
+	if last := b.Events[len(b.Events)-1].Seq; last != int64(liveSinceCap) {
+		t.Fatalf("first page last=%d want %d", last, liveSinceCap)
+	}
+	b2 := h.Batch(int64(liveSinceCap), "a")
+	if b2.Gap || b2.More || len(b2.Events) != 5 {
+		t.Fatalf("second page: gap=%v more=%v n=%d", b2.Gap, b2.More, len(b2.Events))
 	}
 }
 

@@ -22,7 +22,6 @@ import { HomeHero, HomeStarters } from "./features/HomeStage";
 import { GameHome } from "./features/game/GameHome";
 import { Composer } from "./features/Composer";
 import { SessionHeader } from "./features/session-chrome/SessionHeader";
-import { useConversationWidth } from "./features/session-chrome/WidthControls";
 import { Inspector } from "./features/Inspector";
 import { FilePeek } from "./features/FilePeek";
 import { ChatDock } from "./features/ChatDock";
@@ -139,7 +138,6 @@ function WorkstationApp() {
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || gameBound || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
   const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
-  const convWidth = useConversationWidth(!home && !studioDesk && !talkDesk && !gameBound);
   const copilotItems = paneMismatch ? [] : ws.items;
   const boundCopilotId = studioDesk ? studioCopilotSession : gameBound ? gameCopilotSession : "";
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
@@ -363,12 +361,9 @@ function WorkstationApp() {
         className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={home ? "conversation-column" : undefined}
       >
-        {!home && !studioDesk && !talkDesk && !gameBound ? <div {...convWidth.bind("left")} /> : null}
-        {!home && !studioDesk && !talkDesk && !gameBound ? <div {...convWidth.bind("right")} /> : null}
         {home || studioDesk || talkDesk || gameBound ? null : (
           <SessionHeader
             view={ws.inspector ? "trajectory" : "chat"}
-            crumb={ws.active ? displayTitle(ws.active.title, copy.rail.untitled) : undefined}
             trail={subagentCrumb || undefined}
             onView={(view) => {
               if (view === "trajectory") {
@@ -407,19 +402,19 @@ function WorkstationApp() {
         ) : null}
         <div
           className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col",
+            "flex min-h-0 min-w-0 w-full flex-1 flex-col",
             home && "home-stage empty-rise overflow-auto",
             home && !createDesk && "justify-center py-10",
           )}
-          style={!home && convWidth.width ? { maxWidth: convWidth.width, marginLeft: "auto", marginRight: "auto", width: "100%" } : undefined}
         >
         {home ? (
           <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
         ) : (
           <Transcript
             items={copilotItems}
-            liveTexts={ws.liveTexts}
             showThinking={!!ws.savedCfg.showThinking}
+            transcriptView={ws.savedCfg.transcriptView}
+            collapseTiming={ws.savedCfg.collapseTiming}
             approvals={ws.approvals}
             running={ws.threadRunning}
             workspace={toolRoot}
@@ -929,8 +924,9 @@ function WorkstationApp() {
               {agent || gameChrome ? inspect : (
                 <ChatDock
                   items={ws.items}
-                  liveTexts={ws.liveTexts}
                   showThinking={!!ws.savedCfg.showThinking}
+                  transcriptView={ws.savedCfg.transcriptView}
+                  collapseTiming={ws.savedCfg.collapseTiming}
                   approvals={ws.approvals}
                   sessionId={ws.activeId}
                   running={ws.threadRunning}
@@ -1048,8 +1044,9 @@ function WorkstationApp() {
                     {three ? inspect : (
                       <ChatDock
                         items={ws.items}
-                        liveTexts={ws.liveTexts}
                         showThinking={!!ws.savedCfg.showThinking}
+                        transcriptView={ws.savedCfg.transcriptView}
+                        collapseTiming={ws.savedCfg.collapseTiming}
                         approvals={ws.approvals}
                         sessionId={ws.activeId}
                         running={ws.threadRunning}

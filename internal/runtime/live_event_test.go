@@ -103,6 +103,24 @@ func TestSlimLiveEventCapsToolResult(t *testing.T) {
 	}
 }
 
+func TestSlimLiveEventDropsAssistantStreamTape(t *testing.T) {
+	tape := []any{
+		map[string]any{"type": "text-delta", "text": strings.Repeat("x", 4000)},
+	}
+	orig := map[string]any{"text": "hi", "id": "r1", "stream": tape}
+	ev := trace.Event{Type: trace.TypeAssistant, Payload: orig}
+	live := slimLiveEvent(ev)
+	if _, ok := live.Payload["stream"]; ok {
+		t.Fatal("live assistant still has stream tape")
+	}
+	if live.Payload["text"] != "hi" {
+		t.Fatalf("text %v", live.Payload["text"])
+	}
+	if _, ok := orig["stream"]; !ok {
+		t.Fatal("persist payload must keep stream tape")
+	}
+}
+
 func TestUITrajectoryCapsSettledAssistant(t *testing.T) {
 	body := strings.Repeat("a", 40_000)
 	orig := map[string]any{"text": body, "id": "r1"}

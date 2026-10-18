@@ -75,6 +75,9 @@ type RunRequest struct {
 	// UserCommitted means the operator row is already on JSONL. seed() still
 	// appends it to the model transcript but must not emit a second TypeUser.
 	UserCommitted bool
+	// RequestID is the compositor's optimistic send id. Seed stamps it on TypeUser
+	// so the renderer can replace the local echo instead of doubling the bubble.
+	RequestID string
 }
 
 var emitSeq atomic.Int64
@@ -128,6 +131,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	const turnNo = 1
+	emitTurnStart(req, turnNo)
 	var last string
 	toolCount := 0
 	planContinues := 0
@@ -185,7 +190,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if req.PullSteer != nil {
 			if extra := strings.TrimSpace(req.PullSteer()); extra != "" {
-				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra, "name": "steer"})
+				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra, "name": "steer", "lane": "next-step"})
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 			}
 		}
@@ -221,7 +226,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking, MaxTokens: req.MaxOutputTokens}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
-		msg, err := completeChat(ctx, req, chatReq, roundID)
+		emitStepStart(req, turnNo, roundSeq, roundID, roundID)
+		msg, att, err := completeChat(ctx, req, chatReq, roundID, turnNo, roundSeq)
 		if err != nil && IsContextOverflow(err) {
 			overflowFails++
 			if overflowFails >= 2 {
@@ -239,13 +245,15 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				chatReq.Messages = compacted
 				chatReq.Tools = toolsJSON
 				chatReq.CacheKey = PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)
-				msg, err = completeChat(ctx, req, chatReq, roundID)
+				retryID := roundID + ":retry"
+				msg, att, err = completeChat(ctx, req, chatReq, retryID, turnNo, roundSeq)
 				if err != nil && IsContextOverflow(err) {
 					err = stopErr(StopOverflow, "context overflow circuit breaker", err)
 				}
 			}
 		}
 		if err != nil {
+			emitStepEnd(req, turnNo, roundSeq, roundID)
 			logModelRound(ctx, roundSeq, msg, err)
 			reason := StopModelError
 			classErr := err
@@ -296,6 +304,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			}
 			req.Meter.Add(in, out)
 			if err := req.Meter.Check(loop.MaxBudgetUSD); err != nil {
+				if msg.Content != "" {
+					last = msg.Content
+				}
+				emitSettlement(req, att, msg)
+				emitStepEnd(req, turnNo, roundSeq, roundID)
 				emit(req, trace.TypeError, "runtime", ClassifyError(err).Payload())
 				setStop(&req, StopBudget)
 				return last, stopErr(StopBudget, err.Error(), err)
@@ -308,9 +321,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				languageRewrites++
 				langNudge = pin
 				if len(msg.ToolCalls) == 0 && cutNudge == "" {
+					if msg.Content != "" {
+						last = msg.Content
+					}
+					emitSettlement(req, att, msg)
 					if !lastUserIs(messages, pin) {
 						messages = append(messages, Message{Role: RoleUser, Content: pin})
 					}
+					emitStepEnd(req, turnNo, roundSeq, roundID)
 					sinceProgress++
 					continue
 				}
@@ -318,8 +336,8 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if msg.Content != "" {
 			last = msg.Content
-			emit(req, trace.TypeAssistant, "model", map[string]any{"text": msg.Content, "id": roundID, "round": roundID})
 		}
+		emitSettlement(req, att, msg)
 		if len(msg.ToolCalls) == 0 && cutNudge != "" {
 			// The reply was cut at the output limit. Keep what was said, ask for
 			// the rest, and do not treat the cut as a finished turn.
@@ -327,6 +345,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				messages = append(messages, msg)
 			}
 			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
+			emitStepEnd(req, turnNo, roundSeq, roundID)
 			sinceProgress++
 			continue
 		}
@@ -341,6 +360,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				if !lastUserIs(messages, nudge) {
 					messages = append(messages, Message{Role: RoleUser, Content: nudge})
 				}
+				emitStepEnd(req, turnNo, roundSeq, roundID)
 				sinceProgress++
 				continue
 			}
@@ -354,6 +374,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				if !lastUserIs(messages, extra) {
 					messages = append(messages, Message{Role: RoleUser, Content: extra})
 				}
+				emitStepEnd(req, turnNo, roundSeq, roundID)
 				sinceProgress++
 				continue
 			}
@@ -403,9 +424,11 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 			setStop(&req, stop)
 			if block, extra := applyStopHook(req); block {
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
+				emitStepEnd(req, turnNo, roundSeq, roundID)
 				sinceProgress++
 				continue
 			}
+			emitStepEnd(req, turnNo, roundSeq, roundID)
 			emit(req, trace.TypeTurnEnd, "runtime", end)
 			if planOpen != nil {
 				emit(req, trace.TypeError, "runtime", planOpen.Payload())
@@ -418,6 +441,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		toolCount += len(msg.ToolCalls)
 		messages = append(messages, results...)
 		logToolRound(ctx, roundSeq, results)
+		emitStepEnd(req, turnNo, roundSeq, roundID)
 		if cutNudge != "" {
 			messages = append(messages, Message{Role: RoleUser, Content: cutNudge})
 		}
@@ -524,16 +548,19 @@ func spillOf(req RunRequest) *Spill {
 	return nil
 }
 
-func completeChat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (Message, error) {
-	msg, err := chat(ctx, req, chatReq, roundID)
+func completeChat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string, turn, step int) (Message, *streamAttempt, error) {
+	msg, att, err := chat(ctx, req, chatReq, roundID, turn, step)
 	if err != nil && isStreamErr(err) {
 		started := time.Now()
 		msg, err = req.Client.Chat(ctx, chatReq)
 		if msg.ElapsedMs <= 0 {
 			msg.ElapsedMs = elapsedMsSince(started)
 		}
+		if err == nil {
+			att = &streamAttempt{ID: roundID, Turn: turn, Step: step, RoundID: roundID, Blocks: blocksFromMessage(msg)}
+		}
 	}
-	return msg, err
+	return msg, att, err
 }
 
 func elapsedMsSince(started time.Time) int {
@@ -544,7 +571,7 @@ func elapsedMsSince(started time.Time) int {
 	return n
 }
 
-func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string) (msg Message, err error) {
+func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID string, turn, step int) (msg Message, att *streamAttempt, err error) {
 	started := time.Now()
 	firstMs := 0
 	markFirst := func() {
@@ -582,37 +609,27 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 		}()
 	}
 	if s, ok := req.Client.(Streamer); ok {
+		att = &streamAttempt{ID: roundID, Turn: turn, Step: step, RoundID: roundID}
+		asm := NewBlockAssembler()
+		acc := NewStreamAccumulator()
 		var wg sync.WaitGroup
-		var reason strings.Builder
 		var prog toolProgressGate
-		textIndex, reasonIndex := 0, 0
-		msg, err = s.ChatStream(ctx, chatReq, func(d StreamDelta) error {
-			if d.Text != "" || d.Reasoning != "" || d.Tool.Name != "" {
+		emitAttemptStart(req, att)
+		msg, err = s.ChatStream(ctx, chatReq, func(ch StreamChunk) error {
+			if ch.Type == ChunkReasoningDelta && !req.ShowThinking {
+				return nil
+			}
+			if ch.IsToken() {
 				markFirst()
 			}
-			if d.Text != "" {
-				if d.Index > 0 {
-					textIndex = d.Index
-				} else {
-					textIndex++
-				}
-				payload := map[string]any{"text": d.Text, "delta": true, "id": roundID, "round": roundID, "index": textIndex, "block": "text"}
-				emit(req, trace.TypeAssistant, "model", payload)
+			acc.Push(nowMillis(), ch)
+			asm.Push(ch)
+			emitStreamChunk(req, att, ch)
+			if ch.Type == ChunkToolCallDelta && ch.Name != "" && prog.allow(ch.ID, len(ch.ArgumentsDelta), time.Now()) {
+				emitToolProgress(req, roundID, ToolCall{ID: ch.ID, Name: ch.Name, Arguments: ch.ArgumentsDelta})
 			}
-			if req.ShowThinking && d.Reasoning != "" {
-				reason.WriteString(d.Reasoning)
-				if d.Index > 0 {
-					reasonIndex = d.Index
-				} else {
-					reasonIndex++
-				}
-				emit(req, trace.TypeReasoning, "model", map[string]any{"text": d.Reasoning, "delta": true, "id": roundID, "round": roundID, "index": reasonIndex, "block": "reasoning"})
-			}
-			if d.Tool.Name != "" && !d.ToolDone && prog.allow(d.Tool.ID, len(d.Tool.Arguments), time.Now()) {
-				emitToolProgress(req, roundID, d.Tool)
-			}
-			if d.ToolDone && d.Tool.Name != "" && readonlyCall(req.Tools, d.Tool.Name) {
-				tc := d.Tool
+			if ch.Type == ChunkBlockEnd && ch.Block != nil && ch.Block.Type == BlockToolCall && readonlyCall(req.Tools, ch.Block.Name) {
+				tc := ToolCall{ID: ch.Block.ID, Name: ch.Block.Name, Arguments: ch.Block.Arguments}
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
@@ -622,12 +639,38 @@ func chat(ctx context.Context, req RunRequest, chatReq ChatRequest, roundID stri
 			return nil
 		})
 		wg.Wait()
-		if req.ShowThinking && reason.Len() > 0 {
-			emit(req, trace.TypeReasoning, "model", map[string]any{"text": reason.String(), "id": roundID, "round": roundID})
+		if err != nil {
+			if ctx.Err() != nil {
+				blocks := asm.InterruptedBlocks()
+				if len(blocks) > 0 {
+					att.Blocks = blocks
+					att.Stream = acc.Snapshot()
+					att.Interrupted = true
+					emitSettlement(req, att, Message{Role: RoleAssistant, Content: textFromBlocks(blocks)})
+					emitAttemptEnd(req, att, StreamOutcomeCommitted)
+				} else {
+					emitAttemptEnd(req, att, StreamOutcomeAbandoned)
+				}
+			} else {
+				emitAttemptEnd(req, att, StreamOutcomeAbandoned)
+			}
+			return msg, att, err
 		}
-		return msg, err
+		if msg.Truncated {
+			asm.Push(StreamChunk{Type: ChunkFinish, Reason: &FinishReason{Kind: FinishMaxTokens}})
+		} else if len(msg.ToolCalls) > 0 {
+			asm.Push(StreamChunk{Type: ChunkFinish, Reason: &FinishReason{Kind: FinishToolCalls}})
+		} else {
+			asm.Push(StreamChunk{Type: ChunkFinish, Reason: &FinishReason{Kind: FinishStop}})
+		}
+		att.Blocks = asm.Blocks()
+		att.Stream = acc.Snapshot()
+		emitAttemptEnd(req, att, StreamOutcomeCommitted)
+		return msg, att, err
 	}
-	return req.Client.Chat(ctx, chatReq)
+	msg, err = req.Client.Chat(ctx, chatReq)
+	att = &streamAttempt{ID: roundID, Turn: turn, Step: step, RoundID: roundID, Blocks: blocksFromMessage(msg)}
+	return msg, att, err
 }
 
 func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundID string, recordTrace bool) []Message {
@@ -1118,6 +1161,9 @@ func emit(req RunRequest, typ trace.EventType, source string, payload map[string
 	}
 	persist := req.Trace != nil
 	if persist {
+		if typ == trace.TypeAssistantStream {
+			persist = false
+		}
 		if delta, _ := payload["delta"].(bool); delta {
 			switch typ {
 			case trace.TypeAssistant, trace.TypeReasoning, trace.TypeToolResult:

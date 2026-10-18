@@ -33,7 +33,12 @@ const (
 	TypeAsk        EventType = "ask_user"
 	TypePersonal   EventType = "personal"
 	TypeVoiceCall  EventType = "voice_call"
-	TypePause      EventType = "pause"
+	TypePause           EventType = "pause"
+	TypeTurnStart       EventType = "turn_start"
+	TypeStepStart       EventType = "step_start"
+	TypeStepEnd         EventType = "step_end"
+	TypeAssistantStream EventType = "assistant_stream"
+	TypeInbox           EventType = "inbox"
 )
 
 func ItemKindOf(t EventType) string {
@@ -64,6 +69,16 @@ func ItemKindOf(t EventType) string {
 		return "file_change"
 	case TypeAsk:
 		return "ask_user"
+	case TypeTurnStart:
+		return "turn_start"
+	case TypeStepStart:
+		return "step_start"
+	case TypeStepEnd:
+		return "step_end"
+	case TypeAssistantStream:
+		return "assistant_stream"
+	case TypeInbox:
+		return "inbox"
 	default:
 		return string(t)
 	}

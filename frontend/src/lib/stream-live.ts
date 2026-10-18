@@ -2,6 +2,7 @@ import type { Item } from "./protocol";
 
 /** Token-shaped events: text may grow without changing transcript structure. */
 export function isLiveDelta(it: Item): boolean {
+  if (it?.payload?.streaming) return it.type === "assistant" || it.type === "reasoning" || it.type === "tool_result";
   if (!it?.delta) return false;
   return it.type === "assistant" || it.type === "reasoning" || it.type === "tool_result";
 }
@@ -10,7 +11,8 @@ export function isLiveDelta(it: Item): boolean {
 export function structureSig(list: Item[], running = false): string {
   let s = running ? "1\n" : "0\n";
   for (const it of list) {
-    s += `${it.key}\t${it.type}\t${it.name}\n`;
+    const live = it.delta || it.payload?.streaming || it.payload?.delta ? "d" : "s";
+    s += `${it.key}\t${it.type}\t${it.name}\t${live}\n`;
   }
   return s;
 }

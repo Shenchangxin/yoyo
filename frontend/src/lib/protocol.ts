@@ -208,6 +208,11 @@ export type ItemType =
   | "approval"
   | "error"
   | "turn_end"
+  | "turn_start"
+  | "step_start"
+  | "step_end"
+  | "assistant_stream"
+  | "inbox"
   | "system"
   | "compaction"
   | "subagent"
@@ -376,6 +381,8 @@ export type AppConfig = {
   notifyWhenUnfocusedOnly?: boolean;
   uiScale?: number;
   showThinking?: boolean;
+  transcriptView?: string;
+  collapseTiming?: string;
   updateChannel?: string;
 	theme?: string;
   paletteDark?: string;

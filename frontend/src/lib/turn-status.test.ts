@@ -47,7 +47,7 @@ describe("deriveTurnStatus", () => {
     assert.equal(statusBarVisible(st), true);
   });
 
-  it("hides the composer bar while the answer caret is moving", () => {
+  it("keeps the composer bar while the answer caret is moving", () => {
     const st = deriveTurnStatus([
       user,
       item({ key: "a1", type: "assistant", text: "hello", delta: true }),
@@ -55,7 +55,7 @@ describe("deriveTurnStatus", () => {
     assert.ok(st);
     assert.equal(st.phase, "streaming");
     assert.equal(st.live, true);
-    assert.equal(statusBarVisible(st), false);
+    assert.equal(statusBarVisible(st), true);
   });
 
   it("keeps the bar when a settled-looking stream might still grow tools", () => {

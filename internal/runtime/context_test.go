@@ -109,6 +109,9 @@ func TestApplyPatchAddAndUpdate(t *testing.T) {
 	if res.Err != nil {
 		t.Fatal(res.Err)
 	}
+	if res.FileChange == nil || res.FileChange.Added != 1 || res.FileChange.Removed != 1 {
+		t.Fatalf("apply_patch line counts %+v", res.FileChange)
+	}
 	b, _ = os.ReadFile(filepath.Join(dir, "n.txt"))
 	if string(b) != "hello world" {
 		t.Fatalf("%q", b)

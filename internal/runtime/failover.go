@@ -56,7 +56,7 @@ func (f *FailoverClient) Chat(ctx context.Context, req ChatRequest) (Message, er
 	return f.ChatStream(ctx, req, nil)
 }
 
-func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if f == nil || len(f.Routes) == 0 {
 		return Message{}, fmt.Errorf("no chat providers")
 	}
@@ -79,8 +79,8 @@ func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit f
 		streamed := false
 		wrap := emit
 		if emit != nil {
-			wrap = func(d StreamDelta) error {
-				if d.Text != "" || d.Reasoning != "" || d.Tool.Name != "" {
+			wrap = func(d StreamChunk) error {
+				if d.IsToken() {
 					streamed = true
 				}
 				return emit(d)
@@ -109,7 +109,7 @@ func (f *FailoverClient) ChatStream(ctx context.Context, req ChatRequest, emit f
 	return Message{}, last
 }
 
-func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func callChat(ctx context.Context, c Client, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if s, ok := c.(Streamer); ok {
 		return s.ChatStream(ctx, req, emit)
 	}

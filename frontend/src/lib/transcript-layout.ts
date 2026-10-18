@@ -1,5 +1,6 @@
 import type { Item } from "./protocol";
 import { itemTurnKey } from "./turn-outline";
+import { processGrouped, turnWorkFolded, type ChatPresentationPolicy } from "./presentation-policy";
 import {
   isArtifactTool,
   isRichResult,
@@ -17,14 +18,20 @@ import { looksLikeHTMLFile } from "./html-preview";
 
 export type ToolPair = { key: string; call?: Item; result?: Item; extra: Item[] };
 
-export type LayoutOpts = { running?: boolean };
+export type LayoutOpts = {
+  running?: boolean;
+  showThinking?: boolean;
+  policy?: ChatPresentationPolicy;
+  nextUser?: boolean;
+};
 
 export type AgentPart =
   | { key: string; kind: "item"; item: Item }
-  | { key: string; kind: "process"; items: Item[]; live: boolean }
+  | { key: string; kind: "process"; items: Item[]; live: boolean; grouped?: boolean }
   | { key: string; kind: "artifact"; items: Item[] }
   | { key: string; kind: "subagent"; items: Item[]; child: string; live: boolean }
-  | { key: string; kind: "stream"; item: Item };
+  | { key: string; kind: "stream"; item: Item }
+  | { key: string; kind: "work"; parts: AgentPart[]; live: boolean; folded: boolean };
 
 export type LayoutRow =
   | { key: string; kind: "user"; item: Item; turnKey: string }
@@ -193,6 +200,7 @@ export function pairTools(items: Item[]): ToolPair[] {
 
 export function processGroupLive(items: Item[]): boolean {
   const open = new Set<string>();
+  let streaming = false;
   for (const it of items) {
     const id = String(it.payload?.id || it.key);
     if (it.type === "tool_call") open.add(id);
@@ -200,8 +208,11 @@ export function processGroupLive(items: Item[]): boolean {
       if (it.delta || it.payload?.delta) continue;
       open.delete(id);
     }
+    if ((it.type === "assistant" || it.type === "reasoning") && (it.delta || it.payload?.streaming)) {
+      streaming = true;
+    }
   }
-  return open.size > 0;
+  return streaming || open.size > 0;
 }
 
 export function processToolPairs(items: Item[]): ToolPair[] {
@@ -314,41 +325,104 @@ function agentCopyText(items: Item[]): string {
   return "";
 }
 
-/**
- * The letter is the final assistant text: the last one with no tool call after
- * it. Text that precedes a tool call is narration and belongs in the rail.
- * Treating the newest narration as the letter showed a second answer block at
- * the top of the turn until the next step folded it away. Empty trailing
- * assistants are skipped so they cannot hide the real answer.
- */
-function lastAssistantKey(items: Item[]): string {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const it = items[i];
-    if (it.type === "assistant") {
-      if (it.text.trim() || it.delta) return it.key;
-      continue;
-    }
-    // update_plan is bookkeeping: marking the last step done after the answer
-    // does not make the answer narration.
-    if ((isToolish(it) && toolName(it) !== "update_plan") || it.type === "subagent") return "";
+function blockText(it: Item, kind: "text" | "reasoning"): string {
+  const blocks = it.payload?.blocks;
+  if (!Array.isArray(blocks)) return kind === "text" ? it.text : "";
+  let s = "";
+  for (const b of blocks) {
+    if (b && b.type === kind) s += String(b.text || "");
   }
-  return "";
+  return s;
+}
+
+export function reasoningText(it: Item): string {
+  if (it.type === "reasoning") return it.text.trim();
+  const tagged = String(it.payload?.reasoning || "").trim();
+  if (tagged) return tagged;
+  return blockText(it, "reasoning").trim();
+}
+
+export function flattenWorkProcess(parts: AgentPart[]): Item[] {
+  const out: Item[] = [];
+  for (const p of parts) {
+    if (p.kind === "process") out.push(...p.items);
+    else if (p.kind === "item" || p.kind === "stream") out.push(p.item);
+    else if (p.kind === "subagent") out.push(...p.items);
+    else if (p.kind === "work") out.push(...flattenWorkProcess(p.parts));
+  }
+  return out;
+}
+
+function lastCompactAnswerIndex(parts: AgentPart[]): number {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if ((p.kind === "item" || p.kind === "stream") && p.item.type === "assistant") {
+      const workAfter = parts.slice(i + 1).some((x) => x.kind === "process" || x.kind === "artifact" || x.kind === "subagent");
+      if (!workAfter) return i;
+    }
+  }
+  return -1;
+}
+
+export function wrapTurnWork(parts: AgentPart[], opts?: LayoutOpts): AgentPart[] {
+  if (!parts.length) return parts;
+  const last = lastCompactAnswerIndex(parts);
+  const before = last >= 0 ? parts.slice(0, last) : parts;
+  const after = last >= 0 ? parts.slice(last) : [];
+  if (!before.length) return parts;
+  const grouped = opts?.policy ? processGrouped(opts.policy, !!opts.running, !!opts.nextUser) : true;
+  const folded = opts?.policy ? turnWorkFolded(opts.policy, !!opts.running, !!opts.nextUser) : false;
+  const tagged = before.map((p) => (p.kind === "process" ? { ...p, grouped } : p));
+  return [
+    { key: `work:${before[0].key}`, kind: "work", parts: tagged, live: !!opts?.running, folded },
+    ...after,
+  ];
+}
+
+export function hasAssistantReasoning(it: Item): boolean {
+  if (it.type === "reasoning") return it.text.trim() !== "";
+  if (it.type !== "assistant") return false;
+  if (String(it.payload?.reasoning || "").trim()) return true;
+  return blockText(it, "reasoning").trim() !== "";
+}
+
+/** Visible reply content — the process-groups split boundary. */
+export function hasAssistantReply(it: Item): boolean {
+  if (it.type !== "assistant") return false;
+  if (it.delta || it.payload?.streaming) return true;
+  if (it.text.trim()) return true;
+  return blockText(it, "text").trim() !== "";
 }
 
 /**
- * Intermediate assistants fold into the process rail. The last letter stays a
- * visible bubble once the turn has settled. While `running`, that same key is
- * a stream tail — never a letter — so a tool round cannot flash a second reply.
+ * Harness compact-answer: only the latest tool-free reply is the letter.
+ * Intermediate narration joins the process rail (`groupPart: response`).
+ */
+export function isCompactAnswer(items: Item[], index: number): boolean {
+  const it = items[index];
+  if (!hasAssistantReply(it)) return false;
+  for (let i = index + 1; i < items.length; i++) {
+    const later = items[i];
+    if (hasAssistantReply(later) || isToolish(later)) return false;
+  }
+  return true;
+}
+
+function taggedAssistant(it: Item, groupPart: "reasoning" | "response"): Item {
+  return { ...it, payload: { ...it.payload, groupPart } };
+}
+
+/**
+ * Process groups split on an assistant reply, not on tool category. Reasoning
+ * joins the in-step rail; only the compact answer stands outside it. Artifact
+ * cards stay first-class (yoyo IA) rather than flattening into the rail.
  */
 export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] {
   const parts: AgentPart[] = [];
   let process: Item[] = [];
   let artifacts: Item[] = [];
-  let streamItem: Item | undefined;
-  const finalKey = lastAssistantKey(items);
-  const letterKey = opts?.running ? "" : finalKey;
-  const streamKey = opts?.running ? finalKey : "";
   const pairKind = classifyToolPairs(pairTools(items.filter(isToolish)));
+  const grouped = opts?.policy ? processGrouped(opts.policy, !!opts.running, !!opts.nextUser) : true;
   const flushProcess = () => {
     if (!process.length) return;
     parts.push({
@@ -356,6 +430,7 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
       kind: "process",
       items: process,
       live: processGroupLive(process),
+      grouped,
     });
     process = [];
   };
@@ -364,7 +439,10 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
     parts.push({ key: `artifact:${artifacts[0].key}`, kind: "artifact", items: artifacts });
     artifacts = [];
   };
-  for (const it of items) {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.type === "assistant_stream" || it.type === "turn_start" || it.type === "step_start" || it.type === "step_end" || it.type === "inbox") continue;
+    if (it.type === "reasoning" && opts?.showThinking === false) continue;
     if (isMentionInject(it) || isTranscriptDuplicate(it)) continue;
     if (it.type === "subagent") {
       flushProcess();
@@ -381,18 +459,36 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
     }
     if (isToolish(it)) {
       const id = String(it.payload?.id || it.key);
-      if (pairKind.get(id) === "artifact") artifacts.push(it);
-      else process.push(it);
+      if (pairKind.get(id) === "artifact") {
+        flushProcess();
+        artifacts.push(it);
+      } else {
+        flushArtifacts();
+        process.push(it);
+      }
       continue;
     }
-    if (it.type === "assistant" && it.key === streamKey) {
-      if (!it.text.trim() && !it.delta) continue;
-      streamItem = it;
-      continue;
-    }
-    if (it.type === "assistant" && it.key !== letterKey) {
-      if (!it.text.trim() && !it.delta) continue;
-      process.push(it);
+    if (it.type === "assistant") {
+      if (opts?.showThinking !== false && hasAssistantReasoning(it)) {
+        process.push(taggedAssistant(it, "reasoning"));
+      }
+      if (hasAssistantReply(it)) {
+        if (!isCompactAnswer(items, i)) {
+          process.push(taggedAssistant(it, "response"));
+          continue;
+        }
+        flushProcess();
+        flushArtifacts();
+        const toolsFollow = items.slice(i + 1).some(isToolish);
+        const toolsYet = items.some(isToolish);
+        const streaming = !!(opts?.running && (it.delta || it.payload?.streaming || it.payload?.delta || (!toolsFollow && !toolsYet)));
+        const tagged = taggedAssistant(it, "response");
+        if (streaming) {
+          parts.push({ key: tagged.key, kind: "stream", item: tagged });
+        } else {
+          parts.push({ key: tagged.key, kind: "item", item: tagged });
+        }
+      }
       continue;
     }
     if (isProcessItem(it)) {
@@ -405,11 +501,60 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
   }
   flushProcess();
   flushArtifacts();
-  if (streamItem) {
-    // Keep the letter's item key while streaming so settle does not remount.
-    parts.push({ key: streamItem.key, kind: "stream", item: streamItem });
-  }
   return parts;
+}
+
+function hydrateItem(it: Item, byKey: Map<string, Item>): Item {
+  const fresh = byKey.get(it.key);
+  if (!fresh || fresh === it) return it;
+  const groupPart = it.payload?.groupPart;
+  if (groupPart === "reasoning" || groupPart === "response") {
+    return {
+      ...it,
+      delta: fresh.delta,
+      payload: { ...fresh.payload, ...it.payload, groupPart },
+      text: groupPart === "reasoning" ? (reasoningText(fresh) || it.text) : (fresh.text || it.text),
+    };
+  }
+  return fresh;
+}
+
+function hydrateParts(parts: AgentPart[], byKey: Map<string, Item>): AgentPart[] {
+  return parts.map((p) => {
+    if (p.kind === "item" || p.kind === "stream") {
+      const item = hydrateItem(p.item, byKey);
+      return item === p.item ? p : { ...p, item };
+    }
+    if (p.kind === "process" || p.kind === "artifact" || p.kind === "subagent") {
+      const items = p.items.map((it) => hydrateItem(it, byKey));
+      const changed = items.some((it, i) => it !== p.items[i]);
+      return changed ? { ...p, items } : p;
+    }
+    if (p.kind === "work") {
+      const inner = hydrateParts(p.parts, byKey);
+      const changed = inner.some((x, i) => x !== p.parts[i]);
+      return changed ? { ...p, parts: inner } : p;
+    }
+    return p;
+  });
+}
+
+/** Patch cached layout seats with the current item bodies without recomputing structure. */
+export function hydrateLayout(rows: LayoutRow[], items: Item[]): LayoutRow[] {
+  const byKey = new Map<string, Item>();
+  for (const it of items) byKey.set(it.key, it);
+  return rows.map((row) => {
+    if (row.kind === "user" || row.kind === "solo") {
+      const item = hydrateItem(row.item, byKey);
+      return item === row.item ? row : { ...row, item };
+    }
+    if (row.kind === "agent") {
+      const parts = hydrateParts(row.parts, byKey);
+      const changed = parts.some((p, i) => p !== row.parts[i]);
+      return changed ? { ...row, parts } : row;
+    }
+    return row;
+  });
 }
 
 /** One visual row per operator turn. Agent text/tools between users stay together. */
@@ -417,12 +562,13 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];
   let turnKey = "";
-  const flushAgent = (live: boolean) => {
+  const flushAgent = (live: boolean, nextUser: boolean) => {
     if (!agent.length) return;
+    const partOpts: LayoutOpts = { running: live, showThinking: opts?.showThinking, policy: opts?.policy, nextUser };
     rows.push({
       key: `turn:${agent[0].key}`,
       kind: "agent",
-      parts: layoutAgentParts(agent, { running: live }),
+      parts: wrapTurnWork(layoutAgentParts(agent, partOpts), partOpts),
       copyText: agentCopyText(agent),
       turnKey,
     });
@@ -430,7 +576,7 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
   };
   for (const it of items) {
     if (it.type === "user" && it.source !== "steer") {
-      flushAgent(false);
+      flushAgent(false, true);
       turnKey = itemTurnKey(it);
       rows.push({ key: it.key, kind: "user", item: it, turnKey });
       continue;
@@ -452,10 +598,10 @@ export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
       agent.push(it);
       continue;
     }
-    flushAgent(false);
+    flushAgent(false, false);
     rows.push({ key: it.key, kind: "solo", item: it });
   }
-  flushAgent(!!opts?.running);
+  flushAgent(!!opts?.running, false);
   return rows;
 }
 

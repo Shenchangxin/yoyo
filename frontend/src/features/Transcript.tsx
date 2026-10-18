@@ -24,8 +24,10 @@ import type { Approval, Item } from "../lib/protocol";
 import { isPageReviewItem, PageReviewCard } from "./pages/PageReviewCard";
 import { isBrowserShotItem, BrowserShotCard } from "./pages/BrowserShotCard";
 import { classifyItem, errorCopy } from "../lib/error";
-import { ARTIFACT_PAGE, classifyToolPairs, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
+import { ARTIFACT_PAGE, classifyToolPairs, flattenWorkProcess, hydrateLayout, layoutRows, pairTools, processGroupLive, tailProcessPairs, type AgentPart, type LayoutRow } from "../lib/transcript-layout";
 import { structureSig } from "../lib/stream-live";
+import { coerceCollapseTiming, coerceTranscriptView, presentationPolicyFor } from "../lib/presentation-policy";
+import { ScrollFollow, scrollMetrics } from "../lib/scroll-follow";
 import { ProcessGroup, ToolLine } from "./transcript/ProcessGroup";
 import { SubagentCard } from "./transcript/SubagentCard";
 import { ArtifactBody } from "./transcript/FilePreview";
@@ -44,9 +46,19 @@ function lastStreamKey(rows: LayoutRow[]): string {
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
     if (row.kind !== "agent") continue;
-    for (let j = row.parts.length - 1; j >= 0; j--) {
-      const part = row.parts[j];
-      if (part.kind === "stream") return part.item.key;
+    const key = streamKeyInParts(row.parts);
+    if (key) return key;
+  }
+  return "";
+}
+
+function streamKeyInParts(parts: AgentPart[]): string {
+  for (let j = parts.length - 1; j >= 0; j--) {
+    const part = parts[j];
+    if (part.kind === "stream") return part.item.key;
+    if (part.kind === "work") {
+      const inner = streamKeyInParts(part.parts);
+      if (inner) return inner;
     }
   }
   return "";
@@ -54,7 +66,12 @@ function lastStreamKey(rows: LayoutRow[]): string {
 
 function lastProcessIndex(parts: AgentPart[]): number {
   for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].kind === "process") return i;
+    const part = parts[i];
+    if (part.kind === "process") return i;
+    if (part.kind === "work") {
+      const inner = lastProcessIndex(part.parts);
+      if (inner >= 0) return i;
+    }
   }
   return -1;
 }
@@ -95,7 +112,7 @@ function partSpace(parts: AgentPart[], i: number): string {
   if (i === 0) return "";
   const prev = parts[i - 1];
   const cur = parts[i];
-  if (cur.kind === "process") return prev.kind === "item" ? "pt-2.5" : "pt-1.5";
+  if (cur.kind === "process" || cur.kind === "work") return prev.kind === "item" ? "pt-2.5" : "pt-1.5";
   if (cur.kind === "subagent") return "pt-1.5";
   if (cur.kind === "artifact") return "pt-2";
   if (cur.kind === "stream") return prev.kind === "process" || prev.kind === "artifact" || prev.kind === "subagent" ? "pt-3" : "pt-2";
@@ -108,8 +125,9 @@ function partSpace(parts: AgentPart[], i: number): string {
 
 export function Transcript(props: {
   items: Item[];
-  liveTexts?: Record<string, string>;
   showThinking?: boolean;
+  transcriptView?: string;
+  collapseTiming?: string;
   approvals: Approval[];
   running: boolean;
   compact?: boolean;
@@ -132,14 +150,24 @@ export function Transcript(props: {
 }) {
   const pad = props.flush ? "" : props.compact ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : cn(THREAD_COL, pad);
+  const policy = useMemo(
+    () => presentationPolicyFor(coerceTranscriptView(props.transcriptView), coerceCollapseTiming(props.collapseTiming)),
+    [props.transcriptView, props.collapseTiming],
+  );
   const visible = useMemo(
     () => (props.showThinking ? props.items : props.items.filter((it) => it.type !== "reasoning")),
     [props.items, props.showThinking],
   );
-  const layout = useStableLayout(visible, props.running);
+  const layout = useStableLayout(visible, props.running, policy, props.showThinking !== false);
   const empty = visible.length === 0 && !props.running && props.approvals.length === 0;
   const streamingKey = props.running ? lastStreamKey(layout) : "";
-  const liveLen = streamingKey ? (props.liveTexts?.[streamingKey]?.length || 0) : 0;
+  const liveLen = useMemo(() => {
+    let n = 0;
+    for (const it of visible) {
+      if (it.delta || it.payload?.streaming || it.payload?.delta) n += (it.text || "").length;
+    }
+    return n;
+  }, [visible]);
   const retryKey = lastErrorKey(visible);
   const pinnedTurn = lastAgentKey(layout);
 
@@ -187,10 +215,21 @@ export function Transcript(props: {
                     partSpace(row.parts, pi),
                     part.kind === "item" && part.item.type === "assistant" && "assistant-block min-w-0",
                     part.kind === "stream" && "assistant-stream min-w-0",
-                    (part.kind === "process" || part.kind === "artifact" || part.kind === "subagent") && "u-chrome",
+                    (part.kind === "process" || part.kind === "artifact" || part.kind === "subagent" || part.kind === "work") && "u-chrome",
                   )}
                 >
-                  {part.kind === "process" ? (
+                  {part.kind === "work" ? (
+                    <TurnWork
+                      part={part}
+                      running={props.running}
+                      last={last}
+                      compact={props.compact}
+                      liveDetail={policy.liveProcessDetail}
+                      streamingKey={streamingKey}
+                      workspace={props.workspace}
+                      onOpenReview={props.onOpenReview}
+                    />
+                  ) : part.kind === "process" ? (
                     <ProcessGroup
                       items={part.items}
                       live={props.running && last && (
@@ -199,7 +238,8 @@ export function Transcript(props: {
                       )}
                       running={props.running}
                       compact={props.compact}
-                      liveTexts={props.liveTexts}
+                      grouped={part.grouped !== false}
+                      liveDetail={policy.liveProcessDetail}
                     />
                   ) : part.kind === "subagent" ? (
                     <SubagentCard
@@ -214,16 +254,14 @@ export function Transcript(props: {
                   ) : part.kind === "stream" ? (
                     <ItemRow
                       item={part.item}
-                      streaming={!!part.item.delta || !!props.liveTexts?.[part.item.key]}
-                      liveText={props.liveTexts?.[part.item.key]}
+                      streaming={!!part.item.delta || !!part.item.payload?.streaming}
                       rich={false}
                     />
                   ) : (
                     <ItemRow
                       item={part.item}
                       streaming={false}
-                      liveText={props.liveTexts?.[part.item.key]}
-                      rich={part.item.type === "assistant"}
+                      rich={part.item.type === "assistant" && !props.running}
                     />
                   )}
                 </div>
@@ -294,13 +332,86 @@ export function Transcript(props: {
   );
 }
 
-function useStableLayout(items: Item[], running: boolean): LayoutRow[] {
-  const sig = structureSig(items, running);
+function TurnWork({
+  part,
+  running,
+  last,
+  compact,
+  liveDetail,
+  workspace,
+  onOpenReview,
+  streamingKey,
+}: {
+  part: Extract<AgentPart, { kind: "work" }>;
+  running: boolean;
+  last: boolean;
+  compact?: boolean;
+  liveDetail: boolean;
+  workspace?: string;
+  onOpenReview?: (path?: string) => void;
+  streamingKey: string;
+}) {
+  const inner = part.parts;
+  const lastProcessAt = lastProcessIndex(inner);
+  const hasStream = inner.some((p) => p.kind === "stream") || !!streamingKey;
+  if (part.folded) {
+    const processItems = flattenWorkProcess(inner);
+    return (
+      <div data-testid="turn-work" data-folded="true">
+        {processItems.length ? (
+          <ProcessGroup items={processItems} live={false} running={false} compact={compact} grouped liveDetail={liveDetail} />
+        ) : null}
+        {inner.map((p) => p.kind === "artifact" ? (
+          <div key={p.key} className="pt-2">
+            <ArtifactTimeline items={p.items} running={running} workspace={workspace} onOpenReview={onOpenReview} />
+          </div>
+        ) : null)}
+      </div>
+    );
+  }
+  return (
+    <div data-testid="turn-work" data-folded="false">
+      {inner.map((p, pi) => (
+        <div
+          key={p.key}
+          className={cn(
+            partSpace(inner, pi),
+            p.kind === "item" && p.item.type === "assistant" && "assistant-block min-w-0",
+            p.kind === "stream" && "assistant-stream min-w-0",
+            (p.kind === "process" || p.kind === "artifact" || p.kind === "subagent") && "u-chrome",
+          )}
+        >
+          {p.kind === "process" ? (
+            <ProcessGroup
+              items={p.items}
+              live={running && last && (processGroupLive(p.items) || (pi === lastProcessAt && !hasStream))}
+              running={running}
+              compact={compact}
+              grouped={p.grouped !== false}
+              liveDetail={liveDetail}
+            />
+          ) : p.kind === "subagent" ? (
+            <SubagentCard items={p.items} child={p.child} live={running && p.live} running={running} compact={compact} />
+          ) : p.kind === "artifact" ? (
+            <ArtifactTimeline items={p.items} running={running} workspace={workspace} onOpenReview={onOpenReview} />
+          ) : p.kind === "stream" ? (
+            <ItemRow item={p.item} streaming={!!p.item.delta || !!p.item.payload?.streaming} rich={false} />
+          ) : p.kind === "item" ? (
+            <ItemRow item={p.item} streaming={false} rich={p.item.type === "assistant" && !running} />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function useStableLayout(items: Item[], running: boolean, policy: ReturnType<typeof presentationPolicyFor>, showThinking: boolean): LayoutRow[] {
+  const sig = `${structureSig(items, running)}\n${policy.mode}\t${policy.collapseTiming}\t${showThinking ? 1 : 0}`;
   const ref = useRef({ sig: "", rows: [] as LayoutRow[] });
   if (ref.current.sig !== sig) {
-    ref.current = { sig, rows: layoutRows(items, { running }) };
+    ref.current = { sig, rows: layoutRows(items, { running, showThinking, policy }) };
   }
-  return ref.current.rows;
+  return hydrateLayout(ref.current.rows, items);
 }
 
 /**
@@ -477,7 +588,8 @@ function TranscriptLane({
 }) {
   const copy = useCopy();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const stick = useRef(true);
+  const followCtl = useRef<ScrollFollow | null>(null);
+  if (!followCtl.current) followCtl.current = new ScrollFollow(true, 80);
   const [escaped, setEscaped] = useState(false);
   const loadingRef = useRef(false);
   const appliedJump = useRef(0);
@@ -487,10 +599,11 @@ function TranscriptLane({
   const jumpHeld = useRef(false);
   const jumpNonce = jumpTo?.nonce || 0;
   if (jumpNonce && jumpNonce !== appliedJump.current) {
-    stick.current = false;
+    followCtl.current.setFollowing(false);
   }
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const following = followCtl.current.active;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -498,14 +611,18 @@ function TranscriptLane({
     overscan,
     getItemKey: (i) => rows[i]?.key ?? i,
     anchorTo: "end",
-    followOnAppend: follow && !escaped,
+    followOnAppend: follow && following,
     scrollEndThreshold: 80,
     scrollMargin,
   });
-  const followEnd = useCallback(() => {
-    if (!stick.current) return;
-    virtualizer.scrollToEnd();
-  }, [virtualizer]);
+  const followEnd = useCallback((behavior: "instant" | "smooth" = "instant") => {
+    const el = scrollRef.current;
+    const ctl = followCtl.current;
+    if (!el || !ctl) return;
+    if (!ctl.active && behavior === "instant" && !follow) return;
+    ctl.toBottom(el, scrollMetrics(el), behavior);
+    setEscaped(!ctl.active);
+  }, [follow]);
   const releaseJump = useCallback(() => {
     jumpHeld.current = false;
   }, []);
@@ -517,15 +634,24 @@ function TranscriptLane({
     if (margin !== scrollMargin) setScrollMargin(margin);
   }, [older, rows.length, scrollMargin]);
   useLayoutEffect(() => {
-    followEnd();
-  }, [followEnd, rows.length, follow, followNonce]);
+    const el = scrollRef.current;
+    const ctl = followCtl.current;
+    if (!el || !ctl) return;
+    return ctl.bind(el);
+  }, []);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const ctl = followCtl.current;
+    if (!el || !ctl || !ctl.active) return;
+    ctl.toBottom(el, scrollMetrics(el), follow ? "smooth" : "instant");
+    setEscaped(!ctl.active);
+  }, [rows.length, follow, followNonce]);
   useLayoutEffect(() => {
     if (!latestNonce || latestNonce === appliedLatest.current) return;
     appliedLatest.current = latestNonce;
     jumpHeld.current = false;
-    stick.current = true;
-    setEscaped(false);
-    followEnd();
+    followCtl.current?.setFollowing(true);
+    followEnd("smooth");
   }, [latestNonce, followEnd]);
   useLayoutEffect(() => {
     const key = jumpTo?.key;
@@ -533,7 +659,7 @@ function TranscriptLane({
     if (!key || nonce === appliedJump.current) return;
     const aliases = jumpTo?.aliases?.length ? jumpTo.aliases : [key];
     const idx = rows.findIndex((r) => rowMatchesJump(r.turnKey, aliases) || rowMatchesJump(r.key, aliases));
-    stick.current = false;
+    followCtl.current?.setFollowing(false);
     setEscaped(true);
     lastActive.current = key;
     if (idx < 0) return;
@@ -549,13 +675,21 @@ function TranscriptLane({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const onEnd = () => {
+      const ctl = followCtl.current;
+      if (!ctl) return;
+      ctl.settle(scrollMetrics(el));
+      setEscaped(!ctl.active);
+    };
     el.addEventListener('wheel', releaseJump, { passive: true });
     el.addEventListener('pointerdown', releaseJump);
     el.addEventListener('touchstart', releaseJump, { passive: true });
+    el.addEventListener('scrollend', onEnd);
     return () => {
       el.removeEventListener('wheel', releaseJump);
       el.removeEventListener('pointerdown', releaseJump);
       el.removeEventListener('touchstart', releaseJump);
+      el.removeEventListener('scrollend', onEnd);
     };
   }, [releaseJump]);
   const reportActive = useCallback((key: string) => {
@@ -572,7 +706,7 @@ function TranscriptLane({
       return;
     }
     const gap = root.scrollHeight - root.scrollTop - root.clientHeight;
-    if (gap < 72) {
+    if (gap < 80) {
       const last = [...rows].reverse().find((r) => r.turnKey)?.turnKey;
       if (last) reportActive(last);
       return;
@@ -603,12 +737,11 @@ function TranscriptLane({
   }, [queueSpy, rows.length]);
   const onScroll = () => {
     const el = scrollRef.current;
-    if (!el) return;
-    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const atBottom = gap < 72;
+    const ctl = followCtl.current;
+    if (!el || !ctl) return;
     if (!jumpHeld.current) {
-      stick.current = atBottom;
-      setEscaped(!atBottom);
+      ctl.sample(scrollMetrics(el));
+      setEscaped(!ctl.active);
     }
     queueSpy();
     if (el.scrollTop < 48 && older && onLoadOlder && !loadingRef.current) {
@@ -670,10 +803,10 @@ function TranscriptLane({
           type='button'
           className='absolute bottom-4 left-1/2 z-10 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-popover py-1.5 pl-2.5 pr-3 text-[12px] text-foreground shadow-[var(--shadow-popover)] transition-[background-color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift active:scale-[0.98]'
           onClick={() => {
-            stick.current = true;
+            followCtl.current?.setFollowing(true);
             setEscaped(false);
             if (onJumpLatest) void onJumpLatest();
-            else followEnd();
+            else followEnd("smooth");
           }}
         >
           <ArrowDown className='size-3 text-muted' aria-hidden />
@@ -1239,39 +1372,40 @@ function ArtifactCard({
             : copy.transcript.artifact;
   const added = view.added || 0;
   const removed = view.removed || 0;
-  const stat = [
+  const counts = [
     view.created ? copy.transcript.created : "",
-    added || removed ? `+${added} / −${removed}` : "",
-  ].filter(Boolean).join(" · ");
-  const meta = name === "apply_patch" && files > 0
-    ? copy.transcript.filesCount.replace("{n}", String(files))
-    : [stat, path || detail || name].filter(Boolean).join(" · ");
+    name === "apply_patch" && files > 0 ? copy.transcript.filesCount.replace("{n}", String(files)) : "",
+  ].filter(Boolean);
   return (
     <div
-      className={cn(
-        "u-card-hover min-w-0 overflow-hidden rounded-md border bg-sidebar/40 px-3.5 py-2.5",
-        pending ? "border-foreground/15" : "border-border/80",
-      )}
+      className={cn("file-bubble u-card-hover", pending && "is-pending")}
       data-testid="artifact-card"
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-lift/70 text-muted" aria-hidden>
-          {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-3.5" />}
+      <div className="file-bubble-header">
+        <span className="file-bubble-tile" aria-hidden>
+          {pending ? <span className="pulse-dot" /> : interrupted ? <CircleDashed className="size-3.5 text-warning" /> : <FileText className="size-5" />}
         </span>
-        <div className="min-w-0 flex-1 basis-40">
-          <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+        <div className="file-bubble-titles">
+          <div className="file-bubble-title">
             <span className={cn("truncate", pending && "shimmer-text")}>{title}</span>
             {interrupted ? (
-              <span className="rounded-md bg-warning/12 px-1.5 py-px text-[11px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
+              <span className="ml-2 rounded-md bg-warning/12 px-1.5 py-px text-[11px] font-medium text-warning">{copy.transcript.toolInterrupted}</span>
             ) : null}
           </div>
-          <div className="truncate font-mono text-[11px] text-muted">{meta}</div>
+          <div className="file-bubble-stat">
+            <span className="file-bubble-stat-counts">
+              {counts.length ? <span>{counts.join(" · ")}</span> : null}
+              {added ? <span className="file-bubble-added">+{added}</span> : null}
+              {removed ? <span className="file-bubble-deleted">−{removed}</span> : null}
+              {!added && !removed && !counts.length ? <span className="truncate">{path || detail || name}</span> : null}
+            </span>
+            <span className="file-bubble-hint">{copy.transcript.preview}</span>
+          </div>
         </div>
-        <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
+        <div className="file-bubble-actions">
           {hasPreview ? (
             <button
               type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
               aria-expanded={open}
               onClick={() => setOpen((v) => !v)}
             >
@@ -1279,20 +1413,12 @@ function ArtifactCard({
             </button>
           ) : null}
           {htmlish && open ? (
-            <button
-              type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
-              onClick={() => setSource((v) => !v)}
-            >
+            <button type="button" onClick={() => setSource((v) => !v)}>
               {source ? copy.transcript.preview : copy.transcript.source}
             </button>
           ) : null}
           {onOpenReview ? (
-            <button
-              type="button"
-              className="rounded-full border border-border px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-lift"
-              onClick={() => onOpenReview(path || undefined)}
-            >
+            <button type="button" onClick={() => onOpenReview(path || undefined)}>
               {copy.review.openReview}
             </button>
           ) : null}

@@ -20,10 +20,12 @@ func (p prefetchStreamer) Chat(ctx context.Context, req ChatRequest) (Message, e
 	return p.msg, nil
 }
 
-func (p prefetchStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (p prefetchStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if emit != nil {
-		for _, tc := range p.msg.ToolCalls {
-			if err := emit(StreamDelta{Tool: tc, ToolDone: true}); err != nil {
+		for i, tc := range p.msg.ToolCalls {
+			_ = emit(StreamChunk{Type: ChunkBlockStart, Index: i, BlockType: BlockToolCall})
+			_ = emit(StreamChunk{Type: ChunkToolCallDelta, Index: i, ID: tc.ID, Name: tc.Name, ArgumentsDelta: tc.Arguments})
+			if err := emit(StreamChunk{Type: ChunkBlockEnd, Index: i, Block: &ContentBlock{Type: BlockToolCall, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments}}); err != nil {
 				return Message{}, err
 			}
 		}
@@ -93,7 +95,7 @@ func (s *seqClient) Chat(ctx context.Context, req ChatRequest) (Message, error) 
 	return s.rest.Chat(ctx, req)
 }
 
-func (s *seqClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (s *seqClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	s.n++
 	if s.n == 1 {
 		return s.first.ChatStream(ctx, req, emit)

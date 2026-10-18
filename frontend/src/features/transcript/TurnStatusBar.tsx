@@ -16,7 +16,7 @@ export function TurnStatusBar({
   status,
   compact,
 }: {
-  status: TurnStatus | null;
+  status?: TurnStatus | null;
   compact?: boolean;
 }) {
   const copy = useCopy();

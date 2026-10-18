@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,10 +17,10 @@ func (deltaStreamer) Chat(ctx context.Context, req ChatRequest) (Message, error)
 	return Message{Role: RoleAssistant, Content: "hello"}, nil
 }
 
-func (deltaStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (deltaStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if emit != nil {
 		for _, p := range []string{"he", "llo"} {
-			if err := emit(StreamDelta{Text: p}); err != nil {
+			if err := emit(StreamChunk{Type: ChunkTextDelta, Index: 0, Text: p}); err != nil {
 				return Message{}, err
 			}
 		}
@@ -33,11 +34,11 @@ func (reasoningStreamer) Chat(ctx context.Context, req ChatRequest) (Message, er
 	return Message{Role: RoleAssistant, Content: "ok"}, nil
 }
 
-func (reasoningStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (reasoningStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	if emit != nil {
-		_ = emit(StreamDelta{Reasoning: "why "})
-		_ = emit(StreamDelta{Reasoning: "not"})
-		_ = emit(StreamDelta{Text: "ok"})
+		_ = emit(StreamChunk{Type: ChunkReasoningDelta, Index: 0, Text: "why "})
+		_ = emit(StreamChunk{Type: ChunkReasoningDelta, Index: 0, Text: "not"})
+		_ = emit(StreamChunk{Type: ChunkTextDelta, Index: 1, Text: "ok"})
 	}
 	return Message{Role: RoleAssistant, Content: "ok"}, nil
 }
@@ -58,15 +59,10 @@ func TestReasoningDeltasAreLiveOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var liveDelta, liveFull, diskDelta, diskFull int
+	var liveDelta, diskReasoning, diskAssistant int
 	for _, ev := range live {
-		if ev.Type != trace.TypeReasoning {
-			continue
-		}
-		if delta, _ := ev.Payload["delta"].(bool); delta {
+		if streamChunkType(ev) == ChunkReasoningDelta {
 			liveDelta++
-		} else {
-			liveFull++
 		}
 	}
 	evs, err := st.Read("s")
@@ -74,23 +70,24 @@ func TestReasoningDeltasAreLiveOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ev := range evs {
-		if ev.Type != trace.TypeReasoning {
-			continue
+		if ev.Type == trace.TypeReasoning {
+			diskReasoning++
 		}
-		if delta, _ := ev.Payload["delta"].(bool); delta {
-			diskDelta++
-		} else {
-			diskFull++
+		if ev.Type == trace.TypeAssistant {
+			diskAssistant++
+			if !settlementHasBlock(ev, BlockReasoning) {
+				t.Fatal("settlement missing reasoning block")
+			}
 		}
 	}
 	if liveDelta < 2 {
 		t.Fatalf("live reasoning deltas %d", liveDelta)
 	}
-	if diskDelta != 0 {
-		t.Fatalf("jsonl must not store reasoning deltas, got %d", diskDelta)
+	if diskReasoning != 0 {
+		t.Fatalf("jsonl must not store reasoning events, got %d", diskReasoning)
 	}
-	if liveFull < 1 || diskFull < 1 {
-		t.Fatalf("final reasoning live=%d disk=%d", liveFull, diskFull)
+	if diskAssistant < 1 {
+		t.Fatalf("final assistant disk=%d", diskAssistant)
 	}
 }
 
@@ -100,15 +97,15 @@ func (s *writeProgressStreamer) Chat(ctx context.Context, req ChatRequest) (Mess
 	return s.ChatStream(ctx, req, nil)
 }
 
-func (s *writeProgressStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamDelta) error) (Message, error) {
+func (s *writeProgressStreamer) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	s.n++
 	if s.n > 1 {
 		return Message{Role: RoleAssistant, Content: "done"}, nil
 	}
 	args := `{"path":"a.html","content":"` + strings.Repeat("x", 3000) + `"}`
 	if emit != nil {
-		_ = emit(StreamDelta{Tool: ToolCall{ID: "c1", Name: "write_file", Arguments: args[:20]}})
-		_ = emit(StreamDelta{Tool: ToolCall{ID: "c1", Name: "write_file", Arguments: args}})
+		_ = emit(StreamChunk{Type: ChunkToolCallDelta, Index: 0, ID: "c1", Name: "write_file", ArgumentsDelta: args[:20]})
+		_ = emit(StreamChunk{Type: ChunkToolCallDelta, Index: 0, ID: "c1", Name: "write_file", ArgumentsDelta: args[20:]})
 	}
 	return Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "read_file", Arguments: `{"path":"a.txt"}`}}}, nil
 }
@@ -176,13 +173,15 @@ func TestAssistantDeltasAreLiveOnly(t *testing.T) {
 	}
 	var liveDelta, liveFull, diskDelta, diskFull int
 	for _, ev := range live {
-		if ev.Type != trace.TypeAssistant {
-			continue
-		}
-		if delta, _ := ev.Payload["delta"].(bool); delta {
+		if streamChunkType(ev) == ChunkTextDelta {
 			liveDelta++
-		} else {
-			liveFull++
+		}
+		if ev.Type == trace.TypeAssistant {
+			if delta, _ := ev.Payload["delta"].(bool); delta {
+				liveDelta++
+			} else {
+				liveFull++
+			}
 		}
 	}
 	evs, err := st.Read("s")
@@ -190,6 +189,9 @@ func TestAssistantDeltasAreLiveOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ev := range evs {
+		if ev.Type == trace.TypeAssistantStream {
+			t.Fatal("jsonl must not store assistant_stream")
+		}
 		if ev.Type != trace.TypeAssistant {
 			continue
 		}
@@ -208,6 +210,24 @@ func TestAssistantDeltasAreLiveOnly(t *testing.T) {
 	if liveFull < 1 || diskFull < 1 {
 		t.Fatalf("final assistant live=%d disk=%d", liveFull, diskFull)
 	}
+}
+
+func streamChunkType(ev trace.Event) string {
+	if ev.Type != trace.TypeAssistantStream || ev.Payload == nil {
+		return ""
+	}
+	ch, _ := ev.Payload["chunk"].(map[string]any)
+	t, _ := ch["type"].(string)
+	return t
+}
+
+func settlementHasBlock(ev trace.Event, kind string) bool {
+	raw, ok := ev.Payload["blocks"]
+	if !ok {
+		return false
+	}
+	b, _ := json.Marshal(raw)
+	return strings.Contains(string(b), `"type":"`+kind+`"`)
 }
 
 func TestSeedCollapsesDoubledUser(t *testing.T) {

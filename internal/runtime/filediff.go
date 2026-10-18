@@ -139,6 +139,7 @@ type diffOp struct {
 
 func splitDiffLines(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
 	if s == "" {
 		return nil
 	}
@@ -150,6 +151,38 @@ func splitDiffLines(s string) []string {
 }
 
 func diffLines(a, b []string) []diffOp {
+	return diffLinesDepth(a, b, 0)
+}
+
+const maxAnchorDepth = 32
+
+func diffLinesDepth(a, b []string, depth int) []diffOp {
+	n, m := len(a), len(b)
+	if n == 0 && m == 0 {
+		return nil
+	}
+	pre := 0
+	for pre < n && pre < m && a[pre] == b[pre] {
+		pre++
+	}
+	asuf, bsuf := n, m
+	for asuf > pre && bsuf > pre && a[asuf-1] == b[bsuf-1] {
+		asuf--
+		bsuf--
+	}
+	mid := diffLinesMiddle(a[pre:asuf], b[pre:bsuf], depth)
+	out := make([]diffOp, 0, pre+(n-asuf)+len(mid))
+	for i := 0; i < pre; i++ {
+		out = append(out, diffOp{' ', a[i]})
+	}
+	out = append(out, mid...)
+	for i := asuf; i < n; i++ {
+		out = append(out, diffOp{' ', a[i]})
+	}
+	return out
+}
+
+func diffLinesMiddle(a, b []string, depth int) []diffOp {
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
 		return nil
@@ -168,16 +201,81 @@ func diffLines(a, b []string) []diffOp {
 		}
 		return out
 	}
-	if n > maxDiffDP || m > maxDiffDP || n*m > maxDiffDP*maxDiffDP {
-		out := make([]diffOp, 0, n+m)
-		for _, line := range a {
-			out = append(out, diffOp{'-', line})
-		}
-		for _, line := range b {
-			out = append(out, diffOp{'+', line})
-		}
-		return out
+	if lcsFits(n, m) {
+		return lcsDiff(a, b)
 	}
+	if depth < maxAnchorDepth {
+		if ai, bi, ok := uniqueAnchor(a, b); ok {
+			left := diffLinesDepth(a[:ai], b[:bi], depth+1)
+			right := diffLinesDepth(a[ai+1:], b[bi+1:], depth+1)
+			out := make([]diffOp, 0, len(left)+1+len(right))
+			out = append(out, left...)
+			out = append(out, diffOp{' ', a[ai]})
+			out = append(out, right...)
+			return out
+		}
+	}
+	return coarseReplace(a, b)
+}
+
+func lcsFits(n, m int) bool {
+	if n > maxDiffDP || m > maxDiffDP {
+		return false
+	}
+	return n*m <= maxDiffDP*maxDiffDP
+}
+
+func coarseReplace(a, b []string) []diffOp {
+	out := make([]diffOp, 0, len(a)+len(b))
+	for _, line := range a {
+		out = append(out, diffOp{'-', line})
+	}
+	for _, line := range b {
+		out = append(out, diffOp{'+', line})
+	}
+	return out
+}
+
+func uniqueAnchor(a, b []string) (ai, bi int, ok bool) {
+	acount := make(map[string]int, len(a))
+	bcount := make(map[string]int, len(b))
+	apos := make(map[string]int, len(a))
+	bpos := make(map[string]int, len(b))
+	for i, line := range a {
+		acount[line]++
+		apos[line] = i
+	}
+	for i, line := range b {
+		bcount[line]++
+		bpos[line] = i
+	}
+	midA, midB := len(a)/2, len(b)/2
+	best := -1
+	bestDist := len(a) + len(b) + 1
+	for line, c := range acount {
+		if c != 1 || bcount[line] != 1 {
+			continue
+		}
+		i, j := apos[line], bpos[line]
+		dist := absInt(i-midA) + absInt(j-midB)
+		if dist < bestDist {
+			bestDist = dist
+			best = i
+			ai, bi = i, j
+		}
+	}
+	return ai, bi, best >= 0
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+func lcsDiff(a, b []string) []diffOp {
+	n, m := len(a), len(b)
 	lcs := make([][]int, n+1)
 	for i := range lcs {
 		lcs[i] = make([]int, m+1)

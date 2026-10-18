@@ -236,10 +236,36 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             }}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.showThinking} description={copy.settings.showThinkingDesc} border={false}>
+        <SettingRow title={copy.settings.showThinking} description={copy.settings.showThinkingDesc}>
           <Switch
             checked={!!host.cfg.showThinking}
             onCheckedChange={(v) => void host.patch({ showThinking: v })}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.workDetails} description={copy.settings.workDetailsDesc}>
+          <SettingSegmented
+            id="transcript-view"
+            ariaLabel={copy.settings.workDetails}
+            value={(host.cfg.transcriptView === "compact" || host.cfg.transcriptView === "detailed" || host.cfg.transcriptView === "verbose") ? host.cfg.transcriptView : "standard"}
+            options={[
+              { value: "compact", label: copy.settings.workCompact },
+              { value: "standard", label: copy.settings.workStandard },
+              { value: "detailed", label: copy.settings.workDetailed },
+              { value: "verbose", label: copy.settings.workVerbose },
+            ]}
+            onChange={(next) => void host.patch({ transcriptView: next })}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.collapseTiming} description={copy.settings.collapseTimingDesc} border={false}>
+          <SettingSegmented
+            id="collapse-timing"
+            ariaLabel={copy.settings.collapseTiming}
+            value={host.cfg.collapseTiming === "next-input" ? "next-input" : "completion"}
+            options={[
+              { value: "completion", label: copy.settings.collapseCompletion },
+              { value: "next-input", label: copy.settings.collapseNextInput },
+            ]}
+            onChange={(next) => void host.patch({ collapseTiming: next })}
           />
         </SettingRow>
       </SettingSection>

@@ -79,6 +79,40 @@ func TestHubFlushesOnTypeChange(t *testing.T) {
 	}
 }
 
+func TestHubCoalescesAssistantStreamChunks(t *testing.T) {
+	h := NewHub()
+	ch, off := h.Subscribe("s")
+	defer off()
+	chunk := func(index int, text string) trace.Event {
+		return trace.Event{
+			SessionID: "s", Type: trace.TypeAssistantStream,
+			Payload: map[string]any{
+				"kind": "chunk", "attempt_id": "a1", "round": "s:r1", "id": "s:r1",
+				"index": index, "chunk": map[string]any{"type": "text-delta", "index": 0, "text": text},
+			},
+		}
+	}
+	h.Publish(chunk(0, "he"))
+	h.Publish(chunk(1, "llo"))
+	h.FlushCoalesce()
+	ev := recv(t, ch)
+	body := payloadMap(ev.Payload["chunk"])
+	got, _ := body["text"].(string)
+	if got != "hello" {
+		t.Fatalf("coalesced stream %q payload %+v", got, ev.Payload)
+	}
+	if payloadInt(ev.Payload, "index") != 1 || payloadInt(ev.Payload, "index_from") != 0 {
+		t.Fatalf("index range %+v", ev.Payload)
+	}
+	n := NoticeOf(ev)
+	if n.Event == nil || n.Frame == nil || n.Frame.Index != 1 || n.Frame.IndexFrom != 0 {
+		t.Fatalf("notice frame %+v", n.Frame)
+	}
+	if n.Frame.Chunk["text"] != "hello" {
+		t.Fatalf("frame chunk %+v", n.Frame.Chunk)
+	}
+}
+
 func TestHubDoesNotMergeDifferentRounds(t *testing.T) {
 	h := NewHub()
 	ch, off := h.Subscribe("s")

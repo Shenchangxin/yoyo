@@ -3,8 +3,9 @@ import { Streamdown, TableCopyDropdown, type Components, type ExtraProps } from 
 import { useCopy } from "./i18n";
 import { cn } from "./utils";
 import { codePlugin } from "./code-plugin";
-import { IncrementalMarkdownParser } from "./incremental-md";
+import { IncrementalMarkdownParser, type PositionedBlock } from "./incremental-md";
 import { parseGfm } from "./parse-gfm";
+import { renderMdastBlocks } from "./mdast-render";
 
 type MdProps<T extends HTMLElement> = HTMLAttributes<T> & ExtraProps & { children?: ReactNode };
 
@@ -26,6 +27,11 @@ function heading(tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6", name: string) {
       </Tag>
     );
   };
+}
+
+function tableColumnCount(node: unknown): number {
+  const row = (node as { children?: Array<{ children?: unknown[] }> } | undefined)?.children?.[0];
+  return Array.isArray(row?.children) ? row.children.length : 0;
 }
 
 const mdComponents: Components = {
@@ -66,18 +72,31 @@ const mdComponents: Components = {
   hr: ({ className, node: _node, ...props }: MdProps<HTMLHRElement>) => (
     <hr {...props} data-streamdown="horizontal-rule" className={className} />
   ),
-  table: ({ children, className, node: _node, ...props }: MdProps<HTMLTableElement>) => (
-    <div className="md-table" data-streamdown="table-wrapper">
-      <div className="md-table-tools">
-        <TableCopyDropdown />
-      </div>
-      <div className="md-table-scroll">
-        <table {...props} data-streamdown="table" className={className}>
-          {children}
-        </table>
-      </div>
-    </div>
+  a: ({ children, className, node: _node, ...props }: MdProps<HTMLAnchorElement>) => (
+    <a {...props} data-streamdown="link" className={cn("md-file-mention", className)}>
+      {children}
+    </a>
   ),
+  table: ({ children, className, node, ...props }: MdProps<HTMLTableElement>) => {
+    const cols = tableColumnCount(node);
+    const wide = cols >= 4;
+    return (
+      <div
+        className={cn("md-table", wide ? "md-table-wide" : "md-table-fill")}
+        data-streamdown="table-wrapper"
+        tabIndex={wide ? 0 : undefined}
+      >
+        <div className="md-table-tools">
+          <TableCopyDropdown />
+        </div>
+        <div className="md-table-scroll">
+          <table {...props} data-streamdown="table" className={className}>
+            {children}
+          </table>
+        </div>
+      </div>
+    );
+  },
   thead: ({ children, className, node: _node, ...props }: MdProps<HTMLTableSectionElement>) => (
     <thead {...props} data-streamdown="table-header" className={className}>
       {children}
@@ -132,7 +151,6 @@ class MarkdownBoundary extends Component<{ text: string; fallback: string; child
 }
 
 const UI_MARKDOWN_CAP = 24_000;
-const CODE_BLOCK_MAX_PX = 280;
 
 export const Markdown = memo(function Markdown({
   text,
@@ -171,7 +189,7 @@ export const Markdown = memo(function Markdown({
   return (
     <MarkdownBoundary text={capped || ""} fallback={copy.review.previewFailed}>
       <Streamdown
-        className={cn("md-body space-y-2", quiet && "md-body-quiet")}
+        className={cn("md-body", quiet && "md-body-quiet")}
         mode={settled ? "static" : "streaming"}
         parseIncompleteMarkdown={live}
         remend={live ? {} : undefined}
@@ -180,7 +198,6 @@ export const Markdown = memo(function Markdown({
         plugins={settled ? { code: codePlugin } : undefined}
         animated={false}
         lineNumbers={false}
-        codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
         tableMaxHeight="none"
         components={mdComponents}
         translations={{
@@ -213,38 +230,17 @@ const streamControls = {
   image: { download: false },
 } as const;
 
-const FrozenMarkdown = memo(function FrozenMarkdown({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <Streamdown
-      className="md-body space-y-2"
-      mode="streaming"
-      parseIncompleteMarkdown={false}
-      isAnimating={false}
-      animated={false}
-      lineNumbers={false}
-      codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
-      tableMaxHeight="none"
-      components={mdComponents}
-      controls={streamControls}
-    >
-      {text}
-    </Streamdown>
-  );
-});
-
 const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
   if (!text) return null;
   return (
     <Streamdown
-      className="md-body space-y-2"
+      className="md-body"
       mode="streaming"
       parseIncompleteMarkdown
       remend={{}}
       isAnimating={false}
       animated={false}
       lineNumbers={false}
-      codeBlockMaxHeight={CODE_BLOCK_MAX_PX}
       tableMaxHeight="none"
       components={mdComponents}
       controls={streamControls}
@@ -254,24 +250,52 @@ const TailMarkdown = memo(function TailMarkdown({ text }: { text: string }) {
   );
 });
 
-function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
-  const parser = useRef<IncrementalMarkdownParser | null>(null);
-  if (!parser.current) parser.current = new IncrementalMarkdownParser(parseGfm);
-  let frozen = "";
-  let tail = text;
-  let generation = 0;
-  try {
-    const blocks = parser.current.update(text);
-    frozen = text.slice(0, blocks.tailStart);
-    tail = text.slice(blocks.tailStart);
-    generation = blocks.generation;
-  } catch {
-    frozen = "";
-    tail = text;
+class StreamingRenderer {
+  private readonly parser = new IncrementalMarkdownParser(parseGfm);
+  private generation = -1;
+  private frozenCount = 0;
+  private frozenElements: ReactNode[] = [];
+  private lastText: string | null = null;
+  private lastRendered: { frozen: ReactNode[]; tail: string; generation: number } | null = null;
+
+  render(text: string): { frozen: ReactNode[]; tail: string; generation: number } {
+    if (text === this.lastText && this.lastRendered) return this.lastRendered;
+    let frozen: readonly PositionedBlock[] = [];
+    let generation = this.generation < 0 ? 0 : this.generation;
+    let tailStart = 0;
+    try {
+      const blocks = this.parser.update(text);
+      frozen = blocks.frozen;
+      generation = blocks.generation;
+      tailStart = blocks.tailStart;
+    } catch {
+      frozen = [];
+      tailStart = 0;
+    }
+    if (generation !== this.generation) {
+      this.generation = generation;
+      this.frozenCount = 0;
+      this.frozenElements = [];
+    }
+    if (frozen.length > this.frozenCount) {
+      const newly = frozen.slice(this.frozenCount);
+      this.frozenElements = [...this.frozenElements, ...renderMdastBlocks(newly)];
+      this.frozenCount = frozen.length;
+    }
+    const tail = text.slice(tailStart);
+    this.lastText = text;
+    this.lastRendered = { frozen: this.frozenElements, tail, generation };
+    return this.lastRendered;
   }
+}
+
+function StreamingMarkdown({ text, quiet }: { text: string; quiet?: boolean }) {
+  const renderer = useRef<StreamingRenderer | null>(null);
+  if (!renderer.current) renderer.current = new StreamingRenderer();
+  const { frozen, tail, generation } = renderer.current.render(text);
   return (
-    <div className={cn("md-body md-stream space-y-2", quiet && "md-body-quiet")} data-testid="markdown-stream">
-      {frozen ? <FrozenMarkdown key={generation} text={frozen} /> : null}
+    <div className={cn("md-body md-stream", quiet && "md-body-quiet")} data-testid="markdown-stream">
+      {frozen.length ? <div key={generation}>{frozen}</div> : null}
       {tail ? <TailMarkdown key={`tail-${generation}`} text={tail} /> : null}
       <span className="md-stream-caret ml-px inline-block h-[1.05em] w-[0.45em] translate-y-px bg-foreground/55" aria-hidden />
     </div>
