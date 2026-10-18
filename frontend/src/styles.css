@@ -2171,65 +2171,107 @@ details[open] > .fold-summary::before {
   flex-direction: column;
   overflow: hidden;
 }
+.drama-desk-chat {
+  background: color-mix(in srgb, var(--lift) 32%, var(--background));
+}
 .drama-desk-board {
   border-left: 1px solid var(--border);
 }
-.drama-desk-chat .creation-home-heading h1 {
-  font-size: 22px;
+.drama-desk-chat [data-testid="canvas-studio-shell"],
+.drama-desk-chat [data-testid="canvas-studio-shell"] > div,
+.drama-desk-chat .yingce-island,
+.drama-desk-chat .app-user-workspace,
+.drama-desk-chat .app-workspace-shell,
+.drama-desk-chat .app-workspace-main-row,
+.drama-desk-chat .app-workspace-stage,
+.drama-desk-chat .app-workspace-stage > .relative,
+.drama-desk-chat .creation-home.drama-agent-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent !important;
 }
+.drama-desk-chat .creation-home-heading,
+.drama-desk-chat .drama-path,
 .drama-desk-chat .creation-empty-suggest,
 .drama-desk-chat .drama-open-existing {
-  display: none;
+  display: none !important;
+}
+.drama-desk-chat .drama-agent-page {
+  height: 100%;
+}
+.drama-desk-chat .creation-home.drama-agent-page[data-empty="true"] .creation-empty-workspace {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+  padding: 12px 10px 12px !important;
+}
+.drama-board-chat {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 12px 10px 12px;
+}
+.drama-board-chat-spacer {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.drama-desk-chat .sc-toolbar-leading .canvas-composer-model-picker {
+  max-width: 8.5rem !important;
 }
 .drama-path {
-  display: grid;
+  display: flex;
   width: 100%;
-  margin: 0 0 20px;
+  margin: 16px 0 0;
   padding: 0;
   list-style: none;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 4px;
 }
 .drama-path-step {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
 }
 .drama-path-n {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   place-items: center;
   border-radius: 999px;
   background: var(--lift);
   color: var(--foreground);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.drama-path-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.drama-path-copy strong {
-  font-size: 13px;
-  font-weight: 600;
+.drama-path-step strong {
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--foreground);
 }
-.drama-path-copy span {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--muted);
+.drama-path-sep {
+  width: 18px;
+  height: 1px;
+  margin: 0 6px;
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
 }
 .drama-open-existing {
   display: block;
   width: 100%;
-  margin: 4px 0 0;
+  margin: 14px 0 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2244,23 +2286,51 @@ details[open] > .fold-summary::before {
 }
 
 .creation-home.drama-agent-page[data-empty="true"] {
-  justify-content: center;
-  overflow: auto;
+  justify-content: flex-start;
+  overflow: hidden;
 }
 
 .creation-home.drama-agent-page[data-empty="true"] .creation-empty-workspace {
-  flex: 0 0 auto !important;
-  width: min(1120px, calc(100% - 48px));
+  display: flex;
+  flex: 1 1 auto !important;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: safe center;
+  width: min(820px, calc(100% - 48px)) !important;
   min-height: 0 !important;
   margin: 0 auto;
-  padding: 24px 0 0;
-  overflow: visible !important;
+  padding: 28px 0 32px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+
+.creation-home.drama-agent-page[data-empty="true"] .creation-home-heading {
+  width: 100%;
+  margin: 0 auto 20px !important;
+}
+
+.creation-home.drama-agent-page[data-empty="true"] .creation-home-heading h1 {
+  color: var(--foreground) !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.04em !important;
+}
+
+.creation-home.drama-agent-page[data-empty="true"] .creation-home-heading p {
+  color: var(--muted) !important;
+}
+
+.creation-home.drama-agent-page[data-empty="true"] .creation-launchpad {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .creation-home.drama-agent-page .creation-composer-stage.is-home-mode {
   display: block;
-  width: min(820px, calc(100% - 28px));
-  margin: 20px auto 0;
+  width: 100%;
+  margin: 4px auto 0;
   flex: none;
   overflow: visible;
 }
@@ -2279,6 +2349,48 @@ details[open] > .fold-summary::before {
   overflow: visible;
 }
 
+.drama-agent-page .sc-root {
+  --sc-text-max: 5.25rem;
+}
+
+.drama-agent-page .sc-root[data-hero="true"] .sc-card {
+  gap: 2px;
+  padding-top: 10px;
+}
+
+.drama-agent-page .sc-scroll {
+  min-height: 52px;
+}
+
+.drama-agent-page .sc-input,
+.drama-agent-page .sc-input.ProseMirror,
+.drama-agent-page .sc-root[data-hero="true"] .sc-input,
+.drama-agent-page .sc-root[data-hero="true"] .sc-input.ProseMirror,
+.drama-agent-page .sc-root[data-hero="true"] .sc-input .ProseMirror {
+  min-height: 52px !important;
+}
+
+.drama-agent-page .sc-dock,
+.drama-agent-page .sc-add {
+  display: none;
+}
+
+.drama-agent-page .sc-placeholder {
+  color: color-mix(in srgb, var(--foreground) 48%, transparent);
+}
+.drama-agent-page[data-board="true"] .sc-root {
+  --sc-text-max: 4.25rem;
+}
+.drama-agent-page[data-board="true"] .sc-scroll,
+.drama-agent-page[data-board="true"] .sc-input,
+.drama-agent-page[data-board="true"] .sc-input.ProseMirror {
+  min-height: 28px !important;
+}
+.drama-agent-page[data-board="true"] .sc-placeholder {
+  min-height: 28px;
+  padding-top: 4px;
+}
+
 .drama-agent-page .sc-card {
   overflow: visible;
   background: var(--input-bar);
@@ -2289,21 +2401,36 @@ details[open] > .fold-summary::before {
   width: auto;
 }
 
-.drama-agent-page .sc-accessory {
-  width: 100%;
-  min-width: 0;
+.drama-agent-page .sc-row {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 8px 8px;
 }
 
-.drama-agent-page .sc-accessory .drama-agent-select,
-.drama-agent-page .sc-accessory .creation-model-picker,
-.drama-agent-page .sc-accessory .canvas-composer-model-picker {
+.drama-agent-page .sc-tools {
+  gap: 4px;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.drama-agent-page .sc-toolbar-leading {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.drama-agent-page .sc-toolbar-leading .drama-agent-select,
+.drama-agent-page .sc-toolbar-leading .creation-model-picker,
+.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker {
   box-sizing: border-box;
   height: 28px !important;
   min-height: 28px !important;
   max-height: 28px !important;
   min-width: 0 !important;
-  max-width: min(11rem, 100%);
-  width: auto !important;
+  max-width: 14rem !important;
+  width: max-content !important;
+  flex: 0 0 auto !important;
   padding: 0 8px !important;
   border: none !important;
   border-radius: 8px !important;
@@ -2314,21 +2441,54 @@ details[open] > .fold-summary::before {
   font-weight: 500 !important;
 }
 
-.drama-agent-page .sc-accessory .canvas-composer-model-picker:hover,
-.drama-agent-page .sc-accessory .canvas-composer-model-picker[aria-expanded="true"],
-.drama-agent-page .sc-accessory .drama-agent-select:hover {
+html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
+html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
+html:not(.dark) [data-canvas-color="light"] .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
+html.dark [data-canvas-color="light"] .drama-agent-page .drama-model-picker.canvas-composer-model-picker {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 11rem !important;
+  height: 28px !important;
+  padding: 0 6px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--muted) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transform: none !important;
+}
+html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker:hover,
+html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker:hover,
+html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker[aria-expanded="true"],
+html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker[aria-expanded="true"] {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  transform: none !important;
+}
+.drama-agent-page .drama-model-picker .canvas-model-picker-trigger-icon {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+}
+
+.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker:hover,
+.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker[aria-expanded="true"],
+.drama-agent-page .sc-toolbar-leading .drama-agent-select:hover {
   background: var(--lift) !important;
   color: var(--foreground) !important;
 }
 
-.drama-agent-page .sc-accessory .canvas-model-picker-trigger-icon {
+.drama-agent-page .sc-toolbar-leading .canvas-model-picker-trigger-icon {
   width: 16px !important;
   height: 16px !important;
   border-radius: 4px !important;
 }
 
-.drama-agent-page .sc-accessory .drama-agent-select .ant-select-selector,
-.drama-agent-page .sc-accessory .drama-agent-select .yc-select-selector {
+.drama-agent-page .sc-toolbar-leading .drama-agent-select .ant-select-selector,
+.drama-agent-page .sc-toolbar-leading .drama-agent-select .yc-select-selector {
   height: 28px !important;
   min-height: 28px !important;
   padding: 0 !important;
@@ -2338,8 +2498,12 @@ details[open] > .fold-summary::before {
 }
 
 .drama-agent-page[data-empty="true"] .drama-open-existing {
-  width: min(820px, calc(100% - 28px));
-  margin: 16px auto 32px;
+  width: 100%;
+  margin: 14px auto 0;
+}
+
+.drama-desk-chat .drama-agent-page .sc-toolbar-leading .sc-chip-btn span {
+  display: none;
 }
 .drama-guide {
   flex-shrink: 0;
@@ -2447,15 +2611,25 @@ details[open] > .fold-summary::before {
 }
 @container (max-width: 720px) {
   .drama-path {
-    grid-template-columns: 1fr;
+    gap: 6px 0;
+  }
+  .drama-path-sep {
+    width: 12px;
+    margin: 0 4px;
   }
 }
 @container (max-width: 980px) {
-  .drama-desk,
+  .drama-desk {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(200px, 34%) minmax(0, 1fr);
+  }
   .studio-desk {
     grid-template-columns: minmax(0, 1fr);
   }
-  .drama-desk-chat,
+  .drama-desk-chat {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
   .studio-desk-chat {
     display: none;
   }
@@ -2468,14 +2642,54 @@ details[open] > .fold-summary::before {
 .drama-studio {
   background: var(--background);
 }
+.drama-empty-desk {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 48px 32px 64px;
+}
+.drama-empty-kicker {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.drama-empty-body {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.drama-empty-link {
+  width: fit-content;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.drama-empty-link:hover {
+  color: var(--foreground);
+}
 .drama-toolbar {
   display: flex;
   min-height: 44px;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.drama-toolbar::-webkit-scrollbar {
+  display: none;
 }
 .drama-phase {
   display: flex;

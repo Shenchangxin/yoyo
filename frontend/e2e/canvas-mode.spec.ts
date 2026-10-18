@@ -40,6 +40,13 @@ test("drama workshop still opens from the same switch", async ({ page }) => {
   await page.getByTestId("video-shell-drama").click();
   await expect(island(page)).toBeVisible();
   await expect(page.getByTestId("drama-agent-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("当前页面没有正常加载")).toHaveCount(0);
+  await expect(page.getByTestId("drama-agent-heading")).toBeInViewport();
+  await expect(page.getByTestId("drama-agent-hint")).toBeInViewport();
+  await expect(page.getByTestId("drama-path")).toBeInViewport();
+  await expect(page.getByTestId("drama-agent-input")).toBeInViewport();
+  await expect(page.getByText("Paste a chapter or a whole novel…")).toBeVisible();
+  await expect(page.getByTestId("drama-open-board")).toBeInViewport();
   await page.getByTestId("drama-open-board").first().click();
   await expect(page.getByTestId("drama-desk")).toBeVisible();
   await expect(page.getByTestId("drama-studio")).toBeVisible();

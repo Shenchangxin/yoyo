@@ -115,6 +115,8 @@ export function Composer(props: {
   turnStatus?: TurnStatus | null;
   sessionStats?: SessionStats | null;
   leading?: ReactNode;
+  toolbarLeading?: ReactNode;
+  placeholder?: string;
   inputTestId?: string;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
@@ -160,19 +162,20 @@ export function Composer(props: {
     ...(pathReady(props.workspace) ? [props.workspace as string] : []),
     ...(props.workspaces || []).filter((p) => pathReady(p)),
   ])];
-  const placeholder = props.disabled
-    ? (props.disabledReason || copy.composer.disabled)
-    : needWorkspace
-      ? copy.composer.placeholderWorkspace
-    : studioDesk
-      ? copy.composer.placeholderStudioDesk
-    : videoPane === "create"
-      ? copy.composer.placeholderConductor
-    : videoSurface
-      ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
-      : props.hero
-        ? copy.composer.placeholderHero
-        : copy.composer.placeholder;
+  const placeholder = props.placeholder
+    || (props.disabled
+      ? (props.disabledReason || copy.composer.disabled)
+      : needWorkspace
+        ? copy.composer.placeholderWorkspace
+      : studioDesk
+        ? copy.composer.placeholderStudioDesk
+      : videoPane === "create"
+        ? copy.composer.placeholderConductor
+      : videoSurface
+        ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
+        : props.hero
+          ? copy.composer.placeholderHero
+          : copy.composer.placeholder);
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
   const canSend = !disabled && hasPayload;
   const orbStops = !!props.running && !hasPayload;
@@ -787,6 +790,7 @@ export function Composer(props: {
                 }}
               >
                 <div className="sc-tools">
+                  {props.toolbarLeading ? <div className="sc-toolbar-leading">{props.toolbarLeading}</div> : null}
                   {copilotDesk || talkDesk || dramaDesk ? null : videoing ? (
                     <>
                       <VideoModeSwitch disabled={disabled} />

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Select } from "antd";
 import { Film, LayoutGrid, Paperclip } from "lucide-react";
-import { Tooltip } from "@yingce/components/ui/base/tooltip";
+import { Tooltip } from "../../../components/ui/tooltip";
 import { ModelPicker } from "@yingce/components/model-picker";
 import { refreshSystemChannels } from "@yingce/lib/user-session";
 import { modelOptionName, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@yingce/stores/use-config-store";
@@ -27,6 +27,7 @@ export default function DramaAgentPage() {
   const { message } = App.useApp();
   const copy = useCopy();
   const sessionId = useCanvasHost((s) => s.sessionId);
+  const videoBoard = useUI((s) => s.videoBoard);
   const setVideoBoard = useUI((s) => s.setVideoBoard);
   const openSettings = useUI((s) => s.openSettings);
   const config = useEffectiveConfig();
@@ -250,13 +251,13 @@ export default function DramaAgentPage() {
         }}
         capability="text"
         variant="creation"
-        className="creation-model-picker"
+        className="creation-model-picker drama-model-picker"
         placeholder={copy.video.textModel}
         showSelectedPrice={false}
         showOptionPrices={false}
         onMissingConfig={() => openSettings("provider")}
       />
-      <Tooltip title={copy.video.ingestFileHint}>
+      <Tooltip content={copy.video.ingestFileHint}>
         <button type="button" className="sc-chip-btn" data-testid="drama-import-novel" aria-label={copy.video.mapFile} disabled={busy} onClick={() => void importNovel()}>
           <Paperclip className="size-3.5" />
           <span>{copy.video.mapFile}</span>
@@ -275,10 +276,11 @@ export default function DramaAgentPage() {
       onStop={() => setBusy(false)}
       model={selectedTextModel ? modelOptionName(selectedTextModel) : undefined}
       flush
-      compact={!isEmpty}
-      hero={isEmpty}
+      compact
+      hero={isEmpty && !videoBoard}
+      placeholder={copy.video.agentPlaceholder}
       inputTestId="drama-agent-input"
-      leading={dramaLeading}
+      toolbarLeading={dramaLeading}
     />
   );
 
@@ -293,25 +295,40 @@ export default function DramaAgentPage() {
       className="creation-home drama-agent-page relative flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="drama-agent-page"
       data-empty={isEmpty ? "true" : "false"}
+      data-board={videoBoard ? "true" : "false"}
     >
-      {isEmpty ? (
+      {isEmpty && videoBoard ? (
+        <div className="drama-board-chat">
+          <div className="drama-board-chat-spacer" />
+          <div className="creation-empty-composer">{composer}</div>
+        </div>
+      ) : isEmpty ? (
         <main ref={threadScrollRef} className="creation-empty-workspace creation-scrollbar">
           <div className="creation-home-heading">
             <h1 data-testid="drama-agent-heading">{copy.video.agentTitle}</h1>
             <p data-testid="drama-agent-hint">{copy.video.agentHint}</p>
           </div>
           <section className="creation-launchpad" aria-label={copy.video.desk}>
+            <div className="creation-composer-stage is-home-mode">
+              <div className="creation-empty-composer">{composer}</div>
+            </div>
             <ol className="drama-path" data-testid="drama-path" aria-label={copy.video.pathLabel}>
-              {path.map((step) => (
-                <li key={step.n} className="drama-path-step">
+              {path.map((step, i) => (
+                <li key={step.n} className="drama-path-step" title={step.hint}>
                   <span className="drama-path-n" aria-hidden>{step.n}</span>
-                  <span className="drama-path-copy">
-                    <strong>{step.title}</strong>
-                    <span>{step.hint}</span>
-                  </span>
+                  <strong>{step.title}</strong>
+                  {i < path.length - 1 ? <span className="drama-path-sep" aria-hidden /> : null}
                 </li>
               ))}
             </ol>
+            <button
+              type="button"
+              className="drama-open-existing"
+              data-testid="drama-open-board"
+              onClick={() => setVideoBoard(true)}
+            >
+              {copy.video.openBoardExisting}
+            </button>
           </section>
         </main>
       ) : (
@@ -339,21 +356,9 @@ export default function DramaAgentPage() {
               }}
             />
           </main>
+          <section className="creation-thread-composer">{composer}</section>
         </div>
       )}
-      <section className={isEmpty ? "creation-composer-stage is-home-mode" : "creation-thread-composer"}>
-        <div className={isEmpty ? "creation-empty-composer" : undefined}>{composer}</div>
-      </section>
-      {isEmpty ? (
-        <button
-          type="button"
-          className="drama-open-existing"
-          data-testid="drama-open-board"
-          onClick={() => setVideoBoard(true)}
-        >
-          {copy.video.openBoardExisting}
-        </button>
-      ) : null}
     </div>
   );
 }
