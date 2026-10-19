@@ -23,7 +23,7 @@ export function DramaMentionField({
       <Textarea
         {...props}
         ref={ref}
-        className={cn("min-h-[88px] rounded-lg border border-border bg-background px-3 py-2 text-[13px] leading-5", className)}
+        className={cn("min-h-[88px] rounded-lg border border-border bg-background px-3 py-2 text-[13px] leading-5 focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20", className)}
         onChange={(e) => {
           props.onChange?.(e);
           const caret = e.target.selectionStart || 0;

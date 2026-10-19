@@ -29,7 +29,7 @@ import { bindVideoThread } from "../video/bind";
 import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type SendToCutRequest } from "../video/open-cut";
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { asStudioProject, studioSessionId } from "../video/studio-session";
-import { laneAcceptsSession, lastLaneThread, rememberLaneThread, type VideoLane } from "../video/video-lanes";
+import { laneAcceptsSession, lastLaneThread, rememberLaneThread, sessionLane, type VideoLane } from "../video/video-lanes";
 import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
@@ -562,10 +562,9 @@ export function useWorkstation() {
       videoProjectsRef.current = list;
       setVideoProjects(list);
       return list;
-    } catch {
-      videoProjectsRef.current = [];
-      setVideoProjects([]);
-      return [] as VideoProject[];
+    } catch (e) {
+      toast.error(api.errMessage(e));
+      return videoProjectsRef.current;
     }
   }, []);
   useEffect(() => {
@@ -989,26 +988,29 @@ export function useWorkstation() {
     if (!sessionId) return;
     try {
       const st = await api.video.sessionProject(sessionId);
-      const canvasId = str(st?.canvas_id || (st?.kind === "canvas" ? st?.id : ""));
-      const nextDrama = str(st?.drama_id);
-      const nextEpisode = str(st?.episode_id);
-      const title = str(st?.title || st?.drama_title);
-      if (canvasId) useCanvasHost.setState({ projectId: canvasId, title: title || copy.video.canvas });
-      if (nextDrama) {
-        useDramaSelection.getState().setDramaId(nextDrama);
-        if (nextEpisode) useDramaSelection.getState().setEpisodeId(nextEpisode);
-      }
       const kind = str(st?.kind);
-      const studioId = str(st?.studio_id || (kind === "studio" ? st?.id : ""));
-      if (studioId) {
-        useStudioSelection.getState().setStudioId(studioId);
-        if (title) useStudioSelection.getState().setStudioMeta({ title });
+      const title = str(st?.title || st?.drama_title);
+      if (kind === "canvas") {
+        const canvasId = str(st?.canvas_id || st?.id);
+        if (canvasId) useCanvasHost.setState({ projectId: canvasId, title: title || copy.video.canvas });
+        return;
       }
-      const pane = useUI.getState().videoPane;
-      if (pane === "create" || pane === "studio") return;
-      if (kind === "canvas") useUI.getState().setVideoMode("canvas");
-      else if (kind === "drama") useUI.getState().setVideoMode("drama");
-      else if (kind === "studio") useUI.getState().openStudioDesk();
+      if (kind === "studio") {
+        const studioId = str(st?.studio_id || st?.id);
+        if (studioId) {
+          useStudioSelection.getState().setStudioId(studioId);
+          if (title) useStudioSelection.getState().setStudioMeta({ title });
+        }
+        return;
+      }
+      if (kind === "drama") {
+        const nextDrama = str(st?.drama_id || st?.id);
+        const nextEpisode = str(st?.episode_id);
+        if (nextDrama) {
+          useDramaSelection.getState().setDramaId(nextDrama);
+          if (nextEpisode) useDramaSelection.getState().setEpisodeId(nextEpisode);
+        }
+      }
     } catch {
       /* bind lookup is optional */
     }
@@ -1097,7 +1099,6 @@ export function useWorkstation() {
     }
     const ch: ThreadChannel = "video";
     const ui = useUI.getState();
-    const staged = ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat";
     let t = p.sessionId ? threads.find((x) => x.id === p.sessionId) || null : null;
     if (!t) {
       const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace(ch), ch));
@@ -1106,14 +1107,12 @@ export function useWorkstation() {
       if (p.kind === "canvas") {
         await api.video.canvasBind(t.id, p.id).catch(() => {});
         useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
-        if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
-        else ui.setVideoMode("canvas");
+        ui.openVideoPane("canvas", { canvasFocus: "editor" });
       } else {
         if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
         useDramaSelection.getState().setDramaId(p.id);
         if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);
-        if (staged) ui.openVideoPane("drama");
-        else ui.setVideoMode("drama");
+        ui.openVideoPane("drama");
       }
       if (p.title) await api.renameSession(t.id, p.title).catch(() => {});
       t = { ...t, title: p.title || t.title };
@@ -1121,14 +1120,12 @@ export function useWorkstation() {
     } else if (p.kind === "canvas") {
       useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
       await api.video.canvasBind(t.id, p.id).catch(() => {});
-      if (staged) ui.openVideoPane("canvas", { canvasFocus: "editor" });
-      else ui.setVideoMode("canvas");
+      ui.openVideoPane("canvas", { canvasFocus: "editor" });
     } else {
       useDramaSelection.getState().setDramaId(p.id);
       if (p.episodeId) useDramaSelection.getState().setEpisodeId(p.episodeId);
       if (p.episodeId) await api.video.bind(t.id, p.episodeId).catch(() => {});
-      if (staged) ui.openVideoPane("drama");
-      else ui.setVideoMode("drama");
+      ui.openVideoPane("drama");
     }
     itemsAcc.current = [];
     setItems([]);
@@ -1183,7 +1180,7 @@ export function useWorkstation() {
         await bindVideoThread(t.id).catch(() => {});
       } else if (ui.surface === "video" && ui.videoPane === "canvas") {
         t = await ensureLaneThread("canvas");
-        await ensureCanvasProject(t.id).catch(() => {});
+        await ensureCanvasProject(t.id, copy.video.canvas).catch(() => {});
         void loadVideoHistory();
       } else {
         t = await ensureThread();
@@ -1191,7 +1188,7 @@ export function useWorkstation() {
           await bindVideoThread(t.id).catch(() => {});
         }
         if (ui.surface === "video" && ui.videoMode === "canvas") {
-          await ensureCanvasProject(t.id).catch(() => {});
+          await ensureCanvasProject(t.id, copy.video.canvas).catch(() => {});
           void loadVideoHistory();
         }
       }
@@ -1577,7 +1574,11 @@ export function useWorkstation() {
       if (opts?.keepPane) {
         if (ui.surface !== "video") useUI.setState({ surface: "video" });
       } else {
-        useUI.setState({ surface: "video", videoBoard: false, canvasStage: false, videoPane: "chat" });
+        const lane = sessionLane(t.id, videoProjectsRef.current);
+        if (lane === "studio") ui.openVideoPane("studio");
+        else if (lane === "drama") ui.openVideoPane("drama");
+        else if (lane === "canvas") ui.openVideoPane("canvas", { canvasFocus: "editor" });
+        else ui.openVideoPane("create");
       }
     } else {
       ui.showConversation();
@@ -1827,8 +1828,25 @@ export function useWorkstation() {
           return;
         }
         const ui = useUI.getState();
-        if (ui.videoBoard || ui.canvasStage || ui.videoPane !== "chat") {
-          ui.openVideoPane("chat");
+        if (ui.surface === "video") {
+          if (ui.videoBoard) {
+            ui.setVideoBoard(false);
+            return;
+          }
+          if (ui.videoPane === "studio") {
+            const sel = useStudioSelection.getState();
+            if (sel.studioId) sel.setStudioId("");
+            else ui.openVideoPane("create");
+            return;
+          }
+          if (ui.videoPane === "canvas" && ui.canvasFocus === "editor") {
+            ui.openVideoPane("canvas", { canvasFocus: "library" });
+            return;
+          }
+          if (ui.videoPane !== "create" && ui.videoPane !== "chat") {
+            ui.openVideoPane("create");
+            return;
+          }
           return;
         }
         if (useUI.getState().surface === "settings" || useUI.getState().surface === "skills" || useUI.getState().surface === "harness" || useUI.getState().surface === "pages") {

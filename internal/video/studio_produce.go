@@ -156,6 +156,28 @@ func (e *Engine) applyStudioJob(j Job, params JobParams) error {
 	return err
 }
 
+func (e *Engine) markStudioJobFailed(j Job) {
+	params := parseParams(j.Params)
+	if params.StudioProjectID == "" || params.StudioKind == "cover" {
+		return
+	}
+	p, err := e.GetStudioProject(params.StudioProjectID)
+	if err != nil {
+		return
+	}
+	for i, s := range p.Storyboard.Shots {
+		if s.ID != params.StudioShotID && s.JobID != j.ID {
+			continue
+		}
+		if strings.TrimSpace(s.ImageHash) != "" || strings.TrimSpace(s.VideoHash) != "" {
+			p.Storyboard.Shots[i].Stale = false
+		}
+		e.noteStudio(&p, "shot", "generate failed")
+		_, _ = e.saveStudio(p)
+		return
+	}
+}
+
 func (e *Engine) GenerateStudioCover(id string) (Job, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {

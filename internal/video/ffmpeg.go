@@ -89,7 +89,14 @@ func (e *Engine) FFmpegOK() bool {
 }
 
 func (e *Engine) Concat(paths []string) ([]byte, error) {
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
+	return e.ConcatContext(context.Background(), paths)
+}
+
+func (e *Engine) ConcatContext(ctx context.Context, paths []string) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := e.EnsureFFmpeg(ctx); err != nil {
 		return nil, err
 	}
 	for i, p := range paths {
@@ -112,17 +119,23 @@ func (e *Engine) Concat(paths []string) ([]byte, error) {
 		return nil, err
 	}
 	out := filepath.Join(tmp, "out.mp4")
-	cmd := exec.Command(e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+	cmd := exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
 		"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
 		"-c:a", "aac", "-ar", "48000", "-b:a", "192k", "-movflags", "+faststart", out)
 	cmd.Dir = tmp
-	if err := cmd.Run(); err != nil {
-		cmd = exec.Command(e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+	if _, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		cmd = exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
 			"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
 			"-an", "-movflags", "+faststart", out)
 		cmd.Dir = tmp
-		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("ffmpeg concat failed")
+		if outb, err := cmd.CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, fmt.Errorf("%s", ffmpegErr(outb, err))
 		}
 	}
 	return os.ReadFile(out)

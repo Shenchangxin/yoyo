@@ -292,7 +292,7 @@ func (e *Engine) arrangeCanvasNodes(canvasID, mode string, args map[string]any) 
 	}
 	doc["nodes"] = next
 	payload, _ := json.Marshal(doc)
-	if err := e.saveCanvasPayload(canvasID, payload, row.Title); err != nil {
+	if err := e.saveCanvasPayload(canvasID, payload, row.Title, row.Revision); err != nil {
 		return "", err
 	}
 	e.hub("canvas_patch", map[string]any{"canvas_id": canvasID, "kind": "arrange"})
@@ -315,7 +315,7 @@ func (e *Engine) createStoryboardNode(canvasID string, args map[string]any) (str
 	nodes = append(nodes, node)
 	doc["nodes"] = nodes
 	payload, _ := json.Marshal(doc)
-	if err := e.saveCanvasPayload(canvasID, payload, row.Title); err != nil {
+	if err := e.saveCanvasPayload(canvasID, payload, row.Title, row.Revision); err != nil {
 		return "", err
 	}
 	return marshalJSON(node), nil

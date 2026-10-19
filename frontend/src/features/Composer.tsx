@@ -140,6 +140,7 @@ export function Composer(props: {
   const [before, setBefore] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [drop, setDrop] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const editorRef = useRef<DraftEditorHandle>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -179,7 +180,7 @@ export function Composer(props: {
           ? copy.composer.placeholderHero
           : copy.composer.placeholder);
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
-  const canSend = !disabled && hasPayload;
+  const canSend = !disabled && !attaching && hasPayload && !(dramaDesk && props.running);
   const orbStops = !!props.running && !hasPayload;
   const canSteerQueue = !disabled && !hasPayload && props.running && (props.queueItems?.length || 0) > 0;
   const modeMenu = !copilotDesk && !talkDesk && !dramaDesk && (!videoing || !!props.onIsolate);
@@ -368,6 +369,9 @@ export function Composer(props: {
     setChips(next.chips);
     setCaret(next.caret);
     setBefore(next.before);
+    if (!value.trim()) return;
+    ed.focus();
+    cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [value]);
 
   function applyCaret(snap: DraftSnapshot) {
@@ -509,6 +513,8 @@ export function Composer(props: {
     }
     const files = Array.isArray(list) ? (list as File[]) : Array.from(list);
     const next: Attachment[] = [];
+    const needsIngest = createDesk && files.some(isVideoFile);
+    if (needsIngest) setAttaching(true);
     try {
       for (const f of files) {
         next.push(createDesk && isVideoFile(f) ? await ingestCreateClip(f, props.sessionId) : await fileToAttachment(f));
@@ -516,6 +522,8 @@ export function Composer(props: {
     } catch (e) {
       toast.error(api.errMessage(e));
       return;
+    } finally {
+      if (needsIngest) setAttaching(false);
     }
     setAtts((prev) => [...prev, ...next]);
   }
@@ -535,6 +543,7 @@ export function Composer(props: {
   }
 
   function send(steer?: boolean) {
+    if (attaching || (dramaDesk && props.running && !steer)) return;
     const snap = editorRef.current?.snapshot() || { text: value, chips, caret, before: value };
     const settled = settleBareAtPaths(snap.text, props.files || []);
     const peeled = peelCompletedMentions(settled);
@@ -630,6 +639,8 @@ export function Composer(props: {
         data-compact={props.compact ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-perch={perch ? "true" : "false"}
+        data-create-desk={createDesk ? "true" : "false"}
+        data-drama-desk={dramaDesk ? "true" : "false"}
       >
         {takeover && props.onResolveAsk ? (
           <>
@@ -685,10 +696,13 @@ export function Composer(props: {
                 e.stopPropagation();
               }}
               onClick={(e) => {
-                if (!workspaceTrigger) return;
                 const t = e.target as HTMLElement;
-                if (t.closest("button, [role='combobox'], a, input")) return;
-                toggleWorkspacePicker();
+                if (t.closest("button, [role='combobox'], a, input, [contenteditable='true']")) return;
+                if (workspaceTrigger) {
+                  toggleWorkspacePicker();
+                  return;
+                }
+                if (!disabled) editorRef.current?.focus();
               }}
               onFocusCapture={() => setFocused(true)}
               onBlurCapture={(e) => {
@@ -773,13 +787,14 @@ export function Composer(props: {
                 </div>
               ) : null}
               {props.leading ? <div className="sc-accessory">{props.leading}</div> : null}
+              {attaching ? <p className="sc-notice" role="status">{copy.composer.attachingClip}</p> : null}
               <AttachmentRail items={atts} onRemove={(i) => setAtts((prev) => prev.filter((_, j) => j !== i))} />
               <DraftEditor
                 ref={editorRef}
                 draftKey={props.draftKey}
                 disabled={disabled}
                 placeholder={placeholderText}
-                ariaLabel={copy.composer.message}
+                ariaLabel={props.placeholder || copy.composer.message}
                 testId={props.inputTestId}
                 workspaceTrigger={workspaceTrigger}
                 pickerOpen={pickerOpen}

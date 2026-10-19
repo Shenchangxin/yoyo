@@ -63,7 +63,7 @@ func (e *Engine) StartMediaServer() error {
 		}
 		hash := strings.TrimPrefix(r.URL.Path, "/media/")
 		hash = strings.TrimSpace(strings.Split(hash, "?")[0])
-		if hash == "" {
+		if !safeCASHash(hash) {
 			http.NotFound(w, r)
 			return
 		}
@@ -91,6 +91,7 @@ func (e *Engine) StartMediaServer() error {
 		http.ServeContent(w, r, hash, time.Time{}, bytes.NewReader(raw))
 	})
 	srv := &http.Server{Handler: mux}
+	e.mediaSrv = srv
 	go func() { _ = srv.Serve(ln) }()
 	return nil
 }

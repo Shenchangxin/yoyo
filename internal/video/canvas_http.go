@@ -215,7 +215,11 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 			}
 			return canvasOK(map[string]any{"project": e.projectDocFromRow(row)})
 		case "PUT":
-			raw, _ := json.Marshal(bodyMap["project"])
+			proj, hasProj := bodyMap["project"]
+			if !hasProj || proj == nil {
+				return canvasFail(400, "画布数据缺失", "bad_request")
+			}
+			raw, _ := json.Marshal(proj)
 			if repair := boolAny(bodyMap["repairMissingResources"]); repair {
 				sum, env := e.upsertCanvasProject(raw, true)
 				if env.Code != 0 {

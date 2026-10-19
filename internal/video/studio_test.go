@@ -601,6 +601,67 @@ func TestParseSRTDurations(t *testing.T) {
 	}
 }
 
+func TestSaveTopicKeepsAngle(t *testing.T) {
+	e := testEngine(t)
+	got, err := e.SaveTopic(Topic{Title: "保留角度", Angle: "职场", Status: TopicReady, Note: "备忘"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := e.SaveTopic(Topic{ID: got.ID, Title: "新标题"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Angle != "职场" || again.Note != "备忘" || again.Status != TopicReady {
+		t.Fatalf("patch lost fields %+v", again)
+	}
+}
+
+func TestRetryJobRejectsSucceeded(t *testing.T) {
+	e := testEngine(t)
+	j := Job{ID: NewID(), Type: "image", Status: "succeeded", CreatedAt: Now(), UpdatedAt: Now()}
+	if err := e.insertJob(j); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.RetryJob(j.ID); err == nil {
+		t.Fatal("expected retry reject")
+	}
+	j.Status = "failed"
+	if err := e.saveJob(j); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.RetryJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "queued" {
+		t.Fatalf("status %s", got.Status)
+	}
+}
+
+func TestAssembleStudioRejectsStaleShot(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateStudioProject(StudioProject{
+		Title: "stale",
+		Storyboard: StudioStoryboard{Shots: []StudioShot{{ID: "s1", ImageHash: "abc", Stale: true}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.AssembleStudio(p.ID); err == nil {
+		t.Fatal("expected stale reject")
+	}
+}
+
+func TestFilePathRejectsTraversal(t *testing.T) {
+	e := testEngine(t)
+	if p := e.FilePath("../secret"); p != "" {
+		t.Fatalf("leaked %s", p)
+	}
+	if p := e.FilePath(`a\b`); p != "" {
+		t.Fatalf("leaked %s", p)
+	}
+}
+
 func TestSeedStudioShortsFolder(t *testing.T) {
 	e := testEngine(t)
 	if err := e.seedStudioAssets(); err != nil {

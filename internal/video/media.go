@@ -17,17 +17,25 @@ func (e *Engine) PutBytes(b []byte) (string, error) {
 }
 
 func (e *Engine) GetBytes(hash string) ([]byte, error) {
-	if hash == "" || e.CAS == nil {
+	if !safeCASHash(hash) || e.CAS == nil {
 		return nil, fmt.Errorf("missing media")
 	}
-	return e.CAS.GetRaw(hash)
+	return e.CAS.GetRaw(strings.TrimSpace(hash))
+}
+
+func safeCASHash(hash string) bool {
+	h := strings.TrimSpace(hash)
+	if h == "" || strings.Contains(h, "..") || strings.ContainsAny(h, `/\`) {
+		return false
+	}
+	return true
 }
 
 func (e *Engine) FilePath(hash string) string {
-	if e.CAS == nil || hash == "" {
+	if e.CAS == nil || !safeCASHash(hash) {
 		return ""
 	}
-	return e.CAS.Path(hash)
+	return e.CAS.Path(strings.TrimSpace(hash))
 }
 
 func (e *Engine) MediaURL(hash string) string {

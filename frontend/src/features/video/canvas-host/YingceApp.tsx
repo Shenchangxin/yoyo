@@ -7,6 +7,7 @@ import RouteErrorPage from "@yingce/pages/route-error";
 import UserLayout from "@yingce/layouts/user-layout";
 import { useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { bootstrapAppearance } from "@yingce/services/appearance-bootstrap";
+import { useCopy } from "../../../lib/i18n";
 import { bindCanvasSession, setCanvasHostTitle } from "./session";
 import { installCanvasHub } from "./hub";
 import { installHostNavigation } from "./host-nav";
@@ -43,6 +44,7 @@ function deferred(node: ReactNode, fallback?: ReactNode) {
 }
 
 function BindAndTitle() {
+  const copy = useCopy();
   const params = useParams();
   const location = useLocation();
   const sessionId = typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "";
@@ -57,15 +59,15 @@ function BindAndTitle() {
     const match = projects.find((p) => p.id === id);
     const path = location.pathname;
     const title = match?.title
-      || (path.startsWith("/projects") || path.startsWith("/drama") ? "Drama agent"
-        : path.startsWith("/create") || path === "/" ? "Create"
-          : path.startsWith("/assets") ? "Assets"
-            : path.startsWith("/plugins") ? "Plugins"
-              : path.startsWith("/tasks") ? "Tasks"
-                : path.startsWith("/skills") ? "Skills"
-                  : "Infinite canvas");
+      || (path.startsWith("/projects") || path.startsWith("/drama") ? copy.video.drama
+        : path.startsWith("/create") || path === "/" ? copy.video.shellCreate
+          : path.startsWith("/assets") ? copy.video.shellAssets
+            : path.startsWith("/plugins") ? copy.video.shellPlugins
+              : path.startsWith("/tasks") ? copy.video.shellTasks
+                : path.startsWith("/skills") ? copy.video.shellSkills
+                  : copy.video.canvas);
     setCanvasHostTitle(title);
-  }, [id, location.pathname, projects]);
+  }, [id, location.pathname, projects, copy.video.drama, copy.video.shellCreate, copy.video.shellAssets, copy.video.shellPlugins, copy.video.shellTasks, copy.video.shellSkills, copy.video.canvas]);
 
   return null;
 }

@@ -1,4 +1,5 @@
 import { PenLine } from "lucide-react";
+import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
 import { useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
@@ -71,8 +72,13 @@ export function VideoWorkshop(props: {
       ) : (
         <EmptyState
           icon={<PenLine className="size-5" />}
-          title={copy.video.creative}
-          body={copy.video.later}
+          title={copy.video.workshopUnavailable}
+          body={copy.video.workshopUnavailableHint}
+          action={
+            <Button size="sm" variant="lift" onClick={() => useUI.getState().openVideoPane("create")}>
+              {copy.video.workshopBackCreate}
+            </Button>
+          }
         />
       )}
     </div>

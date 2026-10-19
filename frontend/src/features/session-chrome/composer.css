@@ -176,6 +176,12 @@
   line-height: 18px;
 }
 
+.sc-card > .sc-notice {
+  width: auto;
+  margin: 0 10px;
+  padding: 4px 8px;
+}
+
 .sc-card {
   box-sizing: border-box;
   position: relative;
@@ -262,21 +268,26 @@
   inset: 0 auto auto 0;
   right: 0;
   z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
   padding: 4px 8px 0 14px;
   color: color-mix(in srgb, var(--foreground) 46%, transparent);
   pointer-events: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font: inherit;
   line-height: inherit;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .sc-root[data-hero="true"] .sc-placeholder {
-  display: flex;
-  align-items: center;
   min-height: 52px;
-  padding-top: 0;
+  padding: 4px 8px 0 14px;
+}
+
+.sc-root[data-create-desk="true"] .sc-dock {
+  display: none;
 }
 
 .sc-input {

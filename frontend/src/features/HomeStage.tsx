@@ -48,19 +48,22 @@ export function HomeHero(_props: {
     <div
       className={cn(
         "mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8",
-        createDesk ? "shrink-0 pb-3 pt-6" : "pt-2",
+        createDesk ? "shrink-0 pb-1 pt-4" : "pt-2",
       )}
       data-testid="empty-turn"
     >
-      <PresenceAnchor id="home" size={createDesk ? 112 : 148} className="mx-auto cursor-pointer" />
-      <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
+      <PresenceAnchor id="home" size={createDesk ? 88 : 148} className="mx-auto cursor-pointer" />
+      <p className={cn("text-center text-[13px] tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
         {hello(copy)}
       </p>
-      <h1 className="mt-1.5 text-center text-[21px] font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground">
+      <h1 className={cn(
+        "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
+        createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
+      )}>
         {readyOf(copy, videoing, videoMode, createDesk)}
       </h1>
       {createDesk ? (
-        <p className="mx-auto mt-2 max-w-[36ch] text-center text-[13px] leading-[1.55] text-muted">
+        <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-[13px] leading-[1.5] text-muted">
           {copy.video.conductor.lead}
         </p>
       ) : null}
@@ -76,7 +79,10 @@ export function HomeStarters(props: {
   const starters = startersOf(copy, videoing, videoMode, createDesk);
   return (
     <>
-      <div className="mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8 pb-8">
+      <div className={cn(
+        "mx-auto flex w-full max-w-[min(100%,var(--thread-measure))] flex-col px-5 sm:px-8",
+        createDesk ? "pb-2" : "pb-8",
+      )}>
         {props.onContinueLast ? (
           <div className="mt-3 flex justify-center">
             <button
@@ -88,16 +94,19 @@ export function HomeStarters(props: {
             </button>
           </div>
         ) : null}
-        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+        <div className={cn("flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
           {starters.map((s, i) => (
             <button
               type="button"
               key={s.label}
-              className="starter-tile"
+              className={cn("starter-tile", createDesk && "is-stack")}
               style={{ animationDelay: `${80 + i * 50}ms` }}
+              title={s.hint}
+              aria-label={s.hint ? `${s.label}，${s.hint}` : s.label}
               onClick={() => props.onPrompt?.(s.text)}
             >
-              <span className="text-[13px] font-medium tracking-[-0.02em] text-foreground">{s.label}</span>
+              <span className="starter-tile-label">{s.label}</span>
+              {createDesk && s.hint ? <span className="starter-tile-hint">{s.hint}</span> : null}
             </button>
           ))}
         </div>

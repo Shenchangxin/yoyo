@@ -307,8 +307,19 @@ func (e *Engine) ApplyStudioTiming(id string) (StudioProject, error) {
 		return p, fmt.Errorf("speak first")
 	}
 	durs := durationsFromSRT(p, e)
-	if len(durs) == 0 {
-		if sec, err := e.ProbeSeconds(p.NarrationHash); err == nil && sec > 0 && len(p.Storyboard.Shots) > 0 {
+	if sec, err := e.ProbeSeconds(p.NarrationHash); err == nil && sec > 0 {
+		if len(durs) > 0 {
+			var sum float64
+			for _, d := range durs {
+				sum += d
+			}
+			if sum > 0 {
+				scale := sec / sum
+				for i := range durs {
+					durs[i] *= scale
+				}
+			}
+		} else if len(p.Storyboard.Shots) > 0 {
 			each := sec / float64(len(p.Storyboard.Shots))
 			durs = make([]float64, len(p.Storyboard.Shots))
 			for i := range durs {

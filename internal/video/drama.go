@@ -158,8 +158,12 @@ func (e *Engine) UpdateDrama(d Drama) (Drama, error) {
 	if d.Title != "" {
 		cur.Title = d.Title
 	}
-	cur.Description = d.Description
-	cur.Genre = d.Genre
+	if d.Description != "" {
+		cur.Description = d.Description
+	}
+	if d.Genre != "" {
+		cur.Genre = d.Genre
+	}
 	if d.Style != "" {
 		cur.Style = d.Style
 	}

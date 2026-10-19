@@ -83,8 +83,15 @@ func (e *Engine) listCanvasProjectRows(search, sortKey string, page, pageSize in
 }
 
 func decodeProjectDoc(raw []byte) (map[string]any, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, fmt.Errorf("画布数据格式错误")
+	}
 	m := map[string]any{}
 	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("画布数据格式错误")
+	}
+	if m == nil {
 		return nil, fmt.Errorf("画布数据格式错误")
 	}
 	return m, nil
@@ -192,7 +199,7 @@ func (e *Engine) upsertCanvasProject(raw json.RawMessage, repair bool) (map[stri
 	now := Now()
 	title := strings.TrimSpace(fmt.Sprint(doc["title"]))
 	if title == "" {
-		title = "Untitled canvas"
+		title = "无限画布"
 	}
 	delete(doc, "revision")
 	delete(doc, "remoteContentHash")
@@ -422,7 +429,7 @@ func (e *Engine) createEmptyCanvas(title string) (map[string]any, error) {
 	id := NewID()
 	now := Now()
 	if strings.TrimSpace(title) == "" {
-		title = "Untitled canvas"
+		title = "无限画布"
 	}
 	doc := map[string]any{
 		"id": id, "title": title, "nodes": []any{}, "connections": []any{},
@@ -463,10 +470,13 @@ func (e *Engine) CanvasSessionBind(sessionID string) (string, bool) {
 	return id, true
 }
 
-func (e *Engine) saveCanvasPayload(id string, payload []byte, title string) error {
+func (e *Engine) saveCanvasPayload(id string, payload []byte, title string, expectedRev int64) error {
 	r, err := e.getCanvasProject(id)
 	if err != nil {
 		return err
+	}
+	if r.Revision != expectedRev {
+		return fmt.Errorf("画布已被更新，请重新加载")
 	}
 	r.PayloadJSON = string(payload)
 	r.Title = title

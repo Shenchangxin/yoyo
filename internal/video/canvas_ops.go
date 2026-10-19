@@ -150,7 +150,7 @@ func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 	doc["nodes"] = nodes
 	doc["connections"] = conns
 	payload, _ := json.Marshal(doc)
-	if err := e.saveCanvasPayload(canvasID, payload, row.Title); err != nil {
+	if err := e.saveCanvasPayload(canvasID, payload, row.Title, row.Revision); err != nil {
 		return "", err
 	}
 	e.hub("canvas_patch", map[string]any{"canvas_id": canvasID, "ops": len(ops), "changed": changed})
