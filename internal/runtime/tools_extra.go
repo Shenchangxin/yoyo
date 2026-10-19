@@ -2,32 +2,12 @@ package runtime
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
-
-func (t *WorkspaceTools) webSearch(query string) ToolResult {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return ToolResult{Err: fmt.Errorf("web_search: empty query")}
-	}
-	if t != nil && t.SearchAPI != nil {
-		out, err := t.SearchAPI(query)
-		if err == nil && strings.TrimSpace(out) != "" {
-			return ToolResult{Content: "search: " + query + "\n\n" + out}
-		}
-	}
-	u := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(query)
-	res := t.webFetch(u)
-	if res.Err != nil {
-		return res
-	}
-	return ToolResult{Content: "search (fallback scrape): " + query + "\n\n" + res.Content}
-}
 
 func (t *WorkspaceTools) askUser(question string) ToolResult {
 	question = strings.TrimSpace(question)

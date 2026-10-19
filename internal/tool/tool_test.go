@@ -41,7 +41,7 @@ func TestHostSpecsUnique(t *testing.T) {
 		}
 		seen[s.Name] = true
 	}
-	if !seen["web_search"] || !seen["ask_user"] || !seen["run_skill_script"] {
+	if !seen["web_search"] || !seen["ask_user"] || !seen["run_skill_script"] || !seen["reach_status"] {
 		t.Fatal("missing new tools")
 	}
 	if !seen["browser_act"] || !seen["browser_verify"] {

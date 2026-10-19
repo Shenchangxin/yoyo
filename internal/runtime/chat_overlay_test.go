@@ -39,6 +39,9 @@ func TestApplyChatToolMenuIncludesOffice(t *testing.T) {
 	if !strings.Contains(joined, "run_skill_script") {
 		t.Fatalf("run_skill_script must be first-class so skill packs do not tool_search: %v", got)
 	}
+	if !strings.Contains(joined, "reach_status") {
+		t.Fatalf("reach_status must be first-class: %v", got)
+	}
 	if !strings.Contains(joined, "read_skill_file") {
 		t.Fatalf("read_skill_file must be first-class: %v", got)
 	}

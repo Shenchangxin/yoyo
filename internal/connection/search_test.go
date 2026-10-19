@@ -65,6 +65,15 @@ func TestInferProtocolSearchVendors(t *testing.T) {
 	if InferProtocol("tavily", CapSearch) != "tavily" {
 		t.Fatal(InferProtocol("tavily", CapSearch))
 	}
+	if InferProtocol("jina", CapSearch) != "jina" {
+		t.Fatal(InferProtocol("jina", CapSearch))
+	}
+	if InferProtocol("exa", CapSearch) != "exa" {
+		t.Fatal(InferProtocol("exa", CapSearch))
+	}
+	if InferProtocol("duckduckgo", CapSearch) != "duckduckgo" {
+		t.Fatal(InferProtocol("duckduckgo", CapSearch))
+	}
 	if InferProtocol("unknown", CapSearch) != "search" {
 		t.Fatal(InferProtocol("unknown", CapSearch))
 	}
@@ -74,8 +83,17 @@ func TestNeedsKeySearchVendors(t *testing.T) {
 	if !needsKey(Connection{Protocol: "tavily", Capabilities: []string{CapSearch}}) {
 		t.Fatal("tavily needs key")
 	}
+	if !needsKey(Connection{Protocol: "exa", Capabilities: []string{CapSearch}}) {
+		t.Fatal("exa rest needs key")
+	}
 	if needsKey(Connection{Protocol: "search", Capabilities: []string{CapSearch}}) {
 		t.Fatal("generic search does not need key")
+	}
+	if needsKey(Connection{Protocol: "jina", Capabilities: []string{CapSearch}}) {
+		t.Fatal("jina does not need key")
+	}
+	if needsKey(Connection{Protocol: "exa-mcp", Capabilities: []string{CapSearch}}) {
+		t.Fatal("exa mcp does not need key")
 	}
 }
 
@@ -84,11 +102,31 @@ func TestTemplatesIncludeSearchVendors(t *testing.T) {
 	for _, c := range Templates() {
 		if HasCap(c, CapSearch) {
 			seen[c.Vendor] = true
+			seen[c.Protocol] = true
 		}
 	}
-	for _, want := range []string{"search", "tavily", "brave", "serper", "bocha"} {
+	for _, want := range []string{"search", "tavily", "brave", "serper", "bocha", "jina", "exa", "duckduckgo"} {
 		if !seen[want] {
 			t.Fatalf("missing %s in %v", want, seen)
 		}
+	}
+	if !seen["exa-mcp"] {
+		t.Fatalf("missing exa-mcp in %v", seen)
+	}
+}
+
+func TestQuerySearchJina(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"title": "Jina", "url": "https://jina.example", "description": "hit"}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	out, err := QuerySearch(context.Background(), Connection{Protocol: "jina", Endpoint: srv.URL + "/"}, "", "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Jina") {
+		t.Fatalf("%s", out)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Shenchangxin/yoyo/internal/capability"
+	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
 
 func (t *WorkspaceTools) updatePlan(argsJSON string) ToolResult {
@@ -186,8 +187,12 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	if text, ok, _ := webcontent.SiteText(ctx, webHTTP, rawURL); ok {
+		capped, _ := capText(text, 12_000)
+		return ToolResult{Content: "site " + rawURL + "\n\n" + capped}
+	}
 	status, finalURL, ct, body, err := httpGet(ctx, u.String())
 	if err != nil {
 		return ToolResult{Err: err}
@@ -198,15 +203,50 @@ func (t *WorkspaceTools) webFetch(rawURL string) ToolResult {
 		}
 	}
 	text := body
+	feed := false
 	if compact, ok := formatFeed(body); ok {
 		return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, compact)}
 	} else if isXMLFeed(ct, body) {
+		feed = true
 		// Keep tags so ids/titles stay recoverable after elision.
 	} else if !strings.Contains(strings.ToLower(ct), "json") {
 		text = stripTags(text)
 	}
+	if !feed && shouldJinaReader(u, status, ct, body, text) {
+		if md, err := webcontent.ReadJina(ctx, webHTTP, builtinJinaReader, rawURL); err == nil && strings.TrimSpace(md) != "" {
+			capped, _ := capText(md, 12_000)
+			return ToolResult{Content: fmt.Sprintf("HTTP %d %s (jina)\n\n%s", status, finalURL, capped)}
+		}
+	}
 	capped, _ := capText(text, 12_000)
 	return ToolResult{Content: fmt.Sprintf("HTTP %d %s\n\n%s", status, finalURL, capped)}
+}
+
+var jinaSkipLoopback = true
+
+func shouldJinaReader(u *url.URL, status int, ct, raw, stripped string) bool {
+	if u == nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if jinaSkipLoopback {
+		if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+			return false
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return false
+		}
+	}
+	if strings.Contains(host, "jina.ai") || strings.Contains(host, "duckduckgo.com") {
+		return false
+	}
+	if strings.Contains(strings.ToLower(ct), "json") {
+		return false
+	}
+	if status == 403 || status == 429 || status == 503 {
+		return true
+	}
+	return webcontent.LooksAntibot(raw) || webcontent.ThinExtract(stripped, raw)
 }
 
 func httpGet(ctx context.Context, rawURL string) (status int, finalURL, contentType, body string, err error) {

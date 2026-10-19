@@ -16,4 +16,4 @@ Write `note` as:
 3. One concrete angle a short can take
 4. Source URLs
 
-Keep scores untouched. Do not turn the topic into a personal-OS idea. If search is unconfigured, say so and stop — keys live in Settings → Generation → Search. Patch with `topic_save`.
+Keep scores untouched. Do not turn the topic into a personal-OS idea. `web_search` works without a vendor key (Jina then DuckDuckGo). Paid keys in Settings → Generation → Search still win when configured. Patch with `topic_save`.

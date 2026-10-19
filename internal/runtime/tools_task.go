@@ -215,7 +215,7 @@ func readOnlyAdvertised(have []string) []string {
 		add(n)
 	}
 	if len(out) == 0 {
-		for _, n := range []string{"read_file", "list_dir", "glob", "grep", "web_fetch", "web_search", "recall_context", "view_image"} {
+		for _, n := range []string{"read_file", "list_dir", "glob", "grep", "web_fetch", "web_search", "reach_status", "recall_context", "view_image"} {
 			add(n)
 		}
 	}

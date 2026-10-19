@@ -80,6 +80,17 @@ func TestMatchSkillsRespectsDisableModelInvocation(t *testing.T) {
 	}
 }
 
+func TestMatchSkillsHintsInternetReach(t *testing.T) {
+	got := MatchSkills(SkillMatchReq{
+		Voice:  "帮我调研一下这个开源项目",
+		Skills: []artifact.Skill{{Name: "internet-reach", Description: "Use when the operator wants internet research or 调研."}},
+		Mode:   "on",
+	})
+	if len(got) != 1 || got[0].Name != "internet-reach" || got[0].Action != SkillActionHint {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestMatchSkillsHintModeNeverAutoloads(t *testing.T) {
 	got := MatchSkills(SkillMatchReq{
 		Voice:  "把这本小说做成游戏",

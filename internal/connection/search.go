@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
 
 // QuerySearch hits a CapSearch connection. DuckDuckGo-style empty endpoints
@@ -20,12 +22,23 @@ func QuerySearch(ctx context.Context, c Connection, key, query string) (string, 
 		return "", fmt.Errorf("empty query")
 	}
 	endpoint := strings.TrimSpace(c.Endpoint)
-	if endpoint == "" {
-		return "", fmt.Errorf("no search endpoint")
-	}
 	protocol := strings.ToLower(strings.TrimSpace(c.Protocol))
 	if protocol == "" {
 		protocol = InferProtocol(c.Vendor, CapSearch)
+	}
+	if endpoint == "" {
+		switch protocol {
+		case "jina":
+			endpoint = webcontent.DefaultJinaSearch
+		case "exa":
+			endpoint = webcontent.DefaultExaREST
+		case "exa-mcp":
+			endpoint = webcontent.DefaultExaMCP
+		case "duckduckgo", "ddg":
+			endpoint = webcontent.DefaultDDGHTML
+		default:
+			return "", fmt.Errorf("no search endpoint")
+		}
 	}
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -41,6 +54,19 @@ func QuerySearch(ctx context.Context, c Connection, key, query string) (string, 
 		return searchJSON(ctx, endpoint, key, "X-API-KEY", key, map[string]any{"q": query, "num": 8})
 	case "bocha":
 		return searchJSON(ctx, endpoint, key, "Authorization", "Bearer "+key, map[string]any{"query": query, "count": 8})
+	case "jina":
+		return webcontent.SearchJina(ctx, http.DefaultClient, endpoint, query)
+	case "exa":
+		return webcontent.SearchExaREST(ctx, http.DefaultClient, endpoint, key, query)
+	case "exa-mcp":
+		return webcontent.SearchExaMCP(ctx, http.DefaultClient, endpoint, query)
+	case "duckduckgo", "ddg":
+		htmlBase, liteBase := endpoint, ""
+		if strings.Contains(strings.ToLower(endpoint), "lite") {
+			liteBase = endpoint
+			htmlBase = ""
+		}
+		return webcontent.SearchDuckDuckGo(ctx, http.DefaultClient, htmlBase, liteBase, query)
 	default:
 		if strings.Contains(endpoint, "{q}") {
 			u := strings.ReplaceAll(endpoint, "{q}", url.QueryEscape(query))
@@ -124,7 +150,7 @@ func digestSearchJSON(raw []byte) string {
 			}
 			title := firstString(m, "title", "name")
 			link := firstString(m, "url", "link", "href")
-			snip := firstString(m, "content", "snippet", "description", "summary")
+			snip := firstString(m, "content", "snippet", "description", "summary", "text")
 			if title == "" && link == "" {
 				continue
 			}

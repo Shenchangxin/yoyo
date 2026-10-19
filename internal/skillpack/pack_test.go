@@ -299,6 +299,20 @@ func TestInstallNovelToGameWritesMappingAndStaysOff(t *testing.T) {
 	}
 }
 
+func TestAgentReachMappingUsesHostSearch(t *testing.T) {
+	body := ToolMapping("agent-reach", "linux")
+	if !strings.Contains(body, "web_search") || !strings.Contains(body, "reach_status") {
+		t.Fatalf("%s", body)
+	}
+	if !strings.Contains(body, "Ignore bash") || strings.Contains(body, "curl -s") {
+		t.Fatalf("must remap curl/mcporter: %s", body)
+	}
+	generic := ToolMapping("unknown-pack", "linux")
+	if !strings.Contains(generic, "reach_status") {
+		t.Fatalf("%s", generic)
+	}
+}
+
 func TestCallLabelShowsSkillId(t *testing.T) {
 	if CallLabel("load_skill", `{"name":"brainstorming"}`) != "brainstorming" {
 		t.Fatal("load_skill")

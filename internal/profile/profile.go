@@ -175,7 +175,7 @@ func FilterTools(have []string, p Profile) []string {
 		deny[strings.TrimSpace(n)] = true
 	}
 	if !p.Research {
-		for _, n := range []string{"web_search", "web_fetch", "browser_open", "browser_snapshot", "browser_screenshot", "cite_sources"} {
+		for _, n := range []string{"web_search", "web_fetch", "reach_status", "browser_open", "browser_snapshot", "browser_screenshot", "cite_sources"} {
 			deny[n] = true
 		}
 	}

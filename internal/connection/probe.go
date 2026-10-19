@@ -277,7 +277,7 @@ func needsKey(c Connection) bool {
 	}
 	if HasCap(c, CapSearch) {
 		switch strings.ToLower(strings.TrimSpace(c.Protocol)) {
-		case "tavily", "brave", "serper", "bocha":
+		case "tavily", "brave", "serper", "bocha", "exa":
 			return true
 		default:
 			return false

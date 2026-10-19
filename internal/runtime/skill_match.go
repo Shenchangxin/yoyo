@@ -303,10 +303,31 @@ func scoreSkill(sk artifact.Skill, voice string, voiceToks map[string]bool) (int
 	if overlap > 0 && len(reasons) == 0 {
 		reasons = append(reasons, "description overlap")
 	}
+	if strings.EqualFold(name, "internet-reach") && researchVoice(voice) {
+		score += 36
+		reasons = append(reasons, "internet research")
+	}
 	if score <= 0 {
 		return 0, ""
 	}
 	return score, strings.Join(reasons, ", ")
+}
+
+func researchVoice(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return false
+	}
+	for _, p := range []string{
+		"调研", "全网搜", "搜一下网上", "网上搜", "查一下网上", "联网",
+		"research this", "search the web", "web search",
+		"youtube", "bilibili", "b站", "小红书", "xiaohongshu",
+	} {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func skillNameParts(sk artifact.Skill) []string {
@@ -331,6 +352,11 @@ var routeLex = [][2]string{
 	{"clean", "清洗"},
 	{"data", "数据"},
 	{"competitor", "竞品"},
+	{"research", "调研"},
+	{"youtube", "油管"},
+	{"bilibili", "哔哩"},
+	{"xiaohongshu", "小红书"},
+	{"twitter", "推特"},
 	{"review", "评审"},
 	{"diff", "diff"},
 	{"plan", "计划"},

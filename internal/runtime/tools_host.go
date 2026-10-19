@@ -139,6 +139,9 @@ func init() {
 	hostFns["web_search"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.webSearch(str(args["query"]))
 	}
+	hostFns["reach_status"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
+		return t.reachStatus()
+	}
 	hostFns["ask_user"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.askUserArgs(args)
 	}
