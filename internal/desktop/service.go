@@ -792,6 +792,19 @@ func (s *Service) RunEval() (any, error) {
 	return s.App.RunEval(ctx, nil)
 }
 
+func (s *Service) RunEvalAt(snapshot string) (any, error) {
+	snapshot = strings.TrimSpace(snapshot)
+	if s.RPC != nil {
+		return s.call("eval.run", map[string]any{"snapshot": snapshot})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if snapshot == "" {
+		return s.App.RunEval(ctx, nil)
+	}
+	return s.App.RunEvalAt(ctx, nil, snapshot)
+}
+
 func (s *Service) BestOfN(n int) (app.BestOfNReport, error) {
 	if s.RPC != nil {
 		return decode[app.BestOfNReport](s.call("eval.best_of_n", map[string]any{"n": n}))
@@ -842,6 +855,34 @@ func (s *Service) EvolveLab(k, rounds int, sealed, promote, behavior, index bool
 		K: k, Rounds: rounds, Sealed: sealed, PromoteActive: promote,
 		Behavior: behavior, IndexTransfer: index, Baselines: baselines, MaxUSD: maxUSD,
 	})
+}
+
+func (s *Service) OverlaySession(sessionID, task string, reuseTurn bool, maxUSD float64, overlayK int, overlayMode string) (evolve.OverlayResult, error) {
+	if s.RPC != nil {
+		return decode[evolve.OverlayResult](s.call("evolve.overlay", map[string]any{
+			"session": sessionID, "task": task, "reuse_turn": reuseTurn, "max_usd": maxUSD, "overlay_k": overlayK, "overlay_mode": overlayMode,
+		}))
+	}
+	ok := overlayK
+	if ok < 1 {
+		ok = 1
+	}
+	timeout := 15 * time.Minute * time.Duration(ok)
+	if timeout > time.Hour {
+		timeout = time.Hour
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return s.App.OverlaySession(ctx, app.OverlayRun{
+		SessionID: sessionID, Task: task, ReuseTurn: reuseTurn, MaxUSD: maxUSD, K: overlayK, Mode: overlayMode,
+	})
+}
+
+func (s *Service) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
+	if s.RPC != nil {
+		return decode[evolve.LibraryView](s.call("evolve.library", map[string]any{"session": sessionID}))
+	}
+	return s.App.OverlayLibrary(sessionID)
 }
 
 func (s *Service) Archive() []evolve.Node {

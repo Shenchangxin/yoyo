@@ -221,13 +221,14 @@ button:focus-visible, input:focus-visible {
 
 <main>
 <section class="sec" id="brief">
-  <p class="date">2026年9月20日审阅 · 只看当年</p>
+  <p class="date">2026年10月19日补入 Harness² · 其余条目仍按 9 月 20 日全量审阅 · 只看当年</p>
   <h1>固定模型，进化 harness。</h1>
-  <p class="lede">下一跃迁是模块化、评测不相交、预算诚实。不是更宽的搜索。evolve 改不了 Go、评测器和密钥。</p>
+  <p class="lede">下一跃迁仍是模块化、评测不相交、预算诚实。再下一刀是无标签的任务层 overlay。不是更宽的搜索，也不是第二套 runtime。</p>
   <div class="prose">
     <p>脚手架确实涨分。Self-Harness 在九个模型–基准组合上，终态 harness 的 held-in 与 held-out 都升。这是 evolve 的主定理。</p>
     <p>但涨分很容易是过拟合，或只是多搜了几次。把钱对齐以后，自动进化并不稳定地赢过当场多试几次。解法不是把 K 开得更大，而是进化数据与评测基准不相交，并且一次只动一块。</p>
     <p>生产系统已经平台化。解剖过的十一套代码里，没有人用 LangChain，也没有向量检索。Yoyo 站在这条线上：一个 Go 内核，多个 client。不要倒回去做 IDE 皮肤。</p>
+    <p>用户正在做的那道题没有 Harbor 标签。10 月的 Harness² 把这件事说成两层递归：先在同一题上对照改脚手架，再把有证据的教训写进领域库。这补的是 Propose 轨，不是信任根。pin 到当前会话；晋升仍要过门。</p>
     <p>已经站稳的几件事。新 harness 先在 canary 里活，你自己 checkout 才算数。内核和评测器，智能体碰不到。上下文是规则裁出来的，不是模型摘要。期末考卷对出题的人保密。</p>
   </div>
   <div class="cluster">
@@ -246,7 +247,7 @@ button:focus-visible, input:focus-visible {
 
 <section class="sec" id="agenda">
   <h1>先看清楚，再改结构。</h1>
-  <p class="lede">完成前面两段之后，再考虑外部进化集。技能状态不要先上。</p>
+  <p class="lede">完成前面两段之后，再考虑外部进化集或会话 overlay。技能状态不要先上。</p>
   <div class="cluster">
     <h2>这周</h2>
     <p>实验室已经把 evolve、best-of-N、IID/SCS 画在同一张花费表上。proposer 看失败簇和同任务对比。canary 有确定性质量门。Harbor 核对 predicted_fixes，hit 为零不得晋升。四个秒级行为探针进实验室，不进默认晋升。</p>
@@ -256,8 +257,12 @@ button:focus-visible, input:focus-visible {
     <p>密封套件已切成 evolve-set 与 promote-set。一个提案一个 surface，不相交才 merge。Harbor-Index 只以三道 stand-in 作 transfer，id 永不进 Propose。82 题不进桌面 CI。</p>
   </div>
   <div class="cluster">
+    <h2>下一刀</h2>
+    <p>会话级 Propose–Probe–Compose，k 先取 1。INV 管怎么干活，DOM 管从业者检查表。失败就保持原 harness。只写 pin。账本和 best-of-N 画在同一张表上。领域库必须有 cue、lesson、evidence，否则不入库。</p>
+  </div>
+  <div class="cluster">
     <h2>先别动</h2>
-    <p>技能执行状态外置。能改的是 playbook 和 skills；工具要签名；loop 形状要人点头；Go、评测器、密钥没人改。</p>
+    <p>技能执行状态外置。能改的是 playbook 和 skills；工具要签名；loop 形状要人点头；Go、评测器、密钥没人改。Python 实验栈不进桌面。</p>
   </div>
 </section>
 
@@ -274,7 +279,7 @@ button:focus-visible, input:focus-visible {
   </div>
   <div class="cluster">
     <h2>不要把产品做回皮肤</h2>
-    <p>不要前端第二套 loop。不要向量检索代码。不要让模型写长说明书和仓库概览。不要无界 harness 递归。不要整页重写 system prompt。不要让 proposer 去翻评测器和密钥。</p>
+    <p>不要前端第二套 loop。不要把 Harness² 的 Python 实验栈嵌进来。不要用无标签对照替换 Harbor。不要向量检索代码。不要让模型写长说明书和仓库概览。不要无界 harness 递归。不要整页重写 system prompt。不要让 proposer 去翻评测器和密钥。</p>
   </div>
 </section>
 
@@ -324,6 +329,19 @@ button:focus-visible, input:focus-visible {
   <p class="links"><a href="https://arxiv.org/abs/2609.14857">arXiv</a><a href="corpus/2609.14857-modular-rsi.md">卡片</a><a href="originals/2609.14857.pdf">PDF</a></p>
 </article>
 
+<article id="a-harness2" data-track="rsi" data-pri="P0" data-star data-q="harness2 harness² xu ppc propose probe compose 开放世界 无gt 经验库 inv dom">
+  <p class="kicker">可以偷 · 2026年10月</p>
+  <h2>Harness²</h2>
+  <p class="dek">开放世界没有考卷。同一题上对照改脚手架，再把有证据的教训写进领域库。借合同，不嵌框架。</p>
+  <p>任务层 Propose–Probe–Compose：先看当前 harness 怎么跑，再分 INV 与 DOM 两维提议，探测行为差，合成 successor。没有分数。跨任务只保留 cue、lesson、evidence 齐的条目，否则 NO_ENTRY。</p>
+  <p>Yoyo 已经会对着套件进化全局 harness。缺的是当前用户任务。挂到会话的 pin 上，过 Harbor 才考虑 canary。不要把 Python、OpenCode、Codex runner 嵌进桌面。论文数字不是我们的承诺。</p>
+  <ul class="take">
+    <li class="steal">偷：对照合成；INV / DOM；领域库；匹配预算；产物匿名选择。</li>
+    <li class="deny">拒：第二套 runtime；无 GT 对照移动 active；关沙箱。</li>
+  </ul>
+  <p class="links"><a href="https://arxiv.org/abs/2610.14224">arXiv</a><a href="corpus/2610.14224-harness2.md">卡片</a><a href="originals/2610.14224.pdf">PDF</a><a href="https://harness2.github.io">站点</a></p>
+</article>
+
 <article id="a-rethink-eval" data-track="rsi" data-pri="P0" data-star data-q="wang rethink budget scaling">
   <p class="kicker">用来打假 · 2026年7月</p>
   <h2>Rethinking harness-evolution eval</h2>
@@ -368,7 +386,7 @@ button:focus-visible, input:focus-visible {
   <h2>RHI</h2>
   <p class="dek">prompt 级 harness、成对修订历史、少步数。适合这次任务特化，不是全局晋升。</p>
   <p>Harness 还是未来模型的数据发动机。沿自己的修订历史做成对比较，而不是种群搜索。少则一两轮就能抬低 reasoning 的智能体。</p>
-  <p>全局晋升继续走 Harbor。RHI 适合写进 <code>refs/staging</code> 的局部特化。JSONL 与 journal 必须干净到将来能被一次共训吃掉。</p>
+  <p>全局晋升继续走 Harbor。RHI 适合写进 <code>refs/staging</code> 的局部特化。需要同任务对照和跨任务蒸馏时，看 Harness²。JSONL 与 journal 必须干净到将来能被一次共训吃掉。</p>
   <ul class="take">
     <li class="steal">偷：成对修订；少步数；contract / hop 当可编辑对象。</li>
     <li class="deny">拒：用 LLM-as-judge 替代 Harbor 作为 active 的门。</li>

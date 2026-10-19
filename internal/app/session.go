@@ -1143,6 +1143,11 @@ func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunRepor
 	return a.RunEvalMut(ctx, client, nil)
 }
 
+// RunEvalAt runs Harbor against a snapshot without moving refs/active.
+func (a *App) RunEvalAt(ctx context.Context, client runtime.Client, hash string) (eval.RunReport, error) {
+	return a.runEvalAt(ctx, client, "", hash, nil)
+}
+
 func (a *App) RunEvalOpts(ctx context.Context, client runtime.Client, safety bool) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		if safety {
@@ -1201,11 +1206,21 @@ func (a *App) RunEvalBehavior(ctx context.Context, client runtime.Client) (eval.
 }
 
 func (a *App) RunEvalMut(ctx context.Context, client runtime.Client, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
-	return a.runEval(ctx, client, "", mut)
+	return a.runEvalAt(ctx, client, "", "", mut)
+}
+
+func (a *App) RunEvalHash(ctx context.Context, client runtime.Client, hash string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
+	return a.runEvalAt(ctx, client, "", hash, mut)
 }
 
 func (a *App) runEval(ctx context.Context, client runtime.Client, model string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
-	hash := a.ActiveHash()
+	return a.runEvalAt(ctx, client, model, "", mut)
+}
+
+func (a *App) runEvalAt(ctx context.Context, client runtime.Client, model, hash string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
+	if strings.TrimSpace(hash) == "" {
+		hash = a.ActiveHash()
+	}
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {
 		return eval.RunReport{}, err

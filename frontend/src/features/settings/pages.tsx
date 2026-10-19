@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { writeClipboard } from "../../lib/clipboard";
 import { applyLocale, getLocale, useCopy, type Locale } from "../../lib/i18n";
+import { useUI } from "../../lib/store";
 import { DEFAULT_KEYMAP, formatShortcut, mergeKeymap, type KeymapId } from "../../lib/keymap";
 import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPalette, type PaletteId, type ThemePref } from "../../lib/theme";
 import { SkinStudio } from "./SkinStudio";
@@ -130,6 +131,8 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
 
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
+  const showHarnessLab = useUI((s) => s.showHarnessLab);
+  const setShowHarnessLab = useUI((s) => s.setShowHarnessLab);
   const { pref, setPref, resolved, darkPalette, lightPalette, setDarkPalette, setLightPalette } = useTheme();
   const locale = (host.cfg.locale === "zh-CN" ? "zh-CN" : host.cfg.locale === "en" ? "en" : getLocale()) as Locale;
   const scale = String(snapUiScale(host.cfg.uiScale)) as `${UiScale}`;
@@ -256,7 +259,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
             onChange={(next) => void host.patch({ transcriptView: next })}
           />
         </SettingRow>
-        <SettingRow title={copy.settings.collapseTiming} description={copy.settings.collapseTimingDesc} border={false}>
+        <SettingRow title={copy.settings.collapseTiming} description={copy.settings.collapseTimingDesc}>
           <SettingSegmented
             id="collapse-timing"
             ariaLabel={copy.settings.collapseTiming}
@@ -266,6 +269,13 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
               { value: "next-input", label: copy.settings.collapseNextInput },
             ]}
             onChange={(next) => void host.patch({ collapseTiming: next })}
+          />
+        </SettingRow>
+        <SettingRow title={copy.settings.showHarnessLab} description={copy.settings.showHarnessLabDesc} border={false}>
+          <Switch
+            checked={showHarnessLab}
+            onCheckedChange={setShowHarnessLab}
+            aria-label={copy.settings.showHarnessLab}
           />
         </SettingRow>
       </SettingSection>

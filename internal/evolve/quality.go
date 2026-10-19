@@ -126,6 +126,77 @@ func AdmitQuality(p Proposal, pb artifact.Playbook, playbookTokens int, held map
 	return nil
 }
 
+// AdmitOverlay is AdmitQuality plus the session-PPC surface contract.
+// INV may write instruction (verification|failure_recovery), middleware, or a
+// procedure skill. DOM may write only an on-demand skill. Playbook is global
+// ACE memory and is never an overlay surface.
+func AdmitOverlay(p Proposal, dim string, pb artifact.Playbook, playbookTokens int, held map[string]bool, heldInText []string) error {
+	if err := AdmitQuality(p, pb, playbookTokens, held, heldInText); err != nil {
+		return err
+	}
+	switch strings.ToUpper(strings.TrimSpace(dim)) {
+	case "INV":
+		if p.PlaybookBullet != nil || p.Surface == "playbook" {
+			return fmt.Errorf("inv playbook")
+		}
+		if p.Fragment != nil || p.Surface == "prompt_fragment" {
+			return fmt.Errorf("inv always-on fragment")
+		}
+		switch p.Surface {
+		case "instruction":
+			slot := p.InstructionSlot
+			if slot == "" {
+				slot = "verification"
+			}
+			if slot != "verification" && slot != "failure_recovery" {
+				return fmt.Errorf("inv instruction slot")
+			}
+			if p.InstructionText == "" {
+				return fmt.Errorf("inv empty instruction")
+			}
+			if utf8.RuneCountInString(p.InstructionText) > overlayAlwaysOnMax {
+				return fmt.Errorf("always-on cap")
+			}
+			if instructionHasTrigger(p.InstructionText) {
+				return fmt.Errorf("always-on with trigger")
+			}
+		case "middleware":
+			if p.MiddlewareText == "" {
+				return fmt.Errorf("inv empty middleware")
+			}
+		case "skill":
+			if p.SkillMD == "" {
+				return fmt.Errorf("inv empty skill")
+			}
+		default:
+			return fmt.Errorf("inv surface")
+		}
+	case "DOM":
+		if p.Surface != "skill" || p.SkillMD == "" {
+			return fmt.Errorf("dom must be skill")
+		}
+		if p.PlaybookBullet != nil || p.Fragment != nil || p.InstructionText != "" || p.MiddlewareText != "" {
+			return fmt.Errorf("dom extra surface")
+		}
+	default:
+		return fmt.Errorf("unknown overlay dim")
+	}
+	return nil
+}
+
+func instructionHasTrigger(text string) bool {
+	lower := strings.ToLower(text)
+	for _, p := range []string{
+		"when ", "whenever ", "if the user", "if a user", "after the user",
+		"当用户", "当请求", "如果用户", "若用户",
+	} {
+		if strings.Contains(lower, strings.ToLower(p)) || strings.Contains(text, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func looksLikeRepoOverview(lower string) bool {
 	for _, n := range []string{"repository overview", "directory structure", "this repo contains", "agents.md", "warehouse tour"} {
 		if strings.Contains(lower, n) {

@@ -1,9 +1,9 @@
 # Yoyo research catalog. Source of truth for ids / dates / status.
-# last_reviewed: 2026-09-20
+# last_reviewed: 2026-10-19 (targeted ingest of 2610.14224; full channel sweep remains 2026-09-20)
 # policy: frontier entries must have year_first: 2026
 
 cutoff: 2026-01-01
-last_reviewed: 2026-09-20
+last_reviewed: 2026-10-19
 sources_doc: SOURCES.md
 
 entries:
@@ -21,6 +21,25 @@ entries:
     status: implemented
     yoyo: "internal/evolve/{mine,propose,engine}.go; internal/eval/promote.go"
     card: corpus/2606.09498-self-harness.md
+
+  - id: "2610.14224"
+    slug: harness2
+    title: "Harness²: Recursive Agent Harnessing for an Open World"
+    year_first: 2026
+    published: 2026-10-08
+    version: v1
+    authors: [Ruiyao Xu, Yanfei Chen, Zhongying CuiZhu, Bhavana Dalvi Mishra, Yifei Ming, Han Yu, Rujun Han, Chen-Yu Lee, Tomas Pfister]
+    venue: arXiv
+    url: https://arxiv.org/abs/2610.14224
+    pdf: https://arxiv.org/pdf/2610.14224.pdf
+    extra:
+      github: https://github.com/google-research/harness2
+      site: https://harness2.github.io
+      hf: https://huggingface.co/papers/2610.14224
+    layer: frontier
+    status: candidate
+    yoyo: "session pin exists; no Propose-Probe-Compose overlay, INV/DOM split, or per-domain experience library. Do not embed the Python/OpenCode stack."
+    card: corpus/2610.14224-harness2.md
 
   - id: "2607.15524"
     slug: rhi

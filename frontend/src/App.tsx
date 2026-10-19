@@ -19,6 +19,7 @@ import { ThreadRail } from "./features/ThreadRail";
 import { Transcript } from "./features/Transcript";
 import { TurnOutline } from "./features/TurnOutline";
 import { HomeHero, HomeStarters } from "./features/HomeStage";
+import { ChatNotWorking } from "./features/harness/ChatNotWorking";
 import { Composer } from "./features/Composer";
 import { SessionHeader } from "./features/session-chrome/SessionHeader";
 import { Inspector } from "./features/Inspector";
@@ -97,6 +98,7 @@ function WorkstationApp() {
   const paneMismatch = (createDesk && !!activeLane)
     || (videoPane === "drama" && !!activeLane && activeLane !== "drama");
   const moduleLoading = useUI((s) => s.moduleLoading);
+  const showHarnessLab = useUI((s) => s.showHarnessLab);
   const [winFocused, setWinFocused] = useState(() => typeof document === "undefined" || document.hasFocus());
   const idleAt = useRef(Date.now());
   const fileSearchGen = useRef(0);
@@ -433,6 +435,9 @@ function WorkstationApp() {
           />
         )}
         <div className={cn("sc-seat", home ? "mx-auto mt-8 w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8" : cn(THREAD_COL, THREAD_GUTTER))}>
+          {!home && !videoing && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
+            <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
+          ) : null}
           {composer}
         </div>
         {home ? (
@@ -486,6 +491,18 @@ function WorkstationApp() {
             maxUsd={ws.evolveMaxUsd}
             onMaxUsd={ws.setEvolveMaxUsd}
             evolve={ws.evolve}
+            overlay={ws.overlay}
+            overlayK={ws.overlayK}
+            onOverlayK={ws.setOverlayK}
+            overlayMode={ws.overlayMode}
+            onOverlayMode={ws.setOverlayMode}
+            overlayLibrary={ws.overlayLibrary}
+            overlayReuse={ws.overlayReuseTurn}
+            onOverlayReuse={ws.setOverlayReuseTurn}
+            overlayDisabled={!ws.activeId || ws.active?.channel === "video"}
+            overlayDisabledReason={!ws.activeId ? copy.labs.overlayNeedSession : ws.active?.channel === "video" ? copy.labs.overlayVideo : undefined}
+            onOverlay={() => { void ws.runOverlay(); }}
+            onOverlayProve={(hash) => { void ws.runHarborAt(hash); }}
             playbook={ws.playbook}
             archive={ws.tree}
             onRun={() => { void ws.runEvolve(); }}
@@ -662,7 +679,7 @@ function WorkstationApp() {
       ? (
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-[13px] font-medium">{copy.rsi.title}</span>
-          {refs.active ? (
+          {showHarnessLab && refs.active ? (
             <span className="truncate font-mono text-[11px] text-muted" title={refs.active}>{shortHash(refs.active)}</span>
           ) : null}
           {stagingDirty(refs) ? (
@@ -845,6 +862,7 @@ function WorkstationApp() {
             onQuit={ws.requestQuit}
             onRunSuite={() => { void ws.runHarbor("suite"); }}
             onRunCycle={() => { void ws.runEvolve(); }}
+            onRunOverlay={() => { void ws.runOverlay(); }}
           />
           <About open={ws.aboutOpen} info={ws.aboutInfo} onClose={() => ws.setAboutOpen(false)} />
           <ConfirmDialog
@@ -914,6 +932,7 @@ function WorkstationApp() {
                   onResolve={ws.onResolve}
                   onRetry={() => { void ws.onRetryLast(); }}
                   onOpenAgent={() => ws.showConversation()}
+                  onImproveThisChat={() => ws.openHarness("propose")}
                   onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
                   onModel={async (model) => {
                     if (!ws.activeId) return;
@@ -1034,6 +1053,7 @@ function WorkstationApp() {
                         onResolve={ws.onResolve}
                         onRetry={() => { void ws.onRetryLast(); }}
                         onOpenAgent={() => ws.showConversation()}
+                        onImproveThisChat={() => ws.openHarness("propose")}
                         onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
                         onModel={async (model) => {
                           if (!ws.activeId) return;

@@ -10,7 +10,7 @@ function sid(s: any) {
 export async function mockApi(
   page: Page,
   workspace = "",
-  extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any },
+  extra?: { sessions?: any[]; studios?: any[]; plugins?: any; events?: any[]; trajectories?: Record<string, any[]>; running?: boolean; config?: Record<string, any>; approvals?: any[]; context?: any; artifacts?: any[]; spill?: Record<string, any>; trace?: any; harness?: any; files?: any[]; skills?: any[]; packs?: any[]; browser?: any; inbox?: any[]; queue?: any; update?: any; overlayAdopt?: boolean },
 ) {
   let sessions = [...(extra?.sessions || [])];
   let canvases: { id: string; title: string; session_id?: string }[] = [];
@@ -384,6 +384,31 @@ export async function mockApi(
       if (rpcMethod.startsWith("skins.")) {
         return ok({ ok: true });
       }
+      if (rpcMethod === "evolve.library") {
+        return ok({ domain: "ws", index: "", entries: [] });
+      }
+      if (rpcMethod === "eval.run") {
+        return ok({
+          snapshot: params.snapshot || extra?.harness?.active || "aaa1111",
+          metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 },
+        });
+      }
+      if (rpcMethod === "evolve.overlay") {
+        const k = Number(params.overlay_k || params.overlayK || 1) || 1;
+        const adopted = !!extra?.overlayAdopt;
+        return ok({
+          adopted,
+          kept_base: !adopted,
+          hash: adopted ? "ccc3333" : "aaa1111",
+          parent: "aaa1111",
+          compose: adopted ? "adopt_inv" : "keep_base",
+          k,
+          r: 4 * k,
+          p: 3 * k,
+          spend: { usd: 0 },
+          library: adopted ? "added" : "no_entry",
+        });
+      }
       return ok({});
     }
 
@@ -392,7 +417,10 @@ export async function mockApi(
     }
 
     if (path.endsWith("/api/health")) {
-      return route.fulfill({ json: { ok: true, harness: "deadbeef", model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace, video_workspace: cfg.video_workspace, video_workspace_ready: true, paused } });
+      const harnessHash = extra?.harness
+        ? String(extra.harness.active || extra.harness.refs?.active || extra.harness.refs?.Active || "")
+        : "deadbeef";
+      return route.fulfill({ json: { ok: true, harness: harnessHash, model: cfg.model, version: "0.1.0", isolated: false, workspace_ready: !!workspace, video_workspace: cfg.video_workspace, video_workspace_ready: true, paused } });
     }
     if (path.endsWith("/api/pause")) {
       if (method === "POST") paused = !!body().paused;
@@ -561,7 +589,29 @@ export async function mockApi(
       return route.fulfill({ json: {} });
     }
     if (path.endsWith("/api/eval") || path.includes("/api/eval/")) {
-      return route.fulfill({ json: { metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 }, results: [] } });
+      return route.fulfill({ json: { metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1, safety_fail: 0 }, results: [{ id: "write-hello", kind: "held_in", pass: true }] } });
+    }
+    if (path.endsWith("/api/evolve") || path.includes("/api/evolve/")) {
+      return route.fulfill({
+        json: {
+          promoted: "ccc3333",
+          merged: true,
+          active_moved: false,
+          spend: { usd: 0.12 },
+          tried: [{
+            accepted: true,
+            reason: "gain",
+            proposal: { id: "p1", playbook_bullet: { text: "Write the output file before exploring." } },
+            metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 1, held_out_total: 1 },
+            manifesto_hit: 1,
+            manifesto_miss: 0,
+          }],
+          compare: {
+            snapshot: "aaa1111",
+            best_of_n: [{ usd: 0.1, metrics: { held_in_pass: 1, held_in_total: 1, held_out_pass: 0, held_out_total: 1 } }],
+          },
+        },
+      });
     }
     if (path.includes("/api/fs/search") || path.includes("/api/workspace/tree")) {
       return route.fulfill({

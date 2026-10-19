@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
+	"github.com/Shenchangxin/yoyo/internal/artifact"
+	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
 func evalsDir(t *testing.T) string {
@@ -280,5 +283,69 @@ func TestRPCPagesProfilesAndPause(t *testing.T) {
 	h, _ := json.Marshal(health.Result)
 	if !strings.Contains(string(h), `"paused":true`) {
 		t.Fatalf("%s", h)
+	}
+}
+
+func TestRPCEvolveOverlayRejectsPromote(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 1, Method: "evolve.overlay", Params: jsonRaw(`{"session":"s","promote":true}`)})
+	if got.Error == nil || !strings.Contains(got.Error.Message, "promote") {
+		t.Fatalf("%+v", got.Error)
+	}
+	got = Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 2, Method: "evolve.overlay", Params: jsonRaw(`{"session":"s","sealed":true,"baselines":2,"k":3}`)})
+	if got.Error == nil || !strings.Contains(got.Error.Message, "sealed") {
+		t.Fatalf("%+v", got.Error)
+	}
+}
+
+func TestRPCEvolveOverlayKeepBase(t *testing.T) {
+	a, err := app.Open(t.TempDir(), evalsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	active := a.ActiveHash()
+	canary := a.Refs.GetOrEmpty(artifact.RefCanary)
+	staging := a.Refs.GetOrEmpty(artifact.RefStaging)
+	sess, err := a.NewSession(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, err := json.Marshal(map[string]any{
+		"session":    sess.ID,
+		"task":       "Write a file named hello.txt with the word hello",
+		"solver":     "heuristic",
+		"reuse_turn": false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Dispatch(context.Background(), a, RPCRequest{JSONRPC: "2.0", ID: 3, Method: "evolve.overlay", Params: params})
+	if got.Error != nil {
+		t.Fatal(got.Error)
+	}
+	res, ok := got.Result.(evolve.OverlayResult)
+	if !ok {
+		t.Fatalf("type %T", got.Result)
+	}
+	if res.Adopted || !res.KeptBase {
+		t.Fatalf("want keep_base: %+v", res)
+	}
+	if res.R != evolve.OverlayR || res.P != evolve.OverlayP {
+		t.Fatalf("R=%d P=%d", res.R, res.P)
+	}
+	meta, err := a.GetSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.HarnessPolicy != session.FollowActive {
+		t.Fatalf("policy %s", meta.HarnessPolicy)
+	}
+	if a.ActiveHash() != active || a.Refs.GetOrEmpty(artifact.RefCanary) != canary || a.Refs.GetOrEmpty(artifact.RefStaging) != staging {
+		t.Fatal("overlay rpc moved global refs")
 	}
 }
