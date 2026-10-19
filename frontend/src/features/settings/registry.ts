@@ -38,7 +38,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "appearance-theme", tab: "appearance", titleKey: "appearanceTheme", keywords: "theme dark light color mode" },
   { id: "appearance-palette", tab: "appearance", titleKey: "appearancePalette", keywords: "palette paper mist ink dim slate neutral stone charcoal blue" },
   { id: "appearance-skins", tab: "appearance", titleKey: "appearanceSkins", keywords: "wallpaper background picture image veil" },
-  { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "language locale scale zoom thinking reasoning work details compact verbose collapse" },
+  { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "language locale scale zoom thinking reasoning work details compact verbose collapse laboratory lab harness sealed bon hash" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },
   { id: "provider-models", tab: "provider", titleKey: "providerModels", keywords: "model catalog context window" },
   { id: "generation-studio", tab: "generation", titleKey: "generationStudio", keywords: "workshop language ffmpeg drama studio shorts 短片 remotion aspect publish 画幅 平台" },

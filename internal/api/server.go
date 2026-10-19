@@ -936,9 +936,23 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		writeJSON(w, rep)
 	})
 	mux.HandleFunc("/api/eval", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Snapshot string `json:"snapshot"`
+		}
+		if r.Method == http.MethodPost {
+			_ = json.NewDecoder(r.Body).Decode(&body)
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 		defer cancel()
-		rep, err := a.RunEval(ctx, nil)
+		var (
+			rep any
+			err error
+		)
+		if strings.TrimSpace(body.Snapshot) != "" {
+			rep, err = a.RunEvalAt(ctx, nil, body.Snapshot)
+		} else {
+			rep, err = a.RunEval(ctx, nil)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

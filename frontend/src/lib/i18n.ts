@@ -71,4 +71,32 @@ export function useCopy(): Copy {
   return catalog();
 }
 
+export function formatMoney(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  try {
+    return new Intl.NumberFormat(locale === "zh-CN" ? "zh-CN" : "en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: n > 0 && n < 0.01 ? 4 : 2,
+      maximumFractionDigits: n < 1 ? 4 : 2,
+    }).format(n);
+  } catch {
+    return `$${n.toFixed(2)}`;
+  }
+}
+
+export function formatDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const zh = locale === "zh-CN";
+  if (ms < 1000) return zh ? "不到 1 秒" : "< 1s";
+  const s = ms / 1000;
+  if (s < 60) {
+    const v = s < 10 ? s.toFixed(1) : String(Math.round(s));
+    return zh ? `${v} 秒` : `${v}s`;
+  }
+  const m = Math.floor(s / 60);
+  const rem = Math.round(s % 60);
+  return zh ? `${m} 分 ${rem} 秒` : `${m}m ${rem}s`;
+}
+
 export { copy };

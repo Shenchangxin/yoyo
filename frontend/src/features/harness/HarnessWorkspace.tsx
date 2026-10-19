@@ -20,10 +20,12 @@ import {
   type HarnessRefs,
   type LineageNode,
 } from "../../lib/harness-refs";
+import { checkHeadline, pointerLabel } from "../../lib/harness-copy";
 import type { HarnessTab } from "../../lib/protocol";
 import { HARNESS_TABS } from "../../lib/surface";
+import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
-import { LabEyebrow, LabFrame, LabStat } from "../labs/LabFrame";
+import { LabEyebrow, LabFrame, StoryRow } from "../labs/LabFrame";
 import { MaterialChangeList } from "./Changes";
 
 const STEP_INDEX: Partial<Record<HarnessTab, string>> = {
@@ -119,6 +121,7 @@ function HarnessOverview(props: {
   onReveal?: (hash?: string) => Promise<void> | void;
 }) {
   const copy = useCopy();
+  const lab = useUI((s) => s.showHarnessLab);
   const metrics = readHarborMetrics(props.report);
   const dirty = stagingDirty(props.refs);
   const canary = canaryDirty(props.refs);
@@ -134,10 +137,10 @@ function HarnessOverview(props: {
       : props.next.action === "eval" || props.next.action === "blocked" ? copy.rsi.prove
         : copy.rsi.propose;
   const pointers = [
-    { name: copy.rsi.active, hash: props.refs.active, kind: "active" as const },
-    { name: copy.rsi.staging, hash: props.refs.staging, kind: "staging" as const },
-    { name: copy.rsi.canary, hash: props.refs.canary, kind: "canary" as const },
-    { name: copy.rsi.head, hash: props.refs.head, kind: "head" as const },
+    { name: copy.rsi.active, hash: props.refs.active, kind: "active" as const, hint: copy.rsi.versionInUseHint },
+    { name: copy.rsi.staging, hash: props.refs.staging, kind: "staging" as const, hint: copy.rsi.versionDraftHint },
+    { name: copy.rsi.canary, hash: props.refs.canary, kind: "canary" as const, hint: copy.rsi.versionCandidateHint },
+    ...(lab ? [{ name: copy.rsi.head, hash: props.refs.head, kind: "head" as const, hint: copy.rsi.head }] : []),
   ].filter((c) => c.hash);
 
   return (
@@ -153,39 +156,32 @@ function HarnessOverview(props: {
             <LabEyebrow>{copy.rsi.next}</LabEyebrow>
             <p className="mt-1 max-w-[46ch] text-[15px] font-medium leading-snug tracking-[-0.02em] text-pretty text-foreground">{reason}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {props.onReveal ? (
-              <Button variant="lift" onClick={() => void reveal(props.onReveal, props.refs.active)}>
-                {copy.rsi.openArtifacts}
-              </Button>
-            ) : null}
-            <Button onClick={() => props.onTab(props.next.tab)}>{copy.rsi.go} {goLabel}</Button>
-          </div>
+          <Button onClick={() => props.onTab(props.next.tab)}>{goLabel}</Button>
         </div>
         {pointers.length === 0 ? (
-          <p className="mb-6 text-[13px] text-muted">{copy.rsi.noRefs}</p>
+          <FirstRun onTab={props.onTab} />
         ) : (
-          <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40">
+          <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-versions">
             {pointers.map((c, i) => (
-              <div key={c.name + c.hash} className={cn("grid grid-cols-[7rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5", i > 0 && "border-t border-border/70")}>
+              <div key={c.name + c.hash} className={cn("grid grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5", i > 0 && "border-t border-border/70")}>
                 <div className="text-[13px] font-medium">{c.name}</div>
-                <div className="min-w-0">
-                  <HashLine hash={c.hash} compact />
+                <div className="min-w-0 text-[12px] text-muted">
+                  {lab ? <HashLine hash={c.hash} compact /> : <span className="truncate">{c.hint}</span>}
                 </div>
                 <div className="shrink-0">
-                    {c.kind === "active" ? (
-                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
-                    ) : null}
-                    {c.kind === "staging" ? (
-                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
-                        {dirty ? copy.rail.stagingDirty : copy.labs.notTrusted}
-                      </span>
-                    ) : null}
-                    {c.kind === "canary" ? (
-                      <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
-                        {canary ? copy.rsi.canaryDirty : copy.labs.notTrusted}
-                      </span>
-                    ) : null}
+                  {c.kind === "active" ? (
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-foreground">{copy.labs.trusted}</span>
+                  ) : null}
+                  {c.kind === "staging" ? (
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                      {dirty ? copy.rail.stagingDirty : copy.labs.notTrusted}
+                    </span>
+                  ) : null}
+                  {c.kind === "canary" ? (
+                    <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">
+                      {canary ? copy.rsi.canaryDirty : copy.labs.notTrusted}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -197,7 +193,10 @@ function HarnessOverview(props: {
             <p className="mt-0.5 max-w-[62ch] text-[12px] text-muted">{copy.rsi.lineageHint}</p>
           </div>
           {props.onReveal ? (
-            <Button size="sm" variant="ghost" onClick={() => void reveal(props.onReveal, "")}>{copy.rsi.openStore}</Button>
+            <div className="flex flex-wrap gap-1">
+              <Button size="sm" variant="ghost" onClick={() => void reveal(props.onReveal, props.refs.active)}>{copy.rsi.openArtifacts}</Button>
+              <Button size="sm" variant="ghost" onClick={() => void reveal(props.onReveal, "")}>{copy.rsi.openStore}</Button>
+            </div>
           ) : null}
         </div>
         {lineage.length === 0 ? (
@@ -205,17 +204,36 @@ function HarnessOverview(props: {
         ) : (
           <div className="lineage-rail mb-6 overflow-hidden rounded-md bg-sidebar/40 pl-1" data-testid="harness-lineage">
             {lineage.map((n, i) => (
-              <LineageRow key={n.hash} node={n} first={i === 0} onReveal={props.onReveal} />
+              <LineageRow key={n.hash} node={n} first={i === 0} onReveal={lab ? props.onReveal : undefined} showIds={lab} />
             ))}
           </div>
         )}
         {metrics ? (
           <>
-            <h3 className="mb-3 text-[13px] font-medium">{copy.rsi.lastEval}</h3>
-            <div className="grid grid-cols-3 gap-3">
-              <LabStat label={copy.harbor.heldIn} value={`${metrics.heldInPass}/${metrics.heldInTotal}`} />
-              <LabStat label={copy.harbor.heldOut} value={`${metrics.heldOutPass}/${metrics.heldOutTotal}`} />
-              <LabStat label={copy.harbor.safety} value={String(metrics.safetyFail)} bad={metrics.safetyFail > 0} />
+            <h3 className="mb-3 text-[13px] font-medium">{copy.rsi.lastEval} · {checkHeadline(copy, metrics)}</h3>
+            <div className="overflow-hidden rounded-md bg-sidebar/40">
+              <StoryRow
+                step="1"
+                label={copy.harbor.heldIn}
+                detail={copy.harbor.storyHeldIn}
+                value={`${metrics.heldInPass}/${metrics.heldInTotal}`}
+                ok={metrics.heldInTotal === 0 || metrics.heldInPass === metrics.heldInTotal}
+              />
+              <StoryRow
+                step="2"
+                label={copy.harbor.heldOut}
+                detail={copy.harbor.storyHeldOut}
+                value={`${metrics.heldOutPass}/${metrics.heldOutTotal}`}
+                ok={metrics.heldOutTotal === 0 || metrics.heldOutPass === metrics.heldOutTotal}
+              />
+              <StoryRow
+                step="3"
+                label={copy.harbor.safety}
+                detail={copy.harbor.storySafety}
+                value={String(metrics.safetyFail)}
+                ok={metrics.safetyFail === 0}
+                last
+              />
             </div>
           </>
         ) : null}
@@ -224,27 +242,61 @@ function HarnessOverview(props: {
   );
 }
 
-function LineageRow({ node, first, onReveal }: { node: LineageNode; first: boolean; onReveal?: (hash?: string) => Promise<void> | void }) {
+function FirstRun({ onTab }: { onTab: (tab: HarnessTab) => void }) {
+  const copy = useCopy();
+  const steps: { tab: HarnessTab; n: string; hint: string }[] = [
+    { tab: "propose", n: "01", hint: copy.rsi.firstImprove },
+    { tab: "prove", n: "02", hint: copy.rsi.firstCheck },
+    { tab: "promote", n: "03", hint: copy.rsi.firstUse },
+  ];
+  const labels: Record<HarnessTab, string> = {
+    overview: copy.rsi.overview,
+    propose: copy.rsi.propose,
+    prove: copy.rsi.prove,
+    promote: copy.rsi.promote,
+  };
+  return (
+    <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-first-run">
+      <div className="px-4 py-3">
+        <h3 className="text-[13px] font-medium">{copy.rsi.firstTitle}</h3>
+        <p className="mt-1 max-w-[52ch] text-[12px] text-muted">{copy.rsi.firstLead}</p>
+      </div>
+      {steps.map((s, i) => (
+        <div key={s.tab} className={cn("flex flex-wrap items-center gap-3 px-4 py-3", "border-t border-border/70")}>
+          <span className="font-mono text-[10px] tabular-nums text-muted/70" aria-hidden>{s.n}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium">{labels[s.tab]}</div>
+            <p className="mt-0.5 text-[12px] text-muted">{s.hint}</p>
+          </div>
+          <Button size="sm" variant={i === 0 ? "default" : "lift"} onClick={() => onTab(s.tab)}>{labels[s.tab]}</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LineageRow({ node, first, onReveal, showIds }: { node: LineageNode; first: boolean; onReveal?: (hash?: string) => Promise<void> | void; showIds: boolean }) {
   const copy = useCopy();
   const stamp = formatStamp(node.createdAt);
+  const title = node.note || node.proposalId || (node.parent ? copy.rsi.vsParent : copy.rsi.seed);
   return (
     <div className={cn("relative px-4 py-3 pl-8", !first && "border-t border-border/70")} data-testid="harness-lineage-node">
       <span className="absolute left-[10px] top-[18px] size-1.5 rounded-full bg-foreground/80" aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <HashLine hash={node.hash} compact />
+            {showIds ? <HashLine hash={node.hash} compact /> : <span className="text-[13px] font-medium">{title}</span>}
             {node.seed ? <span className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">{copy.rsi.seed}</span> : null}
             {node.refs.map((r) => (
-              <span key={r} className="rounded-full bg-lift px-2 py-0.5 font-mono text-[11px] text-muted">{r}</span>
+              <span key={r} className="rounded-full bg-lift px-2 py-0.5 text-[11px] text-muted">{pointerLabel(copy, r)}</span>
             ))}
             {node.fromArchive ? (
               <span className="text-[11px] text-muted">{node.accepted ? copy.labs.accepted : copy.labs.rejected}</span>
             ) : null}
           </div>
           <div className="mt-0.5 text-[12px] text-muted">
-            {node.note || node.proposalId || (node.parent ? `${copy.rsi.vsParent} ${shortHash(node.parent, 12)}` : copy.rsi.seed)}
-            {stamp ? ` · ${stamp}` : ""}
+            {showIds ? title : null}
+            {stamp ? `${showIds ? " · " : ""}${stamp}` : ""}
           </div>
         </div>
         {onReveal ? (

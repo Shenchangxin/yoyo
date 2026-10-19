@@ -293,6 +293,7 @@ func evalCmd() *cobra.Command {
 	var safety, tb, sealed, transfer, index, behavior bool
 	var models []string
 	var solver string
+	var snapshot string
 	cmd := &cobra.Command{
 		Use:   "eval",
 		Short: "Run the active harness against the smoke or sealed eval suite",
@@ -318,6 +319,14 @@ func evalCmd() *cobra.Command {
 				return nil
 			}
 			kind, mut := labEvalMut(index, transfer, sealed, tb, safety, behavior)
+			if snapshot != "" && best <= 1 {
+				out, err := a.RunEvalHash(ctx, client, snapshot, mut)
+				if err != nil {
+					return err
+				}
+				printEval(kind, out)
+				return nil
+			}
 			if best > 1 {
 				rep, err := a.BestOfNMut(ctx, best, client, mut)
 				if err != nil {
@@ -346,6 +355,7 @@ func evalCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&behavior, "behavior", false, "cheap behavior probes (not the default promote gate)")
 	cmd.Flags().StringSliceVar(&models, "models", nil, "parallel-model best-of-N (does not change the sealed seed suite)")
 	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or heuristic/prompt-sensitive for fixtures")
+	cmd.Flags().StringVar(&snapshot, "snapshot", "", "evaluate this harness hash without moving refs/active")
 	return cmd
 }
 
@@ -527,15 +537,18 @@ func logsCmd() *cobra.Command {
 }
 
 func evolveCmd() *cobra.Command {
-	var k, rounds, baselines int
-	var promote, sealed, behavior, index bool
-	var solver string
+	var k, rounds, baselines, overlayK int
+	var promote, sealed, behavior, index, overlay, reuseTurn, overlayLib bool
+	var solver, sessionID, task, overlayMode string
 	var maxUSD float64
 	var maxWall time.Duration
 	cmd := &cobra.Command{
 		Use:   "evolve",
 		Short: "Run Self-Harness cycles (L1 materials). Default writes refs/canary only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if overlay {
+				return runOverlayEvolve(cmd, sessionID, task, solver, reuseTurn, overlayK, overlayMode, overlayLib, promote, sealed, behavior, index, baselines, maxUSD, maxWall)
+			}
 			a, err := openApp()
 			if err != nil {
 				return err
@@ -577,7 +590,98 @@ func evolveCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&maxUSD, "max-usd", 0, "stop the lab when estimated USD reaches this cap")
 	cmd.Flags().DurationVar(&maxWall, "max-wall", 0, "stop the lab at this wall clock budget")
 	cmd.Flags().StringVar(&solver, "solver", "live", "live model client, or heuristic/prompt-sensitive for fixture tests")
+	cmd.Flags().BoolVar(&overlay, "overlay", false, "session Propose–Probe–Compose; pins this chat, never moves active")
+	cmd.Flags().StringVar(&sessionID, "session", "", "session id (required with --overlay)")
+	cmd.Flags().StringVar(&task, "task", "", "overlay task; default is the last user message")
+	cmd.Flags().BoolVar(&reuseTurn, "reuse-turn", true, "reuse the last finished turn as the overlay base rollout")
+	cmd.Flags().IntVar(&overlayK, "overlay-k", 1, "session PPC width or depth; R=4k rollouts, P=3k improver sessions")
+	cmd.Flags().StringVar(&overlayMode, "overlay-mode", "agg", "agg (parallel width) or seq (nested depth)")
+	cmd.Flags().BoolVar(&overlayLib, "overlay-library", false, "print the per-domain experience INDEX and exit")
 	return cmd
+}
+
+func runOverlayEvolve(cmd *cobra.Command, sessionID, task, solver string, reuseTurn bool, overlayK int, overlayMode string, overlayLib, promote, sealed, behavior, index bool, baselines int, maxUSD float64, maxWall time.Duration) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return fmt.Errorf("evolve --overlay requires --session")
+	}
+	var mix []string
+	if promote {
+		mix = append(mix, "--promote")
+	}
+	if sealed {
+		mix = append(mix, "--sealed")
+	}
+	if behavior {
+		mix = append(mix, "--behavior")
+	}
+	if index {
+		mix = append(mix, "--index")
+	}
+	if baselines > 0 {
+		mix = append(mix, "--baselines")
+	}
+	if cmd.Flags().Changed("k") {
+		mix = append(mix, "--k")
+	}
+	if cmd.Flags().Changed("rounds") {
+		mix = append(mix, "--rounds")
+	}
+	if err := app.OverlayFlagConflict(mix...); err != nil {
+		return err
+	}
+	a, err := openApp()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if overlayLib {
+		view, err := a.OverlayLibrary(sessionID)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "domain %s entries %d\n", view.Domain, len(view.Entries))
+		if view.Index != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), view.Index)
+		}
+		return nil
+	}
+	ok := overlayK
+	if ok < 1 {
+		ok = 1
+	}
+	if ok > 4 {
+		ok = 4
+	}
+	timeout := 15 * time.Minute * time.Duration(ok)
+	if maxWall > timeout {
+		timeout = maxWall
+	}
+	if timeout > time.Hour {
+		timeout = time.Hour
+	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
+	res, err := a.OverlaySession(ctx, app.OverlayRun{
+		SessionID: sessionID,
+		Task:      task,
+		ReuseTurn: reuseTurn,
+		K:         overlayK,
+		Mode:      overlayMode,
+		MaxUSD:    maxUSD,
+		MaxWall:   maxWall,
+		Client:    labClient(solver),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "overlay adopted=%v kept_base=%v hash=%s parent=%s compose=%s k=%d R=%d P=%d usd=%.4f library=%s\n",
+		res.Adopted, res.KeptBase, shortHash(res.Hash), shortHash(res.Parent), res.Compose, res.K, res.R, res.P, res.Spend.USD, res.LibraryStatus)
+	if res.Adopted {
+		fmt.Fprintf(cmd.ErrOrStderr(), "This chat is pinned to %s. Checkout still owns production.\n", shortHash(res.Hash))
+	} else {
+		fmt.Fprintln(cmd.ErrOrStderr(), "No contrast. Active unchanged.")
+	}
+	return nil
 }
 
 func sessionCmd() *cobra.Command {

@@ -4,7 +4,7 @@
 
 **年份门**：本文件只讨论 2026 年首次出现的工作。ACE、DGM 已在 [REFERENCES.md](REFERENCES.md)。2025 年的 Reflexion / GEPA / STOP 视为过时基线，不再展开。
 
-检索窗口：2026-01-01 → 2026-09-20（今天）。渠道见 [SOURCES.md](SOURCES.md)：arXiv、OpenReview、ICLR/ICML 2026、HF Daily Papers、alphaXiv、厂商博客（OpenAI / Anthropic / Google / xAI / Cursor / Harbor）、Semantic Scholar / Connected Papers。ACL/EMNLP/NeurIPS 2026 主会本季无直接命中，下次刷新再扫。
+检索窗口：2026-01-01 → 2026-09-20（全量审阅）。**2026-10-19 针对补入** [Harness²](corpus/2610.14224-harness2.md)（arXiv 2610.14224，10-08 首发）；不是全渠道复扫。渠道见 [SOURCES.md](SOURCES.md)。
 
 ---
 
@@ -15,11 +15,12 @@
 1. **固定模型、改脚手架，是真的能涨分的。** Self-Harness 在 TB2.0 / SWE-Verified / AppWorld 九个模型–基准组合上，终态 harness 的 held-in 与 held-out 都升（相对增益最高约 132%）。这直接为 `yoyo evolve` 提供了主定理。
 2. **涨分很容易是过拟合或「多搜了几次」。** Wang et al.（2026-07）在 TB 2.1 上用匹配预算对照：自动 harness 进化 **并不稳定地赢过** 简单 test-time scaling。ModularRSI（2026-09-14）把解法说成：进化数据必须与评测基准 **不相交**，并且按模块归因。
 3. **生产系统已经平台化。** Barbaste 等解剖十一套代码：没有人用 LangChain；技能标准赢了 MCP 的采用率；Codex 在抄 Claude 的 hook 词汇。Yoyo 的「一个 Go core + 多 client」站在这条线上，不要倒回去做 IDE 皮肤。
+4. **开放世界任务没有 Harbor 标签。** Harness²（2026-10-08）把 RSI 拆成任务层无 GT 的 Propose–Probe–Compose，和按领域隔离的经验库。这不是替换 Self-Harness，而是 Propose 轨上的可选深进化：pin 到当前 thread，晋升仍走 Harbor。
 
 因此 owner 的默认策略不是「再写长一点的 system prompt」，而是：
 
 - 守住已经落地的 Self-Harness 门（held-out、safety、canary ≠ active）。
-- 下一跃迁是 **模块化 + 评测不相交 + 预算诚实**，不是更宽的 K。
+- 下一跃迁仍是 **模块化 + 评测不相交 + 预算诚实**；**再下一刀** 是无 GT 的任务层 overlay，不是更宽的 K，也不是嵌入 Python 实验栈。
 - 任何会让 evolve 改 Go / 评测器 / 密钥的想法，直接丢。
 
 ---
@@ -33,11 +34,12 @@
 | 优先级 | 工作 | 日期 | 为什么现在读 | Yoyo 状态 |
 | --- | --- | --- | --- | --- |
 | ★ P0 | [Self-Harness](corpus/2606.09498-self-harness.md) | 2026-06-08 | 我们的 evolve 循环几乎是这篇的实现 | implemented |
-| ★ P0 | [ModularRSI](corpus/2609.14857-modular-rsi.md) | 2026-09-14 | **本季最新、最该偷**：五模块、对比轨迹、2000 道不相交进化题 | candidate |
+| ★ P0 | [Harness²](corpus/2610.14224-harness2.md) | 2026-10-08 | **9 月窗之后的缺口**：开放世界无 GT 的 Propose–Probe–Compose + 领域经验库。借合同，不嵌框架 | candidate |
+| ★ P0 | [ModularRSI](corpus/2609.14857-modular-rsi.md) | 2026-09-14 | 五模块、对比轨迹、2000 道不相交进化题。管全局晋升怎么不被套件背题 | candidate |
 | ★ P0 | [Rethinking harness-evolution eval](corpus/2607.12227-rethink-eval.md) | 2026-07-14 | 否证压力。没有匹配预算对照，evolve 实验室是自欺 | critique |
 | ★ P1 | [HarnessEvolve](corpus/2609.00829-harness-evolve.md) | 2026-09-01 | 参考轨迹解决 credit assignment；质量门打 prompt 膨胀 | candidate |
 | P1 | [HSI](corpus/2608.08466-hsi.md) | 2026-08-09 | 分层自改 + 冻结外锚。我们 L4 已经是外锚；不要做 meta-evolver 改 evolve 代码 | partial |
-| P1 | [RHI](corpus/2607.15524-rhi.md) | 2026-07-17 | prompt 级 harness、成对修订历史、少步数。适合「用户任务特化」而非全局晋升 | candidate |
+| P1 | [RHI](corpus/2607.15524-rhi.md) | 2026-07-17 | prompt 级 harness、成对修订历史、少步数。轻量任务特化；重型对照见 Harness² | candidate |
 | P1 | [AHE](corpus/2604.25850-ahe.md) | 2026-04-28 | 可观测性三柱：组件文件化、轨迹蒸馏、可证伪的 change manifest | candidate |
 | P1 | [Meta-Harness](corpus/2603.28052-meta-harness.md) | 2026-03-30 | ICML 2026。用文件系统当证据通道，coding agent 自己诊断。不要让它 grep 评测器 | candidate |
 | P2 | [HarnessBank](corpus/2607.13683-harness-bank.md) | 2026-07-15 | 语义 gene bank + gated screening。档案升级备选 | watch |
@@ -111,6 +113,7 @@
 6. **技能还是静态说明书。** SoK 的 Pattern-2（可执行 skill）与 SKILL.state（可变状态）都还没碰。当前 skill 是 markdown + 可选 WASM，执行仍走主对话。
 7. **没有微观行为评测。** ~~只有 Harbor 终局。~~ **已落地：** 四个秒级行为探针（声称完成、不得读 `tests/`、必须先有产物、不得发明 grader 路径）。进 evolve 实验室和 CI，不进默认 89 题晋升。
 8. **提案的 predicted_fixes 没有被下一轮核实。** ~~字段闲置。~~ **已落地：** `predicted_fixes` 非空且 hit==0 → 不得进 canary；miss>hit 仍只降权。报告和 EvolveLab 展示 hit/miss。
+9. **任务层无 GT 进化已有会话 overlay。** 套件 evolve 仍对着 Harbor。Propose 轨的 `overlay_k` / `overlay_mode` 做 INV/DOM 对照合成、匿名选择与 seq 深度；失败 KEEP_BASE，只 pin 当前 thread。证据以 `context/` 文件树提供，improver 走 `read_file`；always-on instruction 有 trigger/长度门；库按 CAS hash 展开 L1；蒸馏先写 helped/hurt/confounded。PIN 之后可对 hash 跑 Harbor，不自动 checkout。
 
 Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 transfer，id 永不进 Propose。
 
@@ -120,8 +123,9 @@ Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 t
 - 不要为了 RSI 把评测器、vault、updater 做成「也可以进化的模块」（Meta-Harness 的文件系统搜索尤其危险）。
 - 不要把 Dream-RSI 的世界模型做进桌面编码循环。
 - 不要引入向量记忆来「对齐 2025 的 RAG agent」。Barbaste 的语料里生产系统都不用。
-- 不要把 `task` 做成无界 harness 递归（RAH）。depth-1 是产品选择。
+- 不要把 `task` 做成无界 harness 递归（RAH）。depth-1 是产品选择。Harness² 的 `k` 是有界预算，不是无限 spawn。
 - 不要用 LLM init 生成长 `AGENTS.md` 当默认（Gloaguen 2026：不涨分、成本 +20%）。
+- 不要把 Harness² 的 Python / OpenCode / Codex 实验栈嵌进桌面，也不要用无 GT 对照替换 Harbor 作为 `refs/active` 的门。
 
 ---
 
@@ -139,9 +143,11 @@ Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 t
 | 4 | 进化集与晋升集切开（哪怕只是本地 suite 的再划分） | ModularRSI、Wang、ICLR RSI reward hacking | 已落地；密封题同构，信号弱 |
 | 5 | 提案一次只动一个 L1 surface，过 Harbor 后再 merge 不相交 surface | ModularRSI | 已落地（不改 loop 拓扑） |
 | 6 | 可选：接入 Harbor-Index 子集作 transfer 门，替代继续堆本地任务 | Harbor-Index 2026-09 | stand-in 已接；82 题不进 CI |
-| 7 | Skill 执行状态外置（SKILL.state 思想），主对话只看当前 state + 最新观察 | SKILL.state | 高：改 runtime |
+| 7 | 会话级 PPC overlay（`R=4k,P=3k` 并行 width）：INV/DOM、对照合成、失败 KEEP_BASE；只写 pin | Harness² 2026-10 | 已落地；账本与 BoN/IID/SCS 同屏 |
+| 8 | 领域经验库：cue/lesson/evidence 或 NO_ENTRY；按 domain 隔离 | Harness² | 已落地；held-out 与 grader token 不得入库 |
+| 9 | Skill 执行状态外置（SKILL.state 思想），主对话只看当前 state + 最新观察 | SKILL.state | 高：改 runtime |
 
-完成 1–4 之后，再考虑把 ModularRSI 的外部进化集引进来。不要先上 7。
+完成 1–4 之后，再考虑 ModularRSI 的外部进化集或 Harness² overlay。不要先上 9。
 
 ---
 
@@ -154,6 +160,7 @@ Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 t
 3. **技能供应链。** SoK 记录的 ClawHavoc 说明 marketplace 默认不可信。Yoyo 的「未签名不能上 active」要保持 fail-closed，即使以后做 skill market。
 4. **「harness 效应」可能被高估。** Arjmandi 的同模型配对在平均意义上分不出原生 harness 与中立 harness。Yoyo 的护城河必须是 **可证明、可回滚的进化过程**，而不是「我们的 prompt 比别人神」。
 5. **上下文构造成为独立层。** VideoHarness-RSI 把这件事说死了：冻结模型，搜索的是构造程序。`runtime.Shape` 已经是这个层；以后 evolve 可以碰 Shape 策略，但那是 L3。
+6. **开放世界任务层。** Harness² 证明无 GT 对照能涨分，但默认值是科研执行器。Yoyo 要能回答：会话 overlay 的预算、失败回退、以及它如何不污染 `refs/active`。
 
 ---
 
@@ -161,11 +168,11 @@ Harbor-Index 82 题没有搬进桌面 CI。`--index` 只用三道 stand-in 当 t
 
 2026-12-20 或出现以下信号时重跑检索：
 
-- ModularRSI / HarnessEvolve / AHE / Meta-Harness 出现 v2 或正式会议接收
+- ModularRSI / HarnessEvolve / AHE / Meta-Harness / Harness² 出现 v2 或正式会议接收
 - Harbor 发布独立 verifier sandbox 的稳定 API
 - 有论文在 **匹配预算** 下推翻或确认 Wang et al.
 - Anthropic / OpenAI / Google / xAI 发布 2026 下半年 Codex/Claude/Gemini/Grok 架构文
 - EMNLP 2026、NeurIPS 2026 出程序
-- 出现把 **桌面个人 agent**（非 SWE-bench）当作 RSI 对象的工作
+- 出现把 **桌面个人 agent**（非 SWE-bench）当作 RSI 对象的工作（Harness² 仍是职业基准，不是桌面产品）
 
 刷新步骤：按 [SOURCES.md](SOURCES.md) 扫渠道 → 改 `catalog.yaml` → 新卡片 → 更新本文件第 2–4 节 → 手写更新 [report.html](report.html) → 跑 `scripts/fetch-research-originals.ps1`。只看当年。把满 12 个月的条目降为谱系。

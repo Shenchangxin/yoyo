@@ -946,8 +946,14 @@ export async function diff(a: string, b: string): Promise<any> {
   return http(`/api/harness/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
 }
 
-export async function runEval(): Promise<any> {
+export async function runEval(opts?: { snapshot?: string }): Promise<any> {
+  const snapshot = String(opts?.snapshot || "").trim();
   const s = await wailsService();
+  if (snapshot) {
+    const fn = svcMethod(s, "RunEvalAt", "runEvalAt");
+    if (fn) return fn(snapshot);
+    return rpcJSON("eval.run", { snapshot }, 10 * 60 * 1000);
+  }
   if (s?.RunEval) return s.RunEval();
   return http("/api/eval", { method: "POST" });
 }
@@ -985,6 +991,41 @@ export async function evolve(k = 3, opts?: {
   if (s?.EvolveK && !body.rounds && !body.sealed && !body.promote) return s.EvolveK(k);
   if (s?.Evolve && k === 3 && !body.rounds && !body.sealed && !body.promote) return s.Evolve();
   return http("/api/evolve", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function evolveOverlay(opts: {
+  session: string;
+  task?: string;
+  reuseTurn?: boolean;
+  maxUsd?: number;
+  overlayK?: number;
+  overlayMode?: string;
+}): Promise<any> {
+  const session = String(opts.session || "").trim();
+  const task = opts.task || "";
+  const reuseTurn = opts.reuseTurn !== false;
+  const maxUsd = opts.maxUsd ?? 0;
+  const overlayK = Math.max(1, Math.min(4, opts.overlayK || 1));
+  const overlayMode = opts.overlayMode === "seq" ? "seq" : "agg";
+  const s = await wailsService();
+  const fn = svcMethod(s, "OverlaySession", "overlaySession");
+  if (fn) return fn(session, task, reuseTurn, maxUsd, overlayK, overlayMode);
+  return rpcJSON("evolve.overlay", {
+    session,
+    task,
+    reuse_turn: reuseTurn,
+    max_usd: maxUsd,
+    overlay_k: overlayK,
+    overlay_mode: overlayMode,
+  }, Math.min(60, 15 * overlayK) * 60 * 1000);
+}
+
+export async function overlayLibrary(session: string): Promise<any> {
+  const id = String(session || "").trim();
+  const s = await wailsService();
+  const fn = svcMethod(s, "OverlayLibrary", "overlayLibrary");
+  if (fn) return fn(id);
+  return rpcJSON("evolve.library", { session: id });
 }
 
 export async function archive(): Promise<any[]> {
@@ -2244,13 +2285,17 @@ export async function videoCall(method: string, params: Record<string, any> = {}
   const s = await wailsService();
   const fn = svcMethod(s, "VideoCall", "videoCall");
   if (fn) return fn(method, params);
+  return rpcJSON(method, params, 120000);
+}
+
+async function rpcJSON(method: string, params: Record<string, any> = {}, timeoutMs = 120000): Promise<any> {
   let res: Response;
   try {
     res = await fetch("/api/rpc", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
     throw new Error(`${method}: ${errMessage(e)}`);

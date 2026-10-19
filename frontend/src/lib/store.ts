@@ -98,6 +98,8 @@ type UIState = {
   setVoicePhase: (v: VoicePhase) => void;
   moduleLoading: boolean;
   setModuleLoading: (v: boolean) => void;
+  showHarnessLab: boolean;
+  setShowHarnessLab: (v: boolean) => void;
 };
 
 function readDrafts(): Record<string, string> {
@@ -155,6 +157,14 @@ function readOutlineCollapsed(): boolean {
 function readChatDock(): boolean {
   try {
     return localStorage.getItem("yoyo-chat-dock") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function readShowHarnessLab(): boolean {
+  try {
+    return localStorage.getItem("yoyo-show-harness-lab") === "1";
   } catch {
     return false;
   }
@@ -460,4 +470,9 @@ export const useUI = create<UIState>((set, get) => ({
   setVoicePhase: (voicePhase) => set({ voicePhase }),
   moduleLoading: false,
   setModuleLoading: (moduleLoading) => set({ moduleLoading }),
+  showHarnessLab: readShowHarnessLab(),
+  setShowHarnessLab: (showHarnessLab) => {
+    writeFlag("yoyo-show-harness-lab", showHarnessLab);
+    set({ showHarnessLab });
+  },
 }));

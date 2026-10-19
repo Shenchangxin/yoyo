@@ -7,6 +7,7 @@ import type { TurnStatus } from "../lib/turn-status";
 import type { SessionStats } from "../lib/session-stats";
 import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
+import { ChatNotWorking } from "./harness/ChatNotWorking";
 
 export function ChatDock(props: {
   items: Item[];
@@ -51,6 +52,7 @@ export function ChatDock(props: {
   onScreenshot?: () => Promise<string>;
   onResolve: (id: string, decision: string, answer?: string) => void;
   onOpenAgent: () => void;
+  onImproveThisChat?: () => void;
   onRetry?: () => void;
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
@@ -68,6 +70,9 @@ export function ChatDock(props: {
         </button>
       </div>
       <Transcript items={props.items} showThinking={props.showThinking} transcriptView={props.transcriptView} collapseTiming={props.collapseTiming} approvals={props.approvals} running={props.running} compact workspace={props.workspace} onResolve={props.onResolve} onRetry={props.onRetry} />
+      {props.onImproveThisChat && props.items.length > 0 && !props.running ? (
+        <ChatNotWorking compact onImprove={props.onImproveThisChat} />
+      ) : null}
       <Composer
         draftKey={props.draftKey}
         running={props.running}

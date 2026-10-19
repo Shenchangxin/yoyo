@@ -768,8 +768,15 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		defer cancel()
 		return a.RunEvalOpts(tctx, nil, true)
 	case "eval.run":
+		var p struct {
+			Snapshot string `json:"snapshot"`
+		}
+		_ = json.Unmarshal(params, &p)
 		tctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
+		if strings.TrimSpace(p.Snapshot) != "" {
+			return a.RunEvalAt(tctx, nil, p.Snapshot)
+		}
 		return a.RunEval(tctx, nil)
 	case "eval.best_of_n":
 		var p struct {
@@ -846,6 +853,94 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 			K: p.K, Rounds: p.Rounds, PromoteActive: p.Promote, Sealed: p.Sealed,
 			Behavior: p.Behavior, IndexTransfer: p.Index, Baselines: p.Baselines, MaxUSD: p.MaxUSD,
 		})
+	case "evolve.overlay":
+		var p struct {
+			Session     string          `json:"session"`
+			Task        string          `json:"task"`
+			MaxUSD      float64         `json:"max_usd"`
+			MaxWall     json.RawMessage `json:"max_wall"`
+			ReuseTurn   *bool           `json:"reuse_turn"`
+			Solver      string          `json:"solver"`
+			Promote     bool            `json:"promote"`
+			Sealed      bool            `json:"sealed"`
+			Behavior    bool            `json:"behavior"`
+			Index       bool            `json:"index"`
+			Baselines   int             `json:"baselines"`
+			K           int             `json:"k"`
+			OverlayK    int             `json:"overlay_k"`
+			OverlayMode string          `json:"overlay_mode"`
+			Rounds      int             `json:"rounds"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		var mix []string
+		if p.Promote {
+			mix = append(mix, "promote")
+		}
+		if p.Sealed {
+			mix = append(mix, "sealed")
+		}
+		if p.Behavior {
+			mix = append(mix, "behavior")
+		}
+		if p.Index {
+			mix = append(mix, "index")
+		}
+		if p.Baselines > 0 {
+			mix = append(mix, "baselines")
+		}
+		if p.K != 0 {
+			mix = append(mix, "k")
+		}
+		if p.Rounds != 0 {
+			mix = append(mix, "rounds")
+		}
+		if err := app.OverlayFlagConflict(mix...); err != nil {
+			return nil, err
+		}
+		wall, err := parseOverlayWall(p.MaxWall)
+		if err != nil {
+			return nil, err
+		}
+		reuse := true
+		if p.ReuseTurn != nil {
+			reuse = *p.ReuseTurn
+		}
+		ok := p.OverlayK
+		if ok < 1 {
+			ok = 1
+		}
+		if ok > 4 {
+			ok = 4
+		}
+		timeout := 15 * time.Minute * time.Duration(ok)
+		if wall > timeout {
+			timeout = wall
+		}
+		if timeout > time.Hour {
+			timeout = time.Hour
+		}
+		tctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return a.OverlaySession(tctx, app.OverlayRun{
+			SessionID: p.Session,
+			Task:      p.Task,
+			ReuseTurn: reuse,
+			K:         p.OverlayK,
+			Mode:      p.OverlayMode,
+			MaxUSD:    p.MaxUSD,
+			MaxWall:   wall,
+			Client:    overlayFixtureSolver(p.Solver),
+		})
+	case "evolve.library":
+		var p struct {
+			Session string `json:"session"`
+		}
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, err
+		}
+		return a.OverlayLibrary(p.Session)
 	case "turn.running":
 		var p struct {
 			Session string `json:"session"`
@@ -1514,4 +1609,41 @@ func asMap(params json.RawMessage) map[string]any {
 		return map[string]any{}
 	}
 	return m
+}
+
+func overlayFixtureSolver(name string) runtime.Client {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "heuristic", "fixture":
+		return runtime.HeuristicSolver{}
+	case "prompt-sensitive", "prompt_sensitive":
+		return runtime.PromptSensitiveSolver{}
+	default:
+		return nil
+	}
+}
+
+func parseOverlayWall(raw json.RawMessage) (time.Duration, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return 0, nil
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil {
+			return 0, fmt.Errorf("overlay: max_wall: %w", err)
+		}
+		return d, nil
+	}
+	var n float64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, fmt.Errorf("overlay: max_wall")
+	}
+	if n <= 0 {
+		return 0, nil
+	}
+	return time.Duration(n * float64(time.Second)), nil
 }

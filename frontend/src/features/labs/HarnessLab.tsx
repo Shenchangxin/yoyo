@@ -6,7 +6,9 @@ import { Input } from "../../components/ui/input";
 import { LabFrame, LabTable } from "./LabFrame";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { parseHarnessRefs, parseMaterialChanges, shortHash } from "../../lib/harness-refs";
+import { pointerLabel } from "../../lib/harness-copy";
 import { MaterialChangeList } from "../harness/Changes";
+import { useUI } from "../../lib/store";
 
 export function HarnessLab(props: {
   harness: any;
@@ -20,6 +22,7 @@ export function HarnessLab(props: {
   onRollback: () => void;
 }) {
   const copy = useCopy();
+  const lab = useUI((s) => s.showHarnessLab);
   const refs = parseHarnessRefs(props.harness);
   const fields = (pick(props.diffOut, "fields", "Fields") || []) as any[];
   const changes = parseMaterialChanges(pick(props.diffOut, "changes", "Changes"));
@@ -50,9 +53,9 @@ export function HarnessLab(props: {
   }
 
   const pointers = [
-    { id: "active", hash: refs.active, hint: copy.labs.trusted },
-    { id: "staging", hash: refs.staging, hint: copy.labs.notTrusted },
-    { id: "canary", hash: refs.canary, hint: copy.rsi.canary },
+    { id: "active", hash: refs.active, hint: copy.rsi.versionInUseHint },
+    { id: "staging", hash: refs.staging, hint: copy.rsi.versionDraftHint },
+    { id: "canary", hash: refs.canary, hint: copy.rsi.versionCandidateHint },
   ].filter((p) => p.hash);
 
   return (
@@ -62,10 +65,12 @@ export function HarnessLab(props: {
         {pointers.map((p, i) => (
           <div key={p.id} className={"flex items-center gap-3 px-4 py-3" + (i > 0 ? " border-t border-border/70" : "")}>
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium">{p.id}</div>
-              <div className="font-mono text-[11px] text-muted" title={p.hash}>{shortHash(p.hash, 12)}</div>
+              <div className="text-[13px] font-medium">{pointerLabel(copy, p.id)}</div>
+              <div className={lab ? "font-mono text-[11px] text-muted" : "text-[12px] text-muted"} title={lab ? p.hash : undefined}>
+                {lab ? shortHash(p.hash, 12) : p.hint}
+              </div>
             </div>
-            <span className="text-[11px] text-muted">{p.hint}</span>
+            <span className="text-[11px] text-muted">{p.id === "active" ? copy.labs.trusted : copy.labs.notTrusted}</span>
             {p.id !== "active" ? (
               <Button size="sm" onClick={() => void tryCheckout(p.hash)}>{copy.labs.moveActive}</Button>
             ) : null}
@@ -83,12 +88,12 @@ export function HarnessLab(props: {
           <MaterialChangeList changes={changes} empty={copy.rsi.noChanges} />
         </div>
       ) : null}
-      {fields.length ? (
+      {lab && fields.length ? (
         <button type="button" className="mb-3 text-[12px] text-muted hover:text-foreground" onClick={() => setShowHashes((v) => !v)}>
           {copy.labs.hashFields}
         </button>
       ) : null}
-      {showHashes && fields.length ? (
+      {lab && showHashes && fields.length ? (
         <LabTable>
           <thead className="text-[11px] text-muted">
             <tr>
@@ -108,10 +113,12 @@ export function HarnessLab(props: {
           </tbody>
         </LabTable>
       ) : null}
-      <button type="button" className="mt-4 text-[12px] text-muted hover:text-foreground" onClick={() => setAdvanced((v) => !v)}>
-        {copy.labs.advancedHashes}
-      </button>
-      {advanced ? (
+      {lab ? (
+        <button type="button" className="mt-4 text-[12px] text-muted hover:text-foreground" onClick={() => setAdvanced((v) => !v)}>
+          {copy.labs.advancedHashes}
+        </button>
+      ) : null}
+      {lab && advanced ? (
         <div className="mt-3 mb-4 flex flex-wrap gap-2">
           <Input className="h-8 max-w-xs" placeholder={copy.labs.hashA} value={props.diffA} onChange={(e) => props.onA(e.target.value)} />
           <Input className="h-8 max-w-xs" placeholder={copy.labs.hashB} value={props.diffB} onChange={(e) => props.onB(e.target.value)} />

@@ -52,3 +52,16 @@ export function LabTable({ children }: { children: ReactNode }) {
 export function LabCard({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("rounded-2xl bg-sidebar/50 p-4 shadow-[var(--shadow-card)]", className)}>{children}</div>;
 }
+
+export function StoryRow(props: { step?: string; label: string; detail: string; value: string; ok: boolean; last?: boolean }) {
+  return (
+    <div className={cn("flex items-start gap-3 px-4 py-3", !props.last && "border-b border-border/70")}>
+      {props.step ? <span className="mt-0.5 w-4 font-mono text-[11px] text-muted">{props.step}</span> : null}
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-medium text-foreground">{props.label}</div>
+        <div className="text-[12px] text-muted">{props.detail}</div>
+      </div>
+      <span className={cn("tabular-nums text-[13px]", !props.ok && "text-danger")}>{props.value}</span>
+    </div>
+  );
+}

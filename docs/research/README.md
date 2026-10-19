@@ -2,7 +2,7 @@
 
 Yoyo 的产品护城河是 **可版本化、可评测、可晋升、可回滚的 harness**。本目录把这件事放到学术与工业报告的坐标系里，方便 owner 按证据迭代，而不是按感觉加 prompt。
 
-最后审阅：**2026-09-20**。前沿子库只收录 **2026 年首次出现或 2026 年会场发表** 的材料。2025 年工作一律放进 [REFERENCES.md](REFERENCES.md) 的「谱系」层，不当成当前前沿。检索渠道见 [SOURCES.md](SOURCES.md)。
+最后审阅：**2026-10-19**（针对补入 Harness² / arXiv 2610.14224；全渠道复扫仍是 2026-09-20）。前沿子库只收录 **2026 年首次出现或 2026 年会场发表** 的材料。2025 年工作一律放进 [REFERENCES.md](REFERENCES.md) 的「谱系」层，不当成当前前沿。检索渠道见 [SOURCES.md](SOURCES.md)。
 
 **Owner 入口：** 打开 [report.html](report.html)。手写扫读件，不是脚本生成。Markdown 卡片仍是源。改文献必须同轮改报告，见维护协议第 8 条。
 
@@ -22,7 +22,7 @@ Yoyo 的产品护城河是 **可版本化、可评测、可晋升、可回滚的
 ## 两条轴
 
 1. **谱系（what we built on）** — ACE 式 playbook、Self-Harness 闭环、DGM 档案采样、Harbor 评测布局、Codex 式 App Server、Claude 式 skills / 权限。见 REFERENCES。
-2. **前沿（what we should steal or reject next）** — ModularRSI 的模块化与 benchmark-disjoint、HarnessEvolve 的参考轨迹与双门、Wang / Gideoni 对「进化是否只是多花了搜索预算」的质疑、Harbor-Index、技能供应链、ICLR RSI / ICML 2026 新工作。见 FRONTIER。
+2. **前沿（what we should steal or reject next）** — Harness² 的开放世界 Propose–Probe–Compose、ModularRSI 的模块化与 benchmark-disjoint、HarnessEvolve 的参考轨迹与双门、Wang / Gideoni 对「进化是否只是多花了搜索预算」的质疑、Harbor-Index、技能供应链、ICLR RSI / ICML 2026 新工作。见 FRONTIER。
 
 Self-harness 与 RSI 在本仓库里不是口号：`yoyo evolve` 是 L1 闭环；Harbor 拥有 `refs/active`；Go 内核是 L4，智能体改不了。
 

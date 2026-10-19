@@ -7,6 +7,7 @@
 | 文件 | 状态 |
 | --- | --- |
 | [2606.09498-self-harness.md](2606.09498-self-harness.md) | implemented |
+| [2610.14224-harness2.md](2610.14224-harness2.md) | candidate |
 | [2609.14857-modular-rsi.md](2609.14857-modular-rsi.md) | candidate |
 | [2607.15524-rhi.md](2607.15524-rhi.md) | candidate |
 | [2608.08466-hsi.md](2608.08466-hsi.md) | partial |

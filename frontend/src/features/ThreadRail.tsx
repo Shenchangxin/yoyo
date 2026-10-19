@@ -215,7 +215,6 @@ export function ThreadRail(props: {
   const copy = useCopy();
   const mac = isMac();
   const refs = parseHarnessRefs(props.harness, props.fallbackActive);
-  const activeShort = shortHash(refs.active || props.fallbackActive || "");
   const dirty = stagingDirty(refs);
   const canary = canaryDirty(refs);
   const q = props.query.toLowerCase();
@@ -379,7 +378,7 @@ export function ThreadRail(props: {
         </DockIcon>
         <DockIcon
           label={copy.rail.harness}
-          hint={activeShort ? `${copy.rail.harness} · ${activeShort}` : copy.rail.harnessHint}
+              hint={copy.rail.harnessHint}
           on={harnessOn}
           onClick={props.onHarness}
           mark={dirty || canary}

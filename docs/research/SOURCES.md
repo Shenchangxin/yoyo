@@ -1,6 +1,6 @@
 # 文献来源渠道
 
-审阅：**2026-09-20**。本文件是检索协议。论文卡片仍按一篇一卡进 [corpus/](corpus/) 或 [products/](products/)，id 进 [catalog.yaml](catalog.yaml)。
+审阅：**2026-10-19**（针对补入 2610.14224；全渠道复扫仍是 2026-09-20）。本文件是检索协议。论文卡片仍按一篇一卡进 [corpus/](corpus/) 或 [products/](products/)，id 进 [catalog.yaml](catalog.yaml)。
 
 年份门不变：前沿只收 2026-first。会场接收但 arXiv 首发在 2025 的（ACE、HGM）进谱系。
 
@@ -57,7 +57,7 @@ OpenReview 已对齐的 forum（有 arXiv 的仍以 arXiv 为原文）：
 3. OpenReview：ICLR/ICML 当年 + RSI / Agent / Workshop 组。
 4. 会场虚拟站：ICLR、ICML；9 月之后加 EMNLP、NeurIPS。
 5. 博客：Anthropic engineering、OpenAI index、Google Developers、x.ai/news、Cursor blog。
-6. Connected Papers：以 `2606.09498`、`2609.14857`、`2604.25850`、`2603.28052` 为种子，1-hop 里 year=2026 的新点。
+6. Connected Papers：以 `2606.09498`、`2609.14857`、`2610.14224`、`2604.25850`、`2603.28052` 为种子，1-hop 里 year=2026 的新点。
 7. 新 id → `catalog.yaml` → 卡片 → 更新 [FRONTIER.md](FRONTIER.md) → 手写更新 [report.html](report.html) → 跑 fetch 脚本。
 
 ACL/EMNLP 2026 主会截至本次审阅 **没有** 与 Yoyo 控制塔直接对齐的已发表 harness/RSI 论文；下次刷新继续扫 ARR。NeurIPS 2026 尚未开会。

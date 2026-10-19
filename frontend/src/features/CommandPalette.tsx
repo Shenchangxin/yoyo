@@ -43,6 +43,7 @@ export function CommandPalette(props: {
   onQuit?: () => void;
   onRunSuite?: () => void;
   onRunCycle?: () => void;
+  onRunOverlay?: () => void;
 }) {
   const copy = useCopy();
   return (
@@ -121,6 +122,9 @@ export function CommandPalette(props: {
                 </Command.Item>
                 <Command.Item value={`${copy.palette.runCycle} run evolve cycle`} onSelect={() => { props.onRunCycle?.(); props.onClose(); }}>
                   {copy.palette.runCycle}
+                </Command.Item>
+                <Command.Item value={`${copy.palette.runOverlay} evolve this thread overlay ppc`} onSelect={() => { props.onRunOverlay?.(); props.onClose(); }}>
+                  {copy.palette.runOverlay}
                 </Command.Item>
               </Command.Group>
               <Command.Group heading={copy.palette.videoGroup}>

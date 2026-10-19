@@ -40,6 +40,7 @@ func Open(root string) (*Dir, error) {
 		d.Workspace(),
 		d.Projects(),
 		d.Memory(),
+		d.Library(),
 		d.Schedule(),
 		d.Inbox(),
 		d.Personal(),
@@ -95,6 +96,7 @@ func (d *Dir) Workspace() string {
 func (d *Dir) Config() string     { return filepath.Join(d.Root, "config.yaml") }
 func (d *Dir) Projects() string   { return filepath.Join(d.Root, "projects") }
 func (d *Dir) Memory() string     { return filepath.Join(d.Root, "memory") }
+func (d *Dir) Library() string    { return filepath.Join(d.Root, "library") }
 func (d *Dir) Schedule() string   { return filepath.Join(d.Root, "schedule") }
 func (d *Dir) Inbox() string      { return filepath.Join(d.Root, "inbox") }
 func (d *Dir) Personal() string   { return filepath.Join(d.Root, "personal") }

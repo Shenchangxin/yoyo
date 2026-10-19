@@ -4,7 +4,7 @@
 
 对应前沿排序与 owner 下一步见 [FRONTIER.md](FRONTIER.md)。扫读：[report.html](report.html)。卡片与原文见 [corpus/](corpus/) 和 [originals/](originals/)。
 
-审阅日期：2026-09-20。
+审阅日期：2026-10-19（针对补入 Harness²；其余条目仍按 2026-09-20）。
 
 ---
 
@@ -33,6 +33,8 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 ---
 
 ## 2. 已经写进内核的文献
+
+（§2.6 Harness² 是例外：本季该偷，代码还没写。）
 
 ### 2.1 Self-Harness（Zhang et al., 2026）— 主算法
 
@@ -82,6 +84,14 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 - 卡片：[corpus/2602.14690-harness-config.md](corpus/2602.14690-harness-config.md)
 - 主张：仓库级 harness 有八种旋钮。实践上 Context Files 一家独大，`AGENTS.md` 是跨工具公约。
 - Yoyo 落地：`LoadWorkspaceRules` 读取 `YOYO.md` / `AGENTS.md` / `CLAUDE.md`（有 token 上限），每轮重建进 pins。Skills 是 CAS 对象，不是散落的 markdown 希望。
+
+### 2.6 Harness²（Xu et al., 2026-10）— 尚未落地的开放世界合同
+
+- 卡片：[corpus/2610.14224-harness2.md](corpus/2610.14224-harness2.md)
+- 主张：开放世界任务没有 verifier。任务层用无 GT 的 Propose–Probe–Compose 改当前执行 harness；harnessing 层把有证据的 lesson 写入按领域隔离的库。权重冻结。
+- Yoyo 现状：全局晋升仍是 Self-Harness + Harbor（§2.1）。会话 overlay 已落地 INV/DOM、对照合成、`R=4k P=3k` 账本，以及按 workspace 隔离的 `cue/lesson/evidence` 经验库。`pin` 仍是唯一挂载点。
+- 我们比论文更严的地方（计划，不是代码）：PPC 只写 pin / staging / canary；`refs/active` 继续人闸。不嵌入 Python 实验栈。
+- 与 RHI 的分工：RHI 是少步数的成对修订；Harness² 是同任务对照探测 + 跨任务蒸馏。都是任务特化，都不是全局晋升算法。
 
 ---
 
@@ -141,7 +151,9 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 | 在评测集上直接进化再报同一套分数 | Wang et al. 2026 批评的协议 | 已有 held-out / transfer；下一步要 **benchmark-disjoint** 进化集（ModularRSI） |
 | 复杂进化但不跟随机采样 / best-of-N 比预算 | Gideoni et al. 2026；Wang et al. 2026 | evolve 实验室必须先画出匹配预算图 |
 | LLM 生成的长 AGENTS.md / 仓库概览 | Gloaguen et al. 2026 | 针只写非标准惯例；有 token 上限 |
-| 无界 harness 递归 | RAH 2026 | `task` 保持 depth-1 |
+| 无界 harness 递归 | RAH 2026 | `task` 保持 depth-1。Harness² 的 `k` 是有界预算，不是无限 spawn |
+| 把 Harness² 当第二套 runtime | Harness² 2026-10 | 借 Propose–Probe–Compose 合同，用 Go 重写；不嵌 Python / OpenCode / Codex |
+| 用无 GT 对照替换 Harbor | Harness² 任务层 | 任务 overlay 可以无分数；`refs/active` 仍只认 `ShouldPromote` |
 | 进化进化程序本身 | AEvo / HSI meta-evolver / HGM 改源码 | L4 |
 | 整页重写 system prompt | ACE 反模式 | curator 只接受 delta |
 | 向量记忆当代码检索 | Barbaste 2026 观察：生产系统都不用 | 继续 grep |
@@ -173,5 +185,7 @@ Weakness mining ──► bounded L1 proposal ──► Harbor regression ──
 | 规则裁剪先于 LLM 摘要 | Fan et al. 2026-09 | `context_shape.go` | partial |
 | 微观行为评测 | Google 2026-09；RHB ICML 2026 | `evals/behavior-*`、`--behavior` | implemented |
 | 长程 generator/evaluator 拆分 | Anthropic 2026-03 | Plan mode 有；独立 QA 人格无 | candidate |
+| 任务层 Propose–Probe–Compose | Harness² 2026-10 | 会话 `pin` 已有；无 INV/DOM、对照合成、经验库 | candidate |
+| 按领域经验库 / NO_ENTRY | Harness² | `archive/nodes.json` 仍是 DGM 节点列表 | candidate |
 
 Git 式 CAS/refs 没有 2026 年论文可引，它是工程类比（Git objects / refs）。学术上对应的是「harness 必须是声明的、可差分的状态」，Self-Harness 与 Barbaste 都把 harness 定义成这份状态。

@@ -299,6 +299,11 @@ export function useWorkstation() {
   const [harborErr, setHarborErr] = useState("");
   const [harborKind, setHarborKind] = useState<HarborKind>("suite");
   const [evolve, setEvolve] = useState<any>(null);
+  const [overlay, setOverlay] = useState<any>(null);
+  const [overlayK, setOverlayK] = useState(1);
+  const [overlayMode, setOverlayMode] = useState("agg");
+  const [overlayLibrary, setOverlayLibrary] = useState<any>(null);
+  const [overlayReuseTurn, setOverlayReuseTurn] = useState(true);
   const [playbook, setPlaybook] = useState<any>(null);
   const [tree, setTree] = useState<any[]>([]);
   const [labBusy, setLabBusy] = useState<string | null>(null);
@@ -1308,6 +1313,10 @@ export function useWorkstation() {
       requestQuit();
       return;
     }
+    if (raw === "improve") {
+      useUI.getState().openHarness("propose");
+      return;
+    }
     if (raw === "diff") {
       await refreshDiff();
       return;
@@ -1628,6 +1637,24 @@ export function useWorkstation() {
     toast.success(c.sentToCut);
   };
 
+  async function runHarborAt(hash: string) {
+    const snapshot = String(hash || "").trim();
+    if (!snapshot) return;
+    setHarborKind("suite");
+    setHarborErr("");
+    setLabBusy(copy.labs.busyHarbor);
+    openHarness("prove");
+    try {
+      setEvalReport(await api.runEval({ snapshot }));
+      setBestReport(null);
+    } catch (e) {
+      setHarborErr(api.errMessage(e));
+      fail(e);
+    } finally {
+      setLabBusy(null);
+    }
+  }
+
   async function runHarbor(kind: HarborKind) {
     setHarborKind(kind);
     setHarborErr("");
@@ -1672,6 +1699,40 @@ export function useWorkstation() {
         maxUsd: evolveMaxUsd,
       }));
       setTree(await api.archive());
+      await refresh();
+    } catch (e) {
+      fail(e);
+    } finally {
+      setLabBusy(null);
+    }
+  }
+
+  async function runOverlay() {
+    if (!activeId) {
+      toast.error(copy.labs.overlayNeedSession);
+      return;
+    }
+    if (threadChannel(active) === "video") {
+      toast.error(copy.labs.overlayVideo);
+      return;
+    }
+    setLabBusy(copy.labs.busyOverlay);
+    openHarness("propose");
+    try {
+      const res = await api.evolveOverlay({
+        session: activeId,
+        reuseTurn: overlayReuseTurn,
+        maxUsd: evolveMaxUsd,
+        overlayK,
+        overlayMode,
+      });
+      setOverlay(res);
+      try { setOverlayLibrary(await api.overlayLibrary(activeId)); } catch { /* empty library is fine */ }
+      const adopted = !!(res && (res.adopted || res.Adopted));
+      const hash = String(res?.hash || res?.Hash || "");
+      toast.success(adopted
+        ? copy.labs.overlayPin.replace("{hash}", hash ? hash.slice(0, 8) : "—")
+        : copy.labs.overlayKeep);
       await refresh();
     } catch (e) {
       fail(e);
@@ -1755,8 +1816,14 @@ export function useWorkstation() {
         useUI.getState().setPlan((v) => !v);
       }
       if (e.key === "Escape") {
+        if (e.defaultPrevented) return;
         if (useUI.getState().palette) {
           setPalette(false);
+          return;
+        }
+        // Menus and confirm sheets own the first Escape. Leaving the module
+        // on the same keypress made "More checks" feel like a trap.
+        if (document.querySelector('[role="menu"], [role="listbox"], [role="dialog"][aria-modal="true"]')) {
           return;
         }
         const ui = useUI.getState();
@@ -1845,7 +1912,7 @@ export function useWorkstation() {
     outlineTurns, outlineState, activeTurn, setActiveTurn, jumpToTurn, jumpToLatest, jumpTo, latestNonce,
     searchHits, showArchived, setShowArchived,
     diff, hunks, hunkSel, setHunkSel, harness, plugins, evalReport, setEvalReport, bestReport, setBestReport, harborErr, setHarborErr, harborKind, setHarborKind,
-    evolve, setEvolve, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
+    evolve, setEvolve, overlay, overlayK, setOverlayK, overlayMode, setOverlayMode, overlayLibrary, overlayReuseTurn, setOverlayReuseTurn, playbook, setPlaybook, tree, setTree, labBusy, setLabBusy, evolveK, setEvolveK, evolveRounds, setEvolveRounds, evolveSealed, setEvolveSealed, evolveBehavior, setEvolveBehavior, evolveIndex, setEvolveIndex, evolveBaselines, setEvolveBaselines, evolveMaxUsd, setEvolveMaxUsd, bonModels, setBonModels, diffA, setDiffA, diffB, setDiffB, diffOut, setDiffOut,
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
@@ -1899,6 +1966,6 @@ export function useWorkstation() {
         fail(e);
       }
     },
-    runHarbor, runEvolve, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
+    runHarbor, runHarborAt, runEvolve, runOverlay, compareHarness, checkoutHarness, rollbackHarness, revealHarness,
   };
 }
