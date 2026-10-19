@@ -37,14 +37,14 @@ const waitLoopNudgeZH = "你已经在空转等待。停止 wait/tasklist。若 s
 
 const idleActionPrefixEN = "You already opened this page"
 const idleActionPrefixZH = "你已经反复打开同一页面"
-const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_act for the remaining path, or browser_screenshot then browser_click — they do not reload. Do not browser_open the same HTML unless the file changed."
-const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。剩余路径用 browser_act，或 browser_screenshot 然后 browser_click——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
+const idleActionNudgeEN = "You already opened this page (%s, %d times). browser_open reloads and wipes clicks. Call browser_snapshot then browser_act (ref=) for the remaining path — they do not reload. Do not browser_open the same HTML unless the file changed."
+const idleActionNudgeZH = "你已经反复打开同一页面（%s，%d 次）。browser_open 会整页重载并清掉点击。剩余路径先 browser_snapshot，再用 browser_act（ref=）——它们不会重载。除非文件改过，不要再 browser_open 同一份 HTML。"
 
 const clickMicroHits = 8
 const clickMicroPrefixEN = "You have been clicking one selector per turn"
 const clickMicroPrefixZH = "你已经连续微步点击"
-const clickMicroNudgeEN = "You have been clicking one selector per turn (%d times). Pack the remaining path into one browser_act (click/wait/assert/screenshot). Do not open a new model round for each known click."
-const clickMicroNudgeZH = "你已经连续微步点击（%d 轮）。把剩余路径放进一次 browser_act（click/wait/assert/screenshot）。不要为已知点击再开一轮模型。"
+const clickMicroNudgeEN = "You have been clicking one selector per turn (%d times). Pack the remaining path into one browser_act (click/fill/wait/assert/scroll/press). Snapshot then ref=. Do not open a new model round for each known click."
+const clickMicroNudgeZH = "你已经连续微步点击（%d 轮）。把剩余路径放进一次 browser_act（click/fill/wait/assert/scroll/press）。先 snapshot 再点 ref=。不要为已知点击再开一轮模型。"
 
 const checkFailPrefixEN = "The same check still FAILs"
 const checkFailPrefixZH = "检查项仍以同样方式失败"
@@ -313,7 +313,8 @@ func waitLoopNudge(req RunRequest, hits map[string]int) string {
 // any write call did, and an agent could loop on failing edits forever.
 func idleProgressCall(tc ToolCall, result string) bool {
 	switch tc.Name {
-	case "browser_click", "browser_type", "browser_act", "browser_verify":
+	case "browser_click", "browser_type", "browser_fill", "browser_act", "browser_verify",
+		"browser_scroll", "browser_hover", "browser_select", "browser_press":
 		return !strings.HasPrefix(strings.TrimSpace(result), "ERROR")
 	case "write_file", "str_replace", "apply_patch":
 		return writeChanged(result)
@@ -388,7 +389,7 @@ func clickMicroRound(calls []ToolCall) bool {
 	hasClick := false
 	for _, tc := range calls {
 		switch tc.Name {
-		case "browser_click":
+		case "browser_click", "browser_type", "browser_fill", "browser_hover", "browser_select", "browser_press", "browser_scroll":
 			hasClick = true
 		case "browser_screenshot", "browser_snapshot":
 		default:

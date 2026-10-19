@@ -10,20 +10,29 @@ import (
 )
 
 const (
-	maxBrowserActSteps = 40
-	maxBrowserWaitMS   = 5000
+	maxBrowserActSteps   = 40
+	maxBrowserWaitMS     = 5000
+	maxBrowserCondWaitMS = 15000
 )
 
 // BrowserStep is one host-owned action on the isolated Chrome page.
 // The model names selectors; it never talks to CDP.
 type BrowserStep struct {
-	Op       string `json:"op"`
-	Selector string `json:"selector,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Contains string `json:"contains,omitempty"`
-	Check    string `json:"check,omitempty"`
-	MS       int    `json:"ms,omitempty"`
+	Op        string `json:"op"`
+	Selector  string `json:"selector,omitempty"`
+	Ref       string `json:"ref,omitempty"`
+	Text      string `json:"text,omitempty"`
+	Value     string `json:"value,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Contains  string `json:"contains,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Check     string `json:"check,omitempty"`
+	Direction string `json:"direction,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Level     string `json:"level,omitempty"`
+	Tab       string `json:"tab,omitempty"`
+	Amount    int    `json:"amount,omitempty"`
+	MS        int    `json:"ms,omitempty"`
 }
 
 type browserStepResult struct {
@@ -94,42 +103,81 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 		}
 	}
 	st.Op = normalizeBrowserOp(st.Op)
-	st.Selector = strings.TrimSpace(st.Selector)
+	st.Selector = stepHandle(st.Selector, st.Ref)
 	st.Path = strings.TrimSpace(st.Path)
 	st.Text = st.Text
+	st.Value = strings.TrimSpace(st.Value)
 	st.Contains = strings.TrimSpace(st.Contains)
+	st.URL = strings.TrimSpace(st.URL)
 	st.Check = strings.TrimSpace(st.Check)
+	st.Direction = strings.TrimSpace(st.Direction)
+	st.Key = strings.TrimSpace(st.Key)
+	st.Level = strings.TrimSpace(st.Level)
+	st.Tab = strings.TrimSpace(st.Tab)
 	if st.Op == "" {
 		return st, fmt.Errorf("missing op")
 	}
 	switch st.Op {
-	case "click", "assert":
+	case "click", "hover":
+		if st.Selector == "" {
+			return st, fmt.Errorf("%s needs selector or ref", st.Op)
+		}
+	case "assert":
 		if st.Selector == "" && st.Contains == "" {
 			return st, fmt.Errorf("%s needs selector or contains", st.Op)
 		}
-	case "type":
+	case "type", "fill":
+		if st.Text == "" && st.Value == "" {
+			return st, fmt.Errorf("%s needs text", st.Op)
+		}
 		if st.Text == "" {
-			return st, fmt.Errorf("type needs text")
+			st.Text = st.Value
+		}
+	case "select":
+		if st.Selector == "" || (st.Value == "" && st.Text == "") {
+			return st, fmt.Errorf("select needs selector/ref and value")
+		}
+		if st.Value == "" {
+			st.Value = st.Text
+		}
+	case "press":
+		if st.Key == "" && st.Text == "" {
+			return st, fmt.Errorf("press needs key")
+		}
+		if st.Key == "" {
+			st.Key = st.Text
 		}
 	case "screenshot":
 		// path may be empty; browserScreenshot fills a default
 	case "open":
-		if st.Path == "" && st.Selector == "" {
+		if st.Path == "" && st.Selector == "" && st.URL == "" {
 			return st, fmt.Errorf("open needs path")
 		}
 		if st.Path == "" {
-			st.Path = st.Selector
+			st.Path = firstNonEmptyStep(st.URL, st.Selector)
 		}
 	case "wait":
 		if st.MS <= 0 {
-			st.MS = 200
+			if st.Selector != "" || st.Contains != "" || st.URL != "" {
+				st.MS = 10000
+			} else {
+				st.MS = 200
+			}
 		}
-	case "snapshot":
+	case "scroll":
+		if st.Direction == "" {
+			st.Direction = "down"
+		}
+	case "snapshot", "tab":
 	default:
-		return st, fmt.Errorf("unknown op %q (click, type, wait, screenshot, assert, open, snapshot)", st.Op)
+		return st, fmt.Errorf("unknown op %q (click, type, fill, wait, screenshot, assert, open, snapshot, scroll, hover, select, press, tab)", st.Op)
 	}
-	if st.MS > maxBrowserWaitMS {
-		st.MS = maxBrowserWaitMS
+	capMS := maxBrowserWaitMS
+	if st.Op == "wait" && (st.Selector != "" || st.Contains != "" || st.URL != "") {
+		capMS = maxBrowserCondWaitMS
+	}
+	if st.MS > capMS {
+		st.MS = capMS
 	}
 	return st, nil
 }
@@ -137,10 +185,14 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 func normalizeBrowserOp(op string) string {
 	op = strings.ToLower(strings.TrimSpace(op))
 	switch op {
-	case "click", "tap", "press":
+	case "click", "tap":
 		return "click"
-	case "type", "fill", "keydown":
+	case "type", "keydown":
 		return "type"
+	case "fill":
+		return "fill"
+	case "press":
+		return "press"
 	case "wait", "wait_ms", "sleep":
 		return "wait"
 	case "screenshot", "shot":
@@ -151,9 +203,37 @@ func normalizeBrowserOp(op string) string {
 		return "open"
 	case "snapshot", "refresh":
 		return "snapshot"
+	case "scroll":
+		return "scroll"
+	case "hover":
+		return "hover"
+	case "select":
+		return "select"
+	case "tab", "switch_tab":
+		return "tab"
 	default:
 		return op
 	}
+}
+
+func stepHandle(selector, ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref != "" {
+		if strings.HasPrefix(strings.ToLower(ref), "ref=") || strings.HasPrefix(strings.ToLower(ref), "ref:") {
+			return ref
+		}
+		return "ref=" + ref
+	}
+	return strings.TrimSpace(selector)
+}
+
+func firstNonEmptyStep(ss ...string) string {
+	for _, s := range ss {
+		if strings.TrimSpace(s) != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func coerceJSONArray(v any) ([]any, error) {
@@ -249,6 +329,9 @@ func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepRe
 	case "type":
 		got := t.browserType(st.Selector, st.Text)
 		return finishBrowserStep(res, got)
+	case "fill":
+		got := t.browserFill(st.Selector, st.Text)
+		return finishBrowserStep(res, got)
 	case "screenshot":
 		got := t.browserScreenshot(st.Path)
 		res = finishBrowserStep(res, got)
@@ -261,17 +344,43 @@ func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepRe
 		}
 		return res
 	case "snapshot":
-		got := t.browserSnapshot()
+		got := t.browserSnapshot(st.Level)
 		return finishBrowserStep(res, got)
 	case "wait":
 		ms := st.MS
 		if ms <= 0 {
 			ms = 200
 		}
-		time.Sleep(time.Duration(ms) * time.Millisecond)
+		if st.Selector == "" && st.Contains == "" && st.URL == "" {
+			time.Sleep(time.Duration(ms) * time.Millisecond)
+			res.OK = true
+			res.Detail = fmt.Sprintf("waited %d ms", ms)
+			return res
+		}
+		obs, err := t.Browser.WaitCondition(st.Selector, st.Contains, st.URL, time.Duration(ms)*time.Millisecond)
+		if err != nil {
+			res.Err = err.Error()
+			res.Detail = res.Err
+			return res
+		}
 		res.OK = true
-		res.Detail = fmt.Sprintf("waited %d ms", ms)
+		res.Detail = obs
 		return res
+	case "scroll":
+		got := t.browserScroll(st.Direction, st.Amount, st.Selector)
+		return finishBrowserStep(res, got)
+	case "hover":
+		got := t.browserHover(st.Selector)
+		return finishBrowserStep(res, got)
+	case "select":
+		got := t.browserSelect(st.Selector, st.Value)
+		return finishBrowserStep(res, got)
+	case "press":
+		got := t.browserPress(st.Key)
+		return finishBrowserStep(res, got)
+	case "tab":
+		got := t.browserTabs("switch", firstNonEmptyStep(st.Tab, st.Path, st.Selector), "")
+		return finishBrowserStep(res, got)
 	case "assert":
 		if st.Selector != "" {
 			obs, err := t.Browser.WaitVisible(st.Selector)

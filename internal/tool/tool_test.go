@@ -47,4 +47,7 @@ func TestHostSpecsUnique(t *testing.T) {
 	if !seen["browser_act"] || !seen["browser_verify"] {
 		t.Fatal("missing browser_act/browser_verify")
 	}
+	if !seen["browser_scroll"] || !seen["browser_tabs"] || !seen["browser_record"] || !seen["browser_profile"] {
+		t.Fatal("missing browser interaction tools")
+	}
 }

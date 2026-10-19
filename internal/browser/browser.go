@@ -26,6 +26,8 @@ type Snapshot struct {
 	// Errors reports the JavaScript errors the page raised since the previous
 	// browser call. It is empty when the page raised none.
 	Errors string `json:"errors,omitempty"`
+	// Elements is the last live action walk. Structured snapshots use it.
+	Elements []Action `json:"elements,omitempty"`
 }
 
 type Host struct {
@@ -34,6 +36,8 @@ type Host struct {
 	url           string
 	title         string
 	profile       string
+	profileName   string
+	targetID      string
 	lane          string
 	log           []map[string]any
 	cmd           *exec.Cmd
@@ -55,6 +59,9 @@ type Host struct {
 	hasShot       bool
 	lastShotN     int
 	shotUnchanged bool
+	refs          refCache
+	rec           *recorder
+	tabCount      int
 }
 
 func Open(dir string) (*Host, error) {
@@ -62,7 +69,7 @@ func Open(dir string) (*Host, error) {
 	if err := os.MkdirAll(p, 0o700); err != nil {
 		return nil, err
 	}
-	return &Host{dir: dir, profile: p}, nil
+	return &Host{dir: dir, profile: p, profileName: "default"}, nil
 }
 
 func (h *Host) Isolated() bool { return h != nil && h.profile != "" }
@@ -81,6 +88,7 @@ func (h *Host) stopChrome() {
 	h.cdp = nil
 	h.killTree = nil
 	h.port = 0
+	h.tabCount = 0
 	h.mu.Unlock()
 	if cdp != nil {
 		cdp.close()

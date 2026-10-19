@@ -45,6 +45,8 @@ type cdpConn struct {
 	// errs holds the JavaScript errors the page raised since the last browser
 	// call. The reader fills it from protocol events; the host drains it.
 	errs pageErrors
+
+	onEvent func(method string, params json.RawMessage)
 }
 
 type cdpReply struct {
@@ -79,9 +81,16 @@ func (c *cdpConn) readLoop() {
 			return
 		}
 		if msg.ID == 0 {
-			// Protocol event. Only page errors are kept; the rest is ignored.
+			// Protocol event. Page errors always; recording and navigation
+			// invalidation go through onEvent when the host installed one.
 			if msg.Method != "" {
 				c.errs.add(msg.Method, msg.Params)
+				c.mu.Lock()
+				fn := c.onEvent
+				c.mu.Unlock()
+				if fn != nil {
+					fn(msg.Method, msg.Params)
+				}
 			}
 			continue
 		}
@@ -185,13 +194,12 @@ func freePort() (int, error) {
 }
 
 func (h *Host) chromeProfile(headed bool) string {
-	if headed {
-		return filepath.Join(h.dir, "profile-headed")
+	if h == nil {
+		return ""
 	}
-	if h.dir != "" {
-		return filepath.Join(h.dir, "profile")
-	}
-	return h.profile
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.profileDirLocked(headed)
 }
 
 func (h *Host) ensureCDP() error {
@@ -257,6 +265,7 @@ func (h *Host) startChromeCDP(startURL string, headed bool) error {
 	if h.cdp != nil || h.cmd != nil {
 		h.stopChrome()
 	}
+	h.invalidateRefs()
 	bin := findChrome()
 	if bin == "" {
 		return fmt.Errorf("browser: no isolated Chromium (set YOYO_CHROME)")
@@ -371,9 +380,16 @@ func (h *Host) dialWS(wsURL string) error {
 	}
 	ws.SetReadLimit(cdpMaxMessage)
 	conn := newCDPConn(ws)
+	conn.mu.Lock()
+	conn.onEvent = h.onCDPEvent
+	conn.mu.Unlock()
 	h.mu.Lock()
 	old := h.cdp
 	h.cdp = conn
+	h.targetID = targetIDFromWS(wsURL)
+	if h.tabCount < 1 {
+		h.tabCount = 1
+	}
 	h.mu.Unlock()
 	old.close() // a replaced socket must not keep its reader or target alive
 	_, _ = conn.call("Page.enable", nil)
@@ -381,6 +397,7 @@ func (h *Host) dialWS(wsURL string) error {
 	// Runtime events carry uncaught exceptions and console.error calls. They
 	// are the only signal a page failure leaves behind; see page_errors.go.
 	_, _ = conn.call("Runtime.enable", nil)
+	h.applyRecordHooks(conn)
 	return nil
 }
 
@@ -391,6 +408,7 @@ func (h *Host) dropDeadCDP() {
 	h.mu.Lock()
 	c := h.cdp
 	h.cdp = nil
+	h.tabCount = 0
 	h.mu.Unlock()
 	if c != nil {
 		c.close()
@@ -582,11 +600,13 @@ func (h *Host) pageNavigate(raw string) error {
 		return fmt.Errorf("browser: refusing blank navigation")
 	}
 	if _, err := h.callCDP("Page.navigate", map[string]any{"url": raw}); err == nil {
+		h.invalidateRefs()
 		h.mu.Lock()
 		h.url = raw
 		h.mu.Unlock()
 		return nil
 	} else if _, err2 := h.callCDP("Target.createTarget", map[string]any{"url": raw}); err2 == nil {
+		h.invalidateRefs()
 		h.mu.Lock()
 		h.url = raw
 		h.mu.Unlock()

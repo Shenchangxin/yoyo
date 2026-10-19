@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Shenchangxin/yoyo/internal/browser"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/cite"
 	"github.com/Shenchangxin/yoyo/internal/connector"
@@ -197,7 +198,12 @@ func (t *WorkspaceTools) scheduleCancel(id string) ToolResult {
 }
 
 func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
-	target, lane := parseBrowserOpen(raw)
+	target, lane, profile := parseBrowserOpen(raw)
+	if profile != "" && t.Browser != nil {
+		if err := t.Browser.UseProfile(profile); err != nil {
+			return ToolResult{Err: err}
+		}
+	}
 	if isDataURL(target) {
 		return ToolResult{Err: fmt.Errorf("browser_open: data: URLs are not supported. write_file the HTML, then browser_open the workspace path")}
 	}
@@ -230,7 +236,7 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 			t.mu.Lock()
 			t.LastBrowser = snap.Text
 			t.mu.Unlock()
-			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_screenshot, then browser_click one of the selectors below (neither reloads).\n\n%s", rel, snap.URL, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
+			return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane and isolated Chrome\nurl=%s\nchrome=ready\nThis is navigation (reloads the page). Do not browser_open the same file again unless HTML/JS/CSS changed — reopening wipes clicks. Next: browser_snapshot then browser_click a ref= from the list (neither reloads).\n\n%s", rel, snap.URL, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
 		}
 		return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane (right inspector). Isolated Chrome is unavailable. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel)}
 	} else if !isRemoteBrowserURL(target) && strings.TrimSpace(target) != "" {
@@ -249,16 +255,21 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	t.mu.Lock()
 	t.LastBrowser = snap.Text
 	t.mu.Unlock()
-	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, snap.Profile, lane, withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors))}
+	level := browser.NormalizeSnapshotLevel("", snap.URL)
+	body := browser.FormatSnapshot(browser.Snapshot{
+		URL: snap.URL, Title: snap.Title, Text: snap.Text, Actions: snap.Actions,
+		Errors: snap.Errors, Elements: snap.Elements, Profile: t.Browser.ProfileName(),
+	}, level, true)
+	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, t.Browser.ProfileName(), lane, body)}
 }
 
 // browserBody is the page report the model reads after a browser call: the
-// visible text, then the selectors it can act on next.
+// visible text, then the ref= handles it can act on next.
 func browserBody(text, actions string) string {
 	if strings.TrimSpace(actions) == "" {
 		return text
 	}
-	return text + "\n\nvisible actions (browser_click selector):\n" + actions
+	return text + "\n\nvisible actions (prefer ref= on browser_click):\n" + actions
 }
 
 // withPageErrors puts the JavaScript errors the page raised since the last
@@ -274,18 +285,14 @@ func withPageErrors(body, errs string) string {
 // browserSnapshot reads the live page. The cached text is only a fallback for
 // a page whose Chrome is no longer running; say so instead of passing it off
 // as current.
-func (t *WorkspaceTools) browserSnapshot() ToolResult {
+func (t *WorkspaceTools) browserSnapshot(level string) ToolResult {
 	if t.Browser != nil {
 		snap, live := t.Browser.Refresh()
 		if snap.URL != "" {
 			t.mu.Lock()
 			t.LastBrowser = snap.Text
 			t.mu.Unlock()
-			body := withPageErrors(browserBody(snap.Text, snap.Actions), snap.Errors)
-			if !live {
-				body = "(isolated Chrome is not running; this is the last snapshot, not the live page)\n" + body
-			}
-			return ToolResult{Content: body}
+			return ToolResult{Content: browser.FormatSnapshot(snap, level, live)}
 		}
 	}
 	t.mu.Lock()
@@ -324,11 +331,228 @@ func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
 	if t.Browser == nil {
 		return ToolResult{Err: fmt.Errorf("no isolated browser")}
 	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
 	obs, err := t.Browser.Type(sel, text)
 	if err != nil {
 		return ToolResult{Err: err}
 	}
 	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserFill(sel, text string) ToolResult {
+	if err := t.check(capability.Browser, "browser_fill", sel, text); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
+	obs, err := t.Browser.Fill(sel, text)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserScroll(direction string, amount int, sel string) ToolResult {
+	if err := t.check(capability.Browser, "browser_scroll", sel, direction); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
+	obs, err := t.Browser.Scroll(direction, amount, sel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserHover(sel string) ToolResult {
+	if err := t.check(capability.Browser, "browser_hover", sel, sel); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
+	obs, err := t.Browser.Hover(sel)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserSelect(sel, value string) ToolResult {
+	if err := t.check(capability.Browser, "browser_select", sel, value); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
+	obs, err := t.Browser.Select(sel, value)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserPress(key string) ToolResult {
+	if err := t.check(capability.Browser, "browser_press", key, key); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	if err := t.Browser.EnsurePreview(); err != nil {
+		return ToolResult{Err: err}
+	}
+	obs, err := t.Browser.Press(key)
+	if err != nil {
+		return ToolResult{Err: err}
+	}
+	return ToolResult{Content: obs}
+}
+
+func (t *WorkspaceTools) browserTabs(op, id, raw string) ToolResult {
+	if err := t.check(capability.Browser, "browser_tabs", id, op); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "", "list":
+		tabs, err := t.Browser.ListTabs()
+		if err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: formatBrowserTabs(tabs)}
+	case "switch":
+		if err := t.Browser.SwitchTab(id); err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: "switched tab " + id}
+	case "new":
+		if err := t.Browser.NewTab(raw); err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: "opened tab " + raw}
+	case "close":
+		if err := t.Browser.CloseTab(id); err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: "closed tab " + id}
+	default:
+		return ToolResult{Err: fmt.Errorf("browser_tabs op %q must be list, switch, new, or close", op)}
+	}
+}
+
+func formatBrowserTabs(tabs []browser.TabInfo) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d tab(s):\n", len(tabs))
+	for _, tab := range tabs {
+		mark := " "
+		if tab.Active {
+			mark = "*"
+		}
+		fmt.Fprintf(&b, "  %s %s  %s  %s\n", mark, tab.ID, tab.URL, tab.Title)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func (t *WorkspaceTools) browserProfile(op, name string) ToolResult {
+	if err := t.check(capability.Browser, "browser_profile", name, op); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "", "list":
+		return ToolResult{Content: "profiles: " + strings.Join(t.Browser.ListProfiles(), ", ") + "\ncurrent=" + t.Browser.ProfileName()}
+	case "use":
+		if err := t.Browser.UseProfile(name); err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: "using isolated profile " + t.Browser.ProfileName()}
+	default:
+		return ToolResult{Err: fmt.Errorf("browser_profile op %q must be list or use", op)}
+	}
+}
+
+func (t *WorkspaceTools) browserRecord(op, name string) ToolResult {
+	if err := t.check(capability.Browser, "browser_record", name, op); err != nil {
+		return ToolResult{Err: err}
+	}
+	if t.Browser == nil {
+		return ToolResult{Err: fmt.Errorf("no isolated browser")}
+	}
+	switch strings.ToLower(strings.TrimSpace(op)) {
+	case "start":
+		id, err := t.Browser.StartRecord()
+		if err != nil {
+			return ToolResult{Err: err}
+		}
+		return ToolResult{Content: "recording " + id}
+	case "status", "":
+		return ToolResult{Content: t.Browser.RecordStatus()}
+	case "stop", "skill":
+		sess, err := t.Browser.StopRecord()
+		if err != nil {
+			return ToolResult{Err: err}
+		}
+		return t.persistRecordedSkill(sess, name)
+	default:
+		return ToolResult{Err: fmt.Errorf("browser_record op %q must be start, stop, status, or skill", op)}
+	}
+}
+
+func (t *WorkspaceTools) persistRecordedSkill(sess *browser.RecordSession, name string) ToolResult {
+	if sess == nil {
+		return ToolResult{Content: "recording empty"}
+	}
+	body := sess.SkillBody
+	skillName := strings.TrimSpace(name)
+	if skillName == "" {
+		skillName = sess.SkillName
+	}
+	note := fmt.Sprintf("recorded %s: %d events → %d steps", sess.ID, len(sess.Events), len(sess.Steps))
+	if sess.Dir != "" {
+		note += "\nartifacts=" + sess.Dir
+	}
+	if body == "" {
+		return ToolResult{Content: note + "\nno skill generated"}
+	}
+	if t.Workspace != "" && skillName != "" {
+		rel := filepath.ToSlash(filepath.Join(".yoyo", "skills", skillName, "SKILL.md"))
+		abs, err := t.resolve(rel)
+		if err == nil {
+			if mkErr := os.MkdirAll(filepath.Dir(abs), 0o700); mkErr == nil {
+				if werr := os.WriteFile(abs, []byte(body), 0o600); werr == nil {
+					if t.Skills == nil {
+						t.Skills = map[string]string{}
+					}
+					t.Skills[skillName] = body
+					note += "\nskill=" + rel + " — load_skill " + skillName
+					return ToolResult{Content: note + "\n\n" + body, FileChange: &FileChange{Paths: []string{rel}, Created: true}}
+				}
+			}
+		}
+	}
+	return ToolResult{Content: note + "\n\n" + body}
 }
 
 func (t *WorkspaceTools) browserDownload(raw, rel string) ToolResult {
@@ -610,6 +834,7 @@ func (t *WorkspaceTools) browserTakeover(question string) ToolResult {
 	if err := t.Browser.StartTakeover(); err != nil {
 		return ToolResult{Err: err}
 	}
+	recID, _ := t.Browser.StartRecord()
 	q := question
 	if q == "" {
 		q = "Complete login, MFA, or CAPTCHA in the Yoyo browser window, then confirm to hand control back."
@@ -625,7 +850,15 @@ func (t *WorkspaceTools) browserTakeover(question string) ToolResult {
 	if err != nil {
 		return ToolResult{Err: err}
 	}
-	return ToolResult{Content: "takeover complete: " + ans}
+	out := "takeover complete: " + ans
+	if recID != "" {
+		if sess, stopErr := t.Browser.StopRecord(); stopErr == nil && sess != nil && len(sess.Steps) > 0 {
+			got := t.persistRecordedSkill(sess, "")
+			out += "\n" + got.Content
+			return ToolResult{Content: out, FileChange: got.FileChange}
+		}
+	}
+	return ToolResult{Content: out}
 }
 
 func (t *WorkspaceTools) browserCookies(rel string) ToolResult {

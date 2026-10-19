@@ -66,8 +66,8 @@ func TestBrowserInteractionE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenLocal: %v", err)
 	}
-	if !strings.Contains(snap.Actions, "#opt-0") {
-		t.Fatalf("actions must offer the real selector:\n%s", snap.Actions)
+	if !strings.Contains(snap.Actions, "#opt-0") || !strings.Contains(snap.Actions, "ref=") {
+		t.Fatalf("actions must offer a ref and the real selector:\n%s", snap.Actions)
 	}
 	h.mu.Lock()
 	port := h.port
@@ -79,8 +79,8 @@ func TestBrowserInteractionE2E(t *testing.T) {
 		t.Fatal("idle live Chrome reported dead")
 	}
 
-	if _, err := h.Click("#opt-0"); err != nil {
-		t.Fatalf("click #opt-0: %v", err)
+	if _, err := h.Click("ref=btn_0"); err != nil {
+		t.Fatalf("click ref=btn_0: %v", err)
 	}
 	if title, _ := h.evalOnConn("document.title"); title != "picked:0" {
 		t.Fatalf("click #opt-0 did not reach the page: title=%q", title)

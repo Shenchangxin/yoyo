@@ -158,6 +158,21 @@ export function BrowserPane(props: {
           {address}
         </span>
         {live ? <span className="shrink-0 text-[11px] text-muted/80">{lane}</span> : null}
+        {live && (view?.tabCount ?? 0) > 1 ? (
+          <span className="shrink-0 text-[11px] text-muted/80">
+            {view?.tabCount} {copy.review.tabsLane}
+          </span>
+        ) : null}
+        {view?.profileName && view.profileName !== "default" ? (
+          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] text-muted" title={view.profile}>
+            {view.profileName}
+          </span>
+        ) : null}
+        {view?.recording ? (
+          <span className="shrink-0 rounded-md bg-lift/80 px-1.5 py-0.5 text-[11px] text-foreground/85">
+            {copy.review.recordingLane}
+          </span>
+        ) : null}
         {htmlPath && live ? (
           <button
             type="button"

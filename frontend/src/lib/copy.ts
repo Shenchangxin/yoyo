@@ -596,6 +596,8 @@ export const en = {
     isolatedLane: "Isolated",
     attachedLane: "Attached",
     headedLane: "Headed",
+    recordingLane: "Recording",
+    tabsLane: "tabs",
     snapshot: "Snapshot",
     page: "Page",
     waitingFrame: "Waiting for the isolated page…",

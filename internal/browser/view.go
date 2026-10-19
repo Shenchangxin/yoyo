@@ -8,16 +8,19 @@ import (
 )
 
 type View struct {
-	URL        string           `json:"url"`
-	Title      string           `json:"title"`
-	Lane       string           `json:"lane"`
-	Profile    string           `json:"profile"`
-	Headed     bool             `json:"headed"`
-	Live       bool             `json:"live"`
-	Text       string           `json:"text"`
-	Screenshot string           `json:"screenshot,omitempty"`
-	Preview    string           `json:"preview,omitempty"`
-	Log        []map[string]any `json:"log"`
+	URL         string           `json:"url"`
+	Title       string           `json:"title"`
+	Lane        string           `json:"lane"`
+	Profile     string           `json:"profile"`
+	ProfileName string           `json:"profileName,omitempty"`
+	Recording   bool             `json:"recording,omitempty"`
+	TabCount    int              `json:"tabCount,omitempty"`
+	Headed      bool             `json:"headed"`
+	Live        bool             `json:"live"`
+	Text        string           `json:"text"`
+	Screenshot  string           `json:"screenshot,omitempty"`
+	Preview     string           `json:"preview,omitempty"`
+	Log         []map[string]any `json:"log"`
 }
 
 func (h *Host) View() View {
@@ -59,17 +62,30 @@ func (h *Host) View() View {
 	if n > 24 {
 		start = n - 24
 	}
+	name := h.profileName
+	if name == "" {
+		name = "default"
+	}
+	recording := false
+	if h.rec != nil {
+		h.rec.mu.Lock()
+		recording = h.rec.active
+		h.rec.mu.Unlock()
+	}
 	return View{
-		URL:        h.url,
-		Title:      title,
-		Lane:       lane,
-		Profile:    h.profile,
-		Headed:     h.headed,
-		Live:       h.cdp != nil,
-		Text:       text,
-		Screenshot: h.frame,
-		Preview:    h.preview,
-		Log:        append([]map[string]any(nil), h.log[start:]...),
+		URL:         h.url,
+		Title:       title,
+		Lane:        lane,
+		Profile:     h.profile,
+		ProfileName: name,
+		Recording:   recording,
+		TabCount:    h.tabCount,
+		Headed:      h.headed,
+		Live:        h.cdp != nil,
+		Text:        text,
+		Screenshot:  h.frame,
+		Preview:     h.preview,
+		Log:         append([]map[string]any(nil), h.log[start:]...),
 	}
 }
 
