@@ -346,6 +346,26 @@ func Templates() []Connection {
 			Active: true,
 		},
 		{
+			Name: "Jina Search", Vendor: "jina", Protocol: "jina",
+			Endpoint: "https://s.jina.ai/", Capabilities: []string{CapSearch},
+			Active: true, Priority: 5,
+		},
+		{
+			Name: "DuckDuckGo", Vendor: "duckduckgo", Protocol: "duckduckgo",
+			Endpoint: "https://html.duckduckgo.com/html/", Capabilities: []string{CapSearch},
+			Active: true, Priority: 2,
+		},
+		{
+			Name: "Exa", Vendor: "exa", Protocol: "exa",
+			Endpoint: "https://api.exa.ai/search", Capabilities: []string{CapSearch},
+			Active: true, Priority: 25,
+		},
+		{
+			Name: "Exa MCP", Vendor: "exa", Protocol: "exa-mcp",
+			Endpoint: "https://mcp.exa.ai/mcp", Capabilities: []string{CapSearch},
+			Active: true, Priority: 4,
+		},
+		{
 			Name: "Tavily", Vendor: "tavily", Protocol: "tavily",
 			Endpoint: "https://api.tavily.com/search", Capabilities: []string{CapSearch},
 			Active: true, Priority: 30,

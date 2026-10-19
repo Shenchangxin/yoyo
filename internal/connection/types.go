@@ -152,6 +152,12 @@ func InferProtocol(vendor, cap string) string {
 			return "serper"
 		case "bocha":
 			return "bocha"
+		case "jina":
+			return "jina"
+		case "exa":
+			return "exa"
+		case "duckduckgo", "ddg":
+			return "duckduckgo"
 		case "metaso":
 			return "search"
 		default:

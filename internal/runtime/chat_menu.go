@@ -15,7 +15,7 @@ var ChatCoreTools = []string{
 	"list_dir", "glob", "grep", "shell",
 	"git_status", "git_diff", "git_commit",
 	"task", "wait", "view_image",
-	"web_fetch", "web_search",
+	"web_fetch", "web_search", "reach_status",
 	"run_skill_script", "read_skill_file",
 }
 

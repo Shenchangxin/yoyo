@@ -50,7 +50,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-stock", tab: "generation", titleKey: "generationStock", keywords: "stock pexels pixabay unsplash giphy footage 库存 素材" },
   { id: "generation-asr", tab: "generation", titleKey: "generationAsr", keywords: "asr transcribe whisper stt groq deepgram assemblyai paraformer spark 转写 讯飞 腾讯" },
   { id: "generation-storage", tab: "generation", titleKey: "generationStorage", keywords: "s3 oss cas bucket object storage 阿里云 腾讯云 cos" },
-  { id: "generation-search", tab: "generation", titleKey: "generationSearch", keywords: "search web duckduckgo bocha metaso 秘塔" },
+  { id: "generation-search", tab: "generation", titleKey: "generationSearch", keywords: "search web duckduckgo bocha metaso jina exa 秘塔 搜索" },
   { id: "generation-workflow", tab: "generation", titleKey: "generationWorkflow", keywords: "runninghub workflow comfy" },
   { id: "policy-gate", tab: "policy", titleKey: "policyGate", keywords: "approval gate shell auto allow" },
   { id: "policy-budget", tab: "policy", titleKey: "policyBudget", keywords: "budget usd cost mtok" },

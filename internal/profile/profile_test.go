@@ -15,13 +15,21 @@ func TestSeedsAndFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := FilterTools([]string{"read_file", "web_search", "review_page", "shell", "computer_act", "ask_user"}, r)
+	got := FilterTools([]string{"read_file", "web_search", "reach_status", "review_page", "shell", "computer_act", "ask_user"}, r)
 	joined := stringsJoin(got)
-	if !contains(got, "web_search") || !contains(got, "ask_user") {
+	if !contains(got, "web_search") || !contains(got, "ask_user") || !contains(got, "reach_status") {
 		t.Fatalf("researcher lost read tools: %s", joined)
 	}
 	if contains(got, "shell") || contains(got, "computer_act") {
 		t.Fatalf("researcher exceeded grants: %s", joined)
+	}
+	sec, err := s.Get("secretary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = FilterTools([]string{"read_file", "web_search", "web_fetch", "reach_status", "ask_user"}, sec)
+	if contains(got, "web_search") || contains(got, "web_fetch") || contains(got, "reach_status") {
+		t.Fatalf("secretary kept research tools: %v", got)
 	}
 }
 

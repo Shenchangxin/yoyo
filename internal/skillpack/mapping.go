@@ -12,6 +12,8 @@ func ToolMapping(id, goos string) string {
 		body = superpowersMapping()
 	case NovelToGameID:
 		body = novelToGameMapping()
+	case "agent-reach":
+		body = agentReachMapping()
 	default:
 		body = genericMapping()
 	}
@@ -33,7 +35,8 @@ Skills speak in actions. On Yoyo those resolve to the host tools below. Never in
 | List / find / search files | ` + "`list_dir`" + `, ` + "`glob`" + `, ` + "`grep`" + ` |
 | Run a shell command | ` + "`shell`" + `. Prefer grep/glob/read_file for reading source |
 | Run a pack helper | ` + "`run_skill_script`" + ` (` + "`skill`" + `, ` + "`script`" + ` under ` + "`scripts/`" + `). Invoke through the interpreter even when the file has no extension |
-| Fetch a URL / search the web | ` + "`web_fetch`" + ` / ` + "`web_search`" + ` — not shell curl |
+| Fetch a URL / search the web | ` + "`web_search`" + ` / ` + "`web_fetch`" + ` — never shell curl/wget, never mcporter for generic search, never Jina via curl |
+| Check which internet backends are live | ` + "`reach_status`" + ` |
 | Create or update todos | ` + "`update_plan`" + ` (statuses: pending, in_progress, complete; one in_progress) |
 | Ask the human | ` + "`ask_user`" + ` |
 | Numbered operator choice | ` + "`present_choices`" + ` |
@@ -84,6 +87,18 @@ func novelToGameMapping() string {
 **Playable evidence:** ` + "`browser_open`" + ` the workspace HTML (` + "`index.html`" + `) once — that navigates isolated Chrome and serves relative JS/CSS. Then ` + "`browser_snapshot`" + ` and ` + "`browser_act`" + ` the known path (click/wait/assert/screenshot) using ` + "`ref=`" + ` handles. One-off ` + "`browser_screenshot`" + ` / ` + "`browser_click`" + ` are only for discovering refs. Screenshot, click, and act do **not** reload; reopening the same HTML wipes clicks. Playthrough and QA are the **same** instrumented run: call ` + "`browser_verify`" + ` with ` + "`open`" + ` set to that HTML. Omit ` + "`root`" + ` (or pass ` + "`game-adaptations/<project>`" + `) — never a CSS selector such as ` + "`#stage`" + `. The host writes ` + "`game-adaptations/<project>/qa/verification.json`" + `. Do not click through once, then click through again for QA, and do not hand-write PASS. Inspector srcdoc and a ` + "`node -e`" + ` / ` + "`vm`" + ` DOM shim are not play evidence. Do **not** start ` + "`python -m http.server`" + `, spawn Chrome, or connect to CDP 9333/9222 — Yoyo owns the isolated browser. If the operator pastes ` + "`http://127.0.0.1:port/`" + `, ` + "`web_fetch`" + ` that URL then ` + "`browser_open`" + ` it. HTML HUD: hotspot layer above ` + "`#deck`" + `; ` + "`#deck`" + ` max-height ~28vh (see ` + "`references/html-hud-contract.md`" + `). The six QA checks do not prove fun, balance, rights, or ship quality.
 
 **Skill loading:** ` + "`load_skill`" + ` a stage before acting on it. After compaction, load again if this session has not loaded it. Pack scripts (if any) use ` + "`run_skill_script`" + `. Public HTTP: ` + "`web_fetch`" + ` / ` + "`web_search`" + `. The operator sees the skill name on the live process rail as soon as you ` + "`load_skill`" + `.
+
+**User instructions win:** YOYO.md, AGENTS.md, CLAUDE.md, and a direct skip request override skills.
+`
+}
+
+func agentReachMapping() string {
+	return hostActionTable() + `
+**This pack (agent-reach) on Yoyo:** routing table only. The Go host owns search and fetch.
+
+Ignore bash in upstream SKILL.md that uses ` + "`curl`" + `, ` + "`mcporter call exa.web_search_exa`" + `, or ` + "`https://r.jina.ai`" + ` for generic web search/read. Those resolve to ` + "`web_search`" + ` and ` + "`web_fetch`" + `. Call ` + "`reach_status`" + ` to see whether an optional ` + "`agent-reach`" + ` CLI is on PATH. Platform CLIs (` + "`gh`" + `, ` + "`yt-dlp`" + `, ` + "`bili`" + `, ` + "`twitter`" + `) may run through ` + "`shell`" + ` only after ` + "`reach_status`" + ` lists them. Do not ` + "`curl`" + `. Do not drive the operator's daily Chrome or CDP 9222; use isolated ` + "`browser_*`" + ` and ` + "`browser_takeover`" + ` for login walls.
+
+**Skill loading:** ` + "`load_skill`" + ` ` + "`agent-reach`" + ` (or the bundled ` + "`internet-reach`" + ` skill) before a multi-platform research turn. After compaction, load again if this session has not loaded it. Public HTTP: ` + "`web_search`" + ` / ` + "`web_fetch`" + `. The operator sees the skill name on the live process rail as soon as you ` + "`load_skill`" + `.
 
 **User instructions win:** YOYO.md, AGENTS.md, CLAUDE.md, and a direct skip request override skills.
 `

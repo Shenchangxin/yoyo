@@ -988,7 +988,7 @@ func readOnlySubagentCall(name string) bool {
 		return true
 	}
 	switch name {
-	case "web_fetch", "web_search":
+	case "web_fetch", "web_search", "reach_status":
 		return true
 	default:
 		return false
