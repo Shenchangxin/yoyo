@@ -5,7 +5,7 @@ import { presenceOf, type PresenceInput } from "./director";
 import { useMotionReduced } from "../../lib/motion";
 import { useUI } from "../../lib/store";
 
-export { PresenceAnchor, PresenceSprite, PresenceStamp, PresenceModuleLoading } from "./PresenceRuntime";
+export { PresenceAnchor, PresenceSprite, PresenceStamp, PresencePerch, PresenceModuleLoading, COMPOSER_PRESENCE_SIZE } from "./PresenceRuntime";
 export { CompanionApp } from "./CompanionApp";
 export { presenceOf } from "./director";
 export type { PresenceInput } from "./director";

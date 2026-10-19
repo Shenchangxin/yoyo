@@ -529,6 +529,12 @@ export async function setCompanionCaption(on: boolean): Promise<void> {
   if (fn) await fn(on);
 }
 
+export async function setCompanionCaptionSize(w: number, h: number): Promise<void> {
+  const s = await wailsService();
+  const fn = svcMethod(s, "SetCompanionCaptionSize", "setCompanionCaptionSize");
+  if (fn) await fn(Math.round(w), Math.round(h));
+}
+
 export async function placeCompanion(x: number, y: number): Promise<void> {
   const s = await wailsService();
   const fn = svcMethod(s, "PlaceCompanion", "placeCompanion");

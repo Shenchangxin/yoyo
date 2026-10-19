@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { ArrowUpRight, Clapperboard, Layers3 } from "lucide-react";
+import { PresenceStamp } from "@/features/presence";
 import { agentCopy, type CanvasAppearance } from "@yingce/lib/canvas/agent-appearance";
 
 type AgentWelcomeProps = {
@@ -13,7 +14,7 @@ export function AgentWelcome({ appearance, nodeCount, onChooseSkill, onDraftProm
     return (
         <section className="agent-welcome" aria-label="开始 Agent 创作">
             <div className="agent-welcome-intro">
-                <span className="agent-welcome-orb" aria-hidden="true" />
+                <span className="agent-welcome-orb" aria-hidden="true"><PresenceStamp size={72} live /></span>
                 <h2>{agentCopy(appearance.welcomeTitle, appearance.agentName)}</h2>
                 <p>{agentCopy(appearance.welcomeDescription, appearance.agentName)}</p>
             </div>

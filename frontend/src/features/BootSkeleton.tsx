@@ -21,7 +21,7 @@ export function BootSkeleton() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="h-12 border-b border-border/40" />
         <div className="flex flex-1 items-center justify-center">
-          <PresenceAnchor id="boot" size={132} />
+          <PresenceAnchor id="boot" size={148} />
         </div>
         <div className="px-4 pb-5">
           <div className="composer-bezel mx-auto w-full max-w-[min(100%,var(--thread-measure))]">

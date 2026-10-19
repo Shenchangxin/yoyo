@@ -3000,16 +3000,15 @@ html.companion {
 }
 html.companion,
 html.companion body,
-html.companion #root {
+html.companion #root,
+html.companion #root > div {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
   width: 100%;
   height: 100%;
+  overflow: visible;
   box-shadow: none !important;
-}
-html.companion body {
-  overflow: hidden;
 }
 
 .presence-engine,
@@ -3017,15 +3016,16 @@ html.companion body {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
 }
 
 .presence-float {
   animation: presence-float 6.2s ease-in-out infinite;
-  will-change: transform;
 }
 @keyframes presence-float {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(0, -5px, 0); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
 .presence-module-shell {
@@ -3054,18 +3054,19 @@ html.companion body {
 
 .presence-stamp {
   overflow: visible;
-  border-radius: 50%;
-  background: var(--card);
-  box-shadow: inset 0 -1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
+  background: none;
+  filter: none;
+  animation: presence-stamp-breathe 4.4s ease-in-out infinite;
 }
 .presence-stamp svg {
   display: block;
   overflow: visible;
+  shape-rendering: geometricPrecision;
 }
 .presence-stamp-face {
-  animation: presence-stamp-breathe 4.4s ease-in-out infinite;
+  animation: presence-stamp-glance 8.8s ease-in-out infinite;
   transform-box: fill-box;
-  transform-origin: 50% 58%;
+  transform-origin: 50% 52%;
 }
 .presence-stamp-eye {
   transform-box: fill-box;
@@ -3075,13 +3076,70 @@ html.companion body {
 .presence-stamp-eye + .presence-stamp-eye {
   animation-delay: 70ms;
 }
+.presence-stamp.is-live {
+  animation: presence-stamp-bob 2.2s ease-in-out infinite;
+}
+.presence-stamp.is-live::after {
+  content: "";
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 26%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 8%, transparent) 46%,
+    transparent 72%
+  );
+  animation: presence-halo 2.8s ease-in-out infinite;
+}
 @keyframes presence-stamp-breathe {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(0.35px); }
+  50% { transform: translateY(1.2px); }
+}
+@keyframes presence-stamp-glance {
+  0%, 16%, 34%, 100% { transform: translateX(0); }
+  22% { transform: translateX(-3px); }
+  28% { transform: translateX(3px); }
 }
 @keyframes presence-stamp-blink {
   0%, 84%, 91%, 100% { transform: scaleY(1); }
   87.5% { transform: scaleY(0.12); }
+}
+@keyframes presence-stamp-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.presence-perch {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 2px;
+  pointer-events: auto;
+}
+.creation-composer-with-perch {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  overflow: visible;
+}
+.creation-composer-with-perch .presence-perch {
+  margin: 0 0 8px;
+}
+.creation-message-stamp {
+  overflow: visible;
+  background: none;
+}
+.creation-message-heading {
+  overflow: visible;
+}
+.creation-empty-composer {
+  overflow: visible;
+}
+.presence-anchor-fallback {
+  display: block;
 }
 
 html.companion {
@@ -3095,7 +3153,7 @@ html.companion {
   align-items: center;
   width: 100%;
   height: 100%;
-  padding: 24px 18px 8px;
+  padding: 40px 20px 24px;
   overflow: visible;
   user-select: none;
   -webkit-user-select: none;
@@ -3106,24 +3164,24 @@ html.companion {
 }
 .companion-pet-wrap {
   position: relative;
-  width: 148px;
-  height: 148px;
-  flex: 0 0 148px;
+  width: 168px;
+  height: 168px;
+  flex: 0 0 168px;
   overflow: visible;
   pointer-events: auto;
   cursor: grab;
   background: transparent !important;
-  border-radius: 50%;
-  transition: transform 420ms cubic-bezier(0.32, 0.72, 0, 1);
+  border-radius: 0;
+  transform: none;
   --custom-contextmenu: yoyo-companion;
   --default-contextmenu: hide;
 }
 .companion-pet-wrap:hover {
-  transform: translateY(-3px);
+  transform: none;
 }
 .companion-pet-wrap:active {
   cursor: grabbing;
-  transform: translateY(0) scale(0.985);
+  transform: none;
 }
 .companion-pet-wrap::after {
   content: "";
@@ -3143,12 +3201,13 @@ html.companion {
 .companion-pet-wrap[data-live="true"]::after,
 .companion-pet-wrap[data-loading="true"]::after {
   opacity: 1;
-  animation: presence-halo 2.8s ease-in-out infinite;
+  animation: presence-halo 4.2s ease-in-out infinite;
 }
 .companion-pet-wrap .presence-engine {
   position: relative;
   z-index: 1;
-  animation: presence-float 6.4s ease-in-out infinite;
+  overflow: visible;
+  animation: none;
 }
 html.companion .presence-engine,
 html.companion .presence-engine svg {
@@ -3161,46 +3220,94 @@ html.companion .presence-engine svg {
   z-index: 2;
   --custom-contextmenu: yoyo-companion;
   --default-contextmenu: hide;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   width: max-content;
-  max-width: min(196px, calc(100% - 8px));
-  margin-top: 6px;
-  padding: 8px 14px;
+  max-width: min(228px, calc(100% - 16px));
+  margin-top: 8px;
+  padding: 10px 14px 11px;
   border: 0;
-  border-radius: 1.15em;
-  background: color-mix(in srgb, var(--popover, #2a2622) 82%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--popover, #2a2622) 90%, transparent);
   color: var(--foreground, #f4f4f0);
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.5;
   letter-spacing: 0.01em;
   text-align: center;
   cursor: pointer;
   pointer-events: none;
-  box-shadow: 0 8px 22px rgba(20, 16, 12, 0.22);
+  transform-origin: 50% 0;
+  box-shadow:
+    0 8px 18px rgba(20, 16, 12, 0.22),
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
   transition:
-    opacity 220ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .companion-bubble.is-off {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(6px) scale(0.94);
   pointer-events: none;
 }
 .companion-bubble.is-on {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 .companion-bubble.is-loading {
-  padding-top: 11px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  padding-top: 12px;
 }
 .companion-bubble-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+  max-width: 100%;
+  animation: companion-line-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.companion-bubble-scroll {
+  max-width: 100%;
+  max-height: 6em;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground, #f4f4f0) 35%, transparent) transparent;
+}
+.companion-bubble-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.companion-bubble-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground, #f4f4f0) 32%, transparent);
+}
+.companion-bubble-kicker {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: color-mix(in srgb, var(--foreground, #f4f4f0) 72%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+.companion-bubble-copy {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+@keyframes companion-line-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 .companion-dots {
   display: inline-flex;
@@ -3214,13 +3321,13 @@ html.companion .presence-engine svg {
   height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--foreground, #f4f4f0) 78%, transparent);
-  animation: companion-dot 1s ease-in-out infinite;
+  animation: companion-dot 1.28s ease-in-out infinite;
 }
-.companion-dots i:nth-child(2) { animation-delay: 160ms; }
-.companion-dots i:nth-child(3) { animation-delay: 320ms; }
+.companion-dots i:nth-child(2) { animation-delay: 140ms; }
+.companion-dots i:nth-child(3) { animation-delay: 280ms; }
 @keyframes companion-dot {
   0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-2px); }
+  40% { opacity: 1; transform: translateY(-1.5px); }
 }
 .companion-bubble.is-loading::before {
   content: "";
@@ -3231,10 +3338,11 @@ html.companion .presence-engine svg {
   height: 2px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 78%, transparent);
-  animation: companion-load 1.15s var(--ease-out, ease) infinite;
+  transform-origin: 50% 50%;
+  animation: companion-load 1.55s ease-in-out infinite;
 }
 @keyframes companion-load {
-  0%, 100% { opacity: 0.28; transform: scaleX(0.45); }
+  0%, 100% { opacity: 0.28; transform: scaleX(0.42); }
   50% { opacity: 1; transform: scaleX(1); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3248,9 +3356,12 @@ html.companion .presence-engine svg {
   .presence-module-shell::after,
   .presence-stamp-face,
   .presence-stamp-eye,
+  .presence-stamp.is-live,
+  .presence-stamp.is-live::after,
   .companion-pet-wrap .presence-engine,
   .companion-pet-wrap[data-live="true"]::after,
-  .companion-pet-wrap[data-loading="true"]::after {
+  .companion-pet-wrap[data-loading="true"]::after,
+  .companion-bubble-text {
     animation: none;
     transform: none;
   }

@@ -53,6 +53,22 @@ export function showLoading(running: boolean, pulse: CompanionPulse | null, appr
   return !!pulse && pulse.kind === "loading" && pulse.until > now;
 }
 
+export function bubbleParts(opts: {
+  approvals: number;
+  pulse: CompanionPulse | null;
+  approvalLine: string;
+  emotionLine: string;
+  now?: number;
+}): { kicker: string; copy: string } {
+  if (opts.approvals > 0) return { kicker: "", copy: opts.approvalLine };
+  const pulse = opts.pulse && opts.pulse.until > (opts.now ?? Date.now()) ? opts.pulse : null;
+  if (!pulse) return { kicker: "", copy: opts.emotionLine };
+  const title = pulse.title.trim();
+  const body = pulse.body.trim();
+  if (body && body !== title) return { kicker: title, copy: body };
+  return { kicker: "", copy: title };
+}
+
 export function bubbleLine(opts: {
   approvals: number;
   pulse: CompanionPulse | null;
@@ -60,8 +76,7 @@ export function bubbleLine(opts: {
   emotionLine: string;
   now?: number;
 }): string {
-  if (opts.approvals > 0) return opts.approvalLine;
-  const pulse = opts.pulse && opts.pulse.until > (opts.now ?? Date.now()) ? opts.pulse : null;
-  if (pulse) return pulse.body ? `${pulse.title} · ${pulse.body}` : pulse.title;
-  return opts.emotionLine;
+  const parts = bubbleParts(opts);
+  if (parts.kicker && parts.copy) return `${parts.kicker} · ${parts.copy}`;
+  return parts.copy || parts.kicker;
 }

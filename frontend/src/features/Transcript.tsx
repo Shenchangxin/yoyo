@@ -208,8 +208,8 @@ export function Transcript(props: {
           space: rowSpace(layout, i, props.compact),
           estimate: agentEstimate(row.copyText),
           render: () => (
-            <article className={cn("assistant-letter group/turn flex min-w-0", props.compact ? "gap-0" : "gap-2.5")} data-testid="agent-turn">
-              {props.compact ? null : <PresenceStamp size={22} className="mt-0.5 shrink-0" />}
+            <article className={cn("assistant-letter group/turn flex min-w-0 gap-2.5", props.compact && "gap-2")} data-testid="agent-turn">
+              <PresenceStamp size={props.compact ? 32 : 36} live={liveHere || (props.running && last)} className="mt-0.5 shrink-0" />
               <div className="min-w-0 flex-1">
               {row.parts.map((part, pi) => (
                 <div

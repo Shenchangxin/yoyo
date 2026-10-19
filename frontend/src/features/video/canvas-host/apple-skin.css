@@ -238,14 +238,19 @@ html.light .yingce-island {
 .yingce-island .creation-submit-cost,
 .yingce-island [class*="wallet"],
 .yingce-island .workspace-credit,
-.yingce-island .app-credit-chip,
-.yingce-island .creation-agent-orb {
+.yingce-island .app-credit-chip {
   display: none !important;
 }
 
+.yingce-island .creation-agent-orb {
+  display: grid !important;
+  place-items: center;
+  align-self: start;
+}
+
 .yingce-island .creation-agent-entry {
-  grid-template-columns: minmax(0, 1fr) !important;
-  gap: 14px !important;
+  grid-template-columns: 88px minmax(0, 1fr) !important;
+  gap: 14px 20px !important;
   padding: 22px !important;
 }
 
@@ -290,6 +295,15 @@ html.light .yingce-island {
 
 /* —— Composer = one chrome only. Nested shell/composer both drawing
    radius+border+shadow is what stacked the four overlapping corners. —— */
+.yingce-island .creation-composer-with-perch {
+  overflow: visible;
+}
+.yingce-island .creation-composer-with-perch .presence-perch {
+  margin-bottom: 6px;
+}
+.yingce-island .creation-message-stamp {
+  background: none !important;
+}
 .yingce-island .creation-composer-shell {
   overflow: hidden;
   background: var(--input-bar) !important;

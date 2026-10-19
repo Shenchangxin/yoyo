@@ -38,6 +38,7 @@ import { quoteModel, type LogicalModelQuote } from "@yingce/services/api/logical
 import { resolveResourceUrl } from "@yingce/services/api/resources";
 import { modelOptionName, resolveModelChannel, type AiConfig } from "@yingce/stores/use-config-store";
 import { useAppearanceStore } from "@yingce/stores/use-appearance-store";
+import { PresencePerch, PresenceStamp } from "@/features/presence";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import type { PromptOptimizerProvider } from "@yingce/lib/plugins/plugin-types";
 import { displayCreationPrompt, type CreationReference } from "./creation-references";
@@ -215,11 +216,12 @@ export function CreationMessageView({ item, shotNumber, onRetryFailure, onCreate
     const mode = item.mode || "text";
     const stateLabel = item.status === "pending" ? "生成中" : item.status === "cancelled" ? "已停止" : item.status === "error" ? "生成失败" : "";
     const stopButton = (item.status === "pending" || item.status === "streaming") && onStop ? <button type="button" className="creation-message-variant-action" onClick={onStop}>停止</button> : null;
+    const stamp = <PresenceStamp size={36} live={item.status === "pending" || item.status === "streaming"} className="creation-message-stamp" />;
     const heading =
         mode !== "text" ? (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}{stamp}<strong>{mode === "image" ? "图像生成" : "视频生成"}</strong>{item.status === "pending" ? <span className="creation-message-progress-copy">{brandName}正在生成{mode === "video" ? "视频" : "图像"}……</span> : item.status === "done" ? <span className="creation-message-progress-copy">你的{mode === "video" ? "视频" : "图像"}已创建</span> : null}{item.status === "done" ? <button type="button" className="creation-message-variant-action" onClick={onCreateVariant}><RefreshCw />生成同款</button> : null}{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         ) : (
-            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}<span className="creation-message-mark"><Clapperboard /></span><strong>{brandName}</strong>{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
+            <>{shotNumber > 0 ? <span className="creation-shot-badge">镜 {shotNumber}</span> : null}{stamp}<strong>{brandName}</strong>{stopButton}{item.createdAt ? <time dateTime={item.createdAt}>{formatMessageTime(item.createdAt)}</time> : null}{stateLabel ? <span className={`creation-message-state is-${item.status}`}>{stateLabel}</span> : null}</>
         );
     const toolStatus: GenerationToolStatus = item.status === "pending" ? "running" : item.status === "error" ? "error" : item.status === "cancelled" ? "cancelled" : "completed";
     return <article className={`creation-assistant-message is-${mode}`}>
@@ -515,7 +517,9 @@ export function CreationComposer(props: ComposerProps) {
         }
         return undefined;
     };
-    const composer = <div className="creation-composer-shell">
+    const composer = <div className={props.variant === "empty" ? "creation-composer-with-perch" : undefined}>
+        {props.variant === "empty" ? <PresencePerch /> : null}
+        <div className="creation-composer-shell">
         <div className={`creation-chat-composer is-${props.variant}`}>
         <div className="creation-chat-writing-surface">
             <div className="creation-chat-editor">
@@ -634,6 +638,7 @@ export function CreationComposer(props: ComposerProps) {
         </footer>
         <CreationMediaPreviewModal url={previewUrl} type={previewType} onClose={() => setPreviewUrl("")} />
         </div>
+    </div>
     </div>;
 
     if (!promptOptimizerOpen) return composer;
