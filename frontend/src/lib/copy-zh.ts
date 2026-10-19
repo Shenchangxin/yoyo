@@ -524,6 +524,8 @@ export const zhCN = {
     isolatedLane: "隔离档",
     attachedLane: "已登录档",
     headedLane: "可见窗口",
+    recordingLane: "录制中",
+    tabsLane: "标签",
     snapshot: "快照",
     page: "页面",
     waitingFrame: "正在等待隔离页…",

@@ -11,32 +11,37 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
-func parseBrowserOpen(raw string) (target, lane string) {
+func parseBrowserOpen(raw string) (target, lane, profile string) {
 	target = strings.TrimSpace(raw)
 	lane = "isolated"
-	low := strings.ToLower(target)
-	if strings.Contains(low, "lane=attached") {
-		lane = "attached"
-		target = strings.TrimSpace(stripLaneToken(target, "attached"))
-	} else if strings.Contains(low, "lane=isolated") {
-		target = strings.TrimSpace(stripLaneToken(target, "isolated"))
+	var kept []string
+	for _, f := range strings.Fields(target) {
+		low := strings.ToLower(f)
+		switch {
+		case low == "lane=attached":
+			lane = "attached"
+		case low == "lane=isolated":
+			lane = "isolated"
+		case strings.HasPrefix(low, "profile="):
+			profile = strings.TrimSpace(f[len("profile="):])
+		default:
+			kept = append(kept, f)
+		}
 	}
-	return target, lane
+	return strings.Join(kept, " "), lane, profile
 }
 
-func stripLaneToken(raw, lane string) string {
-	needle := "lane=" + strings.ToLower(lane)
-	var b strings.Builder
-	for _, f := range strings.Fields(raw) {
-		if strings.ToLower(f) == needle {
-			continue
-		}
-		if b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(f)
+func browserHandle(args map[string]any) string {
+	if args == nil {
+		return ""
 	}
-	return b.String()
+	if ref := strings.TrimSpace(str(args["ref"])); ref != "" {
+		if strings.HasPrefix(strings.ToLower(ref), "ref=") || strings.HasPrefix(strings.ToLower(ref), "ref:") {
+			return ref
+		}
+		return "ref=" + ref
+	}
+	return strings.TrimSpace(str(args["selector"]))
 }
 
 func isRemoteBrowserURL(raw string) bool {

@@ -1936,6 +1936,9 @@ export type BrowserView = {
   title: string;
   lane: string;
   profile: string;
+  profileName: string;
+  recording: boolean;
+  tabCount: number;
   headed: boolean;
   live: boolean;
   text: string;
@@ -1952,6 +1955,9 @@ export async function browserView(): Promise<BrowserView> {
     title: str(pick(raw, "title", "Title")),
     lane: str(pick(raw, "lane", "Lane"), "isolated"),
     profile: str(pick(raw, "profile", "Profile")),
+    profileName: str(pick(raw, "profileName", "ProfileName"), "default"),
+    recording: bool(pick(raw, "recording", "Recording")),
+    tabCount: num(pick(raw, "tabCount", "TabCount")),
     headed: bool(pick(raw, "headed", "Headed")),
     live: bool(pick(raw, "live", "Live")),
     text: str(pick(raw, "text", "Text")),

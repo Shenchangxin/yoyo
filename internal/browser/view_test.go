@@ -17,6 +17,12 @@ func TestViewIdleHasNoChrome(t *testing.T) {
 	if v.Screenshot != "" {
 		t.Fatal("no frame yet")
 	}
+	if v.ProfileName != "default" {
+		t.Fatalf("profileName %q", v.ProfileName)
+	}
+	if v.TabCount != 0 || v.Recording {
+		t.Fatalf("idle view leaked chrome state: %+v", v)
+	}
 }
 
 func TestViewKeepsJournal(t *testing.T) {

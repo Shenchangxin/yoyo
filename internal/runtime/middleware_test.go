@@ -173,3 +173,23 @@ func TestClickMicroNudgeAfterConsecutiveClicks(t *testing.T) {
 		t.Fatal("harbor")
 	}
 }
+
+func TestIdleProgressCallIncludesNewBrowserOps(t *testing.T) {
+	for _, name := range []string{"browser_fill", "browser_scroll", "browser_press", "browser_select", "browser_hover"} {
+		if !idleProgressCall(ToolCall{Name: name}, "ok") {
+			t.Fatalf("%s should count as progress", name)
+		}
+		if idleProgressCall(ToolCall{Name: name}, "ERROR: miss") {
+			t.Fatalf("%s ERROR must not count as progress", name)
+		}
+	}
+}
+
+func TestClickMicroRoundCountsFillAndScroll(t *testing.T) {
+	n := 0
+	recordClickMicro(&n, []ToolCall{{Name: "browser_fill", Arguments: `{"ref":"inp_0","text":"a"}`}})
+	recordClickMicro(&n, []ToolCall{{Name: "browser_scroll", Arguments: `{"direction":"down"}`}})
+	if n != 2 {
+		t.Fatalf("micro n=%d", n)
+	}
+}

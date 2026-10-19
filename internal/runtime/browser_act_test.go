@@ -43,6 +43,29 @@ func TestParseBrowserStepRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestParseBrowserStepFillAndRef(t *testing.T) {
+	st, err := parseBrowserStep(map[string]any{"op": "fill", "ref": "inp_0", "text": "hi"})
+	if err != nil || st.Op != "fill" || st.Selector != "ref=inp_0" || st.Text != "hi" {
+		t.Fatalf("%+v %v", st, err)
+	}
+	st, err = parseBrowserStep(map[string]any{"op": "wait", "contains": "done", "ms": 9000})
+	if err != nil || st.MS != 9000 {
+		t.Fatalf("cond wait %+v %v", st, err)
+	}
+	st, err = parseBrowserStep(map[string]any{"op": "press", "key": "Enter"})
+	if err != nil || st.Op != "press" || st.Key != "Enter" {
+		t.Fatalf("press %+v %v", st, err)
+	}
+	st, err = parseBrowserStep(map[string]any{"op": "scroll", "direction": "down", "amount": 200})
+	if err != nil || st.Op != "scroll" || st.Amount != 200 {
+		t.Fatalf("scroll %+v %v", st, err)
+	}
+	st, err = parseBrowserStep(map[string]any{"op": "tab", "tab": "ABCD1234"})
+	if err != nil || st.Op != "tab" || st.Tab != "ABCD1234" {
+		t.Fatalf("tab %+v %v", st, err)
+	}
+}
+
 func TestFormatBrowserActStops(t *testing.T) {
 	got := formatBrowserAct([]browserStepResult{
 		{Index: 1, Op: "click", OK: true, Detail: "clicked #a"},

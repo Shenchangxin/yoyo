@@ -87,8 +87,42 @@ func TestBrowserOpenRejectsDataURL(t *testing.T) {
 }
 
 func TestParseBrowserOpenStripsLane(t *testing.T) {
-	target, lane := parseBrowserOpen("https://example.com lane=attached")
-	if lane != "attached" || strings.Contains(target, "lane=") {
-		t.Fatalf("%q %q", target, lane)
+	target, lane, profile := parseBrowserOpen("https://example.com lane=attached profile=github")
+	if lane != "attached" || profile != "github" || strings.Contains(target, "lane=") || strings.Contains(target, "profile=") {
+		t.Fatalf("%q %q %q", target, lane, profile)
+	}
+}
+
+func TestBrowserHandlePrefersRef(t *testing.T) {
+	got := browserHandle(map[string]any{"ref": "btn_0", "selector": "#old"})
+	if got != "ref=btn_0" {
+		t.Fatalf("%q", got)
+	}
+	got = browserHandle(map[string]any{"selector": "text=Start"})
+	if got != "text=Start" {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestPersistRecordedSkillWritesWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	tools := &WorkspaceTools{Workspace: dir, Skills: map[string]string{}}
+	sess := &browser.RecordSession{
+		ID:        "r1",
+		SkillName: "login-github",
+		SkillBody: "---\nname: login-github\n---\n# x\n",
+		Events:    []browser.RecordEvent{{Kind: "click"}},
+		Steps:     []browser.SemanticStep{{Kind: "click"}},
+	}
+	res := tools.persistRecordedSkill(sess, "")
+	if res.Err != nil || !strings.Contains(res.Content, "skill=") {
+		t.Fatalf("%+v", res)
+	}
+	rel := filepath.Join(".yoyo", "skills", "login-github", "SKILL.md")
+	if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+		t.Fatal(err)
+	}
+	if tools.Skills["login-github"] == "" {
+		t.Fatal("skill not loaded into session map")
 	}
 }

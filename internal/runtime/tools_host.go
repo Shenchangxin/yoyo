@@ -192,19 +192,47 @@ func init() {
 		if lane := str(args["lane"]); lane != "" {
 			raw = strings.TrimSpace(raw + " lane=" + lane)
 		}
+		if profile := str(args["profile"]); profile != "" {
+			raw = strings.TrimSpace(raw + " profile=" + profile)
+		}
 		return t.browserOpen(raw)
 	}
-	hostFns["browser_snapshot"] = func(t *WorkspaceTools, _ map[string]any, _ string) ToolResult {
-		return t.browserSnapshot()
+	hostFns["browser_snapshot"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserSnapshot(str(args["level"]))
 	}
 	hostFns["browser_click"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.browserClick(str(args["selector"]))
+		return t.browserClick(browserHandle(args))
 	}
 	hostFns["browser_type"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.browserType(str(args["selector"]), str(args["text"]))
+		return t.browserType(browserHandle(args), str(args["text"]))
 	}
 	hostFns["browser_fill"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.browserType(str(args["selector"]), str(args["text"]))
+		return t.browserFill(browserHandle(args), str(args["text"]))
+	}
+	hostFns["browser_scroll"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserScroll(str(args["direction"]), intArg(args["amount"]), browserHandle(args))
+	}
+	hostFns["browser_hover"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserHover(browserHandle(args))
+	}
+	hostFns["browser_select"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		val := str(args["value"])
+		if val == "" {
+			val = str(args["text"])
+		}
+		return t.browserSelect(browserHandle(args), val)
+	}
+	hostFns["browser_press"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserPress(str(args["key"]))
+	}
+	hostFns["browser_tabs"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserTabs(str(args["op"]), str(args["tab_id"]), str(args["url"]))
+	}
+	hostFns["browser_profile"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserProfile(str(args["op"]), str(args["name"]))
+	}
+	hostFns["browser_record"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
+		return t.browserRecord(str(args["op"]), str(args["name"]))
 	}
 	hostFns["browser_download"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		return t.browserDownload(str(args["url"]), str(args["path"]))

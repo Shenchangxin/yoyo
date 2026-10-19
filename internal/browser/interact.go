@@ -24,15 +24,30 @@ const (
 	actionWait = 4 * time.Second
 	actionPoll = 120 * time.Millisecond
 	// maxActions bounds the action list shown to the model.
-	maxActions = 24
+	maxActions = 48
+	// maxActionCollect is how many interactive nodes the page walk keeps
+	// before formatting. Structured snapshots can use the extra ones.
+	maxActionCollect = 60
 )
 
-// Action is an element the page offers for interaction.
+// Action is an element the page offers for interaction. Ref is a short
+// handle (btn_0) assigned by the live walk; it is valid until navigation.
 type Action struct {
-	Selector string `json:"selector"`
-	Tag      string `json:"tag"`
-	Text     string `json:"text"`
-	Disabled bool   `json:"disabled,omitempty"`
+	Ref         string   `json:"ref,omitempty"`
+	Selector    string   `json:"selector"`
+	Tag         string   `json:"tag"`
+	Text        string   `json:"text"`
+	Disabled    bool     `json:"disabled,omitempty"`
+	Role        string   `json:"role,omitempty"`
+	TestID      string   `json:"testId,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Placeholder string   `json:"placeholder,omitempty"`
+	ID          string   `json:"id,omitempty"`
+	NameAttr    string   `json:"nameAttr,omitempty"`
+	Href        string   `json:"href,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	FramePath   []string `json:"framePath,omitempty"`
+	ShadowPath  []string `json:"shadowPath,omitempty"`
 }
 
 // probe is the JSON result of one resolve-and-check evaluation.
@@ -44,79 +59,9 @@ type probe struct {
 	Tag    string  `json:"tag"`
 	Text   string  `json:"text"`
 	By     string  `json:"by"`
+	Ref    string  `json:"ref"`
 	Error  string  `json:"error"`
 }
-
-// pageHelpers holds the single definition of interactive, visible and text
-// that the action list, click and type all share. Only function declarations
-// go here: each evaluation wraps them in its own IIFE, so nothing leaks into
-// the page's global scope or collides across calls.
-const pageHelpers = `
-function __yoyoVisible(el) {
-  const r = el.getBoundingClientRect();
-  if (r.width < 2 || r.height < 2) return false;
-  const cs = getComputedStyle(el);
-  return cs.visibility !== "hidden" && cs.display !== "none" && parseFloat(cs.opacity) > 0;
-}
-function __yoyoText(el) {
-  const t = el.innerText || el.value || el.getAttribute("aria-label") || el.title || "";
-  return String(t).replace(/\s+/g, " ").trim().slice(0, 90);
-}
-function __yoyoCandidates() {
-  const out = Array.from(document.querySelectorAll('button,a[href],input:not([type=hidden]),select,textarea,summary,[role=button],[role=option],[role=link],[role=menuitem],[role=tab],[role=radio],[role=checkbox],[onclick],[data-opt],[data-action],[tabindex]:not([tabindex="-1"])'));
-  const seen = new Set(out);
-  if (document.body) {
-    const all = document.body.querySelectorAll("*");
-    for (let i = 0; i < all.length && i < 3000; i++) {
-      const el = all[i];
-      if (seen.has(el) || getComputedStyle(el).cursor !== "pointer") continue;
-      const pe = el.parentElement;
-      if (pe && getComputedStyle(pe).cursor === "pointer") continue;
-      out.push(el);
-      seen.add(el);
-    }
-  }
-  return out;
-}
-function __yoyoSel(el) {
-  const ident = /^[A-Za-z][\w-]*$/;
-  const ok = (s) => { try { return document.querySelector(s) === el; } catch (e) { return false; } };
-  if (el.id && ident.test(el.id) && ok("#" + el.id)) return "#" + el.id;
-  const parts = [];
-  for (let n = el; n && n.nodeType === 1 && n !== document.documentElement; n = n.parentElement) {
-    if (n.id && ident.test(n.id)) { parts.unshift("#" + n.id); break; }
-    let p = n.tagName.toLowerCase();
-    if (n.parentElement) {
-      const same = Array.from(n.parentElement.children).filter((c) => c.tagName === n.tagName);
-      if (same.length > 1) p += ":nth-of-type(" + (same.indexOf(n) + 1) + ")";
-    }
-    parts.unshift(p);
-  }
-  const s = parts.join(" > ");
-  return ok(s) ? s : "";
-}
-function __yoyoResolve(sel) {
-  if (sel.indexOf("text=") === 0) {
-    const want = sel.slice(5).trim();
-    let best = null;
-    let bestLen = Infinity;
-    for (const c of __yoyoCandidates()) {
-      const t = __yoyoText(c);
-      if (!t || t.indexOf(want) < 0 || !__yoyoVisible(c)) continue;
-      if (t.length < bestLen) { best = c; bestLen = t.length; }
-    }
-    return best;
-  }
-  return document.querySelector(sel);
-}
-function __yoyoDescribe(el) {
-  if (!el) return "nothing";
-  const id = el.id ? "#" + el.id : "";
-  const cls = el.classList && el.classList.length ? "." + Array.from(el.classList).slice(0, 2).join(".") : "";
-  const t = __yoyoText(el).slice(0, 30);
-  return el.tagName.toLowerCase() + id + cls + (t ? ' "' + t + '"' : "");
-}
-`
 
 // probeJS resolves sel, checks it, and either focuses it (focusOnly) or
 // returns the centre point to press. It never clicks by itself.
@@ -125,39 +70,34 @@ func probeJS(sel string, focusOnly bool) string {
 	return fmt.Sprintf(`(() => {
 %s
   const sel = %s;
-  let el;
-  try { el = __yoyoResolve(sel); } catch (e) { return JSON.stringify({ok:false, reason:"bad-selector", error:String(e)}); }
-  if (!el) return JSON.stringify({ok:false, reason:"missing"});
-  if (!__yoyoVisible(el)) return JSON.stringify({ok:false, reason:"hidden", text:__yoyoText(el)});
-  if (el.disabled) return JSON.stringify({ok:false, reason:"disabled", text:__yoyoText(el)});
+  let rec;
+  try { rec = __yoyoResolveRec(sel); } catch (e) { return JSON.stringify({ok:false, reason:"bad-selector", error:String(e)}); }
+  if (!rec || !rec.el) return JSON.stringify({ok:false, reason:"missing"});
+  const el = rec.el;
+  if (!__yoyoVisible(el)) return JSON.stringify({ok:false, reason:"hidden", text:__yoyoText(el), ref:rec.ref});
+  if (el.disabled) return JSON.stringify({ok:false, reason:"disabled", text:__yoyoText(el), ref:rec.ref});
   el.scrollIntoView({block:"center", inline:"center"});
   if (%t) {
     el.focus();
-    return JSON.stringify({ok:true, tag:el.tagName.toLowerCase(), text:__yoyoText(el)});
+    return JSON.stringify({ok:true, tag:el.tagName.toLowerCase(), text:__yoyoText(el), ref:rec.ref});
   }
-  const r = el.getBoundingClientRect();
-  const x = r.left + r.width / 2;
-  const y = r.top + r.height / 2;
-  const top = document.elementFromPoint(x, y);
-  if (!top || (top !== el && !el.contains(top))) {
-    return JSON.stringify({ok:false, reason:"covered", by:__yoyoDescribe(top)});
+  const hit = __yoyoHitOK(rec);
+  if (!hit.ok) {
+    return JSON.stringify({ok:false, reason:"covered", by:hit.by, ref:rec.ref, text:__yoyoText(el)});
   }
-  return JSON.stringify({ok:true, x:x, y:y, tag:el.tagName.toLowerCase(), text:__yoyoText(el)});
+  return JSON.stringify({ok:true, x:hit.x, y:hit.y, tag:el.tagName.toLowerCase(), text:__yoyoText(el), ref:rec.ref});
 })()`, pageHelpers, quoted, focusOnly)
 }
 
-// actionsJS lists the visible, addressable interactive elements.
+// actionsJS lists the visible, addressable interactive elements with refs.
 const actionsJS = `(() => {
 ` + pageHelpers + `
   const out = [];
-  for (const el of __yoyoCandidates()) {
-    if (!__yoyoVisible(el)) continue;
-    const t = __yoyoText(el);
-    let s = __yoyoSel(el);
-    if (!s && t) s = "text=" + t.slice(0, 40);
-    if (!s) continue;
-    out.push({selector: s, tag: el.tagName.toLowerCase(), text: t, disabled: !!el.disabled});
-    if (out.length >= 40) break;
+  for (const c of __yoyoCandidates()) {
+    const a = __yoyoActionOf(c);
+    if (!a.selector && !a.ref) continue;
+    out.push(a);
+    if (out.length >= 60) break;
   }
   return JSON.stringify(out);
 })()`
@@ -182,7 +122,11 @@ func (h *Host) Click(sel string) (string, error) {
 	if h.pageText() == before {
 		note = "no visible text change"
 	}
-	obs := fmt.Sprintf("clicked %s → <%s> %q at (%d,%d); %s", sel, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), note)
+	handle := sel
+	if p.Ref != "" {
+		handle = "ref=" + p.Ref
+	}
+	obs := fmt.Sprintf("clicked %s → <%s> %q at (%d,%d); %s", handle, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), note)
 	h.setLastAction(obs)
 	return obs + h.pageErrorsNote() + h.actionsNote(), nil
 }
@@ -212,8 +156,35 @@ func (h *Host) Type(sel, text string) (string, error) {
 	return fmt.Sprintf("typed %d key(s) into %s; %s%s%s", utf8.RuneCountInString(text), target, note, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// Fill is the historical name for Type.
-func (h *Host) Fill(sel, text string) (string, error) { return h.Type(sel, text) }
+// Fill replaces the current field value. Type appends key events; Fill
+// selects all, deletes, then types, so a second fill does not concatenate.
+func (h *Host) Fill(sel, text string) (string, error) {
+	h.record("fill", sel)
+	if err := h.ensureChrome(h.previewStartURL()); err != nil {
+		return "", fmt.Errorf("browser: fill %s: %w", sel, err)
+	}
+	before := h.pageText()
+	if strings.TrimSpace(sel) == "" {
+		return "", fmt.Errorf("browser: fill needs a selector or ref")
+	}
+	if _, err := h.waitFor(sel, true); err != nil {
+		return "", err
+	}
+	if err := h.selectAllClear(); err != nil {
+		return "", err
+	}
+	if err := h.typeCDP("", text); err != nil {
+		return "", err
+	}
+	time.Sleep(150 * time.Millisecond)
+	h.syncView()
+	h.refreshActions()
+	note := "page text changed"
+	if h.pageText() == before {
+		note = "no visible text change"
+	}
+	return fmt.Sprintf("filled %d rune(s) into %s; %s%s%s", utf8.RuneCountInString(text), sel, note, h.pageErrorsNote(), h.actionsNote()), nil
+}
 
 // WaitVisible waits until sel is actionable. It does not click. browser_act
 // uses this for assert steps so a sequence can stop before a covered target.
@@ -240,7 +211,7 @@ func (h *Host) Refresh() (snap Snapshot, live bool) {
 		h.syncView()
 		h.refreshActions()
 	}
-	snap = h.snapshotLocked()
+	snap = h.snapshotWithElements()
 	if live {
 		snap.Errors = h.takePageErrors()
 	}
@@ -280,21 +251,34 @@ func (h *Host) typeCDP(sel, text string) error {
 }
 
 // waitFor polls the probe until the target is actionable or the window ends.
+// A miss on a stale ref retries once against the last snapshot's descriptors
+// (testid / id / accessible name) so a re-render does not force the model
+// to guess a new CSS path.
 func (h *Host) waitFor(sel string, focusOnly bool) (probe, error) {
 	deadline := time.Now().Add(actionWait)
+	var last probe
 	for {
 		p, err := h.probeOn(sel, focusOnly)
 		if err != nil {
 			return probe{}, err
 		}
+		last = p
 		if p.OK {
 			return p, nil
 		}
 		if p.Reason == "bad-selector" || !time.Now().Before(deadline) {
-			return probe{}, h.explainMiss(sel, p)
+			break
 		}
 		time.Sleep(actionPoll)
 	}
+	if alt, why := h.matchFallback(sel); alt != "" && alt != sel {
+		p, err := h.probeOn(alt, focusOnly)
+		if err == nil && p.OK {
+			h.record("match", why+": "+sel+" → "+alt)
+			return p, nil
+		}
+	}
+	return probe{}, h.explainMiss(sel, last)
 }
 
 func (h *Host) probeOn(sel string, focusOnly bool) (probe, error) {
@@ -351,6 +335,25 @@ func (h *Host) explainMiss(sel string, p probe) error {
 
 // keyTap sends one character as a keyDown/keyUp pair with text, which fires
 // keydown, keypress and input the way the keyboard does.
+func (h *Host) selectAllClear() error {
+	// Ctrl+A and Meta+A: Chrome ignores the modifier that is not native.
+	for _, modifiers := range []int{2, 4} {
+		down := map[string]any{"type": "keyDown", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": modifiers}
+		up := map[string]any{"type": "keyUp", "key": "a", "code": "KeyA", "windowsVirtualKeyCode": 65, "modifiers": modifiers}
+		if _, err := h.callCDP("Input.dispatchKeyEvent", down); err != nil {
+			return err
+		}
+		if _, err := h.callCDP("Input.dispatchKeyEvent", up); err != nil {
+			return err
+		}
+	}
+	if _, err := h.callCDP("Input.dispatchKeyEvent", map[string]any{"type": "keyDown", "key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8}); err != nil {
+		return err
+	}
+	_, err := h.callCDP("Input.dispatchKeyEvent", map[string]any{"type": "keyUp", "key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8})
+	return err
+}
+
 func (h *Host) keyTap(r rune) error {
 	k := keyFor(r)
 	down := map[string]any{"type": "keyDown", "key": k.key, "code": k.code, "windowsVirtualKeyCode": k.vk}
@@ -399,20 +402,27 @@ func (h *Host) actionsList() ([]Action, error) {
 	if err := json.Unmarshal([]byte(cleanJS(out)), &acts); err != nil {
 		return nil, err
 	}
-	if len(acts) > maxActions {
-		acts = acts[:maxActions]
+	if len(acts) > maxActionCollect {
+		acts = acts[:maxActionCollect]
 	}
 	return acts, nil
 }
 
 func formatActions(acts []Action) string {
+	if len(acts) > maxActions {
+		acts = acts[:maxActions]
+	}
 	var b strings.Builder
 	for _, a := range acts {
 		dis := ""
 		if a.Disabled {
 			dis = " (disabled)"
 		}
-		fmt.Fprintf(&b, "  %s  <%s> %q%s\n", a.Selector, a.Tag, a.Text, dis)
+		ref := a.Ref
+		if ref != "" {
+			ref = "[ref=" + ref + "]  "
+		}
+		fmt.Fprintf(&b, "  %s%s  <%s> %q%s\n", ref, a.Selector, a.Tag, a.Text, dis)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -427,6 +437,7 @@ func (h *Host) refreshActions() {
 	if err != nil {
 		return
 	}
+	h.refs.store(acts)
 	h.mu.Lock()
 	h.actions = formatActions(acts)
 	h.mu.Unlock()

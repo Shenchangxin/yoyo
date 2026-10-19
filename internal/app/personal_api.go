@@ -144,16 +144,19 @@ func (a *App) BrowserView() map[string]any {
 		}
 	}
 	return map[string]any{
-		"url":        v.URL,
-		"title":      v.Title,
-		"lane":       v.Lane,
-		"profile":    v.Profile,
-		"headed":     v.Headed,
-		"live":       v.Live,
-		"text":       v.Text,
-		"screenshot": v.Screenshot,
-		"preview":    preview,
-		"log":        v.Log,
+		"url":         v.URL,
+		"title":       v.Title,
+		"lane":        v.Lane,
+		"profile":     v.Profile,
+		"profileName": v.ProfileName,
+		"recording":   v.Recording,
+		"tabCount":    v.TabCount,
+		"headed":      v.Headed,
+		"live":        v.Live,
+		"text":        v.Text,
+		"screenshot":  v.Screenshot,
+		"preview":     preview,
+		"log":         v.Log,
 	}
 }
 

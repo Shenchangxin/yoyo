@@ -10,9 +10,11 @@ import (
 )
 
 type cdpTarget struct {
-	Type string `json:"type"`
-	WS   string `json:"webSocketDebuggerUrl"`
-	URL  string `json:"url"`
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	WS    string `json:"webSocketDebuggerUrl"`
+	URL   string `json:"url"`
+	Title string `json:"title"`
 }
 
 func pageWS(addr string) (string, error) {

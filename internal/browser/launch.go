@@ -118,6 +118,7 @@ func waitProfileUnlocked(profile string, d time.Duration) {
 	locks := []string{
 		filepath.Join(profile, "SingletonLock"),
 		filepath.Join(profile, "SingletonSocket"),
+		filepath.Join(profile, "SingletonCookie"),
 		filepath.Join(profile, "lockfile"),
 	}
 	for time.Now().Before(deadline) {

@@ -11,9 +11,9 @@ import (
 
 const ActionLadderPin = `
 ## Action ladder
-1. Workspace HTML/CSS/JS: write_file (≤32 KB per call; append the rest), then browser_open the relative path once. That opens the inspector Browser pane AND isolated Chrome (relative JS/CSS served). browser_act runs a click/wait/assert sequence on that page; browser_screenshot and browser_click also use the current page and do not reload — reopening the same file wipes clicks. Playable evidence uses browser_verify: open is the HTML; root is the game project directory (omit it to infer from open — never a CSS selector). It writes <project>/qa/verification.json. Do not start a static server, and do not pass file:// or data: URLs to isolated Chrome.
+1. Workspace HTML/CSS/JS: write_file (≤32 KB per call; append the rest), then browser_open the relative path once. That opens the inspector Browser pane AND isolated Chrome (relative JS/CSS served). browser_act runs a click/wait/assert sequence on that page; browser_screenshot and browser_click also use the current page and do not reload — reopening the same file wipes clicks. Snapshot first (level=full for games, interactive for remote sites) and click ref= handles, not guessed CSS. Playable evidence uses browser_verify: open is the HTML; root is the game project directory (omit it to infer from open — never a CSS selector). It writes <project>/qa/verification.json. Do not start a static server, and do not pass file:// or data: URLs to isolated Chrome.
 2. Prefer connector_read / connector_draft / connector_send when a live account exists for that service.
-3. Use the isolated browser (browser_open with http/https) when there is no connector. Default profile is isolated; attached login is opt-in.
+3. Use the isolated browser (browser_open with http/https) when there is no connector. Default profile is isolated; named profiles (github, work) persist logins without touching the operator Chrome. attached login is opt-in. load_skill browser-use before a long web flow.
 4. computer_act is last resort on the virtual display, never the operator desktop.
 Do not screenshot or click a service that already has a live connector.
 Scheduled jobs and computer_act require this machine to stay awake. Closing the lid stops the agent.
