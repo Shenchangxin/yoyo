@@ -108,8 +108,29 @@ func (e *Engine) SaveTopic(in Topic) (Topic, error) {
 		if in.SourceHash == "" {
 			in.SourceHash = cur.SourceHash
 		}
+		if in.SourcePlatform == "" {
+			in.SourcePlatform = cur.SourcePlatform
+		}
+		if in.SourceTitle == "" {
+			in.SourceTitle = cur.SourceTitle
+		}
+		if in.Angle == "" {
+			in.Angle = cur.Angle
+		}
+		if in.Format == "" {
+			in.Format = cur.Format
+		}
+		if in.Note == "" {
+			in.Note = cur.Note
+		}
+		if in.Scores == nil {
+			in.Scores = cur.Scores
+		}
 		if in.Options == nil {
 			in.Options = cur.Options
+		}
+		if strings.TrimSpace(in.Status) == "" {
+			in.Status = cur.Status
 		}
 	} else {
 		in.CreatedAt = now

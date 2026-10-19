@@ -669,7 +669,10 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	case "drama.plan.get":
 		plan, err := eng.GetPlan(str("drama_id"))
 		if err != nil {
-			return map[string]any{}, nil
+			if strings.Contains(err.Error(), "not found") {
+				return map[string]any{}, nil
+			}
+			return nil, err
 		}
 		return plan, nil
 	case "drama.plan.propose":
@@ -814,7 +817,9 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			Prompt:    studioJobPrompt(t, video.StudioProject{}),
 			Workspace: a.VideoWorkspace(),
 			Channel:   session.ChannelVideo,
+			SessionID: str("session_id"),
 			TopicID:   t.ID,
+			Aspect:    str("aspect"),
 		})
 		return map[string]any{"ok": true, "job": job, "topic": t}, nil
 	case "video.topic.unschedule":
@@ -1515,7 +1520,7 @@ func (a *App) runStudioJob(j schedule.Job) {
 		}
 	}
 	if studioID == "" && strings.TrimSpace(j.TopicID) != "" {
-		if p, err := eng.StudioFromTopic(j.TopicID, ""); err == nil {
+		if p, err := eng.StudioFromTopic(j.TopicID, strings.TrimSpace(j.Aspect)); err == nil {
 			studioID = p.ID
 		}
 	}
@@ -1523,7 +1528,7 @@ func (a *App) runStudioJob(j schedule.Job) {
 		if title := studioTitleFromPrompt(j.Prompt); title != "" {
 			for _, t := range eng.ListTopics("") {
 				if strings.TrimSpace(t.Title) == title {
-					if p, err := eng.StudioFromTopic(t.ID, ""); err == nil {
+					if p, err := eng.StudioFromTopic(t.ID, strings.TrimSpace(j.Aspect)); err == nil {
 						studioID = p.ID
 					}
 					break

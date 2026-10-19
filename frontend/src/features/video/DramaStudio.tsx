@@ -53,6 +53,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const [killAsset, setKillAsset] = useState<{ kind: string; id: string } | null>(null);
   const [plan, setPlan] = useState<EpisodePlan | null>(null);
   const [dramaJobs, setDramaJobs] = useState<Job[]>([]);
+  const [listReady, setListReady] = useState(false);
   const queueRef = useRef<PhaseStep[]>([]);
   const waitingTurn = useRef(false);
   const kickRef = useRef<() => Promise<void>>(async () => {});
@@ -69,6 +70,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
       return;
     }
     const b = (await api.video.bundle(id)) as Bundle;
+    if (useDramaSelection.getState().episodeId !== id) return;
     setBundle(b);
     setFfmpeg(b?.status?.ffmpeg !== false);
     if (b?.status?.ffmpeg_install && typeof b.status.ffmpeg_install === "object") setFfmpegInstall(b.status.ffmpeg_install);
@@ -89,7 +91,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   }, []);
 
   useEffect(() => {
-    void loadList().catch((e) => setErr(api.errMessage(e)));
+    void loadList().catch((e) => setErr(api.errMessage(e))).finally(() => setListReady(true));
     void api.video.styles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {});
     void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
     void api.video.status().then((s) => {
@@ -517,18 +519,20 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             <span className="font-mono text-[10px] tabular-nums text-muted">{drama.aspect_ratio}</span>
           </Tooltip>
         ) : null}
-        <div className="drama-phase" role="tablist" aria-label={copy.video.desk}>
+        <nav className="drama-phase" aria-label={copy.video.desk}>
           {PHASES.map((id, i) => {
             const done = phaseDone(ep, bundle, id);
+            const locked = !showDesk;
             return (
               <span key={id} className="flex items-center">
                 <button
                   type="button"
-                  role="tab"
                   data-testid={`drama-phase-${id}`}
-                  aria-selected={pane === id}
+                  aria-current={pane === id ? "step" : undefined}
+                  aria-disabled={locked || undefined}
+                  disabled={locked}
                   className={cn("drama-phase-step", pane === id && "is-on", done && "is-done")}
-                  onClick={() => setPane(id)}
+                  onClick={() => { if (!locked) setPane(id); }}
                 >
                   <span className="drama-phase-dot">{done ? <Check className="size-2.5" /> : i + 1}</span>
                   {phaseLabel[id]}
@@ -537,7 +541,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
               </span>
             );
           })}
-        </div>
+        </nav>
         {showDesk || showMap ? (
           <Button size="sm" data-testid="drama-phase-cta" disabled={!!busy} onClick={() => showMap ? void confirmMap() : void runPhase()}>
             {busy ? copy.video.stageBusy : showMap ? copy.video.mapConfirm : ctaLabel}
@@ -546,6 +550,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         <button
           type="button"
           className={cn("ml-auto inline-flex h-7 items-center gap-1 rounded-[8px] px-2 text-[11px] font-medium", tasksOpen ? "bg-lift text-foreground" : "text-muted hover:bg-lift hover:text-foreground")}
+          aria-pressed={tasksOpen}
+          aria-label={copy.video.jobs}
           onClick={() => setTasksOpen((v) => !v)}
         >
           {copy.video.jobs}
@@ -596,8 +602,21 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           onMerge={(n) => void run("merge", async () => { setPlan(await api.video.mergePlanEpisodes(dramaId, n) as EpisodePlan); })}
           onBible={() => void extractBible()}
         />
+      ) : !listReady ? (
+        <div className="drama-empty-desk" aria-busy="true" data-testid="drama-list-loading">
+          <p className="drama-empty-kicker">{copy.video.loadingList}</p>
+          <p className="drama-empty-body">{copy.video.emptyHint}</p>
+        </div>
       ) : !showDesk ? (
-        <EmptyDesk copy={copy} onNameSeries={() => { setDraftTitle(""); setCreating(true); }} />
+        <EmptyDesk
+          copy={copy}
+          dramas={dramas}
+          onNameSeries={() => { setDraftTitle(""); setCreating(true); }}
+          onPick={(id) => {
+            setDramaId(id);
+            setEpisodeId("");
+          }}
+        />
       ) : (
         <>
           <div className="drama-body">
@@ -620,7 +639,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                 ) : focused?.poster_url ? (
                   <img src={focused.poster_url} alt="" />
                 ) : (
-                  <div className="grid aspect-video w-full max-w-xl place-items-center rounded-[10px] bg-black/40 text-[12px] text-[#f4f4f0]/55">{copy.video.noClip}</div>
+                  <div className="drama-viewer-placeholder">{copy.video.noClip}</div>
                 )}
               </div>
             </section>
@@ -630,7 +649,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   <span className="text-[11px] text-muted">{copy.video.seriesName}</span>
                   <Input
                     className="h-7 text-[13px] font-medium"
-                    value={shownSeriesTitle(drama?.title, copy.video.untitled)}
+                    value={drama?.title || ""}
+                    placeholder={copy.video.untitled}
                     aria-label={copy.video.seriesName}
                     onChange={(e) => {
                       const title = e.target.value;
@@ -647,7 +667,8 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                   <span className="text-[11px] text-muted">{copy.video.episodeName}</span>
                   <Input
                     className="h-7 text-[13px]"
-                    value={shownEpisodeTitle(ep?.title, ep?.episode_number, copy.video.episodeN)}
+                    value={ep?.title || ""}
+                    placeholder={shownEpisodeTitle("", ep?.episode_number, copy.video.episodeN)}
                     aria-label={copy.video.episodeName}
                     onChange={(e) => {
                       const title = e.target.value;
@@ -765,7 +786,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                       onClick={() => { if (!ghost) setFocusShot(s.id); }}
                     >
                       {s.poster_url || s.video_url ? (
-                        <img src={s.poster_url || ""} alt="" />
+                        <img src={s.poster_url || ""} alt={s.title || copy.video.shotN.replace("{n}", String(s.shot_number))} />
                       ) : (
                         <span className="drama-shot-empty grid place-items-center text-[10px]">{String(s.shot_number).padStart(2, "0")}</span>
                       )}
@@ -776,7 +797,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
                         type="button"
                         className={cn("drama-shot-check", included && "is-on")}
                         aria-pressed={included}
-                        aria-label={included ? copy.video.selectNone : copy.video.selectAll}
+                        aria-label={(included ? copy.video.excludeShot : copy.video.includeShot).replace("{n}", String(s.shot_number))}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelShots({ ...selShots, [s.id]: !included });
@@ -791,12 +812,17 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
             </div>
           ) : null}
           {tasksOpen ? (
-            <div className="drama-task-drawer">
+            <div className="drama-task-drawer" role="status">
               <JobDrawer jobs={dramaJobs.length ? dramaJobs : (bundle?.jobs || [])} bundle={bundle} episodes={episodes} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
             </div>
           ) : null}
         </>
       )}
+      {tasksOpen && !showDesk ? (
+        <div className="drama-task-drawer" role="status">
+          <JobDrawer jobs={dramaJobs} bundle={bundle} episodes={episodes} copy={copy} onRetry={(id) => void run("retry", () => api.video.retryJob(id))} onCancel={(id) => void run("cancel", () => api.video.cancelJob(id))} />
+        </div>
+      ) : null}
       <ConfirmDialog
         open={creating}
         title={copy.video.newDrama}
@@ -804,11 +830,19 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
           <span className="grid gap-2 pt-2">
             <label className="grid gap-1">
               <span className="text-[11px] text-muted">{copy.video.createName}</span>
-              <Input value={draftTitle} placeholder={copy.video.untitled} onChange={(e) => setDraftTitle(e.target.value)} />
+              <Input autoFocus value={draftTitle} placeholder={copy.video.untitled} onChange={(e) => setDraftTitle(e.target.value)} />
             </label>
             <span className="flex rounded-[8px] bg-lift p-0.5">
               {["9:16", "16:9", "1:1"].map((r) => (
-                <button key={r} type="button" className={cn("flex-1 rounded-[6px] px-1.5 py-1 font-mono text-[10px]", ratio === r ? "bg-card text-foreground" : "text-muted")} onClick={() => setRatio(r)}>{r}</button>
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={ratio === r}
+                  className={cn("flex-1 rounded-[6px] px-1.5 py-1 font-mono text-[10px]", ratio === r ? "bg-card text-foreground" : "text-muted")}
+                  onClick={() => setRatio(r)}
+                >
+                  {r}
+                </button>
               ))}
             </span>
           </span>
@@ -826,10 +860,17 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         onCancel={() => setKillEp(false)}
         onConfirm={async () => {
           if (!episodeId) return;
-          await api.video.deleteEpisode(episodeId);
-          setEpisodeId("");
-          setKillEp(false);
-          await loadList();
+          const id = episodeId;
+          try {
+            await api.video.deleteEpisode(id);
+            const next = episodes.filter((e) => e.id !== id);
+            setEpisodes(next);
+            setEpisodeId(next[0]?.id || "");
+            setKillEp(false);
+            await loadList();
+          } catch (e) {
+            toast.error(api.errMessage(e));
+          }
         }}
       />
       <ConfirmDialog
@@ -841,10 +882,14 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
         onCancel={() => setKillAsset(null)}
         onConfirm={async () => {
           if (!killAsset) return;
-          await api.video.deleteAsset(killAsset.kind, killAsset.id);
-          setKillAsset(null);
-          setFocusAsset({ kind: "", id: "" });
-          if (episodeId) await loadBundle(episodeId);
+          try {
+            await api.video.deleteAsset(killAsset.kind, killAsset.id);
+            setKillAsset(null);
+            setFocusAsset({ kind: "", id: "" });
+            if (episodeId) await loadBundle(episodeId);
+          } catch (e) {
+            toast.error(api.errMessage(e));
+          }
         }}
       />
     </div>

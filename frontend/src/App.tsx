@@ -127,7 +127,7 @@ function WorkstationApp() {
   }, []);
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
-  const home = !staged && (agent || videoing) && ws.items.length === 0 && !ws.threadRunning && ws.approvals.length === 0;
+  const home = !staged && (agent || videoing) && (ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0;
   const copilotItems = paneMismatch ? [] : ws.items;
   const boundCopilotId = studioDesk ? studioCopilotSession : "";
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
@@ -435,7 +435,7 @@ function WorkstationApp() {
             onJumpLatest={ws.jumpToLatest}
           />
         )}
-        <div className={cn("sc-seat", home ? "mx-auto mt-8 w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8" : cn(THREAD_COL, THREAD_GUTTER))}>
+        <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8", createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
           {!home && !videoing && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
@@ -765,7 +765,7 @@ function WorkstationApp() {
       onRefreshHistory={ws.loadVideoHistory}
       onNeedSession={async () => (await ws.ensureThread()).id}
       onClose={() => {
-        useUI.getState().openVideoPane("chat");
+        useUI.getState().openVideoPane("create");
       }}
     />
   );

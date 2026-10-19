@@ -18,8 +18,10 @@ import {
   providerKey,
   selectedClipIds,
   serviceKind,
+  shownSeriesTitle,
   type Asset,
   type Bundle,
+  type Drama,
   type Episode,
   type EpisodePlan,
   type Job,
@@ -158,6 +160,7 @@ export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["pl
         <Textarea
           className="min-h-[calc(100%-1.5rem)] rounded-[10px] border border-border bg-card px-3 py-2 text-[13px] leading-6"
           value={content}
+          placeholder={c.needSource}
           onChange={(e) => setContent(e.target.value)}
           onBlur={() => props.onSave({ content, script_content: script })}
         />
@@ -167,6 +170,7 @@ export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["pl
         <Textarea
           className="min-h-[calc(100%-1.5rem)] rounded-[10px] border border-border bg-card px-3 py-2 font-mono text-[13px] leading-6"
           value={script}
+          placeholder={c.screenplay}
           onChange={(e) => setScript(e.target.value)}
           onBlur={() => props.onSave({ content, script_content: script })}
         />
@@ -243,9 +247,10 @@ function LookGroup(props: {
                 key={a.id}
                 type="button"
                 className={cn("drama-look-card", props.focusId === a.id && "is-on")}
+                aria-pressed={props.focusId === a.id}
                 onClick={() => props.onFocus(props.kind, a.id)}
               >
-                {a.image_url ? <img src={a.image_url} alt="" /> : <span className="drama-look-empty grid place-items-center text-[11px]">{narrator ? c.narrator : "—"}</span>}
+                {a.image_url ? <img src={a.image_url} alt={assetName(a, props.kind)} /> : <span className="drama-look-empty grid place-items-center text-[11px]">{narrator ? c.narrator : "—"}</span>}
                 <span className="truncate text-[12px] font-medium">{assetName(a, props.kind)}</span>
               </button>
             );
@@ -286,7 +291,7 @@ export function CastInspector(props: {
       ) : null}
       <Textarea className="min-h-[72px] rounded-lg border border-border bg-card px-2 py-1.5 text-[12px]" defaultValue={a.final_prompt || ""} placeholder={c.finalPrompt} onBlur={(e) => props.onSave({ final_prompt: e.target.value })} />
       <div className="flex flex-wrap items-center gap-1.5">
-        <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={c.upload}>
+        <label className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" title={c.upload} aria-label={c.upload}>
           <ImagePlus className="size-3.5" />
           <input type="file" accept="image/*" className="hidden" onChange={(e) => {
             const f = e.target.files?.[0];
@@ -348,6 +353,7 @@ export function BoardInspector(props: {
               <button
                 key={ch.id}
                 type="button"
+                aria-pressed={on}
                 className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
                 onClick={() => {
                   const next = on ? (s.character_ids || []).filter((id) => id !== ch.id) : [...(s.character_ids || []), ch.id];
@@ -367,6 +373,7 @@ export function BoardInspector(props: {
               <button
                 key={p.id}
                 type="button"
+                aria-pressed={on}
                 className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-foreground text-background" : "bg-lift text-muted")}
                 onClick={() => {
                   const next = on ? (s.prop_ids || []).filter((id) => id !== p.id) : [...(s.prop_ids || []), p.id];
@@ -460,8 +467,10 @@ export function CutInspector(props: {
 
 export function JobDrawer(props: { jobs: Job[]; bundle: Bundle | null; episodes?: { id: string; title: string; episode_number?: number }[]; copy: CopyT; onRetry: (id: string) => void; onCancel: (id: string) => void }) {
   const live = props.jobs.filter((j) => jobMoving(j.status) || j.status === "failed");
-  if (!live.length) return null;
   const c = props.copy.video;
+  if (!live.length) {
+    return <p className="drama-task-empty">{c.jobsIdle}</p>;
+  }
   const label: Record<string, string> = { queued: c.queued, running: c.running, polling: c.polling, succeeded: c.succeeded, failed: c.failed };
   const groups: { key: string; caption: string; jobs: Job[] }[] = [];
   const seen = new Map<string, number>();
@@ -516,13 +525,30 @@ function jobCaption(j: Job, bundle: Bundle | null, episodes: { id: string; title
 
 export function EmptyDesk(props: {
   copy: CopyT;
+  dramas?: Drama[];
   onNameSeries: () => void;
+  onPick?: (id: string) => void;
 }) {
   const c = props.copy.video;
+  const existing = (props.dramas || []).slice(0, 8);
   return (
     <div className="drama-empty-desk" data-testid="drama-empty-desk">
-      <p className="drama-empty-kicker">{c.empty}</p>
-      <p className="drama-empty-body">{c.emptyChatFirst}</p>
+      <p className="drama-empty-kicker">{existing.length ? c.continueSeries : c.empty}</p>
+      <p className="drama-empty-body">{existing.length ? c.emptyPickExisting : c.emptyHint}</p>
+      {existing.length ? (
+        <div className="drama-empty-series">
+          {existing.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className="drama-empty-series-chip"
+              onClick={() => props.onPick?.(d.id)}
+            >
+              {shownSeriesTitle(d.title, c.untitled)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <button type="button" className="drama-empty-link" onClick={props.onNameSeries}>
         {c.nameFirst}
       </button>

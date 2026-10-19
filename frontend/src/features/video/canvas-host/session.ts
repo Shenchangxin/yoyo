@@ -10,7 +10,7 @@ type CanvasHostState = {
 };
 
 export const useCanvasHost = create<CanvasHostState>(() => ({
-  title: "Infinite canvas",
+  title: "",
   projectId: "",
   saving: "",
   sessionId: "",
@@ -18,7 +18,7 @@ export const useCanvasHost = create<CanvasHostState>(() => ({
 }));
 
 export function setCanvasHostTitle(title: string) {
-  useCanvasHost.setState({ title: title || "Infinite canvas" });
+  useCanvasHost.setState({ title: title || "" });
 }
 
 export async function bindCanvasSession(sessionId: string, projectId: string) {
@@ -27,7 +27,7 @@ export async function bindCanvasSession(sessionId: string, projectId: string) {
   await videoCall("canvas.bind", { session_id: sessionId, project_id: projectId });
 }
 
-export async function ensureCanvasProject(sessionId: string, title = "Infinite canvas") {
+export async function ensureCanvasProject(sessionId: string, title = "") {
   let id = useCanvasHost.getState().projectId;
   if (!id) {
     const env = await videoCall("canvas.http", { method: "POST", path: "canvas-projects", body: { title } });

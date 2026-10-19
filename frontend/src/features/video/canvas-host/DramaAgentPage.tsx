@@ -57,8 +57,8 @@ export default function DramaAgentPage() {
   }, []);
 
   useEffect(() => {
-    void loadDramas().catch(() => {});
-  }, [loadDramas]);
+    void loadDramas().catch((err) => message.error(api.errMessage(err)));
+  }, [loadDramas, message]);
 
   useEffect(() => {
     void api.video.styles().then((list) => {
@@ -81,12 +81,19 @@ export default function DramaAgentPage() {
       setEpisodes([]);
       return;
     }
+    let cancelled = false;
     void api.video.episodes(dramaId).then((list) => {
+      if (cancelled) return;
       const eps = Array.isArray(list) ? list : [];
       setEpisodes(eps);
-      if (!episodeId && eps[0]) setEpisodeId(eps[0].id);
-    }).catch(() => setEpisodes([]));
-  }, [dramaId, episodeId, setEpisodeId]);
+      if (!useDramaSelection.getState().episodeId && eps[0]) setEpisodeId(eps[0].id);
+    }).catch(() => {
+      if (!cancelled) setEpisodes([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dramaId, setEpisodeId]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -105,6 +112,12 @@ export default function DramaAgentPage() {
       },
     );
   }, [sessionId]);
+
+  useEffect(() => {
+    const el = threadScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [items, busy]);
 
   async function sid() {
     const existing = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
@@ -136,7 +149,11 @@ export default function DramaAgentPage() {
 
   async function send(text = "") {
     const next = text.trim();
-    if (!next || busy) return;
+    if (!next) return;
+    if (busy) {
+      message.info(copy.video.agentSending);
+      return;
+    }
     const session = await sid();
     if (!session) {
       message.error(copy.video.failed);
@@ -164,8 +181,9 @@ export default function DramaAgentPage() {
       await api.send(session, next);
       setVideoBoard(true);
     } catch (err) {
-      setBusy(false);
       message.error(api.errMessage(err));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -188,11 +206,11 @@ export default function DramaAgentPage() {
       }
       await api.video.stage(session, "", "outline", drama);
       await loadDramas();
-      setBusy(false);
       setVideoBoard(true);
     } catch (err) {
-      setBusy(false);
       message.error(api.errMessage(err));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -202,6 +220,7 @@ export default function DramaAgentPage() {
         size="small"
         variant="borderless"
         popupMatchSelectWidth={false}
+        getPopupContainer={() => document.body}
         className="drama-agent-select"
         value={dramaStyle || "3d"}
         placeholder={copy.video.style}
@@ -209,12 +228,13 @@ export default function DramaAgentPage() {
         onChange={(value) => void pickStyle(value)}
         options={styles.map((row) => ({ value: row.value, label: styleLabel(copy.video.styleNames, row.value, row.name) }))}
       />
-      {!isEmpty ? (
+      {!isEmpty && !videoBoard ? (
         <>
           <Select
             size="small"
             variant="borderless"
             popupMatchSelectWidth={false}
+            getPopupContainer={() => document.body}
             className="drama-agent-select"
             value={dramaId || undefined}
             placeholder={copy.video.pickSeries}
@@ -231,6 +251,7 @@ export default function DramaAgentPage() {
             size="small"
             variant="borderless"
             popupMatchSelectWidth={false}
+            getPopupContainer={() => document.body}
             className="drama-agent-select"
             value={episodeId || undefined}
             placeholder={copy.video.pickEpisode}
@@ -269,16 +290,18 @@ export default function DramaAgentPage() {
   const composer = (
     <Composer
       draftKey={draftKey}
-      running={false}
-      disabled={busy}
-      disabledReason={copy.video.agentSending}
+      running={busy}
+      disabled={false}
       onSend={(opts) => { void send(opts?.text || ""); }}
-      onStop={() => setBusy(false)}
+      onStop={() => {
+        setBusy(false);
+        if (sessionId) void api.interrupt(sessionId).catch(() => {});
+      }}
       model={selectedTextModel ? modelOptionName(selectedTextModel) : undefined}
       flush
       compact
       hero={isEmpty && !videoBoard}
-      perch={isEmpty}
+      perch={isEmpty && !videoBoard}
       placeholder={copy.video.agentPlaceholder}
       inputTestId="drama-agent-input"
       toolbarLeading={dramaLeading}
@@ -300,7 +323,9 @@ export default function DramaAgentPage() {
     >
       {isEmpty && videoBoard ? (
         <div className="drama-board-chat">
-          <div className="drama-board-chat-spacer" />
+          <div className="drama-board-chat-spacer">
+            <p className="drama-board-chat-hint">{copy.video.agentHint}</p>
+          </div>
           <div className="creation-empty-composer">{composer}</div>
         </div>
       ) : isEmpty ? (
@@ -314,14 +339,38 @@ export default function DramaAgentPage() {
               <div className="creation-empty-composer">{composer}</div>
             </div>
             <ol className="drama-path" data-testid="drama-path" aria-label={copy.video.pathLabel}>
-              {path.map((step, i) => (
-                <li key={step.n} className="drama-path-step" title={step.hint}>
+              {path.map((step) => (
+                <li key={step.n} className="drama-path-step">
                   <span className="drama-path-n" aria-hidden>{step.n}</span>
-                  <strong>{step.title}</strong>
-                  {i < path.length - 1 ? <span className="drama-path-sep" aria-hidden /> : null}
+                  <span className="drama-path-copy">
+                    <strong>{step.title}</strong>
+                    <em>{step.hint}</em>
+                  </span>
                 </li>
               ))}
             </ol>
+            {dramas.length > 0 ? (
+              <div className="drama-existing" data-testid="drama-existing">
+                <p>{copy.video.continueSeries}</p>
+                <div className="drama-existing-list">
+                  {dramas.slice(0, 6).map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className="drama-existing-chip"
+                      onClick={() => {
+                        setDramaId(d.id);
+                        setEpisodeId("");
+                        if (d.style) setDramaStyle(d.style);
+                        setVideoBoard(true);
+                      }}
+                    >
+                      {shownSeriesTitle(d.title, copy.video.untitled)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <button
               type="button"
               className="drama-open-existing"
@@ -336,7 +385,7 @@ export default function DramaAgentPage() {
         <div className="creation-thread-workbench min-h-0 flex-1">
           <header className="creation-thread-toolbar">
             <div className="creation-toolbar-shots">
-              <span className="creation-rail-trigger"><Film />{copy.video.drama}</span>
+              <span className="drama-thread-label"><Film aria-hidden />{copy.video.drama}</span>
             </div>
             <div className="creation-toolbar-actions">
               <Button size="small" icon={<LayoutGrid className="size-3.5" />} onClick={() => setVideoBoard(true)} data-testid="drama-open-board">{copy.video.openBoard}</Button>

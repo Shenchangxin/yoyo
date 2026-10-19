@@ -197,13 +197,18 @@ func (e *Engine) CommitEpisodes(dramaID string) (EpisodePlan, error) {
 	if len(existing) > 0 {
 		return EpisodePlan{}, fmt.Errorf("this series already has episodes — confirm on an empty series")
 	}
+	created := make([]string, 0, len(plan.Episodes))
 	for i, pe := range plan.Episodes {
 		content := runeSlice(text, pe.Start, pe.End)
 		title := strings.TrimSpace(pe.Title)
 		ep, err := e.createEpisode(dramaID, title, content, pe.N, pe.CharacterIDs, nil, nil)
 		if err != nil {
+			for _, id := range created {
+				_ = e.DeleteEpisode(id)
+			}
 			return EpisodePlan{}, err
 		}
+		created = append(created, ep.ID)
 		pe.EpisodeID = ep.ID
 		plan.Episodes[i] = pe
 	}

@@ -46,7 +46,9 @@ export function installCanvasHub() {
       const payload = eventPayload(ev);
       if (kind === "canvas_patch" || kind === "canvas_text_delta" || kind === "video_job") {
         const canvasId = String(payload.canvas_id || payload.canvasId || payload.project_id || "");
-        if (canvasId) useCanvasHost.setState({ projectId: canvasId });
+        const current = useCanvasHost.getState().projectId;
+        if (canvasId && current && canvasId !== current) return;
+        if (canvasId && !current) useCanvasHost.setState({ projectId: canvasId });
         reload();
       }
     });

@@ -15,13 +15,26 @@ export async function bindVideoThread(sessionId: string): Promise<void> {
   if (dramaId) await api.video.bind(sessionId, "", dramaId);
 }
 
+let dramaEnsure: Promise<string> | null = null;
+let episodeEnsure: Promise<string> | null = null;
+
 export async function ensureDrama(opts: { title?: string; ratio?: string } = {}) {
   const sel = useDramaSelection.getState();
   if (sel.dramaId) return sel.dramaId;
-  const d = await api.video.createDrama({ title: opts.title || "", style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
-  sel.setDramaId(d.id);
-  sel.setEpisodeId("");
-  return d.id as string;
+  if (dramaEnsure) return dramaEnsure;
+  dramaEnsure = (async () => {
+    const latest = useDramaSelection.getState();
+    if (latest.dramaId) return latest.dramaId;
+    const d = await api.video.createDrama({ title: opts.title || "", style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
+    latest.setDramaId(d.id);
+    latest.setEpisodeId("");
+    return d.id as string;
+  })();
+  try {
+    return await dramaEnsure;
+  } finally {
+    dramaEnsure = null;
+  }
 }
 
 export async function ensureDramaEpisode(opts: { title: string; episodeTitle: string; content?: string; ratio?: string }) {
@@ -35,16 +48,26 @@ export async function ensureDramaEpisode(opts: { title: string; episodeTitle: st
     }
     return sel.episodeId;
   }
-  if (sel.dramaId) {
-    const ep = await api.video.createEpisode(sel.dramaId, opts.episodeTitle, opts.content || "");
-    sel.setEpisodeId(ep.id);
-    return ep.id;
+  if (episodeEnsure) return episodeEnsure;
+  episodeEnsure = (async () => {
+    const latest = useDramaSelection.getState();
+    if (latest.episodeId) return latest.episodeId;
+    if (latest.dramaId) {
+      const ep = await api.video.createEpisode(latest.dramaId, opts.episodeTitle, opts.content || "");
+      latest.setEpisodeId(ep.id);
+      return ep.id as string;
+    }
+    const d = await api.video.createDrama({ title: opts.title, style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
+    latest.setDramaId(d.id);
+    const ep = await api.video.createEpisode(d.id, opts.episodeTitle, opts.content || "");
+    latest.setEpisodeId(ep.id);
+    return ep.id as string;
+  })();
+  try {
+    return await episodeEnsure;
+  } finally {
+    episodeEnsure = null;
   }
-  const d = await api.video.createDrama({ title: opts.title, style: defaultDramaStyle(), aspect_ratio: opts.ratio || "9:16" });
-  sel.setDramaId(d.id);
-  const ep = await api.video.createEpisode(d.id, opts.episodeTitle, opts.content || "");
-  sel.setEpisodeId(ep.id);
-  return ep.id;
 }
 
 export function guessSeriesTitle(text: string) {

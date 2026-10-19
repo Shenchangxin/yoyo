@@ -254,3 +254,35 @@ func TestFindYingcePluginDir(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+func TestDecodeProjectDocRejectsNull(t *testing.T) {
+	if _, err := decodeProjectDoc([]byte("null")); err == nil {
+		t.Fatal("expected error")
+	}
+	if _, err := decodeProjectDoc(nil); err == nil {
+		t.Fatal("expected error")
+	}
+	env := (&Engine{}).canvasHTTP(map[string]any{"method": "PUT", "path": "canvas-projects/c1", "body": map[string]any{}})
+	if env.Code != 400 {
+		t.Fatalf("missing project: %+v", env)
+	}
+}
+
+func TestSaveCanvasPayloadUsesRevision(t *testing.T) {
+	e := testEngine(t)
+	doc, err := e.createEmptyCanvas("板")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := fmt.Sprint(doc["id"])
+	raw, _ := json.Marshal(doc)
+	if err := e.saveCanvasPayload(id, raw, "板", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.saveCanvasPayload(id, raw, "板", 1); err == nil {
+		t.Fatal("expected stale revision")
+	}
+	if err := e.saveCanvasPayload(id, raw, "板 2", 2); err != nil {
+		t.Fatal(err)
+	}
+}

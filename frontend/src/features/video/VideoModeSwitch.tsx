@@ -4,7 +4,6 @@ import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import { useUI } from "../../lib/store";
 import type { VideoMode } from "../../lib/protocol";
-import { useStudioSelection } from "./workshop-store";
 
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-lg border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
@@ -13,7 +12,6 @@ export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | 
   const copy = useCopy();
   const mode = useUI((s) => s.videoMode);
   const setMode = useUI((s) => s.setVideoMode);
-  const openStudioDesk = useUI((s) => s.openStudioDesk);
   const modes: { id: VideoMode; label: string; hint: string; icon: typeof Clapperboard; ready: boolean }[] = [
     { id: "drama", label: copy.video.drama, hint: copy.video.dramaHint, icon: Clapperboard, ready: true },
     { id: "canvas", label: copy.video.canvas, hint: copy.video.canvasHint, icon: LayoutGrid, ready: true },
@@ -43,14 +41,7 @@ export function VideoModeSwitch(props: { disabled?: boolean; menuSide?: "top" | 
             key={m.id}
             className="items-start"
             data-testid={`video-mode-${m.id}`}
-            onSelect={() => {
-              if (m.id === "creative") {
-                useStudioSelection.getState().setStudioId("");
-                openStudioDesk();
-                return;
-              }
-              setMode(m.id);
-            }}
+            onSelect={() => setMode(m.id)}
           >
             <m.icon className="mt-0.5 size-3.5 shrink-0 opacity-70" aria-hidden />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">

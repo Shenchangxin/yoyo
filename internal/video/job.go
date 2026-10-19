@@ -143,7 +143,7 @@ func (e *Engine) CancelJob(id string) error {
 	if err != nil {
 		return err
 	}
-	if j.Status == "succeeded" {
+	if j.Status == "succeeded" || j.Status == "failed" || j.Status == "cancelled" {
 		return fmt.Errorf("already finished")
 	}
 	j.Status = "cancelled"
@@ -160,6 +160,9 @@ func (e *Engine) RetryJob(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
 		return j, err
+	}
+	if j.Status != "failed" && j.Status != "cancelled" {
+		return j, fmt.Errorf("only failed or cancelled jobs can be retried")
 	}
 	j.Status = "queued"
 	j.Error = ""
@@ -267,7 +270,7 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 	case "video":
 		err = e.submitVideo(ctx, &j)
 	case "merge":
-		err = e.runMerge(&j)
+		err = e.runMerge(ctx, &j)
 	case "canvas":
 		err = e.submitCanvas(ctx, &j)
 	case "canvas_text":
@@ -287,7 +290,11 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 		j.Status = "failed"
 		j.Error = err.Error()
 		j.CompletedAt = Now()
-		return e.saveJob(j)
+		if saveErr := e.saveJob(j); saveErr != nil {
+			return saveErr
+		}
+		e.markStudioJobFailed(j)
+		return err
 	}
 	return e.saveJob(j)
 }
@@ -315,6 +322,11 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 		j.Status = "failed"
 		j.Error = err.Error()
 		j.CompletedAt = Now()
+		if saveErr := e.saveJob(j); saveErr != nil {
+			return saveErr
+		}
+		e.markStudioJobFailed(j)
+		return err
 	}
 	return e.saveJob(j)
 }
@@ -345,7 +357,7 @@ func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 	return e.writeBack(*j)
 }
 
-func (e *Engine) runMerge(j *Job) error {
+func (e *Engine) runMerge(ctx context.Context, j *Job) error {
 	var p JobParams
 	_ = json.Unmarshal([]byte(j.Params), &p)
 	var files []string
@@ -366,7 +378,7 @@ func (e *Engine) runMerge(j *Job) error {
 	if len(files) == 0 {
 		return fmt.Errorf("no clips to stitch")
 	}
-	raw, err := e.Concat(files)
+	raw, err := e.ConcatContext(ctx, files)
 	if err != nil {
 		return err
 	}

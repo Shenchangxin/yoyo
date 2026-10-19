@@ -499,7 +499,7 @@ function VisualsStep(props: {
                   >
                     {MOTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} onChange={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={() => void patchShot(i, { duration: sh.duration || 3 }, true)} />
+                  <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} aria-label={copy.video.shotDuration} onChange={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 }, true)} />
                   <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("regen", async () => {
                     await api.video.generateStudioShot(cur.id, sh.id || "");
                     props.onChange(await api.video.getStudio(cur.id) as StudioProject);
@@ -667,11 +667,20 @@ function DeliveryStep(props: {
 function Preflight(props: { id: string; gate: string }) {
   const p = useCopy().video.studio.desk;
   const [pf, setPf] = useState<{ ok?: boolean; spends?: string[]; missing?: string[]; message?: string } | null>(null);
+  const [pfErr, setPfErr] = useState("");
   useEffect(() => {
     if (!props.id) return;
-    void api.video.studioPreflight(props.id, props.gate).then((row) => setPf(row as typeof pf)).catch(() => setPf(null));
+    setPfErr("");
+    void api.video.studioPreflight(props.id, props.gate).then((row) => setPf(row as typeof pf)).catch((e) => {
+      setPf(null);
+      setPfErr(api.errMessage(e));
+    });
   }, [props.id, props.gate]);
-  if (!pf) return null;
+  if (!props.id) return null;
+  if (pfErr) {
+    return <p className="text-[12px] text-warning" data-testid="studio-preflight">{p.missingAdapters}</p>;
+  }
+  if (!pf) return <p className="text-[12px] text-muted" data-testid="studio-preflight">{p.preflight}</p>;
   const spend = (pf.spends || []).join(" · ");
   return (
     <p className={cn("text-[12px]", pf.ok ? "text-muted" : "text-warning")} data-testid="studio-preflight">
@@ -718,6 +727,7 @@ function ChipRow(props: { items: { id: string; label: string }[]; value: string;
         <button
           key={it.id}
           type="button"
+          aria-pressed={props.value === it.id}
           className={cn("rounded-full px-2 py-0.5 text-[11px]", props.value === it.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
           onClick={() => props.onPick(it.id)}
         >

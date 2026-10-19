@@ -180,6 +180,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     pendingPlain.current = null;
     editor.commands.setContent(plainToContent(text));
     setEmpty(!text.trim());
+    if (text.trim()) editor.commands.focus("end");
   }, [props.draftKey, editor]);
 
   useEffect(() => {

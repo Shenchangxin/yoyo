@@ -44,6 +44,7 @@ type Engine struct {
 	FFMPEG    string
 	FFProbe   string
 	MediaBase string
+	mediaSrv  *http.Server
 
 	mu       sync.Mutex
 	binds    map[string]Bind
@@ -146,6 +147,12 @@ func OpenDefault(dir string, cas *artifact.Store, v *vault.Store) (*Engine, erro
 }
 
 func (e *Engine) Close() error {
+	if e.mediaSrv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_ = e.mediaSrv.Shutdown(ctx)
+		cancel()
+		e.mediaSrv = nil
+	}
 	if e.cancel != nil {
 		e.cancel()
 	}

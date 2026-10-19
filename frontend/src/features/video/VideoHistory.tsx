@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -40,10 +40,6 @@ export function VideoHistory(props: {
   const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
   const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
 
-  useEffect(() => {
-    props.onRefresh?.();
-  }, [props.onRefresh]);
-
   async function newCanvas() {
     setBusy("canvas");
     try {
@@ -52,6 +48,12 @@ export function VideoHistory(props: {
       if (project?.id) {
         useCanvasHost.setState({ projectId: project.id, title: project.title || copy.video.canvas });
         if (props.sessionId) await bindCanvasSession(props.sessionId, project.id);
+        props.onOpenProject?.({
+          kind: "canvas",
+          id: project.id,
+          title: project.title || copy.video.canvas,
+          sessionId: props.sessionId,
+        });
         props.onRefresh?.();
       }
     } catch (e) {
@@ -95,7 +97,15 @@ export function VideoHistory(props: {
   async function newDrama() {
     setBusy("drama");
     try {
-      await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
+      const d = await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
+      if (d?.id) {
+        props.onOpenProject?.({
+          kind: "drama",
+          id: d.id,
+          title: d.title || "",
+          sessionId: props.sessionId,
+        });
+      }
       props.onRefresh?.();
     } catch (e) {
       toast.error(api.errMessage(e));
@@ -295,29 +305,7 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
           {p.kind === "studio" ? (
             <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
               {meta.length ? <span>{meta.join(" · ")}</span> : null}
-              <span className="inline-flex min-w-0 items-center gap-1 font-mono" title={copy.video.studio.inspectHint}>
-                <span className="truncate">{p.id}</span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="inline-flex shrink-0 rounded p-0.5 hover:bg-background"
-                  data-testid={`video-project-copy-${p.id}`}
-                  aria-label={copy.video.studio.copyId}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
-                  }}
-                >
-                  <Copy className="size-3 opacity-70" aria-hidden />
-                </span>
-              </span>
+              <span className="truncate font-mono" title={copy.video.studio.inspectHint}>{p.id}</span>
               {p.sessionId ? <span className="truncate font-mono" title={copy.video.studio.sessionId}>{p.sessionId}</span> : null}
             </span>
           ) : p.updatedAt ? (
@@ -325,6 +313,19 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
           ) : null}
         </span>
       </button>
+      {p.kind === "studio" ? (
+        <button
+          type="button"
+          className="inline-flex shrink-0 items-center rounded p-2 text-muted hover:bg-lift hover:text-foreground"
+          data-testid={`video-project-copy-${p.id}`}
+          aria-label={copy.video.studio.copyId}
+          onClick={() => {
+            void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
+          }}
+        >
+          <Copy className="size-3 opacity-70" aria-hidden />
+        </button>
+      ) : null}
       {props.onDelete ? (
         <button
           type="button"

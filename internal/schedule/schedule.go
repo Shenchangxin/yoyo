@@ -31,6 +31,7 @@ type Job struct {
 	Channel   string    `json:"channel,omitempty"`
 	TopicID   string    `json:"topic_id,omitempty"`
 	StudioID  string    `json:"studio_id,omitempty"`
+	Aspect    string    `json:"aspect,omitempty"`
 	Enabled   bool      `json:"enabled"`
 	Isolate   bool      `json:"isolate"`
 	Status    string    `json:"status,omitempty"`

@@ -136,8 +136,9 @@ export function StudioWorkbench(props: {
   const [catalog, setCatalog] = useState<StudioCatalog>({});
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [radarLoading, setRadarLoading] = useState(true);
 
-  const current = project && project.id === studioId ? project : projects.find((p) => p.id === studioId) || project;
+  const current = (project && project.id === studioId ? project : null) || projects.find((p) => p.id === studioId) || null;
   const copilotSessionId = studioSessionId(studioId, props.projects || []);
 
   async function attachCopilot(p: { id: string; title?: string; status?: string; gate?: string }) {
@@ -168,6 +169,7 @@ export function StudioWorkbench(props: {
       return;
     }
     const p = (await api.video.getStudio(id)) as StudioProject;
+    if (useStudioSelection.getState().studioId !== id) return;
     setProject(p);
     setProjects((prev) => {
       const rest = prev.filter((x) => x.id !== p.id);
@@ -194,9 +196,9 @@ export function StudioWorkbench(props: {
       setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
       setRemotionReady(!!st?.remotion?.ready);
     }).catch(() => {});
-    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then((raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {});
+    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then((raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {}).finally(() => setRadarLoading(false));
     void api.video.studioCatalog().then((row) => setCatalog((row || {}) as StudioCatalog)).catch(() => {});
-  }, [loadTopics, loadProjects]);
+  }, [loadProjects]);
 
   useEffect(() => {
     if (pane !== "publish") return;
@@ -745,6 +747,7 @@ export function StudioWorkbench(props: {
                   <button
                     key={p}
                     type="button"
+                    aria-pressed={on}
                     className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                     onClick={() => setPlatforms((prev) => {
                       if (on && prev.length <= 1) return prev;
@@ -760,7 +763,13 @@ export function StudioWorkbench(props: {
                 {s.refresh}
               </Button>
             </div>
-            {shownTrends.length === 0 ? (
+            {radarLoading && shownTrends.length === 0 ? (
+              <EmptyState
+                icon={<Radio className="size-5" />}
+                title={copy.video.loadingRadar}
+                body={s.refresh}
+              />
+            ) : shownTrends.length === 0 ? (
               <EmptyState
                 icon={<Radio className="size-5" />}
                 title={s.emptyRadar}
@@ -805,6 +814,7 @@ export function StudioWorkbench(props: {
                   key={st || "all"}
                   type="button"
                   data-testid={`studio-topic-filter-${st || "all"}`}
+                  aria-pressed={topicStatus === st}
                   className={cn("rounded-full px-2 py-0.5 text-[11px]", topicStatus === st ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                   onClick={() => {
                     setTopicStatus(st);
@@ -879,10 +889,10 @@ export function StudioWorkbench(props: {
             {!current ? (
               <EmptyState
                 icon={<Clapperboard className="size-5" />}
-                title={s.emptyProject}
-                body={s.emptyProjectHint}
+                title={studioId ? copy.video.loadingList : s.emptyProject}
+                body={studioId ? undefined : s.emptyProjectHint}
                 action={
-                  <Button size="sm" variant="ghost" onClick={() => setPane("topics")}>{s.topics}</Button>
+                  studioId ? undefined : <Button size="sm" variant="ghost" onClick={() => setPane("topics")}>{s.topics}</Button>
                 }
               />
             ) : null}
@@ -928,6 +938,7 @@ export function StudioWorkbench(props: {
                 <button
                   key={p.id}
                   type="button"
+                  aria-pressed={draftPlatform === p.id}
                   className={cn("rounded-full px-2 py-0.5 text-[11px]", draftPlatform === p.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                   onClick={() => setDraftPlatform(p.id)}
                 >
@@ -995,9 +1006,13 @@ export function StudioWorkbench(props: {
         onCancel={() => setKillTopic(null)}
         onConfirm={async () => {
           if (!killTopic?.id) return;
-          await api.video.deleteTopic(killTopic.id);
-          setKillTopic(null);
-          await loadTopics();
+          try {
+            await api.video.deleteTopic(killTopic.id);
+            setKillTopic(null);
+            await loadTopics();
+          } catch (e) {
+            toast.error(api.errMessage(e));
+          }
         }}
       />
     </div>

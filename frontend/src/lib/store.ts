@@ -387,22 +387,15 @@ export const useUI = create<UIState>((set, get) => ({
       };
     }),
   setVideoMode: (videoMode) => {
-    writeVideoMode(videoMode);
-    set((s) => {
-      let videoPane = s.videoPane;
-      if (videoMode !== "drama" && videoPane === "drama") videoPane = "chat";
-      if (videoMode !== "canvas" && isCanvasWorldPane(videoPane)) videoPane = "chat";
-      if (videoMode !== "creative" && videoPane === "studio") videoPane = "chat";
-      if (videoPane === "game") videoPane = "create";
-      return {
-        videoMode,
-        videoBoard: false,
-        studioDesk: videoMode === "creative" && videoPane === "studio",
-        canvasStage: videoPane === "chat" ? false : isYingcePane(videoPane) ? s.canvasStage : false,
-        videoPane,
-        videoEntry: videoPane === s.videoPane ? s.videoEntry : "",
-      };
-    });
+    if (videoMode === "drama") {
+      get().openVideoPane("drama");
+      return;
+    }
+    if (videoMode === "canvas") {
+      get().openVideoPane("canvas");
+      return;
+    }
+    get().openVideoPane("studio");
   },
   setSettingsTab: (settingsTab) => set({ settingsTab, settingsSection: "", settingsNav: Date.now() }),
   setInspector: (v) => set((s) => ({ inspector: typeof v === "function" ? v(s.inspector) : v })),

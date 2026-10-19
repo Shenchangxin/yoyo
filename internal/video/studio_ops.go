@@ -63,9 +63,6 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	if err != nil {
 		return StudioProject{}, err
 	}
-	if err := e.EnsureFFmpeg(context.Background()); err != nil {
-		return StudioProject{}, err
-	}
 	sb := p.Storyboard
 	if p.NarrationHash != "" {
 		sb.Narration = p.NarrationHash
@@ -78,6 +75,14 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	}
 	if len(sb.Shots) == 0 {
 		return StudioProject{}, fmt.Errorf("storyboard has no shots")
+	}
+	for _, shot := range sb.Shots {
+		if shot.Stale && (strings.TrimSpace(shot.ImageHash) != "" || strings.TrimSpace(shot.VideoHash) != "") {
+			return StudioProject{}, fmt.Errorf("shot %s is stale; regenerate before assemble", firstNonEmpty(shot.ID, shot.Caption))
+		}
+	}
+	if err := e.EnsureFFmpeg(context.Background()); err != nil {
+		return StudioProject{}, err
 	}
 	w, h := parseSize(sb.Size, p.Aspect)
 	tmp, err := os.MkdirTemp(e.Dir, "assemble-*")

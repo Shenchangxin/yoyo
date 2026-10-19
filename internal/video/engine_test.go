@@ -244,6 +244,24 @@ func TestUpdateDramaPersistsAspect(t *testing.T) {
 	}
 }
 
+func TestUpdateDramaKeepsDescription(t *testing.T) {
+	e := testEngine(t)
+	d, err := e.CreateDrama(Drama{Title: "简介", Description: "原简介", Genre: "都市"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.UpdateDrama(Drama{ID: d.ID, Title: "新名"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "新名" {
+		t.Fatalf("title %s", got.Title)
+	}
+	if got.Description != "原简介" || got.Genre != "都市" {
+		t.Fatalf("cleared fields %+v", got)
+	}
+}
+
 func TestSkipRewriteCopiesSource(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "跳过"})
