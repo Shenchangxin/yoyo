@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { curiousId, dartId, gazeFromPoint, gazeFromScreen, isIdleEmotion, lingerId } from "./gaze.ts";
+import { curiousId, dartId, gazeFromPoint, gazeFromScreen, gazeGain, isIdleEmotion, lingerId } from "./gaze.ts";
 
 describe("gazeFromPoint", () => {
   const box = { left: 0, top: 0, width: 140, height: 140 };
@@ -27,6 +27,17 @@ describe("gazeFromPoint", () => {
   it("uses an explicit window origin for screen follow", () => {
     const g = gazeFromScreen(box, 400, 70, 200, 0);
     assert.ok(g.nx > 0.9);
+  });
+});
+
+describe("gazeGain", () => {
+  it("eases from a far glance to a full look without a step", () => {
+    const far = gazeGain(400, 168);
+    const mid = gazeGain(120, 168);
+    const near = gazeGain(8, 168);
+    assert.ok(far < mid && mid < near);
+    assert.ok(far <= 0.3);
+    assert.ok(near > 0.95);
   });
 });
 

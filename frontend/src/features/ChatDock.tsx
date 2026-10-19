@@ -118,6 +118,7 @@ export function ChatDock(props: {
         turnStatus={props.turnStatus}
         sessionStats={props.sessionStats}
         compact
+        perch={props.items.length === 0}
       />
     </aside>
   );

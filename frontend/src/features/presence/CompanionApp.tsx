@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useBusyMs } from "./busy";
 import { presenceLine, presenceOf } from "./director";
 import { PresenceSprite } from "./PresenceRuntime";
 import {
   bubbleLine,
+  bubbleParts,
   itemEndsWork,
   itemStartsWork,
   mergePulse,
@@ -32,7 +33,6 @@ export function CompanionApp() {
   const [running, setRunning] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [approvals, setApprovals] = useState(0);
-  const [hover, setHover] = useState(false);
   const [pulse, setPulse] = useState<CompanionPulse | null>(null);
   const [spark, setSpark] = useState(0);
   const [inCall, setInCall] = useState(false);
@@ -161,7 +161,7 @@ export function CompanionApp() {
       }
       if (itemStartsWork(it) && it.type !== "assistant" && it.type !== "reasoning") {
         applyPulse({
-          title: String(skillCallLabel(it) || it.name || it.text || copy.presence.loading).trim().slice(0, 42) || copy.presence.loading,
+          title: String(skillCallLabel(it) || it.name || it.text || copy.presence.loading).trim().slice(0, 96) || copy.presence.loading,
           body: copy.presence.loading,
           session: it.sessionId || sessionRef.current,
           kind: "loading",
@@ -201,6 +201,13 @@ export function CompanionApp() {
   }), [booted, running, items, approvals, idleMs, now, voicePhase, loading, interrupted, busyMs]);
 
   const emotionLine = presenceLine(emotion, copy.presence);
+  const bubble = bubbleParts({
+    approvals,
+    pulse: activePulse,
+    approvalLine: copy.presence.approval,
+    emotionLine,
+    now,
+  });
   const line = bubbleLine({
     approvals,
     pulse: activePulse,
@@ -208,11 +215,28 @@ export function CompanionApp() {
     emotionLine,
     now,
   });
-  const showLine = !!activePulse || emotion.live || hover || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
+  const showLine = !!activePulse || emotion.live || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
+  const bubbleRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
-    void api.setCompanionCaption(showLine);
-  }, [showLine]);
+  useLayoutEffect(() => {
+    const el = bubbleRef.current;
+    if (!showLine || !el) {
+      void api.setCompanionCaption(false);
+      return;
+    }
+    const publish = () => {
+      const box = scrollRef.current;
+      if (box) box.scrollTop = box.scrollHeight;
+      void api.setCompanionCaptionSize(el.offsetWidth, el.offsetHeight);
+      void api.setCompanionCaption(true);
+    };
+    publish();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showLine, line, loading]);
   useEffect(() => () => { void api.setCompanionCaption(false); }, []);
 
   const grab = useRef<{ dx: number; dy: number; sx: number; sy: number } | null>(null);
@@ -251,8 +275,7 @@ export function CompanionApp() {
         data-emotion={emotion.emotionId}
         data-live={emotion.live ? "true" : undefined}
         data-loading={loading ? "true" : undefined}
-        onPointerEnter={() => setHover(true)}
-        onPointerLeave={() => setHover(false)}
+        onPointerEnter={() => bump()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           dragged.current = false;
@@ -273,7 +296,7 @@ export function CompanionApp() {
       >
         <PresenceSprite
           emotionId={emotion.emotionId}
-          size={148}
+          size={168}
           reduced={reduced}
           followPointer
           screenFollow
@@ -282,6 +305,7 @@ export function CompanionApp() {
         />
       </div>
       <button
+        ref={bubbleRef}
         type="button"
         className={cn("companion-bubble", showLine ? "is-on" : "is-off", loading && "is-loading")}
         data-testid="companion-bubble"
@@ -289,14 +313,21 @@ export function CompanionApp() {
         data-kind={approvals > 0 ? "approval" : (activePulse?.kind || emotion.tips || undefined)}
         aria-busy={loading}
         aria-live="polite"
-        onPointerEnter={() => setHover(true)}
-        onPointerLeave={() => setHover(false)}
+        onWheel={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           open();
         }}
       >
-        <span className="companion-bubble-text">{line}</span>
+        <span
+          className="companion-bubble-text"
+          key={`${bubble.kicker}|${activePulse?.kind || emotion.tips || ""}|${loading ? "load" : "idle"}|${approvals}`}
+        >
+          {bubble.kicker ? <span className="companion-bubble-kicker">{bubble.kicker}</span> : null}
+          <span ref={scrollRef} className="companion-bubble-scroll">
+            <span className="companion-bubble-copy">{bubble.copy}</span>
+          </span>
+        </span>
         {loading ? <span className="companion-dots" aria-hidden><i /><i /><i /></span> : null}
       </button>
     </div>

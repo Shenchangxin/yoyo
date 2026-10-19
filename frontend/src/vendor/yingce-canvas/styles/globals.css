@@ -15197,6 +15197,11 @@ html:not(.dark) .creation-home .creation-user-message-copy-wrap { box-shadow: 0 
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+    overflow: visible;
+}
+.creation-home .creation-message-heading .presence-stamp svg {
+    width: 36px;
+    height: 36px;
 }
 
 .creation-home .creation-message-heading strong { color: var(--creation-text); font-size: var(--fs-body); font-weight: 620; }

@@ -278,6 +278,7 @@ export default function DramaAgentPage() {
       flush
       compact
       hero={isEmpty && !videoBoard}
+      perch={isEmpty}
       placeholder={copy.video.agentPlaceholder}
       inputTestId="drama-agent-input"
       toolbarLeading={dramaLeading}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   bubbleLine,
+  bubbleParts,
   itemEndsWork,
   itemStartsWork,
   mergePulse,
@@ -55,6 +56,28 @@ describe("companion pulse channel", () => {
         now,
       }),
       "Needs your OK",
+    );
+  });
+
+  it("splits a pulse into a kicker and wrapping copy", () => {
+    const parts = bubbleParts({
+      approvals: 0,
+      pulse: pulse({ title: "web_search", body: "Looking up the long source list now" }),
+      approvalLine: "Needs your OK",
+      emotionLine: "Thinking",
+      now,
+    });
+    assert.equal(parts.kicker, "web_search");
+    assert.equal(parts.copy, "Looking up the long source list now");
+    assert.equal(
+      bubbleLine({
+        approvals: 0,
+        pulse: pulse({ title: "web_search", body: "Looking up the long source list now" }),
+        approvalLine: "Needs your OK",
+        emotionLine: "Thinking",
+        now,
+      }),
+      "web_search · Looking up the long source list now",
     );
   });
 });

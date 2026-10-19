@@ -47,7 +47,7 @@
 @media (max-width: 620px) {
     .creation-mode-button { padding-inline: 6px; font-size: 12px; gap: 6px; }
     .creation-agent-entry { grid-template-columns: 1fr; padding: 20px; gap: 12px; }
-    .creation-agent-orb { display: none; }
+    .creation-agent-orb { display: grid; place-items: center; justify-self: center; }
     .creation-agent-copy h2 { font-size: 18px; }
     .creation-agent-actions > .ant-btn { width: 100%; }
     .creation-inspiration-filters { gap: 4px; }

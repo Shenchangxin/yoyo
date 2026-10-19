@@ -12,6 +12,16 @@ const GAZE_EPS = 0.004;
 const FAR_GAZE = 0.28;
 const SHY_MS = 1800;
 
+/** Blend far-desk glance into on-pet look so crossing the blob does not snap. */
+export function gazeGain(dist: number, size: number): number {
+  const inner = Math.max(size * 0.2, 16);
+  const outer = Math.max(size * 1.05, 72);
+  const span = Math.max(outer - inner, 1);
+  const u = Math.min(1, Math.max(0, (outer - dist) / span));
+  const s = u * u * (3 - 2 * u);
+  return FAR_GAZE + (1 - FAR_GAZE) * s;
+}
+
 export function gazeFromPoint(rect: { left: number; top: number; width: number; height: number }, x: number, y: number): { nx: number; ny: number } {
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -143,11 +153,12 @@ export function usePresencePointer(opts: {
       const g = screen
         ? gazeFromScreen(r, x, y, ox ?? window.screenX, oy ?? window.screenY)
         : gazeFromPoint(r, x, y);
-      const follow = near ? g : { nx: g.nx * FAR_GAZE, ny: g.ny * FAR_GAZE };
+      const gain = gazeGain(dist, r.width);
+      const follow = { nx: g.nx * gain, ny: g.ny * gain };
       const prev = lastGaze.current;
       if (Math.hypot(follow.nx - prev.nx, follow.ny - prev.ny) >= GAZE_EPS || near !== lastNear) {
         lastGaze.current = follow;
-        mate.setGaze(follow.nx, follow.ny, near);
+        mate.setGaze(follow.nx, follow.ny, near && !opts.screenFollow);
       }
       const t = performance.now();
       const last = lastPt.current;
@@ -165,15 +176,17 @@ export function usePresencePointer(opts: {
         lastNear = near;
         hoverRef.current = near;
         if (near) nearSince.current = now;
-        face(near, speed, false, 0);
-        if (near && now - bounceAt.current > 1600 && now >= dartUntil.current) {
-          bounceAt.current = now;
-          if (typeof mate.nudge === "function") mate.nudge();
-          else mate.bounce();
+        if (!opts.screenFollow) {
+          face(near, speed, false, 0);
+          if (near && now - bounceAt.current > 1600 && now >= dartUntil.current) {
+            bounceAt.current = now;
+            if (typeof mate.nudge === "function") mate.nudge();
+            else mate.bounce();
+          }
         }
       } else if (speed >= DART_SPEED && now >= dartUntil.current) {
         face(near, speed, lingering, heldMs);
-      } else if (lingering) {
+      } else if (lingering && !opts.screenFollow) {
         face(near, speed, true, heldMs);
       }
     };

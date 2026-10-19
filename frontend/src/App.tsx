@@ -266,6 +266,7 @@ function WorkstationApp() {
       onResolveAsk={ws.onResolve}
       flush
       hero={home}
+      perch={!home && copilotItems.length === 0}
       {...bindComposer}
       sessionId={ws.activeId}
       profileId={ws.active?.profileId}

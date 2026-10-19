@@ -886,6 +886,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
                                         />
                                     ) : null}
                                     <AgentChatComposer
+                                        perch={!messages.some((message) => message.role === "user" || message.role === "assistant") && !run}
                                         prompt={prompt}
                                         disabled={Boolean(run && connectionStatus !== "connected") || !historyHydrated || !pendingHydrated}
                                         sending={busy}

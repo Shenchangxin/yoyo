@@ -147,7 +147,7 @@ export function CallView(props: {
       <div className="text-[12px] text-muted">{mm}:{ss} · {copy.voice[phase] || phase}</div>
       <PresenceSprite
         emotionId={voiceEmotion(phase, busyMs)}
-        size={120}
+        size={148}
         reduced={reduced}
         followPointer
         className="presence-float"

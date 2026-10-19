@@ -17,8 +17,9 @@ import (
 func companionOrigin() (x, y int) {
 	aw, ah := primaryWorkArea()
 	x = aw - companionW - 28
-	y = ah - companionH - 56
-	return clampCompanion(x, y)
+	y = ah - companionIdleH - companionBottomClearance
+	vx, vy, vw, vh := virtualScreen()
+	return clampCompanionTo(x, y, companionW, companionIdleH, companionBottomClearance, companionWorkBoxes(), vx, vy, vw, vh)
 }
 
 func companionWorkBoxes() []hitBox {
@@ -44,8 +45,15 @@ func companionWorkBoxes() []hitBox {
 }
 
 func clampCompanion(x, y int) (int, int) {
+	w, h := companionW, companionFrameH(companionCaptionOn.Load())
+	pad := companionPad
+	if companionInteractive.Load() {
+		w, h = companionCallW, companionCallH
+	} else if companionCaptionOn.Load() {
+		pad = companionBottomClearance
+	}
 	vx, vy, vw, vh := virtualScreen()
-	return clampCompanionTo(x, y, companionW, companionH, companionPad, companionWorkBoxes(), vx, vy, vw, vh)
+	return clampCompanionTo(x, y, w, h, pad, companionWorkBoxes(), vx, vy, vw, vh)
 }
 
 func companionCursorLocal(win application.Window) (lx, ly, ww, wh float64, ok bool) {
@@ -62,12 +70,53 @@ func companionCursorLocal(win application.Window) (lx, ly, ww, wh float64, ok bo
 }
 
 func (s *Service) SetCompanionCaption(on bool) {
+	companionCaptionOn.Store(on)
 	if s.companionCaption.Swap(on) == on {
 		return
 	}
-	if win := s.companion; win != nil {
-		applyCompanionShape(win, on)
+	s.syncCompanionFrame()
+}
+
+func (s *Service) SetCompanionCaptionSize(w, h int) {
+	beforeW := companionCaptionW.Load()
+	beforeH := companionCaptionH.Load()
+	setCompanionCaptionBox(w, h)
+	if companionCaptionW.Load() == beforeW && companionCaptionH.Load() == beforeH {
+		return
 	}
+	if s.companionCaption.Load() {
+		s.syncCompanionFrame()
+	}
+}
+
+func (s *Service) syncCompanionFrame() {
+	win := s.companion
+	if win == nil || s.companionCall.Load() {
+		if win != nil {
+			applyCompanionShape(win, s.companionCaption.Load() || s.companionCall.Load())
+		}
+		return
+	}
+	on := s.companionCaption.Load()
+	companionCaptionOn.Store(on)
+	wantH := companionFrameH(on)
+	x, y := win.Position()
+	if winsize.HiddenSentinel(x, y) {
+		applyCompanionShape(win, on)
+		return
+	}
+	w, h := win.Size()
+	nx, ny := clampCompanion(x, y)
+	if nx != x || ny != y {
+		if s.companionClamping.CompareAndSwap(false, true) {
+			win.SetPosition(nx, ny)
+			s.companionClamping.Store(false)
+		}
+	}
+	if w != companionW || h != wantH {
+		win.SetSize(companionW, wantH)
+	}
+	applyCompanionShape(win, on)
 }
 
 func (s *Service) PlaceCompanion(x, y int) {
@@ -169,7 +218,7 @@ func (s *Service) endCompanionCall(resizeAndRefresh bool) {
 		return
 	}
 	if win := s.companion; win != nil {
-		win.SetSize(companionW, companionH)
+		s.syncCompanionFrame()
 		s.syncCompanionClickThrough()
 	}
 	s.refreshChrome()
@@ -189,7 +238,7 @@ func (s *Service) applyCompanionCallGeometry() {
 		applyCompanionShape(win, true)
 		return
 	}
-	win.SetSize(companionW, companionH)
+	s.syncCompanionFrame()
 	s.syncCompanionClickThrough()
 	if !s.companionIgnoresHits() {
 		setCompanionPassthrough(win, true)
@@ -304,9 +353,9 @@ func (s *Service) OpenCompanion() error {
 		Name:                  "yoyo-companion",
 		Title:                 "Yoyo",
 		Width:                 companionW,
-		Height:                companionH,
+		Height:                companionIdleH,
 		MinWidth:              companionW,
-		MinHeight:             companionH,
+		MinHeight:             companionIdleH,
 		MaxWidth:              companionCallW,
 		MaxHeight:             companionCallH,
 		DisableResize:         true,

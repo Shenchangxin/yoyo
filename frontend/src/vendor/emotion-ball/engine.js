@@ -55,12 +55,28 @@
     return out;
   }
 
-  /* 弹跳：4 段递减抛物线（高度 48/28/14/6，时长 0.5/0.382/0.27/0.177s） */
-  var BOUNCE_SEGS = [{ h: 48, d: 0.5 }, { h: 28, d: 0.382 }, { h: 14, d: 0.27 }, { h: 6, d: 0.177 }];
+  /* 弹跳：更长更软的 4 段抛物线，落地时轻微压扁，避免 discrete hops 发硬 */
+  var BOUNCE_SEGS = [{ h: 40, d: 0.56 }, { h: 22, d: 0.4 }, { h: 10, d: 0.3 }, { h: 4, d: 0.22 }];
   var BOUNCE_TOTAL = BOUNCE_SEGS.reduce(function (s, q) { return s + q.d; }, 0);
   /* 轻点：两段短抛物线，用于点头确认 / 待机微动，不抢主表情 */
-  var NUDGE_SEGS = [{ h: 14, d: 0.3 }, { h: 6, d: 0.2 }];
+  var NUDGE_SEGS = [{ h: 12, d: 0.36 }, { h: 5, d: 0.26 }];
   var NUDGE_TOTAL = NUDGE_SEGS.reduce(function (s, q) { return s + q.d; }, 0);
+
+  function hopAt(segs, elapsed) {
+    var acc = 0, i = 0;
+    while (i < segs.length && elapsed >= acc + segs[i].d) { acc += segs[i].d; i++; }
+    if (i >= segs.length) return null;
+    var seg = segs[i];
+    var n = (elapsed - acc) / seg.d;
+    var y = -4 * seg.h * n * (1 - n);
+    var edge = n < 0.5 ? n : 1 - n;
+    var squash = 1;
+    if (edge < 0.18) {
+      var u = 1 - edge / 0.18;
+      squash = 1 - 0.055 * u * u;
+    }
+    return { y: y, squash: squash };
+  }
 
   function hexToRgb(hex) {
     var h = hex.replace('#', '');
@@ -711,12 +727,13 @@
         pose = clonePose(def.base);
       }
 
-      /* 内置呼吸（相位用绝对时间，切换表情不跳变） */
+      /* 内置呼吸（相位用绝对时间，切换表情不跳变）。弹跳时关掉纵向呼吸，避免两套位移打架。 */
+      var hopping = this._bounceAt >= 0 || this._nudgeAt >= 0;
       var br = pose.body.breathe || 0;
       if (br) {
         var ph = TAU * now / 3600;
         pose.body.scale += br * Math.sin(ph);
-        pose.body.y += br * 55 * Math.sin(ph + 0.6);
+        if (!hopping) pose.body.y += br * 55 * Math.sin(ph + 0.6);
       }
 
       for (var i = 0; i < def.anims.length; i++) {
@@ -770,38 +787,29 @@
         springStep(this._mouthSpring, this._mouthSpeed || 8, 1, j);
         springStep(this._open, 26, 1, j);
         if (this._spin) {
-          springStep(this._spin, 6.2, 1, j);
-          if (Math.abs(this._spin.t - this._spin.x) < 0.01 && Math.abs(this._spin.v) < 0.05) {
+          springStep(this._spin, 4.6, 0.94, j);
+          if (Math.abs(this._spin.t - this._spin.x) < 0.02 && Math.abs(this._spin.v) < 0.08) {
             this._spin = null;
           }
         }
       }
       pose.body.yaw = this._spin ? this._spin.x : 0;
 
-      /* ---- 弹跳位移：-4·h·n(1-n) 抛物线 ---- */
+      /* ---- 弹跳位移：软抛物线 + 落地压扁 ---- */
+      var hop = null;
       if (this._bounceAt >= 0) {
         var be = (now - this._bounceAt) / 1000;
-        if (be >= BOUNCE_TOTAL) {
-          this._bounceAt = -1;
-        } else {
-          var acc = 0, bi = 0;
-          while (bi < BOUNCE_SEGS.length && be >= acc + BOUNCE_SEGS[bi].d) { acc += BOUNCE_SEGS[bi].d; bi++; }
-          var seg = BOUNCE_SEGS[Math.min(bi, BOUNCE_SEGS.length - 1)];
-          var bn = (be - acc) / seg.d;
-          pose.body.y += -4 * seg.h * bn * (1 - bn);
-        }
+        if (be >= BOUNCE_TOTAL) this._bounceAt = -1;
+        else hop = hopAt(BOUNCE_SEGS, be);
       }
-      if (this._nudgeAt >= 0) {
+      if (!hop && this._nudgeAt >= 0) {
         var ne = (now - this._nudgeAt) / 1000;
-        if (ne >= NUDGE_TOTAL) {
-          this._nudgeAt = -1;
-        } else {
-          var nacc = 0, ni = 0;
-          while (ni < NUDGE_SEGS.length && ne >= nacc + NUDGE_SEGS[ni].d) { nacc += NUDGE_SEGS[ni].d; ni++; }
-          var nseg = NUDGE_SEGS[Math.min(ni, NUDGE_SEGS.length - 1)];
-          var nn = (ne - nacc) / nseg.d;
-          pose.body.y += -4 * nseg.h * nn * (1 - nn);
-        }
+        if (ne >= NUDGE_TOTAL) this._nudgeAt = -1;
+        else hop = hopAt(NUDGE_SEGS, ne);
+      }
+      if (hop) {
+        pose.body.y += hop.y;
+        pose.body.scale *= hop.squash;
       }
 
       /* ---- 当前眼环：形变中逐点插值，静止后复用目标引用（跳过 d 重建） ---- */
@@ -825,11 +833,11 @@
       }
       pose.face.mouthRing = this._mouthCur;
 
-      /* 鼠标注视：帧率无关的指数平滑（约 26 的时间常数，跟手更快仍连续） */
+      /* 鼠标注视：帧率无关的指数平滑（约 14 的时间常数，跟手仍连续、不闪） */
       if (this._gazeHoldUntil && now > this._gazeHoldUntil && Math.abs(this._gaze.tx) < 0.8 && Math.abs(this._gaze.ty) < 0.8) {
         this._gazeHeld = false;
       }
-      var k = 1 - Math.exp(-26 * dt);
+      var k = 1 - Math.exp(-14 * dt);
       var gx = def.gaze !== false ? this._gaze.tx : 0;
       var gy = def.gaze !== false ? this._gaze.ty : 0;
       this._gaze.x += (gx - this._gaze.x) * k;

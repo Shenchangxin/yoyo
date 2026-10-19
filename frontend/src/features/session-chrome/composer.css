@@ -17,12 +17,21 @@
   width: 100%;
   min-width: 0;
   padding: 0 var(--sc-side) 4px;
+  overflow: visible;
 }
 
 .sc-root[data-hero="true"] {
   --sc-card-max: min(100%, var(--thread-measure, 48rem));
   align-items: center;
   padding-bottom: 0;
+}
+
+.sc-root[data-perch="true"] {
+  padding-top: 4px;
+}
+.sc-root[data-perch="true"] .presence-perch {
+  width: 100%;
+  max-width: var(--sc-card-max);
 }
 
 .sc-root[data-compact="true"] {

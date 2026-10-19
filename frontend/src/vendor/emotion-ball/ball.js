@@ -122,7 +122,8 @@
       width: '100%',
       height: '100%',
       role: 'img',
-      'aria-label': opts.label || 'AI 表情小球'
+      'aria-label': opts.label || 'AI 表情小球',
+      'shape-rendering': 'geometricPrecision'
     });
     svg.style.display = 'block';
     svg.style.overflow = 'visible';
@@ -256,14 +257,14 @@
       var rw = planeG <= 3 ? rand(8, 10.5) : planeG === 4 ? rand(6.6, 8.6) : rand(5.6, 7.4);
       createTrail({
         o: {
-          lam: lam0, lamVel: dir * rand(0.5, 1.1),
+          lam: lam0, lamVel: dir * rand(0.42, 0.92),
           tilt: pl.tilt + rand(-0.04, 0.04),
           roll: pl.roll + rand(-0.05, 0.05),
           rad: 116 + spawnIdx * tierStep + rand(-1.5, 1.5),
-          radVel: rand(0, 2.5),
-          follow: rand(0.74, 0.94),
+          radVel: rand(0, 1.8),
+          follow: rand(0.8, 0.96),
           carry: 0,
-          arc: rand(2.2, 3.4)
+          arc: rand(2.5, 3.8)
         },
         r: rw,
         hue: baseHue + 360 * spawnIdx / Math.max(planeG, 1) + rand(-14, 14)
@@ -506,17 +507,17 @@
       if (!isFinite(dYaw) || Math.abs(dYaw) > 1.2) dYaw = 0;
       prevYaw = yaw;
       var vel = dYaw / dt;
-      var fast = Math.abs(vel) >= 0.9;
+      var fast = Math.abs(vel) >= 0.72;
       var dir = vel >= 0 ? 1 : -1;
 
       if (fast && !wasFast) {
         makePlanes();
         spawnAt = [];
-        for (var q = 0; q < planeG; q++) spawnAt.push(now + q * rand(55, 105));
+        for (var q = 0; q < planeG; q++) spawnAt.push(now + q * rand(70, 130));
       }
       if (!fast) spawnAt.length = 0;
       wasFast = fast;
-      if (Math.abs(vel) >= 5) {
+      if (Math.abs(vel) >= 3.2) {
         while (spawnAt.length && now >= spawnAt[0]) {
           spawnAt.shift();
           spawnTrail(yaw - rand(0, 0.18) * dir, dir);
@@ -536,8 +537,8 @@
       for (var ti = trails.length - 1; ti >= 0; ti--) {
         var rb = trails[ti];
         rb.life += dt;
-        var retract = rb.orbitMode ? !orbitWant : (!fast || rb.life > 5);
-        rb.ret = clamp(rb.ret + (retract ? dt / 0.5 : -dt / 0.35), 0, 1);
+        var retract = rb.orbitMode ? !orbitWant : (!fast || rb.life > 6.2);
+        rb.ret = clamp(rb.ret + (retract ? dt / 0.78 : -dt / 0.48), 0, 1);
         if (retract && rb.ret >= 1) { removeTrail(ti); continue; }
         var o = rb.o;
         if (rb.orbitMode) {
@@ -548,8 +549,8 @@
           o.lam += dYaw * o.follow + o.lamVel * dt;
         } else {
           o.lam += (o.carry + o.lamVel) * dt;
-          o.carry *= Math.exp(-2.6 * dt);
-          o.lamVel *= Math.exp(-2.6 * dt);
+          o.carry *= Math.exp(-1.7 * dt);
+          o.lamVel *= Math.exp(-1.7 * dt);
         }
         o.rad += o.radVel * dt;
 
@@ -572,10 +573,10 @@
 
         var zHead = Math.cos(o.lam) * Math.cos(o.tilt);
         var pz = 0.72 + 0.28 * clamp(zHead, 0, 1);
-        var grow = Math.min(rb.life / 0.34, 1);
+        var grow = Math.min(rb.life / 0.48, 1);
         grow = grow * grow * (3 - 2 * grow);
         var width = rb.r * pz * 1.7 * grow * (1 - 0.72 * rb.ret * rb.ret);
-        var fade = Math.min(rb.life / 0.26, 1).toFixed(3);
+        var fade = Math.min(rb.life / 0.38, 1).toFixed(3);
 
         if (hist.length < 2 || width < 0.5) {
           rb.back.setAttribute('opacity', '0');

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { createMate } from "./engine";
 import { entryMotion, playMotion } from "./flourish";
@@ -10,6 +10,7 @@ const PRIORITY: Record<PresenceSlotId, number> = {
   boot: 100,
   module: 80,
   home: 20,
+  composer: 15,
 };
 
 type Slot = { id: PresenceSlotId; el: HTMLElement; size: number };
@@ -172,6 +173,7 @@ export function PresenceAnchor(props: {
   size: number;
   className?: string;
   onClick?: () => void;
+  fallback?: boolean;
 }) {
   const slots = useContext(SlotsCtx);
   const ref = useRef<HTMLDivElement>(null);
@@ -185,7 +187,7 @@ export function PresenceAnchor(props: {
   return (
     <div
       ref={ref}
-      className={cn("presence-anchor relative shrink-0", props.size >= 96 && "presence-float", props.className)}
+      className={cn("presence-anchor relative shrink-0", props.size >= 64 && "presence-float", props.className)}
       style={{ width: props.size, height: props.size }}
       data-presence-slot={props.id}
       data-presence-active={active ? "true" : "false"}
@@ -194,7 +196,9 @@ export function PresenceAnchor(props: {
         slots?.celebrate();
         props.onClick?.();
       }}
-    />
+    >
+      {props.fallback && !active ? <PresenceStamp size={props.size} live className="presence-anchor-fallback" /> : null}
+    </div>
   );
 }
 
@@ -226,6 +230,7 @@ export function PresenceSprite(props: {
       idle: false,
       lite: props.lite ?? (glyph || !!props.reduced),
       autostart: !props.reduced,
+      shape: "blob",
     });
     mate.current = inst;
     faceRef.current = props.emotionId;
@@ -285,30 +290,56 @@ export function PresenceSprite(props: {
 }
 
 /** Rest-face letterhead: cream blob + conjugated eyes. Not a live engine. */
-export function PresenceStamp(props: { className?: string; size?: number }) {
-  const n = props.size ?? 28;
+export function PresenceStamp(props: { className?: string; size?: number; live?: boolean }) {
+  const n = props.size ?? 36;
+  const raw = useId();
+  const gid = `psg-${raw.replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <span
-      className={cn("presence-stamp relative inline-block shrink-0", props.className)}
+      className={cn("presence-stamp relative inline-block shrink-0", props.live && "is-live", props.className)}
       style={{ width: n, height: n }}
       aria-hidden
       data-testid="presence-stamp"
+      data-live={props.live ? "true" : undefined}
     >
-      <svg viewBox="0 0 32 32" width={n} height={n} focusable="false" className="block h-full w-full overflow-visible">
-        <circle className="presence-stamp-body" cx="16" cy="16.2" r="14.6" fill="var(--card)" />
-        <ellipse className="presence-stamp-shine" cx="12.2" cy="12.4" rx="7.2" ry="5.4" fill="var(--popover)" />
-        <ellipse className="presence-stamp-shade" cx="16.4" cy="22.6" rx="9.5" ry="5.2" fill="var(--lift)" />
+      <svg
+        viewBox="-15 -15 259 259"
+        width={n}
+        height={n}
+        focusable="false"
+        className="block h-full w-full overflow-visible"
+        shapeRendering="geometricPrecision"
+      >
+        <defs>
+          <radialGradient id={gid} cx="38%" cy="32%" r="75%">
+            <stop offset="0%" stopColor="#fffaf3" />
+            <stop offset="62%" stopColor="#F3F0EA" />
+            <stop offset="100%" stopColor="#e4ddd2" />
+          </radialGradient>
+        </defs>
+        <circle className="presence-stamp-body" cx="114.27" cy="114.27" r="114.2" fill={`url(#${gid})`} />
         <g className="presence-stamp-face">
-          <ellipse className="presence-stamp-eye" cx="10.7" cy="14.65" rx="2.15" ry="4.4" fill="var(--foreground)" />
-          <ellipse className="presence-stamp-eye" cx="21.3" cy="14.65" rx="2.15" ry="4.4" fill="var(--foreground)" />
+          <ellipse className="presence-stamp-eye" cx="86.4" cy="108.6" rx="10.8" ry="22.4" fill="#1A1A1A" />
+          <ellipse className="presence-stamp-eye" cx="142.1" cy="108.6" rx="10.8" ry="22.4" fill="#1A1A1A" />
           <path
             className="presence-stamp-mouth"
-            d="M9.55 19.9C12.05 23.35 19.95 23.35 22.45 19.9C19.7 22.2 12.3 22.2 9.55 19.9Z"
-            fill="var(--foreground)"
+            d="M78 148C100 174 128.5 174 150.5 148C128 166 100.5 166 78 148Z"
+            fill="#1A1A1A"
           />
         </g>
       </svg>
     </span>
+  );
+}
+
+export const COMPOSER_PRESENCE_SIZE = 64;
+
+export function PresencePerch(props: { className?: string; size?: number }) {
+  const size = props.size ?? COMPOSER_PRESENCE_SIZE;
+  return (
+    <div className={cn("presence-perch", props.className)} data-testid="presence-perch">
+      <PresenceAnchor id="composer" size={size} fallback />
+    </div>
   );
 }
 

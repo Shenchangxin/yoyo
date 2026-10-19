@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { PresencePerch, PresenceStamp } from "@/features/presence";
 import { agentCanvasActions, agentCanvasActionLabel } from "@yingce/lib/canvas/agent-canvas-actions";
 import { Button } from "antd";
 import { Tooltip } from "@yingce/components/ui/base/tooltip";
@@ -174,8 +175,8 @@ export function AgentChatMessage({
     }
     return (
         <div className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-            {!isUser ? <AgentTimelineMarker theme={theme} tone="agent" /> : null}
-            <div className={`agent-message-body min-w-0 text-sm leading-6 ${isUser ? "agent-message-user max-w-[82%] px-4 py-3 text-right" : "max-w-[calc(100%-36px)] flex-1 text-left"}`} style={{ color }}>
+            {!isUser ? <PresenceStamp size={36} live={isStreaming} className="mt-0.5" /> : null}
+            <div className={`agent-message-body min-w-0 text-sm leading-6 ${isUser ? "agent-message-user max-w-[82%] px-4 py-3 text-right" : "max-w-[calc(100%-48px)] flex-1 text-left"}`} style={{ color }}>
                 {item.interjection ? (
                     <span
                         className="mb-1 inline-flex items-center rounded-full px-1.5 py-[1px] text-[var(--fs-label)] leading-4"
@@ -504,9 +505,7 @@ export function AgentToolCard({
 export function AgentWorkingMessage({ theme, label = WORKING_TEXT }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; label?: string }) {
     return (
         <div role="status" aria-live="polite" className="agent-working-indicator" style={{ color: theme.node.muted }}>
-            <span className="agent-working-signal" aria-hidden="true">
-                <span />
-            </span>
+            <PresenceStamp size={32} live className="shrink-0" />
             <span>{label}</span>
             <span className="agent-working-caption">实时处理中</span>
         </div>
@@ -741,6 +740,7 @@ export function AgentChatComposer({
     references = [],
     slashSkills,
     includeAssetLibrary,
+    perch = false,
 }: {
     prompt: string;
     attachments?: CloudAgentChatAttachment[];
@@ -762,6 +762,7 @@ export function AgentChatComposer({
     slashSkills?: Skill[];
     /** 是否在「@」候选里包含素材库资源 */
     includeAssetLibrary?: boolean;
+    perch?: boolean;
 }) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [slash, setSlash] = useState<{ start: number; query: string } | null>(null);
@@ -886,6 +887,7 @@ export function AgentChatComposer({
 
     return (
         <div className="agent-composer-wrap min-w-0 shrink-0" onWheelCapture={(event) => event.stopPropagation()}>
+            {perch ? <PresencePerch /> : null}
             <div
                 className="agent-composer-surface group/composer relative transition-[background-color,box-shadow] duration-200"
                 style={{

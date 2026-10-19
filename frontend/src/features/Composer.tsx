@@ -60,6 +60,7 @@ import { WorkspaceChip } from "./session-chrome/WorkspaceChip";
 import { WorkspacePicker } from "./session-chrome/WorkspacePicker";
 import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
+import { PresencePerch } from "./presence";
 
 export function Composer(props: {
   draftKey: string;
@@ -118,6 +119,7 @@ export function Composer(props: {
   toolbarLeading?: ReactNode;
   placeholder?: string;
   inputTestId?: string;
+  perch?: boolean;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -618,6 +620,7 @@ export function Composer(props: {
   const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? copy.composer.sendQueue : copy.composer.send;
   const placeholderText = canSteerQueue ? copy.composer.steerQueue : placeholder;
   const pendingTool = toolApproval && toolApproval.action !== "ask_user" ? toolApproval : null;
+  const perch = !!props.perch;
 
   return (
     <div className={cn("relative no-drag w-full shrink-0", col, pad)} data-testid={props.compact ? undefined : "composer-column"}>
@@ -626,6 +629,7 @@ export function Composer(props: {
         data-hero={props.hero ? "true" : "false"}
         data-compact={props.compact ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
+        data-perch={perch ? "true" : "false"}
       >
         {takeover && props.onResolveAsk ? (
           <>
@@ -642,6 +646,7 @@ export function Composer(props: {
                 onClose={() => setPickerOpen(false)}
               />
             ) : null}
+            {perch ? <PresencePerch /> : null}
             <ApprovalTakeover ask={props.ask} approval={pendingTool} onResolve={props.onResolveAsk} />
           </>
         ) : (
@@ -669,6 +674,7 @@ export function Composer(props: {
                 copy={copy}
               />
             </div>
+            {perch ? <PresencePerch /> : null}
             <div
               ref={cardRef}
               className="sc-card"

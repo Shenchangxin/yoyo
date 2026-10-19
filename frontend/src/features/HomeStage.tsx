@@ -52,7 +52,7 @@ export function HomeHero(_props: {
       )}
       data-testid="empty-turn"
     >
-      <PresenceAnchor id="home" size={createDesk ? 96 : 140} className="mx-auto cursor-pointer" />
+      <PresenceAnchor id="home" size={createDesk ? 112 : 148} className="mx-auto cursor-pointer" />
       <p className="mt-5 text-center text-[13px] tracking-[-0.01em] text-muted">
         {hello(copy)}
       </p>
