@@ -12,7 +12,7 @@ import { createCanvasNode, isHiddenBatchChild, removeCanvasNodes } from "@yingce
 import { isolateCopiedNodeMetadata, nextCopiedNodeTitle } from "@yingce/lib/canvas/canvas-node-copy";
 import { CanvasNodeType, type CanvasConnection, type CanvasFolderStyle, type CanvasFolderTheme, type CanvasNodeData, type CanvasNodeMetadata, type CanvasNodeTypeId, type ContextMenuState, type Position } from "@yingce/types/canvas";
 import { cloneCanvasDrawing } from "@yingce/lib/canvas/canvas-drawing-storage";
-import { isDrawingEngineAvailable, type CanvasDrawingEngine } from "@yingce/lib/canvas/canvas-drawing-engine";
+import { drawingEngineForCreate, type CanvasDrawingEngine } from "@yingce/lib/canvas/canvas-drawing-engine";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { useEffectiveConfig } from "@yingce/stores/use-config-store";
 import { workflowProviderPluginEnabled } from "@yingce/lib/plugins/builtin/workflows";
@@ -130,10 +130,7 @@ export function useCanvasNodeOperations({
     }, [selectedNodeIdsRef, setSelectedConnectionId, setSelectedNodeIds]);
 
     const createNode = useCallback((type: CanvasNodeTypeId, position?: Position, workflowProvider?: "runninghub") => {
-        if (type === CanvasNodeType.Drawing && !isDrawingEngineAvailable(defaultDrawingEngine, tldrawLicenseKey)) {
-            message.error("当前生产构建未配置 tldraw License Key，不能创建 tldraw 绘图");
-            return;
-        }
+        const drawingEngine = type === CanvasNodeType.Drawing ? drawingEngineForCreate(defaultDrawingEngine, tldrawLicenseKey) : undefined;
         const selectedWorkflowProvider = type === CanvasNodeType.Config
             ? workflowProvider || (workflowProviderPluginEnabled(runtimeStatuses, "runninghub") ? "runninghub" : undefined)
             : undefined;
@@ -143,7 +140,7 @@ export function useCanvasNodeOperations({
         }
         const workflowTitle = type === CanvasNodeType.Config && selectedWorkflowProvider === "runninghub" ? "RunningHub 工作流" : undefined;
         const metadata: CanvasNodeMetadata | undefined = type === CanvasNodeType.Drawing
-            ? { drawingEngine: defaultDrawingEngine }
+            ? { drawingEngine }
             : type === CanvasNodeType.Config
                 ? { generationMode: "image", workflowProvider: selectedWorkflowProvider || "model" }
                 : undefined;

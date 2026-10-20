@@ -53,9 +53,9 @@ type AgentSettingsProps = {
 };
 
 const permissionOptions: Array<{ value: AgentPermissionMode; label: string; description: string; icon: typeof ShieldCheck; color: string }> = [
-    { value: "read_only", label: "只读", description: "只分析和建议", icon: LockKeyhole, color: "#4f7cff" },
-    { value: "request_approval", label: "请求审批", description: "写入和生成前确认", icon: ShieldCheck, color: "#b58336" },
-    { value: "auto", label: "自动执行", description: "预算内执行已授权工具", icon: Clapperboard, color: "#429477" },
+    { value: "read_only", label: "只读", description: "只分析和建议", icon: LockKeyhole, color: "var(--accent)" },
+    { value: "request_approval", label: "请求审批", description: "写入和生成前确认", icon: ShieldCheck, color: "var(--warning)" },
+    { value: "auto", label: "自动执行", description: "预算内执行已授权工具", icon: Clapperboard, color: "var(--success)" },
 ];
 
 const contextOptions: Array<{ value: AgentContextKey; label: string; description: string }> = [

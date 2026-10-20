@@ -190,7 +190,7 @@ export const CanvasFrameNode = React.memo(function CanvasFrameNode({
                     background: folder && collapsed ? "transparent" : active ? theme.frame.activeFill : theme.frame.fill,
                     borderColor: folder && collapsed ? "transparent" : active ? theme.frame.activeStroke : theme.frame.stroke,
                     borderWidth: folder && collapsed ? 0 : 1 / Math.max(scale, 0.05),
-                    boxShadow: !fullDetail || (folder && collapsed) ? "none" : isSelected ? `0 0 0 ${1 / Math.max(scale, 0.05)}px ${theme.frame.activeStroke}33, 0 24px 72px ${theme.spatial.shadow}` : `0 18px 54px ${theme.spatial.shadow}`,
+                    boxShadow: "none",
                 }}
             >
                 {!fullDetail ? (

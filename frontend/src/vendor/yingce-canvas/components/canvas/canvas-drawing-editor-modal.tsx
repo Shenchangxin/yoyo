@@ -5,7 +5,7 @@ import { AppModal } from "@yingce/components/ui/product/app-modal";
 import { Check, Maximize2, X } from "lucide-react";
 
 import type { CanvasDrawingEditorHandle } from "@yingce/components/canvas/canvas-drawing-editor-types";
-import { drawingEngineForNode, drawingEngineLabel, isDrawingEngineAvailable } from "@yingce/lib/canvas/canvas-drawing-engine";
+import { canUseDrawingEngine, drawingEngineForNode, drawingEngineLabel } from "@yingce/lib/canvas/canvas-drawing-engine";
 import { loadCanvasDrawing, saveCanvasDrawing, type CanvasDrawingSnapshot } from "@yingce/lib/canvas/canvas-drawing-storage";
 import { useActiveTheme } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
@@ -80,7 +80,7 @@ export function CanvasDrawingEditorModal({ open, projectId, node, onClose, onSav
         onClose();
     };
 
-    const unavailable = !isDrawingEngineAvailable(engine, tldrawLicenseKey);
+    const unavailable = !canUseDrawingEngine(engine, tldrawLicenseKey);
     return (
         <AppModal flush open={open} onCancel={() => void handleClose()} footer={null} closable={false} destroyOnHidden width="100vw" centered className="canvas-drawing-editor-modal">
             <div className="flex h-[min(92dvh,980px)] flex-col">

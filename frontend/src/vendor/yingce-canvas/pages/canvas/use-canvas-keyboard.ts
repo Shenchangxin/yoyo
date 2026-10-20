@@ -37,6 +37,10 @@ type UseCanvasKeyboardOptions = {
     exitFocusMode: () => void;
     toggleFocusMode: () => void;
     onOpenSearch: () => void;
+    onToggleAgent?: () => void;
+    assistantOpen?: boolean;
+    onCloseAgent?: () => void;
+    onSetTool?: (tool: "move" | "box-select") => void;
     beginBatchConnection: () => void;
 };
 
@@ -84,6 +88,10 @@ export function useCanvasKeyboard({
     exitFocusMode,
     toggleFocusMode,
     onOpenSearch,
+    onToggleAgent,
+    assistantOpen = false,
+    onCloseAgent,
+    onSetTool,
     beginBatchConnection,
 }: UseCanvasKeyboardOptions) {
     useEffect(() => {
@@ -127,9 +135,31 @@ export function useCanvasKeyboard({
                 }
                 return;
             }
+            if (isModifierShortcut && !event.altKey && !event.shiftKey && key === "/") {
+                if (target?.closest(".ant-modal-wrap, .ant-dropdown, .ant-popover")) return;
+                event.preventDefault();
+                if (!event.repeat) onToggleAgent?.();
+                return;
+            }
+            if (isModifierShortcut && !event.altKey && key === "\\") {
+                if (isTextEditingTarget || target?.closest(".ant-modal-wrap, .ant-dropdown, .ant-popover")) return;
+                event.preventDefault();
+                if (!event.repeat) toggleFocusMode();
+                return;
+            }
             if (isTextEditingTarget) return;
             const isCanvasControlTarget = Boolean(target?.closest("[data-canvas-no-zoom]"));
             if (isCanvasControlTarget && !(isModifierShortcut && !event.altKey && (key === "c" || key === "v"))) return;
+            if (!isModifierShortcut && !event.altKey && key === "v") {
+                event.preventDefault();
+                onSetTool?.("box-select");
+                return;
+            }
+            if (!isModifierShortcut && !event.altKey && key === "h") {
+                event.preventDefault();
+                onSetTool?.("move");
+                return;
+            }
             if (event.altKey && !isModifierShortcut && key === "l") {
                 event.preventDefault();
                 if (!event.repeat && selectedNodeIdsRef.current.size > 1) beginBatchConnection();
@@ -188,6 +218,11 @@ export function useCanvasKeyboard({
                 else if (selectedConnectionId) deleteConnection(selectedConnectionId);
             }
             if (event.key === "Escape") {
+                if (assistantOpen) {
+                    event.stopPropagation();
+                    onCloseAgent?.();
+                    return;
+                }
                 // 沉浸专注：无选中且无弹窗/下拉/右键菜单时，Esc 退出专注；否则保留原有取消选择行为。
                 const hasFocusOverlay = Boolean(document.querySelector(".ant-modal-wrap, .ant-dropdown, .ant-select-dropdown, .ant-popover, [data-canvas-context-menu]"));
                 if (focusMode && !selectedNodeIdsRef.current.size && !hasFocusOverlay) {
@@ -223,5 +258,5 @@ export function useCanvasKeyboard({
             window.removeEventListener("keydown", handleKeyDown, true);
             window.removeEventListener("paste", handlePaste, true);
         };
-    }, [enabled, beginBatchConnection, cancelSelectionBox, copySelectedNodes, deleteConnection, deleteNodes, deselectCanvas, exitFocusMode, fitCanvasContent, fitCanvasSelection, focusMode, nodesRef, onOpenSearch, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, restoreCopiedNodesFromText, saveCanvasProject, selectedConnectionId, selectedNodeIdsRef, setAnnotationNodeId, setContextMenu, setCropNodeId, setInfoNodeId, setMaskEditNodeId, setSelectedConnectionId, setSelectedNodeIds, setShortcutRequestNonce, shouldPreferCopiedNodes, toggleFocusMode, undoCanvas, zoomCanvasIn, zoomCanvasOut, zoomToActualSize]);
+    }, [assistantOpen, beginBatchConnection, cancelSelectionBox, copySelectedNodes, deleteConnection, deleteNodes, deselectCanvas, enabled, exitFocusMode, fitCanvasContent, fitCanvasSelection, focusMode, nodesRef, onCloseAgent, onOpenSearch, onSetTool, onToggleAgent, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, restoreCopiedNodesFromText, saveCanvasProject, selectedConnectionId, selectedNodeIdsRef, setAnnotationNodeId, setContextMenu, setCropNodeId, setInfoNodeId, setMaskEditNodeId, setSelectedConnectionId, setSelectedNodeIds, setShortcutRequestNonce, shouldPreferCopiedNodes, toggleFocusMode, undoCanvas, zoomCanvasIn, zoomCanvasOut, zoomToActualSize]);
 }

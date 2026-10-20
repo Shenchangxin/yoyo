@@ -125,7 +125,7 @@ function drawMinimap(canvas: HTMLCanvasElement | null, nodes: CanvasNodeData[], 
     for (const node of nodes) {
         const pos = toMinimap(node.position.x, node.position.y);
         const frame = isFrameNode(node);
-        const color = node.type === CanvasNodeType.Image ? "#10b981" : node.type === CanvasNodeType.Video ? "#f97316" : node.type === CanvasNodeType.Audio ? "#a855f7" : node.type === CanvasNodeType.Config ? "#60a5fa" : node.type === CanvasNodeType.Skill ? "#818cf8" : frame ? theme.frame.stroke : theme.node.muted;
+        const color = frame ? theme.frame.stroke : theme.node.muted;
         const p2 = toMinimap(node.position.x + node.width, node.position.y + node.height);
         const rectWidth = Math.max(p2.x - pos.x, 2);
         const rectHeight = Math.max(p2.y - pos.y, 2);

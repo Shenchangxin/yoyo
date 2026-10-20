@@ -33,7 +33,7 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
     const config = useEffectiveConfig();
     return (
         <>
-            <Modal title="任务详情" open={Boolean(task)} footer={null} width="min(920px, calc(100vw - 32px))" onCancel={onCloseTask}>
+            <Modal className="sg-dialog" rootClassName="sg-dialog-root" title="任务详情" open={Boolean(task)} footer={null} width="min(640px, calc(100vw - 32px))" onCancel={onCloseTask}>
                 {task ? (
                     <div className="space-y-4 text-sm">
                         <div className="grid grid-cols-2 gap-3 rounded-lg border p-3" style={{ borderColor: theme.node.stroke, background: theme.node.panel }}>
@@ -66,7 +66,7 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
                             <div className="mb-2 text-xs font-semibold" style={{ color: theme.node.muted }}>
                                 任务日志
                             </div>
-                            <pre className="max-h-64 overflow-auto rounded-lg bg-neutral-950 p-3 text-[var(--fs-label)] leading-5 text-neutral-100">
+                            <pre className="max-h-64 overflow-auto rounded-lg p-3 text-[11px] leading-5 tabular-nums" style={{ background: "var(--media-surface, #0c0c0b)", color: "var(--foreground)" }}>
                                 {taskLoading ? "加载中..." : taskLogs.length ? taskLogs.map((log) => `[${new Date(log.createdAt).toLocaleString()}] ${log.level.toUpperCase()} ${formatTaskLog(log)}`).join("\n") : "暂无日志"}
                             </pre>
                         </div>
@@ -74,7 +74,7 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
                 ) : null}
             </Modal>
 
-            <Modal title="AI 超分" open={Boolean(superResolveNode?.metadata?.content)} centered footer={null} onCancel={onCloseSuperResolve}>
+            <Modal className="sg-dialog" rootClassName="sg-dialog-root" title="AI 超分" open={Boolean(superResolveNode?.metadata?.content)} centered footer={null} width={480} onCancel={onCloseSuperResolve}>
                 <div className="py-8 text-center text-base font-medium">暂未实现</div>
             </Modal>
 
@@ -103,9 +103,12 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
             ) : null}
 
             <Modal
+                className="sg-dialog"
+                rootClassName="sg-dialog-root"
                 title="清空画布？"
                 open={clearConfirmOpen}
                 centered
+                width={480}
                 onCancel={onCancelClear}
                 footer={
                     <>

@@ -1,0 +1,519 @@
+/* Studio lock. Loaded after vendor component CSS so the canvas speaks one language:
+   content is solid, glass is only the navigation layer, blue is evidence. */
+
+.yingce-island {
+  --glass-blur: 20px;
+  --glass-saturate: 140%;
+  --sg-radius-island: 12px;
+  --sg-radius-dialog: 14px;
+  --sg-radius-card: 12px;
+  --sg-radius-control: 7px;
+  --node-radius: 12px;
+  --agent-radius-shell: 12px;
+  --agent-radius-surface: 12px;
+  --fs-display: 21px;
+  --fs-title: 15px;
+  --fs-body: 13px;
+  --fs-tiny: 11px;
+  --fs-micro: 11px;
+  --status-error: var(--danger);
+  --status-success: var(--success);
+  --status-warning: var(--warning);
+  --status-loading: var(--accent);
+}
+
+/* HUD follows the app theme. The stage may still be media-black or wallpaper. */
+.yingce-island [data-canvas-color],
+.yingce-popup-root[data-canvas-color] {
+  --background: inherit;
+  --foreground: inherit;
+  --card: inherit;
+  --popover: inherit;
+  --sidebar: inherit;
+  --lift: inherit;
+  --muted: inherit;
+  --border: inherit;
+  --accent: inherit;
+  --ring: inherit;
+  --input-bar: inherit;
+  --glass-bg: inherit;
+  color: var(--foreground);
+}
+
+/* Side panel is content, not a second sheet of glass. */
+.yingce-island aside[aria-label="画布工作区"],
+.yingce-island .canvas-workspace-panel,
+.yingce-island .canvas-workspace-panel > aside {
+  background: var(--popover) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.yingce-island .canvas-workspace-rail-button[aria-pressed="true"] {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .canvas-workspace-rail-button[aria-pressed="true"]::before {
+  display: none !important;
+}
+
+/* One bottom island: selection or the selected node replaces the main dock. */
+.yingce-island:has([data-canvas-selection-toolbar]) [data-canvas-main-dock],
+.yingce-island:has(.canvas-node-toolbar) [data-canvas-main-dock] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.yingce-island [data-canvas-selection-toolbar],
+.yingce-island .canvas-node-toolbar {
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: var(--canvas-inset-y) !important;
+  z-index: var(--z-toolbar) !important;
+  width: max-content !important;
+  max-width: calc(100% - var(--canvas-zoom-reserve) - 24px) !important;
+  transform: translateX(-50%) !important;
+}
+
+.yingce-island .canvas-selection-count {
+  height: 28px;
+  padding: 0 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: var(--sg-radius-control);
+}
+
+.yingce-island .canvas-focus-mode-bar,
+.yingce-island [aria-label="专注模式工具栏"] > div {
+  border-radius: var(--sg-radius-island) !important;
+  background: var(--glass-bg) !important;
+  box-shadow:
+    0 0 0 0.5px var(--glass-hairline),
+    0 10px 28px color-mix(in srgb, black 16%, transparent) !important;
+}
+
+.yingce-island [aria-label="专注模式工具栏"] button {
+  border-radius: var(--sg-radius-control) !important;
+}
+
+/* Nodes rest as media. The edge is a hard 1-screen-pixel ring, not a blurred shadow. */
+.yingce-island .canvas-node-shell {
+  border: 1px solid transparent !important;
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: 0 0 0 calc(1px * var(--canvas-live-inverse-scale, 1)) color-mix(in srgb, #f4f4f0 32%, transparent) !important;
+}
+
+.yingce-island .canvas-node-shell[data-selected="true"] {
+  outline: none !important;
+  box-shadow: 0 0 0 calc(1.5px * var(--canvas-live-inverse-scale, 1)) var(--accent) !important;
+}
+
+.yingce-island .canvas-frame-shell {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.yingce-island .aceternity-comet-card::after {
+  content: none !important;
+}
+
+.yingce-island .canvas-folder-preview,
+.yingce-island .canvas-folder-preview:hover,
+.yingce-island .canvas-folder-preview.is-drop-target {
+  filter: none !important;
+}
+
+/* Corner resize stays draggable. The protruding button does not. */
+.yingce-island .canvas-resize-handle,
+.yingce-island button[aria-label="调整背板尺寸"],
+.yingce-island .agent-panel-resize-corner,
+.yingce-popup-root button[aria-label="拖动调整窗口大小"] > span,
+.yingce-island button[aria-label="拖动调整窗口大小"] > span {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+.yingce-island .agent-panel-resize-corner:focus-visible {
+  opacity: 1 !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .canvas-node-shell[data-node-state="loading"],
+.yingce-island .canvas-node-shell[data-state="loading"] {
+  outline: none !important;
+  animation: none !important;
+}
+
+.yingce-island .canvas-node-external-header,
+.yingce-island .canvas-resize-handle {
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out, ease-out);
+}
+
+.yingce-island .node-element:hover .canvas-node-external-header,
+.yingce-island .node-element:hover .canvas-resize-handle,
+.yingce-island .node-element:has([data-selected="true"]) .canvas-node-external-header,
+.yingce-island .node-element:has([data-selected="true"]) .canvas-resize-handle,
+.yingce-island .canvas-node-external-header:focus-within {
+  opacity: 1;
+}
+
+.yingce-island [data-node-status="loading"] {
+  display: none !important;
+}
+
+.yingce-island [data-node-status="error"],
+.yingce-island [data-node-status="success"] {
+  border-radius: 6px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: color-mix(in srgb, currentColor 14%, transparent) !important;
+}
+
+.yingce-island .canvas-connection-flow,
+.yingce-island .canvas-connection-comet,
+.yingce-island .canvas-connection-draft {
+  display: none !important;
+  animation: none !important;
+}
+
+.yingce-island [data-canvas-connection-rail] {
+  filter: none !important;
+}
+
+.yingce-island [data-canvas-connection-rail] .group-hover\:brightness-125,
+.yingce-island [data-canvas-connection-rail] span {
+  filter: none !important;
+}
+
+/* Drop, empty, model picker, menus. */
+.yingce-island .canvas-file-drop {
+  border-radius: 12px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: color-mix(in srgb, var(--media-surface, var(--background)) 72%, transparent) !important;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--foreground) 28%, transparent) !important;
+}
+
+.yingce-island .canvas-file-drop h2 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
+}
+
+.yingce-island .canvas-file-drop .aceternity-drop-grid,
+.yingce-island .canvas-file-drop .canvas-file-drop-stack {
+  display: none !important;
+}
+
+.yingce-island .canvas-composer-model-picker,
+.yingce-popup-root .canvas-composer-model-picker {
+  height: 36px;
+  border-radius: 8px !important;
+  border-color: var(--border) !important;
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .canvas-composer-model-picker:hover,
+.yingce-island .canvas-composer-model-picker[aria-expanded="true"],
+.yingce-popup-root .canvas-composer-model-picker:hover,
+.yingce-popup-root .canvas-composer-model-picker[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--lift)) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .creation-model-picker-surface,
+.yingce-island .canvas-composer-popover-surface,
+.yingce-popup-root .creation-model-picker-surface,
+.yingce-popup-root .canvas-composer-popover-surface {
+  background: var(--popover) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+  box-shadow: var(--shadow-popover) !important;
+}
+
+.yingce-island .sg-eyebrow,
+.yingce-popup-root .sg-eyebrow {
+  text-transform: none !important;
+  letter-spacing: -0.01em !important;
+  font-weight: 500 !important;
+}
+
+.yingce-island .sg-kbd,
+.yingce-popup-root .sg-kbd {
+  border-radius: 6px;
+}
+
+/* Agent is a content panel, not a second product. */
+.yingce-island .canvas-agent-panel {
+  --agent-radius-shell: 12px;
+  --agent-radius-surface: 12px;
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--popover) !important;
+  box-shadow: var(--shadow-popover) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.yingce-island .agent-panel-header {
+  min-height: 44px !important;
+  padding: 8px 12px !important;
+}
+
+.yingce-island .agent-panel-title {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.yingce-island .agent-panel-context,
+.yingce-island .agent-welcome-orb {
+  display: none !important;
+}
+
+.yingce-island .agent-composer-surface {
+  border-radius: 12px !important;
+  background: var(--lift) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .agent-composer-surface:focus-within {
+  box-shadow: 0 0 0 1.5px var(--accent) !important;
+}
+
+.yingce-island .agent-composer-send:not(:disabled) {
+  border-radius: 7px !important;
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .agent-message-assistant {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body .ant-modal-mask,
+body .yc-modal-mask,
+body .ant-drawer-mask,
+body .yc-drawer-mask {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Dialogs on the canvas only catch outside clicks. They do not dim the stage. */
+body:has(.yingce-island) {
+  --ant-color-bg-mask: transparent;
+}
+
+body.app-spatial-overlays:has(.yingce-island) :is(
+  .ant-modal-mask,
+  .yc-modal-mask,
+  .ant-drawer-mask,
+  .yc-drawer-mask
+),
+body:has(.yingce-island) :is(
+  .ant-modal-mask,
+  .yc-modal-mask,
+  .ant-drawer-mask,
+  .yc-drawer-mask,
+  .asset-library-picker-mask,
+  .canvas-toolbar-settings-mask
+) {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.yingce-island .canvas-node-shell[data-node-state="loading"],
+.yingce-island .canvas-node-shell[data-state="loading"] {
+  outline: none !important;
+  animation: none !important;
+}
+
+.yingce-island .canvas-create-command .sg-kbd,
+.yingce-popup-root .canvas-create-command .sg-kbd {
+  border: 0 !important;
+  background: var(--lift) !important;
+  color: var(--muted) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  min-width: 0;
+  height: 18px;
+  padding: 0 6px !important;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.yingce-island [data-slot="switch"][data-state="on"] {
+  background: var(--accent) !important;
+}
+
+.yingce-island button:disabled {
+  opacity: 0.4;
+}
+
+.sg-dialog-root .ant-modal-title,
+.sg-dialog-root .yc-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.yingce-island .canvas-composer-model-picker,
+.yingce-popup-root .canvas-composer-model-picker {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.yingce-island {
+  --director-accent: var(--accent);
+  --director-accent-hover: var(--accent);
+  --director-on-accent: var(--background);
+}
+
+.yingce-island .canvas-agent-launcher {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  border-radius: 7px !important;
+  z-index: var(--z-toolbar) !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.yingce-island .canvas-agent-launcher::before,
+.yingce-island .canvas-agent-launcher-badge {
+  display: none !important;
+}
+
+.yingce-island .canvas-agent-launcher.is-docked {
+  position: relative !important;
+  margin-left: 2px;
+  background: transparent !important;
+  color: var(--foreground);
+}
+
+.yingce-island .canvas-agent-launcher-label {
+  display: none !important;
+}
+
+.yingce-island .canvas-agent-launcher-status {
+  background: var(--success) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .canvas-agent-launcher-status.is-pending {
+  background: var(--warning) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .agent-message-user {
+  border-radius: 12px 12px 4px 12px !important;
+  background: var(--lift) !important;
+}
+
+.yingce-island .canvas-agent-approval-operation {
+  border-radius: 6px !important;
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .canvas-agent-approval-operation-add_node,
+.yingce-island .canvas-agent-approval-operation-update_node,
+.yingce-island .canvas-agent-approval-operation-connect_nodes,
+.yingce-island .canvas-agent-approval-operation-arrange_nodes,
+.yingce-island .canvas-agent-approval-operation-generate_media {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-island .canvas-resource-inline-preview.is-fallback {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 0;
+}
+
+.yingce-island .canvas-resource-inline-skill-icon {
+  font-size: 0;
+}
+
+.yingce-island .canvas-resource-inline-skill-icon::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.yingce-island .canvas-zoom-pct {
+  font-size: 11px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.yingce-island .canvas-node-reference-chip[data-connection-hover-replace="true"] {
+  outline: 1.5px solid var(--accent) !important;
+  outline-offset: 1.5px !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .canvas-agent-approval-card {
+  --agent-approval-blue: var(--foreground);
+  --agent-approval-blue-hover: var(--foreground);
+}
+
+.yingce-island .canvas-agent-approval-approve,
+.yingce-island .canvas-agent-approval-approve:hover {
+  border-color: var(--foreground) !important;
+  background: var(--foreground) !important;
+  color: var(--background) !important;
+  box-shadow: none !important;
+}
+
+.yingce-island .canvas-agent-approval-empty {
+  background: color-mix(in srgb, var(--warning) 12%, transparent) !important;
+}
+
+.yingce-island .agent-scene-capsule,
+.yingce-island .agent-scene-capsule[data-scene] {
+  --scene-color: var(--foreground);
+  border-radius: 6px !important;
+  border-color: var(--border) !important;
+  color: var(--foreground) !important;
+  background: var(--lift) !important;
+}
+
+.yingce-island .agent-scene-capsules-heading svg,
+.yingce-island .agent-scene-capsule svg {
+  color: var(--muted) !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .yingce-island .canvas-topbar-cluster,
+  .yingce-island .canvas-floating-dock,
+  .yingce-island .canvas-zoom-capsule,
+  .yingce-island .canvas-node-toolbar,
+  .yingce-island .canvas-agent-panel,
+  .yingce-island aside[aria-label="画布工作区"] {
+    background: var(--popover) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

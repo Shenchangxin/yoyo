@@ -95,6 +95,11 @@ export function assetPickerItemsToInsertPayloads(ids: string[], items: AssetLibr
     });
 }
 
+function displayableImageUrl(...candidates: Array<string | undefined>) {
+    const readable = candidates.find((value) => value && !value.startsWith("blob:"));
+    return readable || candidates.find(Boolean) || "";
+}
+
 function localAssetToInsertPayload(asset: InsertableAsset): InsertAssetPayload {
     if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title, assetId: asset.id };
     if (asset.kind === "audio") return { kind: "audio", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, durationMs: asset.data.durationMs, bytes: asset.data.bytes, mimeType: asset.data.mimeType, assetId: asset.id };
@@ -112,7 +117,8 @@ function localAssetToInsertPayload(asset: InsertableAsset): InsertAssetPayload {
             mimeType: asset.data.mimeType,
             assetId: asset.id,
         };
-    return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height, bytes: asset.data.bytes, mimeType: asset.data.mimeType, assetId: asset.id };
+    const dataUrl = displayableImageUrl(asset.data.dataUrl, asset.coverUrl);
+    return { kind: "image", dataUrl, url: dataUrl, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height, bytes: asset.data.bytes, mimeType: asset.data.mimeType, assetId: asset.id };
 }
 
 export function externalAssetToInsertPayload(reference: ExternalAssetPickerReference): InsertAssetPayload {

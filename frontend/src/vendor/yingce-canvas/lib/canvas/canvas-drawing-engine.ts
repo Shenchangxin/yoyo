@@ -27,6 +27,27 @@ export function isDrawingEngineAvailable(engine: CanvasDrawingEngine, configured
     return engine === "excalidraw" || Boolean(resolveTldrawLicenseKey(configuredLicenseKey));
 }
 
+function isLoopbackHost(hostname: string) {
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+/** 与 tldraw LicenseManager 的开发环境判断一致。这些环境没有 Key 也会保留编辑器。 */
+export function tldrawRunsWithoutLicense() {
+    if (!import.meta.env.PROD) return true;
+    if (typeof window === "undefined") return false;
+    const protocol = window.location.protocol;
+    return !["https:", "vscode-webview:"].includes(protocol) || isLoopbackHost(window.location.hostname);
+}
+
+export function canUseDrawingEngine(engine: CanvasDrawingEngine, configuredLicenseKey?: string) {
+    return isDrawingEngineAvailable(engine, configuredLicenseKey) || (engine === "tldraw" && tldrawRunsWithoutLicense());
+}
+
+export function drawingEngineForCreate(preferred: CanvasDrawingEngine, configuredLicenseKey?: string): CanvasDrawingEngine {
+    return canUseDrawingEngine(preferred, configuredLicenseKey) ? preferred : "excalidraw";
+}
+
 export function drawingEngineLabel(engine: CanvasDrawingEngine) {
     return engine === "excalidraw" ? "Excalidraw" : "tldraw";
 }

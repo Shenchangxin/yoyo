@@ -193,9 +193,9 @@ function EmotionPad({ preset, onChange }: { preset: CanvasEmotionPreset; onChang
 function EmotionHeadPreview({ preset }: { preset: CanvasEmotionPreset }) {
     const theme = canvasThemes[useActiveTheme()];
     return (
-        <div className="relative overflow-hidden rounded-[var(--r-lg)] border" style={{ background: "#26272a", borderColor: theme.toolbar.border }}>
+        <div className="relative overflow-hidden rounded-[var(--r-lg)] border" style={{ background: "var(--media-surface, #0c0c0b)", borderColor: theme.toolbar.border }}>
             <Canvas frameloop="demand" dpr={[1, 1.5]} camera={{ fov: 38, near: 0.1, far: 20, position: [0, 0, 4.15] }} gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}>
-                <color attach="background" args={["#26272a"]} />
+                <color attach="background" args={["#0c0c0b"]} />
                 <ambientLight intensity={0.82} />
                 <directionalLight position={[-2.8, 4, 3]} intensity={1.45} color="#ffffff" />
                 <directionalLight position={[3, 1, 2]} intensity={0.5} color="#c9d0dc" />

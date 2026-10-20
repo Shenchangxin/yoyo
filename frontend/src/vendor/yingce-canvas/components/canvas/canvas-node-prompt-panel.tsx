@@ -800,7 +800,7 @@ function ConnectedReferenceShelf({
                                 data-dragging={draggedReferenceId === reference.nodeId || undefined}
                                 data-drop-target={isDropTarget ? "true" : undefined}
                                 style={{
-                                    boxShadow: isDropTarget ? "0 0 0 2px #3b82f6, 0 0 16px rgba(59, 130, 246, 0.45)" : undefined,
+                                    boxShadow: isDropTarget ? "0 0 0 1.5px var(--accent)" : undefined,
                                 }}
                                 onDragOver={(event) => {
                                     if (draggedReferenceId) {
