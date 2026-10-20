@@ -2436,18 +2436,21 @@ details[open] > .fold-summary::before {
   overflow: hidden;
 }
 
-.creation-home.drama-agent-page[data-empty="true"] .creation-empty-workspace {
-  display: flex;
+.yingce-island .creation-home.drama-agent-page[data-empty="true"] > .creation-empty-workspace,
+.app-user-workspace .creation-home.drama-agent-page[data-empty="true"] > .creation-empty-workspace,
+.creation-home.drama-agent-page[data-empty="true"] > .creation-empty-workspace {
+  display: flex !important;
   flex: 1 1 auto !important;
   flex-direction: column;
   align-items: stretch;
   justify-content: safe center;
   width: min(820px, calc(100% - 48px)) !important;
+  height: auto !important;
+  max-height: 100% !important;
   min-height: 0 !important;
   margin: 0 auto;
   padding: 28px 0 32px !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow: auto !important;
 }
 
 .creation-home.drama-agent-page[data-empty="true"] .creation-home-heading {
@@ -2543,44 +2546,113 @@ details[open] > .fold-summary::before {
   box-shadow: var(--shadow-composer);
 }
 
+.drama-agent-page .sc-root[data-perch="true"] .presence-perch {
+  flex: none;
+  width: 100%;
+  margin: 0 0 8px;
+  overflow: visible;
+}
+
 .drama-agent-page .sc-chip-btn {
   width: auto;
 }
 
 .drama-agent-page .sc-row {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 0 8px 8px;
+  container-type: normal;
 }
 
 .drama-agent-page .sc-tools {
   gap: 4px;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   overflow: visible;
 }
 
 .drama-agent-page .sc-toolbar-leading {
+  display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
   overflow: visible;
+}
+
+.drama-agent-page .sc-toolbar-leading .ant-select,
+.drama-agent-page .sc-toolbar-leading .yc-select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 11rem;
 }
 
 .drama-agent-page .sc-primary {
   transform: none;
 }
 
-.drama-agent-page .sc-toolbar-leading .drama-agent-select,
-.drama-agent-page .sc-toolbar-leading .creation-model-picker,
-.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker {
+.drama-agent-page .sc-trailing {
+  overflow: visible;
+  min-width: 0;
+  flex: none;
+}
+
+.drama-agent-page .sc-trailing .creation-model-picker.canvas-composer-model-picker {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 8.5rem !important;
+  padding: 0 8px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 20px !important;
+  transform: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  white-space: nowrap !important;
+}
+
+.drama-agent-page .sc-trailing .creation-model-picker.canvas-composer-model-picker:hover,
+.drama-agent-page .sc-trailing .creation-model-picker.canvas-composer-model-picker[aria-expanded="true"] {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  transform: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.drama-agent-page .sc-trailing .creation-model-picker .canvas-model-picker-trigger-icon {
+  display: none !important;
+}
+
+.drama-agent-page .sc-trailing .creation-model-picker .canvas-model-picker-chevron {
+  width: 12px !important;
+  height: 12px !important;
+  flex: none !important;
+  opacity: 0.7;
+  color: currentColor !important;
+}
+
+.drama-agent-page .sc-toolbar-leading .drama-agent-select {
   box-sizing: border-box;
   height: 28px !important;
   min-height: 28px !important;
   max-height: 28px !important;
   min-width: 0 !important;
-  max-width: 14rem !important;
-  width: max-content !important;
-  flex: 0 0 auto !important;
+  max-width: 11rem !important;
+  width: auto !important;
+  flex: 0 1 auto !important;
   padding: 0 8px !important;
   border: none !important;
   border-radius: 8px !important;
@@ -2589,62 +2661,37 @@ details[open] > .fold-summary::before {
   color: var(--muted) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
-}
-
-html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
-html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
-html:not(.dark) [data-canvas-color="light"] .drama-agent-page .drama-model-picker.canvas-composer-model-picker,
-html.dark [data-canvas-color="light"] .drama-agent-page .drama-model-picker.canvas-composer-model-picker {
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: 11rem !important;
-  height: 28px !important;
-  padding: 0 6px !important;
-  border: none !important;
-  border-radius: 8px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--muted) !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
   transform: none !important;
 }
-html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker:hover,
-html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker:hover,
-html:not(.dark) .drama-agent-page .drama-model-picker.canvas-composer-model-picker[aria-expanded="true"],
-html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker[aria-expanded="true"] {
-  background: var(--lift) !important;
-  color: var(--foreground) !important;
-  transform: none !important;
-}
-.drama-agent-page .drama-model-picker .canvas-model-picker-trigger-icon {
-  width: 16px !important;
-  height: 16px !important;
-  border-radius: 4px !important;
-  background: transparent !important;
-}
 
-.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker:hover,
-.drama-agent-page .sc-toolbar-leading .canvas-composer-model-picker[aria-expanded="true"],
-.drama-agent-page .sc-toolbar-leading .drama-agent-select:hover {
+.drama-agent-page .sc-toolbar-leading .drama-agent-select:hover,
+.drama-agent-page .sc-toolbar-leading .drama-style-trigger:hover,
+.drama-agent-page .sc-toolbar-leading .drama-style-trigger[data-on="true"] {
   background: var(--lift) !important;
   color: var(--foreground) !important;
 }
 
-.drama-agent-page .sc-toolbar-leading .canvas-model-picker-trigger-icon {
-  width: 16px !important;
-  height: 16px !important;
-  border-radius: 4px !important;
+.drama-agent-page .sc-toolbar-leading .drama-style-trigger {
+  height: 28px;
+  max-width: 11.5rem;
+  padding: 0 6px 0 5px;
 }
 
 .drama-agent-page .sc-toolbar-leading .drama-agent-select .ant-select-selector,
 .drama-agent-page .sc-toolbar-leading .drama-agent-select .yc-select-selector {
   height: 28px !important;
   min-height: 28px !important;
-  padding: 0 !important;
+  padding: 0 4px 0 0 !important;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
+}
+
+.yingce-popup-root .drama-agent-select-dropdown,
+body .drama-agent-select-dropdown.ant-select-dropdown,
+body .drama-agent-select-dropdown.yc-select-dropdown {
+  z-index: 410 !important;
+  pointer-events: auto;
 }
 
 .drama-agent-page[data-empty="true"] .drama-open-existing {
@@ -2654,6 +2701,14 @@ html.dark .drama-agent-page .drama-model-picker.canvas-composer-model-picker[ari
 
 .drama-desk-chat .drama-agent-page .sc-toolbar-leading .sc-chip-btn span {
   display: none;
+}
+
+.drama-desk-chat .drama-agent-page .sc-toolbar-leading .drama-style-trigger-thumb {
+  display: block;
+}
+
+.drama-desk-chat .drama-agent-page .sc-toolbar-leading .drama-style-trigger .drama-style-trigger-label {
+  display: inline;
 }
 .drama-guide {
   flex-shrink: 0;

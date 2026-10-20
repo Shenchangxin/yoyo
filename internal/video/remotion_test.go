@@ -66,7 +66,7 @@ func TestInstallRemotionNeedsNode(t *testing.T) {
 
 func TestPresetStyles(t *testing.T) {
 	seeds := PresetStyles()
-	if len(seeds) < 8 {
+	if len(seeds) < 200 {
 		t.Fatalf("%d", len(seeds))
 	}
 	seen := map[string]bool{}

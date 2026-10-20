@@ -2,15 +2,41 @@
 
 #yingce-popup-root,
 .yingce-popup-root {
-  position: relative;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 400;
+  overflow: visible !important;
   background: transparent;
   color: var(--foreground);
   pointer-events: none;
 }
 
 .yingce-popup-root > * {
+  pointer-events: none;
+}
+
+.yingce-popup-root .ant-popover,
+.yingce-popup-root .ant-select-dropdown,
+.yingce-popup-root .ant-dropdown,
+.yingce-popup-root .ant-tooltip,
+.yingce-popup-root .yc-popover,
+.yingce-popup-root .yc-select-dropdown,
+.yingce-popup-root .yc-dropdown,
+.yingce-popup-root .yc-tooltip,
+.yingce-popup-root .sg-popover,
+.yingce-popup-root .sg-menu,
+.yingce-popup-root .canvas-generation-settings-popover,
+.yingce-popup-root .canvas-model-picker-popover,
+.yingce-popup-root .creation-control-popover,
+.yingce-popup-root .drama-style-layer,
+.yingce-popup-root .drama-style-panel,
+.yingce-popup-root .drama-style-popover,
+.yingce-popup-root .drama-model-picker-popover,
+.yingce-popup-root .drama-agent-select-dropdown {
   pointer-events: auto;
+  z-index: 410 !important;
 }
 
 body .yc-dropdown,

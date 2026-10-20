@@ -14,7 +14,9 @@ import { Composer } from "../../Composer";
 import { Transcript } from "../../Transcript";
 import { useDramaSelection } from "../workshop-store";
 import { bindVideoThread, ensureDramaEpisode, ingestSeriesFile, ingestSeriesText } from "../bind";
-import { looksLikeSeries, PRESET_STYLES, shownEpisodeTitle, shownSeriesTitle, styleLabel } from "../drama-lib";
+import { DramaStylePicker } from "../DramaStylePicker";
+import { looksLikeSeries, mergeDramaStyles, PRESET_STYLES, shownEpisodeTitle, shownSeriesTitle } from "../drama-lib";
+import { canvasOverlayHost } from "./design-system/popup-container";
 import { useCanvasHost } from "./session";
 import "@yingce/pages/create/creation-product.css";
 import "@yingce/pages/create/creation-scrollbars.css";
@@ -44,12 +46,13 @@ export default function DramaAgentPage() {
   const itemsRef = useRef<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
+  const [threadOpen, setThreadOpen] = useState(false);
   const [dramas, setDramas] = useState<Drama[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [styles, setStyles] = useState<StyleOpt[]>(PRESET_STYLES.map((s) => ({ value: s.value, name: s.name })));
 
-  const isEmpty = items.length === 0;
-  const draftKey = `drama:${sessionId || "new"}`;
+  const isEmpty = !threadOpen;
+  const draftKey = "drama:home";
 
   const loadDramas = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
@@ -62,8 +65,7 @@ export default function DramaAgentPage() {
 
   useEffect(() => {
     void api.video.styles().then((list) => {
-      const rows = Array.isArray(list) ? list.filter((s: StyleOpt) => s?.value) : [];
-      if (rows.length) setStyles(rows.map((s: StyleOpt) => ({ value: s.value, name: s.name || s.value })));
+      setStyles(mergeDramaStyles(Array.isArray(list) ? list : []));
     }).catch(() => {});
   }, []);
 
@@ -114,10 +116,11 @@ export default function DramaAgentPage() {
   }, [sessionId]);
 
   useEffect(() => {
+    if (isEmpty) return;
     const el = threadScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [items, busy]);
+  }, [items, busy, isEmpty]);
 
   async function sid() {
     const existing = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
@@ -160,6 +163,7 @@ export default function DramaAgentPage() {
       return;
     }
     setBusy(true);
+    setThreadOpen(true);
     try {
       if (looksLikeSeries(next)) {
         const drama = await ingestSeriesText(next);
@@ -216,17 +220,16 @@ export default function DramaAgentPage() {
 
   const dramaLeading = (
     <>
-      <Select
-        size="small"
-        variant="borderless"
-        popupMatchSelectWidth={false}
-        getPopupContainer={() => document.body}
-        className="drama-agent-select"
+      <DramaStylePicker
         value={dramaStyle || "3d"}
-        placeholder={copy.video.style}
-        aria-label={copy.video.style}
+        styles={styles}
+        names={copy.video.styleNames}
+        label={copy.video.style}
+        title={copy.video.stylePickerTitle}
+        search={copy.video.styleSearch}
+        empty={copy.video.styleEmpty}
+        groups={copy.video.styleGroups}
         onChange={(value) => void pickStyle(value)}
-        options={styles.map((row) => ({ value: row.value, label: styleLabel(copy.video.styleNames, row.value, row.name) }))}
       />
       {!isEmpty && !videoBoard ? (
         <>
@@ -234,8 +237,10 @@ export default function DramaAgentPage() {
             size="small"
             variant="borderless"
             popupMatchSelectWidth={false}
-            getPopupContainer={() => document.body}
+            placement="topLeft"
+            getPopupContainer={canvasOverlayHost}
             className="drama-agent-select"
+            popupClassName="drama-agent-select-dropdown"
             value={dramaId || undefined}
             placeholder={copy.video.pickSeries}
             aria-label={copy.video.pickSeries}
@@ -251,8 +256,10 @@ export default function DramaAgentPage() {
             size="small"
             variant="borderless"
             popupMatchSelectWidth={false}
-            getPopupContainer={() => document.body}
+            placement="topLeft"
+            getPopupContainer={canvasOverlayHost}
             className="drama-agent-select"
+            popupClassName="drama-agent-select-dropdown"
             value={episodeId || undefined}
             placeholder={copy.video.pickEpisode}
             aria-label={copy.video.pickEpisode}
@@ -262,22 +269,6 @@ export default function DramaAgentPage() {
           />
         </>
       ) : null}
-      <ModelPicker
-        config={config}
-        value={selectedTextModel}
-        onChange={(model) => {
-          updateConfig("textModel", model);
-          const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
-          if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
-        }}
-        capability="text"
-        variant="creation"
-        className="creation-model-picker drama-model-picker"
-        placeholder={copy.video.textModel}
-        showSelectedPrice={false}
-        showOptionPrices={false}
-        onMissingConfig={() => openSettings("provider")}
-      />
       <Tooltip content={copy.video.ingestFileHint}>
         <button type="button" className="sc-chip-btn" data-testid="drama-import-novel" aria-label={copy.video.mapFile} disabled={busy} onClick={() => void importNovel()}>
           <Paperclip className="size-3.5" />
@@ -285,6 +276,30 @@ export default function DramaAgentPage() {
         </button>
       </Tooltip>
     </>
+  );
+
+  const dramaModel = (
+    <ModelPicker
+      config={config}
+      value={selectedTextModel}
+      onChange={(model) => {
+        updateConfig("textModel", model);
+        const session = sessionId || (typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "");
+        if (session) void api.setSessionModel(session, modelOptionName(model)).catch(() => {});
+      }}
+      capability="text"
+      variant="creation"
+      compact
+      placement="topLeft"
+      getPopupContainer={canvasOverlayHost}
+      className="creation-model-picker sc-chip-btn"
+      popoverClassName="creation-model-picker-popover"
+      testId="drama-model-picker"
+      placeholder={copy.video.textModel}
+      showSelectedPrice={false}
+      showOptionPrices
+      onMissingConfig={() => openSettings("provider")}
+    />
   );
 
   const composer = (
@@ -297,14 +312,15 @@ export default function DramaAgentPage() {
         setBusy(false);
         if (sessionId) void api.interrupt(sessionId).catch(() => {});
       }}
-      model={selectedTextModel ? modelOptionName(selectedTextModel) : undefined}
       flush
       compact
       hero={isEmpty && !videoBoard}
       perch={isEmpty && !videoBoard}
+      perchSize={88}
       placeholder={copy.video.agentPlaceholder}
       inputTestId="drama-agent-input"
       toolbarLeading={dramaLeading}
+      toolbarTrailing={dramaModel}
     />
   );
 

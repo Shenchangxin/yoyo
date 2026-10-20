@@ -3,9 +3,14 @@ import { describe, it } from "node:test";
 import {
   commitEpisodeTitle,
   commitSeriesTitle,
+  dramaStyleCover,
   isPlaceholderEpisode,
   isPlaceholderSeries,
+  isPresetDramaStyle,
   looksLikeSeries,
+  mergeDramaStyles,
+  PRESET_STYLES,
+  presetStyleGroup,
   shownEpisodeTitle,
   shownSeriesTitle,
 } from "./drama-lib.ts";
@@ -32,6 +37,33 @@ describe("drama placeholder titles", () => {
     assert.equal(commitSeriesTitle("新短剧"), "");
     assert.equal(commitEpisodeTitle("Episode 4"), "");
     assert.equal(commitSeriesTitle("雨巷"), "雨巷");
+  });
+});
+
+describe("drama style covers", () => {
+  it("maps preset looks to stills and leaves custom values empty", () => {
+    assert.equal(isPresetDramaStyle("ghibli"), true);
+    assert.equal(dramaStyleCover("ghibli"), "/drama-styles/ghibli.jpg");
+    assert.equal(dramaStyleCover("3d"), "/drama-styles/3d.jpg");
+    assert.equal(dramaStyleCover("pixar"), "/drama-styles/pixar.jpg");
+    assert.equal(dramaStyleCover("xianxia"), "/drama-styles/xianxia.jpg");
+    assert.equal(isPresetDramaStyle("custom-look"), false);
+    assert.equal(dramaStyleCover("custom-look"), "");
+    assert.ok(PRESET_STYLES.length >= 200);
+    assert.equal(dramaStyleCover("mecha"), "/drama-styles/mecha.jpg");
+    assert.equal(dramaStyleCover("origami"), "/drama-styles/origami.jpg");
+    assert.equal(dramaStyleCover("jojo", "Pose graphic"), "/drama-styles/jojo.jpg");
+    assert.equal(presetStyleGroup("pixar"), "volume");
+    assert.equal(presetStyleGroup("shinkai"), "anime");
+    assert.equal(presetStyleGroup("risograph"), "paint");
+  });
+
+  it("keeps seeded looks when the server list is stale", () => {
+    const merged = mergeDramaStyles([{ value: "3d", name: "三维电影" }, { value: "atelier", name: "Atelier" }]);
+    assert.equal(merged[0]?.value, "3d");
+    assert.equal(merged[0]?.name, "三维电影");
+    assert.ok(merged.some((row) => row.value === "pixar"));
+    assert.ok(merged.some((row) => row.value === "atelier"));
   });
 });
 

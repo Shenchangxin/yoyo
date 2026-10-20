@@ -9,6 +9,7 @@ import { useCopy } from "../../lib/i18n";
 import { requestSendToCut } from "./open-cut";
 import { useUI } from "../../lib/store";
 import { DramaMentionField, type MentionAsset } from "./DramaMentionField";
+import { DramaStylePicker } from "./DramaStylePicker";
 import {
   assetName,
   catalogOf,
@@ -25,7 +26,6 @@ import {
   type Episode,
   type EpisodePlan,
   type Job,
-  styleLabel,
   type Shot,
 } from "./drama-lib";
 
@@ -127,9 +127,18 @@ export function GenerationSettings(props: {
     <details className="drama-gen-fold mt-3">
       <summary className="text-[11px] font-medium text-muted">{c.genSettings}</summary>
       <div className="mt-2 grid gap-1.5">
-        <select className={cn(field, "h-7")} value={props.dramaStyle || "3d"} aria-label={c.style} onChange={(e) => props.onStyle(e.target.value)}>
-          {props.styles.map((s) => <option key={s.value} value={s.value}>{styleLabel(c.styleNames, s.value, s.name)}</option>)}
-        </select>
+        <DramaStylePicker
+          value={props.dramaStyle || "3d"}
+          styles={props.styles}
+          names={c.styleNames}
+          label={c.style}
+          title={c.stylePickerTitle}
+          search={c.styleSearch}
+          empty={c.styleEmpty}
+          groups={c.styleGroups}
+          placement="bottomLeft"
+          onChange={props.onStyle}
+        />
         <ProviderModelSelect kind="image" label={c.imageProvider} providers={props.providers} providerId={ep.image_provider_id || ""} model={ep.image_model || ""} onChange={(id, model) => props.onEpisode({ image_provider_id: id, image_model: model })} />
         <ProviderModelSelect kind="video" label={c.videoProvider} providers={props.providers} providerId={ep.video_provider_id || ""} model={ep.video_model || ""} onChange={(id, model) => props.onEpisode({ video_provider_id: id, video_model: model })} />
         <ProviderModelSelect kind="tts" label={c.kindSpeech} providers={props.providers} providerId={ep.tts_provider_id || ""} model={ep.tts_model || ""} onChange={(id, model) => props.onEpisode({ tts_provider_id: id, tts_model: model })} />

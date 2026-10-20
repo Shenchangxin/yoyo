@@ -45,6 +45,13 @@ test("drama workshop still opens from the same switch", async ({ page }) => {
   await expect(page.getByTestId("drama-agent-hint")).toBeInViewport();
   await expect(page.getByTestId("drama-path")).toBeInViewport();
   await expect(page.getByTestId("drama-agent-input")).toBeInViewport();
+  await expect(page.getByTestId("drama-style-picker")).toBeVisible();
+  await expect(page.getByTestId("drama-model-picker")).toBeVisible();
+  await expect(page.getByTestId("presence-perch")).toBeVisible();
+  await page.getByTestId("drama-style-picker").click();
+  await expect(page.getByTestId("drama-style-grid")).toBeVisible();
+  await page.getByRole("option", { name: "Anime" }).click();
+  await expect(page.getByTestId("drama-style-picker")).toContainText("Anime");
   await expect(page.getByText("Paste a chapter or a whole novel…")).toBeVisible();
   await expect(page.getByTestId("drama-open-board")).toBeInViewport();
   await page.getByTestId("drama-open-board").first().click();

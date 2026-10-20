@@ -337,7 +337,7 @@ export const COMPOSER_PRESENCE_SIZE = 64;
 export function PresencePerch(props: { className?: string; size?: number }) {
   const size = props.size ?? COMPOSER_PRESENCE_SIZE;
   return (
-    <div className={cn("presence-perch", props.className)} data-testid="presence-perch">
+    <div className={cn("presence-perch shrink-0", props.className)} data-testid="presence-perch">
       <PresenceAnchor id="composer" size={size} fallback />
     </div>
   );
