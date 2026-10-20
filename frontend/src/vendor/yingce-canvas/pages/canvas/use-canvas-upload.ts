@@ -11,6 +11,7 @@ import { getDataUrlByteSize, readImageMeta } from "@yingce/lib/image-utils";
 import { audioMetadata, imageMetadata, videoMetadata } from "@yingce/lib/canvas/canvas-generation-task-sync";
 import { createCanvasNode } from "@yingce/lib/canvas/canvas-project-domain";
 import { isAudioFile } from "@yingce/lib/canvas/canvas-project-generation";
+import { videoNodePreviewMetadata } from "@yingce/lib/canvas/canvas-media-preview";
 import { fitNodeSize, VIDEO_NODE_MAX_SIZE } from "@yingce/lib/canvas/canvas-node-size";
 import { CANVAS_UPLOAD_ACCEPT, createFileUploadPlaceholder, uploadNodeType, uploadPercent } from "@yingce/lib/canvas/canvas-file-upload";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@yingce/services/api/resources";
@@ -260,7 +261,7 @@ export function useCanvasUpload({
                 },
             };
             setNodes((current) => [...current, node]);
-            selectInsertedNode(id, "close");
+            selectInsertedNode(id, "open");
         } catch (error) {
             message.error(error instanceof Error ? error.message : "素材图片读取失败");
         }
@@ -695,7 +696,7 @@ export function useCanvasUpload({
             const size = fitNodeSize(payload.width || spec.width, payload.height || spec.height, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);
             const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             const url = await playableStoredUrl(resolveMediaUrl, payload.storageKey, payload.url);
-            return { id, type: CanvasNodeType.Video, title: payload.title, position: { x: center.x - size.width / 2, y: center.y - size.height / 2 }, width: size.width, height: size.height, metadata: { content: url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height, durationMs: payload.durationMs, hasAudio: payload.hasAudio, bytes: payload.bytes, mimeType: payload.mimeType || "video/mp4", assetId: payload.assetId } } satisfies CanvasNodeData;
+            return { id, type: CanvasNodeType.Video, title: payload.title, position: { x: center.x - size.width / 2, y: center.y - size.height / 2 }, width: size.width, height: size.height, metadata: { content: url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height, durationMs: payload.durationMs, hasAudio: payload.hasAudio, bytes: payload.bytes, mimeType: payload.mimeType || "video/mp4", assetId: payload.assetId, ...videoNodePreviewMetadata(url, payload.coverUrl) } } satisfies CanvasNodeData;
         }
         const sourceUrl = displayableMediaUrl(payload.url, payload.dataUrl);
         const storedImage = payload.storageKey
@@ -721,7 +722,8 @@ export function useCanvasUpload({
             setNodes((current) => [...current, ...created]);
             setSelectedNodeIds(new Set(created.map((node) => node.id)));
             setSelectedConnectionId(null);
-            setDialogNodeId(null);
+            const sole = created.length === 1 ? created[0] : null;
+            setDialogNodeId(sole && (sole.type === CanvasNodeType.Image || sole.type === CanvasNodeType.Video) ? sole.id : null);
             message.success(successMessage);
             return created;
         } catch (error) {

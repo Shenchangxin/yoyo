@@ -175,7 +175,7 @@ function OptionPill({ selected, disabled = false, theme, onClick, children }: { 
     return (
         <button
             type="button"
-			className="h-8 cursor-pointer rounded-full px-2 text-xs transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
+			className="h-8 w-full min-w-0 cursor-pointer truncate rounded-full px-2 text-xs transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
 			style={{ background: selected ? theme.toolbar.activeBg : "transparent", color: theme.node.text, outlineColor: theme.node.muted }}
 			disabled={disabled}
             onMouseDown={(event) => event.stopPropagation()}

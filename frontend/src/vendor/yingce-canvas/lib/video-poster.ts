@@ -45,6 +45,7 @@ function captureVideoPosterNow(source: string, options: CaptureVideoPosterOption
             signal?.removeEventListener("abort", handleAbort);
             video.onloadedmetadata = null;
             video.onloadeddata = null;
+            video.onseeked = null;
             video.onerror = null;
             video.pause();
             video.removeAttribute("src");
@@ -80,7 +81,7 @@ function captureVideoPosterNow(source: string, options: CaptureVideoPosterOption
         if (isCrossOriginHttpUrl(source)) video.crossOrigin = "anonymous";
         video.onloadedmetadata = readMetadata;
         video.onerror = () => finish(metadata);
-        video.onloadeddata = () => {
+        const captureFrame = () => {
             readMetadata();
             if (signal?.aborted) {
                 fail(abortError());
@@ -106,6 +107,20 @@ function captureVideoPosterNow(source: string, options: CaptureVideoPosterOption
                 // Cross-origin videos without CORS can still expose metadata but cannot be drawn safely.
                 finish(metadata);
             }
+        };
+        video.onloadeddata = () => {
+            readMetadata();
+            const seekTarget = Number.isFinite(video.duration) && video.duration > 0.2 ? Math.min(0.12, video.duration * 0.02) : 0;
+            if (seekTarget > 0 && Math.abs(video.currentTime - seekTarget) > 0.01) {
+                video.onseeked = captureFrame;
+                try {
+                    video.currentTime = seekTarget;
+                } catch {
+                    captureFrame();
+                }
+                return;
+            }
+            captureFrame();
         };
         video.src = source;
         video.load();

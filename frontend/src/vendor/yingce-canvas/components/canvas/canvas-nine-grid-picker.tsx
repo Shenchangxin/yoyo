@@ -66,6 +66,8 @@ export function CanvasNineGridPicker({
             open={actualOpen}
             onOpenChange={setOpen}
             trigger={["click"]}
+            autoAdjustOverflow
+            placement="topLeft"
             menu={{
                 items: buildNineGridMenuItems((toolId, label, toolIcon) => {
                     setOpen(false);

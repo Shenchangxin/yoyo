@@ -76,6 +76,7 @@ export function CanvasChooseMotionPicker({
             onOpenChange={setOpen}
             trigger={["click"]}
             autoAdjustOverflow
+            placement="topLeft"
             menu={{ items: [] }}
             popupRender={() => (
                 <div
@@ -126,8 +127,8 @@ export function CanvasChooseMotionPicker({
                             )}
                         </div>
                         {toolsQuery.hasNextPage && (
-                            <button type="button" disabled={toolsQuery.isFetchingNextPage} onClick={() => void toolsQuery.fetchNextPage()}>
-                                加载更多
+                            <button type="button" className="w-full py-1.5 text-center text-xs text-foreground/60" disabled={toolsQuery.isFetchingNextPage} onClick={() => void toolsQuery.fetchNextPage()}>
+                                {toolsQuery.isFetchingNextPage ? "加载中…" : "加载更多"}
                             </button>
                         )}
                     </div>

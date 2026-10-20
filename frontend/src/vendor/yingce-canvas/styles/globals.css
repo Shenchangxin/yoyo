@@ -7656,6 +7656,37 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
 
     .canvas-preset-picker-popover {
         filter: none !important;
+        box-sizing: border-box !important;
+        width: min(var(--panel-width-compact), calc(100vw - 24px)) !important;
+        max-width: min(var(--panel-width-compact), calc(100vw - 24px)) !important;
+    }
+
+    body .canvas-preset-picker-popover.ant-popover,
+    body .canvas-preset-picker-popover {
+        width: min(var(--panel-width-compact), calc(100vw - 24px)) !important;
+        max-width: min(var(--panel-width-compact), calc(100vw - 24px)) !important;
+    }
+
+    body .canvas-preset-picker-popover .ant-popover-container,
+    body .canvas-preset-picker-popover .ant-popover-inner,
+    body .canvas-preset-picker-popover .canvas-composer-popover-surface {
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    .canvas-model-picker-popover {
+        max-width: min(420px, calc(100vw - 24px)) !important;
+    }
+
+    body .canvas-model-picker-popover .ant-popover-container,
+    body .canvas-model-picker-popover .ant-popover-inner,
+    body .canvas-model-picker-popover .canvas-composer-popover-surface {
+        box-sizing: border-box !important;
+        max-width: min(420px, calc(100vw - 24px)) !important;
+        padding: 0 !important;
     }
 
     .canvas-composer-popover-surface {
@@ -8474,6 +8505,9 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
 
     .canvas-node-composer {
         position: relative;
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
         overflow: hidden;
         border: 0;
         border-radius: var(--canvas-composer-radius);
@@ -9519,6 +9553,8 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
     .canvas-node-composer-header {
         display: flex;
         min-width: 0;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
         align-items: center;
         gap: var(--space-1);
         min-height: 28px;
@@ -9805,6 +9841,8 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
     .canvas-node-composer-footer {
         display: flex;
         min-width: 0;
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
         align-items: center;
         justify-content: space-between;
         gap: var(--space-1);
@@ -9813,14 +9851,16 @@ html:not(.dark) .canvas-generation-settings-trigger.ant-btn[aria-expanded="true"
     }
 
     .canvas-node-composer-model {
-        min-width: 148px;
-        max-width: 220px;
-        flex: 1 1 220px;
+        min-width: 160px;
+        max-width: 280px;
+        flex: 1 1 auto;
     }
 
     .canvas-node-composer-settings-trigger {
         height: 28px !important;
-        width: var(--canvas-composer-settings-width) !important;
+        width: auto !important;
+        min-width: var(--canvas-composer-settings-width) !important;
+        max-width: 16rem !important;
         justify-content: flex-start !important;
         border: 0 !important;
         border-radius: var(--r-md) !important;

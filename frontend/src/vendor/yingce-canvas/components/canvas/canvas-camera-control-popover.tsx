@@ -62,7 +62,7 @@ export function CanvasCameraControlPopover({ cameraControl, onCameraControlChang
                 {!compact ? <span>摄像机</span> : null}
             </button>
             {open && buttonRect ? (
-                <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement="topRight" width={Math.min(360, window.innerWidth - 24)} estimatedHeight={480}>
+                <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement="topRight" width={Math.min(720, window.innerWidth - 24)} estimatedHeight={480}>
                     <CanvasNodeCameraPanel
                         cameraControl={cameraControl}
                         onClose={() => setOpen(false)}

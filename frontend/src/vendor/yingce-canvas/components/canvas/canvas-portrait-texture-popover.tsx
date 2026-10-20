@@ -70,7 +70,11 @@ export function CanvasPortraitTexturePopover({ value, placement = "topLeft", onC
             placement={placement}
             arrow={false}
             content={content}
-            styles={{ content: { padding: 0, overflow: "hidden", background: theme.spatial.elevated, border: `1px solid ${theme.toolbar.border}`, borderRadius: 8, boxShadow: `0 20px 64px ${theme.spatial.shadow}` } }}
+            styles={{
+                root: { width: "min(350px, calc(100vw - 32px))", maxWidth: "min(350px, calc(100vw - 32px))" },
+                container: { width: "100%", maxWidth: "100%", padding: 0 },
+                content: { padding: 0, overflow: "hidden", background: theme.spatial.elevated, border: `1px solid ${theme.toolbar.border}`, borderRadius: 8, boxShadow: `0 20px 64px ${theme.spatial.shadow}` },
+            }}
         >
             <button
                 type="button"

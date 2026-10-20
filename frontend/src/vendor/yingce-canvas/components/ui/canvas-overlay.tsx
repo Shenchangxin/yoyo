@@ -24,7 +24,7 @@ export function CanvasDropdown({ children, open: openProp, onOpenChange, getPopu
     useDismissOnOutside(Boolean(open), close, triggerRef);
 
     return (
-        <Dropdown {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
+        <Dropdown autoAdjustOverflow destroyOnHidden {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
             <span ref={triggerRef} className="inline-flex min-w-0 max-w-full align-middle">
                 {children as ReactNode}
             </span>
@@ -49,7 +49,7 @@ export function CanvasPopover({ children, open: openProp, onOpenChange, getPopup
     useDismissOnOutside(Boolean(open), close, triggerRef);
 
     return (
-        <Popover {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
+        <Popover autoAdjustOverflow destroyOnHidden {...rest} open={open} onOpenChange={setOpen} getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}>
             <span ref={triggerRef} className="inline-flex min-w-0 max-w-full align-middle">
                 {children as ReactNode}
             </span>

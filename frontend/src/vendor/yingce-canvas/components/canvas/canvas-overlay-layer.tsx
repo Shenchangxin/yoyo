@@ -65,7 +65,7 @@ export function CanvasOverlayLayerContainer({
     const { bringToFront, zIndex } = useCanvasOverlayLayer(overlayId, fallbackZIndex, kind);
 
     return (
-        <div data-canvas-no-zoom className={className} style={{ zIndex }} onPointerDownCapture={bringToFront} onFocusCapture={bringToFront} onMouseDown={onMouseDown} onPointerDown={onPointerDown} onWheel={onWheel}>
+        <div data-canvas-no-zoom data-canvas-chrome="" className={className} style={{ zIndex }} onPointerDownCapture={bringToFront} onFocusCapture={bringToFront} onMouseDown={onMouseDown} onPointerDown={onPointerDown} onWheel={onWheel}>
             {children}
         </div>
     );

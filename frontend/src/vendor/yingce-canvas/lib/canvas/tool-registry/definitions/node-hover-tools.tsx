@@ -4,7 +4,7 @@ import { AudioLines, Captions, Clapperboard, Download, Expand, Film, Image as Im
 import { CONTENT_MODERATION_ERROR_CODE, isContentModerationError } from "@yingce/lib/generation-error";
 import { registerToolbarTools, type ToolContext, type ToolDefinition } from "@yingce/lib/canvas/tool-registry";
 import { CanvasNodeType } from "@yingce/types/canvas";
-import { isCanvasImageSourceNode } from "@yingce/lib/canvas/canvas-image-source";
+import { canShowCanvasNodePromptPanel } from "@yingce/lib/canvas/canvas-image-source";
 
 // 节点状态判定辅助函数——从 ToolContext 派生
 function isImage(ctx: ToolContext) { return ctx.node?.type === CanvasNodeType.Image; }
@@ -20,7 +20,7 @@ function hasVideo(ctx: ToolContext) { return isVideo(ctx) && hasMediaPayload(ctx
 function hasAudio(ctx: ToolContext) { return isAudio(ctx) && Boolean(ctx.nodeMetadata?.content || ctx.nodeMetadata?.storageKey); }
 function isCharacterReference(ctx: ToolContext) { return isText(ctx) && ctx.nodeMetadata?.workflowKind === "character" && Boolean(ctx.nodeMetadata?.characterAssetId); }
 function isEditableText(ctx: ToolContext) { return isText(ctx) && !isCharacterReference(ctx); }
-function canOpenDialog(ctx: ToolContext) { return isEditableText(ctx) || (isImage(ctx) && !isCanvasImageSourceNode(ctx.node)) || isVideo(ctx); }
+function canOpenDialog(ctx: ToolContext) { return isEditableText(ctx) || ((isImage(ctx) || isVideo(ctx)) && canShowCanvasNodePromptPanel(ctx.node)); }
 function simpleMode(ctx: ToolContext) { return ctx.workspaceMode === "simple"; }
 function isImageBatchRoot(ctx: ToolContext) { return isImage(ctx) && Boolean(ctx.nodeMetadata?.isBatchRoot && ctx.nodeMetadata.batchChildIds?.length); }
 function canRetry(ctx: ToolContext) {

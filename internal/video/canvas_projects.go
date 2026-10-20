@@ -228,15 +228,21 @@ func matchAsset(a canvasAssetRec, kind, category, folderID, status, q string, un
 }
 
 func assetToMap(a canvasAssetRec) map[string]any {
-	item := map[string]any{
-		"id": a.ID, "folderId": a.FolderID, "kind": a.Kind, "category": a.Category, "title": a.Title,
-		"resourceId": a.ResourceID, "status": a.Status, "createdAt": a.CreatedAt, "updatedAt": a.UpdatedAt,
-	}
+	item := map[string]any{}
 	var extra map[string]any
 	_ = json.Unmarshal([]byte(a.PayloadJSON), &extra)
 	for k, v := range extra {
 		item[k] = v
 	}
+	item["id"] = a.ID
+	item["folderId"] = a.FolderID
+	item["kind"] = a.Kind
+	item["category"] = a.Category
+	item["title"] = a.Title
+	item["resourceId"] = a.ResourceID
+	item["status"] = a.Status
+	item["createdAt"] = a.CreatedAt
+	item["updatedAt"] = a.UpdatedAt
 	return item
 }
 
@@ -386,10 +392,28 @@ func (e *Engine) moveAssetsFolder(ids []any, folderID string) {
 		if err != nil {
 			continue
 		}
-		a.FolderID = folderID
-		a.UpdatedAt = now
-		_ = e.putDoc(colAssets, a.ID, a)
+		_ = e.setAssetFolder(a, folderID, now)
 	}
+}
+
+func (e *Engine) setAssetFolder(a canvasAssetRec, folderID, now string) error {
+	a.FolderID = folderID
+	a.UpdatedAt = now
+	var extra map[string]any
+	if a.PayloadJSON != "" {
+		_ = json.Unmarshal([]byte(a.PayloadJSON), &extra)
+	}
+	if extra == nil {
+		extra = map[string]any{}
+	}
+	extra["folderId"] = folderID
+	extra["updatedAt"] = now
+	raw, err := json.Marshal(extra)
+	if err != nil {
+		return err
+	}
+	a.PayloadJSON = string(raw)
+	return e.putDoc(colAssets, a.ID, a)
 }
 
 func (e *Engine) localUser() map[string]any {

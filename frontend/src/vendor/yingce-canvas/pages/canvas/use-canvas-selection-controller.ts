@@ -130,6 +130,7 @@ export function useCanvasSelectionController({
     const handleCanvasMouseDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         cancelPendingConnectionCreate();
         onCanvasSelectionStart();
+        onDeselect();
         if (event.button !== 0) return;
         const world = screenToCanvas(event.clientX, event.clientY);
         const strategy = resolveCanvasSelectionStrategy(event);
@@ -146,7 +147,7 @@ export function useCanvasSelectionController({
         selectionGestureRef.current = { phase: "pending", initialSelection, selection: nextSelectionBox };
         selectionSpatialIndexCacheRef.current.get(nodesRef.current);
         setSelectedConnectionId(null);
-    }, [cancelPendingConnectionCreate, nodesRef, onCanvasSelectionStart, screenToCanvas, selectedNodeIdsRef, setSelectedConnectionId]);
+    }, [cancelPendingConnectionCreate, nodesRef, onCanvasSelectionStart, onDeselect, screenToCanvas, selectedNodeIdsRef, setSelectedConnectionId]);
 
     const handleNodeMouseDown = useCallback((event: ReactMouseEvent | ReactPointerEvent, nodeId: string) => {
         event.stopPropagation();

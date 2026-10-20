@@ -60,7 +60,7 @@ export function CanvasPresetPicker({
     }, [mode, query, skillReferences]);
 
     const content = (
-        <div data-canvas-no-zoom className="canvas-preset-picker-menu w-[var(--panel-width-compact)] max-w-[calc(100vw-24px)]" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+        <div data-canvas-no-zoom className="canvas-preset-picker-menu w-full max-w-full" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
             <Input
                 className="canvas-preset-picker-search"
                 variant="borderless"
@@ -116,7 +116,13 @@ export function CanvasPresetPicker({
             trigger="click"
             placement="topLeft"
             arrow={false}
+            autoAdjustOverflow
             content={content}
+            styles={{
+                root: { width: "min(var(--panel-width-compact), calc(100vw - 24px))", maxWidth: "min(var(--panel-width-compact), calc(100vw - 24px))" },
+                container: { width: "100%", maxWidth: "100%", padding: 0, overflow: "hidden" },
+                content: { width: "100%", padding: 0 },
+            }}
             classNames={{ root: "canvas-preset-picker-popover", container: "canvas-composer-popover-surface", content: "canvas-composer-popover-content" }}
         >
             <button

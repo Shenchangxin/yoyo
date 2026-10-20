@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { CanvasNodeType, type CanvasNodeData } from "@yingce/types/canvas";
 
-/** 已有媒体但没有生成配置的图片是输入素材，不提供原地生成入口。 */
+/** 已有媒体但没有生成配置的图片是输入素材，生成结果落到新节点而不是覆盖原图。 */
 export function isCanvasImageSourceNode(node: CanvasNodeData | null | undefined): boolean {
     if (node?.type === CanvasNodeType.Image && node.metadata?.fileUpload) return true;
     return node?.type === CanvasNodeType.Image
@@ -11,6 +11,15 @@ export function isCanvasImageSourceNode(node: CanvasNodeData | null | undefined)
         && !node.metadata?.generationResultPlacement
         && !node.metadata?.copiedFromNodeId
         && !node.metadata?.versionOfNodeId;
+}
+
+/** 素材库插入的图片/视频也应打开提示词输入栏；上传中的文件节点除外。 */
+export function canShowCanvasNodePromptPanel(node: CanvasNodeData | null | undefined): boolean {
+    if (!node || node.metadata?.fileUpload) return false;
+    return node.type !== CanvasNodeType.Script
+        && node.type !== CanvasNodeType.BatchTable
+        && node.type !== CanvasNodeType.Drawing
+        && node.type !== CanvasNodeType.Panorama;
 }
 
 export function createPortraitTextureNode(source: CanvasNodeData, id: string): CanvasNodeData {

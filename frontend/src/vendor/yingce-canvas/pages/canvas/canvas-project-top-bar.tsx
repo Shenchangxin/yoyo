@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
-import { Clapperboard, CloudDownload, CloudUpload, CopyPlus, Focus, FolderKanban, Gauge, History, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
+import { Clapperboard, CloudDownload, CloudUpload, CopyPlus, Download, Focus, FolderKanban, Gauge, Home, LayoutGrid, LoaderCircle, Menu, Pencil, Plus, Redo2, Save, Search, Share2, Trash2, Undo2, Upload } from "lucide-react";
 import { Tooltip } from "antd";
 
 import { CanvasDropdown } from "@yingce/components/ui/canvas-overlay";
@@ -39,6 +39,7 @@ type CanvasTopBarProps = {
     onImportImage: () => void;
     onImportLibTV: () => void;
     onImportTapNow: () => void;
+    onExportCanvas: () => void;
     onUndo: () => void;
     onRedo: () => void;
     onShare: () => void;
@@ -71,6 +72,7 @@ export function CanvasTopBar({
     onImportImage,
     onImportLibTV,
     onImportTapNow,
+    onExportCanvas,
     onUndo,
     onRedo,
     onShare,
@@ -199,13 +201,16 @@ export function CanvasTopBar({
                             <Search className="size-4" />
                         </button>
                     </CanvasTopBarTooltip>
-                    <CanvasTopBarTooltip label="导入与显示">
+                    <CanvasTopBarTooltip label="导入与导出">
                     <CanvasDropdown
                         trigger={["click"]}
                         placement="bottomRight"
                         autoAdjustOverflow
                         menu={{
                             items: [
+                                { key: "import-media", icon: <Upload className="size-4" />, label: "导入素材", onClick: onImportImage },
+                                { key: "export", icon: <Download className="size-4" />, label: "导出当前画布", onClick: onExportCanvas },
+                                { type: "divider" },
                                 { key: "libtv", icon: <CopyPlus className="size-4" />, label: "导入 LibTV 画布", onClick: onImportLibTV },
                                 { key: "tapnow", icon: <CloudDownload className="size-4" />, label: "导入 TapNow 画布", onClick: onImportTapNow },
                                 { type: "divider" },
@@ -222,7 +227,7 @@ export function CanvasTopBar({
                             ],
                         }}
                     >
-                        <button type="button" className="sg-ghost canvas-topbar-action canvas-topbar-import-button" style={{ color: theme.node.text }} aria-label="导入与显示">
+                        <button type="button" className="sg-ghost canvas-topbar-action canvas-topbar-import-button" style={{ color: theme.node.text }} aria-label="导入与导出">
                             <CloudDownload className="size-4" />
                         </button>
                     </CanvasDropdown>
@@ -260,18 +265,6 @@ export function CanvasTopBar({
                             </button>
                         </CanvasTopBarTooltip>
                     ) : null}
-                    <CanvasTopBarTooltip label="版本记录">
-                        <button
-                            type="button"
-                            className={`sg-ghost canvas-topbar-action canvas-topbar-version-button ${versionsOpen ? "is-active" : ""}`}
-                            style={{ color: theme.node.text }}
-                            aria-label="版本记录"
-                            aria-pressed={versionsOpen}
-                            onClick={onToggleVersions}
-                        >
-                            <History className="size-4" />
-                        </button>
-                    </CanvasTopBarTooltip>
                     <CanvasTopBarTooltip label="分享画布">
                         <button type="button" className="sg-ghost canvas-topbar-action" style={{ color: theme.node.text }} onClick={onShare} aria-label="分享画布">
                             <Share2 className="size-4" />

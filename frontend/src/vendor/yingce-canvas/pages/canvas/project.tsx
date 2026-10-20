@@ -17,7 +17,7 @@ import { getActiveUserScope } from "@yingce/lib/user-scope";
 import { getResourceAccess, resolveResourceAccessURL, resourceFileUrl, resourceIdFromStorageKey, syncResourceToArkPrivateAsset } from "@yingce/services/api/resources";
 import { uploadImage } from "@yingce/services/image-storage";
 import { imageMetadata } from "@yingce/lib/canvas/canvas-generation-task-sync";
-import { isCanvasImageSourceNode } from "@yingce/lib/canvas/canvas-image-source";
+import { canShowCanvasNodePromptPanel } from "@yingce/lib/canvas/canvas-image-source";
 import { getCachedResourceBlob } from "@yingce/services/resource-blob-cache";
 import copyToClipboard from "copy-to-clipboard";
 import { nanoid } from "nanoid";
@@ -28,7 +28,7 @@ import { filterCanvasDisplayConnections, persistCanvasHideNodeConnections, readC
 import { summarizeCanvasContext } from "@yingce/lib/canvas/canvas-context-summary";
 import { refreshCanvasCharacterReferenceNodes } from "@yingce/lib/canvas/canvas-character-reference";
 import { useAssetStore } from "@yingce/stores/use-asset-store";
-import { flushCanvasStorePersistence } from "@yingce/stores/canvas/use-canvas-store";
+import { flushCanvasStorePersistence, useCanvasStore } from "@yingce/stores/canvas/use-canvas-store";
 import { ensureCanvasNodeAsset } from "@yingce/services/project-asset-sync";
 import { useCanvasThemeStore, useCanvasThemeScope } from "@yingce/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
@@ -103,6 +103,7 @@ import { cinematicStoryboardColumns, createCanvasNode, getInputSummary, isHidden
 import { bindStoryboardKeyframes, storyboardKeyframeTime, storyboardRowsFromBatchTable } from "@yingce/lib/canvas/canvas-batch-storyboard";
 import { stampCanvasNodeChanges, updateCanvasNode, updateCanvasNodes } from "@yingce/lib/canvas/canvas-node-timestamps";
 import { canvasAssetHandoffAttempt, finalizeCanvasAssetHandoff, uninsertedCanvasAssetHandoffPayloads } from "@yingce/lib/canvas/canvas-asset-handoff";
+import { exportCanvasProjects } from "@yingce/lib/canvas/canvas-export";
 import { batchSourceRestriction } from "@yingce/lib/canvas/canvas-batch-connection";
 import { deriveStoryboardPipelineProgress } from "@yingce/lib/canvas/canvas-storyboard-progress";
 import { CanvasOperationChangeToast, CanvasMergeStatusToast, CanvasUploadStatusToast } from "./canvas-project-feedback";
@@ -1689,6 +1690,20 @@ function InfiniteCanvasPage() {
         clearCanvasFiles();
     }, [clearCanvasFiles, deselectCanvas, message, nodesRef, projectId, setEmotionNodeId]);
 
+    const exportCurrentCanvas = useCallback(async () => {
+        const project = useCanvasStore.getState().openProject(projectId);
+        if (!project) {
+            message.error("画布不存在，无法导出");
+            return;
+        }
+        try {
+            await exportCanvasProjects([project], project.title || "画布");
+            message.success("画布已导出");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "导出失败");
+        }
+    }, [message, projectId]);
+
     useCanvasKeyboard({
         enabled: projectLoaded && !versions.preview,
         nodesRef,
@@ -2601,6 +2616,7 @@ function InfiniteCanvasPage() {
                                 onImportImage={() => handleUploadRequest()}
                                 onImportLibTV={() => setLibTVImportOpen(true)}
                                 onImportTapNow={() => setTapNowImportOpen(true)}
+                                onExportCanvas={() => void exportCurrentCanvas()}
                                 onUndo={undoCanvas}
                                 onRedo={redoCanvas}
                                 onShare={() => setShareModalOpen(true)}
@@ -2852,6 +2868,7 @@ function InfiniteCanvasPage() {
                                 panelWidth={640}
                                 panelHeight={540}
                                 allowOverflow
+                                onBackgroundPointerDown={deselectCanvas}
                                 dragOffset={dragPreview?.nodeIds.has(angleNode.id) ? { x: dragPreview.x, y: dragPreview.y } : null}
                                 isDragging={isNodeDragging && Boolean(dragPreview?.nodeIds.has(angleNode.id))}
                             >
@@ -2873,6 +2890,7 @@ function InfiniteCanvasPage() {
                                 panelWidth={640}
                                 panelHeight={540}
                                 allowOverflow
+                                onBackgroundPointerDown={deselectCanvas}
                                 dragOffset={dragPreview?.nodeIds.has(lightingNode.id) ? { x: dragPreview.x, y: dragPreview.y } : null}
                                 isDragging={isNodeDragging && Boolean(dragPreview?.nodeIds.has(lightingNode.id))}
                             >
@@ -2901,12 +2919,7 @@ function InfiniteCanvasPage() {
                         ) : null}
 
                         {dialogNode &&
-                        !isCanvasImageSourceNode(dialogNode) &&
-                        !dialogNode.metadata?.fileUpload &&
-                        dialogNode.type !== CanvasNodeType.Script &&
-                        dialogNode.type !== CanvasNodeType.BatchTable &&
-                        dialogNode.type !== CanvasNodeType.Drawing &&
-                        dialogNode.type !== CanvasNodeType.Panorama &&
+                        canShowCanvasNodePromptPanel(dialogNode) &&
                         !selectionBox &&
                         !isCanvasNodeMoving ? (
                             <CanvasNodePanelOverlay
@@ -2914,6 +2927,7 @@ function InfiniteCanvasPage() {
                                 viewport={viewport}
                                 containerRef={containerRef}
                                 allowOverflow={dialogNode.type !== CanvasNodeType.Config}
+                                onBackgroundPointerDown={deselectCanvas}
                                 dragOffset={dragPreview?.nodeIds.has(dialogNode.id) ? { x: dragPreview.x, y: dragPreview.y } : null}
                                 isDragging={isNodeDragging && Boolean(dragPreview?.nodeIds.has(dialogNode.id))}
                             >

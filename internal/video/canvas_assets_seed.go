@@ -23,6 +23,7 @@ func (e *Engine) seedStudioAssets() error {
 		{"studio-folder-prompts", "提示词库", 3},
 		{"studio-folder-boards", "镜头板", 4},
 		{"studio-folder-shorts", "短片成片", 5},
+		{"studio-folder-black-myth", "黑神话短片", 6},
 	}
 	for _, f := range folders {
 		if _, err := getDoc[canvasFolderRec](e, colFolders, f.id); err == nil {
@@ -190,5 +191,8 @@ func (e *Engine) seedStudioAssets() error {
 			"data": map[string]any{"definition": ent.def},
 		})
 	}
-	return nil
+	if err := e.seedBlackMythShortAssets(now, existing); err != nil {
+		return err
+	}
+	return e.seedCastCharacterAssets(now, existing)
 }

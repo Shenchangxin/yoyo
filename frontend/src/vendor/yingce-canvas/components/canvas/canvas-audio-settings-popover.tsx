@@ -80,7 +80,7 @@ function AudioSettingsPortal({
     return (
         <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} width={Math.min(360, window.innerWidth - 24)}>
             <div style={{ color: theme.node.text }}>
-                <AudioSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
+                <AudioSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="w-full min-w-0 space-y-4" />
             </div>
         </GenerationSettingsPortal>
     );

@@ -302,6 +302,7 @@ export function InfiniteCanvas({ interactive = true, containerRef, viewport, app
         }
 
         if (pointerIntent === "pan") {
+            if (isBackgroundClick) onCanvasDeselect?.();
             const current = viewportRef.current;
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);

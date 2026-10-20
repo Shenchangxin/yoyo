@@ -23,7 +23,6 @@ export function hydrateCanvasVideoPreview(node: CanvasNodeData, signal?: AbortSi
 }
 
 async function generateCanvasVideoPreview(node: CanvasNodeData, signal?: AbortSignal): Promise<HydratedCanvasVideoPreview | null> {
-    await waitForBrowserIdle(signal);
     throwIfAborted(signal);
     const source = await resolveMediaUrl(node.metadata?.storageKey, node.metadata?.content || "");
     if (!source) return null;
@@ -46,37 +45,6 @@ async function generateCanvasVideoPreview(node: CanvasNodeData, signal?: AbortSi
             return null;
         });
     return { localUrl, persisted };
-}
-
-function waitForBrowserIdle(signal?: AbortSignal) {
-    return new Promise<void>((resolve, reject) => {
-        if (signal?.aborted) {
-            reject(abortError());
-            return;
-        }
-        let idleId: number | undefined;
-        let timerId: ReturnType<typeof globalThis.setTimeout> | undefined;
-        const idleWindow = window as unknown as {
-            requestIdleCallback?: Window["requestIdleCallback"];
-            cancelIdleCallback?: Window["cancelIdleCallback"];
-        };
-        const cleanup = () => {
-            signal?.removeEventListener("abort", handleAbort);
-            if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
-            if (timerId !== undefined) globalThis.clearTimeout(timerId);
-        };
-        const finish = () => {
-            cleanup();
-            resolve();
-        };
-        const handleAbort = () => {
-            cleanup();
-            reject(abortError());
-        };
-        signal?.addEventListener("abort", handleAbort, { once: true });
-        if (idleWindow.requestIdleCallback) idleId = idleWindow.requestIdleCallback(finish, { timeout: 1_000 });
-        else timerId = globalThis.setTimeout(finish, 250);
-    });
 }
 
 function throwIfAborted(signal?: AbortSignal) {

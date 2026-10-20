@@ -138,7 +138,7 @@ export function CanvasEmotionWorkspace({ node, viewport, containerRef, dragOffse
             <SelectionToolbar node={node} viewport={viewport} containerRef={containerRef} status={status} faceCount={faces.length} error={error} onManualSelect={beginManualSelection} onClose={onClose} />
             <AnimatePresence>
                 {activeCharacter && (status === "editing" || status === "generating") ? (
-                    <CanvasNodePanelOverlay node={node} viewport={viewport} containerRef={containerRef} panelWidth={580} panelHeight={303} dragOffset={dragOffset} isDragging={isDragging}>
+                    <CanvasNodePanelOverlay node={node} viewport={viewport} containerRef={containerRef} panelWidth={580} panelHeight={303} dragOffset={dragOffset} isDragging={isDragging} onBackgroundPointerDown={onClose}>
                         <CanvasNodeEmotionPanel
                             dataUrl={dataUrl}
                             imageWidth={imageSize.width}
