@@ -85,10 +85,11 @@ export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => 
       askedSession.current = false;
       return;
     }
+    if (pane === "drama") return;
     if (askedSession.current) return;
     askedSession.current = true;
     void needSession.current?.();
-  }, [props.sessionId]);
+  }, [pane, props.sessionId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="canvas-studio-shell" data-pane={pane}>

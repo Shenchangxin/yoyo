@@ -426,6 +426,51 @@
   border: 0 !important;
 }
 
+.yingce-popup-root .drama-style-popover :where(.ant-popover-inner, .yc-popover-inner, .drama-style-popover-surface),
+.yingce-popup-root .drama-style-panel,
+body > .drama-style-layer .drama-style-panel {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+.yingce-popup-root .drama-style-search,
+body > .drama-style-layer .drama-style-search {
+  background: var(--lift) !important;
+  color: var(--muted) !important;
+}
+
+.yingce-popup-root .drama-style-groups button,
+body > .drama-style-layer .drama-style-groups button {
+  color: var(--muted) !important;
+}
+
+.yingce-popup-root .drama-style-groups button.is-on,
+.yingce-popup-root .drama-style-groups button:hover,
+body > .drama-style-layer .drama-style-groups button.is-on,
+body > .drama-style-layer .drama-style-groups button:hover {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+.yingce-popup-root .drama-style-search input,
+.yingce-popup-root .drama-style-card.is-on .drama-style-card-name,
+.yingce-popup-root .drama-style-panel header strong,
+body > .drama-style-layer .drama-style-search input,
+body > .drama-style-layer .drama-style-card.is-on .drama-style-card-name,
+body > .drama-style-layer .drama-style-panel header strong {
+  color: var(--foreground) !important;
+}
+
+.yingce-popup-root .drama-style-card-name,
+.yingce-popup-root .drama-style-empty,
+.yingce-popup-root .drama-style-search input::placeholder,
+body > .drama-style-layer .drama-style-card-name,
+body > .drama-style-layer .drama-style-empty,
+body > .drama-style-layer .drama-style-search input::placeholder {
+  color: var(--muted) !important;
+}
+
 .yingce-popup-root .creation-parameter-section h3,
 .yingce-popup-root .creation-duration-heading > span,
 .yingce-popup-root .creation-choice-grid button,

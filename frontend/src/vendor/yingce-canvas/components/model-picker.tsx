@@ -31,6 +31,10 @@ type ModelPickerProps = {
     variant?: "default" | "creation";
     requirements?: ModelRequirements;
     showConfiguredModelName?: boolean;
+    placement?: "top" | "topLeft" | "topRight" | "bottom" | "bottomLeft" | "bottomRight" | "left" | "right";
+    getPopupContainer?: (node: HTMLElement) => HTMLElement;
+    compact?: boolean;
+    testId?: string;
 };
 
 export function ModelPicker({
@@ -48,6 +52,10 @@ export function ModelPicker({
     variant = "creation",
     requirements,
     showConfiguredModelName = false,
+    placement = "bottomLeft",
+    getPopupContainer,
+    compact = false,
+    testId,
 }: ModelPickerProps) {
     const creditsEnabled = useUserStore((state) => state.features.creditsEnabled);
     const pickerId = useId();
@@ -255,13 +263,20 @@ export function ModelPicker({
     );
 
     return (
-        <div className={cn(fullWidth ? "w-full min-w-0" : "w-fit max-w-full")} onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+        <div
+            className={cn(compact ? "inline-flex min-w-0 max-w-full align-middle" : fullWidth ? "w-full min-w-0" : "w-fit max-w-full")}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+        >
             <Popover
                 open={open}
                 onOpenChange={setPickerOpen}
                 trigger="click"
-                placement="bottomLeft"
+                placement={placement}
                 arrow={false}
+                zIndex={410}
+                destroyOnHidden
+                getPopupContainer={getPopupContainer}
                 content={content}
                 classNames={{
                     root: cn("canvas-model-picker-popover", "creation-model-picker-popover", popoverClassName),
@@ -272,10 +287,11 @@ export function ModelPicker({
                 <button
                     ref={triggerRef}
                     type="button"
-                    className={cn("canvas-composer-model-picker", fullWidth ? "w-full" : "min-w-36 max-w-full", className)}
+                    className={cn("canvas-composer-model-picker", fullWidth ? "w-full" : compact ? "min-w-0 max-w-full" : "min-w-36 max-w-full", className)}
                     aria-haspopup="listbox"
                     aria-expanded={open}
                     aria-label={placeholder}
+                    data-testid={testId}
                     title={current ? pickerModelOptionLabel(config, current, showConfiguredModelName) : placeholder}
                     onKeyDown={handleTriggerKeyDown}
                 >

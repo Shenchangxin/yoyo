@@ -117,9 +117,11 @@ export function Composer(props: {
   sessionStats?: SessionStats | null;
   leading?: ReactNode;
   toolbarLeading?: ReactNode;
+  toolbarTrailing?: ReactNode;
   placeholder?: string;
   inputTestId?: string;
   perch?: boolean;
+  perchSize?: number;
 }) {
   const value = useUI((s) => s.drafts[props.draftKey] || "");
   const plan = useUI((s) => s.plan);
@@ -657,7 +659,7 @@ export function Composer(props: {
                 onClose={() => setPickerOpen(false)}
               />
             ) : null}
-            {perch ? <PresencePerch /> : null}
+            {perch ? <PresencePerch size={props.perchSize} /> : null}
             <ApprovalTakeover ask={props.ask} approval={pendingTool} onResolve={props.onResolveAsk} />
           </>
         ) : (
@@ -685,7 +687,7 @@ export function Composer(props: {
                 copy={copy}
               />
             </div>
-            {perch ? <PresencePerch /> : null}
+            {perch ? <PresencePerch size={props.perchSize} /> : null}
             <div
               ref={cardRef}
               className="sc-card"
@@ -807,6 +809,7 @@ export function Composer(props: {
                 className="sc-row"
                 onMouseDown={(e) => {
                   const el = e.target as HTMLElement;
+                  if (el.closest(".ant-select, .yc-select, .canvas-composer-model-picker, .drama-style-trigger")) return;
                   if (el.closest("button, [role='combobox']")) e.preventDefault();
                 }}
               >
@@ -927,6 +930,7 @@ export function Composer(props: {
                   </div>
                 </div>
                 <div className="sc-trailing">
+                  {props.toolbarTrailing}
                   {grouped && props.onModel ? (
                     <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={disabled}>
                       <SelectTrigger className="sc-chip-btn max-w-[16rem] border-0 shadow-none" aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
@@ -956,7 +960,7 @@ export function Composer(props: {
                         })}
                       </SelectContent>
                     </Select>
-                  ) : currentModel && !props.leading ? (
+                  ) : currentModel && !props.leading && !props.toolbarLeading ? (
                     <span className="hidden max-w-[8.5rem] truncate px-1.5 text-[12px] text-muted sm:inline" title={currentModel}>{modelLabel}</span>
                   ) : null}
                   {props.running && hasPayload ? (

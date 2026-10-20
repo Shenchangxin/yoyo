@@ -16,7 +16,7 @@ import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 import { ingestSeriesFile } from "./bind";
 import { requestSendToCut } from "./open-cut";
 import { modelOptionName, useConfigStore } from "@yingce/stores/use-config-store";
-import { commitEpisodeTitle, commitSeriesTitle, firstLook, isAgentStep, jobMoving, phaseDone, phaseQueue, pipeStatus, selectedClipIds, shownEpisodeTitle, shownSeriesTitle, type Bundle, type Drama, type Episode, type EpisodePlan, type Job, type Phase, type PhaseStep, type Shot } from "./drama-lib";
+import { commitEpisodeTitle, commitSeriesTitle, firstLook, isAgentStep, jobMoving, mergeDramaStyles, phaseDone, phaseQueue, pipeStatus, selectedClipIds, shownEpisodeTitle, shownSeriesTitle, type Bundle, type Drama, type Episode, type EpisodePlan, type Job, type Phase, type PhaseStep, type Shot } from "./drama-lib";
 import { BoardInspector, CastGrid, CastInspector, CutInspector, EmptyDesk, EpisodeMap, GenerationSettings, JobDrawer, ScriptStage } from "./drama-stages";
 
 const iconBtn =
@@ -38,7 +38,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [selShots, setSelShots] = useState<Record<string, boolean>>({});
-  const [styles, setStyles] = useState<{ value: string; name: string }[]>([]);
+  const [styles, setStyles] = useState<{ value: string; name: string }[]>(() => mergeDramaStyles([]));
   const [providers, setProviders] = useState<any[]>([]);
   const [ffmpeg, setFfmpeg] = useState(true);
   const [ffmpegInstall, setFfmpegInstall] = useState<{ phase?: string; percent?: number; error?: string }>({});
@@ -92,7 +92,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
 
   useEffect(() => {
     void loadList().catch((e) => setErr(api.errMessage(e))).finally(() => setListReady(true));
-    void api.video.styles().then((s) => setStyles(Array.isArray(s) ? s : [])).catch(() => {});
+    void api.video.styles().then((s) => setStyles(mergeDramaStyles(Array.isArray(s) ? s : []))).catch(() => {});
     void api.video.providers().then((p) => setProviders(Array.isArray(p) ? p : [])).catch(() => {});
     void api.video.status().then((s) => {
       setFfmpeg(!!s?.ffmpeg);
