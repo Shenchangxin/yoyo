@@ -2,6 +2,7 @@ package video
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -56,7 +57,7 @@ func TestStudioCatalogsSeed(t *testing.T) {
 			t.Fatalf("asset %s missing cover/data", item["id"])
 		}
 		kind := fmt.Sprint(item["kind"])
-		if kind != "image" && kind != "text" && kind != "entity" {
+		if kind != "image" && kind != "text" && kind != "entity" && kind != "video" {
 			t.Fatalf("unexpected kind %s", kind)
 		}
 	}
@@ -70,6 +71,36 @@ func TestStudioCatalogsSeed(t *testing.T) {
 			t.Fatalf("library listed entity %s", item["id"])
 		}
 	}
+	folders := e.listAssetFolders()
+	folderIDs := map[string]bool{}
+	for _, folder := range folders {
+		folderIDs[fmt.Sprint(folder["id"])] = true
+	}
+	if folderIDs["studio-folder-cast"] {
+		t.Fatal("studio-folder-cast should be removed after merging into 角色资产")
+	}
+	if !folderIDs["studio-folder-characters"] {
+		t.Fatal("missing studio-folder-characters")
+	}
+	castCount := 0
+	allAssets := e.listAssetsPage("", "", "", "active", "", 1, 1000, false, "")
+	for _, item := range allAssets["assets"].([]map[string]any) {
+		id := fmt.Sprint(item["id"])
+		if !strings.HasPrefix(id, "studio-cast-") {
+			continue
+		}
+		castCount++
+		if fmt.Sprint(item["folderId"]) != "studio-folder-characters" {
+			t.Fatalf("cast asset %s folderId=%v", id, item["folderId"])
+		}
+		if fmt.Sprint(item["category"]) != "character" {
+			t.Fatalf("cast asset %s category=%v", id, item["category"])
+		}
+	}
+	if castCount < 40 {
+		t.Fatalf("want >=40 character stills in 角色资产, got %d", castCount)
+	}
+
 	folderRaw := library["folderCounts"]
 	folderCounts := map[string]int{}
 	switch raw := folderRaw.(type) {
@@ -129,5 +160,35 @@ func TestStudioCatalogsSeed(t *testing.T) {
 	}
 	if withCaps < 5 {
 		t.Fatalf("too few protocol plugins with capabilities: %d", withCaps)
+	}
+}
+
+func TestCastAssetsMigrateIntoCharactersFolder(t *testing.T) {
+	e := testEngine(t)
+	now := Now()
+	legacy := canvasFolderRec{ID: "studio-folder-cast", Name: "角色设定图", Position: 7, CreatedAt: now, UpdatedAt: now}
+	if err := e.putDoc(colFolders, legacy.ID, legacy); err != nil {
+		t.Fatal(err)
+	}
+	e.upsertAsset(map[string]any{
+		"id": "studio-cast-legacy-still", "kind": "image", "title": "遗留设定图", "coverUrl": "/character-cast/x.jpg",
+		"folderId": "studio-folder-cast", "category": "character", "status": "confirmed",
+		"createdAt": now, "updatedAt": now, "source": "Yoyo 工作室",
+		"data": map[string]any{"dataUrl": "/character-cast/x.jpg", "width": 1280, "height": 720, "bytes": 12, "mimeType": "image/jpeg"},
+	})
+	if err := e.seedStudioAssets(); err != nil {
+		t.Fatal(err)
+	}
+	item, err := e.getAsset("studio-cast-legacy-still")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(item["folderId"]) != "studio-folder-characters" {
+		t.Fatalf("legacy cast asset stayed in %v", item["folderId"])
+	}
+	for _, folder := range e.listAssetFolders() {
+		if fmt.Sprint(folder["id"]) == "studio-folder-cast" {
+			t.Fatal("角色设定图 folder should be deleted after migrate")
+		}
 	}
 }

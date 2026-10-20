@@ -15,6 +15,7 @@ import { useUserStore } from "@yingce/stores/use-user-store";
 import { ModelLogo } from "@yingce/components/model-logo";
 import { ModelTags } from "@yingce/components/model-tags";
 import { quoteModel, type LogicalModelQuote } from "@yingce/services/api/logical-models";
+import { canvasOverlayHost } from "@/features/video/canvas-host/design-system/popup-container";
 
 type ModelPickerProps = {
     config: AiConfig;
@@ -276,7 +277,8 @@ export function ModelPicker({
                 arrow={false}
                 zIndex={410}
                 destroyOnHidden
-                getPopupContainer={getPopupContainer}
+                autoAdjustOverflow
+                getPopupContainer={getPopupContainer ?? (() => canvasOverlayHost())}
                 content={content}
                 classNames={{
                     root: cn("canvas-model-picker-popover", "creation-model-picker-popover", popoverClassName),

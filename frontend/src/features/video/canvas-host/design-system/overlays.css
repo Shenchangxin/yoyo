@@ -17,6 +17,18 @@
   pointer-events: none;
 }
 
+#yingce-popup-root > [data-canvas-node-panel] {
+  height: max-content !important;
+  max-height: none !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+}
+
+.yingce-popup-root [data-canvas-panel-content] {
+  height: max-content;
+  pointer-events: auto !important;
+}
+
 .yingce-popup-root .ant-popover,
 .yingce-popup-root .ant-select-dropdown,
 .yingce-popup-root .ant-dropdown,
@@ -29,6 +41,9 @@
 .yingce-popup-root .sg-menu,
 .yingce-popup-root .canvas-generation-settings-popover,
 .yingce-popup-root .canvas-model-picker-popover,
+.yingce-popup-root .canvas-preset-picker-popover,
+.yingce-popup-root .canvas-composer-popover-surface,
+.yingce-popup-root .canvas-node-toolbar-menu,
 .yingce-popup-root .creation-control-popover,
 .yingce-popup-root .drama-style-layer,
 .yingce-popup-root .drama-style-panel,
@@ -124,6 +139,10 @@ body .ant-select-item {
 body .sg-popover,
 body .sg-menu,
 body .canvas-generation-settings-popover {
+  box-sizing: border-box !important;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  overflow-x: hidden;
   border-radius: 12px !important;
   background: color-mix(in srgb, var(--popover) 94%, transparent) !important;
   color: var(--foreground) !important;

@@ -148,6 +148,7 @@ function toInsertPayload(item: ProjectPickerItem): InsertAssetPayload {
             kind: "video",
             url: projectAssetMediaUrl(asset.data.storageKey, asset.data.url),
             storageKey: asset.data.storageKey,
+            coverUrl: asset.coverUrl,
             title: asset.title,
             width: asset.data.width,
             height: asset.data.height,

@@ -344,7 +344,7 @@ export function CanvasNodeCameraPanel({
     return (
         <div
             data-canvas-no-zoom
-            className="sg-popover w-full overflow-hidden"
+            className="w-full min-w-0 overflow-visible"
             style={{ color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}

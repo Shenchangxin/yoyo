@@ -102,7 +102,7 @@ function ImageSettingsPortal({
     return (
         <GenerationSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} width={Math.min(360, window.innerWidth - 24)}>
             <div style={{ color: theme.node.text }}>
-                <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} showCount={showCount} quickCount={3} className="space-y-3" />
+                <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} showCount={showCount} quickCount={3} className="w-full min-w-0 space-y-3" />
             </div>
         </GenerationSettingsPortal>
     );

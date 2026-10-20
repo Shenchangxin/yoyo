@@ -7,11 +7,6 @@
 .canvas-editor-shell {
     container-type: inline-size;
 }
-@container (max-width: 1050px) {
-    .canvas-topbar-tools-cluster > :not(:has(.canvas-topbar-version-button)):not(.canvas-topbar-agent-button) {
-        display: none !important;
-    }
-}
 @container (max-width: 650px) {
     .canvas-topbar-project-picker {
         display: none !important;

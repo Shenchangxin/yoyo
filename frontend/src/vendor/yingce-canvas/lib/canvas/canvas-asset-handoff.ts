@@ -40,6 +40,7 @@ export function canvasAssetHandoffPayloads(assets: Asset[], assetIds: Iterable<s
                 kind: "video",
                 url: asset.data.url,
                 storageKey: asset.data.storageKey,
+                coverUrl: asset.coverUrl,
                 title: asset.title,
                 width: asset.data.width,
                 height: asset.data.height,

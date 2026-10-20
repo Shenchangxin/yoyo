@@ -38,6 +38,15 @@ export function canvasNodeVideoPreviewUrl(node: CanvasNodeData) {
 
 export function canvasVideoAssetPreviewUrl(videoUrl: string, coverUrl?: string) {
     const explicitCover = coverUrl?.trim() || "";
-    if (explicitCover && explicitCover !== videoUrl) return explicitCover;
+    if (explicitCover && explicitCover !== videoUrl && !isLikelyVideoMediaSrc(explicitCover)) return explicitCover;
     return buildLibTVVideoPreviewUrl(videoUrl);
+}
+
+export function videoNodePreviewMetadata(videoUrl: string, coverUrl?: string) {
+    const previewContent = canvasVideoAssetPreviewUrl(videoUrl, coverUrl);
+    return previewContent ? { previewContent } : {};
+}
+
+function isLikelyVideoMediaSrc(value: string) {
+    return value.startsWith("data:video/") || /\.(mp4|webm|mov|m4v|mkv)(?:$|[?#])/i.test(value);
 }

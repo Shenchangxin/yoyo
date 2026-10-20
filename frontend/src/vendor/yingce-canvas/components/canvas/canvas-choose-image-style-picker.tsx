@@ -74,6 +74,7 @@ export function CanvasChooseImageStylePicker({
             onOpenChange={setOpen}
             trigger={["click"]}
             autoAdjustOverflow
+            placement="topLeft"
             menu={{ items: [] }}
             popupRender={() => (
                 <div
@@ -112,20 +113,20 @@ export function CanvasChooseImageStylePicker({
                         </div>
                         <div className="thin-scrollbar grid max-h-80 grid-cols-5 gap-1.5 overflow-y-auto p-2" role="listbox" aria-label="风格工具">
                             {toolsQuery.isPending ? (
-                                <div className="col-span-3 grid h-24 place-items-center text-foreground/40">
+                                <div className="col-span-5 grid h-24 place-items-center text-foreground/40">
                                     <LoaderCircle className="size-4 animate-spin" />
                                 </div>
                             ) : toolsQuery.isError ? (
-                                <div className="col-span-3 grid h-24 place-items-center text-xs text-foreground/40">风格工具加载失败，请稍后重试</div>
+                                <div className="col-span-5 grid h-24 place-items-center text-xs text-foreground/40">风格工具加载失败，请稍后重试</div>
                             ) : tools.length === 0 ? (
-                                <div className="col-span-3 grid h-24 place-items-center text-xs text-foreground/40">{searchText ? "没有匹配的风格" : "暂无风格工具"}</div>
+                                <div className="col-span-5 grid h-24 place-items-center text-xs text-foreground/40">{searchText ? "没有匹配的风格" : "暂无风格工具"}</div>
                             ) : (
                                 tools.map((tool) => <StyleToolCard key={tool.id} tool={tool} selected={tool.id === activeToolId} onSelect={handleSelect} />)
                             )}
                         </div>
                         {toolsQuery.hasNextPage && (
-                            <button type="button" disabled={toolsQuery.isFetchingNextPage} onClick={() => void toolsQuery.fetchNextPage()}>
-                                加载更多
+                            <button type="button" className="w-full py-1.5 text-center text-xs text-foreground/60" disabled={toolsQuery.isFetchingNextPage} onClick={() => void toolsQuery.fetchNextPage()}>
+                                {toolsQuery.isFetchingNextPage ? "加载中…" : "加载更多"}
                             </button>
                         )}
                     </div>

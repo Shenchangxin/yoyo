@@ -11,7 +11,7 @@ import { sortCanvasNodesByStackOrder, type CanvasNodeStackOrder } from "@yingce/
 import type { CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource-references";
 import { isFrameNode } from "@yingce/lib/canvas/canvas-frame";
 import type { CanvasNodeRenderLOD } from "@yingce/lib/canvas/canvas-node-lod";
-import type { CanvasDisplayConnection, CanvasFolderStyle, CanvasFolderTheme, CanvasNodeData, ConnectionHandle, Position, SelectionBox } from "@yingce/types/canvas";
+import { CanvasNodeType, type CanvasDisplayConnection, type CanvasFolderStyle, type CanvasFolderTheme, type CanvasNodeData, type ConnectionHandle, type Position, type SelectionBox } from "@yingce/types/canvas";
 
 type DragPreview = { x: number; y: number; nodeIds: Set<string> } | null;
 type NodeBounds = { left: number; top: number; width: number; height: number; count: number } | null;
@@ -91,6 +91,20 @@ export const CanvasProjectWorldLayers = memo(function CanvasProjectWorldLayers(p
     useEffect(() => {
         if (activeMediaNodeId && !props.nodeById.has(activeMediaNodeId)) setActiveMediaNodeId(null);
     }, [activeMediaNodeId, props.nodeById]);
+    useEffect(() => {
+        if (props.isNodeDragging) return;
+        if (props.selectedNodeIds.size === 1) {
+            const selectedId = props.selectedNodeIds.values().next().value as string | undefined;
+            const selected = selectedId ? props.nodeById.get(selectedId) : undefined;
+            if (selected?.type === CanvasNodeType.Video && (selected.metadata?.content || selected.metadata?.storageKey)) {
+                setActiveMediaNodeId(selected.id);
+                return;
+            }
+            setActiveMediaNodeId(null);
+            return;
+        }
+        if (props.selectedNodeIds.size === 0) setActiveMediaNodeId(null);
+    }, [props.isNodeDragging, props.nodeById, props.selectedNodeIds]);
     const orderedVisibleNodes = useMemo(() => [
         ...props.visibleNodes.filter(isFrameNode),
         ...sortCanvasNodesByStackOrder(props.visibleNodes.filter((node) => !isFrameNode(node)), props.nodeStackOrder),
