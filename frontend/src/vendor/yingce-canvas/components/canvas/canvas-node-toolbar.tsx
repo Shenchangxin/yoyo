@@ -168,52 +168,17 @@ export function CanvasNodeToolbar({
         let disposed = false;
         let queued = false;
         let containerRect = container.getBoundingClientRect();
-        let toolbarWidth = toolbarRef.current?.offsetWidth || 0;
         let toolbarHeight = toolbarRef.current?.offsetHeight || 44;
         const update = () => {
-            const nodeRect = element.getBoundingClientRect();
-            const preferredLeft = nodeRect.left - containerRect.left + nodeRect.width / 2;
-            const halfToolbar = toolbarWidth / 2;
-            const canClamp = toolbarWidth > 0 && toolbarWidth <= containerRect.width - 20;
-            let left = canClamp ? Math.min(Math.max(preferredLeft, halfToolbar + 10), containerRect.width - halfToolbar - 10) : preferredLeft;
-            const gap = 8;
-            const bottomChrome = 56;
-            const nodeTop = nodeRect.top - containerRect.top;
-            const nodeBottom = nodeRect.bottom - containerRect.top;
-            const spaceAbove = nodeTop - gap;
-            const spaceBelow = containerRect.height - nodeBottom - gap - bottomChrome;
-            let placement: "above" | "below" = spaceAbove >= toolbarHeight || spaceAbove >= spaceBelow ? "above" : "below";
-            let top = placement === "above" ? nodeTop - gap : nodeBottom + gap;
-            if (placement === "below" && top + toolbarHeight > containerRect.height - bottomChrome) {
-                placement = "above";
-                top = nodeTop - gap;
-            }
-            for (const panel of container.querySelectorAll<HTMLElement>("[data-canvas-node-panel]")) {
-                const panelRect = panel.getBoundingClientRect();
-                const panelLeft = panelRect.left - containerRect.left;
-                const panelRight = panelRect.right - containerRect.left;
-                const panelTop = panelRect.top - containerRect.top;
-                const panelBottom = panelRect.bottom - containerRect.top;
-                const toolbarTop = placement === "above" ? top - toolbarHeight : top;
-                const toolbarBottom = toolbarTop + toolbarHeight;
-                if (left + halfToolbar <= panelLeft || left - halfToolbar >= panelRight || toolbarBottom <= panelTop || toolbarTop >= panelBottom) continue;
-                if (panelLeft >= toolbarWidth + 18) left = panelLeft - halfToolbar - 8;
-                else if (containerRect.width - panelRight >= toolbarWidth + 18) left = panelRight + halfToolbar + 8;
-                else if (panelTop >= toolbarHeight + 16) {
-                    placement = "above";
-                    top = panelTop - gap;
-                } else if (containerRect.height - panelBottom >= toolbarHeight + 16) {
-                    placement = "below";
-                    top = panelBottom + gap;
-                }
-            }
-            const transform = nodeToolbarTransform(left, top, placement);
+            const left = containerRect.width / 2;
+            const toolbarHeightResolved = toolbarHeight || 44;
+            const top = Math.max(12, containerRect.height - toolbarHeightResolved - 12);
+            const placement: "above" | "below" = "below";
             if (toolbarRef.current) {
-                toolbarRef.current.style.transform = transform;
+                toolbarRef.current.style.transform = nodeToolbarTransform(left, top, placement);
                 toolbarRef.current.dataset.placement = placement;
-                return;
             }
-            setAnchor((current) => current?.left === left && current.top === top && current.placement === placement ? current : { left, top, placement });
+            setAnchor((current) => (current?.left === left && current.top === top && current.placement === placement ? current : { left, top, placement }));
         };
         const scheduleUpdate = () => {
             if (queued || disposed) return;
@@ -225,7 +190,6 @@ export function CanvasNodeToolbar({
         };
         const measure = () => {
             containerRect = container.getBoundingClientRect();
-            toolbarWidth = toolbarRef.current?.offsetWidth || 0;
             toolbarHeight = toolbarRef.current?.offsetHeight || 44;
             setContainerWidth(containerRect.width);
             scheduleUpdate();
@@ -327,7 +291,7 @@ export function CanvasNodeToolbar({
     const utilityTools = inGroup("utility");
     const moreTools = [...(narrow ? [...primary.slice(1), ...inGroup("workspace")] : []), ...inGroup("more")];
     const processMenuLabel = compact ? "工具" : isVideo ? "提取素材" : isImage ? "图片工具" : isAudio ? "音频处理" : "文本调整";
-    const menuPlacement = anchor.placement === "below" ? "bottom" : "top";
+    const menuPlacement = "top";
     const handleMenuOpenChange = (menuId: string, open: boolean) => {
         setOpenMenuId((current) => open ? menuId : current === menuId ? null : current);
         if (open) onKeep(node.id);
@@ -356,18 +320,18 @@ export function CanvasNodeToolbar({
                 className="sg-glass-group flex max-w-full items-center overflow-visible"
                 style={{ ...dockStyle, border: 0, background: "transparent", boxShadow: "none" }}
             >
-                {primaryTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {primaryTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement="top" />)}
                 {nineGridTools.length ? <NodeDockMenuButton menuId="nine-grid" label="九宫格" icon={<Grid3x3 strokeWidth={1.55} />} tools={nineGridTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
-                {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {panoramaTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement="top" />)}
                 {portraitTools.length ? <NodeDockMenuButton menuId="portrait" label="人像调整" icon={<UserRound strokeWidth={1.55} />} tools={portraitTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
                 {viewpointLightingTools.length ? <NodeDockMenuButton menuId="viewpoint-lighting" label="视角" icon={<Camera strokeWidth={1.55} />} tools={viewpointLightingTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly /> : null}
                 {processTools.length ? <NodeDockMenuButton menuId="process" label={processMenuLabel} icon={isVideo ? <Film strokeWidth={1.55} /> : <SlidersHorizontal strokeWidth={1.55} />} tools={processTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={menuPlacement} iconOnly split={hasImage && !simpleMode ? { node, onSplit } : undefined} /> : null}
                 {workspaceTools.length ? <span aria-hidden className="aceternity-dock-separator shrink-0" /> : null}
-                {workspaceTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {workspaceTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement="top" />)}
                 {utilityTools.length || moreTools.length ? <span aria-hidden className="aceternity-dock-separator shrink-0" /> : null}
-                {utilityTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement={anchor.placement === "below" ? "bottom" : "top"} />)}
+                {utilityTools.map((tool) => <NodeDockToolButton key={tool.id} tool={tool} iconOnly tooltipPlacement="top" />)}
                 {moreTools.length ? (
-                    <NodeDockMenuButton menuId="more" label="更多" icon={<Ellipsis strokeWidth={1.55} />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement={anchor.placement === "below" ? "bottomRight" : "topRight"} iconOnly />
+                    <NodeDockMenuButton menuId="more" label="更多" icon={<Ellipsis strokeWidth={1.55} />} tools={moreTools} openMenuId={openMenuId} onOpenChange={handleMenuOpenChange} placement="topRight" iconOnly />
                 ) : null}
             </div>
         </div>

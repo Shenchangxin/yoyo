@@ -12,7 +12,7 @@ import { connectedNodeCenterFromEdgeDrop } from "@yingce/lib/canvas/canvas-conne
 import { canvasConnectionError } from "@yingce/lib/canvas/canvas-connection-policy";
 import { attachNodeToStoryboardRow, createCanvasNode, getConnectionTargetAnchor, isHiddenBatchChild, normalizeConnection, storyboardHandleAtY, storyboardPromptTemplateMetadata, storyboardRowFromHandle } from "@yingce/lib/canvas/canvas-project-domain";
 import { createCanvasDrawingFromImage } from "@yingce/lib/canvas/canvas-drawing-storage";
-import { isDrawingEngineAvailable, type CanvasDrawingEngine } from "@yingce/lib/canvas/canvas-drawing-engine";
+import { drawingEngineForCreate, type CanvasDrawingEngine } from "@yingce/lib/canvas/canvas-drawing-engine";
 import { isFrameNode, isNodeHiddenByCollapsedFrame } from "@yingce/lib/canvas/canvas-frame";
 import { normalizeRunningHubCapability, type AiConfig } from "@yingce/stores/use-config-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
@@ -231,12 +231,7 @@ export function useCanvasConnectionController({
 
     const createConnectedNode = useCallback(async (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Script | CanvasNodeType.BatchTable | CanvasNodeType.Video | CanvasNodeType.Audio | CanvasNodeType.Drawing | CanvasNodeType.Config | CanvasNodeType.MediaConversion, pending: PendingConnectionCreate, workflowProvider?: "runninghub") => {
         const nodeType = type;
-        if (nodeType === CanvasNodeType.Drawing && !isDrawingEngineAvailable(defaultDrawingEngine, tldrawLicenseKey)) {
-            message.error("当前生产构建未配置 tldraw License Key，不能创建 tldraw 绘图");
-            closeConnectionCreateMenu();
-            setConnecting(null);
-            return;
-        }
+        const drawingEngine = nodeType === CanvasNodeType.Drawing ? drawingEngineForCreate(defaultDrawingEngine, tldrawLicenseKey) : undefined;
         const batchSourceNodeIds = pending.batchSourceNodeIds?.length ? Array.from(new Set(pending.batchSourceNodeIds)) : [];
         const batchSourceNodes = batchSourceNodeIds
             .map((nodeId) => nodesRef.current.find((node) => node.id === nodeId))
@@ -274,7 +269,7 @@ export function useCanvasConnectionController({
                 } : {})
               }
             : nodeType === CanvasNodeType.Drawing
-            ? { drawingEngine: defaultDrawingEngine }
+            ? { drawingEngine }
             : nodeType === CanvasNodeType.Script && scriptPrompt
               ? { prompt: scriptPrompt, composerContent: scriptPrompt }
             : nodeType === CanvasNodeType.Video && storyboardRow
@@ -358,7 +353,7 @@ export function useCanvasConnectionController({
             closeConnectionCreateMenu();
             setConnecting(null);
             try {
-                const saved = await createCanvasDrawingFromImage(projectId, newNode.metadata.drawingId, defaultDrawingEngine, {
+                const saved = await createCanvasDrawingFromImage(projectId, newNode.metadata.drawingId, drawingEngine, {
                     url: sourceUrl,
                     storageKey: drawingSourceNode.metadata?.storageKey,
                     name: drawingSourceNode.title || "来源图片",

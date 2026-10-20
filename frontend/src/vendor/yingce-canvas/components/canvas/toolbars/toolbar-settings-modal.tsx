@@ -136,6 +136,8 @@ export function ToolbarSettingsModal({ open, onClose, toolbar }: ToolbarSettings
     return (
         <Modal
             className="canvas-toolbar-settings-modal"
+            rootClassName="canvas-toolbar-settings-root"
+            classNames={{ mask: "canvas-toolbar-settings-mask" }}
             open={open}
             onCancel={onClose}
             footer={null}

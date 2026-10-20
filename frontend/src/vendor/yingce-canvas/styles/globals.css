@@ -1694,8 +1694,8 @@
 
     body.app-spatial-overlays :where(.ant-modal-mask, .ant-drawer-mask) {
         background: rgba(0, 0, 0, 0.48) !important;
-        backdrop-filter: blur(7px);
-        -webkit-backdrop-filter: blur(7px);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
 
@@ -6714,7 +6714,8 @@ html:not(.dark) .creation-studio-control[aria-expanded="true"] { background: #e7
     }
 
     :where(.ant-modal-mask, .ant-drawer-mask) {
-        backdrop-filter: blur(5px);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 
     /* 画风选择器自身就是完整工作区表面，移除 AntD 外壳避免形成双层厚边。 */

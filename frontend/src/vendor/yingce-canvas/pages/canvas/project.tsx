@@ -1723,6 +1723,13 @@ function InfiniteCanvasPage() {
         exitFocusMode,
         toggleFocusMode,
         onOpenSearch: () => setNodeSearchOpen(true),
+        onToggleAgent: () => {
+            if (assistantOpen) closeAgent();
+            else openAgent();
+        },
+        assistantOpen,
+        onCloseAgent: closeAgent,
+        onSetTool: setCanvasTool,
         beginBatchConnection: () => beginBatchConnectionMode(Array.from(selectedNodeIdsRef.current)),
     });
 
@@ -2929,20 +2936,23 @@ function InfiniteCanvasPage() {
 
                         {connectionReplaceHover ? (
                             <div
-                                className="pointer-events-none fixed z-[var(--z-dialog-popover)] flex select-none items-center gap-1.5 rounded-full border border-white/15 bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all"
+                                className="pointer-events-none fixed z-[var(--z-popover)] flex select-none items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium"
                                 style={{
                                     left: connectionReplaceHover.clientX + 14,
                                     top: connectionReplaceHover.clientY + 14,
                                     transform: "translateY(-50%)",
+                                    background: "var(--popover)",
+                                    color: "var(--foreground)",
+                                    borderColor: "var(--border)",
                                 }}
                             >
-                                <ArrowLeftRight className="size-3 text-blue-400" />
+                                <ArrowLeftRight className="size-3" style={{ color: "var(--accent)" }} />
                                 <span>松开替换</span>
-                                <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold text-blue-200">@{connectionReplaceHover.referenceLabel}</span>
+                                <span className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: "var(--lift)", color: "var(--accent)" }}>@{connectionReplaceHover.referenceLabel}</span>
                             </div>
                         ) : null}
 
-                        {selectedNodeBounds && !selectionBox && !isCanvasNodeMoving ? (
+                        {selectedNodeBounds && selectedNodeBounds.count > 1 && !selectionBox && !isCanvasNodeMoving ? (
                             <CanvasProjectSelectionToolbar
                                 anchorRef={selectionBoundsElementRef}
                                 containerRef={containerRef}

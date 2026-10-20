@@ -75,7 +75,7 @@ export const canvasThemes = {
             background: "#0c0c0b",
             dot: "rgba(244,244,240,.18)",
             line: "rgba(244,244,240,.10)",
-            selectionFill: "rgba(92,153,214,.16)",
+            selectionFill: "rgba(92,153,214,.12)",
         },
         node: {
             label: "#8c8b85",

@@ -10,8 +10,8 @@
   --canvas-toolbar-bottom: var(--canvas-inset-y);
   --canvas-zoom-reserve: 212px;
 
-  --glass-blur: 32px;
-  --glass-saturate: 180%;
+  --glass-blur: 20px;
+  --glass-saturate: 140%;
   --glass-bg: color-mix(in srgb, var(--popover) 78%, transparent);
   --glass-highlight: inset 0 0.5px 0 color-mix(in srgb, white 22%, transparent);
   --glass-hairline: color-mix(in srgb, var(--foreground) 12%, transparent);
@@ -37,19 +37,20 @@
   --dock-border: var(--border);
   --panel-radius: 12px;
   --node-radius: 12px;
-  --glass-saturate: 160%;
+  --glass-saturate: 140%;
   --elevation-overlay: var(--shadow-popover);
 
+  /* In-canvas layers. Portaled Ant menus/modals/toasts live in overlays.css (1100/1200/1300). */
   --z-toolbar: 30;
-  --z-node-toolbar: 50;
-  --z-panel: 60;
-  --z-panel-floating: 80;
-  --z-modal: 300;
-  --z-modal-overlay: 300;
-  --z-canvas-overlay-active: 80;
-  --z-popover: 200;
-  --z-dialog-popover: 200;
-  --z-workbench: 400;
+  --z-node-toolbar: 31;
+  --z-panel: 40;
+  --z-panel-floating: 35;
+  --z-modal: 60;
+  --z-modal-overlay: 60;
+  --z-canvas-overlay-active: 45;
+  --z-popover: 70;
+  --z-dialog-popover: 70;
+  --z-workbench: 65;
 
   --director-accent: var(--accent);
   --director-accent-hover: color-mix(in srgb, var(--accent) 86%, white);
@@ -194,6 +195,12 @@ html.light .yingce-popup-root {
 .yingce-island .aceternity-dock-command.is-active {
   background: color-mix(in srgb, var(--foreground) 12%, transparent) !important;
   color: var(--foreground);
+}
+
+.sg-ghost:active,
+.yingce-island .canvas-topbar-action:active,
+.yingce-island .aceternity-dock-command:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .sg-fill {
@@ -442,17 +449,16 @@ html.light .yingce-popup-root {
 }
 
 .yingce-island .canvas-node-shell[data-selected="true"] {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1.5px;
   box-shadow: none;
 }
 
 .yingce-island .canvas-node-shell[data-node-state="loading"],
 .yingce-island .canvas-node-shell[data-state="loading"] {
   position: relative;
-  outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
-  outline-offset: 2px;
-  animation: sg-ring-breathe 1.6s ease-in-out infinite;
+  outline: none;
+  animation: none;
 }
 .yingce-island .canvas-node-shell[data-node-state="loading"]::after,
 .yingce-island .canvas-node-shell[data-state="loading"]::after {
@@ -466,11 +472,6 @@ html.light .yingce-popup-root {
   background: var(--accent);
   pointer-events: none;
   animation: yoyo-progress-slide 1.35s var(--ease-out) infinite;
-}
-
-@keyframes sg-ring-breathe {
-  0%, 100% { outline-width: 2px; }
-  50% { outline-width: 3.5px; }
 }
 
 .yingce-island .canvas-resize-handle {
@@ -514,9 +515,9 @@ html.light .yingce-popup-root {
 .yingce-island .canvas-workspace-panel header strong,
 .yingce-island .sg-eyebrow {
   font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  font-weight: 500;
   color: var(--muted);
 }
 
@@ -633,10 +634,11 @@ html.light .yingce-popup-root {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yingce-island *,
-  .yingce-island *::before,
-  .yingce-island *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  .yingce-island .canvas-connection-flow,
+  .yingce-island .canvas-connection-comet,
+  .yingce-island .canvas-connection-draft,
+  .yingce-island .canvas-node-shell[data-node-state="loading"]::after,
+  .yingce-island .canvas-node-shell[data-state="loading"]::after {
+    animation: none !important;
   }
 }

@@ -14,7 +14,7 @@ import { isAudioFile } from "@yingce/lib/canvas/canvas-project-generation";
 import { fitNodeSize, VIDEO_NODE_MAX_SIZE } from "@yingce/lib/canvas/canvas-node-size";
 import { CANVAS_UPLOAD_ACCEPT, createFileUploadPlaceholder, uploadNodeType, uploadPercent } from "@yingce/lib/canvas/canvas-file-upload";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@yingce/services/api/resources";
-import { uploadMediaFile } from "@yingce/services/file-storage";
+import { resolveMediaUrl, uploadMediaFile } from "@yingce/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@yingce/services/image-storage";
 import { getProjectUnit } from "@yingce/services/api/projects";
 import { ensureCanvasNodeAsset } from "@yingce/services/project-asset-sync";
@@ -687,18 +687,21 @@ export function useCanvasUpload({
         if (payload.kind === "audio") {
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
             const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            return { id, type: CanvasNodeType.Audio, title: payload.title, position: { x: center.x - spec.width / 2, y: center.y - spec.height / 2 }, width: spec.width, height: spec.height, metadata: { content: payload.url, storageKey: payload.storageKey, durationMs: payload.durationMs, bytes: payload.bytes, mimeType: payload.mimeType || "audio/mpeg", assetId: payload.assetId, status: NODE_STATUS_SUCCESS } } satisfies CanvasNodeData;
+            const url = await playableStoredUrl(resolveMediaUrl, payload.storageKey, payload.url);
+            return { id, type: CanvasNodeType.Audio, title: payload.title, position: { x: center.x - spec.width / 2, y: center.y - spec.height / 2 }, width: spec.width, height: spec.height, metadata: { content: url, storageKey: payload.storageKey, durationMs: payload.durationMs, bytes: payload.bytes, mimeType: payload.mimeType || "audio/mpeg", assetId: payload.assetId, status: NODE_STATUS_SUCCESS } } satisfies CanvasNodeData;
         }
         if (payload.kind === "video") {
             const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
             const size = fitNodeSize(payload.width || spec.width, payload.height || spec.height, VIDEO_NODE_MAX_SIZE.width, VIDEO_NODE_MAX_SIZE.height);
             const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            return { id, type: CanvasNodeType.Video, title: payload.title, position: { x: center.x - size.width / 2, y: center.y - size.height / 2 }, width: size.width, height: size.height, metadata: { content: payload.url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height, durationMs: payload.durationMs, hasAudio: payload.hasAudio, bytes: payload.bytes, mimeType: payload.mimeType || "video/mp4", assetId: payload.assetId } } satisfies CanvasNodeData;
+            const url = await playableStoredUrl(resolveMediaUrl, payload.storageKey, payload.url);
+            return { id, type: CanvasNodeType.Video, title: payload.title, position: { x: center.x - size.width / 2, y: center.y - size.height / 2 }, width: size.width, height: size.height, metadata: { content: url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height, durationMs: payload.durationMs, hasAudio: payload.hasAudio, bytes: payload.bytes, mimeType: payload.mimeType || "video/mp4", assetId: payload.assetId } } satisfies CanvasNodeData;
         }
-        const storedImage = payload.url
-            ? { url: payload.url, storageKey: undefined, width: payload.width || 1, height: payload.height || 1, bytes: payload.bytes || 0, mimeType: payload.mimeType || "image/png" }
-            : payload.storageKey
-                ? { url: payload.dataUrl, storageKey: payload.storageKey, width: payload.width || 1, height: payload.height || 1, bytes: payload.bytes || 0, mimeType: payload.mimeType || "image/png" }
+        const sourceUrl = displayableMediaUrl(payload.url, payload.dataUrl);
+        const storedImage = payload.storageKey
+            ? { url: await playableStoredUrl(resolveImageUrl, payload.storageKey, sourceUrl), storageKey: payload.storageKey, width: payload.width || 1, height: payload.height || 1, bytes: payload.bytes || 0, mimeType: payload.mimeType || "image/png" }
+            : sourceUrl && !sourceUrl.startsWith("data:")
+                ? { url: sourceUrl, storageKey: undefined, width: payload.width || 1, height: payload.height || 1, bytes: payload.bytes || 0, mimeType: payload.mimeType || "image/png" }
                 : await uploadImage(payload.dataUrl);
         const meta = !payload.storageKey && (!payload.width || !payload.height) ? await readImageMeta(storedImage.url) : storedImage;
         const size = fitNodeSize(meta.width, meta.height);
@@ -766,6 +769,21 @@ export function useCanvasUpload({
         uploadStatus,
         uploadTimelineMedia,
     };
+}
+
+function displayableMediaUrl(...candidates: Array<string | undefined>) {
+    const readable = candidates.find((value) => value && !value.startsWith("blob:"));
+    return readable || candidates.find(Boolean) || "";
+}
+
+async function playableStoredUrl(resolve: (storageKey?: string, fallback?: string) => Promise<string>, storageKey: string | undefined, fallback: string) {
+    if (!storageKey) return fallback;
+    try {
+        const resolved = await resolve(storageKey, fallback.startsWith("blob:") ? "" : fallback);
+        return resolved || fallback;
+    } catch {
+        return fallback;
+    }
 }
 
 function hasDraggedFiles(event: DragEvent<HTMLElement>) {

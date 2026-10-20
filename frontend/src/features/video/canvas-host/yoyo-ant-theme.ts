@@ -49,7 +49,7 @@ export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
       colorLink: fg,
       colorLinkHover: fg,
       controlOutlineWidth: 2,
-      zIndexPopupBase: 200,
+      zIndexPopupBase: 1200,
       controlOutline: focus,
       borderRadius: 8,
       borderRadiusLG: 12,

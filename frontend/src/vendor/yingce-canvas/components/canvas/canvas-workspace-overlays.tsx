@@ -32,26 +32,21 @@ export function CanvasSelectionToolbar({ anchorRef, containerRef, count, childre
         }
 
         const update = () => {
-            const bounds = element.getBoundingClientRect();
+            const container = containerRef.current;
+            if (!container) {
+                setAnchor(null);
+                return;
+            }
             const containerBounds = container.getBoundingClientRect();
-            const toolbarWidth = toolbarRef.current?.offsetWidth || 320;
-            const toolbarHeight = toolbarRef.current?.offsetHeight || 38;
-            const halfWidth = Math.min(toolbarWidth / 2, Math.max(0, containerBounds.width / 2 - 12));
-            const center = bounds.left - containerBounds.left + bounds.width / 2;
-            const left = Math.min(Math.max(center, 12 + halfWidth), Math.max(12 + halfWidth, containerBounds.width - 12 - halfWidth));
-            const boundsTop = bounds.top - containerBounds.top;
-            const boundsBottom = bounds.bottom - containerBounds.top;
-            const topChrome = 52;
-            const bottomChrome = 56;
-            const placement = boundsTop - toolbarHeight - 8 >= topChrome ? "above" : "below";
-            const top = placement === "above" ? boundsTop - 8 : Math.min(boundsBottom + 8, containerBounds.height - toolbarHeight - bottomChrome);
+            const toolbarHeight = toolbarRef.current?.offsetHeight || 40;
+            const left = containerBounds.width / 2;
+            const top = Math.max(12, containerBounds.height - toolbarHeight - 12);
             if (toolbarRef.current) {
                 toolbarRef.current.style.left = `${left}px`;
                 toolbarRef.current.style.top = `${top}px`;
-                toolbarRef.current.classList.toggle("-translate-y-full", placement === "above");
-                return;
+                toolbarRef.current.classList.remove("-translate-y-full");
             }
-            setAnchor((current) => (current?.left === left && current.top === top && current.placement === placement ? current : { left, top, placement }));
+            setAnchor((current) => (current?.left === left && current.top === top && current.placement === "below" ? current : { left, top, placement: "below" }));
         };
 
         update();
@@ -76,8 +71,9 @@ export function CanvasSelectionToolbar({ anchorRef, containerRef, count, childre
     return (
         <div
             ref={toolbarRef}
+            data-canvas-selection-toolbar
             data-canvas-no-zoom
-            className={`absolute z-[var(--z-panel-floating)] max-w-[calc(100%_-_24px)] -translate-x-1/2 ${anchor.placement === "above" ? "-translate-y-full" : ""}`}
+            className="absolute z-[var(--z-toolbar)] max-w-[calc(100%_-_24px)] -translate-x-1/2"
             style={{ left: anchor.left, top: anchor.top, color: theme.node.text, transformOrigin: anchor.placement === "above" ? "bottom center" : "top center" }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}

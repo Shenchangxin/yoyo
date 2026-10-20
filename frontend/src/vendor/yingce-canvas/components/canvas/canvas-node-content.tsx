@@ -23,6 +23,7 @@ import type { CanvasTheme } from "@yingce/lib/canvas-theme";
 import { formatBytes } from "@yingce/lib/image-utils";
 import type { GenerationTask } from "@yingce/services/api/task-center";
 import { resolveMediaUrl } from "@yingce/services/file-storage";
+import { resolveImageUrl } from "@yingce/services/image-storage";
 import { hydrateCanvasVideoPreview } from "@yingce/services/canvas-video-preview";
 import { CanvasNodeType, type CanvasNodeData } from "@yingce/types/canvas";
 import { getNodeDefinition } from "@yingce/lib/canvas/node-registry";
@@ -492,7 +493,7 @@ function skillOutputModeLabel(mode?: string) {
 }
 
 function ImageNodeContent(props: CanvasNodeContentProps) {
-    if (!props.node.metadata?.content && props.isBatchRoot) {
+    if (!props.node.metadata?.content && !props.node.metadata?.storageKey && props.isBatchRoot) {
         const content =
             props.node.metadata?.status === "loading" ? (
                 <LoadingContent node={props.node} theme={props.theme} />
@@ -515,7 +516,7 @@ function ImageNodeContent(props: CanvasNodeContentProps) {
             </BatchFrame>
         );
     }
-    if (!props.node.metadata?.content) return <EmptyImageContent {...props} />;
+    if (!props.node.metadata?.content && !props.node.metadata?.storageKey) return <EmptyImageContent {...props} />;
     return (
         <ImageContent
             batchPreviewNodes={props.batchPreviewNodes}
@@ -534,10 +535,7 @@ function ImageNodeContent(props: CanvasNodeContentProps) {
 function EmptyImageContent({ node, theme, isBatchRoot, batchCount, batchPreviewNodes, batchExpanded, batchOpening, batchRecovering, onToggleBatch }: CanvasNodeContentProps) {
     const isCharacterReference = node.metadata?.workflowKind === "character" && node.metadata?.characterView === "multi";
     const content = (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
-            <div className="flex size-14 items-center justify-center rounded-[var(--r-lg)]" style={{ background: theme.toolbar.activeBg }}>
-                <ImageIcon className="size-6 opacity-30" />
-            </div>
+        <div className={isCharacterReference ? "flex h-full w-full flex-col items-center justify-center gap-3" : "flex h-full w-full items-center justify-center rounded-[12px] border border-dashed"} style={isCharacterReference ? { color: theme.node.placeholder } : { borderColor: "color-mix(in srgb, var(--foreground) 18%, transparent)", color: "var(--muted)" }}>
             {isCharacterReference ? (
                 <div className="max-w-[80%] text-center">
                     <div className="truncate text-xs font-medium" title={node.metadata?.characterName || node.title} style={{ color: theme.node.muted }}>
@@ -546,7 +544,7 @@ function EmptyImageContent({ node, theme, isBatchRoot, batchCount, batchPreviewN
                     <div className="mt-1 text-[var(--fs-tiny)] tracking-[0.12em] opacity-50">多视角参考 · 待生成</div>
                 </div>
             ) : (
-                <span className="text-[var(--fs-tiny)] tracking-[0.18em] opacity-50">空图片节点</span>
+                <span className="text-[11px]">拖入或生成</span>
             )}
         </div>
     );
@@ -619,7 +617,7 @@ function VideoNodeContent({ node, theme, mediaActive = false, onMediaPlayRequest
                     fallback={<Video className="size-7 text-white/40" />}
                 />
             ) : !url || loading ? (
-                <MediaLoadingState icon={<LoaderCircle className="size-5 animate-spin" />} label={loading ? "正在加载视频" : "视频资源不可用"} />
+                <MediaLoadingState label={loading ? "正在加载视频" : "视频资源不可用"} />
             ) : null}
             {url ? (
                 <div className={`relative z-[1] transition-opacity duration-150 ${videoReady ? "opacity-100" : "opacity-0"}`} style={{ width: fitWidth, height: Math.round(fitHeight) }}>
@@ -823,20 +821,18 @@ function InactiveMediaCard({ icon, title, hint, theme }: { icon: ReactNode; titl
     );
 }
 
-function MediaLoadingState({ icon, label }: { icon: ReactNode; label: string }) {
+function MediaLoadingState({ label }: { label: string }) {
     return (
-        <div role="status" className="flex size-full flex-col items-center justify-center gap-2 rounded-[var(--node-radius)] bg-black text-white/75">
-            <span className="grid size-10 place-items-center rounded-full bg-white/10">{icon}</span>
-            <span className="text-xs font-medium">{label}</span>
+        <div role="status" className="flex size-full items-end p-3">
+            <span className="text-[11px]" style={{ color: "var(--muted)" }}>{label}</span>
         </div>
     );
 }
 
-function EmptyMediaContent({ icon, label, color }: { icon: ReactNode; label: string; color: string }) {
+function EmptyMediaContent({ label: _label }: { icon: ReactNode; label: string; color: string }) {
     return (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color }}>
-            {icon}
-            <span className="text-sm">{label}</span>
+        <div className="flex h-full w-full items-center justify-center rounded-[12px] border border-dashed" style={{ borderColor: "color-mix(in srgb, var(--foreground) 18%, transparent)", color: "var(--muted)" }}>
+            <span className="text-[11px]">拖入或生成</span>
         </div>
     );
 }
@@ -910,13 +906,15 @@ function ImageContent({
                     />
                 ) : (
                     <div className="grid size-full place-items-center" style={{ color: theme.node.muted }}>
-                        {loading ? <LoaderCircle className="size-5 animate-spin" /> : <ImageIcon className="size-5 opacity-45" />}
+                        {loading ? <span className="text-[11px]">正在读取</span> : <ImageIcon className="size-4 opacity-40" />}
                     </div>
                 )}
             </div>
         </BatchFrame>
     );
 }
+
+const STORED_MEDIA_KEY = /^(?:resource:|image:|generation-image:|video:|audio:|file:|video-reference:|audio-reference:)/;
 
 function useNodeResourceUrl(node: CanvasNodeData, eager: boolean) {
     const storageKey = node.metadata?.storageKey || "";
@@ -929,36 +927,37 @@ function useNodeResourceUrl(node: CanvasNodeData, eager: boolean) {
         node.type === CanvasNodeType.Video || node.type === CanvasNodeType.Audio
             ? content
             : node.metadata?.previewContent || (node.type === CanvasNodeType.Image && node.metadata?.importSource?.provider === "libtv" ? buildLibTVImagePreviewUrl(content) : content);
-    const isRemoteResource = storageKey.startsWith("resource:");
+    const storedMedia = STORED_MEDIA_KEY.test(storageKey);
+    const safeFallback = fallback.startsWith("blob:") ? "" : fallback;
     // Inline data URLs are already local, but decoding thousands of them is
     // still expensive. Images must wait for the same viewport gate as remote
     // resources; otherwise DOM virtualization does not reduce image work.
     const isLazyVisual = node.type === CanvasNodeType.Image;
-    const isHttpUrl = Boolean(fallback && !fallback.startsWith("data:"));
-    const initialUrl = eager && !isRemoteResource && isLazyVisual && isHttpUrl ? fallback : isRemoteResource || isLazyVisual ? "" : fallback;
+    const initialUrl = !eager && (isLazyVisual || storedMedia) ? "" : storedMedia ? "" : safeFallback || fallback;
     const [url, setUrl] = useState(() => initialUrl);
-    const [loading, setLoading] = useState(() => !initialUrl && isRemoteResource && eager);
+    const [loading, setLoading] = useState(() => !initialUrl && storedMedia && eager);
 
     useEffect(() => {
-        if (!isRemoteResource) {
-            setUrl(isLazyVisual && !eager ? "" : fallback);
-            setLoading(false);
-            return;
-        }
-        if (!eager) {
+        if (!eager && (isLazyVisual || storedMedia)) {
             setUrl("");
             setLoading(false);
             return;
         }
+        if (!storedMedia) {
+            setUrl(safeFallback || fallback);
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
-        setUrl("");
-        setLoading(true);
-        void resolveMediaUrl(storageKey, fallback)
+        if (safeFallback) setUrl(safeFallback);
+        setLoading(!safeFallback);
+        const resolve = node.type === CanvasNodeType.Image ? resolveImageUrl : resolveMediaUrl;
+        void resolve(storageKey, safeFallback)
             .then((resolved) => {
-                if (!cancelled) setUrl(resolved);
+                if (!cancelled) setUrl(resolved || safeFallback);
             })
             .catch(() => {
-                if (!cancelled) setUrl(fallback);
+                if (!cancelled) setUrl(safeFallback);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -966,30 +965,50 @@ function useNodeResourceUrl(node: CanvasNodeData, eager: boolean) {
         return () => {
             cancelled = true;
         };
-    }, [eager, fallback, isLazyVisual, isRemoteResource, storageKey]);
+    }, [eager, fallback, isLazyVisual, node.type, safeFallback, storageKey, storedMedia]);
 
     return { url, loading };
+}
+
+function intersectsViewport(element: Element) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return false;
+    const margin = 600;
+    return rect.bottom >= -margin && rect.right >= -margin && rect.top <= window.innerHeight + margin && rect.left <= window.innerWidth + margin;
 }
 
 function useNearViewport(ref: RefObject<Element | null>) {
     const [nearViewport, setNearViewport] = useState(false);
     useEffect(() => {
         const element = ref.current;
-        if (!element || typeof IntersectionObserver === "undefined") {
+        if (!element) {
             setNearViewport(true);
             return;
         }
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((entry) => entry.isIntersecting)) {
-                    setNearViewport(true);
-                    observer.disconnect();
-                }
-            },
-            { rootMargin: "600px" },
-        );
-        observer.observe(element);
-        return () => observer.disconnect();
+        let settled = false;
+        const mark = () => {
+            if (settled || !intersectsViewport(element)) return;
+            settled = true;
+            setNearViewport(true);
+            observer?.disconnect();
+            resize?.disconnect();
+        };
+        const observer = typeof IntersectionObserver !== "undefined"
+            ? new IntersectionObserver((entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) mark();
+            }, { rootMargin: "600px" })
+            : null;
+        const resize = typeof ResizeObserver !== "undefined" ? new ResizeObserver(mark) : null;
+        observer?.observe(element);
+        resize?.observe(element);
+        mark();
+        const frame = requestAnimationFrame(mark);
+        return () => {
+            settled = true;
+            cancelAnimationFrame(frame);
+            observer?.disconnect();
+            resize?.disconnect();
+        };
     }, [ref]);
     return nearViewport;
 }

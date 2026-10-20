@@ -557,7 +557,7 @@ function areCanvasNodePropsEqual(previous: CanvasNodeProps, next: CanvasNodeProp
 
 function ResourceLabelBadge({ reference, theme }: { reference: CanvasResourceReference; theme: CanvasTheme }) {
     return (
-        <span className="pointer-events-none min-w-0 max-w-28 truncate rounded-md px-1.5 py-1 text-[var(--fs-tiny)] font-medium leading-none" style={{ background: reference.active ? theme.accent.primary : "rgba(0,0,0,.35)", color: reference.active ? theme.accent.onPrimary : "#ffffff", opacity: reference.active ? 1 : 0.75 }} title={reference.title || reference.label}>
+        <span className="pointer-events-none min-w-0 max-w-28 truncate rounded-md px-1.5 py-1 text-[var(--fs-tiny)] font-medium leading-none" style={{ background: reference.active ? "var(--accent)" : "color-mix(in srgb, var(--foreground) 16%, transparent)", color: reference.active ? "var(--accent-fg, var(--background))" : "var(--foreground)", opacity: reference.active ? 1 : 0.75 }} title={reference.title || reference.label}>
             {reference.label}
         </span>
     );
@@ -565,9 +565,9 @@ function ResourceLabelBadge({ reference, theme }: { reference: CanvasResourceRef
 
 function ResourceStorageBadge({ storageKey, active, theme }: { storageKey?: string; active: boolean; theme: CanvasTheme }) {
     const location = resourceStorageLocation(storageKey);
-    const background = active ? (location === "local" ? "rgba(245,158,11,.9)" : theme.accent.primary) : "rgba(0,0,0,.35)";
+    const background = active ? (location === "local" ? "var(--warning)" : "var(--accent)") : "color-mix(in srgb, var(--foreground) 16%, transparent)";
     return (
-        <span className="pointer-events-auto shrink-0 rounded-md px-1.5 py-1 text-[var(--fs-tiny)] font-medium leading-none" style={{ background, color: active && location !== "local" ? theme.accent.onPrimary : "#ffffff", opacity: active ? 1 : 0.75 }} title={resourceStorageTitle(storageKey)}>
+        <span className="pointer-events-auto shrink-0 rounded-md px-1.5 py-1 text-[var(--fs-tiny)] font-medium leading-none" style={{ background, color: active ? "var(--background)" : "var(--foreground)", opacity: active ? 1 : 0.75 }} title={resourceStorageTitle(storageKey)}>
             {resourceStorageLabel(storageKey)}
         </span>
     );
@@ -756,8 +756,9 @@ function NodeStatusBadge({ status }: { status: "loading" | "success" | "error" }
     if (status === "loading") {
         return (
             <div
-                className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 backdrop-blur-sm"
-                style={{ background: "color-mix(in oklch, var(--status-loading) 20%, transparent)", color: "var(--status-loading)" }}
+                data-node-status="loading"
+                className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-md px-2 py-0.5"
+                style={{ color: "var(--status-loading)" }}
                 aria-label="生成中"
             >
                 <span className="size-1.5 animate-pulse rounded-full" style={{ background: "var(--status-loading)" }} />
@@ -768,8 +769,9 @@ function NodeStatusBadge({ status }: { status: "loading" | "success" | "error" }
     if (status === "error") {
         return (
             <div
-                className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 backdrop-blur-sm"
-                style={{ background: "color-mix(in oklch, var(--status-error) 20%, transparent)", color: "var(--status-error)" }}
+                data-node-status="error"
+                className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-md px-2 py-0.5"
+                style={{ background: "color-mix(in srgb, var(--danger) 16%, transparent)", color: "var(--danger)" }}
                 aria-label="生成失败"
             >
                 <AlertCircle className="size-3" strokeWidth={2} />
@@ -780,8 +782,9 @@ function NodeStatusBadge({ status }: { status: "loading" | "success" | "error" }
     // success：短暂闪现后淡出（由 CSS animation 控制，2s 后消失）
     return (
         <div
-            className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-0.5 backdrop-blur-sm"
-            style={{ background: "color-mix(in oklch, var(--status-success) 20%, transparent)", color: "var(--status-success)", animation: "canvas-status-success-fade 2s ease-out forwards" }}
+            data-node-status="success"
+            className="pointer-events-none absolute left-2 top-2 z-20 flex items-center gap-1 rounded-md px-2 py-0.5"
+            style={{ background: "color-mix(in srgb, var(--success) 16%, transparent)", color: "var(--success)", animation: "canvas-status-success-fade 2s ease-out forwards" }}
             aria-label="生成完成"
         >
             <CheckCircle2 className="size-3" strokeWidth={2} />
@@ -791,93 +794,25 @@ function NodeStatusBadge({ status }: { status: "loading" | "success" | "error" }
 }
 
 function ConnectionSideRail({ side, scale, theme, visible = false, onPointerDown }: { side: "left" | "right"; scale: number; theme: CanvasTheme; visible?: boolean; onPointerDown: (event: React.PointerEvent, anchorRatio: number) => void }) {
-    const handleRef = useRef<HTMLSpanElement>(null);
     const [railHovered, setRailHovered] = useState(false);
     const inverseScale = 1 / Math.max(scale, 0.05);
-    const railSize = 80;
-    // Keep the control responsive to zoom, but avoid sub-pixel circles and
-    // strokes at far zoom levels where the plus sign appears visually off-center.
-    const handleSize = Math.max(20, 8 * inverseScale);
-    // LibTV centers the visual quick-add icon in an approximately 80px
-    // circular hit zone, then offsets it toward the node edge. Keep that
-    // visual layer separate from the real centered connection anchor.
-    const sideOffset = side === "left" ? 25 : -25;
-
-    const resetHandle = useCallback(() => {
-        if (!handleRef.current) return;
-        handleRef.current.style.transform = `translate(${sideOffset}px, 0) scale(1)`;
-    }, [sideOffset]);
-
-    const updateHandle = (event: React.PointerEvent<HTMLButtonElement>) => {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        const width = Math.max(bounds.width, 1);
-        const height = Math.max(bounds.height, 1);
-        const followLimit = 30;
-        const deltaX = event.clientX - (bounds.left + width / 2);
-        const deltaY = event.clientY - (bounds.top + height / 2);
-        const offsetScreenX = Math.max(-followLimit, Math.min(followLimit, deltaX));
-        const offsetScreenY = Math.max(-followLimit, Math.min(followLimit, deltaY));
-        const focus = 1 + Math.max(0, 1 - Math.hypot(offsetScreenX, offsetScreenY) / followLimit) * 0.1;
-        // While the pointer is inside the rail LibTV uses the rail center as
-        // the origin. The side-specific +/-25px offset is only the resting
-        // position used after leaving the rail.
-        const offsetX = offsetScreenX * inverseScale;
-        const offsetY = offsetScreenY * inverseScale;
-        if (handleRef.current) handleRef.current.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${focus})`;
-    };
+    const railSize = 28 * inverseScale;
+    const handleSize = 8 * inverseScale;
 
     return (
         <button
             type="button"
             data-canvas-connection-rail={side}
-            className={`group pointer-events-auto absolute top-1/2 z-[var(--node-z-overlay)] flex -translate-y-1/2 items-center justify-center touch-none cursor-crosshair rounded-full outline-none transition-opacity duration-150 ${visible || railHovered ? "opacity-100" : "opacity-0"}`}
-            style={{ width: railSize, height: `min(100%, ${railSize}px)`, cursor: "crosshair", ...(side === "left" ? { right: "100%" } : { left: "100%" }) }}
-            onPointerEnter={(event) => {
-                setRailHovered(true);
-                updateHandle(event);
-            }}
-            onPointerMove={updateHandle}
-            onPointerLeave={() => {
-                setRailHovered(false);
-                resetHandle();
-            }}
+            className={`pointer-events-auto absolute top-1/2 z-[var(--node-z-overlay)] flex -translate-y-1/2 items-center justify-center touch-none cursor-crosshair rounded-full outline-none transition-opacity duration-150 ${visible || railHovered ? "opacity-100" : "opacity-0"}`}
+            style={{ width: railSize, height: railSize, cursor: "crosshair", ...(side === "left" ? { right: "100%", marginRight: -4 * inverseScale } : { left: "100%", marginLeft: -4 * inverseScale }) }}
+            onPointerEnter={() => setRailHovered(true)}
+            onPointerLeave={() => setRailHovered(false)}
             onPointerDown={(event) => onPointerDown(event, 0.5)}
             aria-label={`${side === "left" ? "输入" : "输出"}连接点，单击创建节点或拖动连线`}
         >
-            <span
-                ref={handleRef}
-                className="absolute left-1/2 top-1/2 block transition-transform duration-[80ms] ease-out group-hover:brightness-125 group-focus-visible:brightness-125"
-                style={{
-                    width: handleSize,
-                    height: handleSize,
-                    marginLeft: -handleSize / 2,
-                    marginTop: -handleSize / 2,
-                    transform: `translate(${sideOffset}px, 0) scale(1)`,
-                    transition: "transform 80ms ease-out",
-                    transformOrigin: "center",
-                    willChange: "transform",
-                }}
-            >
-                <svg
-                    aria-hidden="true"
-                    className="block"
-                    width={handleSize}
-                    height={handleSize}
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    style={{
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        marginLeft: -handleSize / 2,
-                        marginTop: -handleSize / 2,
-                    }}
-                >
-                    <circle cx="10" cy="10" r="9.35" fill={theme.spatial.elevated} />
-                    <circle cx="10" cy="10" r="9.35" stroke={theme.node.activeStroke} strokeWidth="1.2" />
-                    <path d="M10 6.5v7M6.5 10h7" stroke={theme.node.activeStroke} strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-            </span>
+            <svg aria-hidden="true" width={handleSize} height={handleSize} viewBox="0 0 8 8" fill="none">
+                <circle cx="4" cy="4" r="3.2" fill={theme.spatial.elevated} stroke={theme.node.activeStroke} strokeWidth="1.2" />
+            </svg>
         </button>
     );
 }

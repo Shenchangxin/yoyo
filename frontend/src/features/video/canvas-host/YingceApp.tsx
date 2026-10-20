@@ -21,6 +21,7 @@ import "./design-system/tokens.css";
 import "./design-system/overlays.css";
 import "./apple-skin.css";
 import "./host-dark.css";
+import "./design-system/studio-lock.css";
 
 const CanvasPage = lazy(() => import("@yingce/pages/canvas"));
 const CanvasProjectPage = lazy(() => import("@yingce/pages/canvas/project"));

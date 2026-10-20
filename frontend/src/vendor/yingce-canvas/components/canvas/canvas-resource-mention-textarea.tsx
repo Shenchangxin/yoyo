@@ -621,7 +621,7 @@ function createInlineMentionChip(reference: CanvasResourceReference, token: stri
     const prefix = document.createElement("span");
     prefix.className = isDecorated ? "canvas-resource-inline-skill-icon" : "canvas-resource-inline-at";
     if (reference.kind === "skill") {
-        prefix.textContent = "✦";
+        prefix.textContent = "";
     } else if (reference.kind === "tool") {
         prefix.innerHTML = toolIconSvg(reference.toolIcon ?? "Grid3x3");
     } else {
@@ -640,13 +640,8 @@ function createInlineMentionChip(reference: CanvasResourceReference, token: stri
     return chip;
 }
 
-const SKILL_MENTION_COLORS = ["#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b", "#ec4899", "#84cc16", "#f97316", "#06b6d4"];
-
-function skillMentionColor(reference: CanvasResourceReference) {
-    const key = reference.skill?.skillId || reference.id;
-    let hash = 0;
-    for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) | 0;
-    return SKILL_MENTION_COLORS[Math.abs(hash) % SKILL_MENTION_COLORS.length];
+function skillMentionColor(_reference: CanvasResourceReference) {
+    return "var(--muted)";
 }
 
 function referencePreviewUrl(reference: CanvasResourceReference) {
@@ -688,7 +683,7 @@ function createInlinePreview(reference: CanvasResourceReference) {
     }
     const fallback = document.createElement("span");
     fallback.className = "canvas-resource-inline-preview is-fallback";
-    fallback.textContent = reference.sourceType === CanvasNodeType.Drawing ? "✎" : reference.kind === "audio" ? "♪" : reference.kind === "video" ? "▶" : reference.kind === "image" ? "□" : reference.kind === "skill" ? "✦" : "";
+    fallback.textContent = "";
     return fallback;
 }
 

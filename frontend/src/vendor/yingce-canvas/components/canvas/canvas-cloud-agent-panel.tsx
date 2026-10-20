@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import { Button, Input } from "antd";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowLeft, Check, ChevronRight, CircleDot, Clock3, Download, Ellipsis, History, LoaderCircle, MessageSquare, MessageSquarePlus, MoveDiagonal2, RotateCcw, Settings2, ShieldCheck, Trash2, Clapperboard, X } from "lucide-react";
@@ -249,7 +250,7 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
     }, [busy, conversationScope, historyHydrated, installedSkillIds, pendingHydrated, running]);
     const status = run?.status || "idle";
     const statusLabel = status === "waiting_approval" ? "等待审批" : status === "running" || status === "queued" ? "运行中" : status === "completed" ? "已完成" : status === "failed" ? "异常" : status === "cancelled" ? "已停止" : status === "rejected" ? "已拒绝" : "待命";
-    const statusColor = status === "failed" ? "#e66b6b" : status === "rejected" || status === "cancelled" ? theme.node.muted : status === "waiting_approval" ? "#d6a24a" : status === "running" || status === "queued" ? "#69c29b" : theme.node.muted;
+    const statusColor = status === "failed" ? "var(--danger)" : status === "rejected" || status === "cancelled" ? theme.node.muted : status === "waiting_approval" ? "var(--warning)" : status === "running" || status === "queued" ? "var(--success)" : theme.node.muted;
 
     useEffect(() => {
         const value = prefillPrompt?.trim();
@@ -948,27 +949,67 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
     );
 }
 
+function hostedDockSlot() {
+    const root = document.querySelector(".yingce-island");
+    if (!root) return null;
+    return (
+        root.querySelector<HTMLElement>(".canvas-node-toolbar .sg-glass-group") ||
+        root.querySelector<HTMLElement>("[data-canvas-selection-toolbar] .canvas-floating-dock") ||
+        root.querySelector<HTMLElement>("[data-canvas-main-dock] .aceternity-floating-dock")
+    );
+}
+
+function useHostedDockSlot(hosted: boolean) {
+    const [slot, setSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => {
+        if (!hosted) {
+            setSlot(null);
+            return;
+        }
+        let frame = 0;
+        const update = () => {
+            const next = hostedDockSlot();
+            setSlot((current) => (current === next ? current : next));
+        };
+        update();
+        const root = document.querySelector(".yingce-island");
+        if (!root) return;
+        const observer = new MutationObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(update);
+        });
+        observer.observe(root, { childList: true, subtree: true });
+        return () => {
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+        };
+    }, [hosted]);
+    return slot;
+}
+
 function AgentLauncher({ theme, statusColor, approvalPending, reducedMotion, onOpen }: { theme: CanvasTheme; statusColor: string; approvalPending: boolean; reducedMotion: boolean; onOpen: () => void }) {
     const appearance = useAppearanceStore((state) => state.appearance.canvas) || DEFAULT_CANVAS_APPEARANCE;
-    const live = appearance.avatarType === "live2d" && Boolean(appearance.live2dResourceId && appearance.live2dEntry);
+    const hosted = typeof window !== "undefined" && Boolean((window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__);
+    const slot = useHostedDockSlot(hosted);
+    const live = !hosted && appearance.avatarType === "live2d" && Boolean(appearance.live2dResourceId && appearance.live2dEntry);
     const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
     useEffect(() => {
         const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
         window.addEventListener("resize", resize);
         return () => window.removeEventListener("resize", resize);
     }, []);
-    const height = live ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / 0.75)) : 32;
-    const width = live ? Math.round(height * 0.75) : 32;
+    const height = live ? Math.max(40, Math.min(appearance.avatarHeight, viewport.height - 60, (viewport.width - 40) / 0.75)) : 28;
+    const width = live ? Math.round(height * 0.75) : 28;
     const { position, dragging, handlers } = useAgentLauncherPosition(onOpen, width, height);
-    return (
+    const button = (
         <motion.button
             type="button"
             aria-label={`打开${appearance.agentName}`}
-            title={`${approvalPending ? "Agent 等待你的审批" : "打开 Agent 助手"} · 拖动可调整位置，聚焦后可用方向键移动`}
-            className={cn("canvas-agent-launcher fixed z-[var(--z-modal-overlay)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35", dragging && "is-dragging", live && "canvas-agent-launcher-live2d")}
-            style={{ ...position, width, height, color: theme.node.text, "--canvas-agent-launcher-shadow": theme.spatial.shadow } as CSSProperties}
+            title={approvalPending ? "Agent 等待你的审批" : "打开 Agent"}
+            className={cn("canvas-agent-launcher focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/35", hosted ? "is-docked" : "fixed z-[var(--z-toolbar)]", dragging && "is-dragging", live && "canvas-agent-launcher-live2d")}
+            style={hosted ? { color: theme.node.text } : { ...position, width, height, color: theme.node.text, "--canvas-agent-launcher-shadow": theme.spatial.shadow } as CSSProperties}
             data-canvas-no-zoom
-            {...handlers}
+            {...(hosted ? { onClick: (event) => { event.stopPropagation(); onOpen(); }, onPointerDown: (event) => event.stopPropagation() } : handlers)}
             whileHover={undefined}
             whileTap={reducedMotion || dragging ? undefined : { scale: 0.97 }}
             transition={{ duration: reducedMotion ? 0 : 0.18 }}
@@ -979,6 +1020,8 @@ function AgentLauncher({ theme, statusColor, approvalPending, reducedMotion, onO
             {approvalPending ? <span className="canvas-agent-launcher-badge">待审批</span> : null}
         </motion.button>
     );
+    if (hosted) return slot ? createPortal(button, slot) : null;
+    return button;
 }
 
 function AgentHeader({ theme, hasMessages, statusLabel, statusColor, nodeCount, onNew, onHistory, onSettings, onResetLayout, onCollapse, onExport, exporting }: { theme: CanvasTheme; hasMessages: boolean; statusLabel: string; statusColor: string; nodeCount: number; onNew: () => void; onHistory: () => void; onSettings: () => void; onResetLayout: () => void; onCollapse: () => void; onExport: () => void; exporting: boolean }) {
@@ -1228,6 +1271,17 @@ function ApprovalCard({ approval, theme, submitting, onFocusNode, onReasonChange
     const [mediaSettings, setMediaSettings] = useState<AgentMediaSettings>();
     const imageApproval = agentImageApproval(approval.detail);
     const action = agentApprovalPresentation(approval.detail);
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter" || event.repeat || submitting) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest("textarea, input, .ant-modal-wrap")) return;
+            event.preventDefault();
+            onApprove(mediaSettings);
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [mediaSettings, onApprove, submitting]);
     return (
         <section className="canvas-agent-approval-card" aria-label={action.title}>
             <div className="canvas-agent-approval-header">

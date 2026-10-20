@@ -17,7 +17,7 @@ export function CanvasLinkedProjectEmptyState({ projectName, hasChapter, onAddFi
     const theme = canvasThemes[useActiveTheme()];
     return (
         <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center px-4 pb-16 pt-20">
-            <div className="pointer-events-auto w-full max-w-[440px] rounded-lg border p-3 shadow-sm backdrop-blur" data-canvas-no-zoom style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}>
+            <div className="pointer-events-auto w-full max-w-[440px] rounded-xl border p-3" data-canvas-no-zoom style={{ background: theme.node.panel, borderColor: theme.toolbar.border, color: theme.node.text }}>
                 <div className="flex items-center gap-2.5"><span className="grid size-8 shrink-0 place-items-center rounded-md" style={{ background: theme.toolbar.itemHover, color: theme.node.muted }}><FolderKanban className="size-4" /></span><div className="min-w-0"><h2 className="truncate text-sm font-semibold">{projectName}</h2><p className="mt-0.5 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>项目画布为空</p></div></div>
                 <div className="mt-3 grid grid-cols-3 gap-1.5">
                     <button type="button" disabled={!hasChapter} onClick={onAddFirstChapter} className="flex h-9 min-w-0 items-center justify-center gap-1 rounded-md border px-2 text-[var(--fs-label)] font-medium disabled:opacity-35" style={{ borderColor: theme.node.stroke, background: theme.node.fill }}><Plus className="size-3.5 shrink-0" /><span className="truncate">添加首章</span></button>
@@ -48,8 +48,8 @@ export function CanvasShortDramaEmptyState({ onCreatePipeline, onOpenAgent, onSt
             <div className="canvas-entry-shell" data-canvas-no-zoom data-canvas-wheel-scroll>
                 <header className="canvas-entry-header">
                     <div className="canvas-entry-heading-copy">
-                        <h2><span>让灵感，</span><strong>开始成片。</strong></h2>
-                        <p>从一句想法开始，和 Agent 一起创作。</p>
+                        <h2>从这里开始成片</h2>
+                        <p>交给 Agent，或自己往画布上放第一块素材。</p>
                     </div>
                     <PresenceStamp size={96} live className="canvas-entry-presence" />
                 </header>
@@ -87,9 +87,9 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
     }));
     return (
         <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center px-4 pb-20 pt-24">
-            <div className="pointer-events-auto flex min-h-[260px] w-full max-w-[520px] flex-col items-center justify-center rounded-2xl border border-dashed px-8 py-10 text-center backdrop-blur" data-canvas-no-zoom style={{ background: theme.node.fill, borderColor: theme.node.edge, boxShadow: theme.node.shadow, color: theme.node.text }}>
-                <h2 className="text-base font-semibold">自由空白画布</h2>
-                <p className="mt-1 text-xs" style={{ color: theme.node.muted }}>不预设流程，从任意一种素材开始创作。</p>
+            <div className="pointer-events-auto flex min-h-[220px] w-full max-w-[420px] flex-col items-center justify-center px-8 py-8 text-center" data-canvas-no-zoom style={{ color: theme.node.text }}>
+                <h2 className="text-[21px] font-semibold tracking-[-0.03em]">双击或拖入开始</h2>
+                <p className="mt-1 text-[13px]" style={{ color: theme.node.muted }}>从文本、图片、视频或音频开始。</p>
                 <CanvasPopover
                     arrow={false}
                     open={createOpen}
@@ -101,7 +101,7 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
                     <button
                         type="button"
                         aria-label="添加第一项"
-                        className="mt-7 grid size-14 place-items-center rounded-full border outline-none transition-transform hover:scale-105 focus-visible:ring-2 motion-reduce:transition-none motion-reduce:hover:scale-100"
+                        className="mt-6 grid size-11 place-items-center rounded-lg border outline-none focus-visible:ring-2"
                         style={{ background: theme.toolbar.panel, borderColor: theme.node.edge, color: theme.node.text, boxShadow: theme.node.shadow, "--tw-ring-color": theme.accent.primary } as CSSProperties}
                     >
                         <Plus className="size-6" />

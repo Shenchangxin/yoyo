@@ -195,14 +195,16 @@ export function AssetLibraryPickerModal({
             return useRemoteItems || !query || [item.title, item.searchText || "", item.description || ""].join(" ").toLowerCase().includes(query);
         });
     }, [category, folderId, keyword, sourceItems, useRemoteItems]);
-    const selectedIds = useMemo(
-        () =>
-            Array.from(selected).filter((id) => {
-                const item = allItems.find((entry) => entry.id === id);
-                return !item?.disabledReason;
-            }),
-        [allItems, selected],
-    );
+    const selectedIds = useMemo(() => {
+        const catalog = new Map(allItems.map((item) => [item.id, item]));
+        if (useRemoteItems) {
+            for (const item of remoteItems) catalog.set(item.id, item);
+        }
+        return Array.from(selected).filter((id) => {
+            const item = catalog.get(id);
+            return Boolean(item) && !item.disabledReason;
+        });
+    }, [allItems, remoteItems, selected, useRemoteItems]);
     const archivedSelectedIds = useMemo(() => selectedIds.filter((id) => allItems.find((item) => item.id === id)?.archived), [allItems, selectedIds]);
 
     useEffect(() => {
@@ -401,6 +403,8 @@ export function AssetLibraryPickerModal({
                 if (!working) onClose();
             }}
             className="workspace-modal workspace-modal-wide asset-library-picker-modal"
+            rootClassName="asset-library-picker-root"
+            classNames={{ mask: "asset-library-picker-mask" }}
             flush
         >
             <div className="asset-picker-shell">
