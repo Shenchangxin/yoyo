@@ -15,6 +15,7 @@ import {
 } from "./pages";
 import { ExtensionsSettings } from "./ExtensionsPanel";
 import { PersonalSettings } from "./PersonalPanel";
+import { IdolSettings } from "./IdolSettings";
 
 export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRail?: boolean }) {
   const copy = useCopy();
@@ -91,6 +92,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
             {tab === "policy" ? <PolicySettings host={host} /> : null}
             {tab === "extensions" ? <ExtensionsSettings host={host} /> : null}
             {tab === "personal" ? <PersonalSettings /> : null}
+            {tab === "idol" ? <IdolSettings /> : null}
             {tab === "advanced" ? <AdvancedSettings host={host} /> : null}
             <p className="sr-only">{copy.settings.hint}</p>
           </div>

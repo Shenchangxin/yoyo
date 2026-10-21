@@ -24,6 +24,7 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	mountPersonal(mux, a)
 	mountSurfaces(mux, a)
 	mountVideo(mux, a)
+	mountIdol(mux, a)
 	mux.HandleFunc("/rpc", handleRPC(a))
 	mux.HandleFunc("/api/rpc", handleRPC(a))
 	mux.HandleFunc("/ws", handleWS(a))

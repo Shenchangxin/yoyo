@@ -2021,6 +2021,25 @@ export async function setCompanionCall(on: boolean): Promise<void> {
   if (fn) await fn(on);
 }
 
+export async function idolCall(op: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const body = JSON.stringify(payload ?? {});
+  const s = await wailsService();
+  const fn = svcMethod(s, "IdolCall", "idolCall");
+  if (fn) {
+    const raw = await fn(op, body);
+    if (raw == null || raw === "") return {};
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw); } catch { return { raw }; }
+    }
+    return raw;
+  }
+  return http("/api/idol", {
+    method: "POST",
+    body: JSON.stringify({ op, payload }),
+    signal: AbortSignal.timeout(180000),
+  });
+}
+
 export async function connectorMention(account: string, text: string): Promise<void> {
   const s = await wailsService();
   if (s?.ConnectorMention) { await s.ConnectorMention(account, text); return; }

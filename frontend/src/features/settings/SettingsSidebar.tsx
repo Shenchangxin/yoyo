@@ -9,6 +9,7 @@ import {
   Shield,
   SlidersHorizontal,
   Clapperboard,
+  Heart,
   Wrench,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const ICONS = {
   palette: Palette,
   cpu: Cpu,
   film: Clapperboard,
+  heart: Heart,
   shield: Shield,
   blocks: Blocks,
   brain: Brain,

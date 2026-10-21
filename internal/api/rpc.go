@@ -1562,6 +1562,21 @@ func callMethod(ctx context.Context, a *app.App, method string, params json.RawM
 		_ = json.Unmarshal(params, &p)
 		a.VoiceReceipt(p.Session, p.Duration, p.Text)
 		return map[string]any{"ok": true}, nil
+	case "idol.call":
+		var p struct {
+			Op      string `json:"op"`
+			Payload string `json:"payload"`
+		}
+		_ = json.Unmarshal(params, &p)
+		raw, err := a.IdolCall(p.Op, p.Payload)
+		if err != nil {
+			return nil, err
+		}
+		var decoded any
+		if json.Unmarshal([]byte(raw), &decoded) != nil {
+			return raw, nil
+		}
+		return decoded, nil
 	default:
 		return nil, errMethod(method)
 	}
