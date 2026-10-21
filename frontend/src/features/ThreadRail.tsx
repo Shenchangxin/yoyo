@@ -9,6 +9,7 @@ import {
   Clapperboard,
   Copy as CopyIcon,
   FileText,
+  Heart,
   Film,
   Folder,
   GitBranch,
@@ -198,6 +199,7 @@ export function ThreadRail(props: {
   onHarness: () => void;
   onSkills: () => void;
   onPages: () => void;
+  onIdol: () => void;
   onVideo: () => void;
   onSettings: () => void;
   onCollapse: () => void;
@@ -228,6 +230,7 @@ export function ThreadRail(props: {
   const harnessOn = props.surface === "harness";
   const skillsOn = props.surface === "skills";
   const pagesOn = props.surface === "pages";
+  const idolOn = props.surface === "idol";
   const videoOn = props.surface === "video";
   const settingsOn = props.surface === "settings";
   const virtual = list.length + (videoOn ? (props.videoProjects || []).length : 0) > 24;
@@ -375,6 +378,14 @@ export function ThreadRail(props: {
           onClick={props.onPages}
         >
           <FileText className="size-4" aria-hidden />
+        </DockIcon>
+        <DockIcon
+          label={copy.rail.idol}
+          hint={copy.rail.idolHint}
+          on={idolOn}
+          onClick={props.onIdol}
+        >
+          <Heart className="size-4" aria-hidden />
         </DockIcon>
         <DockIcon
           label={copy.rail.harness}

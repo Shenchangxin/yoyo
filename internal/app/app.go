@@ -22,6 +22,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
 	"github.com/Shenchangxin/yoyo/internal/home"
+	"github.com/Shenchangxin/yoyo/internal/idol"
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 	"github.com/Shenchangxin/yoyo/internal/journal"
 	"github.com/Shenchangxin/yoyo/internal/kernel"
@@ -172,6 +173,9 @@ type App struct {
 	Log        *diaglog.Logger
 	Video      *video.Engine
 	Skins      *skin.Store
+	Idols      *idol.Store
+	idolMu     sync.Mutex
+	idolCancel context.CancelFunc
 	schedStop  chan struct{}
 	updateStop chan struct{}
 	upd        *updateState
@@ -269,6 +273,11 @@ func Open(root, bundledEvals string) (*App, error) {
 		askAns:       map[string]string{},
 		Skins:        skin.NewStore(h.Skins()),
 	}
+	idols, err := idol.Open(h.Idols())
+	if err != nil {
+		return nil, err
+	}
+	a.Idols = idols
 	a.attachLogger()
 	a.Hub.Overflow = filepath.Join(h.Sessions(), "_overflow")
 	a.MCP.Roots = []string{a.Workspace()}

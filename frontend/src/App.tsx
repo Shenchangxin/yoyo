@@ -33,6 +33,7 @@ import { useSettingsHash } from "./features/settings/useSettingsHash";
 import { useWorkstation } from "./features/workstation/useWorkstation";
 import { isCompanionSurface, readPopoutId } from "./lib/popout";
 import { CompanionApp, PresenceLayer } from "./features/presence";
+import { IdolStage } from "./features/idol/IdolStage";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
@@ -87,6 +88,7 @@ function WorkstationApp() {
   const settings = !popout && ws.surface === "settings";
   const skills = !popout && ws.surface === "skills";
   const paging = !popout && ws.surface === "pages";
+  const idling = !popout && ws.surface === "idol";
   const videoing = !popout && ws.surface === "video";
   const harnessing = !popout && ws.surface === "harness";
   const videoPane = useUI((s) => s.videoPane);
@@ -577,6 +579,10 @@ function WorkstationApp() {
         if (ws.surface === "pages") ws.closePages();
         else ws.openPages();
       }}
+      onIdol={() => {
+        if (ws.surface === "idol") ws.closeIdol();
+        else ws.openIdol();
+      }}
       onVideo={() => {
         if (ws.surface === "video") ws.closeVideo();
         else ws.openVideo();
@@ -684,6 +690,8 @@ function WorkstationApp() {
       ? <span className="text-[13px] font-medium">{copy.skills.title}</span>
     : paging
       ? <span className="text-[13px] font-medium">{copy.pages.library}</span>
+    : idling
+      ? <span className="text-[13px] font-medium">{copy.idol.title}</span>
     : harnessing
       ? (
         <div className="flex min-w-0 items-center gap-2">
@@ -840,6 +848,10 @@ function WorkstationApp() {
         />
       </div>
     </Suspense>
+  ) : idling ? (
+    <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane data-testid="idol-surface">
+      <IdolStage />
+    </div>
   ) : harnessing ? (
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{labPane}</div>

@@ -17,7 +17,7 @@ import { subscribeItems, subscribeSessions } from "../../lib/stream";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
-import { CallView } from "./CallView";
+import { IdolCall } from "../idol/IdolCall";
 import { skillCallLabel } from "../../lib/tool-summary";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
@@ -36,6 +36,8 @@ export function CompanionApp() {
   const [pulse, setPulse] = useState<CompanionPulse | null>(null);
   const [spark, setSpark] = useState(0);
   const [inCall, setInCall] = useState(false);
+  const [reach, setReach] = useState("");
+  const [face, setFace] = useState("");
   const [paused, setPaused] = useState(false);
   const idleAt = useRef(Date.now());
   const [now, setNow] = useState(() => Date.now());
@@ -96,10 +98,20 @@ export function CompanionApp() {
   }, []);
 
   useEffect(() => {
-    if (!inCall || sessionRef.current) return;
-    void api.listSessions().then((list) => {
-      const t = (list || []).find((s) => !s.archived && !s.parentId);
-      if (t?.id) sessionRef.current = t.id;
+    if (inCall) return;
+    const tick = () => {
+      void api.idolCall("reach", {}).then((r) => {
+        const line = String(r?.caption || r?.speak || "").trim();
+        if (line) setReach(line);
+      }).catch(() => {});
+    };
+    const id = window.setInterval(tick, 45000);
+    return () => window.clearInterval(id);
+  }, [inCall]);
+
+  useEffect(() => {
+    void api.idolCall("snapshot").then((s) => {
+      setFace(s?.pinned && s.portrait ? String(s.portrait) : "");
     }).catch(() => {});
   }, [inCall]);
 
@@ -183,6 +195,8 @@ export function CompanionApp() {
 
   const idleMs = running ? 0 : now - idleAt.current;
   const activePulse = pulse && now < pulse.until ? pulse : null;
+  const reachPulse = !activePulse && reach ? { title: copy.idol.reach, body: reach, session: "", kind: "reach", until: now + 20000 } : null;
+  const shownPulse = activePulse || reachPulse;
   const loading = showLoading(running, pulse, approvals, now);
   const busyMs = useBusyMs(running || loading, `${running}:${loading}`);
   const interrupted = !running && items.some((it) => it.type === "error" && /interrupt|cancel|stopped/i.test(`${it.text || ""} ${it.name || ""}`));
@@ -203,19 +217,19 @@ export function CompanionApp() {
   const emotionLine = presenceLine(emotion, copy.presence);
   const bubble = bubbleParts({
     approvals,
-    pulse: activePulse,
+    pulse: shownPulse,
     approvalLine: copy.presence.approval,
     emotionLine,
     now,
   });
   const line = bubbleLine({
     approvals,
-    pulse: activePulse,
+    pulse: shownPulse,
     approvalLine: copy.presence.approval,
     emotionLine,
     now,
   });
-  const showLine = !!activePulse || emotion.live || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
+  const showLine = !!shownPulse || emotion.live || loading || emotion.tips === "approval" || emotion.tips === "ask" || approvals > 0;
   const bubbleRef = useRef<HTMLButtonElement>(null);
   const scrollRef = useRef<HTMLSpanElement>(null);
 
@@ -247,15 +261,12 @@ export function CompanionApp() {
     else void api.raiseWindow();
   };
 
-  const lastAssistant = [...items].reverse().find((it) => it.type === "assistant" && it.text.trim())?.text || "";
-
   if (inCall) {
     return (
       <div className="companion-stage" data-testid="companion-stage" data-context-menu="yoyo-companion">
-        <CallView
-          sessionId={sessionRef.current}
+        <IdolCall
           paused={paused}
-          lastAssistant={lastAssistant}
+          approvals={approvals}
           onHangup={() => setInCall(false)}
         />
       </div>
@@ -294,6 +305,9 @@ export function CompanionApp() {
         onPointerCancel={() => { grab.current = null; }}
         onClick={() => { if (!dragged.current) open(); }}
       >
+        {face ? (
+          <img alt="" className="size-[168px] rounded-full object-cover" src={`data:image/png;base64,${face}`} />
+        ) : (
         <PresenceSprite
           emotionId={emotion.emotionId}
           size={168}
@@ -303,6 +317,7 @@ export function CompanionApp() {
           spark={spark}
           onActivity={bump}
         />
+        )}
       </div>
       <button
         ref={bubbleRef}
