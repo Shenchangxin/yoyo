@@ -1,5 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from "react";
-import { Clapperboard, Copy, LayoutGrid, Plus, Sparkles, Trash2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Clapperboard, Copy, LayoutGrid, Plus, Scissors, Sparkles, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -17,6 +17,7 @@ import { CreateShortField } from "./studio-chrome";
 import { shownSeriesTitle } from "./drama-lib";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { defaultDramaStyle, useStudioSelection } from "./workshop-store";
+import type { CutProject } from "./cut-desk";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
@@ -27,6 +28,7 @@ export function VideoHistory(props: {
   studioId?: string;
   sessionId?: string;
   onOpenProject?: (p: VideoProject) => void;
+  onOpenCut?: (id: string) => void;
   onRefresh?: () => void;
 }) {
   const copy = useCopy();
@@ -39,6 +41,18 @@ export function VideoHistory(props: {
   const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
   const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
   const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
+  const [cuts, setCuts] = useState<CutProject[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void api.video.cutList().then((list) => {
+      if (!alive) return;
+      const rows = (Array.isArray(list) ? list : []) as CutProject[];
+      rows.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      setCuts(rows.filter((row) => row.id && row.source_hash));
+    }).catch(() => { if (alive) setCuts([]); });
+    return () => { alive = false; };
+  }, [props.projects, props.sessionId]);
 
   async function newCanvas() {
     setBusy("canvas");
@@ -164,6 +178,29 @@ export function VideoHistory(props: {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto px-5 pb-6">
+          <section className="mb-6">
+            <div className="mb-2 flex items-center gap-2">
+              <h2 className="text-[12px] font-medium text-muted">{copy.video.conductor.cutTitle}</h2>
+            </div>
+            {cuts.length ? (
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                {cuts.map((row) => (
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] hover:bg-lift"
+                      onClick={() => row.id && props.onOpenCut?.(row.id)}
+                    >
+                      <span className="truncate">{row.title || copy.video.conductor.cutTitle}</span>
+                      {row.duration ? <span className="shrink-0 text-[12px] tabular-nums text-muted">{row.duration.toFixed(1)}s</span> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<Scissors className="size-5" />} title={copy.video.conductor.cutTitle} body={copy.video.historyEmptyCuts} />
+            )}
+          </section>
           <section className="mb-6">
             <div className="relative mb-2 flex items-center gap-2">
               <h2 className="text-[12px] font-medium text-muted">{copy.video.shellDrama}</h2>

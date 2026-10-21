@@ -108,6 +108,9 @@ func (e *Engine) CutPropose(id string, count int, window string) (CutProject, er
 	}
 	p.Breakdown.Clips = out
 	p.EditList.Cuts = out
+	if p.ResultHash != "" {
+		p.Stale = true
+	}
 	return e.saveCut(p)
 }
 
@@ -172,6 +175,7 @@ func (e *Engine) CutApply(id string) (CutProject, error) {
 		return p, err
 	}
 	p.ResultHash = h
+	p.Stale = false
 	return e.saveCut(p)
 }
 
@@ -551,6 +555,68 @@ func (e *Engine) posterFromHash(hash string) (string, error) {
 	return e.PutBytes(jpg)
 }
 
+func (e *Engine) CutKeep(id string, clipIDs []string) (CutProject, error) {
+	p, err := e.GetCutProject(id)
+	if err != nil {
+		return CutProject{}, err
+	}
+	want := map[string]bool{}
+	for _, clipID := range clipIDs {
+		clipID = strings.TrimSpace(clipID)
+		if clipID != "" {
+			want[clipID] = true
+		}
+	}
+	var kept []cut.Clip
+	for _, c := range p.Breakdown.Clips {
+		if want[c.ID] {
+			kept = append(kept, c)
+		}
+	}
+	for _, cue := range p.Captions.Cues {
+		if cue.Omit {
+			kept = cut.Punch(kept, cue.Start, cue.End)
+		}
+	}
+	if kept == nil {
+		kept = []cut.Clip{}
+	}
+	p.EditList.Cuts = kept
+	if p.ResultHash != "" {
+		p.Stale = true
+	}
+	return e.saveCut(p)
+}
+
+func (e *Engine) CutOmitCue(id string, index int) (CutProject, error) {
+	p, err := e.GetCutProject(id)
+	if err != nil {
+		return CutProject{}, err
+	}
+	if index < 0 || index >= len(p.Captions.Cues) {
+		return p, fmt.Errorf("cue not found")
+	}
+	cue := p.Captions.Cues[index]
+	cue.Omit = !cue.Omit
+	p.Captions.Cues[index] = cue
+	if len(p.EditList.Cuts) == 0 {
+		if p.Duration > 0 {
+			p.EditList.Cuts = []cut.Clip{{Start: 0, End: p.Duration, Title: "source"}}
+		} else if len(p.Breakdown.Clips) > 0 {
+			p.EditList.Cuts = append([]cut.Clip{}, p.Breakdown.Clips...)
+		}
+	}
+	if cue.Omit {
+		p.EditList.Cuts = cut.Punch(p.EditList.Cuts, cue.Start, cue.End)
+	} else {
+		p.EditList.Cuts = cut.InsertSpan(p.EditList.Cuts, cue.Start, cue.End)
+	}
+	if p.ResultHash != "" {
+		p.Stale = true
+	}
+	return e.saveCut(p)
+}
+
 func (e *Engine) ProviderMenu(cap string) []map[string]any {
 	if e.Conn == nil {
 		return []map[string]any{}
@@ -589,7 +655,7 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 	dest = strings.ToLower(strings.TrimSpace(dest))
 	sessionID = strings.TrimSpace(sessionID)
 	id = strings.TrimSpace(id)
-	out := map[string]any{"dest": dest}
+	out := map[string]any{"dest": dest, "session_id": sessionID}
 	switch dest {
 	case "studio", "shorts", "短片":
 		if id == "" {
@@ -598,37 +664,57 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 				return nil, err
 			}
 			id = p.ID
+			title = p.Title
 			out["project"] = p
 		}
 		if sessionID != "" {
+			e.ReleaseWorkshopBinds(sessionID)
+			e.ReleaseCutBind(sessionID)
 			if err := e.BindStudioSession(sessionID, id); err != nil {
 				return nil, err
 			}
 		}
 		out["pane"] = "studio"
 		out["id"] = id
+		out["title"] = title
 	case "drama", "短剧":
 		if id == "" {
 			return nil, fmt.Errorf("drama dest needs an episode id")
 		}
+		ep, err := e.GetEpisode(id)
+		if err != nil {
+			return nil, err
+		}
 		if sessionID != "" {
+			e.ReleaseWorkshopBinds(sessionID)
+			e.ReleaseCutBind(sessionID)
 			if err := e.BindSession(sessionID, id); err != nil {
 				return nil, err
 			}
 		}
 		out["pane"] = "drama"
 		out["id"] = id
+		out["drama_id"] = ep.DramaID
+		out["title"] = firstNonEmpty(ep.Title, title)
 	case "canvas", "画布":
-		if id != "" && sessionID != "" {
-			if err := e.BindCanvasSession(sessionID, id); err != nil {
-				return nil, err
+		if sessionID != "" {
+			e.ReleaseWorkshopBinds(sessionID)
+			e.ReleaseCutBind(sessionID)
+			if id != "" {
+				if err := e.BindCanvasSession(sessionID, id); err != nil {
+					return nil, err
+				}
 			}
 		}
 		out["pane"] = "canvas"
 		out["id"] = id
+		out["title"] = title
 	case "game", "游戏", "游戏世界", "game-world":
 		return nil, fmt.Errorf("game worlds are no longer available; pick 短片, 短剧, or 画布")
 	default:
+		if sessionID != "" {
+			e.ReleaseWorkshopBinds(sessionID)
+		}
 		if id == "" {
 			p, err := e.CreateCutProject(CutProject{Title: firstNonEmpty(title, "胶片")})
 			if err != nil {
@@ -644,8 +730,10 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 		}
 		out["pane"] = "create"
 		out["id"] = id
+		out["title"] = title
 		out["dest"] = "cut"
 	}
+	_ = intent
 	if e.OnHub != nil {
 		e.OnHub("video_route", out)
 	}

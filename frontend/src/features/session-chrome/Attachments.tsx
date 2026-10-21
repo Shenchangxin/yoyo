@@ -23,10 +23,10 @@ export function AttachmentRail(props: {
   );
 }
 
-export function DropOverlay(props: { active: boolean }) {
+export function DropOverlay(props: { active: boolean; label?: string }) {
   const copy = useCopy();
   if (!props.active) return null;
-  return <div className="sc-drop">{copy.composer.attach}</div>;
+  return <div className="sc-drop">{props.label || copy.composer.attach}</div>;
 }
 
 function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove: () => void }) {

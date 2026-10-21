@@ -2414,6 +2414,7 @@ export const video = {
   studioSlideshow: (hashes: string[], aspect = "9:16", duration = 3) => videoCall("video.studio.ops.slideshow", { hashes, aspect, duration }),
   studioWrap: (hash: string, title: string) => videoCall("video.studio.ops.wrap", { hash, title }),
   putStudioMedia: (dataB64: string, mime = "", kind = "") => videoCall("video.studio.media.put", { data_b64: dataB64, mime, kind }),
+  putStudioMediaPath: (path: string, kind = "video") => videoCall("video.studio.media.put", { path, kind }),
   publishPlatforms: () => videoCall("video.studio.publish.platforms"),
   listPublishes: (projectId = "", platform = "") => videoCall("video.studio.publish.list", { project_id: projectId, platform }),
   draftPublish: (p: Record<string, any>) => videoCall("video.studio.publish.draft", p),
@@ -2465,6 +2466,8 @@ export const video = {
   cutDub: (id: string, text = "", voice = "") => videoCall("video.cut.dub", { id, text, voice }),
   cutGrade: (id: string, preset = "warm") => videoCall("video.cut.grade", { id, preset }),
   cutStem: (id: string, kind: string, hash: string) => videoCall("video.cut.stem", { id, kind, hash }),
+  cutKeep: (id: string, clipIds: string[]) => videoCall("video.cut.keep", { id, clip_ids: clipIds }),
+  cutOmit: (id: string, index: number) => videoCall("video.cut.omit", { id, index }),
   route: (sessionId: string, dest: string, id = "", title = "") => videoCall("video.route", { session_id: sessionId, dest, id, title }),
   providerMenu: (capability = "") => videoCall("video.providers.menu", { capability }),
 };

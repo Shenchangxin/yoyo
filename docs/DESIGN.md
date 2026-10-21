@@ -53,9 +53,9 @@ functional layer above opaque media. Do not mix Regular and Clear glass.
    raw tool names, paths and commands stay visible in expanded rows and diffs
    in monospace with ligatures off.
 7. **One chrome.** PageHeader is the only toolbar. Video is 创作 | 短片 |
-   短剧 | 画布 | 游戏 in the rail. 创作 is the conductor, not Yingce `/create`.
-   游戏 is a native workbench, not the Yingce island. Assets, plugins, and
-   creation history jump from the command palette. Skills is the Yoyo Skills surface.
+   短剧 | 画布 in the rail. 创作 is the finish desk, not Yingce `/create`.
+   Assets, plugins, and creation history are in the same rail. The rail's
+   画布技能 opens the island skill page, not Yoyo Skills.
 
 ---
 
@@ -176,18 +176,18 @@ stops the moment `running` is false.
 
 - App frame padding 8px; rail, review, Settings, Skills, and Harness are
   glass cards on `sidebar`; Agent and Video stages are bare `background`.
-- **Video** is one chrome. 创作 / 短片 / 短剧 / 画布 / 游戏 plus Assets / Skills /
+- **Video** is one chrome. 创作 / 短片 / 短剧 / 画布 plus Assets / 画布技能 /
   Plugins / History live in the left rail (`VideoShellNav`). 创作 is the
-  conductor chat (empty: 聊聊创作想法, composer, chips 剪这条 / 配音 /
-  做短片 / 做短剧 / 去画布 / 做游戏世界, featured cases below). Attach a clip in the
-  composer to cut or analyze. Workshop outputs (短片 assemble, 短剧
-  stitch, 画布 video nodes) jump here with **去剪辑**. No identity chip,
-  location menu, Footage header, or thread title in the Video chrome
-  (titles leaked across 创作 / 短片 / 短剧 / 画布 / 游戏). Yingce Create is not
-  that lane; the canvas island stays on 画布. 游戏 is a native workbench.
-  Drama series and canvas
+  finish desk. Empty: import a clip, or open 短片 / 短剧 / 画布. The
+  case list under that stays; each row names its style still and where the
+  prompt belongs. With a
+  clip: player, candidates, transcript, and dub on the left; conductor
+  chat on the right. Workshop outputs jump here with **送到成片台**.
+  The canvas control **画布时间线** stays on the canvas. No identity chip,
+  location menu, or thread title in the Video chrome. Yingce Create is not
+  that lane; the canvas island stays on 画布. Drama series and canvas
   boards live in
-  Creation history. Settings Generation is the vendor catalog (image,
+  Creation history, next to finished cuts. Settings Generation is the vendor catalog (image,
   video, speech, music, stock, asr). Domestic starters include Qwen, Jimeng,
   Kolors, CogView, Hunyuan, Vidu, Kling, CosyVoice, Spark, and Mureka;
   music also lists MiniMax / ElevenLabs / Stability / Lyria; stock from
@@ -255,7 +255,7 @@ stops the moment `running` is false.
 - **Error** — `danger` bar and tint for provider failures; neutral card for
   soft stops with a `Continue this turn` CTA when retryable.
 - **Empty thread** — bottom-anchored above the composer: 140px spherical robot,
-  greeting (`Ready when you are.` / 创作: `聊聊创作想法` / Drama: `Paste a chapter.`), one hint line,
+  greeting (`Ready when you are.` / 创作: `先放进一条片子` / Drama: `Paste a chapter.`), one hint line,
   starter **pills** (not a 3-column marketing grid). No headline larger than 21px.
   Click the sphere to bounce and spin.
 - **Turn outline** — left of the letter, default ticks. Accent marks only the

@@ -39,6 +39,7 @@ type Cue struct {
 	Start float64 `json:"start"`
 	End   float64 `json:"end"`
 	Text  string  `json:"text"`
+	Omit  bool    `json:"omit,omitempty"`
 }
 
 type Clip struct {

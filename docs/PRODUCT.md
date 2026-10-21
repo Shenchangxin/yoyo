@@ -23,16 +23,18 @@ An operator who wants to run turns against a local workspace, review git hunks, 
 - **Follow** jobs continue an existing thread. Isolated cron/heartbeat/webhook jobs stay a separate class and still isolate.
 - **Approvals** render in the stream. Review is a queue mirror, not the only Once/Deny surface.
 - **Harness** is one workspace: Overview → Propose (Evolve) → Prove (Harbor) → Promote (refs). It is not a chat sibling of equal weight. Chat dock there is opt-in.
-- **Video** is one chrome with five lanes. **创作** is the conductor
-  agent: a main chat (empty: talk through a piece, featured cases below;
-  attach a clip in the box to cut or analyze). **短片 / 短剧 / 画布 / 游戏** are workshops.
-  短片 / 短剧 / 画布 still own T2V. **游戏** turns a play intent into a sealed
-  HTML/WebGL playable under `game-worlds/` (not a novel adaptation — that stays
-  NovelToGame). Shared post (`internal/video/cut`: Breakdown, EditList,
-  Stems, Captions) is infrastructure, not a product lane. Assembled
-  shorts, stitched episodes, and canvas video nodes send to 创作 with
-  one **去剪辑** action, then finish the film on the conductor.
-  Video chats and Agent chats stay separate session channels.
+- **Video** is one chrome with four lanes. **创作** is the finish desk:
+  empty, it asks for a clip or hands off to a workshop, and keeps the packed
+  case catalog on the page (prompts in `creation-inspirations.ts`, covers in
+  `frontend/public/short-drama-styles`; a click fills the conductor and does
+  not generate); with a clip, the
+  player and edit list sit beside the conductor. **短片 / 短剧 / 画布** are
+  the workshops and still own text-to-video. Shared post
+  (`internal/video/cut`: Breakdown, EditList, Stems, Captions) is the
+  finish desk, not a fifth lane. Assembled shorts, stitched episodes, and
+  canvas video nodes send here with **送到成片台**, then the cut is finished
+  on that desk. The canvas timeline is a different editor. Video chats and
+  Agent chats stay separate session channels.
 - **Control** is a gear surface (vault, policy, updater). Opening it hides the thread rail. The agent cannot change these.
 - **Skills** is a catalog plus **Packs**. A pack is a versioned skill tree. Methodology packs (Superpowers) session-start bootstrap; domain packs (NovelToGame) do not preload bodies. Enabling a pack is a workspace choice. Chat matches catalog descriptions and may auto-load a domain orchestrator; `@skill` is an override. Harbor never loads packs.
 - **Connections** are JSON files under `~/.yoyo/connections`. Chat, image, video, speech, music, stock, asr, search, storage, and workflow accounts share one registry. Generation catalogs domestic vendors (Qwen / Jimeng / Kolors / CogView / Hunyuan / Vidu / Kling / CosyVoice / Spark / Mureka / DashScope / Volcengine / Tencent COS) alongside international ones. Keys stay in the vault. The conductor only sees enabled rows that have a key. See [architecture/persist.md](architecture/persist.md).
