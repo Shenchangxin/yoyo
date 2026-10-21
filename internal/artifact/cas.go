@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,53 @@ func (s *Store) PutRaw(b []byte) (string, error) {
 		return "", err
 	}
 	return h, nil
+}
+
+// PutFile hashes a file and copies it into the store. The bytes stay on disk.
+func (s *Store) PutFile(src string) (string, error) {
+	f, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	h := blake3.New()
+	if _, err := io.Copy(h, f); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	sum := h.Sum(nil)
+	hash := hex.EncodeToString(sum)
+	dst := s.pathFor(hash)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return hash, nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return hash, nil
+		}
+		return "", err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		_ = os.Remove(dst)
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(dst)
+		return "", err
+	}
+	return hash, nil
 }
 
 func (s *Store) GetRaw(hash string) ([]byte, error) {

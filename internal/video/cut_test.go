@@ -35,6 +35,45 @@ func TestCutProjectCRUD(t *testing.T) {
 	}
 }
 
+func TestCutKeepAndOmit(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateCutProject(CutProject{Title: "口播"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Duration = 20
+	p.Breakdown.Clips = []cut.Clip{
+		{ID: "a", Start: 0, End: 8, Title: "a"},
+		{ID: "b", Start: 8, End: 16, Title: "b"},
+	}
+	p.Captions.Cues = []cut.Cue{{Start: 1, End: 3, Text: "你好"}}
+	p, err = e.saveCut(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	omitted, err := e.CutOmitCue(p.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !omitted.Captions.Cues[0].Omit {
+		t.Fatal("expected omit")
+	}
+	if len(omitted.EditList.Cuts) < 2 || omitted.EditList.Cuts[0].End > 1.1 {
+		t.Fatalf("punched %+v", omitted.EditList.Cuts)
+	}
+	back, err := e.CutOmitCue(p.ID, 0)
+	if err != nil || back.Captions.Cues[0].Omit {
+		t.Fatalf("restore %+v %v", back.Captions.Cues, err)
+	}
+	kept, err := e.CutKeep(p.ID, []string{"b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept.EditList.Cuts) != 1 || kept.EditList.Cuts[0].ID != "b" {
+		t.Fatalf("keep %+v", kept.EditList.Cuts)
+	}
+}
+
 func TestProviderMenuHidesUnkeyed(t *testing.T) {
 	e := testEngine(t)
 	if e.Conn == nil {

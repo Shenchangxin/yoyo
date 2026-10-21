@@ -22,7 +22,7 @@ Claude Code 用 `hooks.json` session-start 注入 `using-superpowers`；Codex �
 
 不要 fork 上游正文。适配器只有映射表；方法论包另加 bootstrap 包装。
 
-内置目录（`internal/skillpack/known.go`）：`superpowers`（`obra/superpowers`，methodology）与 `novel-to-game`（`zenstory-ai/novel-to-game`，domain）。添加目录项不 vendor 技能正文。Yoyo 自有的空间游戏世界走 bundled skills（`yoyo-game` / `game-world-*`），不是第三方 pack。创作车道在绑定前就把 `game_*` 登记进 Extra（`game_create` 立刻可用，整条流水线可被 `tool_search` 命中）；`video_route dest=game` 当轮解锁并编译密封 3D playable。手写 `game-worlds/*/index.html` 会被拒绝。
+内置目录（`internal/skillpack/known.go`）：`superpowers`（`obra/superpowers`，methodology）与 `novel-to-game`（`zenstory-ai/novel-to-game`，domain）。添加目录项不 vendor 技能正文。视频轨没有游戏车道，`video_route` 的 `game` 会被拒绝。`novel-to-game` 仍是领域包，不挂在创作页上。
 
 ---
 

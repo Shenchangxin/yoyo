@@ -940,16 +940,34 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		return a.enrichMedia(ref), nil
 	case "video.studio.media.put":
+		kind := str("kind")
+		mime := str("mime")
+		var hash string
+		var err error
+		if p := str("path"); p != "" {
+			hash, mime, err = eng.PutPath(p)
+			if err != nil {
+				return nil, err
+			}
+			if kind == "" {
+				if strings.HasPrefix(mime, "video/") {
+					kind = "video"
+				} else if strings.HasPrefix(mime, "audio/") {
+					kind = "audio"
+				} else {
+					kind = "image"
+				}
+			}
+			return a.enrichMedia(video.MediaRef{Kind: kind, CASHash: hash, MIME: mime, Source: "studio-upload"}), nil
+		}
 		raw, err := decodeB64(firstNonEmptyApp(str("data_b64"), str("data")))
 		if err != nil {
 			return nil, err
 		}
-		hash, err := eng.PutBytes(raw)
+		hash, err = eng.PutBytes(raw)
 		if err != nil {
 			return nil, err
 		}
-		kind := str("kind")
-		mime := str("mime")
 		if kind == "" {
 			if strings.HasPrefix(mime, "video/") {
 				kind = "video"
@@ -1241,6 +1259,21 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return a.enrichCut(p), nil
 	case "video.cut.stem":
 		p, err := eng.CutSetStem(str("id"), str("kind"), str("hash"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.keep":
+		var ids []string
+		b, _ := json.Marshal(params["clip_ids"])
+		_ = json.Unmarshal(b, &ids)
+		p, err := eng.CutKeep(str("id"), ids)
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.cut.omit":
+		p, err := eng.CutOmitCue(str("id"), intArgApp(params["index"]))
 		if err != nil {
 			return nil, err
 		}
@@ -1613,6 +1646,9 @@ func (a *App) enrichCut(p video.CutProject) map[string]any {
 	m["source_url"] = a.mediaURL(p.SourceHash)
 	m["result_url"] = a.mediaURL(p.ResultHash)
 	m["poster_url"] = a.mediaURL(p.PosterHash)
+	m["dub_url"] = a.mediaURL(p.Stems.Dub)
+	m["voice_url"] = a.mediaURL(p.Stems.Voice)
+	m["music_url"] = a.mediaURL(p.Stems.Music)
 	clips := make([]map[string]any, 0, len(p.Breakdown.Clips))
 	for _, c := range p.Breakdown.Clips {
 		row := objJSON(c)

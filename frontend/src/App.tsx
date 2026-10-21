@@ -46,6 +46,8 @@ import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 import { liveAutoSkills, liveSubagentCrumb } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
+import { CutStage } from "./features/video/CutStage";
+import { useCutDesk } from "./features/video/cut-desk";
 import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
 import { sessionLane } from "./features/video/video-lanes";
@@ -90,6 +92,8 @@ function WorkstationApp() {
   const videoPane = useUI((s) => s.videoPane);
   const studioDesk = useUI((s) => s.studioDesk);
   const createDesk = videoing && videoPane === "create";
+  const cutBound = useCutDesk((s) => !!s.project?.source_hash);
+  const finishDesk = createDesk && cutBound;
   const talkDesk = createDesk;
   const studioId = useStudioSelection((s) => s.studioId);
   const studioCopilotSession = studioSessionId(studioId, ws.videoProjects);
@@ -208,6 +212,7 @@ function WorkstationApp() {
       const paths = await api.pickFiles();
       return paths.map((path) => ({ path, name: path.replace(/^.*[\\/]/, "") }));
     },
+    onIngestVideo: (source: { path?: string; file?: File }) => ws.ingestVideo(source),
     onAuthMode: async (mode: AuthMode) => {
       if (!ws.activeId) {
         // No chat yet: keep the choice for the first chat created (see adoptPendingAuthMode).
@@ -445,6 +450,9 @@ function WorkstationApp() {
           <HomeStarters
             onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
             onContinueLast={() => { void ws.onContinueLast(); }}
+            onImportClip={() => { void ws.ingestVideo({}); }}
+            onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
+            onOpenCut={(id) => { void ws.openCut(id); }}
           />
         ) : null}
         </div>
@@ -762,6 +770,7 @@ function WorkstationApp() {
       canvasProjectId={ws.canvasProjectId}
       dramaId={ws.dramaId}
       onOpenProject={(p) => { void ws.openVideoProject(p); }}
+      onOpenCut={(id) => { void ws.openCut(id); }}
       onRefreshHistory={ws.loadVideoHistory}
       onNeedSession={async () => (await ws.ensureThread()).id}
       onClose={() => {
@@ -835,6 +844,15 @@ function WorkstationApp() {
     <Suspense fallback={null}>
       <div className="no-drag flex h-full min-h-0 flex-col overflow-hidden" data-skin-pane>{labPane}</div>
     </Suspense>
+  ) : finishDesk ? (
+    <div className="@container h-full min-h-0" data-testid="finish-desk">
+      <div className="finish-desk">
+        <div className="finish-desk-board" data-skin-pane>
+          <CutStage />
+        </div>
+        <div className="finish-desk-chat">{agentPane}</div>
+      </div>
+    </div>
   ) : talkDesk ? (
     <div className="relative h-full min-h-0 overflow-hidden" data-testid="create-desk" data-skin-pane>
       {agentPane}

@@ -47,7 +47,7 @@ import { conversationTimestamp, isImageAttachment, isVideoAttachment } from "./c
 import { conversationTimeFormatter, countOptions, historyDayFormatter, messageTimeFormatter, modeLabels, qualityOptions, ratioOptions, resolutionOptions, shotScriptLabels, type CreationConversation, type CreationMessage, type CreationShotRailEntry, type CreationStatus } from "./creation-types";
 import "./creation-product.css";
 import "./creation-scrollbars.css";
-import { creationFeaturedWorks, inspirationSource } from "./creation-inspirations";
+import { caseCredit, creationFeaturedWorks, inspirationSource } from "./creation-inspirations";
 import { styleCoverSrc } from "@yingce/lib/style-cover";
 
 const CanvasPromptOptimizerDrawer = lazy(() => import("@yingce/components/canvas/canvas-prompt-optimizer-drawer").then((module) => ({ default: module.CanvasPromptOptimizerDrawer })));
@@ -837,7 +837,7 @@ export function CreationFeaturedWorks({ onStartPrompt }: { onStartPrompt: (mode:
         <div className="creation-featured-layout">
                 {filtered.slice(0, limit).map((item, index) => <button key={item.title} type="button" className={`product-collection-card creation-featured-card ${index === 0 ? "is-featured-hero" : ""}`} onClick={() => onStartPrompt(item.mode, item.prompt)}>
                     <span className="creation-featured-media"><img src={styleCoverSrc(item.image)} alt="" loading="lazy" /><span className="creation-inspiration-overlay"><ArrowUp />使用这个创意</span></span>
-                    <span className="creation-featured-copy"><strong>{item.title}</strong><span>{item.description}</span><em>Yoyo 工作室案例 · {modeLabels[item.mode]}</em></span>
+                    <span className="creation-featured-copy"><strong>{item.title}</strong><span>{item.description}</span><em>{caseCredit(item)} · {modeLabels[item.mode]}</em></span>
                 </button>)}
         </div>
         <footer className="creation-inspiration-footer">{limit < filtered.length ? <Button onClick={() => setLimit((count) => count + 12)}>展开更多灵感<ChevronDown /></Button> : <span>已展示全部 {filtered.length} 个创意</span>}<details><summary>封面与案例说明</summary><p>{inspirationSource.notice}</p></details></footer>

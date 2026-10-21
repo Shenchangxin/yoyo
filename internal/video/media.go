@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -14,6 +16,56 @@ func (e *Engine) PutBytes(b []byte) (string, error) {
 		return "", fmt.Errorf("cas missing")
 	}
 	return e.CAS.PutRaw(b)
+}
+
+const maxMediaFile = 4 << 30
+
+// PutPath copies a user-picked file into CAS without loading it into the webview.
+func (e *Engine) PutPath(path string) (string, string, error) {
+	if e.CAS == nil {
+		return "", "", fmt.Errorf("cas missing")
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", "", fmt.Errorf("path required")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", "", err
+	}
+	if !st.Mode().IsRegular() {
+		return "", "", fmt.Errorf("not a file")
+	}
+	if st.Size() <= 0 {
+		return "", "", fmt.Errorf("file is empty")
+	}
+	if st.Size() > maxMediaFile {
+		return "", "", fmt.Errorf("file is larger than 4GB")
+	}
+	kind := mime.TypeByExtension(strings.ToLower(filepath.Ext(abs)))
+	if kind == "" {
+		kind = "application/octet-stream"
+	}
+	if store, ok := e.CAS.(interface{ PutFile(string) (string, error) }); ok {
+		hash, err := store.PutFile(abs)
+		if err != nil {
+			return "", "", err
+		}
+		return hash, kind, nil
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return "", "", err
+	}
+	hash, err := e.PutBytes(raw)
+	if err != nil {
+		return "", "", err
+	}
+	return hash, kind, nil
 }
 
 func (e *Engine) GetBytes(hash string) ([]byte, error) {

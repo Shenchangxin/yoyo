@@ -22,6 +22,30 @@ func TestCASRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPutFileCopiesBytes(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "clip.bin")
+	if err := os.WriteFile(src, []byte("frame-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(filepath.Join(dir, "cas"))
+	h, err := s.PutFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := s.GetRaw(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "frame-bytes" {
+		t.Fatalf("payload %q", raw)
+	}
+	again, err := s.PutFile(src)
+	if err != nil || again != h {
+		t.Fatalf("second put %s %v", again, err)
+	}
+}
+
 func TestRefsCheckout(t *testing.T) {
 	dir := t.TempDir()
 	r := NewRefs(filepath.Join(dir, "refs"))

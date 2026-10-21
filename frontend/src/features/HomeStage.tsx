@@ -2,7 +2,9 @@ import { useCopy } from "../lib/i18n";
 import { useUI } from "../lib/store";
 import type { Copy } from "../lib/copy";
 import { PresenceAnchor } from "./presence";
-import { CreationGallery } from "./video/CreationGallery";
+import { CreateHome } from "./video/CreateHome";
+import { FeaturedCases } from "./video/FeaturedCases";
+import { useCutDesk, useCutReadiness } from "./video/cut-desk";
 import { cn } from "../lib/utils";
 
 function hello(copy: Copy): string {
@@ -12,8 +14,46 @@ function hello(copy: Copy): string {
   return copy.transcript.helloEvening;
 }
 
+function CreateBoundActions(props: {
+  projectId: string;
+  sourceHash: string;
+  onPrompt?: (text: string) => void;
+}) {
+  const copy = useCopy();
+  const c = copy.video.conductor;
+  const ready = useCutReadiness();
+  const cutReason = ready.loaded && !ready.ffmpeg ? c.needFfmpeg : "";
+  const dubReason = ready.loaded && !ready.speech ? c.needSpeech : "";
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          className="starter-tile is-stack"
+          disabled={!!cutReason}
+          title={cutReason || c.clipThis}
+          onClick={() => props.onPrompt?.(c.sendPrompt.replace("{id}", props.projectId).replace("{hash}", props.sourceHash))}
+        >
+          <span className="starter-tile-label">{c.clipThis}</span>
+        </button>
+        <button
+          type="button"
+          className="starter-tile is-stack"
+          disabled={!!dubReason}
+          title={dubReason || c.dub}
+          onClick={() => props.onPrompt?.(c.dubPrompt.replace("{id}", props.projectId).replace("{hash}", props.sourceHash))}
+        >
+          <span className="starter-tile-label">{c.dub}</span>
+          {dubReason ? <span className="starter-tile-hint">{dubReason}</span> : null}
+        </button>
+      </div>
+      <p className="mx-auto mt-3 max-w-[36ch] text-center text-[12px] text-muted">{c.finishHint}</p>
+    </>
+  );
+}
+
 function startersOf(copy: Copy, videoing: boolean, videoMode: string, createDesk: boolean) {
-  if (createDesk) return copy.transcript.conductorStarters;
+  if (createDesk) return [];
   if (!videoing) return copy.transcript.starters;
   if (videoMode === "canvas") return copy.transcript.canvasStarters;
   if (videoMode === "creative") return copy.transcript.creativeStarters;
@@ -44,6 +84,8 @@ export function HomeHero(_props: {
   onBrowseWorkspace?: () => void;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const bound = useCutDesk((s) => createDesk && !!s.project?.source_hash);
+  const boundTitle = useCutDesk((s) => (createDesk ? s.project?.title || "" : ""));
   return (
     <div
       className={cn(
@@ -60,9 +102,9 @@ export function HomeHero(_props: {
         "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
         createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
       )}>
-        {readyOf(copy, videoing, videoMode, createDesk)}
+        {bound ? (boundTitle || copy.video.conductor.cutTitle) : readyOf(copy, videoing, videoMode, createDesk)}
       </h1>
-      {createDesk ? (
+      {createDesk && !bound ? (
         <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-[13px] leading-[1.5] text-muted">
           {copy.video.conductor.lead}
         </p>
@@ -74,9 +116,14 @@ export function HomeHero(_props: {
 export function HomeStarters(props: {
   onPrompt?: (text: string) => void;
   onContinueLast?: () => void;
+  onImportClip?: () => void;
+  onHandoff?: (dest: "studio" | "drama" | "canvas") => void;
+  onOpenCut?: (id: string) => void;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const project = useCutDesk((s) => (createDesk ? s.project : null));
   const starters = startersOf(copy, videoing, videoMode, createDesk);
+  const bound = !!project?.source_hash && !!project.id;
   return (
     <>
       <div className={cn(
@@ -94,6 +141,10 @@ export function HomeStarters(props: {
             </button>
           </div>
         ) : null}
+        {bound && project?.id && project.source_hash ? (
+          <CreateBoundActions projectId={project.id} sourceHash={project.source_hash} onPrompt={props.onPrompt} />
+        ) : null}
+        {starters.length ? (
         <div className={cn("flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
           {starters.map((s, i) => (
             <button
@@ -110,8 +161,12 @@ export function HomeStarters(props: {
             </button>
           ))}
         </div>
+        ) : null}
       </div>
-      {createDesk ? <CreationGallery onStartPrompt={(prompt) => props.onPrompt?.(prompt)} /> : null}
+      {createDesk && !bound && props.onImportClip && props.onHandoff && props.onOpenCut ? (
+        <CreateHome onImport={props.onImportClip} onHandoff={props.onHandoff} onOpenCut={props.onOpenCut} />
+      ) : null}
+      {createDesk && !bound && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
     </>
   );
 }

@@ -20,6 +20,7 @@ type CutProject struct {
 	Stems      cut.Stems     `json:"stems"`
 	Captions   cut.Captions  `json:"captions"`
 	Note       string        `json:"note,omitempty"`
+	Stale      bool          `json:"stale,omitempty"`
 	CreatedAt  string        `json:"created_at,omitempty"`
 	UpdatedAt  string        `json:"updated_at,omitempty"`
 }
@@ -169,6 +170,19 @@ func (e *Engine) BindCutSession(sessionID, projectID string) error {
 	}
 	next[sessionID] = projectID
 	return e.saveCutBinds(next)
+}
+
+func (e *Engine) ReleaseCutBind(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	m := e.loadCutBinds()
+	if _, ok := m[sessionID]; !ok {
+		return
+	}
+	delete(m, sessionID)
+	_ = e.saveCutBinds(m)
 }
 
 func (e *Engine) CutSessionBind(sessionID string) (string, bool) {

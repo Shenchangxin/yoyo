@@ -30,7 +30,9 @@ import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type Se
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { asStudioProject, studioSessionId } from "../video/studio-session";
 import { laneAcceptsSession, lastLaneThread, rememberLaneThread, sessionLane, type VideoLane } from "../video/video-lanes";
-import { useDramaSelection, useStudioSelection } from "../video/workshop-store";
+import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../video/workshop-store";
+import { useCutDesk, type CutProject } from "../video/cut-desk";
+import { ingestVideoFile, ingestVideoPath, isVideoPath } from "../video/ingest-clip";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -338,6 +340,8 @@ export function useWorkstation() {
     command: (_c: string) => {},
     quit: () => {},
     focus: (_id: string) => {},
+    route: (_payload: Record<string, unknown>) => {},
+    cut: (_payload: Record<string, unknown>) => {},
   });
 
   const activeId = active?.id || "";
@@ -551,6 +555,19 @@ export function useWorkstation() {
   }, [active?.id]);
   useEffect(() => installSendToCut((detail) => sendToCutRef.current(detail)), []);
   useEffect(() => {
+    if (surface !== "video" || videoPane !== "create") return;
+    const id = activeId;
+    if (!id) return;
+    useCutDesk.getState().noteSession(id);
+    let alive = true;
+    void api.video.cutSession(id).then((row) => {
+      if (!alive) return;
+      const project = row && row.id ? row as CutProject : null;
+      useCutDesk.getState().adoptServer(id, project?.source_hash ? project : null);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [surface, videoPane, activeId]);
+  useEffect(() => {
     const ch = channelForSurface(surface);
     const preferred = useUI.getState().lastThreadId(ch);
     setActive((cur) => pickChannelThread(threads, ch, preferred, cur));
@@ -673,6 +690,12 @@ export function useWorkstation() {
         offs.push(Events.On("yoyo:focus", (session: any) => handlers.current.focus(eventText(session))));
         offs.push(Events.On("yoyo:doctor", (info: any) => { setDoctor(unwrapEvent(info) || {}); openSettings("advanced", "advanced-doctor"); }));
         offs.push(Events.On("yoyo:logs", (info: any) => { setLogs(unwrapEvent(info) || {}); openSettings("advanced", "advanced-logs"); }));
+        offs.push(Events.On("yoyo:item", (ev: any) => {
+          const kind = String(ev?.item_kind || ev?.ItemKind || "");
+          const payload = (ev?.payload || ev?.Payload || {}) as Record<string, unknown>;
+          if (kind === "video_route") handlers.current.route(payload);
+          if (kind === "cut_state") handlers.current.cut(payload);
+        }));
       } catch {
         /* browser */
       }
@@ -1632,6 +1655,7 @@ export function useWorkstation() {
     const id = String(p?.id || "");
     const src = String(p?.source_hash || hash);
     if (!id) throw new Error("cut project was not created");
+    useCutDesk.getState().setProject(p as CutProject, t.id);
     useUI.getState().setDraft(t.id, cutPrompt(copy, id, src));
     openThread(t, { keepPane: true });
     useUI.getState().openVideoPane("create");
@@ -1892,6 +1916,145 @@ export function useWorkstation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn]);
 
+  async function ingestVideo(source: { path?: string; file?: File } = {}) {
+    let path = String(source.path || "").trim();
+    const file = source.file;
+    if (!path && file) path = "";
+    if (!path && !file) {
+      const picked = await api.pickFiles();
+      path = picked.find((item) => isVideoPath(item)) || "";
+      if (!path) {
+        if (picked.length) toast.error(copy.composer.importClipHint);
+        return;
+      }
+    }
+    if (path && !isVideoPath(path)) {
+      toast.error(copy.composer.importClipHint);
+      return;
+    }
+    const t = await ensureLaneThread("create");
+    useUI.getState().openVideoPane("create");
+    try {
+      const project = path
+        ? await ingestVideoPath(path, t.id)
+        : await ingestVideoFile(file as File, t.id);
+      if (!project?.id || !project.source_hash) throw new Error(copy.video.conductor.needHash);
+      useCutDesk.getState().setProject(project, t.id);
+      if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+    } catch (e) {
+      const tooBig = e instanceof Error && e.message === "clip too large";
+      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e));
+    }
+  }
+
+  async function openCut(id: string) {
+    const cutId = String(id || "").trim();
+    if (!cutId) return;
+    try {
+      const t = await ensureLaneThread("create");
+      await api.video.cutBind(t.id, cutId);
+      const project = await api.video.cutGet(cutId) as CutProject;
+      useCutDesk.getState().setProject(project, t.id);
+      useUI.getState().openVideoPane("create");
+      if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    }
+  }
+
+  async function openCreateHandoff(dest: "studio" | "drama" | "canvas") {
+    try {
+      await openCreateHandoffInner(dest);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    }
+  }
+
+  async function openCreateHandoffInner(dest: "studio" | "drama" | "canvas") {
+    if (dest === "studio") {
+      const cfg = await api.video.settings().catch(() => ({} as Record<string, string>));
+      const aspect = String(cfg?.studio_aspect || "9:16");
+      const project = await api.video.createStudio({
+        title: copy.video.shellStudio,
+        aspect: aspect === "16:9" || aspect === "1:1" ? aspect : "9:16",
+      });
+      if (!project?.id) return;
+      await ensureStudioThread(asStudioProject({
+        id: project.id,
+        title: project.title || copy.video.shellStudio,
+        status: project.status,
+        gate: project.gate,
+      }));
+      void loadVideoHistory();
+      return;
+    }
+    if (dest === "drama") {
+      let dramaId = useDramaSelection.getState().dramaId;
+      let episodeId = useDramaSelection.getState().episodeId;
+      if (!dramaId) {
+        const drama = await api.video.createDrama({ title: "", style: defaultDramaStyle(), aspect_ratio: "9:16" });
+        dramaId = String(drama?.id || "");
+        episodeId = "";
+      }
+      if (!dramaId) return;
+      if (!episodeId) {
+        const episode = await api.video.createEpisode(dramaId, copy.video.untitledEp, "");
+        episodeId = String(episode?.id || "");
+      }
+      if (!episodeId) return;
+      useDramaSelection.getState().setDramaId(dramaId);
+      useDramaSelection.getState().setEpisodeId(episodeId);
+      const t = await ensureLaneThread("drama");
+      await api.video.bind(t.id, episodeId, dramaId).catch(() => {});
+      useUI.getState().openVideoPane("drama");
+      if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+      void loadVideoHistory();
+      return;
+    }
+    const t = await ensureLaneThread("canvas");
+    const canvasId = await ensureCanvasProject(t.id, copy.video.canvas);
+    useUI.getState().openVideoPane("canvas", { canvasFocus: canvasId ? "editor" : "library" });
+    if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+    void loadVideoHistory();
+  }
+
+  function applyVideoRoute(payload: Record<string, unknown>) {
+    const pane = String(payload.pane || "");
+    const id = String(payload.id || "");
+    const title = String(payload.title || "");
+    if (pane === "studio" && id) {
+      useCutDesk.getState().clear();
+      useStudioSelection.getState().setStudioId(id);
+      if (title) useStudioSelection.getState().setStudioMeta({ title });
+      useUI.getState().openVideoPane("studio");
+      void loadVideoHistory();
+      return;
+    }
+    if (pane === "drama" && id) {
+      useCutDesk.getState().clear();
+      const dramaId = String(payload.drama_id || "");
+      if (dramaId) useDramaSelection.getState().setDramaId(dramaId);
+      useDramaSelection.getState().setEpisodeId(id);
+      useUI.getState().openVideoPane("drama");
+      void loadVideoHistory();
+      return;
+    }
+    if (pane === "canvas") {
+      useCutDesk.getState().clear();
+      if (id) useCanvasHost.setState({ projectId: id, title: title || copy.video.canvas });
+      useUI.getState().openVideoPane("canvas", { canvasFocus: id ? "editor" : "library" });
+      if (!id) {
+        const sid = String(payload.session_id || activeIdRef.current || "");
+        if (sid) void ensureCanvasProject(sid, title || copy.video.canvas);
+      }
+      void loadVideoHistory();
+      return;
+    }
+    if (pane === "create" && id) {
+      void openCut(id);
+    }
+  }
+
   handlers.current.slash = onSlash;
   handlers.current.command = (c) => {
     if (c === "review") {
@@ -1919,6 +2082,15 @@ export function useWorkstation() {
     const t = threads.find((x) => x.id === id);
     if (t) openThread(t);
   };
+  handlers.current.route = (payload) => { applyVideoRoute(payload); };
+  handlers.current.cut = (payload) => {
+    const id = String(payload.id || "");
+    const cur = useCutDesk.getState();
+    if (!id || cur.project?.id !== id) return;
+    void api.video.cutGet(id).then((row) => {
+      if (row?.id) useCutDesk.getState().setProject(row as CutProject, cur.sessionId);
+    }).catch(() => {});
+  };
 
   return {
     copy, lab, setLab, surface, harnessTab, setHarnessTab, openHarness, openSettings, closeSettings, openSkills, closeSkills, openPages, closePages, openVideo, closeVideo, showConversation, videoBoard, setVideoBoard, canvasStage, setCanvasStage, inspector, setInspector,
@@ -1934,7 +2106,7 @@ export function useWorkstation() {
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, openCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     onQueueCancel: async (id: string) => {
       if (!activeId) return;

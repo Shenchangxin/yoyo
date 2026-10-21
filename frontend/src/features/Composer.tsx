@@ -54,6 +54,8 @@ import { ApprovalTakeover } from "./session-chrome/ApprovalTakeover";
 import { DraftEditor, type DraftEditorHandle, type DraftSnapshot } from "./session-chrome/DraftEditor";
 import { CommandOverlay, type OverlayItem } from "./session-chrome/CommandOverlay";
 import { AttachmentRail, DropOverlay } from "./session-chrome/Attachments";
+import { isVideoPath, nativeFilePath } from "./video/ingest-clip";
+import { useCutDesk } from "./video/cut-desk";
 import { SendGlyph, StopGlyph } from "./session-chrome/icons";
 import { PermissionSelect } from "./session-chrome/PermissionSelect";
 import { WorkspaceChip } from "./session-chrome/WorkspaceChip";
@@ -87,6 +89,7 @@ export function Composer(props: {
   onSlash?: (cmd: string, rest: string) => void;
   onModel?: (model: string) => void;
   onPickFiles?: () => Promise<Attachment[]>;
+  onIngestVideo?: (source: { path?: string; file?: File }) => Promise<void>;
   onClipboard?: () => Promise<string>;
   onScreenshot?: () => Promise<string>;
   compact?: boolean;
@@ -157,6 +160,7 @@ export function Composer(props: {
   const dramaDesk = videoPane === "drama";
   const videoing = videoSurface && !props.compact && !dramaDesk;
   const createDesk = videoPane === "create";
+  const cutBound = useCutDesk((s) => !!s.project?.source_hash);
   const talkDesk = createDesk;
   const copilotDesk = studioDesk;
   const needWorkspace = !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
@@ -175,7 +179,7 @@ export function Composer(props: {
       : studioDesk
         ? copy.composer.placeholderStudioDesk
       : videoPane === "create"
-        ? copy.composer.placeholderConductor
+        ? (cutBound ? copy.composer.placeholderConductorCut : copy.composer.placeholderConductor)
       : videoSurface
         ? (videoMode === "canvas" ? copy.composer.placeholderCanvas : videoMode === "creative" ? copy.composer.placeholderCreative : copy.composer.placeholderDrama)
         : props.hero
@@ -269,7 +273,9 @@ export function Composer(props: {
     return [...fileRows, ...sessionRows];
   }, [mentionHit?.token, drilled, props.files, props.sessions, props.sessionId, props.workspace, copy, props.skills]);
 
-  const plusItems: OverlayItem[] = [
+  const plusItems: OverlayItem[] = createDesk
+    ? [{ token: "__import_clip__", label: copy.composer.importClip, hint: copy.composer.importClipHint, kind: "attach", section: copy.composer.sectionAdd }]
+    : [
     { token: "__file__", label: copy.composer.attach, hint: "", kind: "attach", section: copy.composer.sectionAdd },
     ...(props.onClipboard ? [{ token: "__clipboard__", label: copy.composer.clipboard, hint: "", kind: "clipboard" as const, section: copy.composer.sectionAdd }] : []),
     ...(props.onScreenshot ? [{ token: "__screenshot__", label: copy.composer.screenshot, hint: "", kind: "screenshot" as const, section: copy.composer.sectionAdd }] : []),
@@ -464,9 +470,10 @@ export function Composer(props: {
   }
 
   function pickOverlay(item: OverlayItem) {
-    if (item.token === "__file__") {
+    if (item.token === "__file__" || item.token === "__import_clip__") {
       setHint(null);
-      void pickAttachments();
+      if (item.token === "__import_clip__" || createDesk) void importClip();
+      else void pickAttachments();
       return;
     }
     if (item.token === "__clipboard__") {
@@ -498,6 +505,25 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
+  async function importClip() {
+    if (disabled) return;
+    if (props.onIngestVideo) {
+      const paths = await api.pickFiles();
+      const path = paths.find((item) => isVideoPath(item));
+      if (!path) {
+        if (paths.length) toast.error(copy.composer.importClipHint);
+        return;
+      }
+      try {
+        await props.onIngestVideo({ path });
+      } catch (e) {
+        toast.error(e instanceof Error && e.message === "clip too large" ? copy.composer.clipTooLarge : api.errMessage(e));
+      }
+      return;
+    }
+    fileRef.current?.click();
+  }
+
   async function pickAttachments() {
     if (disabled) return;
     if (!createDesk && props.onPickFiles) {
@@ -514,6 +540,30 @@ export function Composer(props: {
       return;
     }
     const files = Array.isArray(list) ? (list as File[]) : Array.from(list);
+    if (createDesk && props.onIngestVideo) {
+      const videos = files.filter(isVideoFile);
+      const rest = files.filter((f) => !isVideoFile(f));
+      if (videos.length) {
+        setAttaching(true);
+        try {
+          for (const f of videos) {
+            const path = nativeFilePath(f);
+            if (path) await props.onIngestVideo({ path });
+            else await props.onIngestVideo({ file: f });
+          }
+        } catch (e) {
+          const tooBig = e instanceof Error && e.message === "clip too large";
+          toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e));
+        } finally {
+          setAttaching(false);
+        }
+      }
+      if (!rest.length) return;
+      const next: Attachment[] = [];
+      for (const f of rest) next.push(await fileToAttachment(f));
+      setAtts((prev) => [...prev, ...next]);
+      return;
+    }
     const next: Attachment[] = [];
     const needsIngest = createDesk && files.some(isVideoFile);
     if (needsIngest) setAttaching(true);
@@ -723,7 +773,7 @@ export function Composer(props: {
                 if (e.dataTransfer?.files?.length) void addFiles(e.dataTransfer.files);
               }}
             >
-              <DropOverlay active={drop} />
+              <DropOverlay active={drop} label={createDesk ? copy.video.conductor.drop : undefined} />
               {showPopup && (overlayKind === "slash" || overlayKind === "plus") ? (
                 <CommandOverlay
                   label={overlayKind === "plus" ? copy.composer.addFilesOrCommands : copy.composer.mentionSuggestions}
@@ -832,16 +882,16 @@ export function Composer(props: {
                     />
                   ) : null}
                   {props.compact ? null : (
-                  <Tooltip content={copy.composer.addFilesOrCommands}>
+                  <Tooltip content={createDesk ? copy.composer.importClip : copy.composer.addFilesOrCommands}>
                     <button
                       type="button"
                       className="sc-add"
-                      aria-label={copy.composer.addFilesOrCommands}
-                      aria-haspopup="listbox"
-                      aria-expanded={hint === "plus"}
+                      aria-label={createDesk ? copy.composer.importClip : copy.composer.addFilesOrCommands}
+                      aria-haspopup={createDesk ? undefined : "listbox"}
+                      aria-expanded={createDesk ? undefined : hint === "plus"}
                       data-testid={studioDesk ? "studio-copilot-attach" : "composer-add"}
                       disabled={disabled}
-                      onClick={togglePlus}
+                      onClick={createDesk ? () => void importClip() : togglePlus}
                     >
                       <Plus className="size-3.5" />
                     </button>

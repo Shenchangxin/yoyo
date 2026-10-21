@@ -18,6 +18,7 @@ export function VideoWorkshop(props: {
   canvasProjectId?: string;
   dramaId?: string;
   onOpenProject?: (p: VideoProject) => void;
+  onOpenCut?: (id: string) => void;
   onRefreshHistory?: () => void;
 }) {
   const copy = useCopy();
@@ -52,6 +53,7 @@ export function VideoWorkshop(props: {
             studioId={studioId}
             sessionId={props.sessionId}
             onOpenProject={props.onOpenProject}
+            onOpenCut={props.onOpenCut}
             onRefresh={props.onRefreshHistory}
           />
         </div>
