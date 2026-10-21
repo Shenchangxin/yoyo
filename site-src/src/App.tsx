@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { COPY, detectLang, htmlLang, type GateKind, type Lang, type Scene } from "./copy";
 import { detectOs, FALLBACK_VERSION, fallbackAssets, hydrateRelease, RELEASES, type Asset } from "./release";
+import { SpaceStill } from "./space-still";
 import { Workstation, type VideoTab } from "./workstation";
 
 const SCENES: Scene[] = ["ask", "diff", "drama", "trust"];
@@ -50,7 +51,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#141413" : "#f3f0e8");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#121211" : "#f7f4ee");
   }, [theme]);
 
   useEffect(() => {
@@ -74,6 +75,27 @@ export function App() {
       setVersion(data.version);
       setAssets(data.assets);
     });
+  }, []);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const nodes = [...document.querySelectorAll<HTMLElement>("main > section:not(.hero), .foot")];
+    if (reduce) {
+      nodes.forEach((node) => node.classList.add("is-in"));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting || !(entry.target instanceof HTMLElement)) continue;
+          entry.target.classList.add("is-in");
+          io.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.14, rootMargin: "0px 0px -6% 0px" },
+    );
+    nodes.forEach((node) => io.observe(node));
+    return () => io.disconnect();
   }, []);
 
   useEffect(() => {
@@ -227,15 +249,17 @@ export function App() {
         </nav>
         <div className="nav-end">
           <LangSwitch lang={lang} onPick={chooseLang} />
-          <button type="button" className="icon-btn" aria-pressed={theme === "dark"} aria-label={theme === "dark" ? t.nav.themeToLight : t.nav.themeToDark} onClick={toggleTheme}>
+          <button type="button" className="icon-btn theme-btn" aria-pressed={theme === "dark"} aria-label={theme === "dark" ? t.nav.themeToLight : t.nav.themeToDark} onClick={toggleTheme}>
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
           <a className="nav-github" href={REPO}>
             GitHub
           </a>
           <a className="btn btn-ink nav-cta" href={preferred?.href || RELEASES} aria-label={t.nav.download}>
-            <DownloadIcon />
             <span className="nav-cta-label">{t.nav.download}</span>
+            <span className="btn-orb" aria-hidden="true">
+              <DownloadIcon />
+            </span>
           </a>
           <button
             type="button"
@@ -290,27 +314,37 @@ export function App() {
                 yoyo · {version}
               </p>
               <Lines as="h1" text={t.hero.title} />
-              <p className="dek">{t.hero.dek}</p>
-              <div className="hero-actions">
-                <a className="btn btn-ink" href={preferred?.href || RELEASES}>
-                  <DownloadIcon />
-                  <span>
-                    {t.hero.download} {version}
-                    {preferred ? <span className="btn-os"> · {preferred.label}</span> : null}
-                  </span>
-                </a>
-                <a className="text-link" href="#download">
-                  {t.hero.builds}
-                </a>
+              <div className="hero-lower">
+                <div className="hero-lead">
+                  <p className="dek">{t.hero.dek}</p>
+                  <div className="hero-actions">
+                    <a className="btn btn-ink btn-hero" href={preferred?.href || RELEASES}>
+                      <span>
+                        {t.hero.download} {version}
+                        {preferred ? <span className="btn-os"> · {preferred.label}</span> : null}
+                      </span>
+                      <span className="btn-orb" aria-hidden="true">
+                        <DownloadIcon />
+                      </span>
+                    </a>
+                    <a className="text-link" href="#download">
+                      {t.hero.builds}
+                    </a>
+                  </div>
+                  <p className="premise">{t.get.premise}</p>
+                  <ul className="ledger">
+                    {t.hero.chips.map((chip) => (
+                      <li key={chip}>{chip}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="hero-sculpture" aria-hidden="true">
+                  <SpaceStill theme={theme} />
+                </div>
               </div>
-              <p className="premise">{t.get.premise}</p>
-              <ul className="ledger">
-                {t.hero.chips.map((chip) => (
-                  <li key={chip}>{chip}</li>
-                ))}
-              </ul>
             </div>
-            <div className="hero-stage">
+          </div>
+          <div className="wrap hero-stage">
               <div id="stage" role="tabpanel" aria-labelledby={`scene-${stage}`} aria-describedby="stage-note">
                 <Workstation
                   t={t}
@@ -351,7 +385,6 @@ export function App() {
                   </a>
                 ) : null}
               </p>
-            </div>
           </div>
         </section>
 
