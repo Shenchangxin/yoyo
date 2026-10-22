@@ -97,8 +97,8 @@ func TestStudioCatalogsSeed(t *testing.T) {
 			t.Fatalf("cast asset %s category=%v", id, item["category"])
 		}
 	}
-	if castCount < 40 {
-		t.Fatalf("want >=40 character stills in 角色资产, got %d", castCount)
+	if castCount != 0 {
+		t.Fatalf("bundled character stills = %d, want 0", castCount)
 	}
 
 	folderRaw := library["folderCounts"]

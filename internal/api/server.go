@@ -17,6 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/trace"
+	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
 func Handler(a *app.App, static http.Handler) http.Handler {
@@ -1182,6 +1183,11 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 		mux.Handle(skin.AssetPrefix, skin.Handler(a.Skins))
 	}
 	if static != nil {
+		if a != nil && a.Video != nil {
+			if dir := a.Video.CharacterCastDir(); dir != "" {
+				static = video.CharacterCastMiddleware(dir, static)
+			}
+		}
 		mux.Handle("/", static)
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -50,6 +50,9 @@ Thumbs.db
 # Official PowerShell zip mirrors (upload to ModelScope; do not commit)
 /dist/pwsh/*.zip
 
+# Character still pack (upload to ModelScope; do not commit)
+/dist/character-cast.zip
+
 # Test scratch
 /tmp/
 testdata/tmp/

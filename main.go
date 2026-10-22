@@ -21,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
+	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
 //go:embed all:frontend/dist
@@ -165,7 +166,7 @@ func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http
 		}
 	}
 	return func(next http.Handler) http.Handler {
-		return skin.Middleware(store, next)
+		return video.CharacterCastMiddleware(video.CharacterCastRoot(homeRoot), skin.Middleware(store, next))
 	}
 }
 
