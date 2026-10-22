@@ -42,6 +42,7 @@ type Service struct {
 	companionHomeX     atomic.Int32
 	companionHomeY     atomic.Int32
 	companionHomeOK    atomic.Bool
+	companionShapeGen  atomic.Uint64
 	agentBusy          atomic.Bool
 	lastPulseSession   atomic.Value
 	cursorWatch        atomic.Bool

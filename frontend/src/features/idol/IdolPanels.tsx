@@ -18,6 +18,7 @@ import {
   type Idol,
   type Lore,
 } from "./model";
+import { presetByID, presetsOf, voicesFor, type ServiceVoice } from "./service-presets";
 
 export type IdolPanelKind = "edit" | "memories" | "gifts" | "lore" | "stats" | "circles" | "history";
 
@@ -86,11 +87,19 @@ function Editor(props: {
   const i = props.draft;
   const set = (patch: Partial<Idol>) => props.onDraft({ ...i, ...patch });
   const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [voices, setVoices] = useState<ServiceVoice[]>([]);
   const [preview, setPreview] = useState("");
   const [askDelete, setAskDelete] = useState(false);
   useEffect(() => {
     void api.idolCall("profiles").then((rows) => {
       setProfiles(asArray(rows).map((p: any) => ({ id: str(p.id), name: str(p.name) })).filter((p) => p.id));
+    }).catch(() => {});
+    void api.idolCall("settings_get").then((v) => {
+      const presets = presetsOf(v?.presets);
+      const provider = str(v?.speech_provider);
+      const id = provider || str(v?.fallback?.speech_preset);
+      const model = provider ? str(v?.speech_model) : str(v?.fallback?.speech_model);
+      setVoices(voicesFor(presetByID(presets, id, "speech"), model));
     }).catch(() => {});
   }, []);
   useEffect(() => {
@@ -121,7 +130,16 @@ function Editor(props: {
           <Input className="h-8" value={i.color} onChange={(e) => set({ color: e.target.value })} />
         </span>
       </label>
-      <Field label={c.voice} value={i.voice_id} onChange={(voice_id) => set({ voice_id })} />
+      {voices.length > 0 ? (
+        <label className="block text-[12px] text-muted">
+          {c.voice}
+          <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.voice_id} onChange={(e) => set({ voice_id: e.target.value })}>
+            <option value="">{c.voiceDefault}</option>
+            {voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            {i.voice_id && !voices.some((v) => v.id === i.voice_id) ? <option value={i.voice_id}>{i.voice_id}</option> : null}
+          </select>
+        </label>
+      ) : <Field label={c.voice} value={i.voice_id} onChange={(voice_id) => set({ voice_id })} />}
       <label className="block text-[12px] text-muted">
         {c.circle}
         <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.circle_id} onChange={(e) => set({ circle_id: e.target.value })}>
@@ -374,9 +392,11 @@ function Circles(props: {
           </article>
         );
       })}
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void saveCircle("", name); }}>
-        <Input className="h-8" value={name} placeholder={c.circleNamePh} onChange={(e) => setName(e.target.value)} />
-        <Button size="sm" type="submit" disabled={!name.trim()}>{c.createCircle}</Button>
+      <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void saveCircle("", name); }}>
+        <div className="min-w-0 flex-1">
+          <Input className="h-8" value={name} placeholder={c.circleNamePh} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <Button size="sm" type="submit" className="shrink-0 whitespace-nowrap" disabled={!name.trim()}>{c.createCircle}</Button>
       </form>
     </div>
   );

@@ -40,7 +40,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "appearance-palette", tab: "appearance", titleKey: "appearancePalette", keywords: "palette paper mist ink dim slate neutral stone charcoal blue" },
   { id: "appearance-skins", tab: "appearance", titleKey: "appearanceSkins", keywords: "wallpaper background picture image veil" },
   { id: "appearance-display", tab: "appearance", titleKey: "appearanceDisplay", keywords: "language locale scale zoom thinking reasoning work details compact verbose collapse laboratory lab harness sealed bon hash" },
-  { id: "idol-services", tab: "idol", titleKey: "idolServices", keywords: "idol llm asr tts image voice chat speech 偶像 语音 模型" },
+  { id: "idol-services", tab: "idol", titleKey: "idolServices", keywords: "idol llm asr tts image voice chat speech 偶像 语音 模型 音色 对话" },
   { id: "idol-you", tab: "idol", titleKey: "idolYou", keywords: "address birthday timezone name 称呼 生日" },
   { id: "idol-work", tab: "idol", titleKey: "idolWork", keywords: "agent profile tools work 动手 工作" },
   { id: "provider-account", tab: "provider", titleKey: "providerAccount", keywords: "api key base url vault" },

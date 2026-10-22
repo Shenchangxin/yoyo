@@ -2,24 +2,30 @@ package idol
 
 import "time"
 
-// Services is what the idol desk calls. Empty endpoints fall back to the
-// operator's existing model and generation connections. Keys live in the vault.
+// Services is what the idol desk calls. ChatModel is a session text model
+// ("connectionId::model", or empty for the active chat connection). Speech,
+// transcription, and image can name a built-in provider; empty endpoints fall
+// back to generation connections. Keys live in the vault. ChatBaseURL is a
+// legacy endpoint override.
 type Services struct {
-	ChatBaseURL   string `json:"chat_base_url"`
-	ChatModel     string `json:"chat_model"`
-	JudgeModel    string `json:"judge_model"`
-	SpeechBaseURL string `json:"speech_base_url"`
-	SpeechModel   string `json:"speech_model"`
-	SpeechVoice   string `json:"speech_voice"`
-	ASRBaseURL    string `json:"asr_base_url"`
-	ASRModel      string `json:"asr_model"`
-	ImageBaseURL  string `json:"image_base_url"`
-	ImageModel    string `json:"image_model"`
-	ReachOut      bool   `json:"reach_out"`
-	TextOnly      bool   `json:"text_only"`
-	PhoneTexture  bool   `json:"phone_texture"`
-	WorkEnabled   bool   `json:"work_enabled"`
-	WorkProfileID string `json:"work_profile_id"`
+	ChatBaseURL    string `json:"chat_base_url"`
+	ChatModel      string `json:"chat_model"`
+	JudgeModel     string `json:"judge_model"`
+	SpeechProvider string `json:"speech_provider,omitempty"`
+	SpeechBaseURL  string `json:"speech_base_url"`
+	SpeechModel    string `json:"speech_model"`
+	SpeechVoice    string `json:"speech_voice"`
+	ASRProvider    string `json:"asr_provider,omitempty"`
+	ASRBaseURL     string `json:"asr_base_url"`
+	ASRModel       string `json:"asr_model"`
+	ImageProvider  string `json:"image_provider,omitempty"`
+	ImageBaseURL   string `json:"image_base_url"`
+	ImageModel     string `json:"image_model"`
+	ReachOut       bool   `json:"reach_out"`
+	TextOnly       bool   `json:"text_only"`
+	PhoneTexture   bool   `json:"phone_texture"`
+	WorkEnabled    bool   `json:"work_enabled"`
+	WorkProfileID  string `json:"work_profile_id"`
 }
 
 // UserCard is how every idol addresses this operator. It is not a harness profile.

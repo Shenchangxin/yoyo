@@ -99,16 +99,53 @@ func companionDesignH(caption bool) float64 {
 	return float64(companionFrameH(caption))
 }
 
+type companionChildFit int
+
+const (
+	companionChildShape companionChildFit = iota
+	companionChildClear
+	companionChildSkip
+)
+
+// companionChildRegion decides what to do with one child HWND.
+// Tiny or not-yet-resized Chromium widgets must not inherit a scaled pet
+// clip — that stamps the idle blob onto the call page. During a call, drop
+// the stale clip so the webview can show the page once it catches the new size.
+func companionChildRegion(childW, childH, parentW, parentH int, inCall bool) companionChildFit {
+	if parentW < 8 || parentH < 8 {
+		return companionChildShape
+	}
+	if childW < 8 || childH < 8 {
+		if inCall {
+			return companionChildClear
+		}
+		return companionChildSkip
+	}
+	undersized := childW < parentW*4/5 || childH < parentH*4/5
+	oversized := childW > parentW*6/5 || childH > parentH*6/5
+	if !undersized && !oversized {
+		return companionChildShape
+	}
+	if inCall {
+		return companionChildClear
+	}
+	return companionChildSkip
+}
+
 type hitBox struct {
 	x, y, w, h int
 }
 
 // CompanionHit is true when a window-local point sits on the blob disk
-// or, when caption is on, on the caption chip under it. Units only need
-// to match the window size (DIP or physical).
+// or, when caption is on, on the caption chip under it. During a call the
+// whole card is the drag surface. Units only need to match the window size
+// (DIP or physical).
 func CompanionHit(lx, ly, winW, winH float64, caption bool) bool {
 	if winW < 8 || winH < 8 {
 		return false
+	}
+	if companionInteractive.Load() {
+		return lx >= 0 && ly >= 0 && lx <= winW && ly <= winH
 	}
 	sx := winW / float64(companionW)
 	sy := winH / companionDesignH(caption)

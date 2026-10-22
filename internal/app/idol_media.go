@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -17,22 +18,41 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+type idolMediaFallback struct {
+	SpeechPreset string `json:"speech_preset,omitempty"`
+	SpeechName   string `json:"speech_name,omitempty"`
+	SpeechModel  string `json:"speech_model,omitempty"`
+	ASRPreset    string `json:"asr_preset,omitempty"`
+	ASRName      string `json:"asr_name,omitempty"`
+	ASRModel     string `json:"asr_model,omitempty"`
+	ImagePreset  string `json:"image_preset,omitempty"`
+	ImageName    string `json:"image_name,omitempty"`
+	ImageModel   string `json:"image_model,omitempty"`
+}
+
 type idolSettingsView struct {
 	idol.Services
-	User        idol.UserCard `json:"user"`
-	ChatKey     string        `json:"chat_key_hint"`
-	SpeechKey   string        `json:"speech_key_hint"`
-	ASRKey      string        `json:"asr_key_hint"`
-	ImageKey    string        `json:"image_key_hint"`
-	ChatReady   bool          `json:"chat_ready"`
-	SpeechReady bool          `json:"speech_ready"`
-	ASRReady    bool          `json:"asr_ready"`
-	ImageReady  bool          `json:"image_ready"`
+	User        idol.UserCard        `json:"user"`
+	Presets     []idol.ServicePreset `json:"presets"`
+	Fallback    idolMediaFallback    `json:"fallback"`
+	ChatKey     string               `json:"chat_key_hint"`
+	SpeechKey   string               `json:"speech_key_hint"`
+	ASRKey      string               `json:"asr_key_hint"`
+	ImageKey    string               `json:"image_key_hint"`
+	ChatReady   bool                 `json:"chat_ready"`
+	SpeechReady bool                 `json:"speech_ready"`
+	ASRReady    bool                 `json:"asr_ready"`
+	ImageReady  bool                 `json:"image_ready"`
 }
 
 func (a *App) idolSettingsView() idolSettingsView {
 	st := a.Idols.View()
-	v := idolSettingsView{Services: st.Services, User: st.User}
+	v := idolSettingsView{
+		Services: idol.NormalizeServices(st.Services),
+		User:     st.User,
+		Presets:  idol.ServicePresets(),
+		Fallback: a.idolMediaFallback(),
+	}
 	v.ChatKey = keyHint(a.vaultIdol("idol.chat"))
 	v.SpeechKey = keyHint(a.vaultIdol("idol.speech"))
 	v.ASRKey = keyHint(a.vaultIdol("idol.asr"))
@@ -60,6 +80,7 @@ func (a *App) idolSaveSettings(payload string) (string, error) {
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		return "", err
 	}
+	p.Services = idol.NormalizeServices(p.Services)
 	if err := a.Idols.SaveServices(p.Services); err != nil {
 		return "", err
 	}
@@ -210,66 +231,112 @@ func (a *App) idolSaveLore(payload string) (string, error) {
 }
 
 func (a *App) idolVoice(idolID string) string {
+	if a == nil || a.Idols == nil {
+		return "alloy"
+	}
 	st := a.Idols.View()
 	if it, ok := st.Idol(idolID); ok && strings.TrimSpace(it.VoiceID) != "" {
 		return strings.TrimSpace(it.VoiceID)
 	}
-	if v := strings.TrimSpace(st.Services.SpeechVoice); v != "" {
+	svc := idol.NormalizeServices(st.Services)
+	if v := strings.TrimSpace(svc.SpeechVoice); v != "" {
 		return v
 	}
 	return "alloy"
 }
+
+// errNoChatConn is returned when no session chat connection can be resolved.
+// The text includes "chat model" so the idol desk can point at settings.
+var errNoChatConn = errors.New("configure a chat model in Settings → Idol or Models")
 
 func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 	if a == nil || a.Idols == nil {
 		return nil, "", fmt.Errorf("idol store missing")
 	}
 	svc := a.Idols.View().Services
-	model := strings.TrimSpace(svc.ChatModel)
+	picked := strings.TrimSpace(svc.ChatModel)
 	if kind == "judge" && strings.TrimSpace(svc.JudgeModel) != "" {
-		model = strings.TrimSpace(svc.JudgeModel)
+		picked = strings.TrimSpace(svc.JudgeModel)
 	}
-	base := strings.TrimSpace(svc.ChatBaseURL)
-	key := a.vaultIdol("idol.chat")
-	if base != "" {
-		if key == "" {
-			key = a.fallbackChatKey()
-		}
-		if model == "" {
-			model = strings.TrimSpace(a.Config.Model)
-		}
-		if model == "" {
-			model = "gpt-4.1-mini"
-		}
-		if key == "" {
-			return nil, "", fmt.Errorf("fill an idol chat key, or a model connection in Settings")
-		}
-		return runtime.NewOpenAIClient(base, key), model, nil
+	client, model, err := a.idolSessionClient(picked)
+	if err == nil {
+		return client, model, nil
 	}
-	if r := a.connReg(); r != nil {
-		if c, err := r.Active(connection.CapChat, ""); err == nil {
-			client := a.openAIForConn(c)
-			if client == nil {
-				return nil, "", fmt.Errorf("chat connection has no key")
-			}
-			if model == "" {
-				model = connection.ModelFor(c, connection.CapChat)
-			}
-			if model == "" {
-				model = strings.TrimSpace(a.Config.Model)
-			}
-			return client, model, nil
-		}
+	if !errors.Is(err, errNoChatConn) {
+		return nil, "", err
 	}
-	key = a.fallbackChatKey()
-	if key == "" {
-		return nil, "", fmt.Errorf("configure a chat model in Settings → Idol or Models")
+	// A saved legacy endpoint still works until a text model from Settings →
+	// Models is available. The settings page clears it on the next save.
+	if strings.TrimSpace(svc.ChatBaseURL) != "" {
+		return a.idolLegacyClient(svc.ChatBaseURL, picked)
+	}
+	return a.idolConfigClient(picked)
+}
+
+func (a *App) idolSessionClient(picked string) (*runtime.OpenAIClient, string, error) {
+	connID, model := a.splitSessionModel(picked)
+	if connID == "" {
+		model = sessionModelName(picked)
+	}
+	c, err := a.resolveChatConnection(SessionMeta{ConnectionID: connID, Model: model})
+	if err != nil || strings.TrimSpace(c.ID) == "" {
+		return nil, "", errNoChatConn
+	}
+	client := a.openAIForConn(c)
+	if client == nil || strings.TrimSpace(client.APIKey) == "" {
+		return nil, "", fmt.Errorf("chat connection has no key")
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = connection.ModelFor(c, connection.CapChat)
 	}
 	if model == "" {
 		model = strings.TrimSpace(a.Config.Model)
 	}
 	if model == "" {
+		return nil, "", fmt.Errorf("configure a chat model in Settings → Idol or Models")
+	}
+	return client, model, nil
+}
+
+func sessionModelName(picked string) string {
+	picked = strings.TrimSpace(picked)
+	left, right, ok := strings.Cut(picked, "::")
+	if !ok || strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
+		return picked
+	}
+	return strings.TrimSpace(right)
+}
+
+func (a *App) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, string, error) {
+	key := a.vaultIdol("idol.chat")
+	if key == "" {
+		key = a.fallbackChatKey()
+	}
+	model := sessionModelName(picked)
+	if model == "" {
+		model = strings.TrimSpace(a.Config.Model)
+	}
+	if model == "" {
 		model = "gpt-4.1-mini"
+	}
+	if key == "" {
+		return nil, "", fmt.Errorf("configure a chat model in Settings → Idol or Models")
+	}
+	return runtime.NewOpenAIClient(base, key), model, nil
+}
+
+func (a *App) idolConfigClient(picked string) (*runtime.OpenAIClient, string, error) {
+	key := a.fallbackChatKey()
+	model := sessionModelName(picked)
+	if model == "" {
+		model = strings.TrimSpace(a.Config.Model)
+	}
+	if model == "" {
+		model = "gpt-4.1-mini"
+	}
+	if key == "" || strings.TrimSpace(a.Config.BaseURL) == "" {
+		return nil, "", errNoChatConn
 	}
 	return runtime.NewOpenAIClient(a.Config.BaseURL, key), model, nil
 }
@@ -286,29 +353,18 @@ func (a *App) fallbackChatKey() string {
 	return ""
 }
 
-func (a *App) idolSpeechCreds(voice string) (base, key, model string, err error) {
-	svc := a.Idols.View().Services
-	base = strings.TrimSpace(svc.SpeechBaseURL)
-	model = strings.TrimSpace(svc.SpeechModel)
-	key = a.vaultIdol("idol.speech")
-	if voice == "" {
-		voice = strings.TrimSpace(svc.SpeechVoice)
-	}
+func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
+	base, key, model, provider := a.idolMediaFields("speech")
 	if base == "" {
 		ep, k, m, e := a.speechCreds()
 		if e != nil {
 			return "", "", "", e
 		}
-		base, key, model = ep, k, firstNonEmpty(model, m)
+		return ep, firstNonEmpty(key, k), firstNonEmpty(model, m), nil
 	}
-	if key == "" {
-		_, k, _, e := a.speechCreds()
-		if e == nil {
-			key = k
-		}
-	}
-	if base == "" {
-		return "", "", "", fmt.Errorf("speech connection not configured")
+	key = a.borrowMediaKey(connection.CapSpeech, provider, base, key)
+	if provider != "" && key == "" {
+		return "", "", "", fmt.Errorf("add a speech key in Settings → Idol, or a matching speech connection under Generation")
 	}
 	return base, key, model, nil
 }
@@ -322,15 +378,15 @@ func (a *App) idolSpeak(text, voice string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	if voice == "" {
-		voice = "alloy"
+	if strings.TrimSpace(voice) == "" {
+		voice = a.idolVoice("")
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"model": firstNonEmpty(model, "gpt-4o-mini-tts"),
 		"input": text,
 		"voice": voice,
 	})
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(base, "/")+"/audio/speech", bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, idol.MediaURL(base, "audio/speech"), bytes.NewReader(payload))
 	if err != nil {
 		return nil, "", err
 	}
@@ -355,10 +411,7 @@ func (a *App) idolSpeak(text, voice string) ([]byte, string, error) {
 }
 
 func (a *App) idolASRCreds() (base, key, model string, err error) {
-	svc := a.Idols.View().Services
-	base = strings.TrimSpace(svc.ASRBaseURL)
-	model = strings.TrimSpace(svc.ASRModel)
-	key = a.vaultIdol("idol.asr")
+	base, key, model, provider := a.idolMediaFields("asr")
 	if base == "" {
 		if r := a.connReg(); r != nil {
 			if c, e := r.Active(connection.CapASR, ""); e == nil {
@@ -375,7 +428,11 @@ func (a *App) idolASRCreds() (base, key, model string, err error) {
 		if e != nil {
 			return "", "", "", fmt.Errorf("speech recognition is not configured")
 		}
-		base, key, model = ep, firstNonEmpty(key, k), firstNonEmpty(model, m)
+		return ep, firstNonEmpty(key, k), firstNonEmpty(model, m), nil
+	}
+	key = a.borrowMediaKey(connection.CapASR, provider, base, key)
+	if provider != "" && key == "" {
+		return "", "", "", fmt.Errorf("add an asr key in Settings → Idol, or a matching transcription connection under Generation")
 	}
 	return base, key, model, nil
 }
@@ -399,7 +456,7 @@ func (a *App) idolTranscribe(filename string, audio []byte) (string, error) {
 		return "", err
 	}
 	_ = w.Close()
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(base, "/")+"/audio/transcriptions", &buf)
+	req, err := http.NewRequest(http.MethodPost, idol.MediaURL(base, "audio/transcriptions"), &buf)
 	if err != nil {
 		return "", err
 	}
@@ -426,10 +483,7 @@ func (a *App) idolTranscribe(filename string, audio []byte) (string, error) {
 }
 
 func (a *App) idolImageCreds() (base, key, model string, err error) {
-	svc := a.Idols.View().Services
-	base = strings.TrimSpace(svc.ImageBaseURL)
-	model = strings.TrimSpace(svc.ImageModel)
-	key = a.vaultIdol("idol.image")
+	base, key, model, provider := a.idolMediaFields("image")
 	if base == "" {
 		if r := a.connReg(); r != nil {
 			if c, e := r.Active(connection.CapImage, ""); e == nil {
@@ -444,6 +498,10 @@ func (a *App) idolImageCreds() (base, key, model string, err error) {
 	if base == "" {
 		return "", "", "", fmt.Errorf("image connection not configured")
 	}
+	key = a.borrowMediaKey(connection.CapImage, provider, base, key)
+	if provider != "" && key == "" {
+		return "", "", "", fmt.Errorf("add an image key in Settings → Idol, or a matching image connection under Generation")
+	}
 	return base, key, model, nil
 }
 
@@ -457,7 +515,7 @@ func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
 		"prompt": prompt,
 		"size":   "1024x1024",
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(base, "/")+"/images/generations", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, idol.MediaURL(base, "images/generations"), bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +557,122 @@ func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
 	}
 	defer ires.Body.Close()
 	return io.ReadAll(io.LimitReader(ires.Body, 6<<20))
+}
+
+func (a *App) idolMediaFields(kind string) (base, key, model, provider string) {
+	var svc idol.Services
+	if a != nil && a.Idols != nil {
+		svc = idol.NormalizeServices(a.Idols.View().Services)
+	}
+	switch kind {
+	case "speech":
+		return strings.TrimSpace(svc.SpeechBaseURL), a.vaultIdol("idol.speech"), strings.TrimSpace(svc.SpeechModel), strings.TrimSpace(svc.SpeechProvider)
+	case "asr":
+		return strings.TrimSpace(svc.ASRBaseURL), a.vaultIdol("idol.asr"), strings.TrimSpace(svc.ASRModel), strings.TrimSpace(svc.ASRProvider)
+	default:
+		return strings.TrimSpace(svc.ImageBaseURL), a.vaultIdol("idol.image"), strings.TrimSpace(svc.ImageModel), strings.TrimSpace(svc.ImageProvider)
+	}
+}
+
+// borrowMediaKey keeps an idol vault key. Otherwise it reuses a generation
+// connection of the same kind, then a chat connection on the same host and
+// vendor. It does not borrow a key from a different provider.
+func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
+	if strings.TrimSpace(key) != "" {
+		return strings.TrimSpace(key)
+	}
+	vendor, root := "", endpoint
+	if p, ok := idol.Preset(provider); ok {
+		vendor, root = p.Vendor, p.Endpoint
+	}
+	if borrowed := a.leaseMediaKey(cap, vendor, root, false); borrowed != "" {
+		return borrowed
+	}
+	if vendor != "" && root != "" {
+		if borrowed := a.leaseMediaKey(connection.CapChat, vendor, root, true); borrowed != "" {
+			return borrowed
+		}
+	}
+	return ""
+}
+
+func (a *App) leaseMediaKey(cap, vendor, endpoint string, strict bool) string {
+	r := a.connReg()
+	if r == nil || strings.TrimSpace(cap) == "" {
+		return ""
+	}
+	list, err := r.List(cap)
+	if err != nil {
+		return ""
+	}
+	vendor = strings.TrimSpace(vendor)
+	endpoint = strings.TrimSpace(endpoint)
+	var vendorOnly connection.Connection
+	var sawVendor bool
+	for _, c := range list {
+		if !c.Active {
+			continue
+		}
+		vendorOK := vendor != "" && strings.EqualFold(strings.TrimSpace(c.Vendor), vendor)
+		hostOK := endpoint != "" && idol.SameEndpoint(c.Endpoint, endpoint)
+		if strict && !(vendorOK && hostOK) {
+			continue
+		}
+		if hostOK && (vendor == "" || vendorOK || !strict) {
+			if key := leasedKey(r, c); key != "" {
+				return key
+			}
+		}
+		if !strict && vendorOK && !sawVendor {
+			vendorOnly = c
+			sawVendor = true
+		}
+	}
+	if sawVendor {
+		return leasedKey(r, vendorOnly)
+	}
+	return ""
+}
+
+func leasedKey(r *connection.Registry, c connection.Connection) string {
+	if r == nil {
+		return ""
+	}
+	k, err := r.Lease(c)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(k)
+}
+
+func (a *App) idolMediaFallback() idolMediaFallback {
+	var out idolMediaFallback
+	name, vendor, endpoint, model := a.activeMedia(connection.CapSpeech)
+	out.SpeechName, out.SpeechModel = name, model
+	out.SpeechPreset = idol.MatchPreset("speech", vendor, endpoint)
+	name, vendor, endpoint, model = a.activeMedia(connection.CapASR)
+	out.ASRName, out.ASRModel = name, model
+	out.ASRPreset = idol.MatchPreset("asr", vendor, endpoint)
+	name, vendor, endpoint, model = a.activeMedia(connection.CapImage)
+	out.ImageName, out.ImageModel = name, model
+	out.ImagePreset = idol.MatchPreset("image", vendor, endpoint)
+	return out
+}
+
+func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
+	r := a.connReg()
+	if r == nil {
+		return
+	}
+	c, err := r.Active(cap, "")
+	if err != nil {
+		return
+	}
+	name = strings.TrimSpace(c.Name)
+	if name == "" {
+		name = strings.TrimSpace(c.Vendor)
+	}
+	return name, c.Vendor, c.Endpoint, connection.ModelFor(c, cap)
 }
 
 func (a *App) idolPing(payload string) (string, error) {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Phone } from "lucide-react";
 import { useBusyMs } from "./busy";
 import { presenceLine, presenceOf } from "./director";
@@ -288,6 +288,22 @@ export function CompanionApp() {
   useEffect(() => () => { void api.setCompanionCaption(false); }, []);
 
   const grab = useRef<{ dx: number; dy: number; sx: number; sy: number } | null>(null);
+  const dragStart = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest?.("button, input, textarea, a, [data-companion-call]")) return;
+    dragged.current = false;
+    grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const dragMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const g = grab.current;
+    if (!e.buttons || !g) return;
+    if (Math.abs(e.screenX - g.sx) + Math.abs(e.screenY - g.sy) > 3) dragged.current = true;
+    if (!/Windows/i.test(navigator.userAgent)) {
+      void api.placeCompanion(e.screenX - g.dx, e.screenY - g.dy);
+    }
+  };
+  const dragEnd = () => { grab.current = null; };
 
   const open = () => {
     const sid = activePulse?.session || sessionRef.current;
@@ -297,7 +313,15 @@ export function CompanionApp() {
 
   if (inCall) {
     return (
-      <div className="companion-stage companion-stage-call" data-testid="companion-stage" data-context-menu="yoyo-companion">
+      <div
+        className="companion-stage companion-stage-call"
+        data-testid="companion-stage"
+        data-context-menu="yoyo-companion"
+        onPointerDown={dragStart}
+        onPointerMove={dragMove}
+        onPointerUp={dragEnd}
+        onPointerCancel={dragEnd}
+      >
         <IdolCall
           paused={paused}
           approvals={approvals}
@@ -326,23 +350,10 @@ export function CompanionApp() {
         data-live={emotion.live ? "true" : undefined}
         data-loading={loading ? "true" : undefined}
         onPointerEnter={() => bump()}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          if ((e.target as HTMLElement).closest?.("[data-companion-call]")) return;
-          dragged.current = false;
-          grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          const g = grab.current;
-          if (!e.buttons || !g) return;
-          if (Math.abs(e.screenX - g.sx) + Math.abs(e.screenY - g.sy) > 3) dragged.current = true;
-          if (!/Windows/i.test(navigator.userAgent)) {
-            void api.placeCompanion(e.screenX - g.dx, e.screenY - g.dy);
-          }
-        }}
-        onPointerUp={() => { grab.current = null; }}
-        onPointerCancel={() => { grab.current = null; }}
+        onPointerDown={dragStart}
+        onPointerMove={dragMove}
+        onPointerUp={dragEnd}
+        onPointerCancel={dragEnd}
         onClick={() => { if (!dragged.current) open(); }}
       >
         {face ? (

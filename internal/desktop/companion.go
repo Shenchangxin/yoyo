@@ -216,6 +216,7 @@ func (s *Service) endCompanionCall(resizeAndRefresh bool) {
 			s.restoreCompanionHome(win)
 			s.syncCompanionFrame()
 			s.syncCompanionClickThrough()
+			s.settleCompanionShape()
 		}
 	}
 	if s.gui != nil {
@@ -268,6 +269,7 @@ func (s *Service) applyCompanionCallGeometry() {
 	if win == nil {
 		return
 	}
+	defer s.settleCompanionShape()
 	if on {
 		x, y := win.Position()
 		w, h := win.Size()
@@ -291,6 +293,36 @@ func (s *Service) applyCompanionCallGeometry() {
 	if !s.companionIgnoresHits() {
 		setCompanionPassthrough(win, true)
 	}
+}
+
+// settleCompanionShape reapplies the window region while the webview child
+// catches up to a call-size change. One shot is often still the idle blob,
+// which clips the call page down to the pet.
+func (s *Service) settleCompanionShape() {
+	if s == nil || s.companion == nil {
+		return
+	}
+	gen := s.companionShapeGen.Add(1)
+	go func() {
+		for _, wait := range []time.Duration{
+			30 * time.Millisecond,
+			50 * time.Millisecond,
+			80 * time.Millisecond,
+			120 * time.Millisecond,
+			200 * time.Millisecond,
+			300 * time.Millisecond,
+		} {
+			time.Sleep(wait)
+			if s.companionShapeGen.Load() != gen || s.quitting.Load() {
+				return
+			}
+			win := s.companion
+			if win == nil {
+				return
+			}
+			applyCompanionShape(win, s.companionCaption.Load() || s.companionCall.Load())
+		}
+	}()
 }
 
 func (s *Service) replayCompanionCall() {
@@ -533,10 +565,10 @@ func (s *Service) startCursorWatch() {
 				setCompanionPassthrough(win, want)
 			}
 			cx, cy, curOK := desktopCursorCSS()
-			if ignore || inCall {
+			if ignore {
 				armed, dragging = false, false
 			}
-			if down && !downPrev && hit && curOK && !ignore && !inCall {
+			if down && !downPrev && hit && curOK && !ignore {
 				wx, wy := win.Position()
 				armed = true
 				grabX = cx - float64(wx)
