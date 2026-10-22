@@ -30,6 +30,7 @@ func (a *App) openVideo() error {
 	if err := eng.StartMediaServer(); err != nil {
 		diaglog.Warn("video media server failed", "component", "video", "err", err)
 	}
+	eng.StartCharacterCast()
 	eng.OnJob = a.onVideoJob
 	eng.OnHub = a.onCanvasHub
 	a.Video = eng

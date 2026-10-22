@@ -50,9 +50,15 @@ type Engine struct {
 	binds    map[string]Bind
 	inflight sync.Map
 	uploads  sync.Map
+	ctx      context.Context
 	cancel   context.CancelFunc
 	OnJob    func(Job)
 	OnHub    func(kind string, payload map[string]any)
+
+	castFile string
+	castURL  string
+	castSHA  *string
+	castHTTP HTTPDoer
 
 	Proto     *protocol.Registry
 	PluginDir string
@@ -127,6 +133,7 @@ func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry)
 	_ = e.loadCanvasPlugins()
 	_ = e.seedStudioAssets()
 	ctx, cancel := context.WithCancel(context.Background())
+	e.ctx = ctx
 	e.cancel = cancel
 	e.resumeJobs()
 	go e.loop(ctx)
