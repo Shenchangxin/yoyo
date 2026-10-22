@@ -261,6 +261,26 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 		}
 	}
 	WriteMCPCatalog(t.Workspace, t.Extra)
+	// Gateways reject the whole turn when a name appears twice. Host schemas
+	// stay; a later extra with the same name (canvas ask_user) is dropped.
+	return uniqueToolJSON(out)
+}
+
+func uniqueToolJSON(in []ToolJSON) []ToolJSON {
+	if len(in) < 2 {
+		return in
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]ToolJSON, 0, len(in))
+	for _, j := range in {
+		name, _ := j.Function["name"].(string)
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, j)
+	}
 	return out
 }
 

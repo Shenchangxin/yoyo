@@ -9,6 +9,24 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+func TestReleaseCutBindReturnsHome(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateCutProject(CutProject{Title: "口播"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.BindCutSession("sess-home", p.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.ReleaseCutBind("sess-home")
+	if _, ok := e.CutSessionBind("sess-home"); ok {
+		t.Fatal("session still bound")
+	}
+	if _, err := e.GetCutProject(p.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCutProjectCRUD(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateCutProject(CutProject{Title: "口播小样"})
@@ -28,6 +46,13 @@ func TestCutProjectCRUD(t *testing.T) {
 	id, ok := e.CutSessionBind("sess-cut")
 	if !ok || id != p.ID {
 		t.Fatalf("bind %s %v", id, ok)
+	}
+	got, err = e.GetCutProject(p.ID)
+	if err != nil || got.SessionID != "sess-cut" {
+		t.Fatalf("session %q %v", got.SessionID, err)
+	}
+	if e.LatestCutSession(p.ID) != "sess-cut" {
+		t.Fatalf("latest %s", e.LatestCutSession(p.ID))
 	}
 	list := e.ListCutProjects()
 	if len(list) != 1 {
@@ -216,6 +241,9 @@ func TestSampleAIngestProposeKeepAudio(t *testing.T) {
 	p, err := e.CutIngest("", hash, "口播小样A")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if p.Duration < 8 {
+		t.Fatalf("ingest duration %v", p.Duration)
 	}
 	p, err = e.CutAnalyze(p.ID)
 	if err != nil {

@@ -30,9 +30,10 @@ import { cutPrompt, ingestClipUrl, installSendToCut, resourceIdFromSend, type Se
 import { ensureCanvasProject, useCanvasHost } from "../video/canvas-host/session";
 import { asStudioProject, studioSessionId } from "../video/studio-session";
 import { laneAcceptsSession, lastLaneThread, rememberLaneThread, sessionLane, type VideoLane } from "../video/video-lanes";
+import { cutThreadId, isCutThread, rememberCutThread } from "../video/cut-threads";
 import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../video/workshop-store";
 import { useCutDesk, type CutProject } from "../video/cut-desk";
-import { ingestVideoFile, ingestVideoPath, isVideoPath } from "../video/ingest-clip";
+import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
@@ -261,6 +262,8 @@ export function useWorkstation() {
   threadsRef.current = threads;
   const studioThreadJobs = useRef<Record<string, Promise<Thread>>>({});
   const laneThreadJobs = useRef<Record<string, Promise<Thread>>>({});
+  const cutThreadJobs = useRef<Record<string, Promise<Thread>>>({});
+  const prepareWelcomeRef = useRef<() => Promise<Thread>>(async () => { throw new Error("welcome"); });
   const videoPane = useUI((s) => s.videoPane);
   const [active, setActive] = useState<Thread | null>(null);
   const activeRef = useRef(active);
@@ -969,7 +972,113 @@ export function useWorkstation() {
     return t;
   }
 
+  function findVideoThread(id: string): Thread | null {
+    const sid = (id || "").trim();
+    if (!sid) return null;
+    return threadsRef.current.find((t) => t.id === sid) || (activeRef.current?.id === sid ? activeRef.current : null);
+  }
+
+  async function threadOwnsCut(id: string): Promise<boolean> {
+    const sid = (id || "").trim();
+    if (!sid) return false;
+    if (isCutThread(sid)) return true;
+    const row = await api.video.cutSession(sid).catch(() => null);
+    const cutId = str(row?.id);
+    if (cutId && str(row?.source_hash)) {
+      rememberCutThread(cutId, sid);
+      return true;
+    }
+    const st = await api.video.sessionProject(sid).catch(() => null);
+    const kind = str(st?.kind);
+    return kind === "canvas" || kind === "drama" || kind === "studio";
+  }
+
+  async function prepareWelcomeThread(): Promise<Thread> {
+    const inflight = laneThreadJobs.current.create;
+    if (inflight) return inflight;
+    const job = (async () => {
+      const remembered = lastLaneThread("create");
+      let t = findVideoThread(remembered);
+      if (!t || await threadOwnsCut(t.id)) {
+        t = await mintVideoThread();
+        rememberLaneThread("create", t.id);
+      }
+      return t;
+    })();
+    laneThreadJobs.current.create = job;
+    try {
+      return await job;
+    } finally {
+      delete laneThreadJobs.current.create;
+    }
+  }
+
+  async function ensureCutThread(project: CutProject): Promise<Thread> {
+    const projectId = str(project.id);
+    if (!projectId) throw new Error("cut project required");
+    const inflight = cutThreadJobs.current[projectId];
+    if (inflight) return inflight;
+    const job = (async () => {
+      let sid = cutThreadId(projectId) || str(project.session_id);
+      if (!sid) {
+        const fresh = await api.video.cutGet(projectId).catch(() => null) as CutProject | null;
+        sid = str(fresh?.session_id);
+      }
+      let t = sid ? findVideoThread(sid) : null;
+      if (sid && !t) {
+        const fresh = await api.listSessions().catch(() => threadsRef.current);
+        setThreads(fresh);
+        threadsRef.current = fresh;
+        t = fresh.find((x) => x.id === sid) || null;
+      }
+      if (!t) {
+        t = await mintVideoThread();
+        const title = str(project.title);
+        if (title) {
+          await api.renameSession(t.id, title).catch(() => {});
+          t = { ...t, title };
+          setThreads((prev) => prev.map((x) => (x.id === t!.id ? t! : x)));
+        }
+      }
+      await api.video.cutBind(t.id, projectId);
+      rememberCutThread(projectId, t.id);
+      return t;
+    })();
+    cutThreadJobs.current[projectId] = job;
+    try {
+      return await job;
+    } finally {
+      delete cutThreadJobs.current[projectId];
+    }
+  }
+
+  async function claimCutThread(project: CutProject, session: Thread) {
+    const id = str(project.id);
+    if (id) rememberCutThread(id, session.id);
+    const title = str(project.title);
+    if (title && session.title !== title) {
+      await api.renameSession(session.id, title).catch(() => {});
+      session = { ...session, title };
+      setThreads((prev) => prev.map((x) => (x.id === session.id ? { ...x, title } : x)));
+    }
+    const next = await mintVideoThread();
+    rememberLaneThread("create", next.id);
+    useCutDesk.getState().setProject(project, session.id);
+    if (activeRef.current?.id !== session.id) {
+      itemsAcc.current = [];
+      setItems([]);
+      setQueued(0);
+      openThread(session, { keepPane: true });
+    }
+    useUI.getState().openVideoPane("create");
+  }
+
   async function ensureLaneThread(lane: VideoLane): Promise<Thread> {
+    if (lane === "create") {
+      const t = await prepareWelcomeThread();
+      activateLaneThread(t, lane);
+      return t;
+    }
     const inflight = laneThreadJobs.current[lane];
     if (inflight) return inflight;
     const job = (async () => {
@@ -982,7 +1091,6 @@ export function useWorkstation() {
         return hit;
       };
       let t = pick(remembered)
-        || (lane === "create" ? chats.find((x) => laneAcceptsSession(lane, x.id, projects)) || null : null)
         || (activeRef.current && threadChannel(activeRef.current) === "video" && laneAcceptsSession(lane, activeRef.current.id, projects) ? activeRef.current : null);
       if (!t) t = await mintVideoThread();
       activateLaneThread(t, lane);
@@ -996,6 +1104,18 @@ export function useWorkstation() {
     }
   }
 
+  prepareWelcomeRef.current = prepareWelcomeThread;
+  handlers.current.cut = (payload) => {
+    const id = str(payload.id);
+    const desk = useCutDesk.getState();
+    if (!id || desk.parked || desk.project?.id !== id) return;
+    void api.video.cutGet(id).then((row) => {
+      const now = useCutDesk.getState();
+      if (now.parked || now.project?.id !== id) return;
+      now.setProject(row as CutProject, now.sessionId);
+    }).catch(() => {});
+  };
+
   async function adoptVideoLane(pane: string) {
     if (pane === "studio" || pane === "assets" || pane === "skills" || pane === "plugins" || pane === "tasks" || pane === "game") return;
     if (pane === "drama") {
@@ -1004,6 +1124,21 @@ export function useWorkstation() {
     }
     if (pane === "canvas") {
       await ensureLaneThread("canvas");
+      return;
+    }
+    const desk = useCutDesk.getState();
+    if (desk.project?.id && desk.project.source_hash && !desk.parked) {
+      try {
+        const t = await ensureCutThread(desk.project);
+        if (activeRef.current?.id !== t.id) {
+          itemsAcc.current = [];
+          setItems([]);
+          setQueued(0);
+          openThread(t, { keepPane: true });
+        }
+      } catch {
+        /* the desk can stay on the thread it already has */
+      }
       return;
     }
     await ensureLaneThread("create");
@@ -1199,7 +1334,12 @@ export function useWorkstation() {
           sessionId: studioSessionId(studioId, videoProjectsRef.current),
         }));
       } else if (ui.surface === "video" && ui.videoPane === "create") {
-        t = await ensureLaneThread("create");
+        const desk = useCutDesk.getState();
+        if (desk.project?.id && desk.project.source_hash && !desk.parked) {
+          t = await ensureCutThread(desk.project);
+        } else {
+          t = await ensureLaneThread("create");
+        }
       } else if (ui.surface === "video" && ui.videoPane === "drama") {
         t = await ensureLaneThread("drama");
         await bindVideoThread(t.id).catch(() => {});
@@ -1623,15 +1763,10 @@ export function useWorkstation() {
       toast.message(c.sendNeedVideo);
       return;
     }
+    leaveGen.current += 1;
     let t = activeRef.current;
-    if (!t || threadChannel(t) !== "video") {
-      const created = await adoptPendingAuthMode(await api.createSession(channelWorkspace("video"), "video"));
-      t = created.channel ? created : { ...created, channel: "video" as ThreadChannel };
-      setThreads((prev) => {
-        const next = [t!, ...prev.filter((x) => x.id !== t!.id)];
-        threadsRef.current = next;
-        return next;
-      });
+    if (!t || threadChannel(t) !== "video" || await threadOwnsCut(t.id)) {
+      t = await prepareWelcomeThread();
     }
     toast.message(c.sendingToCut);
     let p: { id?: string; source_hash?: string };
@@ -1657,10 +1792,8 @@ export function useWorkstation() {
     const id = String(p?.id || "");
     const src = String(p?.source_hash || hash);
     if (!id) throw new Error("cut project was not created");
-    useCutDesk.getState().setProject(p as CutProject, t.id);
+    await claimCutThread(p as CutProject, t);
     useUI.getState().setDraft(t.id, cutPrompt(copy, id, src));
-    openThread(t, { keepPane: true });
-    useUI.getState().openVideoPane("create");
     toast.success(c.sentToCut);
   };
 
@@ -1807,6 +1940,24 @@ export function useWorkstation() {
     await api.setConfig(next);
   }
 
+  const leaveGen = useRef(0);
+  const leaveCut = useCallback(async () => {
+    const gen = ++leaveGen.current;
+    useCutDesk.getState().park();
+    useUI.getState().openVideoPane("create");
+    let welcome: Thread;
+    try {
+      welcome = await prepareWelcomeRef.current();
+    } catch (e) {
+      if (gen === leaveGen.current) toast.error(api.errMessage(e));
+      return;
+    }
+    if (gen !== leaveGen.current) return;
+    const now = useCutDesk.getState();
+    if (!now.parked && now.project?.source_hash) return;
+    activateLaneThread(welcome, "create");
+  }, []);
+
   useEffect(() => {
     const km = mergeKeymap(savedCfg.keymap);
     const onKey = (e: KeyboardEvent) => {
@@ -1869,6 +2020,10 @@ export function useWorkstation() {
             ui.openVideoPane("canvas", { canvasFocus: "library" });
             return;
           }
+          if (!typing && ui.videoPane === "create" && useCutDesk.getState().project?.source_hash) {
+            void leaveCut();
+            return;
+          }
           if (ui.videoPane !== "create" && ui.videoPane !== "chat") {
             ui.openVideoPane("create");
             return;
@@ -1916,12 +2071,17 @@ export function useWorkstation() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn]);
+  }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn, leaveCut]);
 
   async function ingestVideo(source: { path?: string; file?: File } = {}) {
+    leaveGen.current += 1;
     let path = String(source.path || "").trim();
     const file = source.file;
-    if (!path && file) path = "";
+    if (!path && file) path = nativeFilePath(file);
+    if (!path && file) {
+      toast.error(copy.video.conductor.needFile);
+      return;
+    }
     if (!path && !file) {
       const picked = await api.pickFiles();
       path = picked.find((item) => isVideoPath(item)) || "";
@@ -1934,31 +2094,34 @@ export function useWorkstation() {
       toast.error(copy.composer.importClipHint);
       return;
     }
-    const t = await ensureLaneThread("create");
-    useUI.getState().openVideoPane("create");
+    const toastId = toast.loading(copy.video.conductor.importing);
     try {
-      const project = path
-        ? await ingestVideoPath(path, t.id)
-        : await ingestVideoFile(file as File, t.id);
+      const t = await prepareWelcomeThread();
+      const project = await ingestVideoPath(path, t.id);
       if (!project?.id || !project.source_hash) throw new Error(copy.video.conductor.needHash);
-      useCutDesk.getState().setProject(project, t.id);
-      if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+      await claimCutThread(project, t);
+      toast.success(copy.video.conductor.importedOk, { id: toastId });
     } catch (e) {
       const tooBig = e instanceof Error && e.message === "clip too large";
-      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e));
+      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
     }
   }
 
   async function openCut(id: string) {
     const cutId = String(id || "").trim();
     if (!cutId) return;
+    leaveGen.current += 1;
     try {
-      const t = await ensureLaneThread("create");
-      await api.video.cutBind(t.id, cutId);
       const project = await api.video.cutGet(cutId) as CutProject;
-      useCutDesk.getState().setProject(project, t.id);
+      const t = await ensureCutThread(project);
+      useCutDesk.getState().setProject({ ...project, session_id: t.id }, t.id);
       useUI.getState().openVideoPane("create");
-      if (activeRef.current?.id !== t.id) openThread(t, { keepPane: true });
+      if (activeRef.current?.id !== t.id) {
+        itemsAcc.current = [];
+        setItems([]);
+        setQueued(0);
+        openThread(t, { keepPane: true });
+      }
     } catch (e) {
       toast.error(api.errMessage(e));
     }
@@ -2108,7 +2271,7 @@ export function useWorkstation() {
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, openCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     onQueueCancel: async (id: string) => {
       if (!activeId) return;

@@ -173,10 +173,14 @@ func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http
 		standDir = filepath.Join(d.Idols(), "stands")
 	}
 	return func(next http.Handler) http.Handler {
-		return video.CharacterCastMiddleware(
+		var eng *video.Engine
+		if core != nil {
+			eng = core.Video
+		}
+		return video.MediaAssetMiddleware(eng, video.CharacterCastMiddleware(
 			video.CharacterCastRoot(homeRoot),
 			idol.StandMiddleware(standDir, skin.Middleware(store, next)),
-		)
+		))
 	}
 }
 

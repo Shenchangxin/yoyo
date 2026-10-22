@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/connection"
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
@@ -34,7 +37,66 @@ func (e *Engine) CutIngest(id, hash, title string) (CutProject, error) {
 	if poster, perr := e.posterFromHash(hash); perr == nil {
 		p.PosterHash = poster
 	}
+	// Scene analysis is a later step. Length is read now so the desk does not
+	// open on a 0s clip that looks like the import failed.
+	if d := e.probeCutDuration(hash); d > 0 {
+		p.Duration = d
+	}
 	return e.saveCut(p)
+}
+
+func (e *Engine) probeCutDuration(hash string) float64 {
+	path := e.casFile(hash)
+	if path == "" {
+		// In-memory CAS (tests) has no file. Production clips are on disk and
+		// never take this copy.
+		src, err := e.materialize(hash, ".mp4")
+		if err != nil {
+			return 0
+		}
+		defer os.Remove(src)
+		path = src
+	}
+	if d := e.probeDurationFast(path); d > 0 {
+		return d
+	}
+	// ffmpeg -i reads the container. Skip that on large files so import cannot
+	// sit on a multi-gigabyte decode just to learn the length.
+	st, err := os.Stat(path)
+	if err != nil || st.Size() > 64<<20 {
+		return 0
+	}
+	d, err := e.cutBin().Duration(path)
+	if err != nil || d <= 0 || d > 24*60*60 {
+		return 0
+	}
+	return d
+}
+
+func (e *Engine) probeDurationFast(path string) float64 {
+	bin := strings.TrimSpace(e.FFProbe)
+	if bin == "" {
+		bin = strings.TrimSpace(e.FFMPEG)
+	}
+	if bin == "" {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(out))
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	d, err := strconv.ParseFloat(s, 64)
+	if err != nil || d <= 0 || d > 24*60*60 {
+		return 0
+	}
+	return d
 }
 
 func (e *Engine) CutAnalyze(id string) (CutProject, error) {
@@ -539,14 +601,17 @@ func (e *Engine) CutSetStem(id, kind, hash string) (CutProject, error) {
 }
 
 func (e *Engine) posterFromHash(hash string) (string, error) {
-	path := e.FilePath(hash)
+	path := e.casFile(hash)
+	temp := ""
 	if path == "" {
 		src, err := e.materialize(hash, ".mp4")
 		if err != nil {
 			return "", err
 		}
-		defer os.Remove(src)
-		path = src
+		path, temp = src, src
+	}
+	if temp != "" {
+		defer os.Remove(temp)
 	}
 	jpg, err := e.Poster(path)
 	if err != nil {

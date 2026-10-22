@@ -2485,6 +2485,7 @@ export const video = {
   cutCreate: (title = "", hash = "", sessionId = "") => videoCall("video.cut.create", { title, hash, session_id: sessionId }),
   cutGet: (id: string) => videoCall("video.cut.get", { id }),
   cutBind: (sessionId: string, id: string) => videoCall("video.cut.bind", { session_id: sessionId, id }),
+  cutRelease: (sessionId: string) => videoCall("video.cut.release", { session_id: sessionId }),
   cutSession: (sessionId: string) => videoCall("video.cut.session", { session_id: sessionId }),
   cutIngest: (id: string, hash: string, title = "") => videoCall("video.cut.ingest", { id, hash, title }),
   cutAnalyze: (id: string) => videoCall("video.cut.analyze", { id }),

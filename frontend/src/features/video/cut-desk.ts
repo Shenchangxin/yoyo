@@ -15,6 +15,7 @@ export type CutClip = {
 export type CutProject = {
   id?: string;
   title?: string;
+  session_id?: string;
   source_hash?: string;
   result_hash?: string;
   duration?: number;
@@ -37,27 +38,37 @@ export type CutProject = {
 type CutDeskState = {
   sessionId: string;
   project: CutProject | null;
+  /** User left the desk for the creation entrance. Do not snap the bound clip back open. */
+  parked: boolean;
   setProject: (project: CutProject | null, sessionId?: string) => void;
   noteSession: (sessionId: string) => void;
   adoptServer: (sessionId: string, project: CutProject | null) => void;
+  park: () => void;
   clear: () => void;
 };
 
 export const useCutDesk = create<CutDeskState>((set) => ({
   sessionId: "",
   project: null,
+  parked: false,
   setProject: (project, sessionId) => set((s) => ({
     project,
+    parked: false,
     sessionId: sessionId ?? s.sessionId,
   })),
-  noteSession: (sessionId) => set((s) => (s.sessionId === sessionId ? s : { sessionId, project: null })),
+  noteSession: (sessionId) => set((s) => (
+    s.sessionId === sessionId ? s : { sessionId, project: null, parked: false }
+  )),
   adoptServer: (sessionId, project) => set((s) => {
+    if (sessionId && s.sessionId && s.sessionId !== sessionId) return s;
+    if (s.parked && s.sessionId === sessionId) return { sessionId, project: null, parked: true };
     if (s.sessionId === sessionId && s.project?.source_hash && !project?.source_hash) return s;
-    if (project?.source_hash) return { project, sessionId };
-    if (s.sessionId === sessionId) return { project: null, sessionId };
+    if (project?.source_hash) return { project, sessionId, parked: false };
+    if (s.sessionId === sessionId) return { project: null, sessionId, parked: s.parked };
     return s;
   }),
-  clear: () => set({ project: null, sessionId: "" }),
+  park: () => set((s) => ({ project: null, parked: true, sessionId: s.sessionId })),
+  clear: () => set({ project: null, sessionId: "", parked: false }),
 }));
 
 export function cutClips(project: CutProject | null): CutClip[] {

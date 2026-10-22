@@ -2270,93 +2270,27 @@ details[open] > .fold-summary::before {
   height: 100%;
   min-height: 0;
 }
-.finish-stage {
+.cut-stage {
   display: flex;
   min-height: 100%;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px 16px 28px;
+  gap: 16px;
+  padding: 18px 20px 32px;
 }
-.finish-stage-head {
+.cut-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
+  margin: -18px -20px 0;
+  background: var(--background);
+  padding: 18px 20px 10px;
 }
-.finish-stage-head p,
-.finish-stage-ready,
-.finish-stage-empty,
-.finish-stage section h2 {
-  font-size: 12px;
-  color: var(--muted);
-}
-.finish-stage-head h1 {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-.finish-stage-head span,
-.finish-stage-list span,
-.finish-stage-cues span {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--muted);
-}
-.finish-stage-player {
-  width: 100%;
-  max-height: 42vh;
-  background: var(--media-surface);
-}
-.finish-stage-stale {
-  font-size: 12px;
-  color: var(--warning);
-}
-.finish-stage-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.finish-stage section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  padding-top: 12px;
-}
-.finish-stage-list,
-.finish-stage-cues,
-.creation-recent ul {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.finish-stage-list li,
-.creation-recent li button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-}
-.finish-stage-list label {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-.finish-stage-cues li {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  font-size: 12px;
-}
-.finish-stage-cues li[data-omit="true"] p {
-  color: var(--muted);
-  text-decoration: line-through;
-}
-.finish-stage-cues button,
+.cut-back,
+.cut-switch button,
+.cut-cues button,
 .creation-recent button,
 .creation-import,
 .creation-handoff-card {
@@ -2364,28 +2298,284 @@ details[open] > .fold-summary::before {
   color: inherit;
   text-align: left;
 }
-.finish-stage textarea {
-  min-height: 72px;
-  resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  padding: 8px;
-  font-size: 13px;
-}
-.finish-stage-duck {
+.cut-back {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
+  height: 28px;
+  margin-top: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px 0 8px;
   font-size: 12px;
-  color: var(--muted);
 }
-.finish-stage-preview {
+.cut-back:hover,
+.cut-switch button:hover,
+.cut-cues button:hover {
+  background: var(--lift);
+}
+.cut-top-copy {
+  min-width: 0;
+  flex: 1;
+}
+.cut-top-copy p,
+.cut-lead,
+.cut-block-hint,
+.cut-note,
+.cut-step small,
+.cut-step span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cut-title {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cut-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.cut-pill {
+  border-radius: 999px;
+  background: var(--lift);
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cut-lead {
+  max-width: 62ch;
+  font-size: 13px;
+}
+.cut-screen {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: min(52vh, 520px);
+  min-height: 180px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 14px;
+  background: var(--media-surface);
+}
+.cut-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.cut-frame video,
+.cut-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+}
+.cut-play {
+  position: absolute;
+  z-index: 1;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, black 58%, transparent);
+  color: white;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+.cut-play:hover {
+  background: color-mix(in srgb, black 72%, transparent);
+}
+.cut-screen-wait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+.cut-screen-wait p {
+  position: relative;
+  z-index: 1;
+  max-width: 36ch;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--media-surface) 82%, transparent);
+  padding: 8px 10px;
+  color: color-mix(in srgb, white 82%, var(--muted));
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cut-switch {
+  display: flex;
+  gap: 6px;
+}
+.cut-switch button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.cut-switch button[aria-pressed="true"] {
+  background: var(--lift);
+  color: var(--foreground);
+}
+.cut-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cut-step {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.cut-step[data-state="now"] {
+  border-color: color-mix(in srgb, var(--foreground) 32%, var(--border));
+}
+.cut-step[data-state="later"] {
+  opacity: 0.72;
+}
+.cut-step strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cut-note,
+.cut-warn {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cut-warn {
+  color: var(--warning);
+}
+.cut-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  padding-top: 14px;
+}
+.cut-block h2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.cut-block h3 {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.cut-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.cut-list,
+.cut-cues,
+.creation-recent ul {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.cut-list li,
+.creation-recent li button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 10px;
+  padding: 8px 10px;
   font-size: 12px;
+}
+.cut-list label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.cut-list span,
+.cut-cues span {
   color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cut-scenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cut-scenes li {
+  border-radius: 999px;
+  background: var(--lift);
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cut-cues li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+.cut-cues li[data-omit="true"] p {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.cut-cues button {
+  border-radius: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+.cut-text {
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.cut-duck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.cut-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.creation-recent li button {
+  width: 100%;
 }
 .creation-home-handoff {
   display: flex;
@@ -3059,6 +3249,10 @@ body .drama-agent-select-dropdown.yc-select-dropdown {
   .finish-desk-board {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+  .cut-screen {
+    height: min(36vh, 420px);
+    min-height: 160px;
   }
   .drama-desk-board,
   .studio-desk-board {

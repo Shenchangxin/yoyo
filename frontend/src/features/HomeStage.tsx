@@ -47,7 +47,6 @@ function CreateBoundActions(props: {
           {dubReason ? <span className="starter-tile-hint">{dubReason}</span> : null}
         </button>
       </div>
-      <p className="mx-auto mt-3 max-w-[36ch] text-center text-[12px] text-muted">{c.finishHint}</p>
     </>
   );
 }
@@ -84,6 +83,7 @@ export function HomeHero(_props: {
   onBrowseWorkspace?: () => void;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const c = copy.video.conductor;
   const bound = useCutDesk((s) => createDesk && !!s.project?.source_hash);
   const boundTitle = useCutDesk((s) => (createDesk ? s.project?.title || "" : ""));
   return (
@@ -102,11 +102,16 @@ export function HomeHero(_props: {
         "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
         createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
       )}>
-        {bound ? (boundTitle || copy.video.conductor.cutTitle) : readyOf(copy, videoing, videoMode, createDesk)}
+        {bound ? c.copilotTitle : readyOf(copy, videoing, videoMode, createDesk)}
       </h1>
-      {createDesk && !bound ? (
+      {createDesk && bound ? (
+        <>
+          {boundTitle ? <p className="mt-1 text-center text-[13px] text-foreground">{boundTitle}</p> : null}
+          <p className="mx-auto mt-1.5 max-w-[40ch] text-center text-[12px] leading-[1.5] text-muted">{c.finishHint}</p>
+        </>
+      ) : createDesk && !bound ? (
         <p className="mx-auto mt-1.5 max-w-[36ch] text-center text-[13px] leading-[1.5] text-muted">
-          {copy.video.conductor.lead}
+          {c.lead}
         </p>
       ) : null}
     </div>

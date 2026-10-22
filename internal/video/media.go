@@ -90,6 +90,20 @@ func (e *Engine) FilePath(hash string) string {
 	return e.CAS.Path(strings.TrimSpace(hash))
 }
 
+// casFile is the on-disk CAS object when it exists. Callers probe this path
+// instead of reading the whole video into memory.
+func (e *Engine) casFile(hash string) string {
+	path := e.FilePath(hash)
+	if path == "" {
+		return ""
+	}
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 {
+		return ""
+	}
+	return path
+}
+
 func (e *Engine) MediaURL(hash string) string {
 	if hash == "" {
 		return ""
