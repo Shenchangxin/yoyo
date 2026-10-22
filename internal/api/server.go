@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/idol"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/trace"
@@ -1187,6 +1189,9 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 			if dir := a.Video.CharacterCastDir(); dir != "" {
 				static = video.CharacterCastMiddleware(dir, static)
 			}
+		}
+		if a != nil && a.Home != nil {
+			static = idol.StandMiddleware(filepath.Join(a.Home.Idols(), "stands"), static)
 		}
 		mux.Handle("/", static)
 	} else {

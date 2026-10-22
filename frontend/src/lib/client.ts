@@ -2021,6 +2021,20 @@ export async function setCompanionCall(on: boolean): Promise<void> {
   if (fn) await fn(on);
 }
 
+export async function placeIdol(id: string): Promise<void> {
+  const s = await wailsService();
+  const place = svcMethod(s, "PlaceIdol", "placeIdol");
+  if (place) {
+    await place(id);
+    return;
+  }
+  await idolCall("pin", { id });
+  const set = svcMethod(s, "SetConfig", "setConfig");
+  if (set) await set({ companion_enabled: true });
+  else await http("/api/config", { method: "POST", body: JSON.stringify({ companion_enabled: true }) });
+  await showCompanion();
+}
+
 export async function idolCall(op: string, payload: Record<string, unknown> = {}): Promise<any> {
   const body = JSON.stringify(payload ?? {});
   const s = await wailsService();

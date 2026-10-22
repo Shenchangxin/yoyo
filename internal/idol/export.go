@@ -67,6 +67,9 @@ func (s *Store) SaveIdol(in Idol, now time.Time) (Idol, error) {
 				if in.CreatedAt.IsZero() {
 					in.CreatedAt = prev.CreatedAt
 				}
+				if strings.TrimSpace(in.OutfitID) == "" && validOutfitID(prev.OutfitID) {
+					in.OutfitID = prev.OutfitID
+				}
 				in.Pinned = prev.Pinned
 			}
 		}

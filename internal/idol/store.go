@@ -39,13 +39,12 @@ func Open(dir string) (*Store, error) {
 			return nil, err
 		}
 		s.state = defaultState()
-		return s, s.saveLocked()
-	}
-	if len(strings.TrimSpace(string(b))) == 0 {
+	} else if len(strings.TrimSpace(string(b))) == 0 {
 		s.state = defaultState()
-		return s, nil
+	} else if err := json.Unmarshal(b, &s.state); err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal(b, &s.state); err != nil {
+	if err := s.ensurePresets(); err != nil {
 		return nil, err
 	}
 	return s, nil

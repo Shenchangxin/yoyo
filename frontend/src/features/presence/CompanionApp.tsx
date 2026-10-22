@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Phone } from "lucide-react";
 import { useBusyMs } from "./busy";
 import { presenceLine, presenceOf } from "./director";
 import { PresenceSprite } from "./PresenceRuntime";
@@ -18,6 +19,10 @@ import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
 import { IdolCall } from "../idol/IdolCall";
+import { warmStand } from "../idol/stand/StandView";
+import { primeCallAudio } from "../idol/useIdolCall";
+import { companionCallOn } from "./companion-call";
+import { imageURL } from "../idol/model";
 import { skillCallLabel } from "../../lib/tool-summary";
 import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
@@ -38,6 +43,11 @@ export function CompanionApp() {
   const [inCall, setInCall] = useState(false);
   const [reach, setReach] = useState("");
   const [face, setFace] = useState("");
+  const [pinnedID, setPinnedID] = useState("");
+  const [idolKind, setIdolKind] = useState("");
+  const [idolColor, setIdolColor] = useState("#c47b8a");
+  const [idolName, setIdolName] = useState("");
+  const [idolStand, setIdolStand] = useState("");
   const [paused, setPaused] = useState(false);
   const idleAt = useRef(Date.now());
   const [now, setNow] = useState(() => Date.now());
@@ -77,8 +87,7 @@ export function CompanionApp() {
       const Events = mod.Events;
       if (!alive || !Events?.On) return;
       off = Events.On("yoyo:call", (raw: any) => {
-        const on = raw === true || raw === "true" || !!(raw && (raw[0] === true || raw.on === true));
-        setInCall(on);
+        setInCall(companionCallOn(raw));
       });
     });
     return () => {
@@ -110,9 +119,34 @@ export function CompanionApp() {
   }, [inCall]);
 
   useEffect(() => {
-    void api.idolCall("snapshot").then((s) => {
-      setFace(s?.pinned && s.portrait ? String(s.portrait) : "");
-    }).catch(() => {});
+    warmStand(idolStand);
+  }, [idolStand]);
+
+  useEffect(() => {
+    const load = () => {
+      void api.idolCall("snapshot").then((s) => {
+        const pinned = s?.pinned;
+        setPinnedID(pinned?.id ? String(pinned.id) : "");
+        setIdolKind(pinned?.kind ? String(pinned.kind) : "");
+        setIdolColor(pinned?.color ? String(pinned.color) : "#c47b8a");
+        setIdolName(pinned?.name ? String(pinned.name) : "");
+        setIdolStand(pinned?.outfit_id || pinned?.OutfitID ? String(pinned.outfit_id || pinned.OutfitID) : "");
+        setFace(pinned && s.portrait ? String(s.portrait) : "");
+      }).catch(() => {});
+    };
+    load();
+    if (import.meta.env.VITE_E2E) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    void import("@wailsio/runtime").then((mod: any) => {
+      const Events = mod.Events;
+      if (!alive || !Events?.On) return;
+      off = Events.On("yoyo:idol", () => load());
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
   }, [inCall]);
 
   useEffect(() => {
@@ -263,10 +297,15 @@ export function CompanionApp() {
 
   if (inCall) {
     return (
-      <div className="companion-stage" data-testid="companion-stage" data-context-menu="yoyo-companion">
+      <div className="companion-stage companion-stage-call" data-testid="companion-stage" data-context-menu="yoyo-companion">
         <IdolCall
           paused={paused}
           approvals={approvals}
+          name={idolName}
+          color={idolColor}
+          portrait={face}
+          kind={idolKind}
+          stand={idolStand}
           onHangup={() => setInCall(false)}
         />
       </div>
@@ -289,6 +328,7 @@ export function CompanionApp() {
         onPointerEnter={() => bump()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest?.("[data-companion-call]")) return;
           dragged.current = false;
           grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -306,7 +346,9 @@ export function CompanionApp() {
         onClick={() => { if (!dragged.current) open(); }}
       >
         {face ? (
-          <img alt="" className="size-[168px] rounded-full object-cover" src={`data:image/png;base64,${face}`} />
+          <img alt="" className="companion-portrait" src={imageURL(face)} />
+        ) : pinnedID && idolKind !== "pet" ? (
+          <span className="companion-letter" style={{ background: idolColor }}>{Array.from(idolName || "偶")[0]}</span>
         ) : (
         <PresenceSprite
           emotionId={emotion.emotionId}
@@ -318,6 +360,24 @@ export function CompanionApp() {
           onActivity={bump}
         />
         )}
+        {pinnedID && !paused ? (
+          <button
+            type="button"
+            className="companion-call"
+            data-testid="companion-call"
+            data-companion-call=""
+            aria-label={copy.idol.call}
+            title={copy.idol.call}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              primeCallAudio();
+              setInCall(true);
+            }}
+          >
+            <Phone className="size-4" strokeWidth={1.75} />
+          </button>
+        ) : null}
       </div>
       <button
         ref={bubbleRef}

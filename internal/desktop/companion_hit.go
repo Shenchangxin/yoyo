@@ -11,22 +11,22 @@ var companionClickThrough atomic.Bool
 var companionCaptionOn atomic.Bool
 
 const (
-	companionPet           = 168
-	companionPetTop        = 40
-	companionBubbleGap     = 8
-	companionBubbleW       = 228
-	companionBubbleH       = 40
-	companionBubbleMaxH    = 148
-	companionPadBottom     = 24
-	companionW             = 268
-	companionIdleH         = companionPetTop + companionPet + companionPadBottom
-	companionH             = companionIdleH + companionBubbleGap + companionBubbleMaxH
-	companionCallW         = 360
-	companionCallH         = 420
-	companionPad           = 8
+	companionPet             = 168
+	companionPetTop          = 40
+	companionBubbleGap       = 8
+	companionBubbleW         = 228
+	companionBubbleH         = 40
+	companionBubbleMaxH      = 148
+	companionPadBottom       = 24
+	companionW               = 268
+	companionIdleH           = companionPetTop + companionPet + companionPadBottom
+	companionH               = companionIdleH + companionBubbleGap + companionBubbleMaxH
+	companionCallW           = 380
+	companionCallH           = 640
+	companionPad             = 8
 	companionBottomClearance = 24
-	companionCaptionMinW   = 64
-	companionCaptionMinH   = 28
+	companionCaptionMinW     = 64
+	companionCaptionMinH     = 28
 	// Hit disk is slightly inside the pet box so empty corners pass through,
 	// but larger than the viewBox inset so bounce/lean still grab.
 	companionHitFill = 0.88
@@ -168,8 +168,10 @@ func companionPetRegionRect(winW, winH float64, caption bool) (x, y, w, h float6
 	boxTop := float64(companionPetTop) * sy
 	boxH := float64(companionPet) * sy
 	padX := pet * (companionShapeFillX - 1) * 0.5
-	if padX < 12*s {
-		padX = 12 * s
+	// Extra room so a 1px HWND/client mismatch or the breathe scale
+	// does not shave the left of the circle.
+	if padX < 18*s {
+		padX = 18 * s
 	}
 	padTop := float64(companionBounceHead) * sy
 	padBot := float64(companionChinPad) * sy
