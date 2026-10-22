@@ -93,6 +93,7 @@ func (e *Engine) OpenCut(in CutOpen) (CutProject, error) {
 			if cur, err := e.GetCutProject(id); err == nil && strings.TrimSpace(cur.SourceHash) == hash {
 				e.ReleaseWorkshopBinds(sid)
 				_ = e.BindCutSession(sid, cur.ID)
+				cur.SessionID = sid
 				return cur, nil
 			}
 		}
@@ -110,6 +111,7 @@ func (e *Engine) OpenCut(in CutOpen) (CutProject, error) {
 		if err := e.BindCutSession(sid, p.ID); err != nil {
 			return p, err
 		}
+		p.SessionID = sid
 	}
 	return p, nil
 }
@@ -157,8 +159,15 @@ func (e *Engine) BindCutSession(sessionID, projectID string) error {
 	if sessionID == "" || projectID == "" {
 		return fmt.Errorf("session and project required")
 	}
-	if _, err := e.GetCutProject(projectID); err != nil {
+	p, err := e.GetCutProject(projectID)
+	if err != nil {
 		return err
+	}
+	if p.SessionID != sessionID {
+		p.SessionID = sessionID
+		if _, err := e.saveCut(p); err != nil {
+			return err
+		}
 	}
 	m := e.loadCutBinds()
 	next := make(map[string]string, len(m)+1)
@@ -183,6 +192,19 @@ func (e *Engine) ReleaseCutBind(sessionID string) {
 	}
 	delete(m, sessionID)
 	_ = e.saveCutBinds(m)
+}
+
+func (e *Engine) LatestCutSession(projectID string) string {
+	projectID = strings.TrimSpace(projectID)
+	if e == nil || projectID == "" {
+		return ""
+	}
+	for sessionID, id := range e.loadCutBinds() {
+		if id == projectID {
+			return sessionID
+		}
+	}
+	return ""
 }
 
 func (e *Engine) CutSessionBind(sessionID string) (string, bool) {

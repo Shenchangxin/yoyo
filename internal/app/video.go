@@ -157,6 +157,10 @@ func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string)
 	}
 	for _, spec := range video.CanvasToolSpecs() {
 		spec := spec
+		// ask_user is already a host tool. Sending it again is rejected as a duplicate name.
+		if spec.Name == "ask_user" {
+			continue
+		}
 		openWorld := mediaAsk[spec.Name]
 		tools.Extra[spec.Name] = runtime.ExtraTool{
 			JSON: runtime.ToolJSON{Type: "function", Function: map[string]any{
@@ -1162,6 +1166,7 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		}
 		if sid := str("session_id"); sid != "" {
 			_ = eng.BindCutSession(sid, p.ID)
+			p.SessionID = sid
 		}
 		return a.enrichCut(p), nil
 	case "video.cut.get":
@@ -1172,6 +1177,9 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return a.enrichCut(p), nil
 	case "video.cut.bind":
 		return map[string]any{"ok": true}, eng.BindCutSession(str("session_id"), firstNonEmptyApp(str("id"), str("project_id")))
+	case "video.cut.release":
+		eng.ReleaseCutBind(str("session_id"))
+		return map[string]any{"ok": true}, nil
 	case "video.cut.session":
 		id, ok := eng.CutSessionBind(str("session_id"))
 		if !ok {
@@ -1642,6 +1650,9 @@ func (a *App) enrichMedia(ref video.MediaRef) map[string]any {
 }
 
 func (a *App) enrichCut(p video.CutProject) map[string]any {
+	if strings.TrimSpace(p.SessionID) == "" && a.Video != nil {
+		p.SessionID = a.Video.LatestCutSession(p.ID)
+	}
 	m := objJSON(p)
 	m["media_url"] = a.mediaURL(firstNonEmptyApp(p.ResultHash, p.SourceHash))
 	m["source_url"] = a.mediaURL(p.SourceHash)

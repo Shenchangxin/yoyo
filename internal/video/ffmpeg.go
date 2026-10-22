@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -142,7 +143,7 @@ func (e *Engine) ConcatContext(ctx context.Context, paths []string) ([]byte, err
 }
 
 func (e *Engine) Poster(videoPath string) ([]byte, error) {
-	if e.FFProbe == "" && e.FFMPEG == "" {
+	if strings.TrimSpace(e.FFMPEG) == "" {
 		return nil, fmt.Errorf("ffmpeg missing")
 	}
 	tmp, err := os.CreateTemp(e.Dir, "poster-*.jpg")
@@ -151,11 +152,38 @@ func (e *Engine) Poster(videoPath string) ([]byte, error) {
 	}
 	tmp.Close()
 	defer os.Remove(tmp.Name())
-	cmd := exec.Command(e.FFMPEG, "-y", "-i", videoPath, "-ss", "00:00:00.3", "-vframes", "1", tmp.Name())
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	// -ss before -i seeks to a keyframe instead of decoding from the start.
+	// One small frame, no audio, and a hard timeout so a huge file cannot hang import.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	attempts := [][]string{
+		{"-y", "-ss", "0.3", "-i", videoPath, "-frames:v", "1", "-an", "-threads", "1", "-vf", "scale='min(640,iw)':-2", tmp.Name()},
+		{"-y", "-ss", "0.3", "-i", videoPath, "-frames:v", "1", "-an", "-threads", "1", tmp.Name()},
 	}
-	return os.ReadFile(tmp.Name())
+	var last error
+	for _, args := range attempts {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		cmd := exec.CommandContext(ctx, e.FFMPEG, args...)
+		if err := cmd.Run(); err != nil {
+			last = err
+			continue
+		}
+		b, err := os.ReadFile(tmp.Name())
+		if err != nil || len(b) == 0 {
+			if err == nil {
+				err = fmt.Errorf("empty poster")
+			}
+			last = err
+			continue
+		}
+		return b, nil
+	}
+	if last == nil {
+		last = fmt.Errorf("poster failed")
+	}
+	return nil, last
 }
 
 func CompressJPEG(src []byte, maxEdge int, quality int) ([]byte, error) {

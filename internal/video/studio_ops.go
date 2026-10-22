@@ -1,8 +1,10 @@
 package video
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,21 +34,34 @@ func even(n int) int {
 }
 
 func (e *Engine) materialize(hash, ext string) (string, error) {
-	raw, err := e.GetBytes(hash)
-	if err != nil {
-		return "", err
-	}
 	if ext == "" {
 		ext = ".bin"
 	}
 	if !strings.HasPrefix(ext, ".") {
 		ext = "." + ext
 	}
-	f, err := os.CreateTemp(e.Dir, "studio-*"+ext)
+	if src := e.casFile(hash); src != "" {
+		in, err := os.Open(src)
+		if err != nil {
+			return "", err
+		}
+		defer in.Close()
+		return writeTemp(e.Dir, ext, in)
+	}
+	// No disk object: the bytes are already in an in-memory store (tests).
+	raw, err := e.GetBytes(hash)
 	if err != nil {
 		return "", err
 	}
-	if _, err := f.Write(raw); err != nil {
+	return writeTemp(e.Dir, ext, bytes.NewReader(raw))
+}
+
+func writeTemp(dir, ext string, r io.Reader) (string, error) {
+	f, err := os.CreateTemp(dir, "studio-*"+ext)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, r); err != nil {
 		f.Close()
 		os.Remove(f.Name())
 		return "", err

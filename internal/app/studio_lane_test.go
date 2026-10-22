@@ -59,6 +59,65 @@ func TestConductorLaneGetsCutToolsNotStudio(t *testing.T) {
 	if foundStudio {
 		t.Fatalf("unbound video channel should not attach studio tools: %v", tools.ExtraEnabled)
 	}
+	seen := map[string]int{}
+	for _, j := range runtime.AllToolJSON(tools) {
+		name, _ := j.Function["name"].(string)
+		seen[name]++
+		if seen[name] > 1 {
+			t.Fatalf("duplicate tool %s", name)
+		}
+	}
+	if seen["cut_get"] != 1 || seen["video_route"] != 1 || seen["ask_user"] != 1 {
+		t.Fatalf("conductor tool list %#v", seen)
+	}
+}
+
+func TestCanvasAskUserDoesNotDuplicateHostTool(t *testing.T) {
+	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if a.Video == nil {
+		t.Skip("video engine missing")
+	}
+	raw, err := a.Video.CanvasCall("canvas.projects.create", map[string]any{"title": "画布"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := raw.(map[string]any)
+	id, _ := doc["id"].(string)
+	if id == "" {
+		t.Fatalf("canvas id %#v", raw)
+	}
+	sess, err := a.NewSessionOn("", session.ChannelVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Video.BindCanvasSession(sess.ID, id); err != nil {
+		t.Fatal(err)
+	}
+	tools := &runtime.WorkspaceTools{
+		SessionID:  sess.ID,
+		Advertised: append([]string(nil), runtime.ChatCoreTools...),
+	}
+	a.attachPersonal(tools)
+	a.attachCanvasTools(tools, sess.ID)
+	a.attachCutTools(tools, sess.ID)
+	seen := map[string]int{}
+	for _, j := range runtime.AllToolJSON(tools) {
+		name, _ := j.Function["name"].(string)
+		seen[name]++
+		if seen[name] > 1 {
+			t.Fatalf("duplicate tool %s", name)
+		}
+	}
+	if seen["ask_user"] != 1 {
+		t.Fatalf("ask_user count %d", seen["ask_user"])
+	}
+	if _, ok := tools.Extra["ask_user"]; ok {
+		t.Fatal("canvas ask_user should not be registered beside the host tool")
+	}
 }
 
 func TestStudioBoundAttachesStudioTools(t *testing.T) {

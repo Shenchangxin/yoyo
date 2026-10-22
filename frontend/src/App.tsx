@@ -860,7 +860,7 @@ function WorkstationApp() {
     <div className="@container h-full min-h-0" data-testid="finish-desk">
       <div className="finish-desk">
         <div className="finish-desk-board" data-skin-pane>
-          <CutStage />
+          <CutStage onLeave={() => { void ws.leaveCut(); }} />
         </div>
         <div className="finish-desk-chat">{agentPane}</div>
       </div>
