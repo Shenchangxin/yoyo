@@ -4247,7 +4247,17 @@ html.companion .presence-engine svg {
   align-items: stretch;
   padding: 0;
   pointer-events: auto;
+  cursor: grab;
   background: transparent !important;
+}
+.companion-stage.companion-stage-call:active {
+  cursor: grabbing;
+}
+.companion-stage.companion-stage-call .idol-call-screen {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
 }
 .idol-call-screen {
   position: relative;
@@ -4340,6 +4350,7 @@ html.companion .presence-engine svg {
   border-radius: 999px;
   background: #ef4444;
   color: #fff;
+  cursor: pointer;
   pointer-events: auto;
   transform: translateX(-50%);
 }

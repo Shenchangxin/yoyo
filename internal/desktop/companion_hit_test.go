@@ -6,6 +6,40 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/winsize"
 )
 
+func TestCompanionCallWindowIsDraggable(t *testing.T) {
+	companionInteractive.Store(true)
+	t.Cleanup(func() { companionInteractive.Store(false) })
+	w, h := float64(companionCallW), float64(companionCallH)
+	if !CompanionHit(w/2, h*0.55, w, h, false) {
+		t.Fatal("call figure must be a drag target")
+	}
+	if !CompanionHit(24, h-40, w, h, false) {
+		t.Fatal("call card must be draggable away from the idle blob")
+	}
+	if CompanionHit(-4, h/2, w, h, false) || CompanionHit(w+4, 10, w, h, false) {
+		t.Fatal("outside the call card must miss")
+	}
+}
+
+func TestCompanionChildRegionDuringCall(t *testing.T) {
+	parentW, parentH := companionCallW, companionCallH
+	if companionChildRegion(parentW, parentH, parentW, parentH, true) != companionChildShape {
+		t.Fatal("a webview that matches the call window should take the call region")
+	}
+	if companionChildRegion(companionW, companionIdleH, parentW, parentH, true) != companionChildClear {
+		t.Fatal("a webview still at idle size must drop the pet clip during a call")
+	}
+	if companionChildRegion(40, 40, parentW, parentH, true) != companionChildClear {
+		t.Fatal("a tiny child must not keep a pet clip during a call")
+	}
+	if companionChildRegion(companionW, companionIdleH, parentW, parentH, false) != companionChildSkip {
+		t.Fatal("idle must not stamp the pet clip onto a not-yet-resized child")
+	}
+	if companionChildRegion(companionW, companionIdleH, companionW, companionIdleH, false) != companionChildShape {
+		t.Fatal("idle webview that matches the pet window should keep the blob region")
+	}
+}
+
 func TestCompanionCallKeepsBottomRight(t *testing.T) {
 	x, y := companionCallOrigin(1000, 700, companionW, companionIdleH)
 	if x+companionCallW != 1000+companionW || y+companionCallH != 700+companionIdleH {

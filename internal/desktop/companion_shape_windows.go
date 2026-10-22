@@ -56,13 +56,25 @@ func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 	}
 	w := int(wr.right - wr.left)
 	h := int(wr.bottom - wr.top)
-	// Nested Chromium widgets are often a few dozen pixels. Scaling the
-	// companion occupancy onto those HWNDs clips the blob to a tiny chip.
-	if shapeParentW > 0 && (w < shapeParentW*4/5 || h < shapeParentH*4/5) {
+	// Nested Chromium widgets are often a few dozen pixels, or still the
+	// previous size while the parent has already resized. Scaling the pet
+	// clip onto them hides the call page. During a call, drop that clip.
+	switch companionChildRegion(w, h, shapeParentW, shapeParentH, companionInteractive.Load()) {
+	case companionChildClear:
+		clearWindowRgn(w32.HWND(hwnd))
+	case companionChildSkip:
 		return 1
+	default:
+		setWindowCompanionRgn(w32.HWND(hwnd), lparam != 0)
 	}
-	setWindowCompanionRgn(w32.HWND(hwnd), lparam != 0)
 	return 1
+}
+
+func clearWindowRgn(hwnd w32.HWND) {
+	if hwnd == 0 || !procReady(procSetWindowRgn) {
+		return
+	}
+	_, _, _ = procSetWindowRgn.Call(uintptr(hwnd), 0, 1)
 }
 
 func setWindowCompanionRgn(hwnd w32.HWND, caption bool) {
