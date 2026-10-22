@@ -198,10 +198,10 @@ func (s *Service) beginCompanionCall() {
 		return
 	}
 	companionInteractive.Store(true)
+	s.applyCompanionCallGeometry()
 	if s.gui != nil {
 		s.gui.Event.Emit("yoyo:call", true)
 	}
-	s.applyCompanionCallGeometry()
 	s.refreshChrome()
 }
 
@@ -211,17 +211,54 @@ func (s *Service) endCompanionCall(resizeAndRefresh bool) {
 	if !was {
 		return
 	}
+	if resizeAndRefresh {
+		if win := s.companion; win != nil {
+			s.restoreCompanionHome(win)
+			s.syncCompanionFrame()
+			s.syncCompanionClickThrough()
+		}
+	}
 	if s.gui != nil {
 		s.gui.Event.Emit("yoyo:call", false)
 	}
-	if !resizeAndRefresh {
+	if resizeAndRefresh {
+		s.refreshChrome()
+	}
+}
+
+// companionCallOrigin keeps the idle window's bottom-right corner fixed, so the
+// call window grows up and to the left instead of shoving the pet away.
+func companionCallOrigin(x, y, w, h int) (int, int) {
+	if w < 32 {
+		w = companionW
+	}
+	if h < 32 {
+		h = companionIdleH
+	}
+	return x + w - companionCallW, y + h - companionCallH
+}
+
+func (s *Service) rememberCompanionHome(x, y, w, h int) {
+	if s.companionHomeOK.Load() {
 		return
 	}
-	if win := s.companion; win != nil {
-		s.syncCompanionFrame()
-		s.syncCompanionClickThrough()
+	if w > companionW+24 || h > companionH+24 {
+		return
 	}
-	s.refreshChrome()
+	s.companionHomeX.Store(int32(x))
+	s.companionHomeY.Store(int32(y))
+	s.companionHomeOK.Store(true)
+}
+
+func (s *Service) restoreCompanionHome(win application.Window) {
+	if win == nil || !s.companionHomeOK.Load() {
+		return
+	}
+	x, y := int(s.companionHomeX.Load()), int(s.companionHomeY.Load())
+	s.companionHomeOK.Store(false)
+	win.SetSize(companionW, companionFrameH(s.companionCaption.Load()))
+	win.SetPosition(x, y)
+	applyCompanionShape(win, s.companionCaption.Load())
 }
 
 func (s *Service) applyCompanionCallGeometry() {
@@ -232,7 +269,18 @@ func (s *Service) applyCompanionCallGeometry() {
 		return
 	}
 	if on {
+		x, y := win.Position()
+		w, h := win.Size()
+		s.rememberCompanionHome(x, y, w, h)
+		nx, ny := companionCallOrigin(x, y, w, h)
+		if w > companionW+24 || h > companionH+24 {
+			nx, ny = x, y
+		}
+		nx, ny = clampCompanion(nx, ny)
 		win.SetSize(companionCallW, companionCallH)
+		if nx != x || ny != y {
+			win.SetPosition(nx, ny)
+		}
 		s.syncCompanionClickThrough()
 		setCompanionPassthrough(win, false)
 		applyCompanionShape(win, true)

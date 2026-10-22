@@ -39,6 +39,9 @@ type Service struct {
 	companionCaption   atomic.Bool
 	companionCall      atomic.Bool
 	companionFocus     atomic.Bool
+	companionHomeX     atomic.Int32
+	companionHomeY     atomic.Int32
+	companionHomeOK    atomic.Bool
 	agentBusy          atomic.Bool
 	lastPulseSession   atomic.Value
 	cursorWatch        atomic.Bool

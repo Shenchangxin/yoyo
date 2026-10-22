@@ -18,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/desktop"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/home"
+	"github.com/Shenchangxin/yoyo/internal/idol"
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
@@ -165,8 +166,17 @@ func skinAssetMiddleware(core *app.App, homeRoot string) func(http.Handler) http
 			store = skin.NewStore(d.Skins())
 		}
 	}
+	standDir := ""
+	if core != nil && core.Home != nil {
+		standDir = filepath.Join(core.Home.Idols(), "stands")
+	} else if d, err := home.Open(homeRoot); err == nil {
+		standDir = filepath.Join(d.Idols(), "stands")
+	}
 	return func(next http.Handler) http.Handler {
-		return video.CharacterCastMiddleware(video.CharacterCastRoot(homeRoot), skin.Middleware(store, next))
+		return video.CharacterCastMiddleware(
+			video.CharacterCastRoot(homeRoot),
+			idol.StandMiddleware(standDir, skin.Middleware(store, next)),
+		)
 	}
 }
 

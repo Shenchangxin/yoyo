@@ -1,380 +1,512 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MoreHorizontal, Phone, Pin, PinOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { EmptyState } from "../../components/ui/empty-state";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
 import { asArray, str } from "../../lib/normalize";
+import { useUI } from "../../lib/store";
 import { cn } from "../../lib/utils";
+import { PresenceStamp } from "../presence/PresenceRuntime";
+import { CallBar, CallSurface } from "./IdolCall";
+import { IdolChat } from "./IdolChat";
+import { IdolPanel, type IdolPanelKind } from "./IdolPanels";
+import {
+  affinityOf, blankIdol, groupIdols, historyOf, idolError, idolOf, imageURL, isCooling, linesOf, snapOf, whenLabel,
+  type History, type Idol, type Snap,
+} from "./model";
+import { warmStand } from "./stand/StandView";
+import { primeCallAudio, useIdolCall } from "./useIdolCall";
 
-type Idol = {
-  id: string;
-  name: string;
-  intro: string;
-  color: string;
-  spoken_lang: string;
-  subtitle_lang: string;
-  sheet: string;
-  facts: string;
-  readings: string;
-  voice_id: string;
-  portrait: string;
-  circle_id: string;
-  work_enabled: boolean;
-  work_profile_id: string;
-  pinned: boolean;
-  hidden: boolean;
-  liked_gifts: string[];
-};
+const emptyHistory: History = { current: null, past: [] };
 
-type Rec = {
-  id: string;
-  kind: string;
-  user?: string;
-  segments?: { spoken?: string; subtitle?: string }[];
-  work_session?: string;
-  gift_id?: string;
-  photo_id?: string;
-};
+function usePortraitURLs(idols: Idol[]) {
+  const key = idols.map((i) => i.portrait).filter(Boolean).sort().join("|");
+  const cache = useRef(new Map<string, string>());
+  const [ready, setReady] = useState(0);
+  useEffect(() => {
+    const missing = (key ? key.split("|") : []).filter((id) => id && !cache.current.has(id));
+    if (!missing.length) return;
+    let stop = false;
+    void Promise.all(missing.map(async (id) => {
+      try {
+        const o = await api.idolCall("blob", { id });
+        const data = str(o?.data);
+        if (data) cache.current.set(id, imageURL(data));
+      } catch { /* a missing face stays the color */ }
+    })).then(() => { if (!stop) setReady((n) => n + 1); });
+    return () => { stop = true; };
+  }, [key]);
+  void ready;
+  return cache.current;
+}
 
-const blank = (): Idol => ({
-  id: "", name: "", intro: "", color: "#c47b8a", spoken_lang: "zh", subtitle_lang: "zh",
-  sheet: "", facts: "", readings: "", voice_id: "", portrait: "", circle_id: "",
-  work_enabled: true, work_profile_id: "", pinned: false, hidden: false, liked_gifts: [],
-});
+function IdolMark(props: { idol: Idol; src: string; size?: number }) {
+  const size = props.size ?? 36;
+  if (props.src) {
+    return (
+      <span className="shrink-0 overflow-hidden rounded-full" style={{ width: size, height: size, background: props.idol.color }}>
+        <img alt="" className="size-full object-cover" src={props.src} />
+      </span>
+    );
+  }
+  if (props.idol.kind === "pet") return <PresenceStamp size={size} className="shrink-0" />;
+  return <span className="shrink-0 rounded-full" style={{ width: size, height: size, background: props.idol.color || "#c47b8a" }} />;
+}
 
 export function IdolStage() {
   const copy = useCopy();
   const c = copy.idol;
-  const [idols, setIdols] = useState<Idol[]>([]);
-  const [circles, setCircles] = useState<{ id: string; name: string }[]>([]);
+  const openSettings = useUI((s) => s.openSettings);
+  const [snap, setSnap] = useState<Snap | null>(null);
   const [sel, setSel] = useState("");
-  const [draft, setDraft] = useState<Idol | null>(null);
-  const [tab, setTab] = useState<"talk" | "edit" | "memories" | "gifts" | "lore" | "stats">("talk");
-  const [records, setRecords] = useState<Rec[]>([]);
-  const [past, setPast] = useState<{ id: string; title?: string; records?: Rec[] }[]>([]);
+  const [panel, setPanel] = useState<IdolPanelKind | null>(null);
+  const [draft, setDraft] = useState<Idol>(blankIdol());
+  const [history, setHistory] = useState<History>(emptyHistory);
+  const [viewing, setViewing] = useState("");
   const [text, setText] = useState("");
   const [work, setWork] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [tier, setTier] = useState("trust");
-  const [memories, setMemories] = useState<any[]>([]);
-  const [gifts, setGifts] = useState<any>(null);
-  const [lore, setLore] = useState<any[]>([]);
-  const [loreTitle, setLoreTitle] = useState("");
-  const [loreBody, setLoreBody] = useState("");
-  const [stats, setStats] = useState<any>(null);
-  const [circleName, setCircleName] = useState("");
+  const [sending, setSending] = useState(false);
+  const [pending, setPending] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [bootError, setBootError] = useState("");
+  const [booted, setBooted] = useState(false);
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [callOn, setCallOn] = useState(false);
+  const [callOpen, setCallOpen] = useState(true);
+  const [callWork, setCallWork] = useState(false);
+  const [face, setFace] = useState("");
+  const [giftNames, setGiftNames] = useState<Record<string, string>>({});
+  const [talkFor, setTalkFor] = useState("");
+  const talkGen = useRef(0);
+  const faces = usePortraitURLs(snap?.idols || []);
+
+  const current = snap?.idols.find((i) => i.id === sel) || null;
+  useEffect(() => {
+    warmStand(current?.outfit_id || "");
+  }, [current?.outfit_id]);
+  const aff = affinityOf(snap?.affinities || [], sel);
+  const cooling = isCooling(aff.cooldown_until) ? whenLabel(aff.cooldown_until) : "";
+  const viewed = history.past.find((p) => p.id === viewing) || null;
+  const lines = linesOf(viewed ? viewed.records : history.current?.records || []);
+  const ended = !!history.current?.ended && !viewed;
+  const blocked = !!cooling || !!history.current?.ended || !!viewed;
+
+  const call = useIdolCall({
+    active: callOn,
+    idolId: sel,
+    name: current?.name,
+    color: current?.color,
+    portrait: face,
+    kind: current?.kind,
+    stand: current?.outfit_id,
+    work: callWork,
+    textOnly: !!snap?.textOnly,
+    phone: !!snap?.phone,
+    onEnded: () => {
+      setCallOn(false);
+      void refreshTalk(sel);
+    },
+  });
 
   async function load() {
-    const snap = await api.idolCall("snapshot");
-    const list = asArray(snap?.idols).map(idolOf);
-    setIdols(list);
-    setCircles(asArray(snap?.circles).map((x: any) => ({ id: str(x.id), name: str(x.name) })));
-    setSel((cur) => cur || list.find((i) => i.pinned)?.id || list[0]?.id || "");
+    const next = snapOf(await api.idolCall("snapshot"));
+    setSnap(next);
+    setSel((cur) => (cur && next.idols.some((i) => i.id === cur) ? cur : next.pinnedId || next.idols.find((i) => !i.hidden)?.id || ""));
+    return next;
   }
 
-  useEffect(() => { void load().catch((e) => toast.error(String(e?.message || e))); }, []);
+  async function refreshTalk(idolId = sel) {
+    const gen = ++talkGen.current;
+    if (!idolId) {
+      setHistory(emptyHistory);
+      setTalkFor("");
+      return;
+    }
+    const hist = historyOf(await api.idolCall("history", { idol_id: idolId }));
+    if (gen !== talkGen.current) return;
+    setHistory(hist);
+    setTalkFor(idolId);
+    const fresh = snapOf(await api.idolCall("snapshot"));
+    if (gen !== talkGen.current) return;
+    setSnap(fresh);
+  }
 
   useEffect(() => {
-    if (!sel) return;
-    void refreshTalk();
+    void load()
+      .then(() => setBooted(true))
+      .catch((e) => {
+        setBootError(idolError(e, c));
+        setBooted(true);
+      });
+    void api.idolCall("gifts").then((g) => {
+      const map: Record<string, string> = {};
+      for (const item of asArray(g?.catalog)) map[str(item.id)] = str(item.name);
+      setGiftNames(map);
+    }).catch(() => {});
+    // first open only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!sel) {
+      setHistory(emptyHistory);
+      setTalkFor("");
+      return;
+    }
+    const gen = ++talkGen.current;
+    let stop = false;
+    setViewing("");
+    setNotice("");
+    setTalkFor("");
+    void api.idolCall("history", { idol_id: sel }).then((h) => {
+      if (stop || gen !== talkGen.current) return;
+      setHistory(historyOf(h));
+      setTalkFor(sel);
+    }).catch((e) => { if (!stop && gen === talkGen.current) setNotice(idolError(e, c)); });
+    return () => { stop = true; };
   }, [sel]);
 
-  async function refreshTalk() {
-    const hist = await api.idolCall("history", { idol_id: sel });
-    setRecords(asArray(hist?.current?.records));
-    setPast(asArray(hist?.past).map((p: any) => ({ id: str(p.id), title: str(p.title), records: asArray(p.records) })));
-    const snap = await api.idolCall("snapshot");
-    const aff = asArray(snap?.affinities).find((a: any) => str(a.idol_id) === sel);
-    if (aff) setTier(str(aff.tier) || "trust");
-  }
+  useEffect(() => {
+    const idol = snap?.idols.find((i) => i.id === sel);
+    if (!idol?.portrait) { setFace(""); return; }
+    if (snap?.pinnedId === idol.id && snap.portrait) { setFace(snap.portrait); return; }
+    let stop = false;
+    void api.idolCall("blob", { id: idol.portrait }).then((o) => {
+      const data = str(o?.data);
+      if (!stop) setFace(data);
+    }).catch(() => {});
+    return () => { stop = true; };
+  }, [sel, snap?.pinnedId, snap?.portrait, current?.portrait]);
 
-  function idolOf(v: any): Idol {
-    return {
-      ...blank(),
-      id: str(v.id),
-      name: str(v.name),
-      intro: str(v.intro),
-      color: str(v.color) || "#c47b8a",
-      spoken_lang: str(v.spoken_lang) || "zh",
-      subtitle_lang: str(v.subtitle_lang) || "zh",
-      sheet: str(v.sheet),
-      facts: str(v.facts),
-      readings: str(v.readings),
-      voice_id: str(v.voice_id),
-      portrait: str(v.portrait),
-      circle_id: str(v.circle_id),
-      work_enabled: v.work_enabled !== false,
-      work_profile_id: str(v.work_profile_id),
-      pinned: !!v.pinned,
-      hidden: !!v.hidden,
-      liked_gifts: asArray(v.liked_gifts).map((x) => str(x)),
-    };
-  }
-
-  const current = idols.find((i) => i.id === sel) || null;
-
-  async function save(next: Idol) {
-    setBusy(true);
+  async function save(next: Idol, keepPanel = false) {
+    if (!next.name.trim()) {
+      setNotice(c.requiredName);
+      return;
+    }
+    setSaving(true);
     try {
       const saved = idolOf(await api.idolCall("save_idol", next));
       await load();
       setSel(saved.id);
-      setDraft(null);
-      setTab("talk");
-    } catch (e: any) {
-      toast.error(String(e?.message || e));
+      if (!keepPanel) setPanel(null);
+      setNotice("");
+    } catch (e) {
+      setNotice(idolError(e, c));
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
   async function send() {
     const body = text.trim();
-    if (!body || !sel) return;
+    if (!body || !sel || sending || blocked) return;
     setText("");
-    setBusy(true);
+    setPending(body);
+    setSending(true);
+    setNotice("");
     try {
       const res = await api.idolCall("turn", { idol_id: sel, text: body, work });
       if (res?.work_session) toast.success(c.openWork);
-      await refreshTalk();
-    } catch (e: any) {
-      const msg = String(e?.message || e);
-      toast.error(msg === "cooldown" ? c.cooldown : msg === "ended" ? c.ended : msg);
-    } finally {
-      setBusy(false);
+    } catch (e) {
+      setText(body);
+      setNotice(idolError(e, c));
+      setPending("");
+      setSending(false);
+      return;
+    }
+    setPending("");
+    setSending(false);
+    try {
+      await refreshTalk(sel);
+    } catch (e) {
+      setNotice(idolError(e, c));
     }
   }
 
-  async function openTab(next: typeof tab) {
-    setTab(next);
-    if (!sel) return;
-    if (next === "memories") {
-      const m = await api.idolCall("memories", { idol_id: sel });
-      setMemories(asArray(m?.memories));
+  async function place(id?: string) {
+    const idol = (snap?.idols || []).find((i) => i.id === (id || sel));
+    if (!idol) return;
+    setDeskBusy(true);
+    setNotice("");
+    try {
+      if (idol.pinned) {
+        await api.idolCall("pin", { id: "" });
+        toast.success(c.takenOff);
+      } else {
+        await api.placeIdol(idol.id);
+        toast.success(c.placed);
+      }
+      await load();
+    } catch (e) {
+      const msg = idolError(e, c);
+      setNotice(msg);
+      toast.error(msg);
+    } finally {
+      setDeskBusy(false);
     }
-    if (next === "gifts") setGifts(await api.idolCall("gifts"));
-    if (next === "lore") {
-      const all = await api.idolCall("snapshot");
-      setLore(asArray(all?.lore).filter((d: any) => str(d.idol_id) === sel));
-    }
-    if (next === "stats") setStats(await api.idolCall("stats"));
   }
+
+  function startCall(id?: string) {
+    const target = id || sel;
+    const idol = (snap?.idols || []).find((i) => i.id === target);
+    if (!idol) return;
+    if (callOn && target === sel) {
+      setCallOpen(true);
+      return;
+    }
+    if (!id && blocked) {
+      setNotice(cooling ? c.cooldown : ended ? c.ended : c.readOnly);
+      return;
+    }
+    if (target !== sel) setSel(target);
+    primeCallAudio();
+    setPanel(null);
+    setCallWork(work && idol.work_enabled && snap?.work !== false);
+    setCallOpen(true);
+    setCallOn(true);
+  }
+
+  function openEdit(next?: Idol) {
+    setDraft(next ? { ...next } : blankIdol());
+    setPanel("edit");
+  }
+
+  const panelIdol = panel === "edit" && !draft.id ? null : current;
+  const groups = groupIdols(snap?.idols || [], snap?.circles || []);
+  const names = Object.fromEntries((snap?.idols || []).map((i) => [i.id, i.name]));
+  const tier = (c.tier as Record<string, string>)[aff.tier] || aff.tier;
 
   return (
     <div className="flex h-full min-h-0" data-testid="idol-stage">
-      <aside className="flex w-56 shrink-0 flex-col gap-1 overflow-auto border-r border-border p-3">
-        <div className="mb-2 text-[13px] font-medium">{c.title}</div>
-        {idols.filter((i) => !i.hidden).map((i) => (
-          <button
-            key={i.id}
-            type="button"
-            className={cn("flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-lift", sel === i.id && "bg-lift")}
-            onClick={() => { setSel(i.id); setDraft(null); setTab("talk"); }}
-          >
-            <span className="size-2.5 rounded-full" style={{ background: i.color }} />
-            <span className="min-w-0 flex-1 truncate">{i.name}</span>
-            {i.pinned ? <span className="text-[10px] text-muted">●</span> : null}
-          </button>
-        ))}
-        {idols.length === 0 ? <p className="text-[12px] text-muted">{c.empty}</p> : null}
-        <Button size="sm" variant="lift" className="mt-2" onClick={() => { setDraft(blank()); setTab("edit"); }}>{c.create}</Button>
-        <form className="mt-4 flex gap-1" onSubmit={(e) => {
-          e.preventDefault();
-          const name = circleName.trim();
-          if (!name) return;
-          void api.idolCall("save_circle", { name }).then(() => { setCircleName(""); return load(); });
-        }}>
-          <Input className="h-8 text-[12px]" value={circleName} placeholder={c.circleNew} onChange={(e) => setCircleName(e.target.value)} />
-        </form>
+      <aside className="flex w-60 shrink-0 flex-col border-r border-border">
+        <div className="px-3 pb-1 pt-3 text-[13px] font-medium">{c.title}</div>
+        <p className="px-3 pb-2 text-[11px] leading-relaxed text-muted">{c.railHint}</p>
+        <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+          {groups.map((g) => (
+            <div key={g.id || "loose"} className="mb-2">
+              {(g.name || groups.length > 1) ? (
+                <div className="px-2 pb-1 pt-2 text-[11px] text-muted">{g.name || c.unassigned}</div>
+              ) : null}
+              {g.idols.map((i) => (
+                <div
+                  key={i.id}
+                  className={cn("group flex items-center rounded-lg pr-1 hover:bg-lift", sel === i.id && "bg-lift")}
+                >
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+                    onClick={() => { setSel(i.id); setPanel(null); }}
+                  >
+                    <IdolMark idol={i} src={i.portrait ? faces.get(i.portrait) || "" : ""} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1">
+                        <span className="truncate text-[13px]">{i.name}</span>
+                        {i.pinned ? <span className="shrink-0 text-[10px] text-muted">{c.onDesktop}</span> : null}
+                      </span>
+                      {i.intro ? <span className="block truncate text-[11px] text-muted">{i.intro}</span> : null}
+                    </span>
+                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      className="grid size-7 place-items-center rounded-full text-muted transition duration-200 hover:bg-background hover:text-foreground"
+                      title={c.call}
+                      aria-label={c.call}
+                      onClick={() => startCall(i.id)}
+                    >
+                      <Phone className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="grid size-7 place-items-center rounded-full text-muted transition duration-200 hover:bg-background hover:text-foreground disabled:opacity-40"
+                      title={i.pinned ? c.unpin : c.pin}
+                      aria-label={i.pinned ? c.unpin : c.pin}
+                      disabled={deskBusy}
+                      onClick={() => void place(i.id)}
+                    >
+                      {i.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          {booted && !bootError && groups.length === 0 ? <p className="px-2 text-[12px] text-muted">{c.empty}</p> : null}
+        </div>
+        <div className="flex gap-1 border-t border-border p-2">
+          <Button size="sm" variant="lift" className="flex-1" onClick={() => openEdit()}>
+            <Plus className="size-3.5" />{c.create}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setPanel("circles")}>{c.circle}</Button>
+        </div>
       </aside>
-      <section className="flex min-w-0 flex-1 flex-col">
-        {draft ? (
-          <Editor idol={draft} circles={circles} busy={busy} onChange={setDraft} onSave={() => void save(draft)} />
-        ) : current ? (
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        {!booted ? <div className="grid flex-1 place-items-center text-[13px] text-muted">{c.loading}</div> : null}
+        {booted && bootError ? (
+          <div className="grid flex-1 place-items-center">
+            <EmptyState title={c.callFailed} body={bootError} action={<Button size="sm" onClick={() => { setBootError(""); void load().catch((e) => setBootError(idolError(e, c))); }}>{c.retry}</Button>} />
+          </div>
+        ) : null}
+        {booted && !bootError && current ? (
           <>
             <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-              <span className="size-3 rounded-full" style={{ background: current.color }} />
-              <span className="text-[14px] font-medium">{current.name}</span>
-              <span className="text-[12px] text-muted">{(c.tier as any)[tier] || tier}</span>
-              <div className="ml-auto flex flex-wrap gap-1">
-                <Button size="sm" variant="lift" onClick={() => void api.idolCall("pin", { id: current.pinned ? "" : current.id }).then(load)}>{current.pinned ? c.unpin : c.pin}</Button>
-                <Button size="sm" variant="lift" onClick={() => { void api.showCompanion(); void api.setCompanionCall(true); }}>{c.call}</Button>
-                <Button size="sm" variant="lift" onClick={() => void api.idolCall("new_conversation", { idol_id: current.id }).then(refreshTalk)}>{c.newChat}</Button>
-                <Button size="sm" variant="lift" onClick={() => { setDraft(current); setTab("edit"); }}>{c.edit}</Button>
-              </div>
-            </header>
-            <nav className="flex gap-1 px-4 pt-2 text-[12px]">
-              {(["talk", "memories", "gifts", "lore", "stats"] as const).map((k) => (
-                <button key={k} type="button" className={cn("rounded-md px-2 py-1 hover:bg-lift", tab === k && "bg-lift")} onClick={() => void openTab(k)}>
-                  {(c as any)[k]}
-                </button>
-              ))}
-            </nav>
-            {tab === "talk" ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3">
-                  {records.map((r) => (
-                    <article key={r.id} className="text-[13px]">
-                      {r.user ? <p className="text-muted">{r.user}</p> : null}
-                      {(r.segments || []).map((s, i) => (
-                        <p key={i}>{s.subtitle || s.spoken}</p>
-                      ))}
-                      {r.work_session ? (
-                        <button type="button" className="text-[12px] text-muted underline" onClick={() => void api.raiseSession(r.work_session!)}>{c.openWork}</button>
-                      ) : null}
-                    </article>
-                  ))}
-                  {past.length ? (
-                    <div className="pt-4 text-[12px] text-muted">
-                      {c.history}
-                      {past.map((p) => (
-                        <button key={p.id} type="button" className="block text-left underline" onClick={() => setRecords(p.records || [])}>{p.title || p.id}</button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <form className="border-t border-border p-3" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-                  <label className="mb-2 flex items-center gap-2 text-[12px] text-muted">
-                    <input type="checkbox" checked={work} onChange={(e) => setWork(e.target.checked)} />
-                    {c.work}
-                  </label>
-                  <div className="flex gap-2">
-                    <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={c.talk} />
-                    <Button type="submit" size="sm" disabled={busy}>{c.send}</Button>
-                  </div>
-                </form>
-              </div>
-            ) : null}
-            {tab === "memories" ? (
-              <ul className="space-y-2 overflow-auto p-4 text-[13px]">
-                {memories.map((m) => (
-                  <li key={str(m.id)} className="flex items-start justify-between gap-2">
-                    <span>{str(m.text)}{m.superseded_by ? " ·" : ""}</span>
-                    <button type="button" className="text-[12px] text-muted" onClick={() => void api.idolCall("delete_memory", { id: m.id }).then(() => openTab("memories"))}>{c.deleteMemory}</button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {tab === "gifts" ? (
-              <div className="space-y-3 overflow-auto p-4 text-[13px]">
+              <IdolMark idol={current} src={current.portrait ? faces.get(current.portrait) || "" : ""} size={32} />
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span>{c.draws}: {gifts?.draws ?? 0}</span>
-                  <Button size="sm" variant="lift" onClick={() => void api.idolCall("draw").then(() => openTab("gifts")).catch((e) => toast.error(String(e?.message || e)))}>{c.draw}</Button>
-                  <Button size="sm" variant="lift" onClick={() => void api.idolCall("reset").then(() => openTab("gifts")).catch((e) => toast.error(String(e?.message || e)))}>{c.reset}</Button>
+                  <h1 className="truncate text-[15px] font-medium">{current.name}</h1>
+                  <span className="shrink-0 text-[12px] text-muted">{tier} · {aff.score}</span>
+                  {current.pinned ? <span className="shrink-0 rounded-full bg-lift px-2 py-0.5 text-[10px] text-muted">{c.onDesktop}</span> : null}
                 </div>
-                {asArray(gifts?.catalog).map((g: any) => {
-                  const held = asArray(gifts?.inventory).find((s: any) => s.gift_id === g.id)?.count || 0;
-                  return (
-                    <div key={g.id} className="flex items-center justify-between gap-2">
-                      <span>{g.name} · {g.rarity} · {held}</span>
-                      <Button size="sm" variant="lift" disabled={!held} onClick={() => void api.idolCall("give", { idol_id: sel, gift_id: g.id }).then(refreshTalk)}>{c.give}</Button>
-                    </div>
-                  );
-                })}
+                <p className="truncate text-[12px] text-muted">{viewed?.title || history.current?.title || current.intro}</p>
+              </div>
+              <Button size="sm" disabled={!callOn && blocked} title={callOn ? c.backToCall : cooling ? c.cooldown : viewed ? c.readOnly : ended ? c.ended : c.call} onClick={() => startCall()}>
+                <Phone className="size-3.5" />{callOn ? c.backToCall : c.call}
+              </Button>
+              <Button size="sm" variant="lift" disabled={deskBusy} title={c.placeHint} onClick={() => void place()}>
+                {deskBusy ? c.placing : current.pinned ? c.unpin : c.pin}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" aria-label={c.more}><MoreHorizontal /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void api.idolCall("new_conversation", { idol_id: current.id }).then(() => { setViewing(""); return refreshTalk(current.id); }).then(() => toast.success(c.newChatDone)).catch((e) => setNotice(idolError(e, c)))}>{c.newChat}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPanel("history")}>{c.pastTitle}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openEdit(current)}>{c.edit}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setPanel("memories")}>{c.memories}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPanel("gifts")}>{c.gifts}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPanel("lore")}>{c.lore}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPanel("stats")}>{c.stats}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setPanel("circles")}>{c.circlesTitle}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </header>
+            {snap && !snap.chatReady ? (
+              <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-warning">
+                <span className="min-w-0 flex-1">{c.modelBanner}</span>
+                <Button size="sm" variant="lift" onClick={() => openSettings("idol")}>{c.openSettings}</Button>
               </div>
             ) : null}
-            {tab === "lore" ? (
-              <div className="space-y-3 overflow-auto p-4">
-                {lore.map((d) => (
-                  <article key={str(d.id)}>
-                    <div className="text-[13px] font-medium">{str(d.title)}</div>
-                    <p className="whitespace-pre-wrap text-[12px] text-muted">{str(d.body)}</p>
-                    <button type="button" className="text-[12px] text-muted" onClick={() => void api.idolCall("delete_lore", { id: d.id }).then(() => openTab("lore"))}>{c.delete}</button>
-                  </article>
-                ))}
-                <Input value={loreTitle} placeholder={c.loreTitle} onChange={(e) => setLoreTitle(e.target.value)} />
-                <textarea className="min-h-24 w-full rounded-md border border-border bg-background p-2 text-[13px]" value={loreBody} placeholder={c.loreBody} onChange={(e) => setLoreBody(e.target.value)} />
-                <Button size="sm" onClick={() => void api.idolCall("save_lore", { idol_id: sel, title: loreTitle, body: loreBody }).then(() => { setLoreTitle(""); setLoreBody(""); return openTab("lore"); })}>{c.addLore}</Button>
-              </div>
+            {callOn && !callOpen ? (
+              <CallBar
+                name={current.name}
+                elapsed={call.elapsed}
+                dialing={call.phase === "dialing"}
+                onExpand={() => setCallOpen(true)}
+                onHangup={call.hangup}
+              />
             ) : null}
-            {tab === "stats" && stats ? (
-              <div className="space-y-2 p-4 text-[13px]">
-                <div>{c.turns}: {stats.turns}</div>
-                <div>{c.callTime}: {stats.call_sec}s · {stats.calls}</div>
-                <div>{c.giftsGiven}: {stats.gifts}</div>
-                <div>{c.memories}: {stats.memories}</div>
-                <div>{c.draws}: {stats.draws_left}</div>
-                <div>{c.achievements}: {asArray(stats.achievements).join(", ") || "—"}</div>
-                <div>{c.tasks}: {stats.tasks?.talk ? c.taskTalk : ""} {stats.tasks?.call ? c.taskCall : ""} {stats.tasks?.gift ? c.taskGift : ""}</div>
-              </div>
-            ) : null}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {callOn && callOpen ? (
+                <div className="absolute inset-0 z-30">
+                  <CallSurface
+                    who={call.who.name ? call.who : { name: current.name, color: current.color, portrait: face, kind: current.kind, stand: current.outfit_id }}
+                    phase={call.phase}
+                    emotion={call.emotion}
+                    caption={call.caption}
+                    notice={call.notice}
+                    elapsed={call.elapsed}
+                    muteMic={call.muteMic}
+                    muteSpk={call.muteSpk}
+                    textOnly={call.textOnly}
+                    draft={call.draft}
+                    work={callWork}
+                    showWork={current.work_enabled && snap?.work !== false}
+                    onWork={setCallWork}
+                    onMuteMic={() => call.setMuteMic((v) => !v)}
+                    onMuteSpk={() => call.setMuteSpk((v) => !v)}
+                    onDraft={call.setDraft}
+                    onSend={call.sendDraft}
+                    onHangup={call.hangup}
+                    onCollapse={() => { setCallOpen(false); void refreshTalk(sel); }}
+                  />
+                </div>
+              ) : (
+                <IdolChat
+                  idol={current}
+                  lines={lines}
+                  pending={pending}
+                  sending={sending}
+                  notice={notice}
+                  text={text}
+                  work={work}
+                  canWork={current.work_enabled && snap?.work !== false}
+                  ended={ended}
+                  cooling={viewed ? "" : cooling}
+                  viewingTitle={viewed ? (viewed.title || whenLabel(viewed.created_at)) : ""}
+                  ready={talkFor === sel}
+                  giftNames={giftNames}
+                  onText={setText}
+                  onWork={setWork}
+                  onSend={() => void send()}
+                  onNewChat={() => void api.idolCall("new_conversation", { idol_id: current.id }).then(() => { setViewing(""); return refreshTalk(current.id); }).catch((e) => setNotice(idolError(e, c)))}
+                  onOpenGifts={() => setPanel("gifts")}
+                  onBack={() => setViewing("")}
+                  onOpenWork={(id) => void api.raiseSession(id)}
+                />
+              )}
+              {panel && !(callOn && callOpen) ? (
+                <IdolPanel
+                  kind={panel}
+                  idol={panelIdol}
+                  idols={snap?.idols || []}
+                  circles={snap?.circles || []}
+                  lore={snap?.lore || []}
+                  draft={draft}
+                  history={history}
+                  viewing={viewing}
+                  names={names}
+                  saving={saving}
+                  onDraft={setDraft}
+                  onClose={() => setPanel(null)}
+                  onSave={(i) => void save(i, panel !== "edit")}
+                  onDelete={(id) => void api.idolCall("delete_idol", { id }).then(async () => { setPanel(null); setSel(""); await load(); }).catch((e) => setNotice(idolError(e, c)))}
+                  onView={setViewing}
+                  onDeleteChat={(id) => void api.idolCall("delete_conversation", { id }).then(() => { if (viewing === id) setViewing(""); return refreshTalk(current.id); }).catch((e) => toast.error(idolError(e, c)))}
+                  onChanged={() => void refreshTalk(current.id)}
+                />
+              ) : null}
+            </div>
           </>
-        ) : (
-          <div className="grid flex-1 place-items-center text-[13px] text-muted">{c.empty}</div>
-        )}
+        ) : null}
+        {booted && !bootError && !current ? (
+          <div className="relative grid flex-1 place-items-center">
+            <EmptyState
+              title={c.empty}
+              body={c.railHint}
+              action={<Button size="sm" onClick={() => openEdit()}><Plus className="size-3.5" />{c.create}</Button>}
+            />
+            {panel ? (
+              <IdolPanel
+                kind={panel}
+                idol={null}
+                idols={snap?.idols || []}
+                circles={snap?.circles || []}
+                lore={snap?.lore || []}
+                draft={draft}
+                history={history}
+                viewing=""
+                names={names}
+                saving={saving}
+                onDraft={setDraft}
+                onClose={() => setPanel(null)}
+                onSave={(i) => void save(i)}
+                onDelete={() => {}}
+                onView={() => {}}
+                onDeleteChat={() => {}}
+                onChanged={() => void load()}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </div>
-  );
-}
-
-function Editor(props: {
-  idol: Idol;
-  circles: { id: string; name: string }[];
-  busy: boolean;
-  onChange: (i: Idol) => void;
-  onSave: () => void;
-}) {
-  const c = useCopy().idol;
-  const i = props.idol;
-  const set = (patch: Partial<Idol>) => props.onChange({ ...i, ...patch });
-  return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-2 overflow-auto p-4">
-      <Field label={c.name} value={i.name} onChange={(name) => set({ name })} />
-      <Field label={c.intro} value={i.intro} onChange={(intro) => set({ intro })} />
-      <Area label={c.sheet} value={i.sheet} onChange={(sheet) => set({ sheet })} />
-      <Area label={c.facts} value={i.facts} onChange={(facts) => set({ facts })} />
-      <Area label={c.readings} value={i.readings} onChange={(readings) => set({ readings })} />
-      <div className="flex gap-2">
-        <Field label={c.spoken} value={i.spoken_lang} onChange={(spoken_lang) => set({ spoken_lang })} />
-        <Field label={c.subtitle} value={i.subtitle_lang} onChange={(subtitle_lang) => set({ subtitle_lang })} />
-      </div>
-      <div className="flex gap-2">
-        <Field label={c.color} value={i.color} onChange={(color) => set({ color })} />
-        <Field label={c.voice} value={i.voice_id} onChange={(voice_id) => set({ voice_id })} />
-      </div>
-      <label className="text-[12px] text-muted">
-        {c.circle}
-        <select className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]" value={i.circle_id} onChange={(e) => set({ circle_id: e.target.value })}>
-          <option value="">{c.noCircle}</option>
-          {props.circles.map((cir) => <option key={cir.id} value={cir.id}>{cir.name}</option>)}
-        </select>
-      </label>
-      <label className="flex items-center gap-2 text-[12px] text-muted">
-        <input type="checkbox" checked={i.work_enabled} onChange={(e) => set({ work_enabled: e.target.checked })} />
-        {c.work}
-      </label>
-      <label className="text-[12px] text-muted">
-        {c.portrait}
-        <input className="mt-1 block text-[12px]" type="file" accept="image/*" onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const r = new FileReader();
-          r.onload = () => {
-            void api.idolCall("save_blob", { data: String(r.result || "") }).then((out) => set({ portrait: str(out?.id) }));
-          };
-          r.readAsDataURL(file);
-        }} />
-      </label>
-      <Button size="sm" disabled={props.busy} onClick={props.onSave}>{c.save}</Button>
-    </div>
-  );
-}
-
-function Field(props: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block text-[12px] text-muted">
-      {props.label}
-      <Input className="mt-1 h-8" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
-    </label>
-  );
-}
-
-function Area(props: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block text-[12px] text-muted">
-      {props.label}
-      <textarea className="mt-1 min-h-20 w-full rounded-md border border-border bg-background p-2 text-[13px]" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
-    </label>
   );
 }

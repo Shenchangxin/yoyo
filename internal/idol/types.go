@@ -57,6 +57,7 @@ type Idol struct {
 	WorkSessionID string    `json:"work_session_id"`
 	Pinned        bool      `json:"pinned"`
 	Hidden        bool      `json:"hidden"`
+	Kind          string    `json:"kind,omitempty"` // pet, catalog, or empty for someone the user made
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -168,4 +169,5 @@ type State struct {
 	DrawDay       string         `json:"draw_day"`
 	ResetCards    int            `json:"reset_cards"`
 	Tasks         DayMark        `json:"tasks"`
+	PresetRev     int            `json:"preset_rev,omitempty"`
 }

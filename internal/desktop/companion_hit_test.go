@@ -6,6 +6,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/winsize"
 )
 
+func TestCompanionCallKeepsBottomRight(t *testing.T) {
+	x, y := companionCallOrigin(1000, 700, companionW, companionIdleH)
+	if x+companionCallW != 1000+companionW || y+companionCallH != 700+companionIdleH {
+		t.Fatalf("call origin %d,%d moved the idle corner", x, y)
+	}
+}
+
 func TestCompanionHitDisk(t *testing.T) {
 	w, h := float64(companionW), float64(companionIdleH)
 	cx, cy := w/2, float64(companionPetTop)+float64(companionPet)/2
