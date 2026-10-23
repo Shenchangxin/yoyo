@@ -11,6 +11,9 @@ type MixOpts struct {
 	OrigVol     float64
 	Duck        bool
 	ReplaceOrig bool
+	// FadeOut fades music out over this many seconds at the end of Timeline.
+	FadeOut  float64
+	Timeline float64
 }
 
 func NormalizeMix(o MixOpts) MixOpts {
@@ -33,9 +36,9 @@ func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string
 	switch {
 	case hasSpeech && hasMusic:
 		if o.Duck {
-			filter = fmt.Sprintf("[2:a]volume=%.2f[bg];[bg][1:a]sidechaincompress=threshold=0.04:ratio=8:attack=40:release=280:makeup=1[ducked];[1:a]volume=%.2f[vo];[vo][ducked]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]", o.MusicVol, o.SpeechVol)
+			filter = fmt.Sprintf("%s[bg];[bg][1:a]sidechaincompress=threshold=0.04:ratio=8:attack=40:release=280:makeup=1[ducked];[1:a]volume=%.2f[vo];[vo][ducked]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]", musicChain(2, o), o.SpeechVol)
 		} else {
-			filter = fmt.Sprintf("[1:a]volume=%.2f[vo];[2:a]volume=%.2f[bg];[vo][bg]amix=inputs=2:duration=first:dropout_transition=2[a]", o.SpeechVol, o.MusicVol)
+			filter = fmt.Sprintf("[1:a]volume=%.2f[vo];%s[bg];[vo][bg]amix=inputs=2:duration=first:dropout_transition=2[a]", o.SpeechVol, musicChain(2, o))
 		}
 		return filter, []string{"-map", "0:v:0", "-map", "[a]"}
 	case hasSpeech:
@@ -46,14 +49,24 @@ func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string
 		return filter, []string{"-map", "0:v:0", "-map", "[a]"}
 	case hasMusic:
 		if o.ReplaceOrig {
-			filter = fmt.Sprintf("[1:a]volume=%.2f[a]", o.MusicVol)
+			filter = musicChain(1, o) + "[a]"
 			return filter, []string{"-map", "0:v:0", "-map", "[a]"}
 		}
-		filter = fmt.Sprintf("[0:a]volume=%.2f[bed];[1:a]volume=%.2f[bg];[bed][bg]amix=inputs=2:duration=first:dropout_transition=2[a]", o.OrigVol, o.MusicVol)
+		filter = fmt.Sprintf("[0:a]volume=%.2f[bed];%s[bg];[bed][bg]amix=inputs=2:duration=first:dropout_transition=2[a]", o.OrigVol, musicChain(1, o))
 		return filter, []string{"-map", "0:v:0", "-map", "[a]"}
 	default:
 		return "", nil
 	}
+}
+
+// musicChain is the labelled music branch. Fade is omitted unless Timeline is long enough,
+// so the no-fade graph stays stable for existing mixes.
+func musicChain(input int, o MixOpts) string {
+	if o.FadeOut > 0 && o.Timeline > o.FadeOut+0.05 {
+		st := o.Timeline - o.FadeOut
+		return fmt.Sprintf("[%d:a]afade=t=out:st=%.2f:d=%.2f,volume=%.2f", input, st, o.FadeOut, o.MusicVol)
+	}
+	return fmt.Sprintf("[%d:a]volume=%.2f", input, o.MusicVol)
 }
 
 // Mix mixes speech and/or music onto video. Duck compresses the bed under voice.

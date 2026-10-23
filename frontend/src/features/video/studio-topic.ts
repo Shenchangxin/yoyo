@@ -28,6 +28,16 @@ export function topicPrimaryAction(t: Pick<TopicCard, "studio_project_id">): "op
   return topicHasShort(t) ? "open" : "produce";
 }
 
+export function filmInFlight(phase?: string): boolean {
+  return phase === "queued" || phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose";
+}
+
+export function topicCanFilm(t: Pick<TopicCard, "studio_project_id">, film?: { auto_phase?: string; result_hash?: string }): boolean {
+  if (!topicHasShort(t)) return true;
+  if (!film) return false;
+  return film.auto_phase === "failed" && !film.result_hash;
+}
+
 export function topicIsScheduled(t: Pick<TopicCard, "status" | "studio_project_id">): boolean {
   return t.status === "scheduled" && !topicHasShort(t);
 }

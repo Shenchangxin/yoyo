@@ -34,6 +34,7 @@ type StudioShot struct {
 	Caption   string  `json:"caption,omitempty"`
 	Duration  float64 `json:"duration,omitempty"`
 	Motion    string  `json:"motion,omitempty"`
+	Fit       string  `json:"fit,omitempty"`
 	Prompt    string  `json:"prompt,omitempty"`
 	Visual    string  `json:"visual,omitempty"`
 	Stale     bool    `json:"stale,omitempty"`
@@ -113,52 +114,58 @@ type StudioStoryboard struct {
 	BGM         string       `json:"bgm,omitempty"`
 	Subtitle    string       `json:"subtitle,omitempty"`
 	BGMVolume   float64      `json:"bgm_volume,omitempty"`
+	Fit         string       `json:"fit,omitempty"`
 }
 
 type StudioProject struct {
-	ID             string           `json:"id"`
-	Title          string           `json:"title"`
-	TopicID        string           `json:"topic_id,omitempty"`
-	Aspect         string           `json:"aspect,omitempty"`
-	Style          string           `json:"style,omitempty"`
-	PresetID       string           `json:"preset_id,omitempty"`
-	TemplateID     string           `json:"template_id,omitempty"`
-	Platform       string           `json:"platform,omitempty"`
-	Tone           string           `json:"tone,omitempty"`
-	Audience       string           `json:"audience,omitempty"`
-	TargetDuration int              `json:"target_duration,omitempty"`
-	Revision       int              `json:"revision,omitempty"`
-	Gate           string           `json:"gate,omitempty"`
-	Script         string           `json:"script,omitempty"`
-	ScriptHash     string           `json:"script_hash,omitempty"`
-	ScriptStatus   string           `json:"script_status,omitempty"`
-	Hook           string           `json:"hook,omitempty"`
-	CTA            string           `json:"cta,omitempty"`
-	Segments       []StudioSegment  `json:"segments,omitempty"`
-	Identity       StudioIdentity   `json:"identity"`
-	SkipAudio      bool             `json:"skip_audio,omitempty"`
-	Voice          string           `json:"voice,omitempty"`
-	VoiceStyle     string           `json:"voice_style,omitempty"`
-	VoiceSpeed     float64          `json:"voice_speed,omitempty"`
-	Storyboard     StudioStoryboard `json:"storyboard"`
-	NarrationHash  string           `json:"narration_hash,omitempty"`
-	SubtitleHash   string           `json:"subtitle_hash,omitempty"`
-	BGMHash        string           `json:"bgm_hash,omitempty"`
-	ResultHash     string           `json:"result_hash,omitempty"`
-	PosterHash     string           `json:"poster_hash,omitempty"`
-	CoverHash      string           `json:"cover_hash,omitempty"`
-	Covers         []string         `json:"covers,omitempty"`
-	CopyHash       string           `json:"copy_hash,omitempty"`
-	CopyText       string           `json:"copy_text,omitempty"`
-	Versions       []StudioSnapshot `json:"versions,omitempty"`
-	Delivery       StudioDelivery   `json:"delivery"`
-	Activities     []StudioActivity `json:"activities,omitempty"`
-	Issues         []StudioIssue    `json:"issues,omitempty"`
-	AssetID        string           `json:"canvas_asset_id,omitempty"`
-	Status         string           `json:"status"`
-	Error          string           `json:"error,omitempty"`
-	CreatedAt      string           `json:"created_at"`
-	UpdatedAt      string           `json:"updated_at"`
+	ID                string           `json:"id"`
+	Title             string           `json:"title"`
+	TopicID           string           `json:"topic_id,omitempty"`
+	Aspect            string           `json:"aspect,omitempty"`
+	Style             string           `json:"style,omitempty"`
+	PresetID          string           `json:"preset_id,omitempty"`
+	TemplateID        string           `json:"template_id,omitempty"`
+	Platform          string           `json:"platform,omitempty"`
+	Tone              string           `json:"tone,omitempty"`
+	Audience          string           `json:"audience,omitempty"`
+	TargetDuration    int              `json:"target_duration,omitempty"`
+	Revision          int              `json:"revision,omitempty"`
+	Gate              string           `json:"gate,omitempty"`
+	Script            string           `json:"script,omitempty"`
+	ScriptHash        string           `json:"script_hash,omitempty"`
+	ScriptStatus      string           `json:"script_status,omitempty"`
+	Hook              string           `json:"hook,omitempty"`
+	CTA               string           `json:"cta,omitempty"`
+	Segments          []StudioSegment  `json:"segments,omitempty"`
+	Identity          StudioIdentity   `json:"identity"`
+	SkipAudio         bool             `json:"skip_audio,omitempty"`
+	Voice             string           `json:"voice,omitempty"`
+	VoiceStyle        string           `json:"voice_style,omitempty"`
+	VoiceSpeed        float64          `json:"voice_speed,omitempty"`
+	VoiceEngine       string           `json:"voice_engine,omitempty"`
+	Storyboard        StudioStoryboard `json:"storyboard"`
+	NarrationHash     string           `json:"narration_hash,omitempty"`
+	SubtitleHash      string           `json:"subtitle_hash,omitempty"`
+	BGMHash           string           `json:"bgm_hash,omitempty"`
+	ResultHash        string           `json:"result_hash,omitempty"`
+	PosterHash        string           `json:"poster_hash,omitempty"`
+	CoverHash         string           `json:"cover_hash,omitempty"`
+	Covers            []string         `json:"covers,omitempty"`
+	CopyHash          string           `json:"copy_hash,omitempty"`
+	CopyText          string           `json:"copy_text,omitempty"`
+	Versions          []StudioSnapshot `json:"versions,omitempty"`
+	Delivery          StudioDelivery   `json:"delivery"`
+	Activities        []StudioActivity `json:"activities,omitempty"`
+	Issues            []StudioIssue    `json:"issues,omitempty"`
+	AssetID           string           `json:"canvas_asset_id,omitempty"`
+	Status            string           `json:"status"`
+	Error             string           `json:"error,omitempty"`
+	AutoPhase         string           `json:"auto_phase,omitempty"`
+	AutoError         string           `json:"auto_error,omitempty"`
+	SubtitleEstimated bool             `json:"subtitle_estimated,omitempty"`
+	Brief             string           `json:"brief,omitempty"`
+	CreatedAt         string           `json:"created_at"`
+	UpdatedAt         string           `json:"updated_at"`
 }
 
 func normalizeAspect(s string) string {
@@ -352,6 +359,9 @@ func (e *Engine) UpdateStudioProject(in StudioProject) (StudioProject, error) {
 	}
 	if in.Storyboard.BGMVolume > 0 {
 		cur.Storyboard.BGMVolume = in.Storyboard.BGMVolume
+	}
+	if f := strings.TrimSpace(in.Storyboard.Fit); f == "cover" || f == "contain" {
+		cur.Storyboard.Fit = f
 	}
 	if in.NarrationHash != "" {
 		cur.NarrationHash = in.NarrationHash

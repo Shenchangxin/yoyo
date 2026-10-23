@@ -15,6 +15,13 @@ func TestMixGraphDucksMusicUnderSpeech(t *testing.T) {
 	}
 }
 
+func TestMixGraphFadeDoesNotDropDuck(t *testing.T) {
+	filter, _ := MixGraph(true, true, MixOpts{Duck: true, MusicVol: 0.22, SpeechVol: 1, FadeOut: 3, Timeline: 10})
+	if !contains(filter, "afade=") || !contains(filter, "sidechaincompress") {
+		t.Fatalf("got %s", filter)
+	}
+}
+
 func TestMixGraphSpeechReplace(t *testing.T) {
 	filter, maps := MixGraph(true, false, MixOpts{ReplaceOrig: true})
 	if filter != "" {

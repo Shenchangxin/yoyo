@@ -522,7 +522,7 @@ func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	if voice == "" {
 		voice = "alloy"
 	}
-	raw, err := e.ttsOpenAI(c.Endpoint, key, model, text, voice)
+	raw, _, err := e.ttsOpenAI(c.Endpoint, key, model, text, voice, 0)
 	if err != nil {
 		return p, err
 	}

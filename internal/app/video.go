@@ -917,6 +917,33 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 			return a.enrichStudio(p), err
 		}
 		return a.enrichStudio(p), nil
+	case "video.studio.auto":
+		p, err := eng.StartStudioAuto(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.auto.topics":
+		rows, err := eng.StartTopicFilms(topicIDsFrom(params))
+		out := make([]map[string]any, 0, len(rows))
+		for _, p := range rows {
+			out = append(out, a.enrichStudio(p))
+		}
+		return out, err
+	case "video.studio.bgm.list":
+		return eng.ListStudioBGM(), nil
+	case "video.studio.bgm.use":
+		p, err := eng.AttachStudioBGM(str("id"), str("name"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
+	case "video.studio.bgm.clear":
+		p, err := eng.ClearStudioBGM(str("id"))
+		if err != nil {
+			return a.enrichStudio(p), err
+		}
+		return a.enrichStudio(p), nil
 	case "video.studio.speak":
 		p, err := eng.SpeakStudio(str("id"), str("text"))
 		if err != nil {
@@ -1605,6 +1632,29 @@ func (a *App) runStudioJob(j schedule.Job) {
 	}
 	if a.Schedule != nil {
 		a.Schedule.Record(j.ID, nil)
+	}
+}
+
+func topicIDsFrom(params map[string]any) []string {
+	if params == nil {
+		return nil
+	}
+	switch raw := params["topic_ids"].(type) {
+	case []string:
+		return raw
+	case []any:
+		out := make([]string, 0, len(raw))
+		for _, item := range raw {
+			s := strings.TrimSpace(fmt.Sprint(item))
+			if s != "" && s != "<nil>" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		return splitCSVApp(raw)
+	default:
+		return nil
 	}
 }
 
