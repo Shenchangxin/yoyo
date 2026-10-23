@@ -15,7 +15,7 @@
 
 Yoyo 是同一条 Go 循环的三扇门：Wails 桌面、浏览器、命令行。它写代码、按 hunk 审查、开一个隔离浏览器、跑技能包，也可以在自己的目录里做短视频。提示词和 playbook 可以进化。评测器、密钥库、更新器不行。
 
-**v0.4.1** · Apache-2.0 · Windows、macOS、Linux · 自备 OpenAI 兼容的 Key
+**v0.6.0** · Apache-2.0 · Windows、macOS、Linux · 自备 OpenAI 兼容的 Key
 
 [下载](https://github.com/Shenchangxin/yoyo/releases/latest) · [产品主页](https://shenchangxin.github.io/yoyo/) · [架构不变量](docs/architecture/invariants.md) · [Skill Pack](docs/architecture/skill-packs.md)
 
@@ -27,7 +27,7 @@ Yoyo 是同一条 Go 循环的三扇门：Wails 桌面、浏览器、命令行�
 | --- | --- |
 | **Agent** | 一轮流式对话。`@file` 钉一份文件。Plan 只提议。Stop 留下已经写好的东西。 |
 | **审查** | 勾选 hunk 再应用。隔离浏览器打开 Agent 看过的页面。会话可搜索、改名、分叉。 |
-| **视频** | 创作、短剧、画布共用一套壳，目录是自己的。不和写代码的工作区搅在一起。 |
+| **视频** | 创作、短片、短剧、画布共用一套壳，目录是自己的。不和写代码的工作区搅在一起。 |
 | **技能** | 包装在 `~/.yoyo/packs/`，默认关闭。`@skill` 才把领域包载进这一轮。 |
 | **Harness** | 提示词按内容寻址。点赞只写 `staging`。Evolve 只写 `canary`。只有 Harbor，然后是你，才能移动 `active`。 |
 
@@ -130,9 +130,10 @@ Load a pack for this turn @skill:novel-to-game
 
 ### 视频
 
-创作、短剧、画布共用一套壳，目录也是自己的。Key 和适配器在设置里。
+创作、短片、短剧、画布共用一套壳，目录也是自己的。Key 和适配器在设置里。
 
-- **Create** — 描述一段片子。图像、语音、视频适配器是你的。
+- **创作** — 导入一条片子。剪辑台打开后，配音和成片留在那里。
+- **短片** — 选一个选题，再做成片。配音、合成、交接都在这张桌上。
 - **短剧** — 贴一章，先确认分集计划，再拍。
 - **画布** — 镜头的空间工作区。编辑器保持干净，画面才看得清。
 
@@ -270,8 +271,8 @@ cd frontend && npm install && npm run build
 CI 在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端。推送 `v*` 标签会跑 [release.yml](.github/workflows/release.yml)：
 
 ```bash
-git tag v0.4.1
-git push origin v0.4.1
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 macOS 构建是 ad-hoc 签名，没有公证。Windows 和 Linux 包未签名。

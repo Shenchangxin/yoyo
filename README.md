@@ -15,7 +15,7 @@
 
 Yoyo is one Go agent loop with three doors: a Wails desktop, a browser, and a CLI. It writes code, reviews hunks, opens an isolated browser, runs skill packs, and can shoot short-form video in its own folder. Prompts and playbooks may evolve. The evaluator, the vault, and the updater may not.
 
-**v0.4.1** · Apache-2.0 · Windows, macOS, Linux · bring your own OpenAI-compatible key
+**v0.6.0** · Apache-2.0 · Windows, macOS, Linux · bring your own OpenAI-compatible key
 
 [Download](https://github.com/Shenchangxin/yoyo/releases/latest) · [Product site](https://shenchangxin.github.io/yoyo/) · [Invariants](docs/architecture/invariants.md) · [Skill packs](docs/architecture/skill-packs.md)
 
@@ -27,7 +27,7 @@ Yoyo is one Go agent loop with three doors: a Wails desktop, a browser, and a CL
 | --- | --- |
 | **Agent** | A streaming turn. `@file` pins a file. Plan proposes. Stop keeps what already landed. |
 | **Review** | Tick hunks and apply them. An isolated browser for the page the agent opened. Search, rename, fork the thread. |
-| **Video** | Create, Drama, and Canvas share one chrome and their own folder. Not mixed with the code workspace. |
+| **Video** | Create, Shorts, Drama, and Canvas share one chrome and their own folder. Not mixed with the code workspace. |
 | **Skills** | Packs live in `~/.yoyo/packs/` and stay off until you enable them. `@skill` loads a domain pack for one turn. |
 | **Harness** | Prompts are content-addressed. Thumbs write `staging`. Evolve writes `canary`. Only Harbor, then you, can move `active`. |
 
@@ -130,9 +130,10 @@ The side pane is a queue.
 
 ### Video
 
-Create, Drama, and Canvas share chrome and a folder of their own. Keys and adapters live in Settings.
+Create, Shorts, Drama, and Canvas share chrome and a folder of their own. Keys and adapters live in Settings.
 
-- **Create** — describe a clip. Image, speech, and video adapters are yours.
+- **Create** — import a clip. The cut desk opens; dubbing and assembly stay there.
+- **Shorts** — pick a topic, then a finished short. Voice, assemble, and handoff live on that desk.
 - **Drama** — paste a chapter, confirm the episode plan, then shoot.
 - **Canvas** — a spatial board for shots. The editor stays plain so the picture stays readable.
 
@@ -270,8 +271,8 @@ cd frontend && npm install && npm run build
 CI runs Go tests on Windows and a frontend build on Ubuntu. Pushing a `v*` tag runs [release.yml](.github/workflows/release.yml):
 
 ```bash
-git tag v0.4.1
-git push origin v0.4.1
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 macOS builds are ad-hoc signed, not notarized. Windows and Linux packages are unsigned.

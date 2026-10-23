@@ -15,7 +15,7 @@
 
 Yoyo はひとつの Go ループに三つの扉がある。Wails デスクトップ、ブラウザ、CLI。コードを書き、ハンクをレビューし、隔離ブラウザを開き、スキルパックを走らせ、専用フォルダで短い映像も扱える。プロンプトとプレイブックは進化してよい。評価器、保管庫、アップデータは進化しない。
 
-**v0.4.1** · Apache-2.0 · Windows、macOS、Linux · OpenAI 互換のキーは自分で
+**v0.6.0** · Apache-2.0 · Windows、macOS、Linux · OpenAI 互換のキーは自分で
 
 [ダウンロード](https://github.com/Shenchangxin/yoyo/releases/latest) · [製品サイト](https://shenchangxin.github.io/yoyo/) · [不変条件](docs/architecture/invariants.md) · [スキルパック](docs/architecture/skill-packs.md)
 
@@ -27,7 +27,7 @@ Yoyo はひとつの Go ループに三つの扉がある。Wails デスクト�
 | --- | --- |
 | **Agent** | ストリーミングのターン。`@file` でファイルをピン。Plan は提案だけ。Stop はすでに書いたものを残す。 |
 | **審査** | ハンクを選んで適用。隔離ブラウザ。スレッドは検索、改名、分岐。 |
-| **ビデオ** | Create、Drama、Canvas は同じクロムと専用フォルダ。コードの作業場とは混ぜない。 |
+| **ビデオ** | Create、Shorts、Drama、Canvas は同じクロムと専用フォルダ。コードの作業場とは混ぜない。 |
 | **スキル** | `~/.yoyo/packs/` に置き、有効にするまでオフ。`@skill` でそのターンだけ領域パックを載せる。 |
 | **Harness** | プロンプトはコンテンツアドレス。評価は `staging`。Evolve は `canary`。`active` を動かすのは Harbor と、そのあとあなただけ。 |
 
@@ -130,9 +130,10 @@ USD 予算は提案ではなく、硬い停止だ。
 
 ### ビデオ
 
-Create、Drama、Canvas はクロムとフォルダを共有する。キーとアダプタは設定にある。
+Create、Shorts、Drama、Canvas はクロムとフォルダを共有する。キーとアダプタは設定にある。
 
-- **Create** — クリップを書く。画像、音声、動画のアダプタは自分のもの。
+- **Create** — クリップを取り込む。カット机が開き、吹替と組み立てはそこに残る。
+- **Shorts** — 題を選び、短い作品にする。音声、組み立て、引き渡しはその机にある。
 - **Drama** — 章を貼り、話数計画を確認してから撮る。
 - **Canvas** — ショットの空間。編集器は絵が読めるように素のまま。
 
@@ -270,8 +271,8 @@ cd frontend && npm install && npm run build
 CI は Windows で Go テスト、Ubuntu でフロントエンドのビルド。`v*` タグを push すると [release.yml](.github/workflows/release.yml) が走る。
 
 ```bash
-git tag v0.4.1
-git push origin v0.4.1
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 macOS ビルドは ad-hoc 署名で、公証はない。Windows と Linux のパッケージは未署名。
