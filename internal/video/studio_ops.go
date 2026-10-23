@@ -3,6 +3,8 @@ package video
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -113,10 +115,11 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 			dur = 3
 		}
 		clip := filepath.Join(tmp, fmt.Sprintf("shot-%02d.mp4", i))
-		motion := shot.Motion
-		if motion == "" {
-			motion = sb.ImageMotion
+		motion := normalizeMotion(shot.Motion)
+		if shot.Motion == "" {
+			motion = normalizeMotion(sb.ImageMotion)
 		}
+		fit := shotFit(sb, shot, motion)
 		if shot.VideoHash != "" {
 			src, err := e.materialize(shot.VideoHash, ".mp4")
 			if err != nil {
@@ -125,13 +128,27 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 				return p, err
 			}
 			defer os.Remove(src)
-			vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30", w, h, w, h)
-			cmd := exec.Command(e.FFMPEG, "-y", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
-				"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				p.Status, p.Error = StudioFailed, ffmpegErr(out, err)
+			if e.FFProbe != "" {
+				if srcDur, perr := probeFileSeconds(e.FFProbe, src); perr == nil {
+					if _, warn := clipShouldLoop(srcDur, dur); warn {
+						label := firstNonEmpty(shot.Caption, shot.ID)
+						e.warnStudio(&p, GateCompose, fmt.Sprintf("镜头「%s」只有 %.1f 秒，已循环补到 %.1f 秒。", label, srcDur, dur))
+					}
+				}
+			}
+			vf := frameFilter(w, h, fit)
+			if err := e.encodeShot(clip, shotCacheKey("v", shot.VideoHash, dur, motion, fit, w, h), func() error {
+				cmd := exec.Command(e.FFMPEG, "-y", "-stream_loop", "-1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
+					"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip)
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					return fmt.Errorf("%s", ffmpegErr(out, err))
+				}
+				return nil
+			}); err != nil {
+				p.Status, p.Error = StudioFailed, err.Error()
 				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, fmt.Errorf("%s", p.Error)
+				return p, err
 			}
 		} else if shot.ImageHash != "" {
 			src, err := e.materialize(shot.ImageHash, ".png")
@@ -141,14 +158,20 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 				return p, err
 			}
 			defer os.Remove(src)
-			vf := stillFilter(w, h, dur, motion)
-			args := []string{"-y", "-loop", "1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
-				"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip}
-			cmd := exec.Command(e.FFMPEG, args...)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				p.Status, p.Error = StudioFailed, ffmpegErr(out, err)
+			vf := stillFilter(w, h, dur, motion, fit)
+			if err := e.encodeShot(clip, shotCacheKey("i", shot.ImageHash, dur, motion, fit, w, h), func() error {
+				args := []string{"-y", "-loop", "1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
+					"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip}
+				cmd := exec.Command(e.FFMPEG, args...)
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					return fmt.Errorf("%s", ffmpegErr(out, err))
+				}
+				return nil
+			}); err != nil {
+				p.Status, p.Error = StudioFailed, err.Error()
 				_ = e.putDoc(colStudioProjects, p.ID, p)
-				return p, fmt.Errorf("%s", p.Error)
+				return p, err
 			}
 		} else {
 			continue
@@ -179,7 +202,7 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 		final = mixed
 	}
 	if sb.Subtitle != "" {
-		burned, err := e.burnSubtitles(tmp, final, sb.Subtitle)
+		burned, err := e.burnSubtitles(tmp, final, sb.Subtitle, w, h)
 		if err == nil {
 			final = burned
 		}
@@ -222,16 +245,70 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	return published, nil
 }
 
-func stillFilter(w, h int, dur float64, motion string) string {
-	base := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30", w, h, w, h)
-	if strings.ToLower(strings.TrimSpace(motion)) != "ken-burns" {
-		return base
+func shotCacheKey(kind, hash string, dur float64, motion, fit string, w, h int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%.3f|%s|%s|%d|%d", kind, hash, dur, motion, fit, w, h)))
+	return hex.EncodeToString(sum[:])
+}
+
+func (e *Engine) encodeShot(dest, key string, encode func() error) error {
+	if cached := e.shotCacheFile(key); cached != "" {
+		in, err := os.Open(cached)
+		if err == nil {
+			defer in.Close()
+			out, err := os.Create(dest)
+			if err == nil {
+				_, copyErr := io.Copy(out, in)
+				closeErr := out.Close()
+				if copyErr == nil && closeErr == nil {
+					return nil
+				}
+			}
+		}
 	}
-	frames := int(dur * 30)
-	if frames < 30 {
-		frames = 30
+	if err := encode(); err != nil {
+		return err
 	}
-	return fmt.Sprintf("%s,zoompan=z='min(zoom+0.0008,1.12)':d=%d:s=%dx%d:fps=30", base, frames, w, h)
+	e.storeShotCache(key, dest)
+	return nil
+}
+
+func (e *Engine) shotCacheFile(key string) string {
+	if strings.TrimSpace(e.Dir) == "" || key == "" {
+		return ""
+	}
+	p := filepath.Join(e.Dir, "shot-cache", key+".mp4")
+	st, err := os.Stat(p)
+	if err != nil || st.Size() < 32 {
+		return ""
+	}
+	return p
+}
+
+func (e *Engine) storeShotCache(key, src string) {
+	if strings.TrimSpace(e.Dir) == "" || key == "" {
+		return
+	}
+	dir := filepath.Join(e.Dir, "shot-cache")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return
+	}
+	defer in.Close()
+	tmp := filepath.Join(dir, key+".part")
+	out, err := os.Create(tmp)
+	if err != nil {
+		return
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil || closeErr != nil {
+		os.Remove(tmp)
+		return
+	}
+	_ = os.Rename(tmp, filepath.Join(dir, key+".mp4"))
 }
 
 func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol float64) (string, error) {
@@ -258,32 +335,77 @@ func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol floa
 		bgmVol = 0.22
 	}
 	out := filepath.Join(tmp, "mixed.mp4")
-	if err := e.cutBin().Mix(video, narr, bgm, out, cut.MixOpts{
+	opts := cut.MixOpts{
 		Duck:        narr != "" && bgm != "",
 		ReplaceOrig: narr != "",
 		MusicVol:    bgmVol,
 		SpeechVol:   1,
-	}); err != nil {
+	}
+	if bgm != "" && e.FFProbe != "" {
+		if sec, err := probeFileSeconds(e.FFProbe, video); err == nil && sec > 3.2 {
+			opts.FadeOut = 3
+			opts.Timeline = sec
+		}
+	}
+	if err := e.cutBin().Mix(video, narr, bgm, out, opts); err != nil {
 		return "", err
 	}
 	return out, nil
 }
 
-func (e *Engine) burnSubtitles(tmp, video, subHash string) (string, error) {
+func (e *Engine) burnSubtitles(tmp, video, subHash string, w, h int) (string, error) {
 	src, err := e.materialize(subHash, ".srt")
 	if err != nil {
 		return "", err
 	}
 	defer os.Remove(src)
+	burnPath := src
+	if w <= 0 || h <= 0 {
+		w, h = e.probeFrame(video)
+	}
+	if raw, err := os.ReadFile(src); err == nil {
+		if ass := srtToASS(string(raw), w, h); ass != "" {
+			assPath := filepath.Join(tmp, "captions.ass")
+			if err := os.WriteFile(assPath, []byte(ass), 0o600); err == nil {
+				burnPath = assPath
+			}
+		}
+	}
 	out := filepath.Join(tmp, "sub.mp4")
-	slash := filepath.ToSlash(src)
-	slash = strings.ReplaceAll(slash, ":", `\:`)
-	vf := "subtitles='" + strings.ReplaceAll(slash, "'", `\'`) + "'"
+	vf := subtitleFilter(burnPath)
 	cmd := exec.Command(e.FFMPEG, "-y", "-i", video, "-vf", vf, "-c:a", "copy", out)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("%s", ffmpegErr(b, err))
 	}
 	return out, nil
+}
+
+func subtitleFilter(path string) string {
+	slash := filepath.ToSlash(path)
+	slash = strings.ReplaceAll(slash, ":", `\:`)
+	slash = strings.ReplaceAll(slash, "'", `\'`)
+	return "subtitles='" + slash + "':charenc=UTF-8"
+}
+
+func (e *Engine) probeFrame(path string) (int, int) {
+	if e.FFProbe == "" {
+		return 1080, 1920
+	}
+	cmd := exec.Command(e.FFProbe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path)
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		return 1080, 1920
+	}
+	parts := strings.Split(strings.TrimSpace(string(b)), "x")
+	if len(parts) != 2 {
+		return 1080, 1920
+	}
+	w, _ := strconv.Atoi(parts[0])
+	h, _ := strconv.Atoi(parts[1])
+	if w < 16 || h < 16 {
+		return 1080, 1920
+	}
+	return even(w), even(h)
 }
 
 func (e *Engine) Reframe(hash, aspect string) (MediaRef, error) {
@@ -335,7 +457,7 @@ func (e *Engine) BurnInCaptions(hash, subHash string) (MediaRef, error) {
 		return MediaRef{}, err
 	}
 	defer os.Remove(src)
-	out, err := e.burnSubtitles(tmp, src, subHash)
+	out, err := e.burnSubtitles(tmp, src, subHash, 0, 0)
 	if err != nil {
 		return MediaRef{}, err
 	}

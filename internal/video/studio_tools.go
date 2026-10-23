@@ -63,6 +63,8 @@ func StudioToolSpecs() []ToolSpec {
 		{Name: "studio_autoclip", Desc: "Split a source CAS video into highlight clips. Returns hashes and scores. Does not concatenate.", Params: obj(map[string]any{"hash": str, "count": num, "duration": str}, "hash")},
 		{Name: "studio_apply_timing", Desc: "Set shot durations from narration SRT / ffprobe after Speak.", Params: obj(map[string]any{"id": str})},
 		{Name: "studio_assemble", Desc: "FFmpeg-assemble the bound storyboard into an mp4 and add it to the asset library. Requires shots with image_hash or video_hash.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_auto", Desc: "One-click short: lock or draft the script, speak (edge-tts if no speech key), generate missing stills, then assemble. Spends chat/speech/image keys. Returns immediately; poll studio_get auto_phase until done or failed.", Params: obj(map[string]any{"id": str})},
+		{Name: "studio_auto_topics", Desc: "One-click one or more topics. Picks aspect, template, voice, and length, then drafts, speaks, fills stills, and assembles. Does not post. Returns immediately; poll each auto_phase. Finished films land on delivery for the operator to choose a platform.", Params: obj(map[string]any{"topic_ids": arr}, "topic_ids")},
 		{Name: "studio_reframe", Desc: "Pad/crop a CAS video to 9:16, 16:9, or 1:1.", Params: obj(map[string]any{"hash": str, "aspect": str}, "hash")},
 		{Name: "studio_burnin", Desc: "Burn an SRT (CAS hash) into a video.", Params: obj(map[string]any{"hash": str, "subtitle_hash": str}, "hash", "subtitle_hash")},
 		{Name: "studio_slideshow", Desc: "Ken Burns slideshow from image CAS hashes.", Params: obj(map[string]any{"hashes": arr, "aspect": str, "duration": num}, "hashes")},
@@ -206,6 +208,24 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 			return "", err
 		}
 		return marshalJSON(p), nil
+	case "studio_auto":
+		if id == "" {
+			return "", fmt.Errorf("no studio project bound")
+		}
+		p, err := e.StartStudioAuto(id)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(p), nil
+	case "studio_auto_topics":
+		var ids []string
+		b, _ := json.Marshal(args["topic_ids"])
+		_ = json.Unmarshal(b, &ids)
+		rows, err := e.StartTopicFilms(ids)
+		if err != nil {
+			return "", err
+		}
+		return marshalJSON(rows), nil
 	case "studio_reframe":
 		ref, err := e.Reframe(strAnyMap(args, "hash"), strAnyMap(args, "aspect"))
 		if err != nil {

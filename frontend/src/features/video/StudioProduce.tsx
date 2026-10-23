@@ -17,9 +17,13 @@ import {
 } from "./studio-model";
 import { requestSendToCut } from "./open-cut";
 
-const MOTIONS = ["ken-burns", "static", "push-in", "pan-left", "zoom-out"];
 const ASPECTS = ["9:16", "16:9", "1:1"];
 const LENGTHS = [15, 30, 45, 60];
+const AUTO_PHASES = ["script", "voice", "visuals", "compose"] as const;
+
+function autoRunning(phase?: string) {
+  return phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose";
+}
 
 export type StudioProduceProps = {
   current: StudioProject;
@@ -70,6 +74,18 @@ export function StudioProduce(props: StudioProduceProps) {
     return () => window.clearInterval(t);
   }, [cur.id, pendingKey]);
 
+  useEffect(() => {
+    if (!autoRunning(cur.auto_phase) || !cur.id) return;
+    const t = window.setInterval(() => {
+      void api.video.getStudio(cur.id).then((row) => {
+        const next = row as StudioProject;
+        onChangeRef.current(next);
+        if (next.auto_phase === "done" && next.result_hash) setStep("delivery");
+      }).catch(() => {});
+    }, 1500);
+    return () => window.clearInterval(t);
+  }, [cur.id, cur.auto_phase]);
+
   const go = (g: StudioGate) => {
     if (gateIndex(g) > furthest + 1) return;
     setStep(g);
@@ -78,6 +94,12 @@ export function StudioProduce(props: StudioProduceProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      <OneClickBar
+        current={cur}
+        busy={props.busy}
+        run={props.run}
+        onChange={props.onChange}
+      />
       <nav className="flex flex-wrap items-center gap-0.5" aria-label={p.setup} data-testid="studio-step-nav">
         {STUDIO_GATES.map((g, i) => {
           const locked = i > furthest;
@@ -110,7 +132,7 @@ export function StudioProduce(props: StudioProduceProps) {
       {(cur.issues || []).length ? (
         <ul className="space-y-1" data-testid="studio-gate-issues">
           {(cur.issues || []).slice(-3).map((iss) => (
-            <li key={iss.id} className="text-[12px] text-danger">{iss.message}</li>
+            <li key={iss.id} className={cn("text-[12px]", iss.level === "warn" ? "text-warning" : "text-danger")}>{iss.message}</li>
           ))}
         </ul>
       ) : null}
@@ -121,6 +143,68 @@ export function StudioProduce(props: StudioProduceProps) {
       {step === "compose" ? <ComposeStep {...props} shots={shots} onContinue={() => go("delivery")} /> : null}
       {step === "delivery" ? <DeliveryStep {...props} onContinue={() => props.onPublish?.()} /> : null}
     </div>
+  );
+}
+
+function OneClickBar(props: {
+  current: StudioProject;
+  busy: string;
+  run: StudioProduceProps["run"];
+  onChange: StudioProduceProps["onChange"];
+}) {
+  const p = useCopy().video.studio.desk;
+  const cur = props.current;
+  const running = autoRunning(cur.auto_phase);
+  const phaseLabel: Record<string, string> = {
+    script: p.phaseScript,
+    voice: p.phaseVoice,
+    visuals: p.phaseVisuals,
+    compose: p.phaseCompose,
+    done: p.phaseDone,
+    failed: p.phaseFailed,
+  };
+  const label = running ? p.oneClickRunning : cur.auto_phase === "failed" ? p.oneClickRetry : cur.result_hash ? p.oneClickAgain : p.oneClick;
+  return (
+    <section className="rounded-xl border border-border/70 bg-card px-3 py-3" data-testid="studio-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] text-foreground">{p.oneClick}</p>
+          <p className="mt-1 text-[12px] leading-[1.45] text-muted">{p.oneClickHint}</p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!!props.busy || running}
+          onClick={() => void props.run("auto", async () => {
+            props.onChange(await api.video.autoStudio(cur.id) as StudioProject);
+          })}
+        >
+          {running ? <LoaderCircle className="mr-1 size-3.5 animate-spin" aria-hidden /> : null}
+          {label}
+        </Button>
+      </div>
+      <ol className="mt-3 flex flex-wrap gap-1.5" aria-label={p.oneClickRunning}>
+        {AUTO_PHASES.map((id) => {
+          const active = cur.auto_phase === id;
+          const at = AUTO_PHASES.indexOf(cur.auto_phase as typeof id);
+          const done = cur.auto_phase === "done" || (at >= 0 && AUTO_PHASES.indexOf(id) < at);
+          return (
+            <li
+              key={id}
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px]",
+                active ? "bg-foreground text-background" : done ? "bg-lift text-foreground" : "text-muted",
+              )}
+              aria-current={active ? "step" : undefined}
+            >
+              {phaseLabel[id]}
+            </li>
+          );
+        })}
+      </ol>
+      {cur.auto_error ? <p className="mt-2 text-[12px] text-danger" data-testid="studio-auto-error">{cur.auto_error}</p> : null}
+      <p className="mt-2 text-[11px] text-muted">{p.oneClickManual}</p>
+    </section>
   );
 }
 
@@ -359,6 +443,14 @@ function AudioStep(props: {
         </Field>
       ) : null}
       {cur.narration_url ? <audio className="w-full" src={cur.narration_url} controls /> : null}
+      {cur.voice_engine === "edge" ? <p className="text-[12px] text-muted">{p.edgeVoice}</p> : null}
+      <Field label={p.speed}>
+        <ChipRow
+          items={[{ id: "0.8", label: "0.8×" }, { id: "1", label: p.speedNormal }, { id: "1.2", label: "1.2×" }]}
+          value={String(cur.voice_speed || 1)}
+          onPick={(id) => void props.saveProject({ voice_speed: Number(id) })}
+        />
+      </Field>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="default" disabled={!!props.busy || cur.script_status !== "approved" || !String(cur.script || "").trim()} onClick={() => void props.run("speak", async () => {
           const next = await api.video.speakStudio(cur.id, cur.script || "") as StudioProject;
@@ -374,18 +466,6 @@ function AudioStep(props: {
       <details>
         <summary className="cursor-pointer text-[12px] text-muted">{s.moreVoice}</summary>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Input
-            className="h-8 w-28"
-            type="number"
-            min={0.5}
-            max={2}
-            step={0.1}
-            placeholder={p.speed}
-            value={cur.voice_speed || ""}
-            onChange={(e) => props.onChange({ ...cur, voice_speed: Number(e.target.value) || 0 })}
-            onBlur={(e) => void props.saveProject({ voice_speed: Number(e.target.value) || 0 })}
-            aria-label={p.speed}
-          />
           <Button size="sm" variant="ghost" disabled={!!props.busy || !cur.narration_hash} onClick={() => void props.run("timing", async () => {
             props.onChange(await api.video.studioTiming(cur.id) as StudioProject);
           })}>{p.applyTiming}</Button>
@@ -436,6 +516,14 @@ function VisualsStep(props: {
   return (
     <div className="flex flex-col gap-2">
       <Preflight id={cur.id} gate="visuals" />
+      <Field label={p.fit}>
+        <ChipRow
+          items={[{ id: "cover", label: p.fitCover }, { id: "contain", label: p.fitContain }]}
+          value={cur.storyboard?.fit === "contain" ? "contain" : "cover"}
+          onPick={(id) => void props.saveProject({ storyboard: { ...(cur.storyboard || {}), fit: id } })}
+        />
+        <p className="text-[11px] leading-[1.4] text-muted">{p.fitHint}</p>
+      </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="default" disabled={!!props.busy} onClick={() => void props.run("gen", async () => {
           await api.video.generateStudioMissing(cur.id);
@@ -493,11 +581,15 @@ function VisualsStep(props: {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <select
                     className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]"
-                    value={sh.motion || "ken-burns"}
-                    onChange={(e) => void patchShot(i, { motion: e.target.value }, true)}
+                    value={sh.motion === "static" ? "static" : "ken-burns"}
+                    onChange={(e) => {
+                      const motion = e.target.value;
+                      void patchShot(i, motion === "static" ? { motion, fit: "contain" } : { motion, fit: "" }, true);
+                    }}
                     aria-label={p.motion}
                   >
-                    {MOTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    <option value="ken-burns">{p.motionPush}</option>
+                    <option value="static">{p.motionStill}</option>
                   </select>
                   <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} aria-label={copy.video.shotDuration} onChange={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 }, true)} />
                   <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("regen", async () => {
@@ -547,6 +639,7 @@ function ComposeStep(props: {
   return (
     <div className="flex flex-col gap-2">
       <Preflight id={cur.id} gate="compose" />
+      <BgmRow current={cur} busy={props.busy} run={props.run} onChange={props.onChange} />
       {cur.media_url ? <video className="max-h-72 w-full rounded-xl bg-black" src={cur.media_url} poster={cur.poster_url || undefined} controls /> : null}
       <Button size="sm" variant="default" className="self-start" disabled={!!props.busy || !props.shots.some(shotReady)} onClick={() => void props.run("assemble", async () => {
         const next = await api.video.assembleStudio(cur.id) as StudioProject;
@@ -687,6 +780,42 @@ function Preflight(props: { id: string; gate: string }) {
       {p.preflight}{spend ? ` · ${spend}` : ""}
       {pf.missing?.length ? ` · ${p.missingAdapters}` : ""}
     </p>
+  );
+}
+
+function BgmRow(props: {
+  current: StudioProject;
+  busy: string;
+  run: StudioProduceProps["run"];
+  onChange: StudioProduceProps["onChange"];
+}) {
+  const p = useCopy().video.studio.desk;
+  const cur = props.current;
+  const [list, setList] = useState<{ dir?: string; items?: { name: string }[] } | null>(null);
+  useEffect(() => {
+    void api.video.listStudioBGM().then((row) => setList(row as { dir?: string; items?: { name: string }[] })).catch(() => {});
+  }, [cur.id, cur.bgm_hash]);
+  const items = list?.items || [];
+  return (
+    <section className="flex flex-col gap-1.5" data-testid="studio-bgm">
+      <span className="text-[12px] text-muted">{p.bgm}</span>
+      <p className="text-[11px] leading-[1.4] text-muted">{p.bgmHint}</p>
+      {list?.dir ? <p className="break-all text-[11px] text-muted">{list.dir}</p> : null}
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy || items.length === 0} onClick={() => void props.run("bgm", async () => {
+          props.onChange(await api.video.useStudioBGM(cur.id, "random") as StudioProject);
+        })}>{p.bgmRandom}</Button>
+        <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy || !cur.bgm_hash} onClick={() => void props.run("bgm", async () => {
+          props.onChange(await api.video.clearStudioBGM(cur.id) as StudioProject);
+        })}>{p.bgmOff}</Button>
+        {items.map((it) => (
+          <Button key={it.name} size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("bgm", async () => {
+            props.onChange(await api.video.useStudioBGM(cur.id, it.name) as StudioProject);
+          })}>{it.name}</Button>
+        ))}
+      </div>
+      {list && items.length === 0 ? <p className="text-[11px] text-muted">{p.bgmEmpty}</p> : null}
+    </section>
   );
 }
 

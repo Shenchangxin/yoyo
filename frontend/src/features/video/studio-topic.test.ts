@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cycleScore, setScore, topicIsScheduled, topicMatchesQuery, topicPrimaryAction, topicScoreAvg, trendMatchesQuery } from "./studio-topic.ts";
+import { cycleScore, setScore, topicCanFilm, topicIsScheduled, topicMatchesQuery, topicPrimaryAction, topicScoreAvg, trendMatchesQuery } from "./studio-topic.ts";
 
 describe("topic card helpers", () => {
   it("averages filled scores only", () => {
@@ -12,6 +12,14 @@ describe("topic card helpers", () => {
   it("opens an existing short instead of producing a clone", () => {
     assert.equal(topicPrimaryAction({}), "produce");
     assert.equal(topicPrimaryAction({ studio_project_id: "abc" }), "open");
+  });
+
+  it("lets a failed film be made again", () => {
+    assert.equal(topicCanFilm({}), true);
+    assert.equal(topicCanFilm({ studio_project_id: "abc" }), false);
+    assert.equal(topicCanFilm({ studio_project_id: "abc" }, { auto_phase: "script" }), false);
+    assert.equal(topicCanFilm({ studio_project_id: "abc" }, { auto_phase: "done", result_hash: "v" }), false);
+    assert.equal(topicCanFilm({ studio_project_id: "abc" }, { auto_phase: "failed" }), true);
   });
 
   it("treats scheduled as pending only before a short exists", () => {

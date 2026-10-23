@@ -11,7 +11,8 @@ export type StudioNextKey =
   | "visuals"
   | "compose"
   | "pack"
-  | "open";
+  | "open"
+  | "watch";
 
 export type StudioNext = {
   key: StudioNextKey;
@@ -23,6 +24,14 @@ export function studioNext(current: StudioProject | null | undefined, pane: Stud
   if (!current) {
     if (pane === "topics" || pane === "assemble" || pane === "publish") return { key: "produce", pane: "topics" };
     return { key: "collect", pane: "radar" };
+  }
+  const phase = current.auto_phase || "";
+  if (phase === "queued" || phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose" || (phase === "failed" && !current.result_hash)) {
+    return { key: "watch", pane: "publish" };
+  }
+  if (current.result_hash) {
+    if (current.delivery?.status !== "publishable") return { key: "pack", pane: "publish" };
+    return { key: "open", pane: "publish" };
   }
   const script = String(current.script || "").trim();
   const hasLook = !!(current.identity?.character_id || current.template_id || current.style);
@@ -41,13 +50,7 @@ export function studioNext(current: StudioProject | null | undefined, pane: Stud
   if (!projectShots(current).some(shotReady)) {
     return { key: "visuals", pane: "assemble", gate: "visuals" };
   }
-  if (!current.result_hash) {
-    return { key: "compose", pane: "assemble", gate: "compose" };
-  }
-  if (current.delivery?.status !== "publishable") {
-    return { key: "pack", pane: "assemble", gate: "delivery" };
-  }
-  return { key: "open", pane: "publish" };
+  return { key: "compose", pane: "assemble", gate: "compose" };
 }
 
 type NextCopy = {
@@ -60,6 +63,7 @@ type NextCopy = {
   nextCompose: string;
   nextPack: string;
   nextOpen: string;
+  nextWatch: string;
   promptCollect: string;
   promptProduce: string;
   promptSetup: string;
@@ -69,6 +73,7 @@ type NextCopy = {
   promptCompose: string;
   promptPack: string;
   promptOpen: string;
+  promptWatch: string;
 };
 
 export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
@@ -82,6 +87,7 @@ export function studioNextCopy(s: NextCopy, key: StudioNextKey) {
     compose: s.nextCompose,
     pack: s.nextPack,
     open: s.nextOpen,
+    watch: s.nextWatch,
   };
   return map[key];
 }
@@ -97,6 +103,7 @@ export function studioNextPrompt(s: NextCopy, key: StudioNextKey) {
     compose: s.promptCompose,
     pack: s.promptPack,
     open: s.promptOpen,
+    watch: s.promptWatch,
   };
   return map[key];
 }

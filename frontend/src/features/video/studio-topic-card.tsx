@@ -4,7 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { TopicScoreSheet } from "./studio-chrome";
-import { topicIsScheduled, topicPrimaryAction, type ScoreKey } from "./studio-topic";
+import { filmInFlight, topicCanFilm, topicIsScheduled, type ScoreKey } from "./studio-topic";
 
 export type TopicRow = {
   id: string;
@@ -37,6 +37,10 @@ type TopicCopy = {
   personaHint: string;
   angles: string;
   newFromTopics: string;
+  filmTopic: string;
+  viewFilm: string;
+  viewProgress: string;
+  filmRetry: string;
   desk: { expand: string; choose: string };
 };
 
@@ -47,6 +51,7 @@ export function TopicCard(props: {
   statusLabel: string;
   deleteLabel: string;
   scoreLabels: Record<ScoreKey, string>;
+  film?: { auto_phase?: string; result_hash?: string };
   copy: TopicCopy;
   onPick: () => void;
   onProduce: () => void;
@@ -60,9 +65,14 @@ export function TopicCard(props: {
 }) {
   const t = props.topic;
   const s = props.copy;
-  const primary = topicPrimaryAction(t);
   const queued = topicIsScheduled(t);
-  const pickable = primary === "produce";
+  const ready = !!props.film?.result_hash && props.film?.auto_phase !== "failed";
+  const live = filmInFlight(props.film?.auto_phase);
+  const failed = props.film?.auto_phase === "failed" && !props.film?.result_hash;
+  const pending = !!t.studio_project_id && !props.film;
+  const pickable = topicCanFilm(t, props.film);
+  const opening = ready || live || pending;
+  const label = ready ? s.viewFilm : live || pending ? s.viewProgress : failed ? s.filmRetry : s.filmTopic;
   const locked = t.status === "done" || t.status === "in_production";
 
   return (
@@ -77,7 +87,7 @@ export function TopicCard(props: {
             )}
             data-testid={`studio-topic-pick-${t.id}`}
             aria-pressed={props.picked}
-            aria-label={s.newFromTopics}
+            aria-label={s.filmTopic}
             onClick={props.onPick}
           >
             {props.picked ? <Check className="size-3.5" aria-hidden /> : null}
@@ -92,8 +102,8 @@ export function TopicCard(props: {
         </div>
         <div className="flex shrink-0 items-start gap-0.5">
           <div className="flex flex-col items-end gap-1">
-            <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={props.busy} data-testid={primary === "open" ? "studio-topic-open" : "studio-topic-produce"} onClick={props.onProduce}>
-              {primary === "open" ? s.openShort : s.newProject}
+            <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={props.busy} data-testid={opening ? "studio-topic-open" : "studio-topic-produce"} onClick={props.onProduce}>
+              {label}
             </Button>
             {queued ? (
               <Button size="sm" variant="ghost" className="h-7 text-[12px]" disabled={props.busy} data-testid="studio-topic-unschedule" onClick={props.onUnschedule}>
@@ -111,7 +121,7 @@ export function TopicCard(props: {
               <DropdownMenuItem disabled={props.busy} onSelect={props.onExpand}>
                 {s.desk.expand}
               </DropdownMenuItem>
-              {!queued && pickable ? (
+              {!queued && !t.studio_project_id ? (
                 <DropdownMenuItem disabled={props.busy} data-testid="studio-topic-schedule" onSelect={props.onSchedule}>
                   {s.schedule}
                 </DropdownMenuItem>

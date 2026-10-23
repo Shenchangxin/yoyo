@@ -50,10 +50,14 @@ type Engine struct {
 	binds    map[string]Bind
 	inflight sync.Map
 	uploads  sync.Map
-	ctx      context.Context
-	cancel   context.CancelFunc
-	OnJob    func(Job)
-	OnHub    func(kind string, payload map[string]any)
+
+	filmMu      sync.Mutex
+	filmPending []string
+	filmRunning bool
+	ctx         context.Context
+	cancel      context.CancelFunc
+	OnJob       func(Job)
+	OnHub       func(kind string, payload map[string]any)
 
 	castFile string
 	castURL  string

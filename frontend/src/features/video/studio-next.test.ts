@@ -39,5 +39,8 @@ describe("studio next action", () => {
       result_hash: "v",
       delivery: { status: "publishable" },
     }, "assemble").key, "open");
+    assert.equal(studioNext({ ...base, auto_phase: "visuals" }, "assemble").key, "watch");
+    assert.equal(studioNext({ ...base, auto_phase: "visuals" }, "assemble").pane, "publish");
+    assert.equal(studioNext({ ...base, auto_phase: "failed" }, "topics").pane, "publish");
   });
 });

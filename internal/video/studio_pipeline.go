@@ -122,11 +122,30 @@ func (e *Engine) noteStudio(p *StudioProject, kind, message string) {
 }
 
 func (e *Engine) flagStudio(p *StudioProject, gate, message string) {
+	e.addStudioIssue(p, "error", gate, message)
+}
+
+func (e *Engine) warnStudio(p *StudioProject, gate, message string) {
+	if p == nil || strings.TrimSpace(message) == "" {
+		return
+	}
+	kept := p.Issues[:0]
+	for _, iss := range p.Issues {
+		if iss.Gate == gate && iss.Message == message {
+			continue
+		}
+		kept = append(kept, iss)
+	}
+	p.Issues = kept
+	e.addStudioIssue(p, "warn", gate, message)
+}
+
+func (e *Engine) addStudioIssue(p *StudioProject, level, gate, message string) {
 	if p == nil || strings.TrimSpace(message) == "" {
 		return
 	}
 	p.Issues = append(p.Issues, StudioIssue{
-		ID: NewID(), At: Now(), Level: "error", Gate: gate, Message: message,
+		ID: NewID(), At: Now(), Level: level, Gate: gate, Message: message,
 	})
 	if len(p.Issues) > 20 {
 		p.Issues = p.Issues[len(p.Issues)-20:]

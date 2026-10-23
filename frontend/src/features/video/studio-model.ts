@@ -9,6 +9,7 @@ export type StudioShot = {
   caption?: string;
   duration?: number;
   motion?: string;
+  fit?: string;
   prompt?: string;
   visual?: string;
   stale?: boolean;
@@ -54,7 +55,7 @@ export type StudioDelivery = {
 };
 
 export type StudioActivity = { id?: string; at?: string; kind?: string; message?: string };
-export type StudioIssue = { id?: string; gate?: string; message?: string };
+export type StudioIssue = { id?: string; gate?: string; level?: string; message?: string };
 
 export type StudioProject = {
   id: string;
@@ -79,10 +80,12 @@ export type StudioProject = {
   skip_audio?: boolean;
   voice?: string;
   voice_speed?: number;
-  storyboard?: { shots?: StudioShot[]; size?: string };
+  voice_engine?: string;
+  storyboard?: { shots?: StudioShot[]; size?: string; fit?: string };
   shots?: StudioShot[];
   narration_hash?: string;
   subtitle_hash?: string;
+  bgm_hash?: string;
   result_hash?: string;
   poster_hash?: string;
   cover_hash?: string;
@@ -95,6 +98,9 @@ export type StudioProject = {
   issues?: StudioIssue[];
   status?: string;
   error?: string;
+  auto_phase?: string;
+  auto_error?: string;
+  subtitle_estimated?: boolean;
   media_url?: string;
   poster_url?: string;
   narration_url?: string;

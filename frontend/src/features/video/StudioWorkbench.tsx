@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Clapperboard, List, MoreHorizontal, Plus, Radio, RefreshCw, Search, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Clapperboard, List, MoreHorizontal, Plus, Radio, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -14,9 +14,10 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { CreateShortField, StudioIdChip } from "./studio-chrome";
 import { TopicCard } from "./studio-topic-card";
 import { StudioProduce } from "./StudioProduce";
+import { DeliveryShelf } from "./DeliveryShelf";
 import { type StudioCatalog, type StudioProject as ProduceProject } from "./studio-model";
 import { studioNext, studioNextCopy, type StudioPane } from "./studio-next";
-import { SCORE_KEYS, TOPIC_FILTERS, topicMatchesQuery, trendMatchesQuery, type TopicFilter } from "./studio-topic";
+import { SCORE_KEYS, TOPIC_FILTERS, filmInFlight, topicCanFilm, topicMatchesQuery, trendMatchesQuery, type TopicFilter } from "./studio-topic";
 import { asStudioProject, studioSessionId } from "./studio-session";
 import { useStudioSelection } from "./workshop-store";
 import type { VideoProject } from "../../lib/protocol";
@@ -88,6 +89,12 @@ type StudioProject = {
   furthest_gate?: string;
   identity?: { character_id?: string; name?: string };
   shots?: { image_hash?: string; video_hash?: string }[];
+  auto_phase?: string;
+  auto_error?: string;
+  template_id?: string;
+  target_duration?: number;
+  platform?: string;
+  poster_hash?: string;
 };
 
 const TREND_PLATFORMS = ["weibo", "douyin", "zhihu", "bilibili", "toutiao", "baidu"] as const;
@@ -95,6 +102,14 @@ const ASPECTS = ["9:16", "16:9", "1:1"] as const;
 
 function asList<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function shelfFilms(projects: StudioProject[], current: StudioProject | null) {
+  const live = new Set(["queued", "script", "voice", "visuals", "compose", "done", "failed"]);
+  const rows = projects.filter((p) => !!p.result_hash || live.has(p.auto_phase || ""));
+  const top = rows.slice(0, 12);
+  if (current?.id && (current.result_hash || current.auto_phase) && !top.some((p) => p.id === current.id)) top.unshift(current);
+  return top;
 }
 
 export function StudioWorkbench(props: {
@@ -127,7 +142,8 @@ export function StudioWorkbench(props: {
   const [mediaBase, setMediaBase] = useState("");
   const [pubPlatforms, setPubPlatforms] = useState<PublishPlatform[]>([]);
   const [publishes, setPublishes] = useState<Publish[]>([]);
-  const [draftPlatform, setDraftPlatform] = useState("douyin");
+  const [draftPlatform, setDraftPlatform] = useState("");
+  const [preferredPlatform, setPreferredPlatform] = useState("");
   const [draftCaption, setDraftCaption] = useState("");
   const [draftTags, setDraftTags] = useState("");
   const [wrapTitle, setWrapTitle] = useState("");
@@ -190,7 +206,7 @@ export function StudioWorkbench(props: {
       const a = String(cfg?.studio_aspect || "9:16");
       setDefaultAspect(a === "16:9" || a === "1:1" ? a : "9:16");
       const p = String(cfg?.studio_publish_platform || "").trim();
-      if (p) setDraftPlatform(p);
+      if (p) setPreferredPlatform(p);
     }).catch(() => {});
     void api.video.status().then((st) => {
       setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
@@ -204,6 +220,22 @@ export function StudioWorkbench(props: {
     if (pane !== "publish") return;
     void loadPublishes().catch((e) => toast.error(api.errMessage(e)));
   }, [pane, loadPublishes]);
+
+  const filmLive = projects.some((p) => filmInFlight(p.auto_phase));
+  useEffect(() => {
+    if (!filmLive) return;
+    const t = window.setInterval(() => {
+      void loadProjects();
+      const id = useStudioSelection.getState().studioId;
+      if (id) void loadProject(id);
+      void loadTopics();
+    }, 2000);
+    return () => window.clearInterval(t);
+  }, [filmLive, loadProjects, loadProject, loadTopics]);
+
+  useEffect(() => {
+    setDraftPlatform("");
+  }, [current?.id]);
 
   useEffect(() => {
     const text = current?.copy_text || current?.delivery?.copy_text || "";
@@ -259,7 +291,7 @@ export function StudioWorkbench(props: {
       status: current.status || "",
       nextKey: next.key,
     });
-  }, [current, current?.id, current?.title, current?.gate, current?.furthest_gate, current?.status, current?.script, current?.script_status, current?.narration_hash, current?.skip_audio, current?.result_hash, current?.delivery?.status, pane, setStudioMeta]);
+  }, [current, current?.id, current?.title, current?.gate, current?.furthest_gate, current?.status, current?.script, current?.script_status, current?.narration_hash, current?.skip_audio, current?.result_hash, current?.auto_phase, current?.delivery?.status, pane, setStudioMeta]);
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -321,28 +353,63 @@ export function StudioWorkbench(props: {
     }
   }
 
-  async function produce(t: Topic) {
-    if (t.studio_project_id) {
-      await run("open", async () => {
-        const p = (await api.video.getStudio(t.studio_project_id || "")) as StudioProject;
-        await openShort(p);
-        await loadProjects();
-      });
+  async function openDelivery(id: string) {
+    if (!id) return;
+    const hit = projects.find((row) => row.id === id);
+    setStudioId(id);
+    setProject(hit || null);
+    setPane("publish");
+    setDraftPlatform("");
+    try {
+      const p = (await api.video.getStudio(id)) as StudioProject;
+      if (useStudioSelection.getState().studioId !== id) return;
+      setProject(p);
+      await attachCopilot(p);
+    } catch {
+      /* stay on delivery even if the copilot session fails to bind */
+    }
+  }
+
+  async function filmTopics(ids: string[]) {
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (!unique.length) {
+      toast.error(s.needTopicFirst);
       return;
     }
-    await run("produce", async () => {
-      const p = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect })) as StudioProject;
-      await openShort(p);
+    await run("auto", async () => {
+      const rows = asList<StudioProject>(await api.video.autoTopics(unique));
+      setPicked(new Set());
       await loadTopics();
       await loadProjects();
       props.onRefreshHistory?.();
+      const first = rows.find((row) => filmInFlight(row.auto_phase)) || rows[0];
+      if (!first?.id) return;
+      setStudioId(first.id);
+      setProject(first);
+      setPane("publish");
+      setDraftPlatform("");
+      setDraftCaption(first.copy_text || "");
+      try {
+        await attachCopilot(first);
+      } catch {
+        /* the films still land on delivery */
+      }
     });
+  }
+
+  async function produce(t: Topic) {
+    const film = projects.find((p) => p.id === t.studio_project_id);
+    if (t.studio_project_id && !topicCanFilm(t, film)) {
+      await openDelivery(t.studio_project_id);
+      return;
+    }
+    await filmTopics([t.id]);
   }
 
   function goHome() {
     setStudioId("");
     setProject(null);
-    setPane("radar");
+    setPane("topics");
     setNaming(false);
   }
 
@@ -356,22 +423,12 @@ export function StudioWorkbench(props: {
   }
 
   async function produceSelected() {
-    const rows = topics.filter((t) => picked.has(t.id) && !t.studio_project_id);
+    const rows = topics.filter((t) => picked.has(t.id) && topicCanFilm(t, projects.find((p) => p.id === t.studio_project_id)));
     if (!rows.length) {
       toast.error(s.needTopicFirst);
       return;
     }
-    await run("produce", async () => {
-      let last: StudioProject | null = null;
-      for (const t of rows) {
-        last = (await api.video.createStudio({ topic_id: t.id, aspect: defaultAspect })) as StudioProject;
-      }
-      setPicked(new Set());
-      if (last) await openShort(last);
-      await loadTopics();
-      await loadProjects();
-      props.onRefreshHistory?.();
-    });
+    await filmTopics(rows.map((t) => t.id));
   }
 
   async function schedule(t: Topic) {
@@ -407,7 +464,8 @@ export function StudioWorkbench(props: {
   async function selectProject(id: string) {
     const hit = projects.find((row) => row.id === id);
     setStudioId(id);
-    setPane("assemble");
+    setPane(hit?.result_hash || hit?.auto_phase ? "publish" : "assemble");
+    setDraftPlatform("");
     try {
       await attachCopilot({ id, title: hit?.title, status: hit?.status, gate: hit?.gate });
     } catch {
@@ -460,6 +518,10 @@ export function StudioWorkbench(props: {
   async function saveDraftPublish() {
     if (!current?.id || !current.result_hash) {
       toast.error(s.needAssemble);
+      return;
+    }
+    if (!draftPlatform) {
+      toast.error(s.filmPickPlatform);
       return;
     }
     if (current.delivery?.status !== "publishable") {
@@ -558,7 +620,7 @@ export function StudioWorkbench(props: {
   const shownTrends = trends
     .map((g) => ({ ...g, items: (g.items || []).filter((item) => trendMatchesQuery(item, query)) }))
     .filter((g) => (g.items || []).length);
-  const pickCount = [...picked].filter((id) => topics.some((t) => t.id === id && !t.studio_project_id)).length;
+  const pickCount = [...picked].filter((id) => topics.some((t) => t.id === id && topicCanFilm(t, projects.find((p) => p.id === t.studio_project_id)))).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane} data-bound={current ? "true" : "false"} data-home={atHome ? "true" : "false"}>
@@ -633,7 +695,7 @@ export function StudioWorkbench(props: {
           </div>
           <p className="truncate text-[12px] text-muted" data-testid="studio-next">
             {current
-              ? [statusLabel[current.status || ""] || current.status, gateLabel[current.gate || current.furthest_gate || ""] || "", nextLabel].filter(Boolean).join(" · ")
+              ? [statusLabel[current.status || ""] || current.status, gateLabel[current.gate || current.furthest_gate || ""] || "", pane === next.pane ? "" : nextLabel].filter(Boolean).join(" · ")
               : s.homeHint}
           </p>
           {current?.id ? (
@@ -832,13 +894,18 @@ export function StudioWorkbench(props: {
               </Button>
             </div>
             {pickCount > 0 ? (
-              <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2" data-testid="studio-topic-picked">
-                <p className="min-w-0 flex-1 text-[12px] text-muted">{s.selectedCount.replace("{n}", String(pickCount))}</p>
-                <Button size="sm" variant="default" className="h-7 text-[12px]" disabled={!!busy} data-testid="studio-new-from-topics" onClick={() => void produceSelected()}>
-                  {s.newFromTopics}
+              <div className="flex items-center gap-3 rounded-xl border border-foreground/15 bg-card px-3 py-2.5" data-testid="studio-topic-picked">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-medium text-foreground">{s.selectedCount.replace("{n}", String(pickCount))}</p>
+                  <p className="mt-0.5 text-[12px] leading-[1.45] text-muted">{s.filmHint}</p>
+                </div>
+                <Button size="sm" variant="default" className="h-8 shrink-0 text-[12px]" disabled={!!busy} data-testid="studio-new-from-topics" onClick={() => void produceSelected()}>
+                  {s.desk.oneClick}
                 </Button>
               </div>
-            ) : null}
+            ) : (
+              <p className="text-[12px] leading-[1.5] text-muted">{s.topicsHint}</p>
+            )}
             {shownTopics.length === 0 ? (
               <EmptyState
                 icon={<List className="size-5" />}
@@ -861,6 +928,7 @@ export function StudioWorkbench(props: {
                     statusLabel={statusLabel[t.status || "inbox"] || t.status || ""}
                     deleteLabel={copy.video.delete}
                     scoreLabels={scoreLabel}
+                    film={projects.find((p) => p.id === t.studio_project_id)}
                     copy={s}
                     onPick={() => togglePick(t.id)}
                     onProduce={() => void produce(t)}
@@ -918,49 +986,44 @@ export function StudioWorkbench(props: {
         ) : null}
 
         {pane === "publish" ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-[12px] leading-[1.5] text-muted">{s.neverPublish}</p>
-            {current ? (
-              <div className="flex flex-col gap-2" data-testid="studio-publish-pack">
-                <p className={cn("text-[12px]", current.delivery?.status === "publishable" ? "text-success" : "text-warning")}>
-                  {current.delivery?.status === "publishable" ? s.desk.publishable : (current.delivery?.note || s.desk.draftPack)}
-                </p>
-                {current.delivery?.status !== "publishable" ? (
-                  <Button size="sm" variant="default" className="self-start" onClick={() => setPane("assemble")}>{s.nextDo}</Button>
-                ) : null}
-                {current.media_url ? <video className="max-h-48 w-full rounded-xl bg-black" src={current.media_url} poster={current.cover_url || current.poster_url || undefined} controls /> : null}
-                {current.copy_text ? <pre className="whitespace-pre-wrap text-[12px] leading-[1.55] text-muted">{current.copy_text}</pre> : null}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-[12px] text-muted">{s.platforms}</span>
-              {(pubPlatforms.length ? pubPlatforms : [{ id: "douyin", label: "抖音" }, { id: "xhs", label: "小红书" }, { id: "bilibili", label: "B站" }]).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-pressed={draftPlatform === p.id}
-                  className={cn("rounded-full px-2 py-0.5 text-[11px]", draftPlatform === p.id ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
-                  onClick={() => setDraftPlatform(p.id)}
-                >
-                  {p.label || p.id}
-                </button>
-              ))}
-            </div>
-            <Input className="h-8" placeholder={s.caption} value={draftCaption} onChange={(e) => setDraftCaption(e.target.value)} />
-            <Input className="h-8" placeholder={s.tags} value={draftTags} onChange={(e) => setDraftTags(e.target.value)} />
-            <Button size="sm" variant="lift" className="self-start" disabled={!!busy || current?.delivery?.status !== "publishable"} onClick={() => void saveDraftPublish()}>{s.draftPublish}</Button>
-            {publishes.length === 0 ? (
-              <EmptyState
-                icon={<Share2 className="size-5" />}
-                title={s.emptyPublish}
-                body={s.emptyPublishHint}
-                action={
-                  <Button size="sm" variant="ghost" onClick={() => setPane("assemble")}>
-                    {s.assemble}
-                  </Button>
-                }
-              />
-            ) : (
+          <DeliveryShelf
+            films={shelfFilms(projects, current)}
+            current={current}
+            catalog={catalog}
+            busy={busy}
+            platforms={pubPlatforms.length ? pubPlatforms : [{ id: "douyin", label: "抖音" }, { id: "xhs", label: "小红书" }, { id: "bilibili", label: "B站" }]}
+            platform={draftPlatform}
+            suggested={current?.platform || preferredPlatform}
+            caption={draftCaption}
+            tags={draftTags}
+            onSelect={(id) => { void openDelivery(id); }}
+            onPlatform={setDraftPlatform}
+            onCaption={setDraftCaption}
+            onTags={setDraftTags}
+            onSave={() => void saveDraftPublish()}
+            onRetry={() => {
+              if (!current?.id) return;
+              void run("auto", async () => {
+                const p = (await api.video.autoStudio(current.id)) as StudioProject;
+                setProject(p);
+                await loadProjects();
+              });
+            }}
+            onEdit={() => setPane("assemble")}
+            onPack={() => {
+              if (!current?.id) return;
+              void run("package", async () => {
+                const p = (await api.video.packageStudio(current.id)) as StudioProject;
+                setProject(p);
+              });
+            }}
+            onBack={() => {
+              setStudioId("");
+              setProject(null);
+              setPane("topics");
+            }}
+            mediaSrc={mediaSrc}
+            drafts={publishes.length ? (
               <ul className="flex flex-col gap-2">
                 {publishes.map((row) => (
                   <PublishDraftCard
@@ -976,8 +1039,8 @@ export function StudioWorkbench(props: {
                   />
                 ))}
               </ul>
-            )}
-          </div>
+            ) : null}
+          />
         ) : null}
       </div>
 
