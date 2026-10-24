@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -185,7 +184,7 @@ func applyHunks(workspace, diff string, ids []string, reverse bool) error {
 			args = append(args, "-R")
 		}
 		args = append(args, "-")
-		cmd := exec.Command("git", args...)
+		cmd := gitCmd(args...)
 		cmd.Stdin = strings.NewReader(patch)
 		out, err := cmd.CombinedOutput()
 		return strings.TrimSpace(string(out)), err

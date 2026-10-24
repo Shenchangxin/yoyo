@@ -147,7 +147,7 @@ func (e *Engine) RemotionSnapshot() map[string]any {
 	} else if npx != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, npx, "--no-install", "remotion", "--version")
+		cmd := quiet(exec.CommandContext(ctx, npx, "--no-install", "remotion", "--version"))
 		b, err := cmd.CombinedOutput()
 		if err == nil && strings.TrimSpace(string(b)) != "" {
 			out["detected"] = true
@@ -295,7 +295,7 @@ func (e *Engine) npmInstallRemotion() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npm, "install", "--omit=dev", "--no-fund", "--no-audit")
+	cmd := quiet(exec.CommandContext(ctx, npm, "install", "--omit=dev", "--no-fund", "--no-audit"))
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "npm_config_fund=false", "ADBLOCK=1", "npm_config_progress=false")
 	var buf bytes.Buffer
@@ -384,7 +384,7 @@ func (e *Engine) probeVideo(path string) (w, h int, seconds float64) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, e.FFProbe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", path)
+	cmd := quiet(exec.CommandContext(ctx, e.FFProbe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", path))
 	b, err := cmd.Output()
 	if err != nil || len(b) == 0 {
 		return
@@ -473,7 +473,7 @@ func (e *Engine) RenderTitleCard(hash, title, aspect string) (MediaRef, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, e.remotionBin(), args...)
+	cmd := quiet(exec.CommandContext(ctx, e.remotionBin(), args...))
 	cmd.Dir = dir
 	b, err := cmd.CombinedOutput()
 	if err != nil {

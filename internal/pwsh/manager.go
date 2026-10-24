@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 // HTTPDoer is the download/list client. Tests swap it.
@@ -136,6 +138,7 @@ func verifyBin(bin string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "-NoLogo", "-v")
 	cmd.Env = append(os.Environ(), "POWERSHELL_TELEMETRY_OPTOUT=1", "POWERSHELL_UPDATECHECK=Off")
+	osutil.HideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	s := strings.ToLower(string(out))
 	if err != nil {

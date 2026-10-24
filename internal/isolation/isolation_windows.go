@@ -7,10 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 var jobByPID sync.Map
@@ -25,9 +26,10 @@ func probe() Report {
 }
 
 func apply(cmd *exec.Cmd) {
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	if cmd == nil {
+		return
 	}
+	osutil.HideConsole(cmd)
 	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP
 }
 

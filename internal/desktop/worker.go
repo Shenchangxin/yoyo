@@ -11,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/api"
 	"github.com/Shenchangxin/yoyo/internal/app"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 // SpawnWorker starts this executable as a JSON-RPC stdio worker so the GUI
@@ -40,6 +41,7 @@ func SpawnWorker(exe, home, evals string) (*Service, error) {
 		return nil, err
 	}
 	cmd.Stderr = io.Discard
+	osutil.NoConsole(cmd)
 	logf := openWorkerLog(home)
 	if logf != nil {
 		cmd.Stderr = logf

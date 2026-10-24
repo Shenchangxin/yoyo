@@ -331,6 +331,7 @@ func runVerifier(work string, task Task) (bool, string, error) {
 		}
 	}
 	cmd.Dir = work
+	quiet(cmd)
 	if df := dockerfileOf(task.Dir); df != "" && dockerAvailable() {
 		if ok, out, err := runVerifierDocker(work, task, script); err == nil {
 			return ok, out, err

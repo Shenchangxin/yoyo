@@ -120,17 +120,17 @@ func (e *Engine) ConcatContext(ctx context.Context, paths []string) ([]byte, err
 		return nil, err
 	}
 	out := filepath.Join(tmp, "out.mp4")
-	cmd := exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+	cmd := quiet(exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
 		"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-		"-c:a", "aac", "-ar", "48000", "-b:a", "192k", "-movflags", "+faststart", out)
+		"-c:a", "aac", "-ar", "48000", "-b:a", "192k", "-movflags", "+faststart", out))
 	cmd.Dir = tmp
 	if _, err := cmd.CombinedOutput(); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		cmd = exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
+		cmd = quiet(exec.CommandContext(ctx, e.FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list,
 			"-fflags", "+genpts", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-			"-an", "-movflags", "+faststart", out)
+			"-an", "-movflags", "+faststart", out))
 		cmd.Dir = tmp
 		if outb, err := cmd.CombinedOutput(); err != nil {
 			if ctx.Err() != nil {
@@ -165,7 +165,7 @@ func (e *Engine) Poster(videoPath string) ([]byte, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		cmd := exec.CommandContext(ctx, e.FFMPEG, args...)
+		cmd := quiet(exec.CommandContext(ctx, e.FFMPEG, args...))
 		if err := cmd.Run(); err != nil {
 			last = err
 			continue

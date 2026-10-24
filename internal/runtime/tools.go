@@ -1042,7 +1042,9 @@ func stopFusedPID(pid int) {
 		return
 	}
 	if runtime.GOOS == "windows" {
-		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+		cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F")
+		hideConsole(cmd)
+		_ = cmd.Run()
 		return
 	}
 	p, err := os.FindProcess(pid)

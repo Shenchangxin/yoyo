@@ -751,7 +751,7 @@ func verifyFFmpegBin(bin string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-hide_banner", "-version")
+	cmd := quiet(exec.CommandContext(ctx, bin, "-hide_banner", "-version"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

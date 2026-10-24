@@ -15,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/capability"
 	"github.com/Shenchangxin/yoyo/internal/evolve"
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
@@ -236,6 +237,7 @@ func (a *App) WorkspaceDiff(workspace string) (string, error) {
 		workspace = a.Workspace()
 	}
 	cmd := exec.Command("git", "-C", workspace, "diff", "--no-color")
+	osutil.HideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		return "", err

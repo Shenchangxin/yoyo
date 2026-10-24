@@ -15,7 +15,7 @@ func prepareChromeCmd(cmd *exec.Cmd, headed bool) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.HideWindow = !headed
-	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_NO_WINDOW
 }
 
 func bindChromeJob(cmd *exec.Cmd) func() {

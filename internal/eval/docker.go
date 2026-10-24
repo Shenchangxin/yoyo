@@ -24,7 +24,7 @@ func dockerfileOf(taskDir string) string {
 func runVerifierDocker(work string, task Task, script string) (bool, string, error) {
 	ctxDir := filepath.Join(task.Dir, "environment")
 	tag := "yoyo-eval-" + strings.ToLower(strings.ReplaceAll(task.ID, "/", "-"))
-	build := exec.Command("docker", "build", "-q", "-t", tag, ctxDir)
+	build := quiet(exec.Command("docker", "build", "-q", "-t", tag, ctxDir))
 	if out, err := build.CombinedOutput(); err != nil {
 		return false, string(out), err
 	}
@@ -37,7 +37,7 @@ func runVerifierDocker(work string, task Task, script string) (bool, string, err
 	} else {
 		args = append(args, "sh", "/grader/"+filepath.Base(script))
 	}
-	cmd := exec.Command("docker", args...)
+	cmd := quiet(exec.Command("docker", args...))
 	out, err := cmd.CombinedOutput()
 	return err == nil, string(out), err
 }

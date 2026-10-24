@@ -9,15 +9,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
+
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 var (
-	procSwitchDesktop     = user32.NewProc("SwitchDesktop")
-	procSetCursorPos      = user32.NewProc("SetCursorPos")
-	procMouseEvent        = user32.NewProc("mouse_event")
-	procKeybdEvent        = user32.NewProc("keybd_event")
-	procOpenInputDesktop  = user32.NewProc("OpenInputDesktop")
+	procSwitchDesktop    = user32.NewProc("SwitchDesktop")
+	procSetCursorPos     = user32.NewProc("SetCursorPos")
+	procMouseEvent       = user32.NewProc("mouse_event")
+	procKeybdEvent       = user32.NewProc("keybd_event")
+	procOpenInputDesktop = user32.NewProc("OpenInputDesktop")
 )
 
 func (h *Host) inject(op, app, detail string) (string, error) {
@@ -95,7 +96,7 @@ func launchOnVirtual(app, detail string) error {
 		}
 	}
 	cmd := exec.Command(bin, strings.Fields(detail)...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	osutil.HideConsole(cmd)
 	return cmd.Start()
 }
 
@@ -148,5 +149,7 @@ func captureDesktop(path string) error {
 	}
 	escaped := strings.ReplaceAll(path, `'`, `''`)
 	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save('%s');`, escaped)
-	return exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	osutil.HideConsole(cmd)
+	return cmd.Run()
 }
