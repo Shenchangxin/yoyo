@@ -8,6 +8,23 @@ import (
 	"testing"
 )
 
+func TestRequestIDAttachmentIsNotAFile(t *testing.T) {
+	atts := []Attachment{{Name: "__request_id__", Path: "c45178b7-e64e-4773-89af-2839856d65e9"}}
+	if text := ExpandAttachments(t.TempDir(), atts, 2400); text != "" {
+		t.Fatalf("request id injected as a file: %s", text)
+	}
+	if parts := ImageParts(t.TempDir(), atts); len(parts) != 0 {
+		t.Fatalf("parts %+v", parts)
+	}
+	got, err := MaterializeAttachments(t.TempDir(), atts)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("err=%v got=%+v", err, got)
+	}
+	if StampFileMentions("hello", atts) != "hello" {
+		t.Fatal(StampFileMentions("hello", atts))
+	}
+}
+
 func TestImagePartsUsesMultimodalNotBinaryDump(t *testing.T) {
 	raw := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4}
 	b64 := base64.StdEncoding.EncodeToString(raw)

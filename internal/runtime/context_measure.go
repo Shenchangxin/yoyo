@@ -9,17 +9,20 @@ import (
 
 // MeasureOpts is the same bill of materials the live loop uses to Shape a turn.
 type MeasureOpts struct {
-	Loop        artifact.LoopPreset
-	Fragments   []artifact.PromptFragment
-	Playbook    artifact.Playbook
-	Skills      []artifact.Skill
-	Workspace   string
-	History     []Message
-	Tools       *WorkspaceTools
-	Spill       *Spill
-	ModelWindow int
-	PlanText    string
-	Notes       string
+	Loop          artifact.LoopPreset
+	Fragments     []artifact.PromptFragment
+	Playbook      artifact.Playbook
+	Skills        []artifact.Skill
+	Workspace     string
+	History       []Message
+	Tools         *WorkspaceTools
+	Spill         *Spill
+	ModelWindow   int
+	PlanText      string
+	Notes         string
+	SoftHorizon   bool
+	PageContext   string
+	ProfileMemory string
 }
 
 // MeasureContext is a read-only projection of what the next model call would
@@ -27,9 +30,6 @@ type MeasureOpts struct {
 // depend on the in-RAM last ShapeReport, so usage survives process restart.
 func MeasureContext(opts MeasureOpts) ShapeReport {
 	loop := opts.Loop
-	rules, src := LoadWorkspaceRules(opts.Workspace, loop.RulesTokens)
-	pinOpts := pinsOptsFromTools(opts.Tools, false)
-	prefix := AssembleIdentity(loop, opts.Fragments) + AssemblePinsOpts(loop, opts.Playbook, opts.Skills, rules, src, pinOpts)
 	notes := opts.Notes
 	if notes == "" && opts.Spill != nil {
 		notes = ReadNotes(opts.Spill)
@@ -42,11 +42,29 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 	if opts.Tools != nil {
 		suggested = FormatSkillHints(opts.Tools.SkillHints)
 	}
-	dyn := AssembleDynamicHint(plan, loadedFrom(opts.Tools), notes, "", AssembleToday(opts.Tools), suggested)
-	msgs := []Message{{Role: RoleSystem, Content: AssembleIdentity(loop, opts.Fragments)}}
-	pins := AssemblePinsOpts(loop, opts.Playbook, opts.Skills, rules, src, pinOpts)
-	if strings.TrimSpace(pins) != "" {
-		msgs = append(msgs, Message{Role: RoleDeveloper, Content: pins})
+	soft := opts.SoftHorizon
+	if opts.Tools != nil && opts.Tools.ChatOverlay {
+		soft = true
+	}
+	bill := buildBill(billInput{
+		Loop:      loop,
+		Fragments: opts.Fragments,
+		Playbook:  opts.Playbook,
+		Skills:    opts.Skills,
+		Workspace: opts.Workspace,
+		Tools:     opts.Tools,
+		Soft:      soft,
+		Page:      opts.PageContext,
+		Profile:   opts.ProfileMemory,
+		Plan:      plan,
+		Notes:     notes,
+		Suggested: suggested,
+	})
+	prefix := bill.prefix()
+	dyn := bill.dynamic()
+	msgs := []Message{{Role: RoleSystem, Content: bill.systemWire}}
+	if strings.TrimSpace(bill.pinsWire) != "" {
+		msgs = append(msgs, Message{Role: RoleDeveloper, Content: bill.pinsWire})
 	}
 	msgs = append(msgs, stripSystem(opts.History)...)
 	msgs = setDynamic(msgs, dyn)
@@ -65,6 +83,8 @@ func MeasureContext(opts MeasureOpts) ShapeReport {
 		compacted = Legalize(compacted)
 	}
 	fillLedger(&report, prefix, dyn, toolsJSON, opts.ModelWindow)
+	bill.write(&report)
+	report.ChatTokens = historyTokens(compacted)
 	report.Tokens = messagesTokens(compacted) + overhead
 	report.PrefixHash = hotPrefixHash(compacted)
 	report.CacheStable = true
@@ -89,23 +109,31 @@ func ShapeFromEvents(evs []trace.Event, window int) ShapeReport {
 		}
 		found = true
 		last = ShapeReport{
-			Note:           payloadStr(p, "note"),
-			Tokens:         tokens,
-			Budget:         payloadInt(p, "budget"),
-			Window:         payloadInt(p, "window"),
-			PrefixTokens:   prefix,
-			DynamicTokens:  payloadInt(p, "dynamic_tokens"),
-			SchemaTokens:   payloadInt(p, "schema_tokens"),
-			ProviderPrompt: payloadInt(p, "provider_prompt"),
-			CachedTokens:   payloadInt(p, "cached_tokens"),
-			CacheReported:  payloadInt(p, "cached_tokens") > 0 || payloadBool(p, "cache_reported"),
-			CacheStable:    payloadBool(p, "cache_stable"),
-			PrefixHash:     payloadStr(p, "prefix_hash"),
-			DynamicAt:      payloadStr(p, "dynamic_at"),
-			Trigger:        payloadStr(p, "trigger"),
-			Hydrated:       payloadInt(p, "hydrated"),
-			Elided:         payloadInt(p, "elided"),
-			Layers:         payloadStrings(p, "layers"),
+			Note:            payloadStr(p, "note"),
+			Tokens:          tokens,
+			Budget:          payloadInt(p, "budget"),
+			Window:          payloadInt(p, "window"),
+			PrefixTokens:    prefix,
+			DynamicTokens:   payloadInt(p, "dynamic_tokens"),
+			SchemaTokens:    payloadInt(p, "schema_tokens"),
+			IdentityTokens:  payloadInt(p, "identity_tokens"),
+			RulesTokens:     payloadInt(p, "rules_tokens"),
+			CatalogTokens:   payloadInt(p, "catalog_tokens"),
+			SkillBodyTokens: payloadInt(p, "skill_body_tokens"),
+			MemoryTokens:    payloadInt(p, "memory_tokens"),
+			TodayTokens:     payloadInt(p, "today_tokens"),
+			NotesTokens:     payloadInt(p, "notes_tokens"),
+			ChatTokens:      payloadInt(p, "chat_tokens"),
+			ProviderPrompt:  payloadInt(p, "provider_prompt"),
+			CachedTokens:    payloadInt(p, "cached_tokens"),
+			CacheReported:   payloadInt(p, "cached_tokens") > 0 || payloadBool(p, "cache_reported"),
+			CacheStable:     payloadBool(p, "cache_stable"),
+			PrefixHash:      payloadStr(p, "prefix_hash"),
+			DynamicAt:       payloadStr(p, "dynamic_at"),
+			Trigger:         payloadStr(p, "trigger"),
+			Hydrated:        payloadInt(p, "hydrated"),
+			Elided:          payloadInt(p, "elided"),
+			Layers:          payloadStrings(p, "layers"),
 		}
 	}
 	if !found {

@@ -78,6 +78,25 @@ func TestBrowserOpenWorkspaceDoesNotNeedIsolatedChrome(t *testing.T) {
 	}
 }
 
+func TestBrowserOpenPathBeatsLocalhostURL(t *testing.T) {
+	dir := t.TempDir()
+	rel := filepath.Join(dir, "pelican-bike")
+	if err := os.MkdirAll(rel, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rel, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tools := &WorkspaceTools{Workspace: dir}
+	res := tools.Call("browser_open", `{"path":"pelican-bike/index.html","url":"http://localhost/"}`)
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if strings.Contains(res.Content, "localhost") || !strings.Contains(res.Content, "pelican-bike/index.html") {
+		t.Fatalf("%s", res.Content)
+	}
+}
+
 func TestBrowserOpenRejectsDataURL(t *testing.T) {
 	tools := &WorkspaceTools{Workspace: t.TempDir()}
 	res := tools.Call("browser_open", `{"url":"data:text/html,<h1>x</h1>"}`)

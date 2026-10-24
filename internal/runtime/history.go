@@ -96,10 +96,24 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 				lastUser = len(out) - 1
 			}
 		case trace.TypeInject:
-			if ev.Source != "mention" {
-				break
+			src := ev.Source
+			if src == "" {
+				if name, _ := ev.Payload["name"].(string); name != "" {
+					src = name
+				}
 			}
 			text, _ := ev.Payload["text"].(string)
+			if src == "prompt-update" || src == "repeat-tool-reminder" {
+				if strings.TrimSpace(text) == "" {
+					break
+				}
+				flush()
+				out = append(out, Message{Role: RoleUser, Content: text})
+				break
+			}
+			if src != "mention" {
+				break
+			}
 			if strings.TrimSpace(text) == "" {
 				break
 			}
@@ -155,9 +169,49 @@ func MessagesFromEventsOpts(evs []trace.Event, spill *Spill) []Message {
 		out = append(out, Message{Role: RoleUser, Content: AttachMention("", pendingMention)})
 	}
 	if len(head) == 0 {
-		return out
+		return closeUnanswered(out)
 	}
-	return append(head, out...)
+	return closeUnanswered(append(head, out...))
+}
+
+// closeUnanswered pairs every logged tool call that never received a result.
+// The call was recorded, so the outcome is unknown rather than "not started".
+func closeUnanswered(msgs []Message) []Message {
+	if len(msgs) == 0 {
+		return msgs
+	}
+	out := make([]Message, 0, len(msgs)+2)
+	for i := 0; i < len(msgs); i++ {
+		m := msgs[i]
+		out = append(out, m)
+		if m.Role != RoleAssistant || len(m.ToolCalls) == 0 {
+			continue
+		}
+		have := map[string]bool{}
+		j := i + 1
+		for j < len(msgs) && msgs[j].Role == RoleTool {
+			have[msgs[j].ToolCallID] = true
+			out = append(out, msgs[j])
+			j++
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.ID != "" && have[tc.ID] {
+				continue
+			}
+			name := tc.Name
+			if name == "" {
+				name = "tool"
+			}
+			out = append(out, Message{
+				Role:       RoleTool,
+				ToolCallID: tc.ID,
+				Name:       name,
+				Content:    toolOutcomeUnknown,
+			})
+		}
+		i = j - 1
+	}
+	return out
 }
 
 // MaxAssistantRound is the highest rN already stamped on assistant events.

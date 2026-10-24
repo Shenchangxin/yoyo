@@ -35,6 +35,11 @@ import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../vid
 import { useCutDesk, type CutProject } from "../video/cut-desk";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 
+function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
+  if (p && (snake in p || camel in p)) return num(p[snake] ?? p[camel], 0);
+  return prev;
+}
+
 const emptyHealth: Health = { ok: false, harness: "", model: "", version: "", isolated: false, isolationKind: "", budgetUsd: 0, usageUsd: 0, workspaceReady: false };
 export const emptyCfg: AppConfig = {
   provider: "openai",
@@ -819,6 +824,15 @@ export function useWorkstation() {
             prefixTokens: num(p.prefix_tokens ?? p.prefixTokens, prev.prefixTokens || 0) || prev.prefixTokens,
             dynamicTokens: num(p.dynamic_tokens ?? p.dynamicTokens, prev.dynamicTokens || 0) || prev.dynamicTokens,
             schemaTokens: num(p.schema_tokens ?? p.schemaTokens, prev.schemaTokens || 0) || prev.schemaTokens,
+            identityTokens: sliceNum(p, "identity_tokens", "identityTokens", prev.identityTokens),
+            rulesTokens: sliceNum(p, "rules_tokens", "rulesTokens", prev.rulesTokens),
+            catalogTokens: sliceNum(p, "catalog_tokens", "catalogTokens", prev.catalogTokens),
+            skillBodyTokens: sliceNum(p, "skill_body_tokens", "skillBodyTokens", prev.skillBodyTokens),
+            memoryTokens: sliceNum(p, "memory_tokens", "memoryTokens", prev.memoryTokens),
+            todayTokens: sliceNum(p, "today_tokens", "todayTokens", prev.todayTokens),
+            notesTokens: sliceNum(p, "notes_tokens", "notesTokens", prev.notesTokens),
+            chatTokens: sliceNum(p, "chat_tokens", "chatTokens", prev.chatTokens),
+            slicesKnown: ("chat_tokens" in p || "chatTokens" in p || "identity_tokens" in p || "identityTokens" in p) || prev.slicesKnown,
             providerPrompt: num(p.provider_prompt ?? p.providerPrompt, prev.providerPrompt || 0) || prev.providerPrompt,
             cachedTokens: num(p.cached_tokens ?? p.cachedTokens, prev.cachedTokens || 0),
             cacheReported: !!(p.cache_reported ?? p.cacheReported ?? prev.cacheReported),

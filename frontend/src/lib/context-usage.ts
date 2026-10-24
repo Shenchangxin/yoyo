@@ -1,6 +1,6 @@
 import type { ContextUsage, SessionTrace, TraceEvent } from "./protocol";
 
-export const CTX_SLICE_IDS = ["system", "tools", "dynamic", "chat", "free"] as const;
+export const CTX_SLICE_IDS = ["system", "rules", "catalog", "skills", "tools", "memory", "today", "notes", "chat", "free"] as const;
 export type CtxSliceId = (typeof CTX_SLICE_IDS)[number];
 
 export type CtxSlice = {
@@ -17,6 +17,12 @@ export type CtxBreakdown = {
   dynamic: number;
   chat: number;
   free: number;
+  rules: number;
+  catalog: number;
+  skills: number;
+  memory: number;
+  today: number;
+  notes: number;
   providerPrompt: number;
   cachedTokens: number;
   cacheReported: boolean;
@@ -45,18 +51,32 @@ export function contextBreakdown(ctx: ContextUsage | undefined, fallbackWindow =
   const window = ctx?.window && ctx.window > 0 ? ctx.window : 0;
   const budget = ctx?.budget && ctx.budget > 0 ? ctx.budget : 0;
   const capacity = window || budget || fallbackWindow || (used > 0 ? used : 0);
-  const chat = Math.max(0, baseUsed - prefix - schema - dynamic) + draft;
+  const detailed = !!ctx?.slicesKnown;
+  const rules = detailed ? Math.max(0, ctx?.rulesTokens || 0) : 0;
+  const catalog = detailed ? Math.max(0, ctx?.catalogTokens || 0) : 0;
+  const skills = detailed ? Math.max(0, ctx?.skillBodyTokens || 0) : 0;
+  const memory = detailed ? Math.max(0, ctx?.memoryTokens || 0) : 0;
+  const today = detailed ? Math.max(0, ctx?.todayTokens || 0) : 0;
+  const notes = detailed ? Math.max(0, ctx?.notesTokens || 0) : dynamic;
+  const system = detailed ? Math.max(0, ctx?.identityTokens || 0) : prefix;
+  const chat = (detailed ? Math.max(0, ctx?.chatTokens || 0) : Math.max(0, baseUsed - prefix - schema - dynamic)) + draft;
   const free = Math.max(0, capacity - used);
   const pct = capacity > 0 ? Math.min(100, Math.round((used / capacity) * 100)) : 0;
   return {
     used,
     capacity,
     pct,
-    prefix,
+    prefix: system,
     schema,
-    dynamic,
+    dynamic: notes,
     chat,
     free,
+    rules,
+    catalog,
+    skills,
+    memory,
+    today,
+    notes,
     providerPrompt: Math.max(0, ctx?.providerPrompt || 0),
     cachedTokens: Math.max(0, ctx?.cachedTokens || 0),
     cacheReported: !!ctx?.cacheReported,
@@ -67,9 +87,14 @@ export function contextBreakdown(ctx: ContextUsage | undefined, fallbackWindow =
     layers: ctx?.layers || [],
     note: ctx?.note || "",
     slices: [
-      { id: "system", tokens: prefix },
+      { id: "system", tokens: system },
+      { id: "rules", tokens: rules },
+      { id: "catalog", tokens: catalog },
+      { id: "skills", tokens: skills },
       { id: "tools", tokens: schema },
-      { id: "dynamic", tokens: dynamic },
+      { id: "memory", tokens: memory },
+      { id: "today", tokens: today },
+      { id: "notes", tokens: notes },
       { id: "chat", tokens: chat },
       { id: "free", tokens: free },
     ],

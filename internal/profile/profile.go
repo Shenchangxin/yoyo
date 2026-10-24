@@ -169,21 +169,40 @@ func Seeds() []Profile {
 	}
 }
 
-func FilterTools(have []string, p Profile) []string {
-	deny := map[string]bool{}
-	for _, n := range p.DenyTools {
-		deny[strings.TrimSpace(n)] = true
+// DeniedNames is the profile's call block list: explicit deny_tools plus
+// the research and memory switches. An empty allow_tools list is not a deny.
+func DeniedNames(p Profile) []string {
+	deny := denySet(p)
+	out := make([]string, 0, len(deny))
+	for n := range deny {
+		out = append(out, n)
 	}
-	if !p.Research {
-		for _, n := range []string{"web_search", "web_fetch", "reach_status", "browser_open", "browser_snapshot", "browser_screenshot", "cite_sources"} {
-			deny[n] = true
+	sort.Strings(out)
+	return out
+}
+
+func denySet(p Profile) map[string]bool {
+	deny := map[string]bool{}
+	add := func(names ...string) {
+		for _, n := range names {
+			n = strings.TrimSpace(n)
+			if n != "" {
+				deny[n] = true
+			}
 		}
+	}
+	add(p.DenyTools...)
+	if !p.Research {
+		add("web_search", "web_fetch", "reach_status", "browser_open", "browser_snapshot", "browser_screenshot", "cite_sources")
 	}
 	if !p.Memory {
-		for _, n := range []string{"memory_write", "remember_fact"} {
-			deny[n] = true
-		}
+		add("memory_write", "remember_fact")
 	}
+	return deny
+}
+
+func FilterTools(have []string, p Profile) []string {
+	deny := denySet(p)
 	allow := map[string]bool{}
 	for _, n := range p.AllowTools {
 		allow[strings.TrimSpace(n)] = true

@@ -253,6 +253,15 @@ export type ContextUsage = {
   prefixTokens?: number;
   dynamicTokens?: number;
   schemaTokens?: number;
+  identityTokens?: number;
+  rulesTokens?: number;
+  catalogTokens?: number;
+  skillBodyTokens?: number;
+  memoryTokens?: number;
+  todayTokens?: number;
+  notesTokens?: number;
+  chatTokens?: number;
+  slicesKnown?: boolean;
   providerPrompt?: number;
   cachedTokens?: number;
   cacheReported?: boolean;

@@ -50,23 +50,38 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 		Packs:              a.packSessions(ws),
 		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
 		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
+		CatalogLane:        session.NormalizeChannel(meta.Channel),
 	}
 	a.attachPersonal(tools)
 	a.attachDramaTools(tools, sessionID)
 	a.attachCanvasTools(tools, sessionID)
 	a.attachStudioTools(tools, sessionID)
 	runtime.ApplyPackBootstrap(tools)
+	profile := ""
+	if a.Memory != nil {
+		if p := a.sessionProfile(sessionID); p == nil || p.Memory {
+			profile = a.Memory.ProfilePin(profilePinBytes)
+		}
+	}
+	pageCtx := ""
+	if meta.PageID != "" && a.Pages != nil {
+		if pg, err := a.Pages.Get("", meta.PageID); err == nil {
+			pageCtx = runtime.PageInject(pg.Title, pg.Content, 3200)
+		}
+	}
 	rep := runtime.MeasureContext(runtime.MeasureOpts{
-		Loop:        loop,
-		Fragments:   frags,
-		Playbook:    pb,
-		Skills:      skills,
-		Workspace:   ws,
-		History:     runtime.MessagesFromEventsOpts(evs, spill),
-		Tools:       tools,
-		Spill:       spill,
-		ModelWindow: window,
-		PlanText:    meta.PlanText,
+		Loop:          loop,
+		Fragments:     frags,
+		Playbook:      pb,
+		Skills:        skills,
+		Workspace:     ws,
+		History:       runtime.MessagesFromEventsOpts(evs, spill),
+		Tools:         tools,
+		Spill:         spill,
+		ModelWindow:   window,
+		PlanText:      meta.PlanText,
+		PageContext:   pageCtx,
+		ProfileMemory: profile,
 	})
 	if pp := promptFromEvents(evs); pp > 0 {
 		rep.ProviderPrompt = pp

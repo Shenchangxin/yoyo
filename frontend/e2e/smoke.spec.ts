@@ -660,24 +660,39 @@ test("composer shows context breakdown", async ({ page }) => {
   await mockApi(page, "C:/tmp/ws", {
     sessions: [{ id: "s1", title: "Demo thread", workspace: "C:/tmp/ws" }],
     context: {
-      tokens: 18000,
+      tokens: 6200,
       budget: 100000,
       window: 128000,
-      prefix_tokens: 2200,
-      schema_tokens: 4100,
-      dynamic_tokens: 800,
+      prefix_tokens: 4200,
+      schema_tokens: 1800,
+      dynamic_tokens: 200,
+      identity_tokens: 700,
+      rules_tokens: 1100,
+      catalog_tokens: 900,
+      skill_body_tokens: 0,
+      memory_tokens: 80,
+      today_tokens: 0,
+      notes_tokens: 200,
+      chat_tokens: 0,
       layers: ["budget"],
-      elided: 2,
+      elided: 0,
     },
   });
   await page.goto("/");
-  const meter = page.getByRole("group", { name: "Context" }).first();
+  const meter = page.getByTestId("composer-context-meter");
   await expect(meter).toBeVisible();
-  await expect(meter.getByText("System", { exact: true })).toBeVisible();
-  await expect(meter.getByText("Tools", { exact: true })).toBeVisible();
-  await expect(meter.getByText("Working", { exact: true })).toBeVisible();
-  await expect(meter.getByText("Chat", { exact: true })).toBeVisible();
-  await expect(meter.getByText("Free", { exact: true })).toBeVisible();
+  await meter.getByRole("button").click();
+  const panel = page.getByRole("dialog", { name: "Context" });
+  await expect(panel.getByText("System", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Rules", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Skills", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Tools", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Memory", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Notes", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Chat", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Free", { exact: true })).toBeVisible();
+  await expect(panel.locator(".sc-meter-row", { hasText: "Chat" })).toContainText("~0");
+  await expect(panel.getByText("Skill text", { exact: true })).toHaveCount(0);
 });
 
 test("approval is asked in the transcript", async ({ page }) => {

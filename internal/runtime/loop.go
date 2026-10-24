@@ -60,9 +60,9 @@ type RunRequest struct {
 	// SoftHorizon is desktop/CLI chat only (I6). Harbor eval and subagents
 	// leave it false so MaxTurns / MaxToolMessages stay hard bounds.
 	// Chat stops on end_turn (with an open-plan continue), cancel, budget,
-	// overflow, a repeating-tool / unchanged-observation circuit breaker,
-	// or ChatSoftGuardTurns — not because Harbor MaxTurns ran out while
-	// the observation was still changing.
+	// overflow, an unchanged-observation circuit breaker, or
+	// ChatSoftGuardTurns — not because Harbor MaxTurns ran out while the
+	// observation was still changing. Identical tool arguments only remind.
 	SoftHorizon bool
 	// ShowThinking streams provider reasoning into the transcript. Off by
 	// default: many OpenAI-compatible endpoints reject thinking fields.
@@ -125,8 +125,6 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		req.Loop = loop
 	}
 	kernel := newContextKernel(&req)
-	emit(req, trace.TypeSystem, "runtime", map[string]any{"text": kernel.prefix})
-
 	messages, err := kernel.seed()
 	if err != nil {
 		return "", err
@@ -148,6 +146,16 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 	waitHits := map[string]int{}
 	idleHits := map[string]int{}
 	var watch checkWatch
+	if req.Tools != nil {
+		req.Tools.setRepeatBlock("", "")
+	}
+	if req.SoftHorizon {
+		seedCheckWatch(req, &watch, messages)
+		if req.Tools != nil {
+			script, refusal := watch.repeatBlock()
+			req.Tools.setRepeatBlock(script, refusal)
+		}
+	}
 	lastPlan := planTextOf(req.Tools)
 	if roundSeq <= 0 {
 		for _, m := range req.History {
@@ -190,6 +198,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if req.PullSteer != nil {
 			if extra := strings.TrimSpace(req.PullSteer()); extra != "" {
+				repeats.reset()
 				emit(req, trace.TypeUser, "steer", map[string]any{"text": extra, "name": "steer", "lane": "next-step"})
 				messages = append(messages, Message{Role: RoleUser, Content: extra})
 			}
@@ -223,7 +232,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				req.Events.Emit(HookCompact, report.Note)
 			}
 		}
-		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON), ShowThinking: req.ShowThinking, MaxTokens: req.MaxOutputTokens}
+		chatReq := ChatRequest{Model: req.Model, Messages: compacted, Tools: toolsJSON, CacheKey: PromptCacheKey(req.HarnessHash, kernel.cachePrefix(), toolsJSON), ShowThinking: req.ShowThinking, MaxTokens: req.MaxOutputTokens}
 		roundSeq++
 		roundID := fmt.Sprintf("%s:r%d", req.SessionID, roundSeq)
 		emitStepStart(req, turnNo, roundSeq, roundID, roundID)
@@ -244,7 +253,7 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				}
 				chatReq.Messages = compacted
 				chatReq.Tools = toolsJSON
-				chatReq.CacheKey = PromptCacheKey(req.HarnessHash, kernel.prefix, toolsJSON)
+				chatReq.CacheKey = PromptCacheKey(req.HarnessHash, kernel.cachePrefix(), toolsJSON)
 				retryID := roundID + ":retry"
 				msg, att, err = completeChat(ctx, req, chatReq, retryID, turnNo, roundSeq)
 				if err != nil && IsContextOverflow(err) {
@@ -401,6 +410,14 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 				end["prefix_tokens"] = report.PrefixTokens
 				end["dynamic_tokens"] = report.DynamicTokens
 				end["schema_tokens"] = report.SchemaTokens
+				end["identity_tokens"] = report.IdentityTokens
+				end["rules_tokens"] = report.RulesTokens
+				end["catalog_tokens"] = report.CatalogTokens
+				end["skill_body_tokens"] = report.SkillBodyTokens
+				end["memory_tokens"] = report.MemoryTokens
+				end["today_tokens"] = report.TodayTokens
+				end["notes_tokens"] = report.NotesTokens
+				end["chat_tokens"] = report.ChatTokens
 				end["elided"] = report.Elided
 			}
 			if report.ProviderPrompt > 0 {
@@ -451,15 +468,9 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		} else {
 			sinceProgress++
 		}
-		if repeats.note(msg.ToolCalls, results, progressed) {
-			if stall := repeats.nudge(req); stall != "" && !lastUserIs(messages, stall) {
-				messages = append(messages, Message{Role: RoleUser, Content: stall})
-			}
-			if repeats.stuck() {
-				emit(req, trace.TypeError, "runtime", stuckLoopInfo("the same call kept returning the same result").Payload())
-				setStop(&req, StopStuck)
-				return last, stuckLoopErr("the same call kept returning the same result")
-			}
+		if stall := repeats.observe(req, msg.ToolCalls); stall != "" && !lastUserIs(messages, stall) {
+			emit(req, trace.TypeInject, "repeat-tool-reminder", map[string]any{"text": stall, "name": "repeat-tool-reminder"})
+			messages = append(messages, Message{Role: RoleUser, Content: stall})
 		}
 		if !inspectsOnly(msg.ToolCalls) {
 			recordToolErrors(errorHits, results)
@@ -510,6 +521,10 @@ func Run(ctx context.Context, req RunRequest) (string, error) {
 		}
 		if stall := observationNudge(req, &watch, msg.ToolCalls); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
+		}
+		if req.Tools != nil {
+			script, refusal := watch.repeatBlock()
+			req.Tools.setRepeatBlock(script, refusal)
 		}
 		if stall := clickMicroNudge(req, clickHits); stall != "" && !lastUserIs(messages, stall) {
 			messages = append(messages, Message{Role: RoleUser, Content: stall})
@@ -819,7 +834,8 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		for i := range jobs {
 			if err := ctx.Err(); err != nil {
 				for j := i; j < n; j++ {
-					jobs[j].content = "ERROR: interrupted"
+					jobs[j].content = toolAbortedBeforeDispatch
+					jobs[j].ok = false
 				}
 				break
 			}
@@ -829,7 +845,8 @@ func dispatchTools(ctx context.Context, req RunRequest, calls []ToolCall, roundI
 		for i := range jobs {
 			if err := ctx.Err(); err != nil {
 				for j := i; j < n; j++ {
-					jobs[j].content = "ERROR: interrupted"
+					jobs[j].content = toolAbortedBeforeDispatch
+					jobs[j].ok = false
 				}
 				break
 			}

@@ -23,6 +23,9 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// profilePinBytes is about 200 tokens of operator-confirmed profile facts.
+const profilePinBytes = 800
+
 type SessionMeta struct {
 	// ID is the durable session identity. It is assigned at create time and
 	// never changes. Trajectory lives at sessions/{id}.jsonl; spill artifacts
@@ -682,6 +685,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		Packs:              a.packSessions(skillRoot),
 		SkillAutoInvoke:    runtime.NormalizeAutoInvoke(a.Config.Skills.AutoInvoke),
 		SkillCatalogBudget: a.Config.Skills.CatalogBudgetChars,
+		CatalogLane:        session.NormalizeChannel(meta.Channel),
 		Pages:              a.Pages,
 		OnCapture: func(kind, path, summary string) {
 			a.rememberCapture(sessionID, kind, path, summary)
@@ -826,7 +830,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	profile := ""
 	if a.Memory != nil {
 		if p := a.sessionProfile(sessionID); p == nil || p.Memory {
-			profile = a.Memory.ProfilePin(800)
+			profile = a.Memory.ProfilePin(profilePinBytes)
 		}
 	}
 	tools.OperatorVoice = voice

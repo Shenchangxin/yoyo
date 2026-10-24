@@ -133,6 +133,15 @@ func isControlUser(text string) bool {
 	if strings.HasPrefix(s, checkFailPrefixEN) || strings.HasPrefix(s, checkFailPrefixZH) {
 		return true
 	}
+	if s == repeatGentleEN || s == repeatGentleZH {
+		return true
+	}
+	if strings.HasPrefix(s, repeatDetailPrefixEN) || strings.HasPrefix(s, repeatDetailPrefixZH) {
+		return true
+	}
+	if strings.HasPrefix(s, promptUpdateLead) {
+		return true
+	}
 	if strings.HasPrefix(s, instrumentPrefixEN) || strings.HasPrefix(s, instrumentPrefixZH) {
 		return true
 	}

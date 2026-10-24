@@ -94,15 +94,22 @@ type WorkspaceTools struct {
 	OperatorVoice string
 	// VerifyHint is set when chat tries to end_turn with an open plan so
 	// verify-artifact is re-injected into working memory (I2/I5).
-	VerifyHint        bool
-	Ctx               context.Context
-	Extra             map[string]ExtraTool
-	Spill             *Spill
-	Depth             int
-	Task              TaskFunc
-	PlanText          string
-	Advertised        []string
-	AllowedTools      []string
+	VerifyHint   bool
+	Ctx          context.Context
+	Extra        map[string]ExtraTool
+	Spill        *Spill
+	Depth        int
+	Task         TaskFunc
+	PlanText     string
+	Advertised   []string
+	AllowedTools []string
+	// DeniedTools is the profile block list. It applies even when chat
+	// may call a host tool that is not in the opening schema.
+	DeniedTools []string
+	// ToolJail means AllowedTools is a real allow-list from a skill
+	// frontmatter or a profile allow_tools. The opening schema is not a jail:
+	// a deferred host tool stays callable on chat until one of those is set.
+	ToolJail          bool
 	AskUser           func(question string) (string, error)
 	SkillMeta         map[string]artifact.Skill
 	prefetch          map[string]prefetchHit
@@ -133,8 +140,17 @@ type WorkspaceTools struct {
 	Packs []PackSession
 	// Methodology yields write-now chat conduct and plan-first overlay.
 	Methodology bool
-	// BootstrapBodies are wrapped session-start skill texts (not the catalog body).
+	// BootstrapBodies are wrapped session-start skill texts. Chat no longer
+	// fills this; methodology packs keep a one-line BootstrapPin instead.
 	BootstrapBodies map[string]string
+	// BootstrapPin is the cache-stable methodology one-liner. The body loads
+	// through load_skill.
+	BootstrapPin string
+	// CatalogLane is "agent" or "video". The agent lane hides studio/drama/cut
+	// catalog lines.
+	CatalogLane  string
+	pathRules    string
+	pathRuleSeen map[string]bool
 	// SkillAutoInvoke is off | hint | on. Empty means on.
 	SkillAutoInvoke string
 	// SkillCatalogBudget caps catalog lines in pins (bytes). Zero uses default.
@@ -143,6 +159,10 @@ type WorkspaceTools struct {
 	SkillHints []SkillSuggestion
 	// Autoloaded is the subset the host injected as implicit @skill.
 	Autoloaded []string
+	// repeatScript blocks one more run of a check whose output did not change.
+	// repeatRefusal is the tool result returned instead of executing it.
+	repeatScript  string
+	repeatRefusal string
 }
 
 func BuiltinToolJSON() []ToolJSON {
@@ -244,22 +264,7 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	if t.ChatOverlay {
 		deferred = append(deferred, deferredHostTools(advertised)...)
 	}
-	if len(deferred) > 0 {
-		for i := range out {
-			name, _ := out[i].Function["name"].(string)
-			if name != "tool_search" {
-				continue
-			}
-			desc, _ := out[i].Function["description"].(string)
-			cp := map[string]any{}
-			for k, v := range out[i].Function {
-				cp[k] = v
-			}
-			cp["description"] = desc + " Deferred extra tools: " + strings.Join(deferred, ", ") + "."
-			out[i].Function = cp
-			break
-		}
-	}
+	WriteHostToolIndex(t.Workspace, deferred)
 	WriteMCPCatalog(t.Workspace, t.Extra)
 	// Gateways reject the whole turn when a name appears twice. Host schemas
 	// stay; a later extra with the same name (canvas ask_user) is dropped.
@@ -342,9 +347,35 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	return ToolResult{Err: fmt.Errorf("unknown tool %s", name)}
 }
 
+func toolListed(list []string, name string) bool {
+	for _, n := range list {
+		for _, part := range strings.Fields(n) {
+			if part == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (t *WorkspaceTools) toolDenied(name string) bool {
+	if t == nil || name == "" {
+		return false
+	}
+	for _, n := range t.DeniedTools {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *WorkspaceTools) toolAllowed(name string) bool {
 	if t == nil {
 		return true
+	}
+	if t.toolDenied(name) {
+		return false
 	}
 	if t.Extra != nil {
 		if _, ok := t.Extra[name]; ok {
@@ -354,15 +385,13 @@ func (t *WorkspaceTools) toolAllowed(name string) bool {
 	if alwaysAdvertise(name) {
 		return true
 	}
+	// The opening menu is a schema diet, not a call jail. Profile denials and
+	// an explicit allow-list (ToolJail) still block.
+	if t.ChatOverlay && hostToolKnown(name) && !t.ToolJail {
+		return true
+	}
 	if len(t.AllowedTools) > 0 {
-		for _, n := range t.AllowedTools {
-			for _, part := range strings.Fields(n) {
-				if part == name {
-					return true
-				}
-			}
-		}
-		return false
+		return toolListed(t.AllowedTools, name)
 	}
 	if t.ChatOverlay {
 		return hostToolKnown(name)
@@ -899,7 +928,35 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	return ToolResult{Content: note + hits}
 }
 
+func (t *WorkspaceTools) setRepeatBlock(script, refusal string) {
+	if t == nil {
+		return
+	}
+	t.repeatScript = script
+	t.repeatRefusal = refusal
+}
+
+func (t *WorkspaceTools) repeatBlocked(command string) (string, bool) {
+	if t == nil || t.repeatScript == "" || t.repeatRefusal == "" || t.repeatScript == "browser_verify" {
+		return "", false
+	}
+	if strings.Contains(normSlash(command), t.repeatScript) {
+		return t.repeatRefusal, true
+	}
+	return "", false
+}
+
+func (t *WorkspaceTools) repeatVerifyBlocked() (string, bool) {
+	if t == nil || t.repeatScript != "browser_verify" || t.repeatRefusal == "" {
+		return "", false
+	}
+	return t.repeatRefusal, true
+}
+
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
+	if msg, ok := t.repeatBlocked(command); ok {
+		return ToolResult{Content: msg}
+	}
 	command = t.expandSkillScripts(command)
 	ws := ""
 	if t != nil {
@@ -1285,6 +1342,7 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	if t.SkillMeta != nil {
 		if sk, ok := t.SkillMeta[name]; ok && strings.TrimSpace(sk.AllowedTools) != "" {
 			t.AllowedTools = strings.Fields(sk.AllowedTools)
+			t.ToolJail = true
 		}
 	}
 	return ToolResult{Content: content}
@@ -1403,7 +1461,10 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 			return ToolResult{Content: q + " is already in your tool list — call it directly. tool_search is for deferred extra (MCP/WASM) tools."}
 		}
 		for _, name := range searchHostSpecs(q) {
-			if want[name] || alwaysAdvertise(name) {
+			if want[name] || alwaysAdvertise(name) || t.toolDenied(name) {
+				continue
+			}
+			if t.ToolJail && !toolListed(t.AllowedTools, name) {
 				continue
 			}
 			js, ok := hostSpecJSON(name)

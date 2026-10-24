@@ -13,13 +13,23 @@ import (
 
 // ShapeReport is the observable context-engineering ledger.
 type ShapeReport struct {
-	Note           string   `json:"note"`
-	Tokens         int      `json:"tokens"`
-	Budget         int      `json:"budget"`
-	Window         int      `json:"window,omitempty"`
-	PrefixTokens   int      `json:"prefix_tokens,omitempty"`
-	DynamicTokens  int      `json:"dynamic_tokens,omitempty"`
-	SchemaTokens   int      `json:"schema_tokens,omitempty"`
+	Note            string `json:"note"`
+	Tokens          int    `json:"tokens"`
+	Budget          int    `json:"budget"`
+	Window          int    `json:"window,omitempty"`
+	PrefixTokens    int    `json:"prefix_tokens,omitempty"`
+	DynamicTokens   int    `json:"dynamic_tokens,omitempty"`
+	SchemaTokens    int    `json:"schema_tokens,omitempty"`
+	IdentityTokens  int    `json:"identity_tokens,omitempty"`
+	RulesTokens     int    `json:"rules_tokens,omitempty"`
+	CatalogTokens   int    `json:"catalog_tokens,omitempty"`
+	SkillBodyTokens int    `json:"skill_body_tokens,omitempty"`
+	MemoryTokens    int    `json:"memory_tokens,omitempty"`
+	TodayTokens     int    `json:"today_tokens,omitempty"`
+	NotesTokens     int    `json:"notes_tokens,omitempty"`
+	// ChatTokens is real user, assistant, and tool history. Zero is meaningful
+	// on a new session, so it is always serialized.
+	ChatTokens     int      `json:"chat_tokens"`
 	ProviderPrompt int      `json:"provider_prompt,omitempty"`
 	CachedTokens   int      `json:"cached_tokens,omitempty"`
 	CacheReported  bool     `json:"cache_reported,omitempty"`

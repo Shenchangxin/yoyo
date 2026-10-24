@@ -115,7 +115,7 @@ func AssembleToday(t *WorkspaceTools) string {
 	if s == "" {
 		return ""
 	}
-	return capRunes(s, 1600)
+	return capRunes(s, 400)
 }
 
 func unreadCount(s *inbox.Store) int {

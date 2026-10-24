@@ -19,6 +19,10 @@ type Attachment struct {
 	DataB64 string
 }
 
+func controlAttachment(att Attachment) bool {
+	return strings.TrimSpace(att.Name) == "__request_id__"
+}
+
 func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 	if budget <= 0 {
 		budget = 2400
@@ -26,6 +30,9 @@ func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 	var b strings.Builder
 	used := 0
 	for i, att := range atts {
+		if controlAttachment(att) {
+			continue
+		}
 		if used >= budget {
 			b.WriteString("…[attachments truncated]\n")
 			break
@@ -49,6 +56,9 @@ func ExpandAttachments(workspace string, atts []Attachment, budget int) string {
 func ImageParts(workspace string, atts []Attachment) []ContentPart {
 	var out []ContentPart
 	for i, att := range atts {
+		if controlAttachment(att) {
+			continue
+		}
 		part, ok := imagePart(workspace, att, i)
 		if !ok {
 			continue
@@ -182,6 +192,9 @@ func MaterializeAttachments(workspace string, atts []Attachment) ([]Attachment, 
 	}
 	out := make([]Attachment, 0, len(atts))
 	for i, att := range atts {
+		if controlAttachment(att) {
+			continue
+		}
 		next, err := materializeOne(workspace, att, i)
 		if err != nil {
 			return nil, err
@@ -202,7 +215,7 @@ func StampFileMentions(message string, atts []Attachment) string {
 	}
 	var extra []string
 	for _, att := range atts {
-		if isImageAtt(att) {
+		if controlAttachment(att) || isImageAtt(att) {
 			continue
 		}
 		rel := strings.TrimSpace(att.Path)

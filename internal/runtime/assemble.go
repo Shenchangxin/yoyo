@@ -139,7 +139,12 @@ func uniqueSlotTexts(in []string) []string {
 
 const (
 	DefaultSkillCatalogBudget = 8000
-	skillCatalogDescCap       = 1024
+	// skillCatalogDescCap is one line. Long descriptions belong in SKILL.md,
+	// which load_skill reads, not in the always-on catalog.
+	skillCatalogDescCap = 160
+	// ChatSkillCatalogBudget is the chat-lane catalog cap in bytes, about
+	// 1.2k tokens. Harbor keeps DefaultSkillCatalogBudget.
+	ChatSkillCatalogBudget = 4_800
 )
 
 const skillCatalogRules = `The list below is the skills available this session (name + description). Bodies stay out of this prefix — load them with load_skill.
@@ -153,6 +158,10 @@ type PinsOpts struct {
 	CatalogBudget int
 	Routing       string
 	ChatCatalog   bool
+	// Lane is "agent" or "video". The agent lane omits studio, drama, and cut skills from the catalog. Bodies stay loadable by name.
+	Lane string
+	// Extra is a short cache-stable pin (methodology one-liner).
+	Extra string
 }
 
 func AssemblePins(loop artifact.LoopPreset, playbook artifact.Playbook, skills []artifact.Skill, rules, rulesSrc string) string {
@@ -175,6 +184,12 @@ func AssemblePinsOpts(loop artifact.LoopPreset, playbook artifact.Playbook, skil
 	if strings.TrimSpace(opts.Routing) != "" {
 		b.WriteString(opts.Routing)
 		if !strings.HasSuffix(opts.Routing, "\n") {
+			b.WriteByte('\n')
+		}
+	}
+	if strings.TrimSpace(opts.Extra) != "" {
+		b.WriteString(opts.Extra)
+		if !strings.HasSuffix(opts.Extra, "\n") {
 			b.WriteByte('\n')
 		}
 	}
@@ -209,7 +224,12 @@ func renderSkillCatalog(skills []artifact.Skill, opts PinsOpts) string {
 	}
 	used := 0
 	omitted := 0
+	laneSkipped := 0
 	for _, s := range sorted {
+		if catalogSkipsLane(s.Name, opts.Lane) {
+			laneSkipped++
+			continue
+		}
 		line := "- " + catalogLineCapped(s) + "\n"
 		if used+len(line) > budget && used > 0 {
 			omitted++
@@ -218,14 +238,29 @@ func renderSkillCatalog(skills []artifact.Skill, opts PinsOpts) string {
 		b.WriteString(line)
 		used += len(line)
 	}
+	if laneSkipped > 0 {
+		fmt.Fprintf(&b, "- … %d studio/drama/cut skills stay off this lane. load_skill by name, or open a video session.\n", laneSkipped)
+	}
 	if omitted > 0 {
 		fmt.Fprintf(&b, "- … %d more skills omitted to fit the catalog budget. Use list_skills or name one with @skill / load_skill.\n", omitted)
 	}
 	return b.String()
 }
 
+func catalogSkipsLane(name, lane string) bool {
+	if lane != "agent" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(name, "studio-"), strings.HasPrefix(name, "drama-"), strings.HasPrefix(name, "cut-"):
+		return true
+	default:
+		return false
+	}
+}
+
 func catalogLineCapped(s artifact.Skill) string {
-	desc := strings.TrimSpace(s.Description)
+	desc := strings.Join(strings.Fields(s.Description), " ")
 	if utf8.RuneCountInString(desc) > skillCatalogDescCap {
 		desc = capRunes(desc, skillCatalogDescCap)
 	}
@@ -240,10 +275,17 @@ func pinsOptsFromTools(tools *WorkspaceTools, chat bool) PinsOpts {
 	if tools == nil {
 		return opts
 	}
-	if tools.SkillCatalogBudget > 0 {
+	if tools.ChatOverlay {
+		opts.CatalogBudget = ChatSkillCatalogBudget
+		if tools.SkillCatalogBudget > 0 && tools.SkillCatalogBudget < opts.CatalogBudget {
+			opts.CatalogBudget = tools.SkillCatalogBudget
+		}
+	} else if tools.SkillCatalogBudget > 0 {
 		opts.CatalogBudget = tools.SkillCatalogBudget
 	}
+	opts.Lane = tools.CatalogLane
 	opts.Routing = DomainRoutingPin(tools.Packs)
+	opts.Extra = tools.BootstrapPin
 	if tools.ChatOverlay {
 		opts.ChatCatalog = true
 	}
@@ -297,7 +339,7 @@ func AssembleDynamicHint(planText string, loaded []string, notes, checkpoint, to
 	}
 	if strings.TrimSpace(today) != "" {
 		b.WriteString("\n## Today\n")
-		b.WriteString(capRunes(today, 1600))
+		b.WriteString(capRunes(today, 400))
 		if !strings.HasSuffix(today, "\n") {
 			b.WriteByte('\n')
 		}
@@ -320,20 +362,18 @@ func setDynamic(msgs []Message, dyn string) []Message {
 	return append(out, Message{Role: RoleMemory, Content: body})
 }
 
-func ReadWorkspaceMemory(workspace string) string {
+// ProjectMemoryPin is a path, not the file body. The model read_file's it
+// when the task depends on remembered project facts.
+func ProjectMemoryPin(workspace string) string {
 	if workspace == "" {
 		return ""
 	}
 	for _, name := range []string{"YOYO.memory.md", ".yoyo/MEMORY.md"} {
 		b, err := os.ReadFile(filepath.Join(workspace, name))
-		if err != nil {
+		if err != nil || strings.TrimSpace(string(b)) == "" {
 			continue
 		}
-		s := strings.TrimSpace(string(b))
-		if s == "" {
-			continue
-		}
-		return capRunes(s, 4000)
+		return "\n## Project memory\nFile: " + name + ". It is not inlined. read_file it when the task depends on remembered project facts.\n"
 	}
 	return ""
 }

@@ -138,6 +138,9 @@ func parseLimitations(v any) []qaLimitation {
 }
 
 func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
+	if msg, ok := t.repeatVerifyBlocked(); ok {
+		return ToolResult{Content: msg}
+	}
 	plan, err := parseVerifyPlan(args, func(rel string) ([]byte, error) {
 		p, err := t.resolve(rel)
 		if err != nil {

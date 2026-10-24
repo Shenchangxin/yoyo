@@ -24,6 +24,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/project"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/schedule"
+	"github.com/Shenchangxin/yoyo/internal/tool"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
@@ -191,7 +192,19 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	tools.Advertised = runtime.ApplyChatToolMenu(tools.Advertised)
 	if p := a.sessionProfile(tools.SessionID); p != nil {
 		tools.Advertised = profile.FilterTools(tools.Advertised, *p)
-		tools.AllowedTools = append([]string(nil), tools.Advertised...)
+		tools.DeniedTools = profile.DeniedNames(*p)
+		// allow_tools is a real call jail. Copying the opening schema into
+		// AllowedTools is not: deferred host tools such as browser_verify
+		// must stay callable after tool_search.
+		if len(p.AllowTools) > 0 {
+			names := make([]string, 0, len(tool.HostSpecs())+len(tools.Advertised))
+			for _, s := range tool.HostSpecs() {
+				names = append(names, s.Name)
+			}
+			names = append(names, tools.Advertised...)
+			tools.AllowedTools = profile.FilterTools(names, *p)
+			tools.ToolJail = true
+		}
 	}
 	if a.Threads != nil && tools.SessionID != "" {
 		tools.AllowedConnectors = a.Threads.ConnectorAllow(tools.SessionID)
