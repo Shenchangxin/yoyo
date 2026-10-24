@@ -168,7 +168,7 @@ func (b Bin) Transcribe(src, workDir string) (cues []Cue, text string, err error
 		return nil, "", err
 	}
 	out := filepath.Join(workDir, "out")
-	cmd := exec.Command(b.Whisper, "-f", src, "-otxt", "-osrt", "-of", out)
+	cmd := quiet(exec.Command(b.Whisper, "-f", src, "-otxt", "-osrt", "-of", out))
 	if raw, runErr := cmd.CombinedOutput(); runErr != nil {
 		return nil, "", fmt.Errorf("whisper: %s", strings.TrimSpace(string(raw)))
 	}

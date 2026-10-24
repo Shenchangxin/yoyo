@@ -3,6 +3,8 @@ package evolve
 import (
 	"os"
 	"os/exec"
+
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 // ScratchGit is a throwaway git repo used as IsolateRoot so Harbor tasks
@@ -19,6 +21,7 @@ func ScratchGit() (string, func(), error) {
 	}
 	run := func(args ...string) error {
 		cmd := exec.Command("git", args...)
+		osutil.HideConsole(cmd)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=yoyo", "GIT_AUTHOR_EMAIL=yoyo@local",

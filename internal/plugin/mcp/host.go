@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 const ProtocolVersion = "2025-11-25"
@@ -32,24 +33,24 @@ type Host struct {
 }
 
 type Server struct {
-	Name      string
-	Command   string
-	Args      []string
-	Endpoint  string
-	Tools     []Tool
-	Resources []Resource
-	Prompts   []Prompt
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stdout    *bufio.Reader
+	Name       string
+	Command    string
+	Args       []string
+	Endpoint   string
+	Tools      []Tool
+	Resources  []Resource
+	Prompts    []Prompt
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     *bufio.Reader
 	stderr     *ringBuf
 	stderrFile string
 	http       *http.Client
-	mu        sync.Mutex
-	nextID    int
-	timeout   time.Duration
-	roots     []string
-	stopping  atomic.Bool
+	mu         sync.Mutex
+	nextID     int
+	timeout    time.Duration
+	roots      []string
+	stopping   atomic.Bool
 }
 
 type Tool struct {
@@ -283,6 +284,7 @@ func (s *Server) Stderr() string {
 
 func (s *Server) startStdio() error {
 	cmd := exec.Command(s.Command, s.Args...)
+	osutil.HideConsole(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err

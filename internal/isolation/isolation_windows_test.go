@@ -10,7 +10,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
+
+func TestApplyHidesConsole(t *testing.T) {
+	cmd := exec.Command("cmd", "/c", "echo hi")
+	apply(cmd)
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.HideWindow {
+		t.Fatal("console window not hidden")
+	}
+	flags := cmd.SysProcAttr.CreationFlags
+	if flags&windows.CREATE_NO_WINDOW == 0 {
+		t.Fatal("CREATE_NO_WINDOW not set")
+	}
+	if flags&windows.CREATE_NEW_PROCESS_GROUP == 0 {
+		t.Fatal("CREATE_NEW_PROCESS_GROUP not set")
+	}
+}
 
 func TestSuccessfulRunLeavesBackgroundChild(t *testing.T) {
 	dir := t.TempDir()

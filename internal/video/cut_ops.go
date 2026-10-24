@@ -83,7 +83,7 @@ func (e *Engine) probeDurationFast(path string) float64 {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path)
+	cmd := quiet(exec.CommandContext(ctx, bin, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path))
 	out, err := cmd.Output()
 	if err != nil {
 		return 0

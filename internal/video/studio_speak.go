@@ -197,7 +197,7 @@ func (e *Engine) ttsEdge(text string, speed float64) ([]byte, error) {
 	args := []string{"--voice", "zh-CN-XiaoxiaoNeural", "--rate", edgeRate(speed), "--text", text, "--write-media", name}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := quiet(exec.CommandContext(ctx, bin, args...))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("edge-tts: %s", strings.TrimSpace(string(out)))
 	}

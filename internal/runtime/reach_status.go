@@ -21,6 +21,7 @@ var lookAgentReach = func() string {
 
 var runAgentReachDoctor = func(ctx context.Context, bin string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, "doctor", "--json")
+	hideConsole(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -12,6 +12,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
 var (
@@ -99,8 +101,9 @@ func waitForPID(pid int, timeout time.Duration) {
 func runNSISInstaller(installer, destDir string) error {
 	cmd := exec.Command(installer)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow: true,
-		CmdLine:    nsisCmdLine(installer, destDir),
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NO_WINDOW,
+		CmdLine:       nsisCmdLine(installer, destDir),
 	}
 	if err := cmd.Start(); err != nil {
 		return err
@@ -131,6 +134,7 @@ func launchInstalledYoyo(destDir string) {
 		}
 		cmd := exec.Command(p)
 		cmd.Dir = filepath.Dir(p)
+		osutil.NoConsole(cmd)
 		if err := cmd.Start(); err == nil {
 			_ = cmd.Process.Release()
 			return

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -22,7 +21,7 @@ func IsolateWorkspace(src string) (string, func(), error) {
 	cleanup := func() { _ = os.RemoveAll(dst) }
 	if gitWorktree(src, dst) == nil {
 		return dst, func() {
-			_ = exec.Command("git", "-C", src, "worktree", "remove", "--force", dst).Run()
+			_ = gitCmd("-C", src, "worktree", "remove", "--force", dst).Run()
 			cleanup()
 		}, nil
 	}
@@ -71,17 +70,17 @@ func RemoveWorktree(src, dest string) {
 		return
 	}
 	if src != "" {
-		_ = exec.Command("git", "-C", src, "worktree", "remove", "--force", dest).Run()
+		_ = gitCmd("-C", src, "worktree", "remove", "--force", dest).Run()
 	}
 	_ = os.RemoveAll(dest)
 }
 
 func gitWorktree(src, dst string) error {
-	cmd := exec.Command("git", "-C", src, "rev-parse", "--is-inside-work-tree")
+	cmd := gitCmd("-C", src, "rev-parse", "--is-inside-work-tree")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	return exec.Command("git", "-C", src, "worktree", "add", "--detach", dst).Run()
+	return gitCmd("-C", src, "worktree", "add", "--detach", dst).Run()
 }
 
 // ApplyWorktree copies isolate dest back onto origin. Git worktrees are
@@ -102,13 +101,13 @@ func ApplyWorktree(origin, dest string) error {
 }
 
 func gitApply(origin, dest string) error {
-	if err := exec.Command("git", "-C", origin, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
+	if err := gitCmd("-C", origin, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
 		return err
 	}
-	if err := exec.Command("git", "-C", dest, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
+	if err := gitCmd("-C", dest, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
 		return err
 	}
-	cmd := exec.Command("git", "-C", dest, "diff", "--binary")
+	cmd := gitCmd("-C", dest, "diff", "--binary")
 	out, err := cmd.Output()
 	if err != nil {
 		return err
@@ -116,7 +115,7 @@ func gitApply(origin, dest string) error {
 	if len(out) == 0 {
 		return nil
 	}
-	apply := exec.Command("git", "-C", origin, "apply", "--binary", "-")
+	apply := gitCmd("-C", origin, "apply", "--binary", "-")
 	apply.Stdin = strings.NewReader(string(out))
 	if err := apply.Run(); err != nil {
 		return copyTree(dest, origin)

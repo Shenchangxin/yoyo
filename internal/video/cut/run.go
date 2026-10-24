@@ -31,7 +31,7 @@ func (b Bin) run(args ...string) ([]byte, error) {
 	if err := b.ok(); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(b.FFmpeg, args...)
+	cmd := quiet(exec.Command(b.FFmpeg, args...))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("%s", ffmpegErr(out, err))
@@ -47,7 +47,7 @@ func (b Bin) probe(args ...string) ([]byte, error) {
 	if bin == "" {
 		return nil, fmt.Errorf("ffprobe missing")
 	}
-	cmd := exec.Command(bin, args...)
+	cmd := quiet(exec.Command(bin, args...))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("%s", ffmpegErr(out, err))

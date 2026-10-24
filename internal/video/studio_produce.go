@@ -312,7 +312,7 @@ func (e *Engine) fetchMediaURL(rawURL string) (hash, mime string, err error) {
 		}
 		defer os.RemoveAll(tmp)
 		out := filepath.Join(tmp, "media.%(ext)s")
-		cmd := exec.Command(ytdlp, "-f", "mp4/best", "-o", out, "--no-playlist", rawURL)
+		cmd := quiet(exec.Command(ytdlp, "-f", "mp4/best", "-o", out, "--no-playlist", rawURL))
 		if b, runErr := cmd.CombinedOutput(); runErr != nil {
 			return "", "", fmt.Errorf("yt-dlp: %s", trimErr(b, runErr))
 		}
@@ -456,7 +456,7 @@ func (e *Engine) ListStudioJobs(projectID string) []Job {
 }
 
 func probeFileSeconds(ffprobe, path string) (float64, error) {
-	cmd := exec.Command(ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path)
+	cmd := quiet(exec.Command(ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path))
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("ffprobe: %s", strings.TrimSpace(string(b)))

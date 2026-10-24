@@ -12,7 +12,9 @@ import (
 func ClipboardRead() (string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		out, err := exec.Command("powershell", "-NoProfile", "-Command", "Get-Clipboard").Output()
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", "Get-Clipboard")
+		HideConsole(cmd)
+		out, err := cmd.Output()
 		return strings.TrimRight(string(out), "\r\n"), err
 	case "darwin":
 		out, err := exec.Command("pbpaste").Output()
@@ -32,6 +34,7 @@ func ClipboardWrite(text string) error {
 	case "windows":
 		cmd := exec.Command("powershell", "-NoProfile", "-Command", "Set-Clipboard -Value $input")
 		cmd.Stdin = strings.NewReader(text)
+		HideConsole(cmd)
 		return cmd.Run()
 	case "darwin":
 		cmd := exec.Command("pbcopy")
@@ -56,7 +59,9 @@ func Screenshot(path string) error {
 	switch runtime.GOOS {
 	case "windows":
 		ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height; $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save('%s');`, strings.ReplaceAll(path, `'`, `''`))
-		return exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
+		cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+		HideConsole(cmd)
+		return cmd.Run()
 	case "darwin":
 		return exec.Command("screencapture", "-x", path).Run()
 	default:

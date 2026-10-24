@@ -21,6 +21,7 @@ func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 		ctx = context.Background()
 	}
 	cmd := exec.CommandContext(ctx, "git", args...)
+	hideConsole(cmd)
 	cmd.Dir = t.Workspace
 	out, err := cmd.CombinedOutput()
 	text := string(out)

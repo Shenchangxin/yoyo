@@ -138,8 +138,8 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 			}
 			vf := frameFilter(w, h, fit)
 			if err := e.encodeShot(clip, shotCacheKey("v", shot.VideoHash, dur, motion, fit, w, h), func() error {
-				cmd := exec.Command(e.FFMPEG, "-y", "-stream_loop", "-1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
-					"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip)
+				cmd := quiet(exec.Command(e.FFMPEG, "-y", "-stream_loop", "-1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
+					"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip))
 				out, err := cmd.CombinedOutput()
 				if err != nil {
 					return fmt.Errorf("%s", ffmpegErr(out, err))
@@ -162,7 +162,7 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 			if err := e.encodeShot(clip, shotCacheKey("i", shot.ImageHash, dur, motion, fit, w, h), func() error {
 				args := []string{"-y", "-loop", "1", "-i", src, "-t", fmt.Sprintf("%.2f", dur), "-vf", vf,
 					"-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", clip}
-				cmd := exec.Command(e.FFMPEG, args...)
+				cmd := quiet(exec.Command(e.FFMPEG, args...))
 				out, err := cmd.CombinedOutput()
 				if err != nil {
 					return fmt.Errorf("%s", ffmpegErr(out, err))
@@ -373,7 +373,7 @@ func (e *Engine) burnSubtitles(tmp, video, subHash string, w, h int) (string, er
 	}
 	out := filepath.Join(tmp, "sub.mp4")
 	vf := subtitleFilter(burnPath)
-	cmd := exec.Command(e.FFMPEG, "-y", "-i", video, "-vf", vf, "-c:a", "copy", out)
+	cmd := quiet(exec.Command(e.FFMPEG, "-y", "-i", video, "-vf", vf, "-c:a", "copy", out))
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("%s", ffmpegErr(b, err))
 	}
@@ -391,7 +391,7 @@ func (e *Engine) probeFrame(path string) (int, int) {
 	if e.FFProbe == "" {
 		return 1080, 1920
 	}
-	cmd := exec.Command(e.FFProbe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path)
+	cmd := quiet(exec.Command(e.FFProbe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path))
 	b, err := cmd.CombinedOutput()
 	if err != nil {
 		return 1080, 1920
@@ -425,9 +425,9 @@ func (e *Engine) Reframe(hash, aspect string) (MediaRef, error) {
 	tmp.Close()
 	defer os.Remove(tmp.Name())
 	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1", w, h, w, h)
-	cmd := exec.Command(e.FFMPEG, "-y", "-i", src, "-vf", vf, "-c:a", "copy", tmp.Name())
+	cmd := quiet(exec.Command(e.FFMPEG, "-y", "-i", src, "-vf", vf, "-c:a", "copy", tmp.Name()))
 	if b, err := cmd.CombinedOutput(); err != nil {
-		cmd = exec.Command(e.FFMPEG, "-y", "-i", src, "-vf", vf, "-an", tmp.Name())
+		cmd = quiet(exec.Command(e.FFMPEG, "-y", "-i", src, "-vf", vf, "-an", tmp.Name()))
 		if b2, err2 := cmd.CombinedOutput(); err2 != nil {
 			return MediaRef{}, fmt.Errorf("%s", ffmpegErr(append(b, b2...), err2))
 		}
