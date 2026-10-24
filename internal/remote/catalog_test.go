@@ -20,7 +20,9 @@ func TestMethodCatalogMatchesClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(have) != got {
+	// A Windows checkout rewrites the generated LF file as CRLF. That is not
+	// a method-table change.
+	if strings.ReplaceAll(string(have), "\r\n", "\n") != got {
 		t.Fatalf("handheld/lib/methods.g.dart drifted from the Go method table; regenerate with YOYO_WRITE_METHODS=1")
 	}
 }
