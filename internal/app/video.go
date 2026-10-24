@@ -33,6 +33,11 @@ func (a *App) openVideo() error {
 	eng.StartCharacterCast()
 	eng.OnJob = a.onVideoJob
 	eng.OnHub = a.onCanvasHub
+	eng.Agent = &video.CanvasAgentBridge{
+		Start:  a.startCanvasAgent,
+		Stop:   a.stopCanvasAgent,
+		Decide: a.decideCanvasAgent,
+	}
 	a.Video = eng
 	a.seedConnections()
 	if a.Observe != nil {

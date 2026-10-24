@@ -665,6 +665,10 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		return canvasOK(map[string]any{"prompt": text, "operation": op})
 	}
 
+	if path == "agent/capabilities" || path == "agent/profile" || path == "agent/runs" || strings.HasPrefix(path, "agent/runs/") {
+		return e.canvasAgentHTTP(method, path, query, bodyMap)
+	}
+
 	// Unmapped endpoints stay empty-success so the canvas island does not crash.
 	if method == "GET" {
 		return canvasOK(map[string]any{})

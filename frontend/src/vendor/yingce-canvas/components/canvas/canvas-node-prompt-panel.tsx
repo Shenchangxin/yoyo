@@ -677,7 +677,7 @@ function ReferenceToolsPopover({ canAutoMention, autoLinkEnabled, onAutoMention,
                 <div className="space-y-1.5">
                     <div>
                         <div className="text-sm font-medium leading-5">智能引用</div>
-                        <div className="mt-0.5 text-xs leading-4 text-black/50 dark:text-white/50">输入素材序号或名称后按 Tab，可快速引用</div>
+                        <div className="mt-0.5 text-xs leading-4 text-foreground/55">输入素材序号或名称后按 Tab，可快速引用</div>
                     </div>
                     <div className="flex min-h-6 items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm"><Link2 className="size-3.5" />AutoLink</div>

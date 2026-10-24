@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { trackCanvasVideoStage } from "./canvas-video-stage.ts";
+
 // Only the hovered node owns a decoder; pending hover work shares the same lease.
 let stopCurrentPreview: (() => void) | undefined;
 export const VIDEO_HOVER_DELAY_MS = 350;
@@ -13,6 +15,7 @@ export function bindCanvasVideoHoverPreview(element: HTMLElement, resolveSource:
         stopCurrentPreview?.();
         let disposed = false;
         let video: HTMLVideoElement | undefined;
+        let stopStage: (() => void) | undefined;
         let playbackTimer: ReturnType<typeof setTimeout> | undefined;
         const listeners = new AbortController();
         const viewport = element.closest("[data-canvas-viewport]");
@@ -31,6 +34,8 @@ export function bindCanvasVideoHoverPreview(element: HTMLElement, resolveSource:
             listeners.abort();
             observer.disconnect();
             visibility.disconnect();
+            stopStage?.();
+            stopStage = undefined;
             if (video) {
                 video.pause();
                 video.removeAttribute("src");
@@ -53,9 +58,16 @@ export function bindCanvasVideoHoverPreview(element: HTMLElement, resolveSource:
                 video.muted = true;
                 video.playsInline = true;
                 video.preload = "metadata";
-                video.className = "pointer-events-none absolute inset-0 size-full rounded-[var(--node-radius)] bg-black object-contain";
+                video.className = "canvas-video-screen-stage bg-black object-contain";
+                video.dataset.canvasVideoPassive = "true";
                 video.setAttribute("aria-hidden", "true");
                 video.dataset.canvasHoverPreview = "true";
+                const viewport = element.closest("[data-canvas-viewport]");
+                if (viewport) stopStage = trackCanvasVideoStage(element, video);
+                else {
+                    video.className = "pointer-events-none absolute inset-0 size-full rounded-[var(--node-radius)] bg-black object-contain";
+                    element.appendChild(video);
+                }
                 video.addEventListener("ended", cancel, { signal: listeners.signal });
                 video.addEventListener("error", cancel, { signal: listeners.signal });
                 video.addEventListener("timeupdate", () => {
@@ -65,7 +77,6 @@ export function bindCanvasVideoHoverPreview(element: HTMLElement, resolveSource:
                     if (!playbackTimer) playbackTimer = setTimeout(cancel, VIDEO_HOVER_PREVIEW_MS);
                 }, { signal: listeners.signal });
                 video.src = src;
-                element.appendChild(video);
                 void video.play().catch(cancel);
             }).catch(cancel);
         }, VIDEO_HOVER_DELAY_MS);

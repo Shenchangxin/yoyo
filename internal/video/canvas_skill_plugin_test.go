@@ -98,6 +98,20 @@ func TestInstallSkillZipReadsEntry(t *testing.T) {
 	if counts["public"] < 70 || counts["created"] < 1 {
 		t.Fatalf("scope counts should ignore search: %+v", counts)
 	}
+	byAuthor := e.listCanvasSkills(map[string]any{"scope": "public", "search": "工作室", "pageSize": 5})
+	if intAny(byAuthor["total"]) == 0 {
+		t.Fatal("author search should match builtin skills")
+	}
+	byLabel := e.listCanvasSkills(map[string]any{"scope": "public", "search": "短剧影视", "pageSize": 5})
+	labelHits, _ := byLabel["skills"].([]map[string]any)
+	if len(labelHits) == 0 {
+		t.Fatal("category label search returned nothing")
+	}
+	for _, skill := range labelHits {
+		if fmt.Sprint(skill["tag"]) != "drama" {
+			t.Fatalf("category label search leaked %v", skill["tag"])
+		}
+	}
 }
 
 func TestPluginActivationPersists(t *testing.T) {

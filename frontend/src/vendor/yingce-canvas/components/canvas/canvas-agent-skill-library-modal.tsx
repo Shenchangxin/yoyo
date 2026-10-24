@@ -72,11 +72,12 @@ export function CanvasAgentSkillLibraryModal({
         return source.filter((skill) => {
             if (category !== "all" && skill.tag !== category) return false;
             if (!keyword) return true;
-            return `${skill.skillName} ${skill.description || ""} ${skill.effectiveUser?.name || ""}`
+            const categoryLabel = categories.find((item) => item.value === skill.tag)?.label || "";
+            return `${skill.skillName || ""} ${skill.description || ""} ${skill.instruction || ""} ${skill.effectiveUser?.name || ""} ${categoryLabel}`
                 .toLocaleLowerCase("zh-CN")
                 .includes(keyword);
         });
-    }, [category, installedSkills, marketSkills, search, selectedSkillIds, tab]);
+    }, [categories, category, installedSkills, marketSkills, search, selectedSkillIds, tab]);
 
     useEffect(() => {
         const target = loadMoreRef.current;
@@ -116,14 +117,6 @@ export function CanvasAgentSkillLibraryModal({
             centered
             width="min(1180px, 66vw)"
             closable={false}
-            modalRender={(modal) => (
-                <div className="canvas-agent-skill-library-frame">
-                    <button type="button" className="canvas-agent-skill-library-close" aria-label="关闭技能商店" onClick={onClose}>
-                        <kbd>ESC</kbd><span>关闭</span>
-                    </button>
-                    {modal}
-                </div>
-            )}
             onCancel={onClose}
             flush
         >
@@ -165,9 +158,14 @@ export function CanvasAgentSkillLibraryModal({
                 <div className="canvas-agent-skill-library-content">
                     <header className="canvas-agent-skill-library-header">
                         <h2>技能商店</h2>
-                        <button type="button" className="canvas-agent-skill-library-count" onClick={() => changeTab("enabled")} aria-label={`查看本轮已启用的 ${selectedCount} 个技能，最多 8 个`}>
-                            已启用 <strong>{selectedCount}</strong><span> / 8</span>
-                        </button>
+                        <div className="canvas-agent-skill-library-header-actions">
+                            <button type="button" className="canvas-agent-skill-library-count" onClick={() => changeTab("enabled")} aria-label={`查看本轮已启用的 ${selectedCount} 个技能，最多 8 个`}>
+                                已启用 <strong>{selectedCount}</strong><span> / 8</span>
+                            </button>
+                            <button type="button" className="canvas-agent-skill-library-close" aria-label="关闭技能商店" onClick={onClose}>
+                                <kbd>ESC</kbd><span>关闭</span>
+                            </button>
+                        </div>
                     </header>
 
                     <div ref={listRef} className="canvas-agent-skill-library-list thin-scrollbar" aria-label="技能列表" aria-busy={loading}>

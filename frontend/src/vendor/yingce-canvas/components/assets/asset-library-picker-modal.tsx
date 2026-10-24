@@ -162,7 +162,9 @@ export function AssetLibraryPickerModal({
     // 仅在远端空而本地仍有素材、或远端总数>0 但本页全被排除时回退本地，避免合法空搜索被缓存铺满。
     const remoteTotal = remoteQuery.data?.total ?? 0;
     const remoteReady = remoteEnabled && remoteQuery.isSuccess;
-    const preferLocalUnsynced = remoteReady && remoteTotal === 0 && localItems.length > 0;
+    const remoteFilterActive = Boolean(remoteKeyword) || (category !== "all" && category !== "archived") || mediaKind !== "all";
+    // 无筛选时，远端空库仍回退到尚未同步上去的本地素材。搜索或分类已经生效时，空结果就是空结果。
+    const preferLocalUnsynced = remoteReady && remoteTotal === 0 && localItems.length > 0 && !remoteFilterActive;
     const remoteEntityOnlyPage = remoteReady && remoteItems.length === 0 && remoteTotal > 0;
     const useRemoteItems = remoteReady && !preferLocalUnsynced && !remoteEntityOnlyPage && (remoteItems.length > 0 || remoteTotal === 0);
     const effectivePagination = useRemoteItems ? { current: remotePage, pageSize: remotePageSize, total: remoteTotal, onChange: (page: number, pageSize: number) => { setRemotePage(page); setRemotePageSize(pageSize); } } : pagination;
@@ -179,7 +181,7 @@ export function AssetLibraryPickerModal({
     const mediaKindOptions = useMemo(() => (remoteKind ? [] : Array.from(new Set(mediaKinds))), [mediaKinds, remoteKind]);
     const sourceFolders = source === "plugin" ? folders : [];
     const showCategories = source === "local" || !sourceFolders.length;
-    const normalCategories = useMemo(() => useRemoteItems ? Object.keys(categoryLabels).filter((value) => value !== "archived" && !value.startsWith("external:")) : ["all", ...Array.from(new Set(activeSourceItems.map((item) => item.category || "other"))).filter((value) => value !== "all")], [activeSourceItems, categoryLabels, useRemoteItems]);
+    const normalCategories = useMemo(() => remoteEnabled ? Object.keys(categoryLabels).filter((value) => value !== "archived" && !value.startsWith("external:")) : ["all", ...Array.from(new Set(activeSourceItems.map((item) => item.category || "other"))).filter((value) => value !== "all")], [activeSourceItems, categoryLabels, remoteEnabled]);
     const archivedCount = archivedItems.length;
     const isRecycleBin = category === "archived";
 
@@ -192,9 +194,11 @@ export function AssetLibraryPickerModal({
                 return false;
             }
             if (folderId !== "all" && (item.folderId || "") !== folderId) return false;
-            return useRemoteItems || !query || [item.title, item.searchText || "", item.description || ""].join(" ").toLowerCase().includes(query);
+            if (useRemoteItems || !query) return true;
+            const categoryLabel = categoryLabels[item.category] || "";
+            return [item.title, item.searchText || "", item.description || "", item.kindLabel || "", categoryLabel].join(" ").toLowerCase().includes(query);
         });
-    }, [category, folderId, keyword, sourceItems, useRemoteItems]);
+    }, [category, categoryLabels, folderId, keyword, sourceItems, useRemoteItems]);
     const selectedIds = useMemo(() => {
         const catalog = new Map(allItems.map((item) => [item.id, item]));
         if (useRemoteItems) {
@@ -224,9 +228,9 @@ export function AssetLibraryPickerModal({
     }, [initialCategory, initialFolderId, open]);
 
     useEffect(() => {
-        if (category === "all" || category === "archived" || normalCategories.includes(category)) return;
+        if (category === "all" || category === "archived" || categoryLabels[category] || normalCategories.includes(category)) return;
         setCategory("all");
-    }, [normalCategories, category]);
+    }, [category, categoryLabels, normalCategories]);
 
     useEffect(() => {
         if (hasPluginSource || source === "local") return;
@@ -358,7 +362,15 @@ export function AssetLibraryPickerModal({
         }
     };
 
-    const countFor = (value: string) => (value === "all" ? activeSourceItems.length : activeSourceItems.filter((item) => item.category === value).length);
+    const remoteCategoryCounts = remoteEnabled && source === "local" ? remoteQuery.data?.categoryCounts : undefined;
+    const countFor = (value: string) => {
+        if (remoteCategoryCounts) {
+            if (value === "all") return Object.values(remoteCategoryCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
+            return Number(remoteCategoryCounts[value] || 0);
+        }
+        return value === "all" ? activeSourceItems.length : activeSourceItems.filter((item) => item.category === value).length;
+    };
+    const listedCategories = normalCategories.filter((value) => value === "all" || value === category || !remoteCategoryCounts || countFor(value) > 0);
     const sourceLabel = source === "plugin" ? "插件来源" : "本地素材";
     const sourceMenuItems: MenuProps["items"] = [
         {
@@ -465,7 +477,7 @@ export function AssetLibraryPickerModal({
                         {showCategories ? (
                             <>
                                 <span className="asset-picker-nav-label">分类</span>
-                                {normalCategories.map((value) => (
+                                {listedCategories.map((value) => (
                                     <button key={value} type="button" className={cn("assets-filter-item", category === value && "is-active")} aria-pressed={category === value} onClick={() => setCategory(value)}>
                                         <span className="assets-filter-item-label">{categoryLabels[value] || (value === "all" ? "全部素材" : "其他")}</span>
                                         <span className="assets-filter-count">{countFor(value)}</span>
