@@ -169,7 +169,11 @@ func (e *Engine) listCanvasSkills(query map[string]any) map[string]any {
 			continue
 		}
 		if search != "" {
-			blob := strings.ToLower(fmt.Sprint(skill["skillName"]) + " " + fmt.Sprint(skill["description"]) + " " + fmt.Sprint(skill["instruction"]))
+			author := ""
+			if user, ok := skill["effectiveUser"].(map[string]any); ok {
+				author = strAnyMap(user, "name")
+			}
+			blob := strings.ToLower(fmt.Sprint(skill["skillName"]) + " " + fmt.Sprint(skill["description"]) + " " + fmt.Sprint(skill["instruction"]) + " " + author + " " + skillTagLabel(fmt.Sprint(skill["tag"])))
 			if !strings.Contains(blob, search) {
 				continue
 			}

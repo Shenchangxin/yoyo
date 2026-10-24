@@ -25,6 +25,26 @@
     object-fit: contain;
 }
 
+/* Playing video is portaled here so it is not resampled by the canvas world transform. */
+.canvas-video-screen-stage {
+    position: absolute;
+    z-index: 6;
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+    pointer-events: auto;
+}
+
+.canvas-video-screen-stage[data-canvas-video-passive] {
+    pointer-events: none;
+}
+
+.canvas-video-screen-stage .canvas-video-player {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+}
+
 /* 语义化定位：按控件内容识别组，避免依赖 Vidstack 组的首尾顺序。 */
 .canvas-video-player:not([data-fullscreen]) .vds-video-layout .vds-controls-group {
     align-items: center;

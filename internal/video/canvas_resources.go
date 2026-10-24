@@ -2,7 +2,6 @@ package video
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,9 +88,7 @@ func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, 
 	if err != nil {
 		return canvasResource{}, err
 	}
-	if mime == "" {
-		mime = http.DetectContentType(raw)
-	}
+	mime = presentableMime(mime, raw)
 	if kind == "" {
 		if strings.HasPrefix(mime, "image/") {
 			kind = "image"
@@ -113,13 +110,7 @@ func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, 
 			poster = th
 		}
 	}
-	if kind == "video" {
-		if b, err := e.Poster(e.FilePath(hash)); err == nil {
-			if ph, err := e.PutBytes(b); err == nil {
-				poster = ph
-			}
-		}
-	}
+	deferPoster := kind == "video" && strings.TrimSpace(e.FFMPEG) != ""
 	rec := canvasResourceRec{
 		ID: id, CASHash: hash, Kind: kind, Mime: mime, Bytes: int64(len(raw)),
 		Width: width, Height: height, DurationMs: duration, PosterHash: poster,
@@ -131,7 +122,39 @@ func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, 
 	if err := e.putDoc(colResources, id, rec); err != nil {
 		return canvasResource{}, err
 	}
+	if deferPoster {
+		// Poster runs ffmpeg for up to 8s. Canvas upload shares one RPC turn
+		// with health and session refresh, so the still is filled afterwards.
+		go e.fillVideoPoster(id, hash)
+	}
 	return e.getCanvasResource(id)
+}
+
+func (e *Engine) fillVideoPoster(id, hash string) {
+	if e == nil || strings.TrimSpace(e.FFMPEG) == "" || id == "" || hash == "" {
+		return
+	}
+	if e.ctx != nil && e.ctx.Err() != nil {
+		return
+	}
+	b, err := e.Poster(e.FilePath(hash))
+	if err != nil || len(b) == 0 {
+		return
+	}
+	if e.ctx != nil && e.ctx.Err() != nil {
+		return
+	}
+	ph, err := e.PutBytes(b)
+	if err != nil || ph == "" {
+		return
+	}
+	rec, err := getDoc[canvasResourceRec](e, colResources, id)
+	if err != nil || rec.DeletedAt != "" {
+		return
+	}
+	rec.PosterHash = ph
+	rec.UpdatedAt = Now()
+	_ = e.putDoc(colResources, id, rec)
 }
 
 func (e *Engine) putCanvasResourceFromHash(hash, kind, mime string, bytes int64, width, height, duration int) (canvasResource, error) {

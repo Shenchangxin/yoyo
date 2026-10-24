@@ -530,7 +530,8 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, re
                 if (!profileView || profileError) throw new Error("长期偏好快照尚未确认，请重新读取后再发送");
                 const capabilities = await getAgentCapabilities();
                 if (currentScope.current !== scope) return;
-                if (!capabilities.permissionModes.includes(permissionMode)) throw new Error("当前后端不支持所选 Agent 权限，请更新后端");
+                const modes = Array.isArray(capabilities?.permissionModes) ? capabilities.permissionModes : [];
+                if (!modes.includes(permissionMode)) throw new Error("当前后端不支持所选 Agent 权限，请更新后端");
                 if (selectedSkillIds.length && !capabilities.skills) throw new Error("当前后端尚未接入技能库");
                 await saveRemoteUserDataNow();
                 if (currentScope.current !== scope) return;

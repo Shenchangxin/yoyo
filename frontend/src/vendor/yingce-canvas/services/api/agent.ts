@@ -183,7 +183,81 @@ export async function decideAgentApproval(runId: string, approvalId: string, dec
     return http.post<{ accepted: boolean }>(`/agent/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}/decision`, { decision, reason: reason?.trim() || undefined, ...(mediaSettings ? { mediaSettings } : {}) }, { signal });
 }
 
+function hostedCanvasAgent() {
+    return typeof window !== "undefined" && Boolean(window.__YOYO_CANVAS_HOST__);
+}
+
+function subscribeHostedAgentRun(runId, onEvent, options) {
+    let stopped = false;
+    let seq = 0;
+    let lastActiveMessageKey = "";
+    let lastStatusKey = "";
+    let failures = 0;
+    const terminal = (status) => ["completed", "failed", "cancelled", "rejected"].includes(status);
+    const emit = (type, payload) => onEvent({
+        type,
+        runId,
+        eventId: `${type}-${runId}-${Date.now()}`,
+        seq: 0,
+        createdAt: new Date().toISOString(),
+        payload: payload || {},
+    });
+    const tick = async () => {
+        if (stopped) return;
+        try {
+            const data = await getAgentRun(runId);
+            const run = data?.run;
+            if (!run || run.id !== runId) throw new Error("missing run");
+            failures = 0;
+            options.onConnectionChange?.("connected");
+            for (const event of Array.isArray(run.events) ? run.events : []) {
+                const eventSeq = Number(event?.seq || 0);
+                if (!Number.isSafeInteger(eventSeq) || eventSeq <= seq) continue;
+                seq = eventSeq;
+                onEvent({ ...event, runId });
+            }
+            if (run.activeMessage?.text) {
+                const messageKey = `${run.activeMessage.messageId}\u0000${run.activeMessage.text}`;
+                if (messageKey !== lastActiveMessageKey) {
+                    lastActiveMessageKey = messageKey;
+                    emit("assistant_message", run.activeMessage);
+                }
+            }
+            const statusPayload = {
+                status: run.status,
+                revision: run.revision,
+                cleanupPending: Boolean(run.cleanupPending),
+                failureMessage: run.failureMessage || "",
+                skills: run.skills,
+                spentCredits: run.spentCredits,
+                step: run.step,
+                approval: run.approval,
+            };
+            const statusKey = JSON.stringify(statusPayload);
+            if (statusKey !== lastStatusKey) {
+                lastStatusKey = statusKey;
+                emit("run_status", statusPayload);
+            }
+            if (!run.cleanupPending && terminal(run.status)) return;
+        } catch (error) {
+            if (stopped) return;
+            failures += 1;
+            if (failures >= 8) {
+                options.onConnectionChange?.("disconnected");
+                options.onError?.(error);
+                return;
+            }
+            options.onConnectionChange?.("reconnecting");
+        }
+        if (!stopped) window.setTimeout(tick, failures ? Math.min(1500 * failures, 5000) : 700);
+    };
+    options.onConnectionChange?.("connecting");
+    void tick();
+    return () => { stopped = true; };
+}
+
 export function subscribeAgentEvents(runId: string, onEvent: (event: AgentEvent) => void, options: { after?: number; onError?: (error: unknown) => void; onConnectionChange?: (status: "connecting" | "connected" | "reconnecting" | "disconnected") => void; timeoutMs?: number } = {}) {
+    if (hostedCanvasAgent()) return subscribeHostedAgentRun(runId, onEvent, options);
     const controller = new AbortController();
     let localSeq = 0;
     let cursor = Number.isSafeInteger(options.after) && (options.after as number) > 0 ? options.after as number : 0;

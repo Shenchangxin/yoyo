@@ -201,8 +201,14 @@ func matchAsset(a canvasAssetRec, kind, category, folderID, status, q string, un
 	if kind != "" && a.Kind != kind {
 		return false
 	}
-	if category != "" && a.Category != category {
-		return false
+	if category != "" {
+		got := a.Category
+		if got == "" {
+			got = "other"
+		}
+		if got != category {
+			return false
+		}
 	}
 	if folderID != "" && a.FolderID != folderID {
 		return false
@@ -261,7 +267,7 @@ func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page
 	}
 	sort.Slice(matched, func(i, j int) bool { return matched[i].UpdatedAt > matched[j].UpdatedAt })
 	total := len(matched)
-	kindCounts, categoryCounts, folderCounts := e.scanAssetFacets(status, q, excludeKind)
+	kindCounts, categoryCounts, folderCounts := e.scanAssetFacets(kind, status, q, excludeKind)
 	start := (page - 1) * pageSize
 	if start > total {
 		start = total
@@ -280,12 +286,12 @@ func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page
 	}
 }
 
-func (e *Engine) scanAssetFacets(status, q, excludeKind string) (map[string]int, map[string]int, map[string]int) {
+func (e *Engine) scanAssetFacets(kind, status, q, excludeKind string) (map[string]int, map[string]int, map[string]int) {
 	kinds := map[string]int{}
 	cats := map[string]int{}
 	folders := map[string]int{}
 	for _, a := range loadCol[canvasAssetRec](e, colAssets) {
-		if !matchAsset(a, "", "", "", status, q, false, excludeKind) {
+		if !matchAsset(a, kind, "", "", status, q, false, excludeKind) {
 			continue
 		}
 		kinds[a.Kind]++

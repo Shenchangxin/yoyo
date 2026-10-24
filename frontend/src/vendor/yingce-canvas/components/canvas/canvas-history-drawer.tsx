@@ -81,7 +81,7 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                 <div className="flex items-center justify-between gap-2 pr-2">
                     <div className="flex items-center gap-2">
                         <History className="size-4 text-[var(--workspace-accent)]" />
-                        <span className="text-sm font-semibold text-stone-900 dark:text-stone-100">画布创建与变更历史时间线</span>
+                        <span className="text-sm font-semibold text-foreground">画布创建与变更历史时间线</span>
                     </div>
                     {deletedProjects.length > 0 ? (
                         <Popconfirm title="确定清空已删除画布的历史记录？" onConfirm={clearDeletedHistory} okText="清空" okButtonProps={{ danger: true }} cancelText="取消">
@@ -105,15 +105,15 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
             <div className="space-y-4">
                 {/* 搜索与筛选 */}
                 <div className="space-y-3">
-                    <Input allowClear prefix={<Search className="size-3.5 text-stone-400" />} value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索画布名称..." className="text-xs" />
+                    <Input allowClear prefix={<Search className="size-3.5 text-foreground/45" />} value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索画布名称..." className="text-xs" />
                     <div className="flex items-center gap-2 text-xs">
                         <button
                             type="button"
                             className={cn(
                                 "cursor-pointer rounded-lg px-3 py-1.5 font-medium transition-all",
                                 filter === "all"
-                                    ? "!bg-stone-900 !text-white shadow-sm dark:!bg-stone-100 dark:!text-stone-900 font-semibold"
-                                    : "bg-stone-100 text-stone-700 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700",
+                                    ? "!bg-foreground !text-background shadow-sm font-semibold"
+                                    : "bg-lift text-foreground hover:bg-foreground/10",
                             )}
                             onClick={() => setFilter("all")}
                         >
@@ -125,7 +125,7 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                                 "cursor-pointer rounded-lg px-3 py-1.5 font-medium transition-all",
                                 filter === "active"
                                     ? "!bg-emerald-600 !text-white shadow-sm font-semibold"
-                                    : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50",
+                                    : "bg-lift text-foreground hover:bg-foreground/10 border border-border",
                             )}
                             onClick={() => setFilter("active")}
                         >
@@ -135,7 +135,7 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                             type="button"
                             className={cn(
                                 "cursor-pointer rounded-lg px-3 py-1.5 font-medium transition-all",
-                                filter === "deleted" ? "!bg-rose-600 !text-white shadow-sm font-semibold" : "bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50",
+                                filter === "deleted" ? "!bg-rose-600 !text-white shadow-sm font-semibold" : "bg-lift text-foreground hover:bg-foreground/10 border border-border",
                             )}
                             onClick={() => setFilter("deleted")}
                         >
@@ -148,7 +148,7 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                 {filteredItems.length === 0 ? (
                     <EmptyState description="暂无匹配的历史记录" />
                 ) : (
-                    <div className="relative border-l-2 border-stone-200 dark:border-stone-800 pl-4 space-y-4 pt-1">
+                    <div className="relative border-l-2 border-border pl-4 space-y-4 pt-1">
                         {filteredItems.map((item) => {
                             const isDeleted = item.isDeleted;
                             return (
@@ -160,21 +160,21 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                                         className={cn(
                                             "rounded-xl border p-3.5 transition-all shadow-sm",
                                             isDeleted
-                                                ? "border-rose-200/90 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/20 hover:border-rose-300"
-                                                : "border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900/70 hover:border-stone-300 dark:hover:border-stone-700",
+                                                ? "border-danger/40 bg-danger/10 text-foreground hover:border-danger"
+                                                : "border-border bg-card text-foreground hover:border-foreground/25",
                                         )}
                                     >
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0 flex-1 space-y-1.5">
                                                 <div className="flex items-center gap-2">
                                                     {isDeleted ? (
-                                                        <span className="truncate text-sm font-semibold text-stone-500 line-through decoration-rose-500/80 decoration-2 dark:text-stone-400" title={item.title}>
+                                                        <span className="truncate text-sm font-semibold text-foreground/60 line-through decoration-rose-500/80 decoration-2" title={item.title}>
                                                             {item.title}
                                                         </span>
                                                     ) : (
                                                         <button
                                                             type="button"
-                                                            className="truncate text-left text-sm font-semibold text-stone-900 hover:text-blue-600 dark:text-stone-100 dark:hover:text-blue-400 transition-colors"
+                                                            className="truncate text-left text-sm font-semibold text-foreground hover:text-accent transition-colors"
                                                             onClick={() => openProject(item.id)}
                                                             title={item.title}
                                                         >
@@ -184,9 +184,9 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                                                     {isDeleted ? <StatusBadge tone="error" size="sm" label="已删除" className="m-0" /> : <StatusBadge tone="success" size="sm" label="活跃中" className="m-0" />}
                                                 </div>
 
-                                                <div className="space-y-1 text-xs text-stone-600 dark:text-stone-300">
+                                                <div className="space-y-1 text-xs text-foreground/70">
                                                     <div className="flex items-center gap-1.5">
-                                                        <Clock3 className="size-3.5 text-stone-400 shrink-0" />
+                                                        <Clock3 className="size-3.5 text-foreground/45 shrink-0" />
                                                         <span>创建时间：{formatTimelineDate(item.createdAt)}</span>
                                                     </div>
                                                     {isDeleted && item.deletedAt ? (
@@ -195,12 +195,12 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                                                             <span>删除时间：{formatTimelineDate(item.deletedAt)}</span>
                                                         </div>
                                                     ) : (
-                                                        <div className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400">
-                                                            <Clock className="size-3.5 text-stone-400 shrink-0" />
+                                                        <div className="flex items-center gap-1.5 text-foreground/70">
+                                                            <Clock className="size-3.5 text-foreground/45 shrink-0" />
                                                             <span>最近更新：{formatTimelineDate(item.updatedAt)}</span>
                                                         </div>
                                                     )}
-                                                    <div className="text-[11px] text-stone-500 dark:text-stone-400 pt-0.5">包含 {item.nodeCount} 个节点</div>
+                                                    <div className="text-[11px] text-foreground/60 pt-0.5">包含 {item.nodeCount} 个节点</div>
                                                 </div>
                                             </div>
 
@@ -209,7 +209,7 @@ export function CanvasHistoryDrawer({ open, onClose }: { open: boolean; onClose:
                                                     <Button
                                                         type="text"
                                                         size="small"
-                                                        icon={<ExternalLink className="size-4 text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100" />}
+                                                        icon={<ExternalLink className="size-4 text-foreground/55 hover:text-foreground" />}
                                                         onClick={() => openProject(item.id)}
                                                         title="打开画布"
                                                     />

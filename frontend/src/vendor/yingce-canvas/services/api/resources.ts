@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { getActiveUserScope } from "@yingce/lib/user-scope";
 import { http, apiBaseURL, ApiError } from "@yingce/services/api/request";
+import { playbackSrc } from "@/features/video/playback-src";
 import type { OSSConnectionTestInput, OSSConnectionTestResult, OSSProvider, S3Preset } from "@yingce/lib/oss-settings";
 
 export type RemoteResource = {
@@ -371,7 +372,12 @@ export async function getResourceInputURL(storageKey?: string) {
  * path here prevents a Blob read from accidentally targeting the web origin.
  */
 export function resolveResourceAccessURL(url: string) {
-    if (!url || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(url)) return url;
+    const raw = String(url || "");
+    if (!raw) return raw;
+    const played = playbackSrc(raw);
+    if (played !== raw) return played;
+    if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(raw)) return raw;
+    url = raw;
     const base = String(apiBaseURL).trim();
     if (!/^https?:\/\//i.test(base)) return url;
     return new URL(url, `${base.replace(/\/+$/, "")}/`).toString();

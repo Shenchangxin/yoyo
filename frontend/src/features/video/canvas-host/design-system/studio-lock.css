@@ -22,22 +22,210 @@
   --status-loading: var(--accent);
 }
 
-/* HUD follows the app theme. The stage may still be media-black or wallpaper. */
-.yingce-island [data-canvas-color],
-.yingce-popup-root[data-canvas-color] {
-  --background: inherit;
-  --foreground: inherit;
-  --card: inherit;
-  --popover: inherit;
-  --sidebar: inherit;
-  --lift: inherit;
-  --muted: inherit;
-  --border: inherit;
-  --accent: inherit;
-  --ring: inherit;
-  --input-bar: inherit;
-  --glass-bg: inherit;
+/* Canvas chrome follows the canvas color, including when it disagrees with html.light / html.dark.
+   Selectors include html.light / html.dark so they beat the glass tokens set on .yingce-popup-root.
+   Do not add class .dark here: the vendor dark block redefines --muted as a surface. */
+html.light .yingce-island [data-canvas-color="dark"],
+html.dark .yingce-island [data-canvas-color="dark"],
+html.light .yingce-popup-root[data-canvas-color="dark"],
+html.dark .yingce-popup-root[data-canvas-color="dark"] {
+  color-scheme: dark;
+  --background: #1c1c1a;
+  --foreground: #f4f4f0;
+  --sidebar: #222220;
+  --sidebar-foreground: #f4f4f0;
+  --panel: #1c1c1a;
+  --card: #242422;
+  --card-foreground: #f4f4f0;
+  --popover: #2c2c29;
+  --popover-foreground: #f4f4f0;
+  --input-bar: #222220;
+  --lift: #32322e;
+  --border: color-mix(in srgb, #f4f4f0 9%, transparent);
+  --muted: #8c8b85;
+  --muted-foreground: #8c8b85;
+  --primary: #f4f4f0;
+  --primary-foreground: #1c1c1a;
+  --input: color-mix(in srgb, #f4f4f0 9%, transparent);
+  --accent: #5c99d6;
+  --accent-fg: #0c1924;
+  --accent-foreground: #0c1924;
+  --danger: #e06b66;
+  --destructive: #e06b66;
+  --success: #74b48a;
+  --warning: #d4b06a;
+  --ring: #5c99d6;
+  --media-surface: #0c0c0b;
+  --media-foreground: #f4f4f0;
+  --secondary: #32322e;
+  --secondary-foreground: #f4f4f0;
+  --glass-bg: color-mix(in srgb, var(--popover) 78%, transparent);
+  --glass-hairline: color-mix(in srgb, white 12%, transparent);
+  --glass-stroke: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --dock-switch-track: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --dock-switch-thumb: var(--foreground);
+  --dock-switch-thumb-text: var(--background);
+  --shadow-popover: 0 18px 48px color-mix(in srgb, black 42%, transparent), 0 0 0 1px color-mix(in srgb, white 6%, transparent);
+  --user-page-bg: var(--background);
+  --user-bg: var(--background);
+  --user-surface: var(--card);
+  --user-surface-raised: var(--popover);
+  --user-surface-muted: var(--lift);
+  --user-surface-hover: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+  --user-control-pressed: color-mix(in srgb, var(--foreground) 12%, var(--card));
+  --user-border: var(--border);
+  --user-border-strong: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --user-ink: var(--foreground);
+  --user-ink-muted: var(--muted);
+  --user-ink-soft: color-mix(in srgb, var(--muted) 78%, transparent);
+  --user-accent: var(--accent);
+  --user-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --button-primary-bg: var(--foreground);
+  --button-primary-fg: var(--background);
+  --button-primary-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
+  --button-primary-active-bg: var(--foreground);
+  --creation-text: var(--foreground);
+  --creation-muted: var(--muted);
+  --creation-faint: color-mix(in srgb, var(--muted) 80%, transparent);
+  --creation-surface: var(--card);
+  --creation-surface-hover: var(--lift);
+  --creation-border: var(--border);
+  --creation-accent: var(--accent);
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --bg-secondary: var(--sidebar);
+  --bg-tertiary: var(--card);
+  --surface: var(--card);
+  --surface-hover: var(--lift);
+  --library-icon-surface: var(--lift);
+  --library-cover-surface: var(--lift);
+  --workspace-text-body: var(--foreground);
+  --workspace-text-muted: var(--muted);
+  --workspace-surface: var(--card);
+  --workspace-border: var(--border);
+  --workspace-accent: var(--accent);
   color: var(--foreground);
+}
+
+html.light .yingce-island [data-canvas-color="light"],
+html.dark .yingce-island [data-canvas-color="light"],
+html.light .yingce-popup-root[data-canvas-color="light"],
+html.dark .yingce-popup-root[data-canvas-color="light"] {
+  color-scheme: light;
+  --background: #fbfbfa;
+  --foreground: #1c1c1a;
+  --sidebar: #f1f1ee;
+  --sidebar-foreground: #1c1c1a;
+  --panel: #fbfbfa;
+  --card: #ffffff;
+  --card-foreground: #1c1c1a;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1a;
+  --input-bar: #ffffff;
+  --lift: #e8e8e4;
+  --border: color-mix(in srgb, #1c1c1a 8%, transparent);
+  --muted: #6f6e68;
+  --muted-foreground: #6f6e68;
+  --primary: #1c1c1a;
+  --primary-foreground: #fbfbfa;
+  --input: color-mix(in srgb, #1c1c1a 8%, transparent);
+  --accent: #0169cc;
+  --accent-fg: #f5faff;
+  --accent-foreground: #f5faff;
+  --danger: #c4453e;
+  --destructive: #c4453e;
+  --success: #1f7a45;
+  --warning: #a07a2a;
+  --ring: #0169cc;
+  --media-surface: #0c0c0b;
+  --media-foreground: #f4f4f0;
+  --secondary: #e8e8e4;
+  --secondary-foreground: #1c1c1a;
+  --glass-bg: color-mix(in srgb, var(--popover) 88%, transparent);
+  --glass-hairline: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --glass-stroke: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --dock-switch-track: color-mix(in srgb, var(--foreground) 7%, transparent);
+  --dock-switch-thumb: var(--foreground);
+  --dock-switch-thumb-text: var(--background);
+  --shadow-popover: 0 18px 44px color-mix(in srgb, #1c1c1a 10%, transparent), 0 0 0 1px color-mix(in srgb, #1c1c1a 5%, transparent);
+  --user-page-bg: var(--background);
+  --user-bg: var(--background);
+  --user-surface: var(--card);
+  --user-surface-raised: var(--popover);
+  --user-surface-muted: var(--lift);
+  --user-surface-hover: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+  --user-control-pressed: color-mix(in srgb, var(--foreground) 12%, var(--card));
+  --user-border: var(--border);
+  --user-border-strong: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --user-ink: var(--foreground);
+  --user-ink-muted: var(--muted);
+  --user-ink-soft: color-mix(in srgb, var(--muted) 78%, transparent);
+  --user-accent: var(--accent);
+  --user-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --button-primary-bg: var(--foreground);
+  --button-primary-fg: var(--background);
+  --button-primary-hover-bg: color-mix(in srgb, var(--foreground) 88%, var(--accent));
+  --button-primary-active-bg: var(--foreground);
+  --creation-text: var(--foreground);
+  --creation-muted: var(--muted);
+  --creation-faint: color-mix(in srgb, var(--muted) 80%, transparent);
+  --creation-surface: var(--card);
+  --creation-surface-hover: var(--lift);
+  --creation-border: var(--border);
+  --creation-accent: var(--accent);
+  --bg: var(--background);
+  --fg: var(--foreground);
+  --bg-secondary: var(--sidebar);
+  --bg-tertiary: var(--card);
+  --surface: var(--card);
+  --surface-hover: var(--lift);
+  --library-icon-surface: var(--lift);
+  --library-cover-surface: var(--lift);
+  --workspace-text-body: var(--foreground);
+  --workspace-text-muted: var(--muted);
+  --workspace-surface: var(--card);
+  --workspace-border: var(--border);
+  --workspace-accent: var(--accent);
+  color: var(--foreground);
+}
+
+/* Dock, top clusters, and the left rail paint with --dock-surface.
+   That variable is resolved on .yingce-island from the app theme, so a dark
+   canvas would otherwise keep the light glass. Re-resolve it here. */
+html.light .yingce-island [data-canvas-color],
+html.dark .yingce-island [data-canvas-color],
+html.light .yingce-popup-root[data-canvas-color],
+html.dark .yingce-popup-root[data-canvas-color] {
+  --dock-surface: var(--glass-bg);
+  --dock-border: var(--border);
+  --cn-spatial-surface: var(--glass-bg);
+  --cn-spatial-surface-strong: var(--card);
+  --cn-spatial-elevated: var(--popover);
+  --cn-spatial-toolbar-border: var(--border);
+  --elevation-overlay: var(--shadow-popover);
+  --canvas-topbar-surface: var(--glass-bg);
+  --workspace-glass-surface: var(--glass-bg);
+  --glass-highlight: inset 0 0.5px 0 color-mix(in srgb, var(--foreground) 14%, transparent);
+  /* Library and selected-state tokens are resolved on .yingce-island from the app theme.
+     Re-bind them here or a dark canvas keeps light gray chips and dark selected ink. */
+  --card-surface: var(--card);
+  --card-surface-hover: var(--lift);
+  --card-surface-raised: var(--popover);
+  --library-surface: var(--card);
+  --library-surface-hover: var(--lift);
+  --library-cover-surface: color-mix(in srgb, var(--foreground) 6%, var(--card));
+  --library-selected-stroke: color-mix(in srgb, var(--accent) 72%, transparent);
+  --library-hover-offset: -2px;
+  --control-selected-bg: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --control-selected-hover-bg: color-mix(in srgb, var(--foreground) 18%, transparent);
+  --control-selected-fg: var(--foreground);
+  --control-selected-border: color-mix(in srgb, var(--foreground) 22%, transparent);
+  --control-check-bg: var(--foreground);
+  --control-check-fg: var(--background);
+  --workspace-surface-strong: var(--card);
+  --workspace-surface-hover: var(--lift);
+  --workspace-border: var(--border);
+  --workspace-accent: var(--accent);
 }
 
 /* Side panel is content, not a second sheet of glass. */
@@ -105,7 +293,7 @@
   border: 1px solid transparent !important;
   outline: none !important;
   outline-offset: 0 !important;
-  box-shadow: 0 0 0 calc(1px * var(--canvas-live-inverse-scale, 1)) color-mix(in srgb, #f4f4f0 32%, transparent) !important;
+  box-shadow: 0 0 0 calc(1px * var(--canvas-live-inverse-scale, 1)) color-mix(in srgb, var(--foreground) 32%, transparent) !important;
 }
 
 .yingce-island .canvas-node-shell[data-selected="true"] {
@@ -240,6 +428,95 @@
   border-color: var(--border) !important;
   color: var(--foreground) !important;
   box-shadow: var(--shadow-popover) !important;
+}
+
+/* Vendor model-picker.css paints html:not(.dark) inside @layer utilities with !important.
+   Layered !important beats unlayered !important, so these overrides live in the same layer. */
+@layer utilities {
+html.light .yingce-island [data-canvas-color] .canvas-composer-model-picker,
+html.dark .yingce-island [data-canvas-color] .canvas-composer-model-picker,
+html.light .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker,
+html.dark .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+html.light .yingce-island [data-canvas-color] .canvas-composer-model-picker:hover,
+html.light .yingce-island [data-canvas-color] .canvas-composer-model-picker[aria-expanded="true"],
+html.dark .yingce-island [data-canvas-color] .canvas-composer-model-picker:hover,
+html.dark .yingce-island [data-canvas-color] .canvas-composer-model-picker[aria-expanded="true"],
+html.light .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker:hover,
+html.light .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker[aria-expanded="true"],
+html.dark .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker:hover,
+html.dark .yingce-popup-root[data-canvas-color] .canvas-composer-model-picker[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--lift)) !important;
+  color: var(--foreground) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .canvas-prompt-optimizer-model-picker.canvas-composer-model-picker,
+html.dark .yingce-island [data-canvas-color] .canvas-prompt-optimizer-model-picker.canvas-composer-model-picker,
+html.light .yingce-popup-root[data-canvas-color] .canvas-prompt-optimizer-model-picker.canvas-composer-model-picker,
+html.dark .yingce-popup-root[data-canvas-color] .canvas-prompt-optimizer-model-picker.canvas-composer-model-picker {
+  background: transparent !important;
+  color: color-mix(in srgb, var(--foreground) 72%, transparent) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .creation-model-picker-surface,
+html.dark .yingce-island [data-canvas-color] .creation-model-picker-surface,
+html.light .yingce-popup-root[data-canvas-color] .creation-model-picker-surface,
+html.dark .yingce-popup-root[data-canvas-color] .creation-model-picker-surface,
+html.light .yingce-island [data-canvas-color] .canvas-composer-popover-surface,
+html.dark .yingce-island [data-canvas-color] .canvas-composer-popover-surface,
+html.light .yingce-popup-root[data-canvas-color] .canvas-composer-popover-surface,
+html.dark .yingce-popup-root[data-canvas-color] .canvas-composer-popover-surface {
+  background: var(--popover) !important;
+  color: var(--foreground) !important;
+  box-shadow: var(--shadow-popover) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .creation-model-picker-menu,
+html.dark .yingce-island [data-canvas-color] .creation-model-picker-menu,
+html.light .yingce-popup-root[data-canvas-color] .creation-model-picker-menu,
+html.dark .yingce-popup-root[data-canvas-color] .creation-model-picker-menu {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .creation-model-picker-heading,
+html.dark .yingce-island [data-canvas-color] .creation-model-picker-heading,
+html.light .yingce-popup-root[data-canvas-color] .creation-model-picker-heading,
+html.dark .yingce-popup-root[data-canvas-color] .creation-model-picker-heading {
+  color: var(--muted) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .creation-model-picker-heading strong,
+html.dark .yingce-island [data-canvas-color] .creation-model-picker-heading strong,
+html.light .yingce-popup-root[data-canvas-color] .creation-model-picker-heading strong,
+html.dark .yingce-popup-root[data-canvas-color] .creation-model-picker-heading strong {
+  color: var(--foreground) !important;
+}
+
+html.light .yingce-island [data-canvas-color] .creation-model-picker-menu .canvas-model-picker-option > span:first-child > span:first-child,
+html.dark .yingce-island [data-canvas-color] .creation-model-picker-menu .canvas-model-picker-option > span:first-child > span:first-child,
+html.light .yingce-popup-root[data-canvas-color] .creation-model-picker-menu .canvas-model-picker-option > span:first-child > span:first-child,
+html.dark .yingce-popup-root[data-canvas-color] .creation-model-picker-menu .canvas-model-picker-option > span:first-child > span:first-child,
+html.light .yingce-popup-root[data-canvas-color] .canvas-model-picker-brand-icon,
+html.dark .yingce-popup-root[data-canvas-color] .canvas-model-picker-brand-icon {
+  background: var(--lift) !important;
+  color: var(--foreground) !important;
+}
+
+html.light .yingce-popup-root[data-canvas-color="dark"] .model-picker-price,
+html.dark .yingce-popup-root[data-canvas-color="dark"] .model-picker-price {
+  --model-price-ink: #e8c45a;
+}
+
+html.light .yingce-popup-root[data-canvas-color="light"] .model-picker-price,
+html.dark .yingce-popup-root[data-canvas-color="light"] .model-picker-price {
+  --model-price-ink: #946900;
+}
 }
 
 .yingce-island .sg-eyebrow,

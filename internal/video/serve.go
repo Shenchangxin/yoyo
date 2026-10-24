@@ -71,6 +71,9 @@ func (e *Engine) mediaHandler() http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		if strings.EqualFold(mime, "application/octet-stream") {
+			mime = ""
+		}
 		if mime != "" {
 			w.Header().Set("Content-Type", mime)
 			w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -147,6 +150,22 @@ func headBytes(raw []byte) []byte {
 		return raw[:512]
 	}
 	return raw
+}
+
+func presentableMime(mime string, raw []byte) string {
+	mime = strings.TrimSpace(mime)
+	if mime != "" && !strings.EqualFold(mime, "application/octet-stream") {
+		return mime
+	}
+	if sniffed := mediaType(raw); sniffed != "" {
+		return sniffed
+	}
+	if mime == "" && len(raw) > 0 {
+		if ct := http.DetectContentType(raw); ct != "" {
+			return ct
+		}
+	}
+	return mime
 }
 
 func applyMediaType(w http.ResponseWriter, raw []byte) {

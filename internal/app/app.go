@@ -188,6 +188,9 @@ type App struct {
 	stateMu    sync.Mutex
 	stateEpoch int64
 	stateSubs  map[chan StateChange]struct{}
+
+	agentWatch sync.Map
+	agentSess  sync.Map
 }
 
 func Open(root, bundledEvals string) (*App, error) {

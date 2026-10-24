@@ -1,5 +1,6 @@
 // @ts-nocheck
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { idleTaskTickerSubscribe, subscribeTaskTicker, taskTickerSnapshot } from "@yingce/lib/canvas/task-ticker";
 import { AlertCircle, BookOpenCheck, Clock3, Download, FileText, Image as ImageIcon, LoaderCircle, Music2, Pencil, Play, RefreshCw, Video } from "lucide-react";
 
@@ -17,6 +18,7 @@ import { producedModelLabel } from "@yingce/lib/canvas/produced-model";
 import { useConfigStore } from "@yingce/stores/use-config-store";
 import { useUserStore } from "@yingce/stores/use-user-store";
 import { bindCanvasVideoHoverPreview } from "@yingce/lib/canvas/canvas-video-hover-preview";
+import { trackCanvasVideoStage } from "@yingce/lib/canvas/canvas-video-stage";
 import { buildLibTVImagePreviewUrl, buildLibTVVideoSourceUrl } from "@yingce/lib/canvas/libtv-import";
 import type { CanvasResourceReference } from "@yingce/lib/canvas/canvas-resource-references";
 import type { CanvasTheme } from "@yingce/lib/canvas-theme";
@@ -559,6 +561,9 @@ function EmptyImageContent({ node, theme, isBatchRoot, batchCount, batchPreviewN
 
 function VideoNodeContent({ node, theme, mediaActive = false, onMediaPlayRequest }: CanvasNodeContentProps) {
     const playerBoxRef = useRef<HTMLDivElement>(null);
+    const playAnchorRef = useRef<HTMLDivElement>(null);
+    const playStageRef = useRef<HTMLDivElement>(null);
+    const [playStageHost, setPlayStageHost] = useState<HTMLElement | null>(null);
     const { updateMediaNode } = useCanvasNodeActions();
     const nearViewport = useNearViewport(playerBoxRef);
     const { url, loading } = useVideoPlaybackUrl(node, mediaActive || nearViewport);
@@ -590,9 +595,24 @@ function VideoNodeContent({ node, theme, mediaActive = false, onMediaPlayRequest
         [],
     );
 
+    useLayoutEffect(() => {
+        if (!mediaActive) {
+            setPlayStageHost(null);
+            return;
+        }
+        const next = playAnchorRef.current?.closest("[data-canvas-viewport]") ?? null;
+        setPlayStageHost((current) => (current === next ? current : next));
+    }, [mediaActive, url]);
+
+    useLayoutEffect(() => {
+        const anchor = playAnchorRef.current;
+        const stage = playStageRef.current;
+        if (!playStageHost || !anchor || !stage) return;
+        return trackCanvasVideoStage(anchor, stage);
+    }, [playStageHost]);
+
     useEffect(() => {
-        const box = playerBoxRef.current;
-        const video = box?.querySelector("video:not([data-canvas-video-still])");
+        const video = playStageRef.current?.querySelector("video") || playerBoxRef.current?.querySelector("video:not([data-canvas-video-still])");
         if (!video) return;
         const handleLoadedMetadata = () => {
             if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
@@ -610,7 +630,7 @@ function VideoNodeContent({ node, theme, mediaActive = false, onMediaPlayRequest
             video.removeEventListener("timeupdate", handleTimeUpdate);
             video.removeEventListener("loadedmetadata", handleLoadedMetadata);
         };
-    }, [node.id, node.metadata?.naturalHeight, node.metadata?.naturalWidth, subtitleEntries.length, updateMediaNode, url, videoReady]);
+    }, [node.id, node.metadata?.naturalHeight, node.metadata?.naturalWidth, playStageHost, subtitleEntries.length, updateMediaNode, url, videoReady]);
 
     if (!node.metadata?.content && !node.metadata?.storageKey) return <EmptyMediaContent icon={<Video className="size-7 opacity-35" />} label="空视频节点" color={theme.node.placeholder} />;
 
@@ -631,35 +651,48 @@ function VideoNodeContent({ node, theme, mediaActive = false, onMediaPlayRequest
                     url={url}
                     loading={loading}
                     pausedFrameUrl={pausedFrameUrl}
+                    suspendDecoder={showPlayer}
                     className="absolute inset-0 size-full"
                 />
             ) : null}
             {showPlayer ? (
-                <div className={`relative z-[1] transition-opacity duration-150 ${videoReady ? "opacity-100" : "opacity-0"}`} style={{ width: fitWidth, height: Math.round(fitHeight) }}>
+                <div ref={playAnchorRef} className="pointer-events-none rounded-[var(--node-radius)]" style={{ width: fitWidth, height: Math.round(fitHeight) }} />
+            ) : null}
+            {showPlayer && playStageHost ? createPortal(
+                <div
+                    ref={playStageRef}
+                    className="canvas-video-screen-stage"
+                    data-canvas-no-zoom
+                    style={{ opacity: videoReady ? 1 : 0 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                >
                     <VideoPlayer
                         src={url}
                         mimeType={node.metadata?.mimeType}
                         title={node.title || "视频"}
                         hasAudio={inferVideoHasAudio(node.metadata)}
                         autoPlay
-                        preload="metadata"
+                        preload="auto"
                         brandColor={theme.accent.primary}
-                        className="h-full w-full rounded-[var(--node-radius)] bg-black"
+                        className="h-full w-full bg-black"
                         dataCanvasNoZoom
                         compactControls
                         onCanPlay={() => setVideoReady(true)}
                         onPause={() => {
-                            const video = playerBoxRef.current?.querySelector("video:not([data-canvas-video-still])");
+                            const video = playStageRef.current?.querySelector("video");
                             if (!(video instanceof HTMLVideoElement) || video.currentTime < 0.05) return;
                             const frame = snapshotVideoFrame(video);
                             if (!frame) return;
+                            if (pausedFrameUrlRef.current) URL.revokeObjectURL(pausedFrameUrlRef.current);
                             pausedFrameUrlRef.current = frame;
                             setPausedFrameUrl(frame);
                         }}
                     />
                     {activeEntry && activeEntry.text.trim() ? <CanvasSubtitleOverlay text={activeEntry.text} highlight={activeHighlight} style={subtitleStyle} /> : null}
-                </div>
-            ) : (
+                </div>,
+                playStageHost,
+            ) : showPlayer ? null : (
                 <VideoPreviewPlayButton title={node.title || "视频"} onPlay={() => onMediaPlayRequest?.(node.id)} />
             )}
         </div>
@@ -688,6 +721,7 @@ function VideoPosterStill({
     url,
     loading,
     pausedFrameUrl,
+    suspendDecoder = false,
     className,
 }: {
     node: CanvasNodeData;
@@ -695,6 +729,7 @@ function VideoPosterStill({
     url: string;
     loading: boolean;
     pausedFrameUrl: string;
+    suspendDecoder?: boolean;
     className?: string;
 }) {
     const stillRef = useRef<HTMLVideoElement>(null);
@@ -720,7 +755,7 @@ function VideoPosterStill({
     );
 
     useEffect(() => {
-        if (hasPersistedPreview || pausedFrameUrl || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current) {
+        if (suspendDecoder || hasPersistedPreview || pausedFrameUrl || (!node.metadata?.content && !node.metadata?.storageKey) || !updateMetadataRef.current) {
             if (hasPersistedPreview && localPreviewUrlRef.current) {
                 URL.revokeObjectURL(localPreviewUrlRef.current);
                 localPreviewUrlRef.current = "";
@@ -746,7 +781,7 @@ function VideoPosterStill({
         return () => {
             controller.abort();
         };
-    }, [hasPersistedPreview, node.id, node.metadata?.content, node.metadata?.storageKey, pausedFrameUrl, persistedPreviewSource, persistedPreviewStorageKey]);
+    }, [hasPersistedPreview, node.id, node.metadata?.content, node.metadata?.storageKey, pausedFrameUrl, persistedPreviewSource, persistedPreviewStorageKey, suspendDecoder]);
 
     useEffect(() => {
         const video = stillRef.current;
@@ -759,7 +794,7 @@ function VideoPosterStill({
 
     return (
         <div className={`relative overflow-hidden bg-black ${className || ""}`}>
-            {url ? <VideoStillElement videoRef={stillRef} url={url} ready={stillReady} title={node.title} /> : null}
+            {url && !suspendDecoder && !hasPersistedPreview && !imageSrc ? <VideoStillElement videoRef={stillRef} url={url} ready={stillReady} title={node.title} /> : null}
             {hasPersistedPreview ? (
                 <CanvasVideoPreviewImage
                     node={node}
@@ -790,7 +825,7 @@ function VideoStillElement({ videoRef, url, ready, title }: { videoRef: RefObjec
             src={url}
             muted
             playsInline
-            preload="auto"
+            preload="metadata"
             draggable={false}
             aria-label={`${title || "视频"} 首帧`}
             className={`pointer-events-none absolute inset-0 size-full object-contain bg-black transition-opacity duration-150 ${ready ? "opacity-100" : "opacity-0"}`}
@@ -804,6 +839,7 @@ function attachVideoFirstFrame(video: HTMLVideoElement, onReady: () => void) {
     const finish = () => {
         if (cancelled || video.videoWidth <= 0) return;
         video.pause();
+        video.preload = "metadata";
         onReady();
     };
     const start = () => {

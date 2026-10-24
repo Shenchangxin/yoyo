@@ -331,6 +331,7 @@ export function useWorkstation() {
   const [diffB, setDiffB] = useState("");
   const [diffOut, setDiffOut] = useState<any>(null);
   const [booted, setBooted] = useState(false);
+  const bootedRef = useRef(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutInfo, setAboutInfo] = useState<Record<string, any>>({});
   const [pendingDelete, setPendingDelete] = useState<Thread | null>(null);
@@ -488,6 +489,7 @@ export function useWorkstation() {
   }, []);
 
   const refresh = useCallback(async () => {
+    const first = !bootedRef.current;
     try {
       const [h, c, list, hs, pl] = await withTimeout(Promise.all([
         api.health().catch(() => null),
@@ -495,7 +497,7 @@ export function useWorkstation() {
         api.listSessions(),
         api.harness().catch(() => ({})),
         api.plugins().catch(() => ({})),
-      ]), 8000, "boot");
+      ]), first ? 8000 : 20000, first ? "boot" : "refresh");
       if (h) setHealth(h);
       if (c) setSavedCfg(c);
       setThreads(list);
@@ -522,8 +524,9 @@ export function useWorkstation() {
       } catch { /* optional */ }
       await syncRunning();
     } catch (e) {
-      fail(e);
+      if (first) fail(e);
     } finally {
+      bootedRef.current = true;
       setBooted(true);
     }
   }, [syncRunning]);

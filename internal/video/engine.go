@@ -58,6 +58,8 @@ type Engine struct {
 	cancel      context.CancelFunc
 	OnJob       func(Job)
 	OnHub       func(kind string, payload map[string]any)
+	Agent       *CanvasAgentBridge
+	agents      canvasAgentBook
 
 	castFile string
 	castURL  string

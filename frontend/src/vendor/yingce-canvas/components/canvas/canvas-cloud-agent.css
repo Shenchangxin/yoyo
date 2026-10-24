@@ -1234,7 +1234,6 @@
 
 .canvas-agent-skill-library-modal .ant-modal {
     padding-bottom: 0;
-    margin-top: var(--space-10);
 }
 
 .canvas-agent-skill-library-modal .ant-modal-container {
@@ -1248,22 +1247,32 @@
     position: relative;
 }
 
+.canvas-agent-skill-library-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--space-2);
+}
+
 .canvas-agent-skill-library-close {
-    position: absolute;
-    top: calc(-1 * var(--space-10));
-    inset-inline-start: var(--space-2);
-    inset-inline-end: auto;
+    position: static;
     width: auto;
-    height: var(--space-8);
-    border-radius: var(--r-md);
-    padding: 0 var(--space-2);
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+    padding: 0 var(--space-3);
     color: var(--foreground);
-    background: transparent;
+    background: var(--lift);
     overflow: visible;
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--fs-body);
+    font-size: var(--fs-caption);
+    cursor: pointer;
+}
+
+.canvas-agent-skill-library-close:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, var(--lift));
 }
 
 .canvas-agent-skill-library-close kbd {
@@ -1352,17 +1361,28 @@
 }
 
 .canvas-agent-skill-library-tab:hover {
-    background: var(--library-surface-hover);
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
     color: var(--foreground);
 }
 
-.canvas-agent-skill-library-tab.is-active {
+.canvas-agent-skill-library-tab.is-active,
+.canvas-agent-skill-library-tab.is-active:hover {
+    background: var(--lift);
     color: var(--foreground);
     font-weight: 650;
 }
 
+.canvas-agent-skill-library-tab.is-active:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+}
+
+.canvas-agent-skill-library-tab.is-active span {
+    color: var(--control-selected-fg);
+}
+
 .canvas-agent-skill-library-tab.is-active::before {
     opacity: 1;
+    background: var(--control-selected-fg);
 }
 
 .canvas-agent-skill-library-content {
@@ -1391,17 +1411,23 @@
 
 .canvas-agent-skill-library-count {
     flex: 0 0 auto;
-    border: 0;
+    border: 1px solid var(--border);
     border-radius: var(--r-full);
-    background: var(--library-surface);
+    background: var(--lift);
     padding: var(--space-2-half) var(--space-4);
     color: var(--foreground);
     font-size: var(--fs-caption);
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
 }
 
 .canvas-agent-skill-library-count:hover {
-    background: var(--library-surface-hover);
+    background: color-mix(in srgb, var(--foreground) 8%, var(--lift));
+}
+
+.canvas-agent-skill-library-count strong {
+    color: var(--foreground);
+    font-weight: 650;
 }
 
 .canvas-agent-skill-library-count span {
@@ -1447,6 +1473,15 @@
     background: var(--library-surface-hover);
 }
 
+.canvas-agent-skill-card.is-selected {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.canvas-agent-skill-card.is-selected:hover,
+.canvas-agent-skill-card.is-selected:focus-within {
+    background: color-mix(in srgb, var(--accent) 20%, var(--library-surface-hover));
+}
+
 .canvas-agent-skill-card:hover .canvas-agent-skill-card-cover img,
 .canvas-agent-skill-card:focus-within .canvas-agent-skill-card-cover img {
     transform: scale(1.025);
@@ -1463,7 +1498,7 @@
 }
 
 .canvas-agent-skill-card.is-selected .canvas-agent-skill-card-cover {
-    outline: 1px solid var(--library-selected-stroke);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
@@ -1510,8 +1545,8 @@
     height: var(--space-8);
     place-items: center;
     border-radius: var(--r-full);
-    color: var(--control-selected-fg);
-    background: var(--control-selected-bg);
+    color: var(--accent-fg);
+    background: var(--accent);
 }
 
 .canvas-agent-skill-card-body {
@@ -1591,10 +1626,10 @@
     color: var(--primary-foreground);
 }
 
-.canvas-agent-skill-card-action .ant-btn.is-selected,
-.canvas-agent-skill-card-action .ant-btn.is-selected:not(:disabled):hover {
-    background: var(--control-selected-bg);
-    color: var(--control-selected-fg);
+.canvas-agent-skill-library-modal .canvas-agent-skill-card-action .ant-btn.is-selected,
+.canvas-agent-skill-library-modal .canvas-agent-skill-card-action .ant-btn.is-selected:not(:disabled):hover {
+    background: var(--accent) !important;
+    color: var(--accent-fg) !important;
 }
 
 .canvas-agent-skill-card-action .ant-btn:disabled {

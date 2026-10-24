@@ -1,5 +1,16 @@
 package video
 
+import "fmt"
+
+func skillTagLabel(tag string) string {
+	for _, item := range skillCategories() {
+		if fmt.Sprint(item["value"]) == tag {
+			return fmt.Sprint(item["label"])
+		}
+	}
+	return ""
+}
+
 func skillCategories() []map[string]any {
 	return []map[string]any{
 		{"value": "drama", "label": "短剧影视"},

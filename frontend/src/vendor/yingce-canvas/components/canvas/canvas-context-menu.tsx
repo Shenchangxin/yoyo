@@ -334,7 +334,7 @@ function MenuHeader({ title, description, onBack }: { title: string; description
     const theme = canvasThemes[useActiveTheme()];
     return (
         <div className="mb-0.5 flex items-start gap-1 px-1.5 py-1.5">
-            {onBack ? <button type="button" onClick={onBack} className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md outline-none hover:bg-black/5 focus-visible:ring-2 dark:hover:bg-white/8" aria-label="返回媒体操作"><ArrowLeft className="size-3.5" /></button> : null}
+            {onBack ? <button type="button" onClick={onBack} className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md outline-none hover:bg-foreground/10 focus-visible:ring-2" aria-label="返回媒体操作"><ArrowLeft className="size-3.5" /></button> : null}
             <span className="min-w-0"><span className="block truncate text-xs font-semibold">{title}</span>{description && description !== title ? <span className="mt-0.5 block truncate text-[var(--fs-micro)]" style={{ color: theme.node.muted }}>{description}</span> : null}</span>
         </div>
     );

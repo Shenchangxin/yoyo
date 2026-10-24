@@ -289,7 +289,7 @@ function AssetTrayRow({ title, imageUrl, storageKey, icon, active = false, dragg
                 <span className="block truncate text-[var(--fs-tiny)] font-semibold">{title}</span>
                 <span className="mt-0.5 block text-[var(--fs-micro)] opacity-45">{active ? "当前已选择" : draggable ? "拖入画布或点击插入" : "点击定位到画布"}</span>
             </span>
-            <span className={cn("rounded-full px-1.5 py-0.5 text-[var(--fs-micro)] font-semibold", location === "oss" ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : location === "local" ? "bg-amber-500/12 text-amber-700 dark:text-amber-300" : "bg-black/5 text-stone-400 dark:bg-white/8 dark:text-stone-500")} title={resourceStorageTitle(storageKey)}>
+            <span className={cn("rounded-full px-1.5 py-0.5 text-[var(--fs-micro)] font-semibold", location === "oss" ? "bg-emerald-500/12 text-emerald-700" : location === "local" ? "bg-amber-500/12 text-amber-700" : "bg-foreground/8 text-foreground/55")} title={resourceStorageTitle(storageKey)}>
                 {resourceStorageLabel(storageKey)}
             </span>
             <span className="grid size-6 place-items-center rounded-full opacity-45 transition-opacity group-hover:opacity-90" style={{ background: theme.node.panel }}>{icon}</span>

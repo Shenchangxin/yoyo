@@ -564,8 +564,8 @@ html[data-skin-wallpaper="1"]:not(.companion) .yingce-island [data-canvas-viewpo
   isolation: auto;
 }
 
-/* HUD follows html.dark / html.light. Stage color stays on the canvas element.
-   Do not fork a second palette from data-canvas-color. */
+/* Stage color stays on the canvas element. Chrome tokens for a mismatched
+   canvas color are set on [data-canvas-color] in studio-lock.css. */
 .yingce-island .canvas-composer-model-picker,
 .yingce-popup-root .canvas-composer-model-picker,
 .yingce-island .canvas-generation-settings-trigger.ant-btn,
