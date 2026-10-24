@@ -10,7 +10,7 @@ import { DARK_PALETTES, LIGHT_PALETTES, useTheme, type DarkPalette, type LightPa
 import { SkinStudio } from "./SkinStudio";
 import { builtinTokens } from "../../lib/skin/builtin";
 import { applyUiScale, snapUiScale, type UiScale } from "../../lib/scale";
-import { chrome } from "../../lib/chrome";
+import { browserSurface, chrome } from "../../lib/chrome";
 import { asArray, str } from "../../lib/normalize";
 import { Button } from "../../components/ui/button";
 import { IconSwap } from "../../components/ui/icon-swap";
@@ -30,6 +30,7 @@ import {
 } from "./SettingChrome";
 import { cn } from "../../lib/utils";
 import type { SettingsHost } from "./host";
+import { HandheldSettings } from "./HandheldPanel";
 
 export type { SettingsHost } from "./host";
 export { ProviderSettings } from "./ProviderPanel";
@@ -103,7 +104,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
         </SettingRow>
       </SettingSection>
 
-      <SettingSection id="general-desktop" title={copy.settings.sections.generalDesktop}>
+      {browserSurface() ? null : <SettingSection id="general-desktop" title={copy.settings.sections.generalDesktop}>
         <SettingRow title={copy.settings.closeToTray} description={copy.settings.closeToTrayDesc}>
           <Switch checked={!!cfg.closeToTray} onCheckedChange={(v) => void host.patch({ closeToTray: v })} />
         </SettingRow>
@@ -122,9 +123,9 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
             }}
           />
         </SettingRow>
-      </SettingSection>
+      </SettingSection>}
 
-      <ShortcutsSettings host={host} />
+      {browserSurface() ? null : <ShortcutsSettings host={host} />}
     </>
   );
 }
@@ -770,6 +771,8 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
           {JSON.stringify(host.doctor || {}, null, 2).slice(0, 8000)}
         </SettingCodePanel>
       </SettingSection>
+
+      <HandheldSettings />
 
       <ConfirmDialog
         open={applyOpen}

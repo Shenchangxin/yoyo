@@ -10,6 +10,7 @@ import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { pathReady } from "../lib/workspace";
 import { toast } from "sonner";
 import { useCopy } from "../lib/i18n";
+import { desktopWindow } from "../lib/chrome";
 import type { Copy } from "../lib/copy";
 import { useUI } from "../lib/store";
 import { filterSlash, slashCatalog, slashQuery } from "../lib/slash";
@@ -278,7 +279,7 @@ export function Composer(props: {
     : [
     { token: "__file__", label: copy.composer.attach, hint: "", kind: "attach", section: copy.composer.sectionAdd },
     ...(props.onClipboard ? [{ token: "__clipboard__", label: copy.composer.clipboard, hint: "", kind: "clipboard" as const, section: copy.composer.sectionAdd }] : []),
-    ...(props.onScreenshot ? [{ token: "__screenshot__", label: copy.composer.screenshot, hint: "", kind: "screenshot" as const, section: copy.composer.sectionAdd }] : []),
+    ...(props.onScreenshot && desktopWindow() ? [{ token: "__screenshot__", label: copy.composer.screenshot, hint: "", kind: "screenshot" as const, section: copy.composer.sectionAdd }] : []),
     ...slashCatalog(copy).map((s) => ({
       token: s.cmd,
       label: s.cmd,
@@ -507,7 +508,7 @@ export function Composer(props: {
 
   async function importClip() {
     if (disabled) return;
-    if (props.onIngestVideo) {
+    if (props.onIngestVideo && desktopWindow()) {
       const paths = await api.pickFiles();
       const path = paths.find((item) => isVideoPath(item));
       if (!path) {
@@ -526,7 +527,7 @@ export function Composer(props: {
 
   async function pickAttachments() {
     if (disabled) return;
-    if (!createDesk && props.onPickFiles) {
+    if (!createDesk && props.onPickFiles && desktopWindow()) {
       const picked = await props.onPickFiles();
       if (picked.length) setAtts((prev) => [...prev, ...picked]);
       return;
@@ -983,10 +984,10 @@ export function Composer(props: {
                   {props.toolbarTrailing}
                   {grouped && props.onModel ? (
                     <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={disabled}>
-                      <SelectTrigger className="sc-chip-btn max-w-[16rem] border-0 shadow-none" aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
+                      <SelectTrigger className="sc-chip-btn max-w-[16rem] border-0 shadow-none max-[799px]:max-w-[7.5rem]" aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
                         <span className="truncate">{selectedGroup ? `${selectedGroup.providerName} · ${modelLabel}` : modelLabel}</span>
                       </SelectTrigger>
-                      <SelectContent className="min-w-[18rem]">
+                      <SelectContent className="min-w-[min(18rem,calc(100vw-1.5rem))]">
                         {groups.map((g) => (
                           <SelectGroup key={g.providerId}>
                             <SelectLabel>{g.providerName}{g.isDefault ? ` · ${copy.settings.defaultBadge}` : ""}</SelectLabel>

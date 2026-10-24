@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/home"
 	"github.com/Shenchangxin/yoyo/internal/idol"
+	"github.com/Shenchangxin/yoyo/internal/remote"
 	"github.com/Shenchangxin/yoyo/internal/skin"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
@@ -37,6 +39,34 @@ func fail(err error) {
 	os.Exit(1)
 }
 
+func attachRemoteUI(node *remote.Node) {
+	if node == nil {
+		return
+	}
+	// The phone reads the files on disk when they exist, so a frontend rebuild
+	// reaches WeChat after the process restarts. The packaged app falls back
+	// to the copy embedded at compile time.
+	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(executablePath()), "frontend", "dist")} {
+		if st, err := os.Stat(filepath.Join(dir, "index.html")); err == nil && !st.IsDir() {
+			node.UseStatic(http.FileServer(http.Dir(dir)))
+			return
+		}
+	}
+	sub, err := fs.Sub(assets, "frontend/dist")
+	if err != nil {
+		return
+	}
+	node.UseStatic(http.FileServer(http.FS(sub)))
+}
+
+func executablePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return exe
+}
+
 func main() {
 	if update.HandleNSISHelper() {
 		return
@@ -50,6 +80,10 @@ func main() {
 			fail(err)
 		}
 		defer core.Close()
+		if node, err := remote.Bind(core); err == nil && node != nil {
+			attachRemoteUI(node)
+			defer node.Close()
+		}
 		if err := api.ServeRPC(context.Background(), core, os.Stdin, os.Stdout); err != nil {
 			fail(err)
 		}
@@ -63,6 +97,10 @@ func main() {
 	}
 	if core != nil {
 		defer core.Close()
+		if node, err := remote.Bind(core); err == nil && node != nil {
+			attachRemoteUI(node)
+			defer node.Close()
+		}
 	}
 	defer svc.Close()
 

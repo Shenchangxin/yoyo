@@ -53,7 +53,10 @@ Thumbs.db
 # Character still pack (upload to ModelScope; do not commit)
 /dist/character-cast.zip
 
-# Test scratch
+# Android upload key. CI reads this when the release secrets are set.
+handheld/android/keystore.properties
+handheld/android/**/*.jks
+handheld/android/**/*.keystore
 /tmp/
 testdata/tmp/
 evals/.materialized/

@@ -13,7 +13,7 @@
 
 > ローカルなエージェント・ワークステーション。ファイルは選んだフォルダに残る。ハーネスは証明してから採用する。
 
-Yoyo はひとつの Go ループに三つの扉がある。Wails デスクトップ、ブラウザ、CLI。コードを書き、ハンクをレビューし、隔離ブラウザを開き、スキルパックを走らせ、専用フォルダで短い映像も扱える。プロンプトとプレイブックは進化してよい。評価器、保管庫、アップデータは進化しない。
+Yoyo はひとつの Go ループに四つの扉がある。Wails デスクトップ、このコンピュータのブラウザ、CLI、そして同じ LAN の電話。コードを書き、ハンクをレビューし、隔離ブラウザを開き、スキルパックを走らせ、専用フォルダで短い映像も扱える。プロンプトとプレイブックは進化してよい。評価器、保管庫、アップデータは進化しない。
 
 **v0.6.0** · Apache-2.0 · Windows、macOS、Linux · OpenAI 互換のキーは自分で
 
@@ -94,7 +94,19 @@ npm run dev
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
 ```
 
-インストール用ビルド（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`、CGO なし CLI）は `v*` タグから出る。[開発](#開発) を見る。
+インストール用ビルド（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`、Android APK、CGO なし CLI）は `v*` タグから出る。[開発](#開発) を見る。電話への入れ方は[次の節](#電話)。
+
+---
+
+## 電話
+
+電話とコンピュータは同じ LAN にいる。同じ Wi-Fi か、コンピュータを電話のテザリングに入れる。[http://127.0.0.1:3080](http://127.0.0.1:3080) はコンピュータ自身でしか開かない。
+
+Android は [Releases](https://github.com/Shenchangxin/yoyo/releases/latest) の `Yoyo-*-android.apk` を入れ、不明なアプリのインストールを許可する。コンピュータで **設定 → 詳細 → 手机** を開き、ペアリングコードを出して、電話のアプリで読み取り、コンピュータで **許可** する。新しい会話もモデルの切り替えも、そのコンピュータで実行される。コードは二分間、一度だけ。
+
+iOS は Mac と Apple の署名が要る。この CI はインストールできる IPA を出さない。ソースは [`handheld/`](handheld/)。HarmonyOS のサービスカードは [`handheld/harmony`](handheld/harmony) にあり、DevEco Studio と flutter-oh が要る。HAP は CI から出ない。
+
+アプリを入れないときは、同じコードを WeChat か他のスキャナで読む。電話のブラウザが許可を待つ。コンピュータで「浏览器」を許可すると、そのブラウザがデスクトップの UI になり、操作はこのコンピュータに書き戻る。許可は約 12 時間。コードは LAN の http で、自己署名の https ではない。秘密の鍵は電話へ送らない。
 
 ---
 
@@ -268,7 +280,7 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI は Windows で Go テスト、Ubuntu でフロントエンドのビルド。`v*` タグを push すると [release.yml](.github/workflows/release.yml) が走る。
+CI は Windows で Go テスト、Ubuntu でフロントエンドのビルドと、インストールできる Android APK。`v*` タグを push すると [release.yml](.github/workflows/release.yml) がデスクトップ、CLI、`Yoyo-*-android.apk` を GitHub Release に載せる。iOS と HarmonyOS はこのパイプラインにない。
 
 ```bash
 git tag v0.6.0

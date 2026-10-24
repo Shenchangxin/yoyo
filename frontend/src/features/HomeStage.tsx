@@ -6,6 +6,7 @@ import { CreateHome } from "./video/CreateHome";
 import { FeaturedCases } from "./video/FeaturedCases";
 import { useCutDesk, useCutReadiness } from "./video/cut-desk";
 import { cn } from "../lib/utils";
+import { useMedia } from "../lib/media";
 
 function hello(copy: Copy): string {
   const h = new Date().getHours();
@@ -83,6 +84,7 @@ export function HomeHero(_props: {
   onBrowseWorkspace?: () => void;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
+  const narrow = useMedia("(max-width: 799px)");
   const c = copy.video.conductor;
   const bound = useCutDesk((s) => createDesk && !!s.project?.source_hash);
   const boundTitle = useCutDesk((s) => (createDesk ? s.project?.title || "" : ""));
@@ -94,7 +96,7 @@ export function HomeHero(_props: {
       )}
       data-testid="empty-turn"
     >
-      <PresenceAnchor id="home" size={createDesk ? 88 : 148} className="mx-auto cursor-pointer" />
+      <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
       <p className={cn("text-center text-[13px] tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
         {hello(copy)}
       </p>
@@ -150,7 +152,7 @@ export function HomeStarters(props: {
           <CreateBoundActions projectId={project.id} sourceHash={project.source_hash} onPrompt={props.onPrompt} />
         ) : null}
         {starters.length ? (
-        <div className={cn("flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
+        <div className={cn("starter-row flex flex-wrap justify-center", createDesk ? "mt-3 gap-2" : "mt-4 gap-1.5")}>
           {starters.map((s, i) => (
             <button
               type="button"

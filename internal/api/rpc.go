@@ -50,11 +50,28 @@ func ServeRPC(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	ch, unsub := a.Hub.Subscribe("*")
 	defer unsub()
+	stateCh, unsubState := a.SubscribeState()
+	defer unsubState()
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case change, ok := <-stateCh:
+				if !ok {
+					return
+				}
+				mu.Lock()
+				_ = enc.Encode(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "state.changed",
+					"params": map[string]any{
+						"epoch":  change.Epoch,
+						"topic":  change.Topic,
+						"object": change.Object,
+					},
+				})
+				mu.Unlock()
 			case ev, ok := <-ch:
 				if !ok {
 					return
@@ -177,12 +194,21 @@ func Dispatch(ctx context.Context, a *app.App, req RPCRequest) RPCResponse {
 		return res
 	}
 	res.Result = result
+	if a != nil {
+		a.NoteRPC(req.Method)
+	}
 	return res
 }
 
 func callMethod(ctx context.Context, a *app.App, method string, params json.RawMessage) (any, error) {
 	if method == "" {
 		return map[string]any{"ok": true}, nil
+	}
+	if remoteHandler != nil && strings.HasPrefix(method, "remote.") {
+		out, ok, err := remoteHandler(ctx, a, method, params)
+		if ok || err != nil {
+			return out, err
+		}
 	}
 	if strings.HasPrefix(method, "video.") || strings.HasPrefix(method, "drama.") || strings.HasPrefix(method, "media.") || strings.HasPrefix(method, "canvas.") || strings.HasPrefix(method, "connections.") {
 		return a.VideoCall(method, asMap(params))

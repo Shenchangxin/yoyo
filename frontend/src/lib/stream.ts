@@ -236,7 +236,14 @@ export function subscribeSession(
     }
 
     if (typeof EventSource !== "undefined") {
-      const es = new EventSource(`/api/sessions/${sessionId}/events`);
+      let eventsURL = `/api/sessions/${sessionId}/events`;
+      try {
+        const token = sessionStorage.getItem("yoyo_browser");
+        if (token) eventsURL += `?ys=${encodeURIComponent(token)}`;
+      } catch {
+        /* private mode keeps the cookie path */
+      }
+      const es = new EventSource(eventsURL, { withCredentials: true });
       es.onmessage = (msg) => {
         try {
           onLive(JSON.parse(msg.data));
@@ -321,6 +328,34 @@ export function subscribeSessions(onChange: () => void): () => void {
   })();
   return () => {
     alive = false;
+    if (typeof off === "function") off();
+  };
+}
+
+export function subscribeState(onChange: (topic: string) => void): () => void {
+  let off: any;
+  let alive = true;
+  let timer = 0;
+  let poll = 0;
+  const desktop = typeof window !== "undefined" && !!(window as any)._wails?.environment?.OS;
+  if (!desktop) poll = window.setInterval(() => onChange("poll"), 2500);
+  (async () => {
+    const Events = await wailsEvents();
+    if (!alive) return;
+    if (!Events?.On) return;
+    window.clearInterval(poll);
+    poll = 0;
+    off = Events.On("yoyo:state", (e: any) => {
+      const src = Array.isArray(e) ? e[0] : e?.data ?? e;
+      const topic = String(src?.topic || src?.Topic || "");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => onChange(topic), 150);
+    });
+  })();
+  return () => {
+    alive = false;
+    window.clearTimeout(timer);
+    window.clearInterval(poll);
     if (typeof off === "function") off();
   };
 }

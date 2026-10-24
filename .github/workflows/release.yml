@@ -282,8 +282,64 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  handheld:
+    needs: [meta]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.29.3"
+          channel: stable
+          cache: true
+      - name: Optional upload keystore
+        working-directory: handheld/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "No upload keystore. The APK is signed with the debug key so it can be sideloaded."
+            exit 0
+          fi
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > app/upload.jks
+          cat > keystore.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=upload.jks
+          EOF
+      - name: Build the Android app
+        working-directory: handheld
+        run: |
+          set -euo pipefail
+          flutter config --no-analytics
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build apk --release
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk "../dist/Yoyo-${VERSION}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handheld-android
+          path: dist/Yoyo-*-android.apk
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    needs: [meta, desktop, cli]
+    needs: [meta, desktop, cli, handheld]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -317,6 +373,9 @@ jobs:
             - **Windows x64:** `Yoyo-*-windows-x64-setup.exe` (same file as `windows-amd64`) — per-user installer, no admin. Finish page can launch Yoyo.
             - **macOS:** `Yoyo-*-darwin-universal.dmg` — open the disk image and drag Yoyo into Applications.
             - **Linux:** `Yoyo-*-linux-amd64.AppImage` (chmod +x, double-click) or install the `.deb` / `.rpm`.
+            - **Android:** `Yoyo-*-android.apk` — sideload it. The phone and the computer must be on the same LAN. In the desktop app, Settings → Advanced → Handheld, show the code, then allow the phone. Without the app, scan that same code with WeChat; after you allow it, the phone browser is the desktop UI and actions run on the computer.
+
+            iOS needs a Mac and Apple signing, so this release does not include an installable IPA. HarmonyOS is the service-card source under `handheld/harmony`, not a store HAP. If the APK signing key changes, uninstall the old app before installing the new one.
 
             CLI archives (`yoyo-cli-*`) are optional command-line builds. macOS is ad-hoc signed, not notarized. Windows and Linux packages are unsigned. In-app OTA reads signed latest.json from https://modelscope.ai/datasets/yoyo-agent/yoyo; applying stays a human step.
           files: dist/*

@@ -34,10 +34,11 @@ import { useWorkstation } from "./features/workstation/useWorkstation";
 import { isCompanionSurface, readPopoutId } from "./lib/popout";
 import { CompanionApp, PresenceLayer } from "./features/presence";
 import { IdolStage } from "./features/idol/IdolStage";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "./components/ui/sheet";
 import { Button } from "./components/ui/button";
 import { Kbd } from "./components/ui/kbd";
-import { ChevronLeft, PanelLeft } from "lucide-react";
+import { browserSurface } from "./lib/chrome";
+import { ChevronLeft, PanelLeft, Search, X } from "lucide-react";
 import { DEFAULT_KEYMAP, displayShortcut } from "./lib/keymap";
 import { isMac } from "./lib/chrome";
 import { displayTitle } from "./lib/display-title";
@@ -47,6 +48,7 @@ import type { AuthMode, Thread } from "./lib/protocol";
 import { latestTaskPlan, parsePlanText } from "./lib/plan";
 import { liveAutoSkills, liveSubagentCrumb } from "./lib/transcript-layout";
 import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
+import { VideoShellNav } from "./features/video/VideoShellNav";
 import { CutStage } from "./features/video/CutStage";
 import { useCutDesk } from "./features/video/cut-desk";
 import { useStudioSelection } from "./features/video/workshop-store";
@@ -400,11 +402,23 @@ function WorkstationApp() {
         <div
           className={cn(
             "flex min-h-0 min-w-0 w-full flex-1 flex-col",
-            home && "home-stage empty-rise overflow-auto",
-            home && !createDesk && "justify-center py-10",
+            home && !railNarrow && "home-stage empty-rise overflow-auto",
+            home && railNarrow && "home-stage",
+            home && !createDesk && !railNarrow && "justify-center py-10",
           )}
         >
-        {home ? (
+        {railNarrow && home ? (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
+            <HomeStarters
+              onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
+              onContinueLast={() => { void ws.onContinueLast(); }}
+              onImportClip={() => { void ws.ingestVideo({}); }}
+              onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
+              onOpenCut={(id) => { void ws.openCut(id); }}
+            />
+          </div>
+        ) : home ? (
           <HomeHero workspace={toolRoot} onBrowseWorkspace={() => { void bindComposer.onBrowseWorkspace(); }} />
         ) : (
           <Transcript
@@ -442,13 +456,13 @@ function WorkstationApp() {
             onJumpLatest={ws.jumpToLatest}
           />
         )}
-        <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-5 sm:px-8", createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
+        <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
           {!home && !videoing && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
           {composer}
         </div>
-        {home ? (
+        {home && !railNarrow ? (
           <HomeStarters
             onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
             onContinueLast={() => { void ws.onContinueLast(); }}
@@ -540,6 +554,10 @@ function WorkstationApp() {
     </HarnessWorkspace>
   );
 
+  const leaveRail = () => {
+    if (railNarrow) ws.setSidebarHover(false);
+  };
+
   const rail = (
     <ThreadRail
       threads={ws.searchHits ?? ws.threads}
@@ -556,42 +574,51 @@ function WorkstationApp() {
       showArchived={ws.showArchived}
       onShowArchived={ws.setShowArchived}
       onQuery={ws.setQuery}
-      onSelect={ws.openThread}
-      onSelectProject={(p) => { void ws.openVideoProject(p); }}
+      onSelect={(t) => { leaveRail(); ws.openThread(t); }}
+      onSelectProject={(p) => { leaveRail(); void ws.openVideoProject(p); }}
       videoProjects={ws.videoProjects}
       canvasProjectId={ws.canvasProjectId}
       dramaId={ws.dramaId}
       studioId={studioId}
-      onNew={ws.onNew}
-      onNewIn={(path) => { void ws.onNewIn(path); }}
+      onNew={() => { leaveRail(); ws.onNew(); }}
+      onNewIn={(path) => { leaveRail(); void ws.onNewIn(path); }}
       workspace={ws.surface === "video" ? (ws.savedCfg.videoWorkspace || ws.health.videoWorkspace || ws.savedCfg.workspace) : ws.savedCfg.workspace}
       onLab={ws.setLab}
-      onChats={() => ws.showConversation()}
+      onChats={() => { leaveRail(); ws.showConversation(); }}
       onHarness={() => {
+        leaveRail();
         if (ws.surface === "harness") ws.showConversation();
         else ws.openHarness("overview");
       }}
       onSkills={() => {
+        leaveRail();
         if (ws.surface === "skills") ws.closeSkills();
         else ws.openSkills();
       }}
       onPages={() => {
+        leaveRail();
         if (ws.surface === "pages") ws.closePages();
         else ws.openPages();
       }}
       onIdol={() => {
+        leaveRail();
         if (ws.surface === "idol") ws.closeIdol();
         else ws.openIdol();
       }}
       onVideo={() => {
+        leaveRail();
         if (ws.surface === "video") ws.closeVideo();
         else ws.openVideo();
       }}
       onSettings={() => {
+        leaveRail();
         if (ws.surface === "settings") ws.closeSettings();
         else ws.openSettings();
       }}
-      onCollapse={() => ws.setSidebarCollapsed(true)}
+      onCollapse={() => {
+        ws.setSidebarHover(false);
+        if (!railNarrow) ws.setSidebarCollapsed(true);
+      }}
       onPin={async (t, pinned) => {
         ws.setThreads((prev) => patchThread(prev, t.id, { pinned }));
         try {
@@ -628,11 +655,17 @@ function WorkstationApp() {
       onPopOut={(t) => { void api.popOutThread(t.id); }}
       onOpenEditor={(t) => {
         const path = t.workspace || ws.savedCfg.workspace;
-        if (path) void api.openInEditor(path);
+        if (!path) return;
+        void api.openInEditor(path).then(() => {
+          if (browserSurface()) toast.success(copy.rail.openedOnComputer);
+        }).catch((e) => ws.fail(e));
       }}
       onOpenTerminal={(t) => {
         const path = t.workspace || ws.savedCfg.workspace;
-        if (path) void api.openWorkspaceTerminal(path);
+        if (!path) return;
+        void api.openWorkspaceTerminal(path).then(() => {
+          if (browserSurface()) toast.success(copy.rail.openedOnComputer);
+        }).catch((e) => ws.fail(e));
       }}
       onRename={async (t, title) => {
         try {
@@ -673,12 +706,13 @@ function WorkstationApp() {
       ) : null}
       <button
         type="button"
-        className="mr-0.5 hidden items-center rounded-lg px-1.5 py-1 text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground sm:inline-flex"
+        className="no-drag mr-0.5 inline-flex size-8 items-center justify-center rounded-lg text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground sm:w-auto sm:px-1.5"
         onClick={() => ws.setPalette(true)}
         aria-label={copy.rail.jump}
         title={copy.rail.jump}
       >
-        <Kbd>{displayShortcut(DEFAULT_KEYMAP.palette)}</Kbd>
+        <Search className="size-4 sm:hidden" aria-hidden />
+        <span className="hidden sm:inline-flex"><Kbd>{displayShortcut(DEFAULT_KEYMAP.palette)}</Kbd></span>
       </button>
       <UpdateButton />
     </>
@@ -789,6 +823,7 @@ function WorkstationApp() {
 
   const videoBoard = (
     <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="video-board">
+      {railNarrow && !overlayRail ? <VideoShellNav layout="bar" /> : null}
       {studioDesk ? (
         studioId ? (
           <div className="studio-desk h-full min-h-0 overflow-hidden" data-testid="studio-desk">
@@ -932,13 +967,19 @@ function WorkstationApp() {
               void api.quit();
             }}
           />
-          <Sheet modal={false} open={sheetRight} onOpenChange={(open) => {
+          <Sheet open={sheetRight} onOpenChange={(open) => {
             if (agent) ws.setInspector(open);
             else ws.setChatDock(open);
           }}>
-            <SheetContent side="right" overlay={false} className="flex flex-col p-0">
-              <SheetTitle className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetTitle>
+            <SheetContent side="bottom" className="flex h-[min(78dvh,720px)] flex-col rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]">
+              <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
+                <SheetTitle className="text-[13px] font-medium">{agent ? copy.review.toggle : copy.dock.chat}</SheetTitle>
+                <SheetClose className="grid size-9 place-items-center rounded-lg text-muted" aria-label={copy.rail.collapse}>
+                  <X className="size-4" />
+                </SheetClose>
+              </div>
               <SheetDescription className="sr-only">{agent ? copy.review.toggle : copy.dock.toggle}</SheetDescription>
+              <div className="min-h-0 flex-1 overflow-hidden [&>*]:h-full">
               {agent ? inspect : (
                 <ChatDock
                   items={ws.items}
@@ -974,6 +1015,7 @@ function WorkstationApp() {
                   {...bindComposer}
                 />
               )}
+              </div>
             </SheetContent>
           </Sheet>
         </>
@@ -1108,15 +1150,31 @@ function WorkstationApp() {
         </Panel>
       </Group>
       {!showRail && !popout && !settings ? (
-        <div
-          className={overlayRail
-            ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
-            : "absolute inset-y-0 left-0 z-20 w-2"}
-          onMouseEnter={() => ws.setSidebarHover(true)}
-          onMouseLeave={() => ws.setSidebarHover(false)}
-        >
-          {overlayRail ? <div className="h-full">{rail}</div> : null}
-        </div>
+        railNarrow ? (
+          overlayRail ? (
+            <>
+              <button
+                type="button"
+                className="absolute inset-0 z-20 bg-black/40"
+                aria-label={copy.rail.collapse}
+                onClick={() => ws.setSidebarHover(false)}
+              />
+              <div className="absolute inset-y-0 left-0 z-30 w-[min(20.5rem,92%)] pt-[env(safe-area-inset-top)]">
+                <div className="h-full">{rail}</div>
+              </div>
+            </>
+          ) : null
+        ) : (
+          <div
+            className={overlayRail
+              ? "absolute inset-y-0 left-0 z-20 w-[min(288px,90%)]"
+              : "absolute inset-y-0 left-0 z-20 w-2"}
+            onMouseEnter={() => ws.setSidebarHover(true)}
+            onMouseLeave={() => ws.setSidebarHover(false)}
+          >
+            {overlayRail ? <div className="h-full">{rail}</div> : null}
+          </div>
+        )
       ) : null}
     </AppFrame>
     </PresenceLayer>

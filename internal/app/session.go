@@ -171,7 +171,11 @@ func (a *App) writeSession(m SessionMeta) error {
 	m.Interrupted = false
 	m.Queued = 0
 	b, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(filepath.Join(a.Home.Sessions(), m.ID+".meta.json"), b, 0o644)
+	if err := os.WriteFile(filepath.Join(a.Home.Sessions(), m.ID+".meta.json"), b, 0o644); err != nil {
+		return err
+	}
+	a.Touch("session", m.ID)
+	return nil
 }
 
 func titleFrom(message string) string {

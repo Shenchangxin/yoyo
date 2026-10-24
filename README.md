@@ -13,7 +13,7 @@
 
 > A local agent workstation. Files stay in a folder you pick. The harness has to prove itself before you trust the new one.
 
-Yoyo is one Go agent loop with three doors: a Wails desktop, a browser, and a CLI. It writes code, reviews hunks, opens an isolated browser, runs skill packs, and can shoot short-form video in its own folder. Prompts and playbooks may evolve. The evaluator, the vault, and the updater may not.
+Yoyo is one Go agent loop with four doors: a Wails desktop, a browser on this computer, a CLI, and a phone on the same LAN. It writes code, reviews hunks, opens an isolated browser, runs skill packs, and can shoot short-form video in its own folder. Prompts and playbooks may evolve. The evaluator, the vault, and the updater may not.
 
 **v0.6.0** · Apache-2.0 · Windows, macOS, Linux · bring your own OpenAI-compatible key
 
@@ -94,7 +94,37 @@ npm run dev
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
 ```
 
-Installable builds (Windows NSIS, macOS DMG, Linux AppImage / `.deb` / `.rpm`, plus a CGO-free CLI) are published from a `v*` tag. See [Develop](#develop).
+Installable builds (Windows NSIS, macOS DMG, Linux AppImage / `.deb` / `.rpm`, an Android APK, plus a CGO-free CLI) are published from a `v*` tag. See [Develop](#develop). Phone install and the WeChat path are in the [next section](#phone).
+
+---
+
+## Phone
+
+The phone and the computer have to be on the same LAN: the same Wi-Fi, or the computer joined to the phone's hotspot. [http://127.0.0.1:3080](http://127.0.0.1:3080) opens only on the computer itself.
+
+### Install on Android
+
+1. Open [Releases](https://github.com/Shenchangxin/yoyo/releases/latest) and download `Yoyo-*-android.apk`. CI also uploads that file on every push and pull request; download it from the Actions run.
+2. Copy it to the phone, allow install from this source, and open it.
+3. On the computer, open Yoyo. Go to **Settings → Advanced → Handheld** and choose **Show pairing code**.
+4. Scan that code in the phone app. Back on the computer, choose **Allow**.
+5. New chats, model changes, and the other desktop actions now run on the computer.
+
+The code lasts two minutes and works once. After you remove the phone, show a new code. While the phone sleeps, Android keeps a connected-device notification. If a later APK is signed with a different key, uninstall the old app first.
+
+iOS needs a Mac, Xcode, and Apple signing. This CI does not publish an installable IPA. The source is [`handheld/`](handheld/). The HarmonyOS service card source is [`handheld/harmony`](handheld/harmony); it needs DevEco Studio and flutter-oh. CI does not publish a HAP.
+
+### No app: scan with WeChat
+
+The same code is a LAN URL. WeChat, the system camera, or another scanner can open it.
+
+1. Show the pairing code on the computer.
+2. Scan it. The phone browser waits on “allow this computer”.
+3. On the computer, choose **Allow** in the same list. That row is named “浏览器”.
+4. The phone browser is the desktop UI. On a narrow screen, open the sidebar from the button at the top left and tap the dimmed area to close it. New chats, model changes, and the other actions write back to the computer.
+5. That allowance lasts about 12 hours. Stopping the listener on the computer ends the browser session.
+
+The code is plain `http` on the LAN. WeChat will not open a self-signed certificate, so the browser does not use the phone app's TLS port. Only private addresses are accepted. Stored keys are not sent to the phone. The first of the app or the browser to use a code takes it; the other waits for a new code.
 
 ---
 
@@ -268,7 +298,7 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI runs Go tests on Windows and a frontend build on Ubuntu. Pushing a `v*` tag runs [release.yml](.github/workflows/release.yml):
+CI runs Go tests on Windows, builds the frontend on Ubuntu, and produces an installable Android APK. Pushing a `v*` tag runs [release.yml](.github/workflows/release.yml), which attaches the desktop packages, the CLI, and `Yoyo-*-android.apk` to the GitHub Release. iOS and HarmonyOS are not on that pipeline.
 
 ```bash
 git tag v0.6.0

@@ -13,7 +13,7 @@
 
 > 一台本地的智能体工作站。文件留在你指定的文件夹里。新 harness 没证明自己之前，不会成为你信任的那一份。
 
-Yoyo 是同一条 Go 循环的三扇门：Wails 桌面、浏览器、命令行。它写代码、按 hunk 审查、开一个隔离浏览器、跑技能包，也可以在自己的目录里做短视频。提示词和 playbook 可以进化。评测器、密钥库、更新器不行。
+Yoyo 是同一条 Go 循环的四扇门：Wails 桌面、本机浏览器、命令行，以及同一局域网里的手机。它写代码、按 hunk 审查、开一个隔离浏览器、跑技能包，也可以在自己的目录里做短视频。提示词和 playbook 可以进化。评测器、密钥库、更新器不行。
 
 **v0.6.0** · Apache-2.0 · Windows、macOS、Linux · 自备 OpenAI 兼容的 Key
 
@@ -94,7 +94,37 @@ npm run dev
 go run ./cmd/yoyo run "Write hello.txt containing hello" --workspace .
 ```
 
-可安装包（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`，以及不依赖 CGO 的 CLI）由 `v*` 标签发布。见[开发](#开发)。
+可安装包（Windows NSIS、macOS DMG、Linux AppImage / `.deb` / `.rpm`，Android APK，以及不依赖 CGO 的 CLI）由 `v*` 标签发布。见[开发](#开发)。手机的安装和微信扫码在[下一节](#手机)。
+
+---
+
+## 手机
+
+手机和电脑要在同一个局域网：同一张 Wi-Fi，或者让电脑加入手机热点。电脑上的 [http://127.0.0.1:3080](http://127.0.0.1:3080) 只有这台电脑自己能打开。
+
+### 安装 Android
+
+1. 打开 [Releases](https://github.com/Shenchangxin/yoyo/releases/latest)，下载 `Yoyo-*-android.apk`。每次推送和拉取请求的 CI 也会上传这个包，可以从 Actions 里下载。
+2. 把安装包传到手机。允许「安装未知应用」，然后打开它。
+3. 打开电脑上的 Yoyo。进入 **设置 → 高级 → 手机**，点 **显示配对码**。
+4. 在手机 App 里扫这个码。回到电脑，点 **允许**。
+5. 之后可以新建对话、切换模型，以及电脑上能做的其他操作。这些操作在电脑上执行。
+
+配对码两分钟有效，只能用一次。收回这台手机之后，要重新出示。手机休眠时，Android 会留一条已连接设备的通知。发布用的签名如果换了，先卸载旧的再装新的。
+
+iOS 需要一台 Mac、Xcode 和 Apple 签名，这个 CI 打不出可以直接安装的 IPA。源码在 [`handheld/`](handheld/)。鸿蒙服务卡片的源码在 [`handheld/harmony`](handheld/harmony)，需要 DevEco Studio 和 flutter-oh。CI 不发布 HAP。
+
+### 不装 App，用微信扫
+
+同一个配对码是一个局域网网址。微信、系统相机或其他扫码工具都能打开它。
+
+1. 电脑上照旧出示配对码。
+2. 用微信或其他扫码工具扫它。手机浏览器停在「等这台电脑允许」。
+3. 回到电脑，在同一张列表里点 **允许**。这一项的名字是「浏览器」。
+4. 手机浏览器进入电脑上的那套界面。窄屏时，侧栏从左上角的按钮打开，点旁边的遮罩关上。新建对话、切换模型和其他操作都写回这台电脑。
+5. 这次允许大约 12 小时内有效。在电脑上停止监听之后，这次浏览器会话结束。
+
+这个码是局域网里的 http。微信打不开自签名证书，所以没有把浏览器塞进原来的加密端口。只接受内网地址。存着的密钥不会发到手机上。一个码先被 App 或浏览器用掉，另一个就要等新的码。
 
 ---
 
@@ -268,7 +298,7 @@ go test ./...
 cd frontend && npm install && npm run build
 ```
 
-CI 在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端。推送 `v*` 标签会跑 [release.yml](.github/workflows/release.yml)：
+CI 在 Windows 上跑 Go 测试，在 Ubuntu 上构建前端，并打出可安装的 Android APK。推送 `v*` 标签会跑 [release.yml](.github/workflows/release.yml)，把桌面包、CLI 和 `Yoyo-*-android.apk` 挂到 GitHub Release。iOS 和鸿蒙不在这条流水线里。
 
 ```bash
 git tag v0.6.0

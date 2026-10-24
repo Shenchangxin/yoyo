@@ -1,0 +1,20 @@
+{
+  "forms": [
+    {
+      "name": "YoyoCard",
+      "displayName": "Yoyo",
+      "description": "正在进行的回合",
+      "src": "./ets/widget/pages/YoyoCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "dark",
+      "isDefault": true,
+      "updateEnabled": false,
+      "defaultDimension": "2*2",
+      "supportDimensions": ["2*2", "2*4"]
+    }
+  ]
+}

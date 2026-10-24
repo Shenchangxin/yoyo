@@ -39,7 +39,7 @@ import { cn } from "../lib/utils";
 import { readLocalMap, writeLocalMap } from "../lib/local-map";
 import { useCopy } from "../lib/i18n";
 import { writeClipboard } from "../lib/clipboard";
-import { isMac } from "../lib/chrome";
+import { desktopWindow, isMac } from "../lib/chrome";
 import { displayTitle, displayWorkspace } from "../lib/display-title";
 import { canaryDirty, parseHarnessRefs, shortHash, stagingDirty } from "../lib/harness-refs";
 import type { Lab, Surface, Thread, VideoProject } from "../lib/protocol";
@@ -288,7 +288,7 @@ export function ThreadRail(props: {
         <Tooltip content={copy.rail.collapse} side="bottom">
           <button
             type="button"
-            className="no-drag ml-auto grid size-7 cursor-pointer place-items-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]"
+            className="rail-close no-drag ml-auto grid size-7 cursor-pointer place-items-center rounded-lg text-muted transition-[background-color,color,transform] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground active:scale-[0.96]"
             aria-label={copy.rail.collapse}
             onClick={props.onCollapse}
           >
@@ -296,7 +296,7 @@ export function ThreadRail(props: {
           </button>
         </Tooltip>
       </div>
-      {videoOn ? <VideoShellNav /> : settingsOn ? (
+      {videoOn ? <VideoShellNav onNavigate={() => { if (window.matchMedia("(max-width: 799px)").matches) props.onCollapse(); }} /> : settingsOn ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <SettingsRailNav />
         </div>
@@ -472,7 +472,7 @@ function SpaceHeader(props: {
         <Tooltip content={copy.rail.newInSpace}>
           <button
             type="button"
-            className="grid size-6 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-lift hover:text-foreground group-hover/space:opacity-100 focus-visible:opacity-100"
+            className="touch-reveal grid size-8 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-lift hover:text-foreground group-hover/space:opacity-100 focus-visible:opacity-100"
             aria-label={copy.rail.newInSpace}
             onClick={(e) => {
               e.stopPropagation();
@@ -675,7 +675,7 @@ function ThreadRow(props: {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="mt-1 mr-1 grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 hover:bg-lift hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:bg-lift data-[state=open]:text-foreground data-[state=open]:opacity-100 max-sm:opacity-100"
+            className="touch-reveal mt-1 mr-1 grid size-8 shrink-0 place-items-center rounded-md text-muted opacity-0 hover:bg-lift hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:bg-lift data-[state=open]:text-foreground data-[state=open]:opacity-100 max-sm:opacity-100"
             aria-label={copy.rail.more}
             onClick={(e) => e.stopPropagation()}
           >
@@ -686,7 +686,7 @@ function ThreadRow(props: {
       <DropdownMenuContent align="end" className="w-44" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuItem onSelect={startRename}>{copy.rail.rename}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onFork?.(t)}>{copy.rail.fork}</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => props.onPopOut?.(t)}>{copy.rail.popOut}</DropdownMenuItem>
+        {desktopWindow() ? <DropdownMenuItem onSelect={() => props.onPopOut?.(t)}>{copy.rail.popOut}</DropdownMenuItem> : null}
         <DropdownMenuItem onSelect={() => props.onOpenEditor?.(t)}>{copy.rail.openEditor}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onOpenTerminal?.(t)}>{copy.rail.openTerminal}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => props.onPin?.(t, !t.pinned)}>{t.pinned ? copy.rail.unpin : copy.rail.pin}</DropdownMenuItem>

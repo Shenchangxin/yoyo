@@ -408,6 +408,14 @@ h1, h2, h3 {
   app-region: drag;
 }
 
+/* The phone document is marked by the browser door. WeChat ignores an unset
+   drag region, so the value has to be no-drag. The desktop window is unmarked. */
+html[data-browser="1"] .drag {
+  --wails-draggable: no-drag !important;
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
+
 .no-drag {
   --wails-draggable: no-drag;
   -webkit-app-region: no-drag;
@@ -2035,6 +2043,9 @@ html[data-skin] .app-grain {
 @media (min-resolution: 2dppx) {
   .app-grain { display: block; }
 }
+@media (pointer: coarse) {
+  .app-grain { display: none !important; }
+}
 @media (prefers-reduced-transparency: reduce) {
   .app-grain { display: none !important; }
   html { --glass-blur: 0px !important; }
@@ -2238,6 +2249,22 @@ details[open] > .fold-summary::before {
 .studio-desk-chat {
   border-left: 1px solid var(--border);
   background: color-mix(in srgb, var(--lift) 42%, var(--background));
+}
+/* The canvas boot screen is fixed to the viewport. Inside Yoyo it has to stay
+   in the video pane, or the phone cannot leave while the workspace is loading. */
+[data-testid="video-board"] .yingce-island {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+[data-testid="video-board"] .yingce-island .full-screen-loader,
+[data-testid="video-board"] .yingce-island [data-full-screen-loader] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  z-index: 5;
 }
 .studio-desk-chat .empty-rise {
   padding-inline: 12px;
@@ -3234,13 +3261,16 @@ body .drama-agent-select-dropdown.yc-select-dropdown {
   }
   .studio-desk {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(168px, 36%);
   }
   .drama-desk-chat {
     display: flex;
     border-bottom: 1px solid var(--border);
   }
   .studio-desk-chat {
-    display: none;
+    display: flex;
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
   .finish-desk {
     grid-template-columns: minmax(0, 1fr);
@@ -4547,5 +4577,100 @@ html.companion .presence-engine svg {
   .companion-call:hover {
     transition: none;
     transform: translateX(-50%);
+  }
+}
+
+@media (max-width: 799px), (pointer: coarse) {
+  .touch-reveal {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 799px) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+  .chrome.drag {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  header.chrome.drag {
+    box-sizing: border-box;
+    height: calc(3rem + env(safe-area-inset-top));
+    min-height: calc(3rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
+  [data-sonner-toaster][data-y-position="top"] {
+    top: auto !important;
+    bottom: calc(6.5rem + env(safe-area-inset-bottom)) !important;
+  }
+  header.chrome .no-drag button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+  .rail-close {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .rail-dock {
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    scrollbar-width: none;
+  }
+  .rail-dock::-webkit-scrollbar {
+    display: none;
+  }
+  .dock-hit {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .starter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .starter-tile {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    border-radius: 14px;
+  }
+  .starter-tile.is-stack {
+    max-width: none;
+  }
+  .creation-handoff-grid {
+    grid-template-columns: 1fr;
+  }
+  .creation-home-handoff {
+    width: 100%;
+    padding-inline: 16px;
+  }
+  #main-stage {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  [data-testid="composer-column"] {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  [data-testid="idol-stage"],
+  [data-testid="pages-workspace"] {
+    flex-direction: column;
+  }
+  [data-testid="idol-stage"] > aside,
+  [data-testid="pages-workspace"] > aside {
+    width: 100%;
+    max-height: 38%;
+    flex-shrink: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  [data-testid="skills-workspace"] .process-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 }

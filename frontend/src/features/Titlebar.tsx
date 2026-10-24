@@ -197,7 +197,7 @@ function NoticeButton(props: {
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[22rem] p-0">
+      <DropdownMenuContent align="end" className="w-[min(22rem,calc(100vw-1.5rem))] p-0">
         <InboxMenu
           notices={props.notices}
           titleOf={props.threadTitleOf}
