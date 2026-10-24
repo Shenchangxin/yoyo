@@ -1,5 +1,6 @@
 import { asArray, asBool, bool, boolOr, errMessage, num, pick, str } from "./normalize";
 import { getLocale } from "./i18n";
+import { browserSurface } from "./chrome";
 import { snapUiScale } from "./scale";
 import type { AppConfig, Approval, Attachment, AuthMode, ChatProvider, ContextInventory, ContextObject, ContextUsage, FileHit, Health, Hunk, PackStatus, RunStatus, SessionTrace, SkillInfo, SpillBlob, Thread, ThreadChannel, TraceArtifact, TraceEvent, TraceStats } from "./protocol";
 import { defaultMaterials, type SkinInfo, type SkinResolved, type TokenMap } from "./skin/schema";
@@ -32,6 +33,33 @@ function nativeDesktop(): boolean {
   return !!(w.__YOYO_DESKTOP__ || w._wails?.environment?.OS);
 }
 
+// The phone page is this same bundle. It must call /api on the computer.
+// The generated Service talks to the desktop window only.
+function onBrowserDoor(): boolean {
+  if (typeof document !== "undefined" && document.documentElement.dataset.browser === "1") return true;
+  try {
+    return !!sessionStorage.getItem("yoyo_browser");
+  } catch {
+    return false;
+  }
+}
+
+function browserToken(): string {
+  try {
+    return sessionStorage.getItem("yoyo_browser") || "";
+  } catch {
+    return "";
+  }
+}
+
+function browserFetchInit(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const token = browserToken();
+  if (token && !headers.has("X-Yoyo-Session")) headers.set("X-Yoyo-Session", token);
+  return { ...init, credentials: "include", headers };
+}
+
 function namedDesktopService(): any {
   const name = (method: string) => `github.com/Shenchangxin/yoyo/internal/desktop.Service.${method}`;
   return new Proxy(
@@ -52,6 +80,7 @@ function namedDesktopService(): any {
 
 async function wailsService(): Promise<any | null> {
   if (import.meta.env.VITE_E2E) return null;
+  if (onBrowserDoor()) return null;
   const loaders = Object.values(boundService);
   if (loaders.length) {
     try {
@@ -73,13 +102,21 @@ function svcMethod(s: any, ...names: string[]): ((...args: any[]) => any) | null
   return null;
 }
 
+function timedSignal(ms: number): AbortSignal {
+  const timeout = (AbortSignal as { timeout?: (n: number) => AbortSignal }).timeout;
+  if (typeof timeout === "function") return timeout(ms);
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), ms);
+  return ctrl.signal;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
+    const next = browserFetchInit(init);
     res = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
-      ...init,
-      signal: init?.signal ?? AbortSignal.timeout(8000),
+      ...next,
+      signal: next.signal ?? timedSignal(8000),
     });
   } catch (e) {
     throw new Error(`${path}: ${errMessage(e)}`);
@@ -1687,7 +1724,9 @@ export async function popOutThread(id: string): Promise<void> {
 export async function pickFolder(): Promise<string> {
   const s = await wailsService();
   if (s?.PickFolder) return str(await s.PickFolder());
-  return "";
+  if (!browserSurface()) return "";
+  const typed = window.prompt(getLocale() === "zh-CN" ? "填写这台电脑上的文件夹路径" : "Folder path on this computer");
+  return (typed || "").trim();
 }
 
 export async function pickFiles(): Promise<string[]> {
@@ -1981,12 +2020,11 @@ export async function setSessionPage(id: string, pageId: string): Promise<any> {
 export async function voiceTranscribe(filename: string, audio: string): Promise<string> {
   const s = await wailsService();
   if (s?.VoiceTranscribe) return String(await s.VoiceTranscribe(filename, audio) || "");
-  const r = await fetch("/api/voice/transcribe", {
+  const r = await fetch("/api/voice/transcribe", browserFetchInit({
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename, audio }),
-    signal: AbortSignal.timeout(120000),
-  });
+    signal: timedSignal(120000),
+  }));
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, body, String(body.error || r.statusText));
   return String(body.text || "");
@@ -1998,12 +2036,11 @@ export async function voiceSpeak(text: string): Promise<{ audio: string; content
     const r = await s.VoiceSpeak(text);
     return { audio: String(r?.audio || ""), contentType: String(r?.content_type || r?.contentType || "audio/mpeg") };
   }
-  const r = await fetch("/api/voice/speak", {
+  const r = await fetch("/api/voice/speak", browserFetchInit({
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(120000),
-  });
+    signal: timedSignal(120000),
+  }));
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, body, String(body.error || r.statusText));
   return { audio: String(body.audio || ""), contentType: String(body.content_type || "audio/mpeg") };
@@ -2136,6 +2173,11 @@ export async function browserTakeover(path?: string): Promise<void> {
 export async function clipboardRead(): Promise<string> {
   const s = await wailsService();
   if (s?.ClipboardRead) return String(await s.ClipboardRead() || "");
+  try {
+    if (navigator.clipboard?.readText) return (await navigator.clipboard.readText()) || "";
+  } catch {
+    /* the page did not get clipboard permission */
+  }
   return "";
 }
 
@@ -2230,6 +2272,42 @@ export async function updateStatus(): Promise<any> {
   const s = await wailsService();
   if (s?.UpdateStatus) return s.UpdateStatus();
   return http("/api/update/status");
+}
+
+export async function remoteStatus(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemoteStatus) return s.RemoteStatus();
+  return http("/api/remote/status");
+}
+
+export async function remotePair(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemotePair) return s.RemotePair();
+  return http("/api/remote/pair", { method: "POST", body: "{}" });
+}
+
+export async function remoteApprove(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemoteApprove) return s.RemoteApprove(id);
+  return http("/api/remote/approve", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function remoteDeny(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemoteDeny) return s.RemoteDeny(id);
+  return http("/api/remote/deny", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function remoteRevoke(id: string): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemoteRevoke) return s.RemoteRevoke(id);
+  return http("/api/remote/revoke", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export async function remoteDisable(): Promise<any> {
+  const s = await wailsService();
+  if (s?.RemoteDisable) return s.RemoteDisable();
+  return http("/api/remote/disable", { method: "POST", body: "{}" });
 }
 
 export async function testProvider(id = ""): Promise<any> {
@@ -2330,12 +2408,11 @@ export async function videoCall(method: string, params: Record<string, any> = {}
 async function rpcJSON(method: string, params: Record<string, any> = {}, timeoutMs = 120000): Promise<any> {
   let res: Response;
   try {
-    res = await fetch("/api/rpc", {
+    res = await fetch("/api/rpc", browserFetchInit({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+      signal: timedSignal(timeoutMs),
+    }));
   } catch (e) {
     throw new Error(`${method}: ${errMessage(e)}`);
   }

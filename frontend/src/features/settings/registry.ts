@@ -75,6 +75,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "advanced-logs", tab: "advanced", titleKey: "advancedLogs", keywords: "logs diagnostics debug support" },
   { id: "advanced-journal", tab: "advanced", titleKey: "advancedJournal", keywords: "journal audit chain" },
   { id: "advanced-doctor", tab: "advanced", titleKey: "advancedDoctor", keywords: "doctor diagnostics health" },
+  { id: "advanced-handheld", tab: "advanced", titleKey: "advancedHandheld", keywords: "phone handheld qr pair remote mobile android ios harmony 手机 配对 扫码" },
 ];
 
 /** Tabs that existed before the current grouping. Deep links and menus still use them. */

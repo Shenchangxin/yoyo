@@ -35,6 +35,36 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		restRPC(a, w, r, "health", nil)
 	})
+	mux.HandleFunc("/api/remote/status", func(w http.ResponseWriter, r *http.Request) {
+		restRPC(a, w, r, "remote.status", nil)
+	})
+	mux.HandleFunc("/api/remote/pair", func(w http.ResponseWriter, r *http.Request) {
+		restRPC(a, w, r, "remote.pair.begin", nil)
+	})
+	mux.HandleFunc("/api/remote/approve", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		restRPC(a, w, r, "remote.pair.approve", body)
+	})
+	mux.HandleFunc("/api/remote/deny", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		restRPC(a, w, r, "remote.pair.deny", body)
+	})
+	mux.HandleFunc("/api/remote/revoke", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ID string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		restRPC(a, w, r, "remote.revoke", body)
+	})
+	mux.HandleFunc("/api/remote/disable", func(w http.ResponseWriter, r *http.Request) {
+		restRPC(a, w, r, "remote.disable", nil)
+	})
 	mux.HandleFunc("/api/running", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ids": a.RunningIDs(), "runs": a.RunningStatus()})
 	})

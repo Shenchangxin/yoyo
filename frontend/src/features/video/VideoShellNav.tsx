@@ -20,7 +20,8 @@ const LIBRARY: { id: Extract<VideoPane, "assets" | "skills" | "plugins" | "tasks
   { id: "tasks", icon: History },
 ];
 
-export function VideoShellNav() {
+export function VideoShellNav(props: { layout?: "rail" | "bar"; onNavigate?: () => void }) {
+  const bar = props.layout === "bar";
   const copy = useCopy();
   const reduced = useMotionReduced();
   const rail = motionTransition(reduced, DURATION_SHELL);
@@ -54,15 +55,19 @@ export function VideoShellNav() {
         data-testid={`video-shell-${item.id}`}
         aria-current={on ? "page" : undefined}
         className={cn(
-          "relative mb-px flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-[6px] text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
+          "relative flex items-center gap-2 text-left text-[13px] transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
+          bar
+            ? "h-8 shrink-0 rounded-full px-3"
+            : "mb-px min-h-8 w-full rounded-lg px-2.5 py-[6px]",
           on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/50 hover:text-foreground",
         )}
         onClick={() => {
           if (on && item.id === pane) return;
           openVideoPane(item.id);
+          props.onNavigate?.();
         }}
       >
-        {on ? (
+        {on && !bar ? (
           <motion.span
             layoutId="video-shell-rail"
             className="absolute left-1 top-2 bottom-2 w-[2px] rounded-full bg-accent"
@@ -73,6 +78,16 @@ export function VideoShellNav() {
         <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
         <span className="truncate">{labels[item.id]}</span>
       </button>
+    );
+  }
+
+  if (bar) {
+    return (
+      <nav aria-label={copy.video.shell} data-testid="video-shell-nav" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 py-2 [scrollbar-width:none]">
+        {PRIMARY.map(row)}
+        <span aria-hidden className="mx-1 w-px shrink-0 self-stretch bg-border" />
+        {LIBRARY.map(row)}
+      </nav>
     );
   }
 

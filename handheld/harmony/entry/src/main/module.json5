@@ -1,0 +1,22 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "Yoyo 服务卡片。回合在电脑上跑，卡片只显示并打开客户端。",
+    "extensionAbilities": [
+      {
+        "name": "YoyoFormAbility",
+        "srcEntry": "./ets/formability/YoyoFormAbility.ets",
+        "label": "Yoyo",
+        "description": "正在进行的回合",
+        "type": "form",
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -76,23 +76,26 @@ export function SettingsSidebar(props: {
     });
   }, [q, copy]);
 
-  if (props.compact) {
+  if (props.compact && props.variant !== "rail") {
     return (
-      <nav className="flex h-full min-h-0 w-[60px] shrink-0 flex-col gap-0.5 overflow-auto px-2 py-3" data-skin-pane aria-label={copy.settings.title}>
-        {SETTINGS_TABS.map((t, i) => {
-          const prev = SETTINGS_TABS[i - 1];
+      <nav className="flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-3 [scrollbar-width:none]" aria-label={copy.settings.title}>
+        {SETTINGS_TABS.map((t) => {
+          const Icon = iconFor(t.icon);
+          const on = props.tab === t.key;
           return (
-            <div key={t.key} className="contents">
-              {prev && prev.group !== t.group ? <span aria-hidden className="my-1.5 h-px bg-border" /> : null}
-              <TabButton
-                tab={t.key}
-                icon={t.icon}
-                label={copy.settings.tabs[t.key]}
-                active={props.tab === t.key}
-                compact
-                onClick={() => props.onTab(t.key)}
-              />
-            </div>
+            <button
+              key={t.key}
+              type="button"
+              aria-current={on ? "page" : undefined}
+              onClick={() => props.onTab(t.key)}
+              className={cn(
+                "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium",
+                on ? "bg-lift text-foreground" : "text-muted",
+              )}
+            >
+              <Icon className="size-3.5" aria-hidden />
+              {copy.settings.tabs[t.key]}
+            </button>
           );
         })}
       </nav>

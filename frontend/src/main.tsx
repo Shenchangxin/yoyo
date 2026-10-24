@@ -9,6 +9,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { isCompanionSurface } from "./lib/popout";
 import { applyOsClass } from "./lib/chrome";
 import { installInputGuards } from "./lib/input-guard";
+import { useMedia } from "./lib/media";
 import "./styles.css";
 
 installFrontendLogBridge();
@@ -17,10 +18,12 @@ installInputGuards();
 
 function ThemedToaster() {
   const { resolved } = useTheme();
+  const narrow = useMedia("(max-width: 799px)");
   return (
     <Toaster
       theme={resolved}
-      position="bottom-right"
+      position={narrow ? "top-center" : "bottom-right"}
+      offset={narrow ? 72 : 24}
       closeButton
       toastOptions={{
         classNames: {

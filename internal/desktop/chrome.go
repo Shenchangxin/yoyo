@@ -158,9 +158,24 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 	if svc.App != nil {
 		ch, _ := svc.App.Hub.Subscribe("*")
 		go pumpDesktopEvents(gui, ch, dispatch)
+		stateCh, unsubState := svc.App.SubscribeState()
+		go func() {
+			defer unsubState()
+			for change := range stateCh {
+				gui.Event.Emit("yoyo:state", map[string]any{
+					"epoch":  change.Epoch,
+					"topic":  change.Topic,
+					"object": change.Object,
+				})
+			}
+		}()
 	} else if svc.RPC != nil {
 		go func() {
 			for msg := range svc.RPC.Notify {
+				if msg.Method == "state.changed" {
+					gui.Event.Emit("yoyo:state", msg.Params)
+					continue
+				}
 				if msg.Method != "item.event" {
 					continue
 				}

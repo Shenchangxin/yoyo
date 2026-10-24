@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/client";
 import { bannerError } from "../../lib/error";
 import { noticeFromItem } from "../../lib/notices";
-import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, foldTurnErrors, lastUserTurns, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
+import { BROWSE_TRANSCRIPT_TURNS, HOT_TRANSCRIPT_TURNS, catchUpSession, dropTurnErrors, eventText, foldLiveIntoSeed, foldTurnErrors, lastUserTurns, replayEvents, subscribeItems, subscribeSession, subscribeSessions, subscribeState, subscribeStopped, unwrapEvent, userTurnCount, withLiveTail } from "../../lib/stream";
 import { ConversationFold } from "../../lib/conversation-fold";
 import { deriveTurnStatus } from "../../lib/turn-status";
 import { pendingOutline, neighborTurn, itemMatchesTurn, itemTurnKey, outlineStatus, outlineTurnKey, turnJumpAliases, type OutlineTurn } from "../../lib/turn-outline";
@@ -485,14 +485,14 @@ export function useWorkstation() {
   const refresh = useCallback(async () => {
     try {
       const [h, c, list, hs, pl] = await withTimeout(Promise.all([
-        api.health(),
-        api.getConfig(),
+        api.health().catch(() => null),
+        api.getConfig().catch(() => null),
         api.listSessions(),
         api.harness().catch(() => ({})),
         api.plugins().catch(() => ({})),
       ]), 8000, "boot");
-      setHealth(h);
-      setSavedCfg(c);
+      if (h) setHealth(h);
+      if (c) setSavedCfg(c);
       setThreads(list);
       setHarness(hs);
       setPlugins(pl);
@@ -555,6 +555,7 @@ export function useWorkstation() {
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { void loadModelCatalog(); }, []);
   useEffect(() => subscribeSessions(refresh), [refresh]);
+  useEffect(() => subscribeState(() => { void refresh(); }), [refresh]);
   useEffect(() => {
     if (active) useUI.getState().rememberThread(active);
   }, [active?.id]);

@@ -18,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 	"github.com/Shenchangxin/yoyo/internal/eval"
+	"github.com/Shenchangxin/yoyo/internal/remote"
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 	"github.com/Shenchangxin/yoyo/internal/update"
 	"github.com/Shenchangxin/yoyo/internal/version"
@@ -836,15 +837,13 @@ func serveCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			static := frontendStatic()
+			if node, err := remote.Bind(a); err == nil && node != nil {
+				node.UseStatic(static)
+				defer node.Close()
+			}
 			if stdio {
 				return api.ServeRPC(cmd.Context(), a, os.Stdin, os.Stdout)
-			}
-			var static http.Handler
-			for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
-				if st, err := os.Stat(dir); err == nil && st.IsDir() {
-					static = http.FileServer(http.Dir(dir))
-					break
-				}
 			}
 			fmt.Println("listening", addr, "active", a.ActiveHash())
 			return http.ListenAndServe(addr, api.Handler(a, static))
@@ -866,15 +865,13 @@ func daemonCmd() *cobra.Command {
 				return err
 			}
 			defer a.Close()
+			static := frontendStatic()
+			if node, err := remote.Bind(a); err == nil && node != nil {
+				node.UseStatic(static)
+				defer node.Close()
+			}
 			fmt.Println("yoyo daemon", addr, "active", a.ActiveHash())
 			fmt.Println("honest always-on: this machine must stay awake; sleep skips scheduled jobs")
-			var static http.Handler
-			for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
-				if st, err := os.Stat(dir); err == nil && st.IsDir() {
-					static = http.FileServer(http.Dir(dir))
-					break
-				}
-			}
 			return http.ListenAndServe(addr, api.Handler(a, static))
 		},
 	}
@@ -888,4 +885,13 @@ func mustExe() string {
 		return "."
 	}
 	return e
+}
+
+func frontendStatic() http.Handler {
+	for _, dir := range []string{"frontend/dist", filepath.Join(filepath.Dir(mustExe()), "frontend", "dist")} {
+		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+			return http.FileServer(http.Dir(dir))
+		}
+	}
+	return nil
 }

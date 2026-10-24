@@ -372,6 +372,56 @@
   }
 }
 
+@media (max-width: 799px) {
+  .sc-row {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px 8px;
+  }
+  .sc-tools {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sc-tools::-webkit-scrollbar {
+    display: none;
+  }
+  .sc-modes {
+    flex: none;
+    gap: 2px;
+  }
+  .sc-trailing {
+    flex: 0 0 auto;
+    margin-left: 0;
+    gap: 6px;
+  }
+  .sc-add {
+    width: 36px;
+    height: 36px;
+  }
+  .sc-chip-btn {
+    height: 36px;
+    max-width: 7.5rem;
+  }
+  .sc-primary {
+    width: 40px;
+    height: 40px;
+    transform: none;
+  }
+  .sc-hero-ws {
+    margin-bottom: 8px;
+    padding-left: 4px;
+  }
+  .sc-dock {
+    gap: 8px;
+    justify-content: flex-end;
+    padding-inline: 8px;
+  }
+}
+
 .sc-add {
   display: grid;
   place-items: center;
@@ -1249,4 +1299,50 @@
 
 .sc-width[data-side="right"] {
   right: 0;
+}
+
+@media (max-width: 799px) {
+  .sc-row {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 4px 6px 8px;
+  }
+  .sc-tools {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 6px;
+  }
+  .sc-tools::-webkit-scrollbar {
+    display: none;
+  }
+  .sc-modes {
+    gap: 4px;
+  }
+  .sc-trailing {
+    flex: none;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .sc-trailing .sc-chip-btn {
+    max-width: 7.5rem;
+  }
+  .sc-add {
+    width: 40px;
+    height: 40px;
+  }
+  .sc-chip-btn {
+    height: 36px;
+  }
+  .sc-primary {
+    width: 40px;
+    height: 40px;
+    transform: none;
+  }
 }

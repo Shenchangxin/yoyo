@@ -41,3 +41,36 @@ jobs:
         run: |
           npm install
           npm run build
+
+  handheld:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.29.3"
+          channel: stable
+          cache: true
+      - name: Analyze, test, and build the Android app
+        working-directory: handheld
+        run: |
+          set -euo pipefail
+          flutter config --no-analytics
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build apk --release
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk ../dist/Yoyo-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handheld-android
+          path: dist/Yoyo-android.apk
+          if-no-files-found: error
+          retention-days: 14

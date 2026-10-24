@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 import { useMedia } from "../../lib/media";
 import type { SettingsTab } from "../../lib/protocol";
@@ -65,7 +66,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden">
+    <div className={cn("flex h-full min-h-0 w-full min-w-0 overflow-hidden", compact && !navInRail && "flex-col")}>
       {navInRail ? null : (
         <SettingsSidebar
           tab={tab}
@@ -83,7 +84,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
           className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"
           style={{ scrollPaddingTop: "1.25rem" }}
         >
-          <div className="box-border mx-0 min-h-full w-full max-w-none px-6 py-5">
+          <div className="box-border mx-0 min-h-full w-full max-w-none px-4 py-5 sm:px-6">
             <h1 className="sr-only">{copy.settings.tabs[tab]}</h1>
             {tab === "general" ? <GeneralSettings host={host} /> : null}
             {tab === "appearance" ? <AppearanceSettings host={host} /> : null}

@@ -163,7 +163,7 @@ function HarnessOverview(props: {
         ) : (
           <div className="mb-6 overflow-hidden rounded-md bg-sidebar/40" data-testid="harness-versions">
             {pointers.map((c, i) => (
-              <div key={c.name + c.hash} className={cn("grid grid-cols-[7.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5", i > 0 && "border-t border-border/70")}>
+              <div key={c.name + c.hash} className={cn("grid grid-cols-1 items-start gap-1.5 px-4 py-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3", i > 0 && "border-t border-border/70")}>
                 <div className="text-[13px] font-medium">{c.name}</div>
                 <div className="min-w-0 text-[12px] text-muted">
                   {lab ? <HashLine hash={c.hash} compact /> : <span className="truncate">{c.hint}</span>}

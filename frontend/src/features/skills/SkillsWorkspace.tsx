@@ -226,7 +226,7 @@ export function SkillsWorkspace(props: {
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <p className="mb-4 max-w-[46ch] text-[13px] leading-[1.55] text-pretty text-muted">{copy.skills.hint}</p>
-          <div className="mb-5 flex h-10 items-stretch gap-3">
+          <div className="mb-5 flex flex-wrap items-center gap-3">
             <div className="process-tabs flex h-10 items-stretch gap-0.5" role="tablist" aria-label={copy.skills.title}>
               {(["installed", "market", "packs"] as Pane[]).map((id) => (
                 <button
@@ -235,7 +235,7 @@ export function SkillsWorkspace(props: {
                   role="tab"
                   aria-selected={pane === id}
                   className={cn(
-                    "relative flex h-full cursor-pointer items-center px-2.5 text-[13px] font-medium transition-colors",
+                    "relative flex h-10 cursor-pointer items-center px-2.5 text-[13px] font-medium transition-colors",
                     pane === id ? "text-foreground" : "text-muted hover:text-foreground",
                   )}
                   onClick={() => selectPane(id)}

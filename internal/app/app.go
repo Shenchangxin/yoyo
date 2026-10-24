@@ -184,6 +184,10 @@ type App struct {
 	lastEval   eval.RunReport
 	evolveMu   sync.Mutex
 	lastEvolve evolve.CycleResult
+
+	stateMu    sync.Mutex
+	stateEpoch int64
+	stateSubs  map[chan StateChange]struct{}
 }
 
 func Open(root, bundledEvals string) (*App, error) {
@@ -607,6 +611,7 @@ func (a *App) SaveConfig() error {
 	}
 	a.writeKeymapFile()
 	a.attachLogger()
+	a.Touch("config", "")
 	if a.Observe != nil {
 		a.Observe.SetEndpoint(a.otelEndpoint())
 	}
