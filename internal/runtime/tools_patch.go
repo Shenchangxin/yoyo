@@ -115,6 +115,7 @@ func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 		return ToolResult{Err: err}
 	}
+	t.absorbPathRules(rel)
 	return ToolResult{Content: "updated " + rel, FileChange: fileChangeOf(rel, raw, []byte(next), false)}
 }
 

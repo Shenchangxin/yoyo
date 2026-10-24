@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
 func WorkspaceContextDir(workspace, sessionID string) string {
@@ -91,6 +93,54 @@ func WriteMCPCatalog(workspace string, extras map[string]ExtraTool) {
 		_ = os.WriteFile(filepath.Join(dir, sanitizeID(server), "INDEX.md"), []byte(idx.String()), 0o644)
 	}
 	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(root.String()), 0o644)
+}
+
+// WriteHostToolIndex lists deferred host and extra tools by name so the
+// tools array does not carry their schemas. The text is stable for a given
+// deferred set; tool_search description does not embed the names.
+func WriteHostToolIndex(workspace string, names []string) {
+	if workspace == "" || len(names) == 0 {
+		return
+	}
+	dir := filepath.Join(workspace, ".yoyo", "tools")
+	_ = os.MkdirAll(dir, 0o755)
+	specs := map[string]string{}
+	for _, s := range tool.HostSpecs() {
+		specs[s.Name] = firstSentence(s.Description)
+	}
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	var b strings.Builder
+	b.WriteString("# Deferred tools\n\n")
+	b.WriteString("These tools are not in the tools array yet. tool_search with the name returns the schema. It joins the tools array at the next checkpoint.\n\n")
+	seen := map[string]bool{}
+	for _, name := range sorted {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		desc := specs[name]
+		if desc == "" {
+			desc = "extra tool"
+		}
+		b.WriteString("- ")
+		b.WriteString(name)
+		b.WriteString(": ")
+		b.WriteString(desc)
+		b.WriteByte('\n')
+	}
+	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(b.String()), 0o644)
+}
+
+func firstSentence(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexAny(s, ".。"); i >= 0 && i < 180 {
+		return s[:i+1]
+	}
+	return capRunes(s, 160)
 }
 
 func mcpServerOf(name string) string {

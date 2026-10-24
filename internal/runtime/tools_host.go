@@ -14,7 +14,11 @@ var hostFns = map[string]hostFn{}
 
 func init() {
 	hostFns["read_file"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		return t.readFile(str(args["path"]), intArg(args["offset"]), intArg(args["limit"]))
+		res := t.readFile(str(args["path"]), intArg(args["offset"]), intArg(args["limit"]))
+		if res.Err == nil {
+			t.absorbPathRules(str(args["path"]))
+		}
+		return res
 	}
 	hostFns["write_file"] = func(t *WorkspaceTools, args map[string]any, raw string) ToolResult {
 		path := str(args["path"])
@@ -32,22 +36,31 @@ func init() {
 		if _, ok := args["content"]; !ok {
 			return ToolResult{Err: fmt.Errorf("refusing write_file %s: argument \"content\" is missing. Send the full body; for a long file write it in parts with mode=\"append\"", path)}
 		}
+		var res ToolResult
 		switch str(args["mode"]) {
 		case "", "overwrite":
-			return t.writeFile(path, content)
+			res = t.writeFile(path, content)
 		case "create":
-			return t.createFile(path, content)
+			res = t.createFile(path, content)
 		case "append":
-			return t.appendFile(path, content)
+			res = t.appendFile(path, content)
 		default:
 			return ToolResult{Err: fmt.Errorf("write_file mode %q is not supported; use overwrite, create, or append", str(args["mode"]))}
 		}
+		if res.Err == nil {
+			t.absorbPathRules(path)
+		}
+		return res
 	}
 	hostFns["str_replace"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		if err := checkEditArgs("str_replace", args, "path", "old_str", "new_str"); err != nil {
 			return ToolResult{Err: err}
 		}
-		return t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
+		res := t.replace(str(args["path"]), str(args["old_str"]), str(args["new_str"]), boolArg(args["replace_all"]))
+		if res.Err == nil {
+			t.absorbPathRules(str(args["path"]))
+		}
+		return res
 	}
 	hostFns["list_dir"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
 		p := str(args["path"])
@@ -188,9 +201,11 @@ func init() {
 		return t.scheduleCancel(str(args["id"]))
 	}
 	hostFns["browser_open"] = func(t *WorkspaceTools, args map[string]any, _ string) ToolResult {
-		raw := str(args["url"])
+		// A workspace path is the local page. A filled url must not override
+		// it — models often send both, and url=http://localhost/ is not a server.
+		raw := strings.TrimSpace(str(args["path"]))
 		if raw == "" {
-			raw = str(args["path"])
+			raw = strings.TrimSpace(str(args["url"]))
 		}
 		if lane := str(args["lane"]); lane != "" {
 			raw = strings.TrimSpace(raw + " lane=" + lane)

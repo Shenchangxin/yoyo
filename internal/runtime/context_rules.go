@@ -46,7 +46,7 @@ func WriteRulesIndex(root string) {
 	_ = os.MkdirAll(dir, 0o755)
 	var b strings.Builder
 	b.WriteString("# Rules index (DCD)\n\n")
-	b.WriteString("Pins contain the first-hit YOYO.md/AGENTS.md/CLAUDE.md, then stacked AGENTS.md from git root to cwd. Nested files are listed here — load with read_file when the path matches the directory that contains the rule.\n\n")
+	b.WriteString("Pins contain the first-hit YOYO.md/AGENTS.md/CLAUDE.md only. Nested files are listed here and are injected when a read or edit touches their directory. You can also read_file them.\n\n")
 	seen := map[string]bool{}
 	add := func(rel string) {
 		rel = filepath.ToSlash(rel)
@@ -156,10 +156,101 @@ func findGitRoot(start string) string {
 	}
 }
 
+const pathRulesCapRunes = 2_000
+
+type ruleBlock struct {
+	id   string
+	text string
+}
+
+// absorbPathRules remembers nested rule files that apply to rel.
+// The workspace-root pin is not repeated.
+func (t *WorkspaceTools) absorbPathRules(rel string) {
+	if t == nil || t.Workspace == "" {
+		return
+	}
+	rel = filepath.ToSlash(strings.TrimSpace(rel))
+	if rel == "" || rel == "." {
+		return
+	}
+	blocks := nestedRuleBlocks(t.Workspace, rel)
+	if len(blocks) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.pathRuleSeen == nil {
+		t.pathRuleSeen = map[string]bool{}
+	}
+	var b strings.Builder
+	if t.pathRules != "" {
+		b.WriteString(t.pathRules)
+	}
+	for _, blk := range blocks {
+		if t.pathRuleSeen[blk.id] {
+			continue
+		}
+		if utf8.RuneCountInString(b.String()) >= pathRulesCapRunes {
+			break
+		}
+		t.pathRuleSeen[blk.id] = true
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(blk.text)
+	}
+	t.pathRules = capRunes(b.String(), pathRulesCapRunes)
+}
+
+func (t *WorkspaceTools) PathRules() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.pathRules
+}
+
+func nestedRuleBlocks(root, rel string) []ruleBlock {
+	_, pinned := LoadWorkspaceRules(root, 1)
+	skip := map[string]bool{}
+	if pinned != "" {
+		skip[filepath.ToSlash(pinned)] = true
+	}
+	dir := filepath.ToSlash(filepath.Dir(rel))
+	var out []ruleBlock
+	for dir != "." && dir != "" && dir != "/" {
+		for _, name := range []string{"AGENTS.md", "CLAUDE.md", "YOYO.md"} {
+			relRule := dir + "/" + name
+			if skip[relRule] {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relRule)))
+			if err != nil {
+				continue
+			}
+			text := strings.TrimSpace(string(raw))
+			if text == "" {
+				continue
+			}
+			out = append(out, ruleBlock{
+				id:   relRule,
+				text: "## Path rule (" + relRule + ")\n" + capRunes(text, 800),
+			})
+		}
+		parent := filepath.ToSlash(filepath.Dir(dir))
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return out
+}
+
 func capRunes(s string, max int) string {
 	if max <= 0 || utf8.RuneCountInString(s) <= max {
 		return s
 	}
 	r := []rune(s)
-	return string(r[:max]) + "\n…[YOYO.md truncated]"
+	return string(r[:max]) + "…"
 }

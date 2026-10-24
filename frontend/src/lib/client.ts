@@ -266,7 +266,13 @@ export function approvalOf(v: any): Approval {
   };
 }
 
+function hasOwnNum(v: any, ...keys: string[]): boolean {
+  if (!v || typeof v !== "object") return false;
+  return keys.some((k) => v[k] != null && v[k] !== "");
+}
+
 export function contextOf(v: any): ContextUsage {
+  const slicesKnown = hasOwnNum(v, "chat_tokens", "ChatTokens", "identity_tokens", "IdentityTokens");
   return {
     tokens: num(pick(v, "tokens", "Tokens")),
     budget: num(pick(v, "budget", "Budget")),
@@ -274,6 +280,15 @@ export function contextOf(v: any): ContextUsage {
     prefixTokens: num(pick(v, "prefix_tokens", "PrefixTokens")),
     dynamicTokens: num(pick(v, "dynamic_tokens", "DynamicTokens")),
     schemaTokens: num(pick(v, "schema_tokens", "SchemaTokens")),
+    identityTokens: num(pick(v, "identity_tokens", "IdentityTokens")),
+    rulesTokens: num(pick(v, "rules_tokens", "RulesTokens")),
+    catalogTokens: num(pick(v, "catalog_tokens", "CatalogTokens")),
+    skillBodyTokens: num(pick(v, "skill_body_tokens", "SkillBodyTokens")),
+    memoryTokens: num(pick(v, "memory_tokens", "MemoryTokens")),
+    todayTokens: num(pick(v, "today_tokens", "TodayTokens")),
+    notesTokens: num(pick(v, "notes_tokens", "NotesTokens")),
+    chatTokens: slicesKnown ? num(pick(v, "chat_tokens", "ChatTokens")) : undefined,
+    slicesKnown,
     providerPrompt: num(pick(v, "provider_prompt", "ProviderPrompt")),
     cachedTokens: num(pick(v, "cached_tokens", "CachedTokens")),
     cacheReported: !!pick(v, "cache_reported", "CacheReported"),

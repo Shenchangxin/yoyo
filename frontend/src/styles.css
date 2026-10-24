@@ -70,7 +70,13 @@ html.dark {
   --shadow-composer: 0 12px 36px color-mix(in srgb, black 28%, transparent);
   --shadow-popover: 0 18px 48px color-mix(in srgb, black 42%, transparent), 0 0 0 1px color-mix(in srgb, white 6%, transparent);
   --ctx-system: color-mix(in srgb, var(--foreground) 38%, #9a958c);
+  --ctx-rules: color-mix(in srgb, var(--foreground) 62%, #c4a574);
+  --ctx-catalog: color-mix(in srgb, var(--accent) 45%, #9a958c);
+  --ctx-skills: color-mix(in srgb, var(--accent) 78%, white);
   --ctx-tools: color-mix(in srgb, var(--accent) 72%, var(--muted));
+  --ctx-memory: #c2663d;
+  --ctx-today: var(--success);
+  --ctx-notes: var(--warning);
   --ctx-dynamic: var(--warning);
   --ctx-chat: var(--accent);
   --ctx-free: color-mix(in srgb, var(--muted) 18%, transparent);
@@ -140,7 +146,13 @@ html.light[data-palette="neutral"] {
   --shadow-composer: 0 12px 36px color-mix(in srgb, #1c1c1a 7%, transparent);
   --shadow-popover: 0 18px 44px color-mix(in srgb, #1c1c1a 10%, transparent), 0 0 0 1px color-mix(in srgb, #1c1c1a 5%, transparent);
   --ctx-system: color-mix(in srgb, var(--foreground) 22%, #9a958c);
+  --ctx-rules: color-mix(in srgb, var(--foreground) 40%, #8a6a3b);
+  --ctx-catalog: color-mix(in srgb, var(--accent) 35%, #6d6a62);
+  --ctx-skills: color-mix(in srgb, var(--accent) 70%, #1c1c1a);
   --ctx-tools: color-mix(in srgb, var(--accent) 55%, var(--muted));
+  --ctx-memory: #9a4e2e;
+  --ctx-today: var(--success);
+  --ctx-notes: var(--warning);
   --ctx-dynamic: var(--warning);
   --ctx-chat: var(--accent);
   --ctx-free: color-mix(in srgb, var(--muted) 16%, transparent);

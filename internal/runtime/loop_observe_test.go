@@ -157,6 +157,95 @@ func TestInstrumentNudgeOnHarnessEdit(t *testing.T) {
 	}
 }
 
+func TestIdenticalFailSwitchesInsteadOfStopping(t *testing.T) {
+	script := `{"command":"node --check pelican-bike/game.js; node pelican-bike/qa/headless-verify.cjs"}`
+	calls := []ToolCall{{Name: "shell", Arguments: script}}
+	same := "FAIL  jump-arc  起跳后离地=false\nFAIL  jump-land  存活期间重新落地=false\n"
+	changed := "FAIL  jump-arc  起跳后离地=true\nFAIL  jump-land  存活期间重新落地=false\n"
+	var w checkWatch
+	req := RunRequest{User: "继续修跳跃", SoftHorizon: true}
+	w.note(calls, []Message{{Content: same}})
+	w.note(calls, []Message{{Content: same}})
+	nudge := observationNudge(req, &w, nil)
+	if !strings.Contains(nudge, "不要再执行同一条命令") || strings.Contains(nudge, "重跑同一条检查") {
+		t.Fatalf("nudge %q", nudge)
+	}
+	got, refusal := w.repeatBlock()
+	if got != "pelican-bike/qa/headless-verify.cjs" || refusal == "" {
+		t.Fatalf("block %q %q", got, refusal)
+	}
+	for i := 0; i < 6; i++ {
+		w.note([]ToolCall{{Name: "str_replace", Arguments: `{"path":"pelican-bike/game.js"}`}}, []Message{{Content: same}})
+	}
+	if w.stuck() {
+		t.Fatal("editing the product and seeing the same FAIL must not stop the turn")
+	}
+	w.note([]ToolCall{{Name: "str_replace", Arguments: `{"path":"pelican-bike/game.js"}`}}, nil)
+	if s, _ := w.repeatBlock(); s != "" {
+		t.Fatalf("product edit must allow one rerun, still blocking %q", s)
+	}
+	w.note(calls, []Message{{Content: changed}})
+	if w.hits != 1 || w.identical || w.warned {
+		t.Fatalf("changed detail must reset: %+v", w)
+	}
+}
+
+func TestSeedCheckWatchBlocksContinuedScript(t *testing.T) {
+	calls := []ToolCall{{Name: "shell", Arguments: `{"command":"node pelican-bike/qa/headless-verify.cjs"}`}}
+	fail := "FAIL  jump-arc  起跳后离地=false\n"
+	hist := []Message{
+		{Role: RoleAssistant, ToolCalls: calls},
+		{Role: RoleTool, Name: "shell", Content: fail},
+		{Role: RoleAssistant, ToolCalls: calls},
+		{Role: RoleTool, Name: "shell", Content: fail},
+	}
+	var w checkWatch
+	req := RunRequest{User: "继续", SoftHorizon: true}
+	seedCheckWatch(req, &w, hist)
+	script, refusal := w.repeatBlock()
+	if script != "pelican-bike/qa/headless-verify.cjs" || refusal == "" {
+		t.Fatalf("seed block %q %q %+v", script, refusal, w)
+	}
+	if w.stuck() {
+		t.Fatal("a continued turn must not open on the stop card")
+	}
+	tools := &WorkspaceTools{}
+	tools.setRepeatBlock(script, refusal)
+	res := tools.shell(`node --check pelican-bike/game.js; node pelican-bike/qa/headless-verify.cjs`, 5)
+	if res.Err != nil || !strings.Contains(res.Content, "不要再执行同一条命令") {
+		t.Fatalf("%+v", res)
+	}
+	if _, ok := tools.repeatBlocked("node --check pelican-bike/game.js"); ok {
+		t.Fatal("a different command must stay runnable")
+	}
+	tools.setRepeatBlock("browser_verify", "switch")
+	if _, ok := tools.repeatBlocked("node pelican-bike/qa/headless-verify.cjs"); ok {
+		t.Fatal("shell must stay runnable when the repeated check was browser_verify")
+	}
+	vres := tools.browserVerify(nil)
+	if vres.Err != nil || !strings.Contains(vres.Content, "switch") {
+		t.Fatalf("verify %+v", vres)
+	}
+}
+
+func TestBypassReprintStillStops(t *testing.T) {
+	var w checkWatch
+	req := RunRequest{User: "继续", SoftHorizon: true}
+	fail := []Message{{Content: verifyBanner}}
+	reprint := []ToolCall{{Name: "shell", Arguments: `{"command":"node -e \"print\""}`}}
+	w.note(reprint, fail)
+	w.note(reprint, fail)
+	if observationNudge(req, &w, nil) == "" || w.stuck() {
+		t.Fatal("two identical reprints warn and do not stop")
+	}
+	for w.bypassHits < checkFailBackstopHits {
+		w.note(reprint, fail)
+	}
+	if !w.stuck() {
+		t.Fatalf("bypass %d warned %v", w.bypassHits, w.warned)
+	}
+}
+
 func TestIsHarnessAndProductPath(t *testing.T) {
 	if !isHarnessPath(`C:\game\qa\verify.mjs`) || !isHarnessPath("qa/core-loop-check.mjs") {
 		t.Fatal("qa scripts are harness")

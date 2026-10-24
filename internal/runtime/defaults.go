@@ -7,11 +7,14 @@ const (
 	ChatMaxToolMessages = 160
 	ChatMicroKeep       = 32
 	ChatCompactionKeep  = 96
-	ChatRulesTokens     = 8_000
-	ChatKeepTokens      = 16_000
-	ChatContextBuffer   = 20_000
-	ChatTaskMaxTurns    = 40
-	ChatTaskMaxTools    = 60
+	// ChatRulesTokens is the always-on rules cap in runes. Nested
+	// AGENTS.md / CLAUDE.md stay out of this prefix and load when a
+	// matching path is read. 1.6k runes is about 1.2k tokens.
+	ChatRulesTokens   = 1_600
+	ChatKeepTokens    = 16_000
+	ChatContextBuffer = 20_000
+	ChatTaskMaxTurns  = 40
+	ChatTaskMaxTools  = 60
 	// ChatSoftGuardTurns is the last-resort desktop ceiling. SoftHorizon
 	// ignores Harbor MaxTurns while work is progressing; identical-failure
 	// and unchanged-observation stalls stop earlier. A nine-step pipeline
@@ -56,9 +59,9 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	if loop.CompactionKeep < ChatCompactionKeep {
 		loop.CompactionKeep = ChatCompactionKeep
 	}
-	if loop.RulesTokens < ChatRulesTokens {
-		loop.RulesTokens = ChatRulesTokens
-	}
+	// Chat rules are a ceiling. A saved harness that still carries the old
+	// 8k/32k floor must not put that file back into the prefix.
+	loop.RulesTokens = ChatRulesTokens
 	if loop.KeepTokens < ChatKeepTokens {
 		loop.KeepTokens = ChatKeepTokens
 	}
@@ -71,7 +74,8 @@ func ApplyChatHorizon(loop artifact.LoopPreset) artifact.LoopPreset {
 	if loop.TaskMaxToolMessages < ChatTaskMaxTools {
 		loop.TaskMaxToolMessages = ChatTaskMaxTools
 	}
-	loop.StackAgentsMD = true
+	// Nested AGENTS.md is discovered on read, not stacked into the prefix.
+	loop.StackAgentsMD = false
 	// Desktop checkpoints ask the model for a structured summary. Harbor and
 	// subagents set this back to false so eval stays deterministic.
 	loop.AllowLLMCompact = true

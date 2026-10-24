@@ -22,59 +22,95 @@ type ContextKernel struct {
 	identity string
 	pins     string
 	prefix   string
-	spill    *Spill
-	notes    string
-	lastHash string
-	prevHot  string
-	dyn      string
+	// seriesPrefix is the system text actually placed at the head. A later
+	// prompt change is appended after history so this head stays byte-stable.
+	seriesPrefix string
+	bill         contextBill
+	spill        *Spill
+	notes        string
+	lastHash     string
+	prevHot      string
+	dyn          string
 }
 
 func newContextKernel(req *RunRequest) *ContextKernel {
-	loop := req.Loop
-	rules, src := LoadWorkspaceRules(req.Workspace, loop.RulesTokens)
-	if loop.StackAgentsMD {
-		if stacked := LoadStackedAgents(req.Workspace, 32*1024); stacked != "" {
-			rules = stacked
-			src = "AGENTS.md"
-		}
+	spill := spillOf(*req)
+	notes := capRunes(ReadNotes(spill), 2000)
+	suggested := ""
+	if req.Tools != nil {
+		suggested = FormatSkillHints(req.Tools.SkillHints)
 	}
-	identity := AssembleIdentity(loop, req.Fragments)
-	if env := AssembleEnvironment(req.Workspace); env != "" {
-		identity += "\n## Environment\n" + env
-	}
-	pins := AssemblePinsOpts(loop, req.Playbook, req.Skills, rules, src, pinsOptsFromTools(req.Tools, req.SoftHorizon))
-	if req.SoftHorizon {
-		pins += ActionLadderPin
-		pins += PersonalPin
-		pins += PagesPin
-	}
-	if req.SoftHorizon && strings.TrimSpace(req.PageContext) != "" {
-		pins += "\n## Current page (untrusted)\n" + capRunes(req.PageContext, 3200)
-	}
-	if strings.TrimSpace(req.ProfileMemory) != "" {
-		pins += "\n## Profile memory\n" + req.ProfileMemory
-	}
-	if mem := ReadWorkspaceMemory(req.Workspace); mem != "" {
-		pins += "\n## Project memory\n" + mem
-	}
+	bill := buildBill(billInput{
+		Loop:      req.Loop,
+		Fragments: req.Fragments,
+		Playbook:  req.Playbook,
+		Skills:    req.Skills,
+		Workspace: req.Workspace,
+		Tools:     req.Tools,
+		Soft:      req.SoftHorizon,
+		Page:      req.PageContext,
+		Profile:   req.ProfileMemory,
+		Plan:      planTextOf(req.Tools),
+		Notes:     notes,
+		Suggested: suggested,
+	})
 	WriteRulesIndex(req.Workspace)
 	return &ContextKernel{
 		req:      req,
-		identity: identity,
-		pins:     pins,
-		prefix:   identity + pins,
-		spill:    spillOf(*req),
-		notes:    capRunes(ReadNotes(spillOf(*req)), 2000),
+		identity: bill.systemWire,
+		pins:     bill.pinsWire,
+		prefix:   bill.prefix(),
+		bill:     bill,
+		spill:    spill,
+		notes:    notes,
 	}
 }
 
+const promptUpdateLead = "Prompt update. The earlier system message stays only so the cached prefix can be reused. Follow this version.\n提示更新。前面的系统消息留在原处是为了保住缓存前缀。以这一版为准。\n"
+
+func (k *ContextKernel) cachePrefix() string {
+	if k == nil {
+		return ""
+	}
+	if k.seriesPrefix != "" {
+		return k.seriesPrefix
+	}
+	return k.prefix
+}
+
 func (k *ContextKernel) seed() ([]Message, error) {
-	messages := []Message{{Role: RoleSystem, Content: k.identity}}
-	if strings.TrimSpace(k.pins) != "" {
-		messages = append(messages, Message{Role: RoleDeveloper, Content: k.pins})
+	identity, pins := k.identity, k.pins
+	k.seriesPrefix = k.prefix
+	update := ""
+	admitted := false
+	latest := ""
+	if head, text, ok := seriesPrompt(k.req.Trace, k.req.SessionID); ok {
+		admitted = true
+		latest = text
+		identity, pins = head.identity, head.pins
+		k.seriesPrefix = identity + pins
+		if k.prefix != latest || (k.prefix != k.seriesPrefix && !transcriptHasPrompt(stripSystem(k.req.History), k.prefix)) {
+			update = promptUpdateLead + k.prefix
+		}
+	}
+	if !admitted || k.prefix != latest {
+		emit(*k.req, trace.TypeSystem, "runtime", map[string]any{
+			"kind":     "prompt",
+			"text":     k.prefix,
+			"identity": identity,
+			"pins":     pins,
+		})
+	}
+	messages := []Message{{Role: RoleSystem, Content: identity}}
+	if strings.TrimSpace(pins) != "" {
+		messages = append(messages, Message{Role: RoleDeveloper, Content: pins})
 	}
 	if len(k.req.History) > 0 {
 		messages = append(messages, stripSystem(k.req.History)...)
+	}
+	if update != "" && !transcriptHasPrompt(messages, k.prefix) {
+		emit(*k.req, trace.TypeInject, "prompt-update", map[string]any{"text": update, "name": "prompt-update"})
+		messages = append(messages, Message{Role: RoleUser, Content: update})
 	}
 	user := NormalizeUserText(k.req.User)
 	if user == "" && len(k.req.UserParts) > 0 {
@@ -121,6 +157,60 @@ func (k *ContextKernel) reseed(hist []Message) []Message {
 	return append(messages, stripSystem(hist)...)
 }
 
+type promptHead struct {
+	identity string
+	pins     string
+}
+
+// seriesPrompt is the latest admitted prompt after the last checkpoint.
+// identity and pins are the series head that stays at the front of the request.
+func seriesPrompt(st *trace.Store, sessionID string) (promptHead, string, bool) {
+	if st == nil || strings.TrimSpace(sessionID) == "" {
+		return promptHead{}, "", false
+	}
+	evs, err := st.Read(sessionID)
+	if err != nil || len(evs) == 0 {
+		return promptHead{}, "", false
+	}
+	cut := 0
+	for i, ev := range evs {
+		if ev.Type != trace.TypeCompact || ev.Payload == nil {
+			continue
+		}
+		if kind, _ := ev.Payload["kind"].(string); kind == "checkpoint" {
+			cut = i + 1
+		}
+	}
+	var head promptHead
+	latest := ""
+	found := false
+	for _, ev := range evs[cut:] {
+		if ev.Type != trace.TypeSystem || ev.Source != "runtime" || ev.Payload == nil {
+			continue
+		}
+		if kind, _ := ev.Payload["kind"].(string); kind != "prompt" {
+			continue
+		}
+		id, _ := ev.Payload["identity"].(string)
+		pins, _ := ev.Payload["pins"].(string)
+		text, _ := ev.Payload["text"].(string)
+		head = promptHead{identity: id, pins: pins}
+		latest = text
+		found = true
+	}
+	return head, latest, found
+}
+
+func transcriptHasPrompt(msgs []Message, prefix string) bool {
+	want := promptUpdateLead + prefix
+	for _, m := range msgs {
+		if m.Role == RoleUser && m.Content == want {
+			return true
+		}
+	}
+	return false
+}
+
 func (k *ContextKernel) chatMode() bool {
 	return k.req != nil && k.req.SoftHorizon
 }
@@ -130,14 +220,24 @@ func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 	if ckpt == "" {
 		ckpt = lastCheckpoint(messages)
 	}
-	loaded := capLoadedSkills(loadedFrom(k.req.Tools))
 	suggested := ""
 	if k.req.Tools != nil {
 		suggested = FormatSkillHints(k.req.Tools.SkillHints)
 	}
-	k.dyn = AssembleDynamicHint(planTextOf(k.req.Tools), loaded, k.notes, ckpt, AssembleToday(k.req.Tools), suggested)
+	page := ""
 	if k.req != nil {
-		k.dyn = languageDynPin(OperatorVoice(k.req.User, k.req.History)) + k.dyn
+		page = k.req.PageContext
+	}
+	k.bill.Bodies = skillBodiesText(k.req.Tools)
+	k.bill.Today = AssembleToday(k.req.Tools)
+	k.bill.Notes = notesSection(planTextOf(k.req.Tools), k.notes, ckpt, suggested, pathRulesOf(k.req.Tools), page, k.chatMode())
+	k.dyn = k.bill.dynamic()
+	if k.req != nil {
+		lang := languageDynPin(OperatorVoice(k.req.User, k.req.History))
+		if lang != "" {
+			k.dyn = lang + k.dyn
+			k.bill.Notes = lang + k.bill.Notes
+		}
 	}
 	return setDynamic(messages, k.dyn)
 }
@@ -161,6 +261,8 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 		out = Legalize(out)
 	}
 	fillLedger(&report, k.prefix, k.dyn, tools, k.req.ModelWindow)
+	k.bill.write(&report)
+	report.ChatTokens = historyTokens(out)
 	report.Tokens = messagesTokens(out) + overhead
 	hot := hotPrefixBytes(out)
 	report.PrefixHash = hotPrefixHash(out)
@@ -200,6 +302,7 @@ func (k *ContextKernel) checkpoint(messages []Message, trigger, focus string) []
 	k.notes = capRunes(ReadNotes(k.spill), 2000)
 	k.lastHash = ""
 	k.prevHot = ""
+	k.seriesPrefix = k.prefix
 	if k.req.Tools != nil {
 		k.req.Tools.CommitToolUnlocks()
 	}
@@ -281,23 +384,31 @@ func hotPrefixBytes(msgs []Message) string {
 
 func reportPayload(report ShapeReport, extra map[string]any) map[string]any {
 	p := map[string]any{
-		"kind":           "shape",
-		"note":           report.Note,
-		"tokens":         report.Tokens,
-		"budget":         report.Budget,
-		"window":         report.Window,
-		"prefix_tokens":  report.PrefixTokens,
-		"dynamic_tokens": report.DynamicTokens,
-		"schema_tokens":  report.SchemaTokens,
-		"layers":         report.Layers,
-		"elided":         report.Elided,
-		"cache_stable":   report.CacheStable,
-		"prefix_hash":    report.PrefixHash,
-		"dynamic_at":     report.DynamicAt,
-		"cached_tokens":  report.CachedTokens,
-		"cache_reported": report.CacheReported,
-		"trigger":        report.Trigger,
-		"hydrated":       report.Hydrated,
+		"kind":              "shape",
+		"note":              report.Note,
+		"tokens":            report.Tokens,
+		"budget":            report.Budget,
+		"window":            report.Window,
+		"prefix_tokens":     report.PrefixTokens,
+		"dynamic_tokens":    report.DynamicTokens,
+		"schema_tokens":     report.SchemaTokens,
+		"identity_tokens":   report.IdentityTokens,
+		"rules_tokens":      report.RulesTokens,
+		"catalog_tokens":    report.CatalogTokens,
+		"skill_body_tokens": report.SkillBodyTokens,
+		"memory_tokens":     report.MemoryTokens,
+		"today_tokens":      report.TodayTokens,
+		"notes_tokens":      report.NotesTokens,
+		"chat_tokens":       report.ChatTokens,
+		"layers":            report.Layers,
+		"elided":            report.Elided,
+		"cache_stable":      report.CacheStable,
+		"prefix_hash":       report.PrefixHash,
+		"dynamic_at":        report.DynamicAt,
+		"cached_tokens":     report.CachedTokens,
+		"cache_reported":    report.CacheReported,
+		"trigger":           report.Trigger,
+		"hydrated":          report.Hydrated,
 	}
 	if report.ProviderPrompt > 0 {
 		p["provider_prompt"] = report.ProviderPrompt

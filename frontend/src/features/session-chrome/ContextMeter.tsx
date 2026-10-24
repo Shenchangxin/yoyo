@@ -7,18 +7,40 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Copy } from "../../lib/copy";
-import { contextBreakdown } from "../../lib/context-usage";
+import { contextBreakdown, type CtxBreakdown } from "../../lib/context-usage";
 import { formatTokens } from "../../lib/models-dev";
 import type { ContextUsage } from "../../lib/protocol";
 
 const RADIUS = 5.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const ROWS = [
-  { key: "system", label: (c: Copy) => c.composer.ctxSystem, tone: "var(--ctx-system, #60a5fa)" },
-  { key: "tools", label: (c: Copy) => c.composer.ctxTools, tone: "rgb(167, 139, 250)" },
-  { key: "messages", label: (c: Copy) => c.composer.ctxMessages, tone: "var(--ctx-chat, #3b82f6)" },
-] as const;
+const ROWS: { key: string; label: (c: Copy) => string; tone: string; always?: boolean }[] = [
+  { key: "system", label: (c) => c.composer.ctxSystem, tone: "var(--ctx-system, #9a958c)" },
+  { key: "rules", label: (c) => c.composer.ctxRules, tone: "var(--ctx-rules, #c4a574)" },
+  { key: "catalog", label: (c) => c.composer.ctxCatalog, tone: "var(--ctx-catalog, #8aa0b8)" },
+  { key: "skills", label: (c) => c.composer.ctxSkillBody, tone: "var(--ctx-skills, #7aa2ff)" },
+  { key: "tools", label: (c) => c.composer.ctxTools, tone: "var(--ctx-tools, #a78bfa)" },
+  { key: "memory", label: (c) => c.composer.ctxMemory, tone: "var(--ctx-memory, #c2663d)" },
+  { key: "today", label: (c) => c.composer.ctxToday, tone: "var(--ctx-today, #1f7a45)" },
+  { key: "notes", label: (c) => c.composer.ctxNotes, tone: "var(--ctx-notes, #a07a2a)" },
+  { key: "chat", label: (c) => c.composer.ctxChat, tone: "var(--ctx-chat, #3b82f6)", always: true },
+  { key: "free", label: (c) => c.composer.ctxFree, tone: "var(--ctx-free, transparent)", always: true },
+];
+
+function meterTokens(br: CtxBreakdown): Record<string, number> {
+  return {
+    system: br.prefix,
+    rules: br.rules,
+    catalog: br.catalog,
+    skills: br.skills,
+    tools: br.schema,
+    memory: br.memory,
+    today: br.today,
+    notes: br.notes,
+    chat: br.chat,
+    free: br.free,
+  };
+}
 
 export function ContextMeter(props: {
   ctx?: ContextUsage;
@@ -64,16 +86,10 @@ export function ContextMeter(props: {
   const offset = CIRCUMFERENCE * (1 - Math.min(1, br.used / br.capacity));
   const reading = `${br.pct}%`;
   const label = copy.composer.ctxUsed.replace("{pct}", String(br.pct));
-  const parts = [
-    { key: "system", width: br.capacity ? (br.prefix / br.capacity) * 100 : 0, tone: ROWS[0].tone },
-    { key: "tools", width: br.capacity ? (br.schema / br.capacity) * 100 : 0, tone: ROWS[1].tone },
-    { key: "messages", width: br.capacity ? ((br.chat + br.dynamic) / br.capacity) * 100 : 0, tone: ROWS[2].tone },
-  ].filter((p) => p.width > 0);
-  const tokens = {
-    system: br.prefix,
-    tools: br.schema,
-    messages: br.chat + br.dynamic,
-  };
+  const tokens = meterTokens(br);
+  const parts = ROWS
+    .filter((row) => row.key !== "free" && tokens[row.key] > 0)
+    .map((row) => ({ key: row.key, width: br.capacity ? (tokens[row.key] / br.capacity) * 100 : 0, tone: row.tone }));
 
   const panel = open && pos ? createPortal(
     <div
@@ -81,7 +97,7 @@ export function ContextMeter(props: {
       className="sc-meter-panel"
       style={{ left: pos.left, top: pos.top, transform: "translateY(-100%)" }}
       role="dialog"
-      aria-label={copy.composer.ctxUsed.replace("{pct}", reading)}
+      aria-label={copy.composer.context}
     >
       <div className="sc-meter-head">
         <span className="sc-meter-percent">{reading}</span>
@@ -94,7 +110,7 @@ export function ContextMeter(props: {
         )) : <div className="sc-meter-seg" style={{ width: `${br.pct}%` }} />}
       </div>
       <dl className="sc-meter-rows">
-        {ROWS.map((row) => (
+        {ROWS.filter((row) => row.always || tokens[row.key] > 0).map((row) => (
           <div key={row.key} className="sc-meter-row">
             <dt>
               <span className="sc-meter-swatch" style={{ background: row.tone }} aria-hidden />

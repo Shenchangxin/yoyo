@@ -91,31 +91,31 @@ func TestApplyPackBootstrapOnceAndSkipChild(t *testing.T) {
 	if !tools.Methodology {
 		t.Fatal("methodology")
 	}
-	if n := len(tools.Loaded); n != 1 || tools.Loaded[0] != "using-superpowers" {
-		t.Fatalf("loaded %v", tools.Loaded)
+	if len(tools.Loaded) != 0 {
+		t.Fatalf("bootstrap body must not be preloaded: %v", tools.Loaded)
 	}
-	body := tools.BootstrapBodies["using-superpowers"]
-	if !strings.Contains(body, "<EXTREMELY_IMPORTANT>") || !strings.Contains(body, "ALREADY LOADED") {
-		t.Fatalf("%s", body)
+	if tools.BootstrapBodies != nil {
+		t.Fatalf("bootstrap body leaked into working memory: %v", tools.BootstrapBodies)
 	}
-	if !strings.Contains(body, "use load_skill") {
-		t.Fatal("mapping missing from wrap")
+	if !strings.Contains(tools.BootstrapPin, "load_skill using-superpowers") || strings.Contains(tools.BootstrapPin, "ALREADY LOADED") {
+		t.Fatalf("pin %q", tools.BootstrapPin)
 	}
-	dup := tools.loadSkill("using-superpowers")
-	if dup.Err != nil || !strings.Contains(dup.Content, "ALREADY LOADED") {
-		t.Fatalf("%+v", dup)
+	loaded := tools.loadSkill("using-superpowers")
+	if loaded.Err != nil || !strings.Contains(loaded.Content, "You must load_skill before acting.") {
+		t.Fatalf("%+v", loaded)
 	}
 	child := *tools
 	child.Depth = 1
 	child.BootstrapBodies = nil
+	child.BootstrapPin = ""
 	child.Loaded = nil
 	child.Methodology = false
 	ApplyPackBootstrap(&child)
-	if child.Methodology || len(child.BootstrapBodies) != 0 {
+	if child.Methodology || child.BootstrapPin != "" || len(child.BootstrapBodies) != 0 {
 		t.Fatal("child must skip bootstrap")
 	}
 	StripPackBootstrap(tools)
-	if tools.Methodology || tools.Packs != nil || tools.BootstrapBodies != nil {
+	if tools.Methodology || tools.Packs != nil || tools.BootstrapBodies != nil || tools.BootstrapPin != "" {
 		t.Fatal("strip failed")
 	}
 	for _, n := range tools.Loaded {

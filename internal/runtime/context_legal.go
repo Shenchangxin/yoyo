@@ -32,7 +32,7 @@ func Legalize(msgs []Message) []Message {
 				Role:       RoleTool,
 				ToolCallID: id,
 				Name:       name,
-				Content:    emptyToolAnchor(name),
+				Content:    toolOutcomeUnknown,
 			})
 		}
 		pending = map[string]ToolCall{}
@@ -136,3 +136,9 @@ func emptyToolAnchor(name string) string {
 	}
 	return "(" + name + " completed with no output)"
 }
+
+// A recorded call with no result may have started. Say so, and do not invent
+// a successful empty completion. A call that never started uses the abort text.
+const toolOutcomeUnknown = "ERROR: TOOL_OUTCOME_UNKNOWN: this call was recorded but its outcome is unknown. Retry only if it is read-only or idempotent. If it may have changed files or state, check that state or ask the user before retrying."
+
+const toolAbortedBeforeDispatch = "ERROR: ABORTED_BEFORE_DISPATCH: tool call aborted before dispatch. Retry it if it is still needed."

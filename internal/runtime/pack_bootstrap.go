@@ -18,30 +18,19 @@ const bootstrapAlready = "IMPORTANT: The using-superpowers (or pack bootstrap) s
 
 const bootstrapMarker = "EXTREMELY_IMPORTANT"
 
-// ApplyPackBootstrap preloads pack bootstrap bodies into working memory.
-// Child sessions (Depth>0) are skipped structurally — model-level SUBAGENT-STOP is not enough.
+// ApplyPackBootstrap records that a methodology pack is on, and leaves a
+// one-line pin. The SKILL.md body stays out of the opening prompt; the
+// model load_skill's it. Child sessions (Depth>0) are skipped structurally.
 func ApplyPackBootstrap(t *WorkspaceTools) {
 	if t == nil || t.Depth > 0 || len(t.Packs) == 0 {
 		return
 	}
-	if t.BootstrapBodies == nil {
-		t.BootstrapBodies = map[string]string{}
-	}
 	for _, p := range t.Packs {
-		name := strings.TrimSpace(p.BootstrapSkill)
-		if name == "" {
-			continue
-		}
-		body := ""
-		if t.Skills != nil {
-			body = t.Skills[name]
-		}
-		t.BootstrapBodies[name] = WrapBootstrap(name, body, p.Mapping)
-		t.MarkSkillsLoaded(name)
 		if p.Methodology {
 			t.Methodology = true
 		}
 	}
+	t.BootstrapPin = MethodologyPin(t.Packs)
 }
 
 func WrapBootstrap(name, body, mapping string) string {
@@ -93,6 +82,7 @@ func StripPackBootstrap(t *WorkspaceTools) {
 	}
 	t.Packs = nil
 	t.BootstrapBodies = nil
+	t.BootstrapPin = ""
 	t.Methodology = false
 }
 
@@ -154,6 +144,32 @@ func DomainOrchestrators(packs []PackSession) map[string]bool {
 		}
 	}
 	return out
+}
+
+// MethodologyPin tells the model a pack is enabled without inlining SKILL.md.
+func MethodologyPin(packs []PackSession) string {
+	var lines []string
+	for _, p := range packs {
+		name := strings.TrimSpace(p.BootstrapSkill)
+		if name == "" && !p.Methodology {
+			continue
+		}
+		if name == "" {
+			name = strings.TrimSpace(p.ID)
+		}
+		if name == "" {
+			continue
+		}
+		id := strings.TrimSpace(p.ID)
+		if id == "" {
+			id = name
+		}
+		lines = append(lines, "- "+id+": enabled. Before writing product code, load_skill "+name+". The body is not loaded yet.")
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n## Methodology\n" + strings.Join(lines, "\n") + "\n"
 }
 
 // DomainRoutingPin is a short, cache-stable hint for enabled domain packs.

@@ -76,6 +76,19 @@ test("lastTurnMs is the latest user to turn_end wall", () => {
   assert.equal(lastTurnMs([]), 0);
 });
 
+test("a new session reports chat as zero when the ledger says so", () => {
+  const br = contextBreakdown({
+    tokens: 6000, budget: 100000, window: 128000, note: "", layers: [], elided: 0,
+    prefixTokens: 4000, schemaTokens: 1800, dynamicTokens: 200,
+    identityTokens: 700, rulesTokens: 900, catalogTokens: 400, skillBodyTokens: 0,
+    memoryTokens: 80, todayTokens: 0, notesTokens: 200, chatTokens: 0, slicesKnown: true,
+  }, 0, 0);
+  assert.equal(br.chat, 0);
+  assert.equal(br.slices.find((s) => s.id === "chat")?.tokens, 0);
+  assert.equal(br.slices.find((s) => s.id === "notes")?.tokens, 200);
+  assert.equal(br.slices.find((s) => s.id === "skills")?.tokens, 0);
+});
+
 test("contextBreakdown still reports cache fields", () => {
   const br = contextBreakdown({
     tokens: 100, budget: 200, window: 400, note: "", layers: [], elided: 0,

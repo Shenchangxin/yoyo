@@ -25,12 +25,18 @@ func TestDefaultLoopHorizonUnchanged(t *testing.T) {
 }
 
 func TestApplyChatHorizon(t *testing.T) {
-	got := ApplyChatHorizon(DefaultLoop())
+	fat := DefaultLoop()
+	fat.RulesTokens = 32_000
+	fat.StackAgentsMD = true
+	got := ApplyChatHorizon(fat)
 	if got.MaxTurns < 64 || got.MaxToolMessages < 160 || got.MicroKeep < 32 || got.CompactionKeep < 96 {
 		t.Fatalf("%+v", got)
 	}
-	if got.RulesTokens < 8000 || got.KeepTokens < 16000 || got.TaskMaxTurns < 40 {
+	if got.RulesTokens != ChatRulesTokens || got.KeepTokens < 16000 || got.TaskMaxTurns < 40 {
 		t.Fatalf("chat context floors %+v", got)
+	}
+	if got.StackAgentsMD {
+		t.Fatal("nested AGENTS.md must load on read, not stack into the prefix")
 	}
 	if !got.AllowLLMCompact {
 		t.Fatal("desktop checkpoints must ask the model for a structured summary")

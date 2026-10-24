@@ -137,6 +137,37 @@ func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 	}
 }
 
+func TestMessagesFromEventsClosesUnansweredTool(t *testing.T) {
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "edit it"}},
+		{Type: trace.TypeAssistant, Payload: map[string]any{"text": "", "id": "s:r1"}},
+		{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c1", "name": "str_replace", "arguments": `{"path":"a.go"}`}},
+		{Type: trace.TypeToolCall, Payload: map[string]any{"id": "c2", "name": "shell", "arguments": `{"command":"go test"}`}},
+		{Type: trace.TypeToolResult, Payload: map[string]any{"id": "c1", "name": "str_replace", "content": "edited"}},
+	}
+	msgs := MessagesFromEvents(evs)
+	var shell string
+	for _, m := range msgs {
+		if m.Role == RoleTool && m.ToolCallID == "c2" {
+			shell = m.Content
+		}
+	}
+	if !strings.Contains(shell, "TOOL_OUTCOME_UNKNOWN") {
+		t.Fatalf("missing result %q msgs=%+v", shell, msgs)
+	}
+}
+
+func TestMessagesFromEventsKeepsRepeatReminder(t *testing.T) {
+	evs := []trace.Event{
+		{Type: trace.TypeUser, Payload: map[string]any{"text": "继续"}},
+		{Type: trace.TypeInject, Source: "repeat-tool-reminder", Payload: map[string]any{"text": repeatGentleZH}},
+	}
+	msgs := MessagesFromEvents(evs)
+	if len(msgs) != 2 || msgs[1].Content != repeatGentleZH || !isControlUser(msgs[1].Content) {
+		t.Fatalf("%+v", msgs)
+	}
+}
+
 func TestMessagesFromEventsKeepsImageParts(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{

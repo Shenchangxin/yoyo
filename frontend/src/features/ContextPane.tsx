@@ -17,8 +17,13 @@ import type { Copy } from "../lib/copy";
 
 const SLICE_TONE: Record<CtxSliceId, string> = {
   system: "bg-[var(--ctx-system)]",
+  rules: "bg-[var(--ctx-rules)]",
+  catalog: "bg-[var(--ctx-catalog)]",
+  skills: "bg-[var(--ctx-skills)]",
   tools: "bg-[var(--ctx-tools)]",
-  dynamic: "bg-[var(--ctx-dynamic)]",
+  memory: "bg-[var(--ctx-memory)]",
+  today: "bg-[var(--ctx-today)]",
+  notes: "bg-[var(--ctx-notes)]",
   chat: "bg-[var(--ctx-chat)]",
   free: "bg-[var(--ctx-free)]",
 };
@@ -143,6 +148,7 @@ export function ContextPane(props: {
 
 function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; copy: Copy }) {
   const visible = br.slices.filter((s) => s.tokens > 0);
+  const legend = br.slices.filter((s) => s.id !== "free" && (s.tokens > 0 || s.id === "chat"));
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2 text-[12px] tabular-nums">
@@ -168,7 +174,7 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] tabular-nums text-muted">
-        {visible.filter((s) => s.id !== "free").map((s) => (
+        {legend.map((s) => (
           <span key={s.id} className="inline-flex items-center gap-1.5">
             <i className={cn("size-1.5 rounded-full", SLICE_TONE[s.id])} aria-hidden />
             <span>{sliceLabel(s.id, copy)}</span>
@@ -181,11 +187,18 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
 }
 
 function sliceLabel(id: CtxSliceId, copy: Copy): string {
-  if (id === "system") return copy.composer.ctxSystem;
-  if (id === "tools") return copy.composer.ctxTools;
-  if (id === "dynamic") return copy.composer.ctxDynamic;
-  if (id === "chat") return copy.composer.ctxChat;
-  return copy.composer.ctxFree;
+  switch (id) {
+    case "system": return copy.composer.ctxSystem;
+    case "rules": return copy.composer.ctxRules;
+    case "catalog": return copy.composer.ctxCatalog;
+    case "skills": return copy.composer.ctxSkillBody;
+    case "tools": return copy.composer.ctxTools;
+    case "memory": return copy.composer.ctxMemory;
+    case "today": return copy.composer.ctxToday;
+    case "notes": return copy.composer.ctxNotes;
+    case "chat": return copy.composer.ctxChat;
+    default: return copy.composer.ctxFree;
+  }
 }
 
 function Fact({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {

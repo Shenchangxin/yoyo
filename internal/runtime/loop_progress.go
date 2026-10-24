@@ -16,6 +16,7 @@ const idleActionStopHits = 8
 const checkFailNudgeHits = 2
 const checkFailStopHits = 5
 const checkFailIdleStop = 18
+const checkFailBackstopHits = 8
 
 const rewriteStallPrefixEN = "You have rewritten "
 const rewriteStallPrefixZH = "你已经反复整文件覆盖 "
@@ -48,8 +49,8 @@ const clickMicroNudgeZH = "你已经连续微步点击（%d 轮）。把剩余�
 
 const checkFailPrefixEN = "The same check still FAILs"
 const checkFailPrefixZH = "检查项仍以同样方式失败"
-const checkFailNudgeEN = "The same check still FAILs (%s, %d hits, %d idle rounds). Progress is an observation that changed. Edit the product, then re-run that same check — do not rewrite the verifier."
-const checkFailNudgeZH = "检查项仍以同样方式失败（%s，已 %d 次、观测未变 %d 轮）。进度 = 观测变了。不要再改验证器；改产品文件后重跑同一条检查。"
+const checkFailNudgeEN = "The same check still FAILs (%s, %d identical runs). The output matches the previous run byte for byte, so the last edit did not affect this command. Do not run it again and do not rewrite the verifier. Switch to browser_verify on the page, or read how this script loads the file you changed."
+const checkFailNudgeZH = "检查项仍以同样方式失败（%s，已连续 %d 次，输出和上一次逐字相同）。刚才的修改没有进到这次运行。不要再执行同一条命令，也不要改验证器。改用 browser_verify 打开页面取证；若要看脚本，先读它如何加载你改过的文件。"
 
 const instrumentPrefixEN = "The failing check cites the product"
 const instrumentPrefixZH = "失败检查指向产品文件"
@@ -517,9 +518,17 @@ func jsonFailKey(line string) (string, bool) {
 }
 
 type checkWatch struct {
-	sig  string
-	hits int
-	idle int
+	sig         string
+	digest      string
+	script      string
+	refusal     string
+	hits        int
+	idle        int
+	harnessHits int
+	bypassHits  int
+	identical   bool
+	warned      bool
+	allowRerun  bool
 }
 
 func (w *checkWatch) note(calls []ToolCall, results []Message) {
@@ -533,22 +542,42 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 	if inspectsOnly(calls) {
 		return
 	}
-	sig := ""
+	digest, sig := "", ""
 	for _, m := range results {
-		if ids := failCheckIDs(m.Content); len(ids) > 0 {
-			sig = "check fail:" + strings.Join(ids, ",")
+		if d := failObservation(m.Content); d != "" {
+			digest = d
+			sig = "check fail:" + strings.Join(failCheckIDs(m.Content), ",")
 			break
 		}
 	}
 	product := writesProduct(calls)
-	if sig != "" {
-		if sig == w.sig {
+	harness := writesHarness(calls)
+	if digest != "" {
+		if digest == w.digest {
 			w.hits++
+			w.identical = true
+			w.allowRerun = false
+			if harness {
+				w.harnessHits++
+			} else if !product {
+				w.bypassHits++
+			}
 		} else {
-			// A different failing set is a changed observation. The idle clock
-			// belongs to the previous set.
-			w.sig, w.hits = sig, 1
+			// A different failing report is a changed observation.
+			w.digest, w.sig, w.hits = digest, sig, 1
+			w.identical = false
+			w.warned = false
+			w.refusal = ""
+			w.allowRerun = false
 			w.idle = 0
+			w.harnessHits = 0
+			w.bypassHits = 0
+			if harness {
+				w.harnessHits = 1
+			}
+		}
+		if s := checkScript(calls); s != "" {
+			w.script = s
 		}
 		if product {
 			w.idle = 0
@@ -561,6 +590,7 @@ func (w *checkWatch) note(calls []ToolCall, results []Message) {
 		return
 	}
 	if product {
+		w.allowRerun = true
 		w.idle = 0
 		return
 	}
@@ -571,7 +601,22 @@ func (w *checkWatch) stuck() bool {
 	if w == nil || w.sig == "" {
 		return false
 	}
-	return w.hits >= checkFailStopHits || w.idle >= checkFailIdleStop
+	// Re-running one check with the same output is blocked, not fatal.
+	// Rewriting the verifier, idling without an edit, or bypassing the
+	// block with another command that reprints the same report still stops.
+	if w.harnessHits >= checkFailStopHits || w.idle >= checkFailIdleStop {
+		return true
+	}
+	return w.warned && w.bypassHits >= checkFailBackstopHits
+}
+
+// repeatBlock refuses the next run of the same script after an identical
+// report. A product edit clears it for one more run.
+func (w *checkWatch) repeatBlock() (script, refusal string) {
+	if w == nil || !w.warned || w.allowRerun || w.script == "" || w.refusal == "" {
+		return "", ""
+	}
+	return w.script, w.refusal
 }
 
 func (w *checkWatch) reason() string {
@@ -582,13 +627,103 @@ func observationNudge(req RunRequest, w *checkWatch, calls []ToolCall) string {
 	if !req.SoftHorizon || w == nil || w.sig == "" {
 		return ""
 	}
+	if w.identical && w.hits >= checkFailNudgeHits && !w.allowRerun {
+		w.warned = true
+		w.refusal = fmt.Sprintf(voiceNudge(req, checkFailNudgeEN, checkFailNudgeZH), w.sig, w.hits)
+		return w.refusal
+	}
 	if writesHarness(calls) {
 		return voiceNudge(req, instrumentNudgeEN, instrumentNudgeZH)
 	}
-	if w.hits >= checkFailNudgeHits {
-		return fmt.Sprintf(voiceNudge(req, checkFailNudgeEN, checkFailNudgeZH), w.sig, w.hits, w.idle)
+	return ""
+}
+
+func failObservation(content string) string {
+	var lines []string
+	for _, line := range strings.Split(content, "\n") {
+		s := strings.Join(strings.Fields(strings.TrimSpace(line)), " ")
+		if strings.HasPrefix(s, "FAIL") {
+			lines = append(lines, s)
+			continue
+		}
+		if key, ok := jsonFailKey(line); ok {
+			lines = append(lines, key+"=FAIL")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func checkScript(calls []ToolCall) string {
+	script := ""
+	verify := false
+	for _, c := range calls {
+		if c.Name == "browser_verify" {
+			verify = true
+		}
+		if c.Name != "shell" {
+			continue
+		}
+		if s := harnessScriptIn(c.Arguments); s != "" {
+			script = s
+		}
+	}
+	if script != "" {
+		return script
+	}
+	if verify {
+		return "browser_verify"
 	}
 	return ""
+}
+
+func harnessScriptIn(text string) string {
+	text = normSlash(text)
+	for _, f := range strings.FieldsFunc(text, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '\r', '"', '\'', '`', ',', ';', ':', '{', '}', '(', ')', '[', ']', '&', '|':
+			return true
+		default:
+			return false
+		}
+	}) {
+		if !isHarnessPath(f) {
+			continue
+		}
+		if strings.HasSuffix(f, ".js") || strings.HasSuffix(f, ".cjs") || strings.HasSuffix(f, ".mjs") {
+			return f
+		}
+	}
+	return ""
+}
+
+// seedCheckWatch replays this turn's history so a continued turn blocks the
+// script whose last report was already identical, instead of running it until
+// the stop card. Harness and idle counters stay on this turn only.
+func seedCheckWatch(req RunRequest, w *checkWatch, messages []Message) {
+	if w == nil {
+		return
+	}
+	for i := 0; i < len(messages); {
+		if messages[i].Role != RoleAssistant || len(messages[i].ToolCalls) == 0 {
+			i++
+			continue
+		}
+		calls := messages[i].ToolCalls
+		var results []Message
+		j := i + 1
+		for j < len(messages) && messages[j].Role == RoleTool {
+			results = append(results, messages[j])
+			j++
+		}
+		w.note(calls, results)
+		i = j
+	}
+	w.harnessHits = 0
+	w.idle = 0
+	w.bypassHits = 0
+	if w.identical && w.hits >= checkFailNudgeHits && !w.allowRerun {
+		_ = observationNudge(req, w, nil)
+	}
 }
 
 func extractWritePaths(tc ToolCall) []string {

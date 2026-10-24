@@ -128,8 +128,9 @@ type LoopPreset struct {
 	// Zero means runtime defaults (24 / 60).
 	TaskMaxTurns        int `json:"task_max_turns,omitempty"`
 	TaskMaxToolMessages int `json:"task_max_tool_messages,omitempty"`
-	// StackAgentsMD concatenates AGENTS.md from git root to cwd (Codex
-	// 32KiB cap). Default off so pins stay first-hit.
+	// StackAgentsMD used to concatenate AGENTS.md from git root to cwd.
+	// Chat leaves it off: the root file stays in pins, and nested files
+	// load when a matching path is read.
 	StackAgentsMD bool `json:"stack_agents_md,omitempty"`
 }
 
