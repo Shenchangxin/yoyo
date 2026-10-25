@@ -50,6 +50,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "generation-image", tab: "generation", titleKey: "generationImage", keywords: "image still seedream gemini openai gpt-image qwen jimeng kolors cogview hunyuan 即梦 万相 可图" },
   { id: "generation-video", tab: "generation", titleKey: "generationVideo", keywords: "video clip seedance minimax wan hailuo aliyun jimeng vidu hunyuan cogvideo kling 即梦 可灵 混元" },
   { id: "generation-speech", tab: "generation", titleKey: "generationSpeech", keywords: "tts speech voice openai minimax volcengine elevenlabs azure cosyvoice spark 讯飞 腾讯" },
+  { id: "generation-matting", tab: "generation", titleKey: "generationMatting", keywords: "matting matte cutout remove.bg photoroom saliency 抠像 主体分割" },
   { id: "generation-music", tab: "generation", titleKey: "generationMusic", keywords: "music bgm soundtrack minimax mureka elevenlabs stability lyria suno 配乐" },
   { id: "generation-stock", tab: "generation", titleKey: "generationStock", keywords: "stock pexels pixabay unsplash giphy footage 库存 素材" },
   { id: "generation-asr", tab: "generation", titleKey: "generationAsr", keywords: "asr transcribe whisper stt groq deepgram assemblyai paraformer spark 转写 讯飞 腾讯" },

@@ -27,7 +27,11 @@ var speechModelNeedles = []string{
 var musicModelNeedles = []string{
 	"lyria", "stable-audio", "suno", "udio", "chirp-v", "chirp-auk",
 	"eleven_music", "text_to_sound", "music-1", "music-2", "musicgen", "riffusion",
-	"mureka", "skymusic",
+	"mureka", "skymusic", "music-3",
+}
+
+var mattingModelNeedles = []string{
+	"saliency", "removebg", "matting", "matte",
 }
 
 var asrModelNeedles = []string{
@@ -43,6 +47,9 @@ func CapOfModel(model string) string {
 	}
 	if isAsrModelName(s) {
 		return CapASR
+	}
+	if isMattingModelName(s) {
+		return CapMatting
 	}
 	if isMusicModelName(s) {
 		return CapMusic
@@ -78,7 +85,7 @@ func isVideoModelName(s string) bool {
 }
 
 func isImageModelName(s string) bool {
-	if isVideoModelName(s) || isSpeechModelName(s) || isMusicModelName(s) || isAsrModelName(s) {
+	if isVideoModelName(s) || isSpeechModelName(s) || isMusicModelName(s) || isAsrModelName(s) || isMattingModelName(s) {
 		return false
 	}
 	if strings.Contains(s, "image") {
@@ -94,6 +101,15 @@ func isImageModelName(s string) bool {
 
 func isSpeechModelName(s string) bool {
 	for _, n := range speechModelNeedles {
+		if strings.Contains(s, n) {
+			return true
+		}
+	}
+	return false
+}
+
+func isMattingModelName(s string) bool {
+	for _, n := range mattingModelNeedles {
 		if strings.Contains(s, n) {
 			return true
 		}
@@ -121,7 +137,7 @@ func isAsrModelName(s string) bool {
 
 func generationCap(cap string) bool {
 	switch NormalizeCap(cap) {
-	case CapChat, CapImage, CapVideo, CapSpeech, CapMusic, CapStock, CapASR:
+	case CapChat, CapImage, CapVideo, CapSpeech, CapMusic, CapMatting, CapStock, CapASR:
 		return true
 	default:
 		return false

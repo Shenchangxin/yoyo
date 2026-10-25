@@ -66,9 +66,13 @@ type Engine struct {
 	castSHA  *string
 	castHTTP HTTPDoer
 
-	Proto     *protocol.Registry
-	PluginDir string
-	WHISPER   string
+	Proto      *protocol.Registry
+	PluginDir  string
+	WHISPER    string
+	YTDLP      string
+	StampBin   string
+	RegionBin  string
+	BrowserBin string
 
 	ffmpegHTTP HTTPDoer
 	ffmpegOS   string
@@ -129,6 +133,7 @@ func OpenWith(dir string, cas Blobs, secrets Secrets, conn *connection.Registry)
 	}
 	e.FFMPEG, e.FFProbe = LookFFmpegIn([]string{filepath.Join(dir, "bin")})
 	e.WHISPER = LookWhisper()
+	e.lookFilmTools()
 	if err := migrateSQLiteIfPresent(e); err != nil {
 		return nil, err
 	}

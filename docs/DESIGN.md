@@ -178,7 +178,7 @@ stops the moment `running` is false.
   glass cards on `sidebar`; Agent and Video stages are bare `background`.
 - **Video** is one chrome. 创作 / 短片 / 短剧 / 画布 plus Assets / 画布技能 /
   Plugins / History live in the left rail (`VideoShellNav`). 创作 is the
-  finish desk. Empty: import a clip, or open 短片 / 短剧 / 画布. The
+  finish desk. Empty: import a clip, remake a reference, or open 短片 / 短剧 / 画布. 翻拍 keeps the production project here and opens the player only after 送到成片台. The
   case list under that stays; each row names its style still and where the
   prompt belongs. With a
   clip: player, candidates, transcript, and dub on the left; conductor

@@ -284,6 +284,9 @@ func TestProviderTemplatesIncludeMusicStockAsr(t *testing.T) {
 		{"tts", "aliyun", "Qwen CosyVoice"},
 		{"tts", "spark", "Spark Speech"},
 		{"music", "mureka", "Mureka"},
+		{"matting", "volcengine", "Volcengine Cutout"},
+		{"matting", "removebg", "remove.bg"},
+		{"matting", "photoroom", "Photoroom"},
 		{"asr", "volcengine", "Volcengine ASR"},
 		{"asr", "spark", "Spark ASR"},
 		{"asr", "tencent", "Tencent ASR"},
@@ -641,7 +644,7 @@ func TestRetryJobRejectsSucceeded(t *testing.T) {
 func TestAssembleStudioRejectsStaleShot(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{
-		Title: "stale",
+		Title:      "stale",
 		Storyboard: StudioStoryboard{Shots: []StudioShot{{ID: "s1", ImageHash: "abc", Stale: true}}},
 	})
 	if err != nil {

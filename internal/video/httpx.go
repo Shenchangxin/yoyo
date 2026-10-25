@@ -47,8 +47,39 @@ func httpGet(raw, key string) (*http.Request, error) {
 	return req, nil
 }
 
+func (e *Engine) doRaw(req *http.Request, limit int64) (int, string, []byte, error) {
+	client := e.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	if limit <= 0 {
+		limit = 32 << 20
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(res.Body, limit))
+	if err != nil {
+		return res.StatusCode, res.Header.Get("Content-Type"), nil, err
+	}
+	if res.StatusCode >= 400 {
+		msg := strings.TrimSpace(string(raw))
+		if msg == "" {
+			msg = res.Status
+		}
+		return res.StatusCode, res.Header.Get("Content-Type"), raw, fmt.Errorf("%s", msg)
+	}
+	return res.StatusCode, res.Header.Get("Content-Type"), raw, nil
+}
+
 func (e *Engine) doJSON(req *http.Request) (map[string]any, int, []byte, error) {
-	res, err := e.HTTP.Do(req)
+	client := e.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, 0, nil, err
 	}

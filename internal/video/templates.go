@@ -26,5 +26,5 @@ func ProviderTemplates() []Provider {
 }
 
 func ServiceTypes() []string {
-	return []string{"image", "video", "tts", "music", "stock", "asr", "storage", "search", "workflow"}
+	return []string{"image", "video", "tts", "music", "matting", "stock", "asr", "storage", "search", "workflow"}
 }

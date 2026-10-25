@@ -207,6 +207,11 @@ func probeURL(c Connection) string {
 			return base + "/transcript"
 		}
 		return base + "/v2/transcript"
+	case v == "removebg" || p == "removebg":
+		if strings.Contains(base, "/v1.0") {
+			return base + "/account"
+		}
+		return base + "/v1.0/account"
 	default:
 		return base
 	}
@@ -243,6 +248,10 @@ func applyProbeAuth(req *http.Request, c Connection, key string) {
 		req.Header.Set("Authorization", key)
 	case v == "elevenlabs":
 		req.Header.Set("xi-api-key", key)
+	case v == "removebg" || p == "removebg":
+		req.Header.Set("X-Api-Key", key)
+	case v == "photoroom" || p == "photoroom":
+		req.Header.Set("x-api-key", key)
 	case v == "azure" || v == "microsoft":
 		req.Header.Set("Ocp-Apim-Subscription-Key", key)
 	default:

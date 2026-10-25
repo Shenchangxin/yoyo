@@ -17,6 +17,9 @@ export type CutProject = {
   title?: string;
   session_id?: string;
   source_hash?: string;
+  kind?: string;
+  reference_hash?: string;
+  note?: string;
   result_hash?: string;
   duration?: number;
   stale?: boolean;

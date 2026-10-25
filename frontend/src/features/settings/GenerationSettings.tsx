@@ -19,7 +19,7 @@ import {
 } from "./SettingChrome";
 import { ProviderMark } from "./ProviderMark";
 
-type Kind = "image" | "video" | "tts" | "music" | "stock" | "asr" | "storage" | "search" | "workflow";
+type Kind = "image" | "video" | "tts" | "music" | "matting" | "stock" | "asr" | "storage" | "search" | "workflow";
 
 type MediaProvider = {
   id: string;
@@ -94,11 +94,13 @@ const VENDOR_LABEL: Record<string, string> = {
   kolors: "Kolors",
   spark: "Spark",
   mureka: "Mureka",
+  removebg: "remove.bg",
+  photoroom: "Photoroom",
   metaso: "Metaso",
 };
 
 function usesModels(kind: Kind): boolean {
-  return kind === "image" || kind === "video" || kind === "tts" || kind === "music" || kind === "asr";
+  return kind === "image" || kind === "video" || kind === "tts" || kind === "music" || kind === "matting" || kind === "asr";
 }
 
 function serviceKind(p: { service_type?: string; serviceType?: string } | string): string {
@@ -107,6 +109,7 @@ function serviceKind(p: { service_type?: string; serviceType?: string } | string
   if (s === "speech" || s === "audio") return "tts";
   if (s === "stt" || s === "whisper" || s === "transcribe" || s === "transcription") return "asr";
   if (s === "bgm" || s === "soundtrack" || s === "score") return "music";
+  if (s === "matte" || s === "cutout" || s === "抠像") return "matting";
   if (s === "pexels" || s === "pixabay" || s === "unsplash" || s === "giphy" || s === "footage") return "stock";
   if (s === "llm" || s === "text") return "chat";
   return s;
@@ -173,6 +176,7 @@ function templateKey(t: MediaProvider): string {
 
 function adapterUrlHint(kind: Kind, v: ReturnType<typeof useCopy>["video"]): string | undefined {
   if (kind === "music") return v.musicUrlHint;
+  if (kind === "matting") return v.mattingUrlHint;
   if (kind === "stock") return v.stockUrlHint;
   if (kind === "asr") return v.asrUrlHint;
   return v.adapterUrlHint;
@@ -294,6 +298,11 @@ export function GenerationSettings() {
   const [ffmpeg, setFfmpeg] = useState(true);
   const [ffmpegInstall, setFfmpegInstall] = useState<FFmpegInstall>({});
   const [whisper, setWhisper] = useState(false);
+  const [ytdlp, setYtdlp] = useState(false);
+  const [ytdlpBusy, setYtdlpBusy] = useState(false);
+  const [stamp, setStamp] = useState(false);
+  const [regionTool, setRegionTool] = useState(false);
+  const [browserCap, setBrowserCap] = useState(false);
   const [tick, setTick] = useState(0);
 
   function refresh() {
@@ -304,6 +313,10 @@ export function GenerationSettings() {
     setFfmpeg(!!s?.ffmpeg);
     setFfmpegInstall(s?.ffmpeg_install && typeof s.ffmpeg_install === "object" ? s.ffmpeg_install : {});
     setWhisper(!!s?.whisper);
+    setYtdlp(!!s?.ytdlp);
+    setStamp(!!s?.stamp);
+    setRegionTool(!!s?.region);
+    setBrowserCap(!!s?.browser);
     const rem = s?.remotion && typeof s.remotion === "object" ? s.remotion : null;
     if (rem) setRemotion(rem);
   }
@@ -342,6 +355,18 @@ export function GenerationSettings() {
       applyFFmpegStatus(s);
     } catch (e) {
       toast.error(api.errMessage(e));
+    }
+  }
+
+  async function installYTDLP() {
+    setYtdlpBusy(true);
+    try {
+      await api.video.installYTDLP();
+      setYtdlp(true);
+    } catch (e) {
+      toast.error(api.errMessage(e));
+    } finally {
+      setYtdlpBusy(false);
     }
   }
 
@@ -557,6 +582,17 @@ export function GenerationSettings() {
         footnote={v.speechHint}
       />
       <AdapterSection
+        id="generation-matting"
+        title={copy.settings.sections.generationMatting}
+        kind="matting"
+        rows={providers}
+        templates={templates}
+        copy={copy}
+        onChanged={refresh}
+        description={v.mattingLead}
+        footnote={v.mattingHint}
+      />
+      <AdapterSection
         id="generation-music"
         title={copy.settings.sections.generationMusic}
         kind="music"
@@ -596,6 +632,26 @@ export function GenerationSettings() {
                 label={whisper ? v.whisperReady : v.whisperMissing}
               />
             </SettingRow>
+            <details className="creation-more">
+              <summary>{copy.video.film.toolsMore}</summary>
+            <SettingRow title={copy.video.film.stamp} description={copy.video.film.stampHint} list>
+              <StatusPill ok={stamp} label={stamp ? copy.video.film.stampReady : copy.video.film.stampMissing} />
+            </SettingRow>
+            <SettingRow title={copy.video.film.ytdlp} description={copy.video.film.ytdlpHint} list>
+              <StatusPill ok={ytdlp} label={ytdlp ? copy.video.film.ytdlpReady : copy.video.film.ytdlpMissing} />
+              {ytdlp ? null : (
+                <Button size="sm" variant="lift" disabled={ytdlpBusy} onClick={() => void installYTDLP()}>
+                  {ytdlpBusy ? copy.video.film.ytdlpInstalling : copy.video.film.ytdlpInstall}
+                </Button>
+              )}
+            </SettingRow>
+            <SettingRow title={copy.video.film.region} description={copy.video.film.regionHint} list>
+              <StatusPill ok={regionTool} label={regionTool ? copy.video.film.regionReady : copy.video.film.regionMissing} />
+            </SettingRow>
+            <SettingRow title={copy.video.film.browser} description={copy.video.film.browserHint} list>
+              <StatusPill ok={browserCap} label={browserCap ? copy.video.film.browserReady : copy.video.film.browserMissing} />
+            </SettingRow>
+            </details>
           </div>
         }
       />

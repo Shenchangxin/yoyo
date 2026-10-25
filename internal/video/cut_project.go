@@ -8,21 +8,23 @@ import (
 )
 
 type CutProject struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title,omitempty"`
-	SessionID  string        `json:"session_id,omitempty"`
-	SourceHash string        `json:"source_hash,omitempty"`
-	PosterHash string        `json:"poster_hash,omitempty"`
-	ResultHash string        `json:"result_hash,omitempty"`
-	Duration   float64       `json:"duration,omitempty"`
-	Breakdown  cut.Breakdown `json:"breakdown"`
-	EditList   cut.EditList  `json:"edit_list"`
-	Stems      cut.Stems     `json:"stems"`
-	Captions   cut.Captions  `json:"captions"`
-	Note       string        `json:"note,omitempty"`
-	Stale      bool          `json:"stale,omitempty"`
-	CreatedAt  string        `json:"created_at,omitempty"`
-	UpdatedAt  string        `json:"updated_at,omitempty"`
+	ID            string        `json:"id"`
+	Title         string        `json:"title,omitempty"`
+	SessionID     string        `json:"session_id,omitempty"`
+	SourceHash    string        `json:"source_hash,omitempty"`
+	Kind          string        `json:"kind,omitempty"`
+	ReferenceHash string        `json:"reference_hash,omitempty"`
+	PosterHash    string        `json:"poster_hash,omitempty"`
+	ResultHash    string        `json:"result_hash,omitempty"`
+	Duration      float64       `json:"duration,omitempty"`
+	Breakdown     cut.Breakdown `json:"breakdown"`
+	EditList      cut.EditList  `json:"edit_list"`
+	Stems         cut.Stems     `json:"stems"`
+	Captions      cut.Captions  `json:"captions"`
+	Note          string        `json:"note,omitempty"`
+	Stale         bool          `json:"stale,omitempty"`
+	CreatedAt     string        `json:"created_at,omitempty"`
+	UpdatedAt     string        `json:"updated_at,omitempty"`
 }
 
 func (e *Engine) cutBin() cut.Bin {

@@ -15,6 +15,9 @@ func TestCapOfModel(t *testing.T) {
 		"gpt-4o-mini-tts":         CapSpeech,
 		"speech-2.6-hd":           CapSpeech,
 		"music-2.0":               CapMusic,
+		"music-3.0":               CapMusic,
+		"saliency_seg":            CapMatting,
+		"removebg":                CapMatting,
 		"stable-audio-2.5":        CapMusic,
 		"lyria-002":               CapMusic,
 		"eleven_text_to_sound_v2": CapMusic,
@@ -91,6 +94,9 @@ func TestInferProtocolMusicStockAsr(t *testing.T) {
 		{"tencent", CapVideo, "hunyuan-video"},
 		{"tencent", CapASR, "tencent-asr"},
 		{"mureka", CapMusic, "mureka"},
+		{"volcengine", CapMatting, "volcengine-visual-matting"},
+		{"removebg", CapMatting, "removebg"},
+		{"photoroom", CapMatting, "photoroom"},
 	}
 	for _, c := range cases {
 		if got := InferProtocol(c.vendor, c.cap); got != c.want {
