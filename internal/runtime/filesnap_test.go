@@ -16,7 +16,7 @@ func TestFileSnapshotRewindRestoresOldest(t *testing.T) {
 	}
 	tools := &WorkspaceTools{Workspace: ws, Spill: NewSpill(dir)}
 	tools.snapshotBeforeWrite("note.txt", target)
-	time.Sleep(2 * time.Millisecond)
+	waitForNewerFileStamp(t, dir)
 	if err := os.WriteFile(target, []byte("edit-1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +43,10 @@ func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
 	}
 	tools := &WorkspaceTools{Workspace: ws, Spill: NewSpill(dir)}
 	tools.snapshotBeforeWrite("note.txt", target)
-	mark := time.Now().UTC()
-	time.Sleep(3 * time.Millisecond)
+	// The origin snapshot and a wall-clock mark taken immediately after it can
+	// share one Windows tick. Derive the cutoff from the snapshot itself.
+	mark := fileStampCutoff(t, dir)
+	waitForNewerFileStamp(t, dir)
 	if err := os.WriteFile(target, []byte("edit-1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +80,56 @@ func TestRestoreFileSnapshotsAfterDeletesCreatedFile(t *testing.T) {
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("created file should be removed, err=%v", err)
 	}
+}
+
+func fileStampNames(t *testing.T, spill string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(spill, "files"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	return names
+}
+
+func fileStampCutoff(t *testing.T, spill string) time.Time {
+	t.Helper()
+	names := fileStampNames(t, spill)
+	if len(names) != 1 {
+		t.Fatalf("stamps=%v", names)
+	}
+	stamp, ok := ParseStampTime(names[0])
+	if !ok {
+		t.Fatalf("stamp %s", names[0])
+	}
+	return stamp.Add(time.Nanosecond)
+}
+
+func waitForNewerFileStamp(t *testing.T, spill string) {
+	t.Helper()
+	names := fileStampNames(t, spill)
+	if len(names) == 0 {
+		t.Fatal("no snapshot stamp")
+	}
+	prev := names[0]
+	for _, name := range names[1:] {
+		if name > prev {
+			prev = name
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if time.Now().UTC().Format("20060102T150405.000000000") > prev {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("clock did not advance past %s", prev)
 }
 
 func TestParseRewindScope(t *testing.T) {
