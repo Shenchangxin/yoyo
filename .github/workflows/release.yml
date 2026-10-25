@@ -503,7 +503,8 @@ jobs:
               raise SystemExit(f"verify fetch failed {target}: {last}")
 
           remote = json.loads(fetch(url).decode())
-          sig = fetch(url + ".sig").strip()
+          # Raw Ed25519 bytes. Do not strip: a signature may end in whitespace.
+          sig = fetch(url + ".sig")
           if len(sig) != 64:
               raise SystemExit(f"sig length {len(sig)}")
           expect = json.loads(channels[0].read_text())
