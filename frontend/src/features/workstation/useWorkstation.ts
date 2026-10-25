@@ -33,6 +33,7 @@ import { laneAcceptsSession, lastLaneThread, rememberLaneThread, sessionLane, ty
 import { cutThreadId, isCutThread, rememberCutThread } from "../video/cut-threads";
 import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../video/workshop-store";
 import { useCutDesk, type CutProject } from "../video/cut-desk";
+import { useCreateMode } from "../video/create-mode";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 import { useFilmDesk } from "../video/film-desk";
 
@@ -1963,6 +1964,7 @@ export function useWorkstation() {
   const leaveCut = useCallback(async () => {
     const gen = ++leaveGen.current;
     useCutDesk.getState().park();
+    useCreateMode.getState().setEngaged(false);
     useUI.getState().openVideoPane("create");
     let welcome: Thread;
     try {

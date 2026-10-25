@@ -102,6 +102,7 @@ function WorkstationApp() {
   const createDesk = videoing && videoPane === "create";
   const cutBound = useCutDesk((s) => !!s.project?.source_hash);
   const createMode = useCreateMode((s) => s.mode);
+  const createEngaged = useCreateMode((s) => s.engaged);
   const filmOpen = useFilmDesk((s) => !!s.project?.id);
   const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
   const createLauncher = createDesk && !cutBound && !filmOpen && !remakeOpen;
@@ -122,6 +123,11 @@ function WorkstationApp() {
   const [now, setNow] = useState(() => Date.now());
   const [waking, setWaking] = useState(false);
   const sawBoot = useRef(false);
+  const paneWas = useRef(videoPane);
+  useEffect(() => {
+    if (paneWas.current !== videoPane && videoPane === "create") useCreateMode.getState().setEngaged(false);
+    paneWas.current = videoPane;
+  }, [videoPane]);
   useEffect(() => {
     if (ws.booted && !sawBoot.current) {
       sawBoot.current = true;
@@ -144,7 +150,10 @@ function WorkstationApp() {
   }, []);
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
-  const home = !staged && (agent || videoing) && (ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0;
+  // The create entrance stays up while the welcome thread replays history or reports a leftover run.
+  // It steps aside only after a chat is sent from this desk and that chat has something to show.
+  const createEntrance = createDesk && !cutBound && !(createEngaged && ws.items.length > 0);
+  const home = !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
   const copilotItems = paneMismatch ? [] : ws.items;
   const boundCopilotId = studioDesk ? studioCopilotSession : "";
   const foreignSession = !!(boundCopilotId && ws.activeId && boundCopilotId !== ws.activeId);
@@ -275,6 +284,7 @@ function WorkstationApp() {
           void ws.startFilm(createMode, opts?.text || "");
           return;
         }
+        useCreateMode.getState().setEngaged(true);
         void ws.onSend(opts);
       }}
       placeholder={createLauncher ? (
