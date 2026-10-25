@@ -51,6 +51,10 @@ import { StudioCopilotHeader } from "./features/video/StudioCopilotHeader";
 import { VideoShellNav } from "./features/video/VideoShellNav";
 import { CutStage } from "./features/video/CutStage";
 import { useCutDesk } from "./features/video/cut-desk";
+import { useFilmDesk } from "./features/video/film-desk";
+import { useRemakeDesk } from "./features/video/remake-desk";
+import { useCreateMode } from "./features/video/create-mode";
+import { CreateModeTabs } from "./features/video/CreateModeTabs";
 import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
 import { sessionLane } from "./features/video/video-lanes";
@@ -97,6 +101,11 @@ function WorkstationApp() {
   const studioDesk = useUI((s) => s.studioDesk);
   const createDesk = videoing && videoPane === "create";
   const cutBound = useCutDesk((s) => !!s.project?.source_hash);
+  const createMode = useCreateMode((s) => s.mode);
+  const filmOpen = useFilmDesk((s) => !!s.project?.id);
+  const remakeOpen = useRemakeDesk((s) => !!s.draft?.id);
+  const createLauncher = createDesk && !cutBound && !filmOpen && !remakeOpen;
+  const filmLauncher = createLauncher && createMode !== "clip";
   const finishDesk = createDesk && cutBound;
   const talkDesk = createDesk;
   const studioId = useStudioSelection((s) => s.studioId);
@@ -261,7 +270,25 @@ function WorkstationApp() {
       provider={ws.savedCfg.provider}
       ctx={ws.ctx}
       queued={ws.queued}
-      onSend={ws.onSend}
+      onSend={(opts) => {
+        if (filmLauncher && (createMode === "ranking" || createMode === "podcast" || createMode === "interview")) {
+          void ws.startFilm(createMode, opts?.text || "");
+          return;
+        }
+        void ws.onSend(opts);
+      }}
+      placeholder={createLauncher ? (
+        createMode === "ranking" ? copy.video.conductor.rankingPlaceholder
+          : createMode === "podcast" ? copy.video.conductor.podcastPlaceholder
+            : createMode === "interview" ? copy.video.conductor.interviewPlaceholder
+              : copy.video.conductor.clipPlaceholder
+      ) : undefined}
+      sendLabel={filmLauncher ? (
+        createMode === "podcast" ? copy.video.conductor.startPodcast
+          : createMode === "interview" ? copy.video.conductor.startInterview
+            : copy.video.conductor.startRanking
+      ) : undefined}
+      allowEmptySend={filmLauncher}
       onStop={ws.onStop}
       onSlash={(cmd, rest) => { void ws.onSlash(cmd, rest); }}
       onModel={async (model) => {
@@ -414,8 +441,11 @@ function WorkstationApp() {
               onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
               onContinueLast={() => { void ws.onContinueLast(); }}
               onImportClip={() => { void ws.ingestVideo({}); }}
+              onRemake={() => { void ws.startRemake(); }}
+              onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
               onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
               onOpenCut={(id) => { void ws.openCut(id); }}
+              draftKey={ws.draftKey}
             />
           </div>
         ) : home ? (
@@ -457,6 +487,7 @@ function WorkstationApp() {
           />
         )}
         <div className={cn("sc-seat", home ? cn("mx-auto w-full max-w-[min(100%,var(--thread-measure))] px-4 sm:px-8", railNarrow ? "shrink-0 pb-1" : createDesk ? "mt-4" : "mt-8") : cn(THREAD_COL, THREAD_GUTTER))}>
+          {createLauncher ? <CreateModeTabs /> : null}
           {!home && !videoing && !!ws.activeId && ws.active?.channel !== "video" && copilotItems.length > 0 && !ws.threadRunning ? (
             <ChatNotWorking onImprove={() => ws.openHarness("propose")} />
           ) : null}
@@ -467,8 +498,11 @@ function WorkstationApp() {
             onPrompt={(text) => useUI.getState().setDraft(ws.draftKey, text)}
             onContinueLast={() => { void ws.onContinueLast(); }}
             onImportClip={() => { void ws.ingestVideo({}); }}
+            onRemake={() => { void ws.startRemake(); }}
+            onFilm={(structure, description) => { void ws.startFilm(structure, description); }}
             onHandoff={(dest) => { void ws.openCreateHandoff(dest); }}
             onOpenCut={(id) => { void ws.openCut(id); }}
+            draftKey={ws.draftKey}
           />
         ) : null}
         </div>

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 	"github.com/Shenchangxin/yoyo/internal/trace"
 	"github.com/Shenchangxin/yoyo/internal/video"
+	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
 func (a *App) openVideo() error {
@@ -544,6 +546,12 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		return a.VideoStatus(), nil
 	case "video.ffmpeg.install":
 		return eng.InstallFFmpeg(), nil
+	case "video.ytdlp.install":
+		path, err := eng.EnsureYTDLP(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ytdlp": true, "ytdlp_bin": path}, nil
 	case "video.modes":
 		return video.Modes(), nil
 	case "video.templates":
@@ -1199,6 +1207,61 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 		if sid := str("session_id"); sid != "" {
 			_ = eng.BindCutSession(sid, p.ID)
 			p.SessionID = sid
+		}
+		return a.enrichCut(p), nil
+	case "video.remake.draft":
+		p, err := eng.RemakeDraft(str("hash"), str("title"), str("session_id"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.remake.replace":
+		p, err := eng.RemakeReplace(firstNonEmptyApp(str("id"), str("project_id")), str("hash"))
+		if err != nil {
+			return nil, err
+		}
+		return a.enrichCut(p), nil
+	case "video.film.open":
+		p, err := eng.OpenFilm(film.Input{
+			Title: str("title"), Structure: str("structure"), Description: str("description"),
+			Hash: str("hash"), URL: str("url"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return p, nil
+	case "video.film.describe":
+		p, err := eng.DescribeFilm(str("structure"), str("title"), str("description"))
+		if err != nil {
+			return nil, err
+		}
+		return p, nil
+	case "video.film.get":
+		return eng.GetFilm(str("id"))
+	case "video.film.list":
+		return eng.ListFilms(), nil
+	case "video.film.plan":
+		return eng.PlanFilm(str("id"))
+	case "video.film.build":
+		return eng.BuildFilm(str("id"))
+	case "video.film.swap":
+		return eng.SwapFilm(str("id"), film.Brief{
+			Host: str("host"), Product: str("product"), Language: str("language"),
+			Aspect: str("aspect"), Hook: str("hook"), Price: str("price"), CTA: str("cta"),
+		})
+	case "video.film.fork":
+		return eng.ForkFilm(str("id"), film.Brief{
+			Host: str("host"), Product: str("product"), Language: str("language"),
+			Aspect: str("aspect"), Hook: str("hook"), Price: str("price"), CTA: str("cta"),
+		})
+	case "video.film.bed":
+		return eng.SetFilmBed(str("id"), str("hash"))
+	case "video.film.rewrite":
+		return eng.RewriteFilmLine(str("id"), firstNonEmptyApp(str("line_id"), str("line")), str("text"))
+	case "video.film.handoff":
+		p, err := eng.HandoffFilm(str("id"), str("title"))
+		if err != nil {
+			return nil, err
 		}
 		return a.enrichCut(p), nil
 	case "video.cut.get":

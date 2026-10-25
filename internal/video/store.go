@@ -35,6 +35,7 @@ const (
 	colStudioProjects  = "studio_projects"
 	colStudioPublishes = "studio_publishes"
 	colCutProjects     = "cut_projects"
+	colFilms           = "films"
 	fileSettings       = "_settings.json"
 	fileSessionBinds   = "_session_binds.json"
 	fileCanvasBinds    = "_canvas_session_binds.json"

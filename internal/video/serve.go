@@ -251,6 +251,14 @@ func (e *Engine) Snapshot() map[string]any {
 		"remotion":         e.RemotionSnapshot(),
 		"whisper":          strings.TrimSpace(e.WHISPER) != "",
 		"whisper_bin":      e.WHISPER,
+		"ytdlp":            strings.TrimSpace(e.YTDLP) != "",
+		"ytdlp_bin":        e.YTDLP,
+		"stamp":            strings.TrimSpace(e.StampBin) != "",
+		"stamp_bin":        e.StampBin,
+		"region":           strings.TrimSpace(e.RegionBin) != "",
+		"region_bin":       e.RegionBin,
+		"browser":          strings.TrimSpace(e.BrowserBin) != "",
+		"browser_bin":      e.BrowserBin,
 	}
 }
 

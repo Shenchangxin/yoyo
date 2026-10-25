@@ -96,10 +96,14 @@ export function HomeHero(_props: {
       )}
       data-testid="empty-turn"
     >
-      <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
-      <p className={cn("text-center text-[13px] tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
-        {hello(copy)}
-      </p>
+      {createDesk && !bound ? null : (
+        <>
+          <PresenceAnchor id="home" size={createDesk ? 72 : narrow ? 96 : 148} className="mx-auto cursor-pointer" />
+          <p className={cn("text-center text-[13px] tracking-[-0.01em] text-muted", createDesk ? "mt-3" : "mt-5")}>
+            {hello(copy)}
+          </p>
+        </>
+      )}
       <h1 className={cn(
         "text-center font-semibold leading-[1.2] tracking-[-0.036em] text-pretty text-foreground",
         createDesk ? "mt-1 text-[19px]" : "mt-1.5 text-[21px]",
@@ -124,8 +128,11 @@ export function HomeStarters(props: {
   onPrompt?: (text: string) => void;
   onContinueLast?: () => void;
   onImportClip?: () => void;
+  onRemake?: () => void;
+  onFilm?: (structure: "ranking" | "podcast" | "interview", description?: string) => void;
   onHandoff?: (dest: "studio" | "drama" | "canvas") => void;
   onOpenCut?: (id: string) => void;
+  draftKey?: string;
 }) {
   const { copy, videoing, videoMode, createDesk } = useHomeCopy();
   const project = useCutDesk((s) => (createDesk ? s.project : null));
@@ -170,8 +177,16 @@ export function HomeStarters(props: {
         </div>
         ) : null}
       </div>
-      {createDesk && !bound && props.onImportClip && props.onHandoff && props.onOpenCut ? (
-        <CreateHome onImport={props.onImportClip} onHandoff={props.onHandoff} onOpenCut={props.onOpenCut} />
+      {createDesk && !bound && props.onImportClip && props.onRemake && props.onFilm && props.onHandoff && props.onOpenCut ? (
+        <CreateHome
+          onImport={props.onImportClip}
+          onRemake={props.onRemake}
+          onFilm={props.onFilm}
+          onHandoff={props.onHandoff}
+          onOpenCut={props.onOpenCut}
+          onPrompt={props.onPrompt}
+          draftKey={props.draftKey}
+        />
       ) : null}
       {createDesk && !bound && props.onPrompt ? <FeaturedCases onPrompt={props.onPrompt} /> : null}
     </>

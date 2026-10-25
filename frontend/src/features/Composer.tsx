@@ -57,6 +57,7 @@ import { CommandOverlay, type OverlayItem } from "./session-chrome/CommandOverla
 import { AttachmentRail, DropOverlay } from "./session-chrome/Attachments";
 import { isVideoPath, nativeFilePath } from "./video/ingest-clip";
 import { useCutDesk } from "./video/cut-desk";
+import { useCreateMode } from "./video/create-mode";
 import { SendGlyph, StopGlyph } from "./session-chrome/icons";
 import { PermissionSelect } from "./session-chrome/PermissionSelect";
 import { WorkspaceChip } from "./session-chrome/WorkspaceChip";
@@ -123,6 +124,8 @@ export function Composer(props: {
   toolbarLeading?: ReactNode;
   toolbarTrailing?: ReactNode;
   placeholder?: string;
+  sendLabel?: string;
+  allowEmptySend?: boolean;
   inputTestId?: string;
   perch?: boolean;
   perchSize?: number;
@@ -162,6 +165,8 @@ export function Composer(props: {
   const videoing = videoSurface && !props.compact && !dramaDesk;
   const createDesk = videoPane === "create";
   const cutBound = useCutDesk((s) => !!s.project?.source_hash);
+  const createHome = createDesk && !cutBound;
+  const createMode = useCreateMode((s) => s.mode);
   const talkDesk = createDesk;
   const copilotDesk = studioDesk;
   const needWorkspace = !copilotDesk && !talkDesk && !!props.onBrowseWorkspace && !pathReady(props.workspace);
@@ -187,7 +192,7 @@ export function Composer(props: {
           ? copy.composer.placeholderHero
           : copy.composer.placeholder);
   const hasPayload = !!value.trim() || chips.length > 0 || atts.length > 0;
-  const canSend = !disabled && !attaching && hasPayload && !(dramaDesk && props.running);
+  const canSend = !disabled && !attaching && (hasPayload || !!props.allowEmptySend) && !(dramaDesk && props.running);
   const orbStops = !!props.running && !hasPayload;
   const canSteerQueue = !disabled && !hasPayload && props.running && (props.queueItems?.length || 0) > 0;
   const modeMenu = !copilotDesk && !talkDesk && !dramaDesk && (!videoing || !!props.onIsolate);
@@ -603,7 +608,7 @@ export function Composer(props: {
     const pins = mergeMentionPins(snap.chips, peeled.chips);
     const stamp = footageStamp(atts);
     const body = [composeDraft(pins, peeled.text), stamp].filter(Boolean).join("\n\n");
-    if (!body && !atts.length) return;
+    if (!body && !atts.length && !props.allowEmptySend) return;
     props.onSend({ steer, attachments: atts, text: body });
     setAtts([]);
     setChips([]);
@@ -679,7 +684,7 @@ export function Composer(props: {
   const pad = props.flush ? "" : props.compact || copilotDesk ? THREAD_GUTTER_COMPACT : THREAD_GUTTER;
   const col = props.flush ? "w-full min-w-0" : THREAD_COL;
   const primaryStops = orbStops;
-  const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? copy.composer.sendQueue : copy.composer.send;
+  const shownLabel = primaryStops ? copy.composer.stop : props.running && hasPayload ? copy.composer.sendQueue : (props.sendLabel || copy.composer.send);
   const placeholderText = canSteerQueue ? copy.composer.steerQueue : placeholder;
   const pendingTool = toolApproval && toolApproval.action !== "ask_user" ? toolApproval : null;
   const perch = !!props.perch;
@@ -882,7 +887,7 @@ export function Composer(props: {
                       onProfile={props.onProfile}
                     />
                   ) : null}
-                  {props.compact ? null : (
+                  {props.compact || (createHome && createMode !== "clip") ? null : (
                   <Tooltip content={createDesk ? copy.composer.importClip : copy.composer.addFilesOrCommands}>
                     <button
                       type="button"
@@ -982,7 +987,7 @@ export function Composer(props: {
                 </div>
                 <div className="sc-trailing">
                   {props.toolbarTrailing}
-                  {grouped && props.onModel ? (
+                  {createHome ? null : grouped && props.onModel ? (
                     <Select value={groupedValue} onValueChange={(v) => props.onModel?.(v)} disabled={disabled}>
                       <SelectTrigger className="sc-chip-btn max-w-[16rem] border-0 shadow-none max-[799px]:max-w-[7.5rem]" aria-label={copy.composer.model} title={selectedGroup ? `${selectedGroup.providerName} · ${currentModel}` : currentModel}>
                         <span className="truncate">{selectedGroup ? `${selectedGroup.providerName} · ${modelLabel}` : modelLabel}</span>

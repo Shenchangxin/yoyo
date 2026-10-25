@@ -183,10 +183,28 @@ func Templates() []Connection {
 			DefaultModel: map[string]string{CapSpeech: "zh-CN-XiaoxiaoNeural"}, Active: true, Priority: 6,
 		},
 		{
+			Name: "Volcengine Cutout", Vendor: "volcengine", Protocol: "volcengine-visual-matting",
+			Endpoint: "https://visual.volcengineapi.com", Capabilities: []string{CapMatting},
+			Models:       []string{"saliency_seg"},
+			DefaultModel: map[string]string{CapMatting: "saliency_seg"}, Active: true, Priority: 30,
+		},
+		{
+			Name: "remove.bg", Vendor: "removebg", Protocol: "removebg",
+			Endpoint: "https://api.remove.bg", Capabilities: []string{CapMatting},
+			Models:       []string{"removebg"},
+			DefaultModel: map[string]string{CapMatting: "removebg"}, Active: true, Priority: 20,
+		},
+		{
+			Name: "Photoroom", Vendor: "photoroom", Protocol: "photoroom",
+			Endpoint: "https://sdk.photoroom.com", Capabilities: []string{CapMatting},
+			Models:       []string{"segment"},
+			DefaultModel: map[string]string{CapMatting: "segment"}, Active: true, Priority: 10,
+		},
+		{
 			Name: "MiniMax Music", Vendor: "minimax", Protocol: "minimax-music",
 			Endpoint: "https://api.minimax.io", Capabilities: []string{CapMusic},
-			Models:       []string{"music-2.0", "music-1.5"},
-			DefaultModel: map[string]string{CapMusic: "music-2.0"}, Active: true, Priority: 30,
+			Models:       []string{"music-3.0", "music-2.6", "music-2.0"},
+			DefaultModel: map[string]string{CapMusic: "music-3.0"}, Active: true, Priority: 30,
 		},
 		{
 			Name: "Mureka", Vendor: "mureka", Protocol: "mureka",

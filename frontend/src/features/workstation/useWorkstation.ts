@@ -34,6 +34,7 @@ import { cutThreadId, isCutThread, rememberCutThread } from "../video/cut-thread
 import { defaultDramaStyle, useDramaSelection, useStudioSelection } from "../video/workshop-store";
 import { useCutDesk, type CutProject } from "../video/cut-desk";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
+import { useFilmDesk } from "../video/film-desk";
 
 function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
   if (p && (snake in p || camel in p)) return num(p[snake] ?? p[camel], 0);
@@ -2091,27 +2092,33 @@ export function useWorkstation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn, leaveCut]);
 
-  async function ingestVideo(source: { path?: string; file?: File } = {}) {
-    leaveGen.current += 1;
+  async function pickVideoFile(source: { path?: string; file?: File } = {}) {
     let path = String(source.path || "").trim();
     const file = source.file;
     if (!path && file) path = nativeFilePath(file);
     if (!path && file) {
       toast.error(copy.video.conductor.needFile);
-      return;
+      return "";
     }
     if (!path && !file) {
       const picked = await api.pickFiles();
       path = picked.find((item) => isVideoPath(item)) || "";
       if (!path) {
         if (picked.length) toast.error(copy.composer.importClipHint);
-        return;
+        return "";
       }
     }
     if (path && !isVideoPath(path)) {
       toast.error(copy.composer.importClipHint);
-      return;
+      return "";
     }
+    return path;
+  }
+
+  async function ingestVideo(source: { path?: string; file?: File } = {}) {
+    leaveGen.current += 1;
+    const path = await pickVideoFile(source);
+    if (!path) return;
     const toastId = toast.loading(copy.video.conductor.importing);
     try {
       const t = await prepareWelcomeThread();
@@ -2122,6 +2129,37 @@ export function useWorkstation() {
     } catch (e) {
       const tooBig = e instanceof Error && e.message === "clip too large";
       toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
+    }
+  }
+
+  async function startRemake() {
+    const path = await pickVideoFile();
+    if (!path) return;
+    const toastId = toast.loading(copy.video.film.working);
+    try {
+      const ref = await api.video.putStudioMediaPath(path);
+      const hash = String(ref?.cas_hash || ref?.hash || "");
+      if (!hash) throw new Error(copy.video.conductor.needHash);
+      const base = path.split(/[/\\]/).pop() || copy.video.conductor.remakeDraft;
+      const project = await api.video.filmOpen({ hash, title: base.replace(/\.[^.]+$/, "") });
+      if (!project?.id) throw new Error(copy.video.conductor.needHash);
+      useFilmDesk.getState().setProject(project);
+      toast.success(copy.video.film.ready, { id: toastId });
+    } catch (e) {
+      const tooBig = e instanceof Error && e.message === "clip too large";
+      toast.error(tooBig ? copy.composer.clipTooLarge : api.errMessage(e), { id: toastId });
+    }
+  }
+
+  async function startFilm(structure: "ranking" | "podcast" | "interview", description = "") {
+    const toastId = toast.loading(copy.video.film.working);
+    try {
+      const project = await api.video.filmDescribe(structure, "", description);
+      if (!project?.id) throw new Error(copy.video.film.needPicture);
+      useFilmDesk.getState().setProject(project);
+      toast.success(copy.video.film.ready, { id: toastId });
+    } catch (e) {
+      toast.error(api.errMessage(e), { id: toastId });
     }
   }
 
@@ -2289,7 +2327,7 @@ export function useWorkstation() {
     booted, aboutOpen, setAboutOpen, aboutInfo, setAboutInfo, pendingDelete, setPendingDelete,
     files, setFiles, skills, packs, methodologyActive: packs.some((p) => p.enabled && p.methodology), logs, setLogs, journal, doctor, vault, pendingQuit, setPendingQuit, setThreads,
     activeId, draftKey, threadRunning, anyRun, needsSetup,
-    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
+    fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, startRemake, startFilm, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
     onQueueCancel: async (id: string) => {
       if (!activeId) return;

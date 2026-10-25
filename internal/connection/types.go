@@ -11,6 +11,7 @@ const (
 	CapVideo    = "video"
 	CapSpeech   = "speech"
 	CapMusic    = "music"
+	CapMatting  = "matting"
 	CapStock    = "stock"
 	CapASR      = "asr"
 	CapSearch   = "search"
@@ -50,6 +51,8 @@ func NormalizeCap(s string) string {
 		return CapSpeech
 	case "bgm", "soundtrack", "score", "music":
 		return CapMusic
+	case "matte", "matting", "cutout", "抠像":
+		return CapMatting
 	case "stock", "pexels", "pixabay", "unsplash", "giphy", "footage":
 		return CapStock
 	case "asr", "whisper", "stt", "transcribe", "transcription":
@@ -217,6 +220,17 @@ func InferProtocol(vendor, cap string) string {
 			return "openai-audio"
 		default:
 			return "openai-audio"
+		}
+	case CapMatting:
+		switch v {
+		case "removebg", "remove.bg":
+			return "removebg"
+		case "photoroom":
+			return "photoroom"
+		case "volcengine", "jimeng":
+			return "volcengine-visual-matting"
+		default:
+			return "volcengine-visual-matting"
 		}
 	case CapMusic:
 		switch v {
