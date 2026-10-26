@@ -3,7 +3,7 @@
 import { useCopy } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 
-// ChatNotWorking 点击时调用 onImprove。compact 为真时左右留出 12px。
+/** ChatNotWorking 点击时调用 onImprove。compact 为真时左右留出 12px。props 读取 compact、onImprove。 */
 export function ChatNotWorking(props: { onImprove: () => void; compact?: boolean }) {
   const copy = useCopy();
   return (

@@ -149,6 +149,13 @@ Do not mention INV, DOM, playbook, refs, hashes, graders, or labels such as inv1
 ` + overlayPoolFinalsSelect
 
 // proposeOverlay 提一条 INV 或 DOM。客户端为 nil 或对话失败时返回启发式提议。解析不出正文时返回空提议错误。下标大于 1 时在任务句里要求这份编辑与其他份不同。
+// ctx 传给 overlayImproverCall。
+// opts 的 Client 为 nil 或调用失败时改走启发式提议，Task 交给 heuristicOverlayProposal。
+// dim 忽略大小写等于 DOM 时换用 DOM 的系统提示和任务句；解析失败的错误文本里带上它。
+// index 大于 1 时，任务句里写上 dim 和这个下标。
+// parent 本函数不读取。
+// base 传给 overlayImproverCall。
+// held 传给 overlayImproverCall。
 func proposeOverlay(ctx context.Context, opts OverlayOpts, dim string, index int, parent MaterialSet, base OverlayRollout, held map[string]bool) (Proposal, error) {
 	if opts.Client == nil {
 		return heuristicOverlayProposal(dim, opts.Task), nil
@@ -174,6 +181,12 @@ func proposeOverlay(ctx context.Context, opts OverlayOpts, dim string, index int
 }
 
 // overlayImproverCall 有证据树时走多轮 read_file，否则把任务、基线轨迹和库文本拼成一条用户消息。
+// ctx 在有树时传给 overlayImproverChat，否则传给 Client.Chat。
+// opts 的 Tree 非空时走 overlayImproverChat；否则用 Task、LibraryText、Model 和 Client。
+// sys 作为系统提示传下去。
+// job 只在 Tree 非空时交给 Tree.mission。
+// held 在没有树时交给 stripHeld。
+// base 在没有树时，Trajectory 经 stripHeld 后写进用户消息。
 func overlayImproverCall(ctx context.Context, opts OverlayOpts, sys, job string, held map[string]bool, base OverlayRollout) (string, error) {
 	if opts.Tree != nil {
 		return overlayImproverChat(ctx, opts, sys, opts.Tree.mission(job))
@@ -196,6 +209,12 @@ func overlayImproverCall(ctx context.Context, opts OverlayOpts, sys, job string,
 }
 
 // composeOverlayLLM 问模型要合成决定。客户端为 nil 时返回 no client。解析只接受 keep_base、adopt_inv、adopt_dom、merge。
+// ctx 在有树时传给 overlayImproverChat，否则传给 Client.Chat。
+// opts 的 Client 为 nil 时返回 no client；Tree 非空时走树，否则用 Task 和 Model。
+// parent 赋给空白标识符，不另作使用。
+// invR 在没有树时，Delivered 和 Trajectory 写进用户消息。
+// domR 在没有树时，Delivered 和 Trajectory 写进用户消息。
+// pool 在没有树且去掉空白后非空时，接在 All candidates 后面。
 func composeOverlayLLM(ctx context.Context, opts OverlayOpts, parent MaterialSet, inv, dom Proposal, base, invR, domR OverlayRollout, pool string) (string, string, error) {
 	_ = parent
 	if opts.Client == nil {
@@ -229,6 +248,10 @@ func composeOverlayLLM(ctx context.Context, opts OverlayOpts, parent MaterialSet
 }
 
 // distilOverlayLLM 问模型要编辑判定和至多一条经验。第二个返回值为真表示不入库。客户端为 nil 时返回 no client。
+// ctx 在有树时传给 overlayImproverChat，否则传给 Client.Chat。
+// opts 的 Client 为 nil 时返回 no client；Tree 非空时走树，否则用 Model。
+// res 在没有树时，Adopted、Compose、Reason、INV.Surface、DOM.Surface 写进用户消息。
+// held 在没有树时交给 stripHeld。
 func distilOverlayLLM(ctx context.Context, opts OverlayOpts, res OverlayResult, held map[string]bool) (Experience, bool, error) {
 	if opts.Client == nil {
 		return Experience{}, false, fmt.Errorf("no client")
@@ -258,6 +281,7 @@ func distilOverlayLLM(ctx context.Context, opts OverlayOpts, res OverlayResult, 
 }
 
 // parseOverlayDistil 解析 edits 和 experience。出现 NO_ENTRY 且没有 experience 标签、经验字段不全，或判定不可迁移时，第二个返回值为真。
+// content 去掉两端空白后交给 parseEditVerdicts 和 parseExperience；含 NO_ENTRY 且不含 <experience> 时第二个返回值为真。
 func parseOverlayDistil(content string) (Experience, bool, error) {
 	text := strings.TrimSpace(content)
 	verdicts := parseEditVerdicts(text)
@@ -277,6 +301,7 @@ func parseOverlayDistil(content string) (Experience, bool, error) {
 }
 
 // parseEditVerdicts 从 edits 块里按 component、candidates、change、observed、verdict 收行。没有 edits 且没有 verdict: 时返回 nil。
+// content 含 <edits> 时只取该块；否则小写形式不含 verdict: 就返回 nil。
 func parseEditVerdicts(content string) []EditVerdict {
 	block := content
 	if i := strings.Index(content, "<edits>"); i >= 0 {
@@ -327,6 +352,7 @@ func parseEditVerdicts(content string) []EditVerdict {
 }
 
 // renderEditTable 把判定行按固定五字段写成文本。空表返回空串。
+// vs 长度为 0 时返回空串；否则每条写成 component、candidates、change、observed、verdict 五行。
 func renderEditTable(vs []EditVerdict) string {
 	if len(vs) == 0 {
 		return ""
@@ -354,6 +380,7 @@ func experienceTransferable(exp Experience) bool {
 }
 
 // heuristicExperience 只在 Adopted 为真且 Compose 是 adopt_inv、adopt_dom 或 merge 时填一条经验。其余情况返回空经验。
+// res 的 Adopted 为假时返回空经验；Compose 为那三个值时各返回一条写死的经验，其他值返回空经验。
 func heuristicExperience(res OverlayResult) Experience {
 	if !res.Adopted {
 		return Experience{}
@@ -410,6 +437,8 @@ func heuristicExperience(res OverlayResult) Experience {
 }
 
 // heuristicOverlayProposal 在没有模型时给出 DOM 技能或 INV 的 verification 指令。
+// dim 忽略大小写等于 DOM 时返回技能提议，否则返回 verification 指令。
+// task 去掉空白后非空时，只在 DOM 技能正文末尾加一句，说明请求形状在用户消息里。
 func heuristicOverlayProposal(dim, task string) Proposal {
 	if strings.EqualFold(dim, "DOM") {
 		text := "When the user named an output path or deliverable, load this skill. Identify the required artifact first, write it, then re-read it and check it against the request before stopping."
@@ -435,6 +464,8 @@ func heuristicOverlayProposal(dim, task string) Proposal {
 }
 
 // parseOverlayProposal 从回复里截 JSON。surface 为 playbook、skill、instruction、middleware 时落入对应载荷。DOM 的未知表面收成 skill，其他收成 instruction。没有 text 时返回假。中间件次数写成 2。
+// content 去掉两端空白，从第一个 { 截到最后一个 }；对象解析失败则交给 parseProposals。
+// dim 转成小写后拼进 ID；未知 surface 时，忽略大小写为 DOM 则收成 skill，否则收成 instruction。
 func parseOverlayProposal(content, dim string) (Proposal, bool) {
 	content = strings.TrimSpace(content)
 	obj := content
@@ -488,6 +519,7 @@ func parseOverlayProposal(content, dim string) (Proposal, bool) {
 }
 
 // parseOverlayDecision 只接受 keep_base、adopt_inv、adopt_dom、merge。其他决定返回 bad decision。
+// content 去掉两端空白，截出 JSON 对象后读取 decision 和 notes。
 func parseOverlayDecision(content string) (string, string, error) {
 	content = strings.TrimSpace(content)
 	obj := content
@@ -510,6 +542,7 @@ func parseOverlayDecision(content string) (string, string, error) {
 }
 
 // parseExperience 从 experience 块读取 cue、lesson、evidence、confidence。HasExperience 为真时第二个返回值为真。
+// content 含 <experience> 时只取该块，再按行读取那四个字段。
 func parseExperience(content string) (Experience, bool) {
 	block := content
 	if i := strings.Index(content, "<experience>"); i >= 0 {

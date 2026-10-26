@@ -25,7 +25,7 @@ import type { CutProject } from "./cut-desk";
 
 const YingceApp = lazy(() => import("./canvas-host/YingceApp"));
 
-/** VideoHistory 在项目和任务之间切换，并列出剪辑、短剧、短片和画布。 */
+/** VideoHistory 在项目和任务之间切换，并列出剪辑、短剧、短片和画布。 props 用 projects 分成短剧、短片和画布，sessionId 用来绑定画布并带进打开的工程，打开交给 onOpenProject，新建后调用 onRefresh，剪辑行把 id 交给 onOpenCut，dramaId、studioId 和 canvasProjectId 标出当前项。 */
 export function VideoHistory(props: {
   projects: VideoProject[];
   canvasProjectId?: string;
@@ -42,19 +42,19 @@ export function VideoHistory(props: {
   const [tab, setTab] = useState<"projects" | "jobs">("projects");
   const [busy, setBusy] = useState("");
   const [kill, setKill] = useState<VideoProject | null>(null);
-  const setStudioId = useStudioSelection((s) => s.setStudioId);
-  const dramas = useMemo(() => props.projects.filter((p) => p.kind === "drama"), [props.projects]);
-  const canvases = useMemo(() => props.projects.filter((p) => p.kind === "canvas"), [props.projects]);
-  const studios = useMemo(() => props.projects.filter((p) => p.kind === "studio"), [props.projects]);
+  const setStudioId = useStudioSelection(/** s 取出 setStudioId。 */ (s) => s.setStudioId);
+  const dramas = useMemo(() => props.projects.filter(/** p 看 kind 是不是 drama。 */ (p) => p.kind === "drama"), [props.projects]);
+  const canvases = useMemo(() => props.projects.filter(/** p 看 kind 是不是 canvas。 */ (p) => p.kind === "canvas"), [props.projects]);
+  const studios = useMemo(() => props.projects.filter(/** p 看 kind 是不是 studio。 */ (p) => p.kind === "studio"), [props.projects]);
   const [cuts, setCuts] = useState<CutProject[]>([]);
 
   useEffect(() => {
     let alive = true;
-    void api.video.cutList().then((list) => {
+    void api.video.cutList().then(/** list 不是数组就当空的，按 updated_at 排序后留下有 id 和 source_hash 的剪辑。 */ (list) => {
       if (!alive) return;
       const rows = (Array.isArray(list) ? list : []) as CutProject[];
-      rows.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
-      setCuts(rows.filter((row) => row.id && row.source_hash));
+      rows.sort(/** a 用 updated_at 参与比较，空的当空字符串。b 用 updated_at 和 a 比较，空的当空字符串。 */ (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      setCuts(rows.filter(/** row 要有 id 和 source_hash。 */ (row) => row.id && row.source_hash));
     }).catch(() => { if (alive) setCuts([]); });
     return () => { alive = false; };
   }, [props.projects, props.sessionId]);
@@ -83,7 +83,7 @@ export function VideoHistory(props: {
     }
   }
 
-  /** 用填写的标题新建短片。画幅只接受 16:9、1:1，否则用 9:16。 */
+  /** 用填写的标题新建短片。画幅只接受 16:9、1:1，否则用 9:16。 title 去掉空白，空的就提示并返回，否则作为标题新建短片。 */
   async function newStudio(title: string) {
     const name = title.trim();
     if (!name) {
@@ -144,7 +144,7 @@ export function VideoHistory(props: {
           <p className="mt-0.5 text-[13px] text-muted">{copy.video.historyHint}</p>
         </div>
         <div className="relative flex rounded-lg bg-lift p-0.5 text-[13px]">
-          {(["projects", "jobs"] as const).map((id) => {
+          {(["projects", "jobs"] as const).map(/** id 用来判断选中并切换页，projects 显示项目文案，否则显示任务文案。 */ (id) => {
             const on = tab === id;
             return (
               <button
@@ -192,7 +192,7 @@ export function VideoHistory(props: {
             </div>
             {cuts.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {cuts.map((row) => (
+                {cuts.map(/** row 用 id 当 key，点击时交给 onOpenCut，显示 title，有 duration 就显示秒数。 */ (row) => (
                   <li key={row.id}>
                     <button
                       type="button"
@@ -220,7 +220,7 @@ export function VideoHistory(props: {
             </div>
             {dramas.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {dramas.map((p) => (
+                {dramas.map(/** p 用 id 当 key 并和 dramaId 比较是否当前，点击时整条交给 onOpenProject。 */ (p) => (
                   <HistoryRow key={`drama-${p.id}`} project={p} active={p.id === props.dramaId} fallback={copy.video.untitled} onSelect={() => props.onOpenProject?.(p)} />
                 ))}
               </ul>
@@ -241,12 +241,12 @@ export function VideoHistory(props: {
                 hint={copy.video.studio.createTitleHint}
                 testId="video-history-new-studio"
                 titleTestId="video-history-studio-title"
-                onSubmit={(title) => void newStudio(title)}
+                onSubmit={/** title 交给 newStudio。 */ (title) => void newStudio(title)}
               />
             </div>
             {studios.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {studios.map((p) => (
+                {studios.map(/** p 用 id 当 key 并和 studioId 比较是否当前，点击时整条交给 onOpenProject，删除时整条交给 setKill。 */ (p) => (
                   <HistoryRow
                     key={`studio-${p.id}`}
                     project={p}
@@ -272,7 +272,7 @@ export function VideoHistory(props: {
             </div>
             {canvases.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-                {canvases.map((p) => (
+                {canvases.map(/** p 用 id 当 key 并和 canvasProjectId 比较是否当前，点击时整条交给 onOpenProject。 */ (p) => (
                   <HistoryRow key={`canvas-${p.id}`} project={p} active={p.id === props.canvasProjectId} fallback={copy.video.canvas} onSelect={() => props.onOpenProject?.(p)} />
                 ))}
               </ul>
@@ -305,7 +305,7 @@ export function VideoHistory(props: {
   );
 }
 
-/** 一行历史。短片可以复制 id，也可以交给删除。 */
+/** 一行历史。短片可以复制 id，也可以交给删除。 props 用 project 画图标、标题和状态，active 标出当前行，点击交给 onSelect，标题空着就用 fallback，有 onDelete 就显示删除。 */
 function HistoryRow(props: { project: VideoProject; active: boolean; fallback: string; onSelect: () => void; onDelete?: () => void }) {
   const copy = useCopy();
   const p = props.project;
@@ -366,7 +366,7 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
           data-testid={`video-project-copy-${p.id}`}
           aria-label={copy.video.studio.copyId}
           onClick={() => {
-            void writeClipboard(p.id).then((ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
+            void writeClipboard(p.id).then(/** ok 为真时提示已复制。 */ (ok) => { if (ok) toast.success(copy.video.studio.copiedId); });
           }}
         >
           <Copy className="size-3 opacity-70" aria-hidden />
@@ -379,7 +379,7 @@ function HistoryRow(props: { project: VideoProject; active: boolean; fallback: s
           data-testid={`video-history-delete-${p.id}`}
           aria-label={copy.video.studio.deleteShort}
           title={copy.video.studio.deleteShort}
-          onClick={(e) => {
+          onClick={/** e 阻止默认并停止冒泡，然后交给 onDelete。 */ (e) => {
             e.preventDefault();
             e.stopPropagation();
             props.onDelete?.();

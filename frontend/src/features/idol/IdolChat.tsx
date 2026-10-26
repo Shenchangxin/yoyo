@@ -14,7 +14,10 @@ import { str } from "../../lib/normalize";
 import { cn } from "../../lib/utils";
 import { clock, hexAlpha, imageURL, type Idol, type Line } from "./model";
 
-/** IdolChat 渲染消息、待发送句和输入区。靠近底部时跟着滚。只读、结束或冷却时换成对应的底栏。回车发送，Shift+回车换行。 */
+/**
+ * IdolChat 渲染消息、待发送句和输入区。靠近底部时跟着滚。只读、结束或冷却时换成对应的底栏。回车发送，Shift+回车换行。
+ * props 读取 viewingTitle、ended、cooling、lines、pending、sending 等，调用 onSend，调用 onWork，调用 onText。
+ */
 export function IdolChat(props: {
   idol: Idol;
   lines: Line[];
@@ -143,7 +146,7 @@ export function IdolChat(props: {
   );
 }
 
-/** 渲染一行用户、偶像或事件。偶像带照片、分数或工作会话时给出对应块。 */
+/** 渲染一行用户、偶像或事件。偶像带照片、分数或工作会话时给出对应块。props 读取 line、giftNames、score、color、you、openWork，调用 onOpenWork。 */
 function Bubble(props: {
   line: Line;
   color: string;

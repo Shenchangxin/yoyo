@@ -15,6 +15,7 @@ import (
 )
 
 // parseBrowserOpen 从目标文本里拆出 lane 和 profile。默认 lane 是 isolated。lane=attached 改成 attached。
+// raw 去掉空白后按空白拆开，从中取 lane= 和 profile=，其余拼回目标。
 func parseBrowserOpen(raw string) (target, lane, profile string) {
 	target = strings.TrimSpace(raw)
 	lane = "isolated"
@@ -36,6 +37,7 @@ func parseBrowserOpen(raw string) (target, lane, profile string) {
 }
 
 // browserHandle 优先用 ref，并补上 ref= 前缀。没有 ref 时返回 selector。
+// args 为 nil 时返回空串，否则读取 ref，去掉空白后为空再读 selector。
 func browserHandle(args map[string]any) string {
 	if args == nil {
 		return ""
@@ -50,18 +52,21 @@ func browserHandle(args map[string]any) string {
 }
 
 // isRemoteBrowserURL 判断目标是不是 http 或 https。
+// raw 去掉空白并转小写后看是否以 http:// 或 https:// 开头。
 func isRemoteBrowserURL(raw string) bool {
 	low := strings.ToLower(strings.TrimSpace(raw))
 	return strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
 }
 
 // isDataURL 判断目标是不是 data:。
+// raw 去掉空白并转小写后看是否以 data: 开头。
 func isDataURL(raw string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(raw)), "data:")
 }
 
 // workspacePreviewRel 把 browser_open 的目标收成相对工作区的路径。远程 http(s) 和 data: 不是工作区预览。
 // workspace:// 去掉前缀，file: 先译成路径。然后调用 WorkspaceTools.resolve，文件必须已经存在。
+// raw 去掉空白后为空、是远程 URL 或 data: 时返回错误；workspace:// 和 file: 先剥掉再交给 resolve。
 func (t *WorkspaceTools) workspacePreviewRel(raw string) (string, error) {
 	if t == nil || strings.TrimSpace(t.Workspace) == "" {
 		return "", fmt.Errorf("browser_open: no workspace")
@@ -97,6 +102,7 @@ func (t *WorkspaceTools) workspacePreviewRel(raw string) (string, error) {
 }
 
 // fileURLToPath 把 file: URL 收成路径。Windows 上去掉盘符前多余的斜杠，再经 CanonicalizeToolPath。
+// raw 交给 url.Parse，取 Path，Path 为空时改用 Opaque。
 func fileURLToPath(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {

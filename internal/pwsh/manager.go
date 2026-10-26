@@ -154,6 +154,8 @@ func (m *Manager) verify() func(string) error {
 }
 
 // errUnsupported 报告 archiveName 不接受的 GOOS/GOARCH，文案以 pwsh: unsupported platform 开头。
+// goos 写进错误文案，位于斜杠前面。
+// goarch 写进错误文案，位于斜杠后面。
 func errUnsupported(goos, goarch string) error {
 	return fmt.Errorf("pwsh: unsupported platform %s/%s", goos, goarch)
 }

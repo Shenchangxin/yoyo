@@ -55,6 +55,7 @@ type Service struct {
 }
 
 // NewService 包住同进程的 App。RPC 留空，表示不走工作者。
+// a 写入 App。
 func NewService(a *app.App) *Service { return &Service{App: a} }
 
 // decode 先把 v 编成 JSON，再解进 T。传入的 err 非空时直接返回 T 的零值和该错误。
@@ -72,6 +73,8 @@ func decode[T any](v any, err error) (T, error) {
 }
 
 // call 在 RPC 为空时返回 no rpc。否则把方法和参数交给 LineClient.Call。
+// method 在 RPC 非 nil 时传给 LineClient.Call。
+// params 在 RPC 非 nil 时传给 LineClient.Call。
 func (s *Service) call(method string, params any) (any, error) {
 	if s.RPC == nil {
 		return nil, fmt.Errorf("no rpc")
@@ -115,6 +118,7 @@ func (s *Service) GetConfig() app.Config {
 }
 
 // SetConfig 先把补丁编成 JSON。RPC 非空时调用 config.set，成功后再 applyDesktop。同进程则 ApplyConfigPatch，成功后同样 applyDesktop。
+// cfg 编成 JSON。RPC 非空时作为 config.set 的参数。同进程把编码结果传给 ApplyConfigPatch。
 func (s *Service) SetConfig(cfg map[string]any) error {
 	b, err := json.Marshal(cfg)
 	if err != nil {
@@ -150,6 +154,7 @@ func (s *Service) Quitting() bool {
 }
 
 // applyDesktop 记下菜单语言，按配置设置窗口置顶，同步桌面宠物，写入开机启动，并重建菜单。
+// cfg 的 Locale 写入 menuLocale。窗口非 nil 时 AlwaysOnTop 传给 SetAlwaysOnTop。整份传给 syncCompanion，StartAtLogin 传给 SetStartAtLogin。
 func (s *Service) applyDesktop(cfg app.Config) {
 	s.menuLocale = cfg.Locale
 	if s.win != nil {
@@ -171,11 +176,14 @@ func (s *Service) SetAPIKey(value string) {
 }
 
 // CreateSession 调用 CreateSessionOn，频道固定为 agent。
+// workspace 和 agent 传给 CreateSessionOn。
 func (s *Service) CreateSession(workspace string) (app.SessionMeta, error) {
 	return s.CreateSessionOn(workspace, "agent")
 }
 
 // CreateSessionOn 在 RPC 非空时调用 thread.start，否则 App.NewSessionOn。成功后发出 yoyo:sessions。
+// workspace 在 RPC 非空时放进 thread.start，否则传给 App.NewSessionOn。
+// channel 在 RPC 非空时放进 thread.start，否则传给 App.NewSessionOn。
 func (s *Service) CreateSessionOn(workspace, channel string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -191,6 +199,7 @@ func (s *Service) CreateSessionOn(workspace, channel string) (app.SessionMeta, e
 }
 
 // SetSessionChannel 在 RPC 非空时调用 thread.channel.set，否则 App.SetSessionChannel。成功后发出 yoyo:sessions。
+// id 在 RPC 非空时作为 thread.channel.set 的 session。否则传给 App.SetSessionChannel。
 func (s *Service) SetSessionChannel(id, channel string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -214,11 +223,13 @@ func (s *Service) ListSessions() ([]app.SessionMeta, error) {
 }
 
 // ForkSession 调用 ForkSessionFrom，起点为空。
+// id 和空字符串传给 ForkSessionFrom。
 func (s *Service) ForkSession(id string) (app.SessionMeta, error) {
 	return s.ForkSessionFrom(id, "")
 }
 
 // ForkSessionFrom 在 RPC 非空时调用 thread.fork。同进程在 from 非空时走 ForkSessionFrom，否则走 ForkSession。成功后发出 yoyo:sessions。
+// id 在 RPC 非空时作为 thread.fork 的 session。from 非空时和 from 一起传给 App.ForkSessionFrom，否则传给 App.ForkSession。
 func (s *Service) ForkSessionFrom(id, from string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -236,6 +247,7 @@ func (s *Service) ForkSessionFrom(id, from string) (app.SessionMeta, error) {
 }
 
 // RenameSession 在 RPC 非空时调用 thread.rename，再 thread.list 找回该会话并发出 yoyo:sessions。列表失败或找不到时，返回只含 id 和标题的元数据；找不到时发出的载荷是 id 字符串。同进程改名后取 GetSession，成功则发出 yoyo:sessions。
+// title 在 RPC 非空时放进 thread.rename。列表失败或找不到时写入返回元数据的 Title。同进程传给 App.RenameSession。
 func (s *Service) RenameSession(id, title string) (app.SessionMeta, error) {
 	var err error
 	if s.RPC != nil {
@@ -276,6 +288,8 @@ func (s *Service) Playbook() (any, error) {
 }
 
 // RatePlaybook 在 RPC 非空时调用 playbook.rate，否则走 App.RatePlaybook。
+// id 在 RPC 非空时放进 playbook.rate，否则传给 App.RatePlaybook。
+// helpful 在 RPC 非空时放进 playbook.rate，否则传给 App.RatePlaybook。
 func (s *Service) RatePlaybook(id string, helpful bool) (any, error) {
 	if s.RPC != nil {
 		return s.call("playbook.rate", map[string]any{"id": id, "helpful": helpful})
@@ -310,6 +324,7 @@ func (s *Service) WorkspaceHunks(workspace string) (any, error) {
 }
 
 // PreviewWorkspaceFile 在 RPC 非空时调用 workspace.preview，否则走 App.PreviewWorkspaceFile。
+// path 在 RPC 非空时放进 workspace.preview，否则传给 App.PreviewWorkspaceFile。
 func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {
 	if s.RPC != nil {
 		return s.call("workspace.preview", map[string]any{"workspace": workspace, "path": path})
@@ -318,6 +333,7 @@ func (s *Service) PreviewWorkspaceFile(workspace, path string) (any, error) {
 }
 
 // ReadWorkspaceBlob 在 RPC 非空时调用 workspace.blob，否则走 App.ReadWorkspaceBlob。
+// path 在 RPC 非空时放进 workspace.blob，否则传给 App.ReadWorkspaceBlob。
 func (s *Service) ReadWorkspaceBlob(workspace, path string) (any, error) {
 	if s.RPC != nil {
 		return s.call("workspace.blob", map[string]any{"workspace": workspace, "path": path})
@@ -326,6 +342,7 @@ func (s *Service) ReadWorkspaceBlob(workspace, path string) (any, error) {
 }
 
 // ApplyHunks 在 RPC 非空时调用 workspace.apply_hunks，否则走 App.ApplyWorkspaceHunks。
+// ids 在 RPC 非空时放进 workspace.apply_hunks，否则传给 App.ApplyWorkspaceHunks。
 func (s *Service) ApplyHunks(workspace string, ids []string) error {
 	if s.RPC != nil {
 		_, err := s.call("workspace.apply_hunks", map[string]any{"workspace": workspace, "ids": ids})
@@ -335,6 +352,8 @@ func (s *Service) ApplyHunks(workspace string, ids []string) error {
 }
 
 // ReverseHunks 在 RPC 非空时调用 workspace.reverse_hunks，否则走 App.ReverseWorkspaceHunks。
+// ids 在 RPC 非空时放进 workspace.reverse_hunks，否则传给 App.ReverseWorkspaceHunks。
+// snapshot 在 RPC 非空时放进 workspace.reverse_hunks，否则传给 App.ReverseWorkspaceHunks。
 func (s *Service) ReverseHunks(workspace string, ids []string, snapshot string) error {
 	if s.RPC != nil {
 		_, err := s.call("workspace.reverse_hunks", map[string]any{"workspace": workspace, "ids": ids, "snapshot": snapshot})
@@ -420,6 +439,7 @@ func (s *Service) LastEvolve() (any, error) {
 }
 
 // Trajectory 在 RPC 非空时调用 trajectory.get。同进程先 ResolveSessionID，再取轨迹。
+// id 在 RPC 非空时作为 trajectory.get 的 session。否则传给 ResolveSessionID，结果再传给 App.Trajectory。
 func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 	if s.RPC != nil {
 		return decode[[]trace.Event](s.call("trajectory.get", map[string]any{"session": id}))
@@ -432,6 +452,7 @@ func (s *Service) Trajectory(id string) ([]trace.Event, error) {
 }
 
 // TrajectoryPage 在 RPC 非空时调用 trajectory.page，参数是 before 和 turns。同进程先解析会话 id。
+// beforeSeq 在 RPC 非空时作为 trajectory.page 的 before。否则传给 App.TrajectoryPage。
 func (s *Service) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.TrajectoryPage, error) {
 	if s.RPC != nil {
 		return decode[runtime.TrajectoryPage](s.call("trajectory.page", map[string]any{
@@ -462,6 +483,7 @@ func (s *Service) TrajectoryOutline(id string) ([]trace.OutlineTurn, error) {
 }
 
 // TrajectoryAround 在 RPC 非空时调用 trajectory.around，参数是 seq 和 turns。同进程先解析会话 id。
+// userSeq 在 RPC 非空时作为 trajectory.around 的 seq。否则传给 App.TrajectoryAround。
 func (s *Service) TrajectoryAround(id string, userSeq int64, turns int) (runtime.TrajectoryPage, error) {
 	if s.RPC != nil {
 		return decode[runtime.TrajectoryPage](s.call("trajectory.around", map[string]any{
@@ -476,6 +498,8 @@ func (s *Service) TrajectoryAround(id string, userSeq int64, turns int) (runtime
 }
 
 // LiveSince 在 RPC 非空时调用 live.since。同进程会先解析非空的会话 id，再返回 App.LiveSince，错误为 nil。
+// sessionID 在 RPC 非空时作为 live.since 的 session。同进程去掉空白后非空时传给 ResolveSessionID，再和 after 传给 App.LiveSince。
+// after 在 RPC 非空时放进 live.since。否则传给 App.LiveSince。
 func (s *Service) LiveSince(sessionID string, after int64) ([]trace.Event, error) {
 	if s.RPC != nil {
 		return decode[[]trace.Event](s.call("live.since", map[string]any{
@@ -494,6 +518,7 @@ func (s *Service) LiveSince(sessionID string, after int64) ([]trace.Event, error
 }
 
 // LiveSync 在 RPC 非空时调用 live.sync，否则解析会话后走 App.LiveSync。结果在事件之外带环形缓冲头 Head、Gap 和 More。Gap 为真表示 after 落在环外。More 为真表示这一页被截到 1024 条，用完还要再拉。
+// sessionID 在 RPC 非空时作为 live.sync 的 session。同进程去掉空白后非空时传给 ResolveSessionID，再传给 App.LiveSync。
 func (s *Service) LiveSync(sessionID string, after int64) (app.LiveBatch, error) {
 	if s.RPC != nil {
 		return decode[app.LiveBatch](s.call("live.sync", map[string]any{
@@ -512,6 +537,7 @@ func (s *Service) LiveSync(sessionID string, after int64) (app.LiveBatch, error)
 }
 
 // StopTurn 在 RPC 非空时调用 turn.stop。调用失败时返回该会话 id 且 state 为 idle 的 InterruptResult。否则返回 App.StopTurn。
+// sessionID 在 RPC 非空时作为 turn.stop 的 session。调用失败时写入 InterruptResult 的 SessionID。否则传给 App.StopTurn。
 func (s *Service) StopTurn(sessionID string) app.InterruptResult {
 	if s.RPC != nil {
 		res, err := decode[app.InterruptResult](s.call("turn.stop", map[string]any{"session": sessionID}))
@@ -524,6 +550,7 @@ func (s *Service) StopTurn(sessionID string) app.InterruptResult {
 }
 
 // SetRendererMemory 把档位交给 setRendererMemory。当前实现不改 WebView，直接返回 nil。
+// level 和窗口一起传给 setRendererMemory。
 func (s *Service) SetRendererMemory(level string) error {
 	return setRendererMemory(s.win, level)
 }
@@ -541,6 +568,8 @@ func (s *Service) SessionTrace(id string) (any, error) {
 }
 
 // SpillBlob 在 RPC 非空时调用 spill.get。同进程先解析会话 id。
+// sessionID 在 RPC 非空时作为 spill.get 的 session。否则传给 ResolveSessionID。
+// blobID 在 RPC 非空时作为 spill.get 的 id。否则传给 App.SpillBlob。
 func (s *Service) SpillBlob(sessionID, blobID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("spill.get", map[string]any{"session": sessionID, "id": blobID})
@@ -587,6 +616,7 @@ func (s *Service) ResolveSessionID(id string) (string, error) {
 }
 
 // Send 在 RPC 非空时调用 turn.start，且 wait 为真，返回结果里的 text。同进程走 App.Send，发布函数是 Hub.Publish。
+// sessionID 在 RPC 非空时作为 turn.start 的 session。否则传给 App.Send。
 func (s *Service) Send(sessionID, text string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("turn.start", map[string]any{"session": sessionID, "text": text, "wait": true})
@@ -605,11 +635,18 @@ func (s *Service) Send(sessionID, text string) (string, error) {
 }
 
 // StartSend 调用 StartSendOpts，附件为 nil。
+// sessionID 传给 StartSendOpts。
+// text 传给 StartSendOpts。
+// plan 传给 StartSendOpts。
 func (s *Service) StartSend(sessionID, text string, plan bool) error {
 	return s.StartSendOpts(sessionID, text, plan, nil)
 }
 
 // StartSendOpts 在 RPC 非空时调用 turn.start，wait 为假，并带上附件。同进程走 App.StartSendOpts，遇到 ErrQueued 时当成成功返回。
+// sessionID 在 RPC 非空时作为 turn.start 的 session。否则传给 App.StartSendOpts。
+// text 在 RPC 非空时放进 turn.start。否则传给 App.StartSendOpts。
+// plan 在 RPC 非空时放进 turn.start。否则传给 App.StartSendOpts。
+// atts 在 RPC 非空时作为 turn.start 的 attachments。否则传给 App.StartSendOpts。
 func (s *Service) StartSendOpts(sessionID, text string, plan bool, atts []app.Attachment) error {
 	if s.RPC != nil {
 		_, err := s.call("turn.start", map[string]any{"session": sessionID, "text": text, "plan": plan, "wait": false, "attachments": atts})
@@ -623,6 +660,7 @@ func (s *Service) StartSendOpts(sessionID, text string, plan bool, atts []app.At
 }
 
 // RetrySession 在 RPC 非空时调用 turn.retry，否则走 App.RetrySession。
+// sessionID 在 RPC 非空时作为 turn.retry 的 session。否则传给 App.RetrySession。
 func (s *Service) RetrySession(sessionID string) error {
 	if s.RPC != nil {
 		_, err := s.call("turn.retry", map[string]any{"session": sessionID})
@@ -648,6 +686,7 @@ func (s *Service) Interrupt(sessionID string) error {
 }
 
 // Running 在 RPC 非空时调用 turn.running，并读取 running 字段。否则走 App.Running。
+// sessionID 在 RPC 非空时作为 turn.running 的 session。否则传给 App.Running。
 func (s *Service) Running(sessionID string) bool {
 	if s.RPC != nil {
 		v, err := s.call("turn.running", map[string]any{"session": sessionID})
@@ -688,6 +727,7 @@ func (s *Service) RunningStatus() []app.RunStatus {
 }
 
 // ContextUsage 在 RPC 非空时调用 context.get，忽略错误。否则走 App.ContextUsage。
+// sessionID 在 RPC 非空时作为 context.get 的 session。否则传给 App.ContextUsage。
 func (s *Service) ContextUsage(sessionID string) any {
 	if s.RPC != nil {
 		v, _ := s.call("context.get", map[string]any{"session": sessionID})
@@ -697,6 +737,7 @@ func (s *Service) ContextUsage(sessionID string) any {
 }
 
 // ContextInventory 在 RPC 非空时调用 context.inventory，忽略错误。否则走 App.ContextInventory。
+// sessionID 在 RPC 非空时作为 context.inventory 的 session。否则传给 App.ContextInventory。
 func (s *Service) ContextInventory(sessionID string) any {
 	if s.RPC != nil {
 		v, _ := s.call("context.inventory", map[string]any{"session": sessionID})
@@ -706,6 +747,8 @@ func (s *Service) ContextInventory(sessionID string) any {
 }
 
 // SetSessionPlan 在 RPC 非空时调用 thread.plan，否则走 App.SetSessionPlan。成功后发出 yoyo:sessions。
+// id 在 RPC 非空时作为 thread.plan 的 session。否则传给 App.SetSessionPlan。
+// text 在 RPC 非空时放进 thread.plan。否则传给 App.SetSessionPlan。
 func (s *Service) SetSessionPlan(id, text string) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -721,6 +764,8 @@ func (s *Service) SetSessionPlan(id, text string) (app.SessionMeta, error) {
 }
 
 // RestoreSessionFiles 在 RPC 非空时调用 thread.restore_files，并返回 note。结果不是带 note 的对象时，把值格式化成字符串。否则走 App.RestoreSessionFiles。
+// id 在 RPC 非空时作为 thread.restore_files 的 session。否则传给 App.RestoreSessionFiles。
+// from 在 RPC 非空时放进 thread.restore_files。否则传给 App.RestoreSessionFiles。
 func (s *Service) RestoreSessionFiles(id, from string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("thread.restore_files", map[string]any{"session": id, "from": from})
@@ -737,6 +782,10 @@ func (s *Service) RestoreSessionFiles(id, from string) (string, error) {
 }
 
 // ContextPin 在 RPC 非空时调用 context.pin，否则走 App.ContextPin。成功后发出 yoyo:sessions。
+// id 在 RPC 非空时作为 context.pin 的 session。否则传给 App.ContextPin。
+// kind 在 RPC 非空时放进 context.pin。否则传给 App.ContextPin。
+// key 在 RPC 非空时放进 context.pin。否则传给 App.ContextPin。
+// pinned 在 RPC 非空时放进 context.pin。否则传给 App.ContextPin。
 func (s *Service) ContextPin(id, kind, key string, pinned bool) (app.SessionMeta, error) {
 	var m app.SessionMeta
 	var err error
@@ -761,11 +810,15 @@ func (s *Service) PendingApprovals() any {
 }
 
 // ResolveApproval 调用 ResolveApprovalAnswer，回答文本为空。
+// id 传给 ResolveApprovalAnswer。
+// decision 传给 ResolveApprovalAnswer。
 func (s *Service) ResolveApproval(id, decision string) error {
 	return s.ResolveApprovalAnswer(id, decision, "")
 }
 
 // ResolveApprovalAnswer 在 RPC 非空时调用 approvals.resolve，并带上 answer。否则走 App.ResolveApprovalAnswer。
+// id 在 RPC 非空时放进 approvals.resolve。否则传给 App.ResolveApprovalAnswer。
+// decision 在 RPC 非空时放进 approvals.resolve。否则传给 App.ResolveApprovalAnswer。
 func (s *Service) ResolveApprovalAnswer(id, decision, answer string) error {
 	if s.RPC != nil {
 		_, err := s.call("approvals.resolve", map[string]any{"id": id, "decision": decision, "answer": answer})
@@ -775,6 +828,9 @@ func (s *Service) ResolveApprovalAnswer(id, decision, answer string) error {
 }
 
 // StartMCP 在 RPC 非空时调用 mcp.start，否则走 App.StartMCP。
+// name 在 RPC 非空时放进 mcp.start。否则传给 App.StartMCP。
+// command 在 RPC 非空时放进 mcp.start。否则传给 App.StartMCP。
+// args 在 RPC 非空时放进 mcp.start。否则传给 App.StartMCP。
 func (s *Service) StartMCP(name, command string, args []string) error {
 	if s.RPC != nil {
 		_, err := s.call("mcp.start", map[string]any{"name": name, "command": command, "args": args})
@@ -800,6 +856,7 @@ func (s *Service) HarnessLineage() (app.HarnessLineage, error) {
 }
 
 // RevealHarness 在 RPC 非空时调用 harness.reveal，否则走 App.RevealHarness。
+// hash 在 RPC 非空时放进 harness.reveal。否则传给 App.RevealHarness。
 func (s *Service) RevealHarness(hash string) error {
 	if s.RPC != nil {
 		_, err := s.call("harness.reveal", map[string]any{"hash": hash})
@@ -809,6 +866,7 @@ func (s *Service) RevealHarness(hash string) error {
 }
 
 // Checkout 在 RPC 非空时调用 harness.checkout，不带 l3。否则走 App.Checkout。
+// hash 在 RPC 非空时放进 harness.checkout。否则传给 App.Checkout。
 func (s *Service) Checkout(hash string) error {
 	if s.RPC != nil {
 		_, err := s.call("harness.checkout", map[string]any{"hash": hash})
@@ -818,6 +876,7 @@ func (s *Service) Checkout(hash string) error {
 }
 
 // CheckoutL3 在 RPC 非空时调用 harness.checkout，且 l3 为真。否则走 CheckoutOpts，ConfirmL3 为真。
+// hash 在 RPC 非空时放进 harness.checkout。否则传给 App.CheckoutOpts。
 func (s *Service) CheckoutL3(hash string) error {
 	if s.RPC != nil {
 		_, err := s.call("harness.checkout", map[string]any{"hash": hash, "l3": true})
@@ -836,6 +895,7 @@ func (s *Service) Rollback() error {
 }
 
 // Diff 在 RPC 非空时调用 harness.diff，并返回其中的 text。否则走 App.Diff。
+// b 在 RPC 非空时放进 harness.diff。否则传给 App.Diff。
 func (s *Service) Diff(a, b string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("harness.diff", map[string]any{"a": a, "b": b})
@@ -850,6 +910,7 @@ func (s *Service) Diff(a, b string) (string, error) {
 }
 
 // DiffDetail 在 RPC 非空时调用 harness.diff，返回整份对象。否则走 App.DiffDetail。
+// b 在 RPC 非空时放进 harness.diff。否则传给 App.DiffDetail。
 func (s *Service) DiffDetail(a, b string) (map[string]any, error) {
 	if s.RPC != nil {
 		return decode[map[string]any](s.call("harness.diff", map[string]any{"a": a, "b": b}))
@@ -907,16 +968,29 @@ func (s *Service) Evolve() (evolve.CycleResult, error) {
 }
 
 // EvolveK 调用 EvolveRun，轮数为 1，sealed 和 promote 都为假。
+// k 和 1、false、false 传给 EvolveRun。
 func (s *Service) EvolveK(k int) (evolve.CycleResult, error) {
 	return s.EvolveRun(k, 1, false, false)
 }
 
 // EvolveRun 调用 EvolveLab。behavior 和 index 为假，baselines 为 0，maxUSD 为 0。
+// k 传给 EvolveLab。
+// rounds 传给 EvolveLab。
+// sealed 传给 EvolveLab。
+// promote 传给 EvolveLab。
 func (s *Service) EvolveRun(k, rounds int, sealed, promote bool) (evolve.CycleResult, error) {
 	return s.EvolveLab(k, rounds, sealed, promote, false, false, 0, 0)
 }
 
 // EvolveLab 在 RPC 非空时调用 evolve.run。同进程超时为每轮 15 分钟，轮数大于 1 时相乘，上限 2 小时，然后 EvolveWith。
+// k 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 K。
+// rounds 在 RPC 非空时放进 evolve.run。大于 1 时用来乘 15 分钟，上限 2 小时。否则写入 EvolveRun 的 Rounds。
+// sealed 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 Sealed。
+// promote 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 PromoteActive。
+// behavior 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 Behavior。
+// index 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 IndexTransfer。
+// baselines 在 RPC 非空时放进 evolve.run。否则写入 EvolveRun 的 Baselines。
+// maxUSD 在 RPC 非空时作为 evolve.run 的 max_usd。否则写入 EvolveRun 的 MaxUSD。
 func (s *Service) EvolveLab(k, rounds int, sealed, promote, behavior, index bool, baselines int, maxUSD float64) (evolve.CycleResult, error) {
 	if s.RPC != nil {
 		return decode[evolve.CycleResult](s.call("evolve.run", map[string]any{
@@ -940,6 +1014,11 @@ func (s *Service) EvolveLab(k, rounds int, sealed, promote, behavior, index bool
 }
 
 // OverlaySession 在 RPC 非空时调用 evolve.overlay。同进程把小于 1 的 overlayK 按 1 计算超时，每份 15 分钟，上限 1 小时，然后 App.OverlaySession。
+// sessionID 在 RPC 非空时作为 evolve.overlay 的 session。否则写入 OverlayRun 的 SessionID。
+// task 在 RPC 非空时放进 evolve.overlay。否则写入 OverlayRun 的 Task。
+// reuseTurn 在 RPC 非空时作为 evolve.overlay 的 reuse_turn。否则写入 OverlayRun 的 ReuseTurn。
+// maxUSD 在 RPC 非空时作为 evolve.overlay 的 max_usd。否则写入 OverlayRun 的 MaxUSD。
+// overlayMode 在 RPC 非空时作为 evolve.overlay 的 overlay_mode。否则写入 OverlayRun 的 Mode。
 func (s *Service) OverlaySession(sessionID, task string, reuseTurn bool, maxUSD float64, overlayK int, overlayMode string) (evolve.OverlayResult, error) {
 	if s.RPC != nil {
 		return decode[evolve.OverlayResult](s.call("evolve.overlay", map[string]any{
@@ -962,6 +1041,7 @@ func (s *Service) OverlaySession(sessionID, task string, reuseTurn bool, maxUSD 
 }
 
 // OverlayLibrary 在 RPC 非空时调用 evolve.library，否则走 App.OverlayLibrary。
+// sessionID 在 RPC 非空时作为 evolve.library 的 session。否则传给 App.OverlayLibrary。
 func (s *Service) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
 	if s.RPC != nil {
 		return decode[evolve.LibraryView](s.call("evolve.library", map[string]any{"session": sessionID}))
@@ -990,6 +1070,7 @@ func (s *Service) Plugins() map[string]any {
 }
 
 // UnloadFiber 在 RPC 非空时调用 fiber.unload。同进程先 Dispose 同名 fiber，没有则 WASM.Unload。
+// name 在 RPC 非空时放进 fiber.unload。否则传给 Kernel.Fiber，找到时 Dispose，否则传给 WASM.Unload。
 func (s *Service) UnloadFiber(name string) error {
 	if s.RPC != nil {
 		_, err := s.call("fiber.unload", map[string]any{"name": name})
@@ -1028,6 +1109,7 @@ func (s *Service) ApplyUpdate() error {
 }
 
 // flagTrue 在值为布尔真，或字符串 true、1 时返回真。其他类型返回假。
+// v 是 bool 时返回该值。是字符串时等于 true 或 1 则返回真。其他类型返回假。
 func flagTrue(v any) bool {
 	switch t := v.(type) {
 	case bool:

@@ -48,6 +48,7 @@ func OpenArchive(dir string) (*Archive, error) {
 }
 
 // Add 追加一个节点。CreatedAt 为零时写成当前 UTC，然后整表落盘。
+// n 的 CreatedAt 为零时改成当前 UTC，再追加进节点列表并整表落盘。
 func (a *Archive) Add(n Node) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -59,6 +60,8 @@ func (a *Archive) Add(n Node) error {
 }
 
 // FlagTransfer 给编号相同的节点写上 TransferFail。档案为 nil 或编号为空时直接返回 nil。同一编号可命中多条。
+// id 为空时直接返回 nil；否则给 ID 等于 id 的节点写 TransferFail。
+// fail 写到这些节点的 TransferFail。
 func (a *Archive) FlagTransfer(id string, fail bool) error {
 	if a == nil || id == "" {
 		return nil

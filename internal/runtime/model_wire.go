@@ -34,6 +34,7 @@ func wireContent(m Message) any {
 
 // wireMessages 把内部记录投影成 OpenAI Chat Completions 的 JSON。内部 ToolCall 是扁平的 {id,name,arguments}；线上是 {id,type,function:{name,arguments}}。网关（DashScope 一类）会以 “Field required: …tool_calls.N.function” 拒绝扁平形状。
 // RoleDeveloper 写成 name=developer 的 system。RoleMemory 写成 name=working_memory 的 user。
+// msgs 按 Role 收成行：工具写 tool_call_id，developer 改成 system，memory 改成 user，助手带上工具调用。
 func wireMessages(msgs []Message) []map[string]any {
 	out := make([]map[string]any, 0, len(msgs))
 	for _, m := range msgs {
@@ -73,6 +74,7 @@ func wireMessages(msgs []Message) []map[string]any {
 }
 
 // wireToolCalls 把工具调用嵌进 function。名字为空的条目丢掉。参数为空时写成 {}。ID 为空时用 call_<名字>_<下标>。
+// calls 长度为 0 时返回 nil，否则丢掉名字为空的条目。
 func wireToolCalls(calls []ToolCall) []map[string]any {
 	if len(calls) == 0 {
 		return nil

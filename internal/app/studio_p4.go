@@ -11,6 +11,7 @@ import (
 )
 
 // OpenStudioPublish 在 analytics 为真时打开 AnalyticsURL，否则先 ExportPublish 再打开 CreatorURL。有浏览器时先 OpenURLLane 的 isolated，再 BrowserTakeoverAt 空路径；打不开则 OpenURL。状态为空或 PublishDraft 时标成 PublishOpened。
+// id 先 TrimSpace，再传给 GetPublish；analytics 为假时再传给 ExportPublish。
 func (a *App) OpenStudioPublish(id string, analytics bool) (map[string]any, error) {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -84,6 +85,7 @@ func (a *App) CreateStudioPersona(name, topicID string) (map[string]any, error) 
 }
 
 // enrichPublish 给发布记录加上 media_url。
+// p 传给 objJSON，并用 MediaHash 填 media_url。
 func (a *App) enrichPublish(p video.Publish) map[string]any {
 	m := objJSON(p)
 	m["media_url"] = a.mediaURL(p.MediaHash)
@@ -91,6 +93,7 @@ func (a *App) enrichPublish(p video.Publish) map[string]any {
 }
 
 // strAnyFrom 按顺序返回第一个非空字段。空白和 <nil> 跳过。map 为空返回空串。
+// keys 按顺序在 m 里查找。
 func strAnyFrom(m map[string]any, keys ...string) string {
 	if m == nil {
 		return ""

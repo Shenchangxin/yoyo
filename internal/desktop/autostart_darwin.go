@@ -8,6 +8,7 @@ import (
 )
 
 // SetStartAtLogin 在打开时把 com.yoyo.workstation.plist 写到 ~/Library/LaunchAgents，RunAtLoad 为真，程序是当前可执行文件。关闭时删除该 plist。可执行文件路径为空则返回 nil。
+// enabled 为假时删除该 plist。为真时在可执行文件路径非空的情况下写入它。
 func SetStartAtLogin(enabled bool) error {
 	home, err := os.UserHomeDir()
 	if err != nil {

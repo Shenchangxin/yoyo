@@ -9,6 +9,8 @@ import (
 )
 
 // Curate 给已有条目按标签加 Helpful 或 Harmful，并把洞察收成新条目。标签找不到原文时跳过。洞察为空或像仓库概览时跳过。
+// pb 的 Bullets 用来按标签找回正文，最后把增量交给 ApplyDelta。
+// ref 的 BulletTags 决定给哪条加 Helpful 或 Harmful；Insights 为空或像仓库概览时跳过，否则收成新条目。
 func Curate(pb artifact.Playbook, ref Reflection) artifact.Playbook {
 	var add []artifact.PlaybookBullet
 	for _, tag := range ref.BulletTags {

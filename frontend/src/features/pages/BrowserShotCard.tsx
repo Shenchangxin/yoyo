@@ -4,14 +4,14 @@ import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
 import { toolArgs, toolName } from "../../lib/tool-summary";
 
-/** isBrowserShotItem 判断这条是不是浏览器截图或快照。 */
+/** isBrowserShotItem 判断这条是不是浏览器截图或快照。item 为假时返回假；传给 toolName。 */
 export function isBrowserShotItem(item?: Item): boolean {
   if (!item) return false;
   const n = toolName(item);
   return n === "browser_screenshot" || n === "browser_snapshot";
 }
 
-/** BrowserShotCard 投影一张截图，点开浏览器检查器。 */
+/** BrowserShotCard 投影一张截图，点开浏览器检查器。props 读取 result、call。 */
 export function BrowserShotCard(props: { call?: Item; result?: Item }) {
   const copy = useCopy();
   const item = props.result || props.call;

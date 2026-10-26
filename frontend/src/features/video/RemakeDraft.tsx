@@ -11,12 +11,12 @@ import { isVideoPath } from "./ingest-clip";
 import { cutCues, useCutReadiness, type CutProject } from "./cut-desk";
 import { useRemakeDesk } from "./remake-desk";
 
-/** 把字幕条目收成多行文本。 */
+/** 把字幕条目收成多行文本。project 交给 cutCues。 */
 function cueText(project: CutProject | null) {
-  return cutCues(project).map((cue) => String(cue.text || "").trim()).filter(Boolean).join("\n");
+  return cutCues(project).map(/** cue 取出 text 并去掉空白。 */ (cue) => String(cue.text || "").trim()).filter(Boolean).join("\n");
 }
 
-/** 不足 60 秒显示秒，否则显示分和秒。无效时长显示破折号。 */
+/** 不足 60 秒显示秒，否则显示分和秒。无效时长显示破折号。n 转成秒，无效就显示破折号。 */
 function lengthLabel(n: number | undefined) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "—";
@@ -26,13 +26,13 @@ function lengthLabel(n: number | undefined) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-/** RemakeDraft 编辑翻拍文案。自己的画面时主按钮是送去剪辑，否则主按钮是换画面。 */
+/** RemakeDraft 编辑翻拍文案。自己的画面时主按钮是送去剪辑，否则主按钮是换画面。props 的 onOpenCut 在文案保存后打开这条剪辑。 */
 export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;
-  const draft = useRemakeDesk((s) => s.draft);
-  const setDraft = useRemakeDesk((s) => s.setDraft);
-  const clear = useRemakeDesk((s) => s.clear);
+  const draft = useRemakeDesk(/** s 取出 draft。 */ (s) => s.draft);
+  const setDraft = useRemakeDesk(/** s 取出 setDraft。 */ (s) => s.setDraft);
+  const clear = useRemakeDesk(/** s 取出 clear。 */ (s) => s.clear);
   const ready = useCutReadiness();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState("");
@@ -65,7 +65,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
   /** 选一个视频路径，登记成媒体后换掉这条翻拍的画面。 */
   async function replacePicture() {
     const picked = await api.pickFiles();
-    const path = picked.find((item) => isVideoPath(item)) || "";
+    const path = picked.find(/** item 是视频路径才留下。 */ (item) => isVideoPath(item)) || "";
     if (!path || !isVideoPath(path)) {
       if (picked.length) toast.error(copy.composer.importClipHint);
       return;
@@ -120,7 +120,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
       <p>{mine ? c.remakePictureMine : c.remakePictureRef}</p>
       <label>
         <span>{c.remakeCopy}</span>
-        <textarea value={text} onChange={(ev) => setText(ev.target.value)} placeholder={cues === 0 ? c.remakeNoCues : ""} />
+        <textarea value={text} onChange={/** ev 取出 target.value 写进文案。 */ (ev) => setText(ev.target.value)} placeholder={cues === 0 ? c.remakeNoCues : ""} />
       </label>
       <div className="creation-remake-actions">
         {mine ? (

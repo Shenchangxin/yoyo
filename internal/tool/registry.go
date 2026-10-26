@@ -36,6 +36,7 @@ func (r *Registry) Register(t Tool) {
 }
 
 // Unregister 按名字删掉工具。接收者为 nil 时直接返回。
+// name 作为 tools 的键删除。
 func (r *Registry) Unregister(name string) {
 	if r == nil {
 		return
@@ -46,6 +47,7 @@ func (r *Registry) Unregister(name string) {
 }
 
 // Get 按名字取出工具。没有或接收者为 nil 时返回 nil。
+// name 作为 tools 的键。
 func (r *Registry) Get(name string) Tool {
 	if r == nil {
 		return nil
@@ -116,6 +118,7 @@ func (r *Registry) Filter(advertise, allowed []string) []artifact.ToolSpec {
 }
 
 // alwaysAllowed 对 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_thread、read_skill_file 返回 true。
+// name 与这八个字符串比较，对上返回 true。
 func alwaysAllowed(name string) bool {
 	switch name {
 	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread", "read_skill_file":
@@ -126,6 +129,7 @@ func alwaysAllowed(name string) bool {
 }
 
 // ParseAllowedTools 按空白拆允许列表。空白则返回 nil。
+// raw 去掉两端空白，空则返回 nil，否则按 strings.Fields 拆开。
 func ParseAllowedTools(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

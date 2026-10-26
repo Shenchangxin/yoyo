@@ -4,7 +4,7 @@ import type { ComponentProps, ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "../../lib/utils";
 
-// Sheet 转发对话框根，开关状态留在 Radix。
+/** Sheet 转发对话框根，开关状态留在 Radix。props 展开到 Dialog.Root。 */
 export function Sheet(props: ComponentProps<typeof Dialog.Root>) {
   return <Dialog.Root {...props} />;
 }
@@ -18,7 +18,13 @@ export const SheetTitle = Dialog.Title;
 // SheetDescription 转发说明。
 export const SheetDescription = Dialog.Description;
 
-// SheetContent 默认从右侧滑出并带遮罩。overlay 为假时不画遮罩。left 宽至多 280px，right 至多 380px，bottom 高度至多 520px 或 70vh。
+/**
+ * SheetContent 默认从右侧滑出并带遮罩。overlay 为假时不画遮罩。left 宽至多 280px，right 至多 380px，bottom 高度至多 520px 或 70vh。
+ * side 与 right、left、bottom 比较是否相等。
+ * className 传给 cn。
+ * children 作为子节点渲染。
+ * props 展开到 Dialog.Content。
+ */
 export function SheetContent({
   side = "right",
   className,

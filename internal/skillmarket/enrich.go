@@ -22,6 +22,8 @@ type gitTree struct {
 }
 
 // mergeCachedMeta 按 slug 把旧缓存里的图标、显示名、版本和脚本标记补到新条目上。
+// items 按 slug 补上 previous 里已有而自己为空的图标、显示名和版本，脚本标记按或合并。
+// previous 长度为 0 时直接返回，否则按 slug 建表。
 func mergeCachedMeta(items, previous []Item) {
 	if len(previous) == 0 {
 		return
@@ -49,6 +51,7 @@ func mergeCachedMeta(items, previous []Item) {
 }
 
 // enrichFromTree 拉仓库树，补上目录里有而表格没有的技能，并标记 scripts/ 和常见图标文件。
+// items 在树为空时原样返回；否则先交给 appendTreeSkills，再按树路径标脚本和图标。
 func enrichFromTree(items []Item) []Item {
 	var tree gitTree
 	if u := derivedTreeURL(Base); u != "" {
@@ -98,6 +101,8 @@ func enrichFromTree(items []Item) []Item {
 }
 
 // appendTreeSkills 把树里 skills/<slug>/SKILL.md 对应、但条目里还没有的 slug 追加进去。
+// items 里已有的 slug 不再追加。
+// tree 里类型为 blob、余下路径等于 SKILL.md 且 slug 还没有的，追加一条条目。
 func appendTreeSkills(items []Item, tree gitTree) []Item {
 	idx := map[string]bool{}
 	for _, it := range items {
@@ -121,6 +126,7 @@ func appendTreeSkills(items []Item, tree gitTree) []Item {
 }
 
 // skillRel 要求路径以 skills/ 开头，并拆出 slug 和余下部分。slug 净化失败返回 false。
+// p 把反斜杠换成斜杠并去掉两端斜杠，不以 skills/ 开头或净化后 slug 为空则返回 false。
 func skillRel(p string) (slug, rest string, ok bool) {
 	p = strings.Trim(strings.ReplaceAll(p, "\\", "/"), "/")
 	if !strings.HasPrefix(p, "skills/") {
@@ -139,6 +145,7 @@ func skillRel(p string) (slug, rest string, ok bool) {
 }
 
 // enrichFrontmatter 优先拉精选条目的 SKILL.md，最多 24 个，并发数是 8。已有图标和显示名的跳过。
+// items 先排精选再排其余；图标和显示名都已有的跳过，最多处理 24 个。
 func enrichFrontmatter(items []Item) {
 	order := make([]int, 0, len(items))
 	for i := range items {

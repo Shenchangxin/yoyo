@@ -7,7 +7,7 @@ import { createElement, type ReactNode } from "react";
 import type { RootContent, PhrasingContent } from "mdast";
 import type { PositionedBlock } from "./incremental-md";
 
-/** 只留 http、https 和 mailto。相对地址和解析失败返回空串。 */
+/** 只留 http、https 和 mailto。相对地址和解析失败返回空串。url 传给 URL。 */
 function sanitizeUrl(url: string): string {
   try {
     const protocol = new URL(url).protocol;
@@ -18,13 +18,13 @@ function sanitizeUrl(url: string): string {
   return "";
 }
 
-/** 把一行内的节点顺次画出来。没有节点则空数组。 */
+/** 把一行内的节点顺次画出来。没有节点则空数组。nodes 读取 length，为空时不读，做映射。 */
 function phrasing(nodes: readonly PhrasingContent[] | undefined): ReactNode[] {
   if (!nodes?.length) return [];
   return nodes.map((node, i) => inline(node, i));
 }
 
-/** 画一个行内节点。链接和图片的地址过不了校验时，链接退回文字，图片退回替代文本。其余有子节点的包进 span，有 value 的返回原文。 */
+/** 画一个行内节点。链接和图片的地址过不了校验时，链接退回文字，图片退回替代文本。其余有子节点的包进 span，有 value 的返回原文。node 读取 type、value、children、url、alt。key 写入字段 key。 */
 function inline(node: PhrasingContent, key: number): ReactNode {
   switch (node.type) {
     case "text":
@@ -60,7 +60,7 @@ function inline(node: PhrasingContent, key: number): ReactNode {
   }
 }
 
-/** 画一个块。标题深度夹在 1 到 6。表格不少于四列时加宽并可以聚焦。html 块只显示原文。 */
+/** 画一个块。标题深度夹在 1 到 6。表格不少于四列时加宽并可以聚焦。html 块只显示原文。node 读取 type、children、depth、ordered、value。key 写入字段 key。 */
 function block(node: RootContent, key: number): ReactNode {
   switch (node.type) {
     case "paragraph":
@@ -155,7 +155,7 @@ function block(node: RootContent, key: number): ReactNode {
   }
 }
 
-/** renderMdastBlocks 把冻结的 mdast 块画成元素。键是源码偏移，跨过冻结边界时 React 能对上。 */
+/** renderMdastBlocks 把冻结的 mdast 块画成元素。键是源码偏移，跨过冻结边界时 React 能对上。blocks 用来遍历。 */
 export function renderMdastBlocks(blocks: readonly PositionedBlock[]): ReactNode[] {
   const out: ReactNode[] = [];
   for (const b of blocks) {

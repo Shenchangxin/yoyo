@@ -11,6 +11,8 @@ import (
 )
 
 // Scroll 按方向滚动 amount 像素。方向是 up、down、left、right，空则 down。amount 小于等于 0 时用 400，大于 4000 时收成 4000。给了选择器就先等到它可点，再用它的坐标；否则用视口中心。
+// direction 作为 scroll 的 detail 传给 record。去掉空白并转小写后为空则当成 down。不是 up、down、left、right 时返回错误，错误里带上原来的 direction。
+// sel 去掉空白后非空时传给 waitFor，用返回的坐标。否则用视口中心。
 func (h *Host) Scroll(direction string, amount int, sel string) (string, error) {
 	h.record("scroll", direction)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -74,6 +76,7 @@ func (h *Host) viewportCenter() (float64, float64, error) {
 }
 
 // Hover 把指针移到选择器上，不按下。只在 mouseenter 时打开的菜单需要这个。
+// sel 作为 hover 的 detail 传给 record，并传给 waitFor。返回文字里 Ref 非空时改用 ref= 加 Ref，否则用 sel。
 func (h *Host) Hover(sel string) (string, error) {
 	h.record("hover", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -99,6 +102,7 @@ func (h *Host) Hover(sel string) (string, error) {
 }
 
 // Select 等到控件可聚焦，再把 value 写上并派发 input 和 change。选择器或值为空时返回错误。
+// sel 作为 select 的 detail 传给 record。去掉空白后为空时返回 browser: select needs selector/ref and value。否则传给 waitFor，并经 json.Marshal 写进页面脚本。
 func (h *Host) Select(sel, value string) (string, error) {
 	h.record("select", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -177,6 +181,7 @@ func (h *Host) Press(key string) (string, error) {
 }
 
 // namedKey 把名字或单个字符收成 keySpec。空字符串返回错误。不认识的名字返回 unsupported key。
+// raw 去掉空白后为空时返回 browser: press needs a key。只有一个字符时传给 keyFor。否则转小写后匹配 enter、return、tab、escape、esc、backspace、space、spacebar、arrowup、up、arrowdown、down、arrowleft、left、arrowright、right、home、end，其余返回 unsupported key，错误里带上原来的 raw。
 func namedKey(raw string) (keySpec, error) {
 	k := strings.TrimSpace(raw)
 	if k == "" {
@@ -214,6 +219,7 @@ func namedKey(raw string) (keySpec, error) {
 }
 
 // WaitCondition 轮询到选择器可操作、正文包含 contains，或地址包含 urlSub。三个都空时只睡眠 d。d 小于等于 0 时用 200 毫秒。超时返回最后一次没满足的原因。
+// sel 去掉空白。非空时传给 probeOn，并写进 wait 的 detail。三个条件都空时不探测，只睡眠。
 func (h *Host) WaitCondition(sel, contains, urlSub string, d time.Duration) (string, error) {
 	if d <= 0 {
 		d = 200 * time.Millisecond

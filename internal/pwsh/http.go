@@ -36,11 +36,13 @@ func repoSpec() (endpoint, repo, rev string) {
 }
 
 // referer 是站点去掉末尾斜杠后再加一个斜杠。
+// endpoint 去掉末尾斜杠后再加一个斜杠。
 func referer(endpoint string) string {
 	return strings.TrimRight(endpoint, "/") + "/"
 }
 
 // remotePath 只留压缩包文件名，再前面加上前缀。默认前缀是 ps7。YOYO_PWSH_PREFIX 非空时覆盖。前缀为空或 . 时只返回文件名。
+// archive 里的反斜杠换成斜杠并去掉开头的斜杠，只留最后一段文件名，再按前缀拼回去。
 func remotePath(archive string) string {
 	archive = strings.TrimPrefix(strings.ReplaceAll(archive, "\\", "/"), "/")
 	if i := strings.LastIndex(archive, "/"); i >= 0 {
@@ -68,6 +70,8 @@ func resolveURL(endpoint, repo, rev, file string) string {
 }
 
 // apiFileURL 拼出 <endpoint>/api/v1/datasets/<repo>/repo，查询参数 Revision 和 FilePath。站点解析失败返回空字符串。
+// rev 写入查询参数 Revision。
+// file 里的反斜杠换成斜杠并去掉开头的斜杠，写入查询参数 FilePath。
 func apiFileURL(endpoint, repo, rev, file string) string {
 	file = strings.TrimPrefix(strings.ReplaceAll(file, "\\", "/"), "/")
 	u, err := url.Parse(strings.TrimRight(endpoint, "/") + "/api/v1/datasets/" + repo + "/repo")
@@ -82,6 +86,7 @@ func apiFileURL(endpoint, repo, rev, file string) string {
 }
 
 // candidateURLs 按这个顺序收集地址：非空的 YOYO_PWSH_URL、resolveURL、apiFileURL、githubURL，以及 https://ghfast.top/ 加上同一个 GitHub 地址。空字符串和重复项丢掉。
+// archive 传给 remotePath 和 githubURL。
 func (m *Manager) candidateURLs(archive string) []string {
 	var out []string
 	if v := strings.TrimSpace(os.Getenv(EnvURL)); v != "" {

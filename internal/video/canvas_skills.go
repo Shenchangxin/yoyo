@@ -18,6 +18,10 @@ import (
 )
 
 // handleCanvasSkills 分发技能列表、安装、文件、收藏、同步和删除。从 GitHub 安装会直接拒绝。
+// method 与 GET、POST、PUT、DELETE 比较后选择路由。
+// path 与各条 skills 路由比较，或传给 matchSimple。
+// query 传给 listCanvasSkills；skills/added 时写入 scope 为 mine、page 为 1、pageSize 为 200，文件路由取 path，搜索路由取 q。
+// body 在创建、安装和 PUT 时传给 upsertUserSkill。
 func (e *Engine) handleCanvasSkills(method, path string, query, body map[string]any) canvasEnv {
 	if path == "skills" && method == "GET" {
 		return canvasOK(e.listCanvasSkills(query))
@@ -146,11 +150,14 @@ func (e *Engine) handleCanvasSkills(method, path string, query, body map[string]
 }
 
 // matchSimple 用带冒号的模式匹配一条技能路径。
+// path 传给 splitPath，结果再传给 matchPath。
+// pat 传给 matchPath。
 func matchSimple(path, pat string) (map[string]string, bool) {
 	return matchPath(splitPath(path), pat)
 }
 
 // listCanvasSkills 按范围、标签和搜索分页列出技能。范围计数按全部技能计算，不受本次搜索影响。
+// query 读取 page、pageSize、scope、sort、search、tag；page 小于 1 时改成 1，pageSize 小于等于 0 时改成 20，scope 为空时写成 public。
 func (e *Engine) listCanvasSkills(query map[string]any) map[string]any {
 	page := intAny(query["page"])
 	if page < 1 {
@@ -243,6 +250,8 @@ func (e *Engine) listCanvasSkills(query map[string]any) map[string]any {
 }
 
 // sortSkillMaps 按字段把技能从大到小排序。
+// items 按 key 的排序值从大到小交换元素。
+// key 传给 skillSortValue。
 func sortSkillMaps(items []map[string]any, key string) {
 	for i := 0; i < len(items); i++ {
 		for j := i + 1; j < len(items); j++ {
@@ -254,6 +263,7 @@ func sortSkillMaps(items []map[string]any, key string) {
 }
 
 // skillSortValue 取出排序用的字符串。计数类字段补成定宽数字。
+// key 为 addedCount 或 likeCount 时把该字段格式化成 %010d，否则转成字符串。
 func skillSortValue(skill map[string]any, key string) string {
 	if key == "addedCount" || key == "likeCount" {
 		return fmt.Sprintf("%010d", intAny(skill[key]))
@@ -318,6 +328,7 @@ func (def canvasSkillDef) toMap() map[string]any {
 }
 
 // skillShowcases 有封面时返回一条图片展示，否则返回空列表。
+// cover 为空时返回空列表，否则写入 showcaseUri 和 showcaseUrl。
 func skillShowcases(cover string) []map[string]any {
 	if cover == "" {
 		return []map[string]any{}
@@ -326,6 +337,7 @@ func skillShowcases(cover string) []map[string]any {
 }
 
 // hydrateSkill 套上本机的添加和喜欢标记，并据此调整喜欢数。
+// skill 读取 skillId、isAdded、isLike、baseLikeCount、likeCount；baseLikeCount 为 nil 时改用 likeCount，并写回 isAdded、isLike、baseLikeCount 和 likeCount。
 func (e *Engine) hydrateSkill(skill map[string]any) map[string]any {
 	id := fmt.Sprint(skill["skillId"])
 	added := boolAny(skill["isAdded"])
@@ -351,6 +363,9 @@ func (e *Engine) hydrateSkill(skill map[string]any) map[string]any {
 }
 
 // setSkillFlag 更新添加或喜欢标记，并返回套用后的技能。
+// id 传给 getCanvasSkill，并作为 flags 的键。
+// added 不是 nil 时解引用后写入 Added 和 isAdded。
+// liked 不是 nil 时解引用后写入 Liked 和 isLike。
 func (e *Engine) setSkillFlag(id string, added *bool, liked *bool) map[string]any {
 	skill, err := e.getCanvasSkill(id)
 	if err != nil {
@@ -373,6 +388,8 @@ func (e *Engine) setSkillFlag(id string, added *bool, liked *bool) map[string]an
 }
 
 // upsertUserSkill 创建或更新本机技能，并标成已添加。
+// id 为空时改读 in 的 skillId 或 id，仍为空则写成 user- 加 NewID，并作为文档键。
+// in 读取 skillId、id、skillName、name、description、instruction、markdown、content、tag、markdownUrl、isPrivate、showcaseMedia、extraInfo；名称都空时写成未命名技能，tag 为空时写成 others，showcaseMedia 为 nil 时写成空切片。
 func (e *Engine) upsertUserSkill(id string, in map[string]any) map[string]any {
 	if id == "" {
 		id = strAnyMap(in, "skillId", "id")
@@ -425,6 +442,7 @@ func (e *Engine) upsertUserSkill(id string, in map[string]any) map[string]any {
 }
 
 // deleteUserSkill 把本机创建的技能标成已删除。内置技能不在这张表里，删不掉。
+// id 传给 getDoc 和 putDoc，从 colUserSkills 取值。
 func (e *Engine) deleteUserSkill(id string) error {
 	rec, err := getDoc[canvasUserSkillRec](e, colUserSkills, id)
 	if err != nil || rec.DeletedAt != "" {
@@ -440,6 +458,7 @@ func skillFiles(skill map[string]any) []map[string]any {
 }
 
 // skillFileMeta 按正文算出路径、大小和 SHA-256。
+// path 写入返回记录的 path。
 func skillFileMeta(skill map[string]any, path string) map[string]any {
 	instruction, _ := skill["instruction"].(string)
 	sum := sha256.Sum256([]byte(instruction))
@@ -450,6 +469,7 @@ func skillFileMeta(skill map[string]any, path string) map[string]any {
 }
 
 // attachSkillUpload 从上传的 Markdown 或 ZIP 取出技能正文、名称和描述，并写回 body。
+// params 用 strAnyMap 读取 file_b64 和 file_name；解出的字节超过 20<<20 时返回错误。
 func attachSkillUpload(params, body map[string]any) error {
 	raw, err := decodeB64Any(strAnyMap(params, "file_b64"))
 	if err != nil {
@@ -494,6 +514,7 @@ func attachSkillUpload(params, body map[string]any) error {
 }
 
 // skillMarkdownFromZip 从 ZIP 里读取唯一且层级不深的 SKILL.md。
+// raw 的长度传给 zip.NewReader；解压累计超过 20<<20 时失败，SKILL.md 正文超过 1<<20 时失败。
 func skillMarkdownFromZip(raw []byte) (string, error) {
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
@@ -571,6 +592,7 @@ func skillMarkdownFromZip(raw []byte) (string, error) {
 }
 
 // skillMetaFromMarkdown 从文首 front matter、一级标题或首段取出名称和描述。
+// text 按行拆开；文首为 --- 时读取 name 和 description，名称截到 80 个符文，描述截到 500 个符文。
 func skillMetaFromMarkdown(text string) (name, desc string) {
 	lines := strings.Split(text, "\n")
 	bodyStart := 0
@@ -631,6 +653,8 @@ func skillMetaFromMarkdown(text string) (name, desc string) {
 }
 
 // trimRunes 按符文数截断字符串。不超过上限则原样返回。
+// value 的符文数不超过 max 时原样返回，否则截到 max 个符文。
+// max 小于等于 0 时原样返回 value。
 func trimRunes(value string, max int) string {
 	if max <= 0 || utf8.RuneCountInString(value) <= max {
 		return value
@@ -640,6 +664,7 @@ func trimRunes(value string, max int) string {
 }
 
 // skillFileContent 读取 SKILL.md 正文。其他路径返回找不到文件。
+// path 为空或等于 SKILL.md 时返回 instruction，其他值返回 file not found。
 func skillFileContent(skill map[string]any, path string) (string, error) {
 	if path == "" || path == "SKILL.md" {
 		instruction, _ := skill["instruction"].(string)

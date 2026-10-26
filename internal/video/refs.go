@@ -18,6 +18,8 @@ type AssetRef struct {
 var atName = regexp.MustCompile(`@([^\s@]+)`)
 
 // ResolvePromptRefs 把 @名字 改写成 @图片N 加原名，wan 为真时改成图N。序号从 1 起，与返回的 URL 切片下标 N-1 对齐。较长的名字先匹配。没有可用参考时原样返回提示词，URL 为 nil。
+// prompt 在 uniqueNamed 结果为空时原样返回，否则传给 atName.ReplaceAllStringFunc，wan 为真时再把结果里的「@图片」换成「图」。
+// refs 传给 uniqueNamed。
 func ResolvePromptRefs(prompt string, refs []AssetRef, wan bool) (rewritten string, urls []string) {
 	ordered := uniqueNamed(refs)
 	if len(ordered) == 0 {
@@ -56,6 +58,7 @@ func ResolvePromptRefs(prompt string, refs []AssetRef, wan bool) (rewritten stri
 }
 
 // uniqueNamed 丢掉空名字、空 URL 和重复名字，保留第一次出现的顺序。
+// refs 逐条检查，Name 去掉首尾空白后为空、URL 为空或该名字已经出现过的丢掉。
 func uniqueNamed(refs []AssetRef) []AssetRef {
 	seen := map[string]bool{}
 	var out []AssetRef
@@ -71,6 +74,7 @@ func uniqueNamed(refs []AssetRef) []AssetRef {
 }
 
 // itoa 把非负整数转成十进制文本。
+// n 为 0 时返回「0」；大于 0 时按十进制从低位写入后再返回。
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

@@ -47,6 +47,8 @@ type qaLimitation struct {
 
 // parseVerifyPlan 从 path 或参数读计划。模型给的 Status 和 Checks 被清空。看起来像 CSS 选择器的 root、terminal、restart 被丢掉。
 // terminal 空则用 designed-outcome，restart 空则用 initial-state。既没有步骤也没有 open 则失败。文件步骤超过 48 步失败。
+// args 读取 path、open、root、terminal、restart、steps 和 limitations。
+// readFile 在 path 去掉空白后非空且自身非 nil 时用来读计划文件。
 func parseVerifyPlan(args map[string]any, readFile func(rel string) ([]byte, error)) (VerifyPlan, error) {
 	var plan VerifyPlan
 	path := strings.TrimSpace(str(args["path"]))
@@ -122,6 +124,7 @@ func parseVerifyPlan(args map[string]any, readFile func(rel string) ([]byte, err
 }
 
 // parseLimitations 解析对象数组，或 scope=reason 形式的字符串。解析失败返回 nil。
+// v 交给 coerceJSONArray，失败时返回 nil。
 func parseLimitations(v any) []qaLimitation {
 	raw, err := coerceJSONArray(v)
 	if err != nil {
@@ -150,6 +153,7 @@ func parseLimitations(v any) []qaLimitation {
 
 // browserVerify 跑验证并写出两份 JSON。计划文件和 root 都走 resolve。CleanContext 未给出时视为干净。没有 open 但预览能起来时，chrome 算可用且 clean 被改成假。
 // root 若是 CSS 选择器，结果里会说明已忽略，并写到推断出的项目目录下。
+// args 传给 parseVerifyPlan。
 func (t *WorkspaceTools) browserVerify(args map[string]any) ToolResult {
 	if msg, ok := t.repeatVerifyBlocked(); ok {
 		return ToolResult{Content: msg}
@@ -327,6 +331,7 @@ func pathDir(p string) string {
 }
 
 // qaPath 把相对路径接到 rootRel 下。rootRel 为空时原样返回。
+// rel 在 rootRel 为空时原样返回，否则接到 rootRel 后面。
 func qaPath(rootRel, rel string) string {
 	if rootRel == "" {
 		return rel
@@ -335,6 +340,11 @@ func qaPath(rootRel, rel string) string {
 }
 
 // deriveVerification 由宿主计算六项检查和总状态。Chrome 没跑是 NOT_RUN。任一步失败是 FAIL。不是干净上下文时，本可 PASS 的总状态改成 NOT_RUN。任一检查不是 PASS 时，FAIL 优先，否则降为 NOT_RUN。
+// rootRel 写入 environment 的 root。
+// plan 读取 Open、Limitations、Terminal 和 Restart。
+// results 逐条收成轨迹，并按 Check 归到各项检查。
+// chromeOK 为假时总状态写成 NOT_RUN；为真时参与补 launch，并在检查不是 PASS 时决定总状态。
+// clean 写入 completeRun；为假时，本可 PASS 的总状态改成 NOT_RUN。
 func deriveVerification(rootRel string, plan VerifyPlan, results []browserStepResult, chromeOK, clean bool) (runDoc, verifyDoc map[string]any) {
 	observations := map[string]any{}
 	inputsByCheck := map[string][]string{}
@@ -486,6 +496,11 @@ func deriveVerification(rootRel string, plan VerifyPlan, results []browserStepRe
 }
 
 // judgeQACheck 给一项检查定 PASS、FAIL 或 NOT_RUN。没看到是 NOT_RUN。步骤失败是 FAIL。没有输入记录是 NOT_RUN。render 没有 visual 是 NOT_RUN。outcome 或 restart 缺少标记是 FAIL。
+// name 为 render、outcome 或 restart 时额外检查 visual 或 plan 上的标记。
+// saw 为假时返回 NOT_RUN。
+// ok 为假时返回 FAIL。
+// inputs 长度为 0 时返回 NOT_RUN。
+// plan 在 outcome 或 restart 上读取 Terminal、Restart，去掉空白后为空则返回 FAIL。
 func judgeQACheck(name string, saw, ok bool, inputs []string, visual string, plan VerifyPlan) (status, reason string) {
 	if !saw {
 		return "NOT_RUN", "no observation recorded"
@@ -509,6 +524,7 @@ func judgeQACheck(name string, saw, ok bool, inputs []string, visual string, pla
 }
 
 // nonEmpty 在列表为空时返回只含 fallback 的一段。
+// in 长度为 0 时改成只含 fallback 的一段。
 func nonEmpty(in []string, fallback string) []string {
 	if len(in) == 0 {
 		return []string{fallback}
@@ -517,6 +533,9 @@ func nonEmpty(in []string, fallback string) []string {
 }
 
 // writeQAFiles 原子写入 run.json 和 verification.json。
+// rootAbs 与 qaEvidenceRel、qaVerificationRel 拼成写入路径。
+// runDoc 交给 atomicWriteJSON 写入 run.json。
+// verifyDoc 交给 atomicWriteJSON 写入 verification.json。
 func writeQAFiles(rootAbs string, runDoc, verifyDoc map[string]any) error {
 	if err := atomicWriteJSON(filepath.Join(rootAbs, filepath.FromSlash(qaEvidenceRel)), runDoc); err != nil {
 		return err
@@ -525,6 +544,8 @@ func writeQAFiles(rootAbs string, runDoc, verifyDoc map[string]any) error {
 }
 
 // atomicWriteJSON 先写同目录临时文件再改名。改名失败时删掉目标再改一次，仍失败则删掉临时文件。
+// path 的目录会先创建，临时文件再改名到这里。
+// v 经 MarshalIndent 写成 JSON，缩进是两个空格。
 func atomicWriteJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -560,6 +581,11 @@ func atomicWriteJSON(path string, v any) error {
 }
 
 // formatVerifyResult 写出宿主计算的状态、六项检查和失败步骤。六项都是 PASS 但后面还有失败步骤时，说明总状态仍是 FAIL。
+// status 写入首行的 status=。
+// verifyDoc 读取 checks，按 qaCheckNames 逐项写出。
+// results 里 OK 为假的步骤逐条写出。
+// evidenceRel 写入 wrote 行。
+// verifyRel 写入 wrote 行。
 func formatVerifyResult(status string, verifyDoc map[string]any, results []browserStepResult, evidenceRel, verifyRel string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "browser_verify status=%s (host-computed; do not rewrite qa/verification.json)\n", status)

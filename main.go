@@ -191,7 +191,10 @@ func main() {
 }
 
 // openDesktop 在 YOYO_ISOLATE=1 时调用 desktop.OpenIsolated，由它再启动同一可执行文件并带 YOYO_WORKER=1。否则在本进程 app.Open，并用 desktop.NewService 包住同一个 App。
+// home 在 YOYO_ISOLATE 为 1 时传给 desktop.OpenIsolated，否则传给 app.Open。
+// evals 在 YOYO_ISOLATE 为 1 时传给 desktop.OpenIsolated，否则传给 app.Open。
 func openDesktop(home, evals string) (*desktop.Service, *app.App, error) {
+	// 只有这个环境变量才拆进程。没设置时窗口和循环在同一个进程。
 	if os.Getenv("YOYO_ISOLATE") == "1" {
 		return desktop.OpenIsolated(home, evals)
 	}
@@ -251,6 +254,7 @@ func resolveEvals() string {
 }
 
 // dirExists 在路径存在且是目录时返回真。
+// p 交给 os.Stat，错误为 nil 且 IsDir 时返回 true。
 func dirExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && st.IsDir()

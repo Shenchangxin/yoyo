@@ -9,6 +9,7 @@ import (
 )
 
 // VideoCall 把方法名原样交给后端。params 为 nil 时换成空 map。RPC 非空时 call 这个方法。没有 App 时返回 video: no app。否则用 Dispatch 调同一方法，并返回 Result。
+// method 在 RPC 非空时传给 call。否则写入 Dispatch 请求的 Method。
 func (s *Service) VideoCall(method string, params map[string]any) (any, error) {
 	if params == nil {
 		params = map[string]any{}

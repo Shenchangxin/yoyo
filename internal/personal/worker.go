@@ -40,6 +40,7 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 // tick 在暂停时直接返回。它使过期提案失效，补回丢失任务的想法，并每 15 分钟刷新一次想法。KindAgent 不领取。本轮新任务加上已在跑的任务达到 3 个就停止领取。
+// ctx 的 Err 非空时直接返回。领取到的任务传给 runOne。
 func (e *Engine) tick(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -107,6 +108,7 @@ func (e *Engine) tick(ctx context.Context) {
 }
 
 // isDue 对 queued 和 waiting_approval 返回真。scheduled 看 NextRunAt，running 看租约是否已到。其他状态返回假。
+// now 与 scheduled 的 NextRunAt、running 的 LeaseUntil 比较。这两个时间非 nil 且不晚于 now 时返回 true。
 func (e *Engine) isDue(t Task, now time.Time) bool {
 	switch t.Status {
 	case StatusQueued:
@@ -123,6 +125,7 @@ func (e *Engine) isDue(t Task, now time.Time) bool {
 }
 
 // runOne 用新租约把任务改成 running，并按 Lease 的三分之一续期，最短 1 毫秒。丢失租约或 ctx 取消时改回 queued。其他执行错误标成 failed。
+// previous 的 ID、Status 和 LeaseID 传给 casTask。Status 为 StatusRunning 时，当前 LeaseID 还必须与 previous 的相同才领取。
 func (e *Engine) runOne(ctx context.Context, previous Task) {
 	if ctx.Err() != nil {
 		return

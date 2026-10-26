@@ -37,6 +37,9 @@ func Catalog() []CatalogEntry {
 }
 
 // AuthURL 为 gmail、gcal、outlook、slack 拼出授权地址，并返回随机 state。其他供应商返回错误，说明只走 MCP 包。
+// provider 转成小写。gmail 或 gcal 拼 Google 的授权地址，outlook 拼微软的，slack 拼 Slack 的。其他值返回 MCP-pack only，错误文案带上 provider。
+// clientID 放进查询参数 client_id。slack 只放 client_id、state 和 scope。
+// redirect 在 gmail、gcal 和 outlook 时放进 redirect_uri。slack 不使用它。
 func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, error) {
 	state := nonce()
 	var raw string
@@ -77,6 +80,8 @@ func nonce() string {
 }
 
 // LooksExfilDraft 在正文或收件人含 webhook.site 或 requestbin 时返回真。@ 至少 8 个且含 http:// 或 https:// 时也返回真。
+// to 和 body 用空格拼起来再转小写。含 webhook.site 或 requestbin 时返回真。@ 至少 8 个且含 http:// 或 https:// 时也返回真。
+// body 和 to 用空格拼起来再转小写，按同一套条件判断。
 func LooksExfilDraft(to, body string) bool {
 	blob := strings.ToLower(to + " " + body)
 	if strings.Contains(blob, "webhook.site") || strings.Contains(blob, "requestbin") {

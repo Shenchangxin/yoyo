@@ -13,7 +13,7 @@ import { hexAlpha, imageURL, mmss } from "./model";
 import { standURL } from "./stand/StandView";
 import { useIdolCall, type CallPhase, type CallWho } from "./useIdolCall";
 
-/** IdolCall 渲染陪伴窗里的紧凑通话。挂断、静音和发送都进 useIdolCall。 */
+/** IdolCall 渲染陪伴窗里的紧凑通话。挂断、静音和发送都进 useIdolCall。props 读取 paused、name、color、portrait、kind、stand 等。 */
 export function IdolCall(props: {
   paused?: boolean;
   approvals?: number;
@@ -62,7 +62,7 @@ export function IdolCall(props: {
   );
 }
 
-/** CallSurface 投影通话层。紧凑时只留立绘和挂断；展开时有计时、字幕、工作开关、草稿、静音和收起。交互交给回调。 */
+/** CallSurface 投影通话层。紧凑时只留立绘和挂断；展开时有计时、字幕、工作开关、草稿、静音和收起。交互交给回调。props 读取 phase、textOnly、who、emotion、compact、onHangup 等，调用 onWork，调用 onSend，调用 onDraft。 */
 export function CallSurface(props: {
   compact?: boolean;
   who: CallWho;
@@ -168,7 +168,7 @@ export function CallSurface(props: {
   );
 }
 
-/** CallBar 渲染收起后的通话条。点主体展开，点挂断结束。 */
+/** CallBar 渲染收起后的通话条。点主体展开，点挂断结束。props 读取 onExpand、dialing、name、elapsed、onHangup。 */
 export function CallBar(props: { name: string; elapsed: number; dialing: boolean; onExpand: () => void; onHangup: () => void }) {
   const c = useCopy().idol;
   return (
@@ -186,7 +186,7 @@ export function CallBar(props: { name: string; elapsed: number; dialing: boolean
   );
 }
 
-/** 一颗圆形图标按钮。 */
+/** 一颗圆形图标按钮。props 读取 label、onClick、children。 */
 function Round(props: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" className="grid size-10 place-items-center rounded-full bg-white/10 text-white" aria-label={props.label} onClick={props.onClick}>

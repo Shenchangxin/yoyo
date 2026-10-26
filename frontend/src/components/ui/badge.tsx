@@ -3,7 +3,7 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
-// Badge 把文字收进最大 220px 的圆角胶囊，超出截断。
+/** Badge 把文字收进最大 220px 的圆角胶囊，超出截断。className 传给 cn。props 展开到 span。 */
 export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return (
     <span

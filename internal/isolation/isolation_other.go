@@ -14,12 +14,15 @@ func probe() Report {
 }
 
 // assign 在没有后端的平台上留空。
+// cmd 本函数不读取。
 func assign(cmd *exec.Cmd) {}
 
 // release 在没有后端的平台上留空，kill 也不会拆树。
+// cmd 本函数不读取。
 func release(cmd *exec.Cmd, kill bool) {}
 
 // apply 在没有后端的平台上不改命令。
+// cmd 本函数不读取。
 func apply(cmd *exec.Cmd) {}
 
 // signingProbe 在没有后端的平台上固定返回 unsigned。

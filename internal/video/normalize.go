@@ -18,6 +18,7 @@ var (
 )
 
 // NormalizeName 去掉成对括号里的别名和未闭合的括号后缀，再去掉空白并转成小写，使「林小雨（主角）」和「林小雨」落到同一键。
+// name 去掉首尾空白，删掉成对括号中的内容和未闭合括号直到结尾的部分，再删掉空白并转成小写。
 func NormalizeName(name string) string {
 	s := strings.TrimSpace(name)
 	s = parenPair.ReplaceAllString(s, "")
@@ -27,6 +28,8 @@ func NormalizeName(name string) string {
 }
 
 // NormalizeSceneKey 把地点和时段收成小写的「地点|时段」。地点里的空白会去掉。
+// location 去掉首尾空白后删掉空白字符，再转成小写，放在竖线前。
+// timeOfDay 去掉首尾空白后转成小写，放在竖线后。
 func NormalizeSceneKey(location, timeOfDay string) string {
 	loc := spaces.ReplaceAllString(strings.TrimSpace(location), "")
 	t := strings.TrimSpace(timeOfDay)
@@ -34,6 +37,8 @@ func NormalizeSceneKey(location, timeOfDay string) string {
 }
 
 // NormalizeVideoResolution 把分辨率收成 480p、720p、1080p 或 2k，空值用 720p。volcengine 只留下 480p，其余收成 720p。minimax 把 1080p 和 2k 收成 2k，其余收成 768p。aliyun 把 480p、1080p 收成 480P、1080P，其余收成 720P。
+// raw 去掉首尾空白并转成小写、去掉其中的 p 之后，480、720、1080、2k 分别收成 480p、720p、1080p、2k，空串收成 720p，其余改用转成小写的原始 raw。
+// provider 转成小写后，volcengine、minimax、aliyun 会再改写前面得到的结果。
 func NormalizeVideoResolution(raw, provider string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	s = strings.ReplaceAll(s, "p", "")

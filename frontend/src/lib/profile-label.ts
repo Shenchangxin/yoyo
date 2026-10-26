@@ -15,7 +15,7 @@ function isSeed(id: string): id is SeedId {
   return (SEED_IDS as readonly string[]).includes(id);
 }
 
-/** profileLabel 内置档用文案表里的名称，其余用给定名称，再没有则用通用芯片文案。 */
+/** profileLabel 内置档用文案表里的名称，其余用给定名称，再没有则用通用芯片文案。id 为假时用 assistant，去掉首尾空白，为假时用 assistant后，用作下标，传给 isSeed。name 为假时用空字符串，去掉首尾空白后，为假时改用后备值。copy 读取 profile。 */
 export function profileLabel(id: string | undefined, name: string | undefined, copy: Copy): string {
   const key = (id || "assistant").trim() || "assistant";
   if (isSeed(key)) return copy.profile[key];
@@ -23,7 +23,7 @@ export function profileLabel(id: string | undefined, name: string | undefined, c
   return n || copy.profile.chip;
 }
 
-/** profileHint 按内置档返回对应提示，其余用通用提示。 */
+/** profileHint 按内置档返回对应提示，其余用通用提示。id 为假时用 assistant，去掉首尾空白，为假时用 assistant后，与 assistant、researcher、secretary 比较是否相等。copy 读取 profile。 */
 export function profileHint(id: string | undefined, copy: Copy): string {
   const key = (id || "assistant").trim() || "assistant";
   if (key === "assistant") return copy.profile.assistantHint;
@@ -32,7 +32,7 @@ export function profileHint(id: string | undefined, copy: Copy): string {
   return copy.profile.hint;
 }
 
-/** profileOf 从大小写两种字段名里读出 Profile。列表字段空则省略。 */
+/** profileOf 从大小写两种字段名里读出 Profile。列表字段空则省略。v 用 pick 读取 id、name、instructions、allow_tools、deny_tools、space_ids 等字段。 */
 export function profileOf(v: any): Profile {
   return {
     id: str(pick(v, "id", "ID")),
@@ -49,14 +49,14 @@ export function profileOf(v: any): Profile {
   };
 }
 
-/** 把数组收成去空白后的字符串列表。空数组视为没有。 */
+/** 把数组收成去空白后的字符串列表。空数组视为没有。v 做映射，传给 Array.isArray。 */
 function asStringList(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const out = v.map((x) => String(x || "").trim()).filter(Boolean);
   return out.length ? out : undefined;
 }
 
-/** resolveProfile 按 id 查找。找不到时用助手档，再没有则取列表第一项。 */
+/** resolveProfile 按 id 查找。找不到时用助手档，再没有则取列表第一项。list 取第一段，调用 find，作为后备值。 */
 export function resolveProfile(list: Profile[], id?: string): Profile | undefined {
   const key = (id || "assistant").trim() || "assistant";
   return list.find((p) => p.id === key) || list.find((p) => p.id === "assistant") || list[0];

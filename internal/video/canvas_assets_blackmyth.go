@@ -3,6 +3,8 @@
 package video
 
 // seedBlackMythShortAssets 把尚未存在的黑神话静帧、提示词和实体写入黑神话文件夹。
+// now 写入每条素材的 createdAt 和 updatedAt。
+// existing 里已有的 id 直接跳过，写入后把该 id 标成已有。
 func (e *Engine) seedBlackMythShortAssets(now string, existing map[string]bool) error {
 	const folder = "studio-folder-black-myth"
 	const pub = "/black-myth-shorts/"

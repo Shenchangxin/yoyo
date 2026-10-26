@@ -33,6 +33,7 @@ type DurationPlan struct {
 }
 
 // PlanDuration 按字符数除以每分钟 500 字得到秒数，短于 MinSegment 时抬到 MinSegment。段数用秒数除以 SecondsPerShot 四舍五入，至少 1 段。
+// script 去掉空白后计字符数，不足 1 个字按 1 计。
 func PlanDuration(script string) DurationPlan {
 	n := utf8.RuneCountInString(strings.TrimSpace(script))
 	if n < 1 {
@@ -56,6 +57,7 @@ func PlanDuration(script string) DurationPlan {
 }
 
 // DialogueFloor 用字符数除以 CharsPerSecond 四舍五入，再加上 PerformancePad，然后夹进 MinSegment 和 MaxSegment。字符数小于等于 0 时返回 MinSegment。
+// dialogueChars 小于等于 0 时返回 MinSegment，否则除以 CharsPerSecond 并加上 PerformancePad，再夹进 MinSegment 和 MaxSegment。
 func DialogueFloor(dialogueChars int) int {
 	if dialogueChars <= 0 {
 		return MinSegment
@@ -72,6 +74,8 @@ func DialogueFloor(dialogueChars int) int {
 }
 
 // ClampSegment 按种类夹秒数：transition 是 8 到 10，narrative 是 10 到 15，beat 是 12 到 15，其余是 MinSegment 到 MaxSegment。
+// seconds 小于该种类下限时返回下限，大于上限时返回上限。
+// kind 为 transition 时上下限是 8 和 10，narrative 是 10 和 15，beat 是 12 和 15，其余用 MinSegment 和 MaxSegment。
 func ClampSegment(seconds int, kind string) int {
 	lo, hi := MinSegment, MaxSegment
 	switch kind {
@@ -92,6 +96,8 @@ func ClampSegment(seconds int, kind string) int {
 }
 
 // ClampProviderDuration 把 aliyun 和 wan 夹进 2 到 30 秒，其余供应商夹进 4 到 15 秒。
+// seconds 在 provider 为 aliyun 或 wan 时夹进 2 到 30，其余夹进 4 到 15。
+// provider 转成小写后与 aliyun、wan 比较。
 func ClampProviderDuration(seconds int, provider string) int {
 	switch strings.ToLower(provider) {
 	case "aliyun", "wan":

@@ -12,6 +12,8 @@ import (
 )
 
 // CanvasCall 分发 canvas.http、会话绑定、项目读写和模型目录。未知方法返回错误。
+// method 选择 canvas.http、canvas.bind、canvas.projects.list、canvas.projects.create、canvas.projects.get 或 canvas.models.catalog，其他值返回 unknown canvas method。
+// params 为 nil 时换成空 map；canvas.http 整份传给 canvasHTTP，绑定和项目分支用 strAnyMap 取 session_id、project_id、canvas_id、title 或 id。
 func (e *Engine) CanvasCall(method string, params map[string]any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
@@ -49,6 +51,7 @@ func (e *Engine) CanvasCall(method string, params map[string]any) (any, error) {
 }
 
 // canvasHTTP 解析方法、路径、查询和正文并分发到对应处理。未映射的 GET 返回空对象，其他未映射方法返回 ok。
+// params 用 strAnyMap 读取 method、path、file_b64、file_type、file_name、chunk_b64、api_key、apiKey，并读取 query 和 body，skills/install 时传给 attachSkillUpload。
 func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	method := strings.ToUpper(strAnyMap(params, "method"))
 	path := strAnyMap(params, "path")
@@ -681,6 +684,7 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 }
 
 // splitPath 按斜杠切开路径，并去掉首尾空段。
+// path 去掉首尾斜杠，空串时返回 nil，否则按 / 拆开。
 func splitPath(path string) []string {
 	path = strings.Trim(path, "/")
 	if path == "" {
@@ -690,6 +694,8 @@ func splitPath(path string) []string {
 }
 
 // matchPath 用带冒号的模式匹配路径段，成功时返回命名参数。
+// parts 与 pattern 拆开后的各段比较，段数不同则返回 nil 和 false；冒号段取 parts 的同位置值。
+// pattern 传给 splitPath，冒号开头的段去掉冒号后作为返回 map 的键。
 func matchPath(parts []string, pattern string) (map[string]string, bool) {
 	pat := splitPath(pattern)
 	if len(pat) != len(parts) {
@@ -709,6 +715,10 @@ func matchPath(parts []string, pattern string) (map[string]string, bool) {
 }
 
 // eagleHTTP 把 Eagle 请求转到本机 41595。非本机地址拒绝。库信息失败时返回空库。
+// method 与 GET、POST 一起判断路径后缀。
+// path 用后缀 /library、/items、/folders 选择分支。
+// query 用 baseUrl 拼地址，去掉尾部斜杠后为空时用 http://127.0.0.1:41595。
+// body 函数体没有读取。
 func (e *Engine) eagleHTTP(method, path string, query, body map[string]any) canvasEnv {
 	base := strings.TrimRight(strAnyMap(query, "baseUrl"), "/")
 	if base == "" {

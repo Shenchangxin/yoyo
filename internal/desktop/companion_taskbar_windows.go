@@ -44,6 +44,7 @@ var (
 )
 
 // hideCompanionTaskbar 给宠物窗口加上 WS_EX_TOOLWINDOW 并去掉 WS_EX_APPWINDOW，再从任务栏删掉该标签。
+// win 断言成 *application.WebviewWindow。类型不对或为空时返回。否则取原生句柄，改扩展样式，再把句柄传给 deleteTaskbarTab。
 func hideCompanionTaskbar(win application.Window) {
 	wv, ok := win.(*application.WebviewWindow)
 	if !ok || wv == nil {
@@ -63,6 +64,7 @@ func hideCompanionTaskbar(win application.Window) {
 }
 
 // deleteTaskbarTab 创建 ITaskbarList，HrInit 之后 DeleteTab，然后 Release。创建失败则返回。
+// hwnd 传给 DeleteTab。
 func deleteTaskbarTab(hwnd uintptr) {
 	var obj *iTaskbarList
 	hr, _, _ := procCoCreateInstance.Call(

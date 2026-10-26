@@ -33,6 +33,7 @@ type Registry struct {
 }
 
 // Open 用 filestore 打开 dir，并确保有一条本地 CAS 存储连接。
+// vault 写入 Registry 的 vault 字段。
 func Open(dir string, vault Secrets) (*Registry, error) {
 	docs, err := filestore.New(dir)
 	if err != nil {
@@ -51,6 +52,7 @@ func (r *Registry) List(cap string) ([]Connection, error) {
 }
 
 // listLocked 在已持有锁时列出连接，并给每条 hydrateKey。id 为空或以 _ 开头的文档跳过。
+// cap 传给 NormalizeCap。结果非空时，HasCap 不匹配的连接跳过。
 func (r *Registry) listLocked(cap string) ([]Connection, error) {
 	ids, err := r.docs.IDs("")
 	if err != nil {
@@ -112,6 +114,7 @@ func (r *Registry) getLocked(id string) (Connection, error) {
 }
 
 // hydrateKey 在仓库里该 VaultKey 已有非空保存值，或 Get 成功时，把 HasKey 设为真。不把钥匙原文写进连接。
+// c 的 VaultKey 为空或 vault 为 nil 时直接返回。storedVault 非空或 Get 成功时把 HasKey 设为真。
 func (r *Registry) hydrateKey(c *Connection) {
 	if r.vault == nil || c.VaultKey == "" {
 		return
@@ -143,6 +146,7 @@ func (r *Registry) defaultsLocked() Defaults {
 }
 
 // SetDefault 把该能力的默认连接设为 id。id 为空则删掉这一项。
+// cap 传给 NormalizeCap，作为默认表的键。
 func (r *Registry) SetDefault(cap, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -221,12 +225,14 @@ func (r *Registry) Upsert(c Connection, apiKey string) (Connection, error) {
 }
 
 // stripKey 返回 HasKey 为 false 的副本，供写入 JSON。它不改 VaultKey。
+// c 的 HasKey 写成 false 后返回。
 func stripKey(c Connection) Connection {
 	c.HasKey = false
 	return c
 }
 
 // uniqueNameLocked 在名称与其他连接冲突时追加空格和序号，跳过 skipID。
+// name 去掉空白后为空则原样返回。与其他连接重名时在后面加空格和从 2 起、小于 100 的序号。到 99 仍冲突则再加空格和 newID 的前 6 个字符。
 func (r *Registry) uniqueNameLocked(name, skipID string) string {
 	base := strings.TrimSpace(name)
 	if base == "" {
@@ -276,6 +282,7 @@ func (r *Registry) Delete(id string) error {
 }
 
 // Active 先按 id 找，再按该能力的默认项，然后在已启用且有钥匙的连接里选。存储能力的 cas 协议可以没有钥匙。都没有则返回错误。
+// cap 传给 NormalizeCap。非空时要求 HasCap 匹配。也作为默认表的键传给 listLocked，并写进找不到连接时的错误。
 func (r *Registry) Active(cap, id string) (Connection, error) {
 	cap = NormalizeCap(cap)
 	if id != "" {
@@ -328,6 +335,7 @@ func (r *Registry) Active(cap, id string) (Connection, error) {
 }
 
 // Lease 按连接的 VaultKey 向仓库租用钥匙原文。仓库缺失或 VaultKey 为空时返回错误。
+// c 的 VaultKey 为空时返回 missing vault key。否则传给 vault.Lease。
 func (r *Registry) Lease(c Connection) (string, error) {
 	if r.vault == nil {
 		return "", fmt.Errorf("vault missing")
@@ -365,6 +373,10 @@ func (r *Registry) ensureCAS() error {
 }
 
 // SeedChat 在已有聊天连接时不新建，只对当前默认或列表第一条调用 adoptDefaultKey。没有时按供应商创建一条并设为默认。
+// provider 只在还没有聊天连接时使用。去掉空白后为空则写成 openai，等于 anthropic 时写成 claude，并作为 Name 和 Vendor。
+// baseURL 只在还没有聊天连接时使用。为空则写成 https://api.openai.com/v1，作为 Endpoint。
+// model 只在还没有聊天连接时使用。放进 DefaultModel 的聊天项，并和 extraModels 一起经 compact 放进 Models。
+// extraModels 只在还没有聊天连接时使用。接在 model 后面放进 Models。
 func (r *Registry) SeedChat(provider, baseURL, model string, extraModels ...string) (Connection, error) {
 	list, err := r.List(CapChat)
 	if err != nil {
@@ -404,6 +416,17 @@ func (r *Registry) SeedChat(provider, baseURL, model string, extraModels ...stri
 }
 
 // ImportProvider 用给出的 vaultKey 名字导入一条连接，apiKey 传空串，因此这里不写入钥匙原文。isDefault 为真时设成该能力的默认项。
+// serviceType 传给 NormalizeCap。结果为空时改用 CapImage，作为能力、InferProtocol 的能力和默认模型的键。
+// vendor 写入 Vendor，并传给 InferProtocol。
+// name 写入 Name。
+// baseURL 写入 Endpoint。
+// model 非空时放进模型列表开头。DefaultModel 里该能力的值就是 model。
+// models 传给 ParseModels。
+// priority 写入 Priority。
+// active 写入 Active。
+// settings 去掉空白后非空且不是 {} 时按 JSON 对象解进 Settings。
+// created 写入 CreatedAt。
+// updated 写入 UpdatedAt。
 func (r *Registry) ImportProvider(serviceType, vendor, name, baseURL, vaultKey, model, models string, priority int, active, isDefault bool, settings string, created, updated, id string) (Connection, error) {
 	cap := NormalizeCap(serviceType)
 	if cap == "" {
@@ -499,6 +522,7 @@ func (r *Registry) MergeSameAccount() {
 }
 
 // hostOf 去掉协议和路径，返回端点里的主机部分。
+// u 去掉空白，再去掉 https:// 或 http:// 前缀，然后丢掉第一个 / 及其后面的部分。
 func hostOf(u string) string {
 	u = strings.TrimSpace(u)
 	u = strings.TrimPrefix(u, "https://")
@@ -525,6 +549,7 @@ func DirOfHome(root string) string {
 }
 
 // MustExist 按 0o755 创建目录。
+// dir 传给 os.MkdirAll，权限 0o755。
 func MustExist(dir string) error {
 	return os.MkdirAll(dir, 0o755)
 }

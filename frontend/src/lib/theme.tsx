@@ -38,28 +38,28 @@ const KEY = "yoyo-theme";
 const KEY_DARK = "yoyo-palette-dark";
 const KEY_LIGHT = "yoyo-palette-light";
 
-/** isDarkPalette 是不是三套暗色调色板之一。 */
+/** isDarkPalette 是不是三套暗色调色板之一。v 是 ink、dim 或 slate 时返回真。 */
 export function isDarkPalette(v: string | undefined | null): v is DarkPalette {
   return v === "ink" || v === "dim" || v === "slate";
 }
 
-/** isLightPalette 是不是三套亮色调色板之一。 */
+/** isLightPalette 是不是三套亮色调色板之一。v 是 neutral、paper 或 mist 时返回真。 */
 export function isLightPalette(v: string | undefined | null): v is LightPalette {
   return v === "neutral" || v === "paper" || v === "mist";
 }
 
-/** parseThemePref 只接受 dark、light、system，其余返回空。 */
+/** parseThemePref 只接受 dark、light、system，其余返回空。v 与 dark、light、system 比较是否相等，有的分支原样返回。 */
 export function parseThemePref(v: string | undefined | null): ThemePref | null {
   if (v === "dark" || v === "light" || v === "system") return v;
   return null;
 }
 
-/** parseDarkPalette 收成暗色调色板，无法识别时用 ink。 */
+/** parseDarkPalette 收成暗色调色板，无法识别时用 ink。v 作为分支结果，传给 isDarkPalette。 */
 export function parseDarkPalette(v: string | undefined | null): DarkPalette {
   return isDarkPalette(v) ? v : "ink";
 }
 
-/** parseLightPalette 收成亮色调色板，无法识别时用 neutral。 */
+/** parseLightPalette 收成亮色调色板，无法识别时用 neutral。v 作为分支结果，传给 isLightPalette。 */
 export function parseLightPalette(v: string | undefined | null): LightPalette {
   return isLightPalette(v) ? v : "neutral";
 }
@@ -69,18 +69,23 @@ function systemDark(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true;
 }
 
-/** 跟随系统时看系统偏好，否则偏好本身就是结果。 */
+/** 跟随系统时看系统偏好，否则偏好本身就是结果。pref 与 system 比较是否相等，有的分支原样返回。 */
 function resolve(pref: ThemePref): ResolvedTheme {
   if (pref === "system") return systemDark() ? "dark" : "light";
   return pref;
 }
 
-/** 暗色用暗色调色板，亮色用亮色调色板。 */
+/** 暗色用暗色调色板，亮色用亮色调色板。resolved 为 dark 时返回 dark，否则返回 light。dark 作为分支结果。light 作为分支结果。 */
 function activePalette(resolved: ResolvedTheme, dark: DarkPalette, light: LightPalette): PaletteId {
   return resolved === "dark" ? dark : light;
 }
 
-/** 把明暗类、调色板和用户皮肤写到文档根。伴随窗口的 color-scheme 保持 normal。 */
+/**
+ * 把明暗类、调色板和用户皮肤写到文档根。伴随窗口的 color-scheme 保持 normal。
+ * resolved 作为分支结果，加进 root.classList。
+ * palette 传给 root.setAttribute。
+ * skinId 传给 isUserSkinId，传给 root.setAttribute。
+ */
 function apply(resolved: ResolvedTheme, palette: PaletteId, skinId: string) {
   const root = document.documentElement;
   root.classList.remove("dark", "light");
@@ -159,7 +164,7 @@ const ThemeCtx = createContext<ThemeCtxValue>({
   cycle: () => {},
 });
 
-/** ThemeProvider 持有明暗、调色板和皮肤，并在变化时写到文档和窗口。 */
+/** ThemeProvider 持有明暗、调色板和皮肤，并在变化时写到文档和窗口。children 作为子节点渲染。 */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [pref, setPrefState] = useState<ThemePref>(readPref);
   const [darkPalette, setDarkState] = useState<DarkPalette>(readDark);
@@ -207,19 +212,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", on);
   }, [pref, darkPalette, lightPalette, skin, skinId]);
 
-  /** 设置明暗偏好。 */
+  /** 设置明暗偏好。p 传给 setPrefState。 */
   const setPref = useCallback((p: ThemePref) => {
     setPrefState(p);
   }, []);
-  /** 设置暗色调色板，无法识别时收成 ink。 */
+  /** 设置暗色调色板，无法识别时收成 ink。p 传给 parseDarkPalette。 */
   const setDarkPalette = useCallback((p: DarkPalette) => {
     setDarkState(parseDarkPalette(p));
   }, []);
-  /** 设置亮色调色板，无法识别时收成 neutral。 */
+  /** 设置亮色调色板，无法识别时收成 neutral。p 传给 parseLightPalette。 */
   const setLightPalette = useCallback((p: LightPalette) => {
     setLightState(parseLightPalette(p));
   }, []);
-  /** 盖上用户皮肤。id 不合格时清掉覆盖层。 */
+  /** 盖上用户皮肤。id 不合格时清掉覆盖层。next 读取 id，为真时才继续，作为分支结果。 */
   const setSkinOverlay = useCallback((next: SkinOverlay | null) => {
     setSkin(next && isUserSkinId(next.id) ? next : null);
   }, []);

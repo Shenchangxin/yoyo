@@ -17,6 +17,8 @@ func (s *Service) IdolCall(op, payload string) (string, error) {
 }
 
 // idolForward 在 RPC 非空时调用 idol.call，并把结果重新编成 JSON 字符串。没有 App 时返回 no app。否则走 App.IdolCall。
+// op 在 RPC 非空时放进 idol.call 的 op，否则传给 App.IdolCall。
+// payload 在 RPC 非空时放进 idol.call 的 payload，否则传给 App.IdolCall。
 func (s *Service) idolForward(op, payload string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("idol.call", map[string]any{"op": op, "payload": payload})

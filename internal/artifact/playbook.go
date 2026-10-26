@@ -8,6 +8,7 @@ import (
 )
 
 // ApplyDelta 在原有条目上合并增量，返回新剧本，不改接收者。removeIDs 里的编号会丢掉，丢掉的正文不占位，同文案可以再加回来。比较时忽略大小写和两端空白，留下的是先出现的那份原文，Helpful 和 Harmful 相加。
+// add 在原有条目之后并入：编号落在 removeIDs 里的丢掉，正文忽略大小写和两端空白后与已留下的条目相同则把 Helpful、Harmful 相加，否则追加。
 func (p Playbook) ApplyDelta(add []PlaybookBullet, removeIDs []string) Playbook {
 	drop := map[string]bool{}
 	for _, id := range removeIDs {
@@ -45,11 +46,13 @@ func (p Playbook) ApplyDelta(add []PlaybookBullet, removeIDs []string) Playbook 
 }
 
 // Render 把条数上限乘 80 当成字节预算交给 RenderBudget。结果小于等于 0 时，那边按 2000 字节计。
+// max 乘以 80 后交给 RenderBudget。
 func (p Playbook) Render(max int) string {
 	return p.RenderBudget(max * 80)
 }
 
 // RenderBudget 按 Helpful 减 Harmful 从高到低挑选，用字节数卡预算，连同「- 」前缀和换行一起计入。Harmful 大于 Helpful+2 的条目不出现，也不改写条目正文。预算小于等于 0 时按 2000。分数相同则 ID 较小的在前。已经写出正文之后，再加一行会超预算就停；第一条即使超预算也会写入。
+// maxRunes 小于等于 0 时改成 2000；已写出正文后，再加一行会让已用字节数超过它就停止。
 func (p Playbook) RenderBudget(maxRunes int) string {
 	if maxRunes <= 0 {
 		maxRunes = 2000

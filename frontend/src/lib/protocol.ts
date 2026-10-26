@@ -16,17 +16,22 @@ export type VideoPane = "chat" | "create" | "studio" | "drama" | "canvas" | "gam
 /** CanvasFocus 画布停在库还是编辑器。 */
 export type CanvasFocus = "library" | "editor";
 
-/** isYingcePane 对话、工作室、创作台和游戏以外的面板走岛内路由。 */
+/** isYingcePane 对话、工作室、创作台和游戏以外的面板走岛内路由。pane 不是 chat、studio、create 或 game 时返回真。 */
 export function isYingcePane(pane: VideoPane): boolean {
   return pane !== "chat" && pane !== "studio" && pane !== "create" && pane !== "game";
 }
 
-/** isCanvasWorldPane 画布及其资产、技能、插件、任务面板属于画布世界。 */
+/** isCanvasWorldPane 画布及其资产、技能、插件、任务面板属于画布世界。pane 是 canvas、assets、skills、plugins 或 tasks 时返回真。 */
 export function isCanvasWorldPane(pane: VideoPane): boolean {
   return pane === "canvas" || pane === "assets" || pane === "skills" || pane === "plugins" || pane === "tasks";
 }
 
-/** yingcePathForPane 把面板收成岛内路径。画布处于编辑器焦点且带项目 id 时进入该项目。 */
+/**
+ * yingcePathForPane 把面板收成岛内路径。画布处于编辑器焦点且带项目 id 时进入该项目。
+ * pane 为 create 时返回 /canvas，为 studio 时返回 /create，为 drama 时返回 /drama，为 assets 时返回 /assets，为 skills 时返回 /skills，为 plugins 时返回 /plugins，为 tasks 时返回 /tasks，其余分支还看别的条件。
+ * projectId 为真时才继续，拼进字符串。
+ * canvasFocus 与 editor 比较是否相等。
+ */
 export function yingcePathForPane(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus): string {
   if (pane === "create") return "/canvas";
   if (pane === "studio") return "/create";
@@ -47,13 +52,13 @@ export type VideoRouteTarget = {
   entry: string;
 };
 
-/** 去掉多余的结尾斜杠。空路径视为根。 */
+/** 去掉多余的结尾斜杠。空路径视为根。path 为假时用 /，读取 length，看结尾，截取。 */
 function normalizeVideoPath(path: string) {
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path || "/";
 }
 
-/** videoRouteFromLocation 从创作页地址解析面板。转入画布时连同查询参数交给岛内路由，否则会话接续和素材交接会丢。无法识别的路径返回空。 */
+/** videoRouteFromLocation 从创作页地址解析面板。转入画布时连同查询参数交给岛内路由，否则会话接续和素材交接会丢。无法识别的路径返回空。to 为假时用空字符串，转成字符串，去掉首尾空白后，按 ? 切开，解开 pathname、query，传给 URL。 */
 export function videoRouteFromLocation(to: string): VideoRouteTarget | null {
   const raw = String(to || "").trim();
   let path = "/";
@@ -92,7 +97,13 @@ export function videoRouteFromLocation(to: string): VideoRouteTarget | null {
   return { pane, canvasFocus, projectId, entry };
 }
 
-/** yingceHref 入口路径仍属于当前面板时保留它，含查询。否则退回该面板的派生路径。 */
+/**
+ * yingceHref 入口路径仍属于当前面板时保留它，含查询。否则退回该面板的派生路径。
+ * pane 与 canvas、create、plugins 比较是否相等，传给 yingcePathForPane。
+ * projectId 传给 yingcePathForPane。
+ * canvasFocus 传给 yingcePathForPane。
+ * entry 为假时返回 derived；按 ? 切开，取第一段，为假时用 /，有的分支原样返回。
+ */
 export function yingceHref(pane: VideoPane, projectId: string, canvasFocus: CanvasFocus, entry = ""): string {
   const derived = yingcePathForPane(pane, projectId, canvasFocus);
   if (!entry) return derived;
@@ -213,12 +224,12 @@ export type ContextInventory = {
   planPath?: string;
 };
 
-/** threadChannel 缺省或非 video 时视为智能体通道。 */
+/** threadChannel 缺省或非 video 时视为智能体通道。t 的 channel 为 video 时返回 video，否则返回 agent。 */
 export function threadChannel(t: { channel?: string } | null | undefined): ThreadChannel {
   return t?.channel === "video" ? "video" : "agent";
 }
 
-/** isSubagentThread 子代理不是独立对话，嵌在父转录里。有 parentId，或 id 里嵌着任务分隔，即为子代理。 */
+/** isSubagentThread 子代理不是独立对话，嵌在父转录里。有 parentId，或 id 里嵌着任务分隔，即为子代理。t 为假时返回假，有 parentId 时返回真，否则把 id 交给 parentSessionId。 */
 export function isSubagentThread(t: { id?: string; parentId?: string } | null | undefined): boolean {
   if (!t) return false;
   if (t.parentId) return true;
@@ -234,7 +245,7 @@ export function parentSessionId(id: string): string {
   return "";
 }
 
-/** channelForSurface 视频表面用视频通道，其余表面用智能体通道。 */
+/** channelForSurface 视频表面用视频通道，其余表面用智能体通道。surface 为 video 时返回 video，否则返回 agent。 */
 export function channelForSurface(surface: Surface): ThreadChannel {
   return surface === "video" ? "video" : "agent";
 }

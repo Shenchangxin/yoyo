@@ -5,13 +5,13 @@
 
 const MOODS = new Set(["calm", "happy", "shy", "surprised", "sad", "angry", "thinking"]);
 
-/** standMood 只接受 calm、happy、shy、surprised、sad、angry、thinking，和立绘用的是同一组，其余收成 calm。 */
+/** standMood 只接受 calm、happy、shy、surprised、sad、angry、thinking，和立绘用的是同一组，其余收成 calm。raw 为假时用空字符串，转成字符串，去掉首尾空白，转成小写后，作为分支结果，传给 MOODS.has。 */
 export function standMood(raw: string | undefined): string {
   const s = String(raw || "").trim().toLowerCase();
   return MOODS.has(s) ? s : "calm";
 }
 
-/** nodFor 按情绪点头：angry、sad、surprised 摇头，thinking 不动，其余点头。 */
+/** nodFor 按情绪点头：angry、sad、surprised 摇头，thinking 不动，其余点头。mood 传给 standMood。 */
 export function nodFor(mood: string): "yes" | "no" | null {
   const m = standMood(mood);
   if (m === "thinking") return null;
@@ -19,7 +19,7 @@ export function nodFor(mood: string): "yes" | "no" | null {
   return "yes";
 }
 
-/** petFace 没有立绘的桌面宠物所用的表情编号。听或拨号朝向一侧，思考用思考脸，说话跟着心情，其余用静息脸。 */
+/** petFace 没有立绘的桌面宠物所用的表情编号。听或拨号朝向一侧，思考用思考脸，说话跟着心情，其余用静息脸。phase 为 thinking 时返回 30。mood 传给 standMood。 */
 export function petFace(phase: string, mood: string): string {
   const m = standMood(mood);
   if (phase === "thinking") return "30";

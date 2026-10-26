@@ -52,6 +52,8 @@ type OverlayRun struct {
 }
 
 // OverlaySession 对会话工具根做探针，跑给定宽度的 overlay。采纳后继时只把当前会话的 harness 钉住，不改 active、canary 和 staging。视频会话直接拒绝。
+// ctx 为 nil 时改用 context.Background，再传给 acquireRun 和 Evolve.Overlay。
+// run 用来读 SessionID、Task、ReuseTurn、K、Mode、MaxUSD、MaxWall、Client 和 Improver；SessionID 去掉空白后为空则返回错误，Client 为 nil 时改用 ClientFor，MaxUSD 小于等于 0 且配置上限大于 0 时改用配置上限。
 func (a *App) OverlaySession(ctx context.Context, run OverlayRun) (evolve.OverlayResult, error) {
 	var res evolve.OverlayResult
 	if a == nil || a.Evolve == nil {
@@ -205,6 +207,8 @@ type overlayProbeReq struct {
 }
 
 // overlayProbe 用 runtime.IsolateWorkspace 得到一份临时工作目录，在其中调用 runtime.Run，再按任务里点名的文件判断是否交付。
+// ctx 用来做超时上下文，再传给 runtime.Run。
+// req 用来读 label、toolRoot、maxWall、session、mats、model、task 和 client；toolRoot 去掉空白后为空则返回错误。
 func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.OverlayRollout, error) {
 	out := evolve.OverlayRollout{Label: req.label}
 	src := strings.TrimSpace(req.toolRoot)
@@ -280,6 +284,7 @@ func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.Ove
 }
 
 // overlayHeld 从套件取出 held-out 和 transfer 的题号，并把 held-in 的题目正文读出来。
+// hash 传给 Materials。
 func (a *App) overlayHeld(hash string) (heldOut, heldInText []string) {
 	_, _, _, _, suite, _, err := a.Materials(hash)
 	if err != nil {
@@ -298,6 +303,7 @@ func (a *App) overlayHeld(hash string) (heldOut, heldInText []string) {
 }
 
 // overlayLastTurn 取最后一条非 steer 的用户消息，以及它到下一条用户消息之间的事件。
+// sessionID 传给 Traces.Read。
 func overlayLastTurn(a *App, sessionID string) (text, harness string, turn []trace.Event, ok bool) {
 	if a == nil || a.Traces == nil {
 		return "", "", nil, false
@@ -338,6 +344,7 @@ func overlayLastTurn(a *App, sessionID string) (text, harness string, turn []tra
 }
 
 // overlayWantedFiles 从任务原文抽出要交付的相对路径，丢掉空路径和带上级目录的路径。
+// task 传给 overlayNamedFile 和 overlayBareFile 做匹配。
 func overlayWantedFiles(task string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -364,6 +371,8 @@ func overlayWantedFiles(task string) []string {
 }
 
 // overlayDelivered 在点名的文件都存在且非空时返回真，并带上第一个文件的摘录。
+// root 去掉首尾空白后为空则返回 false，否则用来拼文件路径。
+// wanted 长度为 0 时返回 false，否则逐项读文件。
 func overlayDelivered(root string, wanted []string) (bool, string) {
 	if strings.TrimSpace(root) == "" || len(wanted) == 0 {
 		return false, ""
@@ -383,6 +392,7 @@ func overlayDelivered(root string, wanted []string) (bool, string) {
 }
 
 // overlayTrajectory 把工具调用、结果、错误和助手正文收成一段轨迹文本。
+// evs 按工具调用、结果、错误和助手正文收成一段文本。
 func overlayTrajectory(evs []trace.Event) string {
 	var b strings.Builder
 	for _, ev := range evs {
@@ -424,6 +434,7 @@ func capOverlayRunes(s string, n int) string {
 }
 
 // OverlayLibrary 只读该工作区领域的经验索引，不写引用。视频会话直接拒绝。
+// sessionID 先 TrimSpace，空串则返回错误，否则传给 GetSession。
 func (a *App) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
 	var out evolve.LibraryView
 	if a == nil || a.Home == nil {
@@ -452,6 +463,7 @@ func (a *App) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
 }
 
 // OverlayFlagConflict 在会话 overlay 路径上拒绝再混入套件演进的旗标。没有旗标则返回 nil。
+// names 逐项去掉首尾空白，空串丢掉；一个都不剩则返回 nil。
 func OverlayFlagConflict(names ...string) error {
 	var out []string
 	for _, n := range names {

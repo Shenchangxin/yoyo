@@ -301,6 +301,7 @@ test("assistant letter uses a dense type ramp", async ({ page }) => {
   await page.goto("/");
   const turn = page.getByTestId("agent-turn").filter({ hasText: "Findings" });
   await expect(turn.getByRole("heading", { name: "Findings" })).toBeVisible();
+  /** sizeOf 调用 evaluate。locator 调用 evaluate。 */
   const sizeOf = (locator: ReturnType<typeof turn.locator>) =>
     locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   const h1 = await sizeOf(turn.getByRole("heading", { name: "Findings" }));

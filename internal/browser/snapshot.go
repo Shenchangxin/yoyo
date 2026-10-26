@@ -22,6 +22,8 @@ const (
 )
 
 // NormalizeSnapshotLevel 选定一档。空档位对远程 http(s) 用 interactive，其余（含工作区 HTML）用 full，因为校验仍要页面正文。已写明的四档原样返回小写。
+// level 去掉空白并转小写。等于 SnapshotMinimal、SnapshotInteractive、SnapshotFull 或 SnapshotStructured 时返回这个小写值。
+// pageURL 只在 level 不是这四档时传给 isRemoteHTTP。为真返回 SnapshotInteractive，否则返回 SnapshotFull。
 func NormalizeSnapshotLevel(level string, pageURL string) string {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case SnapshotMinimal, SnapshotInteractive, SnapshotFull, SnapshotStructured:
@@ -34,6 +36,7 @@ func NormalizeSnapshotLevel(level string, pageURL string) string {
 }
 
 // isRemoteHTTP 在方案是 http 或 https，且主机不是 127.0.0.1、localhost、::1 时返回真。
+// raw 去掉空白后交给 url.Parse。方案不是 http 或 https 时返回假。主机转小写后是 127.0.0.1、localhost 或 ::1 时返回假。
 func isRemoteHTTP(raw string) bool {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -44,6 +47,8 @@ func isRemoteHTTP(raw string) bool {
 }
 
 // FormatSnapshot 按一档把 Snapshot 写成文字。live 为假时先写一行说明隔离 Chrome 没在跑、这是上次的快照。有 Errors 就附在后面，有 Profile 就另起一行 profile=。
+// snap 的 URL 和 level 传给 NormalizeSnapshotLevel。URL、Title、Text、Actions、Elements、Errors、Profile 按档位写入结果。
+// level 和 snap 的 URL 传给 NormalizeSnapshotLevel，返回值选择 minimal、interactive、structured 或默认正文。
 func FormatSnapshot(snap Snapshot, level string, live bool) string {
 	level = NormalizeSnapshotLevel(level, snap.URL)
 	acts := snap.Elements
@@ -88,6 +93,7 @@ func FormatSnapshot(snap Snapshot, level string, live bool) string {
 }
 
 // countActions 优先数 Elements。没有时数 Actions 里的非空行。
+// snap 的 Elements 长度大于 0 时返回该长度。否则数 Actions 里去掉空白后非空的行。
 func countActions(snap Snapshot) int {
 	if n := len(snap.Elements); n > 0 {
 		return n
@@ -105,6 +111,7 @@ func countActions(snap Snapshot) int {
 }
 
 // formatStructuredSnapshot 把地址、标题和元素编成缩进 JSON。编码失败时退回 Actions 文本。
+// snap 的 URL、Title 和 Elements 编进 JSON。Elements 为空时写入 nil。编码失败时返回 Actions。
 func formatStructuredSnapshot(snap Snapshot) string {
 	els := snap.Elements
 	if len(els) == 0 {

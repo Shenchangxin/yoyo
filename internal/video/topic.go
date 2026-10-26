@@ -90,6 +90,7 @@ func (e *Engine) ListTopics(status string) []Topic {
 }
 
 // GetTopic 按编号读取一张选题。没有时返回 topic not found。
+// id 去掉首尾空白后传给 getDoc。
 func (e *Engine) GetTopic(id string) (Topic, error) {
 	t, err := getDoc[Topic](e, colStudioTopics, strings.TrimSpace(id))
 	if err != nil {
@@ -100,6 +101,7 @@ func (e *Engine) GetTopic(id string) (Topic, error) {
 
 // SaveTopic 新建或更新选题。标题空着就拒绝。
 // 更新时，传入的空字段沿用库里的值，空状态也沿用。编号对不上就按新卡片写，并补上创建时间。
+// in 的 Title 去掉首尾空白，空串时返回错误 title required；ID 去掉首尾空白后为空则新建，否则把仍为空的字符串字段以及 nil 的 Scores、Options 换成库里的值，再传给 putDoc。
 func (e *Engine) SaveTopic(in Topic) (Topic, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" {
@@ -161,6 +163,7 @@ func (e *Engine) SaveTopic(in Topic) (Topic, error) {
 }
 
 // DeleteTopic 按编号删掉选题。编号空着就拒绝。不改已经挂上的短片工程。
+// id 去掉首尾空白，空串时返回错误 id required，否则传给 delDoc。
 func (e *Engine) DeleteTopic(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -170,6 +173,9 @@ func (e *Engine) DeleteTopic(id string) error {
 }
 
 // TopicFromTrend 用热榜标题收一张收件箱选题。格式记成 short。热度非空时写进备注。
+// platform 去掉首尾空白后写入 SourcePlatform。
+// title 去掉首尾空白后写入 Title 和 SourceTitle。
+// hot 去掉首尾空白后非空时，备注写成「热度 」加上这段文字。
 func (e *Engine) TopicFromTrend(platform, title, hot string) (Topic, error) {
 	title = strings.TrimSpace(title)
 	note := ""

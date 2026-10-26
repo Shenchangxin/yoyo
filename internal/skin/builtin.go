@@ -3,6 +3,7 @@
 package skin
 
 // cloneMap 复制一份 TokenMap。
+// src 的键和值复制进新的 TokenMap。
 func cloneMap(src TokenMap) TokenMap {
 	out := make(TokenMap, len(src))
 	for k, v := range src {
@@ -210,6 +211,7 @@ func BuiltinInfo(id string) Info {
 }
 
 // stringsTitle 只把第一个字节对应的 ASCII 小写字母改成大写，其余原样。
+// id 为空时原样返回。否则把第一个字节交给 stringsToUpper，再接上后面的字节。
 func stringsTitle(id string) string {
 	if id == "" {
 		return id

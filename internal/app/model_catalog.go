@@ -27,11 +27,14 @@ const chatMaxOutputTokens = 32_000
 const chatLargeWindowOutput = 16_384
 
 // maxOutputTokensFor 用目录里的输出上限和模型上下文窗口计算桌面回合的回复上限。目录未知时结果为 0，调用方保留供应商默认。
+// model 传给 modelcatalog.OutputFor 和 runtime.ModelContextWindow。
 func maxOutputTokensFor(model string) int {
 	return capOutputTokens(modelcatalog.OutputFor(model), runtime.ModelContextWindow(model))
 }
 
 // capOutputTokens 在目录输出小于等于 0 时返回 0。大于 32000 时截到 chatMaxOutputTokens。窗口大于等于 200000 且当前值小于 16384 时抬到 chatLargeWindowOutput。
+// catalogOut 小于等于 0 时返回 0，大于 chatMaxOutputTokens 时截到该常量。
+// window 大于等于 200000 且当前值小于 chatLargeWindowOutput 时把结果抬到该常量。
 func capOutputTokens(catalogOut, window int) int {
 	n := catalogOut
 	if n <= 0 {

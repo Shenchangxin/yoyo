@@ -224,6 +224,7 @@ func ParseInstallID(s string) (hub, remote string) {
 }
 
 // InstallSlug 取路径最后一段，再交给 SanitizeSlug。
+// remote 去掉两端空白，反斜杠换成斜杠，取最后一段交给 SanitizeSlug。
 func InstallSlug(remote string) string {
 	remote = strings.TrimSpace(strings.ReplaceAll(remote, "\\", "/"))
 	remote = strings.Trim(remote, "/")
@@ -242,6 +243,7 @@ const (
 )
 
 // catalogLimit 在 requested 大于 0 时采用它，但不超过 5000。未指定时，有查询用 500，浏览用 2000。
+// query 在 requested 不大于 0 时，去掉空白后非空则返回 defaultSearchLimit，否则返回 defaultBrowseLimit。
 func catalogLimit(query string, requested int) int {
 	if requested > 0 {
 		if requested > maxCatalogLimit {
@@ -256,6 +258,8 @@ func catalogLimit(query string, requested int) int {
 }
 
 // LoadHub 加载一个站的目录。不能搜索的站会丢掉查询。Work Buddy 走 loadWorkBuddy。只能搜索又不能浏览且查询为空时，返回 SearchOnly、不发请求。缓存未过期且没有 Refresh 时直接用缓存。拉取失败但有旧条目时，在 Source 后加 " (stale)" 并带上 Warning。
+// cacheDir 在 Hub 为 HubWorkBuddy 时交给 loadWorkBuddy，否则用来拼缓存路径并创建目录。
+// opts 的 Hub、Query、Refresh、Limit 分别用来选站、查询、决定是否跳过未过期缓存，以及交给 catalogLimit。
 func LoadHub(cacheDir string, opts LoadOpts) (Catalog, error) {
 	hub := NormalizeHub(opts.Hub)
 	query := strings.TrimSpace(opts.Query)
@@ -301,6 +305,8 @@ func LoadHub(cacheDir string, opts LoadOpts) (Catalog, error) {
 }
 
 // fetchHubCatalog 按站调用对应的列表函数。未知站返回 "unknown skill hub"。
+// query 先交给 catalogLimit；ClawHub、SkillHubCN、ClawSkillHub、SkillsMP、MDR、Tessl 的列表会收到它。
+// limit 先交给 catalogLimit，再传给上述列表。
 func fetchHubCatalog(hub, query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	switch hub {
@@ -368,6 +374,8 @@ func FetchFrom(hub, remote string) (PackResult, error) {
 }
 
 // stampCatalog 填上站 id、全部站列表、查询和署名。只能搜索又不能浏览且查询为空时把 SearchOnly 设为真。条目缺 ID 时用 ItemID 补上。
+// hub 交给 LookupHub，写入 Hub；条目缺 Hub 时也写上。
+// query 写入 Query；只能搜索又不能浏览且 query 为空时把 SearchOnly 设为真。
 func stampCatalog(c Catalog, hub, query string) Catalog {
 	info, _ := LookupHub(hub)
 	c.Hub = hub
@@ -400,6 +408,7 @@ func stampCatalog(c Catalog, hub, query string) Catalog {
 }
 
 // hubCacheName 在查询为空时返回 catalog-v4-<hub>.json。否则把站和查询的 SHA-256 前 6 字节编进文件名。
+// query 转成小写并去掉两端空白，空则文件名不含摘要；否则和 hub 一起做 SHA-256，取前 6 字节的十六进制。
 func hubCacheName(hub, query string) string {
 	q := strings.TrimSpace(strings.ToLower(query))
 	if q == "" {
@@ -410,6 +419,7 @@ func hubCacheName(hub, query string) string {
 }
 
 // getJSON 用 Get 拉正文并解进 dest。空正文返回 "empty response"。以 < 开头返回 "expected JSON, got HTML"。
+// rawURL 交给 Get。
 func getJSON(rawURL string, dest any) error {
 	raw, err := Get(rawURL)
 	if err != nil {
@@ -429,6 +439,8 @@ func getJSON(rawURL string, dest any) error {
 }
 
 // joinURL 用斜杠接上路径段，去掉每段两侧的斜杠。
+// base 去掉末尾斜杠后作为开头。
+// parts 每段把反斜杠换成斜杠并去掉两端斜杠，空段跳过，其余用斜杠接上。
 func joinURL(base string, parts ...string) string {
 	u := strings.TrimRight(base, "/")
 	for _, p := range parts {
@@ -442,6 +454,7 @@ func joinURL(base string, parts ...string) string {
 }
 
 // clip 去掉首尾空白。n 小于等于 0 或字符串不长于 n 时原样返回，否则截到 n 并加上省略号。
+// s 先去掉首尾空白，再按 n 决定是否截断。
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if n <= 0 || len(s) <= n {
@@ -451,6 +464,7 @@ func clip(s string, n int) string {
 }
 
 // splitOwnerSlug 把 owner/slug 拆开。没有斜杠时 owner 为空，slug 经过 SanitizeSlug。
+// id 去掉前缀 @、两端空白和两端斜杠；没有斜杠时 owner 为空，slug 交给 SanitizeSlug。
 func splitOwnerSlug(id string) (owner, slug string) {
 	id = strings.TrimSpace(strings.TrimPrefix(id, "@"))
 	id = strings.Trim(strings.ReplaceAll(id, "\\", "/"), "/")

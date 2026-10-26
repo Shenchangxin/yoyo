@@ -9,6 +9,7 @@ import (
 )
 
 // seriesTool 判断名字是不是剧级工具：摄入、读原文、读方案、提议分集、确认分集和读设定。
+// name 与 drama_ingest_source、drama_read_source、drama_read_plan、drama_propose_episodes、drama_commit_episodes、drama_read_bible 比较。
 func seriesTool(name string) bool {
 	switch name {
 	case "drama_ingest_source", "drama_read_source", "drama_read_plan",
@@ -20,6 +21,9 @@ func seriesTool(name string) bool {
 }
 
 // Tool 调用已绑定短剧的工具。没有剧也没有集时要求先打开短剧。剧级工具，以及保存角色、场景、道具时没有集标识，走 seriesTool。保存剧本后若目标超过 120 秒或段数超过 16，结果里带上 split_episode。保存分镜时每调用最多留下 8 条。未知名字返回 unknown drama tool。
+// sessionID 传给 SessionBind。
+// name 传给 seriesTool，并选择集级分支，对不上时写进 unknown drama tool。
+// args 供 strMap、decodeList、boolArg 和 intArg 取出剧集、剧本、资产和分镜字段。
 func (e *Engine) Tool(sessionID, name string, args map[string]any) (string, error) {
 	b, ok := e.SessionBind(sessionID)
 	episodeID := first(strMap(args, "episode_id"), b.EpisodeID)
@@ -174,6 +178,9 @@ func (e *Engine) Tool(sessionID, name string, args map[string]any) (string, erro
 }
 
 // seriesTool 执行剧级读写。确认分集直接返回错误，说明这是桌面上的操作者动作。方案不存在时返回 status 为 missing。
+// name 选择摄入、读取、提议、确认、设定或保存分支，对不上时写进错误文本。
+// dramaID 为空时返回错误 no series bound，否则传给对应的读或写函数。
+// args 在摄入原文、按窗口读取、提议分集和保存设定时取出 text、title、offset、length、slice_index、query、episodes、characters、scenes 或 props。
 func (e *Engine) seriesTool(name, dramaID string, args map[string]any) (string, error) {
 	if dramaID == "" {
 		return "", fmt.Errorf("no series bound")
@@ -236,6 +243,7 @@ func (e *Engine) seriesTool(name, dramaID string, args map[string]any) (string, 
 }
 
 // storyboardCoverage 用已有镜头秒数和条数对照时长计划。达到 MinTotal 或段数即算完成。目标超过 120 秒且段数超过 8 时，未完成的结果带 split_episode。读不到集时 continue 为真且完成标志为假。
+// episodeID 传给 ListShots 和 GetEpisode。
 func (e *Engine) storyboardCoverage(episodeID string) (map[string]any, bool) {
 	shots, _ := e.ListShots(episodeID)
 	ep, err := e.GetEpisode(episodeID)
@@ -265,6 +273,8 @@ func (e *Engine) storyboardCoverage(episodeID string) (map[string]any, bool) {
 }
 
 // StagePrompt 按阶段返回一段提示和要加载的技能名。outline 和 bible 要剧标识。rewrite、extract、prompts、storyboard、video_prompts 以及分项提取会把对应流水线标成 running。未知阶段返回 unknown stage。
+// episodeID 在 outline 和 bible 中，仅当 dramaID 为空且自身非空时传给 GetEpisode；其他阶段传给 GetEpisode，并在若干阶段传给 patchPipeline。
+// dramaID 为空且 episodeID 非空时，outline 和 bible 会改用集上的 DramaID；改完仍为空则返回错误。
 func (e *Engine) StagePrompt(stage, episodeID, dramaID string) (string, []string, error) {
 	lang := e.ContentLanguage()
 	langLine := contentLangDirective(lang)
@@ -388,6 +398,7 @@ func (e *Engine) StagePrompt(stage, episodeID, dramaID string) (string, []string
 }
 
 // contentLangDirective 在语言为空、zh 或 zh-CN 时要求保存的创作文本用简体中文，否则要求用给定语言。
+// lang 为空、zh 或 zh-CN 时返回简体中文优先的那句，否则把 lang 拼进另一句。
 func contentLangDirective(lang string) string {
 	if lang == "" || lang == "zh" || lang == "zh-CN" {
 		return "HIGHEST PRIORITY: write all saved creative text in Simplified Chinese."
@@ -396,6 +407,7 @@ func contentLangDirective(lang string) string {
 }
 
 // decodeList 把值经 JSON 解成切片。空值或解不开时返回 nil。
+// v 为 nil 时返回 nil；否则经 json.Marshal 再 json.Unmarshal 成切片，任一步失败也返回 nil。
 func decodeList[T any](v any) []T {
 	if v == nil {
 		return nil
@@ -412,6 +424,7 @@ func decodeList[T any](v any) []T {
 }
 
 // boolArg 接受布尔、字符串 true 或 1，以及非 0 的 float64。其他值返回假。
+// v 为 bool 时原样返回，为字符串 true 或 1 时返回真，为 float64 且不等于 0 时返回真，其余返回假。
 func boolArg(v any) bool {
 	switch t := v.(type) {
 	case bool:
@@ -425,6 +438,7 @@ func boolArg(v any) bool {
 }
 
 // intArg 从 float64、int 或 json.Number 取出整数。其他值返回 0。
+// v 为 float64 或 int 时转成 int，为 json.Number 时取 Int64 再转成 int，其余返回 0。
 func intArg(v any) int {
 	switch t := v.(type) {
 	case float64:

@@ -66,6 +66,7 @@ func messageTokens(m Message) int {
 }
 
 // messagesTokens 把每条消息的 messageTokens 相加。
+// msgs 逐条交给 messageTokens 再相加。
 func messagesTokens(msgs []Message) int {
 	n := 0
 	for _, m := range msgs {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCopy } from "../lib/i18n";
 import type { RunStatus, Thread } from "../lib/protocol";
 
-// RunningHub 没有线程时不渲染。标题空了就显示 id 的前 8 位。有线程时每 1000 毫秒刷新一次现在。
+/** RunningHub 没有线程时不渲染。标题空了就显示 id 的前 8 位。有线程时每 1000 毫秒刷新一次现在。props 读取 threads、status，调用 onSelect。 */
 export function RunningHub(props: {
   threads: Thread[];
   status?: RunStatus[];
@@ -17,6 +17,7 @@ export function RunningHub(props: {
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(false);
+    /** onKey 调用 close。e 读取 key。 */
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     const tmr = window.setTimeout(() => {
       window.addEventListener("mousedown", close);
@@ -85,7 +86,7 @@ export function RunningHub(props: {
   );
 }
 
-// 没有时间或解析失败就返回空字符串。满一分钟才带上分钟，秒数用 now 减开始时间。
+/** formatElapsed 没有时间或解析失败就返回空字符串。满一分钟才带上分钟，秒数用 now 减开始时间。iso 为假时返回空字符串；传给 Date.parse。 */
 function formatElapsed(iso: string | undefined, now: number): string {
   if (!iso) return "";
   const t = Date.parse(iso);

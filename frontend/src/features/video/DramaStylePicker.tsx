@@ -15,12 +15,12 @@ import "./drama-style-picker.css";
 /** DramaStyleOption 是面板里的一条风格值和名字。 */
 export type DramaStyleOption = { value: string; name: string };
 
-/** 预设封面没有时用备用图。 */
+/** 预设封面没有时用备用图。value 先问预设封面，没有就用备用图。label 一起交给 dramaStyleCover。 */
 function coverSrc(value: string, label = "") {
   return dramaStyleCover(value, label) || styleCoverFallback(value || "cover");
 }
 
-/** 在列表框里把焦点移到相邻选项，到头就绕回。 */
+/** 在列表框里把焦点移到相邻选项，到头就绕回。from 在所在列表框里找选项。delta 决定移到后一项还是前一项，到头绕回。 */
 function moveOptionFocus(from: HTMLElement, delta: number) {
   const options = Array.from(from.closest("[role='listbox']")?.querySelectorAll<HTMLElement>("[role='option']") || []);
   if (!options.length) return;
@@ -42,7 +42,7 @@ function viewRect() {
   };
 }
 
-/** 把面板放在触发器上方或下方，并限制在可视区域内。 */
+/** 把面板放在触发器上方或下方，并限制在可视区域内。trigger 用它的矩形决定放在上方还是下方。 */
 function placeBox(trigger: HTMLElement): Box {
   const rect = trigger.getBoundingClientRect();
   const view = viewRect();
@@ -72,7 +72,7 @@ function overlayHost() {
   return document.body;
 }
 
-/** DramaStylePicker 打开风格网格。封面加载失败时换成 SVG 海报。 */
+/** DramaStylePicker 打开风格网格。封面加载失败时换成 SVG 海报。props 用 value、styles 和 names 决定当前项和可见列表，label、title、search、empty、groups 显示文案，onChange 在点卡片时收到风格值，disabled 和 className 传给触发按钮。 */
 export function DramaStylePicker(props: {
   value: string;
   styles: DramaStyleOption[];
@@ -94,17 +94,17 @@ export function DramaStylePicker(props: {
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const current = props.value || props.styles[0]?.value || "3d";
-  const currentName = styleLabel(props.names, current, props.styles.find((row) => row.value === current)?.name || current);
+  const currentName = styleLabel(props.names, current, props.styles.find(/** row 用 value 和当前风格比对。 */ (row) => row.value === current)?.name || current);
   const groupTabs = useMemo(() => {
     const labels = props.groups || {};
     return [
       { id: "all", label: labels.all || "All" },
-      ...PRESET_STYLE_GROUP_IDS.map((id) => ({ id, label: labels[id] || id })).filter((tab) => props.styles.some((row) => presetStyleGroup(row.value) === tab.id)),
+      ...PRESET_STYLE_GROUP_IDS.map(/** id 收成分组标签，没有文案就用 id 自己。 */ (id) => ({ id, label: labels[id] || id })).filter(/** tab 在有风格属于这一组时留下。 */ (tab) => props.styles.some(/** row 看分组是不是这个 tab。 */ (row) => presetStyleGroup(row.value) === tab.id)),
     ];
   }, [props.groups, props.styles]);
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return props.styles.filter((row) => {
+    return props.styles.filter(/** row 分组不是 all 时要属于当前组；查询为空就留下，否则名字或 value 要包含查询。 */ (row) => {
       if (group !== "all" && presetStyleGroup(row.value) !== group) return false;
       if (!needle) return true;
       const name = styleLabel(props.names, row.value, row.name).toLowerCase();
@@ -134,7 +134,7 @@ export function DramaStylePicker(props: {
     const frame = requestAnimationFrame(() => {
       panelRef.current?.querySelector<HTMLElement>("[aria-selected='true']")?.focus();
     });
-    /** Escape 关闭面板并把焦点还给触发器。 */
+    /** Escape 关闭面板并把焦点还给触发器。event 的 key 是 Escape 时阻止默认、关掉面板并把焦点还给触发器。 */
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -163,7 +163,7 @@ export function DramaStylePicker(props: {
         className="drama-style-panel"
         data-testid="drama-style-grid"
         style={{ top: box.top, left: box.left, width: box.width, maxHeight: box.maxHeight }}
-        onMouseDown={(event) => event.stopPropagation()}
+        onMouseDown={/** event 阻止冒泡。 */ (event) => event.stopPropagation()}
       >
         <header>
           <strong>{props.title}</strong>
@@ -173,12 +173,12 @@ export function DramaStylePicker(props: {
               value={query}
               placeholder={props.search}
               aria-label={props.search}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={/** event 取出 target.value 写进查询。 */ (event) => setQuery(event.target.value)}
             />
           </label>
           {groupTabs.length > 2 ? (
             <div className="drama-style-groups" role="tablist" aria-label={props.title}>
-              {groupTabs.map((tab) => (
+              {groupTabs.map(/** tab 用 id 判断选中，用 label 显示。 */ (tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -197,7 +197,7 @@ export function DramaStylePicker(props: {
           <p className="drama-style-empty">{props.empty}</p>
         ) : (
           <div className="drama-style-grid" role="listbox" aria-label={props.label}>
-            {visible.map((row) => {
+            {visible.map(/** row 用 value 判断选中并交给 onChange，用名字当标签。 */ (row) => {
               const selected = row.value === current;
               const name = styleLabel(props.names, row.value, row.name);
               return (
@@ -212,7 +212,7 @@ export function DramaStylePicker(props: {
                     props.onChange(row.value);
                     close();
                   }}
-                  onKeyDown={(event) => {
+                  onKeyDown={/** event 左右或上下时阻止默认，并把 currentTarget 和方向交给 moveOptionFocus。 */ (event) => {
                     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
                       event.preventDefault();
                       moveOptionFocus(event.currentTarget, 1);
@@ -231,7 +231,7 @@ export function DramaStylePicker(props: {
                       decoding="async"
                       loading="lazy"
                       draggable={false}
-                      onError={(event) => {
+                      onError={/** event 的 currentTarget 换成这一条的 SVG 海报。 */ (event) => {
                         event.currentTarget.src = dramaStylePoster(row.value, name);
                       }}
                     />
@@ -272,7 +272,7 @@ export function DramaStylePicker(props: {
           width={20}
           height={20}
           draggable={false}
-          onError={(event) => {
+          onError={/** event 的 currentTarget 换成当前风格的 SVG 海报。 */ (event) => {
             event.currentTarget.src = dramaStylePoster(current, currentName);
           }}
         />

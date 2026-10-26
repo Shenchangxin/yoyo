@@ -80,6 +80,7 @@ type Engine struct {
 }
 
 // NewEngine 记下套件根目录。
+// suitesRoot 记到返回的 Engine.SuitesRoot。
 func NewEngine(suitesRoot string) *Engine {
 	return &Engine{SuitesRoot: suitesRoot}
 }
@@ -109,6 +110,8 @@ type RunOpts struct {
 // Repeats 小于等于 0 时按 1 次。TimeoutSec 小于等于 0 时用 2 分钟，不读 Task.Timeout。
 // 通过次数必须大于 Repeats/2；Repeats 为 1 时还接受最后一轮本身通过。
 // 安全题加载失败或不通过时 SafetyFail 加一。Meter 为 nil 时换成空表。
+// ctx 传给每次 runTask。
+// opts 的 Suite 提供题号、Repeats、TimeoutSec 和 TaskDir，Hash 与 Snapshot.ModelFingerprint 写入报告；Meter 为 nil 时换成空表并读 Totals；SessionID 交给 repeatSession；整份 opts 再传给 runTask。
 func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 	rep := RunReport{
 		Suite:            opts.Suite.ID,
@@ -216,6 +219,8 @@ func (e *Engine) Run(ctx context.Context, opts RunOpts) (RunReport, error) {
 }
 
 // repeatSession 把基会话、题号和重复下标拼成会话编号。基会话为空时用 eval。
+// base 为空时改成 eval，再放进格式串的第一段。
+// taskID 放进格式串的第二段，形如 base~taskID~r 加下标。
 func repeatSession(base, taskID string, i int) string {
 	if base == "" {
 		base = "eval"
@@ -225,6 +230,11 @@ func repeatSession(base, taskID string, i int) string {
 
 // runTask 在准备好的工作区里跑一轮，再用验证器决定 Pass。
 // 关掉模型摘要：只把这份循环副本的 AllowLLMCompact 写成 false。下面的 RunRequest 不填 ModelWindow，所以是 0。CompactionTokens 不在这里赋值，调用方循环上是多少就传多少。
+// ctx 和 timeout 一起交给 context.WithTimeout，得到的上下文传给 rt.Run。
+// task 的 Dir 交给 prepareWork，ID 写入结果，Instruction 写入 RunRequest 的 User。
+// timeout 作为 context.WithTimeout 的时长。
+// opts 的 IsolateRoot 交给 prepareWork；Skills 的 Name 和 Body 放进工具；Snapshot.EvalTools 非空时用它做广告工具，否则用 Snapshot.Tools；Loop 复制后把 AllowLLMCompact 写成 false；Snapshot、Hash、Model、Fragments、Playbook、Skills、Client、Trace、Meter 写入 RunRequest。
+// sessionID 写入 WorkspaceTools 和 RunRequest。
 func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, opts RunOpts, sessionID string) TaskResult {
 	work, cleanup, isolate, err := prepareWork(task.Dir, opts.IsolateRoot)
 	if err != nil {
@@ -285,6 +295,7 @@ func (e *Engine) runTask(ctx context.Context, task Task, timeout time.Duration, 
 
 // LoadHarborTask 读 instruction.md，题号取目录名。
 // task.toml 的 timeout_minutes 大于 0 时写入 Task.Timeout，否则为 2 分钟。Engine.Run 不读这个字段。
+// dir 用来读 instruction.md 和 task.toml；filepath.Base(dir) 成为 Task.ID，Dir 字段记下 dir。
 func LoadHarborTask(dir string) (Task, error) {
 	inst, err := os.ReadFile(filepath.Join(dir, "instruction.md"))
 	if err != nil {
@@ -311,6 +322,8 @@ func LoadHarborTask(dir string) (Task, error) {
 // runVerifier 先问个人验证器。未接手时读任务目录 tests/expect.toml，再按平台顺序找测试脚本。
 // 脚本在智能体工作区里执行，但文件来自任务目录的 tests/，不来自工作区。
 // 存在 environment/Dockerfile 且本机有 docker 时先试容器；容器命令 err 非 nil 时退回本机脚本。
+// work 交给 runPersonalVerifier、runExpect、命令的 Dir，以及 runVerifierDocker 或 runGoishVerifier。
+// task 交给 runPersonalVerifier；Dir 用来找 tests/expect.toml、测试脚本和 Dockerfile。
 func runVerifier(work string, task Task) (bool, string, error) {
 	if ok, out, err, handled := runPersonalVerifier(work, task); handled {
 		return ok, out, err
@@ -365,6 +378,10 @@ func runVerifier(work string, task Task) (bool, string, error) {
 }
 
 // taskKind 给题目贴种类：安全优先，其次 held-out，再其次 held-in。
+// id 先查 safety，再查 heldOut，再交给 containsID 查 heldIn。
+// heldOut 在 safety 未命中时按 id 查找，命中返回 held_out。
+// safety 按 id 查找，命中返回 safety。
+// heldIn 在前两者都未命中时交给 containsID，命中返回 held_in。
 func taskKind(id string, heldOut, safety map[string]bool, heldIn []string) string {
 	if safety[id] {
 		return "safety"
@@ -380,6 +397,8 @@ func taskKind(id string, heldOut, safety map[string]bool, heldIn []string) strin
 
 // runGoishVerifier 在 Windows 上没有 bash、也没有同名 ps1 时，只认脚本里的 test -f 或 [ -f。
 // 命中的相对路径相对工作区检查是否存在。没有这类检查时返回无法在本平台执行。
+// work 只在 -f 后面的路径不是绝对路径时，用 filepath.Join 接在前面再 Stat。
+// script 整文件读入；含 test -f 或 [ -f 时才按行找 -f 后面的路径。
 func runGoishVerifier(work, script string) (bool, string, error) {
 	b, err := os.ReadFile(script)
 	if err != nil {
@@ -411,6 +430,8 @@ func runGoishVerifier(work, script string) (bool, string, error) {
 }
 
 // copyDir 把任务目录拷进智能体工作区，遇到 tests 目录或其下的路径就跳过。工作区里因此没有 tests/。
+// src 作为 Walk 的根，相对路径相对它计算；相对路径等于 tests 或以 tests 加分隔符开头时跳过。
+// dst 和相对路径拼成写出位置。
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -442,6 +463,8 @@ func copyDir(src, dst string) error {
 }
 
 // containsID 报告编号是否在列表里。
+// ids 逐项与 id 比较，有相等项就返回 true。
+// id 与 ids 的每一项做字符串相等比较。
 func containsID(ids []string, id string) bool {
 	for _, x := range ids {
 		if x == id {
@@ -454,6 +477,8 @@ func containsID(ids []string, id string) bool {
 // prepareWork 准备智能体工作区。IsolateRoot 非空时调用 runtime.IsolateWorkspace，再盖上任务文件，标记为 git-worktree。
 // git worktree 失败时 IsolateWorkspace 会改成复制该根目录，标记仍然是 git-worktree。
 // IsolateRoot 为空时创建前缀为 yoyo-eval- 的临时目录，标记为 copy。两条路径都经 copyDir，都不会带上 tests/。
+// taskDir 交给 copyDir，作为拷进工作区的来源。
+// isolateRoot 非空时交给 rt.IsolateWorkspace，成功后再盖上任务文件，标记返回 git-worktree；为空时改用前缀 yoyo-eval- 的临时目录，标记返回 copy。
 func prepareWork(taskDir, isolateRoot string) (string, func(), string, error) {
 	nop := func() {}
 	if isolateRoot != "" {

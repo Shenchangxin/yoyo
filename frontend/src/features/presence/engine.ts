@@ -12,7 +12,7 @@ export function emotionBall(): EmotionBallAPI {
   return api;
 }
 
-/** createMate 在元素上建一只情绪球，并补上庆祝、挥手、签名和可卸载的监听。 */
+/** createMate 在元素上建一只情绪球，并补上庆祝、挥手、签名和可卸载的监听。el 传给 create。opts 展开传递。 */
 export function createMate(el: HTMLElement, opts: MoodMateCreateOpts = {}): MoodMate {
   const ball = emotionBall().create(el, {
     emotion: "02",
@@ -22,7 +22,7 @@ export function createMate(el: HTMLElement, opts: MoodMateCreateOpts = {}): Mood
   });
   const origOn = ball.on.bind(ball);
   const origOff = typeof ball.off === "function" ? ball.off.bind(ball) : undefined;
-  /** 先跳一下，力度不是零时再转并散开。 */
+  /** 先跳一下，力度不是零时再转并散开。strength 与 0 比较是否不等。 */
   ball.celebrate = function (strength) {
     this.bounce();
     if (strength !== 0) {
@@ -42,7 +42,7 @@ export function createMate(el: HTMLElement, opts: MoodMateCreateOpts = {}): Mood
     this.spin(1);
     return true;
   };
-  /** 接上原来的监听，并交回能卸掉的函数。 */
+  /** 接上原来的监听，并交回能卸掉的函数。ev 传给 origOn，传给 origOff。cb 传给 origOn，传给 origOff。 */
   ball.on = function (ev, cb) {
     origOn(ev, cb);
     return () => {

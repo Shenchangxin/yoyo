@@ -20,6 +20,7 @@ type topicFilmPlan struct {
 }
 
 // planTopicFilm 按选题文字挑模板、时长、声音和受众。教程、测评、故事、科普和热榜各走不同模板。没有角度时受众写成「会刷到这条的人」。不在这里定画幅。
+// t 读取 Title、Angle、Note 和 SourcePlatform。
 func planTopicFilm(t Topic) topicFilmPlan {
 	blob := strings.TrimSpace(t.Title + "\n" + t.Angle + "\n" + t.Note)
 	templateID := "ugc-hook"
@@ -64,6 +65,7 @@ func planTopicFilm(t Topic) topicFilmPlan {
 }
 
 // hasAny 判断字符串里有没有其中任何一个片段。空片段不算命中。
+// parts 中非空的项用来对 s 做 strings.Contains。
 func hasAny(s string, parts ...string) bool {
 	for _, p := range parts {
 		if p != "" && strings.Contains(s, p) {
@@ -75,6 +77,7 @@ func hasAny(s string, parts ...string) bool {
 
 // StartTopicFilms 为每张选题准备一条短片，套上计划，再按顺序做还没完成的。立刻返回，进度看 auto_phase。
 // 没勾选就拒绝。一次超过八条也拒绝。重复编号和空白会去掉。已经做完的原样返回，不重做。
+// ids 先交给 cleanIDs，结果长度为 0 或大于 topicFilmBatchMax 时返回错误，否则逐个交给 prepareTopicFilm。
 func (e *Engine) StartTopicFilms(ids []string) ([]StudioProject, error) {
 	ids = cleanIDs(ids)
 	if len(ids) == 0 {
@@ -108,6 +111,7 @@ func (e *Engine) StartTopicFilms(ids []string) ([]StudioProject, error) {
 }
 
 // prepareTopicFilm 复用选题上已有的短片，没有就新建。还没套模板、还没有成片、也没在做时，才套上计划。
+// topicID 传给 GetTopic。
 func (e *Engine) prepareTopicFilm(topicID string) (StudioProject, error) {
 	t, err := e.GetTopic(topicID)
 	if err != nil {
@@ -137,6 +141,8 @@ func (e *Engine) prepareTopicFilm(topicID string) (StudioProject, error) {
 }
 
 // applyTopicFilmPlan 套上模板，再写标题、受众、声音、时长和备注。适配写成 cover，分镜尺寸按画幅重算。
+// id 和计划中的 TemplateID 传给 ApplyStudioTemplate。
+// t 传给 planTopicFilm；Title 去掉首尾空白后为空时，工程标题写成「短片」。
 func (e *Engine) applyTopicFilmPlan(id string, t Topic) (StudioProject, error) {
 	plan := planTopicFilm(t)
 	p, err := e.ApplyStudioTemplate(id, plan.TemplateID)
@@ -161,6 +167,7 @@ func (e *Engine) applyTopicFilmPlan(id string, t Topic) (StudioProject, error) {
 }
 
 // filmNeedsRun 判断这条还要不要做。排队中、正在做或已经完成的返回假。失败的返回真。其余看还没有成片。
+// p 的 AutoPhase 为 queued、script、voice、visuals、compose 或 done 时返回假，为 failed 时返回真，其余看 ResultHash 是否为空。
 func filmNeedsRun(p StudioProject) bool {
 	switch p.AutoPhase {
 	case "queued", "script", "voice", "visuals", "compose", "done":
@@ -173,6 +180,7 @@ func filmNeedsRun(p StudioProject) bool {
 }
 
 // filmPhaseBusy 判断一键成片正停在排队、口播、配音、画面或合成。完成和失败都不算正忙。
+// phase 为 queued、script、voice、visuals 或 compose 时返回真。
 func filmPhaseBusy(phase string) bool {
 	switch phase {
 	case "queued", "script", "voice", "visuals", "compose":
@@ -183,6 +191,7 @@ func filmPhaseBusy(phase string) bool {
 }
 
 // enqueueTopicFilms 把编号排进待做队列，已在队列里的不重复。还没有人在抽队列时才启动。
+// ids 长度为 0 时直接返回；空串跳过，已在 filmPending 中的不重复追加。
 func (e *Engine) enqueueTopicFilms(ids []string) {
 	if len(ids) == 0 {
 		return
@@ -228,6 +237,7 @@ func (e *Engine) drainTopicFilms() {
 }
 
 // runTopicFilm 把阶段写成 script 并开始一键成片。同一条已经在做就直接返回。工程读不到或保存失败就清掉占用。
+// id 拼进 studio-auto 占用键，并传给 GetStudioProject 和 runStudioAuto。
 func (e *Engine) runTopicFilm(id string) {
 	key := "studio-auto:" + id
 	if _, loaded := e.inflight.LoadOrStore(key, true); loaded {
@@ -249,6 +259,7 @@ func (e *Engine) runTopicFilm(id string) {
 }
 
 // cleanIDs 去掉空白和重复编号，保留第一次出现的顺序。
+// ids 逐项去掉首尾空白，空串和重复项丢掉。
 func cleanIDs(ids []string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(ids))

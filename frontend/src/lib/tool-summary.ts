@@ -6,7 +6,7 @@ import { looksLikeHTML, looksLikeHTMLFile, looksLikePDF } from "./html-preview";
  * 不拥有：工具的执行，以及转录里工具行如何成组。
  */
 
-/** parseMaybeJSON 对象原样返回。字符串能解析成对象时返回该对象，否则返回空对象。 */
+/** parseMaybeJSON 对象原样返回。字符串能解析成对象时返回该对象，否则返回空对象。raw 去掉首尾空白，为真时才继续，用 typeof 看类型，传给 Array.isArray。 */
 export function parseMaybeJSON(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
   if (typeof raw !== "string") return {};
@@ -21,12 +21,12 @@ export function parseMaybeJSON(raw: unknown): Record<string, unknown> {
   return {};
 }
 
-/** toolName 工具名。条目和载荷都没有时用 tool。 */
+/** toolName 工具名。条目和载荷都没有时用 tool。item 读取 name、payload。 */
 export function toolName(item: Item): string {
   return String(item.name || item.payload?.name || "tool");
 }
 
-/** skillCallLabel 给操作者看的技能 id。不是技能运行时调用时返回空串。 */
+/** skillCallLabel 给操作者看的技能 id。不是技能运行时调用时返回空串。item 读取 payload，传给 toolName，传给 toolArgs。 */
 export function skillCallLabel(item: Item): string {
   const tagged = String(item.payload?.skill || "").trim();
   if (tagged) return tagged;
@@ -56,7 +56,7 @@ export function skillCallLabel(item: Item): string {
   }
 }
 
-/** toolArgs 解析参数，并用载荷上的 path、paths 补上缺失的路径。 */
+/** toolArgs 解析参数，并用载荷上的 path、paths 补上缺失的路径。item 读取 payload、text，为假时走另一支。 */
 export function toolArgs(item: Item): Record<string, unknown> {
   if (!item) return {};
   const parsed = parseMaybeJSON(item.payload?.arguments ?? item.text);
@@ -71,7 +71,7 @@ export function toolArgs(item: Item): Record<string, unknown> {
   return out;
 }
 
-/** toolResultBody 工具结果正文。对象则格式化成 JSON。 */
+/** toolResultBody 工具结果正文。对象则格式化成 JSON。item 读取 payload、text。 */
 export function toolResultBody(item: Item): string {
   const c = item.payload?.content ?? item.text;
   if (typeof c === "string") return c;
@@ -83,7 +83,7 @@ export function toolResultBody(item: Item): string {
   }
 }
 
-/** toolDetail 一行摘要：技能标签优先，否则取路径、命令、查询等第一个非空参数。结果没有参数时用正文第一行。 */
+/** toolDetail 一行摘要：技能标签优先，否则取路径、命令、查询等第一个非空参数。结果没有参数时用正文第一行。item 读取 type、payload，传给 skillCallLabel，传给 toolArgs，传给 toolResultBody。 */
 export function toolDetail(item: Item): string {
   const skill = skillCallLabel(item);
   if (skill) return skill;
@@ -115,7 +115,7 @@ export function toolDetail(item: Item): string {
   return "";
 }
 
-/** isArtifactTool 会产出操作者可打开的文件的工具。office_ 前缀也算。 */
+/** isArtifactTool 会产出操作者可打开的文件的工具。office_ 前缀也算。name 看开头，用来做分支。 */
 export function isArtifactTool(name: string): boolean {
   switch (name) {
     case "apply_patch":
@@ -130,7 +130,12 @@ export function isArtifactTool(name: string): boolean {
   }
 }
 
-/** isRichResult 结果值得按富预览展示：PDF、HTML 文件，或带 HTML 正文的产出工具与 MCP。 */
+/**
+ * isRichResult 结果值得按富预览展示：PDF、HTML 文件，或带 HTML 正文的产出工具与 MCP。
+ * name 转成小写，看开头，看是否包含，传给 isArtifactTool。
+ * body 传给 looksLikeHTML。
+ * path 传给 looksLikePDF，传给 looksLikeHTMLFile。
+ */
 export function isRichResult(name: string, body: string, path = ""): boolean {
   if (looksLikePDF(path) && (isArtifactTool(name) || name.startsWith("office_"))) return true;
   if (looksLikeHTMLFile(path) && isArtifactTool(name)) return true;
@@ -141,24 +146,24 @@ export function isRichResult(name: string, body: string, path = ""): boolean {
   return name.toLowerCase().includes("mcp") && looksLikeHTML(body);
 }
 
-/** toolResultUnchanged str_replace 或 write_file 没有改动字节。正文以 unchanged 开头。 */
+/** toolResultUnchanged str_replace 或 write_file 没有改动字节。正文以 unchanged 开头。item 为假时返回假。 */
 export function toolResultUnchanged(item?: Item | null): boolean {
   if (!item) return false;
   const body = String(item.payload?.content || item.text || "").trim();
   return /^unchanged\b/i.test(body);
 }
 
-/** isPlanTool 是不是更新计划的工具。 */
+/** isPlanTool 是不是更新计划的工具。name 是 update_plan 时返回真。 */
 export function isPlanTool(name: string): boolean {
   return name === "update_plan";
 }
 
-/** isOutcomeToolName 产出文件，或结果适合富预览。 */
+/** isOutcomeToolName 产出文件，或结果适合富预览。name 传给 isArtifactTool，传给 isRichResult。body 传给 isRichResult。path 传给 isRichResult。 */
 export function isOutcomeToolName(name: string, body = "", path = ""): boolean {
   return isArtifactTool(name) || isRichResult(name, body, path);
 }
 
-/** isToolFailed 与 Go 侧发出的失败一致：正文以 ERROR: 开头也算失败，不只看 ok 为假。 */
+/** isToolFailed 与 Go 侧发出的失败一致：正文以 ERROR: 开头也算失败，不只看 ok 为假。item 为假时返回假；传给 toolResultBody。 */
 export function isToolFailed(item?: Item | null): boolean {
   if (!item) return false;
   if (item.payload?.ok === false) return true;
@@ -167,7 +172,7 @@ export function isToolFailed(item?: Item | null): boolean {
   return body.startsWith("ERROR:");
 }
 
-/** formatElapsed 单次耗时。不足一秒用毫秒，十秒内保留一位小数。 */
+/** formatElapsed 单次耗时。不足一秒用毫秒，十秒内保留一位小数。ms 四舍五入，小于等于 0，小于 1000，为假时走另一支，拼进字符串。 */
 export function formatElapsed(ms?: number): string {
   if (!ms || ms <= 0) return "";
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -175,7 +180,7 @@ export function formatElapsed(ms?: number): string {
   return `${s.toFixed(s < 10 ? 1 : 0)}s`;
 }
 
-/** formatSpan 一整段工作的墙钟，例如「工作了 1 分 12 秒」所用的紧凑写法。不足一秒沿用 formatElapsed。 */
+/** formatSpan 一整段工作的墙钟，例如「工作了 1 分 12 秒」所用的紧凑写法。不足一秒沿用 formatElapsed。ms 小于等于 0，小于 1000，为假时走另一支，传给 formatElapsed。 */
 export function formatSpan(ms?: number): string {
   if (!ms || ms <= 0) return "";
   if (ms < 1000) return formatElapsed(ms);
@@ -189,12 +194,12 @@ export function formatSpan(ms?: number): string {
   return rm ? `${h}h ${rm}m` : `${h}h`;
 }
 
-/** toolElapsedMs 条目载荷里的耗时毫秒。没有则为零。 */
+/** toolElapsedMs 条目载荷里的耗时毫秒。没有则为零。item 读取 payload。 */
 export function toolElapsedMs(item: Item): number {
   return Number(item.payload?.elapsed_ms || 0) || 0;
 }
 
-/** itemTimeMs 条目时间戳的毫秒。无法解析则为零。 */
+/** itemTimeMs 条目时间戳的毫秒。无法解析则为零。item 读取 ts，为空时不读。 */
 export function itemTimeMs(item?: Item | null): number {
   if (!item?.ts) return 0;
   const t = Date.parse(item.ts);
@@ -247,7 +252,7 @@ const KIND_EXACT: Record<string, ToolKind> = {
   run_skill_script: "skill",
 };
 
-/** toolKind 先查精确表，再按名字里的动词归族。对不上则为 other。 */
+/** toolKind 先查精确表，再按名字里的动词归族。对不上则为 other。name 转成小写后，用作下标，传给 test。 */
 export function toolKind(name: string): ToolKind {
   const n = name.toLowerCase();
   if (KIND_EXACT[n]) return KIND_EXACT[n];
@@ -260,13 +265,13 @@ export function toolKind(name: string): ToolKind {
   return "other";
 }
 
-/** patchFileCount 补丁正文里 Add、Update、Delete 文件头的个数。 */
+/** patchFileCount 补丁正文里 Add、Update、Delete 文件头的个数。body 做匹配。 */
 export function patchFileCount(body: string): number {
   const m = body.match(/\*\*\* (?:Add|Update|Delete) File:/g);
   return m?.length || 0;
 }
 
-/** formatToolBody 调用尽量把参数格式化成 JSON。结果用工具结果正文。 */
+/** formatToolBody 调用尽量把参数格式化成 JSON。结果用工具结果正文。item 读取 type、payload、text，传给 toolResultBody。 */
 export function formatToolBody(item: Item): string {
   if (item.type === "tool_call") {
     const raw = item.payload?.arguments ?? item.text;

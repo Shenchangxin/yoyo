@@ -52,6 +52,7 @@ type Tool interface {
 }
 
 // AnnFromSpec 从规格抄出只读、可并发、开放世界、破坏性和独占五个标记。
+// s 的 ReadOnly、ConcurrencySafe、OpenWorld、Destructive、Exclusive 原样抄出。
 func AnnFromSpec(s artifact.ToolSpec) Annotations {
 	return Annotations{
 		ReadOnly:        s.ReadOnly,
@@ -63,6 +64,7 @@ func AnnFromSpec(s artifact.ToolSpec) Annotations {
 }
 
 // ConcurrencyClass 在 Exclusive 或 OpenWorld 时返回 "exclusive"。只读且 ConcurrencySafe 时返回 "read"。其余返回 "write"。
+// ann 先看 Exclusive 或 OpenWorld，再看 ReadOnly 且 ConcurrencySafe。
 func ConcurrencyClass(ann Annotations) string {
 	if ann.Exclusive || ann.OpenWorld {
 		return "exclusive"

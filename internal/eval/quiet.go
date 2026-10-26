@@ -9,6 +9,7 @@ import (
 )
 
 // quiet 调用 osutil.HideConsole，并返回同一个命令。
+// cmd 交给 osutil.HideConsole，再原样返回。
 func quiet(cmd *exec.Cmd) *exec.Cmd {
 	osutil.HideConsole(cmd)
 	return cmd

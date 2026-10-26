@@ -20,12 +20,12 @@ function flush() {
   void reportFrontend(events).catch(() => {});
 }
 
-/** ResizeObserver 循环告警不上报。 */
+/** ResizeObserver 循环告警不上报。msg 传给 test。 */
 function ignoreFront(msg: string) {
   return /ResizeObserver loop/i.test(msg);
 }
 
-/** reportRenderer 收入一条前端事件。距上一条不足 40 毫秒且缓冲已超过 24 条时丢掉。满 8 条立即发送，否则最多等 400 毫秒。正文截到 2000，堆栈截到 4000。 */
+/** reportRenderer 收入一条前端事件。距上一条不足 40 毫秒且缓冲已超过 24 条时丢掉。满 8 条立即发送，否则最多等 400 毫秒。正文截到 2000，堆栈截到 4000。ev 读取 msg、level、stack、source。 */
 export function reportRenderer(ev: FrontEv) {
   if (ignoreFront(ev.msg || "")) return;
   const now = Date.now();

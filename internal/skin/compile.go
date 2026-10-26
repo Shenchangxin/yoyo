@@ -71,6 +71,8 @@ func Compile(p Pack, mode string) (Resolved, error) {
 }
 
 // CompileBuiltin 按调色板 id 取令牌。未知 id 在 light 下用 neutral，否则用 ink。PreserveEvidence 为真，Builtin 为真。
+// palette 传给 Palette。失败时，mode 为 light 则改用 neutral 并把 palette 改成 neutral，否则改用 ink 并把 palette 改成 ink。
+// mode 不是 light 时改成 dark。
 func CompileBuiltin(palette, mode string) Resolved {
 	if mode != "light" {
 		mode = "dark"
@@ -110,6 +112,7 @@ func mergeEvidence(base, over TokenMap) TokenMap {
 }
 
 // applyRadiusScale 在 scale 小于等于 0 或等于 1 时原样返回。否则缩放以 --radius 开头的那一组尺寸。
+// tokens 在 scale 小于等于 0 或等于 1 时原样返回，否则复制后改写 --radius、--radius-lg、--radius-composer、--radius-window、--radius-pane、--radius-control、--radius-chip。
 func applyRadiusScale(tokens TokenMap, scale float64) TokenMap {
 	if scale <= 0 || scale == 1 {
 		return tokens
@@ -128,6 +131,7 @@ func applyRadiusScale(tokens TokenMap, scale float64) TokenMap {
 }
 
 // scaleDim 只缩放带 rem、px 或 em 后缀的数。没有这些后缀时返回假。
+// v 去掉首尾空白。后缀是 rem、px 或 em 时去掉后缀再解析成浮点数。
 func scaleDim(v string, scale float64) (string, bool) {
 	v = strings.TrimSpace(v)
 	unit := ""

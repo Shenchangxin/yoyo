@@ -2,7 +2,11 @@
 
 这份清单是长程任务的台账。勾选表示该文件已经按下面的标准写过中文注释。未勾选就是还没做。新文件加进来时保持未勾选。
 
-这一轮没有再改 `internal/video` 和 `frontend/src/features/video`。已经写上的注释保留。`frontend/src/features/video/CanvasStudio.tsx` 里的 `IslandBoundary` 还没有注释，清单里保持未勾选。
+视频前端后来补了参数注释。`IslandBoundary` 已有类注释。
+
+后来在核心函数体里补了决定行为的行注释：循环怎么停、投影钉在哪、路径监狱、密钥、对象库、日志链、晋升、子代理预算、桌面发送、进程拆分、WASM、MCP、更新替换，以及前端怎么选门。行注释只写在这些关键语句旁，不给普通赋值逐行配文。
+
+参数句不写进步循环这几份文件：`internal/runtime/loop.go`、`context_kernel.go`、`context_legal.go`、`context_shape.go`、`defaults.go`、`budget.go`、`tools_task.go`，以及 `sendLocked`、`launchSend`、`StartSend`、`StartSendOpts`、`Send`、`SendOpts`。其余有参数的函数，注释里要出现每个参数名，一句写清这个函数怎么用它。空、nil、小于等于 0 只有函数体真的判断了才写。
 
 ## 标准
 
@@ -1249,7 +1253,7 @@
 ### `frontend/src/features/video`
 
 - [x] `frontend/src/features/video/CanvasProjectChip.tsx`
-- [ ] `frontend/src/features/video/CanvasStudio.tsx`
+- [x] `frontend/src/features/video/CanvasStudio.tsx`
 - [x] `frontend/src/features/video/CreateHome.tsx`
 - [x] `frontend/src/features/video/create-mode.ts`
 - [x] `frontend/src/features/video/CreateModeTabs.tsx`

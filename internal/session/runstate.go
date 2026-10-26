@@ -83,6 +83,7 @@ func runPath(dir, id string) string {
 // LoadRun 读取运行状态。文件不存在时返回 StatusIdle 和 nil。
 // 状态是 running、compacting 或 awaiting_approval 时改成 idle，并清空 PendingApprovals 和 AskQuestion。
 // SessionCaps 再经 dropSticky，丢掉 high_risk、send_as_you、computer_use。
+// dir 传给 runPath。
 func LoadRun(dir, id string) (RunState, error) {
 	b, err := os.ReadFile(runPath(dir, id))
 	if err != nil {
@@ -105,6 +106,8 @@ func LoadRun(dir, id string) (RunState, error) {
 }
 
 // SaveRun 以 0o755 创建 dir，再把状态缩进写成 run 文件，权限 0o644。
+// id 传给 runPath。
+// st 经 json.MarshalIndent 后写入该文件。
 func SaveRun(dir, id string, st RunState) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -117,6 +120,8 @@ func SaveRun(dir, id string, st RunState) error {
 }
 
 // RemoveRun 删除 run 文件。文件本来就不存在时返回 nil。
+// dir 传给 runPath。
+// id 传给 runPath。
 func RemoveRun(dir, id string) error {
 	err := os.Remove(runPath(dir, id))
 	if os.IsNotExist(err) {
@@ -126,6 +131,7 @@ func RemoveRun(dir, id string) error {
 }
 
 // dropSticky 丢掉去掉空白并小写后等于 high_risk、send_as_you 或 computer_use 的项。其余原样保留。
+// caps 逐项去掉空白并转成小写，等于 high_risk、send_as_you 或 computer_use 的丢掉，其余保留原字符串。
 func dropSticky(caps []string) []string {
 	out := make([]string, 0, len(caps))
 	for _, c := range caps {
@@ -139,4 +145,5 @@ func dropSticky(caps []string) []string {
 }
 
 // dropHighRisk 就是 dropSticky，同样丢掉 high_risk、send_as_you、computer_use。
+// caps 传给 dropSticky。
 func dropHighRisk(caps []string) []string { return dropSticky(caps) }

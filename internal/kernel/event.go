@@ -33,6 +33,7 @@ func NewEventBus() *EventBus {
 // On 按登记顺序挂上 fn，并返回只摘掉这一次登记的退订函数。
 // 退订可以重复调用，第二次找不到这个 id 就什么都不做。
 // 序号在整条总线上递增，id 由事件名、# 和序号拼成。这里不检查 fn 是否为 nil，分发到 nil 会 panic。
+// name 作为 handlers 的键，并拼进退订 id。
 func (b *EventBus) On(name string, fn Handler) func() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -55,6 +56,8 @@ func (b *EventBus) On(name string, fn Handler) func() {
 
 // Emit 按登记顺序调用监听者，丢掉返回值和错误。
 // 调用前会复制监听列表，这一轮不受期间的 On 或退订影响。
+// name 用来复制该名字下的监听列表。
+// payload 交给每个监听者，返回值和错误丢掉。
 func (b *EventBus) Emit(name string, payload any) {
 	b.mu.RLock()
 	list := append([]subscription(nil), b.handlers[name]...)
@@ -67,6 +70,8 @@ func (b *EventBus) Emit(name string, payload any) {
 // Serial 按登记顺序调用监听者。第一个非 nil 的返回值会停住后面的调用，并把该值交给调用方。
 // 监听者返回错误时也停，调用方得到 nil 和这个错误，附带的返回值被丢掉。
 // 全都返回 nil 且没有错误时，结果是 nil, nil。
+// name 用来复制监听列表。
+// payload 按登记顺序交给监听者。
 func (b *EventBus) Serial(name string, payload any) (any, error) {
 	b.mu.RLock()
 	list := append([]subscription(nil), b.handlers[name]...)
@@ -87,6 +92,7 @@ func (b *EventBus) Serial(name string, payload any) (any, error) {
 // 返回 nil 时，下一位仍看到上一位留下的载荷。
 // 任一监听者返回错误就停，调用方得到 nil 和该错误，已经改过的载荷不返回。
 // 没有监听者时原样返回一开始的 payload。
+// name 用来复制监听列表。
 func (b *EventBus) Waterfall(name string, payload any) (any, error) {
 	b.mu.RLock()
 	list := append([]subscription(nil), b.handlers[name]...)

@@ -8,7 +8,7 @@ import type { Copy } from "../../lib/copy";
 import type { PlanStatus, TaskPlan } from "../../lib/plan";
 import { planDoneCount } from "../../lib/plan";
 
-/** 把完成、进行和未做的数量拼成一行。 */
+/** 把完成、进行和未做的数量拼成一行。plan 读取 steps，传给 planDoneCount。copy 读取 composer。 */
 function progressLabel(plan: TaskPlan, copy: Copy): string {
   const done = planDoneCount(plan);
   const active = plan.steps.filter((s) => s.status === "in_progress").length;
@@ -20,14 +20,14 @@ function progressLabel(plan: TaskPlan, copy: Copy): string {
   ].filter(Boolean).join("\u2002·\u2002");
 }
 
-/** 把步骤状态换成文案。 */
+/** 把步骤状态换成文案。status 与 complete、in_progress 比较是否相等。copy 读取 composer。 */
 function statusLabel(status: PlanStatus, copy: Copy): string {
   if (status === "complete") return copy.composer.todoStatusCompleted;
   if (status === "in_progress") return copy.composer.todoStatusInProgress;
   return copy.composer.todoStatusPending;
 }
 
-/** 用一个点标出步骤状态。 */
+/** 用一个点标出步骤状态。status 与 in_progress、complete 比较是否相等。 */
 function StatusDot({ status }: { status: PlanStatus }) {
   if (status === "in_progress") {
     return (
@@ -42,7 +42,7 @@ function StatusDot({ status }: { status: PlanStatus }) {
   return <span className="sc-todo-dot" data-state={status === "complete" ? "done" : "idle"} aria-hidden />;
 }
 
-/** TodoPanel 投影当前计划，可以收起步骤。 */
+/** TodoPanel 投影当前计划，可以收起步骤。props 读取 plan、copy。 */
 export function TodoPanel(props: { plan: TaskPlan | null | undefined; copy: Copy }) {
   const [collapsed, setCollapsed] = useState(true);
   const plan = props.plan;

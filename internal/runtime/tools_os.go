@@ -20,6 +20,7 @@ func (t *WorkspaceTools) needPersonal() (*personal.Engine, error) {
 }
 
 // delegateWork 用 title、prompt、kind 和若干输入字段调用 CreateTask，并返回任务 JSON。
+// args 读取 kind、title、prompt、goal_id、interval_minutes，以及 path、csv、account、message_id、to、reply、url、condition、value、fields 和 input。
 func (t *WorkspaceTools) delegateWork(args map[string]any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -52,6 +53,8 @@ func (t *WorkspaceTools) delegateWork(args map[string]any) ToolResult {
 }
 
 // completeWork 调用 Personal.Complete，返回任务 JSON。
+// id 作为第一参交给 Personal.Complete。
+// result 作为第二参交给 Personal.Complete。
 func (t *WorkspaceTools) completeWork(id, result string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -66,6 +69,8 @@ func (t *WorkspaceTools) completeWork(id, result string) ToolResult {
 }
 
 // answerWork 调用 Personal.Answer，返回任务 JSON。
+// id 作为第一参交给 Personal.Answer。
+// text 作为第二参交给 Personal.Answer。
 func (t *WorkspaceTools) answerWork(id, text string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -80,6 +85,9 @@ func (t *WorkspaceTools) answerWork(id, text string) ToolResult {
 }
 
 // createGoal 调用 CreateGoal。里程碑来自参数，第三个位置参数传空串。
+// title 作为第一参交给 CreateGoal。
+// description 作为第二参交给 CreateGoal。
+// milestones 作为第四参交给 CreateGoal。
 func (t *WorkspaceTools) createGoal(title, description string, milestones []string) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -94,6 +102,7 @@ func (t *WorkspaceTools) createGoal(title, description string, milestones []stri
 }
 
 // watchPage 用 title、url、condition、value 和 interval_minutes 调用 Watch，返回 monitor 和 task 的 JSON。
+// args 读取 title、url、condition、value 和 interval_minutes，交给 Watch。
 func (t *WorkspaceTools) watchPage(args map[string]any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -109,6 +118,8 @@ func (t *WorkspaceTools) watchPage(args map[string]any) ToolResult {
 }
 
 // presentChoices 把 options 收成 ChoiceOption。没有 AskUser 时只返回选项 JSON。有 AskUser 时弹出第一项为推荐项的表单，能对上选项 ID 就 SelectChoice。
+// title 连同收出来的选项交给 PresentChoices。
+// raw 只在动态类型是 []any 时逐项收成 ChoiceOption；map 读 id、label、source 或 sources，其他值去掉空白后非空才当成标签。
 func (t *WorkspaceTools) presentChoices(title string, raw any) ToolResult {
 	p, err := t.needPersonal()
 	if err != nil {
@@ -194,6 +205,7 @@ func (t *WorkspaceTools) personalStatus() ToolResult {
 }
 
 // rememberFact 在 Memory 为空或文本为空白时返回错误。写入 KindProfile，来源固定为 User confirmed in chat。
+// text 去掉空白，空串返回错误；否则作为 KindProfile 的正文写入 Memory。
 func (t *WorkspaceTools) rememberFact(text string) ToolResult {
 	if t.Memory == nil {
 		return ToolResult{Err: fmt.Errorf("no memory")}

@@ -3,7 +3,11 @@
 import { asPreviewDocument } from "../../lib/html-preview";
 import { cn } from "../../lib/utils";
 
-// SandboxedFrame 在 allowScripts 为真时允许脚本、表单、模态和指针锁定，否则只允许表单。fill 为真时撑满父级，否则高度 28rem。文档交给 asPreviewDocument，并把 scripts 传进去。
+/**
+ * SandboxedFrame 在 allowScripts 为真时允许脚本、表单、模态和指针锁定，否则只允许表单。fill 为真时撑满父级，否则高度 28rem。文档交给 asPreviewDocument，并把 scripts 传进去。
+ * html 传给 asPreviewDocument。
+ * title 写到 iframe 的 title。
+ */
 export function SandboxedFrame({
   html,
   title,

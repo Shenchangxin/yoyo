@@ -27,6 +27,7 @@ var rendererMu sync.Mutex
 // AppendFrontend 把事件追加到 RendererPath。l 为 nil 或没有事件时返回 nil。
 // TS 为空时用当前 UTC 的 RFC3339Nano。级别转成小写，空级别写成 error。消息和堆栈经 Redact。
 // 每条都写入 component=frontend。级别是 warn 或 warning 时镜像成 Warn，其余镜像成 Error。
+// evs 长度为 0 时返回 nil，否则逐条编码进 RendererPath 并镜像到日志。
 func (l *Logger) AppendFrontend(evs []FrontendEvent) error {
 	if l == nil || len(evs) == 0 {
 		return nil

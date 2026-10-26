@@ -59,6 +59,8 @@ type Outcome struct {
 }
 
 // Run 以 idle 和 block 都为 0 调用 Wait，只把输出和错误交回去。
+// ctx 传给 Wait。
+// cmd 传给 Wait。
 func Run(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	o := Wait(ctx, cmd, 0, 0)
 	return o.Output, o.Err
@@ -77,6 +79,10 @@ const liveStdoutCap = 32 * 1024
 
 // WaitNotify 在等待之外把 stdout 和 stderr 的片段交给 onChunk，供界面实时显示。
 // onChunk 不得阻塞：Hub 会合并片段，而 shell 线程还握着管道。
+// ctx 为 nil 且 idle、block 都不大于 0 时，一直等到进程退出；取消时杀掉进程，并把对外错误换成 ctx.Err。
+// cmd 为 nil 时返回 os.ErrInvalid；否则先 apply、preparePythonUTF8、preparePwshEnv，再 Start，成功后 assign。
+// idle 大于 0 时，距上次输出达到它就交还控制权且不杀进程；与 block 都不大于 0 时不建轮询。
+// block 大于 0 时，从启动起达到它就交还控制权且不杀进程。
 func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) Outcome {
 	if cmd == nil {
 		return Outcome{Err: os.ErrInvalid}
@@ -160,6 +166,7 @@ func WaitNotify(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, o
 }
 
 // preparePythonUTF8 在环境里尚未设置时补上 PYTHONUTF8=1 和 PYTHONIOENCODING=utf-8。
+// cmd 为 nil 时直接返回；Env 为 nil 时先换成 os.Environ，再补那两个变量。
 func preparePythonUTF8(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -174,6 +181,7 @@ func preparePythonUTF8(cmd *exec.Cmd) {
 }
 
 // preparePwshEnv 在环境里尚未设置时补上 POWERSHELL_TELEMETRY_OPTOUT=1 和 POWERSHELL_UPDATECHECK=Off。
+// cmd 为 nil 时直接返回；Env 为 nil 时先换成 os.Environ，再补那两个变量。
 func preparePwshEnv(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -188,6 +196,7 @@ func preparePwshEnv(cmd *exec.Cmd) {
 }
 
 // withDefaultEnv 仅在环境中还没有该键时追加 key=val，键名按 ASCII 大小写不敏感比较。
+// env 里已有该键时原样返回，否则把 key=val 追加到末尾。
 func withDefaultEnv(env []string, key, val string) []string {
 	prefix := key + "="
 	for _, e := range env {

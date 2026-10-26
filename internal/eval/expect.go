@@ -23,6 +23,7 @@ type expectDoc struct {
 }
 
 // runExpect 读取 toml。file 为空、文件缺失或内容对不上时返回假和 fmtNoExpect。相对路径相对 work。Contains 为空时只要求文件能读到。
+// path 用 os.ReadFile 读出，再按 toml 解开。
 func runExpect(work, path string) (bool, string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

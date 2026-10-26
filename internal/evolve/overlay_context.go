@@ -36,11 +36,14 @@ type OverlayTree struct {
 }
 
 // newOverlayTree 记下根目录和 held 编号。
+// root 记到返回值的 Root。
 func newOverlayTree(root string, held map[string]bool) *OverlayTree {
 	return &OverlayTree{Root: root, held: held}
 }
 
 // write 把相对路径写到根下。空根或空路径返回错误。正文先去掉 held 编号；含评分禁用词时改成占位句。超过 overlayFileCap 个 rune 时截断。
+// rel 先交给 overlayRel，为空时返回 empty path，否则拼到根下。
+// body 先 stripHeld；含评分禁用词时改成占位句；rune 数超过 overlayFileCap 时截断，再写入文件。
 func (t *OverlayTree) write(rel, body string) error {
 	if t == nil || strings.TrimSpace(t.Root) == "" {
 		return fmt.Errorf("overlay tree: root required")
@@ -71,11 +74,14 @@ func (t *OverlayTree) writeTask(task string) {
 }
 
 // writeHarness 把当前材料的 L1 写到 harness/。
+// mats 交给 writeL1，目录名是 harness。
 func (t *OverlayTree) writeHarness(mats MaterialSet) {
 	t.writeL1("harness", mats)
 }
 
 // writeL1 按 RenderL1 的相对路径写入。
+// dir 拼在每条相对路径前面。
+// mats 交给 RenderL1。
 func (t *OverlayTree) writeL1(dir string, mats MaterialSet) {
 	for rel, body := range RenderL1(mats) {
 		_ = t.write(dir+"/"+rel, body)
@@ -102,6 +108,8 @@ func (t *OverlayTree) writeRollout(r OverlayRollout) {
 }
 
 // writeDecision 把合成笔记写到 decisions。笔记为空时写固定的英文占位句。标签为空时直接返回。
+// label 为空时直接返回，否则拼进 decisions/ 下的文件名。
+// notes 去掉空白后为空时改成 No decision notes returned.，再写入。
 func (t *OverlayTree) writeDecision(label, notes string) {
 	if label == "" {
 		return
@@ -113,6 +121,8 @@ func (t *OverlayTree) writeDecision(label, notes string) {
 }
 
 // writePool 把一份候选的 L1、轨迹和产物写到 pool 下该标签的目录。
+// label 为空时直接返回，否则作为 pool/ 下的目录名。
+// mats 交给 writeL1，目录是该标签下的 harness。
 func (t *OverlayTree) writePool(label string, mats MaterialSet, r OverlayRollout) {
 	if label == "" {
 		return
@@ -130,6 +140,8 @@ func (t *OverlayTree) writePool(label string, mats MaterialSet, r OverlayRollout
 }
 
 // writeSelection 把匿名交付物写到 selection。匿名编号为空时直接返回。产物为空时写占位句。
+// anon 去掉空白并转成大写，空则直接返回，否则作为 selection/ 下的文件名。
+// deliverable 去掉空白后为空时改成 (nothing produced)，再写入。
 func (t *OverlayTree) writeSelection(anon, deliverable string) {
 	anon = strings.ToUpper(strings.TrimSpace(anon))
 	if anon == "" {
@@ -143,6 +155,7 @@ func (t *OverlayTree) writeSelection(anon, deliverable string) {
 }
 
 // writeLibrary 把领域索引和每条经验的 EXPERIENCE.md、harness 拷进 library/。库为 nil 时直接返回。harness 目录不存在且有哈希时先 WriteL1。
+// cas 在 harness 目录 Stat 失败、自身非空且条目 Hash 非空时，交给 WriteL1。
 func (t *OverlayTree) writeLibrary(lib *Library, cas *artifact.Store) {
 	if lib == nil {
 		return
@@ -200,6 +213,7 @@ func (t *OverlayTree) layout() string {
 }
 
 // mission 把任务句和目录说明接成用户消息，并写明轨迹在 context/ 里，要用 read_file 去读。
+// job 去掉两端空白后写在消息最前面。
 func (t *OverlayTree) mission(job string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(job))
@@ -212,6 +226,7 @@ func (t *OverlayTree) mission(job string) string {
 }
 
 // read 读取相对路径。空路径、越出根目录、读失败时返回带 unavailable 的占位。含评分禁用词时返回占位句。超过 overlayFileCap 个 rune 时截断。
+// rel 先交给 overlayRel，为空时返回 unavailable: empty path；否则拼到根下再读。
 func (t *OverlayTree) read(rel string) string {
 	if t == nil {
 		return "(unavailable)"
@@ -282,6 +297,10 @@ var overlayReadTool = runtime.ToolJSON{
 }
 
 // overlayImproverChat 最多跑 overlayImproverTurns 轮。没有工具调用时返回助手正文。工具名不是 read_file 或树为 nil 时，工具结果是只允许 read_file 的占位。轮数用尽返回 improver exhausted reads。客户端为 nil 时返回 no client。
+// ctx 的 Err 非空时返回该错误，否则传给 Client.Chat。
+// opts 的 Client 为 nil 时返回 no client；Model 写入请求；Tree 非空且工具名是 read_file 时用 Tree.read。
+// system 作为系统消息的 Content。
+// mission 作为用户消息的 Content。
 func overlayImproverChat(ctx context.Context, opts OverlayOpts, system, mission string) (string, error) {
 	if opts.Client == nil {
 		return "", fmt.Errorf("no client")
@@ -326,6 +345,7 @@ func overlayImproverChat(ctx context.Context, opts OverlayOpts, system, mission 
 }
 
 // overlayToolPath 从工具参数 JSON 里取 path。解析失败时把原参数当路径。
+// args 按 JSON 对象解开，取出字符串字段 path；失败或该字段不是字符串时原样返回。
 func overlayToolPath(args string) string {
 	var m map[string]any
 	if json.Unmarshal([]byte(args), &m) == nil {
@@ -337,6 +357,7 @@ func overlayToolPath(args string) string {
 }
 
 // overlayRel 去掉 context/ 前缀。含 ..、为空或为点时返回空串。
+// rel 去掉两端空白，反斜杠换成斜杠，再去掉 ./、context/ 和 /context/ 前缀；结果为空、为点或含 .. 时返回空串。
 func overlayRel(rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.ReplaceAll(rel, "\\", "/")
@@ -350,6 +371,7 @@ func overlayRel(rel string) string {
 }
 
 // overlayUnder 判断 path 是否等于根，或在根目录下面。
+// root 经 filepath.Clean 后，与 Clean 后的 path 相等，或加上分隔符后是 path 的前缀时返回真。
 func overlayUnder(root, path string) bool {
 	root = filepath.Clean(root)
 	path = filepath.Clean(path)
@@ -361,6 +383,8 @@ func overlayUnder(root, path string) bool {
 }
 
 // overlayHas 在根下该名字能 Stat 成功时为真。根为空时为假。
+// root 为空时返回假，否则和 name 拼成路径再 Stat。
+// name 拼在 root 后面做 Stat。
 func overlayHas(root, name string) bool {
 	if root == "" {
 		return false
@@ -415,6 +439,7 @@ func overlayCopyL1(src, dest string, held map[string]bool) error {
 }
 
 // RenderL1 返回改进者能看见的 L1：verification、failure_recovery、middleware 和按需技能。不含剧本、提示片段、工具和循环拓扑。
+// mats 的 Loop.Verification、FailureRecovery、ToolErrorInstruction 去掉空白后非空时写入对应路径；Skills 里 Name 去掉空白后非空的写成 skills 下的 SKILL.md。
 func RenderL1(mats MaterialSet) map[string]string {
 	out := map[string]string{}
 	if s := strings.TrimSpace(mats.Loop.Verification); s != "" {
@@ -437,6 +462,7 @@ func RenderL1(mats MaterialSet) map[string]string {
 }
 
 // renderSkillMD 把技能收成带前置信息的 SKILL.md 文本。
+// s 的 Description 去掉空白并把换行换成空格，Name 写进前置信息；Body 非空且末尾没有换行时补一个换行。
 func renderSkillMD(s artifact.Skill) string {
 	desc := strings.ReplaceAll(strings.TrimSpace(s.Description), "\n", " ")
 	body := s.Body
@@ -447,6 +473,7 @@ func renderSkillMD(s artifact.Skill) string {
 }
 
 // overlayHashPrefix 返回两个哈希从开头相同的字节数。
+// b 从开头和 a 逐字节比较，不同或任一侧到头就停止。
 func overlayHashPrefix(a, b string) int {
 	n := 0
 	for n < len(a) && n < len(b) && a[n] == b[n] {
@@ -456,6 +483,7 @@ func overlayHashPrefix(a, b string) int {
 }
 
 // overlayComposeDiversity 对终稿两两比较哈希是否相同，并记录公共前缀长度。
+// finals 两两取 label 和 succ.Hash；两个哈希都非空且相等时 Equal 为真，并记下公共前缀长度。
 func overlayComposeDiversity(finals []overlayFinal) []OverlayPair {
 	var out []OverlayPair
 	for i := 0; i < len(finals); i++ {

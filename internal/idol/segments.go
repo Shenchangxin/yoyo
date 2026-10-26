@@ -23,6 +23,9 @@ type Parsed struct {
 }
 
 // ParseReply 读取成对的语言标签。photo、work 不进台词。没有标签时，整段去掉语气提示后变成一句，口语和字幕相同。
+// text 去掉首尾空白，为空时返回空结果。否则查找成对标签，没有标签时整段去掉语气提示变成一句。
+// spoken 交给 lang，用来识别口语标签。与 sub 相同时口语和字幕用同一段。
+// sub 交给 lang，用来识别字幕标签。
 func ParseReply(text, spoken, sub string) Parsed {
 	text = strings.TrimSpace(text)
 	spoken = lang(spoken)
@@ -100,6 +103,7 @@ func stripTags(s string) string {
 }
 
 // SpeakLine 把各段 Spoken 用空格接成一行，给语音用。
+// segs 逐段取 Spoken，去掉空白后为空则跳过，其余用空格接起来。
 func SpeakLine(segs []Segment) string {
 	var b strings.Builder
 	for _, s := range segs {
@@ -115,6 +119,7 @@ func SpeakLine(segs []Segment) string {
 }
 
 // CaptionLine 把各段字幕用换行接起来。某段字幕为空时用该段口语。
+// segs 逐段取 Subtitle，去掉空白后为空则改用 Spoken，仍为空则跳过，其余用换行接起来。
 func CaptionLine(segs []Segment) string {
 	var b strings.Builder
 	for _, s := range segs {
@@ -134,6 +139,7 @@ func CaptionLine(segs []Segment) string {
 }
 
 // lang 把语言码收成小写并去掉空白。空则是 zh，长于 8 个字符则截到 8。
+// s 转成小写并去掉首尾空白，为空时返回 zh，长度大于 8 时只留前 8 个字节。
 func lang(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "" {

@@ -14,6 +14,8 @@ import (
 )
 
 // inject 在 YOYO_CU_DISPLAY 为空时返回错误。open 和 launch 把 DISPLAY 设成该值后启动。click、type、key 要求 xdotool。screenshot 调用 Capture。
+// app 在 open 和 launch 时作为命令名。
+// detail 在 open 和 launch 时用 Fields 拆成参数。type 时传给 xdotool 的 type，key 时传给 xdotool 的 key。
 func (h *Host) inject(op, app, detail string) (string, error) {
 	op = strings.ToLower(strings.TrimSpace(op))
 	if op == "" || op == "record" {
@@ -53,6 +55,7 @@ func (h *Host) inject(op, app, detail string) (string, error) {
 }
 
 // Capture 在 YOYO_CU_DISPLAY 为空时返回错误。有 import 命令时用它抓根窗口，并把 DISPLAY 设成该值。没有 import 则返回错误。
+// path 的父目录用 MkdirAll 创建，权限 0o755。有 import 时作为它的最后一个参数。
 func (h *Host) Capture(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

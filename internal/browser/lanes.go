@@ -18,6 +18,7 @@ import (
 )
 
 // OpenURLLane 按通道打开地址。地址里含 lane=attached 时改走 attached，并去掉这段字。attached 调用 attachDebugPort，其余把 lane 写成 isolated，然后 OpenURL。
+// raw 转小写后含有 lane=attached 时，从原文里删掉这段再去掉空白。最后传给 OpenURL。
 func (h *Host) OpenURLLane(raw, lane string) (Snapshot, error) {
 	lane = strings.ToLower(strings.TrimSpace(lane))
 	if strings.Contains(strings.ToLower(raw), "lane=attached") {
@@ -107,6 +108,7 @@ func (h *Host) StartTakeoverAt(abs string) error {
 }
 
 // takeoverTarget 优先用预览文件经 serve 得到的地址。预览为空或 serve 失败时，返回非空白的 liveURL。
+// preview 去掉空白后非空且 serve 非 nil 时传给 serve。得到的地址不是空白页时返回它。
 func takeoverTarget(liveURL, preview string, serve func(string) (string, error)) string {
 	liveURL = strings.TrimSpace(liveURL)
 	if isBlankURL(liveURL) {
@@ -122,6 +124,7 @@ func takeoverTarget(liveURL, preview string, serve func(string) (string, error))
 }
 
 // isBlankURL 在空白、about:blank，或以 about:blank? 开头时返回真。
+// raw 去掉空白后为空、转小写后等于 about:blank，或以 about:blank? 开头时返回真。
 func isBlankURL(raw string) bool {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -132,6 +135,7 @@ func isBlankURL(raw string) bool {
 }
 
 // showTakeover 最多导航 6 次，直到 location.href 不再是空白页。
+// target 传给 isBlankURL，为真时返回 browser: blank takeover url。否则最多传给 pageNavigate 6 次。
 func (h *Host) showTakeover(target string) error {
 	if isBlankURL(target) {
 		return fmt.Errorf("browser: blank takeover url")
@@ -158,6 +162,8 @@ func (h *Host) showTakeover(target string) error {
 }
 
 // openTakeoverSystem 用 hostopen 打开地址或本地预览文件，并记下 takeover 为 system-browser。两边都打不开就返回错误。
+// target 不是空白页时传给 hostopen.URL。没打开成功且 h.url 是空白页时写入 h.url。
+// preview 去掉空白后非空，且 target 没有打开成功时传给 hostopen.Path。仍失败则错误文案带上 preview。
 func (h *Host) openTakeoverSystem(target, preview string) error {
 	opened := false
 	if !isBlankURL(target) && hostopen.URL(target) == nil {
@@ -229,6 +235,7 @@ func (h *Host) Screenshot(path string) error {
 }
 
 // ImportCookies 按 Netscape 的制表符行调用 Network.setCookie。至少 7 列，# 开头的行跳过。返回成功写入的条数，并在日志里记下 cookies。
+// path 用 os.ReadFile 读取，并作为 cookies 的 detail 传给 record。
 func (h *Host) ImportCookies(path string) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -263,6 +270,7 @@ func (h *Host) ImportCookies(path string) (int, error) {
 }
 
 // dirOf 返回路径里最后一个斜杠之前的目录。没有斜杠或斜杠在开头时返回 "."。
+// path 用 LastIndexAny 找 / 或 \。下标不大于 0 时返回 "."，否则返回该下标之前的部分。
 func dirOf(path string) string {
 	i := strings.LastIndexAny(path, `/\`)
 	if i <= 0 {

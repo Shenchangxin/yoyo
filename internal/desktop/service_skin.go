@@ -26,6 +26,7 @@ func (s *Service) ListSkins() []skin.Info {
 }
 
 // GetSkin 在 RPC 非空时调用 skins.get。没有 App 时返回 no app。否则走 App.GetSkin。
+// id 在 RPC 非空时放进 skins.get。否则传给 App.GetSkin。
 func (s *Service) GetSkin(id string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.get", map[string]any{"id": id})
@@ -66,6 +67,7 @@ func (s *Service) ImportSkinPath(path string) (skin.Info, error) {
 }
 
 // ExportSkin 在 RPC 非空时调用 skins.export。同进程返回 filename 和 bytes_b64。没有 App 时返回 no app。
+// id 在 RPC 非空时放进 skins.export。否则传给 App.ExportSkin。
 func (s *Service) ExportSkin(id string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.export", map[string]any{"id": id})
@@ -82,6 +84,7 @@ func (s *Service) ExportSkin(id string) (map[string]any, error) {
 }
 
 // DeleteSkin 在 RPC 非空时调用 skins.delete。没有 App 时返回 no app。否则走 App.DeleteSkin。
+// id 在 RPC 非空时放进 skins.delete。否则传给 App.DeleteSkin。
 func (s *Service) DeleteSkin(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("skins.delete", map[string]any{"id": id})
@@ -94,6 +97,7 @@ func (s *Service) DeleteSkin(id string) error {
 }
 
 // ActivateSkin 在 RPC 非空时调用 skins.activate。没有 App 时返回 no app。否则走 App.ActivateSkin。
+// id 在 RPC 非空时放进 skins.activate。否则传给 App.ActivateSkin。
 func (s *Service) ActivateSkin(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("skins.activate", map[string]any{"id": id})
@@ -106,6 +110,8 @@ func (s *Service) ActivateSkin(id string) error {
 }
 
 // ResolveSkin 在 RPC 非空时调用 skins.resolve。没有 App 时返回 no app。否则走 App.ResolveSkin。
+// id 在 RPC 非空时放进 skins.resolve。否则传给 App.ResolveSkin。
+// mode 在 RPC 非空时放进 skins.resolve。否则传给 App.ResolveSkin。
 func (s *Service) ResolveSkin(id, mode string) (skin.Resolved, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.resolve", map[string]any{"id": id, "mode": mode})

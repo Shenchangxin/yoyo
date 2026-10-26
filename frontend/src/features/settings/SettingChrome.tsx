@@ -17,7 +17,7 @@ export const CONTROL_MD = "h-8 w-full text-[13px]";
 /** CONTROL_LG 沿用同一套控件宽度。 */
 export const CONTROL_LG = "h-8 w-full text-[13px]";
 
-/** SettingsGroupLabel 画一组上面的小标题。 */
+/** SettingsGroupLabel 画一组上面的小标题。children 作为子节点渲染。 */
 export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   return (
     <div className="mb-2 text-[11px] font-medium text-muted">
@@ -26,7 +26,19 @@ export function SettingsGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** SettingSection 把标题、说明和行收成一块。 */
+/**
+ * SettingSection 把标题、说明和行收成一块。
+ * id 作为分支结果，写到 h2 的 id。
+ * title 为假时用 headerActions，作为子节点渲染。
+ * description 为真时才继续，作为子节点渲染。
+ * footnote 为真时才继续，作为子节点渲染。
+ * actions 为真时才继续，作为子节点渲染。
+ * headerActions 为真时才继续，作为后备值，作为子节点渲染。
+ * children 作为子节点渲染。
+ * bare 为真时才继续。
+ * compact 为假时走另一支。
+ * tight 为真时才继续。
+ */
 export function SettingSection({
   id,
   title,
@@ -104,7 +116,15 @@ export function SettingSection({
   );
 }
 
-/** SettingRow 是表单行，默认左标签右控件；stack 时控件占满整行。 */
+/**
+ * SettingRow 是表单行，默认左标签右控件；stack 时控件占满整行。
+ * title 为真时才继续，作为后备值，作为子节点渲染。
+ * description 为真时才继续，作为子节点渲染。
+ * children 为真时才继续，作为子节点渲染。
+ * _border 函数体内没有读取。
+ * _align 函数体内没有读取。
+ * list 为假时用 title。
+ */
 export function SettingRow({
   title,
   description,
@@ -150,7 +170,7 @@ export function SettingRow({
   );
 }
 
-/** SettingValueRow 是只读状态行，左标签右值，没有控件。 */
+/** SettingValueRow 是只读状态行，左标签右值，没有控件。title 写到 SettingRow 的 title。value 作为子节点渲染。mono 为真时才继续。_border 函数体内没有读取。 */
 export function SettingValueRow({
   title,
   value,
@@ -169,7 +189,16 @@ export function SettingValueRow({
   );
 }
 
-/** SettingActionRow 是会导航或触发动作的一行，导航时带箭头。 */
+/**
+ * SettingActionRow 是会导航或触发动作的一行，导航时带箭头。
+ * title 作为子节点渲染。
+ * description 为真时才继续，作为子节点渲染。
+ * onClick 写到 button 的 onClick。
+ * trailing 为真时才继续，作为子节点渲染。
+ * _border 函数体内没有读取。
+ * danger 为真时才继续。
+ * chevron 为真时才继续。
+ */
 export function SettingActionRow({
   title,
   description,
@@ -206,12 +235,12 @@ export function SettingActionRow({
   );
 }
 
-/** SettingEmpty 在卡片里放一行空态，节奏和普通行一样。 */
+/** SettingEmpty 在卡片里放一行空态，节奏和普通行一样。children 作为子节点渲染。compact 为真时才继续。_border 函数体内没有读取。 */
 export function SettingEmpty({ children, compact, border: _border }: { children: ReactNode; compact?: boolean; border?: boolean }) {
   return <p className={cn(compact ? "py-0.5" : "py-6", "text-left text-[13px] text-muted")}>{children}</p>;
 }
 
-/** SettingCodePanel 是等宽输出，可以带工具条，用于日记、诊断和 JSON。 */
+/** SettingCodePanel 是等宽输出，可以带工具条，用于日记、诊断和 JSON。children 作为子节点渲染。actions 为真时才继续，作为子节点渲染。className 传给 cn。 */
 export function SettingCodePanel({
   children,
   actions,
@@ -236,7 +265,7 @@ export function SettingCodePanel({
   );
 }
 
-/** SettingSegmented 是一组互斥选项。 */
+/** SettingSegmented 是一组互斥选项。id 拼进字符串。value 与 o.value 比较是否相等。options 做映射。onChange 被调用，并传入 o.value。ariaLabel 写到 div 的 aria-label。 */
 export function SettingSegmented<T extends string>({
   id,
   value,
@@ -287,7 +316,14 @@ export function SettingSegmented<T extends string>({
   );
 }
 
-/** SettingsSaveBar 是需要明确保存时浮出的条，用于密钥和预算这类表面。 */
+/**
+ * SettingsSaveBar 是需要明确保存时浮出的条，用于密钥和预算这类表面。
+ * open 为真时才继续。
+ * onSave 写到 Button 的 onClick。
+ * onDiscard 为真时才继续，写到 Button 的 onClick。
+ * label 为假时改用后备值，作为子节点渲染。
+ * saveLabel 为假时改用后备值，作为子节点渲染。
+ */
 export function SettingsSaveBar({
   open,
   onSave,

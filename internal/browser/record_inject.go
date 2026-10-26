@@ -9,6 +9,7 @@ import (
 )
 
 // recorderJS 用 nonce 和录制 id 填好注入脚本。同一 REC 已经装过就直接返回。
+// recID 经 json.Marshal 写进脚本里的 REC。
 func recorderJS(nonce, recID string) string {
 	n, _ := json.Marshal(nonce)
 	id, _ := json.Marshal(recID)

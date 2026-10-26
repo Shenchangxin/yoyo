@@ -9,7 +9,12 @@ import { useCopy } from "../lib/i18n";
 import { DURATION, motionTransition, useMotionReduced } from "../lib/motion";
 import { planDoneCount, planFocus, type PlanStatus, type PlanStep, type TaskPlan } from "../lib/plan";
 
-// PlanChip 在不跑、未完成且传入了 onBuild 时显示开工。进度条在进行中或已完成一部分时出现；进行中且完成数为 0 时用不确定态。没有步骤时进度值为 0。
+/**
+ * PlanChip 在不跑、未完成且传入了 onBuild 时显示开工。进度条在进行中或已完成一部分时出现；进行中且完成数为 0 时用不确定态。没有步骤时进度值为 0。
+ * plan 读取 steps、explanation，传给 planDoneCount，传给 planFocus。
+ * running 为假时改用后备值，写到 PlanStepRow 的 running。
+ * compact 为假时走另一支，写到 PlanStepRow 的 compact。
+ */
 export function PlanChip({
   plan,
   running,
@@ -125,7 +130,7 @@ export function PlanChip({
   );
 }
 
-// compact 时只显示一行，否则最多两行。进行中且整份计划也在跑时，圆点才算 live。
+/** PlanStepRow compact 时只显示一行，否则最多两行。进行中且整份计划也在跑时，圆点才算 live。step 读取 status、step。running 为真时才继续。 */
 function PlanStepRow({
   step,
   running,
@@ -164,7 +169,7 @@ function PlanStepRow({
   );
 }
 
-// complete 画勾。in_progress 画环，live 时环里是脉动点，否则是实心点。其余状态是空环。
+/** PlanGlyph complete 画勾。in_progress 画环，live 时环里是脉动点，否则是实心点。其余状态是空环。status 与 complete、in_progress 比较是否相等。 */
 function PlanGlyph({ status, live }: { status: PlanStatus; live: boolean }) {
   return (
     <span className="mt-[2px] grid size-3.5 shrink-0 place-items-center" aria-hidden>
@@ -183,7 +188,7 @@ function PlanGlyph({ status, live }: { status: PlanStatus; live: boolean }) {
   );
 }
 
-// complete 用完成文案，in_progress 用进行文案，其余用待办文案。
+/** statusLabel complete 用完成文案，in_progress 用进行文案，其余用待办文案。status 与 complete、in_progress 比较是否相等。c 读取 planDone、planActive、planPending。 */
 function statusLabel(status: PlanStatus, c: { planPending: string; planActive: string; planDone: string }): string {
   if (status === "complete") return c.planDone;
   if (status === "in_progress") return c.planActive;

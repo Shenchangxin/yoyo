@@ -15,19 +15,24 @@ func (st State) Idol(id string) (Idol, bool) { return st.idol(id) }
 func (st State) Pinned() (Idol, bool) { return pinnedOf(st) }
 
 // EnsureDaily 在跨过用户时区的一天时补抽卡次数并换上当天的任务。
+// now 传给 ensureDaily。
 func (st *State) EnsureDaily(now time.Time) { st.ensureDaily(now) }
 
 // ForceNew 把这位偶像当前对话标成过去，并另开一段空的当前对话。
+// idolID 传给 forceNew。
+// now 传给 forceNew。
 func (st *State) ForceNew(idolID string, now time.Time) Conversation {
 	return st.forceNew(idolID, now)
 }
 
 // MarkTask 按 kind 记下当天的说话、通话或送礼，并在首次完成时加一次奖励抽卡。
+// now 传给 markTask。
 func (st *State) MarkTask(now time.Time, kind string) {
 	st.markTask(now, st.User.Location(), kind)
 }
 
 // Unlock 按现有对话、礼物和好感补成就，返回这次新加上的 id。
+// now 传给 unlock。
 func (st *State) Unlock(now time.Time) { st.unlock(now) }
 
 // MemoriesFor 返回记忆。idolID 为空时返回全部；否则返回这位偶像自己的，以及她所在圈子里的。
@@ -52,6 +57,7 @@ type HistoryView struct {
 }
 
 // History 按偶像 id 收集对话。Current 为真的放进 Current，其余放进 Past。
+// idolID 与每段对话的 IdolID 比较，不相等的跳过。
 func (st State) History(idolID string) HistoryView {
 	out := HistoryView{Past: []Conversation{}}
 	for _, c := range st.Conversations {
@@ -69,6 +75,8 @@ func (st State) History(idolID string) HistoryView {
 }
 
 // SaveIdol 写入或替换一位偶像。已有 id 时保留钉选、空的工作会话、空的创建时间，以及原先合法的 OutfitID。
+// in 的 ID 非空且能找到原偶像时，空的 WorkSessionID、零值 CreatedAt、空白且原先合法的 OutfitID 沿用旧值，Pinned 也沿用。然后和 now 一起传给 NormalizeIdol。
+// now 传给 NormalizeIdol。
 func (s *Store) SaveIdol(in Idol, now time.Time) (Idol, error) {
 	var out Idol
 	err := s.Update(func(st *State) error {
@@ -118,6 +126,7 @@ func (s *Store) SaveCircle(c Circle) (Circle, error) {
 }
 
 // SaveLore 写入或替换一篇材料。标题空白时写成「材料」，id 空白时用 newID。
+// doc 的 ID 为空时用 newID。Title 去掉空白后为空时写成「材料」。按 ID 替换已有材料或追加。
 func (s *Store) SaveLore(doc Lore) (Lore, error) {
 	if doc.ID == "" {
 		doc.ID = newID()
@@ -139,6 +148,7 @@ func (s *Store) SaveLore(doc Lore) (Lore, error) {
 }
 
 // SaveServices 整份替换 Services。
+// svc 写入状态的 Services。
 func (s *Store) SaveServices(svc Services) error {
 	return s.Update(func(st *State) error {
 		st.Services = svc
@@ -147,6 +157,8 @@ func (s *Store) SaveServices(svc Services) error {
 }
 
 // NormalizeIdol 收掉名字空白，补上缺的语言、颜色、id 和时间。颜色不是 # 加 6 位时改成 #c47b8a，名字空白时写成「偶像」。
+// in 的 Name 去掉空白，为空时写成「偶像」。SpokenLang 和 SubtitleLang 交给 lang。Color 去掉空白，长度不是 7 或不是 # 开头时改成 #c47b8a。ID 为空时用 newID，并把 CreatedAt 设成 now。UpdatedAt 写成 now。
+// now 在 ID 为空时写入 CreatedAt，并总是写入 UpdatedAt。
 func NormalizeIdol(in Idol, now time.Time) Idol {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {

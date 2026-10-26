@@ -26,6 +26,7 @@ type WindowState struct {
 }
 
 // windowStatePath 优先用 App.Home.Root 下的 window.json，其次 YOYO_HOME，再次用户主目录下的 .yoyo。主目录也取不到时返回空字符串。
+// svc 非 nil 且 App、Home 都非 nil 时，用 Home.Root 拼 window.json。
 func windowStatePath(svc *Service) string {
 	if svc != nil && svc.App != nil && svc.App.Home != nil {
 		return filepath.Join(svc.App.Home.Root, "window.json")
@@ -63,6 +64,7 @@ func primaryWorkArea() (int, int) {
 }
 
 // screenWorkArea 返回窗口所在屏幕的工作区。取不到时退回 primaryWorkArea。
+// win 非 nil 时调用 GetScreen。取不到可用宽高时退回 primaryWorkArea。
 func screenWorkArea(win application.Window) (int, int) {
 	if win != nil {
 		if scr, err := win.GetScreen(); err == nil && scr != nil {
@@ -123,6 +125,7 @@ func virtualScreen() (int, int, int, int) {
 }
 
 // markLost 在保存的窗口落在虚拟屏幕外时，把坐标清零、取消最大化，并标上 Recenter。
+// saved 的位置和大小传给 winsize.LostOffscreen。落在屏幕外时把 X、Y 写成 0，Max 写成假，Recenter 写成真。
 func markLost(saved *WindowState) {
 	vx, vy, vw, vh := virtualScreen()
 	if !winsize.LostOffscreen(saved.X, saved.Y, saved.W, saved.H, vx, vy, vw, vh) {
@@ -140,6 +143,7 @@ func FitWorkArea(frac float64) (w, h int) {
 }
 
 // RestoreGeometry 没有 window.json 时返回按当前工作区拟合的尺寸，并标上 Refit。读到的宽高小于最小值时抬到 MinW 和 MinH。最大化的记录只做 markLost。ShouldRefit 为假时原样返回并 markLost，为真时换成拟合尺寸并标上 Refit。
+// svc 传给 windowStatePath。
 func RestoreGeometry(svc *Service) WindowState {
 	aw, ah := primaryWorkArea()
 	fittedW, fittedH := winsize.Fit(aw, ah, winsize.DefaultFrac)
@@ -199,6 +203,8 @@ func Raise(win application.Window) {
 }
 
 // ApplyLaunchGeometry 在 WindowRuntimeReady 和 WindowShow 上各登记一次调整，实际只跑一遍。SetSize 不能在 gui.Run 之前调用，否则 Wails 会在空的主线程上 panic。最大化且不需要重新居中时只 Raise。超出工作区或 Refit 时改成拟合尺寸并居中。Recenter 时居中。否则只在窗口丢失在屏幕外时居中。
+// win 为 nil 时返回。否则在 WindowRuntimeReady 和 WindowShow 上登记调整，并在需要时 SetSize、Center、Raise。
+// saved 的 Max 为真且 Recenter 为假时只 Raise。Refit 为真或当前尺寸超出工作区时改成拟合尺寸并居中。Recenter 为真时居中。
 func ApplyLaunchGeometry(win application.Window, saved WindowState) {
 	if win == nil {
 		return
@@ -235,6 +241,7 @@ func ApplyLaunchGeometry(win application.Window, saved WindowState) {
 }
 
 // saveWindowState 把当前位置、大小、是否最大化和当前 FitRev 写成 window.json。窗口为空、最小化、不可见，或坐标是隐藏哨兵时不写。
+// svc 传给 windowStatePath。
 func saveWindowState(svc *Service, win application.Window) {
 	if win == nil {
 		return
@@ -267,6 +274,8 @@ func saveWindowState(svc *Service, win application.Window) {
 }
 
 // PersistWindow 在移动和缩放时保存几何，两次写入至少间隔 400 毫秒。正在退出时允许关闭并保存。CloseToTray 或桌面宠物开着时取消关闭、隐藏窗口并 refreshChrome。否则保存后让关闭继续。
+// svc 传给 saveWindowState、Quitting、CloseToTray、CompanionEnabled 和 refreshChrome。
+// win 登记 WindowDidMove、WindowDidResize 和 WindowClosing。关闭被取消时调用 Hide。
 func PersistWindow(svc *Service, win application.Window) {
 	var last time.Time
 	win.OnWindowEvent(events.Common.WindowDidMove, func(e *application.WindowEvent) {

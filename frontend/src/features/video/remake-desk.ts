@@ -12,9 +12,9 @@ type RemakeDeskState = {
 };
 
 /** useRemakeDesk 保存当前翻拍草稿。没有 id 的对象会被记成空。 */
-export const useRemakeDesk = create<RemakeDeskState>((set) => ({
+export const useRemakeDesk = create<RemakeDeskState>(/** set 写入或清掉当前草稿。 */ (set) => ({
   draft: null,
-  /** 写入草稿；没有 id 时记成空。 */
+  /** 写入草稿；没有 id 时记成空。draft 有 id 才写入，否则记成空。 */
   setDraft: (draft) => set({ draft: draft?.id ? draft : null }),
   /** 丢掉本地草稿指针。 */
   clear: () => set({ draft: null }),

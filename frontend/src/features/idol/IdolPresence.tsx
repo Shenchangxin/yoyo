@@ -14,7 +14,7 @@ import { StandView, standURL } from "./stand/StandView";
 import type { Framing } from "./stand/engine";
 import type { CallPhase } from "./useIdolCall";
 
-/** IdolPresence 渲染当前演员。听或拨号时朝前看，说话且非仅文字时张嘴。从听到想、或开口时按情绪点头或摇头。减少动效时不点头。 */
+/** IdolPresence 渲染当前演员。听或拨号时朝前看，说话且非仅文字时张嘴。从听到想、或开口时按情绪点头或摇头。减少动效时不点头。props 读取 emotion、stand、kind、portrait、name、phase 等。 */
 export function IdolPresence(props: {
   name: string;
   color: string;

@@ -20,6 +20,7 @@ type Spend struct {
 }
 
 // AddSpend 把一份运行报告的用量加进 Spend。s 为 nil 时直接返回。
+// r 的 TokensIn、TokensOut、USD、WallMs 加进 s。
 func AddSpend(s *Spend, r eval.RunReport) {
 	if s == nil {
 		return
@@ -66,6 +67,8 @@ func IIDProposal(i int) Proposal {
 
 // SearchBaselines 先把基线重复跑 n 次作为 Best-of-N，再对父材料做 n 次独立 IID，最后从基线出发做 n 次顺序 SCS。
 // n 小于等于 0 时用 3。父哈希为空时父材料改成基线。MaxUSD 或 MaxWall 达到后停止后续轮次。SCS 只在试用被接受且哈希非空时把累积材料换成该哈希。
+// ctx 的 Err 非空时返回已有结果和该错误。
+// opts 的 Baseline 写入报告并作为 Best-of-N 的材料；Parent.Hash 为空时把 Parent 改成 Baseline；MaxUSD 大于 0 且 Spend.USD 已达到它，或 MaxWall 大于 0 且已用时间达到它，就不再开新一轮；整份 opts 传给 evalMats 和 patchTrial。
 func (e *Engine) SearchBaselines(ctx context.Context, opts CycleOpts, n int) (LabCompare, error) {
 	out := LabCompare{Snapshot: opts.Baseline.Hash, ModelFingerprint: opts.Baseline.Snap.ModelFingerprint}
 	if n <= 0 {
@@ -148,6 +151,11 @@ func (e *Engine) SearchBaselines(ctx context.Context, opts CycleOpts, n int) (La
 }
 
 // patchTrial 把提议应用到父快照上，再按 trialMats 对基线报告做 Harbor 门。
+// ctx 传给 trialMats。
+// opts 的 Baseline 和整份 opts 传给 trialMats。
+// parent 的 Snap 和 Hash 交给 ApplyProposal。
+// base 传给 trialMats。
+// held 传给 trialMats。
 func (e *Engine) patchTrial(ctx context.Context, opts CycleOpts, parent MaterialSet, base eval.RunReport, p Proposal, held map[string]bool) Trial {
 	candSnap, hash, err := ApplyProposal(e.CAS, parent.Snap, parent.Hash, p)
 	if err != nil {
@@ -158,6 +166,7 @@ func (e *Engine) patchTrial(ctx context.Context, opts CycleOpts, parent Material
 }
 
 // matsOfHash 从库里取出快照并解码成材料，解码失败的字段沿用 parent。
+// hash 交给 CAS.GetSnapshot，成功后再交给 MaterialsFromSnapshot。
 func (e *Engine) matsOfHash(hash string, parent MaterialSet) (MaterialSet, error) {
 	snap, err := e.CAS.GetSnapshot(hash)
 	if err != nil {
@@ -167,6 +176,7 @@ func (e *Engine) matsOfHash(hash string, parent MaterialSet) (MaterialSet, error
 }
 
 // heldSet 收集调用方 HeldOut、套件 HeldOut、套件 Transfer，以及 IndexTransfer 的全部编号。
+// opts 的 HeldOut、Suite.HeldOut、Suite.Transfer 放进集合，再加上 IndexTransfer 每个规格的 ID。
 func heldSet(opts CycleOpts) map[string]bool {
 	held := map[string]bool{}
 	for _, id := range opts.HeldOut {

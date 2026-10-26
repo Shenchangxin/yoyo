@@ -10,10 +10,10 @@ import { useUI } from "../../lib/store";
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
-/** StudioDeskChip 点击后打开短片桌。 */
+/** StudioDeskChip 点击后打开短片桌。props 的 disabled 传给按钮。 */
 export function StudioDeskChip(props: { disabled?: boolean }) {
   const copy = useCopy();
-  const openStudioDesk = useUI((s) => s.openStudioDesk);
+  const openStudioDesk = useUI(/** s 取出 openStudioDesk。 */ (s) => s.openStudioDesk);
 
   return (
     <button

@@ -2749,7 +2749,7 @@ export type Copy = typeof en;
 
 let active: Copy = en;
 
-/** setCopyCatalog 换成另一份文案表。 */
+/** setCopyCatalog 换成另一份文案表。next 赋给 active。 */
 export function setCopyCatalog(next: Copy) {
   active = next;
 }
@@ -2760,7 +2760,7 @@ export function catalog(): Copy {
 }
 
 export const copy: Copy = new Proxy({} as Copy, {
-  /** get 读取属性时转到当前生效的文案表。 */
+  /** get 读取属性时转到当前生效的文案表。_target 函数体内没有读取。prop 用作下标。 */
   get(_target, prop) {
     return (active as Record<PropertyKey, unknown>)[prop];
   },

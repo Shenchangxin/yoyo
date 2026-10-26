@@ -15,6 +15,7 @@ import (
 type PackPref = skillpack.Pref
 
 // skillRoots 用 packPrefs 取出已启用包的技能目录，再交给 runtime.SkillRoots，并带上捆绑技能目录。
+// workspace 传给 skillpack.EnabledSkillDirs 和 runtime.SkillRoots。
 func (a *App) skillRoots(workspace string) []string {
 	home := ""
 	if a != nil && a.Home != nil {
@@ -33,6 +34,7 @@ func (a *App) packPrefs() map[string]skillpack.Pref {
 }
 
 // packSessions 把 skillpack.RuntimeFor 的结果抄成 runtime.PackSession，带上 BootstrapSkill、Mapping 和 Methodology。
+// workspace 传给 skillpack.RuntimeFor。
 func (a *App) packSessions(workspace string) []rt.PackSession {
 	home := ""
 	if a != nil && a.Home != nil {
@@ -52,6 +54,7 @@ func (a *App) packSessions(workspace string) []rt.PackSession {
 }
 
 // ListPacks 列出家目录和工作区里的包状态。传入的工作区不可用时改用 App.Workspace。
+// workspace 去掉首尾空白后，WorkspaceReady 为假时改用 App.Workspace，再传给 skillpack.List。
 func (a *App) ListPacks(workspace string) []skillpack.Status {
 	home := ""
 	if a != nil && a.Home != nil {
@@ -99,6 +102,7 @@ func (a *App) InstallPack(id, localPath string) (skillpack.Manifest, error) {
 }
 
 // UninstallPack 从家目录卸下该包。Home 为空返回 no home。
+// id 传给 skillpack.Uninstall。
 func (a *App) UninstallPack(id string) error {
 	if a == nil || a.Home == nil {
 		return fmt.Errorf("no home")
@@ -107,6 +111,8 @@ func (a *App) UninstallPack(id string) error {
 }
 
 // EnablePack 按 scope 改开关。空 scope 当作工作区。inherit 清除工作区覆盖，workspace 写入工作区开关，global 写入 Config.Packs 并 SaveConfig。工作区不可用时 inherit 和 workspace 返回 workspace not ready。
+// id 经 SanitizeID，空串则返回错误，否则传给 ClearWorkspaceEnabled、SetWorkspaceEnabled，或用作 Config.Packs 的键。
+// enabled 在 workspace 时传给 SetWorkspaceEnabled，在 global 时写入 Config.Packs 的 Enabled。
 func (a *App) EnablePack(id, scope string, enabled bool) error {
 	id = skillpack.SanitizeID(id)
 	if id == "" {
@@ -141,6 +147,7 @@ func (a *App) EnablePack(id, scope string, enabled bool) error {
 }
 
 // UpdatePack 用已安装清单里的 Origin 再安装一次。未安装返回 pack is not installed。
+// id 经 SanitizeID 后传给 ReadManifest 和 Install。
 func (a *App) UpdatePack(id string) (skillpack.Manifest, error) {
 	if a == nil || a.Home == nil {
 		return skillpack.Manifest{}, fmt.Errorf("no home")

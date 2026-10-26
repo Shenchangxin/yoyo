@@ -67,6 +67,7 @@ func TestConnection(c Connection, r *Registry) map[string]any {
 }
 
 // ProbeChatCompletions 向 base/chat/completions 发 POST，正文 max_tokens 为 1。不请求 GET /models。钥匙为空返回 missing vault key。
+// vendor 和整理后的 base 传给 chatVendorUsesGoogleKey。为真时设置 x-goog-api-key。
 func ProbeChatCompletions(base, key, model, vendor string) map[string]any {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	key = strings.TrimSpace(key)
@@ -111,6 +112,8 @@ func ProbeChatCompletions(base, key, model, vendor string) map[string]any {
 }
 
 // chatProbeOK 在 2xx 时返回真。400 且正文不像鉴权失败时也返回真。其他状态返回假。
+// status 大于等于 200 且小于 300 时返回真。等于 http.StatusBadRequest 时再看 raw。其他值返回假。
+// raw 在 status 等于 http.StatusBadRequest 时转成小写。含 authorization、unauthoriz、api key、invalid token、expired token 或 authentication 则返回假，否则返回真。
 func chatProbeOK(status int, raw []byte) bool {
 	if status >= 200 && status < 300 {
 		return true
@@ -129,6 +132,8 @@ func chatProbeOK(status int, raw []byte) bool {
 }
 
 // ProbeError 从 JSON 的 msg、message 或 error 里抽出说明，最长 240 字节。抽不出时返回 HTTP 状态码。
+// status 在说明为空时写成 HTTP 加这个状态码。否则写在 HTTP、状态码和冒号后面。
+// raw 去掉空白后尝试按 JSON 取出 msg、message 或 error。结果长于 240 字节时截到 240。
 func ProbeError(status int, raw string) string {
 	msg := strings.TrimSpace(raw)
 	var wrap struct {
@@ -158,6 +163,7 @@ func ProbeError(status int, raw string) string {
 }
 
 // jsonErrorString 把 error 字段解析成字符串，或对象里的 message、msg。
+// raw 长度为 0 时返回空字符串。先尝试解成字符串，再尝试解成带 message 或 msg 的对象，都不行则返回去掉空白的原文。
 func jsonErrorString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -183,6 +189,7 @@ func jsonErrorString(raw json.RawMessage) string {
 }
 
 // probeURL 按供应商或协议给非聊天探测补上路径。端点为空返回空串。
+// c 的 Endpoint 去掉空白和末尾斜杠。空则返回空串。Vendor 和 Protocol 转成小写后决定要不要补路径。
 func probeURL(c Connection) string {
 	base := strings.TrimRight(strings.TrimSpace(c.Endpoint), "/")
 	if base == "" {
@@ -223,6 +230,9 @@ func probeURL(c Connection) string {
 }
 
 // applyProbeAuth 按供应商把钥匙放进 Authorization、查询参数或专用头。钥匙为空则不改请求。
+// req 为 nil 或 key 去掉空白后为空时直接返回。否则按供应商改 req 的头或查询。
+// c 的 Vendor 和 Protocol 用来选择怎么放钥匙。默认分支还把 c 的 Vendor 和 Endpoint 传给 chatVendorUsesGoogleKey。
+// key 去掉空白后为空时直接返回。否则写入 Authorization、查询参数或专用头。
 func applyProbeAuth(req *http.Request, c Connection, key string) {
 	if req == nil || strings.TrimSpace(key) == "" {
 		return
@@ -269,6 +279,8 @@ func applyProbeAuth(req *http.Request, c Connection, key string) {
 }
 
 // chatVendorUsesGoogleKey 在供应商是 gemini 或 google，或端点包含 generativelanguage.googleapis.com 时返回真。
+// vendor 去掉空白并转小写。是 gemini 或 google 时返回真。
+// base 转成小写后含 generativelanguage.googleapis.com 时返回真。
 func chatVendorUsesGoogleKey(vendor, base string) bool {
 	v := strings.ToLower(strings.TrimSpace(vendor))
 	if v == "gemini" || v == "google" {
@@ -278,6 +290,7 @@ func chatVendorUsesGoogleKey(vendor, base string) bool {
 }
 
 // truncateProbe 按字节把字符串截到 n。本文件没有调用它。
+// s 的字节长度不大于 n 时原样返回，否则截到前 n 个字节。
 func truncateProbe(s string, n int) string {
 	if len(s) <= n {
 		return s

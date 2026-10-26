@@ -11,6 +11,7 @@ import (
 )
 
 // uniqueStrings 按出现顺序合并多组字符串，去掉空白和重复。
+// groups 按出现顺序合并，每项去掉首尾空白，空串和已见过的丢掉。
 func uniqueStrings(groups ...[]string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -28,6 +29,7 @@ func uniqueStrings(groups ...[]string) []string {
 }
 
 // EnsureSessionWorktree 把项目根做成 Worktree 里的工作区副本，并把 Isolate 设为真。项目根不是目录则失败。
+// id 传给 GetSession。
 func (a *App) EnsureSessionWorktree(id string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -55,6 +57,7 @@ func (a *App) EnsureSessionWorktree(id string) (SessionMeta, error) {
 }
 
 // ApplySessionWorktree 把工作区副本里的改动应用回项目根。没有副本则返回错误。
+// id 传给 GetSession。
 func (a *App) ApplySessionWorktree(id string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -72,6 +75,8 @@ func (a *App) ApplySessionWorktree(id string) (SessionMeta, error) {
 }
 
 // SetSessionIsolate 在回合没在跑时切换 Isolate。打开则建立工作区副本；关闭则把 Isolate 写成假，工作区指回项目根。
+// id 传给 GetSession 和 Running，isolate 为真时再传给 EnsureSessionWorktree。
+// isolate 为真时调用 EnsureSessionWorktree，否则把 Isolate 写成假。
 func (a *App) SetSessionIsolate(id string, isolate bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -95,6 +100,8 @@ func (a *App) SetSessionIsolate(id string, isolate bool) (SessionMeta, error) {
 }
 
 // SetSessionPinnedSkills 只保留当前工作区里确实存在的技能名，并写回 meta。
+// id 传给 GetSession。
+// names 逐项去掉首尾空白，空串或不在当前工作区技能里的丢掉，其余写进 PinnedSkills。
 func (a *App) SetSessionPinnedSkills(id string, names []string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -120,6 +127,7 @@ func (a *App) SetSessionPinnedSkills(id string, names []string) (SessionMeta, er
 }
 
 // InboxDismiss 关闭一条收件箱项。没有收件箱时返回假。
+// id 传给 Inbox.Dismiss。
 func (a *App) InboxDismiss(id string) bool {
 	if a.Inbox == nil {
 		return false

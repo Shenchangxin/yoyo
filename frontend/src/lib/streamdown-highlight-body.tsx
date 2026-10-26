@@ -24,7 +24,7 @@ type Props = {
   lineNumbers?: boolean;
 };
 
-/** 把高亮 token 上的颜色和 htmlStyle 收成行内样式。 */
+/** 把高亮 token 上的颜色和 htmlStyle 收成行内样式。t 读取 htmlStyle、color、bgColor。 */
 function tokenStyle(t: HlToken): CSSProperties | undefined {
   if (t.htmlStyle && typeof t.htmlStyle === "object" && !Array.isArray(t.htmlStyle)) {
     return t.htmlStyle as CSSProperties;
@@ -44,7 +44,16 @@ function tokenStyle(t: HlToken): CSSProperties | undefined {
   return Object.keys(style).length ? style : undefined;
 }
 
-/** HighlightedCodeBlockBody 渲染已经或即将高亮的代码行。已有 token 先画出来，插件回调再替换。 */
+/**
+ * HighlightedCodeBlockBody 渲染已经或即将高亮的代码行。已有 token 先画出来，插件回调再替换。
+ * code 作为分支结果，用作标签，写入字段 code。
+ * language 为真时才继续，作为分支结果，传给 codePlugin.supportsLanguage。
+ * className 写到 pre 的 className。
+ * raw 读取 tokens，为空时不读。
+ * maxHeight 与 null、Infinity 比较是否不等，写入字段 maxHeight。
+ * lineNumbers 为真时才继续。
+ * startLine 加上 i。
+ */
 export function HighlightedCodeBlockBody({
   code,
   language,

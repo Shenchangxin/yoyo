@@ -24,6 +24,7 @@ import (
 // loadCert 优先读取目录里的 cert.pem 和 key.pem。文件能装上但叶子解不开，就返回错误，不另签一张。
 // 没有可用的一对时，用 P-256 新签一张：主体 yoyo-remote，DNS 名只有 yoyo.local，有效期从现在往前 1 小时到往后 10 年，用途是数字签名、密钥加密和服务器鉴别。
 // 证书文件权限 0o644，私钥权限 0o600。返回的指纹是叶子证书 DER 的 SHA-256 十六进制。
+// dir 和 cert.pem、key.pem 拼成要读写的路径。
 func loadCert(dir string) (tls.Certificate, string, error) {
 	certPath := filepath.Join(dir, "cert.pem")
 	keyPath := filepath.Join(dir, "key.pem")
@@ -77,12 +78,15 @@ func loadCert(dir string) (tls.Certificate, string, error) {
 }
 
 // fingerprint 把证书 DER 做 SHA-256，再写成十六进制。二维码里的 fp 就是这个字符串，手机 TLS 用它钉证书。
+// raw 传给 sha256.Sum256，结果写成十六进制。
 func fingerprint(raw []byte) string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
 
 // listenTLS 在所有网卡的这个端口上听 TLS，最低版本 TLS 1.2。这是手机 WebSocket 和媒体的门，不是浏览器那扇明文 HTTP。
+// port 写进监听地址。
+// cert 放进 tls.Config 的 Certificates。
 func listenTLS(port int, cert tls.Certificate) (net.Listener, error) {
 	cfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	return tls.Listen("tcp", fmt.Sprintf(":%d", port), cfg)

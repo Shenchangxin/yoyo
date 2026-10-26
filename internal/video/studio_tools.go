@@ -94,6 +94,9 @@ func StudioToolSpecs() []ToolSpec {
 
 // StudioTool 按名字调用对应的短片操作，并返回 JSON。工程编号空着就用会话绑定。
 // studio_publish_open、studio_publish_analytics 和 studio_persona_create 直接拒绝，交给应用层。未知名字也拒绝。不在这里点击发布。
+// sessionID 在参数里没有工程编号时传给 StudioSessionBind，创建工程且自身非空时传给 BindStudioSession，发布草稿和发布列表也会用它取绑定。
+// name 选择要调用的操作，交由应用托管或对不上名字时写进错误文本。
+// args 为 nil 时换成空 map，再按名字读取其中的字段。
 func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}
@@ -491,6 +494,7 @@ func splitCSV(s string) []string {
 }
 
 // floatAny 把数字、整数、json.Number 或数字字符串收成 float64。认不出就返回 0。
+// v 是 float64 或 int 时转成 float64，是 json.Number 时取 Float64，是字符串时去掉首尾空白再按浮点扫描，其他类型返回 0。
 func floatAny(v any) float64 {
 	switch t := v.(type) {
 	case float64:

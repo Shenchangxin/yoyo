@@ -13,6 +13,8 @@ import (
 var SkillsMPBase = "https://skillsmp.com"
 
 // listSkillsMP 在查询为空时返回 SearchOnly，不发请求。有查询时按每页最多 50 条翻页，最多 40 页，按 stars 排序。
+// query 去掉两端空白，空则返回 SearchOnly，不再请求。
+// limit 在有查询时交给 catalogLimit；收集条数达到它就停，页大小不超过 50。
 func listSkillsMP(query string, limit int) (Catalog, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -63,6 +65,8 @@ type skillsMPRow struct {
 }
 
 // fetchSkillsMPPage 请求 /api/v1/skills/search。page 大于 1 时同时带 page 和 offset。
+// query 写入查询的 q。
+// pageSize 写入查询的 limit；page 大于 1 时 offset 用 (page-1) 乘 pageSize。
 func fetchSkillsMPPage(query string, page, pageSize int) ([]Item, error) {
 	vals := url.Values{
 		"q":      {query},
@@ -96,6 +100,7 @@ func fetchSkillsMPPage(query string, page, pageSize int) ([]Item, error) {
 }
 
 // itemFromSkillsMP 用名字做 slug。能解析 githubUrl 时 ID 带上仓库和目录。名字净化失败返回 false。
+// row 的 Name 交给 SanitizeSlug，空则返回 false；GitHubURL 交给 parseGitHubURL，Description 交给 clip，第二个实参是 240。
 func itemFromSkillsMP(row skillsMPRow) (Item, bool) {
 	slug := SanitizeSlug(row.Name)
 	if slug == "" {

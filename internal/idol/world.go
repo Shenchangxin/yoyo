@@ -10,6 +10,7 @@ import (
 )
 
 // unlock 按已有对话、礼物和好感补成就。每个新成就加一次奖励抽卡；intimate 再加一张重置卡。返回这次新加上的 id。
+// now 没有被读取，只赋给空白标识符。
 func (st *State) unlock(now time.Time) []string {
 	have := map[string]bool{}
 	for _, id := range st.Achievements {
@@ -122,6 +123,8 @@ func (st State) Stats() Stats {
 }
 
 // retrieve 从偶像的事实分段和她自己的材料里挑与 query 重叠词最多的一段。没有重叠就返回空。正文长于 600 个字符时截断。
+// idol 的 Facts 交给 splitSections，ID 用来挑选材料。
+// lore 里 IdolID 等于 idol.ID 的 Title 和 Body 参与挑选。
 func retrieve(idol Idol, lore []Lore, query string) string {
 	type hit struct {
 		title, body string
@@ -175,6 +178,7 @@ func retrieve(idol Idol, lore []Lore, query string) string {
 type section struct{ title, body string }
 
 // splitSections 按以 # 开头的行切开 Markdown。
+// md 按换行切开，以 # 开头的行成为新段标题。
 func splitSections(md string) []section {
 	lines := strings.Split(md, "\n")
 	var out []section
@@ -246,6 +250,8 @@ func tokens(s string) []string {
 
 // reachDue 判断现在该不该让这位偶像先开口。总开关 ReachOut 关掉、冷却中、cold、distant、夜间、当天已有 3 次、没有进行中的对话、上一次还没得到回复，都不开口。
 // trust 间隔 36 小时，close 是 18 小时，intimate 是 8 小时。距上次超过 14 天也不再开口。
+// idol 的 ID 传给 affinityOf 和 currentOf，并与 Reaches 的 IdolID 比较。
+// now 传给 Cooling、Night 和 day，并与 lastAt 相减。
 func reachDue(st *State, idol Idol, now time.Time) bool {
 	if !st.Services.ReachOut {
 		return false

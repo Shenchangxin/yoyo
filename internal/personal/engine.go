@@ -77,6 +77,7 @@ func Open(dir string) (*Engine, error) {
 }
 
 // Bind 只覆盖传入的非空字段。Poll 和 Lease 只在大于 0 时覆盖，函数为 nil 时保持原值。
+// b 的 Connectors、Inbox、Fetch、Now、OnChange、Paused 非 nil 时覆盖。Workspace 非空时覆盖。Poll 和 Lease 大于 0 时覆盖。
 func (e *Engine) Bind(b Bind) {
 	if b.Connectors != nil {
 		e.Connectors = b.Connectors
@@ -116,12 +117,14 @@ func (e *Engine) now() time.Time {
 }
 
 // newID 用前缀、时分秒毫秒和递增序号拼出 ID。
+// prefix 写在 ID 的第一段，后面接当前时间的 150405.000 和递增序号。
 func (e *Engine) newID(prefix string) string {
 	n := e.seq.Add(1)
 	return fmt.Sprintf("%s-%s-%d", prefix, e.now().Format("150405.000"), n)
 }
 
 // hashID 把各段用空字节隔开后做 SHA-256，返回十六进制的前 16 位。
+// parts 逐段写入 SHA-256，每段后面再写一个空字节。摘要十六进制只留前 16 位。
 func hashID(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {
@@ -149,6 +152,11 @@ func (e *Engine) changed() {
 }
 
 // notify 在 Inbox 为 nil 时直接返回，否则推一条收件箱记录并调用 changed。
+// kind 写入收件的 Kind。
+// title 写入收件的 Title。
+// body 写入收件的 Body。
+// taskID 写入收件的 TaskID。
+// key 写入收件的 Key。
 func (e *Engine) notify(kind inbox.Kind, title, body, taskID, key string) {
 	if e.Inbox == nil {
 		return
@@ -164,6 +172,9 @@ func (e *Engine) notify(kind inbox.Kind, title, body, taskID, key string) {
 }
 
 // CreateTask 把空种类收成 agent。prompt 和 title 都空则返回错误。agent 的状态是 waiting_input，题面写明 worker 不另开模型循环。
+// kind 去掉空白并转成小写。不是 agent、document、monitor、finance、plan 时改成 KindAgent。写入任务，并传给 defaultPlan。
+// goalID 写入任务的 GoalID。
+// sessionID 写入任务的 SessionID。
 func (e *Engine) CreateTask(title, prompt string, kind Kind, input map[string]any, goalID, sessionID string) (Task, error) {
 	kind = Kind(strings.ToLower(strings.TrimSpace(string(kind))))
 	switch kind {
@@ -206,6 +217,7 @@ func (e *Engine) CreateTask(title, prompt string, kind Kind, input map[string]an
 }
 
 // defaultPlan 按种类给出步骤标题。未列出的种类只有一步，写明在对话里完成。
+// kind 为 KindDocument、KindMonitor、KindFinance、KindPlan 时返回对应步骤，其余返回对话里完成那一步。
 func defaultPlan(kind Kind) []Step {
 	switch kind {
 	case KindDocument:
@@ -227,6 +239,8 @@ func defaultPlan(kind Kind) []Step {
 }
 
 // Answer 只接受 waiting_input。document 要解析出字段，plan 要按行给出里程碑，然后把状态改回 queued。
+// id 传给 task 和 casTask。
+// text 去掉空白，为空时返回错误。写入 state 的 answer。KindDocument 时传给 parseFields。KindPlan 时按行拆成里程碑。
 func (e *Engine) Answer(id, text string) (Task, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -281,6 +295,7 @@ func (e *Engine) Answer(id, text string) (Task, error) {
 }
 
 // parseFields 在正文以 { 开头时按 JSON 对象解析，否则按行切分冒号或等号。
+// text 去掉空白。以 { 开头且能解成对象时，把每个值 Sprint 后去掉空白放进表。否则按行用冒号或等号切开。
 func parseFields(text string) map[string]string {
 	text = strings.TrimSpace(text)
 	out := map[string]string{}
@@ -310,6 +325,8 @@ func parseFields(text string) map[string]string {
 }
 
 // Complete 把未成功且未取消的任务标成 succeeded，并按 task-done 通知收件箱。
+// id 传给 casTask。
+// result 写入 Result，并作为 notify 的正文。
 func (e *Engine) Complete(id, result string) (Task, error) {
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
 		if cur.Status == StatusSucceeded || cur.Status == StatusCancelled {
@@ -332,6 +349,8 @@ func (e *Engine) Complete(id, result string) (Task, error) {
 }
 
 // Fail 把未成功且未取消的任务标成 failed，并写下错误文本。
+// id 传给 casTask。
+// errMsg 写入 Error。
 func (e *Engine) Fail(id, errMsg string) (Task, error) {
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
 		if cur.Status == StatusSucceeded || cur.Status == StatusCancelled {
@@ -352,6 +371,7 @@ func (e *Engine) Fail(id, errMsg string) (Task, error) {
 }
 
 // Cancel 把未成功且未取消的任务标成 cancelled。仍在 awaiting 的关联提案改为 cancelled，监视改为 stopped，并中止该任务的租约。
+// id 传给 casTask 和 abortTask，并与监视的 TaskID 比较。
 func (e *Engine) Cancel(id string) (Task, error) {
 	var actionID string
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
@@ -387,6 +407,10 @@ func (e *Engine) Cancel(id string) (Task, error) {
 }
 
 // CreateGoal 要求标题非空。类别为空时写成 Personal。空的里程碑标题会被跳过。
+// title 去掉空白，为空时返回错误，否则经 clip 截到 160 后写入 Title。
+// description 经 clip 截到 4000 后写入 Description。
+// category 为空时写成 Personal，再经 clip 截到 80。
+// milestones 逐项去掉空白，空的跳过，其余经 clip 截到 200 后写成里程碑标题。
 func (e *Engine) CreateGoal(title, description, category string, milestones []string) (Goal, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -417,6 +441,11 @@ func (e *Engine) CreateGoal(title, description, category string, milestones []st
 }
 
 // Watch 要求标题和非空 URL。除 sample:// 外必须是 http 或 https，并拒绝 blockedHost。条件默认 change，间隔默认 15 分钟，最大 10080。任务随后改成 scheduled。
+// title 去掉空白，为空时返回错误。传给 CreateTask。
+// rawURL 去掉空白，为空时返回错误。不是 sample:// 时必须以前缀 http:// 或 https:// 开头，并交给 parsePublicURL。
+// condition 去掉空白并转成小写，为空时写成 change。不是 change、contains、price_below 时返回错误。
+// value 在 condition 不是 change 时去掉空白后不能为空。condition 为 price_below 时用 Sscanf 解析，小于等于 0 则返回错误。
+// intervalMinutes 小于 1 时改成 15，大于 10080 时改成 10080，然后放进 CreateTask 的输入。
 func (e *Engine) Watch(title, rawURL, condition, value string, intervalMinutes int) (Monitor, Task, error) {
 	title = strings.TrimSpace(title)
 	rawURL = strings.TrimSpace(rawURL)
@@ -491,6 +520,7 @@ func (e *Engine) Watch(title, rawURL, condition, value string, intervalMinutes i
 }
 
 // parsePublicURL 去掉协议、路径和端口，只返回主机名。空主机名返回错误。
+// raw 去掉 https:// 或 http:// 前缀，再在 / 和 : 处切开，返回主机名。主机名为空时返回错误。
 func parsePublicURL(raw string) (string, error) {
 	// 只取出主机名，交给 blockedHost。
 	s := raw
@@ -505,6 +535,9 @@ func parsePublicURL(raw string) (string, error) {
 }
 
 // PresentChoices 在选项为空时放入一个 OK。任一选项的 Source 非空就当成比较，最多保留 3 项，并向收件箱推一条询问。
+// sessionID 写入 Choice 的 SessionID。
+// title 为空时写成 Choose，并写入 Choice，也作为 notify 的标题。
+// options 长度为 0 时换成一条 ID 为 ok、Label 为 OK 的选项。任一 Source 去掉空白后非空且长度大于 3 时只留前 3 项。
 func (e *Engine) PresentChoices(sessionID, title string, options []ChoiceOption) Choice {
 	if title == "" {
 		title = "Choose"
@@ -533,6 +566,8 @@ func (e *Engine) PresentChoices(sessionID, title string, options []ChoiceOption)
 }
 
 // SelectChoice 按选项 ID 或忽略大小写的标签选中一项。未知选项返回错误。
+// id 传给 choice。
+// option 去掉空白后与选项 ID 比较，或与 Label 不区分大小写比较。命中则把选项 ID 写入 Selected。
 func (e *Engine) SelectChoice(id, option string) (Choice, error) {
 	c, ok := e.store.choice(id)
 	if !ok {
@@ -557,6 +592,7 @@ func (e *Engine) SelectChoice(id, option string) (Choice, error) {
 }
 
 // filesDir 返回 dir/files 下该任务的目录，并按 0o755 创建。
+// taskID 接在 dir/files 后面，目录按 0o755 创建。
 func (e *Engine) filesDir(taskID string) string {
 	p := filepath.Join(e.dir, "files", taskID)
 	_ = os.MkdirAll(p, 0o755)
@@ -564,6 +600,7 @@ func (e *Engine) filesDir(taskID string) string {
 }
 
 // clip 去掉首尾空白，并按字节数截断。n 不大于 0 时不截。
+// s 去掉首尾空白。n 大于 0 且长度大于 n 时截到 n 个字节。
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if n > 0 && len(s) > n {
@@ -573,6 +610,7 @@ func clip(s string, n int) string {
 }
 
 // strMap 在值为 nil 时返回空串，否则 Sprint 后再去掉首尾空白。
+// v 为 nil 时返回空串，否则 Sprint 后去掉首尾空白。
 func strMap(v any) string {
 	if v == nil {
 		return ""
@@ -581,6 +619,8 @@ func strMap(v any) string {
 }
 
 // SetSample 把 sample:// 使用的键和正文写入存储。
+// key 传给 sample。
+// text 传给 sample。
 func (e *Engine) SetSample(key, text string) {
 	e.store.sample(key, text)
 }

@@ -12,7 +12,7 @@ import { useFilmDesk, type FilmProject, type FilmWord } from "./film-desk";
 
 const shapes = ["9:16", "16:9", "1:1"] as const;
 
-/** 按行把词拼起来，汉字之间不加空格，最多 8 行。 */
+/** 按行把词拼起来，汉字之间不加空格，最多 8 行。words 按 line_id、id 或 text 分组。 */
 function scriptLines(words: FilmWord[]) {
   const groups = new Map<string, FilmWord[]>();
   for (const word of words) {
@@ -24,22 +24,22 @@ function scriptLines(words: FilmWord[]) {
   }
   const lines: string[] = [];
   for (const group of groups.values()) {
-    const parts = group.map((word) => String(word.text || "")).filter(Boolean);
+    const parts = group.map(/** word 取出 text。 */ (word) => String(word.text || "")).filter(Boolean);
     if (!parts.length) continue;
-    const han = parts.some((part) => /[\u4e00-\u9fff]/.test(part));
+    const han = parts.some(/** part 含汉字就整行不加空格。 */ (part) => /[\u4e00-\u9fff]/.test(part));
     lines.push(parts.join(han ? "" : " "));
   }
   return lines.slice(0, 8);
 }
 
-/** FilmBoard 编辑主持人和产品，有画面时去剪辑，否则做画面。 */
+/** FilmBoard 编辑主持人和产品，有画面时去剪辑，否则做画面。props 的 onOpenCut 在交接出剪辑 id 后打开。 */
 export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const copy = useCopy();
   const c = copy.video.film;
   const back = copy.video.conductor.backHome;
-  const project = useFilmDesk((s) => s.project);
-  const setProject = useFilmDesk((s) => s.setProject);
-  const clear = useFilmDesk((s) => s.clear);
+  const project = useFilmDesk(/** s 取出 project。 */ (s) => s.project);
+  const setProject = useFilmDesk(/** s 取出 setProject。 */ (s) => s.setProject);
+  const clear = useFilmDesk(/** s 取出 clear。 */ (s) => s.clear);
   const [host, setHost] = useState("");
   const [product, setProduct] = useState("");
   const [opening, setOpening] = useState("");
@@ -50,7 +50,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
 
   useEffect(() => {
     let alive = true;
-    void api.video.status().then((st) => {
+    void api.video.status().then(/** st 取出 media_base 并去掉结尾斜杠。 */ (st) => {
       if (alive) setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
     }).catch(() => {});
     return () => { alive = false; };
@@ -69,16 +69,16 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
   const words = project.words || [];
   const shots = project.shots || [];
   const lines = scriptLines(words);
-  const failed = (project.needs || []).find((need) => need.error);
+  const failed = (project.needs || []).find(/** need 有 error 才留下。 */ (need) => need.error);
   const artifacts = project.artifacts || [];
-  const picture = artifacts.find((a) => a.media_type?.startsWith("video/"))
-    || artifacts.find((a) => a.media_type?.startsWith("image/"));
+  const picture = artifacts.find(/** a 的 media_type 以 video/ 开头才留下。 */ (a) => a.media_type?.startsWith("video/"))
+    || artifacts.find(/** a 的 media_type 以 image/ 开头才留下。 */ (a) => a.media_type?.startsWith("image/"));
   const pictureSrc = picture?.hash && mediaBase ? playbackSrc(`${mediaBase}/media/${picture.hash}`) : "";
   const aspect = project.brief?.aspect || "9:16";
   const shapeLabel = aspect === "16:9" ? c.landscape : aspect === "1:1" ? c.square : c.portrait;
   const structure = project.structure === "ranking" ? c.ranking : project.structure === "podcast" ? c.podcast : project.structure === "interview" ? c.interview : c.title;
 
-  /** 跑一次成片请求，成功就换上返回的工程。 */
+  /** 跑一次成片请求，成功就换上返回的工程。label 写成忙碌标记。fn 执行，返回带 id 的工程就换上。 */
   async function run(label: string, fn: () => Promise<FilmProject>) {
     setBusy(label);
     try {
@@ -93,10 +93,10 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
-  /** 简介字段没变就不提交。 */
+  /** 简介字段没变就不提交。label 交给 run。body 和当前简介逐项比较，没变就不提交，变了就交给 filmSwap。 */
   function patch(label: string, body: Record<string, string>) {
     const current = project?.brief || {};
-    const same = Object.entries(body).every(([key, value]) => String((current as Record<string, string | undefined>)[key] || "") === value);
+    const same = Object.entries(body).every(/** key 用来读当前简介。value 和现有值比较。 */ ([key, value]) => String((current as Record<string, string | undefined>)[key] || "") === value);
     if (same) return;
     void run(label, async () => api.video.filmSwap(id, body) as Promise<FilmProject>);
   }
@@ -140,11 +140,11 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
       {failed?.error ? <p>{c.failedStep}：{failed.error}</p> : null}
       <label>
         <span>{c.who}</span>
-        <input value={host} onChange={(ev) => setHost(ev.target.value)} />
+        <input value={host} onChange={/** ev 取出 target.value 写进主持人。 */ (ev) => setHost(ev.target.value)} />
       </label>
       <label>
         <span>{c.what}</span>
-        <input value={product} onChange={(ev) => setProduct(ev.target.value)} />
+        <input value={product} onChange={/** ev 取出 target.value 写进产品。 */ (ev) => setProduct(ev.target.value)} />
       </label>
       <div className="creation-remake-actions">
         {pictureSrc ? (
@@ -160,7 +160,7 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
         <summary>{c.details}</summary>
         <span className="creation-field-label">{c.shape}</span>
         <div className="creation-shape" role="group" aria-label={c.shape}>
-          {shapes.map((value) => (
+          {shapes.map(/** value 交给 patch 当画幅，并用来判断选中和文案。 */ (value) => (
             <button
               key={value}
               type="button"
@@ -174,39 +174,39 @@ export function FilmBoard(props: { onOpenCut: (id: string) => void }) {
         </div>
         <label>
           <span>{c.opening}</span>
-          <input value={opening} onChange={(ev) => setOpening(ev.target.value)} onBlur={() => patch("hook", { hook: opening.trim() })} />
+          <input value={opening} onChange={/** ev 取出 target.value 写进开头。 */ (ev) => setOpening(ev.target.value)} onBlur={() => patch("hook", { hook: opening.trim() })} />
         </label>
         <label>
           <span>{c.ending}</span>
-          <input value={ending} onChange={(ev) => setEnding(ev.target.value)} onBlur={() => patch("cta", { cta: ending.trim() })} />
+          <input value={ending} onChange={/** ev 取出 target.value 写进结尾。 */ (ev) => setEnding(ev.target.value)} onBlur={() => patch("cta", { cta: ending.trim() })} />
         </label>
         {project.structure === "ranking" ? (
           <label>
             <span>{c.price}</span>
-            <input value={price} onChange={(ev) => setPrice(ev.target.value)} onBlur={() => patch("price", { price: price.trim() })} />
+            <input value={price} onChange={/** ev 取出 target.value 写进价格。 */ (ev) => setPrice(ev.target.value)} onBlur={() => patch("price", { price: price.trim() })} />
           </label>
         ) : null}
         {lines.length ? (
           <>
             <span className="creation-field-label">{c.script}</span>
             <ol className="creation-film-line">
-              {lines.map((line) => <li key={line}><strong>{line}</strong></li>)}
+              {lines.map(/** line 显示成一行。 */ (line) => <li key={line}><strong>{line}</strong></li>)}
             </ol>
           </>
         ) : null}
         <div className="creation-remake-actions">
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => {
             setBusy("bed");
-            void api.pickFiles().then(async (picked) => {
+            void api.pickFiles().then(/** picked 取第一项路径，登记成音频后换床。 */ async (picked) => {
               const path = picked[0];
               if (!path) return project;
               const ref = await api.video.putStudioMediaPath(path, "audio");
               const hash = String(ref?.cas_hash || ref?.hash || "");
               if (!hash) throw new Error(c.needPicture);
               return api.video.filmBed(id, hash) as Promise<FilmProject>;
-            }).then((next) => {
+            }).then(/** next 有 id 才换上工程。 */ (next) => {
               if (next?.id) setProject(next);
-            }).catch((e) => toast.error(api.errMessage(e))).finally(() => setBusy(""));
+            }).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e))).finally(() => setBusy(""));
           }}>{c.myVoice}</Button>
           <Button size="sm" variant="ghost" disabled={!!busy || !host.trim()} onClick={() => void run("fork", async () => api.video.filmFork(id, { host }) as Promise<FilmProject>)}>{c.another}</Button>
         </div>

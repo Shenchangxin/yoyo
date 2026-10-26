@@ -18,8 +18,8 @@ export function CreateModeTabs() {
   const copy = useCopy();
   const c = copy.video.conductor;
   const film = copy.video.film;
-  const mode = useCreateMode((s) => s.mode);
-  const setMode = useCreateMode((s) => s.setMode);
+  const mode = useCreateMode(/** s 取出 mode。 */ (s) => s.mode);
+  const setMode = useCreateMode(/** s 取出 setMode。 */ (s) => s.setMode);
   const label: Record<CreateMode, string> = {
     clip: c.modeClip,
     ranking: film.ranking,
@@ -28,7 +28,7 @@ export function CreateModeTabs() {
   };
   return (
     <div className="create-mode-tabs" role="group" aria-label={c.modeLabel} data-testid="create-mode-tabs">
-      {modes.map((item) => {
+      {modes.map(/** item 用 id 取文案和选中态，用 icon 画图标，点选时把 id 交给 setMode。 */ (item) => {
         const Icon = item.icon;
         const pressed = item.id === mode;
         return (

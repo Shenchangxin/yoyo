@@ -56,6 +56,7 @@ func Legalize(msgs []Message) []Message {
 			}
 			content := m.Content
 			if strings.TrimSpace(content) == "" {
+				// 空的 role=tool 正文换成一句完成说明，避免投影里出现空工具消息。
 				content = emptyToolAnchor(name)
 			}
 			if _, ok := pending[m.ToolCallID]; ok {
@@ -69,9 +70,11 @@ func Legalize(msgs []Message) []Message {
 				continue
 			}
 			if openPair() {
+				// 这一组 tool_calls 还没配齐。对不上的工具正文先暂存，配齐后再作为用户文本追加，不插进配对中间。
 				held = append(held, content)
 				continue
 			}
+			// 没有未完成的配对时，对不上调用的 tool 改成用户文本。字节不从投影里丢掉。
 			out = append(out, Message{Role: RoleUser, Content: content})
 		case RoleAssistant:
 			flushOpen()
@@ -81,6 +84,7 @@ func Legalize(msgs []Message) []Message {
 				copy(calls, m.ToolCalls)
 				for i := range calls {
 					if calls[i].ID == "" {
+						// 空的 tool call id 写成 tc 加从 1 起的序号。只改投影副本，不回写 JSONL。
 						calls[i].ID = "tc" + itoa(i+1)
 					}
 				}

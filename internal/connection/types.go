@@ -61,6 +61,7 @@ type Connection struct {
 type Defaults map[string]string
 
 // NormalizeCap 把别名收成能力常量。不认识的字符串转成小写后原样返回。
+// s 去掉空白并转成小写后按函数里的别名返回能力常量。不在这些分支里则返回这个小写字符串。
 func NormalizeCap(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	switch s {
@@ -97,6 +98,8 @@ func HasCap(c Connection, cap string) bool {
 }
 
 // ModelFor 先看 DefaultModel 里的该能力，再看空键，最后用 Models 的第一项。都没有则返回空串。
+// c 的 DefaultModel 先按规范化后的 cap 取值，再看空键，都没有再用 Models 的第一项。
+// cap 传给 NormalizeCap，作为 DefaultModel 的键。
 func ModelFor(c Connection, cap string) string {
 	cap = NormalizeCap(cap)
 	if c.DefaultModel != nil {
@@ -114,6 +117,7 @@ func ModelFor(c Connection, cap string) string {
 }
 
 // ModelsJSON 把模型列表编成 JSON 数组。列表为空时，若 ModelFor 有值就编成单元素数组，否则是 []。
+// c 的 Models 为空时改用 ModelFor 的结果编成单元素数组，那个结果也空则返回 []。否则把 Models 编成 JSON 数组。
 func ModelsJSON(c Connection) string {
 	if len(c.Models) == 0 {
 		if m := ModelFor(c, ""); m != "" {
@@ -127,6 +131,7 @@ func ModelsJSON(c Connection) string {
 }
 
 // ParseModels 解析 JSON 数组或逗号分隔的模型名。空白返回 nil。
+// raw 去掉空白后为空则返回 nil。以 [ 开头时按 JSON 字符串数组解析并交给 compact。否则按逗号拆开、去掉空白后交给 compact。
 func ParseModels(raw string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -146,6 +151,7 @@ func ParseModels(raw string) []string {
 }
 
 // compact 去掉空白和重复项，保留第一次出现的顺序。
+// in 里去掉空白后为空或已经出现过的项丢掉，保留第一次出现的顺序。
 func compact(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -161,6 +167,8 @@ func compact(in []string) []string {
 }
 
 // InferProtocol 按能力和供应商给出协议字符串。未列出的聊天供应商用 openai-chat-completions。
+// vendor 去掉空白并转成小写，在各能力的分支里选择协议。聊天的默认分支返回 openai-chat-completions。
+// cap 传给 NormalizeCap，用来选择存储、搜索、观测、MCP、工作流、图像、视频、语音、抠图、音乐、素材、语音识别或聊天分支。
 func InferProtocol(vendor, cap string) string {
 	v := strings.ToLower(strings.TrimSpace(vendor))
 	c := NormalizeCap(cap)

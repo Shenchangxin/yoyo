@@ -206,6 +206,7 @@ func Seeds() []Profile {
 }
 
 // DeniedNames 返回这份画像的拒绝名单：DenyTools，再加上 Research、Memory 开关带上的名字。AllowTools 为空不是拒绝。结果按名字排序。
+// p 传给 denySet，再把得到的名字放进切片并排序。
 func DeniedNames(p Profile) []string {
 	deny := denySet(p)
 	out := make([]string, 0, len(deny))
@@ -271,6 +272,7 @@ func FilterTools(have []string, p Profile) []string {
 
 // MCPAllowed 判断 MCP 工具名是否被 allow 放行。allow 为空返回 true。
 // 比较不区分大小写。命中条件是全名相等、名字以该片段加 __ 开头，或名字包含该片段。空白片段跳过。
+// name 转成小写并去掉首尾空白后，与 allow 里每个非空片段比较：相等、以该片段加 __ 开头，或包含该片段。
 func MCPAllowed(allow []string, name string) bool {
 	if len(allow) == 0 {
 		return true
@@ -289,6 +291,7 @@ func MCPAllowed(allow []string, name string) bool {
 }
 
 // sanitizeID 去掉两端空白并转成小写，只保留 a-z、0-9、连字符和下划线。
+// id 转成小写并去掉首尾空白，只保留 a 到 z、0 到 9、连字符和下划线。
 func sanitizeID(id string) string {
 	id = strings.ToLower(strings.TrimSpace(id))
 	var b strings.Builder
@@ -301,6 +304,8 @@ func sanitizeID(id string) string {
 }
 
 // atomicWrite 先把字节写到 path.tmp，再改名为 path。写临时文件失败时不改名。
+// b 写入 path 加 .tmp 的临时文件。
+// mode 作为该临时文件的权限传给 os.WriteFile。
 func atomicWrite(path string, b []byte, mode os.FileMode) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, mode); err != nil {

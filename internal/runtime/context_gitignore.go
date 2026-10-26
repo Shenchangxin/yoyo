@@ -18,6 +18,7 @@ type ignoreSet struct {
 
 // loadIgnore 读取根目录的 .gitignore。空行、# 注释和以 ! 开头的行忽略。
 // 不含通配也不含斜杠的名字进入 names，其余按斜杠形式放进 globs。读失败时只保留 skipDirNames。
+// root 与 .gitignore 拼成要读的路径。
 func loadIgnore(root string) ignoreSet {
 	s := ignoreSet{names: map[string]bool{}}
 	for k, v := range skipDirNames {
@@ -44,11 +45,14 @@ func loadIgnore(root string) ignoreSet {
 }
 
 // skipDir 只按目录名判断，不看相对路径。
+// name 作为 names 的键。
 func (s ignoreSet) skipDir(name string) bool {
 	return s.names[name]
 }
 
 // skipFile 按文件名、相对路径匹配。以 /** 结尾的规则再按目录前缀匹配。
+// rel 转成斜杠后与规则做 Match，并以 /** 的目录前缀比较。
+// name 先查 names，再与规则做 Match。
 func (s ignoreSet) skipFile(rel, name string) bool {
 	if s.names[name] {
 		return true

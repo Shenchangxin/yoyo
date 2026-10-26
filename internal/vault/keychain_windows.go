@@ -47,6 +47,7 @@ func targetName(name string) string { return "Yoyo/" + name }
 
 // keychainSet 用 CredWriteW 写入通用凭据。目标名是 Yoyo/ 加 name，持久化取值是 credPersistLocal。
 // blob 为空时指针是 nil。API 返回 0 表示失败：系统 errno 非 0 则返回它，否则返回 EINVAL。
+// value 作为凭据 blob；长度为 0 时指针是 nil。
 func keychainSet(name, value string) error {
 	t, err := syscall.UTF16PtrFromString(targetName(name))
 	if err != nil {
@@ -76,6 +77,7 @@ func keychainSet(name, value string) error {
 
 // keychainGet 用 CredReadW 读取同一目标名的通用凭据，原样拷贝 blob，不去空白。
 // 调用失败且 errno 为 0，或 blob 为空时，返回 ENOENT。
+// name 经 targetName 拼成凭据目标名，交给 CredReadW。
 func keychainGet(name string) (string, error) {
 	t, err := syscall.UTF16PtrFromString(targetName(name))
 	if err != nil {
@@ -99,6 +101,7 @@ func keychainGet(name string) (string, error) {
 }
 
 // keychainDelete 用 CredDeleteW 删除同一目标名的通用凭据。失败时的 errno 处理和 keychainSet 相同。
+// name 经 targetName 拼成凭据目标名，交给 CredDeleteW。
 func keychainDelete(name string) error {
 	t, err := syscall.UTF16PtrFromString(targetName(name))
 	if err != nil {

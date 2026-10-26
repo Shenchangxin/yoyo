@@ -181,6 +181,7 @@ func (a *App) HarnessLineage() (HarnessLineage, error) {
 }
 
 // MaterializeSnapshot 把快照和其中的 playbook、循环、策略、评测、提示、技能写到临时目录，并写 MANIFEST。
+// hash 先 TrimSpace，空串时改用 ActiveHash；仍为空则返回 errNoSnapshot。否则传给 LoadSnapshot，并用来拼临时目录和 MANIFEST。
 func (a *App) MaterializeSnapshot(hash string) (string, error) {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -253,6 +254,7 @@ func (a *App) MaterializeSnapshot(hash string) (string, error) {
 }
 
 // RevealHarness 在系统里打开快照的物化目录。哈希为空时打开内容寻址存储目录；物化失败则尝试打开该哈希的存储文件。
+// hash 先 TrimSpace，空串时打开 Home.CAS；否则传给 MaterializeSnapshot，失败时再按该哈希打开存储文件。
 func (a *App) RevealHarness(hash string) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -275,6 +277,8 @@ func (a *App) RevealHarness(hash string) error {
 }
 
 // writeJSONFile 把值缩进写成 JSON 文件，并补上一行换行。
+// path 用来建父目录并 WriteFile。
+// v 传给 json.MarshalIndent。
 func writeJSONFile(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -288,6 +292,7 @@ func writeJSONFile(path string, v any) error {
 }
 
 // shortRef 取哈希前 12 个字符。空哈希返回 harness。
+// hash 先 TrimSpace，空串返回 harness，长于 12 时取前 12 个字符。
 func shortRef(hash string) string {
 	hash = strings.TrimSpace(hash)
 	if len(hash) > 12 {
@@ -317,6 +322,7 @@ func sanitizeFile(s string) string {
 }
 
 // sortedCopy 返回排序后的副本。空切片返回 nil。
+// in 长度为 0 时返回 nil，否则排序后返回副本。
 func sortedCopy(in []string) []string {
 	if len(in) == 0 {
 		return nil

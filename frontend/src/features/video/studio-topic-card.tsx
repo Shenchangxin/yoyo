@@ -49,7 +49,7 @@ type TopicCopy = {
   desk: { expand: string; choose: string };
 };
 
-/** TopicCard 按成片阶段显示打开、看进度、重试或开拍。已完成或制作中的角度不可改。 */
+/** TopicCard 按成片阶段显示打开、看进度、重试或开拍。已完成或制作中的角度不可改。props 读 topic、film、copy、busy、picked、statusLabel、scoreLabels 和 deleteLabel，并把勾选、开拍、取消排期、改卡、展开、排期、人设、选切口和删除交给对应回调。 */
 export function TopicCard(props: {
   topic: TopicRow;
   busy: boolean;
@@ -150,7 +150,7 @@ export function TopicCard(props: {
           defaultValue={t.angle || ""}
           data-testid="studio-topic-angle"
           aria-label={s.angle}
-          onBlur={(e) => {
+          onBlur={/** e 取出去掉空白的角度，没变化就不改，否则交给 onPatch。 */ (e) => {
             const v = e.target.value.trim();
             if (v === (t.angle || "")) return;
             if (!v && !t.angle) return;
@@ -166,13 +166,13 @@ export function TopicCard(props: {
         emptyLabel={s.scoreEmpty}
         hint={s.scoreHint}
         disabled={props.busy}
-        onChange={(scores) => props.onPatch({ scores })}
+        onChange={/** scores 交给 onPatch。 */ (scores) => props.onPatch({ scores })}
       />
       {(t.options || []).length ? (
         <div className="mt-2 border-t border-border/70 pt-2" data-testid="studio-topic-options">
           <p className="px-0.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted/80">{s.angles}</p>
           <ul className="divide-y divide-border/70">
-            {t.options!.map((opt) => (
+            {t.options!.map(/** opt 显示 title、angle 和 summary，点选时把 id 交给 onChoose。 */ (opt) => (
               <li key={opt.id} className="flex items-start gap-2 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-[12px] font-medium text-foreground">{opt.title}</p>

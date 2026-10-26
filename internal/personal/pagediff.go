@@ -23,6 +23,7 @@ type PageDiff struct {
 }
 
 // pageLines 按行去掉空白、折叠空白、单行最多 300 字节并去重。limit 不大于 0 时按 2000 行截断。
+// text 按换行切开。每行去掉末尾的 \r 和首尾空白，再折叠空白。
 func pageLines(text string, limit int) []string {
 	if limit <= 0 {
 		limit = 2000
@@ -47,11 +48,13 @@ func pageLines(text string, limit int) []string {
 }
 
 // withoutRelativeTimes 把相对时间短语换成 <time>。
+// text 里匹配到的相对时间短语换成 <time>。
 func withoutRelativeTimes(text string) string {
 	return relativeTime.ReplaceAllString(text, "<time>")
 }
 
 // numberless 先去掉相对时间，再把数字换成 #，并把字母后单独的 s 去掉后转成小写。
+// line 先交给 withoutRelativeTimes，再把数字换成 #。
 func numberless(line string) string {
 	s := withoutRelativeTimes(line)
 	s = numberToken.ReplaceAllString(s, "#")
@@ -70,6 +73,8 @@ func numberless(line string) string {
 }
 
 // pair 用 key 把上一份和这一份里相同键的行配对，返回配对上的当前行、未配上的当前行，以及剩下的旧行。
+// previous 按 key 分组。被当前行用掉的从剩余里减去，没被用掉的留在 left。
+// current 逐行用 key 去配。配上的放进 paired，配不上的放进 unpaired。
 func pair(previous, current []string, key func(string) string) (paired, unpaired, left []string) {
 	open := map[string][]string{}
 	for _, line := range previous {
@@ -100,6 +105,7 @@ func pair(previous, current []string, key func(string) string) (paired, unpaired
 }
 
 // empty 把 nil 切片换成空切片，非 nil 原样返回。
+// ss 为 nil 时返回空切片，否则原样返回。
 func empty(ss []string) []string {
 	if ss == nil {
 		return []string{}
@@ -108,6 +114,8 @@ func empty(ss []string) []string {
 }
 
 // diffPage 先按整行配对，再按去掉相对时间的文本配对，最后按去掉数字的文本配对。未配上的当前行算新增，配上的算更新，剩下的旧行算删除。
+// previous 作为第一轮的旧行，之后改用上一轮剩下的旧行。
+// current 作为第一轮的当前行，之后改用上一轮没配上的当前行。
 func diffPage(previous, current []string) PageDiff {
 	_, unpaired, left := pair(previous, current, func(line string) string { return line })
 	_, unpaired, left = pair(left, unpaired, withoutRelativeTimes)
@@ -116,6 +124,7 @@ func diffPage(previous, current []string) PageDiff {
 }
 
 // describePageDiff 用 New、Updated、Removed 列出差异。新增最多 8 行，更新和删除最多 4 行，每行最多 160 字节。
+// diff 的 Added 最多列 8 行，Updated 和 Removed 最多列 4 行。
 func describePageDiff(diff PageDiff) string {
 	section := func(title string, lines []string, limit int) []string {
 		if len(lines) == 0 {
@@ -146,6 +155,7 @@ func describePageDiff(diff PageDiff) string {
 }
 
 // countPageDiff 返回新增、更新、删除的行数说明。总数为 0 时返回空串。
+// diff 的 Added、Updated、Removed 长度用来拼说明。三者长度都是 0 时返回空串。
 func countPageDiff(diff PageDiff) string {
 	total := len(diff.Added) + len(diff.Updated) + len(diff.Removed)
 	if total == 0 {

@@ -60,7 +60,7 @@ export function clearSkinTokens() {
   root.style.removeProperty("--font-mono");
 }
 
-/** applySkinPaint 先清掉旧皮肤，再写入令牌、颗粒、玻璃、壁纸、圆角和字体。伴随窗口不上壁纸。证据色默认锁住。 */
+/** applySkinPaint 先清掉旧皮肤，再写入令牌、颗粒、玻璃、壁纸、圆角和字体。伴随窗口不上壁纸。证据色默认锁住。paint 读取 tokens、preserveEvidence、id、materials、wallpaperUrl、fonts 等，传给 persistPaint。 */
 export function applySkinPaint(paint: SkinPaint) {
   const root = rootEl();
   if (!root) return;
@@ -101,14 +101,14 @@ export function applySkinPaint(paint: SkinPaint) {
   if (paint.persist !== false) persistPaint(paint, tokens);
 }
 
-/** 把带 px、rem 或 em 的长度乘上倍率。对不上单位时返回空。 */
+/** 把带 px、rem 或 em 的长度乘上倍率。对不上单位时返回空。v 为假时用空字符串，转成字符串，去掉首尾空白，做匹配。scale 乘以 Number(m[1])。 */
 function scaleDim(v: string, scale: number): string | null {
   const m = String(v || "").trim().match(/^([0-9]*\.?[0-9]+)(px|rem|em)$/);
   if (!m) return null;
   return `${Number(m[1]) * scale}${m[2]}`;
 }
 
-/** 按材质倍率改写圆角令牌。倍率为 1 或无效时不动。 */
+/** 按材质倍率改写圆角令牌。倍率为 1 或无效时不动。tokens 按下标读取。scale 与 1 比较是否相等，为假时走另一支，传给 scaleDim。 */
 function applyRadiusScale(tokens: TokenMap, scale: number) {
   const root = rootEl();
   if (!root || !scale || scale === 1) return;
@@ -121,7 +121,7 @@ function applyRadiusScale(tokens: TokenMap, scale: number) {
   }
 }
 
-/** 只接受皮肤目录里的 YoyoSkinSans 与 YoyoSkinMono，并写成字体面。 */
+/** 只接受皮肤目录里的 YoyoSkinSans 与 YoyoSkinMono，并写成字体面。fonts 为假时改用后备值，做过滤。 */
 function applyFonts(fonts: SkinFontFace[] | undefined) {
   const root = rootEl();
   if (!root) return;
@@ -152,7 +152,7 @@ function applyFonts(fonts: SkinFontFace[] | undefined) {
   }
 }
 
-/** 用户皮肤把令牌、壁纸文件和材质记入本地。证据色锁住时不存那些键。内置或空令牌则清掉这些键。 */
+/** 用户皮肤把令牌、壁纸文件和材质记入本地。证据色锁住时不存那些键。内置或空令牌则清掉这些键。paint 读取 id、preserveEvidence、wallpaperFile、materials。tokens 传给 Object.keys，展开传递。 */
 function persistPaint(paint: SkinPaint, tokens: TokenMap) {
   try {
     if (isUserSkinId(paint.id) && Object.keys(tokens).length) {
@@ -178,7 +178,7 @@ function persistPaint(paint: SkinPaint, tokens: TokenMap) {
   }
 }
 
-/** paintWindowFromTokens 把窗口背景设成令牌里的背景色。伴随窗口保持全透明。没有令牌时用调用方给的回退色。 */
+/** paintWindowFromTokens 把窗口背景设成令牌里的背景色。伴随窗口保持全透明。没有令牌时用调用方给的回退色。tokens 为真时才继续，传给 windowRGBFromTokens。fallbackRGB 作为后备值。 */
 export function paintWindowFromTokens(tokens: TokenMap | null, fallbackRGB: readonly [number, number, number]) {
   import("@wailsio/runtime")
     .then(({ Window }) => {

@@ -26,9 +26,12 @@ func probe() Report {
 }
 
 // assign 在 Linux 上不记录进程，命令是否被 bwrap 包住只由 apply 决定。
+// cmd 本函数不读取。
 func assign(cmd *exec.Cmd) {}
 
 // release 不结束进程。取消时由 WaitNotify 杀掉当前进程。
+// cmd 本函数不读取。
+// kill 本函数不读取。
 func release(cmd *exec.Cmd, kill bool) {}
 
 // apply 在 PATH 上找不到 bwrap 时不改命令。找到时把原参数交给 bwrap，并带上 --die-with-parent 和 --unshare-pid。

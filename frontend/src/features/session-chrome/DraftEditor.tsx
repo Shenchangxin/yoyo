@@ -27,12 +27,12 @@ export type DraftEditorHandle = {
   replaceSlash: () => void;
 };
 
-/** 编辑器还在、且没被销毁，才算能用。 */
+/** 编辑器还在、且没被销毁，才算能用。editor 读取 isDestroyed，为假时走另一支。 */
 function liveEditor(editor: Editor | null): editor is Editor {
   return !!editor && !editor.isDestroyed;
 }
 
-/** 从文档里读出纯文本、芯片和光标。 */
+/** 从文档里读出纯文本、芯片和光标。editor 读取 state，传给 liveEditor，传给 textBeforeCaret。 */
 function snapshotOf(editor: Editor | null): DraftSnapshot {
   if (!liveEditor(editor)) return { text: "", chips: [], caret: 0, before: "" };
   const chips: MentionPin[] = [];
@@ -55,7 +55,8 @@ function snapshotOf(editor: Editor | null): DraftSnapshot {
   return { text: parts.join(""), chips, caret, before: textBeforeCaret(editor) };
 }
 
-/** 把纯文本收成一段一段的文档。 */
+/** 把纯文本收成一段一段的文档。text 按 
+ 切开后，做映射。 */
 function plainToContent(text: string) {
   const lines = text.split("\n");
   return {
@@ -67,13 +68,13 @@ function plainToContent(text: string) {
   };
 }
 
-/** 读出光标前的文本。 */
+/** 读出光标前的文本。editor 读取 state。 */
 function textBeforeCaret(editor: Editor): string {
   const { from } = editor.state.selection;
   return editor.state.doc.textBetween(0, from, "\n", " ");
 }
 
-/** DraftEditor 编辑草稿，并把快照交给外面。 */
+/** DraftEditor 编辑草稿，并把快照交给外面。props 读取 placeholder、onSnapshot、onCaret、onPasteFiles、draftKey、onKeyDown 等，传给 editorAttrs。ref 传给 useImperativeHandle。 */
 export const DraftEditor = forwardRef<DraftEditorHandle, {
   draftKey: string;
   disabled?: boolean;
@@ -129,7 +130,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     editable: !props.disabled,
     editorProps: {
       attributes: editorAttrs(props),
-      /** 剪贴板里有文件就交给粘贴回调，并拦住默认粘贴。 */
+      /** 剪贴板里有文件就交给粘贴回调，并拦住默认粘贴。_view 函数体内没有读取。event 传给 filesFromClipboard。 */
       handlePaste: (_view, event) => {
         const files = filesFromClipboard(event);
         if (files.length && onPasteRef.current) {
@@ -138,7 +139,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
         }
         return false;
       },
-      /** 先交给外面的按键回调，再处理芯片上的选择键。 */
+      /** 先交给外面的按键回调，再处理芯片上的选择键。_view 函数体内没有读取。event 传给 onKeyDownRef.current，传给 handleChipSelection。 */
       handleKeyDown: (_view, event) => {
         const ed = editorHolder.current;
         if (!liveEditor(ed)) return false;
@@ -146,7 +147,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
         return handleChipSelection(ed, event);
       },
     },
-    /** 编辑器建好后记下实例，并同步是不是空的。 */
+    /** 编辑器建好后记下实例，并同步是不是空的。ed 读取 isEmpty，赋给 editorHolder.current。 */
     onCreate: ({ editor: ed }) => {
       editorHolder.current = ed;
       setEmpty(ed.isEmpty);
@@ -155,13 +156,13 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
     onDestroy: () => {
       editorHolder.current = null;
     },
-    /** 正文变了就更新空态，并在不是内部改写时交回快照。 */
+    /** 正文变了就更新空态，并在不是内部改写时交回快照。ed 读取 isEmpty，传给 snapshotOf。 */
     onUpdate: ({ editor: ed }) => {
       setEmpty(ed.isEmpty);
       if (skipUpdate.current) return;
       onSnapshotRef.current(snapshotOf(ed));
     },
-    /** 选区变了，且不是内部改写时，交回光标位置。 */
+    /** 选区变了，且不是内部改写时，交回光标位置。ed 传给 snapshotOf。 */
     onSelectionUpdate: ({ editor: ed }) => {
       if (skipUpdate.current) return;
       onCaretRef.current?.(snapshotOf(ed));
@@ -208,17 +209,17 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   }, [editor, props.ariaLabel, props.testId, props.workspaceTrigger, props.pickerOpen]);
 
   useImperativeHandle(ref, () => ({
-    /** 插入一枚提及芯片。 */
+    /** 插入一枚提及芯片。pin 传给 insertMentionChip。 */
     insertChip: (pin) => {
       if (!liveEditor(editor)) return;
       editor.chain().focus().insertMentionChip(pin).run();
     },
-    /** 在光标处插入文本。 */
+    /** 在光标处插入文本。text 传给 insertContent。 */
     insertText: (text) => {
       if (!liveEditor(editor)) return;
       editor.chain().focus().insertContent(text).run();
     },
-    /** 用纯文本换掉全文；编辑器还没好就先记下。 */
+    /** 用纯文本换掉全文；编辑器还没好就先记下。text 去掉首尾空白，为假时走另一支，赋给 pendingPlain.current，传给 plainToContent。 */
     setPlain: (text) => {
       if (!liveEditor(editor)) {
         pendingPlain.current = text;
@@ -241,7 +242,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       const text = pendingPlain.current ?? "";
       return { text, chips: [], caret: text.length, before: text };
     },
-    /** 把光标前的提及换成芯片，没有就直接插入。 */
+    /** 把光标前的提及换成芯片，没有就直接插入。pin 传给 insertMentionChip。 */
     replaceMention: (pin) => {
       if (!liveEditor(editor)) return;
       const token = activeAtTail(textBeforeCaret(editor));
@@ -253,7 +254,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
       const to = editor.state.selection.from;
       editor.chain().focus().deleteRange({ from, to }).insertMentionChip(pin).run();
     },
-    /** 把光标前的触发词换成文本，没有就直接插入。 */
+    /** 把光标前的触发词换成文本，没有就直接插入。text 传给 insertContent。 */
     replaceTrigger: (text) => {
       if (!liveEditor(editor)) return;
       const token = activeAtTail(textBeforeCaret(editor));
@@ -292,7 +293,7 @@ export const DraftEditor = forwardRef<DraftEditorHandle, {
   );
 });
 
-/** 拼出输入框的无障碍属性和测试标记。 */
+/** 拼出输入框的无障碍属性和测试标记。props 读取 ariaLabel、testId、workspaceTrigger、pickerOpen。 */
 function editorAttrs(props: {
   ariaLabel: string;
   testId?: string;
@@ -313,7 +314,7 @@ function editorAttrs(props: {
 
 const PASSIVE_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "Unidentified", "Process"]);
 
-/** 退格或删除先选中旁边的芯片，再按一次才删掉。 */
+/** 退格或删除先选中旁边的芯片，再按一次才删掉。editor 读取 state、view，调用 chain，传给 clearChipSelected。event 读取 key。 */
 function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
   if (event.key !== "Backspace" && event.key !== "Delete") {
     if (!PASSIVE_KEYS.has(event.key) && event.key.length) clearChipSelected(editor);
@@ -344,13 +345,13 @@ function handleChipSelection(editor: Editor, event: KeyboardEvent): boolean {
   return true;
 }
 
-/** 清掉芯片的选中标记。 */
+/** 清掉芯片的选中标记。editor 读取 view。 */
 function clearChipSelected(editor: Editor) {
   editor.view.dom.removeAttribute("data-composer-chip-selected");
   editor.view.dom.querySelectorAll("[data-mention-chip][data-selected]").forEach((n) => n.removeAttribute("data-selected"));
 }
 
-/** 从剪贴板里取出文件。 */
+/** 从剪贴板里取出文件。e 读取 clipboardData。 */
 function filesFromClipboard(e: ClipboardEvent): File[] {
   const files: File[] = [];
   const items = e.clipboardData?.items;

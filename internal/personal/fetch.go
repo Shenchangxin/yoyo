@@ -18,6 +18,8 @@ import (
 const fetchUA = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
 
 // SafeGET 只接受带主机名的 http 或 https。blockedHost 为真时返回错误。超时 15 秒，最多读 256 KiB。状态码大于等于 400 时返回错误。
+// ctx 为 nil 时改用 Background，再套上 15 秒超时，传给 http.NewRequestWithContext。
+// rawURL 交给 url.Parse。协议不是 http 或 https，或 Host 为空时返回错误。
 func SafeGET(ctx context.Context, rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -74,6 +76,7 @@ func blockedHost(host string) bool {
 }
 
 // blockedIP 在地址是回环、私网、链路本地单播、链路本地多播或未指定地址时返回真。
+// ip 在 IsLoopback、IsPrivate、IsLinkLocalUnicast、IsLinkLocalMulticast 或 IsUnspecified 任一为真时返回 true。
 func blockedIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }

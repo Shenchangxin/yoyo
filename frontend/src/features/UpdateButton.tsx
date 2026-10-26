@@ -21,12 +21,12 @@ type UpdateSnap = {
   manifest?: { version?: string };
 };
 
-// 从快照的 manifest.version 取版本，没有就是空字符串。
+/** versionOf 从快照的 manifest.version 取版本，没有就是空字符串。s 读取 manifest，为空时不读。 */
 function versionOf(s: UpdateSnap | null): string {
   return String(s?.manifest?.version || "").trim();
 }
 
-// phase 为 ready 或 applying，或者已经 downloaded，才显示按钮。没有快照不显示。
+/** visible phase 为 ready 或 applying，或者已经 downloaded，才显示按钮。没有快照不显示。s 为假时返回假。 */
 function visible(s: UpdateSnap | null): boolean {
   if (!s) return false;
   const phase = String(s.phase || "idle");

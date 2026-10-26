@@ -22,11 +22,13 @@ type cdpTarget struct {
 }
 
 // pageWS 返回一个 page 目标的 WebSocket，不指定想要的地址。
+// addr 传给 pageWSPrefer，第二个参数是空字符串。
 func pageWS(addr string) (string, error) {
 	return pageWSPrefer(addr, "")
 }
 
 // pageWSPrefer 在 page 目标里挑 WebSocket。want 非空且不是空白页时，URL 相同、有该前缀或 sameDocumentURL 对上就用它。否则优先 http、https、file，再 about，最后任意 page。只要指定页却没有时返回 wanted page。
+// addr 传给 listCDPTargets。
 func pageWSPrefer(addr, want string) (string, error) {
 	tabs, err := listCDPTargets(addr)
 	if err != nil {
@@ -72,6 +74,8 @@ func pageWSPrefer(addr, want string) (string, error) {
 }
 
 // waitDebugPageWS 在截止时间前等一个 page 的 WebSocket。want 非空时先用最多 1.5 秒专等那个地址，然后再退到 debugWS。
+// addr 传给 pageWSPrefer 和 debugWS。
+// deadline 限定整段等待。专等 want 的上限是现在起 1500 毫秒，晚于 deadline 时改用 deadline。
 func waitDebugPageWS(addr, want string, deadline time.Time) (string, error) {
 	preferUntil := time.Now().Add(1500 * time.Millisecond)
 	if preferUntil.After(deadline) {
@@ -103,6 +107,7 @@ func waitDebugPageWS(addr, want string, deadline time.Time) (string, error) {
 }
 
 // listCDPTargets 先试 /json/list，失败再试 /json。
+// addr 依次配 /json/list 和 /json 传给 fetchCDPTargets。
 func listCDPTargets(addr string) ([]cdpTarget, error) {
 	var last error
 	for _, path := range []string{"/json/list", "/json"} {
@@ -119,6 +124,8 @@ func listCDPTargets(addr string) ([]cdpTarget, error) {
 }
 
 // fetchCDPTargets 用 800 毫秒超时 GET 指定路径并解码目标列表。状态码大于等于 300 时返回错误。
+// addr 拼进请求地址，形式是 http:// 加 addr 加 path。
+// path 接在 addr 后面。状态码大于等于 300 时错误文案带上 path 和状态文本。
 func fetchCDPTargets(addr, path string) ([]cdpTarget, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
@@ -142,6 +149,7 @@ func fetchCDPTargets(addr, path string) ([]cdpTarget, error) {
 }
 
 // chromeDebugUp 在 150 毫秒内请求 /json/version，状态码小于 300 则认为调试端口在听。
+// addr 拼成 http:// 加 addr 加 /json/version，在 150 毫秒内 GET。状态码小于 300 时返回真。
 func chromeDebugUp(addr string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
@@ -158,6 +166,7 @@ func chromeDebugUp(addr string) bool {
 }
 
 // debugWS 先要一个 page 的 WebSocket，没有再退到 /json/version 里的浏览器级地址。
+// addr 先传给 pageWS。没有得到非空 WebSocket 时再传给 versionWS。
 func debugWS(addr string) (string, error) {
 	if ws, err := pageWS(addr); err == nil && ws != "" {
 		return ws, nil

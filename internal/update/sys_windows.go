@@ -86,6 +86,7 @@ func startElevatedApply(exe, spec string) error {
 }
 
 // waitForPID 在 pid 小于等于 0 时睡 3 秒。否则打开进程并 WaitForSingleObject，时限至少 3 秒。打开失败则直接返回。
+// timeout 在 pid 大于 0 且进程打开成功时换成毫秒，结果为 0 则用 3000，交给 WaitForSingleObject。
 func waitForPID(pid int, timeout time.Duration) {
 	if pid <= 0 {
 		time.Sleep(3 * time.Second)
@@ -104,6 +105,8 @@ func waitForPID(pid int, timeout time.Duration) {
 }
 
 // runNSISInstaller 隐藏启动安装器，命令行来自 nsisCmdLine，等待结束后再 launchInstalledYoyo。
+// installer 作为命令，并交给 nsisCmdLine。
+// destDir 交给 nsisCmdLine，安装结束后交给 launchInstalledYoyo。
 func runNSISInstaller(installer, destDir string) error {
 	cmd := exec.Command(installer)
 	cmd.SysProcAttr = &syscall.SysProcAttr{

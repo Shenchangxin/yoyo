@@ -15,7 +15,7 @@ const SLACK_MS = 1;
 export class FrameGate {
   private due = Number.NEGATIVE_INFINITY;
 
-  /** shouldDraw 未到点则拒绝。到点后把下一次到期推后一帧，已经落后则从现在重算。 */
+  /** shouldDraw 未到点则拒绝。到点后把下一次到期推后一帧，已经落后则从现在重算。now 小于 this.due - SLACK_MS，小于 next。 */
   shouldDraw(now: number): boolean {
     if (now < this.due - SLACK_MS) return false;
     const next = this.due + FRAME_MS;
@@ -24,7 +24,7 @@ export class FrameGate {
   }
 }
 
-/** pixelRatio 在设备像素比无效时用 1，否则不超过上限。 */
+/** pixelRatio 在设备像素比无效时用 1，否则不超过上限。devicePixelRatio 大于 0，传给 Math.min。max 传给 Math.min。 */
 export function pixelRatio(devicePixelRatio: number, max = MAX_PIXEL_RATIO): number {
   if (!(devicePixelRatio > 0)) return 1;
   return Math.min(devicePixelRatio, max);

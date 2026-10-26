@@ -14,6 +14,7 @@ import (
 var htmlCloseTag = regexp.MustCompile(`(?i)</html\s*>`)
 
 // isHTMLDocPath 判断路径扩展名是不是 .html 或 .htm。
+// rel 取扩展名并转小写，是 .html 或 .htm 时返回 true。
 func isHTMLDocPath(rel string) bool {
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".html", ".htm":
@@ -24,6 +25,7 @@ func isHTMLDocPath(rel string) bool {
 }
 
 // htmlTailAfterClose 返回最后一个 </html> 之后的非空白文本，没有则返回空串。那里的文字在文档外面：浏览器把它渲染在页面之后，下一段追加也会落在它后面。
+// doc 查找全部结束标签，没有则返回空串，否则返回最后一处之后去掉空白的文本。
 func htmlTailAfterClose(doc string) string {
 	locs := htmlCloseTag.FindAllStringIndex(doc, -1)
 	if len(locs) == 0 {
@@ -33,6 +35,7 @@ func htmlTailAfterClose(doc string) string {
 }
 
 // htmlTailSnippet 把散落尾巴收成一行，超过 80 个符文则截断，供错误信息使用。
+// tail 压成一行，超过 80 个符文则截断。
 func htmlTailSnippet(tail string) string {
 	r := []rune(strings.Join(strings.Fields(tail), " "))
 	if len(r) > 80 {
@@ -42,6 +45,8 @@ func htmlTailSnippet(tail string) string {
 }
 
 // 分段重写 HTML 曾反复提前结束文档：一段以 </script></body></html> 开头，下一段就变成页面之后的文字。页面会静默坏掉，而代理自己后来的检查仍能在残骸上通过。追加若会把文字留在 </html> 之后则拒绝；覆盖允许，只给警告。
+// rel 先交给 isHTMLDocPath，不是 HTML 时返回空串，否则写进拒绝句。
+// want 交给 htmlTailAfterClose，尾巴为空时返回空串。
 func htmlAppendRefusal(rel, want string) string {
 	if !isHTMLDocPath(rel) {
 		return ""
@@ -56,6 +61,7 @@ func htmlAppendRefusal(rel, want string) string {
 
 // sealedGameWorldWrite 拒绝改写残留的 game-world 可玩文件，使代理不能重写封存的 HTML 或 runtime.js。
 // 路径里要有 game-worlds。其下直接的 index.html，以及 playable 里的 runtime.js、index.html、game.json，被拒绝。
+// rel 转成斜杠后按段查找 game-worlds，再看其后的 index.html 或 playable 下的指定文件。
 func sealedGameWorldWrite(rel string) error {
 	slash := filepath.ToSlash(rel)
 	parts := strings.Split(slash, "/")
@@ -84,6 +90,8 @@ func sealedGameWorldWrite(rel string) error {
 }
 
 // htmlOverwriteWarning 在写好的 HTML 于 </html> 之后还有文字时返回警告，文档干净结束则返回空串。
+// rel 先交给 isHTMLDocPath，不是 HTML 时返回空串，否则写进警告句。
+// want 交给 htmlTailAfterClose，尾巴为空时返回空串。
 func htmlOverwriteWarning(rel, want string) string {
 	if !isHTMLDocPath(rel) {
 		return ""

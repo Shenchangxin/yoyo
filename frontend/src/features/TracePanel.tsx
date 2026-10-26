@@ -13,7 +13,10 @@ import { cn } from "../lib/utils";
 // 过滤：全部、执行、对话、记忆、错误。
 type Filter = "all" | "exec" | "dialog" | "memory" | "error";
 
-// TracePanel 没有 sessionId 时只显示无会话。错误过滤包含 lane 为 error 或自身带 error 的事件。复制勾保持 1200 毫秒。正在加载的溢出不再重复请求。
+/**
+ * TracePanel 没有 sessionId 时只显示无会话。错误过滤包含 lane 为 error 或自身带 error 的事件。复制勾保持 1200 毫秒。正在加载的溢出不再重复请求。
+ * props 读取 trace、sessionId、running、onRefresh，调用 onLoadSpill。
+ */
 export function TracePanel(props: {
   sessionId: string;
   running?: boolean;
@@ -223,7 +226,7 @@ export function TracePanel(props: {
   );
 }
 
-// 最小高度 8rem。有图标时放在标题上面。
+/** Empty 最小高度 8rem。有图标时放在标题上面。title 作为子节点渲染。icon 为真时才继续，作为子节点渲染。 */
 function Empty({ title, icon }: { title: string; icon?: ReactNode }) {
   return (
     <div className="flex min-h-[8rem] flex-col items-center justify-center px-6 text-center">
@@ -238,7 +241,7 @@ function Dot() {
   return <span className="text-muted/40" aria-hidden>·</span>;
 }
 
-// 数值在前，标签转成小写跟在后面。没传标签就只显示数值。
+/** Stat 数值在前，标签转成小写跟在后面。没传标签就只显示数值。props 读取 tone、value、label。 */
 function Stat(props: { value: string; label?: string; tone?: string }) {
   return (
     <div className="flex items-baseline gap-1">
@@ -248,7 +251,7 @@ function Stat(props: { value: string; label?: string; tone?: string }) {
   );
 }
 
-// 已复制时换成勾和已复制文案。
+/** CopyButton 已复制时换成勾和已复制文案。copied 为真时才继续，写到 IconSwap 的 on。onClick 写到 button 的 onClick。 */
 function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void }) {
   const copy = useCopy();
   return (
@@ -268,7 +271,7 @@ function CopyButton({ copied, onClick }: { copied: boolean; onClick: () => void 
   );
 }
 
-// 最高 56。tone 为 fg 时用前景色，否则用弱色。
+/** Surface 最高 56。tone 为 fg 时用前景色，否则用弱色。children 作为子节点渲染。 */
 function Surface({ children, tone }: { children: ReactNode; tone?: "fg" }) {
   return (
     <pre
@@ -282,7 +285,7 @@ function Surface({ children, tone }: { children: ReactNode; tone?: "fg" }) {
   );
 }
 
-// 字节为 0 时不显示大小。loading 和 error 只显示占位。溢出还没载入时提示可以载入。
+/** ArtifactRow 字节为 0 时不显示大小。loading 和 error 只显示占位。溢出还没载入时提示可以载入。props 读取 art、open、onOpen、blob、copied，调用 onCopy。 */
 function ArtifactRow(props: {
   art: TraceArtifact;
   blob?: SpillBlob | "loading" | "error";
@@ -331,7 +334,7 @@ function ArtifactRow(props: {
   );
 }
 
-// 有 detail 才画正文。带 spillId 且传入了加载函数时才显示载入按钮。
+/** EventDetail 有 detail 才画正文。带 spillId 且传入了加载函数时才显示载入按钮。props 读取 ev、copied、onCopy、onLoadSpill、blob。 */
 function EventDetail(props: {
   ev: TraceEvent;
   blob?: SpillBlob | "loading" | "error";
@@ -371,12 +374,12 @@ function EventDetail(props: {
   );
 }
 
-// 用序号、类型和 id 拼成这一行的键。
+/** eventKey 用序号、类型和 id 拼成这一行的键。ev 读取 index、type、id。 */
 function eventKey(ev: TraceEvent) {
   return `${ev.index}:${ev.type}:${ev.id}`;
 }
 
-// 空时间或以 0001- 开头，或解析失败，返回空字符串。用 24 小时制显示到秒。
+/** formatTime 空时间或以 0001- 开头，或解析失败，返回空字符串。用 24 小时制显示到秒。ts 看开头，为假时走另一支，传给 Date。 */
 function formatTime(ts: string) {
   if (!ts || ts.startsWith("0001-")) return "";
   const d = new Date(ts);
@@ -384,7 +387,7 @@ function formatTime(ts: string) {
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
-// 不大于 0 显示 0ms。小于 1000 用毫秒。小于 60000 用秒，其中小于 10000 保留一位小数。再长用分和秒。
+/** formatDuration 不大于 0 显示 0ms。小于 1000 用毫秒。小于 60000 用秒，其中小于 10000 保留一位小数。再长用分和秒。ms 小于等于 0，小于 1000，拼进字符串。 */
 function formatDuration(ms: number) {
   if (ms <= 0) return "0ms";
   if (ms < 1000) return `${ms}ms`;
@@ -394,7 +397,7 @@ function formatDuration(ms: number) {
   return `${m}m ${s}s`;
 }
 
-// 0 显示 0 B。小于 1024 用字节。小于 1MB 用 KB，其中小于 10KB 保留一位小数。再大用 MB，保留一位小数。
+/** formatBytes 0 显示 0 B。小于 1024 用字节。小于 1MB 用 KB，其中小于 10KB 保留一位小数。再大用 MB，保留一位小数。n 为假时返回 0 B；小于 1024，小于 1024 * 1024，拼进字符串。 */
 function formatBytes(n: number) {
   if (!n) return "0 B";
   if (n < 1024) return `${n} B`;

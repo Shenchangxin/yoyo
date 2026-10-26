@@ -35,7 +35,10 @@ function SkillsLoading() {
   );
 }
 
-/** SkillsWorkspace 页签跟 store 里的 skillsTab 走。换源站时清掉条目、分类、警告和来源。远程搜索有查询时延迟 400 毫秒再拉，否则立刻拉。新目录没有 hubs 时保留上一份。 */
+/**
+ * SkillsWorkspace 页签跟 store 里的 skillsTab 走。换源站时清掉条目、分类、警告和来源。远程搜索有查询时延迟 400 毫秒再拉，否则立刻拉。新目录没有 hubs 时保留上一份。
+ * props 读取 workspace、installed、loaded，调用 onRefreshInstalled。
+ */
 export function SkillsWorkspace(props: {
   installed: SkillInfo[];
   loaded: string[];
@@ -59,7 +62,7 @@ export function SkillsWorkspace(props: {
 
   useEffect(() => { setPane(skillsTab); }, [skillsTab]);
 
-  /** refresh 为真时强制刷新。hubs 为空则沿用上一份。 */
+  /** refresh 为真时强制刷新。hubs 为空则沿用上一份。nextHub 传给 api.skillMarket。nextQ 传给 api.skillMarket。 */
   const loadMarket = (refresh = false, nextHub = hub, nextQ = "") => {
     setErr("");
     setLoading(true);
@@ -142,7 +145,7 @@ export function SkillsWorkspace(props: {
     return [...map.entries()];
   }, [filtered, copy.skills.market]);
 
-  /** 有 warning 时提示不完整，修复成功另提示。失败只记下 err。 */
+  /** 有 warning 时提示不完整，修复成功另提示。失败只记下 err。id 传给 setBusy，传给 api.installMarketSkill。repairing 为真时才继续。 */
   async function install(id: string, repairing = false) {
     setBusy(id);
     setErr("");
@@ -158,7 +161,7 @@ export function SkillsWorkspace(props: {
     }
   }
 
-  /** 卸掉市场技能后刷新已装列表。 */
+  /** 卸掉市场技能后刷新已装列表。slug 传给 setBusy，传给 api.uninstallMarketSkill。 */
   async function uninstall(slug: string) {
     setBusy(slug);
     setErr("");
@@ -172,13 +175,13 @@ export function SkillsWorkspace(props: {
     }
   }
 
-  /** 本页和 store 一起换页签。 */
+  /** 本页和 store 一起换页签。id 传给 setPane，传给 setSkillsTab。 */
   function selectPane(id: Pane) {
     setPane(id);
     setSkillsTab(id);
   }
 
-  /** path 为空走默认安装，非空走本地路径。成功后刷新包和已装技能。 */
+  /** path 为空走默认安装，非空走本地路径。成功后刷新包和已装技能。id 传给 setBusy，传给 api.installPack。 */
   async function installKnownPack(id: string, path = "") {
     setBusy(id);
     setErr("");
@@ -194,7 +197,7 @@ export function SkillsWorkspace(props: {
     }
   }
 
-  /** 卸掉技能包后刷新包和已装技能。 */
+  /** 卸掉技能包后刷新包和已装技能。id 传给 setBusy，传给 api.uninstallPack。 */
   async function uninstallKnownPack(id: string) {
     setBusy(id);
     setErr("");
@@ -347,7 +350,7 @@ export function SkillsWorkspace(props: {
   );
 }
 
-/** 没有技能时显示空状态。修复按钮只给来源是 market 且不完整的技能。卸载也只给 market。检查来回切换同一条。 */
+/** 没有技能时显示空状态。修复按钮只给来源是 market 且不完整的技能。卸载也只给 market。检查来回切换同一条。props 读取 skills、loaded、open、busy，调用 onRepair，调用 onOpen，调用 onUninstall。 */
 function InstalledList(props: {
   skills: SkillInfo[];
   loaded: Set<string>;
@@ -428,7 +431,10 @@ function InstalledList(props: {
   );
 }
 
-/** 加载中且还没有分组时显示加载。searchOnly 优先于空市场。精选只在没有查询、没有分类且有精选时出现。分类芯片要多于 1 个才画。total 大于 shown 时用带总数的文案，truncated 再加省略号。 */
+/**
+ * 加载中且还没有分组时显示加载。searchOnly 优先于空市场。精选只在没有查询、没有分类且有精选时出现。分类芯片要多于 1 个才画。total 大于 shown 时用带总数的文案，truncated 再加省略号。
+ * props 读取 grouped、total、shown、hubs、hub、truncated 等，调用 onHub，调用 onCat。
+ */
 function MarketList(props: {
   featured: api.SkillMarketItem[];
   grouped: [string, api.SkillMarketItem[]][];
@@ -533,7 +539,7 @@ function MarketList(props: {
   );
 }
 
-/** 不完整时显示修复，已装时只显示徽章，否则显示安装。前提是「无」或空时不画。 */
+/** 不完整时显示修复，已装时只显示徽章，否则显示安装。前提是「无」或空时不画。props 读取 item、className、incomplete、busy、installed，调用 onInstall。 */
 function MarketRow(props: {
   item: api.SkillMarketItem;
   installed: boolean;
@@ -582,7 +588,7 @@ function MarketRow(props: {
   );
 }
 
-/** 图标加载失败就改用首字母。图片不发送 referrer。 */
+/** 图标加载失败就改用首字母。图片不发送 referrer。props 读取 icon、name。 */
 function SkillAvatar(props: { name: string; icon?: string }) {
   const [failed, setFailed] = useState(false);
   const showImg = Boolean(props.icon) && !failed;
@@ -606,7 +612,7 @@ function SkillAvatar(props: { name: string; icon?: string }) {
   );
 }
 
-/** 空名字用 S。一个词取前两个字符。多个词取前两个词的首字母。 */
+/** 空名字用 S。一个词取前两个字符。多个词取前两个词的首字母。name 去掉首尾空白，切开。 */
 function skillInitials(name: string): string {
   const parts = name.trim().split(/[\s/_-]+/).filter(Boolean);
   if (!parts.length) return "S";
@@ -614,7 +620,7 @@ function skillInitials(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-/** 有 slug 用 slug。否则用目录最后一段，再没有用 name。 */
+/** 有 slug 用 slug。否则用目录最后一段，再没有用 name。s 读取 slug、dir、name。 */
 function packSlug(s: SkillInfo): string {
   if (s.slug) return s.slug;
   if (s.dir) {
@@ -624,12 +630,12 @@ function packSlug(s: SkillInfo): string {
   return s.name;
 }
 
-/** 有 installId 用它，否则用 packSlug。 */
+/** 有 installId 用它，否则用 packSlug。s 读取 installId，传给 packSlug。 */
 function packInstallKey(s: SkillInfo): string {
   return s.installId || packSlug(s);
 }
 
-/** 优先 id。否则 hub、owner 和 slug 都在时拼成 hub:owner/slug。只有 hub 和 slug 时拼成 hub:slug。最后退回 slug。 */
+/** 优先 id。否则 hub、owner 和 slug 都在时拼成 hub:owner/slug。只有 hub 和 slug 时拼成 hub:slug。最后退回 slug。it 读取 id、hub、owner、slug。 */
 function itemInstallID(it: api.SkillMarketItem): string {
   if (it.id) return it.id;
   if (it.hub && it.owner && it.slug) return `${it.hub}:${it.owner}/${it.slug}`;
@@ -637,21 +643,21 @@ function itemInstallID(it: api.SkillMarketItem): string {
   return it.slug;
 }
 
-/** 安装 id 命中，或 slug、name 命中已装名字，算已装。 */
+/** 安装 id 命中，或 slug、name 命中已装名字，算已装。it 读取 slug、name，传给 itemInstallID。names 调用 has。ids 调用 has。 */
 function itemInstalled(it: api.SkillMarketItem, names: Set<string>, ids: Set<string>): boolean {
   const id = itemInstallID(it);
   if (id && ids.has(id)) return true;
   return names.has(it.slug) || names.has(it.name);
 }
 
-/** 安装 id、slug 或 name 落在不完整集合里就算不完整。 */
+/** 安装 id、slug 或 name 落在不完整集合里就算不完整。it 读取 slug、name，传给 itemInstallID。incomplete 调用 has。 */
 function itemIncomplete(it: api.SkillMarketItem, incomplete: Set<string>): boolean {
   const id = itemInstallID(it);
   if (id && incomplete.has(id)) return true;
   return incomplete.has(it.slug) || incomplete.has(it.name);
 }
 
-/** 按下状态跟 on 走。开着时有边框和抬起底。 */
+/** 按下状态跟 on 走。开着时有边框和抬起底。props 读取 title、on、onClick、children。 */
 function Chip(props: { on: boolean; onClick: () => void; children: string; title?: string }) {
   return (
     <button
@@ -669,7 +675,7 @@ function Chip(props: { on: boolean; onClick: () => void; children: string; title
   );
 }
 
-/** bundled、home、workspace、market、pack 各有文案，其余当 cas。 */
+/** bundled、home、workspace、market、pack 各有文案，其余当 cas。source 与 bundled、home、workspace、market、pack 比较是否相等。copy 读取 skills。 */
 function sourceLabel(source: string, copy: Copy): string {
   if (source === "bundled") return copy.skills.bundled;
   if (source === "home") return copy.skills.home;
@@ -679,7 +685,10 @@ function sourceLabel(source: string, copy: Copy): string {
   return copy.skills.cas;
 }
 
-/** 加载中且没有包时显示加载。本地安装只在选到文件夹后才调用。工作区开关看 enabled，全局开关看 enableGlobal。inherit 按钮只在 enableWorkspace 不是 null 时出现，并传入 enabled 为真。 */
+/**
+ * 加载中且没有包时显示加载。本地安装只在选到文件夹后才调用。工作区开关看 enabled，全局开关看 enableGlobal。inherit 按钮只在 enableWorkspace 不是 null 时出现，并传入 enabled 为真。
+ * props 读取 loading、packs、busy，调用 onInstall，调用 onEnable，调用 onUpdate，调用 onUninstall。
+ */
 function PacksList(props: {
   packs: PackStatus[];
   loading: boolean;

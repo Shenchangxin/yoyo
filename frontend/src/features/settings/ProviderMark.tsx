@@ -127,7 +127,7 @@ const MARK: Record<string, Mark> = {
   custom: { Icon: CustomGlyph, bg: "#52525B", fg: "#fff", scale: 0.7 },
 };
 
-/** ProviderMark 按服务商编号画出图标。 */
+/** ProviderMark 按服务商编号画出图标。id 传给 resolveProviderId。className 传给 cn。 */
 export function ProviderMark({ id, className }: { id: string; className?: string }) {
   const key = resolveProviderId(id);
   const mark = MARK[key] || MARK.custom;
@@ -158,20 +158,20 @@ export function ProviderMark({ id, className }: { id: string; className?: string
   );
 }
 
-/** resolveProviderId 把别名收成图标表里的编号，没有就用 custom。 */
+/** resolveProviderId 把别名收成图标表里的编号，没有就用 custom。id 为假时用空字符串，去掉首尾空白，转成小写，做替换。 */
 export function resolveProviderId(id: string): string {
   const raw = (id || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
   if (!raw) return "custom";
   return ALIAS[raw] || (MARK[raw] ? raw : "custom");
 }
 
-/** 背景是不是浅色。 */
+/** 背景是不是浅色。bg 去掉首尾空白，转成小写后，与 #fff、#ffffff、white 比较是否相等。 */
 function isLightFill(bg: string): boolean {
   const s = bg.trim().toLowerCase();
   return s === "#fff" || s === "#ffffff" || s === "white";
 }
 
-/** 画 CAS 的图标。 */
+/** 画 CAS 的图标。size 写到 svg 的 width。color 写到 path 的 stroke。rest 展开到 svg。 */
 function CasGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -181,7 +181,7 @@ function CasGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SV
   );
 }
 
-/** 画搜索的图标。 */
+/** 画搜索的图标。size 写到 svg 的 width。color 写到 circle 的 stroke。rest 展开到 svg。 */
 function SearchGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -191,7 +191,7 @@ function SearchGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
-/** 画 OpenTelemetry 的图标。 */
+/** 画 OpenTelemetry 的图标。size 写到 svg 的 width。color 写到 svg 的 fill。rest 展开到 svg。 */
 function OtelGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
@@ -201,7 +201,7 @@ function OtelGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<S
   );
 }
 
-/** 画自定义服务的图标。 */
+/** 画自定义服务的图标。size 写到 svg 的 width。color 写到 path 的 stroke。rest 展开到 svg。 */
 function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -211,7 +211,7 @@ function CustomGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
-/** 画 Pexels 的图标。 */
+/** 画 Pexels 的图标。size 写到 svg 的 width。color 写到 rect 的 stroke。rest 展开到 svg。 */
 function PexelsGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -221,7 +221,7 @@ function PexelsGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps
   );
 }
 
-/** 画 Pixabay 的图标。 */
+/** 画 Pixabay 的图标。size 写到 svg 的 width。color 写到 path 的 stroke。rest 展开到 svg。 */
 function PixabayGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -230,7 +230,7 @@ function PixabayGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProp
   );
 }
 
-/** 画 Unsplash 的图标。 */
+/** 画 Unsplash 的图标。size 写到 svg 的 width。color 写到 svg 的 fill。rest 展开到 svg。 */
 function UnsplashGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill={color} {...rest}>
@@ -239,7 +239,7 @@ function UnsplashGlyph({ size = "1em", color = "currentColor", ...rest }: SVGPro
   );
 }
 
-/** 画 Giphy 的图标。 */
+/** 画 Giphy 的图标。size 写到 svg 的 width。color 写到 path 的 fill。rest 展开到 svg。 */
 function GiphyGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>
@@ -248,7 +248,7 @@ function GiphyGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<
   );
 }
 
-/** 画 Deepgram 的图标。 */
+/** 画 Deepgram 的图标。size 写到 svg 的 width。color 写到 path 的 stroke。rest 展开到 svg。 */
 function DeepgramGlyph({ size = "1em", color = "currentColor", ...rest }: SVGProps<SVGSVGElement> & { size?: number | string }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="none" {...rest}>

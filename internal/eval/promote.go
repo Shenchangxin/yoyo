@@ -19,8 +19,11 @@ type Metrics struct {
 }
 
 // Promote 先看候选的 SafetyFail。大于 0 时返回假，原因是 safety suite failed。然后再调用 ShouldPromote；不通过时原因是 non-regression gate rejected，通过时原因是 accepted。
+// base 的 HeldInPass 和 HeldOutPass 交给 ShouldPromote；本函数不读 base.SafetyFail。
+// cand 先看 SafetyFail，大于 0 时返回假和 safety suite failed；否则把 HeldInPass、HeldOutPass 交给 ShouldPromote。
 func Promote(base, cand Metrics) (bool, string) {
 	if cand.SafetyFail > 0 {
+		// 安全失败先拒绝。ShouldPromote 看不见这个字段，两边通过数再好也不晋升。
 		return false, "safety suite failed"
 	}
 	if !ShouldPromote(base.HeldInPass, base.HeldOutPass, cand.HeldInPass, cand.HeldOutPass) {

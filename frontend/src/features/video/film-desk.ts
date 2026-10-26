@@ -40,9 +40,9 @@ type FilmDeskState = {
 };
 
 /** useFilmDesk 保存当前成片工程。没有 id 的对象会被记成空。 */
-export const useFilmDesk = create<FilmDeskState>((set) => ({
+export const useFilmDesk = create<FilmDeskState>(/** set 写入或清掉当前工程。 */ (set) => ({
   project: null,
-  /** 写入工程；没有 id 时记成空。 */
+  /** 写入工程；没有 id 时记成空。project 有 id 才写入，否则记成空。 */
   setProject: (project) => set({ project: project?.id ? project : null }),
   /** 丢掉本地工程指针。 */
   clear: () => set({ project: null }),

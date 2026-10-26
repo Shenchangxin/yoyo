@@ -52,6 +52,7 @@ type cdpReply struct {
 }
 
 // newCDPConn 建一条连接并启动 readLoop。下一个 id 从 1 开始。
+// ws 存进连接，readLoop 用它读 JSON。
 func newCDPConn(ws *websocket.Conn) *cdpConn {
 	c := &cdpConn{
 		ws:      ws,
@@ -108,6 +109,7 @@ func (c *cdpConn) readLoop() {
 }
 
 // fail 只把连接标死一次，唤醒所有等待者，并关掉套接字。等待者收到的错误能被 isCDPGone 认出来。
+// cause 只在第一次失败时用 %w 包进 websocket: closed，再交给各个等待者。
 func (c *cdpConn) fail(cause error) {
 	c.mu.Lock()
 	if c.err != nil {
@@ -195,6 +197,7 @@ func freePort() (int, error) {
 }
 
 // chromeProfile 返回有头或无头对应的用户目录。
+// headed 传给 profileDirLocked。宿主为空时直接返回空字符串。
 func (h *Host) chromeProfile(headed bool) string {
 	if h == nil {
 		return ""
@@ -210,6 +213,7 @@ func (h *Host) ensureCDP() error {
 }
 
 // headedForAutomation 在有头窗口还活着时保持有头。有头但 CDP 已死时返回假，让截图和点击改拉隔离 Chrome。
+// cdpAlive 为假且 headed 为真时返回假，否则返回 headed。
 func headedForAutomation(headed, cdpAlive bool) bool {
 	if headed && !cdpAlive {
 		return false
@@ -218,6 +222,7 @@ func headedForAutomation(headed, cdpAlive bool) bool {
 }
 
 // ensureChrome 按当前有头状态启动。有头启动失败时再试无头；无头失败时再试有头。
+// startURL 传给 startChromeCDP。有头那次失败后再以假传一次，无头那次失败后再以真传一次。
 func (h *Host) ensureChrome(startURL string) error {
 	headed := false
 	alive := false
@@ -253,6 +258,8 @@ func (h *Host) ensureChrome(startURL string) error {
 }
 
 // startChromeCDP 在同一种有头状态的连接还活着时直接返回。否则停掉旧进程，用 freePort 的端口启动 Chrome，等调试端口和 page WebSocket，再 dialWS。找不到浏览器时错误是 browser: no isolated Chromium (set YOYO_CHROME)。
+// startURL 去掉空白后为空时改成 previewStartURL 的返回值，再传给 chromeLaunchArgs 和 waitDebugPageWS。
+// headed 与 h.headed 相同且连接还活着时直接返回。否则传给 chromeProfile、chromeLaunchArgs 和 prepareChromeCmd。为真时调用 resetChromeSession，等待用 chromeHeadedReadyWait。为假时把 bindChromeJob 的返回值留作 killTree。最后写入 h.headed。
 func (h *Host) startChromeCDP(startURL string, headed bool) error {
 	h.mu.Lock()
 	c := h.cdp
@@ -359,6 +366,7 @@ func chromeReadyErr(err error, stderr string) error {
 }
 
 // readFileTail 返回文件末尾最多 n 个字符。读不到或为空时返回空字符串。
+// path 用 os.ReadFile 读取。读失败或内容为空时返回空字符串。
 func readFileTail(path string, n int) string {
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) == 0 {
@@ -375,6 +383,7 @@ func readFileTail(path string, n int) string {
 const cdpMaxMessage = 64 << 20
 
 // dialWS 连上 WebSocket，把读取上限设成 cdpMaxMessage，换上新的 cdpConn，并启用 Page、Network、Runtime。旧套接字会关掉，避免它的读循环还活着。
+// wsURL 在 8 秒超时内传给 websocket.Dial。连上后传给 targetIDFromWS，结果写入 targetID。
 func (h *Host) dialWS(wsURL string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -420,6 +429,7 @@ func (h *Host) dropDeadCDP() {
 }
 
 // versionWS 读 /json/version 里的 webSocketDebuggerUrl。800 毫秒超时。没有这个字段时返回 no websocket。
+// addr 拼成 http:// 加 addr 加 /json/version，在 800 毫秒内 GET。
 func versionWS(addr string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
@@ -450,6 +460,7 @@ func cdpAlive(c *cdpConn) bool {
 }
 
 // isCDPMessageTooBig 在错误文本里含有 message too big 时返回真。
+// err 为 nil 时返回假。否则在 Error() 的小写文本里查找 message too big。
 func isCDPMessageTooBig(err error) bool {
 	if err == nil {
 		return false
@@ -458,6 +469,7 @@ func isCDPMessageTooBig(err error) bool {
 }
 
 // isCDPGone 判断套接字是不是已经断了。message too big 返回假，避免因此重启 Chrome。
+// err 为 nil 时返回假。isCDPMessageTooBig 为真时也返回假。否则在小写 Error() 里查找 use of closed network connection、failed to write frame、failed to write json、failed to write msg、websocket: close、wsasend、wsarecv、broken pipe、connection reset、connection aborted。
 func isCDPGone(err error) bool {
 	if err == nil {
 		return false
@@ -513,6 +525,8 @@ func (h *Host) reconnectChrome() error {
 }
 
 // callCDP 调用一条 CDP 方法。连接已断时先 reconnectChrome 再试一次。没有宿主或没有连接时返回错误。
+// method 传给 cdpConn.call。连接已断并重连成功后会再传一次。
+// params 传给 cdpConn.call。连接已断并重连成功后会再传一次。
 func (h *Host) callCDP(method string, params any) (json.RawMessage, error) {
 	if h == nil {
 		return nil, fmt.Errorf("browser: no host")
@@ -540,6 +554,8 @@ func (h *Host) callCDP(method string, params any) (json.RawMessage, error) {
 }
 
 // call 发出一条带 id 的 CDP 消息并等待回复。超时文案带上方法名和 cdpCallTimeout。连接已死时返回 fail 记下的错误。
+// method 放进发出消息的 method 字段。回复带错或超时时，错误文案里带上 method。
+// params 非 nil 时放进发出消息的 params 字段。
 func (c *cdpConn) call(method string, params any) (json.RawMessage, error) {
 	if c == nil {
 		return nil, fmt.Errorf("browser: no CDP")
@@ -596,6 +612,7 @@ func (c *cdpConn) drop(id int) {
 }
 
 // navigateCDP 先 ensureCDP，再 pageNavigate。
+// raw 在 ensureCDP 成功后传给 pageNavigate。
 func (h *Host) navigateCDP(raw string) error {
 	if err := h.ensureCDP(); err != nil {
 		return err
@@ -604,6 +621,7 @@ func (h *Host) navigateCDP(raw string) error {
 }
 
 // pageNavigate 用 Page.navigate 打开地址。空白页被拒绝，错误是 browser: refusing blank navigation。Page.navigate 失败时再试 Target.createTarget。成功后清掉 ref 并记下地址。
+// raw 先 TrimSpace，再传给 isBlankURL，为真时返回 browser: refusing blank navigation。否则作为 url 传给 Page.navigate，失败时再传给 Target.createTarget。成功后写入 h.url。
 func (h *Host) pageNavigate(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if h.cdp == nil {
@@ -630,6 +648,7 @@ func (h *Host) pageNavigate(raw string) error {
 }
 
 // evalJS 先确保有连接，再在当前连接上执行表达式。
+// expr 在 ensureCDP 成功后传给 evalOnConn。
 func (h *Host) evalJS(expr string) (string, error) {
 	if err := h.ensureCDP(); err != nil {
 		return "", err
@@ -638,6 +657,7 @@ func (h *Host) evalJS(expr string) (string, error) {
 }
 
 // evalOnConn 用 Runtime.evaluate 执行表达式并返回值的文本。页面抛异常时返回 browser: page script error。
+// expr 作为 expression 传给 Runtime.evaluate，returnByValue 为真。
 func (h *Host) evalOnConn(expr string) (string, error) {
 	if h.cdp == nil {
 		return "", fmt.Errorf("browser: no CDP")

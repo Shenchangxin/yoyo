@@ -5,14 +5,14 @@
 import { forwardRef } from "react";
 import { ChevronDown, Folder, FolderOpen } from "lucide-react";
 
-/** workspaceLabel 取路径最后一段当标签。 */
+/** workspaceLabel 取路径最后一段当标签。cwd 做替换，作为后备值。 */
 export function workspaceLabel(cwd: string): string {
   const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
   const base = parts[parts.length - 1] || "";
   return base || cwd;
 }
 
-/** WorkspaceChip 画出文件夹、名字和展开箭头。 */
+/** WorkspaceChip 画出文件夹、名字和展开箭头。props 读取 chooseLabel、menuOpen、disabled、onClick、label。ref 写到 button 的 ref。 */
 export const WorkspaceChip = forwardRef<HTMLButtonElement, {
   label?: string;
   menuOpen?: boolean;

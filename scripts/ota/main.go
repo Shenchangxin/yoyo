@@ -27,6 +27,7 @@ func main() {
 }
 
 // run 在带 keygen 时只生成密钥。否则要求版本号，读取私钥和 SHA256SUMS，复制发行文件，并为该版本的每个频道写出 schema 为 1 的清单和签名。channels 参数不参与选择。
+// args 交给 flag 解析。
 func run(args []string) error {
 	fs := flag.NewFlagSet("ota", flag.ContinueOnError)
 	keygen := fs.Bool("keygen", false, "print a new Ed25519 keypair and exit")
@@ -119,6 +120,7 @@ func genKeys() error {
 }
 
 // loadPriv 读取显式私钥，显式值为空时改读环境变量。该值若是可读文件则改用文件内容，再解析成私钥。
+// explicit 去掉空白。为空时改读环境变量。结果若是可读文件则改用文件内容，再传给 update.ParsePrivateKey。
 func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 	raw := strings.TrimSpace(explicit)
 	if raw == "" {
@@ -134,12 +136,15 @@ func loadPriv(explicit string) (ed25519.PrivateKey, error) {
 }
 
 // parseChannels 忽略传入的频道原文，按版本返回要发布的频道。
+// raw 没有被读取，只赋给空白标识符。
+// version 传给 update.ChannelsForVersion。
 func parseChannels(raw, version string) []update.Channel {
 	_ = raw
 	return update.ChannelsForVersion(version)
 }
 
 // readSHA256SUMS 解析校验和文件。空文件返回错误。文件名只保留基名，校验和转成小写。
+// path 交给 os.ReadFile。
 func readSHA256SUMS(path string) (map[string]string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -172,6 +177,9 @@ func readSHA256SUMS(path string) (map[string]string, error) {
 }
 
 // buildPlatforms 按版本拼安装包文件名。目录里没有的文件跳过，同一键已经写入后不再覆盖。缺少 Windows 安装包、macOS dmg 或 Linux AppImage 则失败。
+// ver 拼进文件名，并写进 ResolveURL 的 releases/v 路径。
+// dist 和文件名拼成要 Stat 的路径。缺少 windows-amd64、darwin-universal 或 linux-amd64 时写进错误。
+// sums 按文件名取 SHA256。该值为空时返回错误。
 func buildPlatforms(ver, dist string, sums map[string]string) (map[string]update.Asset, error) {
 	type spec struct {
 		key, file, kind string
@@ -222,6 +230,8 @@ func buildPlatforms(ver, dist string, sums map[string]string) (map[string]update
 }
 
 // copyRelease 把发行目录里的文件复制到目标目录，跳过子目录。
+// dist 按条目读取，文件拼到源路径。
+// dest 按 0o755 创建，文件按 0o644 写到这里。
 func copyRelease(dist, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err

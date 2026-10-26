@@ -42,6 +42,7 @@ func GiftByID(id string) (Gift, bool) {
 }
 
 // stock 返回背包里这种礼物的数量，没有就是 0。
+// id 与每条库存的 GiftID 比较，命中返回 Count，否则返回 0。
 func (st *State) stock(id string) int {
 	for _, s := range st.Inventory {
 		if s.GiftID == id {
@@ -52,6 +53,7 @@ func (st *State) stock(id string) int {
 }
 
 // addStock 增减背包数量。减到 0 以下就停在 0；没有这项且 n 大于 0 时追加一条。
+// id 与每条库存的 GiftID 比较。没有这项且 n 大于 0 时，追加的 GiftID 就是它。
 func (st *State) addStock(id string, n int) {
 	for i := range st.Inventory {
 		if st.Inventory[i].GiftID == id {
@@ -75,6 +77,7 @@ type DrawResult struct {
 }
 
 // Draw 消耗一次抽卡。先用 BonusDraws，没有再用 Draws。0 到 99 里小于 3 得到重置卡；否则 95 及以上 rare，70 及以上 uncommon，其余 common，再从该稀有度里随机一件放进背包。
+// rng 调用 IntN(100) 决定重置卡和稀有度，再调用 IntN 从该稀有度里取一件。
 func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 	left := st.Draws + st.BonusDraws
 	if left <= 0 {
@@ -111,6 +114,7 @@ func (st *State) Draw(rng *rand.Rand) (DrawResult, error) {
 }
 
 // giftDelta 计算送礼加的分数。common 是 2，uncommon 是 4，rare 是 7，喜欢的礼物再加 4。
+// liked 为真时在稀有度分数上再加 4。
 func giftDelta(g Gift, liked bool) int {
 	n := 2
 	switch g.Rarity {
@@ -126,6 +130,8 @@ func giftDelta(g Gift, liked bool) int {
 }
 
 // liked 看这位偶像的 LikedGifts 里有没有这件礼物。
+// idol 的 LikedGifts 逐项与 giftID 比较。
+// giftID 与 idol.LikedGifts 的每一项做相等比较。
 func liked(idol Idol, giftID string) bool {
 	for _, id := range idol.LikedGifts {
 		if id == giftID {
@@ -136,6 +142,9 @@ func liked(idol Idol, giftID string) bool {
 }
 
 // Give 从背包拿出一件礼物送给偶像，加上 giftDelta，并写一条 event 记录。当前对话已结束就另开一段。冷却中也继续送出。
+// idolID 传给 idol、affinityOf、ApplyDelta、ensureCurrent 和 forceNew。
+// giftID 传给 GiftByID、stock、addStock 和 liked，并写入记录的 GiftID。
+// now 传给 Cooling、ApplyDelta、ensureCurrent、forceNew，写入记录的 At，并传给 markTask 和 unlock。
 func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, error) {
 	g, ok := GiftByID(giftID)
 	if !ok {
@@ -169,6 +178,7 @@ func (st *State) Give(idolID, giftID string, now time.Time) (Record, Affinity, e
 }
 
 // UseReset 消耗一张重置卡，把分数低于 50 或仍在冷却的偶像设回 50 并清掉冷却。没有低于 trust 的人就返回错误，卡不消耗。返回值是改过的人数。
+// now 传给 Cooling。
 func (st *State) UseReset(now time.Time) (int, error) {
 	if st.ResetCards <= 0 {
 		return 0, errf("no reset card")
@@ -192,6 +202,7 @@ func (st *State) UseReset(now time.Time) (int, error) {
 }
 
 // idolTZ 解析用户卡片上的时区。空的或 LoadLocation 失败时用 time.Local。
+// u 的 Timezone 去掉空白后为空，或 LoadLocation 失败时返回 time.Local，否则返回加载到的时区。
 func idolTZ(u UserCard) *time.Location {
 	if strings.TrimSpace(u.Timezone) == "" {
 		return time.Local

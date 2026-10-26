@@ -20,6 +20,9 @@ import (
 type idolBrain struct{ a *App }
 
 // Chat 按 kind 选模型和输出上限：judge 为 320，title 为 48，其余 700。温度 0.7。角色只认 system、assistant 和 user。
+// ctx 传给 client.Chat。
+// cacheKey 写入 ChatRequest 的 CacheKey。
+// messages 按 Role 和 Content 收成 runtime.Message。
 func (b idolBrain) Chat(ctx context.Context, kind, cacheKey string, messages []idol.Msg) (string, error) {
 	client, model, err := b.a.idolClient(kind)
 	if err != nil {
@@ -53,6 +56,8 @@ func (b idolBrain) Chat(ctx context.Context, kind, cacheKey string, messages []i
 }
 
 // Paint 把提示交给 idolPaint。
+// ctx 传给 idolPaint。
+// prompt 传给 idolPaint。
 func (b idolBrain) Paint(ctx context.Context, prompt string) ([]byte, error) {
 	return b.a.idolPaint(ctx, prompt)
 }
@@ -425,6 +430,8 @@ func (a *App) IdolCall(op, payload string) (string, error) {
 }
 
 // idolTurn 在暂停时返回 paused。回合超时 120 秒。结果要求工作时调用 startIdolWork，并把会话 id 和错误记到该条记录。
+// payload 解出 idol_id、text、call 和 work。
+// now 传给 Turn。
 func (a *App) idolTurn(payload string, now time.Time) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -458,6 +465,8 @@ func (a *App) idolTurn(payload string, now time.Time) (string, error) {
 }
 
 // idolNarrate 在会话仍在跑时返回 Pending。否则取最后一条助手正文，用 90 秒超时做旁白。
+// payload 解出 idol_id 和 session。
+// now 传给 Narrate。
 func (a *App) idolNarrate(payload string, now time.Time) (string, error) {
 	var p struct {
 		IdolID  string `json:"idol_id"`
@@ -478,6 +487,8 @@ func (a *App) idolNarrate(payload string, now time.Time) (string, error) {
 }
 
 // idolReach 在偶像 id 为空时用当前钉住的偶像。超时 60 秒。引擎返回 not due 时响应 due 为 false。
+// payload 解出 idol_id。
+// now 传给 Reach。
 func (a *App) idolReach(payload string, now time.Time) (string, error) {
 	var p struct {
 		IdolID string `json:"idol_id"`
@@ -504,6 +515,8 @@ func (a *App) idolReach(payload string, now time.Time) (string, error) {
 }
 
 // startIdolWork 复用偶像的工作会话，没有则新建并改名为偶像名。档案为空时用 assistant。然后 SetSessionProfile，并用 StartSendOpts 把指令交回该会话。
+// idolID 用来取偶像，并在新建会话后传给 SetWorkSession。
+// instruction 先 TrimSpace，空串则返回错误，否则写进交给会话的正文。
 func (a *App) startIdolWork(idolID, instruction string) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -548,6 +561,7 @@ func (a *App) startIdolWork(idolID, instruction string) (string, error) {
 }
 
 // lastAssistant 从轨迹里取最后一条非 delta 的助手正文。轨迹库或会话 id 为空返回空串。
+// sessionID 为空或轨迹库为空则返回空串，否则传给 Traces.Read。
 func (a *App) lastAssistant(sessionID string) string {
 	if a.Traces == nil || sessionID == "" {
 		return ""
@@ -572,6 +586,7 @@ func (a *App) lastAssistant(sessionID string) string {
 }
 
 // idolJSON 把值编码成 JSON 字符串。
+// v 传给 json.Marshal。
 func idolJSON(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {

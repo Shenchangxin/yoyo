@@ -6,7 +6,7 @@ import * as api from "../../lib/client";
 import { looksLikeSeries } from "./drama-lib";
 import { defaultDramaStyle, useDramaSelection } from "./workshop-store";
 
-/** bindVideoThread 把这次视频会话绑到已选剧集；没选集时只绑系列。这里不新建系列。项目和聊天分开，和 LibTV 的 session 与 projectUuid 一样。 */
+/** bindVideoThread 把这次视频会话绑到已选剧集；没选集时只绑系列。这里不新建系列。项目和聊天分开，和 LibTV 的 session 与 projectUuid 一样。sessionId 为空就返回；有已选集就连同系列绑到这一集，否则只绑系列。 */
 export async function bindVideoThread(sessionId: string): Promise<void> {
   const { episodeId, dramaId } = useDramaSelection.getState();
   if (!sessionId) return;
@@ -20,7 +20,7 @@ export async function bindVideoThread(sessionId: string): Promise<void> {
 let dramaEnsure: Promise<string> | null = null;
 let episodeEnsure: Promise<string> | null = null;
 
-/** ensureDrama 返回已选系列；没有就建一条，比例缺省是 9:16。并发调用共用同一次创建。 */
+/** ensureDrama 返回已选系列；没有就建一条，比例缺省是 9:16。并发调用共用同一次创建。opts 的 title 缺省当空字符串，ratio 缺省当 9:16，交给新建系列。 */
 export async function ensureDrama(opts: { title?: string; ratio?: string } = {}) {
   const sel = useDramaSelection.getState();
   if (sel.dramaId) return sel.dramaId;
@@ -40,7 +40,7 @@ export async function ensureDrama(opts: { title?: string; ratio?: string } = {})
   }
 }
 
-/** ensureDramaEpisode 返回已选集；没有正文的已选集会补上正文。没有系列时先建系列再建集。 */
+/** ensureDramaEpisode 返回已选集；没有正文的已选集会补上正文。没有系列时先建系列再建集。opts 的 content 只在已选集正文为空时写回；没有集时用 episodeTitle 和 content 新建，没有系列时再用 title 和 ratio 建系列。 */
 export async function ensureDramaEpisode(opts: { title: string; episodeTitle: string; content?: string; ratio?: string }) {
   const sel = useDramaSelection.getState();
   if (sel.episodeId) {
@@ -74,7 +74,7 @@ export async function ensureDramaEpisode(opts: { title: string; episodeTitle: st
   }
 }
 
-/** guessSeriesTitle 取第一行当系列名。空行、超过 40 个字符，或像章节标题的行，返回空。 */
+/** guessSeriesTitle 取第一行当系列名。空行、超过 40 个字符，或像章节标题的行，返回空。text 取第一行，去掉空白后判断能不能当系列名。 */
 export function guessSeriesTitle(text: string) {
   const line = (text.split(/\n/)[0] || "").trim();
   if (!line || Array.from(line).length > 40) return "";
@@ -82,7 +82,7 @@ export function guessSeriesTitle(text: string) {
   return line;
 }
 
-/** ingestSeriesText 在当前系列已提交或已有非草稿集时另建系列，然后写入原文并提出分集。 */
+/** ingestSeriesText 在当前系列已提交或已有非草稿集时另建系列，然后写入原文并提出分集。text 在另建系列时用来猜标题，并作为原文写入。title 有内容时当作系列名和写入标题，否则用猜出来的名字。 */
 export async function ingestSeriesText(text: string, title = "") {
   const sel = useDramaSelection.getState();
   const plan = sel.dramaId ? await api.video.getPlan(sel.dramaId).catch(() => null) as { status?: string } | null : null;
@@ -100,7 +100,7 @@ export async function ingestSeriesText(text: string, title = "") {
   return dramaId as string;
 }
 
-/** ingestSeriesFile 在当前系列已提交或已有非草稿集时另建系列，然后从文件写入并提出分集。 */
+/** ingestSeriesFile 在当前系列已提交或已有非草稿集时另建系列，然后从文件写入并提出分集。path 交给 ingestSourceFile 从文件写入。 */
 export async function ingestSeriesFile(path: string) {
   const sel = useDramaSelection.getState();
   const plan = sel.dramaId ? await api.video.getPlan(sel.dramaId).catch(() => null) as { status?: string } | null : null;

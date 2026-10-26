@@ -14,6 +14,8 @@ import (
 
 // runPersonalVerifier 按题号处理。handled 为 false 表示本函数没有接这道题。
 // office-xlsx-formula 在 A3 或 C1 等于 30 时通过。office-pptx-structure 要求幻灯片数不少于 3。research-cite 把 report.md 交给 cite.Validate。
+// work 按题号拼路径：office-xlsx-formula 用 report.xlsx，office-pptx-structure 用 deck.pptx，research-cite 用 report.md 和 citations.json，behavior-no-touch-tests 用 tests。
+// task 只看 ID，决定走哪一个 case。
 func runPersonalVerifier(work string, task Task) (ok bool, out string, err error, handled bool) {
 	switch task.ID {
 	case "office-xlsx-formula":

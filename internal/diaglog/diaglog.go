@@ -121,6 +121,7 @@ func DefaultLogDir(homeRoot string) string {
 }
 
 // FileName 按进程返回日志文件名。worker 是 worker.log，cli 是 cli.log，其余含 gui 和空字符串都是 yoyo.log。
+// p 为 ProcessWorker 时返回 worker.log，为 ProcessCLI 时返回 cli.log，其余返回 yoyo.log。
 func FileName(p Process) string {
 	switch p {
 	case ProcessWorker:
@@ -139,6 +140,7 @@ func FileName(p Process) string {
 // 会创建 crash 和 mcp 子目录，权限 0o755。文件日志是 JSON。有控制台时再加文本处理器。
 // 标准 log 的标志设为 0。有控制台时标准 log 同时写滚动文件和脱敏后的控制台，否则只写滚动文件。
 // 返回前启动按小时调用 Cleanup 的循环，并立刻 Cleanup 一次。
+// opt 的 Dir 为空时用 DefaultLogDir。Process 为空时先 DetectProcess，仍空则用 ProcessGUI。Version 为空时用 version.Version。MaxSize、MaxFiles、MaxAgeDays 小于等于 0 时换成对应默认。Level 为 0 时用 parseLevel 读环境变量。DebugCats 长度为 0 时用 ParseDebug 读环境变量。
 func Open(opt Options) (*Logger, error) {
 	if opt.Dir == "" {
 		opt.Dir = DefaultLogDir("")
@@ -223,6 +225,7 @@ func Open(opt Options) (*Logger, error) {
 
 // consoleWriter 决定人可读日志写到哪里。Console 已设置时，io.Discard 返回 nil，否则用它。
 // Console 为 nil 且进程是 worker 时返回 nil。YOYO_LOG_STDERR 为 0、false、off、no 时返回 nil。其余返回 stderr。
+// opt 的 Console 非 nil 时，等于 io.Discard 则返回 nil，否则返回它。Console 为 nil 且 Process 是 ProcessWorker 时返回 nil。
 func consoleWriter(opt Options) io.Writer {
 	if opt.Console != nil {
 		if opt.Console == io.Discard {
@@ -449,6 +452,8 @@ func (l *Logger) Writer() io.Writer {
 }
 
 // Info 用默认日志写一条 INFO。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.Info。
+// args 在 Default 非空时传给 slogger.Info。
 func Info(msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.Info(msg, args...)
@@ -456,6 +461,8 @@ func Info(msg string, args ...any) {
 }
 
 // Warn 用默认日志写一条 WARN。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.Warn。
+// args 在 Default 非空时传给 slogger.Warn。
 func Warn(msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.Warn(msg, args...)
@@ -463,6 +470,8 @@ func Warn(msg string, args ...any) {
 }
 
 // Error 用默认日志写一条 ERROR。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.Error。
+// args 在 Default 非空时传给 slogger.Error。
 func Error(msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.Error(msg, args...)
@@ -470,6 +479,8 @@ func Error(msg string, args ...any) {
 }
 
 // Debug 用默认日志写一条 DEBUG。还没有默认日志时丢掉。是否落盘还看级别和分类。
+// msg 在 Default 非空时传给 slogger.Debug。
+// args 在 Default 非空时传给 slogger.Debug。
 func Debug(msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.Debug(msg, args...)
@@ -477,6 +488,8 @@ func Debug(msg string, args ...any) {
 }
 
 // InfoContext 用默认日志和 ctx 写一条 INFO。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.InfoContext。
+// args 在 Default 非空时传给 slogger.InfoContext。
 func InfoContext(ctx context.Context, msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.InfoContext(ctx, msg, args...)
@@ -484,6 +497,8 @@ func InfoContext(ctx context.Context, msg string, args ...any) {
 }
 
 // WarnContext 用默认日志和 ctx 写一条 WARN。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.WarnContext。
+// args 在 Default 非空时传给 slogger.WarnContext。
 func WarnContext(ctx context.Context, msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.WarnContext(ctx, msg, args...)
@@ -491,6 +506,8 @@ func WarnContext(ctx context.Context, msg string, args ...any) {
 }
 
 // ErrorContext 用默认日志和 ctx 写一条 ERROR。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.ErrorContext。
+// args 在 Default 非空时传给 slogger.ErrorContext。
 func ErrorContext(ctx context.Context, msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.ErrorContext(ctx, msg, args...)
@@ -498,6 +515,8 @@ func ErrorContext(ctx context.Context, msg string, args ...any) {
 }
 
 // DebugContext 用默认日志和 ctx 写一条 DEBUG。还没有默认日志时丢掉。
+// msg 在 Default 非空时传给 slogger.DebugContext。
+// args 在 Default 非空时传给 slogger.DebugContext。
 func DebugContext(ctx context.Context, msg string, args ...any) {
 	if l := Default(); l != nil {
 		l.slogger.DebugContext(ctx, msg, args...)
@@ -536,6 +555,7 @@ func ParseDebug(s string) []string {
 
 // sanitizeName 把名字收成文件名片段。空白变成 unknown。
 // 只保留字母、数字、下划线和连字符，其他字符换成下划线。收完仍为空时返回 unknown。
+// name 去掉首尾空白，为空时返回 unknown。只保留字母、数字、下划线和连字符，其他字符换成下划线。结果仍为空时返回 unknown。
 func sanitizeName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

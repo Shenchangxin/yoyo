@@ -13,7 +13,7 @@ import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 import type { Root } from "mdast";
 
-/** parseGfm 用 micromark 的 GFM 扩展把文本解析成 mdast 根。 */
+/** parseGfm 用 micromark 的 GFM 扩展把文本解析成 mdast 根。text 传给 fromMarkdown。 */
 export function parseGfm(text: string): Root {
   return fromMarkdown(text, {
     extensions: [gfm()],

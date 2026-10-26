@@ -60,6 +60,9 @@ func CanvasToolSpecs() []ToolSpec {
 }
 
 // CanvasTool 按工具名执行。需要画布的工具先用会话绑定，没有绑定时再看参数里的画布 id。
+// sessionID 传给 CanvasSessionBind。
+// name 与各工具名比较后分发；不在 model_list、canvas_list_node_types、recall_lessons、skill_search、skill_read_file、ask_user、plan_update、remember_lesson 里且没有画布时返回错误，没有对应分支时返回 unknown canvas tool。
+// args 为 nil 时换成空 map；canvas_get_state 里 limit 小于等于 0 时改成 80，各分支还读取 node_id、canvas_id、project_id、task_id、id、ops、operations、mode、rows、prompt、channel_id、model、plan、text、question、query。
 func (e *Engine) CanvasTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}
@@ -172,6 +175,8 @@ func (e *Engine) CanvasTool(sessionID, name string, args map[string]any) (string
 }
 
 // readCanvasNode 按节点 id 读出画布上的原始节点。
+// canvasID 传给 getCanvasProject。
+// nodeID 与节点的 id 比较，相等时返回该节点。
 func (e *Engine) readCanvasNode(canvasID, nodeID string) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -188,6 +193,8 @@ func (e *Engine) readCanvasNode(canvasID, nodeID string) (string, error) {
 }
 
 // inspectCanvasImage 读出图像资源的种类、尺寸和地址。字节本身不放进返回值。
+// canvasID 非空且还没有 resource_id 时传给 readCanvasNode。
+// args 读取 resource_id 和 node_id。
 func (e *Engine) inspectCanvasImage(canvasID string, args map[string]any) (string, error) {
 	resourceID := strAnyMap(args, "resource_id")
 	if resourceID == "" && canvasID != "" {
@@ -213,6 +220,7 @@ func (e *Engine) inspectCanvasImage(canvasID string, args map[string]any) (strin
 }
 
 // rememberLesson 把一条待批准的个人课程记下来。
+// args 读取 topic、category、situation、lesson；category 为空时写成 other。
 func (e *Engine) rememberLesson(args map[string]any) (string, error) {
 	now := Now()
 	id := NewID()
@@ -228,6 +236,7 @@ func (e *Engine) rememberLesson(args map[string]any) (string, error) {
 }
 
 // recallLessons 按查询词返回已批准的课程，最多 20 条。
+// query 转成小写，非空时要出现在 Topic、Situation 和 Lesson 拼成的小写文本里，结果超过 20 条时截成前 20 条。
 func (e *Engine) recallLessons(query string) (string, error) {
 	out := []map[string]any{}
 	q := strings.ToLower(query)
@@ -247,6 +256,9 @@ func (e *Engine) recallLessons(query string) (string, error) {
 }
 
 // arrangeCanvasNodes 用编辑器同一套布局算法重排节点并保存。
+// canvasID 传给 getCanvasProject 和 saveCanvasPayload，并写入 canvas_patch。
+// mode 转成 layout.Mode，按 ModeFlow、ModeByLane、ModeRow、ModeColumn、ModeGrid 选择布局，其他值用 Auto。
+// args 的 node_ids 非空时只排这些节点。
 func (e *Engine) arrangeCanvasNodes(canvasID, mode string, args map[string]any) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -310,6 +322,8 @@ func (e *Engine) arrangeCanvasNodes(canvasID, mode string, args map[string]any) 
 }
 
 // createStoryboardNode 在画布上新增一个带行的分镜脚本节点。
+// canvasID 传给 getCanvasProject 和 saveCanvasPayload。
+// args 的 title 为空时写成 Storyboard，rows 放进 metadata。
 func (e *Engine) createStoryboardNode(canvasID string, args map[string]any) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -333,6 +347,9 @@ func (e *Engine) createStoryboardNode(canvasID string, args map[string]any) (str
 }
 
 // patchTableNode 用更新节点操作改写表格行。
+// canvasID 传给 applyCanvasOps。
+// nodeID 写入 update_node 的 id。
+// rows 写入 metadata 的 rows。
 func (e *Engine) patchTableNode(canvasID, nodeID string, rows []any) (string, error) {
 	ops := []any{map[string]any{"op": "update_node", "id": nodeID, "metadata": map[string]any{"rows": rows}}}
 	return e.applyCanvasOps(canvasID, ops)

@@ -137,6 +137,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    /** onKey 调用 setMenu。event 读取 metaKey、ctrlKey、altKey、key、target。 */
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (menu && event.key === "Escape") {
@@ -153,6 +154,7 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [menu, stage]);
 
+  /** chooseLang 调用 setLang。next 传给 setLang，传给 localStorage.setItem。 */
   const chooseLang = (next: Lang) => {
     setLang(next);
     try {
@@ -172,6 +174,7 @@ export function App() {
     }
   };
 
+  /** onTabKey 调用 indexOf。event 读取 key，调用 preventDefault。 */
   const onTabKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const index = SCENES.indexOf(stage);
     const next =
@@ -639,7 +642,8 @@ export function App() {
   );
 }
 
-/** Lines 按换行把标题拆成多行，每行一个 span。 */
+/** Lines 按换行把标题拆成多行，每行一个 span。text 按 
+ 切开，做映射。Tag 用作标签。id 写到 Tag 的 id。 */
 function Lines({ text, as: Tag = "h2", id }: { text: string; as?: "h1" | "h2"; id?: string }) {
   return (
     <Tag id={id}>
@@ -652,7 +656,7 @@ function Lines({ text, as: Tag = "h2", id }: { text: string; as?: "h1" | "h2"; i
   );
 }
 
-/** InlineCode 把成对反引号里的片段渲成 code，其余保持正文。 */
+/** InlineCode 把成对反引号里的片段渲成 code，其余保持正文。text 按 ` 切开，做映射。 */
 function InlineCode({ text }: { text: string }) {
   return (
     <>
@@ -661,7 +665,7 @@ function InlineCode({ text }: { text: string }) {
   );
 }
 
-/** LangSwitch 在英文、简体中文和日文之间切换。 */
+/** LangSwitch 在英文、简体中文和日文之间切换。lang 与 id 比较是否相等。onPick 被调用，并传入 id。 */
 function LangSwitch({ lang, onPick }: { lang: Lang; onPick: (lang: Lang) => void }) {
   return (
     <div className="lang" role="group" aria-label="Language">
@@ -722,7 +726,7 @@ function MoonIcon() {
   );
 }
 
-/** MenuIcon 在菜单打开时画叉，收起时画两条横线。 */
+/** MenuIcon 在菜单打开时画叉，收起时画两条横线。open 为真时才继续。 */
 function MenuIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">

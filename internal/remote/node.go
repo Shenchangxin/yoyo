@@ -182,6 +182,8 @@ func (n *Node) Close() error {
 // handle 只处理挂在这个节点自己的 App 上的 remote 方法。
 // remote.status、remote.pair.begin、remote.enable、remote.pair.approve、remote.pair.deny、remote.revoke、remote.disable 在这里完成。
 // App 对不上，或方法不在这张名单里，就返回 ok 假，让 API 继续往下分。
+// method 在 n 非 nil 且 a 就是本节点的 App 时进入 switch。命中 remote.status、remote.pair.begin、remote.enable、remote.pair.approve、remote.pair.deny、remote.revoke、remote.disable 时第二个返回值为真，否则为假。
+// params 交给 json.Unmarshal，取出 id 和 name。
 func (n *Node) handle(_ context.Context, a *app.App, method string, params json.RawMessage) (any, bool, error) {
 	if n == nil || a != n.app {
 		return nil, false, nil
@@ -309,6 +311,7 @@ func (n *Node) BeginPair() (map[string]any, error) {
 }
 
 // Approve 先允许同号的浏览器。没有再允许等待中的手机，并把它写进设备。两边都没有就返回没有等待中的手机。
+// id 传给 approveBrowser。没有浏览器时用来查 pending，并写入返回值的 id。
 func (n *Node) Approve(id string) (map[string]any, error) {
 	if n.approveBrowser(id) {
 		return map[string]any{"ok": true, "id": id}, nil
@@ -324,6 +327,7 @@ func (n *Node) Approve(id string) (map[string]any, error) {
 }
 
 // Deny 先拒绝同号的浏览器。没有再拒绝等待中的手机。两边都没有就返回没有等待中的手机。
+// id 传给 denyBrowser。没有浏览器时用来查 pending。
 func (n *Node) Deny(id string) (map[string]any, error) {
 	if n.denyBrowser(id) {
 		return map[string]any{"ok": true}, nil
@@ -340,6 +344,7 @@ func (n *Node) Deny(id string) (map[string]any, error) {
 
 // finish 在允许时把设备放进内存并写盘，记一条 pair 审计，再从 pending 去掉。拒绝时只去掉 pending，不写审计。
 // 结果送进 done。缓冲已满就丢掉，避免卡住电脑这边。
+// ok 为真时把设备放进 devices、写盘、记 pair 审计，并从 pending 去掉。为假时只去掉 pending。然后送进 done。
 func (n *Node) finish(p *pendingPair, ok bool) {
 	if ok {
 		n.mu.Lock()
@@ -361,6 +366,7 @@ func (n *Node) finish(p *pendingPair, ok bool) {
 
 // Revoke 把这台设备的收回时间写成现在并写盘。没有这台设备就返回错误。
 // 已经连着的套接字要等下一帧 RPC 才看见收回。
+// id 用来查 devices。没有就返回错误。找到时把 Revoked 写成现在。
 func (n *Node) Revoke(id string) (map[string]any, error) {
 	n.mu.Lock()
 	d := n.devices[id]
@@ -494,6 +500,10 @@ func (n *Node) saveDevice(d *storedDevice) {
 }
 
 // audit 往 audit.jsonl 追加一行：时间、动作、设备号、名字、是否成功。打开失败就放弃。文件权限 0o600。
+// action 写入 action。
+// id 写入 id。
+// name 写入 name。
+// ok 写入 ok。
 func (n *Node) audit(action, id, name string, ok bool) {
 	line, _ := json.Marshal(map[string]any{
 		"t":      time.Now().UTC().Format(time.RFC3339),
@@ -513,6 +523,9 @@ func (n *Node) audit(action, id, name string, ok bool) {
 // stage 核验配对签名。签名原文是 signDomain、pair、nonce 三行。
 // 配对码不存在，或此刻已经晚于 Exp，就返回过期。检查通过后立刻从 offers 删掉，不放回去。和浏览器抢同一枚码时，谁先删谁用掉。
 // 设备号是公钥 SHA-256 的前 8 字节，写成十六进制。这台手机已经收回也返回错误，但码已经消耗。名字空着就写成手机。到期时刻沿用出示时的 Exp。
+// name 去掉空白后写入设备名。空字符串写成手机。
+// pubB64 用标准 Base64 解码，长度必须等于 ed25519.PublicKeySize，并写入设备的 Pub。
+// sigB64 用标准 Base64 解码后参与 ed25519.Verify。
 func (n *Node) stage(name, nonce, pubB64, sigB64 string) (*pendingPair, error) {
 	pubRaw, err := base64.StdEncoding.DecodeString(pubB64)
 	if err != nil || len(pubRaw) != ed25519.PublicKeySize {
@@ -552,6 +565,9 @@ func (n *Node) stage(name, nonce, pubB64, sigB64 string) (*pendingPair, error) {
 
 // resume 让已经允许过的手机另开一条连接。配对码只负责介绍，之后的凭据是设备密钥。
 // 签名原文是 signDomain、resume、nonce 三行。nonce 用 takeNonce 记在现在，不看客户端时间戳。还没允许就让它重新扫配对码。传来的名字非空就改显示名。
+// name 去掉空白后非空时写入设备的 Name。
+// pubB64 用标准 Base64 解码，长度必须等于 ed25519.PublicKeySize。
+// sigB64 用标准 Base64 解码后参与 ed25519.Verify。
 func (n *Node) resume(name, nonce, pubB64, sigB64 string) (*storedDevice, error) {
 	pubRaw, err := base64.StdEncoding.DecodeString(pubB64)
 	if err != nil || len(pubRaw) != ed25519.PublicKeySize {
@@ -582,6 +598,7 @@ func (n *Node) resume(name, nonce, pubB64, sigB64 string) (*storedDevice, error)
 }
 
 // device 返回还没收回的设备。没有，或 Revoked 不是零值，就返回 nil。
+// id 用来查 devices。
 func (n *Node) device(id string) *storedDevice {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -593,6 +610,7 @@ func (n *Node) device(id string) *storedDevice {
 }
 
 // seen 把这台设备的 Seen 改成现在。只改内存，不写盘。
+// id 用来查 devices。找到时把 Seen 写成现在。
 func (n *Node) seen(id string) {
 	n.mu.Lock()
 	d := n.devices[id]
@@ -604,6 +622,8 @@ func (n *Node) seen(id string) {
 
 // takeNonce 收下这枚 nonce。空字符串直接拒绝。时间戳早于现在超过 2 分钟，或晚于现在超过 1 分钟，也拒绝。
 // 同一设备 5 分钟内见过的 nonce 不能再用。顺手删掉这只袋子里早于 5 分钟的记录。
+// id 用来取 nonces 里的袋子，没有就新建。
+// ts 早于现在超过 2 分钟，或晚于现在超过 1 分钟时返回 false。
 func (n *Node) takeNonce(id, nonce string, ts time.Time) bool {
 	if nonce == "" || time.Since(ts) > 2*time.Minute || time.Until(ts) > time.Minute {
 		return false

@@ -16,6 +16,7 @@ const (
 )
 
 // NormalizeChannel 在去掉空白后不区分大小写等于 video 时返回 video，否则返回 agent。
+// s 去掉空白后与 ChannelVideo 做不区分大小写比较。
 func NormalizeChannel(s string) string {
 	if strings.EqualFold(strings.TrimSpace(s), ChannelVideo) {
 		return ChannelVideo

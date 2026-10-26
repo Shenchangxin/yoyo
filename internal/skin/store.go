@@ -52,6 +52,7 @@ func (s *Store) List() []Info {
 }
 
 // Load 读取 manifest.json 以及 tokens/dark.json、tokens/light.json，并按清单带上预览、壁纸和字体字节。
+// id 传给 dir，并写入清单的 ID。
 func (s *Store) Load(id string) (Pack, error) {
 	dir, err := s.dir(id)
 	if err != nil {
@@ -109,6 +110,7 @@ func (s *Store) Load(id string) (Pack, error) {
 }
 
 // readTokens 读取 JSON 令牌文件。文件不存在时返回空 TokenMap 和 nil。
+// path 交给 os.ReadFile。不存在时返回空 TokenMap 和 nil，否则把字节传给 parseTokens。
 func readTokens(path string) (TokenMap, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -121,6 +123,7 @@ func readTokens(path string) (TokenMap, error) {
 }
 
 // Save 先规范化清单、校验两套令牌和对比度。id 为空或非法时换成 NewUserID。然后写入清单、令牌和列出的资源，再 Load 回来。
+// p 的 Manifest 先 Normalize。ID 为空或 ValidUserID 为假时换成 NewUserID。Dark 和 Light 交给 ValidateMap，再 checkContrast。清单和两套令牌写到该 ID 的目录。
 func (s *Store) Save(p Pack) (Pack, error) {
 	if err := p.Manifest.Normalize(); err != nil {
 		return Pack{}, err
@@ -203,6 +206,7 @@ func (s *Store) Delete(id string) error {
 }
 
 // Export 先 Load，再打成 zip 字节。
+// id 传给 Load。
 func (s *Store) Export(id string) ([]byte, error) {
 	p, err := s.Load(id)
 	if err != nil {
@@ -253,6 +257,8 @@ func (p Pack) Zip() ([]byte, error) {
 }
 
 // File 只读 allowedFiles 里的相对路径。路径含 ..、或绝对路径不在 root 下时返回错误。EvalSymlinks 成功时，解析后的路径也必须仍在 root 下。
+// id 交给 ValidUserID。为假时返回错误。通过后接在 root 下作为目录。
+// rel 把反斜杠换成斜杠并去掉开头的斜杠。为空、含 ..，或不在 allowedFiles 里时返回错误。通过后传给 mimeFor。
 func (s *Store) File(id, rel string) (string, []byte, error) {
 	if !ValidUserID(id) {
 		return "", nil, fmt.Errorf("invalid skin id")
@@ -299,6 +305,7 @@ func (s *Store) File(id, rel string) (string, []byte, error) {
 }
 
 // mimeFor 按扩展名返回 Content-Type。不认识的扩展名用 application/octet-stream。
+// rel 的扩展名转成小写后选择类型。
 func mimeFor(rel string) string {
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".json":

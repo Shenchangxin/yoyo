@@ -66,6 +66,8 @@ func ParseDir(dir string) (Pack, error) {
 // Verify 用公钥校验技能正文的 ed25519 签名。
 // 公钥长度为 0 且 SigHex 为空时，错误写明未签名的包不能进入 refs/active。公钥为空但带了签名时，返回缺少公钥。
 // 否则用 wasm.ParseSig 解析 SigHex，再对 SkillMD 的字节调用 wasm.Verify。
+// pub 长度为 0 且 p 的 SigHex 为空时返回未签名错误，长度为 0 但有签名时返回缺少公钥，否则传给 wasm.Verify。
+// p 在 pub 长度为 0 时看 SigHex 是否为空。否则 SigHex 交给 wasm.ParseSig，SkillMD 的字节交给 wasm.Verify。
 func Verify(pub ed25519.PublicKey, p Pack) error {
 	if len(pub) == 0 {
 		if p.SigHex == "" {
@@ -81,12 +83,16 @@ func Verify(pub ed25519.PublicKey, p Pack) error {
 }
 
 // Sign 对技能正文调用 wasm.Sign，再把签名编成十六进制。
+// priv 传给 wasm.Sign。
+// skillMD 转成字节后传给 wasm.Sign，返回值再编成十六进制。
 func Sign(priv ed25519.PrivateKey, skillMD string) string {
 	return hex.EncodeToString(wasm.Sign(priv, []byte(skillMD)))
 }
 
 // Admit 先 ParseDir 再 Verify。destRoot 为空时验签通过就返回，不创建目录。
 // 否则写入 destRoot/名字，目录权限 0o755。SKILL.md 权限 0o644。签名、评测、剧本和策略只在对应字段非空时写出。
+// dir 传给 ParseDir。
+// pub 和解析出的包一起传给 Verify。
 func Admit(dir, destRoot string, pub ed25519.PublicKey) (Pack, error) {
 	p, err := ParseDir(dir)
 	if err != nil {
@@ -121,6 +127,7 @@ func Admit(dir, destRoot string, pub ed25519.PublicKey) (Pack, error) {
 }
 
 // Distill 拼出一份技能 Markdown。前置信息含 name、description，license 固定写成 Apache-2.0。正文先去掉首尾空白，末尾补一个换行。
+// body 去掉首尾空白后写在前置信息后面，并补一个换行。
 func Distill(name, description, body string) string {
 	var b strings.Builder
 	b.WriteString("---\n")

@@ -7,6 +7,7 @@ import "strings"
 
 // FromReference 用已存的参考或一段描述建工程。标题空着写成「翻拍」，结构空着写成 free。
 // 有词就用词，否则把句子均分成词。没有区域时每段先占满画面。第一个词上钉一条贴纸。建完会填待办。
+// in 的 Title、Structure 经 clean 后为空时分别写成「翻拍」和 free；ID、Hash、URL、Duration 写入工程，Cues、Description、Words 用来填词，Scenes 传给 shotsFrom，Regions 为空时改用 DefaultRegions。Duration 小于等于 0 且没有字幕时，这一句的结束时间用 12。
 func FromReference(in Input) Project {
 	title := clean(in.Title)
 	if title == "" {
@@ -47,6 +48,8 @@ func FromReference(in Input) Project {
 }
 
 // FromTemplate 按排行榜、播客或街采建一部自己的工程。认不出的结构用排行榜。不用别的产品的样片。
+// structure 经 clean 后为 podcast 时传给 podcast，为 interview 时传给 interview，其余传给 ranking。
+// title 传给选中的模板函数。
 func FromTemplate(structure, title string) Project {
 	switch clean(structure) {
 	case "podcast":
@@ -59,6 +62,10 @@ func FromTemplate(structure, title string) Project {
 }
 
 // shotsFrom 按场景切点生成镜头，并把落在这一段里的词挂上。起点尽量落在第一个词上。没有切点就做一整段。
+// scenes 传给 sceneBounds。
+// words 用来收集落在该段且 LineID 与段内第一个词相同的 ID；有词时起点改成第一个词的 Start。
+// duration 传给 sceneBounds；一个镜头都没有且 duration 小于等于 0 时，结束时间用 12。
+// structure 传给 visualFor。
 func shotsFrom(scenes []float64, words []Word, duration float64, structure string) []Shot {
 	bounds := sceneBounds(scenes, duration, words)
 	shots := make([]Shot, 0, len(bounds))
@@ -102,6 +109,9 @@ func shotsFrom(scenes []float64, words []Word, duration float64, structure strin
 }
 
 // sceneBounds 把场景切点收成互不重叠的时间段。时长未知时用最后一个词的结束，再没有就用 12 秒。
+// scenes 里大于 0 且小于 duration 的点作为切点。
+// duration 小于等于 0 时先改用 words 里最大的 End，仍然小于等于 0 时用 12。
+// words 在 duration 小于等于 0 时提供 End。
 func sceneBounds(scenes []float64, duration float64, words []Word) [][2]float64 {
 	if duration <= 0 {
 		for _, w := range words {
@@ -136,6 +146,9 @@ func sceneBounds(scenes []float64, duration float64, words []Word) [][2]float64 
 }
 
 // visualFor 按结构给这一段一个画面种类。排行榜除最后一段是板，最后一段是 broll。播客开头是分屏。街采是揭示。其余开头是代码画面。
+// structure 为 ranking、podcast、interview 时走对应分支，其余走 default。
+// index 在 ranking 里等于 n 减 1 时返回 broll，在 podcast 和 default 里等于 0 时分别返回 split 和 code。
+// n 在 ranking 里与 index 比较。
 func visualFor(structure string, index, n int) string {
 	switch structure {
 	case "ranking":
@@ -159,6 +172,8 @@ func visualFor(structure string, index, n int) string {
 }
 
 // DefaultRegions 在本机检测还没给出更紧的框之前，给每一段一个占满画面的区域。
+// duration 作为 sceneBounds 的时长。
+// scenes 传给 sceneBounds。
 func DefaultRegions(duration float64, scenes []float64) []Box {
 	bounds := sceneBounds(scenes, duration, nil)
 	out := make([]Box, len(bounds))
@@ -169,6 +184,8 @@ func DefaultRegions(duration float64, scenes []float64) []Box {
 }
 
 // assignRegions 按顺序把区域框写到镜头上。框比镜头少时，多出来的镜头不动。
+// shots 按序号写入 Region，序号达到 boxes 的长度就停止。
+// boxes 按同样序号拷进对应镜头的 Region。
 func assignRegions(shots []Shot, boxes []Box) []Shot {
 	for i := range shots {
 		if i >= len(boxes) {
@@ -181,12 +198,14 @@ func assignRegions(shots []Shot, boxes []Box) []Shot {
 }
 
 // ApplyRegions 换上检测出的区域框，并重算待办。检测可以给出脸或主体。
+// boxes 传给 assignRegions。
 func ApplyRegions(p Project, boxes []Box) Project {
 	p.Shots = assignRegions(p.Shots, boxes)
 	return rehash(p)
 }
 
 // ranking 建一部排行榜。标题空着写成「本机工具排行」。最后会填待办。
+// title 经 clean 后为空时写成「本机工具排行」，再传给 base。
 func ranking(title string) Project {
 	if clean(title) == "" {
 		title = "本机工具排行"
@@ -211,6 +230,7 @@ func ranking(title string) Project {
 }
 
 // podcast 建一部播客分屏。标题空着写成「创作台对谈」。中间一镜交出产品。
+// title 经 clean 后为空时写成「创作台对谈」，再传给 base。
 func podcast(title string) Project {
 	if clean(title) == "" {
 		title = "创作台对谈"
@@ -237,6 +257,7 @@ func podcast(title string) Project {
 }
 
 // interview 建一部街采揭示。标题空着写成「三条成片规矩」。每一镜都是揭示。
+// title 经 clean 后为空时写成「三条成片规矩」，再传给 base。
 func interview(title string) Project {
 	if clean(title) == "" {
 		title = "三条成片规矩"
@@ -265,11 +286,15 @@ func interview(title string) Project {
 }
 
 // base 建一部只有标题、结构和简介的空工程。
+// title 写入 Title。
+// structure 写入 Structure。
+// brief 写入 Brief。
 func base(title, structure string, brief Brief) Project {
 	return Project{Title: title, Structure: structure, Brief: brief}
 }
 
 // shotText 把这一镜挂着的词按顺序拼成一句。
+// p 用 Words 按这一镜 WordIDs 的顺序拼 Text，中间加空格。
 func shotText(p Project, shot Shot) string {
 	var b strings.Builder
 	for _, id := range shot.WordIDs {

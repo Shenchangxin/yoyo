@@ -15,7 +15,7 @@ import { formatPageWhen } from "./when";
 
 type Page = PageMeta & { content: string };
 
-/** PagesWorkspace 管页面树和当前页，保存与删除写到服务端。 */
+/** PagesWorkspace 管页面树和当前页，保存与删除写到服务端。props 读取 boundPageId、sessionId、onUnbindChat，调用 onOpenInChat，调用 onUnbindChat。 */
 export function PagesWorkspace(props: {
   sessionId?: string;
   boundPageId?: string;
@@ -42,7 +42,7 @@ export function PagesWorkspace(props: {
   qRef.current = q;
   activeRef.current = active;
 
-  /** 按搜索词拉取页面列表。 */
+  /** 按搜索词拉取页面列表。query 传给 api.pagesList。 */
   const loadList = useCallback(async (query = qRef.current) => {
     const rows = await api.pagesList(query).catch(() => []);
     setList((Array.isArray(rows) ? rows : []).map((row) => pageOf(row)));
@@ -52,7 +52,7 @@ export function PagesWorkspace(props: {
     void loadList(q);
   }, [loadList, q]);
 
-  /** 把当前草稿存一次，冲突就停，期间又改了就再存。 */
+  /** 把当前草稿存一次，冲突就停，期间又改了就再存。depth 小于 5，加上 1。 */
   const persistOnce = useCallback(async (depth = 0): Promise<boolean> => {
     const page = activeRef.current;
     const d = { ...draft.current };
@@ -109,7 +109,7 @@ export function PagesWorkspace(props: {
     if (dirtyRef.current) void persistRef.current();
   }, []);
 
-  /** 把一页收成当前页，并清掉未保存标记。 */
+  /** 把一页收成当前页，并清掉未保存标记。pg 读取 id、title、content，赋给 activeRef.current，传给 setActive。 */
   const adopt = (pg: Page) => {
     epochRef.current += 1;
     activeRef.current = pg;
@@ -121,7 +121,7 @@ export function PagesWorkspace(props: {
     setErr("");
   };
 
-  /** 先存住未写完的，再打开另一页。 */
+  /** 先存住未写完的，再打开另一页。id 传给 api.pagesGet。opts 读取 force、bind，为空时不读。 */
   const open = async (id: string, opts?: { force?: boolean; bind?: boolean }) => {
     window.clearTimeout(timer.current);
     if (!opts?.force && dirtyRef.current) {
@@ -142,7 +142,7 @@ export function PagesWorkspace(props: {
     timer.current = window.setTimeout(() => { void persist(); }, 800);
   };
 
-  /** 新建一页，可以挂在某个父级下。 */
+  /** 新建一页，可以挂在某个父级下。parentId 为真时才继续，用作下标，写入字段 parent_id。 */
   const create = async (parentId = "") => {
     window.clearTimeout(timer.current);
     if (dirtyRef.current) {
@@ -165,7 +165,7 @@ export function PagesWorkspace(props: {
     }
   };
 
-  /** 改一页的父级。 */
+  /** 改一页的父级。id 与 activeRef.current?.id 比较是否相等，传给 api.pagesGet。parentId 为假时用 -，写入字段 parent_id。 */
   const nest = async (id: string, parentId: string) => {
     if (dirtyRef.current && activeRef.current?.id === id) {
       const ok = await persist();
@@ -181,7 +181,7 @@ export function PagesWorkspace(props: {
     }
   };
 
-  /** 删除一页，绑在会话上的同时解开。 */
+  /** 删除一页，绑在会话上的同时解开。pg 读取 id、space_id。 */
   const remove = async (pg: Page) => {
     try {
       await api.pagesDelete(pg.id, pg.space_id);
@@ -311,7 +311,7 @@ export function PagesWorkspace(props: {
   );
 }
 
-/** 画树里的一行，并能折叠孩子。 */
+/** 画树里的一行，并能折叠孩子。props 读取 collapsed、node、locale、boundId、activeId、depth 等，调用 onToggle，调用 onOpen。 */
 function PageRow(props: {
   node: PageNode;
   depth: number;
@@ -375,7 +375,7 @@ function PageRow(props: {
   );
 }
 
-/** pageOf 把接口对象收成一页，缺内容就当空。 */
+/** pageOf 把接口对象收成一页，缺内容就当空。v 读取 id、ID、space_id、SpaceID、parent_id、ParentID 等，为空时不读。 */
 export function pageOf(v: any): Page {
   return {
     id: str(v?.id || v?.ID),

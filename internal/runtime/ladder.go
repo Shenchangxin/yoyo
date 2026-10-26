@@ -44,6 +44,8 @@ Operator documents live under $YOYO_HOME/pages, outside the workspace. Read with
 `
 
 // ladderBlock 在已有可用连接器时拒绝用 computer_act 或 browser_open 去点同一服务。没有连接器则放行。screenshot_region 在没有虚拟显示器时拒绝，并说明不截主屏。
+// name 为 computer_act、browser_open 或 screenshot_region 时才继续检查。
+// raw 在 computer_act 时转小写交给 connectorForGUI，在 browser_open 时交给 urlHost。
 func (t *WorkspaceTools) ladderBlock(name, raw string) error {
 	if t == nil || t.Connectors == nil {
 		return nil
@@ -69,6 +71,7 @@ func (t *WorkspaceTools) ladderBlock(name, raw string) error {
 }
 
 // connectorForGUI 在应用名像邮件或 Slack，且对应账户在允许列表里时，返回该账户 ID。
+// app 转小写后与邮件、浏览器或 slack 词比较。
 func (t *WorkspaceTools) connectorForGUI(app string) string {
 	blob := strings.ToLower(app)
 	for _, a := range t.Connectors.List() {
@@ -89,6 +92,7 @@ func (t *WorkspaceTools) connectorForGUI(app string) string {
 }
 
 // connectorForHost 按主机名匹配 gmail、outlook 或 slack 的已允许账户。
+// host 转小写后与 gmail、outlook 或 slack 的主机片段比较。
 func (t *WorkspaceTools) connectorForHost(host string) string {
 	host = strings.ToLower(host)
 	for _, a := range t.Connectors.List() {
@@ -109,6 +113,7 @@ func (t *WorkspaceTools) connectorForHost(host string) string {
 }
 
 // connectorAllowed 在允许列表为空、含 * 或含该 ID 时返回真。ID 为空也返回真。
+// id 为空时返回 true，否则与允许列表逐项比较。
 func (t *WorkspaceTools) connectorAllowed(id string) bool {
 	if t == nil || id == "" {
 		return true
@@ -126,6 +131,7 @@ func (t *WorkspaceTools) connectorAllowed(id string) bool {
 }
 
 // urlHost 从 URL、JSON 的 url 字段，或已知邮件与 Slack 主机子串里取出主机。都没有则返回空串。
+// raw 去掉空白后先按 URL 取 Host，失败再按 JSON 的 url 字段，再按已知邮件和 Slack 主机子串。
 func urlHost(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
@@ -152,6 +158,7 @@ func urlHost(raw string) string {
 }
 
 // connectorProviders 返回账户的 Provider 列表，顺序与入参相同。
+// list 按原顺序取出每个账户的 Provider。
 func connectorProviders(list []connector.Account) []string {
 	var out []string
 	for _, a := range list {

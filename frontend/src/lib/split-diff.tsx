@@ -12,7 +12,8 @@ type Kind = "meta" | "hunk" | "ctx" | "del" | "add" | "empty";
 
 type Line = { kind: Kind; text: string };
 
-/** 把 diff 文本收成带种类的行。元信息、块头、增删和上下文分开。 */
+/** 把 diff 文本收成带种类的行。元信息、块头、增删和上下文分开。src 为假时用空字符串，按 
+ 切开，做映射。 */
 function linesOf(src: string): Line[] {
   return (src || "").split("\n").map((line) => {
     if (
@@ -30,7 +31,7 @@ function linesOf(src: string): Line[] {
   });
 }
 
-/** 连续的删除和新增配成左右两列。单独的新增左边留空，其余两边同一行。 */
+/** 连续的删除和新增配成左右两列。单独的新增左边留空，其余两边同一行。rows 读取 length，按下标读取。 */
 function pair(rows: Line[]): { left: Line; right: Line }[] {
   const out: { left: Line; right: Line }[] = [];
   let i = 0;
@@ -64,6 +65,8 @@ function pair(rows: Line[]): { left: Line; right: Line }[] {
 /**
  * 行底用浅色，正文保持普通前景色。颜色只在背景和行首标记上，代码本身不上色。
  * 整行染成彩色会让长差异显得吵。
+ * kind 为 add 时返回 bg-success/[0.11] text-foreground/90，为 del 时返回 bg-danger/[0.11] text-foreground/80。
+ * side 与 left 比较是否相等。
  */
 function rowTone(kind: Kind, side: "left" | "right" | "uni"): string {
   if (kind === "add") return "bg-success/[0.11] text-foreground/90";
@@ -73,7 +76,7 @@ function rowTone(kind: Kind, side: "left" | "right" | "uni"): string {
   return "text-muted";
 }
 
-/** 行首标记：新增为加号，删除为减号。 */
+/** 行首标记：新增为加号，删除为减号。kind 与 add、del 比较是否相等。 */
 function marker(kind: Kind): { glyph: string; tone: string } {
   if (kind === "add") return { glyph: "+", tone: "text-success" };
   if (kind === "del") return { glyph: "−", tone: "text-danger" };
@@ -85,7 +88,7 @@ const LINE = "diff-line grid min-w-0 grid-cols-[14px_minmax(0,1fr)] items-baseli
 /** CHAT_DIFF_MAX_LINES 聊天里改动气泡的行数上限，与 harness 的 CHAT_DIFF_MAX_LINES 一致。审阅窗格传入 0 表示不折叠。 */
 export const CHAT_DIFF_MAX_LINES = 9;
 
-/** 正文超过上限时保留头尾，中间用省略行隔开。元信息和块头始终保留。上限不大于零时不折叠。 */
+/** 正文超过上限时保留头尾，中间用省略行隔开。元信息和块头始终保留。上限不大于零时不折叠。rows 读取 length，做过滤，用来遍历，有的分支原样返回。maxLines 小于等于 0，小于等于 rows.length。 */
 function foldRows(rows: Line[], maxLines: number): Line[] {
   if (maxLines <= 0 || rows.length <= maxLines) return rows;
   const body = rows.filter((r) => r.kind === "add" || r.kind === "del" || r.kind === "ctx");
@@ -113,7 +116,7 @@ function foldRows(rows: Line[], maxLines: number): Line[] {
   return out;
 }
 
-/** DiffBlock 渲染一段 diff。mode 决定单栏或分栏。点到非空行时回调原文。 */
+/** DiffBlock 渲染一段 diff。mode 决定单栏或分栏。点到非空行时回调原文。src 传给 linesOf。onLineClick 为假时走另一支，被调用，并传入 text。className 传给 cn。maxLines 传给 foldRows。 */
 export function DiffBlock({
   src,
   mode,
@@ -128,6 +131,7 @@ export function DiffBlock({
   maxLines?: number;
 }) {
   const rows = foldRows(linesOf(src), maxLines);
+  /** click 调用 trim。text 去掉首尾空白，为假时走另一支，传给 onLineClick。 */
   const click = (text: string) => {
     if (!onLineClick || !text.trim()) return;
     onLineClick(text);

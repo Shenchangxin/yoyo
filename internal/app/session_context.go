@@ -11,6 +11,7 @@ import (
 )
 
 // measureSessionContext 按会话的 harness、技能、历史和窗口估算上下文形状。材料读失败时只叠历史和现场形状。
+// sessionID 传给 GetSession、ReadTrace、liveShape、BindSpill、extraTools、attachDramaTools、attachCanvasTools、attachStudioTools 和 sessionProfile。
 func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	meta, _ := a.GetSession(sessionID)
 	ws := meta.Workspace
@@ -95,6 +96,7 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 }
 
 // liveShape 返回该会话上次记住的形状。
+// sessionID 用作 lastShape 的键。
 func (a *App) liveShape(sessionID string) runtime.ShapeReport {
 	a.shapeMu.Lock()
 	defer a.shapeMu.Unlock()
@@ -102,6 +104,7 @@ func (a *App) liveShape(sessionID string) runtime.ShapeReport {
 }
 
 // promptFromEvents 从最近的事件里取 provider_prompt，没有则返回 0。
+// evs 从最后一条往前找 Payload 里的 provider_prompt。
 func promptFromEvents(evs []trace.Event) int {
 	for i := len(evs) - 1; i >= 0; i-- {
 		if n := payloadInt(evs[i].Payload, "provider_prompt"); n > 0 {
@@ -112,6 +115,8 @@ func promptFromEvents(evs []trace.Event) int {
 }
 
 // overlayPrompt 在估算结果没有供应商提示量时，用现场形状里的值补上。
+// rep 在 ProviderPrompt 为 0 且 live 的大于 0 时，改成 live 的 ProviderPrompt。
+// live 只在自身 ProviderPrompt 大于 0 且 rep 的为 0 时写入 rep。
 func overlayPrompt(rep, live runtime.ShapeReport) runtime.ShapeReport {
 	if rep.ProviderPrompt == 0 && live.ProviderPrompt > 0 {
 		rep.ProviderPrompt = live.ProviderPrompt
@@ -120,6 +125,7 @@ func overlayPrompt(rep, live runtime.ShapeReport) runtime.ShapeReport {
 }
 
 // payloadInt 把载荷里的整数或浮点读成 int，没有则返回 0。
+// key 用作 p 的查找键。
 func payloadInt(p map[string]any, key string) int {
 	if p == nil {
 		return 0

@@ -30,6 +30,8 @@ var (
 )
 
 // retryHTTPOn406 仅在状态为 406 且方案是 https 时返回同一 URL 的 http 副本。其余情况返回 nil。
+// u 为 nil，或方案不是 https 时返回 nil；否则复制一份并把方案改成 http。
+// status 不是 406 时返回 nil。
 func retryHTTPOn406(u *url.URL, status int) *url.URL {
 	if u == nil || status != 406 || !strings.EqualFold(u.Scheme, "https") {
 		return nil
@@ -40,6 +42,8 @@ func retryHTTPOn406(u *url.URL, status int) *url.URL {
 }
 
 // isXMLFeed 在内容类型含 json 时返回假。含 xml、atom 或 rss 时返回真。否则看正文是否以 <?xml、<feed 或 <rss 开头。
+// contentType 转成小写后，含 json 返回假，含 xml、atom 或 rss 返回真。
+// body 只在内容类型没有给出上述类型时使用，去掉空白后看是否以 <?xml、<feed 或 <rss 开头。
 func isXMLFeed(contentType, body string) bool {
 	ct := strings.ToLower(contentType)
 	if strings.Contains(ct, "json") {
@@ -56,6 +60,7 @@ func isXMLFeed(contentType, body string) bool {
 const feedInlineBudget = 7000
 
 // formatFeed 先取 entry，没有再取 item，最多 40 条。没有条目则返回假。按 20/160、16/80、12/0、8/0 这四档缩短，直到 rune 数不超过 feedInlineBudget。仍超出则 clipRunes 截到该预算。
+// body 用 reFeedEntry 最多取 40 条，没有再改用 reFeedItem，并用 reFeedTotal 取总数。
 func formatFeed(body string) (string, bool) {
 	entries := reFeedEntry.FindAllStringSubmatch(body, 40)
 	if len(entries) == 0 {
@@ -85,6 +90,7 @@ func formatFeed(body string) (string, bool) {
 }
 
 // renderFeed 写出条数、totalResults、id、标题、时间和链接。summaryRunes 大于 0 才写摘要。超出 limit 的条目只报省略数。
+// entries 的长度写入条数；每条取下标 1 的内部文本，只展开前 limit 条。
 func renderFeed(entries [][]string, total string, limit, summaryRunes int) string {
 	if limit > len(entries) {
 		limit = len(entries)
@@ -155,6 +161,8 @@ func renderFeed(entries [][]string, total string, limit, summaryRunes int) strin
 }
 
 // feedField 取出指定标签的内部文本，去掉内层标签并反转义 HTML。
+// inner 用标签名做成的正则取第一处内部文本。
+// tag 经 QuoteMeta 放进标签名。
 func feedField(inner, tag string) string {
 	re := regexp.MustCompile(`(?is)<(?:[a-z0-9]+:)?` + regexp.QuoteMeta(tag) + `\b[^>]*>(.*?)</(?:[a-z0-9]+:)?` + regexp.QuoteMeta(tag) + `>`)
 	m := re.FindStringSubmatch(inner)
@@ -165,6 +173,7 @@ func feedField(inner, tag string) string {
 }
 
 // feedAuthors 最多取 12 个 name，用逗号连接。
+// inner 交给 reFeedName，最多取 12 处。
 func feedAuthors(inner string) string {
 	names := reFeedName.FindAllStringSubmatch(inner, 12)
 	var out []string

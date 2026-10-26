@@ -19,7 +19,7 @@ export function useMotionReduced(): boolean {
   return useReducedMotion() === true;
 }
 
-/** motionTransition 减弱动效时时长为 0，否则用给定秒数和 EASE。 */
+/** motionTransition 减弱动效时时长为 0，否则用给定秒数和 EASE。reduced 为真时才继续。duration 写入字段 duration。 */
 export function motionTransition(reduced: boolean, duration = DURATION): Transition {
   if (reduced) return { duration: 0 };
   return { duration, ease: EASE };

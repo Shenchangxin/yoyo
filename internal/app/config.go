@@ -11,6 +11,7 @@ import (
 )
 
 // ApplyConfigPatch 把 JSON 合并进当前 Config。没出现的键保持原值，半份请求不会清掉 MCP、搜索或 gate。空正文或 null 只把当前配置再存一次。
+// raw 去掉首尾空白后，长度为 0 或正文是 null 时只调用 SaveConfig，否则 Unmarshal 进 Config。
 func (a *App) ApplyConfigPatch(raw []byte) error {
 	if a == nil {
 		return nil
@@ -63,6 +64,7 @@ func (a *App) seedConnections() {
 }
 
 // syncConnectionsFromConfig 在聊天、搜索、OTEL 或 MCP 端点相对旧配置有变化时写回连接登记。
+// prev 用来和当前 Config 比较 Provider、BaseURL、Model、Models、SearchURL、SearchKey 和 Log.OTELEndpoint。
 func (a *App) syncConnectionsFromConfig(prev Config) {
 	if a.Video == nil || a.Video.Conn == nil {
 		return
@@ -85,6 +87,7 @@ func (a *App) syncConnectionsFromConfig(prev Config) {
 }
 
 // sameStrings 判断两条字符串切片是否等长且逐项相同。
+// b 与 a 比长度，并逐项比较。
 func sameStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

@@ -3,7 +3,7 @@
  * 不拥有：审阅卡片和请求。只读文本，不改服务端。
  */
 
-/** parsePageReviewBlob 从等待审阅的文本里读出编号、哈希和标题。没有编号或解析失败则空。 */
+/** parsePageReviewBlob 从等待审阅的文本里读出编号、哈希和标题。没有编号或解析失败则空。blob 做匹配。 */
 export function parsePageReviewBlob(blob: string): { id: string; hash: string; title: string } | null {
   const m = blob.match(/awaiting page review\s*(\{[^{}]*\})/i) || blob.match(/(\{"review_id"[^{}]*\})/);
   let raw = m?.[1] || "";

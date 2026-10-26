@@ -14,6 +14,7 @@ import (
 
 // srtToASS 把 SRT 收成 ASS。排版沿用 Easel assemble.py 的规则（Apache-2.0）：PlayRes 等于画面，字号大约是短边的百分之五，中文按测出来的宽度折行，不靠 libass 的默认折行。
 // 宽或高小于 16 时按 1080×1920。没有字幕条就返回空串。
+// w 小于 16 时写成 1080，并参与字号、左右边距和 PlayResX。
 func srtToASS(srt string, w, h int) string {
 	if w < 16 {
 		w = 1080
@@ -65,6 +66,7 @@ func subtitleFont() string {
 }
 
 // assStamp 把秒写成 ASS 的时:分:秒.厘秒。负数当成 0。
+// sec 小于 0 时写成 0，再按百分之一秒四舍五入后拆成时、分、秒和厘秒。
 func assStamp(sec float64) string {
 	if sec < 0 {
 		sec = 0
@@ -95,6 +97,8 @@ func charUnits(r rune) float64 {
 }
 
 // wrapCaption 按宽度把一句字幕折成多行。英文尽量在空格处断开。折完是空的就退回整句。
+// text 先把 \N 换成空格，再收成一段；这段为空时返回 nil。
+// maxUnits 用来判断当前行加上下一个字会不会超宽。
 func wrapCaption(text string, maxUnits float64) []string {
 	flat := strings.Join(strings.Fields(strings.ReplaceAll(text, `\N`, " ")), " ")
 	if flat == "" {
@@ -142,6 +146,8 @@ func wrapCaption(text string, maxUnits float64) []string {
 }
 
 // alignScriptToCues 保留已锁定的口播句子，时间向 whisper 的字幕借。条数相同就逐条对应。条数不同就按比例把识别条并进每一句。任一边是空的就返回 nil。
+// lines 逐条去掉首尾空白，空串丢掉。
+// cues 只留下 End 大于 Start 的项；可用句子或可用字幕长度为 0 时返回 nil。
 func alignScriptToCues(lines []string, cues []cut.Cue) []cut.Cue {
 	clean := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -183,6 +189,7 @@ func alignScriptToCues(lines []string, cues []cut.Cue) []cut.Cue {
 }
 
 // normalizeMotion 只把 ken-burns 留成推拉。别的运镜，包括空的，都收成 static。
+// motion 去掉首尾空白后与 ken-burns 忽略大小写相等时返回 ken-burns，否则返回 static。
 func normalizeMotion(motion string) string {
 	if strings.EqualFold(strings.TrimSpace(motion), "ken-burns") {
 		return "ken-burns"
@@ -191,6 +198,8 @@ func normalizeMotion(motion string) string {
 }
 
 // shotFit 决定这一镜是铺满还是留边。镜头自己写了 cover 或 contain 就听镜头，否则听分镜。都没写时，静止留边，推拉铺满，避免把黑边放大。
+// sb 的 Fit 在镜头 Fit 去掉首尾空白后为空时使用。
+// motion 在 Fit 不是 cover 或 contain 时，等于 static 就返回 contain，否则返回 cover。
 func shotFit(sb StudioStoryboard, shot StudioShot, motion string) string {
 	f := strings.ToLower(strings.TrimSpace(shot.Fit))
 	if f == "" {
@@ -209,6 +218,9 @@ func shotFit(sb StudioStoryboard, shot StudioShot, motion string) string {
 }
 
 // frameFilter 拼缩放滤镜。cover 先放大再裁切，其余先缩小再补边。输出 30 帧。
+// w 写入缩放和裁切或补边的宽。
+// h 写入缩放和裁切或补边的高。
+// fit 等于 cover 时用 increase 和 crop，否则用 decrease 和 pad。
 func frameFilter(w, h int, fit string) string {
 	if fit == "cover" {
 		return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,setsar=1,fps=30", w, h, w, h)
@@ -217,6 +229,11 @@ func frameFilter(w, h int, fit string) string {
 }
 
 // stillFilter 给静帧拼滤镜。推拉且不是留边时用 zoompan，先放大再缓推。其余走 frameFilter。
+// w 在走 zoompan 时先乘 2 写入缩放，否则传给 frameFilter。
+// h 与 w 一样处理。
+// dur 在走 zoompan 时乘 30 得到帧数，小于 30 时写成 30。
+// motion 传给 normalizeMotion。
+// fit 不是 contain 且归一后的运镜是 ken-burns 时用 zoompan，否则与 w、h 一起传给 frameFilter。
 func stillFilter(w, h int, dur float64, motion, fit string) string {
 	motion = normalizeMotion(motion)
 	if motion == "ken-burns" && fit != "contain" {
@@ -230,6 +247,8 @@ func stillFilter(w, h int, dur float64, motion, fit string) string {
 }
 
 // clipShouldLoop 判断素材比镜头短时要不要循环。循环后仍盖不住一半以上的时长时，第二个结果为真，合成时会提醒操作者。目标时长小于等于 0 就都不循环。素材时长未知时循环，但不提醒。
+// srcDur 小于等于 0 时返回要循环且不提醒；否则在加上 0.05 仍小于 want 时循环，两倍仍小于 want 时提醒。
+// want 小于等于 0 时返回不循环且不提醒。
 func clipShouldLoop(srcDur, want float64) (loop, warn bool) {
 	if want <= 0 {
 		return false, false
@@ -244,6 +263,7 @@ func clipShouldLoop(srcDur, want float64) (loop, warn bool) {
 }
 
 // edgeRate 把语速收成 edge-tts 的百分比。接近 1 或小于等于 0 写成 +0%。结果夹在 -50% 到 +50%。
+// speed 先交给 clampSpeed，结果为 0 或在 0.99 到 1.01 之间时返回 +0%，否则换成相对 1 的百分比并夹在 -50 到 50。
 func edgeRate(speed float64) string {
 	speed = clampSpeed(speed)
 	if speed == 0 || (speed >= 0.99 && speed <= 1.01) {
@@ -260,6 +280,7 @@ func edgeRate(speed float64) string {
 }
 
 // clampSpeed 把语速夹在 0.5 到 2。小于等于 0 返回 0，表示请求里不写语速。
+// speed 小于等于 0 时返回 0，小于 0.5 时返回 0.5，大于 2 时返回 2。
 func clampSpeed(speed float64) float64 {
 	if speed <= 0 {
 		return 0
@@ -274,6 +295,9 @@ func clampSpeed(speed float64) float64 {
 }
 
 // speechPayload 拼 OpenAI 语音请求，格式是 mp3。声音空着用 alloy。语速接近 1 或小于等于 0 时不写 speed。
+// model 写入 model。
+// text 写入 input。
+// voice 去掉首尾空白，空串时写成 alloy，再写入 voice。
 func speechPayload(model, text, voice string, speed float64) map[string]any {
 	if strings.TrimSpace(voice) == "" {
 		voice = "alloy"

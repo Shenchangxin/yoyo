@@ -27,9 +27,12 @@ func probe() Report {
 }
 
 // assign 在 Darwin 上不记录进程，配置是否套上只由 apply 决定。
+// cmd 本函数不读取。
 func assign(cmd *exec.Cmd) {}
 
 // release 不结束进程。取消时由 WaitNotify 杀掉当前的 sandbox-exec 进程。
+// cmd 本函数不读取。
+// kill 本函数不读取。
 func release(cmd *exec.Cmd, kill bool) {}
 
 // apply 在 PATH 上找不到 sandbox-exec 时不改命令。找到时用 sandbox-exec -p 套上配置再执行原参数。

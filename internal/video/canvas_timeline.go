@@ -52,6 +52,7 @@ func LookWhisper() string {
 }
 
 // createTimelineRender 把时间线片段收成一条排队中的 ffmpeg 拼接任务。
+// req 读取 projectId、canvasId、clips 和 hashes；clips 里的 resourceId 或 id 能找到文件才收进片段，一段都没有时改用 hashes。
 func (e *Engine) createTimelineRender(req map[string]any) (map[string]any, error) {
 	now := Now()
 	projectID := strAnyMap(req, "projectId", "canvasId")
@@ -86,6 +87,7 @@ func (e *Engine) createTimelineRender(req map[string]any) (map[string]any, error
 }
 
 // createTimelineTranscribe 把资源收成一条排队中的 whisper 转写任务。
+// req 读取 resourceId 和 projectId，写入任务参数。
 func (e *Engine) createTimelineTranscribe(req map[string]any) (map[string]any, error) {
 	now := Now()
 	resourceID := strAnyMap(req, "resourceId")
@@ -100,6 +102,7 @@ func (e *Engine) createTimelineTranscribe(req map[string]any) (map[string]any, e
 }
 
 // runCanvasTimeline 按片段路径拼接视频并完成媒体登记。没有片段则返回错误。
+// j 的 Params 解析出片段路径，拼完后和 j 一起传给 finishMedia。
 func (e *Engine) runCanvasTimeline(j *Job) error {
 	p := parseParams(j.Params)
 	if len(p.ReferenceVideoURLs) == 0 {
@@ -113,6 +116,7 @@ func (e *Engine) runCanvasTimeline(j *Job) error {
 }
 
 // runCanvasTranscribe 对资源文件做转写，把文本写进任务草稿并标成成功。
+// j 的 Params 提供 ResourceID；转写文本写入 TextDraft，Status 写成 succeeded，并写回 Params。
 func (e *Engine) runCanvasTranscribe(j *Job) error {
 	p := parseParams(j.Params)
 	res, err := e.getCanvasResource(p.ResourceID)

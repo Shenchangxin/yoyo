@@ -3,6 +3,7 @@
 package cut
 
 // Punch 从每个片段里去掉 [start, end)。窗口短于等于 0.05 秒时原表返回。被整段盖住的片段丢掉；被切到的片段清掉媒体哈希，中间切开时两段的标识也清掉，以便下次套用时从源片重新抽出。
+// cuts 逐段与窗口比较，整段盖住的丢掉，被切到的清掉 Hash，从中间切开的两段再清掉 ID。
 func Punch(cuts []Clip, start, end float64) []Clip {
 	const eps = 0.05
 	if end-start <= eps {
@@ -43,6 +44,7 @@ func Punch(cuts []Clip, start, end float64) []Clip {
 }
 
 // InsertSpan 把 [start, end) 按开始时间插回剪辑表。窗口短于等于 0.05 秒时原表返回。新片段的标题是 restored。
+// cuts 先复刻，再追加一段后按 Start 插入排序。
 func InsertSpan(cuts []Clip, start, end float64) []Clip {
 	if end-start <= 0.05 {
 		return cuts

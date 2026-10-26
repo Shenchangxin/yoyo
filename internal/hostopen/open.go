@@ -14,6 +14,7 @@ import (
 
 // Path 打开一个本地路径。空白返回 os.ErrInvalid。路径先 Clean。
 // Stat 成功且是目录时走 openDir，否则走 launch。Stat 失败时仍把路径交给 launch。
+// path 去掉首尾空白，为空时返回 os.ErrInvalid，否则 Clean。Stat 成功且是目录时传给 openDir，否则传给 launch。Stat 失败也传给 launch。
 func Path(path string) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -29,6 +30,7 @@ func Path(path string) error {
 
 // URL 用系统浏览器打开 http 或 https。file 交给 Path。
 // javascript、data 以及其他协议被拒绝。
+// raw 传给 resolveURL。返回的 file 为真时目标传给 Path，否则传给 launch。
 func URL(raw string) error {
 	target, file, err := resolveURL(raw)
 	if err != nil {
@@ -131,6 +133,7 @@ func Reveal(path string) error {
 }
 
 // openDir 打开目录。Windows 用 explorer，Darwin 用 open，其他系统用 xdg-open。
+// path 在 windows 上传给 explorer，在 darwin 上传给 open，其他系统传给 xdg-open。
 func openDir(path string) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -143,6 +146,7 @@ func openDir(path string) error {
 }
 
 // launch 打开文件或 http(s) 地址。Windows 用 rundll32 url.dll,FileProtocolHandler，Darwin 用 open，其他系统用 xdg-open。
+// target 在 windows 上传给 rundll32 的 url.dll,FileProtocolHandler，在 darwin 上传给 open，其他系统传给 xdg-open。
 func launch(target string) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -157,6 +161,7 @@ func launch(target string) error {
 // resolveURL 解析原始字符串。空白返回 os.ErrInvalid。解析失败时包上 open url。
 // http 和 https 要求 Host 非空，file 为假。file 交给 fileURLPath，file 为真。没有协议时返回 invalid url。
 // 其他协议返回 refusing to open，并带上协议名。
+// raw 去掉首尾空白，为空时返回 os.ErrInvalid，否则交给 url.Parse。
 func resolveURL(raw string) (target string, file bool, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

@@ -60,6 +60,7 @@ type Engine struct {
 
 // Turn 走一轮对话。先裁决好感、越界、照片和工作，再调 Brain.Chat。越界两次、分数降到 12 及以下，或连续三次负向，这段对话结束。
 // 好感变化被夹在 -25 到 4。工作通道打开且裁决或回复里有工作时，Work 为真。冷淡档不发照片。
+// ctx 传给 judge、Brain.Chat 和 Brain.Paint。Chat 返回后若 ctx.Err 非空则返回该错误。对话 id 非空时再传给 maybeTitle。
 func (e *Engine) Turn(ctx context.Context, in TurnInput) (TurnResult, error) {
 	if e == nil || e.Store == nil || e.Brain == nil {
 		return TurnResult{}, errf("idol engine is not ready")
@@ -211,6 +212,8 @@ func (e *Engine) Turn(ctx context.Context, in TurnInput) (TurnResult, error) {
 }
 
 // maybeTitle 在当前对话满 3 个 turn 且还没有标题时，用 kind 为 title 的 Chat 起一个不超过 16 个字的标题。
+// ctx 传给 Brain.Chat。
+// conID 传给 conversation。写回标题时再按它查找。
 func (e *Engine) maybeTitle(ctx context.Context, conID string) {
 	st := e.Store.View()
 	con, ok := st.conversation(conID)
@@ -243,6 +246,9 @@ func (e *Engine) maybeTitle(ctx context.Context, conID string) {
 }
 
 // Reach 在 reachDue 为真时让偶像先说一句，kind 是 reach，并记下一次 ReachMark。情绪固定为 calm。
+// ctx 传给 Brain.Chat。
+// idolID 传给 idol。更新时再次按它查找。
+// now 为零时改成 time.Now。传给 reachDue、buildPrompt 和 ensureCurrent，并写入记录和 ReachMark 的 At。
 func (e *Engine) Reach(ctx context.Context, idolID string, now time.Time) (TurnResult, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -290,6 +296,9 @@ func (e *Engine) Reach(ctx context.Context, idolID string, now time.Time) (TurnR
 }
 
 // Narrate 用偶像的口吻转述一件已办完的事，写入 kind 为 work_said 的记录。workText 空白时用一句兜底，长于 500 个字符时截断。
+// ctx 传给 Brain.Chat。
+// idolID 传给 idol、ensureCurrent 和 affinityOf。
+// now 为零时改成 time.Now，并传给 buildPrompt 和 ensureCurrent，写入记录的 At。
 func (e *Engine) Narrate(ctx context.Context, idolID, workText string, now time.Time) (TurnResult, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -343,6 +352,10 @@ type verdict struct {
 }
 
 // judge 用 kind 为 judge 的 Chat 读用户这句话。解析失败时情绪是 calm，其余字段为零值。记忆写成 NONE 或 null 时清空。
+// ctx 传给 Brain.Chat。
+// idol 没有被读取。
+// text 传给 judgePrompt。
+// tier 传给 judgePrompt。
 func (e *Engine) judge(ctx context.Context, idol Idol, text, tier string) verdict {
 	raw, err := e.Brain.Chat(ctx, "judge", "", []Msg{
 		{Role: "system", Content: "你只输出 JSON。"},
@@ -365,6 +378,7 @@ func (e *Engine) judge(ctx context.Context, idol Idol, text, tier string) verdic
 }
 
 // extractJSON 取出第一个 { 到最后一个 } 之间的文本。没有成对括号时原样返回。
+// s 查找第一个 { 和最后一个 }。两者都在且 } 在 { 之后时返回这一段，否则原样返回。
 func extractJSON(s string) string {
 	i := strings.Index(s, "{")
 	j := strings.LastIndex(s, "}")
@@ -385,6 +399,8 @@ func cleanEmotion(s string) string {
 }
 
 // photoPrompt 拼出全年龄照片的英文提示，带上偶像名字、简介和场景。
+// idol 的 Name 和去掉空白的 Intro 写进提示。
+// scene 接在 scene: 后面。
 func photoPrompt(idol Idol, scene string) string {
 	return "one all-ages photograph, no text, no watermark, of " + idol.Name + ". " +
 		strings.TrimSpace(idol.Intro) + " scene: " + scene
@@ -418,6 +434,7 @@ func captionSample(c Conversation) string {
 }
 
 // ApplyReadings 按对照表把书面名字换成读音。显示用的原文不改，只改传入的 text。一行可以用等号或空格分开两边，# 开头的行跳过。
+// table 按换行切开。空行和 # 开头的行跳过。有 = 时按 = 分成两边，否则按第一个空格分。两边去掉空白后都非空时，在 text 里把左边换成右边。
 func ApplyReadings(text, table string) string {
 	for _, ln := range strings.Split(table, "\n") {
 		ln = strings.TrimSpace(ln)

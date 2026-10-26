@@ -101,11 +101,14 @@ type OpenAIClient struct {
 }
 
 // NormalizeBaseURL 去掉粘贴进来的空白和末尾斜杠，避免 ".../claw/v1 " 变成 ".../claw/v1 /chat/completions"。
+// baseURL 去掉空白和末尾斜杠。
 func NormalizeBaseURL(baseURL string) string {
 	return strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
 // NewOpenAIClient 规范化地址和密钥。地址为空时用 https://api.openai.com/v1。HTTP 客户端不设置 Timeout，也不设置 CheckRedirect。
+// baseURL 先规范化，空则写成 https://api.openai.com/v1。
+// apiKey 去掉空白后写入 APIKey。
 func NewOpenAIClient(baseURL, apiKey string) *OpenAIClient {
 	baseURL = NormalizeBaseURL(baseURL)
 	if baseURL == "" {
@@ -149,11 +152,16 @@ func openaiHTTPTransport() *http.Transport {
 }
 
 // Chat 走 ChatStream，不向外发出增量。
+// ctx 传给 ChatStream。
+// req 传给 ChatStream。
 func (c *OpenAIClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return c.ChatStream(ctx, req, nil)
 }
 
 // ChatStream 先按流式请求。错误文本含 stream 时，改成非流式再试一次。取消的上下文由请求和读循环返回。
+// ctx 传给 doChat。
+// req 传给 doChat。
+// emit 传给 doChat；错误文本含 stream 时再以非流式调用一次。
 func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error) {
 	msg, err := c.doChat(ctx, req, true, emit)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "stream") {
@@ -163,6 +171,9 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req ChatRequest, emit fun
 }
 
 // doChat 组装补全载荷。有工具才带 tools。流式时带 stream_options.include_usage。ShowThinking 为假时关闭思考；提供者拒绝这些字段则删掉 thinking 与 enable_thinking 再发一次。
+// ctx 传给 postChat。
+// req 提供 Model、Messages、Tools、Temperature、MaxTokens、CacheKey 和 ShowThinking。
+// emit 传给 postChat。
 func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool, emit func(StreamChunk) error) (Message, error) {
 	payload := map[string]any{
 		"model":    req.Model,
@@ -197,12 +208,14 @@ func (c *OpenAIClient) doChat(ctx context.Context, req ChatRequest, stream bool,
 }
 
 // disableThinking 写入 thinking.type=disabled 和 enable_thinking=false。
+// payload 写入 thinking 和 enable_thinking。
 func disableThinking(payload map[string]any) {
 	payload["thinking"] = map[string]any{"type": "disabled"}
 	payload["enable_thinking"] = false
 }
 
 // thinkingRejected 在错误文本含 thinking、enable_thinking 或 reasoning_effort 时返回真。
+// msg 转成小写后查找这些片段。
 func thinkingRejected(msg string) bool {
 	s := strings.ToLower(msg)
 	return strings.Contains(s, "thinking") || strings.Contains(s, "enable_thinking") || strings.Contains(s, "reasoning_effort")
@@ -210,6 +223,9 @@ func thinkingRejected(msg string) bool {
 
 // postChat 把载荷 POST 到 BaseURL/chat/completions。流式请求的 Accept 是 text/event-stream。
 // 未设置 CheckRedirect，跟随重定向发生在 Do 返回之前。Do 返回后状态码大于等于 300 视为错误，正文截到 800 字符。429 只记警告。
+// ctx 用来构造请求，也传给诊断日志和 readOpenAIStream。
+// payload 编成 JSON 作为正文；prompt_cache_key 为非空字符串时写入请求头。
+// emit 在非流式解析成功且非 nil 时传给 emitMessageChunks。
 func (c *OpenAIClient) postChat(ctx context.Context, payload map[string]any, stream bool, emit func(StreamChunk) error) (Message, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -291,6 +307,7 @@ func newOpenAIEmitter(emit func(StreamChunk) error) *openaiEmitter {
 }
 
 // out 把一块交给 emit。发射器或 emit 为空时返回 nil。
+// ch 在发射器和 emit 都非空时传给 emit。
 func (e *openaiEmitter) out(ch StreamChunk) error {
 	if e == nil || e.emit == nil {
 		return nil
@@ -299,6 +316,7 @@ func (e *openaiEmitter) out(ch StreamChunk) error {
 }
 
 // textDelta 追加可见文本。第一次先关掉推理块再打开文本块。空串不发。
+// s 为空时返回 nil，否则追加并作为文本增量发出。
 func (e *openaiEmitter) textDelta(s string) error {
 	if s == "" {
 		return nil
@@ -356,6 +374,10 @@ func (e *openaiEmitter) closeReason() error {
 }
 
 // toolDelta 累积一条工具调用。先关掉推理和文本。名字非空、参数非空且是合法 JSON 时才发结束块。
+// providerIdx 是 tools 的键，没有槽时新建。
+// id 非空时写入槽。
+// name 非空时写入槽，并在增量块上带上 Name。
+// argDelta 非空时追加到参数。
 func (e *openaiEmitter) toolDelta(providerIdx int, id, name, argDelta string) error {
 	if err := e.closeReason(); err != nil {
 		return err
@@ -424,6 +446,7 @@ func (e *openaiEmitter) closeOpen() error {
 }
 
 // emitMessageChunks 把整条消息补成文本和工具块，再按有无工具调用或是否截断发出结束原因。
+// msg 的 Content 交给 textDelta，ToolCalls 逐条交给 toolDelta；Truncated 为真时结束原因是长度上限。
 func emitMessageChunks(emit func(StreamChunk) error, msg Message) error {
 	if emit == nil {
 		return nil
@@ -452,6 +475,9 @@ func emitMessageChunks(emit func(StreamChunk) error, msg Message) error {
 
 // readOpenAIStream 读 SSE。上下文取消时关掉响应体。第一条非空行不是 data: 时，把剩余内容当一整份 JSON。
 // 出现完整 message 就返回。流结束时补上未关闭的块。finish_reason 为长度上限时 Truncated 为真。
+// ctx 取消时关掉响应体；循环里 Err 非 nil 时返回该错误。
+// body 按行读取，函数返回前关闭。
+// emit 传给 newOpenAIEmitter 和 emitMessageChunks。
 func readOpenAIStream(ctx context.Context, body io.ReadCloser, emit func(StreamChunk) error) (Message, error) {
 	defer body.Close()
 	stop := make(chan struct{})
@@ -570,6 +596,8 @@ type toolWireDelta struct {
 }
 
 // applyStreamChunk 解析一块 SSE data。choices 为空时只返回用量。delta 里的完整 message 优先于增量。JSON 无效时返回空增量。
+// tools 按工具下标累积 id、名字和参数，没有则新建。
+// maxIdx 在工具下标更大时被改写。
 func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Message, string, string, []toolWireDelta, int, int, int) {
 	var chunk struct {
 		Usage *struct {
@@ -649,6 +677,7 @@ func applyStreamChunk(data string, tools map[int]*streamAcc, maxIdx *int) (*Mess
 }
 
 // parseOpenAIJSON 解析非流式补全。没有 choices 时返回错误。finish_reason 为长度上限时 Truncated 为真。
+// raw 按 JSON 解开；没有 choices 时返回错误。
 func parseOpenAIJSON(raw []byte) (Message, error) {
 	var parsed struct {
 		Usage *struct {
@@ -699,6 +728,7 @@ func parseOpenAIJSON(raw []byte) (Message, error) {
 }
 
 // usageCached 在 prompt_tokens_details.cached_tokens 大于 0 时用它，否则用 cache_read_input_tokens。
+// anthropic 在 details 为 nil 或 CachedTokens 不大于 0 时返回。
 func usageCached(anthropic int, details *struct {
 	CachedTokens int `json:"cached_tokens"`
 }) int {
@@ -709,11 +739,13 @@ func usageCached(anthropic int, details *struct {
 }
 
 // stringify 把内容值收成字符串，规则与 textFromContent 相同。
+// v 传给 textFromContent。
 func stringify(v any) string {
 	return textFromContent(v)
 }
 
 // textFromContent 把字符串、文本部件或其它 JSON 收成可见文本。type 为 thinking 或 reasoning 的部件不计入。
+// v 为 nil 时返回空串，是字符串时原样返回，是数组时拼接非思考部件的 text，其他值做 JSON。
 func textFromContent(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -743,6 +775,7 @@ func textFromContent(v any) string {
 }
 
 // reasoningFromDelta 拼接 reasoning_content、reasoning、thinking，以及 content 数组里 type 为 thinking 或 reasoning 的 thinking 与 text。
+// reasoningContent 交给 textFromContent，接在结果最前。
 func reasoningFromDelta(content, reasoningContent, reasoning, thinking any) string {
 	var b strings.Builder
 	b.WriteString(textFromContent(reasoningContent))
@@ -770,6 +803,7 @@ func reasoningFromDelta(content, reasoningContent, reasoning, thinking any) stri
 }
 
 // truncate 超过 n 个字节时截断并加上省略号。按字节切，不按符文。
+// s 的字节长度不超过 n 时原样返回，否则截到 n 并加上省略号。
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -784,6 +818,8 @@ type ScriptedClient struct {
 }
 
 // Chat 按顺序返回 Steps。用尽后回复 done。
+// ctx 函数体没有读取。
+// req 函数体没有读取。
 func (s *ScriptedClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	if s.i >= len(s.Steps) {
 		return Message{Role: RoleAssistant, Content: "done"}, nil

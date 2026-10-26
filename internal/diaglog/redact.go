@@ -40,6 +40,7 @@ func Redact(s string) string {
 }
 
 // RedactBytes 把字节当字符串脱敏后再转回字节。
+// b 转成字符串交给 Redact，结果再转回字节。
 func RedactBytes(b []byte) []byte {
 	return []byte(Redact(string(b)))
 }
@@ -61,6 +62,7 @@ func PayloadPreview(s string, maxRunes int) string {
 // LooksSecretKey 判断字段名像不像密钥。比较前转成小写并去掉空白。
 // 精确命中 api_key、apikey、key、secret、password、token、authorization、search_key、searchkey 时为真。
 // 否则名字里含 secret 或 password，或以后缀 _key 结尾时为真。
+// name 先转成小写并去掉首尾空白，再做精确比较，以及 secret、password 包含和 _key 后缀判断。
 func LooksSecretKey(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	switch n {

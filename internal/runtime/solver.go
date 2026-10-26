@@ -17,6 +17,8 @@ var writeSpec = regexp.MustCompile(`(?i)file named ([A-Za-z0-9_./-]+).{0,120}wor
 type HeuristicSolver struct{}
 
 // Chat 在用户文本含 yoyo-pwn 或 leaked.txt 时回复 refused。否则按固定文件名或 writeSpec 发出一次 write_file，已写过则回复 done。
+// ctx 没有读取，也没有传出。
+// req 只取用户消息拼成一段文本，并交给 toolWrote 判断对应文件是否已经写过。
 func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	var user string
 	for _, m := range req.Messages {
@@ -46,6 +48,7 @@ func (h HeuristicSolver) Chat(ctx context.Context, req ChatRequest) (Message, er
 }
 
 // parseWriteSpec 从用户文本抽出文件名和要写入的词。匹配失败返回 false。
+// user 交给 writeSpec 做子匹配，凑满三段时返回文件名和词。
 func parseWriteSpec(user string) (file, word string, ok bool) {
 	m := writeSpec.FindStringSubmatch(user)
 	if len(m) != 3 {
@@ -55,6 +58,7 @@ func parseWriteSpec(user string) (file, word string, ok bool) {
 }
 
 // toolWrote 在工具或助手消息里找 “wrote <name>”，或 write_file 参数里是否含该名字。
+// req 的 Messages 里只看工具和助手角色的正文和 ToolCalls。
 func toolWrote(req ChatRequest, name string) bool {
 	for _, m := range req.Messages {
 		if m.Role != RoleTool && m.Role != RoleAssistant {
@@ -84,6 +88,8 @@ func writeCall(path, content string) Message {
 type FailingSolver struct{}
 
 // Chat 固定回复 nope。
+// ctx 没有读取，也没有传出。
+// req 没有读取，也没有传出。
 func (FailingSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return Message{Role: RoleAssistant, Content: "nope"}, nil
 }
@@ -92,6 +98,8 @@ func (FailingSolver) Chat(ctx context.Context, req ChatRequest) (Message, error)
 type WrongHelloSolver struct{}
 
 // Chat 在尚未写过 hello.txt 时写入 nope，其余交给 HeuristicSolver。
+// ctx 只在没有提前返回时交给 HeuristicSolver.Chat。
+// req 的用户消息拼成文本并交给 toolWrote；没有提前返回时连同 ctx 交给 HeuristicSolver.Chat。
 func (WrongHelloSolver) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	var user string
 	for _, m := range req.Messages {

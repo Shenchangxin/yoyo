@@ -36,6 +36,8 @@ type cshSkill struct {
 }
 
 // listClawSkillHub 先取一页。若满页且还要更多，确认第二页有新 id 后再并发拉后续页，并发数是 4。validationScore 大于等于 85，或浏览结果的前 8 条，标成 Featured。条数达到上限时 Truncated 为真。
+// query 先交给 catalogLimit，再去掉两端空白传给 fetchClawSkillHubPage；空时把前 8 条标成 Featured。
+// limit 先交给 catalogLimit；收集条数达到它就停，满则 Truncated 为真。
 func listClawSkillHub(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	base := strings.TrimRight(ClawSkillHubBase, "/")
@@ -110,6 +112,8 @@ func listClawSkillHub(query string, limit int) (Catalog, error) {
 }
 
 // clawSkillHubPageAdds 在下一页出现上一页没有的条目 id 时返回 true。
+// prev 里能转成条目的 id 记下来。
+// next 为空返回 false；出现 prev 没有的 id 时返回 true。
 func clawSkillHubPageAdds(prev, next []cshSkill) bool {
 	if len(next) == 0 {
 		return false
@@ -129,6 +133,10 @@ func clawSkillHubPageAdds(prev, next []cshSkill) bool {
 }
 
 // fetchClawSkillHubPage 有查询时先打 /api/cli/search。失败则退回 /api/skills，并带 search 参数。无查询时按 downloads 排序。
+// base 拼在 /api/cli/search 或 /api/skills 前面。
+// query 非空时先作为 q 请求搜索，失败再写入 search。
+// limit 写入查询的 limit。
+// offset 写入查询的 offset。
 func fetchClawSkillHubPage(base, query string, limit, offset int) ([]cshSkill, error) {
 	vals := url.Values{
 		"sort":   {"downloads"},
@@ -169,6 +177,7 @@ func fetchClawSkillHubPage(base, query string, limit, offset int) ([]cshSkill, e
 }
 
 // itemFromClawSkillHub 把一行变成条目。slug 和 name 都净化失败时返回 false。owner 为空时用 skillhub。
+// row 的 Slug 或 Name 交给 SanitizeSlug，都空则返回 false；Description 交给 clip，第二个实参是 240。
 func itemFromClawSkillHub(row cshSkill) (Item, bool) {
 	slug := SanitizeSlug(row.Slug)
 	if slug == "" {

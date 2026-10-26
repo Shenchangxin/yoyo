@@ -7,11 +7,14 @@ import (
 )
 
 // SelectParent 用随机种子调用 SelectParentSeeded。档案为空时返回 active。
+// nodes 和 active 一起交给 SelectParentSeeded。
 func SelectParent(nodes []Node, active string) string {
 	return SelectParentSeeded(nodes, active, rand.Uint64())
 }
 
 // SelectParentSeeded 按 ParentWeight 做加权抽样。Note 为 online-ace-stage 且 held-in、held-out 总数都是 0 的节点跳过。没有正权重时返回 active。
+// nodes 为空时返回 active；否则统计 Parent 的子节点数，跳过未评估的 online-ace-stage，再按权重抽样。
+// seed 作为 rand.NewPCG 的第一参，第二参是 seed 异或 0x9e3779b97f4a7c15。
 func SelectParentSeeded(nodes []Node, active string, seed uint64) string {
 	if len(nodes) == 0 {
 		return active
@@ -55,6 +58,7 @@ func SelectParentSeeded(nodes []Node, active string, seed uint64) string {
 
 // ParentWeight 用 held-in 与 held-out 通过数之和除以 1 加子节点数。通过数为 0 且未接受时通过数按 0.1 计。接受则再加 0.25。
 // TransferFail 乘 0.3。ManifestoMiss 大于 ManifestoHit 时乘 0.5。surface 为 prompt_fragment 且 TransferFail 时再乘 0.5。
+// childCount 加 1 后作为除数，通过数除以它。
 func ParentWeight(n Node, childCount int) float64 {
 	pass := float64(n.Metrics.HeldInPass + n.Metrics.HeldOutPass)
 	if pass == 0 && !n.Accepted {
@@ -77,6 +81,7 @@ func ParentWeight(n Node, childCount int) float64 {
 }
 
 // BestParent 取 ParentWeight 最大的节点编号。同样跳过未评估的 online-ace-stage。都没有时返回 active。
+// nodes 为空时返回 active；否则取 ParentWeight 最大的节点 ID，该 ID 为空时仍返回 active。
 func BestParent(nodes []Node, active string) string {
 	if len(nodes) == 0 {
 		return active

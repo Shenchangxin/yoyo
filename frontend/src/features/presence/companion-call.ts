@@ -3,7 +3,7 @@
  * 不拥有：通话循环。只读事件，不改服务端。
  */
 
-/** companionCallOn 剥开信封后判断陪伴通话是不是开着。真值、字符串 true 或 1，以及对象上的 on 为真时算开着。 */
+/** companionCallOn 剥开信封后判断陪伴通话是不是开着。真值、字符串 true 或 1，以及对象上的 on 为真时算开着。raw 传给 peel。 */
 export function companionCallOn(raw: unknown): boolean {
   const data = peel(raw);
   if (data === true || data === "true" || data === 1 || data === "1") return true;
@@ -14,7 +14,7 @@ export function companionCallOn(raw: unknown): boolean {
   return false;
 }
 
-/** 剥掉字符串、单元素数组，以及带 name 和 data 的信封。 */
+/** 剥掉字符串、单元素数组，以及带 name 和 data 的信封。raw 去掉首尾空白，取第一段，判断是否为空，与 null 比较是否不等，读取 length、data，用 typeof 看类型，作为分支结果，传给 peel。depth 大于 4，加上 1。 */
 function peel(raw: unknown, depth = 0): unknown {
   if (raw == null || depth > 4) return raw;
   if (typeof raw === "string") {

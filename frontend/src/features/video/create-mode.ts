@@ -14,11 +14,11 @@ export const useCreateMode = create<{
   engaged: boolean;
   setMode: (mode: CreateMode) => void;
   setEngaged: (engaged: boolean) => void;
-}>((set) => ({
+}>(/** set 写入模式或是否已发过聊天。 */ (set) => ({
   mode: "clip",
   engaged: false,
-  /** 改当前创作模式。 */
+  /** 改当前创作模式。mode 写进状态。 */
   setMode: (mode) => set({ mode }),
-  /** 记下这张桌子是否已经发过聊天。 */
+  /** 记下这张桌子是否已经发过聊天。engaged 写进状态。 */
   setEngaged: (engaged) => set({ engaged }),
 }));

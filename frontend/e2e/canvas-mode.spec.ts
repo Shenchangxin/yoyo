@@ -6,17 +6,17 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockApi } from "./mock";
 
-/** island 定位画布工作室外壳。 */
+/** island 定位画布工作室外壳。page 调用 getByTestId。 */
 function island(page: Page) {
   return page.getByTestId("canvas-studio-shell");
 }
 
-/** openVideo 点名为 Video 的按钮，进入视频轨。 */
+/** openVideo 点名为 Video 的按钮，进入视频轨。page 调用 getByRole。 */
 async function openVideo(page: Page) {
   await page.getByRole("button", { name: "Video" }).click();
 }
 
-/** openVideoChat 打开视频轨，并等到创作桌出现。 */
+/** openVideoChat 打开视频轨，并等到创作桌出现。page 调用 getByTestId，传给 openVideo。 */
 async function openVideoChat(page: Page) {
   await openVideo(page);
   await expect(page.getByTestId("create-desk")).toBeVisible();

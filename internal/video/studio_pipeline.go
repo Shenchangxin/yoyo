@@ -11,6 +11,7 @@ import (
 )
 
 // studioGateIndex 返回闸门在顺序里的位置。认不出的名字返回 0，也就是 GateSetup。
+// g 去掉首尾空白后与 studioGateOrder 比较，没有相等项时返回 0。
 func studioGateIndex(g string) int {
 	g = strings.TrimSpace(g)
 	for i, id := range studioGateOrder {
@@ -42,6 +43,7 @@ func (p StudioProject) FurthestGate() string {
 }
 
 // CanEnter 判断这个闸门没有超过 FurthestGate。
+// gate 传给 studioGateIndex。
 func (p StudioProject) CanEnter(gate string) bool {
 	return studioGateIndex(gate) <= studioGateIndex(p.FurthestGate())
 }
@@ -64,6 +66,7 @@ func (p StudioProject) VisualsReady() bool {
 }
 
 // ensureShotIDs 给缺编号的镜头补编号。运镜空着写成 ken-burns，画面说明空着就用提示，时长小于等于 0 就写成 3 秒。
+// shots 逐项在 ID 去掉首尾空白后为空时用 NewID，Motion 为空时写成 ken-burns，Visual 为空时改用 Prompt，Duration 小于等于 0 时写成 3。
 func ensureShotIDs(shots []StudioShot) []StudioShot {
 	for i := range shots {
 		if strings.TrimSpace(shots[i].ID) == "" {
@@ -83,6 +86,8 @@ func ensureShotIDs(shots []StudioShot) []StudioShot {
 }
 
 // mergeStudioShots 按编号合并镜头。新镜头没带图、视频或任务编号时留下原来的。画面说明或提示变了，且原来已有图或视频，就标成过期并记下上一版。
+// cur 里 ID 非空的镜头按 ID 放进表。
+// next 逐项按 ID 查这张表，合并原来的图、视频和任务编号。
 func (e *Engine) mergeStudioShots(cur, next []StudioShot) []StudioShot {
 	byID := map[string]StudioShot{}
 	for _, s := range cur {
@@ -119,6 +124,9 @@ func (e *Engine) mergeStudioShots(cur, next []StudioShot) []StudioShot {
 }
 
 // noteStudio 追加一条系统记录。超过 50 条就只留最新的 50 条。工程是空指针就什么都不做。
+// p 为 nil 时直接返回；否则追加一条活动，超过 50 条时只留最后 50 条。
+// kind 写入活动的 Kind。
+// message 写入活动的 Message。
 func (e *Engine) noteStudio(p *StudioProject, kind, message string) {
 	if p == nil {
 		return
@@ -132,11 +140,17 @@ func (e *Engine) noteStudio(p *StudioProject, kind, message string) {
 }
 
 // flagStudio 记一条错误，级别是 error。
+// p 传给 addStudioIssue。
+// gate 传给 addStudioIssue。
+// message 传给 addStudioIssue。
 func (e *Engine) flagStudio(p *StudioProject, gate, message string) {
 	e.addStudioIssue(p, "error", gate, message)
 }
 
 // warnStudio 记一条警告。同一闸、同一句话的旧警告会先去掉，避免重复。空消息不记。
+// p 为 nil，或 message 去掉首尾空白后为空时直接返回。
+// gate 用来丢掉同一闸、同一句的旧问题，并传给 addStudioIssue。
+// message 去掉首尾空白后为空时直接返回，否则用来匹配旧问题并传给 addStudioIssue。
 func (e *Engine) warnStudio(p *StudioProject, gate, message string) {
 	if p == nil || strings.TrimSpace(message) == "" {
 		return
@@ -153,6 +167,10 @@ func (e *Engine) warnStudio(p *StudioProject, gate, message string) {
 }
 
 // addStudioIssue 追加一条问题。超过 20 条就只留最新的 20 条。空消息不记。
+// p 为 nil，或 message 去掉首尾空白后为空时直接返回；否则追加问题，超过 20 条时只留最后 20 条。
+// level 写入 Level。
+// gate 写入 Gate。
+// message 去掉首尾空白后为空时不记，否则写入 Message。
 func (e *Engine) addStudioIssue(p *StudioProject, level, gate, message string) {
 	if p == nil || strings.TrimSpace(message) == "" {
 		return
@@ -166,6 +184,7 @@ func (e *Engine) addStudioIssue(p *StudioProject, level, gate, message string) {
 }
 
 // saveStudio 把修订号加一并写回工程。编号必须已经有。
+// p 把 Revision 加 1 并写入 UpdatedAt 后传给 putDoc。
 func (e *Engine) saveStudio(p StudioProject) (StudioProject, error) {
 	p.Revision++
 	p.UpdatedAt = Now()
@@ -176,6 +195,8 @@ func (e *Engine) saveStudio(p StudioProject) (StudioProject, error) {
 }
 
 // ApplyStudioPreset 把预设的画幅、平台和时长写上工程，并改分镜尺寸。预设不存在就拒绝。
+// id 传给 GetStudioProject。
+// presetID 传给 LookupStudioPreset，找不到时写进错误文本。
 func (e *Engine) ApplyStudioPreset(id, presetID string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -196,6 +217,8 @@ func (e *Engine) ApplyStudioPreset(id, presetID string) (StudioProject, error) {
 }
 
 // ApplyStudioTemplate 先套模板上的预设，再写风格、平台、语气和身份。标题还是空的或「短片」时改成模板标题。模板不存在就拒绝。
+// id 传给 GetStudioProject 和 ApplyStudioPreset。
+// templateID 传给 LookupStudioTemplate，找不到时写进错误文本。
 func (e *Engine) ApplyStudioTemplate(id, templateID string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -221,6 +244,8 @@ func (e *Engine) ApplyStudioTemplate(id, templateID string) (StudioProject, erro
 }
 
 // identityFromCatalog 用目录里的角色和风格拼身份。风格的约定和禁止会接在角色的后面。两边都没有就用默认口播主持。
+// characterID 传给 LookupStudioCharacter，找到时写入角色编号、名字、Preserve 和 Prohibit。
+// styleID 传给 LookupStudioStyle，找到时写入 StyleID，并把 Contract、Forbid 接在后面。
 func identityFromCatalog(characterID, styleID string) StudioIdentity {
 	ident := DefaultStudioIdentity()
 	if c, ok := LookupStudioCharacter(characterID); ok {
@@ -238,6 +263,9 @@ func identityFromCatalog(characterID, styleID string) StudioIdentity {
 }
 
 // SetStudioIdentity 按目录重写身份。风格编号非空时也写到工程的 Style。
+// id 传给 GetStudioProject。
+// characterID 传给 identityFromCatalog。
+// styleID 传给 identityFromCatalog，非空时同时写入工程的 Style。
 func (e *Engine) SetStudioIdentity(id, characterID, styleID string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -252,6 +280,7 @@ func (e *Engine) SetStudioIdentity(id, characterID, styleID string) (StudioProje
 }
 
 // ApproveStudioScript 锁住口播。正文是空的就拒绝。还没有分段就按句子拆开，没有镜头就按分段生成。钩子和收束空着时用第一段和最后一段。闸门改到配音。
+// id 传给 GetStudioProject。
 func (e *Engine) ApproveStudioScript(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -280,6 +309,7 @@ func (e *Engine) ApproveStudioScript(id string) (StudioProject, error) {
 }
 
 // SkipStudioAudio 在口播已锁定后跳过配音，闸门改到画面。还没锁定就拒绝。
+// id 传给 GetStudioProject。
 func (e *Engine) SkipStudioAudio(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -295,6 +325,8 @@ func (e *Engine) SkipStudioAudio(id string) (StudioProject, error) {
 }
 
 // parseSpokenSegments 按句子拆口播。第一段是钩子，最后一段是收束，中间是正文。目标秒数空着按 60 秒，再平分到每段，每段至少 2 秒。
+// script 传给 splitSpeak，结果为空时返回 nil。
+// targetSec 小于等于 0 时写成 60，再除以句子数，每段小于 2 时写成 2。
 func parseSpokenSegments(script string, targetSec int) []StudioSegment {
 	parts := splitSpeak(script)
 	if len(parts) == 0 {
@@ -324,6 +356,7 @@ func parseSpokenSegments(script string, targetSec int) []StudioSegment {
 }
 
 // shotsFromSegments 按分段生成镜头。字幕和画面说明都用这段口播，运镜是 ken-burns。时长小于等于 0 就写成 3 秒。
+// segs 逐段读取 Narration、Visual 和 Duration，Duration 小于等于 0 时写成 3，最后传给 ensureShotIDs。
 func shotsFromSegments(segs []StudioSegment) []StudioShot {
 	out := make([]StudioShot, 0, len(segs))
 	for _, s := range segs {
@@ -341,6 +374,7 @@ func shotsFromSegments(segs []StudioSegment) []StudioShot {
 
 // ApplyStudioTiming 让镜头时长跟着口播走。还没有配音就拒绝。
 // 有字幕时先读每条字幕的时长，再用探测到的音频总长按比例拉开。没有字幕但探测到时长，就平分到现有镜头。闸门改到画面。
+// id 传给 GetStudioProject。
 func (e *Engine) ApplyStudioTiming(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -387,6 +421,8 @@ func (e *Engine) ApplyStudioTiming(id string) (StudioProject, error) {
 }
 
 // durationsFromSRT 从工程的字幕文件读出每条的时长。没有字幕或读不到就返回 nil。
+// p 的 SubtitleHash 为空时返回 nil，否则把该哈希交给 e.GetBytes。
+// e 为 nil 时返回 nil，否则调用 GetBytes。
 func durationsFromSRT(p StudioProject, e *Engine) []float64 {
 	if p.SubtitleHash == "" || e == nil {
 		return nil
@@ -429,6 +465,7 @@ func parseSRTStamp(s string) float64 {
 }
 
 // ProbeSeconds 用 ffprobe 读一份内容库媒体的时长。没有 ffprobe 或取不出文件就返回错误。
+// hash 以扩展名 .bin 传给 materialize。
 func (e *Engine) ProbeSeconds(hash string) (float64, error) {
 	if e.FFProbe == "" {
 		return 0, fmt.Errorf("ffprobe missing")
@@ -456,6 +493,8 @@ type StudioPreflight struct {
 
 // StudioPreflight 检查进这一闸还缺什么。闸门空着就用 FurthestGate。
 // 配音看语音连接，画面看图像连接，合成看 ffmpeg，交付看成片在不在。缺了就把 Ok 设成假。
+// id 传给 GetStudioProject。
+// gate 去掉首尾空白，空串时改用 FurthestGate，并写入结果的 Gate。
 func (e *Engine) StudioPreflight(id, gate string) (StudioPreflight, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -504,6 +543,7 @@ func (e *Engine) StudioPreflight(id, gate string) (StudioPreflight, error) {
 
 // PackageStudio 打交付包。还没有成片就拒绝。文案空着就按平台写一版，封面空着就用海报。
 // 成片和文案都在时标成可发布。封面仍缺会写在备注里。成功后闸门改到交付，并追加一个版本。
+// id 传给 GetStudioProject。
 func (e *Engine) PackageStudio(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -566,6 +606,7 @@ func (e *Engine) PackageStudio(id string) (StudioProject, error) {
 }
 
 // RestoreStudioVersion 把成片、海报、口播、字幕、封面和文案编号恢复成第 n 版。不改口播正文和分镜。找不到这一版就拒绝。
+// id 传给 GetStudioProject。
 func (e *Engine) RestoreStudioVersion(id string, n int) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -618,6 +659,7 @@ func defaultPublishCopy(p StudioProject) string {
 }
 
 // osRemove 删掉临时文件。路径空着或删除失败都忽略。
+// path 非空时传给 os.Remove。
 func osRemove(path string) {
 	if path != "" {
 		_ = os.Remove(path)

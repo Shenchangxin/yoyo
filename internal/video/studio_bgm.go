@@ -53,6 +53,7 @@ func (e *Engine) ListStudioBGM() StudioBGMList {
 }
 
 // bgmExt 判断扩展名是不是 mp3、m4a、wav、aac、flac 或 ogg。
+// name 的扩展名转成小写后，与 .mp3、.m4a、.wav、.aac、.flac、.ogg 比较。
 func bgmExt(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg":
@@ -63,6 +64,8 @@ func bgmExt(name string) bool {
 }
 
 // AttachStudioBGM 把选中的配乐抄进内容库并写上工程。目录是空的就拒绝。名字空着或是 random 就随机挑一个。名字只能是文件名，不能带路径。超过 20MB 拒绝。音量还没设时写成 0.22。
+// id 传给 GetStudioProject。
+// name 去掉首尾空白，空串或等于 random 时改成列表里随机一项的 Name，再取 filepath.Base。
 func (e *Engine) AttachStudioBGM(id, name string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -102,6 +105,7 @@ func (e *Engine) AttachStudioBGM(id, name string) (StudioProject, error) {
 }
 
 // ClearStudioBGM 清掉工程上的配乐编号。不删目录里的文件。
+// id 传给 GetStudioProject。
 func (e *Engine) ClearStudioBGM(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {

@@ -25,7 +25,7 @@ export type OverlayItem = {
 /** OverlayCrumb 沿用提及的面包屑。 */
 export type OverlayCrumb = MentionCrumb;
 
-/** 按种类画一个小图标。 */
+/** 按种类画一个小图标。kind 与 folder、skill、harness、file、session、attach 等比较是否相等。 */
 function Glyph({ kind }: { kind?: OverlayKind }) {
   if (kind === "folder") return <Folder className="size-3.5 shrink-0 opacity-70" />;
   if (kind === "skill") return <BookOpen className="size-3.5 shrink-0 opacity-70" />;
@@ -39,7 +39,7 @@ function Glyph({ kind }: { kind?: OverlayKind }) {
   return <AtSign className="size-3.5 shrink-0 opacity-70" />;
 }
 
-/** CommandOverlay 列出触发后的选项，选中交给外面。 */
+/** CommandOverlay 列出触发后的选项，选中交给外面。props 读取 hi、items、crumbs、crumbsLabel、label、drillHint 等，调用 onCrumb，调用 onPick，调用 onDrill，调用 onHover。 */
 export function CommandOverlay(props: {
   label: string;
   items: OverlayItem[];
@@ -122,12 +122,12 @@ export function CommandOverlay(props: {
   );
 }
 
-/** 给一行选项一个稳定的元素编号。 */
+/** 给一行选项一个稳定的元素编号。index 拼进字符串。 */
 function overlayOptionId(index: number) {
   return `composer-option-${index}`;
 }
 
-/** 画面包屑里的一段。 */
+/** 画面包屑里的一段。props 读取 item、prev、index、active、rowRef、drillHint 等。 */
 function FragmentRow(props: {
   item: OverlayItem;
   index: number;
@@ -163,7 +163,7 @@ function FragmentRow(props: {
   );
 }
 
-/** 画浮层里的一行选项。 */
+/** 画浮层里的一行选项。props 读取 item、rowRef、index、active、onHover、drillHint 等，调用 onPick，调用 onDrill。 */
 function PopupRow(props: {
   item: OverlayItem;
   index: number;

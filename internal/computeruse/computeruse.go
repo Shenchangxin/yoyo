@@ -37,6 +37,7 @@ type Host struct {
 }
 
 // Open 按 0o700 创建目录，display 设为 virtual，读入 allow.json，再调用 ensureVirtual。
+// dir 传给 MkdirAll，权限 0o700，并写入 Host 的 dir。
 func Open(dir string) (*Host, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -48,6 +49,7 @@ func Open(dir string) (*Host, error) {
 }
 
 // Allow 把应用名转成小写后放进允许表，并写回 allow.json。
+// app 转成小写后作为允许表的键。
 func (h *Host) Allow(app string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -67,6 +69,9 @@ func (h *Host) Allowed() []string {
 }
 
 // Act 先 ensureVirtual。应用名非空、且允许表里没有该名字也没有 * 时返回错误，文案写明虚拟显示、不碰操作者桌面。否则记一条事件；注入失败时错误放进 Note，记录仍写入 recording.json，权限 0o600。
+// app 去掉空白并转小写。非空且允许表里没有该名字也没有 * 时返回错误。写入事件的 App。
+// op 写入事件的 Op，并传给 inject。注入没有错误且 op 不是 record 时 Injected 为真。
+// detail 写入事件的 Detail，并传给 inject。
 func (h *Host) Act(app, op, detail string) (Event, error) {
 	h.ensureVirtual()
 	app = strings.ToLower(strings.TrimSpace(app))

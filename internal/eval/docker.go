@@ -17,6 +17,7 @@ func dockerAvailable() bool {
 }
 
 // dockerfileOf 返回任务 environment/Dockerfile 的路径。不存在或是目录时返回空串。
+// taskDir 下的 environment/Dockerfile 做 Stat；出错或是目录时返回空串。
 func dockerfileOf(taskDir string) string {
 	p := filepath.Join(taskDir, "environment", "Dockerfile")
 	st, err := os.Stat(p)
@@ -28,6 +29,9 @@ func dockerfileOf(taskDir string) string {
 
 // runVerifierDocker 用任务的 environment 目录构建镜像，标签为 yoyo-eval- 加小写题号，斜杠换成连字符。
 // 工作区挂到 /app，任务目录的 tests 以只读挂到 /grader，网络为 none。ps1 用 pwsh，其余用 sh。退出码为 0 时返回真。
+// work 挂到容器的 /app，工作目录也是 /app。
+// task 的 Dir 用来定位 environment 和 tests；ID 转成小写并把斜杠换成连字符后接在镜像标签 yoyo-eval- 后面。
+// script 的扩展名忽略大小写等于 .ps1 时，容器里执行 pwsh -File，否则执行 sh；文件名取 Base 后接在 /grader/ 后面。
 func runVerifierDocker(work string, task Task, script string) (bool, string, error) {
 	ctxDir := filepath.Join(task.Dir, "environment")
 	tag := "yoyo-eval-" + strings.ToLower(strings.ReplaceAll(task.ID, "/", "-"))

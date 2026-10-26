@@ -16,6 +16,7 @@ import (
 )
 
 // SetPreview 记下要预览的本地绝对路径。
+// abs 在宿主非空时写入 preview。宿主为空时直接返回。
 func (h *Host) SetPreview(abs string) {
 	if h == nil {
 		return
@@ -36,6 +37,7 @@ func (h *Host) PreviewPath() string {
 }
 
 // OpenLocal 把本地文件设成预览，用文件服务得到地址，再确保 Chrome 并导航过去。目录会被拒绝。这里不取走页面错误，留给之后报告打开结果的调用方用 PageErrors。
+// abs 先 filepath.Clean，再 os.Stat。是目录时返回 browser: need a file, got directory。然后传给 SetPreview 和 serveFileURL。断开时错误文案用它的 Base。
 func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 	if h == nil {
 		return Snapshot{}, fmt.Errorf("browser: no host")
@@ -101,6 +103,7 @@ func (h *Host) EnsurePreview() error {
 }
 
 // ShowingLocal 在 Chrome 还活着且当前地址和这个文件是同一份文档时返回真。
+// abs 传给 wantLocalURL。
 func (h *Host) ShowingLocal(abs string) bool {
 	return !shouldReloadLocal(h.chromeAlive(), h.liveURL(), h.wantLocalURL(abs))
 }
@@ -127,6 +130,7 @@ func (h *Host) liveURL() string {
 }
 
 // wantLocalURL 在文件服务的根就是该文件所在目录时，返回文件服务上的地址。否则返回空字符串。
+// abs 先 filepath.Clean。宿主为空、文件服务为 nil 或 fileRoot 为空时返回空字符串。fileRoot 与 abs 所在目录不同时也返回空字符串，否则返回 fileURL、斜杠和转义后的文件名。
 func (h *Host) wantLocalURL(abs string) string {
 	if h == nil {
 		return ""
@@ -154,6 +158,9 @@ func (h *Host) snapshotLocked() Snapshot {
 }
 
 // shouldReloadLocal 在 Chrome 不在、想要的地址为空，或两份地址不是同一文档时返回真。
+// chromeAlive 为假时返回真。
+// liveURL 传给 sameDocumentURL。
+// wantURL 去掉空白后为空时返回真。否则和 liveURL 一起传给 sameDocumentURL，不是同一文档时返回真。
 func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
 	if !chromeAlive || strings.TrimSpace(wantURL) == "" {
 		return true
@@ -162,6 +169,8 @@ func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
 }
 
 // sameDocumentURL 比较方案、主机和规范化后的路径。解析失败时只比较去掉末尾斜杠的原文字符串。
+// live 去掉空白后为空则返回假。解析失败时用去掉末尾斜杠的原文比较。解析成功时用 EqualFold 比较方案和主机，路径传给 normalizeDocPath。
+// want 去掉空白后为空则返回假。解析失败时用去掉末尾斜杠的原文比较。解析成功时用 EqualFold 比较方案和主机，路径传给 normalizeDocPath。
 func sameDocumentURL(live, want string) bool {
 	live = strings.TrimSpace(live)
 	want = strings.TrimSpace(want)
@@ -180,6 +189,7 @@ func sameDocumentURL(live, want string) bool {
 }
 
 // normalizeDocPath 把同一份文档的路径收成一个键。末尾的 /index.html 和 /index.htm 去掉，这样 Chrome 重定向后的 / 和 index.html 算同一页。
+// p 先 PathUnescape 并去掉末尾斜杠。以 /index.html 或 /index.htm 结尾时去掉这段，结尾比较不区分大小写，然后再去掉末尾斜杠。
 func normalizeDocPath(p string) string {
 	p, _ = url.PathUnescape(strings.TrimSuffix(p, "/"))
 	for _, idx := range []string{"/index.html", "/index.htm"} {
@@ -191,6 +201,7 @@ func normalizeDocPath(p string) string {
 }
 
 // serveFileURL 在 127.0.0.1 的临时端口上提供该文件所在目录。根目录没变时复用已有服务。空路径对应该文件本身。含 .. 或逃出目录的请求返回 404。
+// abs 用 Dir 当根、Base 当文件名。根与已有 fileRoot 相同时返回已有 fileURL、斜杠和转义后的文件名。
 func (h *Host) serveFileURL(abs string) (string, error) {
 	root := filepath.Dir(abs)
 	base := filepath.Base(abs)

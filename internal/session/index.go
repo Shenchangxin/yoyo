@@ -98,6 +98,7 @@ func (x *Index) Flush() error {
 }
 
 // tokenize 按字母和数字切分，其他字符当分隔。结果已是小写。
+// s 转成小写后逐个字符扫描，字母和数字留下，其他字符切开。
 func tokenize(s string) []string {
 	var b strings.Builder
 	var out []string

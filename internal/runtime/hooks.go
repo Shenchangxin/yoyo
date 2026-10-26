@@ -34,6 +34,8 @@ type ToolHook struct {
 }
 
 // applyPreTool 用 Serial 跑 HookPreTool。总线为空则原样返回。总线返回错误时把 Deny 设为真，Reason 用该错误。返回值不是 ToolHook 时沿用入参。
+// bus 为 nil 时返回 hook，否则调用 Serial。
+// hook 传给 Serial；总线返回错误时把 Deny 设为真并写入 Reason。
 func applyPreTool(bus *kernel.EventBus, hook ToolHook) ToolHook {
 	if bus == nil {
 		return hook
@@ -51,6 +53,8 @@ func applyPreTool(bus *kernel.EventBus, hook ToolHook) ToolHook {
 }
 
 // applyPostTool 用 Waterfall 跑 HookPostTool。总线为空、出错、结果为空或类型不对时沿用入参。
+// bus 为 nil 时返回 hook，否则调用 Waterfall。
+// hook 传给 Waterfall；出错、结果为 nil 或类型不对时原样返回。
 func applyPostTool(bus *kernel.EventBus, hook ToolHook) ToolHook {
 	if bus == nil {
 		return hook

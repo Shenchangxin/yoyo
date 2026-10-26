@@ -20,11 +20,13 @@ var (
 )
 
 // cmdStartWouldHang 判断命令里有没有会挂住的 cmd start 或裸 start。
+// command 交给 cmdStartPattern。
 func cmdStartWouldHang(command string) bool {
 	return cmdStartPattern(command)
 }
 
 // cmdStartPattern 在裸 start 或 cmd /c 后面的 start 载荷会挂住时返回真。Start-Process 不算。
+// command 先匹配裸 start；否则从 cmd /c 之后交给 takeStartPayload，失败时再看剩余文本是不是以 start 开头。
 func cmdStartPattern(command string) bool {
 	if reBareStart.MatchString(command) {
 		return true
@@ -43,6 +45,7 @@ func cmdStartPattern(command string) bool {
 }
 
 // startPayloadHangs 判断载荷是 start 而不是 Start-Process。
+// inner 去掉空白并转成小写后，以 start-process 开头则返回假；以 start 加空格或引号开头，或等于 start，则返回真。
 func startPayloadHangs(inner string) bool {
 	low := strings.ToLower(strings.TrimSpace(inner))
 	if strings.HasPrefix(low, "start-process") {
@@ -53,6 +56,7 @@ func startPayloadHangs(inner string) bool {
 
 // rewriteCmdStart 把 `cmd /c start ...` 以及紧跟的 2>&1 | head/tail 换成 PowerShell Start-Process。Start-Process 在标准输出被捕获时仍会返回。
 // 文件名为空或带 /WAIT 时不改写。
+// command 在 cmd /c 之后把载荷交给 takeStartPayload 和 parseStartInvocation；文件名为空或带 /WAIT 时原样返回。
 func rewriteCmdStart(command string) (string, bool) {
 	loc := reCmdStartHead.FindStringIndex(command)
 	if loc == nil {
@@ -79,6 +83,7 @@ func rewriteCmdStart(command string) (string, bool) {
 }
 
 // rewriteAnyStart 先尝试改写 cmd /c start，失败再改写裸 start。
+// command 先交给 rewriteCmdStart，没有改写再交给 rewriteBareStart。
 func rewriteAnyStart(command string) (string, bool) {
 	if next, ok := rewriteCmdStart(command); ok {
 		return next, true
@@ -87,6 +92,7 @@ func rewriteAnyStart(command string) (string, bool) {
 }
 
 // rewriteBareStart 改写不在 cmd /c 里的 start。带 /WAIT 或没有文件名时不改。
+// command 在裸 start 处切开，载荷交给 takeStartPayload 和 parseStartInvocation；文件名为空或带 /WAIT 时原样返回。
 func rewriteBareStart(command string) (string, bool) {
 	loc := reBareStart.FindStringIndex(command)
 	if loc == nil {
@@ -116,6 +122,7 @@ func rewriteBareStart(command string) (string, bool) {
 }
 
 // stripCmdRedirects 从 start 参数里去掉重定向和 NUL 目标，避免它们进 Start-Process 的参数列表。
+// args 逐项去掉空白并转成小写后识别重定向；>、>>、1>、2> 这类还跳过下一项。
 func stripCmdRedirects(args []string) []string {
 	var out []string
 	for i := 0; i < len(args); i++ {
@@ -133,6 +140,7 @@ func stripCmdRedirects(args []string) []string {
 }
 
 // takeStartPayload 取出 start 后面的一段。引号外的分号、换行、管道和单独的 & 截断。`>&` 里的 & 不算语句分隔。
+// rest 为空时失败；不以引号开头时在分号、换行、管道或单独的 & 处截断，以引号开头时读到闭合引号。
 func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
 	if rest == "" {
 		return "", 0, false
@@ -177,6 +185,7 @@ func takeStartPayload(rest string) (inner string, consumed int, ok bool) {
 }
 
 // parseStartInvocation 从 start 载荷里取出文件、参数，以及是否带 /WAIT。引号里的标题被丢掉。/D 的下一个词是目录，不进参数。
+// inner 去掉空白后，若开头五个字节不区分大小写等于 start 就剥掉，再跳过引号标题和 / 开关。
 func parseStartInvocation(inner string) (file string, args []string, wait bool) {
 	s := strings.TrimSpace(inner)
 	if len(s) >= 5 && strings.EqualFold(s[:5], "start") {
@@ -220,6 +229,7 @@ func parseStartInvocation(inner string) (file string, args []string, wait bool) 
 }
 
 // readQuotedToken 读取引号字符串。成对的 "" 是一个引号，反斜杠吃掉下一个字节。引号未闭合则失败。
+// s 为空或不以引号开头时失败；成对的 "" 收成一个引号，反斜杠吃掉下一个字节。
 func readQuotedToken(s string) (tok, rest string, ok bool) {
 	if s == "" || s[0] != '"' {
 		return "", s, false
@@ -247,6 +257,7 @@ func readQuotedToken(s string) (tok, rest string, ok bool) {
 }
 
 // nextShellToken 取下一个词。以引号开头且能闭合时返回引号内的内容。
+// s 先去掉空白，空串时返回两个空串；以引号开头且 readQuotedToken 成功时采用它的结果，否则取到空白为止。
 func nextShellToken(s string) (tok, rest string) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -266,6 +277,7 @@ func nextShellToken(s string) (tok, rest string) {
 }
 
 // startProcessCommand 拼出 powershell -NoProfile -Command "Start-Process -WindowStyle Hidden ..."。参数用单引号包住。
+// args 长度大于 0 时逐项交给 psSingle，写成 -ArgumentList。
 func startProcessCommand(file string, args []string) string {
 	var b strings.Builder
 	b.WriteString(`powershell -NoProfile -Command "Start-Process -WindowStyle Hidden -FilePath `)

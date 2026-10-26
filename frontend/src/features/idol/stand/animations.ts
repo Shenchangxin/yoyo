@@ -59,13 +59,18 @@ const LIP: Record<Emotion, string> = {
   thinking: "serious",
 };
 
-/** pickAnimations 从已有片段里按心情挑身体、脸和嘴。减少动效时身体固定 wait。点头按 id 给一次。在看且有 eye_front 才给眼睛。 */
+/**
+ * pickAnimations 从已有片段里按心情挑身体、脸和嘴。减少动效时身体固定 wait。点头按 id 给一次。在看且有 eye_front 才给眼睛。
+ * direction 读取 speaking、looking，解开 mood、nod。
+ * animations 调用 has，传给 anyMouth。
+ * reducedMotion 为真时才继续。
+ */
 export function pickAnimations(
   direction: StandDirection,
   animations: ReadonlyMap<string, number>,
   reducedMotion: boolean,
 ): TrackAnimations {
-  /** 按候选名取第一条这套服装里有的片段。 */
+  /** 按候选名取第一条这套服装里有的片段。names 调用 find。 */
   const pick = (names: string[]) => names.find((name) => animations.has(name));
   const { mood, nod } = direction;
   const k = LIP[mood];
@@ -80,7 +85,7 @@ export function pickAnimations(
   };
 }
 
-/** 找第一条时长大于 0、不是口型序列也不是 lip_a 的 lip_ 片段。 */
+/** 找第一条时长大于 0、不是口型序列也不是 lip_a 的 lip_ 片段。animations 用来遍历。 */
 function anyMouth(animations: ReadonlyMap<string, number>): string | undefined {
   for (const [name, duration] of animations) {
     if (name.startsWith("lip_") && !/_s\d*$/.test(name) && name !== "lip_a" && duration > 0) return name;

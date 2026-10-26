@@ -12,6 +12,7 @@ import (
 
 // LoadWorkspaceRules 按顺序读第一份非空文件：YOYO.md、.yoyo/YOYO.md、AGENTS.md、CLAUDE.md、.cursor/rules/yoyo.mdc。
 // 命中后立刻返回，不把其余几份的全文叠上去。maxRunes 小于等于 0 时上限按 1500 个 rune，否则用传入值。根目录为空时返回空。
+// root 为空时返回空，否则作为候选规则文件的根。
 func LoadWorkspaceRules(root string, maxRunes int) (text, source string) {
 	if root == "" {
 		return "", ""
@@ -43,6 +44,7 @@ func LoadWorkspaceRules(root string, maxRunes int) (text, source string) {
 
 // WriteRulesIndex 把根上的规则文件和扫到的嵌套规则写进 .yoyo/rules/INDEX.md，只列路径和目录前缀，不把正文注入提示词。
 // 跳过 node_modules、.git、vendor、dist、.next。超过 400 个文件或相对深度大于 4 就不再收录。
+// root 为空时返回，否则作为规则文件和 .yoyo/rules 的根。
 func WriteRulesIndex(root string) {
 	if root == "" {
 		return
@@ -224,6 +226,7 @@ func (t *WorkspaceTools) PathRules() string {
 
 // nestedRuleBlocks 从 rel 的父目录往上找 AGENTS.md、CLAUDE.md 和 YOYO.md，直到根。每份截到 800 个 rune。
 // LoadWorkspaceRules 命中的那条相对路径会跳过，避免和稳定前缀里的第一份重复。
+// root 传给 LoadWorkspaceRules，并作为规则文件的读取根。
 func nestedRuleBlocks(root, rel string) []ruleBlock {
 	_, pinned := LoadWorkspaceRules(root, 1)
 	skip := map[string]bool{}

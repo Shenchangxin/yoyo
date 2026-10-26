@@ -58,22 +58,22 @@ type CutDeskState = {
 };
 
 /** useCutDesk 记住当前剪辑工程、会话，以及用户是否已经离开这张桌子。 */
-export const useCutDesk = create<CutDeskState>((set) => ({
+export const useCutDesk = create<CutDeskState>(/** set 写入工程、会话或停靠。 */ (set) => ({
   sessionId: "",
   project: null,
   parked: false,
-  /** 写入工程并取消停靠；没给会话就沿用原来的。 */
-  setProject: (project, sessionId) => set((s) => ({
+  /** 写入工程并取消停靠；没给会话就沿用原来的。project 写进状态。sessionId 有传入时换上，否则留原来的。 */
+  setProject: (project, sessionId) => set(/** s 没传入会话时留下原来的 sessionId。 */ (s) => ({
     project,
     parked: false,
     sessionId: sessionId ?? s.sessionId,
   })),
-  /** 会话变了就清掉工程并取消停靠。 */
-  noteSession: (sessionId) => set((s) => (
+  /** 会话变了就清掉工程并取消停靠。sessionId 和当前会话比较。 */
+  noteSession: (sessionId) => set(/** s 会话没变就整份返回，变了就清掉工程并取消停靠。 */ (s) => (
     s.sessionId === sessionId ? s : { sessionId, project: null, parked: false }
   )),
-  /** 同一会话上，有素材哈希的工程会打开；停靠中则保持关掉；本地有素材而传来的没有时不覆盖。 */
-  adoptServer: (sessionId, project) => set((s) => {
+  /** 同一会话上，有素材哈希的工程会打开；停靠中则保持关掉；本地有素材而传来的没有时不覆盖。sessionId 和当前会话比较。project 看有没有 source_hash，决定打开、清掉或不覆盖。 */
+  adoptServer: (sessionId, project) => set(/** s 比较会话、停靠和本地素材哈希，决定打开、保持关掉或不覆盖。 */ (s) => {
     if (sessionId && s.sessionId && s.sessionId !== sessionId) return s;
     if (s.parked && s.sessionId === sessionId) return { sessionId, project: null, parked: true };
     if (s.sessionId === sessionId && s.project?.source_hash && !project?.source_hash) return s;
@@ -82,18 +82,18 @@ export const useCutDesk = create<CutDeskState>((set) => ({
     return s;
   }),
   /** 清掉工程并标记停靠，会话 id 保留。 */
-  park: () => set((s) => ({ project: null, parked: true, sessionId: s.sessionId })),
+  park: () => set(/** s 留下原来的 sessionId。 */ (s) => ({ project: null, parked: true, sessionId: s.sessionId })),
   /** 工程、会话和停靠一起清掉。 */
   clear: () => set({ project: null, sessionId: "", parked: false }),
 }));
 
-/** cutClips 优先用工程上的 clips，否则用 breakdown 里的片段。 */
+/** cutClips 优先用工程上的 clips，否则用 breakdown 里的片段。project 没有就返回空数组，否则取 clips，再否则取 breakdown.clips。 */
 export function cutClips(project: CutProject | null): CutClip[] {
   if (!project) return [];
   return project.clips || project.breakdown?.clips || [];
 }
 
-/** cutCues 取出字幕条目，没有就是空数组。 */
+/** cutCues 取出字幕条目，没有就是空数组。project 取 captions.cues，没有就返回空数组。 */
 export function cutCues(project: CutProject | null): CutCue[] {
   return project?.captions?.cues || [];
 }
@@ -109,7 +109,7 @@ export function useCutReadiness(): CutReadiness {
     void Promise.all([
       api.video.status().catch(() => ({})),
       api.video.providerMenu("speech").catch(() => []),
-    ]).then(([status, speech]) => {
+    ]).then(/** status 读 ffmpeg 和 whisper 是否可用。speech 是数组且非空才算语音可用。 */ ([status, speech]) => {
       if (!alive) return;
       setReady({
         ffmpeg: !!status?.ffmpeg,

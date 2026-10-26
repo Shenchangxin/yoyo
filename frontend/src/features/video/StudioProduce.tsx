@@ -25,7 +25,7 @@ const ASPECTS = ["9:16", "16:9", "1:1"];
 const LENGTHS = [15, 30, 45, 60];
 const AUTO_PHASES = ["script", "voice", "visuals", "compose"] as const;
 
-/** 自动阶段是剧本、声音、画面或合成时算正在跑。 */
+/** 自动阶段是剧本、声音、画面或合成时算正在跑。 phase 和 script、voice、visuals、compose 比较。 */
 function autoRunning(phase?: string) {
   return phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose";
 }
@@ -46,7 +46,7 @@ export type StudioProduceProps = {
   onPublish?: () => void;
 };
 
-/** StudioProduce 按工序显示设定到交付。没有剧本且未通过时停在设定。 */
+/** StudioProduce 按工序显示设定到交付。没有剧本且未通过时停在设定。 props 用 current 决定工序，把 onChange 留在 ref 里，busy、run、catalog 和 saveProject 传给各步，切工序时把 gate 交给 saveProject，交付继续时调用 onPublish，画面、合成和交付步把整份 props 展开传下去。 */
 export function StudioProduce(props: StudioProduceProps) {
   const copy = useCopy();
   const s = copy.video.studio;
@@ -60,7 +60,7 @@ export function StudioProduce(props: StudioProduceProps) {
   const shots = projectShots(cur);
   const onChangeRef = useRef(props.onChange);
   onChangeRef.current = props.onChange;
-  const pendingKey = shots.filter((sh) => sh.job_id && (!shotReady(sh) || sh.stale)).map((sh) => sh.job_id).join(",");
+  const pendingKey = shots.filter(/** sh 留下有任务且还没就绪或已经过期的镜头。 */ (sh) => sh.job_id && (!shotReady(sh) || sh.stale)).map(/** sh 取出 job_id。 */ (sh) => sh.job_id).join(",");
 
   useEffect(() => {
     if (!String(cur.script || "").trim() && cur.script_status !== "approved") {
@@ -76,7 +76,7 @@ export function StudioProduce(props: StudioProduceProps) {
   useEffect(() => {
     if (!pendingKey || !cur.id) return;
     const t = window.setInterval(() => {
-      void api.video.getStudio(cur.id).then((row) => onChangeRef.current(row as StudioProject)).catch(() => {});
+      void api.video.getStudio(cur.id).then(/** row 当成短片交给 onChangeRef。 */ (row) => onChangeRef.current(row as StudioProject)).catch(() => {});
     }, 2000);
     return () => window.clearInterval(t);
   }, [cur.id, pendingKey]);
@@ -84,7 +84,7 @@ export function StudioProduce(props: StudioProduceProps) {
   useEffect(() => {
     if (!autoRunning(cur.auto_phase) || !cur.id) return;
     const t = window.setInterval(() => {
-      void api.video.getStudio(cur.id).then((row) => {
+      void api.video.getStudio(cur.id).then(/** row 当成短片交给 onChangeRef；自动阶段完成且有成片哈希时切到交付。 */ (row) => {
         const next = row as StudioProject;
         onChangeRef.current(next);
         if (next.auto_phase === "done" && next.result_hash) setStep("delivery");
@@ -93,7 +93,7 @@ export function StudioProduce(props: StudioProduceProps) {
     return () => window.clearInterval(t);
   }, [cur.id, cur.auto_phase]);
 
-  /** 没越过已到达的下一步就切换工序，并记下当前工序。 */
+  /** 没越过已到达的下一步就切换工序，并记下当前工序。 g 没越过已到达的下一步才切换，并作为 gate 写回。 */
   const go = (g: StudioGate) => {
     if (gateIndex(g) > furthest + 1) return;
     setStep(g);
@@ -109,7 +109,7 @@ export function StudioProduce(props: StudioProduceProps) {
         onChange={props.onChange}
       />
       <nav className="flex flex-wrap items-center gap-0.5" aria-label={p.setup} data-testid="studio-step-nav">
-        {STUDIO_GATES.map((g, i) => {
+        {STUDIO_GATES.map(/** g 当步骤 key、文案和提示，点击时交给 go。i 比最远工序大就锁住，比它小就算完成，第一步以外画出分隔，并显示成序号。 */ (g, i) => {
           const locked = i > furthest;
           const done = i < furthest;
           const active = step === g;
@@ -139,7 +139,7 @@ export function StudioProduce(props: StudioProduceProps) {
       {cur.error ? <p className="text-[12px] text-danger">{cur.error}</p> : null}
       {(cur.issues || []).length ? (
         <ul className="space-y-1" data-testid="studio-gate-issues">
-          {(cur.issues || []).slice(-3).map((iss) => (
+          {(cur.issues || []).slice(-3).map(/** iss 用 id 当 key，level 是 warn 就用警告色，并显示 message。 */ (iss) => (
             <li key={iss.id} className={cn("text-[12px]", iss.level === "warn" ? "text-warning" : "text-danger")}>{iss.message}</li>
           ))}
         </ul>
@@ -154,7 +154,7 @@ export function StudioProduce(props: StudioProduceProps) {
   );
 }
 
-/** 一键跑完的进度。正在跑时不能再点。 */
+/** 一键跑完的进度。正在跑时不能再点。 props 用 current 的自动阶段、失败和成片哈希决定按钮和进度，busy 或正在跑时禁用，点击时用 run 包住 autoStudio，结果交给 onChange。 */
 function OneClickBar(props: {
   current: StudioProject;
   busy: string;
@@ -193,7 +193,7 @@ function OneClickBar(props: {
         </Button>
       </div>
       <ol className="mt-3 flex flex-wrap gap-1.5" aria-label={p.oneClickRunning}>
-        {AUTO_PHASES.map((id) => {
+        {AUTO_PHASES.map(/** id 和当前自动阶段比较，决定是否当前、是否已完成，并显示阶段名。 */ (id) => {
           const active = cur.auto_phase === id;
           const at = AUTO_PHASES.indexOf(cur.auto_phase as typeof id);
           const done = cur.auto_phase === "done" || (at >= 0 && AUTO_PHASES.indexOf(id) < at);
@@ -217,7 +217,7 @@ function OneClickBar(props: {
   );
 }
 
-/** 设定步：预设、模板、角色和风格。 */
+/** 设定步：预设、模板、角色和风格。 props 用 current 填设定，用 catalog 的预设、模板、角色和风格做选项，画幅和时长交给 saveProject 或 onChange，预设交给 run，继续交给 onContinue。 */
 function SetupStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -238,17 +238,17 @@ function SetupStep(props: {
       <section className="overflow-hidden rounded-xl border border-border/70 bg-card" data-testid="studio-brief">
         <FormRow label={s.aspect}>
           <ChipRow
-            items={ASPECTS.map((id) => ({ id, label: id }))}
+            items={ASPECTS.map(/** id 同时当选项的 id 和标签。 */ (id) => ({ id, label: id }))}
             value={cur.aspect || "9:16"}
-            onPick={(id) => void props.saveProject({ aspect: id })}
+            onPick={/** id 作为 aspect 交给 saveProject。 */ (id) => void props.saveProject({ aspect: id })}
           />
         </FormRow>
         <FormRow label={p.duration} hint={s.durationHint}>
           <div className="flex flex-wrap items-center gap-1.5">
             <ChipRow
-              items={LENGTHS.map((n) => ({ id: String(n), label: String(n) }))}
+              items={LENGTHS.map(/** n 转成字符串后同时当 id 和标签。 */ (n) => ({ id: String(n), label: String(n) }))}
               value={cur.target_duration ? String(cur.target_duration) : ""}
-              onPick={(id) => void props.saveProject({ target_duration: Number(id) })}
+              onPick={/** id 转成数字后作为 target_duration 交给 saveProject。 */ (id) => void props.saveProject({ target_duration: Number(id) })}
             />
             <label className="flex items-center gap-1">
               <Input
@@ -259,8 +259,8 @@ function SetupStep(props: {
                 value={cur.target_duration || ""}
                 data-testid="studio-brief-duration"
                 aria-label={p.duration}
-                onChange={(e) => props.onChange({ ...cur, target_duration: Number(e.target.value) || 0 })}
-                onBlur={(e) => void props.saveProject({ target_duration: Number(e.target.value) || 0 })}
+                onChange={/** e 取出 target.value 转成秒数，转不成就当 0，写进 target_duration 交给 onChange。 */ (e) => props.onChange({ ...cur, target_duration: Number(e.target.value) || 0 })}
+                onBlur={/** e 取出 target.value 转成秒数，转不成就当 0，交给 saveProject。 */ (e) => void props.saveProject({ target_duration: Number(e.target.value) || 0 })}
               />
               <span className="text-[11px] text-muted">{copy.video.durationLabel}</span>
             </label>
@@ -272,16 +272,16 @@ function SetupStep(props: {
             placeholder={s.audiencePh}
             data-testid="studio-brief-audience"
             aria-label={p.audience}
-            onChange={(e) => props.onChange({ ...cur, audience: e.target.value })}
-            onBlur={(e) => void props.saveProject({ audience: e.target.value })}
+            onChange={/** e 取出 target.value 写进 audience，交给 onChange。 */ (e) => props.onChange({ ...cur, audience: e.target.value })}
+            onBlur={/** e 取出 target.value 作为 audience 交给 saveProject。 */ (e) => void props.saveProject({ audience: e.target.value })}
           />
         </FormRow>
         {(cat.presets || []).length ? (
           <FormRow label={p.preset}>
             <ChipRow
-              items={cat.presets!.map((t) => ({ id: t.id, label: t.name }))}
+              items={cat.presets!.map(/** t 用 id 当选项 id，用 name 当标签。 */ (t) => ({ id: t.id, label: t.name }))}
               value={cur.preset_id || ""}
-              onPick={(id) => void props.run("preset", async () => {
+              onPick={/** id 交给 applyStudioPreset。 */ (id) => void props.run("preset", async () => {
                 props.onChange(await api.video.applyStudioPreset(cur.id, id) as StudioProject);
               })}
             />
@@ -293,9 +293,9 @@ function SetupStep(props: {
           {(cat.templates || []).length ? (
             <Field label={p.template}>
               <ChipRow
-                items={cat.templates!.map((t) => ({ id: t.id, label: t.title }))}
+                items={cat.templates!.map(/** t 用 id 当选项 id，用 title 当标签。 */ (t) => ({ id: t.id, label: t.title }))}
                 value={cur.template_id || ""}
-                onPick={(id) => void props.run("template", async () => {
+                onPick={/** id 交给 applyStudioTemplate。 */ (id) => void props.run("template", async () => {
                   props.onChange(await api.video.applyStudioTemplate(cur.id, id) as StudioProject);
                 })}
               />
@@ -304,9 +304,9 @@ function SetupStep(props: {
           {(cat.characters || []).length ? (
             <Field label={p.character}>
               <ChipRow
-                items={cat.characters!.map((t) => ({ id: t.id, label: t.name }))}
+                items={cat.characters!.map(/** t 用 id 当选项 id，用 name 当标签。 */ (t) => ({ id: t.id, label: t.name }))}
                 value={cur.identity?.character_id || ""}
-                onPick={(id) => void props.run("identity", async () => {
+                onPick={/** id 作为角色交给 setStudioIdentity。 */ (id) => void props.run("identity", async () => {
                   props.onChange(await api.video.setStudioIdentity(cur.id, id, cur.identity?.style_id || "") as StudioProject);
                 })}
               />
@@ -315,9 +315,9 @@ function SetupStep(props: {
           {(cat.styles || []).length ? (
             <Field label={p.style}>
               <ChipRow
-                items={cat.styles!.map((t) => ({ id: t.id, label: t.name }))}
+                items={cat.styles!.map(/** t 用 id 当选项 id，用 name 当标签。 */ (t) => ({ id: t.id, label: t.name }))}
                 value={cur.identity?.style_id || cur.style || ""}
-                onPick={(id) => void props.run("style", async () => {
+                onPick={/** id 作为风格交给 setStudioIdentity。 */ (id) => void props.run("style", async () => {
                   props.onChange(await api.video.setStudioIdentity(cur.id, cur.identity?.character_id || "", id) as StudioProject);
                 })}
               />
@@ -336,7 +336,7 @@ function SetupStep(props: {
   );
 }
 
-/** 剧本步：正文、平台、语气、钩子和行动号召。通过后进入声音。 */
+/** 剧本步：正文、平台、语气、钩子和行动号召。通过后进入声音。 props 用 current 填剧本和是否已通过，改动交给 onChange 和 saveProject，平台和语气取自 catalog，busy 时禁用，通过时交给 run，然后调用 onContinue。 */
 function ScriptStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -358,25 +358,25 @@ function ScriptStep(props: {
         <textarea
           className="no-drag min-h-28 w-full rounded-lg border border-border bg-background px-2.5 py-2 text-[13px] leading-[1.55] outline-none focus-visible:border-accent/45 focus-visible:ring-2 focus-visible:ring-accent/20"
           value={cur.script || ""}
-          onChange={(e) => props.onChange({ ...cur, script: e.target.value })}
-          onBlur={(e) => void props.saveProject({ script: e.target.value })}
+          onChange={/** e 取出 target.value 写进 script，交给 onChange。 */ (e) => props.onChange({ ...cur, script: e.target.value })}
+          onBlur={/** e 取出 target.value 作为 script 交给 saveProject。 */ (e) => void props.saveProject({ script: e.target.value })}
         />
       </label>
       <section className="overflow-hidden rounded-xl border border-border/70 bg-card" data-testid="studio-lines">
         <FormRow label={p.platform} hint={s.platformHint}>
           <ChipRow
-            items={(props.catalog.platforms || ["douyin", "xhs", "bilibili"]).map((id) => ({ id, label: platLabel(id, s) }))}
+            items={(props.catalog.platforms || ["douyin", "xhs", "bilibili"]).map(/** id 当选项 id，并交给 platLabel 取标签。 */ (id) => ({ id, label: platLabel(id, s) }))}
             value={cur.platform || "douyin"}
-            onPick={(id) => void props.saveProject({ platform: id })}
+            onPick={/** id 作为 platform 交给 saveProject。 */ (id) => void props.saveProject({ platform: id })}
           />
         </FormRow>
         <FormRow label={p.tone} hint={s.toneHint}>
           <ChipRow
-            items={(props.catalog.tones || ["natural", "professional", "energetic", "storytelling"]).map((id) => ({
+            items={(props.catalog.tones || ["natural", "professional", "energetic", "storytelling"]).map(/** id 当选项 id，并用来取文案，没有文案就用 id 自己。 */ (id) => ({
               id, label: (p as Record<string, string>)[id] || id,
             }))}
             value={cur.tone || "natural"}
-            onPick={(id) => void props.saveProject({ tone: id })}
+            onPick={/** id 作为 tone 交给 saveProject。 */ (id) => void props.saveProject({ tone: id })}
           />
         </FormRow>
         <FormRow label={p.hook} hint={s.hookHint}>
@@ -385,8 +385,8 @@ function ScriptStep(props: {
             placeholder={s.hookPh}
             data-testid="studio-lines-hook"
             aria-label={p.hook}
-            onChange={(e) => props.onChange({ ...cur, hook: e.target.value })}
-            onBlur={(e) => void props.saveProject({ hook: e.target.value })}
+            onChange={/** e 取出 target.value 写进 hook，交给 onChange。 */ (e) => props.onChange({ ...cur, hook: e.target.value })}
+            onBlur={/** e 取出 target.value 作为 hook 交给 saveProject。 */ (e) => void props.saveProject({ hook: e.target.value })}
           />
         </FormRow>
         <FormRow label={p.cta} hint={s.ctaHint}>
@@ -395,14 +395,14 @@ function ScriptStep(props: {
             placeholder={s.ctaPh}
             data-testid="studio-lines-cta"
             aria-label={p.cta}
-            onChange={(e) => props.onChange({ ...cur, cta: e.target.value })}
-            onBlur={(e) => void props.saveProject({ cta: e.target.value })}
+            onChange={/** e 取出 target.value 写进 cta，交给 onChange。 */ (e) => props.onChange({ ...cur, cta: e.target.value })}
+            onBlur={/** e 取出 target.value 作为 cta 交给 saveProject。 */ (e) => void props.saveProject({ cta: e.target.value })}
           />
         </FormRow>
       </section>
       {(cur.segments || []).length ? (
         <ul className="divide-y divide-border/70 border-y border-border/70">
-          {cur.segments!.map((seg) => (
+          {cur.segments!.map(/** seg 用 id 或 kind 当 key，显示 kind，有 narration 就显示。 */ (seg) => (
             <li key={seg.id || seg.kind} className="py-1.5 text-[12px] leading-[1.45]">
               <span className="text-muted">{seg.kind || "beat"}</span>
               {seg.narration ? <span className="ml-2 text-foreground/90">{seg.narration}</span> : null}
@@ -427,7 +427,7 @@ function ScriptStep(props: {
   );
 }
 
-/** 声音步：音色、语速、口播或跳过。 */
+/** 声音步：音色、语速、口播或跳过。 props 用 current 判断口播是否就绪，音色取自 catalog 并交给 saveProject，busy 时禁用，口播交给 run，结果交给 onChange，有旁白哈希就调用 onContinue。 */
 function AudioStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -448,9 +448,9 @@ function AudioStep(props: {
       {(props.catalog.voices || []).length ? (
         <Field label={p.voice}>
           <ChipRow
-            items={props.catalog.voices!.map((v) => ({ id: v.id, label: v.name }))}
+            items={props.catalog.voices!.map(/** v 用 id 当选项 id，用 name 当标签。 */ (v) => ({ id: v.id, label: v.name }))}
             value={cur.voice || "alloy"}
-            onPick={(id) => void props.saveProject({ voice: id })}
+            onPick={/** id 作为 voice 交给 saveProject。 */ (id) => void props.saveProject({ voice: id })}
           />
         </Field>
       ) : null}
@@ -460,7 +460,7 @@ function AudioStep(props: {
         <ChipRow
           items={[{ id: "0.8", label: "0.8×" }, { id: "1", label: p.speedNormal }, { id: "1.2", label: "1.2×" }]}
           value={String(cur.voice_speed || 1)}
-          onPick={(id) => void props.saveProject({ voice_speed: Number(id) })}
+          onPick={/** id 转成数字后作为 voice_speed 交给 saveProject。 */ (id) => void props.saveProject({ voice_speed: Number(id) })}
         />
       </Field>
       <div className="flex flex-wrap gap-2">
@@ -488,7 +488,7 @@ function AudioStep(props: {
   );
 }
 
-/** 画面步：补齐镜头、上传、改词和按地址导入。 */
+/** 画面步：补齐镜头、上传、改词和按地址导入。 props 用 current 和 shots 画镜头，改镜头交给 onChange，需要写回时交给 saveProject，上传和生成交给 run，busy 时禁用，画面地址交给 mediaSrc，继续交给 onContinue。 */
 function VisualsStep(props: {
   current: StudioProject;
   busy: string;
@@ -506,14 +506,14 @@ function VisualsStep(props: {
   const shots = props.shots;
   const [ingestUrl, setIngestUrl] = useState("");
 
-  /** 改一条镜头。persist 为真时写回短片。 */
+  /** 改一条镜头。persist 为真时写回短片。 i 标出要改的那一条。extra 并进这一条镜头。 */
   async function patchShot(i: number, extra: Partial<StudioShot>, persist = false) {
-    const next = shots.map((sh, j) => (j === i ? { ...sh, ...extra } : sh));
+    const next = shots.map(/** sh 在 j 等于 i 时并上 extra，否则原样留下。j 和 i 比较。 */ (sh, j) => (j === i ? { ...sh, ...extra } : sh));
     props.onChange({ ...cur, storyboard: { ...(cur.storyboard || {}), shots: next }, shots: next });
     if (persist) await props.saveProject({ shots: next, storyboard: { ...(cur.storyboard || {}), shots: next } });
   }
 
-  /** 把文件登记成媒体。index 小于 0 时追加镜头，否则替换那一条。 */
+  /** 把文件登记成媒体。index 小于 0 时追加镜头，否则替换那一条。 kind 交给媒体登记，并决定写成视频还是图片镜头。file 读成 data URL，并用它的 type 登记。 */
   async function upload(kind: "image" | "video", file: File, index = -1) {
     const data = await readDataURL(file);
     const b64 = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
@@ -522,7 +522,7 @@ function VisualsStep(props: {
       const hash = String(ref?.cas_hash || "");
       if (!hash) return;
       const shot: StudioShot = kind === "video" ? { video_hash: hash, duration: 3, motion: "ken-burns" } : { image_hash: hash, duration: 3, motion: "ken-burns" };
-      const next = index >= 0 ? shots.map((sh, j) => (j === index ? { ...sh, ...shot, stale: false } : sh)) : [...shots, shot];
+      const next = index >= 0 ? shots.map(/** sh 在 j 等于 index 时并上 shot 并清掉 stale，否则原样留下。j 和 index 比较。 */ (sh, j) => (j === index ? { ...sh, ...shot, stale: false } : sh)) : [...shots, shot];
       const saved = await api.video.updateStudio({ id: cur.id, shots: next, storyboard: { ...(cur.storyboard || {}), shots: next } }) as StudioProject;
       props.onChange(saved);
     });
@@ -535,7 +535,7 @@ function VisualsStep(props: {
         <ChipRow
           items={[{ id: "cover", label: p.fitCover }, { id: "contain", label: p.fitContain }]}
           value={cur.storyboard?.fit === "contain" ? "contain" : "cover"}
-          onPick={(id) => void props.saveProject({ storyboard: { ...(cur.storyboard || {}), fit: id } })}
+          onPick={/** id 作为 fit 写进分镜后交给 saveProject。 */ (id) => void props.saveProject({ storyboard: { ...(cur.storyboard || {}), fit: id } })}
         />
         <p className="text-[11px] leading-[1.4] text-muted">{p.fitHint}</p>
       </Field>
@@ -548,7 +548,7 @@ function VisualsStep(props: {
         <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
           <ImagePlus className="size-3.5" aria-hidden />
           {s.addStill}
-          <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+          <input type="file" accept="image/*" className="hidden" onChange={/** e 取出第一个文件交给图片上传，并清空 input。 */ (e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (f) void upload("image", f);
@@ -557,7 +557,7 @@ function VisualsStep(props: {
         <label className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-muted hover:bg-lift hover:text-foreground">
           <Video className="size-3.5" aria-hidden />
           {s.addClip}
-          <input type="file" accept="video/*" className="hidden" onChange={(e) => {
+          <input type="file" accept="video/*" className="hidden" onChange={/** e 取出第一个文件交给视频上传，并清空 input。 */ (e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (f) void upload("video", f);
@@ -566,7 +566,7 @@ function VisualsStep(props: {
       </div>
       {shots.length === 0 ? <p className="text-[12px] text-muted">{s.needShots}</p> : null}
       <ul className="flex flex-col">
-        {shots.map((sh, i) => {
+        {shots.map(/** sh 用来取画面、是否在跑，以及 visual、prompt、caption、motion。i 没有 id 时当 key，空画面时显示成序号，并交给 patchShot。 */ (sh, i) => {
           const src = sh.media_url || props.mediaSrc(sh.image_hash || sh.video_hash);
           const running = !!sh.job_id && (!shotReady(sh) || sh.stale);
           return (
@@ -583,21 +583,21 @@ function VisualsStep(props: {
                   className="no-drag min-h-12 w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none"
                   placeholder={p.visual}
                   value={sh.visual || sh.prompt || ""}
-                  onChange={(e) => void patchShot(i, { visual: e.target.value, prompt: e.target.value })}
-                  onBlur={(e) => void patchShot(i, { visual: e.target.value, prompt: e.target.value }, true)}
+                  onChange={/** e 取出 target.value，同时写进 visual 和 prompt。 */ (e) => void patchShot(i, { visual: e.target.value, prompt: e.target.value })}
+                  onBlur={/** e 取出 target.value，同时写进 visual 和 prompt，并写回短片。 */ (e) => void patchShot(i, { visual: e.target.value, prompt: e.target.value }, true)}
                 />
                 <Input
                   className="h-7"
                   placeholder={s.caption}
                   value={sh.caption || ""}
-                  onChange={(e) => void patchShot(i, { caption: e.target.value })}
-                  onBlur={(e) => void patchShot(i, { caption: e.target.value }, true)}
+                  onChange={/** e 取出 target.value 写进 caption。 */ (e) => void patchShot(i, { caption: e.target.value })}
+                  onBlur={/** e 取出 target.value 写进 caption，并写回短片。 */ (e) => void patchShot(i, { caption: e.target.value }, true)}
                 />
                 <div className="flex flex-wrap items-center gap-1.5">
                   <select
                     className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px]"
                     value={sh.motion === "static" ? "static" : "ken-burns"}
-                    onChange={(e) => {
+                    onChange={/** e 取出 target.value 当运动方式；是 static 时 fit 写成 contain，否则清空 fit，并写回短片。 */ (e) => {
                       const motion = e.target.value;
                       void patchShot(i, motion === "static" ? { motion, fit: "contain" } : { motion, fit: "" }, true);
                     }}
@@ -606,7 +606,7 @@ function VisualsStep(props: {
                     <option value="ken-burns">{p.motionPush}</option>
                     <option value="static">{p.motionStill}</option>
                   </select>
-                  <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} aria-label={copy.video.shotDuration} onChange={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={(e) => void patchShot(i, { duration: Number(e.target.value) || 3 }, true)} />
+                  <Input className="h-7 w-16" type="number" min={1} value={sh.duration || 3} aria-label={copy.video.shotDuration} onChange={/** e 取出 target.value 转成秒数，转不成就用 3。 */ (e) => void patchShot(i, { duration: Number(e.target.value) || 3 })} onBlur={/** e 取出 target.value 转成秒数，转不成就用 3，并写回短片。 */ (e) => void patchShot(i, { duration: Number(e.target.value) || 3 }, true)} />
                   <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("regen", async () => {
                     await api.video.generateStudioShot(cur.id, sh.id || "");
                     props.onChange(await api.video.getStudio(cur.id) as StudioProject);
@@ -623,7 +623,7 @@ function VisualsStep(props: {
         <summary className="cursor-pointer text-[12px] text-muted">{p.ingest}</summary>
         <p className="mt-1 text-[11px] leading-[1.45] text-muted">{p.ingestHint}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Input className="h-8 min-w-48 flex-1" placeholder={p.ingestUrl} value={ingestUrl} onChange={(e) => setIngestUrl(e.target.value)} />
+          <Input className="h-8 min-w-48 flex-1" placeholder={p.ingestUrl} value={ingestUrl} onChange={/** e 取出 target.value 交给 setIngestUrl。 */ (e) => setIngestUrl(e.target.value)} />
           <Button size="sm" variant="ghost" disabled={!!props.busy || !ingestUrl.trim()} onClick={() => void props.run("ingest", async () => {
             const next = await api.video.ingestStudio(cur.id, ingestUrl.trim()) as StudioProject;
             props.onChange(next);
@@ -636,7 +636,7 @@ function VisualsStep(props: {
   );
 }
 
-/** 合成步：背景音乐、出片、改画幅、烧字幕和送到剪辑。 */
+/** 合成步：背景音乐、出片、改画幅、烧字幕和送到剪辑。 props 用 current 画成片和预检，busy、run、onChange 交给背景音乐和出片，shots 里有就绪镜头才能合成，出片后有成片哈希就调用 onContinue，wrapTitle 和 setWrapTitle 管烧字幕的标题，点击交给 onWrap，remotion 没就绪就显示提示。 */
 function ComposeStep(props: {
   current: StudioProject;
   busy: string;
@@ -682,7 +682,7 @@ function ComposeStep(props: {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Input className="h-8 min-w-40 flex-1" placeholder={s.wrap} value={props.wrapTitle} onChange={(e) => props.setWrapTitle(e.target.value)} />
+            <Input className="h-8 min-w-40 flex-1" placeholder={s.wrap} value={props.wrapTitle} onChange={/** e 取出 target.value 交给 setWrapTitle。 */ (e) => props.setWrapTitle(e.target.value)} />
             <Button size="sm" variant="ghost" disabled={!!props.busy} onClick={() => void props.onWrap()}>{s.wrap}</Button>
           </div>
           {!props.remotionReady ? <p className="text-[11px] text-muted">{s.wrapHint}</p> : null}
@@ -701,7 +701,7 @@ function ComposeStep(props: {
   );
 }
 
-/** 交付步：封面、文案、打包和版本恢复。可发布后才继续。 */
+/** 交付步：封面、文案、打包和版本恢复。可发布后才继续。 props 用 current 看能否发布、封面和文案，busy 时禁用，选封面和打包交给 run，结果交给 onChange，可发布时调用 onContinue。 */
 function DeliveryStep(props: {
   current: StudioProject;
   busy: string;
@@ -715,7 +715,7 @@ function DeliveryStep(props: {
   const p = s.desk;
   const cur = props.current;
   const ready = cur.delivery?.status === "publishable";
-  const activeVer = String((cur.versions || []).find((v) => v.result_hash === cur.result_hash)?.n || "");
+  const activeVer = String((cur.versions || []).find(/** v 用 result_hash 和当前成片比对。 */ (v) => v.result_hash === cur.result_hash)?.n || "");
   return (
     <div className="flex flex-col gap-3" data-testid="studio-delivery">
       <Preflight id={cur.id} gate="delivery" />
@@ -733,10 +733,10 @@ function DeliveryStep(props: {
       ) : null}
       {cur.copy_text ? <pre className="whitespace-pre-wrap rounded-lg bg-lift/50 px-3 py-2 text-[12px] leading-[1.55]">{cur.copy_text}</pre> : null}
       {(cur.delivery?.files || []).length ? (
-        <p className="text-[12px] text-muted">{cur.delivery!.files!.map((f) => f.kind).filter(Boolean).join(" · ")}</p>
+        <p className="text-[12px] text-muted">{cur.delivery!.files!.map(/** f 读取 kind。 */ (f) => f.kind).filter(Boolean).join(" · ")}</p>
       ) : null}
       <div className="flex flex-wrap gap-1.5">
-        {(cur.cover_urls || []).map((c) => (
+        {(cur.cover_urls || []).map(/** c 用 hash 当 key 并和当前封面比较，点击时交给 pickStudioCover，有 url 就显示成图。 */ (c) => (
           <button key={c.hash} type="button" className={cn("overflow-hidden rounded-md border", cur.cover_hash === c.hash ? "border-foreground" : "border-border")} onClick={() => void props.run("cover", async () => {
             props.onChange(await api.video.pickStudioCover(cur.id, c.hash || "") as StudioProject);
           })} title={p.pickCover}>
@@ -762,9 +762,9 @@ function DeliveryStep(props: {
       {(cur.versions || []).length > 0 ? (
         <Field label={p.versions}>
           <ChipRow
-            items={(cur.versions || []).map((v) => ({ id: String(v.n), label: `V${v.n}` }))}
+            items={(cur.versions || []).map(/** v 用 n 拼成版本 id 和 V 标签。 */ (v) => ({ id: String(v.n), label: `V${v.n}` }))}
             value={activeVer}
-            onPick={(id) => void props.run("restore", async () => {
+            onPick={/** id 转成数字后交给 restoreStudio。 */ (id) => void props.run("restore", async () => {
               props.onChange(await api.video.restoreStudio(cur.id, Number(id)) as StudioProject);
             })}
           />
@@ -774,7 +774,7 @@ function DeliveryStep(props: {
   );
 }
 
-/** 读这一道工序的预检，失败时显示缺少适配器。 */
+/** 读这一道工序的预检，失败时显示缺少适配器。 props 没有 id 就不请求，否则把 id 和 gate 交给 studioPreflight。 */
 function Preflight(props: { id: string; gate: string }) {
   const p = useCopy().video.studio.desk;
   const [pf, setPf] = useState<{ ok?: boolean; spends?: string[]; missing?: string[]; message?: string } | null>(null);
@@ -782,7 +782,7 @@ function Preflight(props: { id: string; gate: string }) {
   useEffect(() => {
     if (!props.id) return;
     setPfErr("");
-    void api.video.studioPreflight(props.id, props.gate).then((row) => setPf(row as typeof pf)).catch((e) => {
+    void api.video.studioPreflight(props.id, props.gate).then(/** row 当成预检结果写入。 */ (row) => setPf(row as typeof pf)).catch(/** e 交给 errMessage 后写入预检错误，并清掉预检结果。 */ (e) => {
       setPf(null);
       setPfErr(api.errMessage(e));
     });
@@ -801,7 +801,7 @@ function Preflight(props: { id: string; gate: string }) {
   );
 }
 
-/** 列出背景音乐，可以随机、关掉或点名使用。 */
+/** 列出背景音乐，可以随机、关掉或点名使用。 props 用 current 的 id 和 bgm_hash 决定列表和能否关掉，busy 时禁用，随机、关掉或点名都包在 run 里，结果交给 onChange。 */
 function BgmRow(props: {
   current: StudioProject;
   busy: string;
@@ -812,7 +812,7 @@ function BgmRow(props: {
   const cur = props.current;
   const [list, setList] = useState<{ dir?: string; items?: { name: string }[] } | null>(null);
   useEffect(() => {
-    void api.video.listStudioBGM().then((row) => setList(row as { dir?: string; items?: { name: string }[] })).catch(() => {});
+    void api.video.listStudioBGM().then(/** row 当成背景音乐目录写入。 */ (row) => setList(row as { dir?: string; items?: { name: string }[] })).catch(() => {});
   }, [cur.id, cur.bgm_hash]);
   const items = list?.items || [];
   return (
@@ -827,7 +827,7 @@ function BgmRow(props: {
         <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy || !cur.bgm_hash} onClick={() => void props.run("bgm", async () => {
           props.onChange(await api.video.clearStudioBGM(cur.id) as StudioProject);
         })}>{p.bgmOff}</Button>
-        {items.map((it) => (
+        {items.map(/** it 用 name 当 key 和按钮文案，点击时交给 useStudioBGM。 */ (it) => (
           <Button key={it.name} size="sm" variant="ghost" className="h-7 text-[11px]" disabled={!!props.busy} onClick={() => void props.run("bgm", async () => {
             props.onChange(await api.video.useStudioBGM(cur.id, it.name) as StudioProject);
           })}>{it.name}</Button>
@@ -838,7 +838,7 @@ function BgmRow(props: {
   );
 }
 
-/** 带右箭头的继续按钮。 */
+/** 带右箭头的继续按钮。 props 用 disabled 禁用按钮，点击交给 onClick，并显示 label。 */
 function ContinueButton(props: { label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <Button type="button" variant="default" className="mt-1 self-start gap-1" disabled={props.disabled} onClick={props.onClick}>
@@ -848,7 +848,7 @@ function ContinueButton(props: { label: string; disabled?: boolean; onClick: () 
   );
 }
 
-/** 一行带说明的表单。 */
+/** 一行带说明的表单。 props 显示 label，有 hint 就显示，并渲染 children。 */
 function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 border-t border-border/50 px-3 py-2.5 first:border-t-0">
@@ -861,7 +861,7 @@ function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
   );
 }
 
-/** 一块带标签的字段。 */
+/** 一块带标签的字段。 props 显示 label，并渲染 children。 */
 function Field(props: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -871,11 +871,11 @@ function Field(props: { label: string; children: ReactNode }) {
   );
 }
 
-/** 一排可切换的圆角选项。 */
+/** 一排可切换的圆角选项。 props 用 items 列出选项，value 标出选中，点击把 id 交给 onPick。 */
 function ChipRow(props: { items: { id: string; label: string }[]; value: string; onPick: (id: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {props.items.map((it) => (
+      {props.items.map(/** it 用 id 当 key 并和 value 比较是否选中，点击把 id 交给 onPick，并显示 label。 */ (it) => (
         <button
           key={it.id}
           type="button"
@@ -890,7 +890,7 @@ function ChipRow(props: { items: { id: string; label: string }[]; value: string;
   );
 }
 
-/** 把平台 id 换成界面名字，没有就用原 id。 */
+/** 把平台 id 换成界面名字，没有就用原 id。 s 用 desk 和热榜平台文案把平台 id 换成界面名字。 */
 function platLabel(id: string, s: ReturnType<typeof useCopy>["video"]["studio"]) {
   const p = s.desk;
   const map: Record<string, string> = {
@@ -904,9 +904,9 @@ function platLabel(id: string, s: ReturnType<typeof useCopy>["video"]["studio"])
   return map[id] || id;
 }
 
-/** 把文件读成 data URL。 */
+/** 把文件读成 data URL。 file 交给 readAsDataURL。 */
 function readDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise(/** resolve 在读完时交回结果字符串。reject 在读失败时交回错误。 */ (resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result || ""));
     r.onerror = () => reject(r.error);

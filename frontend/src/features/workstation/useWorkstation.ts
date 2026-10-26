@@ -42,7 +42,7 @@ import { useCreateMode } from "../video/create-mode";
 import { ingestVideoPath, isVideoPath, nativeFilePath } from "../video/ingest-clip";
 import { useFilmDesk } from "../video/film-desk";
 
-/** 蛇形或驼峰键存在时用 num，缺省按 0。两个键都没有就沿用 prev。 */
+/** 蛇形或驼峰键存在时用 num，缺省按 0。两个键都没有就沿用 prev。p 为真时才继续，按下标读取。snake 用作下标。camel 用作下标。 */
 function sliceNum(p: Record<string, any>, snake: string, camel: string, prev?: number): number | undefined {
   if (p && (snake in p || camel in p)) return num(p[snake] ?? p[camel], 0);
   return prev;
@@ -88,7 +88,7 @@ export const emptyCfg: AppConfig = {
 /** 还没有上下文用量时的空值。各项计数为 0，layers 是空数组。 */
 const emptyCtx: ContextUsage = { tokens: 0, budget: 0, window: 0, prefixTokens: 0, dynamicTokens: 0, schemaTokens: 0, providerPrompt: 0, note: "", layers: [], elided: 0 };
 
-/** 从后往前留住最后一个工具调用或结果里能预览的工作区路径。没有就返回空字符串。 */
+/** 从后往前留住最后一个工具调用或结果里能预览的工作区路径。没有就返回空字符串。items 用来遍历。 */
 function latestWorkspaceHTMLPath(items: Item[]): string {
   let found = "";
   for (const it of items) {
@@ -101,7 +101,12 @@ function latestWorkspaceHTMLPath(items: Item[]): string {
   return found;
 }
 
-/** 传入空就返回空。子代理或通道不对时改找父会话，再找同通道里未归档的，最后才找任意同通道会话。 */
+/**
+ * 传入空就返回空。子代理或通道不对时改找父会话，再找同通道里未归档的，最后才找任意同通道会话。
+ * list 调用 find。
+ * t 为假时返回 null，其余分支还看别的条件；传给 isSubagentThread，传给 threadChannel。
+ * channel 与 threadChannel(t)、threadChannel(x) 比较是否相等。
+ */
 function resolveOperatorThread(list: Thread[], t: Thread | null, channel: ThreadChannel): Thread | null {
   if (!t) return null;
   if (!isSubagentThread(t) && threadChannel(t) === channel) return t;
@@ -113,7 +118,13 @@ function resolveOperatorThread(list: Thread[], t: Thread | null, channel: Thread
     || null;
 }
 
-/** 当前会话还在列表里就解析它。否则用记住的 id。都没有就取同通道里第一条未归档的，再没有就取第一条。 */
+/**
+ * 当前会话还在列表里就解析它。否则用记住的 id。都没有就取同通道里第一条未归档的，再没有就取第一条。
+ * list 做过滤，调用 some，调用 find，传给 resolveOperatorThread。
+ * channel 与 threadChannel(t) 比较是否相等，传给 resolveOperatorThread。
+ * preferred 与 t.id 比较是否相等，为真时才继续。
+ * cur 读取 id，为真时才继续，作为后备值。
+ */
 function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: string, cur: Thread | null): Thread | null {
   const chats = list.filter((t) => !isSubagentThread(t) && threadChannel(t) === channel);
   if (cur && list.some((t) => t.id === cur.id)) {
@@ -126,7 +137,7 @@ function pickChannelThread(list: Thread[], channel: ThreadChannel, preferred: st
   return chats.find((t) => !t.archived) || chats[0] || null;
 }
 
-/** 没有 id 返回 null。kind 只认 drama、studio、game，其余写成 canvas。 */
+/** 没有 id 返回 null。kind 只认 drama、studio、game，其余写成 canvas。v 读取 id、kind、title、session_id、sessionId、episode_id 等，为空时不读。 */
 function videoProjectOf(v: any): VideoProject | null {
   const id = str(v?.id);
   if (!id) return null;
@@ -144,7 +155,7 @@ function videoProjectOf(v: any): VideoProject | null {
   };
 }
 
-/** 上次有过的 id 先写成假，这次给出的 id 写成真。 */
+/** 上次有过的 id 先写成假，这次给出的 id 写成真。ids 用来遍历。prev 传给 Object.keys。 */
 function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<string, boolean> {
   const next: Record<string, boolean> = {};
   for (const id of Object.keys(prev)) next[id] = false;
@@ -155,13 +166,13 @@ function runningMap(ids: string[], prev: Record<string, boolean> = {}): Record<s
 /** 流已经说回合结束之后，轮询仍可能回答 running。这 6000 毫秒内以结束事件为准，避免工作行和转圈又亮起来。 */
 const SETTLE_GRACE_MS = 6000;
 
-/** 没有结束时间返回假。距离结束不到 SETTLE_GRACE_MS 返回真。 */
+/** 没有结束时间返回假。距离结束不到 SETTLE_GRACE_MS 返回真。endedAt 按下标读取。id 用作下标。 */
 function settled(endedAt: Record<string, number>, id: string): boolean {
   const t = endedAt[id];
   return !!t && Date.now() - t < SETTLE_GRACE_MS;
 }
 
-/** 到点拒绝，错误文字是标签加 timed out。原承诺先结束就清掉计时器。 */
+/** 到点拒绝，错误文字是标签加 timed out。原承诺先结束就清掉计时器。p 调用 then。ms 传给 window.setTimeout。label 拼进字符串。 */
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms);
@@ -182,7 +193,7 @@ function newRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** 先折进回合错误，再只留最近 HOT_TRANSCRIPT_TURNS 个用户回合。变短了才 trim 折叠器。 */
+/** 先折进回合错误，再只留最近 HOT_TRANSCRIPT_TURNS 个用户回合。变短了才 trim 折叠器。fold 去掉首尾空白。list 传给 foldTurnErrors。 */
 function commitHot(fold: ConversationFold, list: Item[]): Item[] {
   const next = foldTurnErrors(list);
   const trimmed = lastUserTurns(next, HOT_TRANSCRIPT_TURNS);
@@ -190,7 +201,13 @@ function commitHot(fold: ConversationFold, list: Item[]): Item[] {
   return trimmed;
 }
 
-/** 本地先放一条 source 为 ui 的用户消息。附件只留有名字或路径的 name、path、mime。key 以 ui: 开头。 */
+/**
+ * 本地先放一条 source 为 ui 的用户消息。附件只留有名字或路径的 name、path、mime。key 以 ui: 开头。
+ * sessionId 拼进字符串，写入字段 sessionId。
+ * text 写入字段 text。
+ * attachments 为假时改用后备值，做映射。
+ * requestId 为假时改用后备值后，拼进字符串，写入字段 request_id。
+ */
 function localUser(sessionId: string, text: string, attachments?: Attachment[], requestId?: string): Item {
   const atts = (attachments || [])
     .map((a) => ({ name: a.name, path: a.path, mime: a.mime }))
@@ -365,11 +382,16 @@ export function useWorkstation() {
   const [vault, setVault] = useState<any>({});
   const [pendingQuit, setPendingQuit] = useState(false);
   const handlers = useRef({
+    /** slash 函数体是空的。_cmd 函数体内没有读取。_rest 函数体内没有读取。 */
     slash: async (_cmd: string, _rest: string) => {},
+    /** command 函数体是空的。_c 函数体内没有读取。 */
     command: (_c: string) => {},
     quit: () => {},
+    /** focus 函数体是空的。_id 函数体内没有读取。 */
     focus: (_id: string) => {},
+    /** route 函数体是空的。_payload 函数体内没有读取。 */
     route: (_payload: Record<string, unknown>) => {},
+    /** cut 函数体是空的。_payload 函数体内没有读取。 */
     cut: (_payload: Record<string, unknown>) => {},
   });
 
@@ -417,7 +439,7 @@ export function useWorkstation() {
     }
   }, [activeId]);
 
-  /** 没有当前会话时返回这个 id、0 字节、空文本、未截断。 */
+  /** 没有当前会话时返回这个 id、0 字节、空文本、未截断。blobID 传给 api.spillBlob，写入字段 id。 */
   const loadSpill = useCallback(async (blobID: string): Promise<SpillBlob> => {
     if (!activeId) return { id: blobID, bytes: 0, text: "", truncated: false };
     return api.spillBlob(activeId, blobID);
@@ -458,7 +480,7 @@ export function useWorkstation() {
     setLatestNonce(Date.now());
   }, [activeId]);
 
-  /** 没有会话或没有回合就返回。这条还没挂上且 seq 大于 0 时，按该 seq 取一页并进入回看。 */
+  /** 没有会话或没有回合就返回。这条还没挂上且 seq 大于 0 时，按该 seq 取一页并进入回看。turn 读取 seq，为假时走另一支，传给 outlineTurnKey，传给 turnJumpAliases，传给 itemMatchesTurn。 */
   const jumpToTurn = useCallback(async (turn: OutlineTurn) => {
     if (!activeId || !turn) return;
     const key = outlineTurnKey(turn);
@@ -478,7 +500,7 @@ export function useWorkstation() {
     setJumpTo({ key, aliases, nonce: Date.now() });
   }, [activeId]);
 
-  /** 用横幅文案同时写入 err 并弹出提示。 */
+  /** 用横幅文案同时写入 err 并弹出提示。e 传给 api.errMessage。 */
   const fail = (e: unknown) => {
     const msg = bannerError(api.errMessage(e), copy.transcript);
     setErr(msg);
@@ -822,7 +844,7 @@ export function useWorkstation() {
         setItems(hotItemsRef.current.slice());
       }
     };
-    /** 立刻刷新会清掉已经排上的 50 毫秒。已经排过就不再排第二次。 */
+    /** 立刻刷新会清掉已经排上的 50 毫秒。已经排过就不再排第二次。immediate 为真时才继续。 */
     const scheduleItems = (immediate: boolean) => {
       if (immediate) {
         if (itemsRaf.current) {
@@ -996,13 +1018,13 @@ export function useWorkstation() {
     return channelForSurface(useUI.getState().surface);
   }
 
-  /** 视频通道依次用配置里的视频工作区、健康信息里的、再退回普通工作区。 */
+  /** 视频通道依次用配置里的视频工作区、健康信息里的、再退回普通工作区。ch 与 video 比较是否相等。 */
   function channelWorkspace(ch: ThreadChannel): string {
     if (ch === "video") return savedCfg.videoWorkspace || health.videoWorkspace || savedCfg.workspace;
     return savedCfg.workspace;
   }
 
-  /** 记住这条通道的会话。已经是当前会话就返回。否则清空条目和队列，并保持当前窗格打开它。 */
+  /** 记住这条通道的会话。已经是当前会话就返回。否则清空条目和队列，并保持当前窗格打开它。t 读取 id，传给 openThread。lane 传给 rememberLaneThread。 */
   function activateLaneThread(t: Thread, lane: VideoLane) {
     rememberLaneThread(lane, t.id);
     if (activeRef.current?.id === t.id) return;
@@ -1111,7 +1133,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 记住剪辑和这条会话。标题不同才改名。再开一条欢迎会话给创作通道，并打开创作窗格。 */
+  /** 记住剪辑和这条会话。标题不同才改名。再开一条欢迎会话给创作通道，并打开创作窗格。project 读取 id、title，传给 setProject。session 读取 id、title，传给 openThread，展开传递。 */
   async function claimCutThread(project: CutProject, session: Thread) {
     const id = str(project.id);
     if (id) rememberCutThread(id, session.id);
@@ -1133,7 +1155,7 @@ export function useWorkstation() {
     useUI.getState().openVideoPane("create");
   }
 
-  /** 创作通道走欢迎会话。其他通道已有一次在飞就等它。先用记住的、再看当前会话，都不合适才新建。 */
+  /** 创作通道走欢迎会话。其他通道已有一次在飞就等它。先用记住的、再看当前会话，都不合适才新建。lane 与 create 比较是否相等，用作下标，传给 activateLaneThread，传给 lastLaneThread，传给 laneAcceptsSession。 */
   async function ensureLaneThread(lane: VideoLane): Promise<Thread> {
     if (lane === "create") {
       const t = await prepareWelcomeThread();
@@ -1147,7 +1169,7 @@ export function useWorkstation() {
       const projects = videoProjectsRef.current;
       const chats = threadsRef.current.filter((t) => !isSubagentThread(t) && threadChannel(t) === "video");
       const remembered = lastLaneThread(lane);
-      /** 只在视频会话里挑，并且这条通道接受它。对不上返回 null。 */
+      /** 只在视频会话里挑，并且这条通道接受它。对不上返回 null。id 与 t.id、activeRef.current?.id 比较是否相等。 */
       const pick = (id: string) => {
         const hit = chats.find((t) => t.id === id) || (activeRef.current?.id === id ? activeRef.current : null);
         if (!hit || !laneAcceptsSession(lane, hit.id, projects)) return null;
@@ -1168,7 +1190,7 @@ export function useWorkstation() {
   }
 
   prepareWelcomeRef.current = prepareWelcomeThread;
-  /** 没有 id、桌子已收起或不是当前工程就返回。拉回来之后再核一次，避免中途换了工程。 */
+  /** 没有 id、桌子已收起或不是当前工程就返回。拉回来之后再核一次，避免中途换了工程。payload 读取 id。 */
   handlers.current.cut = (payload) => {
     const id = str(payload.id);
     const desk = useCutDesk.getState();
@@ -1180,7 +1202,7 @@ export function useWorkstation() {
     }).catch(() => {});
   };
 
-  /** studio、assets、skills、plugins、tasks、game 不切换会话。桌子上有源片且没收起时留在剪辑会话，失败就留在当前线程。否则回到创作通道。 */
+  /** studio、assets、skills、plugins、tasks、game 不切换会话。桌子上有源片且没收起时留在剪辑会话，失败就留在当前线程。否则回到创作通道。pane 与 studio、assets、skills、plugins、tasks、game 等比较是否相等。 */
   async function adoptVideoLane(pane: string) {
     if (pane === "studio" || pane === "assets" || pane === "skills" || pane === "plugins" || pane === "tasks" || pane === "game") return;
     if (pane === "drama") {
@@ -1209,7 +1231,7 @@ export function useWorkstation() {
     await ensureLaneThread("create");
   }
 
-  /** 空 id 返回。canvas、studio、drama 各自写回选择。查绑定失败就跳过。 */
+  /** 空 id 返回。canvas、studio、drama 各自写回选择。查绑定失败就跳过。sessionId 为假时走另一支，传给 api.video.sessionProject。 */
   async function restoreVideoProject(sessionId: string) {
     if (!sessionId) return;
     try {
@@ -1242,7 +1264,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 把这条工作室工程放到列表最前，并记下这次的会话 id。同 id 的旧工作室行去掉。 */
+  /** 把这条工作室工程放到列表最前，并记下这次的会话 id。同 id 的旧工作室行去掉。p 读取 id，展开传递。sessionId 写入字段 sessionId。 */
   function rememberStudioProject(p: VideoProject, sessionId: string) {
     const row = asStudioProject({ ...p, sessionId });
     setVideoProjects((prev) => {
@@ -1252,7 +1274,7 @@ export function useWorkstation() {
     });
   }
 
-  /** 没有工程 id 抛 studio project required。同一个工程已经在绑就等它。没有待定权限且权限不是 full 时改成 full。 */
+  /** 没有工程 id 抛 studio project required。同一个工程已经在绑就等它。没有待定权限且权限不是 full 时改成 full。p 读取 id、sessionId、title，传给 rememberStudioProject。 */
   async function ensureStudioThread(p: VideoProject): Promise<Thread> {
     const projectId = str(p.id);
     if (!projectId) {
@@ -1318,7 +1340,7 @@ export function useWorkstation() {
     }
   }
 
-  /** studio 交给工作室会话。game 直接返回。没有会话就新建并绑定。然后清空条目并保持窗格打开它。 */
+  /** studio 交给工作室会话。game 直接返回。没有会话就新建并绑定。然后清空条目并保持窗格打开它。p 读取 kind、sessionId、id、title、episodeId，传给 ensureStudioThread。 */
   async function openVideoProject(p: VideoProject) {
     if (p.kind === "studio") {
       await ensureStudioThread(p);
@@ -1376,7 +1398,10 @@ export function useWorkstation() {
     return t;
   }
 
-  /** 正文和附件都空就返回。工作区没就绪时提示并打开常规设置。工作室桌子没有短片 id 就返回。正在跑且是改道时只调用 steer。创作窗格里 yoyo-cut 附件只绑定、不随消息发出。错误文字含 queued 或 already running 时只把队列加一。 */
+  /**
+   * 正文和附件都空就返回。工作区没就绪时提示并打开常规设置。工作室桌子没有短片 id 就返回。正在跑且是改道时只调用 steer。创作窗格里 yoyo-cut 附件只绑定、不随消息发出。错误文字含 queued 或 already running 时只把队列加一。
+   * opts 读取 text、attachments、steer，为空时不读。
+   */
   async function onSend(opts?: { steer?: boolean; attachments?: Attachment[]; text?: string }) {
     const text = (opts?.text !== undefined ? opts.text : (useUI.getState().drafts[draftKey] || "")).trim();
     if (!text && !(opts?.attachments && opts.attachments.length)) return;
@@ -1535,7 +1560,11 @@ export function useWorkstation() {
     }
   }
 
-  /** 去掉开头的斜杠后分派。schedule 用 heartbeat、30m、isolate。remember 以 profile 或 pin 开头时 kind 写成 profile。rewind 不带 files、both、conversation、chat、from 时拼成 both from。artifact 只把固定一句追加进草稿。 */
+  /**
+   * 去掉开头的斜杠后分派。schedule 用 heartbeat、30m、isolate。remember 以 profile 或 pin 开头时 kind 写成 profile。rewind 不带 files、both、conversation、chat、from 时拼成 both from。artifact 只把固定一句追加进草稿。
+   * cmd 做替换。
+   * rest 去掉首尾空白，为假时改用后备值，为假时用 project，做替换，传给 api.compactSession，传给 api.setSessionModel。
+   */
   async function onSlash(cmd: string, rest: string) {
     const raw = cmd.replace(/^\//, "");
     if (raw === "plan") {
@@ -1740,7 +1769,7 @@ export function useWorkstation() {
 
   const presenceItems = useMemo(() => lastUserTurns(items, 2), [items]);
 
-  /** 提交决定后从本地列表去掉这一条。 */
+  /** 提交决定后从本地列表去掉这一条。id 与 a.id 比较是否不等，传给 api.resolveApproval。decision 传给 api.resolveApproval。answer 传给 api.resolveApproval。 */
   async function onResolve(id: string, decision: string, answer?: string) {
     await api.resolveApproval(id, decision, answer);
     setApprovals((prev) => prev.filter((a) => a.id !== id));
@@ -1789,7 +1818,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 在给出的工作区新建会话，没给就用当前通道的工作区。清空条目和队列后打开它。 */
+  /** 在给出的工作区新建会话，没给就用当前通道的工作区。清空条目和队列后打开它。workspace 为假时改用后备值，传给 api.createSession。 */
   async function onNewIn(workspace?: string) {
     const ch = channelForSurface(useUI.getState().surface);
     const created = await adoptPendingAuthMode(await api.createSession(workspace || channelWorkspace(ch), ch));
@@ -1810,7 +1839,7 @@ export function useWorkstation() {
     await onNewIn();
   }
 
-  /** 记住这条会话并清掉待定权限。视频会话在 keepPane 时不改窗格。否则按通道打开工作室、短剧、画布或创作。其他通道回到对话。 */
+  /** 记住这条会话并清掉待定权限。视频会话在 keepPane 时不改窗格。否则按通道打开工作室、短剧、画布或创作。其他通道回到对话。t 读取 id，传给 ui.rememberThread，传给 threadChannel，传给 setActive。opts 读取 keepPane，为空时不读。 */
   function openThread(t: Thread, opts?: { keepPane?: boolean }) {
     const ui = useUI.getState();
     ui.rememberThread(t);
@@ -1833,7 +1862,7 @@ export function useWorkstation() {
     setActive(t);
   }
 
-  /** 没有哈希也没有资源 id 时，有地址就先入库。还是没有就提示需要视频。当前会话不是视频或已经属于剪辑时先准备欢迎会话。没有工程 id 抛 cut project was not created。 */
+  /** 没有哈希也没有资源 id 时，有地址就先入库。还是没有就提示需要视频。当前会话不是视频或已经属于剪辑时先准备欢迎会话。没有工程 id 抛 cut project was not created。detail 读取 hash、url、title，传给 resourceIdFromSend。 */
   sendToCutRef.current = async (detail) => {
     const c = copy.video.conductor;
     let hash = String(detail.hash || "").trim();
@@ -1880,7 +1909,7 @@ export function useWorkstation() {
     toast.success(c.sentToCut);
   };
 
-  /** 空哈希返回。种类固定成 suite，并打开证明页。 */
+  /** 空哈希返回。种类固定成 suite，并打开证明页。hash 为假时用空字符串，转成字符串，去掉首尾空白后，为假时走另一支，写入字段 snapshot。 */
   async function runHarborAt(hash: string) {
     const snapshot = String(hash || "").trim();
     if (!snapshot) return;
@@ -1899,7 +1928,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 按种类调用对应评测。bon 取 3 次里的 best 或 Best。models 按逗号拆开并去掉空白。 */
+  /** 按种类调用对应评测。bon 取 3 次里的 best 或 Best。models 按逗号拆开并去掉空白。kind 与 suite、safety、sealed、transfer、index、behavior 等比较是否相等，传给 setHarborKind。 */
   async function runHarbor(kind: HarborKind) {
     setHarborKind(kind);
     setHarborErr("");
@@ -1988,7 +2017,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 左边没传时用 diffA，再没有用健康信息里的 harness。右边没传时用 diffB。传入的值会写回输入框。 */
+  /** 左边没传时用 diffA，再没有用健康信息里的 harness。右边没传时用 diffB。传入的值会写回输入框。a 为假时用 diffA，为假时改用后备值，传给 setDiffA。b 为假时用 diffB，传给 setDiffB。 */
   async function compareHarness(a?: string, b?: string) {
     try {
       const left = a || diffA || health.harness;
@@ -2001,7 +2030,7 @@ export function useWorkstation() {
     }
   }
 
-  /** l3 缺省按假。成功后刷新并提示已检出。 */
+  /** l3 缺省按假。成功后刷新并提示已检出。hash 传给 api.checkout。 */
   async function checkoutHarness(hash: string, l3?: boolean) {
     await api.checkout(hash, !!l3);
     await refresh();
@@ -2015,7 +2044,7 @@ export function useWorkstation() {
     toast.success(copy.app.rolledBack);
   }
 
-  /** 没传哈希就传空字符串。失败时先提示，再把错误抛回去。 */
+  /** 没传哈希就传空字符串。失败时先提示，再把错误抛回去。hash 为假时用空字符串，传给 api.revealHarness。 */
   async function revealHarness(hash?: string) {
     try {
       await api.revealHarness(hash || "");
@@ -2025,7 +2054,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 先把合并后的配置写进本地，再提交整份配置。 */
+  /** 先把合并后的配置写进本地，再提交整份配置。partial 展开传递。 */
   async function patchConfig(partial: Partial<AppConfig>) {
     const next = { ...savedCfg, ...partial };
     setSavedCfg(next);
@@ -2054,7 +2083,7 @@ export function useWorkstation() {
 
   useEffect(() => {
     const km = mergeKeymap(savedCfg.keymap);
-    /** 输入框里不响应新建、回合和审批快捷键。命令面板键始终切换。Escape 先让菜单、列表和模态对话框用掉。视频表面按当前窗格退一层。 */
+    /** 输入框里不响应新建、回合和审批快捷键。命令面板键始终切换。Escape 先让菜单、列表和模态对话框用掉。视频表面按当前窗格退一层。e 读取 target、metaKey、ctrlKey、shiftKey、altKey、key 等，调用 preventDefault，传给 matchKey。 */
     const onKey = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement | null)?.closest("input, textarea, [contenteditable]");
       if (matchKey(e, km.palette)) {
@@ -2167,7 +2196,7 @@ export function useWorkstation() {
     return () => window.removeEventListener("keydown", onKey);
   }, [savedCfg.keymap, approvals, openSettings, showConversation, setInspector, setPalette, setLab, jumpToTurn, leaveCut]);
 
-  /** 有文件但没有本地路径就提示并返回空字符串。都没有时打开选择框，选了却没有视频也返回空字符串。路径不是视频同样返回空字符串。 */
+  /** 有文件但没有本地路径就提示并返回空字符串。都没有时打开选择框，选了却没有视频也返回空字符串。路径不是视频同样返回空字符串。source 读取 path、file。 */
   async function pickVideoFile(source: { path?: string; file?: File } = {}) {
     let path = String(source.path || "").trim();
     const file = source.file;
@@ -2191,7 +2220,7 @@ export function useWorkstation() {
     return path;
   }
 
-  /** 没有路径就返回。工程没有 id 或源片哈希时抛需要哈希。错误文字正好是 clip too large 时用过大文案。 */
+  /** 没有路径就返回。工程没有 id 或源片哈希时抛需要哈希。错误文字正好是 clip too large 时用过大文案。source 传给 pickVideoFile。 */
   async function ingestVideo(source: { path?: string; file?: File } = {}) {
     leaveGen.current += 1;
     const path = await pickVideoFile(source);
@@ -2229,7 +2258,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 没有工程 id 时抛需要画面。成功后把工程放上成片桌。 */
+  /** 没有工程 id 时抛需要画面。成功后把工程放上成片桌。structure 传给 api.video.filmDescribe。description 传给 api.video.filmDescribe。 */
   async function startFilm(structure: "ranking" | "podcast" | "interview", description = "") {
     const toastId = toast.loading(copy.video.film.working);
     try {
@@ -2263,7 +2292,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 失败时提示，不再往外抛。 */
+  /** 失败时提示，不再往外抛。dest 传给 openCreateHandoffInner。 */
   async function openCreateHandoff(dest: "studio" | "drama" | "canvas") {
     try {
       await openCreateHandoffInner(dest);
@@ -2272,7 +2301,7 @@ export function useWorkstation() {
     }
   }
 
-  /** 工作室比例只接受 16:9 和 1:1，其余用 9:16。没有工程或剧集 id 就返回。画布没有 id 时焦点落在库。 */
+  /** 工作室比例只接受 16:9 和 1:1，其余用 9:16。没有工程或剧集 id 就返回。画布没有 id 时焦点落在库。dest 与 studio、drama 比较是否相等。 */
   async function openCreateHandoffInner(dest: "studio" | "drama" | "canvas") {
     if (dest === "studio") {
       const cfg = await api.video.settings().catch(() => ({} as Record<string, string>));
@@ -2321,7 +2350,7 @@ export function useWorkstation() {
     void loadVideoHistory();
   }
 
-  /** studio 和 drama 先清掉剪辑桌。drama 把 id 当成剧集。canvas 没有 id 时用 session_id 或当前会话补工程。create 有 id 就打开那条剪辑。 */
+  /** studio 和 drama 先清掉剪辑桌。drama 把 id 当成剧集。canvas 没有 id 时用 session_id 或当前会话补工程。create 有 id 就打开那条剪辑。payload 读取 pane、id、title、drama_id、session_id。 */
   function applyVideoRoute(payload: Record<string, unknown>) {
     const pane = String(payload.pane || "");
     const id = String(payload.id || "");
@@ -2360,7 +2389,7 @@ export function useWorkstation() {
   }
 
   handlers.current.slash = onSlash;
-  /** review 在视频表面不做。认不出的命令交给 onSlash，并补上斜杠。 */
+  /** review 在视频表面不做。认不出的命令交给 onSlash，并补上斜杠。c 与 review、sidebar、dock、harness、video、run-eval 等比较是否相等，加上 /。 */
   handlers.current.command = (c) => {
     if (c === "review") {
       if (useUI.getState().surface === "video") return;
@@ -2388,9 +2417,9 @@ export function useWorkstation() {
     const t = threads.find((x) => x.id === id);
     if (t) openThread(t);
   };
-  /** 把路由载荷交给 applyVideoRoute。 */
+  /** 把路由载荷交给 applyVideoRoute。payload 传给 applyVideoRoute。 */
   handlers.current.route = (payload) => { applyVideoRoute(payload); };
-  /** 只在 id 就是当前剪辑工程时刷新。会话 id 沿用桌子上的。 */
+  /** 只在 id 就是当前剪辑工程时刷新。会话 id 沿用桌子上的。payload 读取 id。 */
   handlers.current.cut = (payload) => {
     const id = String(payload.id || "");
     const cur = useCutDesk.getState();
@@ -2416,7 +2445,7 @@ export function useWorkstation() {
     activeId, draftKey, threadRunning, anyRun, needsSetup,
     fail, refresh, onSend, onRetryLast, onContinueLast, onSlash, onStop, onResolve, refreshDiff, applySelected, onNew, onNewIn, ensureThread, openThread, openVideoProject, ingestVideo, startRemake, startFilm, openCut, leaveCut, openCreateHandoff, loadVideoHistory, patchConfig, requestQuit,
     refreshTrace, loadSpill, refreshCtx, reloadSkills,
-    /** 没有当前会话就返回。取消后按列表重写条数。 */
+    /** 没有当前会话就返回。取消后按列表重写条数。id 传给 api.queueCancel。 */
     onQueueCancel: async (id: string) => {
       if (!activeId) return;
       await api.queueCancel(activeId, id);
@@ -2424,7 +2453,7 @@ export function useWorkstation() {
       setQueueItems(q);
       setQueued(q.length);
     },
-    /** 没有当前会话就返回。调整后按列表重写条数。 */
+    /** 没有当前会话就返回。调整后按列表重写条数。id 传给 api.queueReorder。delta 传给 api.queueReorder。 */
     onQueueReorder: async (id: string, delta: number) => {
       if (!activeId) return;
       await api.queueReorder(activeId, id, delta);
@@ -2440,14 +2469,14 @@ export function useWorkstation() {
       setThreads((list) => list.map((x) => (x.id === t.id ? { ...x, ...t } : x)));
       toast.success(copy.app.worktreeApplied);
     },
-    /** 先刷新会话列表。找到这条才打开。 */
+    /** 先刷新会话列表。找到这条才打开。id 与 x.id 比较是否相等。 */
     onOpenChild: async (id: string) => {
       const fresh = await api.listSessions().catch(() => threads);
       setThreads(fresh);
       const t = fresh.find((x) => x.id === id) || threads.find((x) => x.id === id);
       if (t) openThread(t);
     },
-    /** 没有当前会话就返回。成功后提示返回的说明，没有说明就用已恢复文案，并刷新差异。 */
+    /** 没有当前会话就返回。成功后提示返回的说明，没有说明就用已恢复文案，并刷新差异。from 传给 api.restoreSessionFiles。 */
     onRestoreFiles: async (from: string) => {
       if (!activeId) return;
       try {
@@ -2458,7 +2487,7 @@ export function useWorkstation() {
         fail(e);
       }
     },
-    /** 没有当前会话就返回。新会话插到最前并打开。 */
+    /** 没有当前会话就返回。新会话插到最前并打开。from 传给 api.forkSession。 */
     onForkFrom: async (from: string) => {
       if (!activeId) return;
       try {

@@ -23,6 +23,7 @@ type Page struct {
 
 // PageTurns 返回截止到 beforeSeq 之前、含最后 turns 个操作者用户事件及其间全部事件的一页。beforeSeq 为 0 时截止到文件末尾。
 // turns 小于等于 0 时用 DefaultPageTurns。操作者用户事件不含 source 或 kind 为 steer 的行。没有条目或 end 小于等于 0 时返回空 Page。
+// sessionID 交给 indexLocked，读事件时再交给 readRangeLocked。
 func (s *Store) PageTurns(sessionID string, beforeSeq int64, turns int) (Page, error) {
 	if turns <= 0 {
 		turns = DefaultPageTurns
@@ -82,6 +83,7 @@ func (s *Store) PageTurns(sessionID string, beforeSeq int64, turns int) (Page, e
 }
 
 // ReadFromCheckpoint 从最后一条类型为 compaction 且 kind 为 checkpoint 的行（含该行）读到文件末尾。没有这样的行就从头读。没有索引条目时读整个文件。
+// sessionID 交给 indexLocked；没有条目时以 0、0 交给 readRangeLocked，否则从最后一条 checkpoint 的 Off 读到索引 size。
 func (s *Store) ReadFromCheckpoint(sessionID string) ([]Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

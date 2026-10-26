@@ -8,6 +8,7 @@ import (
 )
 
 // Middleware 在路径以 AssetPrefix 开头时交给 Handler，否则交给 next。
+// store 传给 Handler。
 func Middleware(store *Store, next http.Handler) http.Handler {
 	assets := Handler(store)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

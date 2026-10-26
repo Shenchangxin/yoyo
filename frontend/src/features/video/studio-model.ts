@@ -132,18 +132,18 @@ export type StudioCatalog = {
   tones?: string[];
 };
 
-/** gateIndex 返回工序在 STUDIO_GATES 里的位置。认不出时落到 script 的下标。 */
+/** gateIndex 返回工序在 STUDIO_GATES 里的位置。认不出时落到 script 的下标。g 空着当 script，再在 STUDIO_GATES 里找下标，找不到就用 1。 */
 export function gateIndex(g: string | undefined) {
   const i = STUDIO_GATES.indexOf((g || "script") as StudioGate);
   return i < 0 ? 1 : i;
 }
 
-/** shotReady 看镜头有没有图哈希或视频哈希。 */
+/** shotReady 看镜头有没有图哈希或视频哈希。sh 看有没有 image_hash 或 video_hash。 */
 export function shotReady(sh: StudioShot) {
   return !!(sh.image_hash || sh.video_hash);
 }
 
-/** projectShots 优先用工程上的 shots，否则用分镜里的镜头。 */
+/** projectShots 优先用工程上的 shots，否则用分镜里的镜头。p 没有就返回空数组；有 shots 就用 shots，否则用 storyboard.shots。 */
 export function projectShots(p: StudioProject | null | undefined): StudioShot[] {
   if (!p) return [];
   if (p.shots?.length) return p.shots;

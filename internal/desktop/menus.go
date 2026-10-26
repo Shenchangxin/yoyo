@@ -279,6 +279,8 @@ func (s *Service) rebuildCompanionMenu() {
 }
 
 // noteDesktopPulse 记下非空的会话 id。loading 把 agentBusy 设成真，第一次时重建菜单，已经在忙则只改托盘提示。approval、done、error、eval、evolve、update 把 agentBusy 设成假并重建菜单。
+// kind 为 loading 时把 agentBusy 设成真。第一次调用 refreshChrome，已经在忙则只 applyTrayTooltip。为 approval、done、error、eval、evolve 或 update 时把 agentBusy 设成假并 refreshChrome。
+// session 非空时写入 lastPulseSession。
 func (s *Service) noteDesktopPulse(kind, session string) {
 	if session != "" {
 		s.lastPulseSession.Store(session)

@@ -22,6 +22,10 @@ const hydrateFileTokenCap = 2_000
 
 // hydrateAfterCheckpoint 把最近写过的文件补进一条用户消息。优先取最近 5 个写路径，否则用笔记里的文件，最多计 5 个。
 // 缺失或超过 hydrateFileTokenCap 的只记一行并继续。成功内联且计数达到 5 时停止。一条都没有且目标为空时返回空消息。
+// workspace 为空时跳过该路径，否则与相对路径拼接后读取。
+// msgs 传给 hotWritePaths。
+// notes 在写路径为空时用 Files，最多留 5 个；Objective 去掉空白后为空且一条都没记时返回空消息。
+// tools 传给 planTextOf。
 func hydrateAfterCheckpoint(workspace string, msgs []Message, notes SessionNotes, tools *WorkspaceTools) (extra Message, n int) {
 	var b strings.Builder
 	b.WriteString(hydratePrefix)
@@ -69,6 +73,7 @@ func hydrateAfterCheckpoint(workspace string, msgs []Message, notes SessionNotes
 }
 
 // hotWritePaths 从新到旧收集 write_file、str_replace、apply_patch 的路径，最多 limit 个。limit 小于等于 0 时按 5。
+// msgs 从末尾往前找助手消息里的 write_file、str_replace 和 apply_patch。
 func hotWritePaths(msgs []Message, limit int) []string {
 	if limit <= 0 {
 		limit = 5
@@ -101,6 +106,7 @@ func hotWritePaths(msgs []Message, limit int) []string {
 }
 
 // AssembleToday 拼一行今日状态：未读收件、下一个启用的日程、列表里的第一个项目。结果截到 400 个 rune。没有内容时返回空串。
+// t 为 nil 时返回空串，否则读取 Inbox、Schedule 和 Projects。
 func AssembleToday(t *WorkspaceTools) string {
 	if t == nil {
 		return ""
@@ -128,6 +134,7 @@ func AssembleToday(t *WorkspaceTools) string {
 }
 
 // unreadCount 返回收件箱未读数。存储为 nil 时返回 0。
+// s 为 nil 时返回 0，否则调用 Unread。
 func unreadCount(s *inbox.Store) int {
 	if s == nil {
 		return 0
@@ -136,6 +143,7 @@ func unreadCount(s *inbox.Store) int {
 }
 
 // nextSchedule 返回第一个启用日程的标签，截到 80 个 rune。没有启用项时返回空串。
+// s 为 nil 时返回空串，否则从 List 里取第一个 Enabled 的日程。
 func nextSchedule(s *schedule.Service) string {
 	if s == nil {
 		return ""
@@ -171,6 +179,8 @@ func firstProject(s *project.Store) string {
 }
 
 // writeTerminalFile 把终端输出写到工作区 .yoyo/context/<sessionID>/terminals/<callID>.txt。任一关键参数为空则不动。
+// workspace 为空时返回，否则传给 WorkspaceContextDir。
+// content 为空时返回，否则作为文件正文。
 func writeTerminalFile(workspace, sessionID, callID, content string) {
 	if workspace == "" || sessionID == "" || content == "" {
 		return
@@ -185,6 +195,7 @@ func writeTerminalFile(workspace, sessionID, callID, content string) {
 }
 
 // markStaleReads 把同一路径上已被后一次 read_file 或后一次写覆盖的旧 read_file 结果换成占位。就地改传入切片，检查点只对副本调用。
+// msgs 先扫出每个路径最后一次读和写的下标，再就地改掉过期的 read_file 正文。
 func markStaleReads(msgs []Message) int {
 	lastRead := map[string]int{}
 	lastWrite := map[string]int{}

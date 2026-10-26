@@ -10,7 +10,7 @@ import { useCanvasHost } from "./canvas-host/session";
 import { PresenceModuleLoading } from "../presence";
 
 const YingceApp = lazy(() =>
-  import("./canvas-host/YingceApp").catch((err: Error) => ({
+  import("./canvas-host/YingceApp").catch(/** err 的 message 或自身字符串交给崩溃文案。 */ (err: Error) => ({
     /** 画布模块加载失败时显示错误。 */
     default: function YingceLoadError() {
       return <CanvasCrash message={String(err?.message || err)} />;
@@ -18,7 +18,7 @@ const YingceApp = lazy(() =>
   })),
 );
 
-/** 显示画布失败文案，有消息就接在后面。 */
+/** 显示画布失败文案，有消息就接在后面。props 的 message 非空时接在失败文案后面。 */
 function CanvasCrash(props: { message: string }) {
   const copy = useCopy();
   return (
@@ -28,13 +28,14 @@ function CanvasCrash(props: { message: string }) {
   );
 }
 
+/** IslandBoundary 在子树渲染出错时记下错误并改显示崩溃文案，否则渲染子节点。 */
 class IslandBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
   state = { err: null as Error | null };
-  /** 渲染出错时把错误放进状态。 */
+  /** 渲染出错时把错误放进状态。err 放进返回状态的 err 字段。 */
   static getDerivedStateFromError(err: Error) {
     return { err };
   }
-  /** 把错误和组件栈打到控制台。 */
+  /** 把错误和组件栈打到控制台。err 打到控制台。info 取出 componentStack 一起打出。 */
   componentDidCatch(err: Error, info: ErrorInfo) {
     console.error(err, info.componentStack);
   }
@@ -62,12 +63,12 @@ function CanvasLoading() {
   );
 }
 
-/** CanvasStudio 按当前栏和焦点挂上画布岛，并把会话写进宿主。短剧栏不主动要会话。 */
+/** CanvasStudio 按当前栏和焦点挂上画布岛，并把会话写进宿主。短剧栏不主动要会话。props 把 sessionId 写进窗口和宿主；onNeedSession 留在 ref 里，没有会话且不是短剧栏时调用。onClose 函数体没有读取。 */
 export function CanvasStudio(props: { sessionId?: string; onNeedSession?: () => void | Promise<string | void>; onClose?: () => void }) {
-  const pane = useUI((s) => s.videoPane);
-  const canvasFocus = useUI((s) => s.canvasFocus);
-  const videoEntry = useUI((s) => s.videoEntry);
-  const projectId = useCanvasHost((s) => s.projectId);
+  const pane = useUI(/** s 取出 videoPane。 */ (s) => s.videoPane);
+  const canvasFocus = useUI(/** s 取出 canvasFocus。 */ (s) => s.canvasFocus);
+  const videoEntry = useUI(/** s 取出 videoEntry。 */ (s) => s.videoEntry);
+  const projectId = useCanvasHost(/** s 取出 projectId。 */ (s) => s.projectId);
   const start = yingceHref(pane, projectId, canvasFocus, videoEntry);
   const needSession = useRef(props.onNeedSession);
   needSession.current = props.onNeedSession;

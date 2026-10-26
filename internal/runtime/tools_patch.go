@@ -73,6 +73,7 @@ func (t *WorkspaceTools) applyPatch(patch string) ToolResult {
 }
 
 // pathsFromReports 取每条报告的最后一个字段当路径。
+// reports 每一条按空白切开，取最后一个字段当路径。
 func pathsFromReports(reports []string) []string {
 	var out []string
 	for _, r := range reports {
@@ -85,6 +86,8 @@ func pathsFromReports(reports []string) []string {
 }
 
 // applyUpdate 经 resolve 和 WriteWorkspace 读取原文件。hunk 必须唯一匹配。写入前 snapshotBeforeWrite，成功后 absorbPathRules。
+// rel 交给 resolve；匹配失败时写进错误文本，写入前交给 snapshotBeforeWrite。
+// body 交给 hunkReplace，得到要替换的旧文本和新文本。
 func (t *WorkspaceTools) applyUpdate(rel, body string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -146,6 +149,7 @@ func splitPatches(s string) []string {
 }
 
 // parsePatchBlock 只接受 *** Add File: 和 *** Update File:。Add 收集加号行，以及不是 *** 或 @@ 的行。Update 把首行之后整段当正文。
+// block 去掉空白后按行切开；第一行必须是 *** Add File: 或 *** Update File:。
 func parsePatchBlock(block string) (kind, path, body string, err error) {
 	lines := strings.Split(strings.TrimSpace(block), "\n")
 	if len(lines) == 0 {
@@ -177,6 +181,7 @@ func parsePatchBlock(block string) (kind, path, body string, err error) {
 }
 
 // hunkReplace 把减号行和空格行收成旧文本，加号行和空格行收成新文本。@@ 和 *** 行跳过。
+// body 按行切开；减号和空格收成旧文本，加号和空格收成新文本，@@ 和 *** 跳过。
 func hunkReplace(body string) (old, new string, err error) {
 	var oldB, newB strings.Builder
 	for _, ln := range strings.Split(body, "\n") {
@@ -205,6 +210,7 @@ func hunkReplace(body string) (old, new string, err error) {
 }
 
 // fileContextHint 用旧文本的第一行非空内容在文件里找最接近的窗口，前后各最多 4 行和 5 行。找不到则返回文件开头最多 16 行。
+// old 交给 firstNonEmptyLine，得到的针在文件行里查找。
 func fileContextHint(text, old string) string {
 	needle := firstNonEmptyLine(old)
 	lines := strings.Split(text, "\n")

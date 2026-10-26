@@ -25,7 +25,7 @@ import { primeCallAudio, useIdolCall } from "./useIdolCall";
 
 const emptyHistory: History = { current: null, past: [] };
 
-/** 按肖像编号取回图片地址，并缓存在这一轮里。 */
+/** 按肖像编号取回图片地址，并缓存在这一轮里。idols 做映射。 */
 function usePortraitURLs(idols: Idol[]) {
   const key = idols.map((i) => i.portrait).filter(Boolean).sort().join("|");
   const cache = useRef(new Map<string, string>());
@@ -47,7 +47,7 @@ function usePortraitURLs(idols: Idol[]) {
   return cache.current;
 }
 
-/** 画名单上的圆脸、桌宠印或色块。 */
+/** 画名单上的圆脸、桌宠印或色块。props 读取 size、src、idol。 */
 function IdolMark(props: { idol: Idol; src: string; size?: number }) {
   const size = props.size ?? 36;
   if (props.src) {
@@ -127,7 +127,7 @@ export function IdolStage() {
     return next;
   }
 
-  /** 重拉这一位的会话和快照，过期的请求丢掉。 */
+  /** 重拉这一位的会话和快照，过期的请求丢掉。idolId 为假时走另一支，传给 setTalkFor，写入字段 idol_id。 */
   async function refreshTalk(idolId = sel) {
     const gen = ++talkGen.current;
     if (!idolId) {
@@ -191,7 +191,7 @@ export function IdolStage() {
     return () => { stop = true; };
   }, [sel, snap?.pinnedId, snap?.portrait, current?.portrait]);
 
-  /** 保存偶像并刷新名单。 */
+  /** 保存偶像并刷新名单。next 读取 name，传给 api.idolCall。keepPanel 为假时走另一支。 */
   async function save(next: Idol, keepPanel = false) {
     if (!next.name.trim()) {
       setNotice(c.requiredName);
@@ -238,7 +238,7 @@ export function IdolStage() {
     }
   }
 
-  /** 把这一位放到桌面，或从桌面取下。 */
+  /** 把这一位放到桌面，或从桌面取下。id 为假时用 sel，与 i.id 比较是否相等。 */
   async function place(id?: string) {
     const idol = (snap?.idols || []).find((i) => i.id === (id || sel));
     if (!idol) return;
@@ -262,7 +262,7 @@ export function IdolStage() {
     }
   }
 
-  /** 开始或回到这一位的通话；被冷却、结束或只读挡住时只留下提示。 */
+  /** 开始或回到这一位的通话；被冷却、结束或只读挡住时只留下提示。id 为假时用 sel。 */
   function startCall(id?: string) {
     const target = id || sel;
     const idol = (snap?.idols || []).find((i) => i.id === target);
@@ -283,7 +283,7 @@ export function IdolStage() {
     setCallOn(true);
   }
 
-  /** 打开编辑，没有对象就用空白草稿。 */
+  /** 打开编辑，没有对象就用空白草稿。next 为真时才继续，展开传递。 */
   function openEdit(next?: Idol) {
     setDraft(next ? { ...next } : blankIdol());
     setPanel("edit");

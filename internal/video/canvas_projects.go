@@ -12,6 +12,7 @@ import (
 )
 
 // dramaProjectRecord 复制短剧项目字段并去掉 units。没有状态时标成 active。
+// p 里除 units 以外的键复制到结果；status 为 nil 时写成 active，name 为空时用 title，title 也空则写成 Untitled project。
 func dramaProjectRecord(p map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range p {
@@ -30,6 +31,7 @@ func dramaProjectRecord(p map[string]any) map[string]any {
 }
 
 // dramaProjectSummaries 把短剧项目收成列表摘要，计数字段先置 0。
+// list 逐条传给 dramaProjectRecord，并配上为 0 的 canvasCount、assetCount、unitCount 和 completedUnitCount。
 func dramaProjectSummaries(list []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(list))
 	for _, p := range list {
@@ -85,6 +87,7 @@ func (e *Engine) listDramaProjects() []map[string]any {
 }
 
 // upsertDramaProject 创建或更新一条短剧项目记录。
+// in 整份编码进 PayloadJSON，并读取 id、name、title；id 为空时换成 NewID，name 和 title 都空时写成 Untitled project，createdAt 为 nil 时补上记录里的创建时间，再把 id、name、title、updatedAt 写回 in。
 func (e *Engine) upsertDramaProject(in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -113,6 +116,7 @@ func (e *Engine) upsertDramaProject(in map[string]any) map[string]any {
 }
 
 // getDramaProject 读取短剧项目，并附上它的单元。
+// id 传给 getDoc 和 listProjectUnits，并写入返回记录的 id。
 func (e *Engine) getDramaProject(id string) (map[string]any, error) {
 	u, err := getDoc[canvasUnitRec](e, colUnits, id)
 	if err != nil || u.Kind != "project" || u.DeletedAt != "" {
@@ -129,6 +133,7 @@ func (e *Engine) getDramaProject(id string) (map[string]any, error) {
 }
 
 // deleteDramaProject 把项目及其单元标成已删除。
+// id 与单元的 ID 或 ProjectID 相等时写上删除时间。
 func (e *Engine) deleteDramaProject(id string) error {
 	now := Now()
 	for _, u := range loadCol[canvasUnitRec](e, colUnits) {
@@ -141,6 +146,7 @@ func (e *Engine) deleteDramaProject(id string) error {
 }
 
 // listProjectUnits 列出项目下未删除的非项目单元，按排序和创建时间排列。
+// projectID 与单元的 ProjectID 比较，相等、种类不是 project 且未删除的才留下，并写入每条的 projectId。
 func (e *Engine) listProjectUnits(projectID string) []map[string]any {
 	var recs []canvasUnitRec
 	for _, u := range loadCol[canvasUnitRec](e, colUnits) {
@@ -164,6 +170,8 @@ func (e *Engine) listProjectUnits(projectID string) []map[string]any {
 }
 
 // upsertProjectUnit 创建或更新项目下的一个单元。
+// projectID 写入记录的 ProjectID，并写回 in 的 projectId。
+// in 读取 id、title、name、kind、position；id 为空时换成 NewID，title 和 name 都空时写成 Chapter，kind 为空时写成 chapter，整份编码进 PayloadJSON，再把 id、projectId、title、kind 写回 in。
 func (e *Engine) upsertProjectUnit(projectID string, in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -194,6 +202,7 @@ func (e *Engine) upsertProjectUnit(projectID string, in map[string]any) map[stri
 }
 
 // deleteProjectUnit 把单元标成已删除。
+// id 传给 getDoc 和 putDoc。
 func (e *Engine) deleteProjectUnit(id string) error {
 	rec, err := getDoc[canvasUnitRec](e, colUnits, id)
 	if err != nil {
@@ -204,6 +213,13 @@ func (e *Engine) deleteProjectUnit(id string) error {
 }
 
 // matchAsset 按种类、分类、文件夹、状态和搜索词判断素材是否入选。
+// kind 非空且与素材 Kind 不等时返回 false。
+// category 非空时与素材分类比较，分类为空则按 other。
+// folderID 非空且与素材 FolderID 不等时返回 false。
+// status 为 active 时排除 archived，其他非空值必须与素材 Status 相等。
+// q 去掉空白并转成小写后，非空时要出现在标题和 PayloadJSON 的小写文本里。
+// uncategorized 为真且素材 FolderID 非空时返回 false。
+// excludeKind 非空且与素材 Kind 相等时返回 false。
 func matchAsset(a canvasAssetRec, kind, category, folderID, status, q string, uncategorized bool, excludeKind string) bool {
 	if a.DeletedAt != "" {
 		return false
@@ -267,6 +283,15 @@ func assetToMap(a canvasAssetRec) map[string]any {
 }
 
 // listAssetsPage 分页列出匹配的素材，并附上种类、分类和文件夹计数。
+// kind 传给 matchAsset 和 scanAssetFacets。
+// category 传给 matchAsset。
+// folderID 传给 matchAsset。
+// status 传给 matchAsset 和 scanAssetFacets。
+// q 传给 matchAsset 和 scanAssetFacets。
+// page 小于 1 时改成 1，再用来计算切片起点。
+// pageSize 小于等于 0 时改成 40，再用来计算切片长度。
+// uncategorized 传给 matchAsset。
+// excludeKind 传给 matchAsset 和 scanAssetFacets。
 func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page, pageSize int, uncategorized bool, excludeKind string) map[string]any {
 	if page < 1 {
 		page = 1
@@ -302,6 +327,10 @@ func (e *Engine) listAssetsPage(kind, category, folderID, status, q string, page
 }
 
 // scanAssetFacets 在当前筛选下统计种类、分类和文件夹数量。
+// kind 传给 matchAsset。
+// status 传给 matchAsset。
+// q 传给 matchAsset。
+// excludeKind 传给 matchAsset。
 func (e *Engine) scanAssetFacets(kind, status, q, excludeKind string) (map[string]int, map[string]int, map[string]int) {
 	kinds := map[string]int{}
 	cats := map[string]int{}
@@ -322,6 +351,7 @@ func (e *Engine) scanAssetFacets(kind, status, q, excludeKind string) (map[strin
 }
 
 // upsertAsset 创建或更新一条素材。
+// in 读取 id、folderId、kind、category、title、resourceId、status；id 为空时换成 NewID，kind 为空时写成 image，title 为空时写成 Asset，status 为空时写成 confirmed，整份编码进 PayloadJSON，再把 id 和 updatedAt 写回 in。
 func (e *Engine) upsertAsset(in map[string]any) map[string]any {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -349,6 +379,7 @@ func (e *Engine) upsertAsset(in map[string]any) map[string]any {
 }
 
 // getAsset 读取未删除的素材。
+// id 传给 getDoc，从 colAssets 取值。
 func (e *Engine) getAsset(id string) (map[string]any, error) {
 	a, err := getDoc[canvasAssetRec](e, colAssets, id)
 	if err != nil || a.DeletedAt != "" {
@@ -358,6 +389,7 @@ func (e *Engine) getAsset(id string) (map[string]any, error) {
 }
 
 // deleteAsset 把素材标成已删除。
+// id 传给 getDoc 和 putDoc，从 colAssets 取值。
 func (e *Engine) deleteAsset(id string) error {
 	a, err := getDoc[canvasAssetRec](e, colAssets, id)
 	if err != nil {
@@ -384,6 +416,8 @@ func (e *Engine) listAssetFolders() []map[string]any {
 }
 
 // upsertAssetFolder 创建或改名一个素材文件夹。
+// id 为空时换成 NewID，并作为文件夹文档的键。
+// name 去掉空白后为空时写成 Folder，再写入文件夹的 Name。
 func (e *Engine) upsertAssetFolder(id, name string) map[string]any {
 	if id == "" {
 		id = NewID()
@@ -404,6 +438,7 @@ func (e *Engine) upsertAssetFolder(id, name string) map[string]any {
 }
 
 // deleteAssetFolder 把文件夹标成已删除。
+// id 传给 getDoc 和 putDoc，从 colFolders 取值。
 func (e *Engine) deleteAssetFolder(id string) error {
 	f, err := getDoc[canvasFolderRec](e, colFolders, id)
 	if err != nil {
@@ -414,6 +449,8 @@ func (e *Engine) deleteAssetFolder(id string) error {
 }
 
 // moveAssetsFolder 把多条素材改到同一个文件夹。
+// ids 逐个转成字符串后传给 getDoc。
+// folderID 传给 setAssetFolder。
 func (e *Engine) moveAssetsFolder(ids []any, folderID string) {
 	now := Now()
 	for _, id := range ids {
@@ -426,6 +463,9 @@ func (e *Engine) moveAssetsFolder(ids []any, folderID string) {
 }
 
 // setAssetFolder 同时改素材记录和额外 JSON 里的文件夹。
+// a 写入 FolderID、UpdatedAt 和 PayloadJSON 后，用 a.ID 调用 putDoc。
+// folderID 写入 a.FolderID 和 extra 的 folderId。
+// now 写入 a.UpdatedAt 和 extra 的 updatedAt。
 func (e *Engine) setAssetFolder(a canvasAssetRec, folderID, now string) error {
 	a.FolderID = folderID
 	a.UpdatedAt = now
@@ -497,6 +537,7 @@ func (e *Engine) disabledOSS() map[string]any {
 }
 
 // applyOSS 把对象存储设置写成连接。未启用或选 CAS 时切回本地默认。
+// in 用 strAnyMap 读取 provider、s3Preset、preset、region、bucket、cdnBaseUrl、cdn_base_url、publicBaseUrl、public_base_url、pathPrefix、path_prefix、accessKeyId、access_key_id、name、endpoint、accessKeySecret、secretAccessKey、secret，用 boolAny 读取 enabled 和 pathStyle；未启用、provider 为空或为 cas 时把存储默认设为 cas-local，否则用这些字段组成连接传给 Conn.Upsert。
 func (e *Engine) applyOSS(in map[string]any) map[string]any {
 	if e.Conn == nil {
 		return e.disabledOSS()

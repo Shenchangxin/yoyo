@@ -15,7 +15,7 @@ import {
   type OutlineTurn,
 } from "../lib/turn-outline";
 
-// TurnOutline 在视口窄于 719px 或已收起时只留刻度。搜索框要在展开且回合数达到 OUTLINE_SEARCH_AT 时才出现。过滤按标题或从 1 开始的序号。
+/** TurnOutline 在视口窄于 719px 或已收起时只留刻度。搜索框要在展开且回合数达到 OUTLINE_SEARCH_AT 时才出现。过滤按标题或从 1 开始的序号。props 读取 turns、activeKey、status，调用 onJump。 */
 export function TurnOutline(props: {
   turns: OutlineTurn[];
   activeKey: string;

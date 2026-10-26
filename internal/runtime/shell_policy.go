@@ -16,6 +16,9 @@ import (
 
 // ShellDenied 是确定性的命令拒绝名单，不是操作系统沙箱。Seatbelt 和 bubblewrap 取决于操作系统；在 Windows 上把它们说成已经启用，比具名拒绝名单加上工作区路径限制更糟。
 // 空命令直接拒绝。破坏性子串按小写包含匹配。远程网络在 networkAllow 未放行时拒绝。绝对路径再经 denyEscapingAbsPaths 和 DenyArgvPaths。
+// command 去掉首尾空白，空串直接拒绝；小写后做破坏性子串和远程网络判断，再交给 denyEscapingAbsPaths 和 SplitShellArgv。
+// workspace 交给 denyEscapingAbsPaths 和 DenyArgvPaths。
+// extraRoots 交给 denyEscapingAbsPaths 和 DenyArgvPaths。
 func ShellDenied(command, workspace string, networkAllow []string, extraRoots ...string) error {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
@@ -42,6 +45,7 @@ func ShellDenied(command, workspace string, networkAllow []string, extraRoots ..
 }
 
 // SplitShellArgv 按空白切参数。单引号和双引号成对包裹，引号本身不进入参数。不处理反斜杠转义，也不在分号或管道处切开。
+// command 先去掉首尾空白，再按空白切开；单引号和双引号成对包裹，引号本身不进入参数。
 func SplitShellArgv(command string) []string {
 	var out []string
 	var cur strings.Builder
@@ -72,6 +76,7 @@ func SplitShellArgv(command string) []string {
 }
 
 // DenyArgvPaths 对每个参数调用 denyShellAbsPath。workspace 和 extraRoots 都空时直接放行。
+// argv 逐项交给 denyShellAbsPath。
 func DenyArgvPaths(argv []string, workspace string, extraRoots ...string) error {
 	if workspace == "" && len(extraRoots) == 0 {
 		return nil
@@ -86,6 +91,7 @@ func DenyArgvPaths(argv []string, workspace string, extraRoots ...string) error 
 }
 
 // DenyHomePlanes 拒绝指向 home 下诊断目录或 vault.json 的参数。home 为空则放行。Windows 开关跳过。相对路径先拼到 home 上，不调用 WorkspaceTools.resolve。
+// argv 逐项去掉引号；像 Windows 开关的跳过，相对路径先拼到 home 上再做 ForbiddenDiagPath。
 func DenyHomePlanes(argv []string, home string) error {
 	if home == "" {
 		return nil
@@ -107,6 +113,7 @@ func DenyHomePlanes(argv []string, home string) error {
 }
 
 // looksLikePowerShell 在命令含常见 cmdlet、$_、以 powershell 或 pwsh 开头，或以 $ 开头且不含 $( 时返回真。
+// command 转成小写后看有没有常见 cmdlet；也看原文里的 $_、argv 程序名，以及去掉空白后是否以 $ 开头且不含 $(。
 func looksLikePowerShell(command string) bool {
 	lower := strings.ToLower(command)
 	switch {
@@ -161,6 +168,7 @@ func powershellCommandArg(command string) string {
 
 // shellHasStatementSep 报告未加引号的分号，这样 Windows 不会把 `node --version; node -p 1` 送进 cmd /C，以免分号被当成开关的一部分。引号里的分号（findstr /C:"a;b"）仍走 cmd。
 // 单引号内不把反斜杠当转义。双引号外的反斜杠吃掉下一个字符。
+// command 逐个字符看未加引号的分号；双引号外的反斜杠吃掉下一个字符。
 func shellHasStatementSep(command string) bool {
 	inSingle, inDouble := false, false
 	escape := false
@@ -204,6 +212,8 @@ func looksSimpleArgv(argv []string) bool {
 }
 
 // shellNeedsWrapper 在参数为空、命令含 &|;<> 或换行、是 shell 内建，或 looksSimpleArgv 为假时要求外壳包装。
+// command 含 &|;<> 或换行时要求包装。
+// argv 长度为 0 时要求包装；否则看第一项是不是 shell 内建，以及 looksSimpleArgv。
 func shellNeedsWrapper(command string, argv []string) bool {
 	if len(argv) == 0 {
 		return true
@@ -218,6 +228,7 @@ func shellNeedsWrapper(command string, argv []string) bool {
 }
 
 // looksPosixUnix 在命令含 /dev/null 或 $(，或某一段的程序是 unix 工具时返回真。Windows FIND 的 /c、/v 这类开关不算 unix find。
+// command 含 /dev/null 或 $( 时返回真；否则按 splitShellStages 分段，看程序名是不是 unix 工具。
 func looksPosixUnix(command string) bool {
 	if strings.Contains(command, "/dev/null") || strings.Contains(command, "$(") {
 		return true
@@ -243,6 +254,7 @@ var unixOutputCap = regexp.MustCompile(`(?i)(?:\s*2>&1)?\s*\|\s*(?:head|tail)(?:
 
 // stripUnixOutputPipes 去掉 posix 输出截断，避免 Windows cmd 命令只因为模型接了 head 或 tail 就被拒绝。
 // 去掉之后仍像 posix，或没有任何变化，则保持原命令并返回 false。
+// command 用 unixOutputCap 去掉 head 或 tail 管道；去掉后为空、与去掉空白后的原文相同，或仍像 posix 时返回原来的 command。
 func stripUnixOutputPipes(command string) (string, bool) {
 	next := strings.TrimSpace(unixOutputCap.ReplaceAllString(command, ""))
 	if next == "" || next == strings.TrimSpace(command) {
@@ -255,6 +267,7 @@ func stripUnixOutputPipes(command string) (string, bool) {
 }
 
 // isUnixUtil 判断名字是不是 ls、cat、find、sed 这类 posix 工具。比较前去掉空白并转成小写。
+// name 去掉空白并转成小写后和上述名单比较。
 func isUnixUtil(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "ls", "cat", "head", "tail", "find", "pwd", "which", "true", "false",
@@ -268,6 +281,7 @@ func isUnixUtil(name string) bool {
 }
 
 // isWindowsFindStage 在参数里出现 /c、/v、/n、/i 或以 /off 开头时，把 find 当成 Windows FIND。任一参数以 - 开头则返回假。
+// argv 从第二项起看；出现 /c、/v、/n、/i 或以 /off 开头则返回真，任一项以 - 开头则返回假。
 func isWindowsFindStage(argv []string) bool {
 	for _, a := range argv[1:] {
 		al := strings.ToLower(strings.TrimSpace(a))
@@ -282,6 +296,7 @@ func isWindowsFindStage(argv []string) bool {
 }
 
 // splitShellStages 按未加引号的 &&、||、|、; 和换行把命令切成段。
+// command 按未加引号的 &&、||、|、; 和换行切开，去掉空白后为空的段丢掉。
 func splitShellStages(command string) []string {
 	var out []string
 	var cur strings.Builder
@@ -322,6 +337,7 @@ func splitShellStages(command string) []string {
 }
 
 // isShellBuiltin 判断名字是不是 cd、echo、dir 这类需要外壳的内建命令。
+// name 去掉空白并转成小写后和上述名单比较。
 func isShellBuiltin(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "cd", "chdir", "set", "export", "unset", "alias", "source", ".",
@@ -347,6 +363,7 @@ var destructiveShell = []string{
 var networkCmd = regexp.MustCompile(`\b(curl|wget|nc |ncat|ssh |scp |sftp |invoke-webrequest|iwr |start-bitstransfer|certutil\s+-urlcache)\b`)
 
 // looksLikeRemoteNetwork 在命令像 curl、wget、ssh 等且目标不是全部回环时返回真。没有解析出主机时也不算回环，因此光写 curl 会被拒绝。
+// lower 先用 networkCmd 匹配；匹配上再看 networkTargetsAreLoopback 是不是假。
 func looksLikeRemoteNetwork(lower string) bool {
 	if !networkCmd.MatchString(lower) {
 		return false
@@ -361,6 +378,7 @@ var (
 )
 
 // networkTargetsAreLoopback 在收集到的主机全部是回环或未指定地址时返回真。一个主机都没有则返回假。
+// lower 交给 collectNetworkHosts；没有主机返回假，有一个不是回环也返回假。
 func networkTargetsAreLoopback(lower string) bool {
 	hosts := collectNetworkHosts(lower)
 	if len(hosts) == 0 {
@@ -375,6 +393,7 @@ func networkTargetsAreLoopback(lower string) bool {
 }
 
 // collectNetworkHosts 从 URL、裸回环地址和像域名的词里收集主机。解释器模块名和像文件名的词被丢掉。紧挨 -m 的词不当成域名。
+// lower 用 URL、裸回环和域名正则收集主机；空串、解释器模块名和像文件名的词丢掉。
 func collectNetworkHosts(lower string) []string {
 	var out []string
 	add := func(h string) {
@@ -479,6 +498,9 @@ func networkPermitted(allow []string) bool {
 var absPath = regexp.MustCompile(`(?i)(?:[a-z]:\\|/)(?:windows|etc|usr|system32)[\\/]`)
 
 // denyEscapingAbsPaths 只在命令里出现 windows、etc、usr 或 system32 的绝对路径样式时，再逐段检查。没有工作区也没有额外根时放行。
+// command 不含上述绝对路径样式时直接返回 nil；否则按空白切开，逐段交给 denyShellAbsPath。
+// workspace 为空且 extraRoots 长度为 0 时直接返回 nil；否则放进根列表。
+// extraRoots 追加进根列表，交给 denyShellAbsPath。
 func denyEscapingAbsPaths(command, workspace string, extraRoots ...string) error {
 	if workspace == "" && len(extraRoots) == 0 {
 		return nil
@@ -498,6 +520,8 @@ func denyEscapingAbsPaths(command, workspace string, extraRoots ...string) error
 
 // denyShellAbsPath 检查一个参数是否逃出工作区。不调用 WorkspaceTools.resolve，也不解析符号链接。
 // Windows 开关直接放行。WSL 的 bash.exe 拒绝。经 CanonicalizeToolPath 之后仍不是绝对路径的，放行。主机解释器的绝对路径放行。其余绝对路径必须落在某个根的 WithinWorkspace 里。
+// f 去掉引号后，Windows 开关或经 CanonicalizeToolPath 后仍非绝对路径则放行；是 WSL 桩则拒绝。
+// roots 交给 pathInRoots，用来判断其余绝对路径是否落在某个根内。
 func denyShellAbsPath(f string, roots []string) error {
 	f = strings.Trim(f, `"'`)
 	if capability.LooksLikeWindowsSwitch(f) {
@@ -534,6 +558,7 @@ func looksLikeHostInterpreter(p string) bool {
 }
 
 // pathInRoots 在任一非空根上 WithinWorkspace 为真时返回真。
+// roots 里去掉空白后非空的项交给 WithinWorkspace，有一个为真就返回真。
 func pathInRoots(p string, roots []string) bool {
 	for _, root := range roots {
 		if strings.TrimSpace(root) == "" {

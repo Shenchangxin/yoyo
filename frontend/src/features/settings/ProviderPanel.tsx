@@ -39,7 +39,7 @@ type Draft = {
   hasKey?: boolean;
 };
 
-/** 取出地址里的主机。 */
+/** 取出地址里的主机。url 为假时用空字符串，去掉首尾空白后，看是否包含，做替换，为假时走另一支，作为分支结果，作为后备值，拼进字符串。 */
 function hostOf(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -50,7 +50,7 @@ function hostOf(url: string): string {
   }
 }
 
-/** 把已保存的对话服务商收成草稿。 */
+/** 把已保存的对话服务商收成草稿。p 读取 id、name、vendor、endpoint、model、models 等。 */
 function fromRow(p: ChatProvider): Draft {
   return {
     id: p.id,
@@ -65,7 +65,7 @@ function fromRow(p: ChatProvider): Draft {
   };
 }
 
-/** 按预设和目录造一份新草稿。 */
+/** 按预设和目录造一份新草稿。id 传给 providerPreset，传给 applyProviderPreset。catalog 传给 modelsForProvider。makeDefault 写入字段 makeDefault。 */
 function fromPreset(id: string, catalog: ModelsDevCatalog | null, makeDefault: boolean): Draft {
   const preset = providerPreset(id);
   const next = applyProviderPreset(id);
@@ -86,7 +86,7 @@ function fromPreset(id: string, catalog: ModelsDevCatalog | null, makeDefault: b
   };
 }
 
-/** 两份草稿的可见字段是否一样。 */
+/** 两份草稿的可见字段是否一样。a 读取 name、vendor、endpoint、model、makeDefault、apiKey 等。b 读取 name、vendor、endpoint、model、makeDefault、apiKey 等。 */
 function sameDraft(a: Draft, b: Draft): boolean {
   return (
     a.name === b.name &&
@@ -99,7 +99,7 @@ function sameDraft(a: Draft, b: Draft): boolean {
   );
 }
 
-/** ProviderSettings 列出对话服务商，并能新增、保存和探测。 */
+/** ProviderSettings 列出对话服务商，并能新增、保存和探测。host 读取 health，调用 refresh。 */
 export function ProviderSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
@@ -130,7 +130,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在打开时拉一次
   }, []);
 
-  /** 打开一份草稿。 */
+  /** 打开一份草稿。next 读取 models，传给 setDraft，展开传递。 */
   function openDraft(next: Draft) {
     setPicking(false);
     setDraft(next);
@@ -151,7 +151,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     setPicking(true);
   }
 
-  /** 保存草稿，可以选择留在编辑里。 */
+  /** 保存草稿，可以选择留在编辑里。d 读取 model、models、id、name、vendor、endpoint 等。keepOpen 为真时才继续。 */
   async function save(d: Draft, keepOpen = false): Promise<ChatProvider | null> {
     setBusy("save");
     try {
@@ -208,7 +208,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     }
   }
 
-  /** 把这一家设成默认。 */
+  /** 把这一家设成默认。p 读取 id。 */
   async function setDefault(p: ChatProvider) {
     try {
       await api.setDefaultChatProvider(p.id);
@@ -390,7 +390,17 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   );
 }
 
-/** 编辑一家对话服务商的地址、模型和密钥。 */
+/**
+ * 编辑一家对话服务商的地址、模型和密钥。
+ * draft 读取 vendor、id、name、endpoint、hasKey、apiKey 等，展开传递。
+ * setDraft 被调用，并传入 { ...draft, ...p }。
+ * selected 读取 name，为空时不读。
+ * busy 为假时走另一支。
+ * canDelete 为真时才继续。
+ * onTest 写到 Button 的 onClick。
+ * onDelete 写到 Button 的 onClick。
+ * onClose 写到 Button 的 onClick。
+ */
 function ProviderEditor({
   draft,
   setDraft,
@@ -416,7 +426,7 @@ function ProviderEditor({
   const catalogLoading = useModelCatalog((s) => s.loading);
   const catalogError = useModelCatalog((s) => s.error);
   const refreshCatalog = useModelCatalog((s) => s.load);
-  /** 把改动写回草稿。 */
+  /** 把改动写回草稿。p 展开传递。 */
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
   const hint =
     draft.vendor === "claude" ? copy.settings.presetHintClaude
@@ -507,7 +517,7 @@ function ProviderEditor({
   );
 }
 
-/** 列出已选模型，并能去掉。 */
+/** 列出已选模型，并能去掉。models 读取 length，做映射。current 与 id 比较是否相等。onCurrent 被调用，并传入 id。onRemove 被调用，并传入 id。 */
 function ModelTokens({
   models,
   current,
@@ -556,7 +566,7 @@ function ModelTokens({
   );
 }
 
-/** 输入一个模型编号再交出去。 */
+/** 输入一个模型编号再交出去。onAdd 被调用，并传入 id。 */
 function AddModelRow({ onAdd }: { onAdd: (id: string) => void }) {
   const copy = useCopy();
   const [value, setValue] = useState("");
@@ -588,7 +598,17 @@ function AddModelRow({ onAdd }: { onAdd: (id: string) => void }) {
   );
 }
 
-/** 从目录里挑模型。 */
+/**
+ * 从目录里挑模型。
+ * vendor 为 custom 时返回 null；传给 modelsForProvider。
+ * catalog 传给 modelsForProvider。
+ * current 与 m.id 比较是否相等。
+ * selected 看是否包含。
+ * loading 为真时才继续，写到 Button 的 disabled。
+ * error 为假时用 —，作为子节点渲染。
+ * onPick 被调用，并传入 m.id。
+ * onRefresh 被调用，并传入 true。
+ */
 function CatalogBrowse({
   vendor,
   catalog,
@@ -685,7 +705,7 @@ function CatalogBrowse({
   );
 }
 
-/** 画一带说明的字段。 */
+/** 画一带说明的字段。label 用作标签，作为子节点渲染。hint 为真时才继续，作为子节点渲染。children 作为子节点渲染。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">

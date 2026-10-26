@@ -15,6 +15,7 @@ import (
 )
 
 // prepareChromeCmd 按 headed 设置 HideWindow。CreationFlags 再加上 CREATE_NEW_PROCESS_GROUP 和 CREATE_NO_WINDOW。
+// cmd 的 SysProcAttr 为 nil 时新建一份，再设置 HideWindow 和 CreationFlags。
 func prepareChromeCmd(cmd *exec.Cmd, headed bool) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -24,6 +25,7 @@ func prepareChromeCmd(cmd *exec.Cmd, headed bool) {
 }
 
 // bindChromeJob 把进程放进关闭时杀掉整棵树的作业。失败时返回 nil。返回的函数调用 TerminateJobObject 并关掉作业句柄。
+// cmd 为 nil 或 Process 为 nil 时返回 nil。否则用 Process.Pid 打开进程并放进作业。
 func bindChromeJob(cmd *exec.Cmd) func() {
 	if cmd == nil || cmd.Process == nil {
 		return nil

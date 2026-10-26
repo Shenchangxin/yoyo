@@ -9,6 +9,7 @@ import (
 )
 
 // generateRecordedSkill 按步骤写成带 front matter 的 Markdown。没有技能名时用 recorded-browser-workflow。秘密类输入不写示例。
+// doc 的 SkillName 为空时用 recorded-browser-workflow。StartURL、Inputs 和 Steps 写进草稿。Kind 为 open 的步骤跳过。
 func generateRecordedSkill(doc StepsDocument) string {
 	name := doc.SkillName
 	if name == "" {
@@ -59,6 +60,7 @@ func generateRecordedSkill(doc StepsDocument) string {
 }
 
 // describeSkillStep 把一步写成草稿里的一句操作说明。不认识的 kind 用步骤自带的 Description。
+// st 的 Kind 决定句子。navigate 用 URL，fill 和 select 用 Value，press 用 Key。不认识的 Kind 返回 Description。Target 传给 targetName。
 func describeSkillStep(st SemanticStep) string {
 	name := targetName(st.Target)
 	switch st.Kind {

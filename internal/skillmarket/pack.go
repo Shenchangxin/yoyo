@@ -71,6 +71,7 @@ func FetchPack(slug string) ([]PackFile, string, error) {
 }
 
 // listAndDownload 从技能根目录往下走。深度超过 6 就跳过。SKILL.md 下载失败会返回错误，其他文件失败只记入警告。空目录返回 "empty pack"。
+// slug 交给 listContents 和 downloadPackFile。
 func listAndDownload(slug string) ([]PackFile, string, error) {
 	c := packCollector{}
 	var walk func(rel string, depth int) error
@@ -141,6 +142,8 @@ func listAndDownload(slug string) ([]PackFile, string, error) {
 }
 
 // listContents 拉取目录 JSON。正文不是以 [ 开头时返回 "contents: expected directory listing"。
+// slug 和 rel 一起交给 contentsURL。
+// rel 和 slug 一起交给 contentsURL。
 func listContents(slug, rel string) ([]ghEntry, error) {
 	u := contentsURL(slug, rel)
 	raw, err := Get(u)
@@ -159,6 +162,8 @@ func listContents(slug, rel string) ([]ghEntry, error) {
 }
 
 // downloadPackFile 在 downloadURL 是带主机的 https 时先用它。失败或不是这种地址时改用 packFileURL。
+// slug 在 downloadURL 不是带主机的 https 或 Get 失败时，和 rel 一起交给 packFileURL。
+// rel 和 slug 一起交给 packFileURL。
 func downloadPackFile(slug, rel, downloadURL string) ([]byte, error) {
 	if u, err := url.Parse(strings.TrimSpace(downloadURL)); err == nil && u.Scheme == "https" && u.Host != "" {
 		if b, err := Get(u.String()); err == nil {
@@ -169,6 +174,8 @@ func downloadPackFile(slug, rel, downloadURL string) ([]byte, error) {
 }
 
 // contentsURL 拼出列目录的地址。ContentsBase 为空时从 Base 推导。
+// slug 和 rel 接在 skills 后面，交给 joinEscapedPath。
+// rel 和 slug 一起交给 joinEscapedPath。
 func contentsURL(slug, rel string) string {
 	base := strings.TrimRight(ContentsBase, "/")
 	if base == "" {
@@ -183,6 +190,8 @@ func packFileURL(slug, rel string) string {
 }
 
 // joinEscapedPath 用斜杠连接并对每一段做 PathEscape。
+// base 去掉末尾斜杠后作为开头。
+// segs 每段把反斜杠换成斜杠，空段跳过，其余逐段 PathEscape 后用斜杠接上。
 func joinEscapedPath(base string, segs ...string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimRight(base, "/"))
@@ -203,6 +212,7 @@ func joinEscapedPath(base string, segs ...string) string {
 }
 
 // derivedContentsBase 把 raw.githubusercontent.com/<owner>/<repo>/... 换成 api.github.com 的 contents 地址。其他基址则在末尾加 /contents。
+// rawBase 去掉末尾斜杠；以 https://raw.githubusercontent.com/ 开头且能拆出 owner 和 repo 时换成 api.github.com 的 contents 地址，否则在末尾加 /contents。
 func derivedContentsBase(rawBase string) string {
 	rawBase = strings.TrimRight(rawBase, "/")
 	const prefix = "https://raw.githubusercontent.com/"
@@ -217,6 +227,7 @@ func derivedContentsBase(rawBase string) string {
 }
 
 // derivedTreeURL 从 raw 地址推出递归 git tree。认不出 owner、repo、ref 时返回空串。
+// rawBase 去掉末尾斜杠；以 https://raw.githubusercontent.com/ 开头且至少有三段时拼出递归 git tree，否则返回空串。
 func derivedTreeURL(rawBase string) string {
 	rawBase = strings.TrimRight(rawBase, "/")
 	const prefix = "https://raw.githubusercontent.com/"
@@ -232,6 +243,7 @@ func derivedTreeURL(rawBase string) string {
 }
 
 // packHasSkillMD 在某个文件的基名是 SKILL.md 且相对路径里没有斜杠时返回 true。
+// files 里某个 Rel 的基名是 SKILL.md 且路径不含斜杠时返回 true。
 func packHasSkillMD(files []PackFile) bool {
 	for _, f := range files {
 		if strings.EqualFold(path.Base(f.Rel), "SKILL.md") && !strings.Contains(f.Rel, "/") {
@@ -242,6 +254,7 @@ func packHasSkillMD(files []PackFile) bool {
 }
 
 // packAllowed 拒绝空路径、..、绝对路径、点开头的文件名，以及 exe、dll、so、dylib、bin、压缩包、bat、cmd、msi、scr、com、wasm。无扩展名时允许 scripts/ 下的文件、license、notice、readme、makefile、dockerfile、gemfile、procfile 和 skill.md。
+// rel 转成小写并把反斜杠换成斜杠，空、含 ..、以 / 开头或以点开头的文件名返回 false。
 func packAllowed(rel string) bool {
 	rel = strings.ToLower(strings.ReplaceAll(rel, "\\", "/"))
 	rel = strings.TrimPrefix(rel, "./")
@@ -280,6 +293,7 @@ func packAllowed(rel string) bool {
 }
 
 // isSkillMDRel 在去掉两侧斜杠后等于 SKILL.md（不区分大小写）时返回 true。
+// rel 把反斜杠换成斜杠并去掉两端斜杠后，与 SKILL.md 不区分大小写比较。
 func isSkillMDRel(rel string) bool {
 	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
 	return strings.EqualFold(rel, "SKILL.md")
@@ -311,6 +325,7 @@ type packCollector struct {
 }
 
 // collectorFrom 用已有文件做收集器，并按字节数累加总量。
+// files 复制进收集器，并把每个文件的字节数加进总量。
 func collectorFrom(files []PackFile) packCollector {
 	c := packCollector{files: append([]PackFile(nil), files...)}
 	for _, f := range files {
@@ -320,6 +335,8 @@ func collectorFrom(files []PackFile) packCollector {
 }
 
 // skip 记下被跳过的相对路径和原因。路径为空白时不记。
+// rel 去掉两端空白，空则不记。
+// reason 去掉两端空白后非空时接在路径后面。
 func (c *packCollector) skip(rel, reason string) {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -333,6 +350,8 @@ func (c *packCollector) skip(rel, reason string) {
 }
 
 // add 收入一个文件。单文件超过 1 MiB、整包超过 8 MiB 或文件数达到 80 时，SKILL.md 返回错误，其他文件只跳过。同名（不区分大小写）会替换。
+// rel 把反斜杠换成斜杠并去掉两端斜杠，再交给 packAllowed 和 scanPackFile。
+// data 的长度超过 maxFileBytes，或加上已有总量超过 maxPackBytes 时，根上的 SKILL.md 返回错误，其他文件跳过。
 func (c *packCollector) add(rel string, data []byte) error {
 	rel = strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
 	required := isSkillMDRel(rel)
@@ -394,6 +413,7 @@ func (c *packCollector) warn() string {
 }
 
 // joinWarn 用 "; " 接上非空且不重复的警告。
+// parts 去掉两端空白，空的和重复的丢掉，其余用 "; " 接上。
 func joinWarn(parts ...string) string {
 	out := make([]string, 0, len(parts))
 	seen := map[string]bool{}
@@ -409,6 +429,7 @@ func joinWarn(parts ...string) string {
 }
 
 // packRels 返回每个文件的相对路径。
+// files 里每个 Rel 按原顺序放进结果。
 func packRels(files []PackFile) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {

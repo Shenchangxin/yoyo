@@ -11,6 +11,9 @@ import (
 var placeholderKeys = []string{"_elided", "_hint", "_recall"}
 
 // checkEditArgs 拒绝不是模型真实载荷的编辑。看的是键在不在，不是值空不空。缺 new_str 时 str 会把 nil 收成空串，str_replace 会把 old_str 删掉；键缺失必须先拒绝。
+// tool 写进拒绝信息。
+// args 按键查找占位键和 required 里的键，不看值。
+// required 里的键必须出现在 args 中，缺少时写进拒绝信息。
 func checkEditArgs(tool string, args map[string]any, required ...string) error {
 	for _, k := range placeholderKeys {
 		if _, ok := args[k]; ok {

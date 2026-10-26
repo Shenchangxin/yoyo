@@ -13,12 +13,16 @@ const OKLCH = /^oklch\(\s*[0-9.%\s./+-]+\s*\)$/;
 const RGB = /^(?:rgb|hsl)a?\(\s*[0-9.%\s,./+-]+\s*\)$/;
 const MIX = /^color-mix\(\s*in\s+srgb\s*,.+\)$/;
 
-/** isSafeTokenName 名字符合 CSS 变量形状，并且在允许表里。 */
+/** isSafeTokenName 名字符合 CSS 变量形状，并且在允许表里。name 传给 NAME.test，传给 TOKEN_NAMES.has。 */
 export function isSafeTokenName(name: string): boolean {
   return NAME.test(name) && TOKEN_NAMES.has(name);
 }
 
-/** isSafeTokenValue 按种类检查值。拒绝分号、尖括号、url、expression、import 和 javascript，也拒绝非 ASCII。长度和阴影另有上限与放行。 */
+/**
+ * isSafeTokenValue 按种类检查值。拒绝分号、尖括号、url、expression、import 和 javascript，也拒绝非 ASCII。长度和阴影另有上限与放行。
+ * kind 为 shadow 时返回真。
+ * raw 为假时用空字符串，去掉首尾空白后，转成小写，与 transparent、white、black 比较是否相等，读取 length，为假时走另一支，传给 test，传给 DIM.test，传给 HEX.test，传给 VAR.test，传给 OKLCH.test，传给 RGB.test，传给 MIX.test，展开传递。
+ */
 export function isSafeTokenValue(kind: TokenKind, raw: string): boolean {
   const v = (raw || "").trim();
   if (!v || v.length > 240) return false;
@@ -33,7 +37,7 @@ export function isSafeTokenValue(kind: TokenKind, raw: string): boolean {
   return v === "transparent" || v === "white" || v === "black" || HEX.test(v) || VAR.test(v) || OKLCH.test(v) || RGB.test(v) || MIX.test(v);
 }
 
-/** sanitizeTokenMap 只保留名字和值都安全的项。 */
+/** sanitizeTokenMap 只保留名字和值都安全的项。m 为假时返回 out，否则返回 out；传给 Object.entries。 */
 export function sanitizeTokenMap(m: TokenMap | null | undefined): TokenMap {
   const out: TokenMap = {};
   if (!m) return out;
@@ -48,7 +52,7 @@ export function sanitizeTokenMap(m: TokenMap | null | undefined): TokenMap {
   return out;
 }
 
-/** wallpaperFileOk 壁纸或预览图文件名是 wallpaper 或 preview，扩展名为 png、jpg、jpeg 或 webp。 */
+/** wallpaperFileOk 壁纸或预览图文件名是 wallpaper 或 preview，扩展名为 png、jpg、jpeg 或 webp。name 传给 test。 */
 export function wallpaperFileOk(name: string): boolean {
   return /^(?:wallpaper\.)(?:png|jpe?g|webp)$/i.test(name) || /^(?:preview\.)(?:png|jpe?g|webp)$/i.test(name);
 }

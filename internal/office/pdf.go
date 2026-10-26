@@ -13,6 +13,7 @@ import (
 
 // encodePDF 生成一页 PDF。标题为空时用 Document。正文和标题行依次接在标题后面，中间用换行。
 // 内容流是 BT /F1 12 Tf 72 720 Td 加括号文本。目录、页面和字体共 5 个对象，根是对象 1。
+// req 的 Title 为空时用 Document。Body 非空时接在标题后，Headings 再逐行接上。
 func encodePDF(req CreateReq) ([]byte, error) {
 	title := req.Title
 	if title == "" {
@@ -55,6 +56,7 @@ func encodePDF(req CreateReq) ([]byte, error) {
 
 // readPDFText 依次取出文件里每一对圆括号中的文本，并做 pdfUnescape，段与段之间加换行。
 // 一对括号都没有时，返回去掉首尾空白的原始文件文本。
+// path 用 os.ReadFile 读取。
 func readPDFText(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

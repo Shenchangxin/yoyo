@@ -13,9 +13,9 @@ const NEXT_KEYS: StudioNextKey[] = ["collect", "produce", "setup", "script", "au
 export function StudioCopilotHeader() {
   const copy = useCopy();
   const s = copy.video.studio;
-  const title = useStudioSelection((st) => st.title);
-  const studioId = useStudioSelection((st) => st.studioId);
-  const nextKey = useStudioSelection((st) => st.nextKey);
+  const title = useStudioSelection(/** st 取出 title。 */ (st) => st.title);
+  const studioId = useStudioSelection(/** st 取出 studioId。 */ (st) => st.studioId);
+  const nextKey = useStudioSelection(/** st 取出 nextKey。 */ (st) => st.nextKey);
   const key = NEXT_KEYS.includes(nextKey as StudioNextKey) ? nextKey as StudioNextKey : (title ? "script" : "collect");
   const nextLabel = studioNextCopy(s, key);
 

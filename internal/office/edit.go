@@ -15,6 +15,7 @@ import (
 
 // EditReplace 把 old 换成 neu。docx、pptx、xlsx 先试 replaceInZip，失败再 rewriteOffice。pdf 走 replacePDF。
 // 其他扩展名按原文替换，old 为空或不在文件里时返回 office: old_str not found。写出权限 0o644，不经临时文件。
+// path 用来取扩展名，并传给 replaceInZip、rewriteOffice、replacePDF，或其他扩展名时的 ReadFile 和 WriteFile。
 func EditReplace(path, old, neu string) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -40,6 +41,8 @@ func EditReplace(path, old, neu string) error {
 
 // rewriteOffice 用 Query 得到的文本做替换后再 Create。old 为空或不在文本里时返回 office: old_str not found。
 // docx 把替换后的全文当正文。pptx 用 splitSlides 拆页。xlsx 只读第 1 到 64 行、第 1 到 16 列，遇到整行都空就停。
+// path 传给 Query，并用来取扩展名。docx、pptx、xlsx 再传给 Create，xlsx 还传给 ReadXlsx。
+// neu 用来替换 Query 文本里的 old。docx 把替换结果放进 Body，pptx 经 splitSlides 放进 Slides，xlsx 再替换格子里的 old。
 func rewriteOffice(path, old, neu string) error {
 	text, err := Query(path)
 	if err != nil {

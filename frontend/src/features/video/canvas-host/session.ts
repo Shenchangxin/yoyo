@@ -23,19 +23,19 @@ export const useCanvasHost = create<CanvasHostState>(() => ({
   ensureSession: async () => "",
 }));
 
-/** setCanvasHostTitle 只改宿主上的标题。 */
+/** setCanvasHostTitle 只改宿主上的标题。title 空值写成空字符串后写入宿主。 */
 export function setCanvasHostTitle(title: string) {
   useCanvasHost.setState({ title: title || "" });
 }
 
-/** bindCanvasSession 记下工程 id，并把会话绑到这块画布。 */
+/** bindCanvasSession 记下工程 id，并把会话绑到这块画布。sessionId 或 projectId 为空就返回。projectId 写入宿主，并和 sessionId 一起交给 canvas.bind。 */
 export async function bindCanvasSession(sessionId: string, projectId: string) {
   if (!sessionId || !projectId) return;
   useCanvasHost.setState({ projectId });
   await videoCall("canvas.bind", { session_id: sessionId, project_id: projectId });
 }
 
-/** ensureCanvasProject 没有工程就新建一块，再把会话绑上去。 */
+/** ensureCanvasProject 没有工程就新建一块，再把会话绑上去。sessionId 在有工程时交给 bindCanvasSession。title 作为新建画布的标题，工程没带回标题时也用它。 */
 export async function ensureCanvasProject(sessionId: string, title = "") {
   let id = useCanvasHost.getState().projectId;
   if (!id) {

@@ -149,6 +149,8 @@ func (s *Store) ensurePresets() error {
 }
 
 // dropRetiredPresets 删掉 id 以 sc- 开头、且不在这次目录里的偶像和圈子。用户自己建的和 Yoyo 留下。被删的偶像若正被钉选，改钉桌宠，并清掉她们的对话、记忆、好感、材料、通话和主动开口记录。
+// keepIdol 里该 ID 不为真，且 ID 以 sc- 开头的偶像删掉。
+// keepCircle 里该 ID 不为真，且 ID 以 sc- 开头的圈子删掉。
 func (st *State) dropRetiredPresets(keepIdol, keepCircle map[string]bool) {
 	gone := map[string]bool{}
 	var idols []Idol
@@ -189,6 +191,7 @@ func (st *State) dropRetiredPresets(keepIdol, keepCircle map[string]bool) {
 }
 
 // filterConversations 丢掉 IdolID 在 gone 里的对话。
+// in 里 IdolID 在 gone 中的项丢掉。
 func filterConversations(in []Conversation, gone map[string]bool) []Conversation {
 	var out []Conversation
 	for _, it := range in {
@@ -200,6 +203,7 @@ func filterConversations(in []Conversation, gone map[string]bool) []Conversation
 }
 
 // filterMemories 丢掉 SourceIdol 在 gone 里的记忆。
+// in 里 SourceIdol 在 gone 中的项丢掉。
 func filterMemories(in []Memory, gone map[string]bool) []Memory {
 	var out []Memory
 	for _, it := range in {
@@ -222,6 +226,7 @@ func filterAffinity(in []Affinity, gone map[string]bool) []Affinity {
 }
 
 // filterLore 丢掉 IdolID 在 gone 里的材料。
+// in 里 IdolID 在 gone 中的项丢掉。
 func filterLore(in []Lore, gone map[string]bool) []Lore {
 	var out []Lore
 	for _, it := range in {
@@ -233,6 +238,7 @@ func filterLore(in []Lore, gone map[string]bool) []Lore {
 }
 
 // filterCalls 丢掉 IdolID 在 gone 里的通话。
+// in 里 IdolID 在 gone 中的项丢掉。
 func filterCalls(in []CallLog, gone map[string]bool) []CallLog {
 	var out []CallLog
 	for _, it := range in {
@@ -244,6 +250,7 @@ func filterCalls(in []CallLog, gone map[string]bool) []CallLog {
 }
 
 // filterReaches 丢掉 IdolID 在 gone 里的主动开口记录。
+// in 里 IdolID 在 gone 中的项丢掉。
 func filterReaches(in []ReachMark, gone map[string]bool) []ReachMark {
 	var out []ReachMark
 	for _, it := range in {
@@ -255,6 +262,7 @@ func filterReaches(in []ReachMark, gone map[string]bool) []ReachMark {
 }
 
 // anyPinned 看有没有偶像的 Pinned 为真。
+// idols 里任一项 Pinned 为真时返回 true。
 func anyPinned(idols []Idol) bool {
 	for _, it := range idols {
 		if it.Pinned {
@@ -265,6 +273,7 @@ func anyPinned(idols []Idol) bool {
 }
 
 // petIdol 用 yoyoSheet 和 yoyoFacts 造桌宠。Kind 是 pet，工作通道打开。
+// now 写入 CreatedAt，并传给 NormalizeIdol。
 func petIdol(now time.Time) Idol {
 	return NormalizeIdol(Idol{
 		ID:           petIdolID,
@@ -282,6 +291,7 @@ func petIdol(now time.Time) Idol {
 }
 
 // asIdol 把目录条目收成 Idol。口语是 ja，字幕是 zh，Kind 是 catalog，工作通道打开。
+// now 写入 CreatedAt。
 func (p presetIdol) asIdol(now time.Time) Idol {
 	return Idol{
 		ID:           p.ID,
@@ -327,6 +337,8 @@ func composeSheet(p presetIdol) string {
 }
 
 // installAvatar 从嵌入的头像里读文件，写成 blobs/preset-<偶像 id>。文件已在就不覆盖。文件名含 .. 或 id 含斜杠时拒绝。
+// idolID 接在 preset- 后面作为 blob 名。结果含 / 或 \ 时返回错误。
+// file 去掉空白后只留 Base。为空、为 .，或含 .. 时返回错误。用来读 preset/avatars/ 下的嵌入文件。
 func (s *Store) installAvatar(idolID, file string) (string, error) {
 	file = filepath.Base(strings.TrimSpace(file))
 	if file == "" || file == "." || strings.Contains(file, "..") {
@@ -381,6 +393,7 @@ var giftAlias = map[string]string{
 }
 
 // mapLiked 按 giftAlias 映射并去重，丢掉 Catalog 里没有的 id。
+// ids 逐项去掉空白后到 giftAlias 里查找。结果为空、已经见过，或 GiftByID 失败的丢掉。
 func mapLiked(ids []string) []string {
 	var out []string
 	seen := map[string]bool{}

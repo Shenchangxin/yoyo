@@ -34,6 +34,7 @@ func PublicKey() ed25519.PublicKey {
 }
 
 // parsePublicKey 接受十六进制、标准 base64 或 RawStd base64，长度必须是 32 字节。失败返回 nil。
+// raw 去掉两端空白，空则返回 nil；否则按十六进制、标准 base64、RawStd base64 试，长度必须是 ed25519.PublicKeySize。
 func parsePublicKey(raw string) ed25519.PublicKey {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -52,6 +53,7 @@ func parsePublicKey(raw string) ed25519.PublicKey {
 }
 
 // ParsePrivateKey 先按十六进制再按标准 base64 解析。32 字节当作种子，64 字节当作私钥。空串返回 "update: empty private key"。其他长度返回 "update: private key length"。
+// raw 去掉两端空白，空则返回错误；先按十六进制再按标准 base64 解。
 func ParsePrivateKey(raw string) (ed25519.PrivateKey, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

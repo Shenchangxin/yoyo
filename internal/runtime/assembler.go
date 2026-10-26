@@ -32,6 +32,7 @@ func NewBlockAssembler() *BlockAssembler {
 }
 
 // Push 吃进一块流。同一序号的开始帧只采纳第一次。结束帧之后该序号的增量被丢掉。用量和结束原因各保留最后一次。
+// chunk 按 Type 处理开始帧、文本或推理增量、工具调用增量、结束帧、用量和结束原因。
 func (a *BlockAssembler) Push(chunk StreamChunk) {
 	if a.partials == nil {
 		a.partials = map[int]*partialBlock{}
@@ -83,6 +84,8 @@ func (a *BlockAssembler) Push(chunk StreamChunk) {
 }
 
 // ensure 取出或创建该序号的半成品，并在新建时记下顺序。
+// index 是 partials 的键。
+// blockType 只在该键还没有半成品时写入。
 func (a *BlockAssembler) ensure(index int, blockType string) *partialBlock {
 	p := a.partials[index]
 	if p == nil {
@@ -94,6 +97,8 @@ func (a *BlockAssembler) ensure(index int, blockType string) *partialBlock {
 }
 
 // assemble 在已有结束帧时用那一帧。工具调用没有 id 时用 call- 加序号。
+// p 已有结束帧时返回那一帧，否则按 blockType 组装文本或工具调用。
+// index 在工具调用 id 为空时拼进 call- 前缀。
 func (a *BlockAssembler) assemble(p *partialBlock, index int) ContentBlock {
 	if p.block != nil {
 		return *p.block

@@ -16,6 +16,7 @@ import (
 const maxJobWorkers = 8
 
 // GetJob 按标识读出一条任务。
+// id 传给 getDoc。
 func (e *Engine) GetJob(id string) (Job, error) {
 	j, err := getDoc[Job](e, colJobs, id)
 	if err != nil {
@@ -68,11 +69,13 @@ func (e *Engine) ListDramaJobs(dramaID string) ([]Job, error) {
 }
 
 // insertJob 把任务写入文档，不改更新时间。
+// j 按 ID 传给 putDoc。
 func (e *Engine) insertJob(j Job) error {
 	return e.putDoc(colJobs, j.ID, j)
 }
 
 // saveJob 把 UpdatedAt 设为现在，写入文档，并在 OnJob 非空时交出去。
+// j 写上 UpdatedAt 后 putDoc，并传给 emit。
 func (e *Engine) saveJob(j Job) error {
 	j.UpdatedAt = Now()
 	if err := e.putDoc(colJobs, j.ID, j); err != nil {
@@ -83,6 +86,7 @@ func (e *Engine) saveJob(j Job) error {
 }
 
 // EnqueueImage 用当前图像供应商排一条 queued 任务。尺寸空着时用 1920x1080。模型用 ResolveProviderModel。写入后 emit。
+// in 的 ProviderID 传给 ActiveProvider，Model 传给 ResolveProviderModel，Size 与 1920x1080 传给 first，Prompt、AspectRatio、Refs、StudioProjectID、StudioShotID、StudioKind、DramaID、EpisodeID、CharacterID、SceneID、PropID 写入任务。
 func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 	p, err := e.ActiveProvider("image", in.ProviderID)
 	if err != nil {
@@ -107,6 +111,7 @@ func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 }
 
 // EnqueueVideo 用当前视频供应商排一条 queued 任务。时长经 ClampProviderDuration，画幅空着时用 16:9，分辨率按供应商归一。镜头标识写在 StoryboardID。
+// in 的 ProviderID 传给 ActiveProvider，Model 传给 ResolveProviderModel，Duration 传给 ClampProviderDuration，AspectRatio 与 16:9 传给 first，Resolution 传给 NormalizeVideoResolution，Prompt、Audio、Refs、DramaID、EpisodeID 写入任务，ShotID 写入 StoryboardID。
 func (e *Engine) EnqueueVideo(in EnqueueVideo) (Job, error) {
 	p, err := e.ActiveProvider("video", in.ProviderID)
 	if err != nil {
@@ -134,6 +139,10 @@ func (e *Engine) EnqueueVideo(in EnqueueVideo) (Job, error) {
 }
 
 // EnqueueMerge 排一条 ffmpeg、模型 concat-h264 的拼接任务，并把该集流水线的 merge 标成 running。
+// episodeID 写入 EpisodeID，并传给 patchPipeline。
+// dramaID 写入 DramaID。
+// paths 写入 ReferenceVideoURLs。
+// shotIDs 写入 ShotIDs。
 func (e *Engine) EnqueueMerge(episodeID, dramaID string, paths []string, shotIDs []string) (Job, error) {
 	now := Now()
 	j := Job{
@@ -150,6 +159,7 @@ func (e *Engine) EnqueueMerge(episodeID, dramaID string, paths []string, shotIDs
 }
 
 // CancelJob 把未结束的任务标成 cancelled，并取消正在跑的上下文。succeeded、failed、cancelled 返回 already finished。
+// id 传给 GetJob，并用来取出正在执行的取消函数。
 func (e *Engine) CancelJob(id string) error {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -169,6 +179,7 @@ func (e *Engine) CancelJob(id string) error {
 }
 
 // RetryJob 只接受 failed 或 cancelled。状态改回 queued，并清掉错误、远程标识和完成时间。
+// id 传给 GetJob。
 func (e *Engine) RetryJob(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -203,6 +214,7 @@ func (e *Engine) resumeJobs() {
 }
 
 // loop 每 800 毫秒调用一次 pump，直到上下文取消。它领取已排队的生成任务。
+// ctx 取消时返回，否则传给 pump。
 func (e *Engine) loop(ctx context.Context) {
 	t := time.NewTicker(800 * time.Millisecond)
 	defer t.Stop()
@@ -227,6 +239,7 @@ func (e *Engine) inflightN() int {
 }
 
 // pump 按创建时间从旧到新领取 queued 和 polling，空位是 maxJobWorkers 减去正在执行的数量。每条任务超时 12 分钟。已经在执行的标识会跳过。
+// ctx 加上 12 分钟超时后传给 runJob。
 func (e *Engine) pump(ctx context.Context) {
 	slots := maxJobWorkers - e.inflightN()
 	if slots <= 0 {
@@ -253,6 +266,9 @@ func (e *Engine) pump(ctx context.Context) {
 }
 
 // runJob 在结束时取消上下文并移出正在执行的表。queued 走 runSubmit，polling 走 runPoll。读不到或已取消则返回。
+// ctx 在状态为 queued 时传给 runSubmit，为 polling 时传给 runPoll。
+// id 传给 GetJob，结束时从正在执行的表里删除。
+// cancel 在结束时调用。
 func (e *Engine) runJob(ctx context.Context, id string, cancel context.CancelFunc) {
 	defer func() {
 		cancel()
@@ -271,12 +287,15 @@ func (e *Engine) runJob(ctx context.Context, id string, cancel context.CancelFun
 }
 
 // abandoned 在任务读不到或状态已是 cancelled 时为真。
+// id 传给 GetJob。
 func (e *Engine) abandoned(id string) bool {
 	j, err := e.GetJob(id)
 	return err != nil || j.Status == "cancelled"
 }
 
 // runSubmit 把任务标成 running。image、video、merge、canvas、canvas_timeline、canvas_transcribe 分别提交；canvas_text 把状态写成 text_replay。未知类型失败。提交前或提交后若已取消则直接返回。失败时记下错误并标记短片任务失败。
+// ctx 已取消时直接返回；类型为 image、video、merge、canvas 时传给对应提交函数。
+// j 按 Type 提交，失败时把 Status 写成 failed。
 func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 	if ctx.Err() != nil || e.abandoned(j.ID) {
 		return nil
@@ -320,6 +339,8 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 }
 
 // runPoll 轮询 image、video 和 canvas。其他类型把状态写成 failed，错误是 nothing to poll。已取消则直接返回。失败时记下错误并标记短片任务失败。
+// ctx 已取消时直接返回；类型为 image、video、canvas 时传给对应轮询函数。
+// j 按 Type 轮询，其他类型把 Status 写成 failed、Error 写成 nothing to poll。
 func (e *Engine) runPoll(ctx context.Context, j Job) error {
 	if ctx.Err() != nil || e.abandoned(j.ID) {
 		return nil
@@ -353,6 +374,9 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 }
 
 // finishMedia 把字节写入 CAS。视频能抽出封面时写入 PosterHash，图像则尝试缩略图。带画布工程或类型为 canvas 时再交给 finishCanvasMedia。成功后状态为 succeeded，并 writeBack。
+// j 写入 ResultHash 和 PosterHash，成功后传给 writeBack。
+// raw 传给 PutBytes；带画布工程或类型为 canvas 时再传给 finishCanvasMedia。
+// video 为真时用成片路径抽封面，否则尝试缩略图。
 func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 	h, err := e.PutBytes(raw)
 	if err != nil {
@@ -380,6 +404,8 @@ func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 }
 
 // runMerge 拼接 ReferenceVideoURLs。以 / 开头、像盘符路径或含反斜杠的条目当本地路径，其余当内容寻址哈希。没有片段、哈希没有文件或文件不在磁盘上时失败。成功后把成片哈希写回该集，并把 merge 标成 done。
+// ctx 传给 ConcatContext。
+// j 的 Params 解出片段，成功后把成片哈希写回 j.EpisodeID 对应的集。
 func (e *Engine) runMerge(ctx context.Context, j *Job) error {
 	var p JobParams
 	_ = json.Unmarshal([]byte(j.Params), &p)
@@ -429,6 +455,7 @@ func first(v, fb string) string {
 }
 
 // parseParams 把 JSON 解成 JobParams。解不开时返回零值。
+// raw 传给 json.Unmarshal。
 func parseParams(raw string) JobParams {
 	var p JobParams
 	_ = json.Unmarshal([]byte(raw), &p)

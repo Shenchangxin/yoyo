@@ -33,7 +33,11 @@ export type ModelsDevCatalog = {
   providers: Record<string, Record<string, CatalogEntry>>;
 };
 
-/** overlayCatalog 用线上目录盖住基底。线上没有供应商时原样返回基底。同一供应商整表替换，不是按模型合并。version、fetchedAt、source 在线上为空时留基底的。 */
+/**
+ * overlayCatalog 用线上目录盖住基底。线上没有供应商时原样返回基底。同一供应商整表替换，不是按模型合并。version、fetchedAt、source 在线上为空时留基底的。
+ * base 读取 providers，为真时才继续，作为分支结果。
+ * live 读取 providers、version、fetchedAt、source、stale，为假时走另一支。
+ */
 export function overlayCatalog(
   base: ModelsDevCatalog | null | undefined,
   live: ModelsDevCatalog | null | undefined,
@@ -49,7 +53,10 @@ export function overlayCatalog(
   };
 }
 
-/** hydrateCatalog 从松散的 Wails 或 JSON 形状收成目录，再叠到 fallback 上。空 id 的模型丢掉。没有成本对象则不填 cost。version 缺省为 3。 */
+/**
+ * hydrateCatalog 从松散的 Wails 或 JSON 形状收成目录，再叠到 fallback 上。空 id 的模型丢掉。没有成本对象则不填 cost。version 缺省为 3。
+ * raw 用 pick 读取 providers、version、fetchedAt、source、stale字段。
+ */
 export function hydrateCatalog(raw: unknown, fallback?: ModelsDevCatalog | null): ModelsDevCatalog {
   const v = raw as any;
   const providersIn = pick(v, "providers", "Providers") || {};

@@ -31,6 +31,7 @@ func canvasOK(data any) canvasEnv {
 }
 
 // canvasFail 返回失败信封。code 为 0 时改成 400，reason 为空时用 bad_request。
+// msg 写入 Msg。
 func canvasFail(code int, msg, reason string) canvasEnv {
 	if code == 0 {
 		code = 400
@@ -42,11 +43,13 @@ func canvasFail(code int, msg, reason string) canvasEnv {
 }
 
 // canvasConflict 返回 428 和 failed_precondition，表示画布版本冲突。
+// msg 写入 Msg。
 func canvasConflict(msg string) canvasEnv {
 	return canvasEnv{Code: 428, Msg: msg, Reason: "failed_precondition"}
 }
 
 // parseQueryString 把查询串解析成单值 map。标准解析失败时按 & 和 = 切开。
+// raw 去掉空白后为空时返回空 map，否则传给 url.ParseQuery，失败时按 & 和 = 切开。
 func parseQueryString(raw string) map[string]any {
 	out := map[string]any{}
 	if strings.TrimSpace(raw) == "" {
@@ -76,6 +79,7 @@ func parseQueryString(raw string) map[string]any {
 }
 
 // asMap 把值收成 map。已经是 map 则原样返回，否则经 JSON 往返。
+// v 为 nil 时返回空 map，已经是 map[string]any 时原样返回，否则经 JSON 往返，结果为 nil 时也返回空 map。
 func asMap(v any) map[string]any {
 	if v == nil {
 		return map[string]any{}
@@ -99,6 +103,7 @@ func asMap(v any) map[string]any {
 }
 
 // asSlice 把值收成切片。已经是切片则原样返回，否则经 JSON 往返。
+// v 是 []any 时原样返回，是 nil 时返回 nil，否则经 JSON 往返。
 func asSlice(v any) []any {
 	switch t := v.(type) {
 	case []any:
@@ -114,6 +119,8 @@ func asSlice(v any) []any {
 }
 
 // strAnyMap 按给定键序取出第一个非空字符串。
+// m 按 keys 的顺序取值。
+// keys 按顺序作为 m 的键，去掉空白后非空且不是 <nil> 的第一个字符串会被返回。
 func strAnyMap(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if v, ok := m[k]; ok {
@@ -126,6 +133,7 @@ func strAnyMap(m map[string]any, keys ...string) string {
 }
 
 // intAny 把常见 JSON 数字或数字字符串转成 int，转不了则为 0。
+// v 是 int、int64、float64、json.Number 或字符串时转成 int，其他类型先转成字符串再解析。
 func intAny(v any) int {
 	switch t := v.(type) {
 	case int:
@@ -147,6 +155,7 @@ func intAny(v any) int {
 }
 
 // boolAny 把布尔值、true、1 或非零数字当成真。
+// v 是 bool 时原样返回，字符串等于 true 或 1 时为真，float64 和 int 非 0 时为真，其他类型返回 false。
 func boolAny(v any) bool {
 	switch t := v.(type) {
 	case bool:
@@ -175,11 +184,13 @@ func decodeB64Any(s string) ([]byte, error) {
 }
 
 // encodeB64 把字节编成标准 Base64。
+// b 传给 StdEncoding.EncodeToString。
 func encodeB64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
 // findYingcePluginDir 查找影策插件目录，先看环境变量，再看可执行文件和当前目录附近。
+// videoDir 拼成 plugins/yingce 放进候选，没有匹配时仍返回这个路径。
 func findYingcePluginDir(videoDir string) string {
 	if v := strings.TrimSpace(os.Getenv("YOYO_YINGCE_PLUGINS")); v != "" {
 		if st, err := os.Stat(v); err == nil && st.IsDir() {
@@ -221,6 +232,8 @@ func findYingcePluginDir(videoDir string) string {
 }
 
 // hub 在 OnHub 已设置时把画布事件交出去。
+// kind 传给 OnHub。
+// payload 传给 OnHub。
 func (e *Engine) hub(kind string, payload map[string]any) {
 	if e.OnHub != nil {
 		e.OnHub(kind, payload)
@@ -228,6 +241,7 @@ func (e *Engine) hub(kind string, payload map[string]any) {
 }
 
 // firstNonEmpty 返回第一个去掉空白后非空的字符串。
+// vals 逐个去掉空白，返回第一个非空字符串。
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {
@@ -238,6 +252,7 @@ func firstNonEmpty(vals ...string) string {
 }
 
 // debrandYingce 把文案里的影策品牌替换成 Yoyo 或无限画布。
+// s 为空时原样返回，否则把影策团队、影策创作者、 / 影策、影策画布、接入影策和影策换成对应文案。
 func debrandYingce(s string) string {
 	if s == "" {
 		return s

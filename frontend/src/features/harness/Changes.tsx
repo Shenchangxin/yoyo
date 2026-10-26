@@ -5,7 +5,7 @@ import type { MaterialChange } from "../../lib/harness-refs";
 import { surfaceLabel } from "../../lib/harness-copy";
 import { cn } from "../../lib/utils";
 
-// MaterialChangeList 没有条目时：传了 empty 就显示它，否则什么都不画。added 用成功色，removed 用危险色，其余用弱色。l3 为真时多标一枚文案。
+/** MaterialChangeList 没有条目时：传了 empty 就显示它，否则什么都不画。added 用成功色，removed 用危险色，其余用弱色。l3 为真时多标一枚文案。changes 读取 length，做映射。 */
 export function MaterialChangeList({ changes, empty }: { changes: MaterialChange[]; empty?: string }) {
   const copy = useCopy();
   if (!changes.length) {
@@ -30,7 +30,7 @@ export function MaterialChangeList({ changes, empty }: { changes: MaterialChange
   );
 }
 
-// added、removed、changed 换成文案，其余操作名原样显示。
+/** opLabel added、removed、changed 换成文案，其余操作名原样显示。copy 读取 rsi。op 与 added、removed、changed 比较是否相等，有的分支原样返回。 */
 function opLabel(copy: ReturnType<typeof useCopy>, op: string): string {
   if (op === "added") return copy.rsi.added;
   if (op === "removed") return copy.rsi.removed;

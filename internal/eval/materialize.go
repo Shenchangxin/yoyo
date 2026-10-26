@@ -36,6 +36,8 @@ func (e *Engine) materialRoot() string {
 }
 
 // materialize 写出 instruction.md、timeout_minutes 为 1 的 task.toml，以及 tests 下的 expect.toml、test.sh 和 test.ps1。
+// dir 下创建 tests，并写出 instruction.md、task.toml 和 tests 里的那三个文件。
+// spec 的 File 和 Contains 写进 instruction、expect.toml 和两份测试脚本。
 func materialize(dir string, spec TaskSpec) error {
 	if err := os.MkdirAll(filepath.Join(dir, "tests"), 0o755); err != nil {
 		return err

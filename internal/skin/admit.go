@@ -46,6 +46,7 @@ var allowedFiles = map[string]struct{}{
 }
 
 // Admit 解 zip，拒绝空包、超限、非法路径和允许列表之外的文件。然后校验清单和令牌，Prepare，再检查对比度。
+// data 长度为 0 或大于 MaxZipBytes 时返回错误，否则交给 zip.NewReader。
 func Admit(data []byte) (Pack, error) {
 	if len(data) == 0 || len(data) > MaxZipBytes {
 		return Pack{}, fmt.Errorf("skin package must be between 1 and %d bytes", MaxZipBytes)
@@ -133,6 +134,7 @@ func Admit(data []byte) (Pack, error) {
 }
 
 // parseTokens 把 JSON 解成 TokenMap。空输入返回空映射。超过 MaxTokenFileBytes、不是合法 UTF-8，或 JSON 无效时返回错误。
+// raw 长度为 0 时返回空映射。长度大于 MaxTokenFileBytes 或不是合法 UTF-8 时返回错误，否则交给 json.Unmarshal。
 func parseTokens(raw []byte) (TokenMap, error) {
 	if len(raw) == 0 {
 		return TokenMap{}, nil
@@ -283,6 +285,9 @@ func (p Pack) checkContrast() error {
 }
 
 // replaceFile 在新旧名字不同时删掉旧条目，再写入新字节。
+// oldName 非空且与 newName 不同时从 Files 里删除。
+// newName 作为 Files 的键写入 body。
+// body 写入 Files。
 func (p *Pack) replaceFile(oldName, newName string, body []byte) {
 	if p.Files == nil {
 		p.Files = map[string][]byte{}
@@ -294,6 +299,7 @@ func (p *Pack) replaceFile(oldName, newName string, body []byte) {
 }
 
 // assertWOFF2 要求正文至少 8 字节，并且前 4 字节是 wOF2。
+// body 长度小于 8 时返回错误。前 4 字节不是 wOF2 时也返回错误。
 func assertWOFF2(body []byte) error {
 	if len(body) < 8 {
 		return fmt.Errorf("font too small")
@@ -305,6 +311,7 @@ func assertWOFF2(body []byte) error {
 }
 
 // sanitizeZipPath 把反斜杠换成斜杠并 Clean。结果为 .、..、以 ../ 开头或含冒号时返回错误。
+// name 里的反斜杠换成斜杠，Clean 后再去掉开头的斜杠。结果为 .、..、以 ../ 开头或含冒号时返回错误。
 func sanitizeZipPath(name string) (string, error) {
 	name = strings.ReplaceAll(name, "\\", "/")
 	name = path.Clean(name)
@@ -316,6 +323,7 @@ func sanitizeZipPath(name string) (string, error) {
 }
 
 // sanitizeRel 清掉空白并 Clean。结果为 .、..、以 ../ 开头，或文件名含安全字符以外的符号时返回空串。
+// name 去掉空白，反斜杠换成斜杠，Clean 后再去掉开头的斜杠。结果为 .、..、以 ../ 开头，或文件名不匹配 reSafeIdent 时返回空串。
 func sanitizeRel(name string) string {
 	name = strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")
 	name = path.Clean(name)
@@ -330,6 +338,8 @@ func sanitizeRel(name string) string {
 }
 
 // containsCap 报告能力列表里有没有这个名字。
+// caps 逐项与 cap 比较。
+// cap 与 caps 的每一项做相等比较。
 func containsCap(caps []string, cap string) bool {
 	for _, c := range caps {
 		if c == cap {

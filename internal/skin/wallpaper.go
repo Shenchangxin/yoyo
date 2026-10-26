@@ -26,6 +26,8 @@ const (
 )
 
 // fitImage 在宽乘高超过 MaxDecodePixels 时返回错误。未超过 maxEdge 的原样返回。超过的缩小后用质量 86 编成 JPEG，扩展名改成 .jpg。maxEdge 不大于 0 时用 MaxWallpaperEdge。
+// body 长度为 0 时返回错误。传给 imageConfig 和 decodeAnyImage。未缩放时原样返回。
+// name 写进错误文案。未缩放时原样返回，缩放后传给 withExt，扩展名是 .jpg。
 func fitImage(body []byte, name string, maxEdge int) ([]byte, string, error) {
 	if len(body) == 0 {
 		return nil, "", fmt.Errorf("%s is empty", name)
@@ -63,6 +65,8 @@ func fitImage(body []byte, name string, maxEdge int) ([]byte, string, error) {
 }
 
 // imageConfig 读取图片尺寸。扩展名是 .webp 时用 webp 解码配置。
+// body 放进 bytes.NewReader。
+// name 的扩展名转成小写后等于 .webp 时走 webp.DecodeConfig，否则走 image.DecodeConfig。
 func imageConfig(body []byte, name string) (image.Config, error) {
 	r := bytes.NewReader(body)
 	if strings.ToLower(path.Ext(name)) == ".webp" {
@@ -73,6 +77,8 @@ func imageConfig(body []byte, name string) (image.Config, error) {
 }
 
 // decodeAnyImage 解码图片。扩展名是 .webp 时走 webp，否则走 image.Decode。
+// body 放进 bytes.NewReader。
+// name 的扩展名转成小写后等于 .webp 时走 webp.Decode，否则走 image.Decode。
 func decodeAnyImage(body []byte, name string) (image.Image, error) {
 	r := bytes.NewReader(body)
 	if strings.ToLower(path.Ext(name)) == ".webp" {
@@ -83,6 +89,8 @@ func decodeAnyImage(body []byte, name string) (image.Image, error) {
 }
 
 // fitEdge 把较长边收到 maxEdge，另一边按比例缩小，至少为 1。两边都未超过时原样返回。
+// w 小于等于 maxEdge 且 h 也是时原样返回。w 大于等于 h 且需要缩小时，返回的宽是 maxEdge，高是 h 乘 maxEdge 除以 w，至少为 1。
+// h 小于等于 maxEdge 且 w 也是时原样返回。h 更大且需要缩小时，返回的高是 maxEdge，宽是 w 乘 maxEdge 除以 h，至少为 1。
 func fitEdge(w, h, maxEdge int) (int, int) {
 	if w <= maxEdge && h <= maxEdge {
 		return w, h
@@ -94,6 +102,8 @@ func fitEdge(w, h, maxEdge int) (int, int) {
 }
 
 // withExt 替换文件扩展名，保留目录。
+// name 取出目录和去掉扩展名的文件名。目录是 . 或空时只返回文件名加 ext。
+// ext 接在去掉原扩展名的文件名后面。
 func withExt(name, ext string) string {
 	dir := path.Dir(name)
 	base := strings.TrimSuffix(path.Base(name), path.Ext(name))

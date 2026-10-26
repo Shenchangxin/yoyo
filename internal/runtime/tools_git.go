@@ -11,6 +11,7 @@ import (
 )
 
 // git 在工作区目录执行 git。write 为 false 时能力级别是 ReadWorkspace，为 true 时是 WriteWorkspace，动作名是 git。输出含 not a git repository 时不当成错误，返回该说明。
+// args 用空格拼进能力检查的命令文本，并作为 git 的参数传给 exec.CommandContext。
 func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 	level := capability.ReadWorkspace
 	if write {
@@ -44,6 +45,8 @@ func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 }
 
 // gitNotRepo 在合并后的输出或错误文本里查找 not a git repository。
+// text 先放进待查文本。
+// err 非 nil 时把 Error() 接在 text 后面，再查找 not a git repository。
 func gitNotRepo(text string, err error) bool {
 	blob := text
 	if err != nil {

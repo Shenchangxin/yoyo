@@ -45,6 +45,8 @@ func unsetWorkspace(p string) bool {
 }
 
 // applyDefaultWorkspace 在 Config.Workspace 还不是可用目录时，先尝试创建已有绝对路径，失败再用 Home.Workspace。返回值表示是否改写了配置里的路径。
+// h 为 nil 时返回 false，否则在需要回落时调用 Workspace。
+// cfg 为 nil 时返回 false，否则读并可能改写 Workspace。
 func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 	if h == nil || cfg == nil {
 		return false
@@ -70,6 +72,8 @@ func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 }
 
 // applyDefaultVideoWorkspace 给视频单独一个目录，和代理工作区分开。规则与 applyDefaultWorkspace 相同，回落目录是 Home.VideoWorkspace。
+// h 为 nil 时返回 false，否则在需要回落时调用 VideoWorkspace。
+// cfg 为 nil 时返回 false，否则读并可能改写 VideoWorkspace。
 func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
 	if h == nil || cfg == nil {
 		return false
@@ -101,6 +105,7 @@ const previewFileBytes = 80_000
 const blobFileBytes = 16 << 20
 
 // readCapped 最多读取 limit 字节，并用多读 1 字节判断是否截断。limit 小于等于 0 时读完全部。
+// path 传给 os.Open。
 func readCapped(path string, limit int) ([]byte, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -123,6 +128,7 @@ func readCapped(path string, limit int) ([]byte, bool, error) {
 }
 
 // resolveWorkspaceFile 把相对路径拼到工作区。工作区参数为空时用 App.Workspace。逃出 capability.WithinWorkspace 的路径返回 path escapes workspace。
+// rel 先 TrimSpace，空串则返回 empty path；不是绝对路径时拼到工作区上，再传给 WithinWorkspace。
 func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string, err error) {
 	if a != nil && strings.TrimSpace(workspace) == "" {
 		workspace = a.Workspace()
@@ -143,6 +149,8 @@ func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string,
 }
 
 // PreviewWorkspaceFile 为检查器和产物卡返回有界预览。图片、PDF、音频、视频只回元数据。docx、xlsx、pptx 走 office 文本。前 800 字节含 NUL 则标成 binary。
+// workspace 传给 resolveWorkspaceFile。
+// rel 传给 resolveWorkspaceFile。
 func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error) {
 	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
 	if err != nil {
@@ -189,6 +197,8 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 }
 
 // ReadWorkspaceBlob 返回不超过 blobFileBytes 的 base64，供检查器显示 PDF、图片和其他二进制。扩展名没有类型时用 http.DetectContentType。
+// workspace 传给 resolveWorkspaceFile。
+// rel 传给 resolveWorkspaceFile。
 func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
 	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
 	if err != nil {
@@ -220,6 +230,7 @@ func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
 }
 
 // officePreviewText 只对 .docx、.xlsx、.pptx 调用 office.Query，其他扩展名返回 os.ErrInvalid。
+// path 在扩展名是 .docx、.xlsx 或 .pptx 时传给 office.Query。
 func officePreviewText(path, ext string) (string, error) {
 	switch ext {
 	case ".docx", ".xlsx", ".pptx":
@@ -230,6 +241,7 @@ func officePreviewText(path, ext string) (string, error) {
 }
 
 // looksBinary 只看前 800 字节，出现 NUL 则视为二进制。
+// b 只看前 800 字节，出现 NUL 则返回真。
 func looksBinary(b []byte) bool {
 	n := len(b)
 	if n > 800 {
@@ -244,6 +256,7 @@ func looksBinary(b []byte) bool {
 }
 
 // langFromExt 按扩展名给出预览语言名。未列出的扩展名去掉点号后原样返回。
+// ext 用来选择语言名，未列出时去掉前缀点号后返回。
 func langFromExt(ext string) string {
 	switch ext {
 	case ".go":
@@ -298,6 +311,7 @@ func previewKind(ext string) string {
 }
 
 // mimeFromExt 为 markdown、typescript 和 svg 写明类型，其余用 mime.TypeByExtension，没有则 application/octet-stream。
+// ext 用来选择类型；未列出时传给 mime.TypeByExtension，结果为空则返回 application/octet-stream。
 func mimeFromExt(ext string) string {
 	switch ext {
 	case ".md", ".markdown":

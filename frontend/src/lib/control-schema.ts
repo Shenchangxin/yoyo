@@ -23,7 +23,7 @@ export const controlSchema = z.object({
 /** ControlValues 从 controlSchema 推出的表单值。 */
 export type ControlValues = z.infer<typeof controlSchema>;
 
-/** configToForm 从配置填表。密钥留空，模型列表收成逗号分隔。 */
+/** configToForm 从配置填表。密钥留空，模型列表收成逗号分隔。cfg 读取 model、baseUrl、models、workspace、autoAllow、closeToTray 等。 */
 export function configToForm(cfg: AppConfig): ControlValues {
   return {
     model: cfg.model,
@@ -38,7 +38,11 @@ export function configToForm(cfg: AppConfig): ControlValues {
   };
 }
 
-/** formToConfig 把表单写回配置。模型列表按逗号拆开并丢掉空白。keymap 与 locale 沿用原配置。 */
+/**
+ * formToConfig 把表单写回配置。模型列表按逗号拆开并丢掉空白。keymap 与 locale 沿用原配置。
+ * cfg 读取 keymap、locale，展开传递。
+ * values 读取 model、baseUrl、workspace、autoAllow、closeToTray、maxBudgetUsd 等。
+ */
 export function formToConfig(cfg: AppConfig, values: ControlValues): AppConfig {
   return {
     ...cfg,

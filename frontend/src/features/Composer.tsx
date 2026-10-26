@@ -71,7 +71,10 @@ import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
 import { PresencePerch } from "./presence";
 
-/** Composer 在短剧桌且正在跑时不能发送，除非是改道。没有正文、芯片和附件时，只有 allowEmptySend 才能发。需要工作区但还没有路径时整框禁用。 */
+/**
+ * Composer 在短剧桌且正在跑时不能发送，除非是改道。没有正文、芯片和附件时，只有 allowEmptySend 才能发。需要工作区但还没有路径时整框禁用。
+ * props 读取 draftKey、compact、onBrowseWorkspace、workspace、disabled、hero 等，调用 onSearchFiles，调用 onSlash，调用 onIngestVideo，调用 onPickFiles，调用 onScreenshot，调用 onClipboard，调用 onSend，调用 onWorkspace，调用 onBrowseWorkspace，调用 onAuthMode，调用 onIsolate，调用 onApplyWorktree，调用 onModel，调用 onStop。
+ */
 export function Composer(props: {
   draftKey: string;
   running: boolean;
@@ -140,7 +143,7 @@ export function Composer(props: {
   const plan = useUI((s) => s.plan);
   const setDraft = useUI((s) => s.setDraft);
   const setPlan = useUI((s) => s.setPlan);
-  /** 把正文写回这条草稿。 */
+  /** 把正文写回这条草稿。v 传给 setDraft。 */
   const onChange = (v: string) => setDraft(props.draftKey, v);
   const [hint, setHint] = useState<"plus" | null>(null);
   const [hiToken, setHiToken] = useState("");
@@ -366,7 +369,7 @@ export function Composer(props: {
 
   useEffect(() => {
     if (hint !== "plus") return;
-    /** 点在卡片外面就关掉加号浮层。卡片里面的点击留着。 */
+    /** 点在卡片外面就关掉加号浮层。卡片里面的点击留着。e 读取 target。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (cardRef.current?.contains(t)) return;
@@ -396,7 +399,7 @@ export function Composer(props: {
     cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [value]);
 
-  /** 斜杠出现时关掉加号。完整的 harness 提及不再下钻。文件和文件夹查询变了才去搜。 */
+  /** 斜杠出现时关掉加号。完整的 harness 提及不再下钻。文件和文件夹查询变了才去搜。snap 读取 caret、before。 */
   function applyCaret(snap: DraftSnapshot) {
     setCaret(snap.caret);
     setBefore(snap.before);
@@ -425,14 +428,18 @@ export function Composer(props: {
     setDrilled(false);
   }
 
-  /** 把芯片和正文写回草稿，再按光标更新浮层。 */
+  /** 把芯片和正文写回草稿，再按光标更新浮层。snap 读取 chips、text，传给 applyCaret。 */
   function applySnapshot(snap: DraftSnapshot) {
     setChips(snap.chips);
     onChange(snap.text);
     applyCaret(snap);
   }
 
-  /** 还要继续选时只替换触发词。完整提及收成芯片。其余当成普通文字再加一个空格。 */
+  /**
+   * 还要继续选时只替换触发词。完整提及收成芯片。其余当成普通文字再加一个空格。
+   * token 与 @file:、@folder: 比较是否相等，加上  ，看结尾，作为分支结果，传给 keepMentionOpen，传给 isCompleteMention，传给 pinFromToken。
+   * label 传给 pinFromToken。
+   */
   function insertMention(token: string, label?: string) {
     if (keepMentionOpen(token)) {
       editorRef.current?.replaceTrigger(token.endsWith(":") ? token : token);
@@ -457,7 +464,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
-  /** 没有路径就返回。否则把触发词换成这个目录，并按目录加斜杠去搜。 */
+  /** 没有路径就返回。否则把触发词换成这个目录，并按目录加斜杠去搜。item 读取 drillPath、token。 */
   function drillMention(item: OverlayItem) {
     const path = item.drillPath || pinFromToken(item.token).detail;
     if (!path) return;
@@ -470,7 +477,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
-  /** 只有单独的 @ 或 @" 时不算下钻。 */
+  /** 只有单独的 @ 或 @" 时不算下钻。text 与 @、@\" 比较是否不等，传给 editorRef.current.replaceTrigger，传给 mentionQueryOf。 */
   function applyTrigger(text: string) {
     setDrilled(text !== "@" && text !== "@\"");
     editorRef.current?.replaceTrigger(text);
@@ -481,7 +488,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
-  /** 清空输入，把命令交给 onSlash，剩余参数是空字符串。 */
+  /** 清空输入，把命令交给 onSlash，剩余参数是空字符串。cmd 传给 props.onSlash。 */
   function applySlash(cmd: string) {
     editorRef.current?.setPlain("");
     onChange("");
@@ -489,7 +496,7 @@ export function Composer(props: {
     props.onSlash?.(cmd, "");
   }
 
-  /** __import_clip__ 或创作桌走导入。__file__ 走选文件。剪贴板和截图各走自己的回调。@ 开头插入提及，其余当斜杠命令。 */
+  /** __import_clip__ 或创作桌走导入。__file__ 走选文件。剪贴板和截图各走自己的回调。@ 开头插入提及，其余当斜杠命令。item 读取 token、label。 */
   function pickOverlay(item: OverlayItem) {
     if (item.token === "__file__" || item.token === "__import_clip__") {
       setHint(null);
@@ -558,7 +565,7 @@ export function Composer(props: {
     fileRef.current?.click();
   }
 
-  /** 第一项不是浏览器 File 时当成已经做好的附件。创作桌有导入回调时，视频走 onIngestVideo，有本地路径就传路径。 */
+  /** 第一项不是浏览器 File 时当成已经做好的附件。创作桌有导入回调时，视频走 onIngestVideo，有本地路径就传路径。list 取第一段，读取 length，作为分支结果，传给 isDomFile，传给 Array.from，展开传递。 */
   async function addFiles(list: FileList | File[] | Attachment[]) {
     if (Array.isArray(list) && list.length && !isDomFile(list[0])) {
       setAtts((prev) => [...prev, ...(list as Attachment[])]);
@@ -621,7 +628,7 @@ export function Composer(props: {
     editorRef.current?.insertText((value && !/\s$/.test(value) ? "\n" : "") + t);
   }
 
-  /** 短剧桌正在跑且不是改道时不发。正文、附件都空且不允许空发时不发。发出后清空附件、芯片和编辑器。 */
+  /** 短剧桌正在跑且不是改道时不发。正文、附件都空且不允许空发时不发。发出后清空附件、芯片和编辑器。steer 为假时走另一支，写入字段 steer。 */
   function send(steer?: boolean) {
     if (attaching || (dramaDesk && props.running && !steer)) return;
     const snap = editorRef.current?.snapshot() || { text: value, chips, caret, before: value };
@@ -638,7 +645,12 @@ export function Composer(props: {
     editorRef.current?.setPlain("");
   }
 
-  /** Ctrl 或 Meta 加 Shift 加 S 截图，加 V 贴系统剪贴板。浮层开着时上下键循环，Tab 能下钻就下钻，提及浮层的 Tab 只拦住不选中。Enter 选中当前项。以 / 开头且完全匹配第一条斜杠时直接执行。输入法组合中不处理这些键。 */
+  /**
+   * Ctrl 或 Meta 加 Shift 加 S 截图，加 V 贴系统剪贴板。浮层开着时上下键循环，Tab 能下钻就下钻，提及浮层的 Tab 只拦住不选中。Enter 选中当前项。以 / 开头且完全匹配第一条斜杠时直接执行。输入法组合中不处理这些键。
+   * e 读取 ctrlKey、metaKey、shiftKey、key、isComposing。
+   * snap 读取 before、text。
+   * _before 函数体内没有读取。
+   */
   function onEditorKey(e: KeyboardEvent, snap: DraftSnapshot, _before: string): boolean {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
       void grabScreenshot();
@@ -1096,7 +1108,7 @@ export function Composer(props: {
   );
 }
 
-/** 首页上的工作区芯片和选择层。路径还没就绪时不显示当前名。 */
+/** 首页上的工作区芯片和选择层。路径还没就绪时不显示当前名。props 读取 chipRef、workspace、pickerOpen、copy、onToggle、items 等。 */
 function HeroWorkspaceRow(props: {
   chipRef: RefObject<HTMLButtonElement | null>;
   workspace?: string;
@@ -1131,12 +1143,12 @@ function HeroWorkspaceRow(props: {
   );
 }
 
-/** 运行环境没有 File 时返回假。 */
+/** 运行环境没有 File 时返回假。v 用 instanceof 看是不是 File。 */
 function isDomFile(v: unknown): v is File {
   return typeof File !== "undefined" && v instanceof File;
 }
 
-/** 图片 2MB，文本类 8MB，其余 96KB。 */
+/** 图片 2MB，文本类 8MB，其余 96KB。f 读取 type、name。 */
 function attachmentByteCap(f: File): number {
   if (f.type.startsWith("image/")) return 2 * 1024 * 1024;
   const name = f.name || "";
@@ -1146,7 +1158,7 @@ function attachmentByteCap(f: File): number {
   return 96 * 1024;
 }
 
-/** 超过上限就截断再做成 base64。没有名字时图片叫 image.png，其余叫 file。 */
+/** 超过上限就截断再做成 base64。没有名字时图片叫 image.png，其余叫 file。f 读取 name、type，调用 arrayBuffer，传给 attachmentByteCap。 */
 async function fileToAttachment(f: File): Promise<Attachment> {
   const buf = await f.arrayBuffer();
   const cap = attachmentByteCap(f);
@@ -1157,19 +1169,19 @@ async function fileToAttachment(f: File): Promise<Attachment> {
   return { name: f.name || (f.type.startsWith("image/") ? "image.png" : "file"), mime: f.type, data_b64: btoa(bin) };
 }
 
-/** 类型以 video/ 开头，或扩展名是 mp4、mov、mkv、webm、avi、m4v、mpeg、mpg。 */
+/** 类型以 video/ 开头，或扩展名是 mp4、mov、mkv、webm、avi、m4v、mpeg、mpg。f 读取 type、name。 */
 function isVideoFile(f: File): boolean {
   if (f.type.startsWith("video/")) return true;
   return /\.(mp4|mov|mkv|webm|avi|m4v|mpeg|mpg)$/i.test(f.name || "");
 }
 
-/** 只认 yoyo-cut:id:hash。对不上返回 null。 */
+/** 只认 yoyo-cut:id:hash。对不上返回 null。path 为假时用空字符串，转成字符串，传给 exec。 */
 function parseCutRef(path?: string): { id: string; hash: string } | null {
   const m = /^yoyo-cut:([^:]+):(.+)$/.exec(String(path || ""));
   return m ? { id: m[1], hash: m[2] } : null;
 }
 
-/** 只给带 yoyo-cut 引用的附件拼一行入库说明。没有这种附件就返回空字符串。 */
+/** 只给带 yoyo-cut 引用的附件拼一行入库说明。没有这种附件就返回空字符串。atts 调用 flatMap。 */
 function footageStamp(atts: Attachment[]): string {
   const lines = atts.flatMap((a) => {
     const ref = parseCutRef(a.path);
@@ -1179,7 +1191,7 @@ function footageStamp(atts: Attachment[]): string {
   return lines.join("\n");
 }
 
-/** 读成 data URL 后去掉逗号前缀。没有哈希或没有工程 id 就抛错。附件路径写成 yoyo-cut:id:hash。 */
+/** 读成 data URL 后去掉逗号前缀。没有哈希或没有工程 id 就抛错。附件路径写成 yoyo-cut:id:hash。f 读取 type、name，传给 r.readAsDataURL。sessionId 为假时用空字符串，传给 api.video.cutCreate。 */
 async function ingestCreateClip(f: File, sessionId?: string): Promise<Attachment> {
   const data = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();

@@ -82,11 +82,14 @@ func (m SessionMeta) ToolRoot() string {
 }
 
 // NewSession 在给定工作区建立一条代理车道的会话。
+// workspace 传给 NewSessionOn。
 func (a *App) NewSession(workspace string) (SessionMeta, error) {
 	return a.NewSessionOn(workspace, session.ChannelAgent)
 }
 
 // NewSessionOn 建立会话并写入 meta。工作区为空时，视频车道用视频工作区，其余用 Workspace。新会话的授权是完整权限。
+// workspace 为空时，视频车道用视频工作区，其余用 Workspace，然后写入会话的 Workspace。
+// channel 经 NormalizeChannel 后写入 Channel，并用来决定空工作区的回落和标题。
 func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 	ch := session.NormalizeChannel(channel)
 	if workspace == "" {
@@ -126,6 +129,8 @@ func (a *App) NewSessionOn(workspace, channel string) (SessionMeta, error) {
 }
 
 // SetSessionChannel 改写会话车道并保存。
+// id 传给 GetSession。
+// channel 经 NormalizeChannel 后写入 Channel。
 func (a *App) SetSessionChannel(id, channel string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -168,6 +173,8 @@ func (a *App) attachAuthMode(m SessionMeta) SessionMeta {
 }
 
 // applySessionAuth 把解析后的授权模式写进线程状态和能力代理。
+// id 传给 SetAuthMode 和 ApplyAuthMode。
+// mode 经 ParseAuthMode 后传给 SetAuthMode 和 ApplyAuthMode。
 func (a *App) applySessionAuth(id, mode string) {
 	mode = capability.ParseAuthMode(mode)
 	caps := capability.AuthModeCapStrings(mode)
@@ -192,6 +199,7 @@ func (a *App) writeSession(m SessionMeta) error {
 }
 
 // titleFrom 用消息的前一段做成标题。空消息得到 session。
+// message 先把换行换成空格并 TrimSpace，空串返回 session，长于 42 个 rune 时截断。
 func titleFrom(message string) string {
 	s := strings.TrimSpace(strings.ReplaceAll(message, "\n", " "))
 	if s == "" {
@@ -205,6 +213,8 @@ func titleFrom(message string) string {
 }
 
 // touchSessionMeta 更新时间，有预览时写入，然后保存。
+// m 更新 UpdatedAt，预览非空时写入 Preview，然后保存。
+// preview 去掉首尾空白后非空时经 titleFrom 写入 Preview。
 func (a *App) touchSessionMeta(m SessionMeta, preview string) SessionMeta {
 	m.UpdatedAt = time.Now().UTC()
 	if s := strings.TrimSpace(preview); s != "" {
@@ -215,6 +225,7 @@ func (a *App) touchSessionMeta(m SessionMeta, preview string) SessionMeta {
 }
 
 // Trajectory 返回给界面回放的轨迹，不附带每条写入的全文。
+// id 传给 ReadTrace。
 func (a *App) Trajectory(id string) ([]trace.Event, error) {
 	evs, err := a.ReadTrace(id)
 	if err != nil {
@@ -225,6 +236,9 @@ func (a *App) Trajectory(id string) ([]trace.Event, error) {
 }
 
 // TrajectoryPage 先取 Hub 头再按回合分页，避免事件落在两次读取的缝里。
+// id 传给 PageTurns。
+// beforeSeq 传给 PageTurns。
+// turns 传给 PageTurns。
 func (a *App) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.TrajectoryPage, error) {
 	if a.Traces == nil {
 		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
@@ -243,6 +257,7 @@ func (a *App) TrajectoryPage(id string, beforeSeq int64, turns int) (runtime.Tra
 }
 
 // TrajectoryOutline 返回该会话的回合大纲。没有轨迹存储则返回错误。
+// id 传给 OutlineTurns。
 func (a *App) TrajectoryOutline(id string) ([]trace.OutlineTurn, error) {
 	if a.Traces == nil {
 		return []trace.OutlineTurn{}, fmt.Errorf("no trace store")
@@ -251,6 +266,9 @@ func (a *App) TrajectoryOutline(id string) ([]trace.OutlineTurn, error) {
 }
 
 // TrajectoryAround 先取 Hub 头，再取某个用户序号附近的回合页。
+// id 传给 PageAroundUser。
+// userSeq 传给 PageAroundUser 和 ProjectPageKeep。
+// turns 传给 PageAroundUser。
 func (a *App) TrajectoryAround(id string, userSeq int64, turns int) (runtime.TrajectoryPage, error) {
 	if a.Traces == nil {
 		return runtime.TrajectoryPage{}, fmt.Errorf("no trace store")
@@ -268,6 +286,7 @@ func (a *App) TrajectoryAround(id string, userSeq int64, turns int) (runtime.Tra
 }
 
 // LiveSince 从 Hub 取出序号大于 after 的实时事件，并收成界面用的瘦轨迹。
+// sessionID 传给 Hub.Since。
 func (a *App) LiveSince(sessionID string, after int64) []trace.Event {
 	if a.Hub == nil {
 		return nil
@@ -276,6 +295,8 @@ func (a *App) LiveSince(sessionID string, after int64) []trace.Event {
 }
 
 // LiveSync 和 LiveSince 一样取实时事件，但保留 Gap 和 More，让调用方区分空洞和还有下一页。
+// sessionID 传给 Hub.Batch。
+// after 传给 Hub.Batch。
 func (a *App) LiveSync(sessionID string, after int64) LiveBatch {
 	if a.Hub == nil {
 		return LiveBatch{Events: []trace.Event{}}
@@ -286,6 +307,7 @@ func (a *App) LiveSync(sessionID string, after int64) LiveBatch {
 }
 
 // ReadTrace 读取该会话的全部轨迹事件。没有存储则返回错误。
+// id 传给 Traces.Read。
 func (a *App) ReadTrace(id string) ([]trace.Event, error) {
 	if a.Traces == nil {
 		return nil, fmt.Errorf("no trace store")
@@ -299,6 +321,7 @@ func (a *App) Client() (runtime.Client, error) {
 }
 
 // ClientFor 按会话的路由做故障转移客户端。没有可用密钥则返回错误。
+// meta 传给 chatRoutes。
 func (a *App) ClientFor(meta SessionMeta) (runtime.Client, error) {
 	if routes := a.chatRoutes(meta); len(routes) > 0 {
 		if cl := runtime.NewFailoverClient(routes); cl != nil {
@@ -317,6 +340,7 @@ func (a *App) Send(ctx context.Context, sessionID, message string, client runtim
 }
 
 // Running 在槽存在且 done 仍为假时返回真。
+// sessionID 用作 runs 的键。
 func (a *App) Running(sessionID string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -340,6 +364,7 @@ func (a *App) RunningIDs() []string {
 }
 
 // markRunDone 把槽的 done 设为真。槽还留着，所以下一轮发送仍会入队。
+// sessionID 用作 runs 的键。
 func (a *App) markRunDone(sessionID string) {
 	a.mu.Lock()
 	if slot := a.runs[sessionID]; slot != nil {
@@ -371,6 +396,7 @@ func (a *App) RunningStatus() []RunStatus {
 }
 
 // sessionPlanText 优先用 meta 里的计划文本，否则从工具根读取计划文件。
+// toolRoot 传给 LoadPlanFile。
 func sessionPlanText(meta SessionMeta, toolRoot string) string {
 	if s := strings.TrimSpace(meta.PlanText); s != "" {
 		return s
@@ -379,6 +405,11 @@ func sessionPlanText(meta SessionMeta, toolRoot string) string {
 }
 
 // noteChildRun 在子运行开始时记下槽并写子会话 meta，结束时删掉槽。子会话继承父会话的 Isolate 副本标记，harness 策略钉住。
+// parentID 写入子会话的 ParentID。
+// childID 先 TrimSpace，空串则返回；done 为真时从 runs 删掉，否则用作 runs 的键并写入子会话 ID。
+// prompt 经 titleFrom 写入标题。
+// parent 用来抄 Channel、Workspace、OriginWorkspace、Worktree、Isolate、Harness、ModelFingerprint、Model、ConnectionID 和 AuthMode。
+// done 为真时只删掉该子会话的运行槽。
 func (a *App) noteChildRun(parentID, childID, prompt string, parent SessionMeta, done bool) {
 	childID = strings.TrimSpace(childID)
 	if childID == "" {
@@ -418,6 +449,8 @@ func (a *App) noteChildRun(parentID, childID, prompt string, parent SessionMeta,
 }
 
 // noteRunTool 把运行槽的最后工具名设成这一次调用。
+// sessionID 用作 runs 的键。
+// name 先 TrimSpace，空串则返回，否则写入槽的 lastTool。
 func (a *App) noteRunTool(sessionID, name string) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -431,6 +464,8 @@ func (a *App) noteRunTool(sessionID, name string) {
 }
 
 // acquireRun 为会话占一个带取消函数的槽。已经有槽则返回正忙。释放时取消、删槽并清掉待审批。
+// sessionID 用作 runs 的键，释放时删掉并传给 SetApprovals。
+// ctx 传给 context.WithCancel。
 func (a *App) acquireRun(sessionID string, ctx context.Context) (context.Context, func(), error) {
 	ctx, cancel := context.WithCancel(ctx)
 	a.mu.Lock()
@@ -486,6 +521,7 @@ func (a *App) StartSendOpts(sessionID, message string, plan bool, atts []Attachm
 }
 
 // RetrySession 按已有历史继续当前回合，不追加新的用户消息。会话正在跑时返回正忙，不入队。
+// sessionID 传给 Running 和 launchSend。
 func (a *App) RetrySession(sessionID string) error {
 	if a.Running(sessionID) {
 		return errBusy
@@ -497,6 +533,7 @@ func (a *App) RetrySession(sessionID string) error {
 const requestIDName = "__request_id__"
 
 // WithRequestID 把合成器的乐观发送 id 记在附件上，这样开始发送不用另改签名。空 id 则原样返回。
+// atts 先经 takeRequestID 去掉已有的乐观发送 id，id 非空时再附上一条。
 func WithRequestID(atts []Attachment, id string) []Attachment {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -507,12 +544,14 @@ func WithRequestID(atts []Attachment, id string) []Attachment {
 }
 
 // requestIDOf 返回附件里带着的乐观发送 id。
+// atts 传给 takeRequestID。
 func requestIDOf(atts []Attachment) string {
 	_, id := takeRequestID(atts)
 	return id
 }
 
 // takeRequestID 从附件里拆出乐观发送 id，其余附件照旧返回。
+// atts 长度为 0 时原样返回，否则拆出名字是 requestIDName 的项。
 func takeRequestID(atts []Attachment) ([]Attachment, string) {
 	if len(atts) == 0 {
 		return atts, ""
@@ -530,6 +569,8 @@ func takeRequestID(atts []Attachment) ([]Attachment, string) {
 }
 
 // takeResume 在消息为空且附件里有续跑标记时视为续跑，并拿掉该标记。消息非空则不是续跑。
+// message 去掉首尾空白后非空则不是续跑，并原样返回 atts。
+// atts 在消息去掉空白后为空时，拿掉名字或路径为 __resume__ 的项。
 func takeResume(message string, atts []Attachment) ([]Attachment, bool) {
 	if strings.TrimSpace(message) != "" {
 		return atts, false
@@ -664,8 +705,10 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		loop.PlanMode = true
 		pol.Mode = "plan"
 	}
+	// 桌面回合在进 Run 前套聊天视界。RulesTokens 会被赋成 1600，不论快照里原来是更大还是更小。TaskMaxTurns 低于 40 会抬到 40。
 	loop = runtime.ApplyChatHorizon(loop)
 	if a.Config.MaxBudgetUSD > 0 {
+		// 配置里的美元上限只有在更小，或循环自己还没设上限时才写进去。配置是 0 表示不在这里收紧。
 		if loop.MaxBudgetUSD <= 0 || a.Config.MaxBudgetUSD < loop.MaxBudgetUSD {
 			loop.MaxBudgetUSD = a.Config.MaxBudgetUSD
 		}
@@ -679,6 +722,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	skillRoot := meta.ProjectRoot()
 	toolRoot := meta.ToolRoot()
+	// 会话隔离是工作区副本。这和 YOYO_ISOLATE 的进程拆分不是一回事。副本没建成就仍用原来的工具根。
 	if meta.Isolate {
 		ensured, e2 := a.EnsureSessionWorktree(sessionID)
 		if e2 == nil {
@@ -764,6 +808,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		return nil
 	}
 	userCommitted := alreadyCommitted
+	// 先把用户行写入轨迹，再告诉 Run 不要重写。resume 和已经提交过的回合跳过。
 	if !resume && !alreadyCommitted {
 		if err := a.commitUser(sessionID, message, atts, turnID); err != nil {
 			return "", err
@@ -772,11 +817,13 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 	}
 	hist := []runtime.Message{}
 	roundSeq := 0
+	// 历史只取最后一次检查点之后的事件。更早的原文留在 JSONL，不进这一轮的模型消息。
 	if evs, err := a.Traces.ReadFromCheckpoint(sessionID); err == nil {
 		hist = runtime.MessagesFromEventsOpts(evs, tools.Spill)
 		roundSeq = runtime.MaxAssistantRound(evs)
 	}
 	if userCommitted {
+		// 刚写入的用户行已经在轨迹里。从历史末尾拿掉同一句，避免模型看见两条。
 		drop := runtime.NormalizeUserText(message)
 		if drop == "" && len(atts) > 0 {
 			drop = "(image attached)"
@@ -797,6 +844,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 				name, _ := ev.Payload["name"].(string)
 				a.noteRunTool(sid, name)
 			}
+			// 界面订阅的是 Hub。轨迹另由 runtime 写入 JSONL。这里先发布，再交给原来的 onEvent。
 			a.Hub.Publish(ev)
 			if prev != nil {
 				prev(ev)
@@ -820,7 +868,9 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			note = hash + " " + snap.Note
 		}
 		var refs []runtime.Mention
+		// 这份注入按字节累计，上限 3200。普通文件正文另按 800 个 rune 截断。主文件不占这 3200，只注入提纲。
 		inject, refs = runtime.ExpandMentionsPacks(toolRoot, message, note, skillBodies, skillDirs, 3200)
+		// 会话提及再占最多 1600 字节，接在前面的注入后面。
 		if extra := runtime.FormatSessionMentions(refs, sessionID, tools, 1600); extra != "" {
 			if inject != "" {
 				inject += "\n"
@@ -829,6 +879,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		}
 		mentioned := runtime.MentionSkillNames(refs)
 		tools.MarkSkillsLoaded(mentioned...)
+		// 技能自动注入用剩下的字节。已经用掉超过 2800 时，仍给技能留 400，避免这一段被提及挤没。
 		remain := 3200 - len(inject)
 		if remain < 400 {
 			remain = 400
@@ -853,6 +904,7 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 			inject += autoInject
 			tools.MarkSkillsLoaded(auto...)
 		}
+		// 附件说明最多 2400 字节，接在提及和技能注入后面。
 		if extra := runtime.ExpandAttachments(toolRoot, toRuntimeAtts(atts), 2400); extra != "" {
 			if inject != "" {
 				inject += "\n"
@@ -924,9 +976,11 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 		OnChild: func(id, prompt string, done bool) {
 			a.noteChildRun(sessionID, id, prompt, meta, done)
 		},
-		OnShape:      func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
-		Meter:        meter,
-		PullSteer:    func() string { return a.pullSteer(sessionID) },
+		OnShape: func(r runtime.ShapeReport) { a.RememberShape(sessionID, r) },
+		Meter:   meter,
+		// 转向文本在下一次模型调用之前被拉走。流式生成中途不插入。
+		PullSteer: func() string { return a.pullSteer(sessionID) },
+		// 桌面这条路径打开软地平线。停轮看 192 和停滞窗口，for 不会因为 MaxTurns 用尽而退出。
 		SoftHorizon:  true,
 		ShowThinking: a.Config.ShowThinking,
 	})
@@ -955,11 +1009,17 @@ func (a *App) sendLocked(ctx context.Context, sessionID, message string, client 
 }
 
 // userCommitNeeded 在用户原文或附件非空时为真，这时才需要先落一条用户事件。
+// message 经 NormalizeUserText 后非空则为真。
+// atts 长度大于 0 则为真。
 func userCommitNeeded(message string, atts []Attachment) bool {
 	return runtime.NormalizeUserText(message) != "" || len(atts) > 0
 }
 
 // commitUser 把本轮用户原文或附件写成一条持久用户事件，追加进 JSONL，并 Publish 到 Hub。原文和附件都空则什么都不写。
+// sessionID 传给 GetSession，并写入事件的 SessionID 和载荷 id。
+// message 经 NormalizeUserText 得到正文。
+// atts 传给 ImageParts 和 attachmentMeta；规范化正文和附件都空则返回。
+// turnID 非空时写入 payload 的 turn_id，并写入事件的 TurnID 和载荷 id。
 func (a *App) commitUser(sessionID, message string, atts []Attachment, turnID string) error {
 	if a.Traces == nil {
 		return fmt.Errorf("no trace store")
@@ -1060,6 +1120,7 @@ func (a *App) StopTurn(sessionID string) InterruptResult {
 const errBusy errString = "session already running"
 
 // extraTools 把当前 MCP 工具和已加载的 WASM 插件收成额外工具。调用前走能力检查，MCP 还按会话画像的允许名单过滤。
+// sessionID 传给 sessionProfile，并写入能力请求的 SessionID。
 func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 	extra := map[string]runtime.ExtraTool{}
 	var mcpAllow []string
@@ -1152,6 +1213,8 @@ func (a *App) extraTools(sessionID string) map[string]runtime.ExtraTool {
 }
 
 // askUserFn 返回向用户提问的函数：先把问题写入轨迹和 Hub，再经 Gate 询问。有事先存下的回答就用它。
+// ctx 传给 Gate.AskOffer。
+// sessionID 写入提问事件和能力请求的 SessionID。
 func (a *App) askUserFn(ctx context.Context, sessionID string) func(string) (string, error) {
 	return func(question string) (string, error) {
 		shown := runtime.AskPrompt(question)
@@ -1189,16 +1252,23 @@ func (a *App) askUserFn(ctx context.Context, sessionID string) func(string) (str
 }
 
 // RunEval 用当前 harness 跑评测，不改套件。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEval(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, nil)
 }
 
 // RunEvalAt 对指定快照跑评测，不移动 refs/active。
+// ctx 传给 runEvalAt。
+// client 传给 runEvalAt。
+// hash 传给 runEvalAt。
 func (a *App) RunEvalAt(ctx context.Context, client runtime.Client, hash string) (eval.RunReport, error) {
 	return a.runEvalAt(ctx, client, "", hash, nil)
 }
 
 // RunEvalOpts 在 safety 为真时把 no-escape 放进套件的 Safety 再跑。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalOpts(ctx context.Context, client runtime.Client, safety bool) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		if safety {
@@ -1217,6 +1287,8 @@ func (a *App) RunEvalOpts(ctx context.Context, client runtime.Client, safety boo
 }
 
 // RunEvalTB 给套件加上 held-in 的 mkdir-note 和 held-out 的 copy-seed，并把重复次数至少设为 2。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalTB(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		suite.HeldIn = append(append([]string{}, suite.HeldIn...), "mkdir-note")
@@ -1228,11 +1300,15 @@ func (a *App) RunEvalTB(ctx context.Context, client runtime.Client) (eval.RunRep
 }
 
 // RunEvalSealed 先把套件密封再跑。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalSealed(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, eval.ApplySealed)
 }
 
 // RunEvalTransfer 密封后只把 Transfer 当作 held-out，并清掉 held-in、transfer 和 safety 再跑。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalTransfer(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		eval.ApplySealed(suite)
@@ -1244,11 +1320,15 @@ func (a *App) RunEvalTransfer(ctx context.Context, client runtime.Client) (eval.
 }
 
 // RunEvalIndex 只按索引迁移调整套件再跑。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalIndex(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, eval.ApplyIndexTransferOnly)
 }
 
 // RunEvalBehavior 把套件改成行为探针，held-in 用行为题，其余集合清空，重复次数为 1。
+// ctx 传给 RunEvalMut。
+// client 传给 RunEvalMut。
 func (a *App) RunEvalBehavior(ctx context.Context, client runtime.Client) (eval.RunReport, error) {
 	return a.RunEvalMut(ctx, client, func(suite *artifact.EvalSuite) {
 		suite.ID = "behavior-probes"
@@ -1262,21 +1342,35 @@ func (a *App) RunEvalBehavior(ctx context.Context, client runtime.Client) (eval.
 }
 
 // RunEvalMut 对当前 harness 跑评测，mut 可以改套件。
+// ctx 传给 runEvalAt。
+// client 传给 runEvalAt。
 func (a *App) RunEvalMut(ctx context.Context, client runtime.Client, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	return a.runEvalAt(ctx, client, "", "", mut)
 }
 
 // RunEvalHash 对指定哈希跑评测，mut 可以改套件。
+// ctx 传给 runEvalAt。
+// client 传给 runEvalAt。
+// hash 传给 runEvalAt。
 func (a *App) RunEvalHash(ctx context.Context, client runtime.Client, hash string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	return a.runEvalAt(ctx, client, "", hash, mut)
 }
 
 // runEval 用指定模型跑评测，快照用当前 active。
+// ctx 传给 runEvalAt。
+// client 传给 runEvalAt。
+// model 传给 runEvalAt。
+// mut 传给 runEvalAt。
 func (a *App) runEval(ctx context.Context, client runtime.Client, model string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	return a.runEvalAt(ctx, client, model, "", mut)
 }
 
 // runEvalAt 装入材料，可选改套件，调用评测引擎，并把报告记下来。
+// ctx 传给 Eval.Run。
+// client 为 nil 时改用 Client，否则传给 Eval.Run。
+// model 为空时改用 Config.Model，再传给 Eval.Run。
+// hash 去掉首尾空白后为空时改用 ActiveHash，再传给 LoadSnapshot 和 Materials。
+// mut 非 nil 时用来改套件。
 func (a *App) runEvalAt(ctx context.Context, client runtime.Client, model, hash string, mut func(*artifact.EvalSuite)) (eval.RunReport, error) {
 	if strings.TrimSpace(hash) == "" {
 		hash = a.ActiveHash()
@@ -1324,11 +1418,18 @@ func (a *App) runEvalAt(ctx context.Context, client runtime.Client, model, hash 
 }
 
 // EvolveOnce 用候选数 3 跑一轮演进。
+// ctx 传给 EvolveWith。
+// client 传给 EvolveWith。
+// failed 传给 EvolveWith。
 func (a *App) EvolveOnce(ctx context.Context, client runtime.Client, failed map[string]string) (evolve.CycleResult, error) {
 	return a.EvolveWith(ctx, client, failed, EvolveRun{K: 3})
 }
 
 // EvolveK 用给定的候选数跑一轮演进。
+// ctx 传给 EvolveWith。
+// client 传给 EvolveWith。
+// failed 传给 EvolveWith。
+// k 写入 EvolveRun 的 K。
 func (a *App) EvolveK(ctx context.Context, client runtime.Client, failed map[string]string, k int) (evolve.CycleResult, error) {
 	return a.EvolveWith(ctx, client, failed, EvolveRun{K: k})
 }
@@ -1348,6 +1449,10 @@ type EvolveRun struct {
 }
 
 // EvolveWith 在轮数大于 1 时跑完循环并返回最后一轮，否则只跑一轮。
+// ctx 在 Rounds 大于 1 时传给 EvolveLoop，否则传给 evolveOnce。
+// client 在 Rounds 大于 1 时传给 EvolveLoop，否则传给 evolveOnce。
+// failed 在 Rounds 大于 1 时传给 EvolveLoop，否则传给 evolveOnce。
+// run 的 Rounds 大于 1 时传给 EvolveLoop，否则传给 evolveOnce。
 func (a *App) EvolveWith(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) (evolve.CycleResult, error) {
 	if run.Rounds > 1 {
 		all, err := a.EvolveLoop(ctx, client, failed, run)
@@ -1363,6 +1468,10 @@ func (a *App) EvolveWith(ctx context.Context, client runtime.Client, failed map[
 }
 
 // EvolveLoop 按轮数重复演进，上下文取消、墙钟或金额上限到达时停下。
+// ctx 每轮先看 Err，再传给 evolveOnce。
+// client 传给 evolveOnce。
+// failed 只在第一轮传给 evolveOnce，之后改成 nil。
+// run 用来读 Rounds、MaxWall 和 MaxUSD，并传给 evolveOnce；Rounds 小于等于 0 时按 1 轮。
 func (a *App) EvolveLoop(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) ([]evolve.CycleResult, error) {
 	n := run.Rounds
 	if n <= 0 {
@@ -1402,6 +1511,10 @@ func (a *App) spentUSD() float64 {
 }
 
 // evolveOnce 选定父快照后跑一轮演进。有迁移题时给候选做标记；要求基线搜索时把比较结果附上。
+// ctx 传给 Evolve.Cycle，有迁移题时再传给 markTransfer，基线搜索时再传给 SearchBaselines。
+// client 为 nil 时改用 Client，写入 CycleOpts 后传给 Cycle，同一份选项在基线搜索时再传给 SearchBaselines；有迁移题时再传给 markTransfer。
+// failed 为 nil 时改成空 map，再写入 FailedTasks。
+// run 用来读 Sealed、IndexTransfer、K、PromoteActive、PromoteRepeats、MaxUSD、MaxWall、Behavior 和 Baselines。
 func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[string]string, run EvolveRun) (evolve.CycleResult, error) {
 	activeHash := a.ActiveHash()
 	parentHash := evolve.SelectParent(a.Archive.List(), activeHash)
@@ -1497,6 +1610,9 @@ func (a *App) evolveOnce(ctx context.Context, client runtime.Client, failed map[
 }
 
 // SearchBaselines 用当前 active 的材料搜索基线，并把花费记进用量。
+// ctx 传给 Evolve.SearchBaselines。
+// client 为 nil 时改用 Client，否则写入 CycleOpts。
+// run 用来读 Sealed、IndexTransfer、PromoteRepeats、MaxUSD、MaxWall 和 Behavior。
 func (a *App) SearchBaselines(ctx context.Context, client runtime.Client, n int, run EvolveRun) (evolve.LabCompare, error) {
 	activeHash := a.ActiveHash()
 	baseSet, err := a.materialSet(activeHash)
@@ -1544,6 +1660,11 @@ func (a *App) SearchBaselines(ctx context.Context, client runtime.Client, n int,
 }
 
 // markTransfer 用迁移题分别跑基线和候选。候选的 held-out 通过数更少时，在归档里标上。
+// ctx 传给两次 Eval.Run。
+// client 传给两次 Eval.Run。
+// baseHash 传给 materialSet。
+// canary 传给 materialSet，并传给 FlagTransfer。
+// suite 的 Transfer 当作 held-out，HeldIn、Transfer 和 Safety 清空后再跑。
 func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash, canary string, suite artifact.EvalSuite) {
 	baseSet, err := a.materialSet(baseHash)
 	if err != nil {
@@ -1579,6 +1700,7 @@ func (a *App) markTransfer(ctx context.Context, client runtime.Client, baseHash,
 }
 
 // materialSet 把快照和它解出的循环、提示、playbook、技能收成一套材料。
+// hash 传给 LoadSnapshot 和 Materials，并写入材料的 Hash。
 func (a *App) materialSet(hash string) (evolve.MaterialSet, error) {
 	snap, err := a.LoadSnapshot(hash)
 	if err != nil {
@@ -1594,6 +1716,7 @@ func (a *App) materialSet(hash string) (evolve.MaterialSet, error) {
 }
 
 // StageACE 在上一轮成功结束时，把整理后的 playbook 写成新快照并设到 refs/staging。它不移动 refs/active。
+// sessionID 传给 GetSession 和 Traces.Read，并写入笔记事件和 journal。
 func (a *App) StageACE(sessionID string) (string, error) {
 	meta, err := a.GetSession(sessionID)
 	if err != nil {
@@ -1677,6 +1800,7 @@ func (a *App) StageACE(sessionID string) (string, error) {
 }
 
 // stripACEBodies 把工具结果正文收短：错误截断，其余只留工具名和调用 id。
+// evs 先整份拷贝；工具结果正文以 ERROR: 开头且长于 240 时截断，否则改成工具名加调用 id。
 func stripACEBodies(evs []trace.Event) []trace.Event {
 	out := make([]trace.Event, len(evs))
 	copy(out, evs)
@@ -1710,11 +1834,15 @@ func (a *App) ListHarnesses() (map[string]string, error) {
 }
 
 // BestOfN 把同一套评测重复跑 n 次，并留下得分最高的一次。
+// ctx 传给 BestOfNMut。
+// client 传给 BestOfNMut。
 func (a *App) BestOfN(ctx context.Context, n int, client runtime.Client) (BestOfNReport, error) {
 	return a.BestOfNMut(ctx, n, client, nil)
 }
 
 // BestOfNMut 重复跑评测，mut 可以改套件，并按 held-in 与 held-out 的通过数选最好的一次。
+// ctx 传给 runEval。
+// client 传给 runEval。
 func (a *App) BestOfNMut(ctx context.Context, n int, client runtime.Client, mut func(*artifact.EvalSuite)) (BestOfNReport, error) {
 	if n < 1 {
 		n = 3
@@ -1734,6 +1862,9 @@ func (a *App) BestOfNMut(ctx context.Context, n int, client runtime.Client, mut 
 }
 
 // BestOfModels 给每个模型各跑一次评测，并选通过数最高的模型。
+// ctx 传给 runEval。
+// models 长度为 0 时改用 Config.Model 和 Config.Models，逐项去掉空白，空串和重复丢掉。
+// clients 按模型名取客户端；该名为空且 clients 非 nil 时再取键为 * 的客户端。
 func (a *App) BestOfModels(ctx context.Context, models []string, clients map[string]runtime.Client) (BestOfNReport, error) {
 	if len(models) == 0 {
 		models = append([]string{a.Config.Model}, a.Config.Models...)
@@ -1806,6 +1937,8 @@ func evalScore(r eval.RunReport) int {
 }
 
 // DiffDetail 比较两份快照的材料差异，并带上文本、字段和两边快照。
+// aHash 传给 LoadSnapshot，作为左边。
+// bHash 传给 LoadSnapshot，作为右边。
 func (a *App) DiffDetail(aHash, bHash string) (map[string]any, error) {
 	left, err := a.LoadSnapshot(aHash)
 	if err != nil {
@@ -1830,6 +1963,8 @@ func (a *App) DiffDetail(aHash, bHash string) (map[string]any, error) {
 }
 
 // Diff 只返回两份快照的差异文本。
+// aHash 传给 DiffDetail。
+// bHash 传给 DiffDetail。
 func (a *App) Diff(aHash, bHash string) (string, error) {
 	d, err := a.DiffDetail(aHash, bHash)
 	if err != nil {
@@ -1840,6 +1975,7 @@ func (a *App) Diff(aHash, bHash string) (string, error) {
 }
 
 // rememberEval 记下评测报告，写入 last.json，并更新用量。
+// rep 赋给 lastEval，并写入 last.json 和用量。
 func (a *App) rememberEval(rep eval.RunReport) {
 	a.evalMu.Lock()
 	a.lastEval = rep
@@ -1879,6 +2015,7 @@ func (a *App) LastEval() eval.RunReport {
 }
 
 // rememberEvolve 记下演进结果，并写入 last-evolve.json。
+// res 赋给 lastEvolve，并写入 last-evolve.json。
 func (a *App) rememberEvolve(res evolve.CycleResult) {
 	a.evolveMu.Lock()
 	a.lastEvolve = res
@@ -1927,6 +2064,7 @@ func (a *App) addSpendUsage(s evolve.Spend) {
 }
 
 // intFromAny 把 int、int64 或 float64 收成 int，其他类型返回 0。
+// v 是 int、int64 或 float64 时收成 int，其他类型返回 0。
 func intFromAny(v any) int {
 	switch t := v.(type) {
 	case int:
@@ -1941,6 +2079,8 @@ func intFromAny(v any) int {
 }
 
 // applyStudioLanePrompt 换上工作室引导，去掉要求先巡视工作区的片段，并附上工作室运行说明。
+// loop 的 Bootstrap 换成 studioBootstrap。
+// frags 丢掉正文里含 inspect the workspace 的片段，并附上 studioRuntimePin。
 func applyStudioLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragment) (artifact.LoopPreset, []artifact.PromptFragment) {
 	loop.Bootstrap = studioBootstrap
 	kept := make([]artifact.PromptFragment, 0, len(frags)+1)
@@ -1955,6 +2095,8 @@ func applyStudioLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFrag
 }
 
 // applyConductorLanePrompt 换上指挥引导，去掉要求先巡视工作区的片段，并附上指挥运行说明。
+// loop 的 Bootstrap 换成 conductorBootstrap。
+// frags 丢掉正文里含 inspect the workspace 的片段，并附上 conductorRuntimePin。
 func applyConductorLanePrompt(loop artifact.LoopPreset, frags []artifact.PromptFragment) (artifact.LoopPreset, []artifact.PromptFragment) {
 	loop.Bootstrap = conductorBootstrap
 	kept := make([]artifact.PromptFragment, 0, len(frags)+1)

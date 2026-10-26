@@ -12,6 +12,7 @@ import (
 var builtinDocumentationFS embed.FS
 
 // attachDocumentation 在说明还空着时读取 docs/<id>.md。文件不在就保持原样。
+// info 为 nil，或 Documentation 去掉空白后非空时直接返回；否则按 ID 读 docs 下的 Markdown，再交给 renderBuiltinDocumentation。
 func attachDocumentation(info *Metadata) {
 	if info == nil || strings.TrimSpace(info.Documentation) != "" {
 		return
@@ -24,11 +25,14 @@ func attachDocumentation(info *Metadata) {
 }
 
 // AttachDocumentation 给随包协议填上参考说明。
+// info 传给 attachDocumentation。
 func AttachDocumentation(info *Metadata) {
 	attachDocumentation(info)
 }
 
 // renderBuiltinDocumentation 替换 {{NAME}}、{{OPERATIONS}}、{{PARAMETERS}} 和 {{CONTRACT}}，并在末尾补一个换行。
+// info 的 Name 替换 {{NAME}}，整份元数据传给 renderOperations 和 renderRuntimeContract，Parameters 传给 renderParameters。
+// document 按这四个标记替换后去掉首尾空白，再补一个换行。
 func renderBuiltinDocumentation(info Metadata, document string) string {
 	replacements := map[string]string{
 		"{{NAME}}":       info.Name,
@@ -43,6 +47,7 @@ func renderBuiltinDocumentation(info Metadata, document string) string {
 }
 
 // renderOperations 把创建，以及非空的轮询和取消，写成一张表。
+// info 的 Create 总是写入表格；Poll、Cancel 去掉空白后非空才写入，ContentType 传给 firstNonEmpty。
 func renderOperations(info Metadata) string {
 	var b strings.Builder
 	b.WriteString("| 阶段 | 方法与相对路径 | 请求类型 | 宿主行为 |\n| --- | --- | --- | --- |\n")
@@ -57,6 +62,7 @@ func renderOperations(info Metadata) string {
 }
 
 // renderParameters 把参数写成表。没有参数时说明宿主还没有稳定映射，不表示上游没有参数。
+// parameters 长度为 0 时返回一句说明；否则逐条写 Name、Type、Required、Mapping、Description 和 Values。
 func renderParameters(parameters []Parameter) string {
 	if len(parameters) == 0 {
 		return "> 当前适配器没有声明可配置参数；这不表示上游没有参数，只表示宿主尚未建立稳定映射。"
@@ -74,6 +80,7 @@ func renderParameters(parameters []Parameter) string {
 }
 
 // renderRuntimeContract 写出宿主运行时合同：基址、密钥、模型名、错误、异步状态和参考素材地址。有轮询路径时才写状态和轮询那两行。
+// info 的 Poll 去掉空白后非空时，多写异步状态和轮询两行。
 func renderRuntimeContract(info Metadata) string {
 	var b strings.Builder
 	b.WriteString("## 宿主运行时合同\n\n")
@@ -91,6 +98,11 @@ func renderRuntimeContract(info Metadata) string {
 }
 
 // writeOperation 把「方法 路径」拆开写进表格的一行。没有空格时整段当路径。
+// b 接收这一行表格。
+// phase 写在第一列。
+// value 去掉空白后按第一个空格拆成方法和路径；没有空格时整段当路径。
+// contentType 经 markdownCell 写进请求类型列。
+// purpose 写在最后一列。
 func writeOperation(b *strings.Builder, phase, value, contentType, purpose string) {
 	parts := strings.SplitN(strings.TrimSpace(value), " ", 2)
 	method, path := "", strings.TrimSpace(value)
@@ -101,11 +113,13 @@ func writeOperation(b *strings.Builder, phase, value, contentType, purpose strin
 }
 
 // markdownCell 把竖线和换行换成表格里能放的文本。
+// value 里的竖线换成反斜杠加竖线，换行换成空格。
 func markdownCell(value string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(value, "|", "\\|"), "\n", " ")
 }
 
 // yesNo 把真写成「是」，假写成「否」。
+// value 为真时返回「是」，否则返回「否」。
 func yesNo(value bool) string {
 	if value {
 		return "是"
@@ -114,6 +128,7 @@ func yesNo(value bool) string {
 }
 
 // firstNonEmpty 返回第一段去掉空白后仍非空的文本。
+// values 逐段 TrimSpace，返回第一段非空的原文，都空则返回空串。
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

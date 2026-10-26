@@ -77,7 +77,13 @@ export class StandEngine {
   private wanted: string | null = null;
   private readonly fetching = new Map<string, Promise<void>>();
 
-  /** constructor 绑定上下文丢失与恢复，并创建场景渲染器和资源管理器。没有 WebGL 就抛 StandUnavailable。 */
+  /**
+   * constructor 绑定上下文丢失与恢复，并创建场景渲染器和资源管理器。没有 WebGL 就抛 StandUnavailable。
+   * canvas 调用 addEventListener，传给 spine.webgl.ManagedWebGLRenderingContext，传给 spine.webgl.SceneRenderer。
+   * spine 读取 webgl。
+   * framing 记到 this.framing。
+   * maxPixelRatio 记到 this.maxPixelRatio。
+   */
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly spine: SpineRuntime,
@@ -106,14 +112,14 @@ export class StandEngine {
     this.assets = new spine.webgl.AssetManager(context);
   }
 
-  /** direct 记下方向和是否减弱动效，已有姿势就跟着换。 */
+  /** direct 记下方向和是否减弱动效，已有姿势就跟着换。direction 记到 this.direction。reducedMotion 记到 this.reducedMotion。 */
   direct(direction: StandDirection, reducedMotion: boolean): void {
     this.direction = direction;
     this.reducedMotion = reducedMotion;
     if (this.pose) this.follow(this.pose);
   }
 
-  /** load 拉取并读入服装。同一地址已在场上则返回。票过期或引擎已释放则放弃，并按需要丢掉资源。 */
+  /** load 拉取并读入服装。同一地址已在场上则返回。票过期或引擎已释放则放弃，并按需要丢掉资源。outfit 解开 url。 */
   async load(outfit: Outfit): Promise<void> {
     const { url } = outfit;
     const ticket = ++this.loads;
@@ -148,7 +154,7 @@ export class StandEngine {
     this.start();
   }
 
-  /** 用 data.json 和 data.atlas 建骨骼、动画状态和包围盒。有 normal 皮肤就穿上。 */
+  /** 用 data.json 和 data.atlas 建骨骼、动画状态和包围盒。有 normal 皮肤就穿上。url 拼进字符串，写入字段 url。 */
   private read(url: string): Pose {
     const json = `${url}data.json`;
     const atlas = `${url}data.atlas`;
@@ -176,7 +182,7 @@ export class StandEngine {
     };
   }
 
-  /** 同一地址只拉一次 JSON 和图集。任一失败则整次失败，结束后从进行中的表里去掉。 */
+  /** 同一地址只拉一次 JSON 和图集。任一失败则整次失败，结束后从进行中的表里去掉。url 拼进字符串，传给 fetching.get，传给 fetching.delete，交给 fetching.set。 */
   private fetchOutfit(url: string): Promise<void> {
     let fetching = this.fetching.get(url);
     if (!fetching) {
@@ -197,7 +203,7 @@ export class StandEngine {
     return fetching;
   }
 
-  /** 丢掉该地址前缀下已加载的资源。对象资源先 dispose。 */
+  /** 丢掉该地址前缀下已加载的资源。对象资源先 dispose。url 传给 path.startsWith。 */
   private release(url: string): void {
     const assets = this.assets.assets;
     for (const path of Object.keys(assets)) {
@@ -208,12 +214,12 @@ export class StandEngine {
     }
   }
 
-  /** setStill 记下画完这一帧之后是否停住。 */
+  /** setStill 记下画完这一帧之后是否停住。still 记到 this.still。 */
   setStill(still: boolean): void {
     this.still = still;
   }
 
-  /** setPaused 暂停时停帧，恢复时再开。 */
+  /** setPaused 暂停时停帧，恢复时再开。paused 为真时才继续，记到 this.paused。 */
   setPaused(paused: boolean): void {
     this.paused = paused;
     if (paused) this.stop();
@@ -231,7 +237,7 @@ export class StandEngine {
     this.renderer.dispose();
   }
 
-  /** follow 按挑好的片段换身体、脸、嘴、眼睛和点头。 */
+  /** follow 按挑好的片段换身体、脸、嘴、眼睛和点头。pose 读取 animations，解开 state、shown，传给 playBody。 */
   private follow(pose: Pose): void {
     const { state, shown } = pose;
     const want = pickAnimations(this.direction, pose.animations, this.reducedMotion);
@@ -263,7 +269,13 @@ export class StandEngine {
     }
   }
 
-  /** 播放身体片段。当前动画带 relay 时先播接力再接到目标。目标有 loop_start 时，第一次播完后从该时刻循环。没有该片段则不动。 */
+  /**
+   * 播放身体片段。当前动画带 relay 时先播接力再接到目标。目标有 loop_start 时，第一次播完后从该时刻循环。没有该片段则不动。
+   * state 调用 getCurrent，调用 setAnimation，调用 addAnimation。
+   * data 传给 event。
+   * animations 调用 has。
+   * name 与 current?.animation.name 比较是否相等，传给 animations.has，传给 state.addAnimation，传给 state.setAnimation，传给 event。
+   */
   private playBody({ state, data, animations }: Pose, name: string): void {
     if (!animations.has(name)) return;
     const current = state.getCurrent(TRACK.body);
@@ -282,7 +294,7 @@ export class StandEngine {
       return;
     }
     entry.listener = {
-      /** complete 第一次播完后从循环起点接着播。 */
+      /** complete 第一次播完后从循环起点接着播。played 读取 loop、animationStart、trackTime。 */
       complete: (played) => {
         if (played.loop) return;
         played.loop = true;
@@ -292,7 +304,7 @@ export class StandEngine {
     };
   }
 
-  /** 在指定动画的事件时间线里找同名事件，返回时刻和字符串值。没有则空。 */
+  /** 在指定动画的事件时间线里找同名事件，返回时刻和字符串值。没有则空。data 调用 findAnimation。name 传给 data.findAnimation。eventName 与 event.data.name 比较是否相等。 */
   private event(data: SkeletonData, name: string, eventName: string): { time: number; value: string } | null {
     for (const timeline of data.findAnimation(name)?.timelines ?? []) {
       if (!(timeline instanceof this.spine.EventTimeline)) continue;
@@ -318,7 +330,7 @@ export class StandEngine {
     this.raf = 0;
   }
 
-  /** frame 到点就画一帧，静止时画完即停。 */
+  /** frame 到点就画一帧，静止时画完即停。now 减去 this.last，记到 this.last，传给 gate.shouldDraw。 */
   private readonly frame = (now: number): void => {
     this.raf = requestAnimationFrame(this.frame);
     if (!this.gate.shouldDraw(now)) return;
@@ -328,7 +340,7 @@ export class StandEngine {
     if (this.still) this.stop();
   };
 
-  /** 按像素比调整画布，推进动画，补上裁剪结尾，对好镜头并画出骨骼。 */
+  /** 按像素比调整画布，推进动画，补上裁剪结尾，对好镜头并画出骨骼。pose 读取 state、skeleton，传给 keepClipsEnding，传给 aim。step 传给 pose.state.update。 */
   private draw(pose: Pose, step: number): void {
     const { canvas, gl, renderer } = this;
     const ratio = pixelRatio(window.devicePixelRatio, this.maxPixelRatio);
@@ -351,7 +363,7 @@ export class StandEngine {
     renderer.end();
   }
 
-  /** 全身取景把角色放进画面并留顶空。膝上或腰上取景从顶部往下裁，并保证一定宽度。 */
+  /** 全身取景把角色放进画面并留顶空。膝上或腰上取景从顶部往下裁，并保证一定宽度。bounds 读取 height、width、x、y。aspect 除以 bounds.width，乘以 viewHeight。 */
   private aim({ bounds }: Pose, aspect: number): void {
     const camera = this.renderer.camera;
     if (this.framing === "full") {
@@ -368,7 +380,7 @@ export class StandEngine {
     camera.setViewport(viewHeight * aspect, viewHeight);
   }
 
-  /** Spine 3.6 在结束槽没有附件时会跳过它，裁剪就收不住。把结束槽改到最近一个有区域或网格附件的槽；这一段没有可画附件时卸掉裁剪。 */
+  /** Spine 3.6 在结束槽没有附件时会跳过它，裁剪就收不住。把结束槽改到最近一个有区域或网格附件的槽；这一段没有可画附件时卸掉裁剪。skeleton 读取 slots、drawOrder。clips 调用 has，调用 set，用来遍历。 */
   private keepClipsEnding({ skeleton, clips }: Pose): void {
     const { ClippingAttachment, RegionAttachment, MeshAttachment } = this.spine;
     for (const slot of skeleton.slots) {

@@ -15,6 +15,7 @@ import (
 // Render 按扩展名生成预览文本。扩展名比较前转成小写。
 // xlsx 先写单元格，标题是 spreadsheet；EvaluateXlsx 成功时再写 evaluated。求值失败则只有单元格。
 // docx 和 pptx 返回 office.Query 的文本。pdf 同样走 office.Query。
+// path 取出扩展名并转成小写。.xlsx 时传给 office.ReadXlsx 和 office.EvaluateXlsx，.docx、.pptx、.pdf 时传给 office.Query，其余传给 os.ReadFile。
 func Render(path string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {

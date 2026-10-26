@@ -48,6 +48,7 @@ var asrModelNeedles = []string{
 }
 
 // CapOfModel 按模型名子串返回一种生成能力。空名字返回 CapChat。识别顺序是语音识别、抠图、音乐、语音、视频、图像，其余是聊天。
+// model 去掉空白并转小写。空则返回 CapChat。否则按语音识别、抠图、音乐、语音、视频、图像的顺序判断，都不是则返回 CapChat。
 func CapOfModel(model string) string {
 	s := strings.ToLower(strings.TrimSpace(model))
 	if s == "" {
@@ -150,6 +151,7 @@ func isAsrModelName(s string) bool {
 }
 
 // generationCap 报告该能力是不是聊天、图像、视频、语音、音乐、抠图、素材或语音识别。
+// cap 传给 NormalizeCap。结果是 CapChat、CapImage、CapVideo、CapSpeech、CapMusic、CapMatting、CapStock 或 CapASR 时返回真。
 func generationCap(cap string) bool {
 	switch NormalizeCap(cap) {
 	case CapChat, CapImage, CapVideo, CapSpeech, CapMusic, CapMatting, CapStock, CapASR:
@@ -160,6 +162,7 @@ func generationCap(cap string) bool {
 }
 
 // CapsOf 合并声明的能力，以及从模型名和 DefaultModel 推断出的能力。已声明生成能力时，不把仅被当成聊天的模型名再加成聊天。
+// c 的 Capabilities、Models 和 DefaultModel 用来收集能力。Models 里的名字传给 CapOfModel。
 func CapsOf(c Connection) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -256,6 +259,7 @@ func ModelsFor(c Connection, cap string) []string {
 }
 
 // ModelsExcept 返回 Models 里不属于该能力的名字。
+// cap 传给 NormalizeCap，再传给 ModelsFor，用来从 c.Models 里排除这些名字。
 func ModelsExcept(c Connection, cap string) []string {
 	cap = NormalizeCap(cap)
 	take := map[string]bool{}
@@ -272,6 +276,8 @@ func ModelsExcept(c Connection, cap string) []string {
 }
 
 // ModelForCap 先取 DefaultModel 里的该能力，否则取 ModelsFor 的第一项。
+// c 的 DefaultModel 按规范化后的 cap 取值，去掉空白后非空就返回。否则用 ModelsFor 的第一项。
+// cap 传给 NormalizeCap，作为 DefaultModel 的键，并传给 ModelsFor。
 func ModelForCap(c Connection, cap string) string {
 	cap = NormalizeCap(cap)
 	if c.DefaultModel != nil {
@@ -286,6 +292,8 @@ func ModelForCap(c Connection, cap string) string {
 }
 
 // ModelsJSONFor 把 ModelsFor 的结果编成 JSON 数组。没有模型时返回 []。
+// c 传给 ModelsFor。
+// cap 传给 ModelsFor。得到的列表为空时返回 []。
 func ModelsJSONFor(c Connection, cap string) string {
 	ms := ModelsFor(c, cap)
 	if len(ms) == 0 {

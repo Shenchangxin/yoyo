@@ -5,6 +5,11 @@ package tool
 import "github.com/Shenchangxin/yoyo/internal/artifact"
 
 // spec 组装一条工具规格，执行方固定为宿主，并把注解写到只读、并发、开放世界、破坏和独占上。
+// name 写入 Name。
+// desc 写入 Description。
+// cap 写入 Capability。
+// params 写入 Parameters。
+// ann 的五个标记分别写入 ReadOnly、ConcurrencySafe、OpenWorld、Destructive、Exclusive。
 func spec(name, desc, cap string, params map[string]any, ann Annotations) artifact.ToolSpec {
 	return artifact.ToolSpec{
 		Name:            name,
@@ -21,6 +26,7 @@ func spec(name, desc, cap string, params map[string]any, ann Annotations) artifa
 }
 
 // obj 返回 type 为 object 的参数模式。传了必填名时写上 required。
+// props 写入 properties。
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {

@@ -118,6 +118,7 @@ func (s *Store) Pending() []Review {
 }
 
 // GetReview 按 ID 或哈希查找审阅。
+// id 与每条的 ID 或 Hash 比较。
 func (s *Store) GetReview(id string) (Review, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -130,6 +131,7 @@ func (s *Store) GetReview(id string) (Review, bool) {
 }
 
 // Decide 在哈希非空且不符时返回错误。已保存则再读出页面。approve 为假则标成 declined，不写页面。为真时以修订号 0 调用 applyApprovedLocked，再标成 saved。
+// hash 非空且与找到的审阅 Hash 不同时返回 review hash mismatch。
 func (s *Store) Decide(id, hash string, approve bool) (Page, Review, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -179,6 +181,7 @@ func (s *Store) Decide(id, hash string, approve bool) (Page, Review, error) {
 }
 
 // reviewID 用哈希前 12 位生成 rev- 前缀。哈希为空时用当前 UTC 时间。
+// hash 长度大于等于 12 时取前 12 位接在 rev- 后面。为空时改用当前 UTC 时间。否则整段接在 rev- 后面。
 func reviewID(hash string) string {
 	if len(hash) >= 12 {
 		return "rev-" + hash[:12]
@@ -190,6 +193,7 @@ func reviewID(hash string) string {
 }
 
 // findReview 按 ID 或哈希查找，返回条目、下标和整份列表。找不到返回 review not found。
+// id 去掉首尾空白后与每条的 ID 或 Hash 比较。
 func (s *Store) findReview(id string) (Review, int, []Review, error) {
 	all := s.loadReviews()
 	id = strings.TrimSpace(id)
@@ -213,6 +217,7 @@ func (s *Store) loadReviews() []Review {
 }
 
 // flushReviews 把审阅列表原子写到 reviews.json，权限 0o644。
+// all 交给 json.MarshalIndent，前缀是空串，缩进是两个空格，再传给 atomicWrite，权限是 0o644。
 func (s *Store) flushReviews(all []Review) error {
 	b, err := json.MarshalIndent(all, "", "  ")
 	if err != nil {

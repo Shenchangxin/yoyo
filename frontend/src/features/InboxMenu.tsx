@@ -8,7 +8,10 @@ import { asArray, str } from "../lib/normalize";
 import { cn } from "../lib/utils";
 import type { Notice } from "../lib/protocol";
 
-// InboxMenu 四块都空时只显示没有等待。点通知先关掉再交给 onNotice。收件正文截到 200。打开线程时顺带 inboxRead。
+/**
+ * InboxMenu 四块都空时只显示没有等待。点通知先关掉再交给 onNotice。收件正文截到 200。打开线程时顺带 inboxRead。
+ * props 读取 notices、onDismissNotice、onClearNotices、onOpenThread，调用 titleOf，调用 onDismissNotice，调用 onNotice，调用 onOpenThread，调用 onResolve。
+ */
 export function InboxMenu(props: {
   notices?: Notice[];
   // 会话的显示名，画在每条通知上面。
@@ -167,7 +170,7 @@ export function InboxMenu(props: {
   );
 }
 
-// inboxBadgeCount 把未读、待批、草稿和通知数加在一起。待批不含 ask_user。
+/** inboxBadgeCount 把未读、待批、草稿和通知数加在一起。待批不含 ask_user。inbox 做过滤。queue 读取 offers、drafts，为空时不读。notices 加上 unread + offers + drafts。 */
 export function inboxBadgeCount(inbox: any[], queue: any, notices = 0): number {
   const unread = inbox.filter((it: any) => it.unread || it.Unread).length;
   const offers = asArray(queue?.offers).filter(isApprovalOffer).length;
@@ -175,20 +178,20 @@ export function inboxBadgeCount(inbox: any[], queue: any, notices = 0): number {
   return unread + offers + drafts + notices;
 }
 
-// ask_user 的问题在输入框上方那张卡上回答，不进这个菜单。
+/** isApprovalOffer ask_user 的问题在输入框上方那张卡上回答，不进这个菜单。o 读取 request、Request，为空时不读。 */
 function isApprovalOffer(o: any): boolean {
   const req = o?.request || o?.Request || {};
   return str(req.action || req.Action) !== "ask_user";
 }
 
-// 时间无效时返回空字符串，否则只显示时和分。
+/** noticeTime 时间无效时返回空字符串，否则只显示时和分。ts 为真时才继续，传给 Date。 */
 function noticeTime(ts: string): string {
   const d = ts ? new Date(ts) : null;
   if (!d || Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-// 小节标题。count 为 0 时不画数字。
+/** MenuLabel 小节标题。count 为 0 时不画数字。children 作为子节点渲染。 */
 function MenuLabel({ children, count }: { children: ReactNode; count?: number }) {
   return (
     <div className="flex h-8 items-center gap-2 px-3 text-[11px] font-medium text-muted">
@@ -198,7 +201,7 @@ function MenuLabel({ children, count }: { children: ReactNode; count?: number })
   );
 }
 
-// 只放图标的按钮，名字放在 aria-label 上。
+/** IconAction 只放图标的按钮，名字放在 aria-label 上。onClick 写到 button 的 onClick。children 作为子节点渲染。 */
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} className="grid size-6 shrink-0 place-items-center rounded-md text-muted hover:bg-lift hover:text-foreground" onClick={onClick}>
@@ -207,7 +210,7 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-// primary 用前景底，danger 悬停变危险色，没传 tone 或 ghost 用弱色。
+/** TextAction primary 用前景底，danger 悬停变危险色，没传 tone 或 ghost 用弱色。children 作为子节点渲染。onClick 写到 button 的 onClick。 */
 function TextAction({ children, onClick, tone }: { children: ReactNode; onClick: () => void; tone?: "primary" | "danger" | "ghost" }) {
   return (
     <button

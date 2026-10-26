@@ -8,7 +8,7 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "size"> & {
   indeterminate?: boolean;
 };
 
-// Checkbox 用原生复选框加描边勾。状态变化才动，空闲时静止。
+/** Checkbox 用原生复选框加描边勾。状态变化才动，空闲时静止。className 传给 cn。checked 为真时才继续，写到 input 的 checked。indeterminate 为假时走另一支。props 展开到 input。 */
 export function Checkbox({ className, checked, indeterminate, ...props }: Props) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {

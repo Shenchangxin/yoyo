@@ -11,7 +11,7 @@ import { mergeItem, subscribeSession } from "../../lib/stream";
 import { processStartMs } from "../../lib/transcript-layout";
 import { ProcessGroup, useNow } from "./ProcessGroup";
 
-// explore、qa、implement 换成对应文案，其余返回空字符串。
+/** profileLabel explore、qa、implement 换成对应文案，其余返回空字符串。profile 转成小写，用来做分支。t 读取 subagentExplore、subagentQA、subagentImplement。 */
 function profileLabel(profile: string, t: { subagentExplore: string; subagentImplement: string; subagentQA: string }): string {
   switch (profile.toLowerCase()) {
     case "explore":
@@ -25,13 +25,13 @@ function profileLabel(profile: string, t: { subagentExplore: string; subagentImp
   }
 }
 
-// 取最后一条的 payload，没有就用空对象。
+/** latestPayload 取最后一条的 payload，没有就用空对象。items 读取 length，按下标读取。 */
 function latestPayload(items: Item[]): Record<string, unknown> {
   const last = items[items.length - 1];
   return (last?.payload || {}) as Record<string, unknown>;
 }
 
-// 取第一条非空的 prompt、summary 或 text，再取其中第一个非空行。都没有就返回空字符串。
+/** promptTitle 取第一条非空的 prompt、summary 或 text，再取其中第一个非空行。都没有就返回空字符串。items 用来遍历。 */
 function promptTitle(items: Item[]): string {
   for (const it of items) {
     const p = it.payload || {};
@@ -41,7 +41,7 @@ function promptTitle(items: Item[]): string {
   return "";
 }
 
-// 从最后一条往前找 summary，没有再找 error。都没有就返回空字符串。
+/** summaryText 从最后一条往前找 summary，没有再找 error。都没有就返回空字符串。items 读取 length，按下标读取。 */
 function summaryText(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     const p = items[i].payload || {};
@@ -53,7 +53,7 @@ function summaryText(items: Item[]): string {
   return "";
 }
 
-// 最后一条带 error，或 phase 为 complete 且 ok 为 false，算失败。没有条目不算失败。
+/** subagentFailed 最后一条带 error，或 phase 为 complete 且 ok 为 false，算失败。没有条目不算失败。items 读取 length，按下标读取。 */
 function subagentFailed(items: Item[]): boolean {
   const last = items[items.length - 1];
   if (!last) return false;
@@ -62,7 +62,12 @@ function subagentFailed(items: Item[]): boolean {
   return false;
 }
 
-// SubagentCard 默认展开跟 live 走，用户点过之后改记 userOpen。只有展开且 child 非空才订阅子会话，卸下时停订。摘要去掉开头的 SUBAGENT_SUMMARY:。
+/**
+ * SubagentCard 默认展开跟 live 走，用户点过之后改记 userOpen。只有展开且 child 非空才订阅子会话，卸下时停订。摘要去掉开头的 SUBAGENT_SUMMARY:。
+ * items 取第一段，读取 payload、length，为空时不读，按下标读取，传给 latestPayload，传给 promptTitle，传给 summaryText，传给 subagentFailed，传给 processStartMs。
+ * running 为假时用 live，写到 ProcessGroup 的 running。
+ * compact 写到 ProcessGroup 的 compact。
+ */
 export const SubagentCard = memo(function SubagentCard({
   items,
   child,

@@ -83,6 +83,8 @@ func main() {
 }
 
 // wordMask 按 5 乘 7 的字形把单词画进布尔网格。
+// cols 作为网格宽度，也是每行下标的步长。
+// rows 与 cols 相乘得到网格长度。
 func wordMask(word []byte, cols, rows int) []bool {
 	mask := make([]bool, cols*rows)
 	x0 := padX
@@ -101,6 +103,11 @@ func wordMask(word []byte, cols, rows int) []bool {
 }
 
 // paint 按这一帧的流量把字模和代码雨画进调色板图像。
+// dst 传给 fill 或 fillGlyph。
+// cols 作为每行步长，并限制 x。
+// rows 限制 y。
+// mask 在下标处为真时走 letterCell。为假且 flow 大于 0 时走 rainCell。
+// frame 传给 streamAmount、letterCell 和 rainCell。
 func paint(dst *image.Paletted, cols, rows int, mask []bool, frame int) {
 	// 流量为 0 时锁住单词，然后代码流盖过来，最后再锁回去。
 	flow := streamAmount(frame)
@@ -142,6 +149,10 @@ func streamAmount(frame int) int {
 }
 
 // letterCell 在流量小于 40 时返回实心字母色。扫描列上的格子改成代码字符。
+// x 与 scan 相等时，字符取自 hash。
+// y 传给 hash。
+// frame 用来算 scan，并传给 hash。
+// flow 小于 40 时返回 3 和 0。
 func letterCell(x, y, frame, flow int) (idx byte, glyph byte) {
 	if flow < 40 {
 		return 3, 0
@@ -168,6 +179,10 @@ var mini = map[byte][5]byte{
 }
 
 // rainCell 按列滚动代码字符。位置大于 7 时不画。流量小于 160 时不画最淡的拖尾。
+// x 传给 hash，用来算速度、偏移和字符。
+// y 参与 pos，并传给 hash。
+// frame 乘速度后参与 pos，并传给 hash。
+// flow 小于 160 时，pos 大于等于 4 则返回 0 和 0。
 func rainCell(x, y, frame, flow int) (idx byte, glyph byte) {
 	speed := 1 + hash(x, 0, 1)%3
 	shift := hash(x, 1, 2) % 11
@@ -189,6 +204,10 @@ func rainCell(x, y, frame, flow int) (idx byte, glyph byte) {
 }
 
 // fill 用调色板下标填一块格子，四边各留 1 个像素。
+// dst 调用 SetColorIndex。
+// gx 乘 scale 得到格子左上角的 x。
+// gy 乘 scale 得到格子左上角的 y。
+// idx 作为颜色下标写入。
 func fill(dst *image.Paletted, gx, gy int, idx byte) {
 	x0, y0 := gx*scale, gy*scale
 	// 留出一像素缝，让色块看起来像像素，而不是糊成一片。
@@ -200,6 +219,11 @@ func fill(dst *image.Paletted, gx, gy int, idx byte) {
 }
 
 // fillGlyph 在格子里画 3 乘 5 的小字形。没有该字形时改成整块填充。
+// dst 在字形点落在边界内时调用 SetColorIndex。没有字形时传给 fill。
+// gx 乘 scale 得到格子原点，没有字形时传给 fill。
+// gy 乘 scale 得到格子原点，没有字形时传给 fill。
+// idx 作为颜色下标。没有字形时传给 fill。
+// glyph 作为 mini 的键。表里没有时改走 fill。
 func fillGlyph(dst *image.Paletted, gx, gy int, idx, glyph byte) {
 	g, ok := mini[glyph]
 	if !ok {
@@ -221,6 +245,8 @@ func fillGlyph(dst *image.Paletted, gx, gy int, idx, glyph byte) {
 }
 
 // hash 用三个整数算出非负散列。
+// b 乘 668265263 后加进散列。
+// c 乘 2246822519 后加进散列。
 func hash(a, b, c int) int {
 	n := a*374761393 + b*668265263 + c*2246822519
 	n = (n ^ (n >> 13)) * 1274126177
@@ -228,6 +254,7 @@ func hash(a, b, c int) int {
 }
 
 // fatal 把错误写到标准错误并以状态 1 退出。
+// err 的 Error 写到标准错误，然后以状态 1 退出。
 func fatal(err error) {
 	os.Stderr.WriteString(err.Error() + "\n")
 	os.Exit(1)

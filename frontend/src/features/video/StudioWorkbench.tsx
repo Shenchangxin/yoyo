@@ -104,21 +104,21 @@ type StudioProject = {
 const TREND_PLATFORMS = ["weibo", "douyin", "zhihu", "bilibili", "toutiao", "baidu"] as const;
 const ASPECTS = ["9:16", "16:9", "1:1"] as const;
 
-/** 把未知值收成数组。 */
+/** 把未知值收成数组。 v 是数组就原样留下，否则返回空数组。 */
 function asList<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
-/** 留下有成片或正在自动阶段里的短片，最多 12 条，当前这条不在里面就放到最前。 */
+/** 留下有成片或正在自动阶段里的短片，最多 12 条，当前这条不在里面就放到最前。 projects 留下有成片或自动阶段还在名单里的，最多 12 条。current 有 id 且有成片或自动阶段、又不在这 12 条里，就放到最前。 */
 function shelfFilms(projects: StudioProject[], current: StudioProject | null) {
   const live = new Set(["queued", "script", "voice", "visuals", "compose", "done", "failed"]);
-  const rows = projects.filter((p) => !!p.result_hash || live.has(p.auto_phase || ""));
+  const rows = projects.filter(/** p 有成片哈希，或自动阶段还在 live 里，才留下。 */ (p) => !!p.result_hash || live.has(p.auto_phase || ""));
   const top = rows.slice(0, 12);
-  if (current?.id && (current.result_hash || current.auto_phase) && !top.some((p) => p.id === current.id)) top.unshift(current);
+  if (current?.id && (current.result_hash || current.auto_phase) && !top.some(/** p 用 id 和当前短片比对。 */ (p) => p.id === current.id)) top.unshift(current);
   return top;
 }
 
-/** StudioWorkbench 在雷达、选题、制作和发布之间切换当前短片。 */
+/** StudioWorkbench 在雷达、选题、制作和发布之间切换当前短片。 props 用 projects 算副驾会话并找当前短片，有 onOpenProject 就把短片交给它，做成片或删改后调用 onRefreshHistory。sessionId、onNeedSession、onClose 函数体没有读取。 */
 export function StudioWorkbench(props: {
   sessionId?: string;
   projects?: VideoProject[];
@@ -129,9 +129,9 @@ export function StudioWorkbench(props: {
 }) {
   const copy = useCopy();
   const s = copy.video.studio;
-  const studioId = useStudioSelection((st) => st.studioId);
-  const setStudioId = useStudioSelection((st) => st.setStudioId);
-  const setStudioMeta = useStudioSelection((st) => st.setStudioMeta);
+  const studioId = useStudioSelection(/** st 取出 studioId。 */ (st) => st.studioId);
+  const setStudioId = useStudioSelection(/** st 取出 setStudioId。 */ (st) => st.setStudioId);
+  const setStudioMeta = useStudioSelection(/** st 取出 setStudioMeta。 */ (st) => st.setStudioMeta);
   const [pane, setPane] = useState<StudioPane>(studioId ? "assemble" : "radar");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -161,10 +161,10 @@ export function StudioWorkbench(props: {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [radarLoading, setRadarLoading] = useState(true);
 
-  const current = (project && project.id === studioId ? project : null) || projects.find((p) => p.id === studioId) || null;
+  const current = (project && project.id === studioId ? project : null) || projects.find(/** p 用 id 和当前短片 id 比对。 */ (p) => p.id === studioId) || null;
   const copilotSessionId = studioSessionId(studioId, props.projects || []);
 
-  /** 让父级打开这条短片的副驾。没有打开回调就返回。 */
+  /** 让父级打开这条短片的副驾。没有打开回调就返回。 p 没有 id 或没有打开回调就返回，否则把 id、title、会话、status 和 gate 交给 onOpenProject。 */
   async function attachCopilot(p: { id: string; title?: string; status?: string; gate?: string }) {
     if (!p?.id || !props.onOpenProject) return;
     await props.onOpenProject(asStudioProject({
@@ -177,7 +177,7 @@ export function StudioWorkbench(props: {
   }
 
   /** 按状态读取选题。 */
-  const loadTopics = useCallback(async (status = topicStatus) => {
+  const loadTopics = useCallback(/** status 交给 listTopics，结果收成选题数组。 */ async (status = topicStatus) => {
     const list = await api.video.listTopics(status);
     setTopics(asList<Topic>(list));
   }, [topicStatus]);
@@ -189,7 +189,7 @@ export function StudioWorkbench(props: {
     setProjects(rows);
   }, []);
 
-  /** 读取一条短片。选择已经换了就丢掉结果。 */
+  /** 读取一条短片。选择已经换了就丢掉结果。 id 为空就清空工程，否则交给 getStudio；返回时选择已经不是这个 id 就丢掉。 */
   const loadProject = useCallback(async (id: string) => {
     if (!id) {
       setProject(null);
@@ -198,42 +198,42 @@ export function StudioWorkbench(props: {
     const p = (await api.video.getStudio(id)) as StudioProject;
     if (useStudioSelection.getState().studioId !== id) return;
     setProject(p);
-    setProjects((prev) => {
-      const rest = prev.filter((x) => x.id !== p.id);
+    setProjects(/** prev 去掉和 p 相同 id 的项，再把 p 放到最前。 */ (prev) => {
+      const rest = prev.filter(/** x 的 id 和 p 不同才留下。 */ (x) => x.id !== p.id);
       return [p, ...rest];
     });
   }, []);
 
   /** 读取发布草稿。 */
-  const loadPublishes = useCallback(async (projectId = studioId) => {
+  const loadPublishes = useCallback(/** projectId 空着当空字符串，交给 listPublishes。 */ async (projectId = studioId) => {
     const list = await api.video.listPublishes(projectId || "");
     setPublishes(asList<Publish>(list));
   }, [studioId]);
 
   useEffect(() => {
-    void loadTopics().catch((e) => toast.error(api.errMessage(e)));
-    void loadProjects().catch((e) => toast.error(api.errMessage(e)));
-    void api.video.publishPlatforms().then((rows) => setPubPlatforms(asList<PublishPlatform>(rows))).catch(() => {});
-    void api.video.settings().then((cfg) => {
+    void loadTopics().catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
+    void loadProjects().catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
+    void api.video.publishPlatforms().then(/** rows 收成发布平台数组。 */ (rows) => setPubPlatforms(asList<PublishPlatform>(rows))).catch(() => {});
+    void api.video.settings().then(/** cfg 取出 studio_aspect，只接受 16:9 和 1:1，否则用 9:16；有 studio_publish_platform 就记成偏好平台。 */ (cfg) => {
       const a = String(cfg?.studio_aspect || "9:16");
       setDefaultAspect(a === "16:9" || a === "1:1" ? a : "9:16");
       const p = String(cfg?.studio_publish_platform || "").trim();
       if (p) setPreferredPlatform(p);
     }).catch(() => {});
-    void api.video.status().then((st) => {
+    void api.video.status().then(/** st 取出 media_base 并去掉结尾斜杠，再看 remotion.ready。 */ (st) => {
       setMediaBase(String(st?.media_base || "").replace(/\/+$/, ""));
       setRemotionReady(!!st?.remotion?.ready);
     }).catch(() => {});
-    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then((raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {}).finally(() => setRadarLoading(false));
-    void api.video.studioCatalog().then((row) => setCatalog((row || {}) as StudioCatalog)).catch(() => {});
+    void api.video.fetchTrends("weibo,douyin,zhihu", 15).then(/** raw 取出 trends 收成数组。 */ (raw) => setTrends(asList<TrendGroup>(raw?.trends))).catch(() => {}).finally(() => setRadarLoading(false));
+    void api.video.studioCatalog().then(/** row 空着当空对象，写成目录。 */ (row) => setCatalog((row || {}) as StudioCatalog)).catch(() => {});
   }, [loadProjects]);
 
   useEffect(() => {
     if (pane !== "publish") return;
-    void loadPublishes().catch((e) => toast.error(api.errMessage(e)));
+    void loadPublishes().catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
   }, [pane, loadPublishes]);
 
-  const filmLive = projects.some((p) => filmInFlight(p.auto_phase));
+  const filmLive = projects.some(/** p 把 auto_phase 交给 filmInFlight。 */ (p) => filmInFlight(p.auto_phase));
   useEffect(() => {
     if (!filmLive) return;
     const t = window.setInterval(() => {
@@ -269,7 +269,7 @@ export function StudioWorkbench(props: {
 
   useEffect(() => {
     if (!studioId) return;
-    const hit = (props.projects || []).find((row) => row.kind === "studio" && row.id === studioId);
+    const hit = (props.projects || []).find(/** row 要是短片，并且 id 和当前短片相同。 */ (row) => row.kind === "studio" && row.id === studioId);
     void attachCopilot({
       id: studioId,
       title: hit?.title || useStudioSelection.getState().title,
@@ -284,10 +284,10 @@ export function StudioWorkbench(props: {
 
   useEffect(() => {
     if (studioId) {
-      setPane((p) => (p === "radar" || p === "topics" ? "assemble" : p));
+      setPane(/** p 是 radar 或 topics 时收成 assemble，否则原样返回。 */ (p) => (p === "radar" || p === "topics" ? "assemble" : p));
       return;
     }
-    setPane((p) => (p === "assemble" || p === "publish" ? "radar" : p));
+    setPane(/** p 是 assemble 或 publish 时收成 radar，否则原样返回。 */ (p) => (p === "assemble" || p === "publish" ? "radar" : p));
   }, [studioId]);
 
   useEffect(() => {
@@ -305,7 +305,7 @@ export function StudioWorkbench(props: {
     });
   }, [current, current?.id, current?.title, current?.gate, current?.furthest_gate, current?.status, current?.script, current?.script_status, current?.narration_hash, current?.skip_audio, current?.result_hash, current?.auto_phase, current?.delivery?.status, pane, setStudioMeta]);
 
-  /** 跑一次请求，失败就记下错误。 */
+  /** 跑一次请求，失败就记下错误。 label 写成忙碌标记。fn 执行，失败就记下并弹出错误。 */
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
     setErr("");
@@ -328,7 +328,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 把一条热榜收成选题，并切到选题栏。 */
+  /** 把一条热榜收成选题，并切到选题栏。 platform 和条目的标题、热度一起交给 topicFromTrend。item 没有 title 就返回，否则把 title 和 hot 交给 topicFromTrend。 */
   async function collect(platform: string, item: TrendItem) {
     if (!item.title) return;
     await run("collect", async () => {
@@ -350,7 +350,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 把选题的改动写回去。 */
+  /** 把选题的改动写回去。 t 展开后并上 extra 再保存。extra 并进这条选题。 */
   async function patchTopic(t: Topic, extra: Partial<Topic>) {
     await run("topic", async () => {
       await api.video.saveTopic({ ...t, ...extra });
@@ -358,7 +358,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 打开这条短片到制作栏，并挂上副驾。 */
+  /** 打开这条短片到制作栏，并挂上副驾。 p 没有 id 就返回，否则记下短片、切到制作，并尝试挂上副驾。 */
   async function openShort(p: StudioProject) {
     if (!p?.id) return;
     setStudioId(p.id);
@@ -371,10 +371,10 @@ export function StudioWorkbench(props: {
     }
   }
 
-  /** 打开这条短片的交付栏，并重新读一次工程。 */
+  /** 打开这条短片的交付栏，并重新读一次工程。 id 为空就返回，否则用它找短片、记下选择并重新读工程。 */
   async function openDelivery(id: string) {
     if (!id) return;
-    const hit = projects.find((row) => row.id === id);
+    const hit = projects.find(/** row 用 id 和传入的 id 比对。 */ (row) => row.id === id);
     setStudioId(id);
     setProject(hit || null);
     setPane("publish");
@@ -389,9 +389,9 @@ export function StudioWorkbench(props: {
     }
   }
 
-  /** 把这些选题做成片，并打开第一条的交付栏。 */
+  /** 把这些选题做成片，并打开第一条的交付栏。 ids 去掉空白并去重，空的就提示，否则交给 autoTopics。 */
   async function filmTopics(ids: string[]) {
-    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    const unique = [...new Set(ids.map(/** id 去掉空白。 */ (id) => id.trim()).filter(Boolean))];
     if (!unique.length) {
       toast.error(s.needTopicFirst);
       return;
@@ -402,7 +402,7 @@ export function StudioWorkbench(props: {
       await loadTopics();
       await loadProjects();
       props.onRefreshHistory?.();
-      const first = rows.find((row) => filmInFlight(row.auto_phase)) || rows[0];
+      const first = rows.find(/** row 把 auto_phase 交给 filmInFlight。 */ (row) => filmInFlight(row.auto_phase)) || rows[0];
       if (!first?.id) return;
       setStudioId(first.id);
       setProject(first);
@@ -417,9 +417,9 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 不能再拍的选题改为打开交付，否则拿这一条去拍。 */
+  /** 不能再拍的选题改为打开交付，否则拿这一条去拍。 t 已有短片且不能再拍就打开那条交付，否则拿它的 id 去拍。 */
   async function produce(t: Topic) {
-    const film = projects.find((p) => p.id === t.studio_project_id);
+    const film = projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id);
     if (t.studio_project_id && !topicCanFilm(t, film)) {
       await openDelivery(t.studio_project_id);
       return;
@@ -435,9 +435,9 @@ export function StudioWorkbench(props: {
     setNaming(false);
   }
 
-  /** 勾上或取消这条选题。 */
+  /** 勾上或取消这条选题。 id 已在勾选里就去掉，否则加上。 */
   function togglePick(id: string) {
-    setPicked((prev) => {
+    setPicked(/** prev 复制成集合后，id 已在里面就去掉，否则加上。 */ (prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -447,15 +447,15 @@ export function StudioWorkbench(props: {
 
   /** 把还能拍的已勾选题一起做成片。 */
   async function produceSelected() {
-    const rows = topics.filter((t) => picked.has(t.id) && topicCanFilm(t, projects.find((p) => p.id === t.studio_project_id)));
+    const rows = topics.filter(/** t 用 id 看是否勾选，并交给 topicCanFilm。 */ (t) => picked.has(t.id) && topicCanFilm(t, projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id)));
     if (!rows.length) {
       toast.error(s.needTopicFirst);
       return;
     }
-    await filmTopics(rows.map((t) => t.id));
+    await filmTopics(rows.map(/** t 取出 id。 */ (t) => t.id));
   }
 
-  /** 把选题排进队列。重复时只提示已经在队列里。 */
+  /** 把选题排进队列。重复时只提示已经在队列里。 t 用 id 交给 scheduleTopic。 */
   async function schedule(t: Topic) {
     await run("schedule", async () => {
       const out = (await api.video.scheduleTopic(t.id)) as { duplicate?: boolean };
@@ -464,7 +464,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 取消这条选题的排期。 */
+  /** 取消这条选题的排期。 t 用 id 取消排期，然后重读选题。 */
   async function unschedule(t: Topic) {
     await run("unschedule", async () => {
       await api.video.unscheduleTopic(t.id);
@@ -472,7 +472,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 用标题和默认画幅新建短片并打开它。 */
+  /** 用标题和默认画幅新建短片并打开它。 title 去掉空白，空的就提示并返回，否则作为标题新建短片。 */
   async function newProject(title: string) {
     const name = title.trim();
     if (!name) {
@@ -488,9 +488,9 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 选中一条短片。已有成片或自动阶段就去交付，否则去制作。 */
+  /** 选中一条短片。已有成片或自动阶段就去交付，否则去制作。 id 用来找短片、记下选择，并带上标题、状态和门槛去挂副驾。 */
   async function selectProject(id: string) {
-    const hit = projects.find((row) => row.id === id);
+    const hit = projects.find(/** row 用 id 和传入的 id 比对。 */ (row) => row.id === id);
     setStudioId(id);
     setPane(hit?.result_hash || hit?.auto_phase ? "publish" : "assemble");
     setDraftPlatform("");
@@ -501,18 +501,18 @@ export function StudioWorkbench(props: {
     }
   }
 
-  /** 空标题换成新建短片的文案。 */
+  /** 空标题换成新建短片的文案。 title 去掉空白，空的就用新建短片的文案。 */
   function shortLabel(title?: string) {
     return (title || "").trim() || s.newProject;
   }
 
-  /** 打开删除确认。 */
+  /** 打开删除确认。 p 记成待删除的短片，并关掉切换层。 */
   function askDelete(p: StudioProject) {
     setSwitchOpen(false);
     setKill(p);
   }
 
-  /** 删除这条短片。删的是当前条就回选题。 */
+  /** 删除这条短片。删的是当前条就回选题。 id 交给 deleteStudio；删的是当前条就回选题。 */
   async function removeShort(id: string) {
     await api.video.deleteStudio(id);
     setKill(null);
@@ -521,7 +521,7 @@ export function StudioWorkbench(props: {
     props.onRefreshHistory?.();
   }
 
-  /** 把补丁写回当前短片。 */
+  /** 把补丁写回当前短片。 patch 展开进当前短片的更新。 */
   async function saveProject(patch: Partial<StudioProject>) {
     if (!current?.id) return;
     await run("save", async () => {
@@ -577,7 +577,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 用短片或传入的名字建一张人设。 */
+  /** 用短片或传入的名字建一张人设。 topicId 交给 createPersona，有的话再重读选题。name 去掉空白，空的就用当前短片标题或人设文案。 */
   async function makePersona(topicId = "", name = "") {
     await run("persona", async () => {
       const label = name.trim() || current?.title || s.persona;
@@ -587,7 +587,7 @@ export function StudioWorkbench(props: {
     });
   }
 
-  /** 有媒体根地址时拼出 /media/ 路径。 */
+  /** 有媒体根地址时拼出 /media/ 路径。 hash 为空就返回空字符串，否则在有媒体根时拼出 /media/ 路径。 */
   function mediaSrc(hash?: string) {
     if (!hash) return "";
     return mediaBase ? `${mediaBase}/media/${hash}` : "";
@@ -628,7 +628,7 @@ export function StudioWorkbench(props: {
     radar: topics.length > 0,
     topics: !!current,
     assemble: !!current?.result_hash,
-    publish: publishes.some((p) => p.status === "posted" || p.status === "opened"),
+    publish: publishes.some(/** p 看 status 是不是 posted 或 opened。 */ (p) => p.status === "posted" || p.status === "opened"),
   };
 
   const statusLabel: Record<string, string> = {
@@ -652,12 +652,12 @@ export function StudioWorkbench(props: {
     delivery: s.desk.delivery,
   };
   const atHome = !studioId;
-  const navPanes = panes.filter((p) => atHome ? p.id === "radar" || p.id === "topics" : p.id === "assemble" || p.id === "publish");
-  const shownTopics = topics.filter((t) => topicMatchesQuery(t, query));
+  const navPanes = panes.filter(/** p 在首页时只留 radar 和 topics，否则只留 assemble 和 publish。 */ (p) => atHome ? p.id === "radar" || p.id === "topics" : p.id === "assemble" || p.id === "publish");
+  const shownTopics = topics.filter(/** t 交给 topicMatchesQuery。 */ (t) => topicMatchesQuery(t, query));
   const shownTrends = trends
-    .map((g) => ({ ...g, items: (g.items || []).filter((item) => trendMatchesQuery(item, query)) }))
-    .filter((g) => (g.items || []).length);
-  const pickCount = [...picked].filter((id) => topics.some((t) => t.id === id && topicCanFilm(t, projects.find((p) => p.id === t.studio_project_id)))).length;
+    .map(/** g 留下过滤后的 items。 */ (g) => ({ ...g, items: (g.items || []).filter(/** item 交给 trendMatchesQuery。 */ (item) => trendMatchesQuery(item, query)) }))
+    .filter(/** g 看 items 还有没有条目。 */ (g) => (g.items || []).length);
+  const pickCount = [...picked].filter(/** id 用来找还能拍的选题。 */ (id) => topics.some(/** t 的 id 相同且还能拍才算命中。 */ (t) => t.id === id && topicCanFilm(t, projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id)))).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="studio-workbench" data-pane={pane} data-bound={current ? "true" : "false"} data-home={atHome ? "true" : "false"}>
@@ -694,7 +694,7 @@ export function StudioWorkbench(props: {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>{s.recentShorts}</DropdownMenuLabel>
-                  {projects.map((p) => {
+                  {projects.map(/** p 用 status、gate 或 furthest_gate 拼说明，用 id 选中或标出当前，用 title 显示名字，删除时把整条交给 askDelete。 */ (p) => {
                     const meta = [
                       statusLabel[p.status || ""] || p.status || "",
                       gateLabel[p.gate || p.furthest_gate || ""] || "",
@@ -718,7 +718,7 @@ export function StudioWorkbench(props: {
                           data-testid={`studio-delete-${p.id}`}
                           aria-label={s.deleteShort}
                           title={s.deleteShort}
-                          onPointerDown={(e) => e.preventDefault()}
+                          onPointerDown={/** e 阻止默认。 */ (e) => e.preventDefault()}
                           onClick={() => askDelete(p)}
                         >
                           <Trash2 className="size-3.5" aria-hidden />
@@ -773,11 +773,11 @@ export function StudioWorkbench(props: {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => { void writeClipboard(current.id).then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
+              <DropdownMenuItem onSelect={() => { void writeClipboard(current.id).then(/** ok 为真时提示已复制。 */ (ok) => { if (ok) toast.success(s.copiedId); }); }}>
                 {s.copyId}
               </DropdownMenuItem>
               {copilotSessionId ? (
-                <DropdownMenuItem onSelect={() => { void writeClipboard(copilotSessionId).then((ok) => { if (ok) toast.success(s.copiedId); }); }}>
+                <DropdownMenuItem onSelect={() => { void writeClipboard(copilotSessionId).then(/** ok 为真时提示已复制。 */ (ok) => { if (ok) toast.success(s.copiedId); }); }}>
                   {s.sessionId}
                 </DropdownMenuItem>
               ) : null}
@@ -789,7 +789,7 @@ export function StudioWorkbench(props: {
         ) : null}
       </header>
       <nav className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border/70 px-2 py-1.5" aria-label={copy.video.shellStudio} data-testid="studio-pipeline">
-        {navPanes.map((p, i) => (
+        {navPanes.map(/** p 用 id 当 key 和当前栏，显示 hint 和 label，点击时切到这个 id。i 显示成从 1 开始的序号。 */ (p, i) => (
           <button
             key={p.id}
             type="button"
@@ -815,7 +815,7 @@ export function StudioWorkbench(props: {
               placeholder={s.searchTopics}
               aria-label={s.searchTopics}
               data-testid="studio-home-search"
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={/** e 取出 target.value 交给 setQuery。 */ (e) => setQuery(e.target.value)}
             />
           </div>
         ) : null}
@@ -830,7 +830,7 @@ export function StudioWorkbench(props: {
             submitLabel={s.create}
             hint={s.startHint}
             testId="studio-create"
-            onSubmit={(title) => void newProject(title)}
+            onSubmit={/** title 交给 newProject。 */ (title) => void newProject(title)}
           />
         </div>
       ) : null}
@@ -840,7 +840,7 @@ export function StudioWorkbench(props: {
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-[12px] text-muted">{s.platforms}</span>
-              {TREND_PLATFORMS.map((p) => {
+              {TREND_PLATFORMS.map(/** p 用来判断是否已选，点击时加进或移出，并交给 trendLabel 显示。 */ (p) => {
                 const on = platforms.includes(p);
                 return (
                   <button
@@ -848,9 +848,9 @@ export function StudioWorkbench(props: {
                     type="button"
                     aria-pressed={on}
                     className={cn("rounded-full px-2 py-0.5 text-[11px]", on ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
-                    onClick={() => setPlatforms((prev) => {
+                    onClick={() => setPlatforms(/** prev 在已选且只剩这一项时不动；已选就去掉 p，未选就把 p 加进去。 */ (prev) => {
                       if (on && prev.length <= 1) return prev;
-                      return on ? prev.filter((x) => x !== p) : [...prev, p];
+                      return on ? prev.filter(/** x 和 p 不同才留下。 */ (x) => x !== p) : [...prev, p];
                     })}
                   >
                     {trendLabel(p)}
@@ -880,14 +880,14 @@ export function StudioWorkbench(props: {
                 }
               />
             ) : (
-              shownTrends.map((g) => (
+              shownTrends.map(/** g 用 platform 或 label 当 key 和标题，不 ok 就显示离线，并列出 items，收藏时把 platform 交给 collect。 */ (g) => (
                 <section key={g.platform || g.label} className="overflow-hidden rounded-xl border border-border bg-card">
                   <h2 className="flex items-center gap-2 px-3.5 py-2 text-[12px] font-medium text-muted">
                     {g.label || g.platform}
                     {!g.ok ? <span className="text-danger/80">{s.offline}</span> : null}
                   </h2>
                   <ul className="divide-y divide-border">
-                    {(g.items || []).map((item, i) => (
+                    {(g.items || []).map(/** item 显示 title，有 hot 就显示，收藏时整条交给 collect。i 和平台拼成 key。 */ (item, i) => (
                       <li key={`${g.platform}-${i}`} className="flex items-center gap-3 px-3.5 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] text-foreground">{item.title}</p>
@@ -908,7 +908,7 @@ export function StudioWorkbench(props: {
         {pane === "topics" ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-1.5" data-testid="studio-topic-filters">
-              {TOPIC_FILTERS.map((st) => (
+              {TOPIC_FILTERS.map(/** st 用来判断选中和按钮 key，点击时记成筛选并交给 loadTopics，空的就显示全部文案。 */ (st) => (
                 <button
                   key={st || "all"}
                   type="button"
@@ -917,7 +917,7 @@ export function StudioWorkbench(props: {
                   className={cn("rounded-full px-2 py-0.5 text-[11px]", topicStatus === st ? "bg-lift text-foreground" : "text-muted hover:bg-lift/70")}
                   onClick={() => {
                     setTopicStatus(st);
-                    void loadTopics(st).catch((e) => toast.error(api.errMessage(e)));
+                    void loadTopics(st).catch(/** e 交给 errMessage 后弹出。 */ (e) => toast.error(api.errMessage(e)));
                   }}
                 >
                   {st ? statusLabel[st] : s.allTopics}
@@ -925,7 +925,7 @@ export function StudioWorkbench(props: {
               ))}
             </div>
             <div className="flex gap-2">
-              <Input className="h-8" placeholder={s.newTopicPh} value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveDraftTopic()} />
+              <Input className="h-8" placeholder={s.newTopicPh} value={draftTitle} onChange={/** e 取出 target.value 交给 setDraftTitle。 */ (e) => setDraftTitle(e.target.value)} onKeyDown={/** e 的 key 是 Enter 时保存草稿选题。 */ (e) => e.key === "Enter" && void saveDraftTopic()} />
               <Button size="sm" variant="lift" className="h-8" disabled={!draftTitle.trim() || !!busy} onClick={() => void saveDraftTopic()}>
                 {s.newTopic}
               </Button>
@@ -956,7 +956,7 @@ export function StudioWorkbench(props: {
               />
             ) : (
               <ul className="flex flex-col gap-2">
-                {shownTopics.map((t) => (
+                {shownTopics.map(/** t 交给选题卡片，并参与选中、开拍、改期、补丁、展开、排期、人设和删除。 */ (t) => (
                   <TopicCard
                     key={t.id}
                     topic={t}
@@ -965,19 +965,19 @@ export function StudioWorkbench(props: {
                     statusLabel={statusLabel[t.status || "inbox"] || t.status || ""}
                     deleteLabel={copy.video.delete}
                     scoreLabels={scoreLabel}
-                    film={projects.find((p) => p.id === t.studio_project_id)}
+                    film={projects.find(/** p 用 id 和选题上的短片 id 比对。 */ (p) => p.id === t.studio_project_id)}
                     copy={s}
                     onPick={() => togglePick(t.id)}
                     onProduce={() => void produce(t)}
                     onUnschedule={() => void unschedule(t)}
-                    onPatch={(extra) => void patchTopic(t, extra)}
+                    onPatch={/** extra 交给 patchTopic。 */ (extra) => void patchTopic(t, extra)}
                     onExpand={() => void run("expand", async () => {
                       await api.video.expandTopic(t.id);
                       await loadTopics();
                     })}
                     onSchedule={() => void schedule(t)}
                     onPersona={() => void makePersona(t.id, t.title)}
-                    onChoose={(optionId) => void run("choose", async () => {
+                    onChoose={/** optionId 交给 chooseTopicOption，然后重读选题。 */ (optionId) => void run("choose", async () => {
                       await api.video.chooseTopicOption(t.id, optionId);
                       await loadTopics();
                     })}
@@ -1008,9 +1008,9 @@ export function StudioWorkbench(props: {
                   catalog={catalog}
                   busy={busy}
                   mediaSrc={mediaSrc}
-                  onChange={(next) => setProject(next as StudioProject)}
+                  onChange={/** next 当成短片写入。 */ (next) => setProject(next as StudioProject)}
                   run={run}
-                  saveProject={async (patch) => { await saveProject(patch as Partial<StudioProject>); }}
+                  saveProject={/** patch 当成短片补丁交给 saveProject。 */ async (patch) => { await saveProject(patch as Partial<StudioProject>); }}
                   wrapTitle={wrapTitle}
                   setWrapTitle={setWrapTitle}
                   remotionReady={remotionReady}
@@ -1033,7 +1033,7 @@ export function StudioWorkbench(props: {
             suggested={current?.platform || preferredPlatform}
             caption={draftCaption}
             tags={draftTags}
-            onSelect={(id) => { void openDelivery(id); }}
+            onSelect={/** id 交给 openDelivery。 */ (id) => { void openDelivery(id); }}
             onPlatform={setDraftPlatform}
             onCaption={setDraftCaption}
             onTags={setDraftTags}
@@ -1062,7 +1062,7 @@ export function StudioWorkbench(props: {
             mediaSrc={mediaSrc}
             drafts={publishes.length ? (
               <ul className="flex flex-col gap-2">
-                {publishes.map((row) => (
+                {publishes.map(/** row 作为草稿交给卡片，并用 id 当 key、用 status 取状态文案。 */ (row) => (
                   <PublishDraftCard
                     key={row.id}
                     draft={row}
@@ -1119,7 +1119,7 @@ export function StudioWorkbench(props: {
   );
 }
 
-/** 一条发布草稿：导出、打开创作者、记失败或记已发。 */
+/** 一条发布草稿：导出、打开创作者、记失败或记已发。 props 用 draft 填标题、平台、链接、导出路径和统计初值，statusLabel 接在平台后面，busy 时禁用按钮，导出、打开、记失败和记已发都包在 onRun 里，做完调用 onReload。 */
 function PublishDraftCard(props: {
   draft: Publish;
   busy: string;
@@ -1167,11 +1167,11 @@ function PublishDraftCard(props: {
         <summary className="cursor-pointer text-[12px] text-muted">{copy.video.recordStats}</summary>
         <p className="mt-1 text-[11px] leading-[1.45] text-muted">{s.analyticsNote}</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          <Input className="h-8" placeholder={s.postedUrl} value={postedUrl} onChange={(e) => setPostedUrl(e.target.value)} />
-          <Input className="h-8" placeholder={s.analyticsNote} value={note} onChange={(e) => setNote(e.target.value)} />
-          <Input className="h-8" placeholder={s.reads} value={reads} onChange={(e) => setReads(e.target.value)} />
-          <Input className="h-8" placeholder={s.likes} value={likes} onChange={(e) => setLikes(e.target.value)} />
-          <Input className="h-8 sm:col-span-2" placeholder={s.comments} value={comments} onChange={(e) => setComments(e.target.value)} />
+          <Input className="h-8" placeholder={s.postedUrl} value={postedUrl} onChange={/** e 取出 target.value 交给 setPostedUrl。 */ (e) => setPostedUrl(e.target.value)} />
+          <Input className="h-8" placeholder={s.analyticsNote} value={note} onChange={/** e 取出 target.value 交给 setNote。 */ (e) => setNote(e.target.value)} />
+          <Input className="h-8" placeholder={s.reads} value={reads} onChange={/** e 取出 target.value 交给 setReads。 */ (e) => setReads(e.target.value)} />
+          <Input className="h-8" placeholder={s.likes} value={likes} onChange={/** e 取出 target.value 交给 setLikes。 */ (e) => setLikes(e.target.value)} />
+          <Input className="h-8 sm:col-span-2" placeholder={s.comments} value={comments} onChange={/** e 取出 target.value 交给 setComments。 */ (e) => setComments(e.target.value)} />
         </div>
         <Button size="sm" variant="lift" className="mt-2 h-7 text-[12px]" disabled={!!props.busy} onClick={() => void props.onRun("posted", async () => {
           await api.video.markPublish(p.id, "posted", {

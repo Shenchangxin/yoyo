@@ -14,12 +14,12 @@ import { RemakeDraft } from "./RemakeDraft";
 import { useRemakeDesk } from "./remake-desk";
 import { useCreateMode, type CreateMode } from "./create-mode";
 
-/** 把未知值收成剪辑工程数组。 */
+/** 把未知值收成剪辑工程数组。v 是数组就当剪辑工程数组，否则返回空数组。 */
 function asCuts(v: unknown): CutProject[] {
   return Array.isArray(v) ? v as CutProject[] : [];
 }
 
-/** 把结构 id 换成榜单、播客或访谈的名字。 */
+/** 把结构 id 换成榜单、播客或访谈的名字。film 按 ranking、podcast、interview 取对应名字。 */
 function structureLabel(id: string | undefined, film: { ranking: string; podcast: string; interview: string }) {
   if (id === "ranking") return film.ranking;
   if (id === "podcast") return film.podcast;
@@ -27,7 +27,7 @@ function structureLabel(id: string | undefined, film: { ranking: string; podcast
   return "";
 }
 
-/** CreateHome 在成片模式下列出对应结构，否则列出导入、翻拍和最近六条成片与剪辑。 */
+/** CreateHome 在成片模式下列出对应结构，否则列出导入、翻拍和最近六条成片与剪辑。props 的 onImport 和 onRemake 挂在按钮上，onFilm 带上结构和草稿，onHandoff 带上目标栏，onOpenCut 打开剪辑，onPrompt 填入示例，draftKey 用来读草稿。 */
 export function CreateHome(props: {
   onImport: () => void;
   onRemake: () => void;
@@ -40,27 +40,27 @@ export function CreateHome(props: {
   const copy = useCopy();
   const c = copy.video.conductor;
   const film = copy.video.film;
-  const mode = useCreateMode((s) => s.mode);
-  const draft = useUI((s) => (props.draftKey ? s.drafts[props.draftKey] || "" : ""));
+  const mode = useCreateMode(/** s 取出 mode。 */ (s) => s.mode);
+  const draft = useUI(/** s 在有 draftKey 时取出对应草稿，没有就当空字符串。 */ (s) => (props.draftKey ? s.drafts[props.draftKey] || "" : ""));
   const [cuts, setCuts] = useState<CutProject[]>([]);
   const [films, setFilms] = useState<FilmProject[]>([]);
-  const openFilm = useFilmDesk((s) => s.project);
-  const openDraft = useRemakeDesk((s) => s.draft);
+  const openFilm = useFilmDesk(/** s 取出 project。 */ (s) => s.project);
+  const openDraft = useRemakeDesk(/** s 取出 draft。 */ (s) => s.draft);
 
   useEffect(() => {
     let alive = true;
-    void api.video.cutList().then((list) => {
+    void api.video.cutList().then(/** list 收成剪辑数组。 */ (list) => {
       if (!alive) return;
-      const rows = asCuts(list).filter((row) => row?.id && row.source_hash);
-      rows.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+      const rows = asCuts(list).filter(/** row 要有 id 和 source_hash。 */ (row) => row?.id && row.source_hash);
+      rows.sort(/** b 的 updated_at 和 a 的比较，空的当空字符串。 */ (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
       setCuts(rows.slice(0, 6));
     }).catch(() => {
       if (alive) setCuts([]);
     });
-    void api.video.filmList().then((list) => {
+    void api.video.filmList().then(/** list 是数组就当作成片，否则当空数组。 */ (list) => {
       if (!alive) return;
       const rows = Array.isArray(list) ? list as FilmProject[] : [];
-      setFilms(rows.filter((row) => row?.id).slice(0, 6));
+      setFilms(rows.filter(/** row 要有 id。 */ (row) => row?.id).slice(0, 6));
     }).catch(() => {
       if (alive) setFilms([]);
     });
@@ -79,7 +79,7 @@ export function CreateHome(props: {
     podcast: { title: film.podcast, hint: film.podcastHint, start: c.startPodcast, sample: c.suggestPodcast },
     interview: { title: film.interview, hint: film.interviewHint, start: c.startInterview, sample: c.suggestInterview },
   };
-  const visibleFilms = filmMode ? films.filter((row) => row.structure === filmMode) : films;
+  const visibleFilms = filmMode ? films.filter(/** row 的 structure 和当前成片模式相同才留下。 */ (row) => row.structure === filmMode) : films;
 
   return (
     <section className="creation-home-handoff" data-testid="creation-handoff" aria-label={c.handoffTitle}>
@@ -106,7 +106,7 @@ export function CreateHome(props: {
             <div className="creation-recent">
               <h2>{c.yourFilms}</h2>
               <ul>
-                {visibleFilms.map((row) => (
+                {visibleFilms.map(/** row 有 id 就设成当前成片，标题空着用模式名。 */ (row) => (
                   <li key={`film-${row.id}`}>
                     <button type="button" onClick={() => { if (row.id) useFilmDesk.getState().setProject(row); }}>
                       <span>{row.title || filmCopy[filmMode].title}</span>
@@ -136,7 +136,7 @@ export function CreateHome(props: {
                 <small>{c.remakeHint}</small>
               </span>
             </button>
-            {workshops.map((card) => {
+            {workshops.map(/** card 用 id 交给 onHandoff，用 icon、title 和 hint 画卡片。 */ (card) => {
               const Icon = card.icon;
               return (
                 <button key={card.id} type="button" className="creation-handoff-card" onClick={() => props.onHandoff(card.id)}>
@@ -154,7 +154,7 @@ export function CreateHome(props: {
             <h2>{c.yourFilms}</h2>
             {films.length + cuts.length === 0 ? <p>{c.recentEmpty}</p> : (
               <ul>
-                {films.map((row) => (
+                {films.map(/** row 有 id 就设成当前成片，并显示标题和结构名。 */ (row) => (
                   <li key={`film-${row.id}`}>
                     <button type="button" onClick={() => { if (row.id) useFilmDesk.getState().setProject(row); }}>
                       <span>{row.title || film.title}</span>
@@ -162,7 +162,7 @@ export function CreateHome(props: {
                     </button>
                   </li>
                 ))}
-                {cuts.map((row) => (
+                {cuts.map(/** row 没有 id 就返回；翻拍且没有成片哈希就设成草稿，否则交给 onOpenCut。 */ (row) => (
                   <li key={`cut-${row.id}`}>
                     <button type="button" onClick={() => {
                       if (!row.id) return;

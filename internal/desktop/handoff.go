@@ -24,6 +24,7 @@ func (s *Service) OpenPath(path string) error {
 }
 
 // OpenURL 在 RPC 非空时调用 host.open，kind 为 url。否则有 App 时走 App.OpenURL，再否则 hostopen.URL。
+// raw 在 RPC 非空时作为 host.open 的 path。有 App 时传给 App.OpenURL。否则传给 hostopen.URL。
 func (s *Service) OpenURL(raw string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": raw, "kind": "url"})
@@ -36,6 +37,7 @@ func (s *Service) OpenURL(raw string) error {
 }
 
 // OpenInEditor 在 RPC 非空时调用 host.open，kind 为 editor。否则有 App 时走 App.OpenInEditor，再否则 hostopen.Editor。
+// path 在 RPC 非空时作为 host.open 的 path。有 App 时传给 App.OpenInEditor。否则传给 hostopen.Editor。
 func (s *Service) OpenInEditor(path string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": path, "kind": "editor"})
@@ -48,6 +50,7 @@ func (s *Service) OpenInEditor(path string) error {
 }
 
 // OpenWorkspaceTerminal 在 RPC 非空时调用 host.open，kind 为 terminal。否则有 App 时走 App.OpenWorkspaceTerminal，再否则 hostopen.Terminal。
+// dir 在 RPC 非空时作为 host.open 的 path。有 App 时传给 App.OpenWorkspaceTerminal。否则传给 hostopen.Terminal。
 func (s *Service) OpenWorkspaceTerminal(dir string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": dir, "kind": "terminal"})

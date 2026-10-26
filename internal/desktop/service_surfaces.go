@@ -10,6 +10,7 @@ import (
 )
 
 // SetPaused 在 RPC 非空时调用 app.pause.set，否则 App.SetPaused。暂停时关掉宠物通话。无论成败都 refreshChrome。
+// paused 在 RPC 非空时放进 app.pause.set。否则传给 App.SetPaused。为真时调用 SetCompanionCall(false)。
 func (s *Service) SetPaused(paused bool) error {
 	var err error
 	if s.RPC != nil {
@@ -36,6 +37,8 @@ func (s *Service) IsPaused() bool {
 }
 
 // PagesList 在 RPC 非空时调用 pages.list，否则走 App.PagesList。
+// q 在 RPC 非空时放进 pages.list。否则传给 App.PagesList。
+// spaceID 在 RPC 非空时作为 pages.list 的 space_id。否则传给 App.PagesList。
 func (s *Service) PagesList(q, spaceID string) []pages.Meta {
 	if s.RPC != nil {
 		v, _ := s.call("pages.list", map[string]any{"q": q, "space_id": spaceID})
@@ -46,6 +49,8 @@ func (s *Service) PagesList(q, spaceID string) []pages.Meta {
 }
 
 // PagesGet 在 RPC 非空时调用 pages.get，否则走 App.PagesGet。
+// spaceID 在 RPC 非空时作为 pages.get 的 space_id。否则传给 App.PagesGet。
+// id 在 RPC 非空时放进 pages.get。否则传给 App.PagesGet。
 func (s *Service) PagesGet(spaceID, id string) (pages.Page, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.get", map[string]any{"id": id, "space_id": spaceID})
@@ -68,6 +73,8 @@ func (s *Service) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 }
 
 // PagesDelete 在 RPC 非空时调用 pages.delete，否则走 App.PagesDelete。
+// spaceID 在 RPC 非空时作为 pages.delete 的 space_id。否则传给 App.PagesDelete。
+// id 在 RPC 非空时放进 pages.delete。否则传给 App.PagesDelete。
 func (s *Service) PagesDelete(spaceID, id string) error {
 	if s.RPC != nil {
 		_, err := s.call("pages.delete", map[string]any{"id": id, "space_id": spaceID})
@@ -87,6 +94,13 @@ func (s *Service) PagesReviews() []pages.Review {
 }
 
 // PagesPropose 在 RPC 非空时调用 pages.propose，否则走 App.PagesPropose。
+// sessionID 在 RPC 非空时作为 pages.propose 的 session。否则传给 App.PagesPropose。
+// title 在 RPC 非空时放进 pages.propose。否则传给 App.PagesPropose。
+// content 在 RPC 非空时放进 pages.propose。否则传给 App.PagesPropose。
+// pageID 在 RPC 非空时作为 pages.propose 的 id。否则传给 App.PagesPropose。
+// spaceID 在 RPC 非空时作为 pages.propose 的 space_id。否则传给 App.PagesPropose。
+// parentID 在 RPC 非空时作为 pages.propose 的 parent_id。否则传给 App.PagesPropose。
+// expected 在 RPC 非空时作为 pages.propose 的 expected_revision。否则传给 App.PagesPropose。
 func (s *Service) PagesPropose(sessionID, title, content, pageID, spaceID, parentID string, expected int) (pages.Review, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.propose", map[string]any{
@@ -99,6 +113,8 @@ func (s *Service) PagesPropose(sessionID, title, content, pageID, spaceID, paren
 }
 
 // PagesDecide 在 RPC 非空时调用 pages.review.decide。同进程把 PagesDecide 的页面和审阅包成 page 与 review。
+// hash 在 RPC 非空时放进 pages.review.decide。否则传给 App.PagesDecide。
+// approve 在 RPC 非空时放进 pages.review.decide。否则传给 App.PagesDecide。
 func (s *Service) PagesDecide(id, hash string, approve bool) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("pages.review.decide", map[string]any{"id": id, "hash": hash, "approve": approve})
@@ -131,6 +147,8 @@ func (s *Service) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 }
 
 // SetSessionProfile 在 RPC 非空时调用 thread.profile.set，否则走 App.SetSessionProfile。
+// id 在 RPC 非空时作为 thread.profile.set 的 session。否则传给 App.SetSessionProfile。
+// profileID 在 RPC 非空时作为 thread.profile.set 的 profile_id。否则传给 App.SetSessionProfile。
 func (s *Service) SetSessionProfile(id, profileID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("thread.profile.set", map[string]any{"session": id, "profile_id": profileID})
@@ -139,6 +157,8 @@ func (s *Service) SetSessionProfile(id, profileID string) (any, error) {
 }
 
 // SetSessionPage 在 RPC 非空时调用 thread.page.set，否则走 App.SetSessionPage。
+// id 在 RPC 非空时作为 thread.page.set 的 session。否则传给 App.SetSessionPage。
+// pageID 在 RPC 非空时作为 thread.page.set 的 page_id。否则传给 App.SetSessionPage。
 func (s *Service) SetSessionPage(id, pageID string) (any, error) {
 	if s.RPC != nil {
 		return s.call("thread.page.set", map[string]any{"session": id, "page_id": pageID})
@@ -147,6 +167,7 @@ func (s *Service) SetSessionPage(id, pageID string) (any, error) {
 }
 
 // ScheduleRetry 在 RPC 非空时调用 schedule.retry，否则走 App.ScheduleRetry。
+// id 在 RPC 非空时放进 schedule.retry。否则传给 App.ScheduleRetry。
 func (s *Service) ScheduleRetry(id string) (schedule.Job, error) {
 	if s.RPC != nil {
 		v, err := s.call("schedule.retry", map[string]any{"id": id})
@@ -156,6 +177,8 @@ func (s *Service) ScheduleRetry(id string) (schedule.Job, error) {
 }
 
 // ConnectorMention 在 RPC 非空时调用 connectors.mention，否则走 App.ConnectorMention。
+// account 在 RPC 非空时放进 connectors.mention。否则传给 App.ConnectorMention。
+// text 在 RPC 非空时放进 connectors.mention。否则传给 App.ConnectorMention。
 func (s *Service) ConnectorMention(account, text string) error {
 	if s.RPC != nil {
 		_, err := s.call("connectors.mention", map[string]any{"account": account, "text": text})
@@ -165,6 +188,8 @@ func (s *Service) ConnectorMention(account, text string) error {
 }
 
 // VoiceTranscribe 在 RPC 非空时调用 voice.transcribe，并返回 text。同进程先用 decodeSkinB64Local 解开音频，再 App.VoiceTranscribe。
+// filename 在 RPC 非空时放进 voice.transcribe。否则传给 App.VoiceTranscribe。
+// audioB64 在 RPC 非空时作为 voice.transcribe 的 audio。否则传给 decodeSkinB64Local。
 func (s *Service) VoiceTranscribe(filename, audioB64 string) (string, error) {
 	if s.RPC != nil {
 		v, err := s.call("voice.transcribe", map[string]any{"filename": filename, "audio": audioB64})
@@ -183,6 +208,7 @@ func (s *Service) VoiceTranscribe(filename, audioB64 string) (string, error) {
 }
 
 // VoiceSpeak 在 RPC 非空时调用 voice.speak。同进程把音频编成标准 Base64，并带上 content_type。
+// text 在 RPC 非空时放进 voice.speak。否则传给 App.VoiceSpeak。
 func (s *Service) VoiceSpeak(text string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("voice.speak", map[string]any{"text": text})
@@ -196,6 +222,9 @@ func (s *Service) VoiceSpeak(text string) (map[string]any, error) {
 }
 
 // VoiceReceipt 在 RPC 非空时调用 voice.receipt，忽略错误。否则走 App.VoiceReceipt。
+// sessionID 在 RPC 非空时作为 voice.receipt 的 session。否则传给 App.VoiceReceipt。
+// durationSec 在 RPC 非空时作为 voice.receipt 的 duration_sec。否则传给 App.VoiceReceipt。
+// transcript 在 RPC 非空时放进 voice.receipt。否则传给 App.VoiceReceipt。
 func (s *Service) VoiceReceipt(sessionID string, durationSec int, transcript string) {
 	if s.RPC != nil {
 		_, _ = s.call("voice.receipt", map[string]any{"session": sessionID, "duration_sec": durationSec, "transcript": transcript})
@@ -226,6 +255,7 @@ func decodeSkinB64Local(s string) ([]byte, error) {
 }
 
 // encodeB64 用标准 Base64 编码，不换行。
+// b 传给 base64.StdEncoding.EncodeToString。
 func encodeB64(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }

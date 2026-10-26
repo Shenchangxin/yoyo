@@ -19,7 +19,7 @@ export type ServicePreset = {
 /** customProvider 只在界面里表示自定义地址，不会入库。自定义地址保存时服务商 id 为空。 */
 export const customProvider = "__custom__";
 
-/** presetsOf 从接口原文整理预设。没有 id 或种类的丢掉，没有 id 的声音也丢掉。 */
+/** presetsOf 从接口原文整理预设。没有 id 或种类的丢掉，没有 id 的声音也丢掉。raw 传给 asArray。 */
 export function presetsOf(raw: unknown): ServicePreset[] {
   return asArray(raw).map((v: any) => ({
     id: str(v?.id),
@@ -36,14 +36,14 @@ export function presetsOf(raw: unknown): ServicePreset[] {
   })).filter((p) => p.id && p.kind);
 }
 
-/** voicesFor 按模型筛声音。声音未限定模型、未指定模型，或列表含该模型时留下。没有声音表则空。 */
+/** voicesFor 按模型筛声音。声音未限定模型、未指定模型，或列表含该模型时留下。没有声音表则空。preset 读取 voices，为空时不读。model 去掉首尾空白后，为假时走另一支，传给 v.models.includes。 */
 export function voicesFor(preset: ServicePreset | undefined, model: string): ServiceVoice[] {
   if (!preset?.voices?.length) return [];
   const want = model.trim();
   return preset.voices.filter((v) => !v.models?.length || !want || v.models.includes(want));
 }
 
-/** presetByID 按 id 和种类找预设。id 为空白则没有。 */
+/** presetByID 按 id 和种类找预设。id 为空白则没有。presets 调用 find。kind 与 p.kind 比较是否相等。 */
 export function presetByID(presets: ServicePreset[], id: string, kind: string): ServicePreset | undefined {
   const want = id.trim();
   if (!want) return undefined;

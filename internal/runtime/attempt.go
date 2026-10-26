@@ -23,6 +23,8 @@ type streamAttempt struct {
 }
 
 // emitTurnStart 发出回合开始。TurnID 非空时写入载荷。
+// req 传给 emit，TurnID 非空时写入 turn_id。
+// turn 写入载荷的 turn。
 func emitTurnStart(req RunRequest, turn int) {
 	payload := map[string]any{"turn": turn}
 	if req.TurnID != "" {
@@ -32,6 +34,10 @@ func emitTurnStart(req RunRequest, turn int) {
 }
 
 // emitStepStart 发出步骤开始，round 与 id 都写成 roundID。
+// req 传给 emit。
+// turn 写入载荷的 turn。
+// step 写入载荷的 step。
+// attemptID 写入载荷的 attempt_id。
 func emitStepStart(req RunRequest, turn, step int, roundID, attemptID string) {
 	emit(req, trace.TypeStepStart, "runtime", map[string]any{
 		"turn": turn, "step": step, "round": roundID, "id": roundID, "attempt_id": attemptID,
@@ -39,6 +45,9 @@ func emitStepStart(req RunRequest, turn, step int, roundID, attemptID string) {
 }
 
 // emitStepEnd 发出步骤结束，round 与 id 都写成 roundID。
+// req 传给 emit。
+// turn 写入载荷的 turn。
+// step 写入载荷的 step。
 func emitStepEnd(req RunRequest, turn, step int, roundID string) {
 	emit(req, trace.TypeStepEnd, "runtime", map[string]any{
 		"turn": turn, "step": step, "round": roundID, "id": roundID,
@@ -46,6 +55,7 @@ func emitStepEnd(req RunRequest, turn, step int, roundID string) {
 }
 
 // emitAttemptStart 发出流开始帧，并把 Revision 设为 1。att 为空则返回。
+// req 传给 emit。
 func emitAttemptStart(req RunRequest, att *streamAttempt) {
 	if att == nil {
 		return
@@ -63,6 +73,9 @@ func emitAttemptStart(req RunRequest, att *streamAttempt) {
 }
 
 // emitStreamChunk 把一块流式增量记成助手流事件。序号在开始帧的 revision 1 之后从 0 连续编号。
+// req 传给 emit。
+// att 为 nil 时返回，否则递增 Revision，并把 ID、Turn、Step、RoundID 写入载荷。
+// ch 交给 chunkMap，结果写入载荷的 chunk。
 func emitStreamChunk(req RunRequest, att *streamAttempt, ch StreamChunk) {
 	if att == nil {
 		return
@@ -86,6 +99,8 @@ func emitStreamChunk(req RunRequest, att *streamAttempt, ch StreamChunk) {
 }
 
 // emitAttemptEnd 发出流结束帧，outcome 原样写入载荷。
+// req 传给 emit。
+// att 为 nil 时返回，否则递增 Revision，并把 ID、Turn、Step、RoundID 写入载荷。
 func emitAttemptEnd(req RunRequest, att *streamAttempt, outcome string) {
 	if att == nil {
 		return
@@ -104,6 +119,9 @@ func emitAttemptEnd(req RunRequest, att *streamAttempt, outcome string) {
 }
 
 // emitSettlement 发出助手结算。没有正文、块和流记录时不发。正文为空时用块里的文本。
+// req 传给 emit。
+// att 为 nil 时不写回合字段；与 msg 都没有可写的正文、块和流记录时不发。
+// msg 的 Content 作为正文，为空且 att 非 nil 时改用块里的文本；ToolCalls 只参与 att 为 nil 时是否提前返回。
 func emitSettlement(req RunRequest, att *streamAttempt, msg Message) {
 	if att == nil && msg.Content == "" && len(msg.ToolCalls) == 0 {
 		return

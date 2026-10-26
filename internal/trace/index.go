@@ -46,11 +46,13 @@ type sessionIndex struct {
 }
 
 // idxPath 是该会话 jsonl 路径再加 .idx。
+// sessionID 交给 path，再在后面加 .idx。
 func (s *Store) idxPath(sessionID string) string {
 	return s.path(sessionID) + ".idx"
 }
 
 // payloadKind 返回载荷里的 kind 字符串。没有载荷时返回空。
+// ev 的 Payload 为 nil 时返回空串，否则取出 kind 字符串。
 func payloadKind(ev Event) string {
 	if ev.Payload == nil {
 		return ""
@@ -60,6 +62,7 @@ func payloadKind(ev Event) string {
 }
 
 // entrySource 在 Source 为 steer，或载荷 name、kind 为 steer 时返回 steer。否则返回事件自己的 Source。
+// ev 的 Source 为 steer，或载荷 name、kind 为 steer 时返回 steer，否则返回 ev.Source。
 func entrySource(ev Event) string {
 	if ev.Source == "steer" {
 		return "steer"
@@ -76,6 +79,7 @@ func entrySource(ev Event) string {
 }
 
 // indexLocked 返回内存索引。缓存的 size 和 jsonl 当前长度一致就复用，否则载入或重建。调用方须已持有 mu。
+// sessionID 作为内存索引的键，并交给 indexFreshLocked 和 loadOrRebuildLocked。
 func (s *Store) indexLocked(sessionID string) *sessionIndex {
 	if s.mem == nil {
 		s.mem = map[string]*sessionIndex{}
@@ -89,6 +93,7 @@ func (s *Store) indexLocked(sessionID string) *sessionIndex {
 }
 
 // indexFreshLocked 在 jsonl 长度等于 idx.size 时为真。文件不存在时，只有索引 size 为 0 且没有条目才为真。
+// sessionID 交给 path 后做 Stat。
 func (s *Store) indexFreshLocked(sessionID string, idx *sessionIndex) bool {
 	st, err := os.Stat(s.path(sessionID))
 	if err != nil {
@@ -98,6 +103,7 @@ func (s *Store) indexFreshLocked(sessionID string, idx *sessionIndex) bool {
 }
 
 // loadOrRebuildLocked 在 .idx 能读、版本对，且最后一条刚好盖住 jsonl 长度时复用磁盘索引，并把 size 设成文件长度。否则重建。jsonl 不存在时返回空索引。
+// sessionID 交给 path 和 idxPath，对不上时交给 rebuildIndexLocked。
 func (s *Store) loadOrRebuildLocked(sessionID string) *sessionIndex {
 	p := s.path(sessionID)
 	st, err := os.Stat(p)
@@ -113,6 +119,7 @@ func (s *Store) loadOrRebuildLocked(sessionID string) *sessionIndex {
 }
 
 // lastCover 报告最后一条的 Off+N 是否等于 size。没有条目时只有 size 为 0 才为真。
+// idx 没有条目时只有 size 为 0 才为真，否则用最后一条的 Off 加 N 和 size 比。
 func lastCover(idx *sessionIndex, size int64) bool {
 	if len(idx.entries) == 0 {
 		return size == 0
@@ -122,6 +129,7 @@ func lastCover(idx *sessionIndex, size int64) bool {
 }
 
 // loadIdxFile 读索引。第一行的 v 必须是 2。其后每行 Seq 不能为 0。扫描缓冲从 64 KiB 起，单行上限 1 MiB。任一处不合就返回 nil。
+// path 交给 os.Open；打不开或内容不合时返回 nil。
 func loadIdxFile(path string) *sessionIndex {
 	f, err := os.Open(path)
 	if err != nil {
@@ -162,6 +170,7 @@ func loadIdxFile(path string) *sessionIndex {
 }
 
 // rebuildIndexLocked 重扫 jsonl。序号从 1 起。载荷 name 或 kind 为 steer 时 Source 写成 steer。读失败返回空索引。成功后把索引写到 .idx，写失败被丢掉。
+// sessionID 交给 path 打开 jsonl，写索引时交给 idxPath。
 func (s *Store) rebuildIndexLocked(sessionID string) *sessionIndex {
 	p := s.path(sessionID)
 	f, err := os.Open(p)
@@ -213,6 +222,8 @@ func (s *Store) rebuildIndexLocked(sessionID string) *sessionIndex {
 }
 
 // writeIdxFile 先写版本和 size，再写每条索引，经 .tmp 改名，权限 0o644。
+// path 先写成 path 加 .tmp，再改名。
+// idx 的 size 写入文件头，entries 逐条编码。
 func writeIdxFile(path string, idx *sessionIndex) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -232,6 +243,8 @@ func writeIdxFile(path string, idx *sessionIndex) error {
 }
 
 // recordAppendLocked 在内存索引的 size 正好等于这次写入的 off 时追加一条，并 appendIdxLine。对不上就整份重建。
+// sessionID 作为内存索引的键；对不上时交给 rebuildIndexLocked，对上时用它的 idxPath。
+// ev 的 Type 写入条目，并交给 payloadKind 和 entrySource。
 func (s *Store) recordAppendLocked(sessionID string, ev Event, off int64, n int) {
 	if s.mem == nil {
 		s.mem = map[string]*sessionIndex{}
@@ -258,6 +271,7 @@ func (s *Store) recordAppendLocked(sessionID string, ev Event, off int64, n int)
 }
 
 // appendIdxLine 往 .idx 末尾追加一条。文件还是空的才写头，头里的 size 是这次的长度；之后追加不再改头。是否仍可用由 lastCover 对照 jsonl 长度决定。
+// path 以追加方式打开；文件长度为 0 时先写头。
 func appendIdxLine(path string, size int64, e idxEntry) error {
 	// 只追加这一条。头里的 size 会停到下次重建；是否对齐看 lastCover 对照 jsonl 长度。
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
@@ -276,6 +290,7 @@ func appendIdxLine(path string, size int64, e idxEntry) error {
 }
 
 // dropIndexLocked 从内存删掉该会话索引，并删除 .idx。删除错误被丢掉。
+// sessionID 从内存索引删掉，并交给 idxPath 后删除文件。
 func (s *Store) dropIndexLocked(sessionID string) {
 	if s.mem != nil {
 		delete(s.mem, sessionID)
@@ -284,6 +299,7 @@ func (s *Store) dropIndexLocked(sessionID string) {
 }
 
 // readRangeLocked 从 off 读到 end。end 小于等于 off 时读到文件尾。文件不存在返回 nil, nil。JSON 无效的行跳过。扫描缓冲从 64 KiB 起，单行上限 8 MiB。
+// sessionID 交给 path 后打开 jsonl。
 func (s *Store) readRangeLocked(sessionID string, off, end int64) ([]Event, error) {
 	p := s.path(sessionID)
 	f, err := os.Open(p)

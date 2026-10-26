@@ -20,6 +20,7 @@ var (
 )
 
 // textFace 返回这个字号的字体。第一次才去读文件。字号小于等于 0，或没找到字体，就返回 nil。
+// size 小于等于 0 时返回 nil；否则作为 FaceOptions 的 Size 和 faces 的键，DPI 用 72。
 func textFace(size float64) font.Face {
 	fontOnce.Do(loadFont)
 	if fontData == nil || size <= 0 {

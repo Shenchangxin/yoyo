@@ -258,6 +258,7 @@ func (a *App) CheckUpdate() map[string]any {
 }
 
 // downloadUpdate 用 25 分钟超时下载。进度百分比在完成前最高写到 99。成功后 MarkPending，phase 改为 ready，并 notifyUpdateReady。
+// res 用来读 Asset 和 Manifest.Version，Asset 传给 Download 和 MarkPending。
 func (a *App) downloadUpdate(res update.CheckResult) {
 	dir := filepath.Dir(a.StagingPath())
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
@@ -310,6 +311,7 @@ func (a *App) downloadUpdate(res update.CheckResult) {
 }
 
 // finishUpdateErr 把 phase 设为 error，清掉 busy，并记下错误文本。
+// msg 写入 upd.err。
 func (a *App) finishUpdateErr(msg string) {
 	a.upd.mu.Lock()
 	a.upd.busy = false
@@ -319,6 +321,7 @@ func (a *App) finishUpdateErr(msg string) {
 }
 
 // notifyUpdateReady 每个版本只向 Hub 发一次 system 事件。Hub 为空则只记下已通知的版本。
+// ver 与 upd.notified 相同则返回，否则记入 notified，并写入事件的 version、title 和 text。
 func (a *App) notifyUpdateReady(ver string) {
 	if a.upd == nil {
 		return
@@ -346,6 +349,7 @@ func (a *App) notifyUpdateReady(ver string) {
 }
 
 // ApplyUpdate 把 phase 设为 applying，再调用 update.ApplyDownloaded。ErrQuitNeeded 和 ErrOpenedPackage 原样返回。其他错误把 phase 设为 error。
+// exe 传给 update.ApplyDownloaded。
 func (a *App) ApplyUpdate(exe string) error {
 	if a.upd != nil {
 		a.upd.mu.Lock()

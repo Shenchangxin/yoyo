@@ -66,6 +66,7 @@ func Open(dir string) (*Store, error) {
 // Push 追加一条。Key 非空且已有同 Key 时返回那条旧的。
 // ID 为空时用 UTC 时间，格式 in-20060102T150405.000000000。CreatedAt 为零时用当前 UTC。Unread 设为真。
 // 追加后若超过 500 条，只留最后 500 条，然后刷盘。
+// it 的 Key 非空且已有同 Key 时返回那条旧的。ID 为空时写成当前 UTC 的 in-20060102T150405.000000000。CreatedAt 为零时写成当前 UTC。Unread 设为 true 后追加，超过 500 条时只留最后 500 条。
 func (s *Store) Push(it Item) Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,6 +115,7 @@ func (s *Store) Unread() int {
 }
 
 // MarkRead 把指定 ID 的 Unread 设为假并刷盘。没有这条时也刷盘。
+// id 与每条的 ID 比较，相等则把 Unread 设为 false。
 func (s *Store) MarkRead(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,6 +128,7 @@ func (s *Store) MarkRead(id string) {
 }
 
 // Dismiss 删掉指定 ID。找到才刷盘并返回真，找不到返回假。
+// id 与每条的 ID 比较，相等的条目删掉。找到才刷盘并返回 true。
 func (s *Store) Dismiss(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

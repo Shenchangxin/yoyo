@@ -49,6 +49,8 @@ func procReady(p *syscall.LazyProc) bool {
 }
 
 // enumCompanionShape 是 EnumChildWindows 的回调。它按 companionChildRegion 决定清掉子窗口区域、跳过，或给子窗口贴宠物区域。返回 1 以继续枚举。
+// hwnd 传给 GetWindowRect。要清掉区域时传给 clearWindowRgn，要贴区域时转成 HWND 传给 setWindowCompanionRgn。
+// lparam 只在贴宠物区域时转成布尔值传给 setWindowCompanionRgn，非 0 为真。
 func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 	if !procReady(procGetWindowRect) {
 		return 1
@@ -73,6 +75,7 @@ func enumCompanionShape(hwnd uintptr, lparam uintptr) uintptr {
 }
 
 // clearWindowRgn 调用 SetWindowRgn 把区域设成空，从而去掉旧裁剪。句柄为 0 或函数没加载时返回。
+// hwnd 为 0 或 SetWindowRgn 没加载时返回。否则传给 SetWindowRgn。
 func clearWindowRgn(hwnd w32.HWND) {
 	if hwnd == 0 || !procReady(procSetWindowRgn) {
 		return
@@ -81,6 +84,8 @@ func clearWindowRgn(hwnd w32.HWND) {
 }
 
 // setWindowCompanionRgn 按窗口矩形创建宠物区域并 SetWindowRgn。创建失败则返回。SetWindowRgn 失败时删掉区域对象。
+// hwnd 为 0，或 SetWindowRgn、GetWindowRect 没加载时返回。否则用来取窗口矩形，再把创建的区域传给 SetWindowRgn。
+// caption 和窗口宽高一起传给 createCompanionRgn。
 func setWindowCompanionRgn(hwnd w32.HWND, caption bool) {
 	if hwnd == 0 || !procReady(procSetWindowRgn) || !procReady(procGetWindowRect) {
 		return
@@ -106,6 +111,7 @@ func setWindowCompanionRgn(hwnd w32.HWND, caption bool) {
 }
 
 // companionHWND 从 WebviewWindow 取出原生句柄。类型不对或窗口为空时返回 0。
+// win 断言成 *application.WebviewWindow。类型不对或为空时返回 0。否则取 NativeWindow。
 func companionHWND(win application.Window) w32.HWND {
 	wv, ok := win.(*application.WebviewWindow)
 	if !ok || wv == nil {
@@ -115,6 +121,7 @@ func companionHWND(win application.Window) w32.HWND {
 }
 
 // restoreCompanionComposition 给宠物窗口加上 WS_EX_NOREDIRECTIONBITMAP。专注穿透开着时再加上 WS_EX_LAYERED 和 WS_EX_TRANSPARENT。否则去掉这两项。样式有变化时用 SetWindowPos 刷框架。
+// win 传给 companionHWND。
 func restoreCompanionComposition(win application.Window) {
 	hwnd := companionHWND(win)
 	if hwnd == 0 {
@@ -136,6 +143,7 @@ func restoreCompanionComposition(win application.Window) {
 }
 
 // applyCompanionShape 先恢复组合样式，再给父窗口和每个子窗口贴区域。caption 为真时枚举回调收到非 0 的 lparam。
+// win 传给 restoreCompanionComposition 和 companionHWND。句柄非 0 时再传给 setWindowCompanionRgn 和 EnumChildWindows。
 func applyCompanionShape(win application.Window, caption bool) {
 	restoreCompanionComposition(win)
 	hwnd := companionHWND(win)
@@ -160,9 +168,13 @@ func applyCompanionShape(win application.Window, caption bool) {
 }
 
 // setCompanionPassthrough 在 Windows 上是空操作。悬停切换 WS_EX_TRANSPARENT 既穿不透 Chromium 窗口，也会让宠物不再绘制。点击穿透靠 SetWindowRgn。
+// bool 没有使用。
 func setCompanionPassthrough(application.Window, bool) {}
 
 // createCompanionRgn 在通话中创建整窗圆角区域，半径 24。空闲时按宠物占位做圆角矩形，字幕打开时再并上字幕胶囊。GDI 的直径用圆角的两倍，避免裁成圆。
+// winW 在通话中作为圆角区域的宽。空闲时转成 float64 传给 companionPetRegionRect，并参与 companionRegionCornerRadius 的缩放。caption 为真且 CombineRgn 已加载时再传给 companionCaptionRect 和 companionScale。
+// winH 在通话中作为圆角区域的高。空闲时转成 float64 传给 companionPetRegionRect，并参与 companionRegionCornerRadius 的缩放。caption 为真且 CombineRgn 已加载时再传给 companionCaptionRect 和 companionScale。
+// caption 传给 companionPetRegionRect。为真且 CombineRgn 已加载时，再传给 companionCaptionRect 和 companionScale，并把字幕区域并进宠物区域。
 func createCompanionRgn(winW, winH int, caption bool) uintptr {
 	if !procReady(procCreateRoundRectRgn) {
 		return 0
@@ -226,6 +238,7 @@ func createCompanionRgn(winW, winH int, caption bool) uintptr {
 }
 
 // companionCursorLocalNative 用 GetCursorPos 和 GetWindowRect 算出光标在窗口里的坐标，以及窗口宽高。句柄或调用失败时返回假。
+// win 传给 companionHWND。
 func companionCursorLocalNative(win application.Window) (lx, ly, ww, wh float64, ok bool) {
 	hwnd := companionHWND(win)
 	if hwnd == 0 || !procReady(procGetCursorPos) || !procReady(procGetWindowRect) {
@@ -254,6 +267,7 @@ func leftMouseDown() bool {
 }
 
 // dpiAt 用 MonitorFromPoint 和 GetDpiForMonitor 取该点的有效 DPI。取不到或低于 96 时用 GetDpiForSystem，仍低于 96 则返回 96。
+// x 和 y 传给 MonitorFromPoint。
 func dpiAt(x, y int32) int {
 	hmon, _, _ := procMonitorFromPoint.Call(uintptr(int32(x)), uintptr(int32(y)), monitorDefaultNearest)
 	if hmon != 0 && procGetDpiForMonitor.Find() == nil {

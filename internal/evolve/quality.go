@@ -52,6 +52,7 @@ func proposalText(p Proposal) string {
 }
 
 // surfaceKey 优先用 Surface。为空时按载荷种类回落，都没有时为 unknown。
+// p 的 Surface 非空时直接返回；否则按 Fragment、PlaybookBullet、SkillMD、InstructionText、MiddlewareText 回落，都没有时返回 unknown。
 func surfaceKey(p Proposal) string {
 	if p.Surface != "" {
 		return p.Surface
@@ -97,6 +98,8 @@ func ModuleOf(p Proposal) string {
 
 // AdmitQuality 在花评测之前拒绝提议。载荷多于一种、surface 为 tool_use、正文含 held 编号、像仓库概览、照抄 held-in 说明的前 80 个字节（说明折叠空白后至少 40 字节）、剧本 rune 数超过上限，或技能被 fluffSkill 判为无效时返回错误。
 // playbookTokens 小于等于 0 时按 2000 计。
+// pb 只在有 PlaybookBullet 时用来 ApplyDelta，再交给 renderPlaybook 数 rune。
+// heldInText 的每一条交给 leakedInstruction，命中则返回 copied held-in instruction。
 func AdmitQuality(p Proposal, pb artifact.Playbook, playbookTokens int, held map[string]bool, heldInText []string) error {
 	if payloadCount(p) > 1 {
 		return fmt.Errorf("multiple L1 surfaces")
@@ -136,6 +139,11 @@ func AdmitQuality(p Proposal, pb artifact.Playbook, playbookTokens int, held map
 
 // AdmitOverlay 先走 AdmitQuality。INV 拒绝剧本和常开片段；instruction 的槽只许 verification 或 failure_recovery，空槽按 verification，正文不能为空，rune 数不能超过 overlayAlwaysOnMax，也不能带触发语。middleware 和 skill 的正文不能为空。
 // DOM 只许 surface 为 skill 且 SkillMD 非空，不能再带剧本、片段、指令或中间件。其他维度返回 unknown overlay dim。
+// p 先交给 AdmitQuality；维度为 INV 时再看 PlaybookBullet、Surface、Fragment、InstructionSlot、InstructionText、MiddlewareText、SkillMD，为 DOM 时要求 Surface 是 skill 且 SkillMD 非空。
+// pb 交给 AdmitQuality。
+// playbookTokens 交给 AdmitQuality。
+// held 交给 AdmitQuality。
+// heldInText 交给 AdmitQuality。
 func AdmitOverlay(p Proposal, dim string, pb artifact.Playbook, playbookTokens int, held map[string]bool, heldInText []string) error {
 	if err := AdmitQuality(p, pb, playbookTokens, held, heldInText); err != nil {
 		return err
@@ -191,6 +199,7 @@ func AdmitOverlay(p Proposal, dim string, pb artifact.Playbook, playbookTokens i
 }
 
 // instructionHasTrigger 在正文里找 when、whenever、if the user、if a user、after the user，以及「当用户」「当请求」「如果用户」「若用户」。
+// text 转成小写后查找这些英文片段；原文再查找那四句中文。
 func instructionHasTrigger(text string) bool {
 	lower := strings.ToLower(text)
 	for _, p := range []string{
@@ -205,6 +214,7 @@ func instructionHasTrigger(text string) bool {
 }
 
 // looksLikeRepoOverview 在小写正文里找仓库概览、目录结构、this repo contains、agents.md 和 warehouse tour。
+// lower 里查找 repository overview、directory structure、this repo contains、agents.md、warehouse tour。
 func looksLikeRepoOverview(lower string) bool {
 	for _, n := range []string{"repository overview", "directory structure", "this repo contains", "agents.md", "warehouse tour"} {
 		if strings.Contains(lower, n) {
@@ -215,6 +225,8 @@ func looksLikeRepoOverview(lower string) bool {
 }
 
 // leakedInstruction 把说明折成单行小写。短于 40 字节则不算泄漏。否则取前 80 字节，看提议小写正文是否包含这段。
+// lower 用来查找截断后的说明。
+// inst 先折成单行小写；短于 40 字节返回 false；长于 80 字节只取前 80。
 func leakedInstruction(lower, inst string) bool {
 	inst = strings.ToLower(strings.Join(strings.Fields(inst), " "))
 	if len(inst) < 40 {
@@ -228,6 +240,7 @@ func leakedInstruction(lower, inst string) bool {
 }
 
 // fluffSkill 去掉前置信息后，正文 rune 数小于 1200 则不算空话。达到 1200 时，write、run、check、verify、call、read 里命中少于 2 个则算空话。
+// md 以 --- 开头时去掉到下一处 --- 为止的前置信息，再按正文 rune 数和那六个词判断。
 func fluffSkill(md string) bool {
 	body := md
 	if strings.HasPrefix(md, "---") {
@@ -250,6 +263,7 @@ func fluffSkill(md string) bool {
 }
 
 // renderPlaybook 把每条剧本正文按行接起来，供 rune 计数。
+// pb 的每条 Bullet 正文各写一行。
 func renderPlaybook(pb artifact.Playbook) string {
 	var b strings.Builder
 	for _, x := range pb.Bullets {

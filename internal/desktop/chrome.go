@@ -17,6 +17,9 @@ import (
 // InstallChrome 装上托盘、菜单、全局热键和桌面通知，并把窗口焦点时清空通知历史。
 // 它监听 yoyo:do-quit 并调用 forceQuit。通知函数先发 yoyo:pulse。kind 为 loading、toast 为假、没有通知服务，或 toastAllowed 拒绝时，不发系统通知。用户点通知后 Raise 窗口，并按会话发出 yoyo:focus。
 // 同进程订阅 Hub，由 pumpDesktopEvents 发出 yoyo:item，状态变化发出 yoyo:state。RPC 模式下只转发 state.changed 为 yoyo:state、item.event 为 yoyo:item，approval.request 和 turn.completed 不转发。
+// gui 写入 svc.gui，用来建系统托盘、听 yoyo:do-quit，并发出 yoyo:pulse、yoyo:focus、yoyo:state、yoyo:item。
+// win 写入 svc.win。非 darwin 点击托盘和点通知时传给 showWindow，获得焦点时清空通知历史。
+// svc 记下 gui、win 和托盘，并调用 GetConfig、RebuildMenus、toastAllowed、noteToastSent、clearToastHistoryOnFocus、sessionTitle、noteDesktopPulse。
 func InstallChrome(gui *application.App, win application.Window, svc *Service, ns *notifications.NotificationService) {
 	svc.gui = gui
 	svc.win = win
@@ -194,6 +197,7 @@ func InstallChrome(gui *application.App, win application.Window, svc *Service, n
 
 // pumpDesktopEvents 用容量 256 的通道把 Hub 事件转成 yoyo:item，载荷是 app.NoticeOf，并调用 dispatch。
 // 通道满时，KeepHubEvent 为假的事件丢掉。为真的再试一次，仍满则也丢掉。保留的类型有 turn_end、turn_start、step_start、step_end、error、approval、user、inject、inbox，source 为 update 的 system，以及 assistant 流的 start 和 end。带 delta 的事件不保留。
+// gui 用来发出 yoyo:item。
 func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch func(typ, source, session string, payload map[string]any)) {
 	emit := make(chan trace.Event, 256)
 	go func() {
@@ -218,11 +222,13 @@ func pumpDesktopEvents(gui *application.App, ch <-chan trace.Event, dispatch fun
 }
 
 // showWindow 调用 Raise，把窗口从最小化或屏幕外拉回来并聚焦。
+// win 传给 Raise。
 func showWindow(win application.Window) {
 	Raise(win)
 }
 
 // sessionFromNote 优先读通知 UserInfo 里的 session。否则从 id 前缀 yoyo-turn-、yoyo-ask-、yoyo-err- 后面切出会话 id。都没有则返回空字符串。
+// info 非 nil 时读取 session 字符串，非空则返回。
 func sessionFromNote(id string, info map[string]any) string {
 	if info != nil {
 		if s, ok := info["session"].(string); ok && s != "" {
@@ -238,6 +244,7 @@ func sessionFromNote(id string, info map[string]any) string {
 }
 
 // payloadStr 读取 payload 里的字符串字段。payload 为空或类型不是字符串时返回空字符串。
+// key 用来从 p 里取字符串。
 func payloadStr(p map[string]any, key string) string {
 	if p == nil {
 		return ""
@@ -247,6 +254,7 @@ func payloadStr(p map[string]any, key string) string {
 }
 
 // firstPayloadStr 按 keys 的顺序返回第一个去掉空白后非空的字符串。
+// p 和每个 key 传给 payloadStr。
 func firstPayloadStr(p map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if s := strings.TrimSpace(payloadStr(p, key)); s != "" {

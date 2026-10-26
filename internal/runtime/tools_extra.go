@@ -12,6 +12,7 @@ import (
 )
 
 // askUser 把一句问题收成单题表单，再交给 askForm。空白问题返回错误。
+// question 去掉空白，空串返回错误；否则作为唯一一题的 Prompt 交给 askForm。
 func (t *WorkspaceTools) askUser(question string) ToolResult {
 	question = strings.TrimSpace(question)
 	if question == "" {
@@ -21,11 +22,15 @@ func (t *WorkspaceTools) askUser(question string) ToolResult {
 }
 
 // askUserArgs 用 parseAskForm 解析参数后交给 askForm。
+// args 交给 parseAskForm，结果再交给 askForm。
 func (t *WorkspaceTools) askUserArgs(args map[string]any) ToolResult {
 	return t.askForm(parseAskForm(args))
 }
 
 // runSkillScript 在技能目录里找脚本并执行。路径经 normalizeSkillScript，再用 WithinWorkspace 限制在该目录内。找不到目录时用 noSkillDirError。解释器缺失则拒绝。超时 30 秒，交给 shell。
+// skill 去掉空白后交给 resolveSkillName，空串则报缺参，否则用来取技能目录。
+// script 去掉空白，空串则报缺参；否则交给 normalizeSkillScript，再接到技能目录上。
+// args 非空时交给 SplitShellArgv，接在脚本参数后面。
 func (t *WorkspaceTools) runSkillScript(skill, script, args string) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("no tools")}

@@ -47,6 +47,8 @@ func main() {
 }
 
 // mustWrite 创建目录并写文件。失败则 panic。
+// path 的父目录按 0o755 创建，文件按 0o644 写入。失败则 panic。
+// b 写入该文件。
 func mustWrite(path string, b []byte) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		panic(err)
@@ -57,6 +59,7 @@ func mustWrite(path string, b []byte) {
 }
 
 // render 按边长光栅化标记。边长不超过 32 时每个方向采样 4 次，否则每个方向采样 3 次，再编码成 PNG。
+// size 作为图像宽高。小于等于 32 时每个方向采样 4 次，否则 3 次。
 func render(size int) []byte {
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	samples := 3
@@ -90,6 +93,8 @@ func render(size int) []byte {
 }
 
 // sample 在单位正方形里采样圆角底、圆环、轴和字母，并按覆盖混合底色和墨色。
+// x 传给 roundedBox、circle 和 capsule。
+// y 传给 roundedBox、circle 和 capsule。
 func sample(x, y float64) color.RGBA {
 	box := roundedBox(x, y, 0.5, 0.5, 0.5, 0.5, 0.22)
 	cover := aa(box)
@@ -109,6 +114,13 @@ func sample(x, y float64) color.RGBA {
 }
 
 // capsule 返回点到一条胶囊线段的有符号距离。
+// px 减去线段上的投影点，参与 Hypot。
+// py 减去线段上的投影点，参与 Hypot。
+// ax 是线段起点的横坐标，并参与投影。
+// ay 是线段起点的纵坐标，并参与投影。
+// bx 减去 ax 得到横向分量。
+// by 减去 ay 得到纵向分量。
+// r 从距离里减去。
 func capsule(px, py, ax, ay, bx, by, r float64) float64 {
 	dx := bx - ax
 	dy := by - ay
@@ -121,11 +133,19 @@ func capsule(px, py, ax, ay, bx, by, r float64) float64 {
 }
 
 // union 把两段覆盖合成一段。
+// a 与 b 按 1 减 (1-a) 乘 (1-b) 合成。
+// b 与 a 用同一公式合成。
 func union(a, b float64) float64 {
 	return 1 - ((1 - a) * (1 - b))
 }
 
 // roundedBox 返回点到圆角矩形的有符号距离。
+// px 与 cx 的差取绝对值后参与横向距离。
+// py 与 cy 的差取绝对值后参与纵向距离。
+// cx 从 px 里减去。
+// cy 从 py 里减去。
+// hw 从横向距离里减去，再加回圆角半径。
+// hh 从纵向距离里减去，再加回圆角半径。
 func roundedBox(px, py, cx, cy, hw, hh, r float64) float64 {
 	dx := math.Abs(px-cx) - hw + r
 	dy := math.Abs(py-cy) - hh + r
@@ -135,11 +155,16 @@ func roundedBox(px, py, cx, cy, hw, hh, r float64) float64 {
 }
 
 // circle 返回点到圆的有符号距离。
+// px 减去 cx 后参与 Hypot。
+// py 减去 cy 后参与 Hypot。
+// cx 从 px 里减去。
+// cy 从 py 里减去。
 func circle(px, py, cx, cy, r float64) float64 {
 	return math.Hypot(px-cx, py-cy) - r
 }
 
 // aa 把有符号距离收成 0 到 1 的覆盖。带宽是 0.0018。
+// d 除以 0.0018 后从 0.5 里减去。结果小于 0 时返回 0，大于 1 时返回 1。
 func aa(d float64) float64 {
 	// 边长 1024 时这条带更窄，小图上覆盖相对更厚。宽度是 0.0018。
 	w := 0.0018
@@ -154,6 +179,10 @@ func aa(d float64) float64 {
 }
 
 // mix 按前景覆盖混合背景色和前景色。覆盖不大于 0 时返回透明色。
+// bg 的 R、G、B 按 1 减 fgA 加权。
+// fg 的 R、G、B 按夹紧后的 fgA 加权。
+// fgA 交给 clamp 后作为前景权重。
+// cover 小于等于 0 时返回透明色，否则乘 255 后作为 alpha。
 func mix(bg, fg color.RGBA, fgA, cover float64) color.RGBA {
 	if cover <= 0 {
 		return color.RGBA{}
@@ -166,6 +195,7 @@ func mix(bg, fg color.RGBA, fgA, cover float64) color.RGBA {
 }
 
 // clamp 把值夹到 0 和 1。
+// v 小于 0 时返回 0，大于 1 时返回 1，否则原样返回。
 func clamp(v float64) float64 {
 	if v < 0 {
 		return 0
@@ -177,6 +207,7 @@ func clamp(v float64) float64 {
 }
 
 // packICO 把多张 PNG 打成 ICO。宽或高达到 256 时，目录项里的宽高字节写 0。
+// pngs 的长度写入目录计数。每张解码出宽高，大于等于 256 的一边在目录里写 0，字节原样接在目录后面。
 func packICO(pngs ...[]byte) []byte {
 	count := uint16(len(pngs))
 	var dir bytes.Buffer

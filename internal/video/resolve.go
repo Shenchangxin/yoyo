@@ -5,6 +5,9 @@ package video
 import "strings"
 
 // resolveIDs 把一批名字或标识收成不重复的文档标识。收不到的丢掉。
+// kind 与 dramaID、每一项一起传给 resolveOne。
+// dramaID 与 kind、每一项一起传给 resolveOne。
+// ids 逐项传给 resolveOne，得到的标识为空串或已出现过就丢掉。
 func (e *Engine) resolveIDs(kind, dramaID string, ids []string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -20,6 +23,9 @@ func (e *Engine) resolveIDs(kind, dramaID string, ids []string) []string {
 }
 
 // resolveOne 先按标识读取未删除且属于该剧的文档，再按归一化名字匹配。场景还比较地点原文，以及地点加时段的键是否等于归一化后的输入。角色、道具、场景以外返回空串。
+// kind 只处理 character、prop 和 scene，其他值返回空串。
+// dramaID 用来比较文档的 DramaID。
+// raw 去掉首尾空白，空串时返回空串；否则用来读文档或做 NormalizeName，场景还和地点原文、NormalizeSceneKey 比较。
 func (e *Engine) resolveOne(kind, dramaID, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -63,6 +69,7 @@ func (e *Engine) resolveOne(kind, dramaID, raw string) string {
 }
 
 // DeleteShot 给镜头写上删除时间和更新时间，不从文档库抹掉。
+// id 传给 getDoc 和 putDoc。
 func (e *Engine) DeleteShot(id string) error {
 	rec, err := getDoc[shotRec](e, colShots, id)
 	if err != nil {
@@ -75,6 +82,9 @@ func (e *Engine) DeleteShot(id string) error {
 }
 
 // AttachImage 把字节存成上传并写入 image_hash。该资产挂着的第一集如果不再缺静帧，就把 assets 标成 done。
+// kind 与 id 传给 UpdateAsset 和 firstLinkedEpisode。
+// id 与 kind 传给 UpdateAsset 和 firstLinkedEpisode。
+// raw 传给 StoreUpload。
 func (e *Engine) AttachImage(kind, id string, raw []byte) error {
 	hash, _, err := e.StoreUpload(raw)
 	if err != nil {
@@ -91,6 +101,8 @@ func (e *Engine) AttachImage(kind, id string, raw []byte) error {
 }
 
 // firstLinkedEpisode 返回第一集未删除、且挂着该角色、场景或道具的集标识。
+// kind 为 character、scene 或 prop 时，分别在 CharacterIDs、SceneIDs、PropIDs 里查找。
+// id 传给 containsID。
 func (e *Engine) firstLinkedEpisode(kind, id string) string {
 	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
 		if ep.DeletedAt != "" {
@@ -115,6 +127,7 @@ func (e *Engine) firstLinkedEpisode(kind, id string) string {
 }
 
 // missingStills 数已挂上但没有静帧的场景和道具，以及已挂上、没有静帧、且不是旁白的角色。
+// episodeID 传给 EpisodeCharacters、EpisodeScenes 和 EpisodeProps。
 func (e *Engine) missingStills(episodeID string) int {
 	n := 0
 	chars, _ := e.EpisodeCharacters(episodeID)
@@ -139,6 +152,7 @@ func (e *Engine) missingStills(episodeID string) int {
 }
 
 // missingClips 数没有视频哈希的镜头。读镜头失败时返回 0。
+// episodeID 传给 ListShots。
 func (e *Engine) missingClips(episodeID string) int {
 	shots, err := e.ListShots(episodeID)
 	if err != nil {
@@ -154,6 +168,7 @@ func (e *Engine) missingClips(episodeID string) int {
 }
 
 // GenerateMissingAssets 为缺静帧的已挂角色、场景和道具排队。旁白和已有静帧的跳过。排出了任务就把 assets 标成 running。一条都没排出且有错误时返回第一个错误。不再缺静帧时把 assets 标成 done。
+// episodeID 传给 EpisodeCharacters、EpisodeScenes、EpisodeProps、GenerateAsset、patchPipeline 和 missingStills。
 func (e *Engine) GenerateMissingAssets(episodeID string) ([]Job, error) {
 	chars, _ := e.EpisodeCharacters(episodeID)
 	scenes, _ := e.EpisodeScenes(episodeID)
@@ -202,6 +217,7 @@ func (e *Engine) GenerateMissingAssets(episodeID string) ([]Job, error) {
 }
 
 // GenerateMissingShots 为没有视频且状态不是 generating 的镜头排队。排出了任务就把 gen 标成 running。一条都没排出且有错误时返回第一个错误。不再缺片时把 gen 标成 done。
+// episodeID 传给 ListShots、patchPipeline 和 missingClips。
 func (e *Engine) GenerateMissingShots(episodeID string) ([]Job, error) {
 	shots, err := e.ListShots(episodeID)
 	if err != nil {

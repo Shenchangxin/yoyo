@@ -76,11 +76,14 @@ func SkillURL(slug string) string {
 }
 
 // Load 加载 Work Buddy 目录，等价于 LoadHub 且 Hub 为 HubWorkBuddy。
+// cacheDir 交给 LoadHub。
+// refresh 写入 LoadOpts 的 Refresh，再交给 LoadHub。
 func Load(cacheDir string, refresh bool) (Catalog, error) {
 	return LoadHub(cacheDir, LoadOpts{Hub: HubWorkBuddy, Refresh: refresh})
 }
 
 // loadWorkBuddy 读 cacheDir/catalog-v2.json。未要求刷新且缓存未过期时直接返回。拉取失败但有旧条目时在 Source 后加 " (stale)"。成功后解析 CATALOG.md、补树和前言，并写回缓存。
+// refresh 为假且 readCache 成功时直接返回 stampWorkBuddy 的结果；否则继续拉取。
 func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {
 	cachePath := filepath.Join(cacheDir, cacheName)
 	var previous Catalog
@@ -115,6 +118,7 @@ func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {
 }
 
 // stampWorkBuddy 把条目标成 Work Buddy，ID 用 ItemID，缺页面时指向 infometa/workbuddyskills 的 skills/<slug>。
+// c 的 Hub 设为 HubWorkBuddy，每条写入 Hub、ID 和 Repo；PageURL 为空时补上 GitHub 树地址。
 func stampWorkBuddy(c Catalog) Catalog {
 	c.Hub = HubWorkBuddy
 	for i := range c.Items {
@@ -129,6 +133,7 @@ func stampWorkBuddy(c Catalog) Catalog {
 }
 
 // ParseCatalogMD 只解析 "## 1." 到 "## 2." 之间的表格。三级标题是分类，会去掉末尾的数量括号。用途列会去掉前缀 "用途："。
+// md 交给 skillsSection，再按行解析表格。
 func ParseCatalogMD(md string) Catalog {
 	body := skillsSection(md)
 	var items []Item
@@ -178,6 +183,7 @@ func ParseCatalogMD(md string) Catalog {
 }
 
 // SanitizeSlug 取最后一段，去掉 .md。含 ..、以点或连字符开头，或出现字母、数字、-、_、. 以外的字符时返回空串。
+// s 去掉两端空白和反引号后取最后一段并去掉 .md；含 ..、结果为空、以点或连字符开头，或出现字母、数字、-、_、. 以外的字符时返回空串。
 func SanitizeSlug(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, "`")
@@ -216,6 +222,7 @@ func githubAuthToken() string {
 }
 
 // readCache 读取目录缓存。条目为空，或 FetchedAt 距现在超过 CacheTTL，则返回 false。
+// path 交给 os.ReadFile；读失败、JSON 非法、条目为空，或 FetchedAt 距现在超过 CacheTTL 时返回 false。
 func readCache(path string) (Catalog, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -232,6 +239,7 @@ func readCache(path string) (Catalog, bool) {
 }
 
 // skillsSection 截取 "## 1." 或 "## 1 " 到下一个 "## 2." 之前的正文。找不到开头时返回全文。
+// md 里找 "## 1."，没有再找 "## 1 "，再截到换行加 "## 2." 之前；找不到开头时返回全文。
 func skillsSection(md string) string {
 	start := strings.Index(md, "## 1.")
 	if start < 0 {
@@ -255,6 +263,7 @@ func stripCount(s string) string {
 }
 
 // splitRow 按竖线拆表格行并去掉每格空白。
+// line 去掉两端竖线后按竖线拆开，每格去掉空白。
 func splitRow(line string) []string {
 	line = strings.Trim(line, "|")
 	parts := strings.Split(line, "|")
@@ -266,6 +275,7 @@ func splitRow(line string) []string {
 }
 
 // headerRow 认出分隔行，以及首格为 "目录"、dir 或 slug 的表头。
+// cells 拼起来含 "---" 时返回 true，否则看第一格是不是 "目录"、dir 或 slug。
 func headerRow(cells []string) bool {
 	joined := strings.Join(cells, "")
 	if strings.Contains(joined, "---") {
@@ -276,6 +286,7 @@ func headerRow(cells []string) bool {
 }
 
 // cellText 去掉 Markdown 链接外壳和反引号，只留可见文字。
+// s 去掉两端空白、Markdown 链接外壳和反引号。
 func cellText(s string) string {
 	s = strings.TrimSpace(s)
 	for {
@@ -301,6 +312,7 @@ var featuredHints = []string{
 }
 
 // markFeatured 按 slug 命中内置关键词，最多标 10 条。一条都没有时改为标前 8 条。
+// items 按 slug 小写匹配关键词，命中则把 Featured 设为 true，最多 10 条；一条都没有时把前 8 条设为 true。
 func markFeatured(items []Item) {
 	n := 0
 	for i := range items {

@@ -1239,6 +1239,8 @@ func Handler(a *app.App, static http.Handler) http.Handler {
 }
 
 // serveSSE 把 Hub 里该会话的事件写成 SSE。响应头是 text/event-stream，不缓存。订阅在函数返回时取消。上下文结束或通道关闭则停下。不支持 Flusher 时返回 500。
+// w 断言成 http.Flusher，失败时写 500。成功则设置 text/event-stream、no-cache、keep-alive，并把事件交给 writeSSENotice。
+// sessionID 传给 Hub.Subscribe。
 func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -1265,6 +1267,7 @@ func serveSSE(w http.ResponseWriter, r *http.Request, a *app.App, sessionID stri
 }
 
 // writeSSENotice 把 trace.Event 经 app.NoticeOf 编成 JSON，写成一行 data: 事件。
+// ev 传给 app.NoticeOf，结果编成 JSON 后写成 data 行。
 func writeSSENotice(w http.ResponseWriter, ev trace.Event) {
 	b, _ := json.Marshal(app.NoticeOf(ev))
 	fmt.Fprintf(w, "data: %s\n\n", b)
@@ -1284,6 +1287,7 @@ func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 }
 
 // writeAppErr 遇到 L3 错误时写 403，正文带 l3、surfaces、from、to。遇到 runtime.ErrBudget 时写 429，正文带 budget、used、cap。其余错误写 500 和错误文本。
+// err 先交给 app.AsL3，是则写 403。再按 runtime.ErrBudget 判断，是则写 429。都不是则用 err.Error 写 500。
 func writeAppErr(w http.ResponseWriter, err error) {
 	if e, ok := app.AsL3(err); ok {
 		writeJSONStatus(w, 403, map[string]any{"error": e.Error(), "l3": true, "surfaces": e.Surfaces, "from": e.From, "to": e.To})
@@ -1298,6 +1302,8 @@ func writeAppErr(w http.ResponseWriter, err error) {
 }
 
 // restRPC 把 params 编成 JSON，用 ID 为 1 的 RPCRequest 调用 Dispatch。错误码 403 和 429 原样作为 HTTP 状态，其余错误是 500。成功时写出 Result。
+// w 在参数编码失败时写 400，Dispatch 返回错误时写错误文本，成功时把 Result 交给 writeJSON。
+// method 写入 RPCRequest 的 Method 后传给 Dispatch。
 func restRPC(a *app.App, w http.ResponseWriter, r *http.Request, method string, params any) {
 	raw := []byte("{}")
 	if params != nil {

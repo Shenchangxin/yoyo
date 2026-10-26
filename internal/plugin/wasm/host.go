@@ -40,15 +40,18 @@ func (h *Host) MaxSize() int { return h.maxSize }
 
 // Load 装入一份 WASM 模块。len(bin) 大于 maxSize 时返回 "wasm: module too large (%d)"；NewHost 把该上限设为 8<<20（8 MiB）。timeout 小于等于 0 时改为 2 秒。export 为空时用 "add"。只注册宿主模块 "yoyo"，不提供 WASI，访客没有文件系统和网络。log 单次读取超过 2048 字节会截到 2048；日志累计长度已经大于 8192 字节时，这次不再写入。now 返回 Unix 秒。abort 以 panic 抛出 "wasm abort %d"。scratch_set 与 scratch_get 使用长度为 16 的 uint32 数组，下标越界则忽略写入或返回 0。装入时的 context 超时就是这份 timeout。之后的 CallI32 和 CallJSON 各自再开一份同样的 Timeout。本函数不验签，未签名字节也会装入。同一 id 已存在时先关闭旧模块。
 func (h *Host) Load(id string, bin []byte, export string, timeout time.Duration) (*Module, error) {
+	// 比的是模块文件字节。NewHost 把上限设成 8 MiB，不是访客线性内存。超过就拒绝，不装入。
 	if len(bin) > h.maxSize {
 		return nil, fmt.Errorf("wasm: module too large (%d)", len(bin))
 	}
 	if timeout <= 0 {
+		// 没给超时时用 2 秒。装入用这份时限，之后每次调用再各自开一份。
 		timeout = 2 * time.Second
 	}
 	if export == "" {
 		export = "add"
 	}
+	// 只注册宿主模块 yoyo，不实例化 WASI。访客没有文件系统和网络。本函数也不验签，未签名字节会继续往下装。
 	rt := wazero.NewRuntime(context.Background())
 	logs := &strings.Builder{}
 	scratch := &[16]uint32{}
@@ -185,6 +188,7 @@ func (m *Module) Scratch(i int) uint32 {
 }
 
 // CallI32 调用 Export，参数和返回值按 uint64 传递。模块已关闭时返回 "wasm: module disposed"。没有该导出时返回 "wasm: missing export"。调用时限是 Timeout。没有返回值时返回 0。
+// args 原样传给导出函数的 Call。
 func (m *Module) CallI32(args ...uint64) (uint64, error) {
 	if m == nil || m.mod == nil {
 		return 0, fmt.Errorf("wasm: module disposed")
@@ -206,6 +210,7 @@ func (m *Module) CallI32(args ...uint64) (uint64, error) {
 }
 
 // CallJSON 按 L2 访客 ABI 调用：JSON 字节进、JSON 字节出，没有 WASI 文件系统。访客必须导出 alloc(i32)->i32，并导出 call_json(i32,i32)->i64（高 32 位是指针，低 32 位是长度）；没有 call_json 时改用 Export，签名相同。缺少 alloc 返回 "wasm: JSON ABI requires alloc"。两者都没有时返回 "wasm: missing call_json export"。输出长度为 0 或没有打包返回值时返回 {}。调用时限是 Timeout。
+// input 的长度传给 alloc，长度大于 0 时整段写入访客内存。
 func (m *Module) CallJSON(input []byte) ([]byte, error) {
 	if m == nil || m.mod == nil {
 		return nil, fmt.Errorf("wasm: module disposed")

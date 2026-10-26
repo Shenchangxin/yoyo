@@ -154,6 +154,7 @@ func (h *Host) captureJPEG() string {
 }
 
 // cleanJS 去掉空白。空、<nil>、undefined、null 都返回空字符串。
+// s 去掉空白。空、<nil>、undefined 或 null 时返回空字符串。
 func cleanJS(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "<nil>" || s == "undefined" || s == "null" {
@@ -163,6 +164,7 @@ func cleanJS(s string) string {
 }
 
 // hostOf 从地址里取出主机部分。没有 :// 时原样返回去掉空白的字符串。
+// raw 去掉空白。含 :// 时取其后、到 /、? 或 # 之前的一段。没有 :// 时返回去掉空白后的原文。
 func hostOf(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if i := strings.Index(raw, "://"); i >= 0 {

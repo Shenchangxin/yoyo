@@ -60,7 +60,7 @@ export function CompanionApp() {
   /** 把空闲计时拨回现在。 */
   const bump = () => { idleAt.current = Date.now(); };
 
-  /** 合并一条脉搏并让宠物动一下。 */
+  /** 合并一条脉搏并让宠物动一下。next 读取 session，传给 mergePulse。 */
   const applyPulse = (next: CompanionPulse) => {
     bump();
     if (next.session) sessionRef.current = next.session;
@@ -296,7 +296,7 @@ export function CompanionApp() {
   useEffect(() => () => { void api.setCompanionCaption(false); }, []);
 
   const grab = useRef<{ dx: number; dy: number; sx: number; sy: number } | null>(null);
-  /** 按下时记下拖动起点，点在按钮上则放过。 */
+  /** 按下时记下拖动起点，点在按钮上则放过。e 读取 button、target、screenX、screenY、currentTarget、pointerId。 */
   const dragStart = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest?.("button, input, textarea, a, [data-companion-call]")) return;
@@ -304,7 +304,7 @@ export function CompanionApp() {
     grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
-  /** 拖动时移动陪伴窗。 */
+  /** 拖动时移动陪伴窗。e 读取 buttons、screenX、screenY。 */
   const dragMove = (e: ReactPointerEvent<HTMLElement>) => {
     const g = grab.current;
     if (!e.buttons || !g) return;

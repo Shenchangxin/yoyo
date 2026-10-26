@@ -20,11 +20,15 @@ func Dir(home, id string) string {
 }
 
 // SkillsDir 返回该包目录下的 skills。
+// home 和 id 一起交给 Dir。
+// id 和 home 一起交给 Dir。
 func SkillsDir(home, id string) string {
 	return filepath.Join(Dir(home, id), "skills")
 }
 
 // ManifestPath 返回该包目录下的 pack.json。
+// home 和 id 一起交给 Dir。
+// id 和 home 一起交给 Dir。
 func ManifestPath(home, id string) string {
 	return filepath.Join(Dir(home, id), "pack.json")
 }
@@ -35,6 +39,7 @@ func WorkspaceFile(workspace string) string {
 }
 
 // SanitizeID 转成小写，只留 a-z、0-9 和连字符，去掉首尾连字符，最长 64 个字符。
+// id 转成小写并去掉两端空白，只留 a-z、0-9 和连字符，去掉首尾连字符，长于 64 时截到 64。
 func SanitizeID(id string) string {
 	id = strings.ToLower(strings.TrimSpace(id))
 	var b strings.Builder
@@ -52,6 +57,7 @@ func SanitizeID(id string) string {
 }
 
 // ReadManifest 读取 pack.json。读失败、JSON 无效或 id 为空白时返回 false。
+// home 和 id 一起交给 ManifestPath。
 func ReadManifest(home, id string) (Manifest, bool) {
 	b, err := os.ReadFile(ManifestPath(home, id))
 	if err != nil {
@@ -65,6 +71,8 @@ func ReadManifest(home, id string) (Manifest, bool) {
 }
 
 // WriteManifest 把清单写到 pack.json，权限 0o644。id 净化后为空则返回 invalid pack id。
+// home 用来创建目录，并和净化后的 id 一起交给 ManifestPath。
+// m 的 ID 经 SanitizeID，空则返回错误，否则写回 ID 再整份清单落盘。
 func WriteManifest(home string, m Manifest) error {
 	id := SanitizeID(m.ID)
 	if id == "" {

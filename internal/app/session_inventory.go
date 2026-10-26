@@ -34,6 +34,7 @@ type ContextInventory struct {
 }
 
 // ContextInventory 列出计划、钉住的技能和路径、笔记、Today、spill，以及工作区里的 MCP、规则和终端日志。
+// sessionID 传给 GetSession 和 measureSessionContext，并写入 Session、PlanFilePath、BindSpill 和终端目录。
 func (a *App) ContextInventory(sessionID string) ContextInventory {
 	meta, _ := a.GetSession(sessionID)
 	rep := a.measureSessionContext(sessionID)
@@ -137,6 +138,8 @@ func (a *App) ContextInventory(sessionID string) ContextInventory {
 }
 
 // SetSessionPlan 把计划文本写入 meta，并写到工具根的计划文件。
+// id 传给 GetSession 和 WritePlanFile。
+// text 去掉首尾空白后写入 PlanText，并传给 WritePlanFile。
 func (a *App) SetSessionPlan(id, text string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -151,6 +154,7 @@ func (a *App) SetSessionPlan(id, text string) (SessionMeta, error) {
 }
 
 // RestoreSessionFiles 按 from 找到事件时间，把该时间之后的文件快照恢复到工具根。找不到回合则返回错误。
+// id 传给 GetSession、BindSpill、ReadTrace 和 lookupEventTime。
 func (a *App) RestoreSessionFiles(id, from string) (string, error) {
 	meta, err := a.GetSession(id)
 	if err != nil {
@@ -173,6 +177,10 @@ func (a *App) RestoreSessionFiles(id, from string) (string, error) {
 }
 
 // ContextPin 按 skill、file 或 hot 钉住或取消钉住一项，并写回 meta。
+// id 传给 GetSession。
+// kind 去掉首尾空白并转小写，只认 skill、file 和 hot。
+// key 去掉首尾空白，空串则返回错误，否则传给 toggleStr。
+// pinned 传给 toggleStr。
 func (a *App) ContextPin(id, kind, key string, pinned bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -198,6 +206,7 @@ func (a *App) ContextPin(id, kind, key string, pinned bool) (SessionMeta, error)
 }
 
 // toggleStr 按 on 把 key 放进或移出字符串列表，不重复添加。
+// list 逐项与 key 比较，按 on 保留或追加。
 func toggleStr(list []string, key string, on bool) []string {
 	out := make([]string, 0, len(list)+1)
 	seen := false
@@ -218,6 +227,7 @@ func toggleStr(list []string, key string, on bool) []string {
 }
 
 // capLine 把空白收成一行，并按 rune 截断。
+// s 先把空白收成一行，再按 n 截断。
 func capLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	r := []rune(s)

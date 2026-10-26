@@ -11,7 +11,7 @@ export type SlashCommand = {
   hint: string;
 };
 
-/** slashCatalog 按文案表拼出可补全的命令目录。 */
+/** slashCatalog 按文案表拼出可补全的命令目录。copy 读取 slash。 */
 export function slashCatalog(copy: Copy): SlashCommand[] {
   return [
     { cmd: "/new", hint: copy.slash.new },
@@ -38,13 +38,13 @@ export function slashCatalog(copy: Copy): SlashCommand[] {
   ];
 }
 
-/** slashQuery 光标处的 `/token`：行首或空白之后，与 harness 相同。没有则返回空。结果为小写。 */
+/** slashQuery 光标处的 `/token`：行首或空白之后，与 harness 相同。没有则返回空。结果为小写。value 传给 exec。 */
 export function slashQuery(value: string): string | null {
   const m = /(?:^|\s)(\/[^\s]*)$/.exec(value);
   return m?.[1] ? m[1].toLowerCase() : null;
 }
 
-/** filterSlash 留下命令或去掉斜杠后的名字以前缀开头的项。 */
+/** filterSlash 留下命令或去掉斜杠后的名字以前缀开头的项。prefix 截取，传给 startsWith。items 做过滤。 */
 export function filterSlash(prefix: string, items: SlashCommand[]): SlashCommand[] {
   return items.filter((s) => s.cmd.startsWith(prefix) || s.cmd.slice(1).startsWith(prefix.slice(1)));
 }

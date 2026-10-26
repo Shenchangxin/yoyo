@@ -105,6 +105,7 @@ func (h *Host) stopChrome() {
 }
 
 // stopChromeProc 先调用 killTree，再杀掉进程并最多等 3 秒。
+// cmd 非空且 Process 非空时杀掉进程，并在最多 3 秒内等 Wait 结束。
 func stopChromeProc(cmd *exec.Cmd, killTree func()) {
 	if killTree != nil {
 		killTree()
@@ -124,6 +125,7 @@ func stopChromeProc(cmd *exec.Cmd, killTree func()) {
 }
 
 // OpenURL 只接受 http 或 https。先用本进程的 HTTP 客户端取一页文本，再尝试用 CDP 导航；CDP 成功时改用页面标题、正文、可见控件和页面错误。
+// raw 交给 url.Parse。协议不是 http 或 https 时返回 browser: need http(s) URL。解析后的地址用来 GET 和 navigateCDP，原始字符串作为 open 的 detail 传给 record。
 func (h *Host) OpenURL(raw string) (Snapshot, error) {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -193,6 +195,7 @@ func (h *Host) ShotMeta() (unchanged bool, sum string, n int) {
 }
 
 // Download 把 http 或 https 地址下载到 dest，最多 64 MiB。
+// raw 交给 url.Parse。协议不是 http 或 https 时返回 browser: need http(s) URL。解析后的地址用来 GET，原始字符串作为 download 的 detail 传给 record。
 func (h *Host) Download(raw, dest string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -231,6 +234,8 @@ func (h *Host) Log() []map[string]any {
 }
 
 // record 追加一条操作并整份写到目录里的 journal.json，权限 0o600。
+// op 写入日志条目的 op 字段。
+// detail 写入日志条目的 detail 字段。
 func (h *Host) record(op, detail string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

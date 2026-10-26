@@ -10,7 +10,7 @@ import { creationCases, type CreationCase, type CreationCaseLane } from "../../v
 
 const PAGE = 12;
 
-/** 按案例通道套上标题和提示词。 */
+/** 按案例通道套上标题和提示词。item 按 lane 选模板，再把 title 和 prompt 填进去。c 提供各通道的填充文案。 */
 function fillFor(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   const text = item.lane === "studio"
     ? c.featuredFillStudio
@@ -22,7 +22,7 @@ function fillFor(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["con
   return text.replace("{title}", item.title).replace("{prompt}", item.prompt);
 }
 
-/** 把案例通道换成界面上的名字。 */
+/** 把案例通道换成界面上的名字。lane 换成 studio、drama、canvas 或聊天的名字。c 提供这些名字。 */
 function laneLabel(lane: CreationCaseLane, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   if (lane === "studio") return c.featuredLaneStudio;
   if (lane === "drama") return c.featuredLaneDrama;
@@ -30,7 +30,7 @@ function laneLabel(lane: CreationCaseLane, c: ReturnType<typeof useCopy>["video"
   return c.featuredLaneChat;
 }
 
-/** 拼风格、共用对象，以及没有预设时的静帧说明。 */
+/** 拼风格、共用对象，以及没有预设时的静帧说明。item 用 styleTitle、coverFile、sharedWith 和 preset 拼一行。c 提供风格、共用和静帧文案。 */
 function sourceLine(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   const parts = [c.featuredStyle.replace("{title}", item.styleTitle).replace("{file}", item.coverFile)];
   if (item.sharedWith[0]) parts.push(c.featuredShared.replace("{title}", item.sharedWith[0]));
@@ -38,7 +38,7 @@ function sourceLine(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["
   return parts.join(" · ");
 }
 
-/** FeaturedCases 每次再多展示 12 条案例。封面失败时换备用图。 */
+/** FeaturedCases 每次再多展示 12 条案例。封面失败时换备用图。props 的 onPrompt 在点卡片时收到填好的文案。 */
 export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;
@@ -50,7 +50,7 @@ export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
     { id: "image" as const, label: c.featuredImage },
     { id: "text" as const, label: c.featuredText },
   ];
-  const filtered = creationCases.filter((item) => filter === "all" || item.mode === filter);
+  const filtered = creationCases.filter(/** item 在筛选为 all，或 mode 和筛选相同时留下。 */ (item) => filter === "all" || item.mode === filter);
   const shown = filtered.slice(0, limit);
   return (
     <section className="creation-gallery" data-testid="creation-cases" aria-labelledby="creation-cases-title">
@@ -62,8 +62,8 @@ export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
         {c.featuredSource.replace("{n}", String(creationCases.length))}
       </p>
       <div className="creation-gallery-filters" role="group" aria-label={c.featured}>
-        {filters.map((entry) => {
-          const count = creationCases.filter((item) => entry.id === "all" || item.mode === entry.id).length;
+        {filters.map(/** entry 用 id 统计数量和选中态，用 label 显示。 */ (entry) => {
+          const count = creationCases.filter(/** item 在 entry 为 all，或 mode 和 entry.id 相同时计入。 */ (item) => entry.id === "all" || item.mode === entry.id).length;
           return (
             <button
               key={entry.id}
@@ -80,7 +80,7 @@ export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
       </div>
       {shown.length === 0 ? <p className="creation-gallery-empty">{c.featuredEmpty}</p> : (
         <div className="creation-gallery-grid">
-          {shown.map((item, index) => (
+          {shown.map(/** item 画封面、标题和说明。index 为 0 且这条是精选、筛选为 all 时加大卡片。 */ (item, index) => (
             <button
               key={item.id}
               type="button"
@@ -94,7 +94,7 @@ export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
                   src={item.image}
                   alt=""
                   loading="lazy"
-                  onError={(event) => {
+                  onError={/** event 的 currentTarget 在还没换过备用图时改 src。 */ (event) => {
                     const img = event.currentTarget;
                     if (img.dataset.fallback === "1") return;
                     img.dataset.fallback = "1";
@@ -115,7 +115,7 @@ export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
       )}
       <footer className="creation-gallery-foot">
         {limit < filtered.length ? (
-          <button type="button" className="creation-gallery-more" onClick={() => setLimit((count) => count + PAGE)}>
+          <button type="button" className="creation-gallery-more" onClick={() => setLimit(/** count 加上 12。 */ (count) => count + PAGE)}>
             {c.featuredMore}
           </button>
         ) : (

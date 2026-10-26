@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { MarkWell } from "./shell/YoyoMark";
 
-// About 在打开变为假时调用 onClose。空值显示破折号。隔离取 info.isolated。工作区取 workspace_ready，没有再取 workspaceReady。
+/** About 在打开变为假时调用 onClose。空值显示破折号。隔离取 info.isolated。工作区取 workspace_ready，没有再取 workspaceReady。props 读取 info、open、onClose，调用 onClose。 */
 export function About(props: {
   open: boolean;
   info: Record<string, any>;

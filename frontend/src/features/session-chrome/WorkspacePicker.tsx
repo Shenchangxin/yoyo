@@ -8,7 +8,7 @@ import { Check, Folder, Plus } from "lucide-react";
 import type { Copy } from "../../lib/copy";
 import { workspaceLabel } from "./WorkspaceChip";
 
-/** WorkspacePicker 列出最近路径；没有最近项时不打开，交给外面选文件夹。 */
+/** WorkspacePicker 列出最近路径；没有最近项时不打开，交给外面选文件夹。props 读取 onAdd、onClose、items、open、anchorRef、copy 等，调用 onPick，调用 onClose，调用 onAdd。 */
 export function WorkspacePicker(props: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -47,13 +47,13 @@ export function WorkspacePicker(props: {
 
   useEffect(() => {
     if (!props.open || skipMenu) return;
-    /** 点到锚点和菜单外面就关闭。 */
+    /** 点到锚点和菜单外面就关闭。e 读取 target。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (props.anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       onCloseRef.current();
     };
-    /** 退出键关闭菜单。 */
+    /** 退出键关闭菜单。e 读取 key。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCloseRef.current();
     };

@@ -20,7 +20,7 @@ import type { HarborKind } from "../../lib/protocol";
 import { LabCard, LabChip, LabFrame, LabTable, StoryRow } from "./LabFrame";
 import { useUI } from "../../lib/store";
 
-// HarborLab 忙时只显示加载。安全项始终可跑；其余种类和模型输入只在实验室开关打开时出现。非实验室只列出未通过的结果。
+/** HarborLab 忙时只显示加载。安全项始终可跑；其余种类和模型输入只在实验室开关打开时出现。非实验室只列出未通过的结果。props 读取 report、busy、models、error、lastKind、best，调用 onRun，调用 onModels。 */
 export function HarborLab(props: {
   busy: string | null;
   error?: string;

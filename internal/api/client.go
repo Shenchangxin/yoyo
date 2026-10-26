@@ -76,6 +76,7 @@ func (c *LineClient) readLoop() {
 }
 
 // failAll 给每个还在等的 id 送一条 code 为 -32000 的错误应答，然后清空等待表。
+// err 的 Error 写入每条应答的 Message。
 func (c *LineClient) failAll(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -117,6 +118,7 @@ func (c *LineClient) Call(method string, params any) (any, error) {
 }
 
 // intID 把 JSON 数字收成 int64。接受 float64、int64、int 和 json.Number。其他类型返回假。
+// v 是 float64、int64 或 int 时转成 int64。是 json.Number 时调用 Int64。其他类型返回 0 和 false。
 func intID(v any) (int64, bool) {
 	switch n := v.(type) {
 	case float64:
@@ -134,6 +136,7 @@ func intID(v any) (int64, bool) {
 }
 
 // mustJoin 把解码出来的字段重新编成一段 JSON，供再解析成 RPCRequest 或 RPCResponse。
+// raw 传给 json.Marshal。
 func mustJoin(raw map[string]json.RawMessage) []byte {
 	b, _ := json.Marshal(raw)
 	return b

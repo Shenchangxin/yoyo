@@ -31,7 +31,7 @@ const SLICE_TONE: Record<CtxSliceId, string> = {
   free: "bg-[var(--ctx-free)]",
 };
 
-// ContextPane 没有 sessionId 时只显示空状态。没有用量、耗时和调用时也显示空状态。命中率至少 70 用好颜色，低于 40 用警告色，没报出来不着色。最近调用只取末尾 8 条并倒序。
+/** ContextPane 没有 sessionId 时只显示空状态。没有用量、耗时和调用时也显示空状态。命中率至少 70 用好颜色，低于 40 用警告色，没报出来不着色。最近调用只取末尾 8 条并倒序。props 读取 ctx、trace、sessionId、running，调用 onRefresh。 */
 export function ContextPane(props: {
   sessionId?: string;
   running?: boolean;
@@ -150,7 +150,7 @@ export function ContextPane(props: {
   );
 }
 
-// 百分比达到 90 用危险色。图例去掉 free，但 chat 即使 token 为 0 也留着。每段至少按 1 份伸展，free 不设最小宽度。
+/** WindowMeter 百分比达到 90 用危险色。图例去掉 free，但 chat 即使 token 为 0 也留着。每段至少按 1 份伸展，free 不设最小宽度。br 读取 slices、pct、used、capacity。copy 读取 composer，传给 sliceLabel。 */
 function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; copy: Copy }) {
   const visible = br.slices.filter((s) => s.tokens > 0);
   const legend = br.slices.filter((s) => s.id !== "free" && (s.tokens > 0 || s.id === "chat"));
@@ -191,7 +191,7 @@ function WindowMeter({ br, copy }: { br: ReturnType<typeof contextBreakdown>; co
   );
 }
 
-// 已知切片换成文案，其余当空闲。
+/** sliceLabel 已知切片换成文案，其余当空闲。id 用来做分支。copy 读取 composer。 */
 function sliceLabel(id: CtxSliceId, copy: Copy): string {
   switch (id) {
     case "system": return copy.composer.ctxSystem;
@@ -207,7 +207,7 @@ function sliceLabel(id: CtxSliceId, copy: Copy): string {
   }
 }
 
-// good 用绿色，warn 用琥珀色，没传 tone 用前景色。
+/** Fact good 用绿色，warn 用琥珀色，没传 tone 用前景色。label 作为子节点渲染。value 作为子节点渲染。 */
 function Fact({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
   return (
     <div className="rounded-lg border border-border/60 bg-lift/30 px-2.5 py-2">
@@ -226,7 +226,7 @@ function Fact({ label, value, tone }: { label: string; value: string; tone?: "go
   );
 }
 
-// 居中的空状态，最小高度 10rem。
+/** Empty 居中的空状态，最小高度 10rem。title 作为子节点渲染。hint 作为子节点渲染。 */
 function Empty({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">

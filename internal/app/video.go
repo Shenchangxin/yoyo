@@ -52,6 +52,7 @@ func (a *App) openVideo() error {
 }
 
 // onCanvasHub 把画布事件发到 Hub，来源为 video，ItemKind 用传入的 kind。Hub 为空则返回。
+// payload 写入事件的 Payload。
 func (a *App) onCanvasHub(kind string, payload map[string]any) {
 	if a.Hub == nil {
 		return
@@ -102,6 +103,8 @@ func (a *App) mediaURL(hash string) string {
 }
 
 // journalVideo 往日志追加一条视频事件。日志库为空则返回。
+// kind 传给 Journal.Append。
+// payload 传给 Journal.Append。
 func (a *App) journalVideo(kind string, payload map[string]any) {
 	if a.Journal == nil {
 		return
@@ -129,6 +132,8 @@ func (a *App) VideoStatus() map[string]any {
 }
 
 // attachDramaTools 只在该会话已绑定短剧时，把短剧工具挂进 Extra。调用进 Video.Tool。
+// tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled。
+// sessionID 传给 SessionBind 和 Tool。
 func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil {
 		return
@@ -160,6 +165,8 @@ func (a *App) attachDramaTools(tools *runtime.WorkspaceTools, sessionID string) 
 }
 
 // attachCanvasTools 只在会话已绑定画布时挂上画布工具。ask_user 已是宿主工具，这里跳过。plan_update 转给这场会话的 update_plan。generate_media、image_layer_split、image_annotation_render 以 Network 且 ForceAsk 检查能力。canvas_expose_mcp 未打开时去掉 mcp__ 工具。
+// tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled，并可能传给 stripCanvasMCP。
+// sessionID 传给 CanvasSessionBind 和 CanvasTool，并写入能力请求的 SessionID。
 func (a *App) attachCanvasTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil {
 		return
@@ -238,6 +245,7 @@ const conductorRuntimePin = "This is the Video conductor. cut_* plus video_route
 var studioDeniedTools = []string{"list_dir", "glob", "grep", "shell", "git_status", "git_diff", "git_commit"}
 
 // videoChannel 判断会话频道归一化后是否为视频。会话不存在返回 false。
+// sessionID 先 TrimSpace，空串返回 false，否则传给 GetSession。
 func (a *App) videoChannel(sessionID string) bool {
 	if a == nil || strings.TrimSpace(sessionID) == "" {
 		return false
@@ -247,6 +255,7 @@ func (a *App) videoChannel(sessionID string) bool {
 }
 
 // studioLane 在该会话已绑定短片项目时返回真。
+// sessionID 先 TrimSpace，空串返回 false，否则传给 StudioSessionBind。
 func (a *App) studioLane(sessionID string) bool {
 	if a == nil || a.Video == nil || strings.TrimSpace(sessionID) == "" {
 		return false
@@ -256,6 +265,7 @@ func (a *App) studioLane(sessionID string) bool {
 }
 
 // conductorLane 要求视频频道，并且没有绑定短片、短剧或画布。
+// sessionID 传给 videoChannel、StudioSessionBind、SessionBind 和 CanvasSessionBind。
 func (a *App) conductorLane(sessionID string) bool {
 	if a == nil || a.Video == nil || !a.videoChannel(sessionID) {
 		return false
@@ -273,6 +283,8 @@ func (a *App) conductorLane(sessionID string) bool {
 }
 
 // attachCutTools 在绑定了短片、短剧、画布，或本身是视频频道时挂上剪辑工具。cut_dub 和 cut_ingest 以 Network 且 ForceAsk 检查能力。
+// tools 为 nil 时返回，否则写入 Extra 和 ExtraEnabled。
+// sessionID 传给 StudioSessionBind、SessionBind、CanvasSessionBind、videoChannel 和 CutTool，并写入能力请求的 SessionID。
 func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil {
 		return
@@ -317,6 +329,8 @@ func (a *App) attachCutTools(tools *runtime.WorkspaceTools, sessionID string) {
 }
 
 // attachConductorTools 只在 conductorLane 为真时挂上指挥工具，钉住 conductorSkillNames，并调用 pinConductorLane。
+// tools 为 nil 时返回，否则写入 Extra、ExtraEnabled，并传给 MarkSkillsLoaded 和 pinConductorLane。
+// sessionID 传给 conductorLane、CutTool、GetSession 和 SetSessionPinnedSkills。
 func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil || !a.conductorLane(sessionID) {
 		return
@@ -353,6 +367,8 @@ func (a *App) attachConductorTools(tools *runtime.WorkspaceTools, sessionID stri
 }
 
 // attachStudioTools 只在已绑定短片时挂上短片工具。配音、热点、安装、生图和选题扩展以 Network 且 ForceAsk 检查。打开发布页以 Browser 且 ForceAsk 检查，并调用 OpenStudioPublish。创建人设调用 CreateStudioPersona。然后钉住短片技能并 pinStudioLane。
+// tools 为 nil 时返回，否则写入 Extra、ExtraEnabled，并传给 MarkSkillsLoaded 和 pinStudioLane。
+// sessionID 传给 StudioSessionBind、StudioTool、GetSession 和 SetSessionPinnedSkills，并写入能力请求的 SessionID。
 func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string) {
 	if tools == nil || a.Video == nil {
 		return
@@ -430,6 +446,7 @@ func (a *App) attachStudioTools(tools *runtime.WorkspaceTools, sessionID string)
 }
 
 // pinStudioLane 从广告名去掉 studioDeniedTools，并把 AllowedTools 设为剩余广告名加上短片工具、剪辑工具，以及 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_skill_file。
+// tools 为 nil 时返回，否则改写 Advertised 和 AllowedTools。
 func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -452,6 +469,7 @@ func (a *App) pinStudioLane(tools *runtime.WorkspaceTools) {
 }
 
 // pinConductorLane 同样拿掉 studioDeniedTools。AllowedTools 是剩余广告名加上剪辑工具、指挥工具，以及 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_skill_file。
+// tools 为 nil 时返回，否则改写 Advertised 和 AllowedTools。
 func (a *App) pinConductorLane(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -474,6 +492,7 @@ func (a *App) pinConductorLane(tools *runtime.WorkspaceTools) {
 }
 
 // canvasExposeMCP 在设置 canvas_expose_mcp 为 1、true 或 on 时返回真。空值和其他文本返回假。
+// eng 为 nil 时返回 false，否则读取设置 canvas_expose_mcp。
 func canvasExposeMCP(eng *video.Engine) bool {
 	if eng == nil {
 		return false
@@ -483,6 +502,7 @@ func canvasExposeMCP(eng *video.Engine) bool {
 }
 
 // stripCanvasMCP 从 Extra 和 ExtraEnabled 去掉以 mcp__ 开头的名字。
+// tools 为 nil 时返回，否则从 Extra 和 ExtraEnabled 去掉 mcp__ 前缀的名字。
 func stripCanvasMCP(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -508,6 +528,10 @@ func stripCanvasMCP(tools *runtime.WorkspaceTools) {
 }
 
 // RunDramaStage 按阶段绑定短剧或单集，钉上该阶段的技能，再用 StartSendOpts 把阶段提示交回该会话。outline 和 bible 绑定系列，其他阶段绑定单集。
+// sessionID 先 TrimSpace，空串返回错误，并传给绑定、GetSession、SetSessionPinnedSkills、journal 和 StartSendOpts。
+// episodeID 在 dramaID 为空时用来查集，非大纲和圣经阶段传给 BindSession，并传给 StagePrompt 和 journal。
+// stage 先 TrimSpace，用来区分大纲、圣经和其他阶段，并传给 StagePrompt 和 journal。
+// dramaID 为空且 episodeID 非空时从集上补上；大纲或圣经阶段为空则返回错误，该阶段非空时传给 BindSessionDrama，并传给 StagePrompt 和 journal。
 func (a *App) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -548,6 +572,9 @@ func (a *App) RunDramaStage(sessionID, episodeID, stage, dramaID string) error {
 }
 
 // DramaBind 在有单集 id 时 BindSession，否则在有系列 id 时 BindSessionDrama。两个都空返回 episode or series required。
+// sessionID 传给 BindSession 或 BindSessionDrama。
+// episodeID 去掉空白后非空时传给 BindSession。
+// dramaID 在 episodeID 去掉空白后为空、且自身去掉空白后非空时传给 BindSessionDrama。
 func (a *App) DramaBind(sessionID, episodeID, dramaID string) error {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -563,6 +590,7 @@ func (a *App) DramaBind(sessionID, episodeID, dramaID string) error {
 }
 
 // VideoCall 是视频、短剧、画布、短片、剪辑和连接的 JSON-RPC 入口。未知方法返回 unknown video method。drama.stage.run 和 drama.plan.queue_scripts 经 RunDramaStage 交给会话。canvas.bind 只做 BindCanvasSession。video.topic.schedule 用 KindOnce，时间是现在加 10 分钟；已有未跑的选题任务则返回 duplicate。删除选题和从选题建项时会取消这类未跑任务。video.studio.bind 接受 project_id 或 id。drama.plan.get 在 not found 时返回空对象。
+// params 为 nil 时改成空 map，再按方法读取字段。
 func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
@@ -1434,6 +1462,8 @@ func (a *App) VideoCall(method string, params map[string]any) (any, error) {
 }
 
 // CanvasBind 把会话绑到画布。这里只调用 BindCanvasSession。
+// sessionID 传给 BindCanvasSession。
+// canvasID 传给 BindCanvasSession。
 func (a *App) CanvasBind(sessionID, canvasID string) error {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -1443,6 +1473,7 @@ func (a *App) CanvasBind(sessionID, canvasID string) error {
 }
 
 // firstNonEmptyApp 返回第一个去掉空白后非空的字符串。
+// vals 逐个 TrimSpace，返回第一个非空的。
 func firstNonEmptyApp(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {
@@ -1453,6 +1484,8 @@ func firstNonEmptyApp(vals ...string) string {
 }
 
 // rpcString 读取参数里的字符串。缺键、值为 nil 或参数为 nil 时返回空串，否则去掉首尾空白。
+// params 为 nil 时返回空串，否则按 key 取值。
+// key 用来从 params 取值；缺键或值为 nil 时返回空串，否则 TrimSpace。
 func rpcString(params map[string]any, key string) string {
 	if params == nil {
 		return ""
@@ -1512,6 +1545,7 @@ func (a *App) enrichBundle(b video.EpisodeBundle) map[string]any {
 }
 
 // objJSON 经 JSON 往返把值收成 map。结果为 nil 时返回空 map。
+// v 先 Marshal 再 Unmarshal 成 map，结果为 nil 时改成空 map。
 func objJSON(v any) map[string]any {
 	b, _ := json.Marshal(v)
 	m := map[string]any{}
@@ -1535,6 +1569,7 @@ func decodeB64(s string) ([]byte, error) {
 }
 
 // decodePlanEpisodes 把任意 JSON 值解码成分集计划。空值或解码失败返回 nil。
+// v 为 nil 时返回 nil，否则经 JSON 解码成分集计划，失败也返回 nil。
 func decodePlanEpisodes(v any) []video.PlanEpisode {
 	if v == nil {
 		return nil
@@ -1551,6 +1586,7 @@ func decodePlanEpisodes(v any) []video.PlanEpisode {
 }
 
 // intArgApp 把 float64、int、json.Number 或十进制字符串收成 int。其他类型返回 0。
+// v 是 float64、int、json.Number 或字符串时收成 int，其他类型返回 0。
 func intArgApp(v any) int {
 	switch t := v.(type) {
 	case float64:
@@ -1569,6 +1605,7 @@ func intArgApp(v any) int {
 }
 
 // floatArgApp 把 float64、int、json.Number 或小数字符串收成 float64。其他类型返回 0。
+// v 是 float64、int、json.Number 或字符串时收成 float64，其他类型返回 0。
 func floatArgApp(v any) float64 {
 	switch t := v.(type) {
 	case float64:
@@ -1587,6 +1624,7 @@ func floatArgApp(v any) float64 {
 }
 
 // studioTitleFromPrompt 去掉做成短片：或做成短片: 前缀。没有这两个前缀时返回空串。
+// prompt 先 TrimSpace，有前缀做成短片：或做成短片: 时去掉前缀再 TrimSpace，否则返回空串。
 func studioTitleFromPrompt(prompt string) string {
 	p := strings.TrimSpace(prompt)
 	for _, prefix := range []string{"做成短片：", "做成短片:"} {
@@ -1620,6 +1658,7 @@ func studioJobPrompt(t video.Topic, p video.StudioProject) string {
 }
 
 // pendingTopicJob 查找该选题上已启用、且 LastRun 为零的短片日程。没有则返回 false。
+// topicID 先 TrimSpace，空串返回 false，否则和日程的 TopicID 比较。
 func (a *App) pendingTopicJob(topicID string) (schedule.Job, bool) {
 	topicID = strings.TrimSpace(topicID)
 	if a.Schedule == nil || topicID == "" {
@@ -1637,6 +1676,7 @@ func (a *App) pendingTopicJob(topicID string) (schedule.Job, bool) {
 }
 
 // cancelPendingTopicJobs 取消该选题上已启用且尚未跑过的短片日程，返回取消条数。
+// topicID 先 TrimSpace，空串返回 0，否则取消 TopicID 相同且已启用、LastRun 为零的日程。
 func (a *App) cancelPendingTopicJobs(topicID string) int {
 	topicID = strings.TrimSpace(topicID)
 	if a.Schedule == nil || topicID == "" {
@@ -1656,6 +1696,7 @@ func (a *App) cancelPendingTopicJobs(topicID string) int {
 }
 
 // runStudioJob 在 StudioJobShouldSkip 为真时记成功并返回。否则复用视频频道会话或在视频工作区新建会话，绑定短片项目，钉上短片技能，再 StartSendOpts。ErrQueued 仍记成功。
+// j 用来读 ID、StudioID、TopicID、SessionID、Prompt 和 Aspect，并可能改写 Prompt。
 func (a *App) runStudioJob(j schedule.Job) {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -1749,6 +1790,7 @@ func (a *App) runStudioJob(j schedule.Job) {
 }
 
 // topicIDsFrom 从 topic_ids 读取字符串切片、任意切片或逗号分隔的字符串。其他类型返回 nil。
+// params 为 nil 时返回 nil，否则读取 topic_ids。
 func topicIDsFrom(params map[string]any) []string {
 	if params == nil {
 		return nil
@@ -1785,6 +1827,7 @@ func splitCSVApp(s string) []string {
 }
 
 // enrichStudio 给短片项目补上成片、海报、旁白、封面和每个镜头的媒体 URL，并写入 furthest_gate。
+// p 用来读 ResultHash、PosterHash、NarrationHash、CoverHash、FurthestGate、Covers 和 Storyboard.Shots。
 func (a *App) enrichStudio(p video.StudioProject) map[string]any {
 	m := objJSON(p)
 	m["media_url"] = a.mediaURL(p.ResultHash)
@@ -1809,6 +1852,7 @@ func (a *App) enrichStudio(p video.StudioProject) map[string]any {
 }
 
 // enrichMedia 给媒体引用补上 media_url 和 poster_url。
+// ref 用来读 CASHash 和 PosterHash。
 func (a *App) enrichMedia(ref video.MediaRef) map[string]any {
 	m := objJSON(ref)
 	m["media_url"] = a.mediaURL(ref.CASHash)
@@ -1817,6 +1861,7 @@ func (a *App) enrichMedia(ref video.MediaRef) map[string]any {
 }
 
 // enrichCut 给剪辑项目补上成片、源片、配音、人声、音乐和拆条的媒体 URL。会话 id 为空时用该项目最近的剪辑会话。
+// p 在 SessionID 去掉空白后为空且 Video 非 nil 时写入最近剪辑会话，并用来读 ResultHash、SourceHash、PosterHash、Stems 和 Breakdown.Clips。
 func (a *App) enrichCut(p video.CutProject) map[string]any {
 	if strings.TrimSpace(p.SessionID) == "" && a.Video != nil {
 		p.SessionID = a.Video.LatestCutSession(p.ID)

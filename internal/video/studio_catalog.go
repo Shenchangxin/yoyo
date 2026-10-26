@@ -99,6 +99,7 @@ func StudioTemplates() []StudioTemplate {
 }
 
 // LookupStudioCharacter 按编号找角色。找不到时第二个结果是假。
+// id 去掉首尾空白后与 StudioCharacters 各项的 ID 比较。
 func LookupStudioCharacter(id string) (StudioCharacter, bool) {
 	id = strings.TrimSpace(id)
 	for _, c := range StudioCharacters() {
@@ -110,6 +111,7 @@ func LookupStudioCharacter(id string) (StudioCharacter, bool) {
 }
 
 // LookupStudioStyle 按编号找风格。找不到时第二个结果是假。
+// id 去掉首尾空白后与 StudioStyles 各项的 ID 比较。
 func LookupStudioStyle(id string) (StudioStyle, bool) {
 	id = strings.TrimSpace(id)
 	for _, s := range StudioStyles() {
@@ -121,6 +123,7 @@ func LookupStudioStyle(id string) (StudioStyle, bool) {
 }
 
 // LookupStudioPreset 按编号找预设。找不到时第二个结果是假。
+// id 去掉首尾空白后与 StudioPresets 各项的 ID 比较。
 func LookupStudioPreset(id string) (StudioPreset, bool) {
 	id = strings.TrimSpace(id)
 	for _, p := range StudioPresets() {
@@ -132,6 +135,7 @@ func LookupStudioPreset(id string) (StudioPreset, bool) {
 }
 
 // LookupStudioTemplate 按编号找模板。找不到时第二个结果是假。
+// id 去掉首尾空白后与 StudioTemplates 各项的 ID 比较。
 func LookupStudioTemplate(id string) (StudioTemplate, bool) {
 	id = strings.TrimSpace(id)
 	for _, t := range StudioTemplates() {
@@ -154,6 +158,7 @@ func DefaultStudioIdentity() StudioIdentity {
 }
 
 // presetIDForAspect 按画幅挑预设。16:9 用横屏讲解，1:1 用方形，其余用抖音竖屏。
+// aspect 传给 normalizeAspect，结果为 16:9 时返回 landscape，为 1:1 时返回 square，其余返回 douyin-shorts。
 func presetIDForAspect(aspect string) string {
 	switch normalizeAspect(aspect) {
 	case "16:9":

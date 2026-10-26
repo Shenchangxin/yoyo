@@ -22,7 +22,7 @@ import { ExtensionsSettings } from "./ExtensionsPanel";
 import { PersonalSettings } from "./PersonalPanel";
 import { IdolSettings } from "./IdolSettings";
 
-/** SettingsPage 按当前页签挂上面板。 */
+/** SettingsPage 按当前页签挂上面板。host 写到 GeneralSettings 的 host。navInRail 为假时走另一支。 */
 export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRail?: boolean }) {
   const copy = useCopy();
   const tab = useUI((s) => s.settingsTab);
@@ -66,7 +66,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
     };
   }, [section, nav, tab]);
 
-  /** 切到另一个页签。 */
+  /** 切到另一个页签。next 传给 setSettingsTab。 */
   function onTab(next: SettingsTab) {
     setSettingsTab(next);
   }

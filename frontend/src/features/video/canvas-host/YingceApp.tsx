@@ -44,7 +44,7 @@ if (typeof window !== "undefined") {
   (window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__ = true;
 }
 
-/** 用刷新壳包住懒加载页面。 */
+/** 用刷新壳包住懒加载页面。node 放进 Suspense。fallback 有传入时传给 Suspense，否则用 CanvasRefreshShell。 */
 function deferred(node: ReactNode, fallback?: ReactNode) {
   return <Suspense fallback={fallback || <CanvasRefreshShell />}>{node}</Suspense>;
 }
@@ -55,7 +55,7 @@ function BindAndTitle() {
   const params = useParams();
   const location = useLocation();
   const sessionId = typeof window !== "undefined" ? String((window as Window & { __YOYO_VIDEO_SESSION__?: string }).__YOYO_VIDEO_SESSION__ || "") : "";
-  const projects = useCanvasStore((s) => s.projects);
+  const projects = useCanvasStore(/** s 取出 projects。 */ (s) => s.projects);
   const id = params.id || params.projectId || "";
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function BindAndTitle() {
   }, [id, sessionId, location.pathname]);
 
   useEffect(() => {
-    const match = projects.find((p) => p.id === id);
+    const match = projects.find(/** p 用 id 和当前路由参数比对。 */ (p) => p.id === id);
     const path = location.pathname;
     const title = match?.title
       || (path.startsWith("/projects") || path.startsWith("/drama") ? copy.video.drama
@@ -91,7 +91,7 @@ function WorkspaceLayout() {
   );
 }
 
-/** YingceApp 用记忆路由打开创作、短剧、画布和资料页，并接上画布事件与宿主跳转。 */
+/** YingceApp 用记忆路由打开创作、短剧、画布和资料页，并接上画布事件与宿主跳转。initialPath 放进记忆路由的初始地址。 */
 export default function YingceApp({ initialPath = "/create" }: { initialPath?: string }) {
   useLayoutEffect(() => {
     void bootstrapAppearance();

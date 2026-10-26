@@ -18,6 +18,7 @@ import (
 // 状态不是 error 时 status.code 为 1，是 error 时为 2。service.name 固定是 yoyo。
 // 字符串和其余无法归类的值先经 diaglog.Redact。整段 JSON 再经 diaglog.RedactBytes。
 // 客户端超时是 5 秒。请求失败或构造失败时直接返回，不看响应状态码。
+// endpoint 去掉首尾空白和末尾斜杠，为空时直接返回，否则接上 /v1/traces 作为 POST 地址。
 func exportOTLP(endpoint string, s Span) {
 	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if endpoint == "" {

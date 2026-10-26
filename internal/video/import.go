@@ -13,6 +13,8 @@ import (
 )
 
 // ImportHuobao 只读打开火宝的 SQLite，把未删除的剧、集、资产和分镜抄进文档库。不读取接口密钥。SQLite 只是外部导入格式，不是这里的保存层。剧的样式和画幅在源库里空着时，查询分别用 3d 和 16:9。集的分辨率空着时查询用 720p。返回 ok、dramas 和 episodes。
+// dbPath 加上 ?mode=ro 后打开 SQLite，staticDir 为空时再传给 detectStaticDir。
+// staticDir 为空时改由 detectStaticDir 填写，再传给 importDramaAssets、importFile 和 importStoryboards。
 func (e *Engine) ImportHuobao(dbPath, staticDir string) (map[string]any, error) {
 	src, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
@@ -89,6 +91,7 @@ func (e *Engine) ImportHuobao(dbPath, staticDir string) (map[string]any, error) 
 }
 
 // detectStaticDir 在数据库旁、上一级和 data 目录里找名为 static 的目录。
+// dbPath 取其目录，再在旁边、上一级和 data 里找名为 static 的目录。
 func detectStaticDir(dbPath string) string {
 	dir := filepath.Dir(dbPath)
 	cands := []string{
@@ -105,6 +108,7 @@ func detectStaticDir(dbPath string) string {
 }
 
 // pragmaCols 用 PRAGMA table_info 读出表里有哪些列。查询失败时返回空 map。
+// db 用来执行 PRAGMA table_info。
 func pragmaCols(db *sql.DB, table string) map[string]bool {
 	m := map[string]bool{}
 	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
@@ -124,6 +128,8 @@ func pragmaCols(db *sql.DB, table string) map[string]bool {
 }
 
 // pickCol 返回名单里第一个表中存在的列名。都不存在时返回名单的第一项。
+// cols 用来判断列是否存在。
+// names 按顺序查找，都不存在时返回第一项。
 func pickCol(cols map[string]bool, names ...string) string {
 	for _, n := range names {
 		if cols[n] {
@@ -134,6 +140,10 @@ func pickCol(cols map[string]bool, names ...string) string {
 }
 
 // importDramaAssets 抄入未删除的角色、场景和道具。场景的时段列优先用 time，没有再用 time_of_day。图片经 importFile 写入，并在 idMap 里用 c:、s:、p: 加旧标识记住新标识。
+// src 用来查询角色、场景和道具。
+// staticDir 传给 importFile。
+// oldDrama 作为 drama_id 的查询参数。
+// dramaID 写入 DramaID。
 func (e *Engine) importDramaAssets(src *sql.DB, staticDir string, oldDrama int, dramaID string, idMap map[string]string) {
 	now := Now()
 	if rows, err := src.Query(`SELECT id, name, IFNULL(role,''), IFNULL(appearance,''), IFNULL(styling,''), IFNULL(final_prompt,''), IFNULL(image_url,'') FROM characters WHERE drama_id = ? AND (deleted_at IS NULL OR deleted_at = '')`, oldDrama); err == nil {
@@ -189,6 +199,9 @@ func (e *Engine) importDramaAssets(src *sql.DB, staticDir string, oldDrama int, 
 }
 
 // linkImportedEpisode 按分集关联表把角色、场景和道具挂到这一集。一张关联都没有时，把 idMap 里已导入的资产都挂上。
+// src 用来查询分集关联。
+// oldEp 作为 episode_id 的查询参数。
+// episodeID 传给 linkCharacter、linkScene 或 linkProp。
 func (e *Engine) linkImportedEpisode(src *sql.DB, oldEp int, episodeID string, idMap map[string]string) {
 	linked := false
 	if rows, err := src.Query(`SELECT character_id FROM episode_characters WHERE episode_id = ?`, oldEp); err == nil {
@@ -246,6 +259,11 @@ func (e *Engine) linkImportedEpisode(src *sql.DB, oldEp int, episodeID string, i
 }
 
 // importStoryboards 抄入未删除的分镜。镜头号列优先 storyboard_number，否则 shot_number。有本地视频时状态为 ready，否则 pending。时长大于 0 时按 aliyun 的范围夹取。角色和道具从关联表挂上。
+// src 用来查询分镜和关联。
+// staticDir 传给 importFile。
+// oldEp 作为 episode_id 的查询参数。
+// episodeID 写入镜头并传给 SaveShots。
+// idMap 用来把旧的场景、角色和道具标识换成新标识。
 func (e *Engine) importStoryboards(src *sql.DB, staticDir string, oldEp int, episodeID string, idMap map[string]string) {
 	cols := pragmaCols(src, "storyboards")
 	numCol := pickCol(cols, "storyboard_number", "shot_number")
@@ -335,6 +353,7 @@ func (e *Engine) importStoryboards(src *sql.DB, staticDir string, oldEp int, epi
 }
 
 // importFile 把本地文件读进 CAS。http 和 https 地址直接返回空串，不下载。相对路径先去掉 static/ 前缀再到 staticDir 里找，找不到再用原相对路径。读失败或写入失败返回空串。
+// rel 去掉空白和开头的斜杠后为空，或以 http://、https:// 开头时返回空串。
 func (e *Engine) importFile(staticDir, rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.TrimPrefix(rel, "/")

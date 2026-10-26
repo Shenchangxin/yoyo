@@ -71,12 +71,16 @@ func PlatformVirtualScreen() (x, y, w, h int) {
 }
 
 // metric 调用 GetSystemMetrics，并把返回值按 int32 再转成 int，从而保留负的屏幕原点。
+// get 以 idx 调用 Call，返回值经 int32 再转成 int。
+// idx 作为 get.Call 的参数。
 func metric(get *windows.LazyProc, idx uintptr) int {
 	r, _, _ := get.Call(idx)
 	return int(int32(r))
 }
 
 // primaryDPI 取工作区中心所在显示器的有效 DPI。GetDpiForMonitor 失败时改用 GetDpiForSystem。都不可用或小于 96 时返回 96。
+// user32 用来取 MonitorFromPoint 和 GetDpiForSystem。
+// work 的左右中点和上下中点作为 MonitorFromPoint 的坐标。
 func primaryDPI(user32 *windows.LazyDLL, work windows.Rect) int {
 	shcore := windows.NewLazySystemDLL("shcore.dll")
 	getDpiForMonitor := shcore.NewProc("GetDpiForMonitor")

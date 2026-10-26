@@ -7,7 +7,7 @@ import type { AuthMode } from "../../lib/protocol";
 import type { Copy } from "../../lib/copy";
 import { useCopy } from "../../lib/i18n";
 
-/** parseComposerAuth 把预设词收成 AuthMode，对不上就用默认。 */
+/** parseComposerAuth 把预设词收成 AuthMode，对不上就用默认。mode 为假时用空字符串，转成小写，做替换。 */
 export function parseComposerAuth(mode?: string): AuthMode {
   const s = (mode || "").toLowerCase().replace(/[-\s]/g, "_");
   if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
@@ -16,7 +16,7 @@ export function parseComposerAuth(mode?: string): AuthMode {
   return "default";
 }
 
-/** 把授权档位换成文案。 */
+/** 把授权档位换成文案。copy 读取 authAutoEdit、authFull、authAsk、authDefault。mode 与 auto_edit、full、ask 比较是否相等。 */
 function authLabel(copy: Copy["composer"], mode: AuthMode): string {
   if (mode === "auto_edit") return copy.authAutoEdit;
   if (mode === "full") return copy.authFull;
@@ -24,7 +24,7 @@ function authLabel(copy: Copy["composer"], mode: AuthMode): string {
   return copy.authDefault;
 }
 
-/** PermissionSelect 让人改作曲栏的授权档位。 */
+/** PermissionSelect 让人改作曲栏的授权档位。props 读取 value、disabled、testId，调用 onChange。 */
 export function PermissionSelect(props: {
   value?: AuthMode | string;
   disabled?: boolean;

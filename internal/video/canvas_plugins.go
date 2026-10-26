@@ -95,6 +95,8 @@ func (e *Engine) loadCanvasPlugins() error {
 }
 
 // installUserPlugin 把上传的插件包写到用户插件目录并重新加载。
+// raw 传给 ParsePluginPackage 和 WriteFile。
+// fileName 为空时改成清单 ID 加 .yingce-plugin，再作为写入路径的文件名，并传给 pluginRecord。
 func (e *Engine) installUserPlugin(raw []byte, fileName string) (map[string]any, error) {
 	pkg, err := protocol.ParsePluginPackage(raw)
 	if err != nil {
@@ -118,6 +120,10 @@ func (e *Engine) installUserPlugin(raw []byte, fileName string) (map[string]any,
 }
 
 // pluginRecord 按协议元数据拼一条前端插件记录，供应商和说明会去掉影策品牌。
+// id 作为默认名字；协议能解析时改成元数据的 ID，并写入 manifest 和 providers。
+// source 写入返回记录的 source，并传给 sourceOrigin。
+// fileName 写入 fileName 和 package。
+// status 写入返回记录的 status。
 func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]any {
 	name := id
 	version := "1"
@@ -206,6 +212,8 @@ var desktopApplicationPluginIDs = []string{
 }
 
 // pluginStateMap 拼一条插件开关状态。
+// id 写入 pluginId。
+// enabled 写入 userEnabled 和 effectiveEnabled。
 func pluginStateMap(id string, enabled bool) map[string]any {
 	return map[string]any{
 		"pluginId":          id,
@@ -219,6 +227,8 @@ func pluginStateMap(id string, enabled bool) map[string]any {
 }
 
 // setPluginEnabled 记下插件是否启用，并返回新状态。
+// id 去掉空白后为空则返回 plugin id required，否则作为 flags 的键，并传给 pluginStateMap。
+// enabled 写入 pluginFlagRec 的 Enabled，并传给 pluginStateMap。
 func (e *Engine) setPluginEnabled(id string, enabled bool) (map[string]any, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -279,6 +289,7 @@ func (e *Engine) listPluginPayload() map[string]any {
 }
 
 // pluginCatalog 按能力列出画布面上的协议提供者。scope 参数目前未使用。
+// capability 为 image、video、audio 或 text 时写成对应的 protocol.Capability，再传给 Proto.List。
 func (e *Engine) pluginCatalog(scope, capability string) map[string]any {
 	_ = scope
 	items := []map[string]any{}
@@ -356,6 +367,7 @@ func catalogSuffixCap(id string) string {
 }
 
 // yingceCapability 把连接能力收成画布用的 text、audio、image 或 video。
+// cap 传给 connection.NormalizeCap，再按 CapChat、CapSpeech、CapImage、CapVideo 收成 text、audio、image 或 video，其他值返回空串。
 func yingceCapability(cap string) string {
 	switch connection.NormalizeCap(cap) {
 	case connection.CapChat:
@@ -387,6 +399,7 @@ func yingceCaps(c connection.Connection) []string {
 }
 
 // connCapForYingce 把画布能力收成连接能力。text 对应 chat，audio 对应 speech。
+// y 为 text 时返回 CapChat，为 audio 时返回 CapSpeech，其他值原样返回。
 func connCapForYingce(y string) string {
 	switch y {
 	case "text":
@@ -404,6 +417,7 @@ func isGenerationConnection(c connection.Connection) bool {
 }
 
 // channelFromProvider 把旧供应商记录收成画布通道。
+// p 的 ID、ServiceType、Provider、Name、BaseURL、VaultKey、Model、Models、Settings、IsActive、HasKey、CreatedAt、UpdatedAt 写入返回的通道。
 func (e *Engine) channelFromProvider(p Provider) canvasChannel {
 	return canvasChannel{
 		ID:         providerChannelID(p.ID),
@@ -432,6 +446,7 @@ func (e *Engine) channelFromConn(c connection.Connection) canvasChannel {
 }
 
 // channelFromConnCap 按指定画布能力从连接取出模型、端点和插件，收成通道。
+// yingceCap 为空时改成 yingceCaps 的第一项，再传给 connCapForYingce，并写入通道的 Capability。
 func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) canvasChannel {
 	if yingceCap == "" {
 		if caps := yingceCaps(c); len(caps) > 0 {
@@ -470,6 +485,7 @@ func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) c
 }
 
 // syncProviderChannel 当前直接返回 nil。
+// p 函数体没有读取。
 func (e *Engine) syncProviderChannel(p Provider) error { return nil }
 
 // deleteProviderChannel 删除供应商记录和同 id 的画布通道文档。
@@ -555,6 +571,8 @@ func (e *Engine) getCanvasChannel(id string) (canvasChannel, error) {
 }
 
 // upsertCanvasChannel 创建或更新画布通道。有连接表时写进连接，否则写通道文档。
+// in 读取 id、name、displayName、capability、pluginId、plugin_id、baseUrl、base_url、model、models、vaultKey、vault_key 和 enabled；id 为空时换成 NewID，models 为空时写成 []，capability 为空时写成 image，enabled 键不存在时按 true。
+// apiKey 传给 Conn.Upsert；没有连接表且 apiKey 非空时传给 Vault.Set。
 func (e *Engine) upsertCanvasChannel(in map[string]any, apiKey string) (canvasChannel, error) {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -695,6 +713,7 @@ func (e *Engine) modelCatalog() map[string]any {
 }
 
 // defaultOps 按能力返回默认可执行的操作名。
+// cap 为 image、video 或 audio 时返回对应操作名，其他值返回 chat。
 func defaultOps(cap string) []string {
 	switch cap {
 	case "image":

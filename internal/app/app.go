@@ -200,6 +200,8 @@ type App struct {
 // Open 打开数据根目录并装配应用对象。
 // tcb fiber 里依次 Provide cas、journal、eval、vault、capability。同名已经注册则失败返回，不覆盖。
 // CrashResume 为真时，restoreRuns 之后对队列里还有回合的会话调用 resumeCrashed。
+// root 传给 home.Open。
+// bundledEvals 传给 eval.NewEngine，并写入 BundledEvals。
 func Open(root, bundledEvals string) (*App, error) {
 	h, err := home.Open(root)
 	if err != nil {
@@ -428,6 +430,8 @@ func Open(root, bundledEvals string) (*App, error) {
 func runtimeHookPreTool() string { return "agent.pre_tool" }
 
 // approve 按门禁模式决定能力请求：跳过、自动放行只读、自动允许，或交给 Gate 询问。会话级同意会记进该会话的能力。
+// ctx 传给 Gate.Ask。
+// req 用来读 Level、Action、ForceAsk 和 SessionID，并传给 RequestUnsafe 和 Gate.Ask。
 func (a *App) approve(ctx context.Context, req capability.Request) (capability.Decision, error) {
 	mode := capability.ParseGateMode(a.Config.GateMode)
 	if mode == capability.GateSkip && !capability.NeverAlways(req.Level) && !capability.NeverAlwaysAction(req.Action) && !req.ForceAsk {
@@ -462,12 +466,14 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 }
 
 // Interrupt 调用 StopTurn 取消正在跑的回合。它不把文本留到下一次模型调用。
+// sessionID 传给 StopTurn。
 func (a *App) Interrupt(sessionID string) error {
 	a.StopTurn(sessionID)
 	return nil
 }
 
 // RememberShape 记下该会话最近一次上下文形状。
+// sessionID 用作 lastShape 的键。
 func (a *App) RememberShape(sessionID string, r runtime.ShapeReport) {
 	a.shapeMu.Lock()
 	a.lastShape[sessionID] = r
@@ -475,6 +481,7 @@ func (a *App) RememberShape(sessionID string, r runtime.ShapeReport) {
 }
 
 // ContextUsage 在会话仍在跑且现场形状有数字时返回现场值，否则重新测量。
+// sessionID 先 TrimSpace；空串不读 lastShape。非空时传给 Running，并用作 lastShape 的键，最后传给 measureSessionContext。
 func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID != "" && a.Running(sessionID) {
@@ -489,6 +496,7 @@ func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
 }
 
 // RememberUsage 记下最近一次用量快照。
+// snap 赋给 lastUsage。
 func (a *App) RememberUsage(snap map[string]any) {
 	a.usageMu.Lock()
 	a.lastUsage = snap
@@ -538,11 +546,16 @@ func (a *App) Health() map[string]any {
 }
 
 // ResolveApproval 按决定结案一条审批，不附带回答文本。
+// id 传给 ResolveApprovalAnswer。
+// decision 传给 ResolveApprovalAnswer。
 func (a *App) ResolveApproval(id, decision string) error {
 	return a.ResolveApprovalAnswer(id, decision, "")
 }
 
 // ResolveApprovalAnswer 先存下回答，再把 always、session、once 或 allow 交给 Gate，并向 Hub 发布结果。
+// id 在 answer 非空时用作 askAns 的键，并用来匹配 Pending 里的 Offer，再传给 Gate.Resolve。
+// decision 为 always、session、once 或 allow 时映射成对应决定，其余用 Deny。
+// answer 非空时写入 askAns。
 func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	if answer != "" {
 		a.askMu.Lock()
@@ -751,6 +764,7 @@ func (a *App) StagingPath() string {
 }
 
 // ApplyStagedUpdate 把已暂存的更新应用到给定可执行文件。
+// exe 传给 ApplyUpdate。
 func (a *App) ApplyStagedUpdate(exe string) error {
 	return a.ApplyUpdate(exe)
 }

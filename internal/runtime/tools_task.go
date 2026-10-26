@@ -234,6 +234,7 @@ const qaInstruction = "You are an independent evaluator. Check whether the requi
 // childLoopFor 给子循环定 MaxTurns 和 MaxToolMessages，并关掉 AllowLLMCompact。未设置时先用 24 轮、60 条工具消息。父循环 TaskMaxTurns、TaskMaxToolMessages 大于 0 时改用该字段。SoftHorizon 为真时，轮数低于 ChatMaxTurns/2 才抬到该值，工具消息低于 ChatMaxToolMessages/2 才抬到该值。ChatMaxTurns 是 64，一半是 32，32 只是下限，不是固定轮数。ChatMaxToolMessages 是 160，一半是 80。桌面会话进入循环前会先走 ApplyChatHorizon：TaskMaxTurns 低于 ChatTaskMaxTurns 时抬到 40，TaskMaxToolMessages 低于 ChatTaskMaxTools 时抬到 60。软地平线再套上面的下限，因此已经是 40 的轮数不会被改成 32，已经是 60 的工具消息会因为低于 80 而被抬到 80。explore 和 qa 会在 TaskInstruction 前接上对应说明。PlanMode 设为假。
 func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	loop := parent.Loop
+	// 子循环不向模型要结构化摘要。检查点若发生，走确定性整形。
 	loop.AllowLLMCompact = false
 	turns, tools := 24, 60
 	if loop.TaskMaxTurns > 0 {
@@ -244,9 +245,11 @@ func childLoopFor(parent RunRequest, profile string) artifact.LoopPreset {
 	}
 	if parent.SoftHorizon {
 		if turns < ChatMaxTurns/2 {
+			// 32 只是下限，不会把已经更大的轮数改小。桌面父循环的 TaskMaxTurns 已经是 40，这里保持 40。
 			turns = ChatMaxTurns / 2
 		}
 		if tools < ChatMaxToolMessages/2 {
+			// 工具消息的下限是 80。ApplyChatHorizon 只把父循环抬到 60，所以桌面子代理会在这里从 60 抬到 80。
 			tools = ChatMaxToolMessages / 2
 		}
 	}

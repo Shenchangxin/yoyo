@@ -47,22 +47,22 @@ export type LayoutRow =
   | { key: string; kind: "agent"; parts: AgentPart[]; copyText: string; turnKey: string }
   | { key: string; kind: "solo"; item: Item };
 
-/** isToolish 工具调用或工具结果。 */
+/** isToolish 工具调用或工具结果。it 读取 type。 */
 export function isToolish(it: Item): boolean {
   return it.type === "tool_call" || it.type === "tool_result";
 }
 
-/** isSteer 来源为引导的用户消息。 */
+/** isSteer 来源为引导的用户消息。it 读取 type、source。 */
 export function isSteer(it: Item): boolean {
   return it.type === "user" && it.source === "steer";
 }
 
-/** isMentionInject 提及注入折进用户气泡，不单独成一轮。技能注入除外。 */
+/** isMentionInject 提及注入折进用户气泡，不单独成一轮。技能注入除外。it 读取 type、source。 */
 export function isMentionInject(it: Item): boolean {
   return it.type === "context_injection" && it.source !== "skill";
 }
 
-/** liveAutoSkills 这一段里自动载入的技能名。同名只留一次。 */
+/** liveAutoSkills 这一段里自动载入的技能名。同名只留一次。items 读取 length，为空时不读，用来遍历。 */
 export function liveAutoSkills(items: Item[] | undefined | null): { name: string; loaded: boolean }[] {
   if (!items?.length) return [];
   const out: { name: string; loaded: boolean }[] = [];
@@ -78,7 +78,7 @@ export function liveAutoSkills(items: Item[] | undefined | null): { name: string
   return out;
 }
 
-/** isTranscriptDuplicate 已经在回合里有对应物的条目。留在智能体块里，不再单独渲染。成功的 task 调用由子代理卡片承担，失败结果仍要看见。 */
+/** isTranscriptDuplicate 已经在回合里有对应物的条目。留在智能体块里，不再单独渲染。成功的 task 调用由子代理卡片承担，失败结果仍要看见。it 读取 type，传给 isToolish，传给 toolName，传给 isToolFailed。 */
 export function isTranscriptDuplicate(it: Item): boolean {
   if (it.type === "plan" || it.type === "file_change" || it.type === "ask_user") return true;
   // 成功的 task 调用由子代理卡片承担，失败结果仍要看见。
@@ -88,7 +88,7 @@ export function isTranscriptDuplicate(it: Item): boolean {
   return false;
 }
 
-/** isOutcomeTool 操作者要打开的产出。update_plan 留在过程轨。 */
+/** isOutcomeTool 操作者要打开的产出。update_plan 留在过程轨。it 读取 payload、key、type，作为分支结果，传给 isToolish。 */
 export function isOutcomeTool(it: Item): boolean {
   if (!isToolish(it)) return false;
   return pairShowsArtifact({
@@ -99,7 +99,7 @@ export function isOutcomeTool(it: Item): boolean {
   });
 }
 
-/** pairToolPath 这对工具的路径，反斜杠换成斜杠，并去掉开头的 ./。 */
+/** pairToolPath 这对工具的路径，反斜杠换成斜杠，并去掉开头的 ./。pair 读取 result、call。 */
 export function pairToolPath(pair: ToolPair): string {
   const args = {
     ...(pair.result ? toolArgs(pair.result) : {}),
@@ -108,7 +108,7 @@ export function pairToolPath(pair: ToolPair): string {
   return String(args.path || args.file || "").replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-/** pairShowsArtifact 这对工具是否该做成产出卡片。失败、未改动，以及浏览器打开、接管和读文件都不算。 */
+/** pairShowsArtifact 这对工具是否该做成产出卡片。失败、未改动，以及浏览器打开、接管和读文件都不算。pair 读取 call、result、extra，传给 pairToolPath。 */
 export function pairShowsArtifact(pair: ToolPair): boolean {
   const item = pair.call || pair.result || pair.extra[0];
   if (!item) return false;
@@ -129,7 +129,7 @@ export function pairShowsArtifact(pair: ToolPair): boolean {
   return isRichResult(name, body, path);
 }
 
-/** classifyToolPairs 给每一对标上产出或过程。 */
+/** classifyToolPairs 给每一对标上产出或过程。pairs 用来遍历。 */
 export function classifyToolPairs(pairs: ToolPair[]): Map<string, "artifact" | "process"> {
   const kind = new Map<string, "artifact" | "process">();
   for (const p of pairs) {
@@ -138,7 +138,7 @@ export function classifyToolPairs(pairs: ToolPair[]): Map<string, "artifact" | "
   return kind;
 }
 
-/** isProcessItem 进过程轨的条目：推理、上下文注入，以及非产出的工具。提及注入和子代理不算。 */
+/** isProcessItem 进过程轨的条目：推理、上下文注入，以及非产出的工具。提及注入和子代理不算。it 的 type 为 subagent 时返回假，其余分支还看别的条件；传给 isMentionInject，传给 isToolish，传给 isOutcomeTool。 */
 export function isProcessItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
   if (it.type === "reasoning" || it.type === "context_injection") return true;
@@ -146,12 +146,12 @@ export function isProcessItem(it: Item): boolean {
   return isToolish(it) && !isOutcomeTool(it);
 }
 
-/** subagentChildId 子代理条目指向的子会话。 */
+/** subagentChildId 子代理条目指向的子会话。it 读取 payload。 */
 export function subagentChildId(it: Item): string {
   return String(it.payload?.child || "").trim();
 }
 
-/** subagentLive 最后一条的阶段还不是 complete 时，子代理仍在进行。 */
+/** subagentLive 最后一条的阶段还不是 complete 时，子代理仍在进行。items 读取 length，按下标读取。 */
 export function subagentLive(items: Item[]): boolean {
   if (!items.length) return false;
   const last = items[items.length - 1];
@@ -159,7 +159,7 @@ export function subagentLive(items: Item[]): boolean {
   return phase !== "complete";
 }
 
-/** liveSubagentCrumb 进行中子代理的提示，给会话头的面包屑。取第一行非空文字。 */
+/** liveSubagentCrumb 进行中子代理的提示，给会话头的面包屑。取第一行非空文字。items 读取 length，为空时不读，用来遍历。 */
 export function liveSubagentCrumb(items: Item[] | undefined | null): string {
   if (!items?.length) return "";
   const groups = new Map<string, Item[]>();
@@ -184,7 +184,7 @@ export function liveSubagentCrumb(items: Item[] | undefined | null): string {
   return crumb;
 }
 
-/** isAgentItem 属于智能体回合的条目。提及注入不算。 */
+/** isAgentItem 属于智能体回合的条目。提及注入不算。it 读取 type，传给 isMentionInject，传给 isToolish，传给 isSteer。 */
 export function isAgentItem(it: Item): boolean {
   if (isMentionInject(it)) return false;
   return (
@@ -200,7 +200,7 @@ export function isAgentItem(it: Item): boolean {
   );
 }
 
-/** pairTools 按 id 把调用、结果和其余条目配成对，保持出现顺序。 */
+/** pairTools 按 id 把调用、结果和其余条目配成对，保持出现顺序。items 用来遍历。 */
 export function pairTools(items: Item[]): ToolPair[] {
   const order: string[] = [];
   const map = new Map<string, ToolPair>();
@@ -218,7 +218,7 @@ export function pairTools(items: Item[]): ToolPair[] {
   return order.map((id) => map.get(id)!);
 }
 
-/** processGroupLive 过程组里还有未结束的工具，或助手、推理仍在流。增量中的结果不算结束。 */
+/** processGroupLive 过程组里还有未结束的工具，或助手、推理仍在流。增量中的结果不算结束。items 用来遍历。 */
 export function processGroupLive(items: Item[]): boolean {
   const open = new Set<string>();
   let streaming = false;
@@ -236,7 +236,7 @@ export function processGroupLive(items: Item[]): boolean {
   return streaming || open.size > 0;
 }
 
-/** processToolPairs 只留带调用或结果的工具对。 */
+/** processToolPairs 只留带调用或结果的工具对。items 传给 pairTools。 */
 export function processToolPairs(items: Item[]): ToolPair[] {
   return pairTools(items).filter((p) => p.call || p.result);
 }
@@ -248,7 +248,8 @@ export const ARTIFACT_PAGE = 12;
 /** TOOL_PREVIEW_LINES 过程轨里工具输出的紧凑行数。完整正文留在磁盘或卸出块。 */
 export const TOOL_PREVIEW_LINES = 5;
 
-/** clipPreview 头尾预览，避免很长的命令输出整段挂成一堵字。隐藏行数一并返回。 */
+/** clipPreview 头尾预览，避免很长的命令输出整段挂成一堵字。隐藏行数一并返回。text 按 
+ 切开，为假时走另一支，写入字段 text。maxLines 小于等于 lines.length，除以 2。 */
 export function clipPreview(text: string, maxLines = TOOL_PREVIEW_LINES): { text: string; hidden: number } {
   if (!text) return { text: "", hidden: 0 };
   const lines = text.split("\n");
@@ -262,18 +263,18 @@ export function clipPreview(text: string, maxLines = TOOL_PREVIEW_LINES): { text
   };
 }
 
-/** tailProcessPairs 只留尾部 shown 对。shown 不大于零或已经不长于它时全部可见。 */
+/** tailProcessPairs 只留尾部 shown 对。shown 不大于零或已经不长于它时全部可见。pairs 读取 length，截取，写入字段 visible。 */
 export function tailProcessPairs(pairs: ToolPair[], shown: number): { visible: ToolPair[]; hidden: number } {
   if (shown <= 0 || pairs.length <= shown) return { visible: pairs, hidden: 0 };
   return { visible: pairs.slice(pairs.length - shown), hidden: pairs.length - shown };
 }
 
-/** processElapsedMs 组内各工具结果上报耗时之和。 */
+/** processElapsedMs 组内各工具结果上报耗时之和。items 传给 processToolPairs。 */
 export function processElapsedMs(items: Item[]): number {
   return processToolPairs(items).reduce((sum, p) => sum + (p.result ? toolElapsedMs(p.result) : 0), 0);
 }
 
-/** processStartMs 组里最早的时间戳。「工作了多久」从这里起算。 */
+/** processStartMs 组里最早的时间戳。「工作了多久」从这里起算。items 用来遍历。 */
 export function processStartMs(items: Item[]): number {
   let min = 0;
   for (const it of items) {
@@ -286,6 +287,7 @@ export function processStartMs(items: Item[]): number {
 /**
  * processSpanMs 已收束组的墙钟。工具批次之间的模型思考也算工作，所以用起止时间，而不是把各工具的 elapsed_ms 相加。
  * 没有时间戳时退回各工具耗时之和，旧 JSONL 和测试替身会走到这里。
+ * items 用来遍历，传给 processStartMs，传给 processElapsedMs。
  */
 export function processSpanMs(items: Item[]): number {
   const start = processStartMs(items);
@@ -298,7 +300,7 @@ export function processSpanMs(items: Item[]): number {
   return span || processElapsedMs(items);
 }
 
-/** processFailedCount 组内失败的工具对数。 */
+/** processFailedCount 组内失败的工具对数。items 传给 processToolPairs。 */
 export function processFailedCount(items: Item[]): number {
   return processToolPairs(items).filter((p) => isToolFailed(p.result)).length;
 }
@@ -308,6 +310,8 @@ export type PairState = "running" | "done" | "failed" | "interrupted";
 
 /**
  * pairState 没有结果的调用只在线程仍在跑时算进行中。回合结束后如实标成中断，已结束的回合上不留转圈。
+ * pair 读取 call、result。
+ * running 为真时才继续。
  */
 export function pairState(pair: ToolPair, running: boolean): PairState {
   if (pair.call && !pair.result) return running ? "running" : "interrupted";
@@ -321,7 +325,7 @@ export function pairState(pair: ToolPair, running: boolean): PairState {
 /** KindTally 过程组里各动词族的次数。 */
 export type KindTally = Partial<Record<ToolKind, number>>;
 
-/** processKindTally 按工具动词族计数。 */
+/** processKindTally 按工具动词族计数。items 传给 processToolPairs。 */
 export function processKindTally(items: Item[]): KindTally {
   const tally: KindTally = {};
   for (const p of processToolPairs(items)) {
@@ -331,12 +335,12 @@ export function processKindTally(items: Item[]): KindTally {
   return tally;
 }
 
-/** processHasReasoning 组里有没有推理条目。 */
+/** processHasReasoning 组里有没有推理条目。items 调用 some。 */
 export function processHasReasoning(items: Item[]): boolean {
   return items.some((it) => it.type === "reasoning");
 }
 
-/** processProgressCount 组里的助手条目数。 */
+/** processProgressCount 组里的助手条目数。items 用来遍历。 */
 export function processProgressCount(items: Item[]): number {
   let n = 0;
   for (const it of items) {
@@ -345,7 +349,7 @@ export function processProgressCount(items: Item[]): number {
   return n;
 }
 
-/** 复制用的正文：从后往前找第一条非空助手文本。 */
+/** 复制用的正文：从后往前找第一条非空助手文本。items 读取 length，按下标读取。 */
 function agentCopyText(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     if (items[i].type === "assistant" && items[i].text.trim()) return items[i].text.trim();
@@ -353,7 +357,7 @@ function agentCopyText(items: Item[]): string {
   return "";
 }
 
-/** 从块列表里串出指定种类的正文。没有块时，正文种类用条目文本，推理种类为空。 */
+/** 从块列表里串出指定种类的正文。没有块时，正文种类用条目文本，推理种类为空。it 读取 payload、text。kind 与 text、b.type 比较是否相等。 */
 function blockText(it: Item, kind: "text" | "reasoning"): string {
   const blocks = it.payload?.blocks;
   if (!Array.isArray(blocks)) return kind === "text" ? it.text : "";
@@ -364,7 +368,7 @@ function blockText(it: Item, kind: "text" | "reasoning"): string {
   return s;
 }
 
-/** reasoningText 推理条目用自身文本，否则用载荷上的推理字段或推理块。 */
+/** reasoningText 推理条目用自身文本，否则用载荷上的推理字段或推理块。it 读取 type、text、payload，传给 blockText。 */
 export function reasoningText(it: Item): string {
   if (it.type === "reasoning") return it.text.trim();
   const tagged = String(it.payload?.reasoning || "").trim();
@@ -372,7 +376,7 @@ export function reasoningText(it: Item): string {
   return blockText(it, "reasoning").trim();
 }
 
-/** flattenWorkProcess 把工作块、过程轨和子代理摊平回条目。产出卡片不摊进去。 */
+/** flattenWorkProcess 把工作块、过程轨和子代理摊平回条目。产出卡片不摊进去。parts 用来遍历。 */
 export function flattenWorkProcess(parts: AgentPart[]): Item[] {
   const out: Item[] = [];
   for (const p of parts) {
@@ -384,7 +388,7 @@ export function flattenWorkProcess(parts: AgentPart[]): Item[] {
   return out;
 }
 
-/** 最后一条后面不再跟着过程、产出或子代理的助手，才是紧凑回答。 */
+/** 最后一条后面不再跟着过程、产出或子代理的助手，才是紧凑回答。parts 读取 length，截取，按下标读取。 */
 function lastCompactAnswerIndex(parts: AgentPart[]): number {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
@@ -396,7 +400,7 @@ function lastCompactAnswerIndex(parts: AgentPart[]): number {
   return -1;
 }
 
-/** wrapTurnWork 把紧凑回答之前的部件收进一个工作块，并按策略标上分组和折叠。 */
+/** wrapTurnWork 把紧凑回答之前的部件收进一个工作块，并按策略标上分组和折叠。parts 读取 length，截取，作为分支结果，传给 lastCompactAnswerIndex。opts 读取 policy、running、nextUser，为空时不读。 */
 export function wrapTurnWork(parts: AgentPart[], opts?: LayoutOpts): AgentPart[] {
   if (!parts.length) return parts;
   const last = lastCompactAnswerIndex(parts);
@@ -412,7 +416,7 @@ export function wrapTurnWork(parts: AgentPart[], opts?: LayoutOpts): AgentPart[]
   ];
 }
 
-/** hasAssistantReasoning 条目上有非空推理，来自推理条目、载荷字段或推理块。 */
+/** hasAssistantReasoning 条目上有非空推理，来自推理条目、载荷字段或推理块。it 读取 type、text、payload，传给 blockText。 */
 export function hasAssistantReasoning(it: Item): boolean {
   if (it.type === "reasoning") return it.text.trim() !== "";
   if (it.type !== "assistant") return false;
@@ -420,7 +424,7 @@ export function hasAssistantReasoning(it: Item): boolean {
   return blockText(it, "reasoning").trim() !== "";
 }
 
-/** hasAssistantReply 看得见的回复。过程组以此为分界。正在流或有正文都算。 */
+/** hasAssistantReply 看得见的回复。过程组以此为分界。正在流或有正文都算。it 读取 type、delta、payload、text，传给 blockText。 */
 export function hasAssistantReply(it: Item): boolean {
   if (it.type !== "assistant") return false;
   if (it.delta || it.payload?.streaming) return true;
@@ -431,6 +435,8 @@ export function hasAssistantReply(it: Item): boolean {
 /**
  * isCompactAnswer 只有最后一条不再跟着工具的回复才是信。
  * 中间的叙述并进过程轨，并标成 response。
+ * items 读取 length，按下标读取。
+ * index 加上 1，用作下标。
  */
 export function isCompactAnswer(items: Item[], index: number): boolean {
   const it = items[index];
@@ -442,7 +448,7 @@ export function isCompactAnswer(items: Item[], index: number): boolean {
   return true;
 }
 
-/** 给助手标上 groupPart，表示它在过程轨里是推理还是回复。 */
+/** 给助手标上 groupPart，表示它在过程轨里是推理还是回复。it 读取 payload，展开传递。 */
 function taggedAssistant(it: Item, groupPart: "reasoning" | "response"): Item {
   return { ...it, payload: { ...it.payload, groupPart } };
 }
@@ -450,6 +456,8 @@ function taggedAssistant(it: Item, groupPart: "reasoning" | "response"): Item {
 /**
  * layoutAgentParts 过程组按助手回复切开，不按工具种类切开。
  * 推理并进当前步骤的轨，只有紧凑回答站在轨外。产出卡片保持独立，不摊进过程轨。
+ * items 读取 length，做过滤，截取，调用 some，按下标读取，传给 isCompactAnswer。
+ * opts 读取 policy、running、nextUser、showThinking，为空时不读。
  */
 export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] {
   const parts: AgentPart[] = [];
@@ -540,7 +548,7 @@ export function layoutAgentParts(items: Item[], opts?: LayoutOpts): AgentPart[] 
   return parts;
 }
 
-/** 用当前条目替换缓存座位上的正文。推理和回复保留原来的 groupPart。 */
+/** 用当前条目替换缓存座位上的正文。推理和回复保留原来的 groupPart。it 与 fresh 比较是否相等，读取 key、payload、text，展开传递。byKey 调用 get。 */
 function hydrateItem(it: Item, byKey: Map<string, Item>): Item {
   const fresh = byKey.get(it.key);
   if (!fresh || fresh === it) return it;
@@ -556,7 +564,7 @@ function hydrateItem(it: Item, byKey: Map<string, Item>): Item {
   return fresh;
 }
 
-/** 递归把部件里的条目换成当前正文。没变的部件保持原引用。 */
+/** 递归把部件里的条目换成当前正文。没变的部件保持原引用。parts 做映射。byKey 传给 hydrateItem，传给 hydrateParts。 */
 function hydrateParts(parts: AgentPart[], byKey: Map<string, Item>): AgentPart[] {
   return parts.map((p) => {
     if (p.kind === "item" || p.kind === "stream") {
@@ -577,7 +585,7 @@ function hydrateParts(parts: AgentPart[], byKey: Map<string, Item>): AgentPart[]
   });
 }
 
-/** hydrateLayout 用当前条目正文修补缓存座位，不重算结构。 */
+/** hydrateLayout 用当前条目正文修补缓存座位，不重算结构。rows 做映射。items 用来遍历。 */
 export function hydrateLayout(rows: LayoutRow[], items: Item[]): LayoutRow[] {
   const byKey = new Map<string, Item>();
   for (const it of items) byKey.set(it.key, it);
@@ -595,7 +603,7 @@ export function hydrateLayout(rows: LayoutRow[], items: Item[]): LayoutRow[] {
   });
 }
 
-/** layoutRows 一个操作者回合一行。用户之间的助手正文和工具留在同一行。 */
+/** layoutRows 一个操作者回合一行。用户之间的助手正文和工具留在同一行。items 用来遍历。opts 读取 showThinking、policy、running，为空时不读。 */
 export function layoutRows(items: Item[], opts?: LayoutOpts): LayoutRow[] {
   const rows: LayoutRow[] = [];
   let agent: Item[] = [];

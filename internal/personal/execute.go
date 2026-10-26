@@ -27,6 +27,7 @@ type lostLeaseError struct{}
 func (lostLeaseError) Error() string { return "personal: lost lease" }
 
 // isLostLease 判断错误是不是 lostLeaseError。
+// err 做 lostLeaseError 的类型断言，成功则返回 true。
 func isLostLease(err error) bool {
 	_, ok := err.(lostLeaseError)
 	return ok
@@ -39,6 +40,8 @@ func shaText(s string) string {
 }
 
 // execute 在租约仍有效时按种类执行。已关联的提案若还在等待、执行中或结果未知，任务改回 waiting_approval。默认种类改回 waiting_input。
+// ctx 的 Err 非 nil 时，guard 返回 lostLeaseError。ctx 还传给 runDocument 和 runMonitor。
+// leaseID 与当前任务的 LeaseID 比较，并作为 casTask 的期望租约。还传给 finish、runDocument、runMonitor、runFinance 和 runPlan。
 func (e *Engine) execute(ctx context.Context, t Task, leaseID string) (Task, error) {
 	guard := func() error {
 		cur, ok := e.store.task(t.ID)
@@ -122,6 +125,8 @@ func (e *Engine) execute(ctx context.Context, t Task, leaseID string) (Task, err
 }
 
 // finish 在租约仍匹配时把任务标成 succeeded，步骤标成 succeeded，并按 task-done 通知。
+// leaseID 作为 casTask 的期望租约。
+// result 写入 Result，并作为 notify 的正文。
 func (e *Engine) finish(t Task, leaseID, result string) (Task, error) {
 	out, ok := e.store.casTask(t.ID, string(StatusRunning), leaseID, func(cur *Task) bool {
 		cur.Status = StatusSucceeded
@@ -142,6 +147,10 @@ func (e *Engine) finish(t Task, leaseID, result string) (Task, error) {
 }
 
 // runDocument 缺路径或缺字段时改回 waiting_input。填好的副本写到该任务文件目录的 filled.pdf，原路径只记在产物说明里。随后 Propose 一封邮件并进入 waiting_approval。
+// ctx 只赋给空白标识符，没有被读取。
+// leaseID 作为 casTask 的期望租约。
+// guard 在写出 filled.pdf 之前调用，返回错误则中止。
+// checkpoint 在写出副本后调用，写入 source_path、filled_path、parent_path 和产物 ID。
 func (e *Engine) runDocument(ctx context.Context, t Task, leaseID string, guard func() error, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = ctx
 	sourcePath := strMap(t.Input["path"])
@@ -301,6 +310,7 @@ func (e *Engine) runDocument(ctx context.Context, t Task, leaseID string, guard 
 }
 
 // fieldNames 用 office.Query 读出冒号后为空的行，当作待填字段名。查询失败返回 nil。
+// path 传给 office.Query。失败时返回 nil。
 func fieldNames(path string) []string {
 	text, err := office.Query(path)
 	if err != nil {
@@ -322,6 +332,7 @@ func fieldNames(path string) []string {
 }
 
 // formatFields 把字段写成文本，并写明原文件没有被修改。
+// fields 的每个键和值写成一行，形如键、冒号、值。
 func formatFields(fields map[string]string) string {
 	var b strings.Builder
 	b.WriteString("Filled copy. Original file was not modified.\n\n")
@@ -332,6 +343,7 @@ func formatFields(fields map[string]string) string {
 }
 
 // firstNonEmpty 返回第一段去掉空白后仍非空的字符串。
+// ss 逐段去掉空白，返回第一段非空的原文。都空则返回空串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -345,6 +357,8 @@ func firstNonEmpty(ss ...string) string {
 var pricePat = regexp.MustCompile(`(?:\$|USD)\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)`)
 
 // matchesPrice 在正文里出现小于阈值的美元金额时返回真。
+// text 交给 pricePat 找出金额。
+// threshold 与解析出的金额比较，有一笔小于它就返回 true。
 func matchesPrice(text string, threshold float64) bool {
 	for _, m := range pricePat.FindAllStringSubmatch(text, -1) {
 		n, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64)
@@ -356,6 +370,10 @@ func matchesPrice(text string, threshold float64) bool {
 }
 
 // runMonitor 抓取监视 URL。change 在去掉相对时间后哈希相同则不通知。第一次没有先前哈希，shouldNotify 还要求已经见过基线。失败五次后监视和任务改为 paused。
+// ctx 传给 observe。
+// leaseID 作为 casTask 的期望租约。失败时传给 monitorFail。
+// guard 在更新监视之前调用，返回错误则中止。
+// checkpoint 只赋给空白标识符，没有被调用。
 func (e *Engine) runMonitor(ctx context.Context, t Task, leaseID string, guard func() error, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = checkpoint
 	id := strMap(t.Input["monitorId"])
@@ -498,6 +516,7 @@ func (e *Engine) runMonitor(ctx context.Context, t Task, leaseID string, guard f
 }
 
 // observe 对 sample:// 读取存储里的样例正文。其他 URL 调用 Fetch，为空时用 SafeGET，再去掉标签。
+// ctx 传给 Fetch 或 SafeGET。sample:// 的地址不会用到它。
 func (e *Engine) observe(ctx context.Context, m Monitor) (text, title string, err error) {
 	if strings.HasPrefix(m.URL, "sample://") {
 		key := strings.TrimPrefix(m.URL, "sample://")
@@ -540,6 +559,8 @@ func stripTags(s string) string {
 }
 
 // monitorFail 增加失败次数，下次检查按 2 的幂分钟推迟，最长 1 小时。失败达到 5 次时把监视和任务改成 paused，并通知收件箱。
+// leaseID 作为 casTask 的期望租约。
+// err 的 Error 写入监视和任务的 Error，并作为 notify 的正文。
 func (e *Engine) monitorFail(t Task, m Monitor, leaseID string, err error) (Task, error) {
 	failures := 0
 	if v, ok := t.State["failures"].(float64); ok {
@@ -594,6 +615,8 @@ func (e *Engine) monitorFail(t Task, m Monitor, leaseID string, err error) (Task
 }
 
 // runFinance 没有 CSV 时，若给了路径就从工作区相对路径读取。仍为空则改回 waiting_input。汇总结果写入 spending.json。
+// leaseID 作为 casTask 和 finish 的期望租约。
+// checkpoint 只赋给空白标识符，没有被调用。
 func (e *Engine) runFinance(t Task, leaseID string, checkpoint func(func(*Task)) error) (Task, error) {
 	csv := strMap(t.Input["csv"])
 	if csv == "" {
@@ -643,6 +666,8 @@ func (e *Engine) runFinance(t Task, leaseID string, checkpoint func(func(*Task))
 }
 
 // runPlan 没有里程碑标题时改回 waiting_input。找到目标则整表替换里程碑，再写入计划产物。
+// leaseID 作为 casTask 和 finish 的期望租约。
+// checkpoint 只赋给空白标识符，没有被调用。
 func (e *Engine) runPlan(t Task, leaseID string, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = checkpoint
 	var titles []string

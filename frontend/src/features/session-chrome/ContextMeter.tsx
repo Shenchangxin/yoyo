@@ -13,19 +13,39 @@ const RADIUS = 5.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 const ROWS: { key: string; label: (c: Copy) => string; tone: string; always?: boolean }[] = [
-  { key: "system", label: (c) => c.composer.ctxSystem, tone: "var(--ctx-system, #9a958c)" },
-  { key: "rules", label: (c) => c.composer.ctxRules, tone: "var(--ctx-rules, #c4a574)" },
-  { key: "catalog", label: (c) => c.composer.ctxCatalog, tone: "var(--ctx-catalog, #8aa0b8)" },
-  { key: "skills", label: (c) => c.composer.ctxSkillBody, tone: "var(--ctx-skills, #7aa2ff)" },
-  { key: "tools", label: (c) => c.composer.ctxTools, tone: "var(--ctx-tools, #a78bfa)" },
-  { key: "memory", label: (c) => c.composer.ctxMemory, tone: "var(--ctx-memory, #c2663d)" },
-  { key: "today", label: (c) => c.composer.ctxToday, tone: "var(--ctx-today, #1f7a45)" },
-  { key: "notes", label: (c) => c.composer.ctxNotes, tone: "var(--ctx-notes, #a07a2a)" },
-  { key: "chat", label: (c) => c.composer.ctxChat, tone: "var(--ctx-chat, #3b82f6)", always: true },
-  { key: "free", label: (c) => c.composer.ctxFree, tone: "var(--ctx-free, transparent)", always: true },
+  { key: "system", 
+                   /** label 读取 ctxSystem。c 读取 composer。 */
+                   label: (c) => c.composer.ctxSystem, tone: "var(--ctx-system, #9a958c)" },
+  { key: "rules", 
+                  /** label 读取 ctxRules。c 读取 composer。 */
+                  label: (c) => c.composer.ctxRules, tone: "var(--ctx-rules, #c4a574)" },
+  { key: "catalog", 
+                    /** label 读取 ctxCatalog。c 读取 composer。 */
+                    label: (c) => c.composer.ctxCatalog, tone: "var(--ctx-catalog, #8aa0b8)" },
+  { key: "skills", 
+                   /** label 读取 ctxSkillBody。c 读取 composer。 */
+                   label: (c) => c.composer.ctxSkillBody, tone: "var(--ctx-skills, #7aa2ff)" },
+  { key: "tools", 
+                  /** label 读取 ctxTools。c 读取 composer。 */
+                  label: (c) => c.composer.ctxTools, tone: "var(--ctx-tools, #a78bfa)" },
+  { key: "memory", 
+                   /** label 读取 ctxMemory。c 读取 composer。 */
+                   label: (c) => c.composer.ctxMemory, tone: "var(--ctx-memory, #c2663d)" },
+  { key: "today", 
+                  /** label 读取 ctxToday。c 读取 composer。 */
+                  label: (c) => c.composer.ctxToday, tone: "var(--ctx-today, #1f7a45)" },
+  { key: "notes", 
+                  /** label 读取 ctxNotes。c 读取 composer。 */
+                  label: (c) => c.composer.ctxNotes, tone: "var(--ctx-notes, #a07a2a)" },
+  { key: "chat", 
+                 /** label 读取 ctxChat。c 读取 composer。 */
+                 label: (c) => c.composer.ctxChat, tone: "var(--ctx-chat, #3b82f6)", always: true },
+  { key: "free", 
+                 /** label 读取 ctxFree。c 读取 composer。 */
+                 label: (c) => c.composer.ctxFree, tone: "var(--ctx-free, transparent)", always: true },
 ];
 
-/** 把用量拆开，对上环上每一行的键。 */
+/** 把用量拆开，对上环上每一行的键。br 读取 prefix、rules、catalog、skills、schema、memory 等。 */
 function meterTokens(br: CtxBreakdown): Record<string, number> {
   return {
     system: br.prefix,
@@ -41,7 +61,7 @@ function meterTokens(br: CtxBreakdown): Record<string, number> {
   };
 }
 
-/** ContextMeter 画出占用环，打开后列出各项。 */
+/** ContextMeter 画出占用环，打开后列出各项。props 读取 copy、ctx、fallbackWindow、draftTokens。 */
 export function ContextMeter(props: {
   ctx?: ContextUsage;
   draftTokens?: number;
@@ -65,13 +85,13 @@ export function ContextMeter(props: {
 
   useEffect(() => {
     if (!open) return;
-    /** 点在环和面板外面就收起。 */
+    /** 点在环和面板外面就收起。e 读取 target。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
-    /** 按退出就收起。 */
+    /** 按退出就收起。e 读取 key。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };

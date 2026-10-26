@@ -11,6 +11,14 @@ import (
 )
 
 // overlayAgg 先对父材料提出全部 INV 与 DOM，再并行探针，然后各自相对父材料合成。合成会话的 Attempts 记 1。终稿探针的标签是 c1 起。
+// ctx 传给 overlayProposeAll、overlayRunProbes，以及 Client 非空且未超预算时的 composeOverlayLLM。
+// opts 的 Roller 和 Tree 传给探针与写文件；Client 非空且未超预算时才调用 composeOverlayLLM。
+// parent 传给 overlayProposeAll，并作为 applyOverlayCompose 的 origin 和 current。
+// k 决定提议对数、探针和终稿条数。
+// joined 传给 heuristicCompose 和 composeOverlayLLM。
+// held 传给 overlayProposeAll 和 overlayRunProbes。
+// overBudget 返回真时不调用 composeOverlayLLM。
+// res 记下退回和会话账本，并传给 overlayRunProbes。
 func (e *Engine) overlayAgg(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool, res *OverlayResult) ([]overlayCand, []overlayCand, []overlayFinal, error) {
 	invs, doms, invAtt, domAtt, err := e.overlayProposeAll(ctx, opts, parent, k, joined, held, overBudget)
 	if err != nil {
@@ -69,6 +77,13 @@ func (e *Engine) overlayAgg(ctx context.Context, opts OverlayOpts, parent Materi
 }
 
 // overlaySeq 按 1 到 k 逐步提议。合成作用在 current 上。该步 adopted 为真时，current 换成 succ，下一步从新的 current 出发。
+// ctx 传给 overlayProposePair、overlayRunProbes，以及未超预算时的 composeOverlayLLM。
+// opts 的 Roller、Tree、Client 在本函数使用，Client 非空且未超预算时才调用 composeOverlayLLM。
+// parent 作为第一步的 current，并作为 applyOverlayCompose 的 origin。
+// joined 传给 overlayProposePair、heuristicCompose 和 composeOverlayLLM。
+// held 传给 overlayProposePair 和 overlayRunProbes。
+// overBudget 返回真时不调用 composeOverlayLLM。
+// res 记下退回和会话，并传给 overlayRunProbes。
 func (e *Engine) overlaySeq(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool, res *OverlayResult) ([]overlayCand, []overlayCand, []overlayFinal, error) {
 	invs := make([]overlayCand, k)
 	doms := make([]overlayCand, k)
@@ -135,6 +150,13 @@ type overlayStageJob struct {
 }
 
 // overlayProposeAll 为每个下标提出 INV 和 DOM。ParallelPropose 为真且任务多于一条时并发。任一任务带回错误则整批失败。
+// ctx 传给每次 overlayStage。
+// opts 的 ParallelPropose 为真且任务多于一条时并发，否则按顺序；整份 opts 传给 overlayStage。
+// parent 传给 overlayStage。
+// k 决定 INV 和 DOM 各从 1 编到 k。
+// joined 作为 base 传给 overlayStage。
+// held 传给 overlayStage。
+// overBudget 传给 overlayStage。
 func (e *Engine) overlayProposeAll(ctx context.Context, opts OverlayOpts, parent MaterialSet, k int, joined OverlayRollout, held map[string]bool, overBudget func() bool) ([]overlayCand, []overlayCand, []int, []int, error) {
 	jobs := make([]overlayStageJob, 0, 2*k)
 	for i := 1; i <= k; i++ {
@@ -195,6 +217,12 @@ func (e *Engine) overlayProposeAll(ctx context.Context, opts OverlayOpts, parent
 }
 
 // overlayProposePair 对当前材料提出一对 INV 和 DOM。ParallelPropose 为真时两维并发，按维度把结果放回 inv 与 dom。
+// ctx 传给 overlayStage。
+// opts 的 ParallelPropose 为真时两维并发，否则先 INV 再 DOM；整份 opts 传给 overlayStage。
+// current 传给 overlayStage。
+// joined 作为 base 传给 overlayStage。
+// held 传给 overlayStage。
+// overBudget 传给 overlayStage。
 func (e *Engine) overlayProposePair(ctx context.Context, opts OverlayOpts, current MaterialSet, i int, joined OverlayRollout, held map[string]bool, overBudget func() bool) (overlayCand, overlayCand, int, int, error) {
 	type out struct {
 		dim  string
@@ -241,6 +269,8 @@ func (e *Engine) overlayProposePair(ctx context.Context, opts OverlayOpts, curre
 }
 
 // overlayFindRoll 按标签找 rollout。找不到时返回只带该标签的零值。
+// all 里 Label 等于 label 的第一条被返回。
+// label 用来比较；找不到时只把它写入返回值的 Label。
 func overlayFindRoll(all []OverlayRollout, label string) OverlayRollout {
 	for i := range all {
 		if all[i].Label == label {

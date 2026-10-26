@@ -63,6 +63,8 @@ func (a *App) ListChatProviders() []ChatProvider {
 }
 
 // UpsertChatProvider 规范化端点，把 anthropic 写成 claude，空厂商写成 custom。没有默认连接或 MakeDefault 为真时设为默认，并 promoteChatDefault。
+// in 用来读并改写 Endpoint、Vendor、Name、Model、Models 和 ID；Vendor 为空则写成 custom，Name 为空则用 Vendor，Active 为 nil 时沿用已有连接的启用状态，并读 MakeDefault。
+// apiKey 去掉首尾空白后传给 Registry.Upsert。
 func (a *App) UpsertChatProvider(in ChatProviderIn, apiKey string) (ChatProvider, error) {
 	r := a.connReg()
 	if r == nil {
@@ -223,6 +225,7 @@ func (a *App) probeConfigChat() map[string]any {
 }
 
 // promoteChatDefault 把连接的厂商、端点和模型写入 Config，并把租到的密钥放进 vault 的 default，然后 SaveConfig。
+// c 传给 Lease；Vendor 去掉首尾空白后为空则写成 custom，Endpoint 经 NormalizeBaseURL 写入 BaseURL，模型经 ModelFor 写入 Model，Models 复制进 Config。
 func (a *App) promoteChatDefault(c connection.Connection) {
 	if a == nil {
 		return
@@ -244,6 +247,7 @@ func (a *App) promoteChatDefault(c connection.Connection) {
 }
 
 // chatProviderOf 把连接库记录收成 ChatProvider。默认模型放进 Models 的前面。
+// defID 与连接 ID 相等且该 ID 非空时把 IsDefault 设为真。
 func chatProviderOf(c connection.Connection, defID string) ChatProvider {
 	models := append([]string{}, c.Models...)
 	model := connection.ModelFor(c, connection.CapChat)
@@ -264,6 +268,7 @@ func chatProviderOf(c connection.Connection, defID string) ChatProvider {
 }
 
 // splitSessionModel 解析 connectionId::model。左段必须是已有的 chat 连接，否则整段当作模型名、连接 id 为空。
+// raw 去掉首尾空白后按 :: 切开；切不开、左段为空或右段去掉空白后为空，或左段不是已有 chat 连接时，返回空连接 id 和 raw。
 func (a *App) splitSessionModel(raw string) (connID, model string) {
 	raw = strings.TrimSpace(raw)
 	left, right, ok := strings.Cut(raw, "::")
@@ -282,6 +287,7 @@ func (a *App) splitSessionModel(raw string) (connID, model string) {
 }
 
 // resolveChatConnection 先用会话的 ConnectionID。否则按模型在活动 chat 连接里匹配，多个命中时优先默认连接。仍没有则用活动 chat 连接。
+// meta 的 ConnectionID 去掉首尾空白后非空时用来 Get；Model 去掉首尾空白后非空时用来在活动 chat 连接里匹配。
 func (a *App) resolveChatConnection(meta SessionMeta) (connection.Connection, error) {
 	r := a.connReg()
 	if r == nil {
@@ -345,6 +351,7 @@ func (a *App) defaultChatSlot() (model, connID string) {
 }
 
 // chatRoutes 先放会话选中的连接和模型，再放该连接的其他模型，然后是默认连接和其他活动连接。没有密钥的连接不进入路线。
+// meta 传给 resolveChatConnection；Model 去掉首尾空白后为空时改用该连接的 ModelFor，仍为空再用 Config.Model。
 func (a *App) chatRoutes(meta SessionMeta) []runtime.ChatRoute {
 	r := a.connReg()
 	if r == nil {

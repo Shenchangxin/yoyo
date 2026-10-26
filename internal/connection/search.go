@@ -17,6 +17,8 @@ import (
 )
 
 // QuerySearch 按协议请求搜索。端点为空时，jina、exa、exa-mcp、duckduckgo 填上 webcontent 的默认地址，其他协议返回 no search endpoint。ctx 为 nil 时使用 20 秒超时。
+// key 传给 brave 的 searchGET，tavily、serper、bocha 和默认分支的 searchJSON 或 searchRaw，以及 exa 的 SearchExaREST。jina、exa-mcp、duckduckgo 的调用不使用它。
+// query 去掉空白后为空时返回 empty query。否则按协议放进 q、query，或经 QueryEscape 替换端点里的 {q}，并传给对应的 webcontent 函数。
 func QuerySearch(ctx context.Context, c Connection, key, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -78,6 +80,11 @@ func QuerySearch(ctx context.Context, c Connection, key, query string) (string, 
 }
 
 // searchGET 把 q 加到查询串上，再按给定头发送钥匙。
+// ctx 传给 searchRaw。
+// endpoint 交给 url.Parse，查询参数 q 设成 query 后再把地址传给 searchRaw。
+// query 设成查询参数 q。
+// header 传给 searchRaw，头的值也是 key。
+// key 传给 searchRaw，同时作为头的值。
 func searchGET(ctx context.Context, endpoint, query, header, key string) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -90,12 +97,24 @@ func searchGET(ctx context.Context, endpoint, query, header, key string) (string
 }
 
 // searchJSON 把 body 编成 JSON 并 POST。
+// ctx 传给 searchRaw。
+// endpoint 传给 searchRaw。
+// key 传给 searchRaw。
+// header 传给 searchRaw。
+// headerVal 传给 searchRaw。
 func searchJSON(ctx context.Context, endpoint, key, header, headerVal string, body map[string]any) (string, error) {
 	raw, _ := json.Marshal(body)
 	return searchRaw(ctx, http.MethodPost, endpoint, key, header, headerVal, raw)
 }
 
 // searchRaw 发出请求。钥匙、头名和头值都非空才设置该头。状态码大于等于 300 时返回错误，正文最多保留 400 字节。
+// ctx 传给 NewRequestWithContext。
+// method 作为请求方法。
+// endpoint 作为请求地址。
+// key 去掉空白后非空，且 header 和 headerVal 都非空时，才设置这个头。
+// header 非空且 key、headerVal 都非空时作为要设置的头名。
+// headerVal 非空且 key、header 都非空时作为头的值。
+// body 长度大于 0 时作为请求体，并设置 Content-Type 为 application/json。
 func searchRaw(ctx context.Context, method, endpoint, key, header, headerVal string, body []byte) (string, error) {
 	var rdr io.Reader
 	if len(body) > 0 {
@@ -129,6 +148,7 @@ func searchRaw(ctx context.Context, method, endpoint, key, header, headerVal str
 }
 
 // digestSearchJSON 从 results、organic、web、data 或 items 里取出最多 8 条标题、链接和摘要。解析失败则返回原文去空白。成功但没有这些字段时，缩进 JSON 最多 8000 字节。
+// raw 按 JSON 对象解析。失败时返回去掉空白的原文。
 func digestSearchJSON(raw []byte) string {
 	var top map[string]any
 	if err := json.Unmarshal(raw, &top); err != nil {
@@ -181,6 +201,7 @@ func digestSearchJSON(raw []byte) string {
 }
 
 // asAnySlice 在值是 []any 时返回它，否则返回 nil。
+// v 的动态类型是 []any 时返回它，否则返回 nil。
 func asAnySlice(v any) []any {
 	switch t := v.(type) {
 	case []any:
@@ -191,6 +212,8 @@ func asAnySlice(v any) []any {
 }
 
 // firstString 返回映射里第一个非空白字符串字段。
+// m 按 keys 取值，类型是字符串且去掉空白后非空时返回去掉空白的结果。
+// keys 按顺序尝试。
 func firstString(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {

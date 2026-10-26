@@ -26,6 +26,7 @@ type builtinAdapter struct {
 func (a builtinAdapter) Metadata() Metadata { return a.info }
 
 // BuildCreate 没有创建函数时返回不可用，否则用请求里的生成参数调用创建函数。
+// c 的 Request 传给 create。
 func (a builtinAdapter) BuildCreate(_ context.Context, c RequestContext) (RequestSpec, error) {
 	if a.create == nil {
 		return RequestSpec{}, unavailable(a.info)
@@ -34,6 +35,7 @@ func (a builtinAdapter) BuildCreate(_ context.Context, c RequestContext) (Reques
 }
 
 // ParseCreate 没有解析函数时返回不可用。否则把响应体解成对象，再交给解析函数。
+// body 传给 decodeObject，解出的对象再交给 parseCreate。
 func (a builtinAdapter) ParseCreate(_ context.Context, body []byte) (CreateResult, error) {
 	if a.parseCreate == nil {
 		return CreateResult{}, unavailable(a.info)
@@ -46,6 +48,7 @@ func (a builtinAdapter) ParseCreate(_ context.Context, body []byte) (CreateResul
 }
 
 // BuildPoll 没有轮询函数时返回不可用，否则用轮询上下文调用轮询函数。
+// c 传给 poll。
 func (a builtinAdapter) BuildPoll(_ context.Context, c PollContext) (RequestSpec, error) {
 	if a.poll == nil {
 		return RequestSpec{}, unavailable(a.info)
@@ -54,6 +57,8 @@ func (a builtinAdapter) BuildPoll(_ context.Context, c PollContext) (RequestSpec
 }
 
 // ParsePoll 没有解析函数时返回不可用。否则把响应体解成对象，连同轮询上下文交给解析函数。
+// c 传给 parsePoll。
+// body 传给 decodeObject，解出的对象连同 c 交给 parsePoll。
 func (a builtinAdapter) ParsePoll(_ context.Context, c PollContext, body []byte) (PollResult, error) {
 	if a.parsePoll == nil {
 		return PollResult{}, unavailable(a.info)
@@ -96,6 +101,7 @@ func Builtins() *Registry {
 }
 
 // BundledManifest 按标识从内置注册表取出清单。适配器不存在，或它不是清单适配器时，返回空清单和假。
+// id 传给 Builtins 的 Get。
 func BundledManifest(id string) (Manifest, bool) {
 	adapter, ok := Builtins().Get(id)
 	if !ok {
@@ -114,6 +120,13 @@ func allSurfaces() []Surface {
 }
 
 // metadata 组装一条元数据，版本写 1.0.0，能力只有传入的那一种，使用面来自 allSurfaces，并标成启用且可安装。
+// id 写入 ID。
+// name 写入 Name。
+// vendor 写入 Vendor。
+// capability 作为 Categories 的唯一一项。
+// create 写入 Create。
+// poll 写入 Poll。
+// contentType 写入 ContentType。
 func metadata(id, name, vendor string, capability Capability, create, poll, contentType string) Metadata {
 	return Metadata{ID: id, Version: "1.0.0", Name: name, Vendor: vendor, Categories: []Capability{capability}, Scopes: allSurfaces(), Create: create, Poll: poll, ContentType: contentType, Enabled: true, Installable: true}
 }
@@ -596,6 +609,7 @@ func buildAgnesV25Body(r GenerationRequest) (map[string]any, error) {
 }
 
 // normalizeAgnesV25Resolution 把分辨率收成 720P、960P 或 2K。空值和 auto 收成 720P，其余对不上的写法返回错误。
+// value 去掉空白并转小写后，空串、auto、720、720p 返回 720P，960、960p 返回 960P，2k、1440、1440p 返回 2K，其余返回错误。
 func normalizeAgnesV25Resolution(value string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "auto", "720", "720p":
@@ -610,6 +624,7 @@ func normalizeAgnesV25Resolution(value string) (string, error) {
 }
 
 // normalizeAgnesV25AspectRatio 把画幅收成列出的比例。空值和 auto 收成 16:9。像素尺寸两边都大于 0 且不超过 1000000 时，按整数比折回对应比例。
+// value 把 × 换成 x 后去掉空白并转小写；空串或 auto 返回 16:9。等于 21:9、16:9、4:3、1:1、3:4、9:16 时原样返回。形如宽x高且两边都大于 0、不超过 1000000 时，按整数比折回对应比例。
 func normalizeAgnesV25AspectRatio(value string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "×", "x")))
 	if normalized == "" || normalized == "auto" {
@@ -690,6 +705,7 @@ func buildAgnesV20Body(r GenerationRequest) (map[string]any, error) {
 }
 
 // parseAgnesCreate 从 video_id、task_id 或 id 取出任务标识。没有标识则失败。状态为空时写成 pending。
+// payload 用 video_id、task_id、id 取任务标识，用 status 取状态；标识为空则失败，状态为空时写成 pending。
 func parseAgnesCreate(payload map[string]any) (CreateResult, error) {
 	id := firstString(payload, "video_id", "task_id", "id")
 	if id == "" {
@@ -703,6 +719,7 @@ func parseAgnesCreate(payload map[string]any) (CreateResult, error) {
 }
 
 // parseAgnesPoll 读取状态，空状态写成 processing。失败时带回消息。成功时从 metadata.url 或 url 取视频地址，没有地址则失败。
+// payload 用 video_id、task_id 或 id 取标识，没有时改用 c.TaskID；status 为空时写成 processing。失败时从 error、message、detail 取消息。成功时从 metadata 的 url 或 payload 的 url 取视频地址。
 func parseAgnesPoll(c PollContext, payload map[string]any) (PollResult, error) {
 	id := defaultValue(firstString(payload, "video_id", "task_id", "id"), c.TaskID)
 	status := normalizeStatus(firstString(payload, "status"))
@@ -731,6 +748,8 @@ func parseAgnesPoll(c PollContext, payload map[string]any) (PollResult, error) {
 }
 
 // videoAdapter 用给定的创建函数，和按 Poll 路径拼出的 GET 轮询，做成视频异步适配器。路径里的 task_id 和 request_id 做路径转义，id 做查询转义。
+// info 传给 asyncMediaAdapterWithPoll，Poll 去掉方法前缀后替换 {task_id}、{request_id} 和 {id}。
+// create 传给 asyncMediaAdapterWithPoll。
 func videoAdapter(info Metadata, create func(GenerationRequest) (RequestSpec, error)) Adapter {
 	return asyncMediaAdapterWithPoll(info, CapabilityVideo, create, func(c PollContext) (RequestSpec, error) {
 		path := strings.TrimSpace(info.Poll)
@@ -745,12 +764,18 @@ func videoAdapter(info Metadata, create func(GenerationRequest) (RequestSpec, er
 }
 
 // videoAdapterWithPoll 用调用方提供的创建函数和轮询函数做成视频异步适配器。
+// info 传给 asyncMediaAdapterWithPoll。
+// create 传给 asyncMediaAdapterWithPoll。
+// poll 传给 asyncMediaAdapterWithPoll。
 func videoAdapterWithPoll(info Metadata, create func(GenerationRequest) (RequestSpec, error), poll func(PollContext) (RequestSpec, error)) Adapter {
 	return asyncMediaAdapterWithPoll(info, CapabilityVideo, create, poll)
 
 }
 
 // asyncMediaAdapter 用创建函数和只替换 task_id 的 GET 轮询做成异步媒体适配器。
+// info 传给 asyncMediaAdapterWithPoll，Poll 去掉方法前缀后只替换 {task_id}。
+// capability 传给 asyncMediaAdapterWithPoll。
+// create 传给 asyncMediaAdapterWithPoll。
 func asyncMediaAdapter(info Metadata, capability Capability, create func(GenerationRequest) (RequestSpec, error)) Adapter {
 	return asyncMediaAdapterWithPoll(info, capability, create, func(c PollContext) (RequestSpec, error) {
 		path := strings.TrimSpace(info.Poll)
@@ -763,6 +788,10 @@ func asyncMediaAdapter(info Metadata, capability Capability, create func(Generat
 }
 
 // asyncMediaAdapterWithPoll 把创建、轮询和按能力解析媒体的函数装进 builtinAdapter。创建响应用 parseAsyncCreate。
+// info 写入适配器。
+// capability 传给 parseAsyncMediaPoll。
+// create 写入适配器。
+// poll 写入适配器。
 func asyncMediaAdapterWithPoll(info Metadata, capability Capability, create func(GenerationRequest) (RequestSpec, error), poll func(PollContext) (RequestSpec, error)) Adapter {
 	return builtinAdapter{
 		info: info, create: create, parseCreate: parseAsyncCreate, poll: poll,
@@ -773,11 +802,15 @@ func asyncMediaAdapterWithPoll(info Metadata, capability Capability, create func
 }
 
 // jsonSpec 返回方法、路径和正文组成的请求规格，内容类型为 application/json。
+// method 写入 Method。
+// path 写入 Path。
+// body 写入 Body。
 func jsonSpec(method, path string, body any) RequestSpec {
 	return RequestSpec{Method: method, Path: path, ContentType: "application/json", Body: body}
 }
 
 // parseChatResponse 取第一条 choice 的 message.content 作为文本。没有 choices 则失败。用量来自 usage。
+// payload 取 choices 的第一条 message.content，以及 usage；choices 为空则失败。
 func parseChatResponse(payload map[string]any) (CreateResult, error) {
 	choices, _ := payload["choices"].([]any)
 	if len(choices) == 0 {
@@ -789,6 +822,7 @@ func parseChatResponse(payload map[string]any) (CreateResult, error) {
 }
 
 // parseResponsesResponse 依次从 output_text、text 和 output 各项里取文本，并带上 usage。
+// payload 依次从 output_text、text 和 output 各项的 text、content 取文本，并带上 usage。
 func parseResponsesResponse(payload map[string]any) (CreateResult, error) {
 	text := firstString(payload, "output_text", "text")
 	if text == "" {
@@ -807,6 +841,7 @@ func parseResponsesResponse(payload map[string]any) (CreateResult, error) {
 }
 
 // parseClaudeResponse 把 content 里 type 为 text 的片段拼成文本，并带上 usage。
+// payload 的 content 里 type 为 text 的片段拼成文本，并带上 usage。
 func parseClaudeResponse(payload map[string]any) (CreateResult, error) {
 	content, _ := payload["content"].([]any)
 	text := ""
@@ -819,6 +854,7 @@ func parseClaudeResponse(payload map[string]any) (CreateResult, error) {
 }
 
 // parseImageResponse 从 data 里收集 url 或 base64 图片。裸 base64 补上 data:image/png;base64, 前缀。一张都没有则失败。
+// payload 的 data 里收集 url，或 b64_json、data；不以 data: 开头的补上 data:image/png;base64,。一张都没有则失败。
 func parseImageResponse(payload map[string]any) (CreateResult, error) {
 	values, _ := payload["data"].([]any)
 	images := make([]MediaReference, 0, len(values))
@@ -842,6 +878,7 @@ func parseImageResponse(payload map[string]any) (CreateResult, error) {
 }
 
 // parseJiMengCreate 从响应或 data 里取任务标识。没有则失败，状态为 pending。
+// payload 以及其中的 data 用 task_id、taskId、id 取任务标识，没有则失败。
 func parseJiMengCreate(payload map[string]any) (CreateResult, error) {
 	id := firstString(payload, "task_id", "taskId", "id")
 	if data := object(payload["data"]); data != nil {
@@ -854,11 +891,14 @@ func parseJiMengCreate(payload map[string]any) (CreateResult, error) {
 }
 
 // parseJiMengPoll 按图像能力解析即梦的轮询响应。
+// c 传给 parseAsyncMediaPoll。
+// payload 传给 parseAsyncMediaPoll，能力用 CapabilityImage。
 func parseJiMengPoll(c PollContext, payload map[string]any) (PollResult, error) {
 	return parseAsyncMediaPoll(c, payload, CapabilityImage)
 }
 
 // parseGeminiVeoCreate 用 name 作为任务标识。没有 name 则失败，状态为 pending。
+// payload 用 name 作为任务标识，空串则失败。
 func parseGeminiVeoCreate(payload map[string]any) (CreateResult, error) {
 	id := firstString(payload, "name")
 	if id == "" {
@@ -868,6 +908,7 @@ func parseGeminiVeoCreate(payload map[string]any) (CreateResult, error) {
 }
 
 // parseGeminiVeoPoll 在有 error 对象时失败。done 不为真时状态为 processing。done 为真时收集视频并标成 succeeded，没有视频也仍是 succeeded。
+// payload 用 name 作为任务标识，没有时改用 c.TaskID；有 error 对象时失败。done 不为真时状态为 processing，为真时把 response 传给 geminiVeoVideos。
 func parseGeminiVeoPoll(c PollContext, payload map[string]any) (PollResult, error) {
 	id := defaultValue(firstString(payload, "name"), c.TaskID)
 	if failure := object(payload["error"]); failure != nil {
@@ -890,6 +931,7 @@ func parseGeminiVeoPoll(c PollContext, payload map[string]any) (PollResult, erro
 }
 
 // geminiVeoVideos 从响应和嵌套的生成结果里收集带地址的视频。响应为空时返回 nil。
+// response 为 nil 时返回 nil；否则连同 generateVideoResponse、generate_video_response 里的 generatedVideos、generated_videos、generatedSamples、generated_samples、videos 收集 uri、url、videoUri、video_url。
 func geminiVeoVideos(response map[string]any) []MediaReference {
 	if response == nil {
 		return nil
@@ -920,6 +962,7 @@ func geminiVeoVideos(response map[string]any) []MediaReference {
 }
 
 // parseAsyncCreate 从响应、task 或 data 里取任务标识和状态。没有标识则失败。状态为空时写成 pending。
+// payload 以及 task、data 里用 id、task_id、taskId、request_id 取标识，用 status、state 取状态；标识为空则失败，状态为空时写成 pending。
 func parseAsyncCreate(payload map[string]any) (CreateResult, error) {
 	id := firstString(payload, "id", "task_id", "taskId", "request_id")
 	status := normalizeStatus(firstString(payload, "status", "state"))
@@ -941,6 +984,8 @@ func parseAsyncCreate(payload map[string]any) (CreateResult, error) {
 }
 
 // parseAsyncMediaPoll 只接受 image、video 和 audio。状态为空时写成 processing。成功但没有媒体时结果为空。
+// payload 以及 task、data、content 用来取状态和媒体地址；标识没有时改用 c.TaskID。状态为空时写成 processing。
+// capability 不是 image、video、audio 时返回错误；否则作为结果种类，并决定写入 Images、Audios 或 Videos。
 func parseAsyncMediaPoll(c PollContext, payload map[string]any, capability Capability) (PollResult, error) {
 	if capability != CapabilityImage && capability != CapabilityVideo && capability != CapabilityAudio {
 		return PollResult{}, fmt.Errorf("unsupported async media capability %q", capability)
@@ -986,6 +1031,7 @@ func parseAsyncMediaPoll(c PollContext, payload map[string]any, capability Capab
 }
 
 // parseAudioResponse 从 url、audio_url 或 data 取音频地址。都没有则失败。
+// payload 用 url、audio_url、data 取音频地址，都空则失败。
 func parseAudioResponse(payload map[string]any) (CreateResult, error) {
 	value := firstString(payload, "url", "audio_url", "data")
 	if value == "" {
@@ -995,6 +1041,7 @@ func parseAudioResponse(payload map[string]any) (CreateResult, error) {
 }
 
 // normalizeStatus 把已知状态文本收成 pending、processing、succeeded、cancelled 或 failed。识别不了时返回空串。
+// raw 去掉空白并转小写后，queued、pending、created、submitted、in_queue、task_status_queued 收成 pending，running、processing、in_progress、executing、task_status_running 收成 processing，succeeded、success、completed、complete、done、task_status_succeed 收成 succeeded，cancelled、canceled、aborted 收成 cancelled，failed、failure、error、expired 收成 failed，其余返回空串。
 func normalizeStatus(raw string) Status {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "queued", "pending", "created", "submitted", "in_queue", "task_status_queued":
@@ -1013,6 +1060,7 @@ func normalizeStatus(raw string) Status {
 }
 
 // decodeObject 把响应体解成 JSON 对象。不是 JSON 时返回错误。
+// body 交给 json.Unmarshal，解不成对象就返回错误。
 func decodeObject(body []byte) (map[string]any, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1022,6 +1070,7 @@ func decodeObject(body []byte) (map[string]any, error) {
 }
 
 // object 把值当成对象。不是对象时返回 nil。
+// value 做 map[string]any 断言，失败返回 nil。
 func object(value any) map[string]any { result, _ := value.(map[string]any); return result }
 
 // mergeMaps 先复制 fallback，再用 primary 里的键覆盖。
@@ -1037,6 +1086,8 @@ func mergeMaps(primary, fallback map[string]any) map[string]any {
 }
 
 // firstString 按键的顺序返回第一个去掉空白后非空的字符串。没有则返回空串。
+// payload 按 keys 的顺序取字符串，去掉空白后非空就返回。
+// keys 决定取值顺序。
 func firstString(payload map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
@@ -1047,6 +1098,8 @@ func firstString(payload map[string]any, keys ...string) string {
 }
 
 // defaultValue 在去掉空白后为空时返回后备值，否则返回原值。
+// value 去掉空白后为空时返回 fallback，否则返回自身。
+// fallback 在 value 去掉空白后为空时返回。
 func defaultValue(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback
@@ -1055,6 +1108,8 @@ func defaultValue(value, fallback string) string {
 }
 
 // defaultInt 在值小于等于 0 时返回后备值。
+// value 小于等于 0 时返回 fallback，否则返回自身。
+// fallback 在 value 小于等于 0 时返回。
 func defaultInt(value, fallback int) int {
 	if value <= 0 {
 		return fallback
@@ -1063,6 +1118,8 @@ func defaultInt(value, fallback int) int {
 }
 
 // copyIf 在值去掉空白后非空时把它写入 body。
+// key 作为写入 body 的键。
+// value 去掉空白后非空时写入 body。
 func copyIf(body map[string]any, key, value string) {
 	if strings.TrimSpace(value) != "" {
 		body[key] = value
@@ -1070,6 +1127,7 @@ func copyIf(body map[string]any, key, value string) {
 }
 
 // mergeExtra 把 extra 里点名的键抄进 body。没有的键跳过。
+// keys 决定从 extra 抄哪些键，extra 里没有的跳过。
 func mergeExtra(body map[string]any, extra map[string]any, keys ...string) {
 	for _, key := range keys {
 		if value, ok := extra[key]; ok {
@@ -1079,6 +1137,7 @@ func mergeExtra(body map[string]any, extra map[string]any, keys ...string) {
 }
 
 // compactMap 丢掉空白字符串、小于等于 0 的整数和 nil。布尔和其他类型保留。
+// body 逐项丢掉空白字符串、小于等于 0 的整数和 nil，布尔和其他类型保留。
 func compactMap(body map[string]any) map[string]any {
 	result := make(map[string]any)
 	for key, value := range body {
@@ -1105,11 +1164,13 @@ func compactMap(body map[string]any) map[string]any {
 func mediaValue(media MediaReference) string { return defaultValue(media.URL, media.DataURL) }
 
 // mediaRole 返回素材角色，空白时用后备角色。
+// fallback 在 Role 去掉空白后为空时返回。
 func mediaRole(media MediaReference, fallback string) string {
 	return defaultValue(strings.TrimSpace(media.Role), fallback)
 }
 
 // splitVideoImages 按角色把图片分成首尾帧、reference_image 和未标明角色的图。帧的顺序是先首帧再尾帧。
+// images 按 Role 分成 first_frame、last_frame、reference_image 和其余；帧的顺序是先首帧再尾帧。
 func splitVideoImages(images []MediaReference) (frames []MediaReference, references []MediaReference, unspecified []MediaReference) {
 	firstFrames := make([]MediaReference, 0, 1)
 	lastFrames := make([]MediaReference, 0, 1)
@@ -1131,6 +1192,7 @@ func splitVideoImages(images []MediaReference) (frames []MediaReference, referen
 }
 
 // orderedFrameImages 有首尾帧时先返回帧，再接上未标明角色的图，否则只返回未标明角色的图。
+// images 传给 splitVideoImages；有首尾帧时先返回帧再接上未标明角色的图，否则只返回未标明角色的图。
 func orderedFrameImages(images []MediaReference) []MediaReference {
 	frames, _, unspecified := splitVideoImages(images)
 	if len(frames) == 0 {
@@ -1140,6 +1202,8 @@ func orderedFrameImages(images []MediaReference) []MediaReference {
 }
 
 // hasVideoImageRole 在任意图片的角色等于给定值时返回真。
+// images 的 Role 去掉空白后与 role 比较。
+// role 用来和每张图的 Role 相等比较。
 func hasVideoImageRole(images []MediaReference, role string) bool {
 	for _, image := range images {
 		if strings.TrimSpace(image.Role) == role {
@@ -1150,6 +1214,7 @@ func hasVideoImageRole(images []MediaReference, role string) bool {
 }
 
 // mediaValues 把每条素材收成 URL 或 DataURL，丢掉空串。
+// values 逐条传给 mediaValue，空串丢掉。
 func mediaValues(values []MediaReference) []string {
 	result := make([]string, 0, len(values))
 	for _, value := range values {
@@ -1161,6 +1226,8 @@ func mediaValues(values []MediaReference) []string {
 }
 
 // mediaFromArray 从字符串或对象数组里收集媒体。图像能力遇到裸 base64 时补上 data:image/png;base64, 前缀。
+// value 当成数组；字符串去掉空白后非空就收成 URL，对象按能力取地址。
+// capability 为 image 时，b64_json 或 data 不以 data: 开头就补上 data:image/png;base64,；种类写入 Kind。
 func mediaFromArray(value any, capability Capability) []MediaReference {
 	values, _ := value.([]any)
 	result := make([]MediaReference, 0, len(values))
@@ -1189,6 +1256,7 @@ func mediaFromArray(value any, capability Capability) []MediaReference {
 }
 
 // dataMIME 从 data URL 里取出分号前的 MIME。不是这种形式时返回 application/octet-stream。
+// value 以 data: 开头且分号位置大于 5 时，返回 data: 与分号之间的文本，否则返回 application/octet-stream。
 func dataMIME(value string) string {
 	if index := strings.Index(value, ";"); strings.HasPrefix(value, "data:") && index > 5 {
 		return strings.TrimPrefix(value[5:index], "")
@@ -1197,6 +1265,7 @@ func dataMIME(value string) string {
 }
 
 // dataPayload 返回 data URL 逗号后面的载荷。不是 data URL 时返回原字符串。
+// value 以 data: 开头且含逗号时返回逗号后面的文本，否则返回原字符串。
 func dataPayload(value string) string {
 	if index := strings.Index(value, ","); strings.HasPrefix(value, "data:") && index >= 0 {
 		return value[index+1:]

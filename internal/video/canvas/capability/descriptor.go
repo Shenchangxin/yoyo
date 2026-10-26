@@ -13,9 +13,9 @@ import (
 // 补丁字段只有字符串、数字和布尔三种。
 const (
 	// patchKindString 是字符串补丁 string。
-	patchKindString  = "string"
+	patchKindString = "string"
 	// patchKindNumber 是数字补丁 number。
-	patchKindNumber  = "number"
+	patchKindNumber = "number"
 	// patchKindBoolean 是布尔补丁 boolean。
 	patchKindBoolean = "boolean"
 )
@@ -75,6 +75,7 @@ func (d Descriptor) Metadata(content string) map[string]any {
 }
 
 // AllowsInput 在节点不能当目标时为假。拒绝列表优先，接受列表为空则其余都允许。
+// kind 经 normalizeType 后与 RejectedInputKinds、AcceptedInputKinds 比较。
 func (d Descriptor) AllowsInput(kind string) bool {
 	if !d.Connection.CanTarget {
 		return false
@@ -97,6 +98,7 @@ func (d Descriptor) AllowsInput(kind string) bool {
 }
 
 // ValidatePatch 要求节点可更新且补丁非空。键必须在补丁字段里，值要符合字符串、数字或布尔。数字不能是 NaN 或无穷，绝对值不能超过 Limit。字符串不能超过 MaxRunes。
+// patch 长度为 0 时返回错误；每个键到 PatchFields 里查找，值按字段 Kind 检查。
 func (d Descriptor) ValidatePatch(patch map[string]any) error {
 	if !d.CanUpdate {
 		return fmt.Errorf("%s 节点不支持更新", d.Label)
@@ -141,6 +143,8 @@ func (d Descriptor) ValidatePatch(patch map[string]any) error {
 }
 
 // ApplyPatch 先校验，再按点号路径写入节点。中间层不是对象时新建。
+// node 作为写入目标，点号路径的中间层不是对象时新建 map。
+// patch 先传给 ValidatePatch，再按每个键对应字段的 Path 分段写入 node。
 func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error {
 	if err := d.ValidatePatch(patch); err != nil {
 		return err
@@ -163,6 +167,7 @@ func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error 
 }
 
 // ValidateConnection 要求节点能接收输入，并且 AllowsInput 接受来源种类。
+// fromKind 传给 AllowsInput，不接受时再传给 inputKindLabel 拼进错误文本。
 func (d Descriptor) ValidateConnection(fromKind string) error {
 	if !d.Connection.CanTarget {
 		return fmt.Errorf("%s 节点不能接收参考输入", d.Label)
@@ -174,6 +179,7 @@ func (d Descriptor) ValidateConnection(fromKind string) error {
 }
 
 // inputKindLabel 把 image、video、audio 写成图片、视频、音频，其他写成文本。
+// kind 为 image、video、audio 时分别返回图片、视频、音频，其余返回文本。
 func inputKindLabel(kind string) string {
 	switch kind {
 	case "image":
@@ -188,24 +194,30 @@ func inputKindLabel(kind string) string {
 }
 
 // normalizeType 去掉空白并转成小写。
+// value 先 TrimSpace 再 ToLower。
 func normalizeType(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
 
 // normalizeInputKind 用「canvas input kind」校验输入种类标识。
+// value 传给 normalizeCapabilityIdentifier，标签是 canvas input kind。
 func normalizeInputKind(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas input kind")
 }
 
 // normalizeGenerationMode 用「canvas generation mode」校验生成模式标识。
+// value 传给 normalizeCapabilityIdentifier，标签是 canvas generation mode。
 func normalizeGenerationMode(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas generation mode")
 }
 
 // normalizeProjectionKind 用「canvas projection kind」校验投影种类标识。
+// value 传给 normalizeCapabilityIdentifier，标签是 canvas projection kind。
 func normalizeProjectionKind(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas projection kind")
 }
 
 // normalizeCapabilityIdentifier 要求空串直接通过，否则以小写字母开头，后面只能是小写字母、数字、下划线或横线。
+// value 先经 normalizeType，空串直接返回；否则首字符必须是 a 到 z，其后只能是小写字母、数字、下划线或横线。
+// label 写进校验失败的错误文本。
 func normalizeCapabilityIdentifier(value, label string) (string, error) {
 	value = normalizeType(value)
 	if value == "" {
@@ -226,6 +238,7 @@ func normalizeCapabilityIdentifier(value, label string) (string, error) {
 }
 
 // normalizeConnectionKinds 规范化、去重并排序输入种类。空种类失败。
+// values 逐项传给 normalizeInputKind，空串或重复则失败，其余排序后返回。
 func normalizeConnectionKinds(values []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
@@ -248,6 +261,7 @@ func normalizeConnectionKinds(values []string) ([]string, error) {
 }
 
 // validatePatchPath 拒绝空段、.、..、__proto__、constructor 和 prototype。每段要以字母或下划线开头。
+// path 去掉首尾空白后按点号分段；空串，或某段为空、为 .、..、__proto__、constructor、prototype，或首字符不是字母也不是下划线，都失败。
 func validatePatchPath(path string) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -273,6 +287,7 @@ func validatePatchPath(path string) error {
 }
 
 // normalizePatchFields 检查补丁键、路径、标签、正的显示顺序和种类。MaxRunes 不能为负。
+// fields 逐项去掉键和路径空白；键为空或重复、路径没通过 validatePatchPath、标签为空、Order 小于等于 0、种类不是 patchKindString、patchKindNumber 或 patchKindBoolean、MaxRunes 小于 0，都失败。
 func normalizePatchFields(fields map[string]PatchField) (map[string]PatchField, error) {
 	out := make(map[string]PatchField, len(fields))
 	for key, field := range fields {

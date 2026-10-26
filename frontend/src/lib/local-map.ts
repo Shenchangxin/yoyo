@@ -3,7 +3,7 @@
  * 不拥有：哪一块界面在用这份映射。
  */
 
-/** readLocalMap 读出布尔映射。键为空、缺失、损坏，或值不是布尔时，跳过或返回空对象。 */
+/** readLocalMap 读出布尔映射。键为空、缺失、损坏，或值不是布尔时，跳过或返回空对象。key 为假时走另一支，传给 localStorage.getItem。 */
 export function readLocalMap(key: string): Record<string, boolean> {
   if (!key) return {};
   try {
@@ -21,7 +21,7 @@ export function readLocalMap(key: string): Record<string, boolean> {
   }
 }
 
-/** writeLocalMap 写回映射。键为空或配额不足时忽略。 */
+/** writeLocalMap 写回映射。键为空或配额不足时忽略。key 为假时走另一支，传给 localStorage.setItem。value 传给 JSON.stringify。 */
 export function writeLocalMap(key: string, value: Record<string, boolean>) {
   if (!key) return;
   try {

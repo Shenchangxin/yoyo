@@ -9,7 +9,7 @@ import { useCopy } from "../../lib/i18n";
 /** SessionView 是聊天或轨迹。 */
 export type SessionView = "chat" | "trajectory";
 
-/** SessionHeader 在聊天和轨迹之间切换，并可带面包屑。 */
+/** SessionHeader 在聊天和轨迹之间切换，并可带面包屑。props 读取 crumb、trail、view，调用 onView。 */
 export function SessionHeader(props: {
   view: SessionView;
   onView: (view: SessionView) => void;

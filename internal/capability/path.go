@@ -125,6 +125,7 @@ func ForbiddenDiagPath(homeRoot, p string) bool {
 }
 
 // samePath 在两边都能 Stat 时用 os.SameFile，否则比较 filepath.Clean 之后的字符串。
+// b 能 Stat 且 a 也能 Stat 时，和 a 的 FileInfo 一起交给 os.SameFile；否则用 filepath.Clean 之后的字符串和 a 比较。
 func samePath(a, b string) bool {
 	ai, err := os.Stat(a)
 	if err == nil {

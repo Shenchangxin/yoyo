@@ -3,7 +3,7 @@
  * 不拥有：从剪贴板读取，以及决定复制哪段文字。
  */
 
-/** writeClipboard 写入纯文本。空文本返回假。剪贴板接口失败时，用隐藏文本域执行 copy。 */
+/** writeClipboard 写入纯文本。空文本返回假。剪贴板接口失败时，用隐藏文本域执行 copy。text 为空时用空字符串后，读取 length，为假时走另一支，赋给 el.value，传给 navigator.clipboard.writeText。 */
 export async function writeClipboard(text: string): Promise<boolean> {
   const value = text ?? "";
   if (!value) return false;

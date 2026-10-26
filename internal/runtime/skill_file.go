@@ -12,6 +12,7 @@ import (
 )
 
 // noSkillDirError 在 Skills 或 BootstrapBodies 里已有正文时，说明该技能是内置说明、不带脚本或文件。否则说明没有磁盘目录。
+// skill 用来查 Skills 和 BootstrapBodies，并写进错误文本。
 func (t *WorkspaceTools) noSkillDirError(skill string) error {
 	if t != nil && (strings.TrimSpace(t.Skills[skill]) != "" || strings.TrimSpace(t.BootstrapBodies[skill]) != "") {
 		return fmt.Errorf("skill %s is instruction-only: it is built in and ships no scripts or files. Its instructions are already in your context; check the work with read_file, glob or grep", skill)
@@ -20,6 +21,7 @@ func (t *WorkspaceTools) noSkillDirError(skill string) error {
 }
 
 // readSkillFile 要求 skill 和 path。路径去掉 ./，拒绝空路径、含 .. 或以 / 开头的路径。WithinWorkspace 限制在技能目录内，ForbiddenDiagPath 拒绝诊断面。缺失时最多列出 24 个包内文件。指定 offset 或 limit 时按行号输出。超过 maxInlineBytes 时只给前 80 行并注明截断。
+// rel 去掉空白后为空则报缺参；否则把反斜杠换成斜杠并去掉 ./，空路径、含 .. 或以 / 开头时拒绝，再接到技能目录上。
 func (t *WorkspaceTools) readSkillFile(skill, rel string, offset, limit int) ToolResult {
 	if t == nil {
 		return ToolResult{Err: fmt.Errorf("no tools")}
@@ -89,6 +91,7 @@ func (t *WorkspaceTools) skillDir(skill string) string {
 }
 
 // resolveSkillName 把别名收成规范名。先看 SkillMeta 的 Name、DisplayName 和目录基名，再看 Skills 和 SkillDirs 的键。都对不上则返回去掉空白后的原名。
+// name 先去掉空白；空串或接收者为 nil 时返回该值，否则按 SkillMeta、Skills、SkillDirs 做不区分大小写的查找。
 func (t *WorkspaceTools) resolveSkillName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" || t == nil {

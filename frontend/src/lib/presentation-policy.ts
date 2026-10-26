@@ -50,7 +50,7 @@ const POLICIES: Record<TranscriptViewMode, Omit<ChatPresentationPolicy, "collaps
   },
 };
 
-/** presentationPolicyFor 按详略档位取出策略，并带上折叠时机。未知档位退回标准。 */
+/** presentationPolicyFor 按详略档位取出策略，并带上折叠时机。未知档位退回标准。mode 用作下标。collapseTiming 写入字段 collapseTiming。 */
 export function presentationPolicyFor(
   mode: TranscriptViewMode,
   collapseTiming: CollapseTiming = "completion",
@@ -58,20 +58,25 @@ export function presentationPolicyFor(
   return { ...POLICIES[mode] || POLICIES.standard, collapseTiming };
 }
 
-/** coerceTranscriptView 把存储的字符串收成档位。expanded 视为详细，其余未知值视为标准。 */
+/** coerceTranscriptView 把存储的字符串收成档位。expanded 视为详细，其余未知值视为标准。v 为 expanded 时返回 detailed；有的分支原样返回。 */
 export function coerceTranscriptView(v: string | null | undefined): TranscriptViewMode {
   if (v === "compact" || v === "standard" || v === "detailed" || v === "verbose") return v;
   if (v === "expanded") return "detailed";
   return "standard";
 }
 
-/** coerceCollapseTiming 把 next-input、next_input、next-message 收成下一条输入后折叠，其余视为回合结束时折叠。 */
+/** coerceCollapseTiming 把 next-input、next_input、next-message 收成下一条输入后折叠，其余视为回合结束时折叠。v 与 next-input、next_input、next-message 比较是否相等。 */
 export function coerceCollapseTiming(v: string | null | undefined): CollapseTiming {
   if (v === "next-input" || v === "next_input" || v === "next-message") return "next-input";
   return "completion";
 }
 
-/** processGrouped 过程轨是否收成一组。none 不分组，collapsed 始终分组。history 在进行中保持展开；时机若是下一条输入，下一条用户消息还没来时也保持展开。 */
+/**
+ * processGrouped 过程轨是否收成一组。none 不分组，collapsed 始终分组。history 在进行中保持展开；时机若是下一条输入，下一条用户消息还没来时也保持展开。
+ * policy 的 stepGrouping 为 none 时返回假，的 stepGrouping 为 collapsed 时返回真，其余分支还看别的条件。
+ * live 为真时返回假。
+ * nextUser 为假时走另一支。
+ */
 export function processGrouped(policy: ChatPresentationPolicy, live: boolean, nextUser: boolean): boolean {
   if (policy.stepGrouping === "none") return false;
   if (policy.stepGrouping === "collapsed") return true;
@@ -80,7 +85,7 @@ export function processGrouped(policy: ChatPresentationPolicy, live: boolean, ne
   return true;
 }
 
-/** turnWorkFolded 已完成的工作块是否折叠。进行中不折叠。时机若是下一条输入，要等下一条用户消息出现。 */
+/** turnWorkFolded 已完成的工作块是否折叠。进行中不折叠。时机若是下一条输入，要等下一条用户消息出现。policy 的 collapseTiming 为 next-input 时返回 nextUser，其余分支还看别的条件。live 作为后备值。nextUser 原样返回。 */
 export function turnWorkFolded(policy: ChatPresentationPolicy, live: boolean, nextUser: boolean): boolean {
   if (!policy.foldCompletedTurns || live) return false;
   if (policy.collapseTiming === "next-input") return nextUser;

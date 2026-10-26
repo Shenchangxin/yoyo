@@ -17,6 +17,7 @@ import (
 )
 
 // Ensure 在 Look 为空时下载并校验钉住的便携 pwsh，返回可执行文件路径。使用进程级 Manager。
+// ctx 传给 Manager.Ensure。
 func Ensure(ctx context.Context) (string, error) {
 	return current().Ensure(ctx)
 }
@@ -120,6 +121,7 @@ func (m *Manager) beginInstall() (<-chan struct{}, error) {
 }
 
 // runInstall 用 25 分钟超时跑 installBundle。成功时 phase 为 ready、percent 为 100。失败时 phase 为 error。结束时清掉自己的 wait、关闭通道并 publish。
+// done 在结束时关闭。wait 等于它时先把 wait 清成 nil。
 func (m *Manager) runInstall(done chan struct{}) {
 	defer func() {
 		m.mu.Lock()
@@ -146,6 +148,7 @@ func (m *Manager) runInstall(done chan struct{}) {
 }
 
 // installBundle 下载 zip、去掉标记、解到 installDir.staging、校验，再改名为 installDir。失败时删掉 staging。成功后删掉 zip。Look 仍为空时返回 pwsh: install did not produce pwsh.exe。
+// ctx 传给 downloadZip。
 func (m *Manager) installBundle(ctx context.Context) error {
 	goos, goarch := m.platform()
 	archive, err := archiveName(goos, goarch)
@@ -194,6 +197,10 @@ func (m *Manager) installBundle(ctx context.Context) error {
 }
 
 // downloadZip 按 candidateURLs 的顺序尝试。第一个成功就返回。全部失败时返回最后一次错误；一次都没试到时错误文案是 pwsh: download failed。
+// ctx 传给 downloadURL。
+// archive 传给 candidateURLs。
+// dest 传给 downloadURL。
+// wantSHA 传给 downloadURL。
 func (m *Manager) downloadZip(ctx context.Context, archive, dest, wantSHA string) error {
 	var last error
 	for _, rawURL := range m.candidateURLs(archive) {
@@ -211,6 +218,8 @@ func (m *Manager) downloadZip(ctx context.Context, archive, dest, wantSHA string
 
 // downloadURL 用 GET 下载到 dest.tmp。状态码大于等于 300 时返回 pwsh: download 加状态。读过 maxZipBytes 就失败。
 // wantSHA 非空时比对 SHA-256，不一致返回 pwsh: sha256 mismatch。成功后改名为 dest 并 unblockPath。进度百分比最高 90。
+// ctx 传给 http.NewRequestWithContext。
+// rawURL 作为 GET 地址传给 http.NewRequestWithContext。
 func (m *Manager) downloadURL(ctx context.Context, rawURL, dest, wantSHA string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -297,6 +306,7 @@ type progressReader struct {
 }
 
 // Read 读取底层数据，累加 n，并在百分比变化或 err 非空时调用 on。百分比按 n*90/total 计算。
+// b 传给底层 Read。
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.n += int64(n)
@@ -314,6 +324,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 }
 
 // setProgress 更新进度。phase 为空不改 phase。percent 小于 0 不改 percent。total 小于等于 0 不改 total。archive 为空不改 archive。然后 publish。
+// bytes 写入进度里的字节数。
 func (m *Manager) setProgress(phase string, percent int, bytes, total int64, archive string) {
 	m.mu.Lock()
 	if phase != "" {
@@ -388,6 +399,7 @@ func (m *Manager) Snapshot() map[string]any {
 }
 
 // sourceOf 在 bin 为空时返回空。与 YOYO_PWSH 指向同一文件时返回 env。与托管目录里找到的文件相同时返回 managed。否则返回 file。
+// managedDir 传给 lookDir。找到的文件与 bin 是同一文件时返回 managed。
 func sourceOf(bin, managedDir string) string {
 	if bin == "" {
 		return ""

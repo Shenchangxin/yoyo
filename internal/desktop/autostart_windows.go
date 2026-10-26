@@ -7,6 +7,7 @@ import (
 )
 
 // SetStartAtLogin 写当前用户的 Run 键，值名是 Yoyo。关闭时删掉该值。打开时写入带引号的可执行文件路径。路径为空则返回 nil。
+// enabled 为假时删掉 Run 键里的 Yoyo。为真时在可执行文件路径非空的情况下写入带引号的路径。
 func SetStartAtLogin(enabled bool) error {
 	k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE)
 	if err != nil {

@@ -853,7 +853,7 @@ export function detectLang(): Lang {
   return "en";
 }
 
-/** htmlLang 把站内的 zh 写成 html 的 zh-Hans，其余语言代码原样返回。 */
+/** htmlLang 把站内的 zh 写成 html 的 zh-Hans，其余语言代码原样返回。lang 为 zh 时返回 zh-Hans，否则返回 lang。 */
 export function htmlLang(lang: Lang): string {
   return lang === "zh" ? "zh-Hans" : lang;
 }

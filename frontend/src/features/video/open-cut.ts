@@ -20,24 +20,24 @@ export type SendToCutRequest = {
   sessionId?: string;
 };
 
-/** requestSendToCut 在窗口上派发送到剪辑的事件。没有窗口就返回。 */
+/** requestSendToCut 在窗口上派发送到剪辑的事件。没有窗口就返回。detail 作为送到剪辑事件的 detail。 */
 export function requestSendToCut(detail: SendToCutRequest) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(SEND_TO_CUT_EVENT, { detail }));
 }
 
-/** installSendToCut 接住送到剪辑的事件，失败时弹出错误。返回卸下监听的函数。 */
+/** installSendToCut 接住送到剪辑的事件，失败时弹出错误。返回卸下监听的函数。handler 收到事件里的 detail，失败时用错误弹出提示。 */
 export function installSendToCut(handler: (detail: SendToCutRequest) => Promise<void>) {
-  /** 交给处理函数，失败时弹出错误。 */
+  /** 交给处理函数，失败时弹出错误。raw 取出 detail 交给 handler。 */
   const on = (raw: Event) => {
     const detail = ((raw as CustomEvent<SendToCutRequest>).detail || {}) as SendToCutRequest;
-    void handler(detail).catch((e) => toast.error(api.errMessage(e)));
+    void handler(detail).catch(/** e 交给 errMessage 后弹出错误。 */ (e) => toast.error(api.errMessage(e)));
   };
   window.addEventListener(SEND_TO_CUT_EVENT, on);
   return () => window.removeEventListener(SEND_TO_CUT_EVENT, on);
 }
 
-/** resourceIdFromSend 从资源字段或地址里取出资源 id。 */
+/** resourceIdFromSend 从资源字段或地址里取出资源 id。detail 依次看 resourceId、resource_id、storageKey 和 url。 */
 export function resourceIdFromSend(detail: SendToCutRequest): string {
   const key = String(detail.resourceId || detail.resource_id || detail.storageKey || "").trim();
   if (key.startsWith("resource:")) return key.slice("resource:".length);
@@ -48,12 +48,12 @@ export function resourceIdFromSend(detail: SendToCutRequest): string {
   return "";
 }
 
-/** cutPrompt 把剪辑 id 和哈希填进文案模板。 */
+/** cutPrompt 把剪辑 id 和哈希填进文案模板。copy 取 conductor.sendPrompt。hash 替换模板里的 {hash}。 */
 export function cutPrompt(copy: Copy, id: string, hash: string): string {
   return copy.video.conductor.sendPrompt.replace("{id}", id).replace("{hash}", hash);
 }
 
-/** ingestClipUrl 拉取成片地址，小于本文件的大小上限时写入媒体库并返回哈希。 */
+/** ingestClipUrl 拉取成片地址，小于本文件的大小上限时写入媒体库并返回哈希。url 去掉空白后拉取，空的直接抛错。 */
 export async function ingestClipUrl(url: string): Promise<string> {
   const src = String(url || "").trim();
   if (!src) throw new Error("clip url required");
@@ -70,9 +70,9 @@ export async function ingestClipUrl(url: string): Promise<string> {
   return hash;
 }
 
-/** 把二进制读成去掉前缀的 base64。 */
+/** 把二进制读成去掉前缀的 base64。blob 交给 FileReader 读成 data URL。 */
 function blobToB64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise(/** resolve 在读完后交出去掉前缀的 base64。reject 在读失败时交上 FileReader 的错误。 */ (resolve, reject) => {
     const r = new FileReader();
     r.onload = () => {
       const data = String(r.result || "");

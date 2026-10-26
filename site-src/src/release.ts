@@ -15,19 +15,19 @@ export type Asset = {
   size: string;
 };
 
-/** named 拼出 v 加版本号下面的下载地址。 */
+/** named 拼出 v 加版本号下面的下载地址。ver 拼进字符串。file 拼进字符串。 */
 function named(ver: string, file: string) {
   return `https://github.com/${REPO}/releases/download/v${ver}/${file}`;
 }
 
-/** formatBytes 小于 1 MiB 时用 KB，否则用四舍五入到整数的 MB。0 返回空串。 */
+/** formatBytes 小于 1 MiB 时用 KB，否则用四舍五入到整数的 MB。0 返回空串。n 为假时返回空字符串；小于 1024 * 1024，除以 1024。 */
 function formatBytes(n: number) {
   if (!n) return "";
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / (1024 * 1024)).toFixed(0)} MB`;
 }
 
-/** fallbackAssets 按版本号拼出 Windows、macOS、Linux、deb 和 rpm 五条地址。尺寸留空，等 hydrateRelease 填。 */
+/** fallbackAssets 按版本号拼出 Windows、macOS、Linux、deb 和 rpm 五条地址。尺寸留空，等 hydrateRelease 填。ver 拼进字符串，传给 named。 */
 export function fallbackAssets(ver: string): Asset[] {
   return [
     { os: "windows", label: "Windows", name: `Yoyo-${ver}-windows-x64-setup.exe`, href: named(ver, `Yoyo-${ver}-windows-x64-setup.exe`), size: "" },
@@ -46,7 +46,7 @@ export function detectOs(): Asset["os"] {
   return "windows";
 }
 
-/** pick 按正则顺序找第一个文件名匹配的发布资产。都没有就返回 null。 */
+/** pick 按正则顺序找第一个文件名匹配的发布资产。都没有就返回 null。assets 调用 find。tests 用来遍历。 */
 function pick(assets: { name: string; size: number; browser_download_url: string }[], tests: RegExp[]) {
   for (const test of tests) {
     const hit = assets.find((a) => test.test(a.name));

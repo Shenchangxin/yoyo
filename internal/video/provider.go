@@ -11,6 +11,7 @@ import (
 )
 
 // ListProviders 按服务类型列出连接。连接表为空时返回空切片。空类型时跳过聊天能力，protocol 能力一律跳过。同一连接的同一能力只出现一次。
+// serviceType 传给 connection.NormalizeCap；结果为空时跳过聊天能力，非空时只保留与之相等的能力。
 func (e *Engine) ListProviders(serviceType string) ([]Provider, error) {
 	if e.Conn == nil {
 		return []Provider{}, nil
@@ -64,6 +65,7 @@ func (e *Engine) GetProvider(id string) (Provider, error) {
 }
 
 // ActiveProvider 先按标识取匹配该能力的连接，没有再取 Active，仍没有再找第一条匹配的连接。都没有时提示到设置里添加。
+// serviceType 传给 connection.NormalizeCap 和 Conn.Active，并写进找不到供应商时的错误文本。
 func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 	if e.Conn == nil {
 		return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
@@ -86,6 +88,7 @@ func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 }
 
 // firstMatchingConn 在启用且能力匹配的连接里，优先返回有密钥并且声明了该能力的一条。否则返回第一条有密钥的，再否则返回第一条匹配的。都没有时返回 no active connection。
+// cap 传给 connection.MatchesCap 和 connection.HasCap，并写进找不到连接时的错误文本。
 func (e *Engine) firstMatchingConn(cap string) (connection.Connection, error) {
 	list, err := e.Conn.List("")
 	if err != nil {
@@ -121,11 +124,13 @@ func (e *Engine) firstMatchingConn(cap string) (connection.Connection, error) {
 }
 
 // ProviderModels 解析供应商模型列表文本。
+// p 的 Models 传给 connection.ParseModels。
 func ProviderModels(p Provider) []string {
 	return connection.ParseModels(p.Models)
 }
 
 // ResolveProviderModel 优先用 want，其次用供应商当前模型，再次用模型列表的第一项。都空时返回空串。
+// p 在 want 去掉首尾空白后为空时，Model 非空就返回 Model，否则用 ProviderModels 的第一项。
 func ResolveProviderModel(p Provider, want string) string {
 	want = strings.TrimSpace(want)
 	if want != "" {
@@ -141,6 +146,7 @@ func ResolveProviderModel(p Provider, want string) string {
 }
 
 // UpsertProvider 把供应商写进连接表。服务类型空着时用图像。已有连接会合并能力、模型、默认模型、保险库键、名字、端点、厂商和设置。IsDefault 为真时把该连接设为这种能力的默认。连接表为空时返回 connection registry missing。
+// apiKey 传给 Conn.Upsert。
 func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 	if e.Conn == nil {
 		return p, fmt.Errorf("connection registry missing")
@@ -241,6 +247,7 @@ func (e *Engine) TestProvider(id string) map[string]any {
 }
 
 // uniqueModels 按出现顺序去掉空白和重复模型名。
+// in 逐项去掉首尾空白，空串或已经出现过的丢掉。
 func uniqueModels(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -256,6 +263,8 @@ func uniqueModels(in []string) []string {
 }
 
 // providerFromConn 把一条连接投影成供应商。能力空着时优先取图像、视频或语音，再取第一项。语音能力的服务类型写成 tts，聊天写成 chat。设置编不成 JSON 时用 {}。
+// cap 为空时从 Capabilities 里先找图像、视频或语音，否则取第一项，再传给 connection.NormalizeCap、connection.ModelForCap 和 connection.ModelsJSONFor。
+// defs 非 nil 时用 defs[cap] 是否等于连接 ID 决定 IsDefault。
 func providerFromConn(c connection.Connection, cap string, defs connection.Defaults) Provider {
 	if cap == "" {
 		for _, x := range c.Capabilities {
@@ -306,6 +315,8 @@ func providerFromConn(c connection.Connection, cap string, defs connection.Defau
 }
 
 // mapProviderPlugin 按厂商和服务类型推断协议名。
+// serviceType 作为第二个参数传给 connection.InferProtocol。
+// vendor 作为第一个参数传给 connection.InferProtocol。
 func mapProviderPlugin(serviceType, vendor string) string {
 	return connection.InferProtocol(vendor, serviceType)
 }

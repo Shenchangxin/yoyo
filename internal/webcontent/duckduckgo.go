@@ -19,6 +19,8 @@ const (
 
 // SearchDuckDuckGo 先用 htmlBase，再用 liteBase。空白的 base 换成对应的默认地址。查询放在 q 参数里。
 // 某一端返回且 Useful 为真就用它。两边都不行时错误文案是 duckduckgo empty。query 空白时错误文案是 empty query。
+// ctx 传给 fetchDDG。
+// client 传给 fetchDDG。
 func SearchDuckDuckGo(ctx context.Context, client *http.Client, htmlBase, liteBase, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -41,6 +43,9 @@ func SearchDuckDuckGo(ctx context.Context, client *http.Client, htmlBase, liteBa
 
 // fetchDDG 把 q 设成 query 后 GET，Accept 为 text/html。状态码大于等于 300 时错误文案是 duckduckgo 加状态码。
 // 解析结果经 FormatHits 后须 Useful，否则错误文案是 duckduckgo parse empty。
+// ctx 传给 get。
+// client 传给 get。
+// base 交给 url.Parse，查询参数 q 设成 query 后把整段地址传给 get。
 func fetchDDG(ctx context.Context, client *http.Client, base, query string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {

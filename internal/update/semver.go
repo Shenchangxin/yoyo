@@ -78,6 +78,8 @@ func CompareVersions(a, b string) int {
 }
 
 // cmpInt 比较两个整数，小于返回 -1，大于返回 1，相等返回 0。
+// a 小于 b 时返回 -1，大于时返回 1，相等返回 0。
+// b 用来和 a 比较。
 func cmpInt(a, b int) int {
 	if a < b {
 		return -1

@@ -13,6 +13,7 @@ import (
 )
 
 // SkillMarket 从家目录 skill-market 加载指定 hub 和查询的目录。refresh 为真时允许重新拉取。
+// query 写入 LoadOpts.Query。
 func (a *App) SkillMarket(refresh bool, hub, query string) (skillmarket.Catalog, error) {
 	dir := filepath.Join(a.Home.Root, "skill-market")
 	return skillmarket.LoadHub(dir, skillmarket.LoadOpts{Hub: hub, Query: query, Refresh: refresh})
@@ -95,6 +96,7 @@ func (a *App) UninstallMarketSkill(slug string) error {
 }
 
 // skillBundleNote 返回元数据里的 connectors 文本。元数据为空返回空串。
+// meta 为 nil 时返回空串，否则取 connectors 并去掉首尾空白。
 func skillBundleNote(meta map[string]string) string {
 	if meta == nil {
 		return ""
@@ -103,6 +105,7 @@ func skillBundleNote(meta map[string]string) string {
 }
 
 // packSkillMD 返回包内大小写不敏感的 SKILL.md 正文，没有则 nil。
+// files 里按 Rel 找大小写不敏感的 SKILL.md，没有则返回 nil。
 func packSkillMD(files []skillmarket.PackFile) []byte {
 	for _, f := range files {
 		if strings.EqualFold(f.Rel, "SKILL.md") {
@@ -113,6 +116,7 @@ func packSkillMD(files []skillmarket.PackFile) []byte {
 }
 
 // packHasScripts 在任一相对路径以 scripts/ 开头时返回真。
+// files 的 Rel 换成正斜杠并转小写后，看是否以 scripts/ 开头。
 func packHasScripts(files []skillmarket.PackFile) bool {
 	for _, f := range files {
 		rel := strings.ToLower(strings.ReplaceAll(f.Rel, "\\", "/"))
@@ -124,6 +128,7 @@ func packHasScripts(files []skillmarket.PackFile) bool {
 }
 
 // skillmarketFiles 只收集包文件的相对路径。
+// files 只收集每项的 Rel。
 func skillmarketFiles(files []skillmarket.PackFile) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {
@@ -133,6 +138,7 @@ func skillmarketFiles(files []skillmarket.PackFile) []string {
 }
 
 // skillInstallID 从目录里的市场记录拼安装 id。有 Remote 和 Source 时用 ItemID。没有记录返回空串。
+// dir 传给 skillmarket.ReadRecord。
 func skillInstallID(dir string) string {
 	rec, ok := skillmarket.ReadRecord(dir)
 	if !ok {
@@ -148,6 +154,7 @@ func skillInstallID(dir string) string {
 }
 
 // skillOrigin 判断技能目录来自 bundled、pack、market、home、workspace 还是 cas。市场目录要有 .market.json。
+// dir 先 Clean，再与 bundled、home 下的 packs 或 skills 比较。
 func skillOrigin(dir, home, bundled string) string {
 	dir = filepath.Clean(dir)
 	if bundled != "" && pathUnder(bundled, dir) {
@@ -169,6 +176,8 @@ func skillOrigin(dir, home, bundled string) string {
 }
 
 // skillPackID 从家目录 packs 下的相对路径取出第一段包 id。不在该根下返回空串。
+// dir 为空时返回空串，否则和 home 拼成 packs 根再取相对路径的第一段。
+// home 为空时返回空串，否则和 dir 拼成 packs 根。
 func skillPackID(dir, home string) string {
 	if home == "" || dir == "" {
 		return ""
@@ -196,21 +205,25 @@ func pathUnder(parent, path string) bool {
 }
 
 // OpenPath 用 hostopen 打开本地路径。
+// path 传给 hostopen.Path。
 func (a *App) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
 // OpenURL 用 hostopen 打开链接。
+// raw 传给 hostopen.URL。
 func (a *App) OpenURL(raw string) error {
 	return hostopen.URL(raw)
 }
 
 // OpenInEditor 用 hostopen 在编辑器里打开路径。
+// path 传给 hostopen.Editor。
 func (a *App) OpenInEditor(path string) error {
 	return hostopen.Editor(path)
 }
 
 // OpenWorkspaceTerminal 用 hostopen 在该目录打开终端。
+// dir 传给 hostopen.Terminal。
 func (a *App) OpenWorkspaceTerminal(dir string) error {
 	return hostopen.Terminal(dir)
 }

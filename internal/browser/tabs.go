@@ -44,6 +44,7 @@ func (h *Host) currentTargetID() string {
 }
 
 // targetIDFromWS 取 WebSocket 地址最后一个斜杠后面的那段。
+// ws 去掉空白。最后一个 / 后面还有字符时返回那一段，否则返回空字符串。
 func targetIDFromWS(ws string) string {
 	ws = strings.TrimSpace(ws)
 	if i := strings.LastIndex(ws, "/"); i >= 0 && i+1 < len(ws) {

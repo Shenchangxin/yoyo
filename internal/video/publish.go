@@ -43,6 +43,7 @@ func PublishPlatforms() []PublishPlatform {
 }
 
 // LookupPublishPlatform 按小写标识查找平台。没有时返回假。
+// id 去掉首尾空白并转成小写后，与 PublishPlatforms 各项的 ID 比较。
 func LookupPublishPlatform(id string) (PublishPlatform, bool) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	for _, p := range PublishPlatforms() {
@@ -91,6 +92,8 @@ func normalizePublishStatus(s string) string {
 }
 
 // ListPublishes 按工程和平台过滤发布记录，按更新时间从新到旧。没有记录时返回空切片。
+// projectID 去掉首尾空白，非空时只保留 ProjectID 相等的记录。
+// platform 去掉首尾空白并转成小写，非空时只保留 Platform 相等的记录。
 func (e *Engine) ListPublishes(projectID, platform string) []Publish {
 	projectID = strings.TrimSpace(projectID)
 	platform = strings.ToLower(strings.TrimSpace(platform))
@@ -112,6 +115,7 @@ func (e *Engine) ListPublishes(projectID, platform string) []Publish {
 }
 
 // GetPublish 按标识读取发布记录。没有时返回 publish record not found。
+// id 去掉首尾空白后传给 getDoc。
 func (e *Engine) GetPublish(id string) (Publish, error) {
 	p, err := getDoc[Publish](e, colStudioPublishes, strings.TrimSpace(id))
 	if err != nil {
@@ -201,6 +205,13 @@ func (e *Engine) ExportPublish(id string) (Publish, error) {
 }
 
 // MarkPublish 更新状态。非空的发布地址和备注会写上。阅读、点赞、评论只在大于 0 时覆盖。状态成为 posted 且挂着选题时，把选题标成完成。
+// id 传给 GetPublish。
+// status 传给 normalizePublishStatus。
+// postedURL 去掉首尾空白后非空时写入 PostedURL。
+// note 去掉首尾空白后非空时写入 Note。
+// reads 大于 0 时写入 Reads。
+// likes 大于 0 时写入 Likes。
+// comments 大于 0 时写入 Comments。
 func (e *Engine) MarkPublish(id, status, postedURL, note string, reads, likes, comments int) (Publish, error) {
 	p, err := e.GetPublish(id)
 	if err != nil {

@@ -45,6 +45,8 @@ type EvidenceBundle struct {
 }
 
 // Mine 按失败题归簇。没有 write_file 或 str_replace 时机制是 missing_artifact；工具结果以 ERROR: 开头达到 2 次时是 unproductive_retry；同一工具名连续达到 8 次时是 stalled_tool_loop；否则是 generic_failure，因果地位为 contributing。原因为空时写成 verifier_fail。簇按大小从大到小排。
+// events 按 TaskID 分组，失败题再用该题的事件交给 classify 和 summarize。
+// failedTasks 的每个键作为题号、值作为原因交给 classify。
 func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 	type acc struct {
 		sig   Signature
@@ -82,6 +84,9 @@ func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 }
 
 // AttachPairs 只保留 PassCount 和 FailCount 都大于 0、且不在 held 里的题。事件也跳过 held 题号。对照对按题号排序。
+// bundle 只改写 Pairs 后返回。
+// events 里 TaskID 非空且不在 held 中的按题号分组，再交给 summarize。
+// reportHeld 里 PassCount 和 FailCount 都大于 0、且题号不在 held 中的，收成对照对。
 func AttachPairs(bundle EvidenceBundle, events []trace.Event, reportHeld map[string]repeatOutcome, held map[string]bool) EvidenceBundle {
 	byTask := map[string][]trace.Event{}
 	for _, ev := range events {
@@ -115,11 +120,14 @@ type repeatOutcome struct {
 }
 
 // itoa 把整数格式化成十进制。
+// n 用 %d 格式化。
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
 // classify 根据是否写过文件、ERROR: 次数和同一工具名的最长连续次数选定机制。因果的三种机制把 CausalStatus 写成 causal。
+// evs 里 TypeToolCall 看 name 是否为 write_file 或 str_replace，并统计同一非空工具名的连续次数；TypeToolResult 的 content 长度至少 6 且前 6 字节是 ERROR: 时计入重试。
+// cause 为空时改成 verifier_fail，写入 VerifierCause。
 func classify(evs []trace.Event, cause string) Signature {
 	retries := 0
 	wrote := false
@@ -167,6 +175,7 @@ func classify(evs []trace.Event, cause string) Signature {
 }
 
 // summarize 数工具调用次数，以及内容以 ERROR: 开头的工具结果次数。
+// evs 数 TypeToolCall 的条数，以及 TypeToolResult 里 content 长度至少 6 且前 6 字节是 ERROR: 的条数，写成 tools= 与 errors=。
 func summarize(evs []trace.Event) string {
 	nTool := 0
 	nErr := 0
