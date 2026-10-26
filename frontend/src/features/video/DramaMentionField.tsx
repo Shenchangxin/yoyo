@@ -1,9 +1,15 @@
+/**
+ * 本文件拥有在文本框里用 @ 点选角色、场景和道具的浮层。不拥有资产数据。
+ * 它只改输入框里的文字，不改服务端。
+ */
 import { useMemo, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { Textarea } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 
+/** MentionAsset 是可以被 @ 点到的名字和种类。 */
 export type MentionAsset = { name: string; kind: "character" | "scene" | "prop" };
 
+/** DramaMentionField 在光标前的 @ 后弹出最多 8 个名字，点选后替换这段 @。 */
 export function DramaMentionField({
   assets,
   className,

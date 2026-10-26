@@ -1,11 +1,13 @@
 //go:build ios
 
+// 本文件在 iOS 上关掉默认信号处理。入口包装在 main_ios.go。
+
 package main
 
 import "github.com/wailsapp/wails/v3/pkg/application"
 
-// modifyOptionsForIOS adjusts the application options for iOS
+// modifyOptionsForIOS 把 DisableDefaultSignalHandler 设为 true，避免 iOS 上因默认信号处理崩溃。
 func modifyOptionsForIOS(opts *application.Options) {
-	// Disable signal handlers on iOS to prevent crashes
+	// 在 iOS 上关掉默认信号处理，避免崩溃。
 	opts.DisableDefaultSignalHandler = true
 }

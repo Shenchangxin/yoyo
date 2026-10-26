@@ -1,15 +1,15 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from ConversationHeader view tabs (Chat / Trajectory).
+ * 拥有：会话顶栏的聊天与轨迹切换。
+ * 不拥有：两条视图的内容。只改本地视图，不调用 api。
  */
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 
+/** SessionView 是聊天或轨迹。 */
 export type SessionView = "chat" | "trajectory";
 
+/** SessionHeader 在聊天和轨迹之间切换，并可带面包屑。 */
 export function SessionHeader(props: {
   view: SessionView;
   onView: (view: SessionView) => void;

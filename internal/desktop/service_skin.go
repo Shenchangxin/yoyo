@@ -9,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skin"
 )
 
+// ListSkins 在 RPC 非空时调用 skins.list。结果为 nil 或没有 App 时返回空切片。否则走 App.ListSkins。
 func (s *Service) ListSkins() []skin.Info {
 	if s.RPC != nil {
 		v, err := s.call("skins.list", nil)
@@ -24,6 +25,7 @@ func (s *Service) ListSkins() []skin.Info {
 	return s.App.ListSkins()
 }
 
+// GetSkin 在 RPC 非空时调用 skins.get。没有 App 时返回 no app。否则走 App.GetSkin。
 func (s *Service) GetSkin(id string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.get", map[string]any{"id": id})
@@ -35,6 +37,7 @@ func (s *Service) GetSkin(id string) (map[string]any, error) {
 	return s.App.GetSkin(id)
 }
 
+// ImportSkin 在 RPC 非空时调用 skins.import，字段是 bytes_b64。同进程先 decodeB64，再 App.ImportSkin。没有 App 时返回 no app。
 func (s *Service) ImportSkin(b64 string) (skin.Info, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.import", map[string]any{"bytes_b64": b64})
@@ -50,6 +53,7 @@ func (s *Service) ImportSkin(b64 string) (skin.Info, error) {
 	return s.App.ImportSkin(raw)
 }
 
+// ImportSkinPath 在 RPC 非空时调用 skins.import，字段是 path。没有 App 时返回 no app。否则走 App.ImportSkinPath。
 func (s *Service) ImportSkinPath(path string) (skin.Info, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.import", map[string]any{"path": path})
@@ -61,6 +65,7 @@ func (s *Service) ImportSkinPath(path string) (skin.Info, error) {
 	return s.App.ImportSkinPath(path)
 }
 
+// ExportSkin 在 RPC 非空时调用 skins.export。同进程返回 filename 和 bytes_b64。没有 App 时返回 no app。
 func (s *Service) ExportSkin(id string) (map[string]any, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.export", map[string]any{"id": id})
@@ -76,6 +81,7 @@ func (s *Service) ExportSkin(id string) (map[string]any, error) {
 	return map[string]any{"filename": name, "bytes_b64": base64.StdEncoding.EncodeToString(body)}, nil
 }
 
+// DeleteSkin 在 RPC 非空时调用 skins.delete。没有 App 时返回 no app。否则走 App.DeleteSkin。
 func (s *Service) DeleteSkin(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("skins.delete", map[string]any{"id": id})
@@ -87,6 +93,7 @@ func (s *Service) DeleteSkin(id string) error {
 	return s.App.DeleteSkin(id)
 }
 
+// ActivateSkin 在 RPC 非空时调用 skins.activate。没有 App 时返回 no app。否则走 App.ActivateSkin。
 func (s *Service) ActivateSkin(id string) error {
 	if s.RPC != nil {
 		_, err := s.call("skins.activate", map[string]any{"id": id})
@@ -98,6 +105,7 @@ func (s *Service) ActivateSkin(id string) error {
 	return s.App.ActivateSkin(id)
 }
 
+// ResolveSkin 在 RPC 非空时调用 skins.resolve。没有 App 时返回 no app。否则走 App.ResolveSkin。
 func (s *Service) ResolveSkin(id, mode string) (skin.Resolved, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.resolve", map[string]any{"id": id, "mode": mode})
@@ -109,6 +117,7 @@ func (s *Service) ResolveSkin(id, mode string) (skin.Resolved, error) {
 	return s.App.ResolveSkin(id, mode)
 }
 
+// SaveSkin 在 RPC 非空时调用 skins.save。没有 App 时返回 no app。否则走 App.SaveSkin。
 func (s *Service) SaveSkin(in app.SkinSaveIn) (skin.Info, error) {
 	if s.RPC != nil {
 		v, err := s.call("skins.save", in)
@@ -120,6 +129,7 @@ func (s *Service) SaveSkin(in app.SkinSaveIn) (skin.Info, error) {
 	return s.App.SaveSkin(in)
 }
 
+// decodeB64 去掉空白。空字符串返回 empty。逗号前带 base64 时去掉 data URL 头，再用标准 Base64 解码。
 func decodeB64(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {

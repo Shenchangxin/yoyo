@@ -1,3 +1,6 @@
+// 本文件锁住 page 目标优先于 browser 目标，http 页优先于 about:blank，以及截图帧过大不算连接断开。
+// 由 go test 调用。
+
 package browser
 
 import (
@@ -9,6 +12,7 @@ import (
 	"testing"
 )
 
+// TestPageWSPrefersPageTarget 锁住同时有 browser 和 page 时选 page 的 WebSocket。
 func TestPageWSPrefersPageTarget(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/list" && r.URL.Path != "/json" {
@@ -31,6 +35,7 @@ func TestPageWSPrefersPageTarget(t *testing.T) {
 	}
 }
 
+// TestPageWSPrefersHTTPOverAboutBlank 锁住 http 页优先于 about:blank，指定地址时选中那一页。
 func TestPageWSPrefersHTTPOverAboutBlank(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/list" && r.URL.Path != "/json" {
@@ -61,6 +66,7 @@ func TestPageWSPrefersHTTPOverAboutBlank(t *testing.T) {
 	}
 }
 
+// TestPageWSPreferWaitsWhenWantedHTTPMissing 锁住只有 about:blank 而想要的 http 页不存在时返回错误。
 func TestPageWSPreferWaitsWhenWantedHTTPMissing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]cdpTarget{
@@ -75,12 +81,14 @@ func TestPageWSPreferWaitsWhenWantedHTTPMissing(t *testing.T) {
 	}
 }
 
+// TestCDPMaxMessageExceedsDefaultWebsocketLimit 锁住 cdpMaxMessage 大于 32768，装得下 PNG 截图。
 func TestCDPMaxMessageExceedsDefaultWebsocketLimit(t *testing.T) {
 	if cdpMaxMessage <= 32768 {
 		t.Fatalf("cdpMaxMessage=%d cannot hold a PNG screenshot", cdpMaxMessage)
 	}
 }
 
+// TestCDPMessageTooBigIsNotGone 锁住 message too big 会被认出来，并且 isCDPGone 为假，不会因此重启 Chrome。
 func TestCDPMessageTooBigIsNotGone(t *testing.T) {
 	err := fmt.Errorf("failed to read JSON message: failed to read: websocket: message too big: read limited at 32769 bytes")
 	if !isCDPMessageTooBig(err) {

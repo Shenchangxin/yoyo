@@ -1,9 +1,15 @@
-/** How the stand should look, and which of an outfit's clips show it. Same tracks as eidolon-sc. */
+/**
+ * 拥有：立绘方向到身体、脸、嘴、点头和眼睛片段名的选择。片段名与 eidolon-sc 同一套。
+ * 不拥有：片段播放、画布和通话请求。这里不调用模型。本地选择，不改服务端。
+ */
 
+/** Emotion 立绘心情，与通话情绪同一组：平静、高兴、害羞、惊讶、难过、生气、思考。 */
 export type Emotion = "calm" | "happy" | "shy" | "surprised" | "sad" | "angry" | "thinking";
 
+/** Nod 一次点头或摇头。id 用来同一下只播一遍。 */
 export type Nod = { kind: "yes" | "no"; id: number };
 
+/** StandDirection 这一帧要呈现的心情、是否在说、是否在看，以及点头。 */
 export type StandDirection = {
   mood: Emotion;
   speaking: boolean;
@@ -11,8 +17,10 @@ export type StandDirection = {
   nod: Nod | null;
 };
 
+/** CALM 默认方向：平静、不说、不看、不点头。 */
 export const CALM: StandDirection = { mood: "calm", speaking: false, looking: false, nod: null };
 
+/** TrackAnimations 身体、脸、嘴、点头和眼睛各自要播的片段。嘴和点头可以空。 */
 export type TrackAnimations = {
   body: string;
   face: string;
@@ -51,11 +59,13 @@ const LIP: Record<Emotion, string> = {
   thinking: "serious",
 };
 
+/** pickAnimations 从已有片段里按心情挑身体、脸和嘴。减少动效时身体固定 wait。点头按 id 给一次。在看且有 eye_front 才给眼睛。 */
 export function pickAnimations(
   direction: StandDirection,
   animations: ReadonlyMap<string, number>,
   reducedMotion: boolean,
 ): TrackAnimations {
+  /** 按候选名取第一条这套服装里有的片段。 */
   const pick = (names: string[]) => names.find((name) => animations.has(name));
   const { mood, nod } = direction;
   const k = LIP[mood];
@@ -70,6 +80,7 @@ export function pickAnimations(
   };
 }
 
+/** 找第一条时长大于 0、不是口型序列也不是 lip_a 的 lip_ 片段。 */
 function anyMouth(animations: ReadonlyMap<string, number>): string | undefined {
   for (const [name, duration] of animations) {
     if (name.startsWith("lip_") && !/_s\d*$/.test(name) && name !== "lip_a" && duration > 0) return name;

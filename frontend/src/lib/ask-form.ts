@@ -1,21 +1,31 @@
+/**
+ * 拥有：把 ask_user 的命令收成问题和选项，并在操作者作答或空闲时拼出答复。
+ * 不拥有：提问卡片的渲染，以及批准请求的发送。
+ */
+
 import type { Approval } from "./protocol";
 
-/** Idle window before an untouched question card continues with the suggestion. */
+/** ASK_IDLE_MS 未碰过的提问卡片在采用建议前等待的毫秒数。 */
 export const ASK_IDLE_MS = 10_000;
 
+/** AskOption 一个选项。 */
 export type AskOption = { id: string; label: string };
+/** AskQuestion 一道题。recommended 是建议选项的 id。没有选项时建议为空。 */
 export type AskQuestion = {
   id: string;
   prompt: string;
   options: AskOption[];
   recommended: string;
 };
+/** AskForm 一张提问卡的标题和题目。 */
 export type AskForm = { title: string; questions: AskQuestion[] };
 
+/** pendingAsk 找出 ask_user。给了 sessionId 时，只留没有会话或会话相同的那条。 */
 export function pendingAsk(approvals: Approval[], sessionId?: string): Approval | undefined {
   return approvals.find((a) => a.action === "ask_user" && (!sessionId || !a.sessionId || a.sessionId === sessionId));
 }
 
+/** parseAskCommand 以 `{` 开头且能解析出题目时当表单。否则整段当成一道没有选项的题。JSON 解析失败也走这一道题。 */
 export function parseAskCommand(command: string): AskForm {
   const text = command.trim();
   if (text.startsWith("{")) {
@@ -24,17 +34,18 @@ export function parseAskCommand(command: string): AskForm {
       const questions = normalizeQuestions(raw.questions);
       if (questions.length) return { title: textOf(raw.title), questions };
     } catch {
-      /* a plain question, not a form */
+      /* 当成一道普通题，不当表单 */
     }
   }
   return { title: "", questions: [{ id: "q1", prompt: text, options: [], recommended: "" }] };
 }
 
-/** A card can continue on its own only when every question already has a suggestion. */
+/** askCanIdle 有题目，且每道题都已有选项时，卡片才能自己继续。 */
 export function askCanIdle(form: AskForm): boolean {
   return form.questions.length > 0 && form.questions.every((q) => q.options.length > 0);
 }
 
+/** recommendedPicks 每题取建议项，没有则取第一项。 */
 export function recommendedPicks(form: AskForm): Record<string, string> {
   const picks: Record<string, string> = {};
   for (const q of form.questions) {
@@ -44,14 +55,17 @@ export function recommendedPicks(form: AskForm): Record<string, string> {
   return picks;
 }
 
+/** idleAnswer 用建议项拼出空闲答复，并注明操作者空闲。 */
 export function idleAnswer(form: AskForm): string {
   return formatAsk(form, recommendedPicks(form), {}, true);
 }
 
+/** chosenAnswer 用操作者的选择和自由输入拼出答复。 */
 export function chosenAnswer(form: AskForm, picks: Record<string, string>, free: Record<string, string>): string {
   return formatAsk(form, picks, free, false);
 }
 
+/** 有选项时写成选项 id 和标签。没有选项时用自由输入，空白则写 continue with your best judgment。空闲与作答各加一行 note。 */
 function formatAsk(form: AskForm, picks: Record<string, string>, free: Record<string, string>, idle: boolean): string {
   const lines = form.questions.map((q) => {
     if (!q.options.length) {
@@ -66,6 +80,7 @@ function formatAsk(form: AskForm, picks: Record<string, string>, free: Record<st
   return lines.join("\n");
 }
 
+/** 只保留有题干的题目。建议必须是某个选项，否则改成第一项。没有选项则建议为空。最多六题，每题最多八个选项。 */
 function normalizeQuestions(raw: unknown): AskQuestion[] {
   if (!Array.isArray(raw)) return [];
   const out: AskQuestion[] = [];
@@ -89,6 +104,7 @@ function normalizeQuestions(raw: unknown): AskQuestion[] {
   return out;
 }
 
+/** 字符串选项按出现顺序编号。对象选项要有标签或 id。 */
 function normalizeOptions(raw: unknown): AskOption[] {
   if (!Array.isArray(raw)) return [];
   const out: AskOption[] = [];
@@ -107,6 +123,7 @@ function normalizeOptions(raw: unknown): AskOption[] {
   return out;
 }
 
+/** 收成去掉两端空白的字符串。 */
 function textOf(v: unknown): string {
   return String(v ?? "").trim();
 }

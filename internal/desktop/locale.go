@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// nativeCopy 把 locale 收成小写并把下划线换成连字符。zh 或以 zh- 开头时返回中文文案，否则返回英文。
 func nativeCopy(locale string) nativeStrings {
 	l := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(locale), "_", "-"))
 	if l == "zh" || strings.HasPrefix(l, "zh-") {
@@ -55,6 +56,7 @@ var nativeZH = nativeStrings{
 	TurnFinished: "轮次结束", Approval: "Yoyo 审批", Ask: "Yoyo 提问", ErrTitle: "Yoyo 错误", Working: "处理中", UpdateReady: "更新已就绪",
 }
 
+// chromeWord 按托盘状态返回暂停、待审批、处理中或空闲。优先级已经由 chromeStatusOf 决定，这里只取词。
 func (n nativeStrings) chromeWord(st chromeStatus) string {
 	switch st {
 	case chromePaused:
@@ -68,10 +70,12 @@ func (n nativeStrings) chromeWord(st chromeStatus) string {
 	}
 }
 
+// chromeLine 返回 Yoyo · 加上 chromeWord。
 func (n nativeStrings) chromeLine(st chromeStatus) string {
 	return "Yoyo · " + n.chromeWord(st)
 }
 
+// trayTooltip 在 wake 为真且 WakeHint 非空时，在状态行下面再加一行唤醒提示。
 func (n nativeStrings) trayTooltip(st chromeStatus, wake bool) string {
 	line := n.chromeLine(st)
 	if !wake || n.WakeHint == "" {
@@ -80,6 +84,7 @@ func (n nativeStrings) trayTooltip(st chromeStatus, wake bool) string {
 	return line + "\n" + n.WakeHint
 }
 
+// trayWakeHint 只在 Windows 上返回真，因为 Ctrl+Shift+Y 只在 Windows 注册。
 func trayWakeHint() bool {
 	return runtime.GOOS == "windows"
 }

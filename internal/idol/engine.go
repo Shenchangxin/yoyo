@@ -1,3 +1,6 @@
+// Package idol 保存偶像、对话、好感、礼物和立绘缓存。Turn、Reach、Narrate 调 Brain.Chat；要照片时调 Brain.Paint。本包不调用 runtime.Run。
+// 状态在目录里的 state.json，图片在 blobs/。立绘是 Spine 的 data.json、data.atlas、data.png，StandMiddleware 挂在 /idol-stand/，缺文件时向 CDN 拉一次并写入缓存。
+// 预设人设、事实和头像是数据，见 preset.go 与嵌入的 preset/catalog.json。
 package idol
 
 import (
@@ -7,18 +10,19 @@ import (
 	"time"
 )
 
-// Msg is one chat message. Roles are system, user, assistant.
+// Msg 是一条发给 Brain 的消息。Role 取 system、user、assistant。
 type Msg struct {
 	Role    string
 	Content string
 }
 
-// Brain is the model port. kind is chat, judge, title, or reach.
+// Brain 是模型口。Chat 的 kind 取 chat、judge、title、reach。Paint 按提示画一张图，返回图片字节。
 type Brain interface {
 	Chat(ctx context.Context, kind, cacheKey string, messages []Msg) (string, error)
 	Paint(ctx context.Context, prompt string) ([]byte, error)
 }
 
+// TurnInput 是一轮对话的输入。Call 为真表示通话，Work 为真表示用户要求去操作这台电脑。Now 为零时 Turn 用当前时间。
 type TurnInput struct {
 	IdolID string
 	Text   string
@@ -27,6 +31,7 @@ type TurnInput struct {
 	Now    time.Time
 }
 
+// TurnResult 是一轮对话写进状态之后的结果。Ended 为真时这段对话结束；HungUp 仅在通话中结束时为真。
 type TurnResult struct {
 	RecordID        string    `json:"record_id,omitempty"`
 	ConversationID  string    `json:"conversation_id,omitempty"`
@@ -47,11 +52,14 @@ type TurnResult struct {
 	Pending         bool      `json:"pending,omitempty"`
 }
 
+// Engine 用 Store 落盘，用 Brain 生成回复和照片。
 type Engine struct {
 	Store *Store
 	Brain Brain
 }
 
+// Turn 走一轮对话。先裁决好感、越界、照片和工作，再调 Brain.Chat。越界两次、分数降到 12 及以下，或连续三次负向，这段对话结束。
+// 好感变化被夹在 -25 到 4。工作通道打开且裁决或回复里有工作时，Work 为真。冷淡档不发照片。
 func (e *Engine) Turn(ctx context.Context, in TurnInput) (TurnResult, error) {
 	if e == nil || e.Store == nil || e.Brain == nil {
 		return TurnResult{}, errf("idol engine is not ready")
@@ -202,6 +210,7 @@ func (e *Engine) Turn(ctx context.Context, in TurnInput) (TurnResult, error) {
 	return result, nil
 }
 
+// maybeTitle 在当前对话满 3 个 turn 且还没有标题时，用 kind 为 title 的 Chat 起一个不超过 16 个字的标题。
 func (e *Engine) maybeTitle(ctx context.Context, conID string) {
 	st := e.Store.View()
 	con, ok := st.conversation(conID)
@@ -233,6 +242,7 @@ func (e *Engine) maybeTitle(ctx context.Context, conID string) {
 	})
 }
 
+// Reach 在 reachDue 为真时让偶像先说一句，kind 是 reach，并记下一次 ReachMark。情绪固定为 calm。
 func (e *Engine) Reach(ctx context.Context, idolID string, now time.Time) (TurnResult, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -279,6 +289,7 @@ func (e *Engine) Reach(ctx context.Context, idolID string, now time.Time) (TurnR
 	return result, err
 }
 
+// Narrate 用偶像的口吻转述一件已办完的事，写入 kind 为 work_said 的记录。workText 空白时用一句兜底，长于 500 个字符时截断。
 func (e *Engine) Narrate(ctx context.Context, idolID, workText string, now time.Time) (TurnResult, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -321,6 +332,7 @@ func (e *Engine) Narrate(ctx context.Context, idolID, workText string, now time.
 	return result, err
 }
 
+// verdict 是裁决模型返回的 JSON。Affinity 随后会被夹到 -25 到 4；越界时 Turn 改成 -25。
 type verdict struct {
 	Affinity  int    `json:"affinity"`
 	OutOfLine bool   `json:"out_of_line"`
@@ -330,6 +342,7 @@ type verdict struct {
 	Memory    string `json:"memory"`
 }
 
+// judge 用 kind 为 judge 的 Chat 读用户这句话。解析失败时情绪是 calm，其余字段为零值。记忆写成 NONE 或 null 时清空。
 func (e *Engine) judge(ctx context.Context, idol Idol, text, tier string) verdict {
 	raw, err := e.Brain.Chat(ctx, "judge", "", []Msg{
 		{Role: "system", Content: "你只输出 JSON。"},
@@ -351,6 +364,7 @@ func (e *Engine) judge(ctx context.Context, idol Idol, text, tier string) verdic
 	return v
 }
 
+// extractJSON 取出第一个 { 到最后一个 } 之间的文本。没有成对括号时原样返回。
 func extractJSON(s string) string {
 	i := strings.Index(s, "{")
 	j := strings.LastIndex(s, "}")
@@ -360,6 +374,7 @@ func extractJSON(s string) string {
 	return s
 }
 
+// cleanEmotion 只保留 happy、shy、surprised、sad、angry、thinking、calm。其余变成 calm。
 func cleanEmotion(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "happy", "shy", "surprised", "sad", "angry", "thinking", "calm":
@@ -369,11 +384,13 @@ func cleanEmotion(s string) string {
 	}
 }
 
+// photoPrompt 拼出全年龄照片的英文提示，带上偶像名字、简介和场景。
 func photoPrompt(idol Idol, scene string) string {
 	return "one all-ages photograph, no text, no watermark, of " + idol.Name + ". " +
 		strings.TrimSpace(idol.Intro) + " scene: " + scene
 }
 
+// countTurns 数一段对话里 kind 为 turn 的记录。
 func countTurns(c Conversation) int {
 	n := 0
 	for _, r := range c.Records {
@@ -384,6 +401,7 @@ func countTurns(c Conversation) int {
 	return n
 }
 
+// captionSample 取最后 6 条记录的用户原文和字幕，给起标题用。
 func captionSample(c Conversation) string {
 	var b strings.Builder
 	for _, r := range tailRecords(c.Records, 6) {
@@ -399,7 +417,7 @@ func captionSample(c Conversation) string {
 	return b.String()
 }
 
-// ApplyReadings swaps written names for the spoken form. Display text stays written.
+// ApplyReadings 按对照表把书面名字换成读音。显示用的原文不改，只改传入的 text。一行可以用等号或空格分开两边，# 开头的行跳过。
 func ApplyReadings(text, table string) string {
 	for _, ln := range strings.Split(table, "\n") {
 		ln = strings.TrimSpace(ln)

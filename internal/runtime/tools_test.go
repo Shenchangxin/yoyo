@@ -1,3 +1,5 @@
+// 锁住替换必须唯一、glob 和 grep 能命中、超长读取会溢出、诊断面路径被拒绝，以及 Git Bash 盘符路径留在工作区内。
+
 package runtime
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// TestUniqueReplace 锁住 old_str 匹配多次且未设 replace_all 时失败，设了之后成功。
 func TestUniqueReplace(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "a.txt")
@@ -29,6 +32,7 @@ func TestUniqueReplace(t *testing.T) {
 	}
 }
 
+// TestGlobAndGrep 锁住 *.go 能找到 hello.go，grep package 也能命中。
 func TestGlobAndGrep(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "hello.go"), []byte("package hello\n"), 0o644); err != nil {
@@ -45,6 +49,7 @@ func TestGlobAndGrep(t *testing.T) {
 	}
 }
 
+// TestCompactStubsTools 锁住压缩预算很小时，超长工具结果会被收成带说明的摘要。
 func TestCompactStubsTools(t *testing.T) {
 	loop := DefaultLoop()
 	loop.CompactionTokens = 200
@@ -60,6 +65,7 @@ func TestCompactStubsTools(t *testing.T) {
 	}
 }
 
+// TestCompactDoesNotMutateInput 锁住 Compact 不改调用方切片里的原文。
 func TestCompactDoesNotMutateInput(t *testing.T) {
 	loop := DefaultLoop()
 	loop.CompactionTokens = 200
@@ -74,6 +80,7 @@ func TestCompactDoesNotMutateInput(t *testing.T) {
 	}
 }
 
+// TestReadFileMissingQAPath 锁住缺失的 qa/verification.json 说明路径不存在，并指出那不是 CSS 选择器。
 func TestReadFileMissingQAPath(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "game-adaptations", "tianming-guiling", "build"), 0o755); err != nil {
@@ -90,6 +97,7 @@ func TestReadFileMissingQAPath(t *testing.T) {
 	}
 }
 
+// TestReadFileOverflow 锁住超长文件的读取结果指向 .yoyo/overflow。
 func TestReadFileOverflow(t *testing.T) {
 	dir := t.TempDir()
 	big := strings.Repeat("line\n", 80_000)
@@ -106,6 +114,7 @@ func TestReadFileOverflow(t *testing.T) {
 	}
 }
 
+// TestBudgetStopsLoop 锁住费用超过 MaxBudgetUSD 时 Run 返回 ErrBudget。
 func TestBudgetStopsLoop(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()
@@ -125,6 +134,7 @@ func TestBudgetStopsLoop(t *testing.T) {
 	}
 }
 
+// TestFileHookDeniesTool 锁住 FileHook 拒绝 write_file 时，目标文件不会出现。
 func TestFileHookDeniesTool(t *testing.T) {
 	dir := t.TempDir()
 	client := &ScriptedClient{Steps: []Message{
@@ -146,6 +156,7 @@ func TestFileHookDeniesTool(t *testing.T) {
 	}
 }
 
+// TestResolveGitBashDrivePath 在 Windows 上锁住 /c/... 这种 Git Bash 路径经 resolve 后仍在工作区内，shell 读取不会把盘符再拼一次。
 func TestResolveGitBashDrivePath(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("msys drive paths are a Windows Git-Bash jail bug")
@@ -176,6 +187,7 @@ func TestResolveGitBashDrivePath(t *testing.T) {
 	}
 }
 
+// TestWindowsPosixShellPrefersGit 在 Windows 上锁住找到的 POSIX shell 不落在 WindowsApps 或 system32。
 func TestWindowsPosixShellPrefersGit(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip()
@@ -190,6 +202,7 @@ func TestWindowsPosixShellPrefersGit(t *testing.T) {
 	}
 }
 
+// gitBashPath 把 Windows 盘符路径收成 /c/... 这种 Git Bash 形式。
 func gitBashPath(p string) string {
 	p = filepath.ToSlash(p)
 	if len(p) >= 2 && p[1] == ':' {
@@ -198,6 +211,7 @@ func gitBashPath(p string) string {
 	return p
 }
 
+// TestReadFileDeniesDiagPlane 锁住读取 YOYO_HOME 下 logs 里的文件被拒绝，秘密不会出现在 Content 里。
 func TestReadFileDeniesDiagPlane(t *testing.T) {
 	home := t.TempDir()
 	logDir := filepath.Join(home, "logs")
@@ -218,6 +232,7 @@ func TestReadFileDeniesDiagPlane(t *testing.T) {
 	}
 }
 
+// TestSealedGameWorldWrite 锁住 game-worlds 下的 index.html 和 playable/runtime.js 被拒绝，DESIGN.md 可以写。
 func TestSealedGameWorldWrite(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir}
@@ -235,6 +250,7 @@ func TestSealedGameWorldWrite(t *testing.T) {
 	}
 }
 
+// TestToolSearchMatchesAnyNamedGameTool 锁住查询里只要有一个已登记的扩展工具名就会命中它。
 func TestToolSearchMatchesAnyNamedGameTool(t *testing.T) {
 	tools := &WorkspaceTools{
 		Extra: map[string]ExtraTool{

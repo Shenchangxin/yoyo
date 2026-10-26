@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestACPInitialize 锁住 initialize 的应答没有 Error。
 func TestACPInitialize(t *testing.T) {
 	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
 	var out bytes.Buffer

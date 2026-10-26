@@ -1,3 +1,5 @@
+// 从 clawskillhub.com 列目录并下载源文件。
+
 package skillmarket
 
 import (
@@ -8,6 +10,7 @@ import (
 	"sync"
 )
 
+// ClawSkillHubBase 是 SkillHub 根地址。测试可以改它。
 var ClawSkillHubBase = "https://clawskillhub.com"
 
 type cshOwner struct {
@@ -32,6 +35,7 @@ type cshSkill struct {
 	} `json:"versions"`
 }
 
+// listClawSkillHub 先取一页。若满页且还要更多，确认第二页有新 id 后再并发拉后续页，并发数是 4。validationScore 大于等于 85，或浏览结果的前 8 条，标成 Featured。条数达到上限时 Truncated 为真。
 func listClawSkillHub(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	base := strings.TrimRight(ClawSkillHubBase, "/")
@@ -105,6 +109,7 @@ func listClawSkillHub(query string, limit int) (Catalog, error) {
 	return Catalog{Source: "SkillHub", Items: out, Truncated: len(out) >= limit}, nil
 }
 
+// clawSkillHubPageAdds 在下一页出现上一页没有的条目 id 时返回 true。
 func clawSkillHubPageAdds(prev, next []cshSkill) bool {
 	if len(next) == 0 {
 		return false
@@ -123,6 +128,7 @@ func clawSkillHubPageAdds(prev, next []cshSkill) bool {
 	return false
 }
 
+// fetchClawSkillHubPage 有查询时先打 /api/cli/search。失败则退回 /api/skills，并带 search 参数。无查询时按 downloads 排序。
 func fetchClawSkillHubPage(base, query string, limit, offset int) ([]cshSkill, error) {
 	vals := url.Values{
 		"sort":   {"downloads"},
@@ -162,6 +168,7 @@ func fetchClawSkillHubPage(base, query string, limit, offset int) ([]cshSkill, e
 	return items, nil
 }
 
+// itemFromClawSkillHub 把一行变成条目。slug 和 name 都净化失败时返回 false。owner 为空时用 skillhub。
 func itemFromClawSkillHub(row cshSkill) (Item, bool) {
 	slug := SanitizeSlug(row.Slug)
 	if slug == "" {
@@ -198,6 +205,7 @@ func itemFromClawSkillHub(row cshSkill) (Item, bool) {
 	}, true
 }
 
+// fetchClawSkillHub 要求 remote 是 owner/slug。安装接口失败时，若详情里已有 skillMd，就只装 SKILL.md 并警告 "installed SKILL.md only"。跳过 isBinary 的文件。没有 SKILL.md 返回 "pack missing SKILL.md"。
 func fetchClawSkillHub(remote string) (PackResult, error) {
 	owner, slug := splitOwnerSlug(remote)
 	if owner == "" || slug == "" {

@@ -1,3 +1,6 @@
+// 本文件用真实隔离 Chrome 确认加载期异常、点击处理函数抛出的异常和 console.error 会进入观察结果。页面 HTML 是数据。
+// 没设置 YOYO_BROWSER_E2E=1 或找不到 Chrome 时跳过。由 go test 调用。
+
 package browser
 
 import (
@@ -7,10 +10,7 @@ import (
 	"testing"
 )
 
-// e2eErrorPage raises three kinds of page error: one while the page loads, one
-// from a click handler, and one through console.error. Before page_errors.go,
-// none of them reached the agent; a click on #boom looked like a click that
-// did nothing.
+// e2eErrorPage 是会在加载、点击和 console.error 三处抛错的页面，字符串是数据。
 const e2eErrorPage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
 <button id="boom">Boom</button>
 <button id="ok">OK</button>
@@ -27,8 +27,7 @@ document.getElementById('log').onclick = () => { console.error('save failed', 42
 </script>
 </body></html>`
 
-// TestBrowserPageErrorsE2E drives a real Chrome. It is gated like the other
-// browser e2e test because it launches Chrome.
+// TestBrowserPageErrorsE2E 驱动真实 Chrome。打开后能拿到加载期异常，点击 #boom 和 #log 时观察结果里带上对应错误。
 func TestBrowserPageErrorsE2E(t *testing.T) {
 	if os.Getenv("YOYO_BROWSER_E2E") == "" {
 		t.Skip("set YOYO_BROWSER_E2E=1 to drive a real isolated Chrome")
@@ -36,8 +35,7 @@ func TestBrowserPageErrorsE2E(t *testing.T) {
 	if findChrome() == "" {
 		t.Skip("no Chrome or Chromium found (set YOYO_CHROME)")
 	}
-	// Best-effort cleanup: Windows keeps Chrome's files locked for a moment
-	// after the kill, and that must not fail the test.
+	// 尽力清理。Windows 在结束进程后还会锁一会儿 Chrome 的文件，这不应当让测试失败。
 	dir, err := os.MkdirTemp("", "yoyo-e2e-errors-*")
 	if err != nil {
 		t.Fatal(err)

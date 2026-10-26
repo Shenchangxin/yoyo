@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短片从设定到交付的步骤界面。不拥有工作台的选题和发布列表。
+ * 套用、口播、出图、合成、封面和打包会改服务端。未完成镜头每 2000 毫秒重读，自动阶段每 1500 毫秒重读，不是另一条模型循环。
+ */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronRight, ImagePlus, LoaderCircle, Video } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -21,10 +25,12 @@ const ASPECTS = ["9:16", "16:9", "1:1"];
 const LENGTHS = [15, 30, 45, 60];
 const AUTO_PHASES = ["script", "voice", "visuals", "compose"] as const;
 
+/** 自动阶段是剧本、声音、画面或合成时算正在跑。 */
 function autoRunning(phase?: string) {
   return phase === "script" || phase === "voice" || phase === "visuals" || phase === "compose";
 }
 
+/** StudioProduceProps 是制作步从工作台接来的当前短片、目录和保存动作。 */
 export type StudioProduceProps = {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -40,6 +46,7 @@ export type StudioProduceProps = {
   onPublish?: () => void;
 };
 
+/** StudioProduce 按工序显示设定到交付。没有剧本且未通过时停在设定。 */
 export function StudioProduce(props: StudioProduceProps) {
   const copy = useCopy();
   const s = copy.video.studio;
@@ -62,7 +69,7 @@ export function StudioProduce(props: StudioProduceProps) {
     }
     const next = (cur.gate as StudioGate) || "script";
     if (gateIndex(next) <= furthest) setStep(next);
-    // Only reset the visible gate when the short changes.
+    // 只在短片换了的时候重置看得见的工序。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur.id]);
 
@@ -86,6 +93,7 @@ export function StudioProduce(props: StudioProduceProps) {
     return () => window.clearInterval(t);
   }, [cur.id, cur.auto_phase]);
 
+  /** 没越过已到达的下一步就切换工序，并记下当前工序。 */
   const go = (g: StudioGate) => {
     if (gateIndex(g) > furthest + 1) return;
     setStep(g);
@@ -146,6 +154,7 @@ export function StudioProduce(props: StudioProduceProps) {
   );
 }
 
+/** 一键跑完的进度。正在跑时不能再点。 */
 function OneClickBar(props: {
   current: StudioProject;
   busy: string;
@@ -208,6 +217,7 @@ function OneClickBar(props: {
   );
 }
 
+/** 设定步：预设、模板、角色和风格。 */
 function SetupStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -326,6 +336,7 @@ function SetupStep(props: {
   );
 }
 
+/** 剧本步：正文、平台、语气、钩子和行动号召。通过后进入声音。 */
 function ScriptStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -416,6 +427,7 @@ function ScriptStep(props: {
   );
 }
 
+/** 声音步：音色、语速、口播或跳过。 */
 function AudioStep(props: {
   current: StudioProject;
   catalog: StudioCatalog;
@@ -476,6 +488,7 @@ function AudioStep(props: {
   );
 }
 
+/** 画面步：补齐镜头、上传、改词和按地址导入。 */
 function VisualsStep(props: {
   current: StudioProject;
   busy: string;
@@ -493,12 +506,14 @@ function VisualsStep(props: {
   const shots = props.shots;
   const [ingestUrl, setIngestUrl] = useState("");
 
+  /** 改一条镜头。persist 为真时写回短片。 */
   async function patchShot(i: number, extra: Partial<StudioShot>, persist = false) {
     const next = shots.map((sh, j) => (j === i ? { ...sh, ...extra } : sh));
     props.onChange({ ...cur, storyboard: { ...(cur.storyboard || {}), shots: next }, shots: next });
     if (persist) await props.saveProject({ shots: next, storyboard: { ...(cur.storyboard || {}), shots: next } });
   }
 
+  /** 把文件登记成媒体。index 小于 0 时追加镜头，否则替换那一条。 */
   async function upload(kind: "image" | "video", file: File, index = -1) {
     const data = await readDataURL(file);
     const b64 = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
@@ -621,6 +636,7 @@ function VisualsStep(props: {
   );
 }
 
+/** 合成步：背景音乐、出片、改画幅、烧字幕和送到剪辑。 */
 function ComposeStep(props: {
   current: StudioProject;
   busy: string;
@@ -685,6 +701,7 @@ function ComposeStep(props: {
   );
 }
 
+/** 交付步：封面、文案、打包和版本恢复。可发布后才继续。 */
 function DeliveryStep(props: {
   current: StudioProject;
   busy: string;
@@ -757,6 +774,7 @@ function DeliveryStep(props: {
   );
 }
 
+/** 读这一道工序的预检，失败时显示缺少适配器。 */
 function Preflight(props: { id: string; gate: string }) {
   const p = useCopy().video.studio.desk;
   const [pf, setPf] = useState<{ ok?: boolean; spends?: string[]; missing?: string[]; message?: string } | null>(null);
@@ -783,6 +801,7 @@ function Preflight(props: { id: string; gate: string }) {
   );
 }
 
+/** 列出背景音乐，可以随机、关掉或点名使用。 */
 function BgmRow(props: {
   current: StudioProject;
   busy: string;
@@ -819,6 +838,7 @@ function BgmRow(props: {
   );
 }
 
+/** 带右箭头的继续按钮。 */
 function ContinueButton(props: { label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <Button type="button" variant="default" className="mt-1 self-start gap-1" disabled={props.disabled} onClick={props.onClick}>
@@ -828,6 +848,7 @@ function ContinueButton(props: { label: string; disabled?: boolean; onClick: () 
   );
 }
 
+/** 一行带说明的表单。 */
 function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 border-t border-border/50 px-3 py-2.5 first:border-t-0">
@@ -840,6 +861,7 @@ function FormRow(props: { label: string; hint?: string; children: ReactNode }) {
   );
 }
 
+/** 一块带标签的字段。 */
 function Field(props: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -849,6 +871,7 @@ function Field(props: { label: string; children: ReactNode }) {
   );
 }
 
+/** 一排可切换的圆角选项。 */
 function ChipRow(props: { items: { id: string; label: string }[]; value: string; onPick: (id: string) => void }) {
   return (
     <div className="flex flex-wrap gap-1">
@@ -867,6 +890,7 @@ function ChipRow(props: { items: { id: string; label: string }[]; value: string;
   );
 }
 
+/** 把平台 id 换成界面名字，没有就用原 id。 */
 function platLabel(id: string, s: ReturnType<typeof useCopy>["video"]["studio"]) {
   const p = s.desk;
   const map: Record<string, string> = {
@@ -880,6 +904,7 @@ function platLabel(id: string, s: ReturnType<typeof useCopy>["video"]["studio"])
   return map[id] || id;
 }
 
+/** 把文件读成 data URL。 */
 function readDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();

@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短剧风格选择面板的位置、搜索和分组。不拥有风格表。
+ * 选中只交给回调，本文件不改服务端。
+ */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
@@ -8,12 +12,15 @@ import { dramaStyleCover, PRESET_STYLE_GROUP_IDS, presetStyleGroup, styleLabel }
 import { dramaStylePoster } from "./drama-style-cover";
 import "./drama-style-picker.css";
 
+/** DramaStyleOption 是面板里的一条风格值和名字。 */
 export type DramaStyleOption = { value: string; name: string };
 
+/** 预设封面没有时用备用图。 */
 function coverSrc(value: string, label = "") {
   return dramaStyleCover(value, label) || styleCoverFallback(value || "cover");
 }
 
+/** 在列表框里把焦点移到相邻选项，到头就绕回。 */
 function moveOptionFocus(from: HTMLElement, delta: number) {
   const options = Array.from(from.closest("[role='listbox']")?.querySelectorAll<HTMLElement>("[role='option']") || []);
   if (!options.length) return;
@@ -24,6 +31,7 @@ function moveOptionFocus(from: HTMLElement, delta: number) {
 
 type Box = { top: number; left: number; width: number; maxHeight: number };
 
+/** 读取当前可视区域，没有 visualViewport 就用窗口。 */
 function viewRect() {
   const view = window.visualViewport;
   return {
@@ -34,6 +42,7 @@ function viewRect() {
   };
 }
 
+/** 把面板放在触发器上方或下方，并限制在可视区域内。 */
 function placeBox(trigger: HTMLElement): Box {
   const rect = trigger.getBoundingClientRect();
   const view = viewRect();
@@ -57,11 +66,13 @@ function placeBox(trigger: HTMLElement): Box {
   return { top, left, width, maxHeight };
 }
 
+/** 有文档时把浮层挂到 body。 */
 function overlayHost() {
   if (typeof document === "undefined") return canvasOverlayHost();
   return document.body;
 }
 
+/** DramaStylePicker 打开风格网格。封面加载失败时换成 SVG 海报。 */
 export function DramaStylePicker(props: {
   value: string;
   styles: DramaStyleOption[];
@@ -103,6 +114,7 @@ export function DramaStylePicker(props: {
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
+    /** 按触发器重新摆放面板。 */
     const update = () => setBox(placeBox(triggerRef.current!));
     update();
     window.addEventListener("resize", update);
@@ -122,6 +134,7 @@ export function DramaStylePicker(props: {
     const frame = requestAnimationFrame(() => {
       panelRef.current?.querySelector<HTMLElement>("[aria-selected='true']")?.focus();
     });
+    /** Escape 关闭面板并把焦点还给触发器。 */
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -136,6 +149,7 @@ export function DramaStylePicker(props: {
     };
   }, [open]);
 
+  /** 关闭面板并清空搜索和分组。 */
   const close = () => {
     setOpen(false);
     setQuery("");

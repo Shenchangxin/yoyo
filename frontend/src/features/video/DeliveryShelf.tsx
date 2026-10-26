@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短片交付架：成片预览、阶段、平台草稿和封面文案输入。
+ * 不拥有制作工序。它只投影数据和回调，不直接改服务端。
+ */
 import type { ReactNode } from "react";
 import { Button } from "../../components/ui/button";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -13,6 +17,7 @@ const STEPS = ["script", "voice", "visuals", "compose"] as const;
 
 type Platform = { id: string; label?: string };
 
+/** DeliveryShelf 展示当前成片。可发布之后才显示平台、标题和标签。 */
 export function DeliveryShelf(props: {
   films: StudioProject[];
   current: StudioProject | null;
@@ -211,12 +216,14 @@ export function DeliveryShelf(props: {
   );
 }
 
+/** 用模板名、画幅和目标秒数拼成一行计划。 */
 function filmPlan(p: StudioProject, catalog: StudioCatalog, seconds: string) {
   const tpl = catalog.templates?.find((t) => t.id === p.template_id)?.title;
   const length = p.target_duration ? seconds.replace("{n}", String(p.target_duration)) : "";
   return [tpl, p.aspect, length].filter(Boolean).join(" · ");
 }
 
+/** 按自动阶段取界面上的阶段名。已有成片且不在进行中就算完成。 */
 function phaseText(s: { filmQueued: string }, d: { phaseScript: string; phaseVoice: string; phaseVisuals: string; phaseCompose: string; phaseDone: string; phaseFailed: string; phaseQueued: string }, phase: string | undefined, hasVideo: boolean) {
   if (hasVideo && phase !== "failed" && !filmInFlight(phase)) return d.phaseDone;
   switch (phase) {

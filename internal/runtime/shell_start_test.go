@@ -1,3 +1,5 @@
+// 会挂住管道的 start 改写成 Start-Process -WindowStyle Hidden。这不是沙箱。聊天熔断阈值在 tools.go。
+
 package runtime
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// TestCmdStartWouldHang 确认 cmd //c start、裸 start /MIN 和 start 带标题算挂起，Start-Process、npm start、cmd /c echo 和 net start 不算。
 func TestCmdStartWouldHang(t *testing.T) {
 	hang := []string{
 		`cd /c/Users/scx/Desktop/codex && cmd //c "start \"permkit\" /MIN permserver.exe -addr 127.0.0.1:8080 -data .\\data\\perm.json -seed" 2>&1 | head -3; sleep 4; powershell -NoProfile -Command "\$p = Get-Process -Name permserver -ErrorAction SilentlyContinue; if (\$p) { Write-Output ('ALIVE pid=' + \$p.Id) } else { Write-Output 'DEAD' }" 2>&1 | head -3`,
@@ -35,6 +38,7 @@ func TestCmdStartWouldHang(t *testing.T) {
 	}
 }
 
+// TestRewriteCmdStartUserCommand 确认改写保留 permserver.exe、地址、数据路径、sleep 4 和 $p，丢掉第一段 head、/MIN 和标题 permkit。
 func TestRewriteCmdStartUserCommand(t *testing.T) {
 	in := `cd /c/Users/scx/Desktop/codex && cmd //c "start \"permkit\" /MIN permserver.exe -addr 127.0.0.1:8080 -data .\\data\\perm.json -seed" 2>&1 | head -3; sleep 4; powershell -NoProfile -Command "\$p = Get-Process -Name permserver -ErrorAction SilentlyContinue; if (\$p) { Write-Output ('ALIVE pid=' + \$p.Id) } else { Write-Output 'DEAD' }" 2>&1 | head -3`
 	got, ok := rewriteCmdStart(in)
@@ -70,6 +74,7 @@ func TestRewriteCmdStartUserCommand(t *testing.T) {
 	}
 }
 
+// TestRewriteBareStartHidden 确认裸 start /b 被改写，重定向不进参数，echo started 保留。
 func TestRewriteBareStartHidden(t *testing.T) {
 	in := `start /b python -m http.server 8777 --directory "game-adaptations\build\app" >nul 2>&1 & ping -n 3 127.0.0.1 >nul & echo started`
 	got, ok := rewriteAnyStart(in)
@@ -93,6 +98,7 @@ func TestRewriteBareStartHidden(t *testing.T) {
 	}
 }
 
+// TestRewriteCmdStartWaitStaysError 确认 /WAIT 不改写，但仍算挂起。
 func TestRewriteCmdStartWaitStaysError(t *testing.T) {
 	in := `cmd /c start /WAIT permserver.exe`
 	if _, ok := rewriteCmdStart(in); ok {
@@ -103,6 +109,7 @@ func TestRewriteCmdStartWaitStaysError(t *testing.T) {
 	}
 }
 
+// TestChatConductDoesNotTeachOSTrivia 确认聊天行为片段不含 Start-Process 和 cmd start，中文任务用中文，并含 web_fetch 和 leftover。
 func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
 	text := fragmentText(ChatConductFragments(false))
 	if strings.Contains(text, "Start-Process") || strings.Contains(text, "cmd start") || strings.Contains(text, "中文任务用中文") {
@@ -116,6 +123,7 @@ func TestChatConductDoesNotTeachOSTrivia(t *testing.T) {
 	}
 }
 
+// TestLanguagePinFollowsHan 确认汉字发言返回含 Chinese 的文本，纯英文返回空。
 func TestLanguagePinFollowsHan(t *testing.T) {
 	pin := LanguagePin("帮我查询一下关于agent自进化的论文")
 	if pin.Text == "" || !strings.Contains(pin.Text, "Chinese") {
@@ -126,6 +134,7 @@ func TestLanguagePinFollowsHan(t *testing.T) {
 	}
 }
 
+// TestChatShellFuse 确认非叠层不熔断；叠层且超时为 5 秒不熔断；叠层且超时一分钟则空闲和阻塞用聊天阈值。
 func TestChatShellFuse(t *testing.T) {
 	idle, block, fuse := chatShellFuse(false, time.Minute)
 	if fuse || idle != 0 || block != 0 {

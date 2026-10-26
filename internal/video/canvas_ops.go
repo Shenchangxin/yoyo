@@ -1,3 +1,5 @@
+// 行为：把结构化操作写进画布文档，并按操作名拼提示词。提示词模板是数据。
+
 package video
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/canvas/capability"
 )
 
+// applyCanvasOps 在画布上执行增删改节点、连线和移动，最多 40 条，然后按当前修订号保存。
 func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 	if len(ops) == 0 {
 		return "", fmt.Errorf("ops required")
@@ -110,9 +113,9 @@ func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 			conns = nextC
 		case "connect":
 			conn := map[string]any{
-				"id": firstNonEmpty(strAnyMap(op, "id"), NewID()),
-				"from": firstNonEmpty(strAnyMap(op, "from"), strAnyMap(op, "source")),
-				"to":   firstNonEmpty(strAnyMap(op, "to"), strAnyMap(op, "target")),
+				"id":       firstNonEmpty(strAnyMap(op, "id"), NewID()),
+				"from":     firstNonEmpty(strAnyMap(op, "from"), strAnyMap(op, "source")),
+				"to":       firstNonEmpty(strAnyMap(op, "to"), strAnyMap(op, "target")),
 				"relation": strAnyMap(op, "relation"),
 			}
 			conns = append(conns, conn)
@@ -157,6 +160,7 @@ func (e *Engine) applyCanvasOps(canvasID string, ops []any) (string, error) {
 	return marshalJSON(map[string]any{"ok": true, "changed": changed, "revision": row.Revision + 1}), nil
 }
 
+// promptCompile 按操作名把变量收成一段提示词。未识别的操作则附上变量 JSON。
 func (e *Engine) promptCompile(operation string, vars map[string]any) string {
 	switch operation {
 	case "chapter_assets", "characters":

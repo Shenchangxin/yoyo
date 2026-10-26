@@ -1,13 +1,15 @@
+// 把聊天、搜索、OpenTelemetry 和 MCP 连接补进注册表。抄钥匙时只读已经保存的值。
+
 package connection
 
 import "strings"
 
+// adoptDefaultKey 只通过 storedVault 读取已保存的 default 和本连接钥匙。本连接已有不同钥匙，且不是默认聊天连接时，不覆盖。
 func (r *Registry) adoptDefaultKey(c Connection) Connection {
 	if r == nil || r.vault == nil {
 		return c
 	}
-	// Only copy a key that was actually saved. Process env (OPENAI_API_KEY)
-	// must not overwrite a custom provider — that is the 401 on new sessions.
+	// 只复制已经保存的钥匙。不读进程环境变量，避免把环境里的钥匙写到自定义供应商上。
 	key := storedVault(r.vault, "default")
 	if key == "" {
 		return c
@@ -35,6 +37,7 @@ func (r *Registry) adoptDefaultKey(c Connection) Connection {
 	return out
 }
 
+// storedVault 在仓库实现了 GetStored 时返回去掉空白的已保存值。没有该方法或名字为空则返回空串，不调用 Get。
 func storedVault(v Secrets, name string) string {
 	name = strings.TrimSpace(name)
 	if v == nil || name == "" {
@@ -47,6 +50,7 @@ func storedVault(v Secrets, name string) string {
 	return ""
 }
 
+// SyncChat 在没有聊天连接时 SeedChat，再按需 Upsert。已有连接时更新供应商、端点和模型，然后 adoptDefaultKey。anthropic 收成 claude。
 func (r *Registry) SyncChat(provider, baseURL, model, apiKey string, extraModels ...string) (Connection, error) {
 	provider = strings.TrimSpace(provider)
 	baseURL = strings.TrimSpace(baseURL)
@@ -98,10 +102,12 @@ func (r *Registry) SyncChat(provider, baseURL, model, apiKey string, extraModels
 	return r.adoptDefaultKey(out), nil
 }
 
+// SeedSearch 调用 SyncSearch。
 func (r *Registry) SeedSearch(endpoint, vaultKeyName string) {
 	r.SyncSearch(endpoint, vaultKeyName)
 }
 
+// SyncSearch 把端点写到搜索连接。vaultKeyName 是钥匙名字，为空时用 search。Upsert 的 apiKey 是空串，不在这里写钥匙原文。端点为空则直接返回。
 func (r *Registry) SyncSearch(endpoint, vaultKeyName string) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
@@ -128,6 +134,7 @@ func (r *Registry) SyncSearch(endpoint, vaultKeyName string) {
 	_, _ = r.Upsert(c, "")
 }
 
+// SeedOTEL 写入或更新 OpenTelemetry 端点。端点为空则直接返回。Upsert 不带钥匙。
 func (r *Registry) SeedOTEL(endpoint string) {
 	endpoint = strings.TrimSpace(endpoint)
 	if endpoint == "" {
@@ -149,6 +156,7 @@ func (r *Registry) SeedOTEL(endpoint string) {
 	}, "")
 }
 
+// SeedMCP 按名称或端点更新已有 MCP 连接，否则新建。名称为空时用 mcp。Upsert 不带钥匙。
 func (r *Registry) SeedMCP(name, endpoint string) {
 	endpoint = strings.TrimSpace(endpoint)
 	name = strings.TrimSpace(name)
@@ -175,6 +183,7 @@ func (r *Registry) SeedMCP(name, endpoint string) {
 	}, "")
 }
 
+// firstNonEmpty 返回第一段去掉空白后仍非空的字符串。
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {

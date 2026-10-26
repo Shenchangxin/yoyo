@@ -1,3 +1,6 @@
+// 锁住从 Go 的 case 扫出来的方法表和 handheld/lib/methods.g.dart 一致。比较时忽略 CRLF。
+// 不拥有这些方法的实现。生成物开头的英文注释留着，改了就对不上那份 Dart。
+
 package remote
 
 import (
@@ -8,6 +11,7 @@ import (
 	"testing"
 )
 
+// TestMethodCatalogMatchesClient 在 YOYO_WRITE_METHODS 为 1 时覆写 Dart 文件。比较前把 CRLF 换成 LF。
 func TestMethodCatalogMatchesClient(t *testing.T) {
 	got := renderCatalog()
 	path := clientCatalogPath(t)
@@ -20,13 +24,13 @@ func TestMethodCatalogMatchesClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A Windows checkout rewrites the generated LF file as CRLF. That is not
-	// a method-table change.
+	// Windows 检出会把生成文件的 LF 改成 CRLF。那不算方法表变了。
 	if strings.ReplaceAll(string(have), "\r\n", "\n") != got {
 		t.Fatalf("handheld/lib/methods.g.dart drifted from the Go method table; regenerate with YOYO_WRITE_METHODS=1")
 	}
 }
 
+// clientCatalogPath 从工作目录拼到 handheld/lib/methods.g.dart。
 func clientCatalogPath(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -36,6 +40,7 @@ func clientCatalogPath(t *testing.T) string {
 	return wd + "/../../handheld/lib/methods.g.dart"
 }
 
+// catalogMethod 是生成表里的一行。confirm 和 denied 来自 NeedsConfirm 和 PhoneDenied。
 type catalogMethod struct {
 	name    string
 	group   string
@@ -44,6 +49,7 @@ type catalogMethod struct {
 	fields  []string
 }
 
+// renderCatalog 拼出 Dart 源文件。开头那句英文是生成物的一部分，留着才能和 methods.g.dart 对上。
 func renderCatalog() string {
 	methods := collectMethods()
 	var b strings.Builder
@@ -81,6 +87,7 @@ func renderCatalog() string {
 	return b.String()
 }
 
+// boolWord 把真写成 true，把假写成 false。
 func boolWord(v bool) string {
 	if v {
 		return "true"
@@ -88,6 +95,8 @@ func boolWord(v bool) string {
 	return "false"
 }
 
+// collectMethods 扫 ../api/rpc.go、../app/video.go 和 node.go 里以制表符开头的 case 行，抽出引号中的方法名。
+// 同名方法的字段取并集。读不到文件就 panic。
 func collectMethods() []catalogMethod {
 	blobs := []string{"../api/rpc.go", "../app/video.go", "node.go"}
 	byName := map[string]catalogMethod{}
@@ -137,6 +146,7 @@ func collectMethods() []catalogMethod {
 	return out
 }
 
+// methodName 要求非空，并且只含小写字母、数字、点、下划线或减号。
 func methodName(s string) bool {
 	if s == "" {
 		return false
@@ -153,6 +163,7 @@ func methodName(s string) bool {
 	return true
 }
 
+// methodGroup 按方法名前缀分成会话、视频、实验室、设置、工作区、陪伴或配对。对不上就归到其他。
 func methodGroup(name string) string {
 	switch {
 	case strings.HasPrefix(name, "thread.") || strings.HasPrefix(name, "turn.") || strings.HasPrefix(name, "trajectory.") || strings.HasPrefix(name, "trace.") || strings.HasPrefix(name, "live.") || strings.HasPrefix(name, "session.") || strings.HasPrefix(name, "approvals.") || strings.HasPrefix(name, "approval.") || strings.HasPrefix(name, "spill."):
@@ -174,6 +185,7 @@ func methodGroup(name string) string {
 	}
 }
 
+// fieldsIn 收集正文里的 json 标签名和 str 调用的字符串参数。空串和减号丢掉，结果排序去重。
 func fieldsIn(body string) []string {
 	tag := regexp.MustCompile(`json:"([^"]+)"`)
 	strArg := regexp.MustCompile(`\bstr\("([^"]+)"\)`)
@@ -197,6 +209,7 @@ func fieldsIn(body string) []string {
 	return out
 }
 
+// union 合并两份字段名，排序并去重。
 func union(a, b []string) []string {
 	seen := map[string]bool{}
 	var out []string

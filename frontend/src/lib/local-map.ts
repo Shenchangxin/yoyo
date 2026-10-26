@@ -1,5 +1,9 @@
-/** Boolean maps in localStorage, used to remember expand/collapse. */
+/**
+ * 拥有：本地存储里的布尔映射，用来记住展开和折叠。
+ * 不拥有：哪一块界面在用这份映射。
+ */
 
+/** readLocalMap 读出布尔映射。键为空、缺失、损坏，或值不是布尔时，跳过或返回空对象。 */
 export function readLocalMap(key: string): Record<string, boolean> {
   if (!key) return {};
   try {
@@ -17,11 +21,12 @@ export function readLocalMap(key: string): Record<string, boolean> {
   }
 }
 
+/** writeLocalMap 写回映射。键为空或配额不足时忽略。 */
 export function writeLocalMap(key: string, value: Record<string, boolean>) {
   if (!key) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* ignore quota */
+    /* 配额不足时忽略 */
   }
 }

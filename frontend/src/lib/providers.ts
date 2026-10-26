@@ -1,4 +1,9 @@
-/** OpenAI-compatible chat presets, aligned with Open-Vetta's catalog. */
+/**
+ * 拥有：OpenAI 兼容聊天供应商的预设地址和默认模型，与 Open-Vetta 的目录对齐。
+ * 不拥有：密钥、连接探测，以及当前会话实际选用的供应商。
+ */
+
+/** ProviderPreset 一条预设。hint 只在需要网关或自行填写端点时出现。 */
 export type ProviderPreset = {
   id: string;
   label: string;
@@ -8,6 +13,7 @@ export type ProviderPreset = {
   hint?: string;
 };
 
+/** PROVIDER_PRESETS 可一键套用的供应商预设。custom 没有基址，套用时要跳过。 */
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "openai",
@@ -98,10 +104,12 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
+/** providerPreset 按 id 查找预设。 */
 export function providerPreset(id: string): ProviderPreset | undefined {
   return PROVIDER_PRESETS.find((p) => p.id === id);
 }
 
+/** applyProviderPreset 取出基址、默认模型和模型列表。custom 与未知 id 没有可套用的地址，返回空。 */
 export function applyProviderPreset(id: string): Pick<ProviderPreset, "baseUrl" | "model" | "models"> | null {
   const p = providerPreset(id);
   if (!p || p.id === "custom") return null;

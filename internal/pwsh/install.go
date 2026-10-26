@@ -1,3 +1,5 @@
+// 本文件下载、校验并解压钉住的 pwsh。Look 已经有结果时不再下载。
+
 package pwsh
 
 import (
@@ -14,12 +16,12 @@ import (
 	"time"
 )
 
-// Ensure downloads and verifies the pinned portable pwsh if Look is empty.
+// Ensure 在 Look 为空时下载并校验钉住的便携 pwsh，返回可执行文件路径。使用进程级 Manager。
 func Ensure(ctx context.Context) (string, error) {
 	return current().Ensure(ctx)
 }
 
-// Prefetch starts Ensure in the background when the binary is missing.
+// Prefetch 只在 Windows 且 Look 为空时，在后台调用 Ensure。其他系统直接返回。
 func Prefetch() {
 	if runtime.GOOS != "windows" {
 		return
@@ -30,16 +32,17 @@ func Prefetch() {
 	go func() { _, _ = Ensure(context.Background()) }()
 }
 
-// Install kicks off a download without waiting (settings button).
+// Install 在 Look 为空时开始下载，不等待结束，并返回当前 Snapshot。
 func Install() map[string]any {
 	return current().Install()
 }
 
-// Snapshot is the settings/RPC progress blob.
+// Snapshot 返回进程级 Manager 的进度表。
 func Snapshot() map[string]any {
 	return current().Snapshot()
 }
 
+// Ensure 在 Look 已有路径时直接返回它。非 Windows 返回空路径和 nil。否则 beginInstall 并等待。ctx 为 nil 时用 Background。取消时返回 ctx.Err。
 func (m *Manager) Ensure(ctx context.Context) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -78,6 +81,7 @@ func (m *Manager) Ensure(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("%s", msg)
 }
 
+// Install 在 Look 为空时调用 beginInstall，忽略它的错误，然后返回 Snapshot。
 func (m *Manager) Install() map[string]any {
 	if m.Look() == "" {
 		_, _ = m.beginInstall()
@@ -85,6 +89,7 @@ func (m *Manager) Install() map[string]any {
 	return m.Snapshot()
 }
 
+// beginInstall 在平台不受支持时把 phase 设为 error 并返回该错误。托管目录里已经有 pwsh 时返回 nil, nil。已有 wait 时返回同一个通道。否则后台跑 runInstall。
 func (m *Manager) beginInstall() (<-chan struct{}, error) {
 	goos, goarch := m.platform()
 	if _, err := archiveName(goos, goarch); err != nil {
@@ -114,6 +119,7 @@ func (m *Manager) beginInstall() (<-chan struct{}, error) {
 	return ch, nil
 }
 
+// runInstall 用 25 分钟超时跑 installBundle。成功时 phase 为 ready、percent 为 100。失败时 phase 为 error。结束时清掉自己的 wait、关闭通道并 publish。
 func (m *Manager) runInstall(done chan struct{}) {
 	defer func() {
 		m.mu.Lock()
@@ -139,6 +145,7 @@ func (m *Manager) runInstall(done chan struct{}) {
 	m.mu.Unlock()
 }
 
+// installBundle 下载 zip、去掉标记、解到 installDir.staging、校验，再改名为 installDir。失败时删掉 staging。成功后删掉 zip。Look 仍为空时返回 pwsh: install did not produce pwsh.exe。
 func (m *Manager) installBundle(ctx context.Context) error {
 	goos, goarch := m.platform()
 	archive, err := archiveName(goos, goarch)
@@ -186,6 +193,7 @@ func (m *Manager) installBundle(ctx context.Context) error {
 	return nil
 }
 
+// downloadZip 按 candidateURLs 的顺序尝试。第一个成功就返回。全部失败时返回最后一次错误；一次都没试到时错误文案是 pwsh: download failed。
 func (m *Manager) downloadZip(ctx context.Context, archive, dest, wantSHA string) error {
 	var last error
 	for _, rawURL := range m.candidateURLs(archive) {
@@ -201,6 +209,8 @@ func (m *Manager) downloadZip(ctx context.Context, archive, dest, wantSHA string
 	return last
 }
 
+// downloadURL 用 GET 下载到 dest.tmp。状态码大于等于 300 时返回 pwsh: download 加状态。读过 maxZipBytes 就失败。
+// wantSHA 非空时比对 SHA-256，不一致返回 pwsh: sha256 mismatch。成功后改名为 dest 并 unblockPath。进度百分比最高 90。
 func (m *Manager) downloadURL(ctx context.Context, rawURL, dest, wantSHA string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -272,14 +282,21 @@ func (m *Manager) downloadURL(ctx context.Context, rawURL, dest, wantSHA string)
 	return nil
 }
 
+// progressReader 在 Read 时累计字节，并在百分比变化或读到错误时调用 on。
 type progressReader struct {
-	r     io.Reader
-	n     int64
+	// r 是被计数的读取端。
+	r io.Reader
+	// n 是已经读到的字节。
+	n int64
+	// total 是期望总字节，未知时为 0。
 	total int64
-	last  int
-	on    func(n, total int64)
+	// last 是上次回调时的百分比，用来少发重复进度。
+	last int
+	// on 收到当前字节和总字节。
+	on func(n, total int64)
 }
 
+// Read 读取底层数据，累加 n，并在百分比变化或 err 非空时调用 on。百分比按 n*90/total 计算。
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.n += int64(n)
@@ -296,6 +313,7 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
+// setProgress 更新进度。phase 为空不改 phase。percent 小于 0 不改 percent。total 小于等于 0 不改 total。archive 为空不改 archive。然后 publish。
 func (m *Manager) setProgress(phase string, percent int, bytes, total int64, archive string) {
 	m.mu.Lock()
 	if phase != "" {
@@ -315,6 +333,7 @@ func (m *Manager) setProgress(phase string, percent int, bytes, total int64, arc
 	m.publish()
 }
 
+// publish 在 Hub 非空时把 Snapshot 交给它。
 func (m *Manager) publish() {
 	if m.Hub == nil {
 		return
@@ -322,6 +341,9 @@ func (m *Manager) publish() {
 	m.Hub(m.Snapshot())
 }
 
+// Snapshot 返回给设置页和 RPC 的进度表。needed 在目标 GOOS 为空时看 runtime.GOOS 是否为 windows，否则看 m.GOOS。
+// phase 为空时：已有二进制，或并不需要 pwsh，则 phase 为 ready、percent 为 100；需要但还没有则为 idle。
+// ready 在已有路径或不需要时为 true。source 来自 sourceOf，shell 来自 Fact。
 func (m *Manager) Snapshot() map[string]any {
 	needed := runtime.GOOS == "windows"
 	if m.GOOS != "" {
@@ -365,6 +387,7 @@ func (m *Manager) Snapshot() map[string]any {
 	}
 }
 
+// sourceOf 在 bin 为空时返回空。与 YOYO_PWSH 指向同一文件时返回 env。与托管目录里找到的文件相同时返回 managed。否则返回 file。
 func sourceOf(bin, managedDir string) string {
 	if bin == "" {
 		return ""
@@ -378,6 +401,7 @@ func sourceOf(bin, managedDir string) string {
 	return "file"
 }
 
+// sameFile 把两边转成绝对路径再 Clean，然后不区分大小写比较。Abs 的错误被丢掉。
 func sameFile(a, b string) bool {
 	a, _ = filepath.Abs(a)
 	b, _ = filepath.Abs(b)

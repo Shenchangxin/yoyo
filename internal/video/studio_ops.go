@@ -1,3 +1,6 @@
+// 短片合成：把每一镜编码、接起来、混上口播和配乐、烧上字幕，再放进素材库。
+// 另有改画幅、烧字幕和相册幻灯。没有 ffmpeg 就不编码。
+
 package video
 
 import (
@@ -16,6 +19,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// parseSize 从「宽x高」读像素。读不出就按画幅给尺寸。宽和高都会收成偶数。
 func parseSize(size, aspect string) (int, int) {
 	size = strings.ToLower(strings.TrimSpace(size))
 	if i := strings.Index(size, "x"); i > 0 {
@@ -28,6 +32,7 @@ func parseSize(size, aspect string) (int, int) {
 	return aspectSize(aspect)
 }
 
+// even 把奇数加一，偶数原样返回。编码要求宽高是偶数。
 func even(n int) int {
 	if n%2 != 0 {
 		return n + 1
@@ -35,6 +40,7 @@ func even(n int) int {
 	return n
 }
 
+// materialize 把内容库里的一份对象写成临时文件。扩展名空着就用 .bin。
 func (e *Engine) materialize(hash, ext string) (string, error) {
 	if ext == "" {
 		ext = ".bin"
@@ -50,7 +56,7 @@ func (e *Engine) materialize(hash, ext string) (string, error) {
 		defer in.Close()
 		return writeTemp(e.Dir, ext, in)
 	}
-	// No disk object: the bytes are already in an in-memory store (tests).
+	// 磁盘上没有这份对象时，字节在内存库里。测试会走到这里。
 	raw, err := e.GetBytes(hash)
 	if err != nil {
 		return "", err
@@ -58,6 +64,7 @@ func (e *Engine) materialize(hash, ext string) (string, error) {
 	return writeTemp(e.Dir, ext, bytes.NewReader(raw))
 }
 
+// writeTemp 把读到的字节写进临时文件。拷贝或关闭失败时删掉这个文件并返回错误。
 func writeTemp(dir, ext string, r io.Reader) (string, error) {
 	f, err := os.CreateTemp(dir, "studio-*"+ext)
 	if err != nil {
@@ -75,6 +82,8 @@ func writeTemp(dir, ext string, r io.Reader) (string, error) {
 	return f.Name(), nil
 }
 
+// AssembleStudio 把分镜合成一条 mp4。没有镜头，或某一镜已过期但仍带着图或视频，就拒绝。没有 ffmpeg 也不编码。
+// 视频会循环补到镜头时长，短到要循环不止一次就记一条警告。字幕烧录失败时仍保留没烧字幕的成片。成功后抽出海报，追加版本，并放进素材库。放进素材库失败时，成片编号已经写上。
 func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -245,11 +254,13 @@ func (e *Engine) AssembleStudio(id string) (StudioProject, error) {
 	return published, nil
 }
 
+// shotCacheKey 用种类、内容编号、时长、运镜、适配和尺寸算出镜头缓存的键。
 func shotCacheKey(kind, hash string, dur float64, motion, fit string, w, h int) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%.3f|%s|%s|%d|%d", kind, hash, dur, motion, fit, w, h)))
 	return hex.EncodeToString(sum[:])
 }
 
+// encodeShot 先抄缓存里的成片。没有缓存或拷贝失败就重新编码，成功后再写入缓存。
 func (e *Engine) encodeShot(dest, key string, encode func() error) error {
 	if cached := e.shotCacheFile(key); cached != "" {
 		in, err := os.Open(cached)
@@ -272,6 +283,7 @@ func (e *Engine) encodeShot(dest, key string, encode func() error) error {
 	return nil
 }
 
+// shotCacheFile 返回缓存文件路径。目录空着、键空着，或文件小于 32 字节，就返回空串。
 func (e *Engine) shotCacheFile(key string) string {
 	if strings.TrimSpace(e.Dir) == "" || key == "" {
 		return ""
@@ -284,6 +296,7 @@ func (e *Engine) shotCacheFile(key string) string {
 	return p
 }
 
+// storeShotCache 把刚编好的镜头抄进 shot-cache。先写临时文件，再改名。任何一步失败都留下原片，不把半截文件当成缓存。
 func (e *Engine) storeShotCache(key, src string) {
 	if strings.TrimSpace(e.Dir) == "" || key == "" {
 		return
@@ -311,6 +324,7 @@ func (e *Engine) storeShotCache(key, src string) {
 	_ = os.Rename(tmp, filepath.Join(dir, key+".mp4"))
 }
 
+// mixAudio 把口播和配乐混进成片。两者都空就原样返回视频。配乐音量小于等于 0 时用 0.22。口播和配乐同时在时压低配乐。成片长过 3.2 秒时配乐在结尾淡出 3 秒。
 func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol float64) (string, error) {
 	if narrationHash == "" && bgmHash == "" {
 		return video, nil
@@ -353,6 +367,7 @@ func (e *Engine) mixAudio(tmp, video, narrationHash, bgmHash string, bgmVol floa
 	return out, nil
 }
 
+// burnSubtitles 把字幕烧进成片。能转成 ASS 就烧 ASS，否则烧原来的 SRT。宽高不知道时先探测画面。
 func (e *Engine) burnSubtitles(tmp, video, subHash string, w, h int) (string, error) {
 	src, err := e.materialize(subHash, ".srt")
 	if err != nil {
@@ -380,6 +395,7 @@ func (e *Engine) burnSubtitles(tmp, video, subHash string, w, h int) (string, er
 	return out, nil
 }
 
+// subtitleFilter 拼 ffmpeg 的 subtitles 滤镜。冒号和单引号会转义，并指定 UTF-8。
 func subtitleFilter(path string) string {
 	slash := filepath.ToSlash(path)
 	slash = strings.ReplaceAll(slash, ":", `\:`)
@@ -387,6 +403,7 @@ func subtitleFilter(path string) string {
 	return "subtitles='" + slash + "':charenc=UTF-8"
 }
 
+// probeFrame 用 ffprobe 读视频宽高。读不到或小于 16 就返回 1080×1920。
 func (e *Engine) probeFrame(path string) (int, int) {
 	if e.FFProbe == "" {
 		return 1080, 1920
@@ -408,6 +425,7 @@ func (e *Engine) probeFrame(path string) (int, int) {
 	return even(w), even(h)
 }
 
+// Reframe 把一条视频垫成指定画幅，不裁切主体。先尝试保留音轨，失败再去掉音轨。结果放进内容库。
 func (e *Engine) Reframe(hash, aspect string) (MediaRef, error) {
 	if err := e.EnsureFFmpeg(context.Background()); err != nil {
 		return MediaRef{}, err
@@ -443,6 +461,7 @@ func (e *Engine) Reframe(hash, aspect string) (MediaRef, error) {
 	return MediaRef{Kind: "video", CASHash: out, MIME: "video/mp4", Width: w, Height: h, Source: "studio"}, nil
 }
 
+// BurnInCaptions 把一份字幕烧进一条视频，结果放进内容库。没有 ffmpeg 就拒绝。
 func (e *Engine) BurnInCaptions(hash, subHash string) (MediaRef, error) {
 	if err := e.EnsureFFmpeg(context.Background()); err != nil {
 		return MediaRef{}, err
@@ -472,6 +491,7 @@ func (e *Engine) BurnInCaptions(hash, subHash string) (MediaRef, error) {
 	return MediaRef{Kind: "video", CASHash: cas, MIME: "video/mp4", Source: "studio"}, nil
 }
 
+// Slideshow 用几张图做一条肯伯恩斯相册短片。会先建一条标题为「相册短片」的工程再合成。时长小于等于 0 时每张 3 秒。
 func (e *Engine) Slideshow(hashes []string, aspect string, dur float64) (MediaRef, error) {
 	p, err := e.CreateStudioProject(StudioProject{Title: "相册短片", Aspect: aspect})
 	if err != nil {
@@ -501,6 +521,7 @@ func (e *Engine) Slideshow(hashes []string, aspect string, dur float64) (MediaRe
 	return MediaRef{Kind: "video", CASHash: p.ResultHash, MIME: "video/mp4", PosterHash: p.PosterHash, Source: "studio", OriginID: p.ID}, nil
 }
 
+// ffmpegErr 取 ffmpeg 输出的最后几行当错误文本。输出是空的就用错误本身。
 func ffmpegErr(out []byte, err error) string {
 	tail := strings.TrimSpace(string(out))
 	if n := strings.LastIndex(tail, "\n"); n >= 0 && len(tail) > 400 {

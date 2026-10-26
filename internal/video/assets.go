@@ -1,3 +1,5 @@
+// assets.go 保存短剧的角色、场景、道具和镜头，并排队生成静帧、视频和拼接。
+
 package video
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strings"
 )
 
+// EpisodeCharacters 列出该剧未删除的角色，并标上这一集是否已关联。按排序号和名字排列。
 func (e *Engine) EpisodeCharacters(episodeID string) ([]Character, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -37,6 +40,7 @@ func (e *Engine) EpisodeCharacters(episodeID string) ([]Character, error) {
 	return out, nil
 }
 
+// EpisodeScenes 列出该剧未删除的场景，并标上这一集是否已关联。按地点排序。
 func (e *Engine) EpisodeScenes(episodeID string) ([]Scene, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -63,6 +67,7 @@ func (e *Engine) EpisodeScenes(episodeID string) ([]Scene, error) {
 	return out, nil
 }
 
+// EpisodeProps 列出该剧未删除的道具，并标上这一集是否已关联。按名字排序。
 func (e *Engine) EpisodeProps(episodeID string) ([]Prop, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -89,6 +94,7 @@ func (e *Engine) EpisodeProps(episodeID string) ([]Prop, error) {
 	return out, nil
 }
 
+// linkCharacter 把角色标识加进这一集。集文档不存在时直接返回。
 func (e *Engine) linkCharacter(episodeID, characterID string) {
 	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
@@ -97,6 +103,7 @@ func (e *Engine) linkCharacter(episodeID, characterID string) {
 	rec.CharacterIDs = addID(rec.CharacterIDs, characterID)
 	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
+// linkScene 把场景标识加进这一集。集文档不存在时直接返回。
 func (e *Engine) linkScene(episodeID, sceneID string) {
 	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
@@ -105,6 +112,7 @@ func (e *Engine) linkScene(episodeID, sceneID string) {
 	rec.SceneIDs = addID(rec.SceneIDs, sceneID)
 	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
+// linkProp 把道具标识加进这一集。集文档不存在时直接返回。
 func (e *Engine) linkProp(episodeID, propID string) {
 	rec, err := getDoc[episodeRec](e, colEpisodes, episodeID)
 	if err != nil {
@@ -114,6 +122,7 @@ func (e *Engine) linkProp(episodeID, propID string) {
 	_ = e.putDoc(colEpisodes, rec.ID, rec)
 }
 
+// SaveCharacters 按规范化名字合并角色。外观、造型和身份非空时覆盖。新角色的排序号用传入下标。保存后把提取阶段标成 done。
 func (e *Engine) SaveCharacters(episodeID string, items []Character) ([]Character, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -163,6 +172,7 @@ func (e *Engine) SaveCharacters(episodeID string, items []Character) ([]Characte
 	return out, nil
 }
 
+// SaveScenes 按地点和时段合并场景。地点为空的条目跳过。已有的只建立关联，不改字段。
 func (e *Engine) SaveScenes(episodeID string, items []Scene) ([]Scene, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -197,6 +207,7 @@ func (e *Engine) SaveScenes(episodeID string, items []Scene) ([]Scene, error) {
 	return out, nil
 }
 
+// SaveProps 最多留下 3 条，按规范化名字合并。已有的只建立关联。
 func (e *Engine) SaveProps(episodeID string, items []Prop) ([]Prop, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -234,6 +245,7 @@ func (e *Engine) SaveProps(episodeID string, items []Prop) ([]Prop, error) {
 	return out, nil
 }
 
+// DramaCharacters 列出该剧未删除的角色，按排序号和名字排列。
 func (e *Engine) DramaCharacters(dramaID string) []Character {
 	var out []Character
 	for _, c := range loadCol[characterRec](e, colCharacters) {
@@ -254,6 +266,7 @@ func (e *Engine) DramaCharacters(dramaID string) []Character {
 	return out
 }
 
+// DramaScenes 列出该剧未删除的场景。
 func (e *Engine) DramaScenes(dramaID string) []Scene {
 	var out []Scene
 	for _, s := range loadCol[sceneRec](e, colScenes) {
@@ -268,6 +281,7 @@ func (e *Engine) DramaScenes(dramaID string) []Scene {
 	return out
 }
 
+// DramaProps 列出该剧未删除的道具。
 func (e *Engine) DramaProps(dramaID string) []Prop {
 	var out []Prop
 	for _, p := range loadCol[propRec](e, colProps) {
@@ -282,6 +296,7 @@ func (e *Engine) DramaProps(dramaID string) []Prop {
 	return out
 }
 
+// SaveBibleCharacters 按名字合并剧级角色。非空的外观、造型、身份会覆盖，首次出现的集号大于 0 时也写入。不关联到某一集。
 func (e *Engine) SaveBibleCharacters(dramaID string, items []Character) ([]Character, error) {
 	if _, err := e.GetDrama(dramaID); err != nil {
 		return nil, err
@@ -330,6 +345,7 @@ func (e *Engine) SaveBibleCharacters(dramaID string, items []Character) ([]Chara
 	return out, nil
 }
 
+// SaveBibleScenes 按地点和时段合并剧级场景。已有的原样返回。地点为空的跳过。
 func (e *Engine) SaveBibleScenes(dramaID string, items []Scene) ([]Scene, error) {
 	if _, err := e.GetDrama(dramaID); err != nil {
 		return nil, err
@@ -361,6 +377,7 @@ func (e *Engine) SaveBibleScenes(dramaID string, items []Scene) ([]Scene, error)
 	return out, nil
 }
 
+// SaveBibleProps 最多留下 3 条剧级道具，按名字合并。已有的原样返回。
 func (e *Engine) SaveBibleProps(dramaID string, items []Prop) ([]Prop, error) {
 	if _, err := e.GetDrama(dramaID); err != nil {
 		return nil, err
@@ -395,6 +412,7 @@ func (e *Engine) SaveBibleProps(dramaID string, items []Prop) ([]Prop, error) {
 	return out, nil
 }
 
+// UpdateAsset 按字段名更新角色、场景或道具。只改传入的键。种类不明时返回 unknown asset。
 func (e *Engine) UpdateAsset(kind, id string, fields map[string]any) error {
 	now := Now()
 	has := func(k string) bool { _, ok := fields[k]; return ok }
@@ -476,11 +494,13 @@ func (e *Engine) UpdateAsset(kind, id string, fields map[string]any) error {
 	return fmt.Errorf("unknown asset")
 }
 
+// SaveFinalPrompt 先给提示词加上风格前缀，再写入 final_prompt。
 func (e *Engine) SaveFinalPrompt(kind, id, prompt, style string) error {
 	prompt = e.PrefixStyle(style, prompt)
 	return e.UpdateAsset(kind, id, map[string]any{"final_prompt": prompt})
 }
 
+// ListShots 列出这一集未删除的镜头，按镜头号排序。
 func (e *Engine) ListShots(episodeID string) ([]Shot, error) {
 	var out []Shot
 	for _, rec := range loadCol[shotRec](e, colShots) {
@@ -496,6 +516,7 @@ func (e *Engine) ListShots(episodeID string) ([]Shot, error) {
 	return out, nil
 }
 
+// SaveShots 在 replace 为真时先删掉这一集的旧镜头。镜头号为 0 时用下标加 1。时长按镜头类型夹紧。同号镜头保留原来的空视频、封面和状态。新镜头状态空着时写成 pending。覆盖达标时把分镜阶段标成 done。
 func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -574,6 +595,7 @@ func (e *Engine) SaveShots(episodeID string, shots []Shot, replace bool) ([]Shot
 	return out, nil
 }
 
+// UpdateShot 把镜头的标题、氛围、描述、视频提示、时长、场景和关联写回。角色和道具切片为 nil 时不改。镜头号大于 0 才写。
 func (e *Engine) UpdateShot(s Shot) (Shot, error) {
 	fields := map[string]any{
 		"title": s.Title, "atmosphere": s.Atmosphere, "description": s.Description,
@@ -591,6 +613,7 @@ func (e *Engine) UpdateShot(s Shot) (Shot, error) {
 	return e.PatchShot(s.ID, fields)
 }
 
+// PatchShot 按传入的键改镜头。时长大于 0 时按这一集的视频供应商夹紧，读不到供应商时按 volcengine。
 func (e *Engine) PatchShot(id string, fields map[string]any) (Shot, error) {
 	cur, err := e.GetShot(id)
 	if err != nil {
@@ -648,6 +671,7 @@ func (e *Engine) PatchShot(id string, fields map[string]any) (Shot, error) {
 	return cur, nil
 }
 
+// GetShot 按标识读取镜头。没有时返回 shot not found。
 func (e *Engine) GetShot(id string) (Shot, error) {
 	rec, err := getDoc[shotRec](e, colShots, id)
 	if err != nil {
@@ -656,6 +680,7 @@ func (e *Engine) GetShot(id string) (Shot, error) {
 	return rec.Shot, nil
 }
 
+// ensureCharLinked 在角色属于该剧时把它关联到这一集。
 func (e *Engine) ensureCharLinked(dramaID, episodeID, characterID string) {
 	rec, err := getDoc[characterRec](e, colCharacters, characterID)
 	if err != nil || rec.DramaID != dramaID {
@@ -664,6 +689,7 @@ func (e *Engine) ensureCharLinked(dramaID, episodeID, characterID string) {
 	e.linkCharacter(episodeID, characterID)
 }
 
+// ensurePropLinked 在道具属于该剧时把它关联到这一集。
 func (e *Engine) ensurePropLinked(dramaID, episodeID, propID string) {
 	rec, err := getDoc[propRec](e, colProps, propID)
 	if err != nil || rec.DramaID != dramaID {
@@ -672,6 +698,7 @@ func (e *Engine) ensurePropLinked(dramaID, episodeID, propID string) {
 	e.linkProp(episodeID, propID)
 }
 
+// ShotRefs 把场景、角色和道具里已有图片哈希的项转成参考地址。
 func (e *Engine) ShotRefs(s Shot) ([]AssetRef, error) {
 	var refs []AssetRef
 	if s.SceneID != "" {
@@ -698,6 +725,7 @@ func (e *Engine) ShotRefs(s Shot) ([]AssetRef, error) {
 	return refs, nil
 }
 
+// GenerateShot 解析镜头提示和参考图后排队生成视频。阿里云最多 10 张参考图，其他供应商最多 9 张。提示和参考都空时失败。成功后把镜头标成 generating，并把生成阶段标成 running。
 func (e *Engine) GenerateShot(shotID string) (Job, error) {
 	s, err := e.GetShot(shotID)
 	if err != nil {
@@ -740,6 +768,7 @@ func (e *Engine) GenerateShot(shotID string) (Job, error) {
 	return j, err
 }
 
+// GenerateAsset 为角色、场景或道具排队生成静帧。旁白角色返回 narrator has no still。最终提示为空时用 stillFallback 补上并写回。集标识为空时用该剧第一集。成功后把素材阶段标成 running。
 func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	var prompt, dramaID string
 	in := EnqueueImage{}
@@ -814,6 +843,7 @@ func (e *Engine) GenerateAsset(kind, id, episodeID string) (Job, error) {
 	return j, err
 }
 
+// stillFallback 在内容语言为中文时用中文设定句，否则用英文设定句，再加风格前缀。
 func (e *Engine) stillFallback(kind string, d Drama, appearance, styling, location, lighting, name, extra string) string {
 	zh := chineseContent(e.ContentLanguage())
 	var body string
@@ -840,6 +870,7 @@ func (e *Engine) stillFallback(kind string, d Drama, appearance, styling, locati
 	return e.PrefixStyle(d.Style, body)
 }
 
+// CreateAsset 在这一集下新建角色、场景或道具并建立关联。角色和道具要有名字，场景要有地点。
 func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -894,6 +925,7 @@ func (e *Engine) CreateAsset(kind, episodeID string, fields map[string]any) (any
 	return nil, fmt.Errorf("unknown asset")
 }
 
+// DeleteAsset 给素材写上删除时间，并把它从各集和镜头里拿掉。场景被删时镜头的场景标识清空。
 func (e *Engine) DeleteAsset(kind, id string) error {
 	now := Now()
 	switch kind {
@@ -955,6 +987,7 @@ func (e *Engine) DeleteAsset(kind, id string) error {
 	return fmt.Errorf("unknown asset")
 }
 
+// unlinkAssetFromEpisodes 从所有集的角色、场景或道具标识里去掉这一项。
 func (e *Engine) unlinkAssetFromEpisodes(id, kind string) {
 	for _, ep := range loadCol[episodeRec](e, colEpisodes) {
 		changed := false
@@ -984,6 +1017,7 @@ func (e *Engine) unlinkAssetFromEpisodes(id, kind string) {
 	}
 }
 
+// ApplyJob 只接受已成功且带结果哈希的任务，然后写回素材。
 func (e *Engine) ApplyJob(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -995,6 +1029,7 @@ func (e *Engine) ApplyJob(id string) (Job, error) {
 	return j, e.writeBack(j)
 }
 
+// decodeStringSlice 把字符串切片或任意切片收成去掉空白的字符串。空字符串和 <nil> 丢掉。其他类型返回 nil。
 func decodeStringSlice(v any) []string {
 	switch t := v.(type) {
 	case []string:
@@ -1012,6 +1047,7 @@ func decodeStringSlice(v any) []string {
 	return nil
 }
 
+// MergeEpisode 按镜头顺序收集已有视频哈希。传入镜头标识时只留这些。一条都没有时返回 no generated clips to stitch。
 func (e *Engine) MergeEpisode(episodeID string, shotIDs []string) (Job, error) {
 	ep, err := e.GetEpisode(episodeID)
 	if err != nil {
@@ -1043,6 +1079,7 @@ func (e *Engine) MergeEpisode(episodeID string, shotIDs []string) (Job, error) {
 	return e.EnqueueMerge(episodeID, ep.DramaID, hashes, used)
 }
 
+// strMap 把 map 里该键的值转成字符串。map 为空或没有该键时返回空。
 func strMap(m map[string]any, k string) string {
 	if m == nil {
 		return ""

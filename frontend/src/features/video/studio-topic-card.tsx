@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有一张选题卡的投影：勾选、开拍或打开、角度和分数。
+ * 不拥有选题列表。动作都交给回调，本文件不改服务端。
+ */
 import { Check, MoreHorizontal } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -6,6 +10,7 @@ import { cn } from "../../lib/utils";
 import { TopicScoreSheet } from "./studio-chrome";
 import { filmInFlight, topicCanFilm, topicIsScheduled, type ScoreKey } from "./studio-topic";
 
+/** TopicRow 是选题卡要显示的标题、来源、角度、分数、状态和可选切口。 */
 export type TopicRow = {
   id: string;
   title: string;
@@ -44,6 +49,7 @@ type TopicCopy = {
   desk: { expand: string; choose: string };
 };
 
+/** TopicCard 按成片阶段显示打开、看进度、重试或开拍。已完成或制作中的角度不可改。 */
 export function TopicCard(props: {
   topic: TopicRow;
   busy: boolean;

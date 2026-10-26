@@ -1,3 +1,5 @@
+// 聊天叠层推迟宿主工具，但调用时不关进监狱。cat 只在叠层上改走 read_file。个人钉和页面正文只出现在动态尾。
+
 package runtime
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
+// TestApplyChatToolMenuDefersOffice 确认开场菜单推迟 office、connector 和 browser_verify。
 func TestApplyChatToolMenuDefersOffice(t *testing.T) {
 	var all []string
 	for _, s := range tool.HostSpecs() {
@@ -30,6 +33,7 @@ func TestApplyChatToolMenuDefersOffice(t *testing.T) {
 	}
 }
 
+// TestPersonalPinSoftHorizonOnly 确认个人钉只在 SoftHorizon 的动态尾。
 func TestPersonalPinSoftHorizonOnly(t *testing.T) {
 	req := &RunRequest{SoftHorizon: true, Loop: ApplyChatHorizon(DefaultLoop())}
 	k := newContextKernel(req)
@@ -48,6 +52,7 @@ func TestPersonalPinSoftHorizonOnly(t *testing.T) {
 	}
 }
 
+// TestPageContextStaysUntrusted 确认页面正文在动态尾，并标成 untrusted。
 func TestPageContextStaysUntrusted(t *testing.T) {
 	k := newContextKernel(&RunRequest{
 		SoftHorizon: true,
@@ -77,6 +82,7 @@ func TestPageContextStaysUntrusted(t *testing.T) {
 	}
 }
 
+// TestAssembleIdentityRoleAfterYouAreYoyo 确认角色句接在 You are Yoyo 之后。
 func TestAssembleIdentityRoleAfterYouAreYoyo(t *testing.T) {
 	got := AssembleIdentity(DefaultLoop(), []artifact.PromptFragment{{Slot: "role", Text: "Investigate sources."}})
 	if !strings.Contains(got, "You are Yoyo") || !strings.Contains(got, "## Role") || !strings.Contains(got, "Investigate sources.") {
@@ -84,6 +90,7 @@ func TestAssembleIdentityRoleAfterYouAreYoyo(t *testing.T) {
 	}
 }
 
+// TestChatOverlaySchemaDefersHostTools 确认聊天叠层的开场模式不含推迟的宿主工具。
 func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	tools := &WorkspaceTools{
 		ChatOverlay: true,
@@ -130,6 +137,7 @@ func TestChatOverlaySchemaDefersHostTools(t *testing.T) {
 	}
 }
 
+// TestHarborAdvertisedKeepsFullCatalogJail 确认 Harbor 的 Advertised 仍是调用监狱。
 func TestHarborAdvertisedKeepsFullCatalogJail(t *testing.T) {
 	tools := &WorkspaceTools{Advertised: []string{"read_file", "write_file", "shell"}}
 	if tools.Call("office_create", `{"path":"a.docx"}`).Err == nil {
@@ -141,6 +149,7 @@ func TestHarborAdvertisedKeepsFullCatalogJail(t *testing.T) {
 	}
 }
 
+// TestOpeningMenuDoesNotJailDeferredHostTool 确认开场菜单不阻止稍后调用推迟的宿主工具。
 func TestOpeningMenuDoesNotJailDeferredHostTool(t *testing.T) {
 	menu := ApplyChatToolMenu(nil)
 	tools := &WorkspaceTools{
@@ -168,6 +177,7 @@ func TestOpeningMenuDoesNotJailDeferredHostTool(t *testing.T) {
 	}
 }
 
+// TestChatOverlayCanCallDeferredHostTool 确认聊天叠层可以调用推迟的宿主工具。
 func TestChatOverlayCanCallDeferredHostTool(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{
@@ -181,6 +191,7 @@ func TestChatOverlayCanCallDeferredHostTool(t *testing.T) {
 	}
 }
 
+// TestShellCatRedirectsToReadFile 确认 cat 只在 ChatOverlay 上改走 read_file。
 func TestShellCatRedirectsToReadFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
@@ -201,6 +212,7 @@ func TestShellCatRedirectsToReadFile(t *testing.T) {
 	}
 }
 
+// TestParseShellRead 确认单条 cat、type、Get-Content、head 和 sed -n 被改写，管道、cd 拼接和已是盘符的 MSYS 路径按规则处理。
 func TestParseShellRead(t *testing.T) {
 	rel, off, lim, ok := parseShellRead(`sed -n '10,20p' webui/src/App.tsx`)
 	if !ok || rel != "webui/src/App.tsx" || off != 10 || lim != 11 {
@@ -237,6 +249,7 @@ func TestParseShellRead(t *testing.T) {
 	}
 }
 
+// TestChatAllowsPlanInAnyLanguage 确认聊天叠层不因语言拒绝计划。
 func TestChatAllowsPlanInAnyLanguage(t *testing.T) {
 	tools := &WorkspaceTools{ChatOverlay: true, OperatorVoice: "完善该项目"}
 	res := tools.Call("update_plan", `{"plan":[{"step":"Recon backend","status":"in_progress"}]}`)
@@ -245,6 +258,7 @@ func TestChatAllowsPlanInAnyLanguage(t *testing.T) {
 	}
 }
 
+// TestWorkingMemoryRefreshesDuringToolRun 确认工具运行期间工作记忆被刷新。
 func TestWorkingMemoryRefreshesDuringToolRun(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
@@ -291,6 +305,7 @@ func TestWorkingMemoryRefreshesDuringToolRun(t *testing.T) {
 	}
 }
 
+// TestRewriteStallNudgeOnSoftHorizon 确认 SoftHorizon 上的改写停滞会注入轻推。
 func TestRewriteStallNudgeOnSoftHorizon(t *testing.T) {
 	dir := t.TempDir()
 	var steps []Message
@@ -325,6 +340,7 @@ func TestRewriteStallNudgeOnSoftHorizon(t *testing.T) {
 	}
 }
 
+// TestRewriteStallDoesNotFireOnHarbor 确认 Harbor 不发改写停滞轻推。
 func TestRewriteStallDoesNotFireOnHarbor(t *testing.T) {
 	dir := t.TempDir()
 	loop := DefaultLoop()
@@ -356,6 +372,7 @@ func TestRewriteStallDoesNotFireOnHarbor(t *testing.T) {
 	}
 }
 
+// TestSnipMarkerKeepsWritePaths 确认裁剪保留写路径。
 func TestSnipMarkerKeepsWritePaths(t *testing.T) {
 	msgs := []Message{
 		{Role: RoleSystem, Content: "sys"},
@@ -380,6 +397,7 @@ func TestSnipMarkerKeepsWritePaths(t *testing.T) {
 	}
 }
 
+// TestSnipPreservesOperatorGoal 确认裁剪保留操作者目标。
 func TestSnipPreservesOperatorGoal(t *testing.T) {
 	goal := "本项目是一个基于golang开发的RBAC权限管理系统，请完善前端"
 	msgs := []Message{
@@ -409,6 +427,7 @@ func TestSnipPreservesOperatorGoal(t *testing.T) {
 	}
 }
 
+// TestVerifyArtifactPinsWhenStoppingWithOpenPlan 确认打开的计划在过早结束时注入 verify-artifact。
 func TestVerifyArtifactPinsWhenStoppingWithOpenPlan(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{
@@ -455,6 +474,7 @@ func TestVerifyArtifactPinsWhenStoppingWithOpenPlan(t *testing.T) {
 	}
 }
 
+// toolJSONNames 把工具模式的名字拼成一行，供断言使用。
 func toolJSONNames(js []ToolJSON) string {
 	var b strings.Builder
 	for _, j := range js {
@@ -465,6 +485,7 @@ func toolJSONNames(js []ToolJSON) string {
 	return b.String()
 }
 
+// messagesBlob 把消息正文拼成一段，供断言使用。
 func messagesBlob(msgs []Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
@@ -474,6 +495,7 @@ func messagesBlob(msgs []Message) string {
 	return b.String()
 }
 
+// TestInjectFoldsAfterOperatorVoice 确认注入接在操作者发言之后。
 func TestInjectFoldsAfterOperatorVoice(t *testing.T) {
 	dir := t.TempDir()
 	client := &planRecordingClient{ScriptedClient: ScriptedClient{Steps: []Message{

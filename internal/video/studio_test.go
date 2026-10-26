@@ -1,3 +1,5 @@
+// 锁住短片工程、选题、工具分发、闸门和过期镜头。
+
 package video
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestStudioJobShouldSkip 锁住空白草稿仍可开拍，绑了会话、口播已锁定或已有成片就跳过。
 func TestStudioJobShouldSkip(t *testing.T) {
 	draft := StudioProject{Status: StudioDraft, Gate: GateScript, ScriptStatus: ScriptNeedsReview}
 	if StudioJobShouldSkip(draft, "") {
@@ -26,6 +29,7 @@ func TestStudioJobShouldSkip(t *testing.T) {
 	}
 }
 
+// TestTopicScheduledStatus 锁住已排期能存住并被列出，queued 会收成已排期。
 func TestTopicScheduledStatus(t *testing.T) {
 	e := testEngine(t)
 	got, err := e.SaveTopic(Topic{Title: "定时选题", Status: TopicScheduled})
@@ -48,6 +52,7 @@ func TestTopicScheduledStatus(t *testing.T) {
 	}
 }
 
+// TestTopicCRUDAndTrend 锁住热榜收成收件箱选题，以及保存、读取和删除。
 func TestTopicCRUDAndTrend(t *testing.T) {
 	e := testEngine(t)
 	got, err := e.TopicFromTrend("weibo", "春日穿搭", "120万")
@@ -79,6 +84,7 @@ func TestTopicCRUDAndTrend(t *testing.T) {
 	}
 }
 
+// TestStudioFromTopicBindAndHistory 锁住选题开成短片并复用，会话绑定写进历史，删除工程时绑定一起拆掉。
 func TestStudioFromTopicBindAndHistory(t *testing.T) {
 	e := testEngine(t)
 	topic, err := e.SaveTopic(Topic{Title: "三日护肤", Angle: "成分党避坑", Status: TopicInbox})
@@ -147,6 +153,7 @@ func TestStudioFromTopicBindAndHistory(t *testing.T) {
 	}
 }
 
+// TestStudioBindOneToOne 锁住一个会话只绑一条短片，一条短片也只留一个会话。改绑时旧会话会拆掉。
 func TestStudioBindOneToOne(t *testing.T) {
 	e := testEngine(t)
 	a, err := e.CreateStudioProject(StudioProject{Title: "短片A"})
@@ -195,6 +202,7 @@ func TestStudioBindOneToOne(t *testing.T) {
 	}
 }
 
+// TestStudioToolDispatcher 锁住选题保存、列表和从选题建短片，建完会绑到这场会话。
 func TestStudioToolDispatcher(t *testing.T) {
 	e := testEngine(t)
 	raw, err := e.StudioTool("s1", "topic_save", map[string]any{"title": "热点一", "angle": "反常识"})
@@ -230,6 +238,7 @@ func TestStudioToolDispatcher(t *testing.T) {
 	}
 }
 
+// TestProviderTemplatesIncludeSearchVendors 锁住搜索模板里有 search、tavily、brave、serper 和 bocha。
 func TestProviderTemplatesIncludeSearchVendors(t *testing.T) {
 	seen := map[string]bool{}
 	for _, p := range ProviderTemplates() {
@@ -244,6 +253,7 @@ func TestProviderTemplatesIncludeSearchVendors(t *testing.T) {
 	}
 }
 
+// TestProviderTemplatesIncludeMusicStockAsr 锁住配乐、素材、识别、图像、视频、抠像和存储模板都在，且配乐模板不指向语音模型。
 func TestProviderTemplatesIncludeMusicStockAsr(t *testing.T) {
 	type hit struct{ kind, vendor, name string }
 	seen := map[hit]bool{}
@@ -300,6 +310,7 @@ func TestProviderTemplatesIncludeMusicStockAsr(t *testing.T) {
 	}
 }
 
+// TestMediaRefValid 锁住没有内容编号的媒体引用无效，有编号的图像有效。
 func TestMediaRefValid(t *testing.T) {
 	if (MediaRef{Kind: "video"}).Valid() {
 		t.Fatal("empty hash must be invalid")
@@ -309,6 +320,7 @@ func TestMediaRefValid(t *testing.T) {
 	}
 }
 
+// TestPublishDraftExportMark 锁住草稿带有创作页和数据页，导出文件在磁盘上，标成已发布后选题变成完成，未知平台被拒绝。
 func TestPublishDraftExportMark(t *testing.T) {
 	e := testEngine(t)
 	h, err := e.PutBytes([]byte("fake-mp4"))
@@ -361,6 +373,7 @@ func TestPublishDraftExportMark(t *testing.T) {
 	}
 }
 
+// TestUpdateStudioStyleAndResult 锁住更新能写下风格和成片编号。
 func TestUpdateStudioStyleAndResult(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{Title: "t"})
@@ -378,6 +391,7 @@ func TestUpdateStudioStyleAndResult(t *testing.T) {
 	}
 }
 
+// TestPersonaTemplate 锁住人设模板里带有名字和「人设」。
 func TestPersonaTemplate(t *testing.T) {
 	md := PersonaTemplate("测试号")
 	if !strings.Contains(md, "测试号") || !strings.Contains(md, "人设") {
@@ -385,6 +399,7 @@ func TestPersonaTemplate(t *testing.T) {
 	}
 }
 
+// TestStudioP4Tools 锁住人设模板能返回，打开发布页和创建人设交给应用层，Remotion 状态里 bundled 是假。
 func TestStudioP4Tools(t *testing.T) {
 	e := testEngine(t)
 	md, err := e.StudioTool("", "studio_persona_template", map[string]any{"name": "口播号"})
@@ -409,6 +424,7 @@ func TestStudioP4Tools(t *testing.T) {
 	}
 }
 
+// TestUpdateStudioClearsShots 锁住传入空镜头切片会把分镜清掉。
 func TestUpdateStudioClearsShots(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{
@@ -429,6 +445,7 @@ func TestUpdateStudioClearsShots(t *testing.T) {
 	}
 }
 
+// TestStudioPipelineGatesApprovePackage 锁住空口播不能锁定，锁定后到配音，跳过配音后到画面，有成片才能打包并恢复版本。
 func TestStudioPipelineGatesApprovePackage(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{Title: "钩子测试", Aspect: "9:16"})
@@ -517,6 +534,7 @@ func TestStudioPipelineGatesApprovePackage(t *testing.T) {
 	}
 }
 
+// TestStudioTopicExpandAndCopy 锁住选题能展开并选中一个角度，小红书文案里带有平台标签。
 func TestStudioTopicExpandAndCopy(t *testing.T) {
 	e := testEngine(t)
 	tpc, err := e.SaveTopic(Topic{Title: "春日穿搭", Note: "热度高"})
@@ -542,6 +560,7 @@ func TestStudioTopicExpandAndCopy(t *testing.T) {
 	}
 }
 
+// TestStudioStaleShotOnVisualEdit 锁住改了画面说明后镜头过期，原来的图还留着。
 func TestStudioStaleShotOnVisualEdit(t *testing.T) {
 	e := testEngine(t)
 	h, err := e.PutBytes([]byte("still"))
@@ -565,6 +584,7 @@ func TestStudioStaleShotOnVisualEdit(t *testing.T) {
 	}
 }
 
+// TestStudioCatalogAndTools 锁住目录里有抖音预设，用教程模板建短片会套上对应预设。
 func TestStudioCatalogAndTools(t *testing.T) {
 	e := testEngine(t)
 	raw, err := e.StudioTool("", "studio_catalog", nil)
@@ -597,6 +617,7 @@ func TestStudioCatalogAndTools(t *testing.T) {
 	}
 }
 
+// TestParseSRTDurations 锁住两条 SRT 各读出大约 2.5 秒。
 func TestParseSRTDurations(t *testing.T) {
 	got := parseSRTDurations("1\n00:00:00,000 --> 00:00:02,500\nhi\n\n2\n00:00:02,500 --> 00:00:05,000\nthere\n")
 	if len(got) != 2 || got[0] < 2.4 || got[0] > 2.6 || got[1] < 2.4 {
@@ -604,6 +625,7 @@ func TestParseSRTDurations(t *testing.T) {
 	}
 }
 
+// TestSaveTopicKeepsAngle 锁住只改标题时，角度、状态和备注还在。
 func TestSaveTopicKeepsAngle(t *testing.T) {
 	e := testEngine(t)
 	got, err := e.SaveTopic(Topic{Title: "保留角度", Angle: "职场", Status: TopicReady, Note: "备忘"})
@@ -619,6 +641,7 @@ func TestSaveTopicKeepsAngle(t *testing.T) {
 	}
 }
 
+// TestRetryJobRejectsSucceeded 锁住已成功的任务不能重试，失败的可以重新排队。
 func TestRetryJobRejectsSucceeded(t *testing.T) {
 	e := testEngine(t)
 	j := Job{ID: NewID(), Type: "image", Status: "succeeded", CreatedAt: Now(), UpdatedAt: Now()}
@@ -641,6 +664,7 @@ func TestRetryJobRejectsSucceeded(t *testing.T) {
 	}
 }
 
+// TestAssembleStudioRejectsStaleShot 锁住过期镜头不能拿去合成。
 func TestAssembleStudioRejectsStaleShot(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{
@@ -655,6 +679,7 @@ func TestAssembleStudioRejectsStaleShot(t *testing.T) {
 	}
 }
 
+// TestFilePathRejectsTraversal 锁住带 .. 或反斜杠的路径不会被打开。
 func TestFilePathRejectsTraversal(t *testing.T) {
 	e := testEngine(t)
 	if p := e.FilePath("../secret"); p != "" {
@@ -665,6 +690,7 @@ func TestFilePathRejectsTraversal(t *testing.T) {
 	}
 }
 
+// TestSeedStudioShortsFolder 锁住短片素材文件夹会被种进库里。
 func TestSeedStudioShortsFolder(t *testing.T) {
 	e := testEngine(t)
 	if err := e.seedStudioAssets(); err != nil {

@@ -1,3 +1,5 @@
+// 本文件锁住 Jina、DuckDuckGo、Exa 和两个站点提取器对测试服务器的解析。由 go test 调用。
+
 package webcontent
 
 import (
@@ -9,6 +11,7 @@ import (
 	"testing"
 )
 
+// TestSearchJinaJSON 锁住查询会进路径，并且 data 里的标题和 URL 出现在结果里。
 func TestSearchJinaJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "LLM") {
@@ -30,6 +33,7 @@ func TestSearchJinaJSON(t *testing.T) {
 	}
 }
 
+// TestReadJinaRejectsAntibot 锁住含 requiring captcha 的正文让 ReadJina 返回错误。
 func TestReadJinaRejectsAntibot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("Warning: this site is requiring captcha. Title: Just a moment..."))
@@ -40,6 +44,7 @@ func TestReadJinaRejectsAntibot(t *testing.T) {
 	}
 }
 
+// TestSearchDuckDuckGoStructured 锁住 result__a 页面能抽出标题 Alpha。
 func TestSearchDuckDuckGoStructured(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`<a class="result__a" href="https://example.com/a">Alpha</a><a class="result__snippet">note</a>`))
@@ -54,6 +59,7 @@ func TestSearchDuckDuckGoStructured(t *testing.T) {
 	}
 }
 
+// TestSearchExaREST 锁住请求带 Bearer 密钥，并且结果标题出现在输出里。
 func TestSearchExaREST(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer exa-key" {
@@ -73,6 +79,7 @@ func TestSearchExaREST(t *testing.T) {
 	}
 }
 
+// TestSearchExaMCP 锁住 initialize、notifications/initialized 和 tools/call 之后，工具文本里的标题 MCP 出现在输出里。
 func TestSearchExaMCP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Mcp-Session-Id", "sess-1")
@@ -108,6 +115,7 @@ func TestSearchExaMCP(t *testing.T) {
 	}
 }
 
+// TestSiteTextGitHub 锁住仓库根会请求 /repos/acme/tool，输出含 full_name 和 description。
 func TestSiteTextGitHub(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/acme/tool" {
@@ -131,6 +139,7 @@ func TestSiteTextGitHub(t *testing.T) {
 	}
 }
 
+// TestBilibiliText 锁住查看接口的查询含 bvid，输出含标题和 up 主名字。
 func TestBilibiliText(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.RawQuery, "bvid=BV1xx411c7mD") {

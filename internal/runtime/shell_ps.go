@@ -1,3 +1,6 @@
+// 拆开 powershell 和 pwsh 的包装，把命令正文写成工作区里的 .ps1，再以 -File 运行。
+// 不执行进程，那在 tools.go 的 bindShell。不调用 WorkspaceTools.resolve。本文件没有 Windows Job Object。
+
 package runtime
 
 import (
@@ -7,15 +10,18 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/pwsh"
 )
 
+// exeBase 取路径的文件名，去掉 .exe，并转成小写。
 func exeBase(p string) string {
 	name := strings.ToLower(filepath.Base(p))
 	return strings.TrimSuffix(name, ".exe")
 }
 
+// isPowerShellExe 判断名字是 powershell 还是 pwsh。
 func isPowerShellExe(name string) bool {
 	return name == "powershell" || name == "pwsh"
 }
 
+// skipPowerShellFlag 跳过 -NoProfile、-WindowStyle 和 -ExecutionPolicy 这类启动开关。带值的开关连同下一个参数一起跳过。
 func skipPowerShellFlag(argv []string, i int) (next int, skip bool) {
 	a := strings.ToLower(argv[i])
 	switch a {
@@ -30,8 +36,8 @@ func skipPowerShellFlag(argv []string, i int) (next int, skip bool) {
 	return i, false
 }
 
-// parsePowerShellInvocation unwraps powershell/pwsh wrappers so the host can
-// run a body as -File. Encoded commands are passed through unchanged.
+// parsePowerShellInvocation 拆开 powershell 或 pwsh 包装，供宿主把正文写成 -File。
+// 编码命令原样放进 encoded，不解码。已经是 -File 或 .ps1 时返回文件和其余参数。命令本身不是 PowerShell 时，正文就是原命令。
 func parsePowerShellInvocation(command string) (file string, extra []string, body string, encoded []string) {
 	argv := SplitShellArgv(command)
 	if len(argv) == 0 {
@@ -67,6 +73,9 @@ func parsePowerShellInvocation(command string) (file string, extra []string, bod
 	return "", nil, command, nil
 }
 
+// materializePowerShell 返回要执行的程序和参数。exe 为空时用 pwsh.Fallback。
+// 编码命令原样接在 -NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass 后面。已有脚本则加 -File。正文则写成带 BOM 的 .ps1 再 -File。
+// -ExecutionPolicy Bypass 只是传给 PowerShell 的参数，不是操作系统沙箱。
 func materializePowerShell(exe, command, workspace string) (string, []string, func(), error) {
 	nop := func() {}
 	if strings.TrimSpace(exe) == "" {

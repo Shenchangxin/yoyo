@@ -1,5 +1,7 @@
 //go:build windows
 
+// companion_taskbar_windows.go 拥有把 Windows 宠物窗口从任务栏去掉的调用。不裁剪窗口区域。companion.go 在显示宠物时调用 hideCompanionTaskbar。
+
 package desktop
 
 import (
@@ -41,6 +43,7 @@ var (
 	iidITaskbarList  = guid{0x56FDF342, 0xFD6D, 0x11d0, [8]byte{0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90}}
 )
 
+// hideCompanionTaskbar 给宠物窗口加上 WS_EX_TOOLWINDOW 并去掉 WS_EX_APPWINDOW，再从任务栏删掉该标签。
 func hideCompanionTaskbar(win application.Window) {
 	wv, ok := win.(*application.WebviewWindow)
 	if !ok || wv == nil {
@@ -59,6 +62,7 @@ func hideCompanionTaskbar(win application.Window) {
 	deleteTaskbarTab(uintptr(hwnd))
 }
 
+// deleteTaskbarTab 创建 ITaskbarList，HrInit 之后 DeleteTab，然后 Release。创建失败则返回。
 func deleteTaskbarTab(hwnd uintptr) {
 	var obj *iTaskbarList
 	hr, _, _ := procCoCreateInstance.Call(

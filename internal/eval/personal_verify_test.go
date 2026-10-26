@@ -1,3 +1,5 @@
+// 锁住办公与引文验证：公式引擎认求和结果，纯文本表失败，引文校验通过才算通过。
+
 package eval
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
+// TestOfficeXlsxVerifierUsesFormulaEngine 要求含 SUM 公式且结果为 30 的表被接手并通过。
 func TestOfficeXlsxVerifierUsesFormulaEngine(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "report.xlsx")
@@ -24,6 +27,7 @@ func TestOfficeXlsxVerifierUsesFormulaEngine(t *testing.T) {
 	}
 }
 
+// TestOfficeXlsxVerifierRejectsStringOnlySheet 要求没有可算出 30 的公式表被接手并失败。
 func TestOfficeXlsxVerifierRejectsStringOnlySheet(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "report.xlsx")
@@ -39,6 +43,7 @@ func TestOfficeXlsxVerifierRejectsStringOnlySheet(t *testing.T) {
 	}
 }
 
+// TestResearchCiteVerifier 要求报告正文和 citations.json 能对上时，research-cite 被接手并通过。
 func TestResearchCiteVerifier(t *testing.T) {
 	dir := t.TempDir()
 	src := cite.HashExcerpt("https://example.com/a", "water boils at 100")

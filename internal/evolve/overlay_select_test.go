@@ -1,3 +1,5 @@
+// 锁住匿名编号稳定、选择泄漏不采纳，以及 k 为 2 时并行提议和顺序日程的 R 为 8、P 为 6。
+
 package evolve
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// TestAssignAnonIDsStable 要求同一任务、k 和模式在标签顺序不同时仍得到相同的匿名映射。
 func TestAssignAnonIDsStable(t *testing.T) {
 	a := assignAnonIDs([]string{"c1", "c2"}, "task", 2, OverlayModeAgg)
 	b := assignAnonIDs([]string{"c2", "c1"}, "task", 2, OverlayModeAgg)
@@ -19,6 +22,7 @@ func TestAssignAnonIDsStable(t *testing.T) {
 	}
 }
 
+// TestSelectionLeakIsTripwire 要求回复里出现 inv1 算泄漏，只说候选 A 完整则不算。
 func TestSelectionLeakIsTripwire(t *testing.T) {
 	if !selectionLeaked("this inv1 edit helped", "abc", []string{"inv1", "c1"}) {
 		t.Fatal("inv1")
@@ -28,6 +32,7 @@ func TestSelectionLeakIsTripwire(t *testing.T) {
 	}
 }
 
+// TestOverlayParallelProposeIdentity 要求并行提议在 k 为 2 时 R 为 8、P 为 6，且引用不变。
 func TestOverlayParallelProposeIdentity(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	cli := dimClient{}
@@ -56,8 +61,10 @@ func TestOverlayParallelProposeIdentity(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// dimClient 按系统提示里的 INV、DOM、合成字样返回固定 JSON，其余返回匿名选择。
 type dimClient struct{}
 
+// Chat 根据系统提示选择一条固定回复。
 func (dimClient) Chat(_ context.Context, req runtime.ChatRequest) (runtime.Message, error) {
 	var sys string
 	for _, m := range req.Messages {
@@ -77,6 +84,7 @@ func (dimClient) Chat(_ context.Context, req runtime.ChatRequest) (runtime.Messa
 	}
 }
 
+// TestOverlaySeqK2Identity 要求顺序模式在 k 为 2、产物相同时 R 为 8、P 为 6，且不采纳。
 func TestOverlaySeqK2Identity(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	res, err := eng.Overlay(context.Background(), OverlayOpts{
@@ -109,6 +117,7 @@ func TestOverlaySeqK2Identity(t *testing.T) {
 	assertSeedRefs(t, eng)
 }
 
+// TestOverlaySelectLeakKeepsBase 要求选择回复里出现 inv1 时不采纳，账本身份仍然成立。
 func TestOverlaySelectLeakKeepsBase(t *testing.T) {
 	parent, eng := seedOverlayParent(t)
 	cli := &scriptClient{replies: []string{

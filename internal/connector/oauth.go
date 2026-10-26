@@ -1,3 +1,5 @@
+// 供应商目录和 OAuth 授权地址。客户端密钥只出现在调用参数里，不写入 connectors.json。
+
 package connector
 
 import (
@@ -8,6 +10,7 @@ import (
 	"strings"
 )
 
+// CatalogEntry 是目录里的一个供应商，含种类、显示名和可选的授权地址。
 type CatalogEntry struct {
 	Provider string `json:"provider"`
 	Kind     Kind   `json:"kind"`
@@ -16,6 +19,7 @@ type CatalogEntry struct {
 	MCPPack  bool   `json:"mcp_pack,omitempty"`
 }
 
+// Catalog 返回内置供应商列表。wecom 和 wechat 没有 AuthURL，MCPPack 为真。
 func Catalog() []CatalogEntry {
 	return []CatalogEntry{
 		{Provider: "gmail", Kind: KindMail, Label: "Gmail", AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
@@ -32,6 +36,7 @@ func Catalog() []CatalogEntry {
 	}
 }
 
+// AuthURL 为 gmail、gcal、outlook、slack 拼出授权地址，并返回随机 state。其他供应商返回错误，说明只走 MCP 包。
 func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, error) {
 	state := nonce()
 	var raw string
@@ -64,12 +69,14 @@ func (b *Broker) AuthURL(provider, clientID, redirect string) (string, string, e
 	return raw, state, nil
 }
 
+// nonce 返回 8 字节随机数的十六进制。
 func nonce() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
 
+// LooksExfilDraft 在正文或收件人含 webhook.site 或 requestbin 时返回真。@ 至少 8 个且含 http:// 或 https:// 时也返回真。
 func LooksExfilDraft(to, body string) bool {
 	blob := strings.ToLower(to + " " + body)
 	if strings.Contains(blob, "webhook.site") || strings.Contains(blob, "requestbin") {

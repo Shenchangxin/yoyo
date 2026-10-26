@@ -1,8 +1,12 @@
+// 从参考片或三个结构模板拼出工程。排行榜、播客和街采各有一套默认词和镜头。
+// 不用别的产品里的样片题目。
+
 package film
 
 import "strings"
 
-// FromReference builds a project from a clip the operator already stored, or from a description.
+// FromReference 用已存的参考或一段描述建工程。标题空着写成「翻拍」，结构空着写成 free。
+// 有词就用词，否则把句子均分成词。没有区域时每段先占满画面。第一个词上钉一条贴纸。建完会填待办。
 func FromReference(in Input) Project {
 	title := clean(in.Title)
 	if title == "" {
@@ -42,7 +46,7 @@ func FromReference(in Input) Project {
 	return Plan(p)
 }
 
-// FromTemplate builds one of the three Yoyo structures without using another product's sample film.
+// FromTemplate 按排行榜、播客或街采建一部自己的工程。认不出的结构用排行榜。不用别的产品的样片。
 func FromTemplate(structure, title string) Project {
 	switch clean(structure) {
 	case "podcast":
@@ -54,6 +58,7 @@ func FromTemplate(structure, title string) Project {
 	}
 }
 
+// shotsFrom 按场景切点生成镜头，并把落在这一段里的词挂上。起点尽量落在第一个词上。没有切点就做一整段。
 func shotsFrom(scenes []float64, words []Word, duration float64, structure string) []Shot {
 	bounds := sceneBounds(scenes, duration, words)
 	shots := make([]Shot, 0, len(bounds))
@@ -96,6 +101,7 @@ func shotsFrom(scenes []float64, words []Word, duration float64, structure strin
 	return shots
 }
 
+// sceneBounds 把场景切点收成互不重叠的时间段。时长未知时用最后一个词的结束，再没有就用 12 秒。
 func sceneBounds(scenes []float64, duration float64, words []Word) [][2]float64 {
 	if duration <= 0 {
 		for _, w := range words {
@@ -129,6 +135,7 @@ func sceneBounds(scenes []float64, duration float64, words []Word) [][2]float64 
 	return out
 }
 
+// visualFor 按结构给这一段一个画面种类。排行榜除最后一段是板，最后一段是 broll。播客开头是分屏。街采是揭示。其余开头是代码画面。
 func visualFor(structure string, index, n int) string {
 	switch structure {
 	case "ranking":
@@ -151,7 +158,7 @@ func visualFor(structure string, index, n int) string {
 	}
 }
 
-// DefaultRegions gives each scene a full-frame region until a local detector fills a tighter box.
+// DefaultRegions 在本机检测还没给出更紧的框之前，给每一段一个占满画面的区域。
 func DefaultRegions(duration float64, scenes []float64) []Box {
 	bounds := sceneBounds(scenes, duration, nil)
 	out := make([]Box, len(bounds))
@@ -161,6 +168,7 @@ func DefaultRegions(duration float64, scenes []float64) []Box {
 	return out
 }
 
+// assignRegions 按顺序把区域框写到镜头上。框比镜头少时，多出来的镜头不动。
 func assignRegions(shots []Shot, boxes []Box) []Shot {
 	for i := range shots {
 		if i >= len(boxes) {
@@ -172,12 +180,13 @@ func assignRegions(shots []Shot, boxes []Box) []Shot {
 	return shots
 }
 
-// ApplyRegions replaces boxes. A detector may return a face or subject box.
+// ApplyRegions 换上检测出的区域框，并重算待办。检测可以给出脸或主体。
 func ApplyRegions(p Project, boxes []Box) Project {
 	p.Shots = assignRegions(p.Shots, boxes)
 	return rehash(p)
 }
 
+// ranking 建一部排行榜。标题空着写成「本机工具排行」。最后会填待办。
 func ranking(title string) Project {
 	if clean(title) == "" {
 		title = "本机工具排行"
@@ -201,6 +210,7 @@ func ranking(title string) Project {
 	return Plan(p)
 }
 
+// podcast 建一部播客分屏。标题空着写成「创作台对谈」。中间一镜交出产品。
 func podcast(title string) Project {
 	if clean(title) == "" {
 		title = "创作台对谈"
@@ -226,6 +236,7 @@ func podcast(title string) Project {
 	return Plan(p)
 }
 
+// interview 建一部街采揭示。标题空着写成「三条成片规矩」。每一镜都是揭示。
 func interview(title string) Project {
 	if clean(title) == "" {
 		title = "三条成片规矩"
@@ -253,10 +264,12 @@ func interview(title string) Project {
 	return Plan(p)
 }
 
+// base 建一部只有标题、结构和简介的空工程。
 func base(title, structure string, brief Brief) Project {
 	return Project{Title: title, Structure: structure, Brief: brief}
 }
 
+// shotText 把这一镜挂着的词按顺序拼成一句。
 func shotText(p Project, shot Shot) string {
 	var b strings.Builder
 	for _, id := range shot.WordIDs {

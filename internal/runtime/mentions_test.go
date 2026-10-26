@@ -1,3 +1,5 @@
+// 锁住 @ 提及的注入、越界拒绝、主文件提纲、裸路径的唯一基名，以及会话摘录。ShellDenied 的几条策略也在本文件。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"unicode/utf8"
 )
 
+// TestExpandMentionsFileAndJail 锁住 @file 和 @harness 会注入正文，@skill 能展开技能，逃出工作区的路径会报 escapes。
 func TestExpandMentionsFileAndJail(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
@@ -33,6 +36,7 @@ func TestExpandMentionsFileAndJail(t *testing.T) {
 	}
 }
 
+// TestExpandMentionsPrimarySourceOutline 锁住超过主文件门槛的正文只注入提纲和字节数，不把全文塞进注入块。
 func TestExpandMentionsPrimarySourceOutline(t *testing.T) {
 	dir := t.TempDir()
 	var b strings.Builder
@@ -59,6 +63,7 @@ func TestExpandMentionsPrimarySourceOutline(t *testing.T) {
 	}
 }
 
+// TestExpandMentionsPacksDecoratesAndNames 锁住带技能目录的 @skill 会装饰包路径，MentionSkillNames 能取出技能名。
 func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "arxiv-watcher")
@@ -88,6 +93,7 @@ func TestExpandMentionsPacksDecoratesAndNames(t *testing.T) {
 	}
 }
 
+// TestExpandBareAtPathAndSession 锁住裸 @路径和 @"路径"。唯一基名会展开，两个同名则不展开，根上的精确路径优先。当前会话的 @session 不倒出消息。
 func TestExpandBareAtPathAndSession(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "pin.txt"), []byte("hello pin"), 0o644); err != nil {
@@ -162,6 +168,7 @@ func TestExpandBareAtPathAndSession(t *testing.T) {
 	}
 }
 
+// TestShellPolicy 锁住未放行网络时 curl 被拒绝，NetworkAllow 含 * 时放行；rm -rf / 被拒绝；go test ./... 放行。
 func TestShellPolicy(t *testing.T) {
 	dir := t.TempDir()
 	if err := ShellDenied("curl https://example.com", dir, nil); err == nil {

@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有新建短片的标题框、短片 id 的复制，以及选题分数表。
+ * 不拥有选题和工作台。复制只写剪贴板，分数交给回调，本文件不改服务端。
+ */
 import { useState, type FormEvent } from "react";
 import { ChevronDown, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +11,7 @@ import { writeClipboard } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
 import { SCORE_KEYS, setScore, topicScoreAvg, type ScoreKey } from "./studio-topic";
 
+/** CreateShortField 提交非空标题，成功后清空输入。 */
 export function CreateShortField(props: {
   disabled?: boolean;
   autoFocus?: boolean;
@@ -20,6 +25,7 @@ export function CreateShortField(props: {
   const [title, setTitle] = useState("");
   const ready = !!title.trim() && !props.disabled;
 
+  /** 去掉空白后提交标题。 */
   function go(e?: FormEvent) {
     e?.preventDefault();
     const next = title.trim();
@@ -47,6 +53,7 @@ export function CreateShortField(props: {
   );
 }
 
+/** StudioIdChip 显示短片 id，有会话时再显示一颗可复制的会话 id。 */
 export function StudioIdChip(props: {
   projectId: string;
   sessionId?: string;
@@ -56,6 +63,7 @@ export function StudioIdChip(props: {
   copiedLabel: string;
   inspectHint: string;
 }) {
+  /** 写入剪贴板，成功就提示已复制。 */
   async function copy(value: string) {
     const ok = await writeClipboard(value);
     if (ok) toast.success(props.copiedLabel);
@@ -93,6 +101,7 @@ export function StudioIdChip(props: {
   );
 }
 
+/** TopicScoreSheet 展开后用 1 到 5 改七项分数。 */
 export function TopicScoreSheet(props: {
   scores?: Record<string, number>;
   labels: Record<ScoreKey, string>;

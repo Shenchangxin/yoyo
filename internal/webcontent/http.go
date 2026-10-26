@@ -1,3 +1,8 @@
+// Package webcontent 抓公开网页和搜索结果，并抽出 YouTube、Bilibili、V2EX、GitHub 仓库根的文本。
+// get、postJSON、mcpPostSession 在 ctx 为 nil 时用 20 秒超时。响应体经 LimitReader 截到 maxBody，即 256<<10（256 KiB）。
+// postJSON 和 mcpPostSession 把错误正文截到 400 字节。FormatHits 最多 maxHits 条（8），摘要截到 280 个 rune。
+// YouTube 字幕截到 8000 个 rune。V2EX 每条正文截到 400 个 rune，最多 8 条。
+// Exa REST 的 numResults 是 8，contents.text.maxCharacters 是 400。Jina Reader 正文短于 40 字节就当空。
 package webcontent
 
 import (
@@ -9,12 +14,16 @@ import (
 	"time"
 )
 
+// userAgent 是抓取请求的 User-Agent。
 const userAgent = "Yoyo/0.3 (+https://github.com/Shenchangxin/yoyo)"
 
+// defaultTimeout 是 ctx 为 nil 时的超时，20 秒。
 const defaultTimeout = 20 * time.Second
 
+// maxBody 是单次响应读入的字节上限，256<<10，即 256 KiB。get、postJSON 和 mcpPostSession 都用 LimitReader 截到这里。
 const maxBody = 256 << 10
 
+// httpClient 在 c 非空时用 c，否则用 http.DefaultClient。
 func httpClient(c *http.Client) *http.Client {
 	if c != nil {
 		return c
@@ -22,6 +31,8 @@ func httpClient(c *http.Client) *http.Client {
 	return http.DefaultClient
 }
 
+// get 发 GET。ctx 为 nil 时用 20 秒超时。Accept 为空时用 text/html、application/json、text/plain 和 */*。
+// 正文最多读 maxBody。返回状态码、最终 URL、Content-Type 和正文。本函数不因状态码大于等于 300 而返回错误。
 func get(ctx context.Context, client *http.Client, rawURL, accept string) (status int, finalURL, contentType, body string, err error) {
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -49,6 +60,8 @@ func get(ctx context.Context, client *http.Client, rawURL, accept string) (statu
 	return resp.StatusCode, resp.Request.URL.String(), resp.Header.Get("Content-Type"), string(raw), nil
 }
 
+// postJSON 发 JSON POST。ctx 为 nil 时用 20 秒超时。authHeader 和 authVal 都非空才设置该头。
+// 正文最多读 maxBody。状态码大于等于 300 时把正文截到 400 字节放进错误。成功时返回状态码和完整读到的正文。
 func postJSON(ctx context.Context, client *http.Client, rawURL, authHeader, authVal string, payload []byte) (status int, body string, err error) {
 	if ctx == nil {
 		var cancel context.CancelFunc

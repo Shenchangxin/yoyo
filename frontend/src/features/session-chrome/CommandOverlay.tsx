@@ -1,17 +1,16 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Composer trigger overlay internalized from harness MenuView
- * (packages/client/ui-input-trigger). Tokens remapped onto Yoyo CSS variables.
+ * 拥有：作曲触发器的浮层。颜色用本应用的变量。
+ * 不拥有：提及解析。选择交给外面，不调用 api。
  */
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Ref } from "react";
 import { AtSign, BookOpen, Boxes, Camera, ChevronRight, Clipboard, FileText, Folder, MessageSquare, Paperclip, Terminal } from "lucide-react";
 import type { MentionCrumb, MentionKind } from "../../lib/mentions";
 import { cn } from "../../lib/utils";
 
+/** OverlayKind 是浮层一行的种类。 */
 export type OverlayKind = MentionKind | "command" | "clipboard" | "screenshot" | "attach";
 
+/** OverlayItem 是浮层里的一行：记号、说明和种类。 */
 export type OverlayItem = {
   token: string;
   hint: string;
@@ -23,8 +22,10 @@ export type OverlayItem = {
   drillPath?: string;
 };
 
+/** OverlayCrumb 沿用提及的面包屑。 */
 export type OverlayCrumb = MentionCrumb;
 
+/** 按种类画一个小图标。 */
 function Glyph({ kind }: { kind?: OverlayKind }) {
   if (kind === "folder") return <Folder className="size-3.5 shrink-0 opacity-70" />;
   if (kind === "skill") return <BookOpen className="size-3.5 shrink-0 opacity-70" />;
@@ -38,6 +39,7 @@ function Glyph({ kind }: { kind?: OverlayKind }) {
   return <AtSign className="size-3.5 shrink-0 opacity-70" />;
 }
 
+/** CommandOverlay 列出触发后的选项，选中交给外面。 */
 export function CommandOverlay(props: {
   label: string;
   items: OverlayItem[];
@@ -120,10 +122,12 @@ export function CommandOverlay(props: {
   );
 }
 
+/** 给一行选项一个稳定的元素编号。 */
 function overlayOptionId(index: number) {
   return `composer-option-${index}`;
 }
 
+/** 画面包屑里的一段。 */
 function FragmentRow(props: {
   item: OverlayItem;
   index: number;
@@ -159,6 +163,7 @@ function FragmentRow(props: {
   );
 }
 
+/** 画浮层里的一行选项。 */
 function PopupRow(props: {
   item: OverlayItem;
   index: number;

@@ -1,14 +1,17 @@
 /**
  * Copyright (c) 2026 DeepSeek
  * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness StatsPills + token-format.
- * Folds Yoyo SessionTrace / outline / items — not Cordis projections.
+ */
+
+/**
+ * 拥有：把会话追踪、大纲和转录折成统计，以及 token、时长和时钟的紧凑格式。
+ * 不拥有：Cordis 投影，以及统计药丸的渲染。格式来自 deepseek-harness 的 StatsPills 与 token-format，再折进 Yoyo 的 SessionTrace、大纲和条目。
  */
 import { modelCallsOf } from "./context-usage";
 import type { Item, SessionTrace } from "./protocol";
 import type { OutlineTurn } from "./turn-outline";
 
+/** SessionStats 一段会话的回合数、步数、模型与工具耗时，以及输入输出 token。ttft 是首 token 延迟，decode 是其后的生成阶段。 */
 export type SessionStats = {
   turns: number;
   steps: number;
@@ -24,6 +27,7 @@ export type SessionStats = {
   outputTokens: number;
 };
 
+/** 全零的统计，供累加前使用。 */
 const emptyStats = (): SessionStats => ({
   turns: 0,
   steps: 0,
@@ -39,11 +43,12 @@ const emptyStats = (): SessionStats => ({
   outputTokens: 0,
 });
 
+/** billedInputTokens 未缓存输入、缓存读和缓存写之和。 */
 export function billedInputTokens(stats: Pick<SessionStats, "uncachedInputTokens" | "cacheReadTokens" | "cacheWriteTokens">): number {
   return stats.uncachedInputTokens + stats.cacheReadTokens + stats.cacheWriteTokens;
 }
 
-/** Compact 517 / 12.2K / 517K / 1.2M. */
+/** formatCompactTokens 紧凑 token。不足一千取整，不足一百万用 K，再大用 M。一百以上的缩写取整，否则保留一位小数。 */
 export function formatCompactTokens(value: number): string {
   const n = Math.max(0, value);
   const scaled = (candidate: number): string =>
@@ -53,6 +58,7 @@ export function formatCompactTokens(value: number): string {
   return `${scaled(n / 1_000_000)}M`;
 }
 
+/** formatExactTokens 带千分位的精确 token。 */
 export function formatExactTokens(value: number): string {
   const digits = String(Math.max(0, Math.round(value)));
   const groups: string[] = [];
@@ -62,7 +68,7 @@ export function formatExactTokens(value: number): string {
   return groups.join(",");
 }
 
-/** Compact duration: 45.2s under a minute, 2m42s from there on. */
+/** formatCompactDuration 不足一分钟用秒并保留一位小数，否则用分和两位秒。 */
 export function formatCompactDuration(ms: number): string {
   const s = ms / 1_000;
   if (s < 60) return `${Math.round(s * 10) / 10}s`;
@@ -70,12 +76,13 @@ export function formatCompactDuration(ms: number): string {
   return `${Math.floor(whole / 60)}m${String(whole % 60).padStart(2, "0")}s`;
 }
 
-/** Whole tokens from ten up, one decimal below. */
+/** formatTokensPerSecond 十以上取整，十以下保留一位小数。 */
 export function formatTokensPerSecond(tps: number): string {
   const clamped = Math.max(0, tps);
   return clamped >= 10 ? String(Math.round(clamped)) : String(Math.round(clamped * 10) / 10);
 }
 
+/** 在给定小数位下，把命中数折成百分比的整数单位。 */
 function roundedPercentUnits(cacheReadTokens: number, denominator: number, decimalPlaces: 0 | 1): number {
   const unitsPerPercent = decimalPlaces === 0 ? 1 : 10;
   const scale = unitsPerPercent * 100;
@@ -95,6 +102,7 @@ function roundedPercentUnits(cacheReadTokens: number, denominator: number, decim
   return lower;
 }
 
+/** 把百分比单位格式化成整数，或去掉末尾零的一位小数。 */
 function displayPercentUnits(units: number, decimalPlaces: 0 | 1): string {
   if (decimalPlaces === 0) return String(units);
   const whole = Math.floor(units / 10);
@@ -103,7 +111,8 @@ function displayPercentUnits(units: number, decimalPlaces: 0 | 1): string {
 }
 
 /**
- * Display-ready cache-hit share without rounding a partial hit to 100%.
+ * formatCacheHitPercent 给出可展示的缓存命中占比。
+ * 提示词为零时返回空。全部命中为 100。差一点满命中时保留 99 开头，避免把部分命中四舍五入成 100。
  */
 export function formatCacheHitPercent(
   cacheReadTokens: number,
@@ -138,6 +147,7 @@ export function formatCacheHitPercent(
   return `99.${"9".repeat(distinguishingPlaces - 1)}${10 - roundedLoss}`;
 }
 
+/** 两个时间戳的毫秒差。缺一、无法解析或结束早于开始时为零。 */
 function deltaMs(from: string, to: string): number {
   if (!from || !to) return 0;
   const a = Date.parse(from);
@@ -146,6 +156,7 @@ function deltaMs(from: string, to: string): number {
   return b - a;
 }
 
+/** 按追踪里成对的工具调用和结果累加工具耗时。 */
 function toolMsOfTrace(trace: SessionTrace | null | undefined): number {
   const open = new Map<string, string>();
   let ms = 0;
@@ -163,6 +174,7 @@ function toolMsOfTrace(trace: SessionTrace | null | undefined): number {
   return ms;
 }
 
+/** 按转录条目里成对的工具调用和结果累加工具耗时。 */
 function toolMsOfItems(items: Item[] | undefined): number {
   const open = new Map<string, string>();
   let ms = 0;
@@ -180,6 +192,7 @@ function toolMsOfItems(items: Item[] | undefined): number {
   return ms;
 }
 
+/** deriveSessionStats 从大纲、条目和追踪折出统计。引导备注不算回合。模型调用优先，没有则用助手条目当步数。工具耗时优先用追踪。 */
 export function deriveSessionStats(input: {
   outlineTurns?: OutlineTurn[];
   items?: Item[];
@@ -214,7 +227,7 @@ export function deriveSessionStats(input: {
   return stats;
 }
 
-/** Same-day HH:mm; this year M/D HH:mm; otherwise Y/M/D HH:mm. */
+/** formatMessageClock 同一天只显示时分，同一年显示月日和时分，更早则带上年份。月日模板由调用方提供。无效时间返回空串。 */
 export function formatMessageClock(time: number, templates: { md: string; ymd: string }, now = Date.now()): string {
   if (!Number.isFinite(time) || time <= 0) return "";
   const d = new Date(time);

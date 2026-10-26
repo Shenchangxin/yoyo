@@ -7,11 +7,10 @@ import (
 	"syscall"
 )
 
-// createNoWindow stops the PowerShell child from flashing a console window.
+// createNoWindow 是 0x08000000，用来不让 PowerShell 子进程闪出控制台。
 const createNoWindow = 0x08000000
 
-// clearToastHistory runs the clear in Windows PowerShell 5.1, which ships with Windows and
-// projects the WinRT History API. wintoast's own PowerShell fallback already relies on it.
+// clearToastHistory 用 Windows PowerShell 5.1 执行清空脚本。进程带 HideWindow 和 createNoWindow。
 func clearToastHistory(appID string) error {
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", clearToastHistoryScript(appID))
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}

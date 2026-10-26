@@ -1,3 +1,5 @@
+// 本文件拥有检查器的四个页签，以及文件树那一页。不拥有差异和跟踪怎么来。App 传入 diff、hunks、trace 和 onTab。
+
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -21,6 +23,7 @@ import { TracePanel } from "./TracePanel";
 import { BrowserPane } from "./BrowserPane";
 import { FilePeek } from "./FilePeek";
 
+// Inspector 页签落不到已知值时用 files。没有 onLoadSpill 时跟踪页得到一份空溢出。文件数是差异里的文件或 hunk 数。
 export function Inspector(props: {
   tab: InspTab;
   onTab: (t: InspTab) => void;
@@ -126,8 +129,7 @@ export function Inspector(props: {
   );
 }
 
-/* ---------- shared bits ---------- */
-
+// 空状态。最小高度 10rem。没有 hint 就不画第二行。
 export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string; icon?: ReactNode }) {
   return (
     <div className="flex h-full min-h-[10rem] flex-col items-center justify-center px-6 text-center">
@@ -138,6 +140,7 @@ export function PaneEmpty({ title, hint, icon }: { title: string; hint?: string;
   );
 }
 
+// 只放图标的按钮，名字在 aria-label 和提示里。
 function IconAction({ label, onClick, children, className }: { label: string; onClick: () => void; children: ReactNode; className?: string }) {
   return (
     <Tooltip content={label}>
@@ -156,6 +159,7 @@ function IconAction({ label, onClick, children, className }: { label: string; on
   );
 }
 
+// primary 用前景底，danger 悬停变危险色，没传 tone 或 ghost 用弱色。
 function TextAction({ children, onClick, tone }: { children: ReactNode; onClick: () => void; tone?: "primary" | "danger" | "ghost" }) {
   return (
     <button
@@ -173,10 +177,10 @@ function TextAction({ children, onClick, tone }: { children: ReactNode; onClick:
   );
 }
 
-/* ---------- Files (workspace tree + diff) ---------- */
-
+// FilesPane 的属性就是 Inspector 的属性，再加已经算好的 files。
 type FilesPaneProps = Parameters<typeof Inspector>[0] & { files: string[] };
 
+// FilesPane 没有树、没有 hunk、也没有打开的文件时只显示空状态。peekInline 且已打开文件时整页换成 FilePeek。选中数只数仍在 hunks 里的 id。
 function FilesPane(props: FilesPaneProps) {
   const copy = useCopy();
   const groups = useMemo(() => groupHunks(props.hunks), [props.hunks]);
@@ -205,6 +209,7 @@ function FilesPane(props: FilesPaneProps) {
 
   const selectedIds = Object.entries(props.selected).filter(([, v]) => v).map(([k]) => k);
   const selectedCount = selectedIds.filter((id) => props.hunks.some((h) => h.id === id)).length;
+  // 有 onSelect 就一次交出去。否则只翻转那些当前状态和目标不一致的 id。
   const setMany = (ids: string[], on: boolean) => {
     if (props.onSelect) {
       props.onSelect(ids, on);
@@ -320,6 +325,7 @@ function FilesPane(props: FilesPaneProps) {
   );
 }
 
+// 树上还没有的额外路径补成 file。空路径和已有路径跳过。
 function mergeHits(hits: FileHit[], extra: string[]): FileHit[] {
   const have = new Set(hits.map((h) => normPath(h.path)));
   const out = [...hits];
@@ -332,6 +338,7 @@ function mergeHits(hits: FileHit[], extra: string[]): FileHit[] {
   return out;
 }
 
+// 按文件第一次出现的顺序分组。没有 file 的 hunk 放进空键。
 function groupHunks(hunks: Hunk[]): { file: string; hunks: Hunk[] }[] {
   const order: string[] = [];
   const map = new Map<string, Hunk[]>();
@@ -346,6 +353,7 @@ function groupHunks(hunks: Hunk[]): { file: string; hunks: Hunk[] }[] {
   return order.map((file) => ({ file, hunks: map.get(file)! }));
 }
 
+// 从 +++ b/ 和 diff --git 的 b/ 后面取出文件名。
 function fileNames(diff: string): string[] {
   const out = new Set<string>();
   for (const line of (diff || "").split("\n")) {
@@ -358,6 +366,7 @@ function fileNames(diff: string): string[] {
   return [...out];
 }
 
+// focus 为空就原样返回。已经在列表里也不再插入。否则把它放在最前。
 function withFocus(files: string[], focus?: string): string[] {
   const f = (focus || "").trim();
   if (!f) return files;

@@ -1,3 +1,5 @@
+// Markdown Registry 只支持搜索，文件从登记的 GitHub 路径下载。
+
 package skillmarket
 
 import (
@@ -7,8 +9,10 @@ import (
 	"strings"
 )
 
+// MDRBase 是 Markdown Registry 根地址。测试可以改它。
 var MDRBase = "https://markdownregistry.com"
 
+// listMarkdownRegistry 在查询为空时返回 SearchOnly。有查询时按页搜索 kind=skill，最多 40 页。
 func listMarkdownRegistry(query string, limit int) (Catalog, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -49,6 +53,7 @@ func listMarkdownRegistry(query string, limit int) (Catalog, error) {
 	return Catalog{Source: "Markdown Registry", Items: items, Truncated: len(items) >= limit}, nil
 }
 
+// fetchMDRPage 请求 /api/v1/search。page 大于 1 时同时带 page 和 offset。
 func fetchMDRPage(query string, page, pageSize int) ([]mdrArtifact, error) {
 	vals := url.Values{
 		"q":     {query},
@@ -80,6 +85,7 @@ type mdrArtifact struct {
 	Stars       int    `json:"stars"`
 }
 
+// itemFromMDR 只收 kind 为空或 skill 的行。名字净化失败返回 false。
 func itemFromMDR(row mdrArtifact) (Item, bool) {
 	if row.Kind != "" && !strings.EqualFold(row.Kind, "skill") {
 		return Item{}, false
@@ -109,6 +115,7 @@ func itemFromMDR(row mdrArtifact) (Item, bool) {
 	}, true
 }
 
+// fetchMarkdownRegistry 用 /api/v1/resolve 取第一条记录，再从该 GitHub 仓库的 main 下载。找不到、仓库不像 owner/name，或没有技能路径时返回错误。
 func fetchMarkdownRegistry(remote string) (PackResult, error) {
 	remote = strings.Trim(strings.ReplaceAll(remote, "\\", "/"), "/")
 	u := strings.TrimRight(MDRBase, "/") + "/api/v1/resolve?" + url.Values{"ref": {remote}}.Encode()
@@ -136,6 +143,7 @@ func fetchMarkdownRegistry(remote string) (PackResult, error) {
 	return fetchGitHubSkill(repo, "main", dir, "https://github.com/"+repo+"/tree/main/"+dir)
 }
 
+// pathBase 返回相对路径的最后一段。
 func pathBase(rel string) string {
 	rel = strings.ReplaceAll(rel, "\\", "/")
 	if i := strings.LastIndex(rel, "/"); i >= 0 {

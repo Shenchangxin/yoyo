@@ -15,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
+// evalsDir 从当前工作目录向上两级定位 evals 的绝对路径。定位失败时让测试 Fatal。
 func evalsDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -28,6 +29,7 @@ func evalsDir(t *testing.T) string {
 	return abs
 }
 
+// TestRPCHealthAndUnknown 锁住 health 的 ok 为真，并且方法 nope 返回错误。
 func TestRPCHealthAndUnknown(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -48,6 +50,7 @@ func TestRPCHealthAndUnknown(t *testing.T) {
 	}
 }
 
+// TestRPCHarnessLineage 锁住 harness.get 的 active 非空，lineage 至少有一个带 hash 的节点。
 func TestRPCHarnessLineage(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -71,6 +74,7 @@ func TestRPCHarnessLineage(t *testing.T) {
 	}
 }
 
+// TestRPCThreadLifecycle 走 thread.start、thread.pin、thread.isolate.set、用前 8 位 id 做 session.dump，再 thread.delete。隔离打开后 Isolate 为真且 Worktree 非空。
 func TestRPCThreadLifecycle(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -112,8 +116,10 @@ func TestRPCThreadLifecycle(t *testing.T) {
 	}
 }
 
+// jsonRaw 把字符串收成 json.RawMessage。
 func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
 
+// TestRPCWorkspacePreview 锁住 workspace.preview 对 n.go 给出 lang 为 go，正文含 package n。
 func TestRPCWorkspacePreview(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -142,6 +148,7 @@ func TestRPCWorkspacePreview(t *testing.T) {
 	}
 }
 
+// TestRPCCanvasHTTP 锁住 canvas.http 的 GET canvas-projects 有结果，POST 能创建标题为 Board 的项目。
 func TestRPCCanvasHTTP(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -161,6 +168,7 @@ func TestRPCCanvasHTTP(t *testing.T) {
 	}
 }
 
+// TestLineClientHealth 用管道把 LineClient 接到 ServeRPC，调用 health，结果的 ok 为真。
 func TestLineClientHealth(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -183,6 +191,7 @@ func TestLineClientHealth(t *testing.T) {
 	}
 }
 
+// TestConfigSetMergesPartial 锁住 config.set 只改 model 和 theme，SearchURL 和 CrashResume 还在。
 func TestConfigSetMergesPartial(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -212,6 +221,7 @@ func TestConfigSetMergesPartial(t *testing.T) {
 	}
 }
 
+// TestRPCPacksListAndEnable 锁住 packs.list 含 superpowers 和 novel-to-game，且目录默认不启用。对未安装的包调用 packs.enable 后，installed 仍为假，enabled 也不为真。
 func TestRPCPacksListAndEnable(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -246,6 +256,7 @@ func TestRPCPacksListAndEnable(t *testing.T) {
 	}
 }
 
+// TestRPCPagesProfilesAndPause 锁住 pages.save 之后 pages.list 能看到 Brief，profiles.list 含 researcher，app.pause.set 之后 health 的 paused 为真。
 func TestRPCPagesProfilesAndPause(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -286,6 +297,7 @@ func TestRPCPagesProfilesAndPause(t *testing.T) {
 	}
 }
 
+// TestRPCEvolveOverlayRejectsPromote 锁住 evolve.overlay 带 promote，或同时带 sealed、baselines 和 k 时，错误信息里能看到被拒绝的参数。
 func TestRPCEvolveOverlayRejectsPromote(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -302,6 +314,7 @@ func TestRPCEvolveOverlayRejectsPromote(t *testing.T) {
 	}
 }
 
+// TestRPCEvolveOverlayKeepBase 用 heuristic 求解器、reuse_turn 为假跑 evolve.overlay，结果 KeptBase 为真且 Adopted 为假，active、canary、staging 和会话的 FollowActive 都不改。
 func TestRPCEvolveOverlayKeepBase(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

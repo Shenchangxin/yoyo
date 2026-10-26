@@ -1,14 +1,17 @@
+/** 拥有浏览器截图或快照在会话里的卡片。不拥有浏览器。只投影条目，点开检查器，不改服务端页面。 */
 import { useUI } from "../../lib/store";
 import { useCopy } from "../../lib/i18n";
 import type { Item } from "../../lib/protocol";
 import { toolArgs, toolName } from "../../lib/tool-summary";
 
+/** isBrowserShotItem 判断这条是不是浏览器截图或快照。 */
 export function isBrowserShotItem(item?: Item): boolean {
   if (!item) return false;
   const n = toolName(item);
   return n === "browser_screenshot" || n === "browser_snapshot";
 }
 
+/** BrowserShotCard 投影一张截图，点开浏览器检查器。 */
 export function BrowserShotCard(props: { call?: Item; result?: Item }) {
   const copy = useCopy();
   const item = props.result || props.call;

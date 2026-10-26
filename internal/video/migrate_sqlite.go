@@ -1,8 +1,6 @@
+// migrate_sqlite.go 把旧的 video.sqlite 读进文档库，读完后把原文件改名为带 .bak 的路径。
+
 package video
-
-// migrateSQLiteIfPresent is a one-shot reader of a legacy video.sqlite.
-// Product data lives in video/docs JSON files. Do not add new SQLite writes.
-
 
 import (
 	"database/sql"
@@ -13,8 +11,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// migratedMarker 是已经迁过的标记文件 _migrated_from_sqlite.json。
 const migratedMarker = "_migrated_from_sqlite.json"
 
+// migrateSQLiteIfPresent 只读打开视频目录里的 video.sqlite，把设置、供应商、画布频道、风格、任务、短剧、分集、资产、分镜、会话绑定和画布文档抄进文档库。画布频道标识会去掉 ch- 前缀。引擎或文档库为空、文件不在，或标记已存在时直接返回。成功后写入标记，并把 sqlite 改名为同路径加 .bak。产品数据在 video/docs 的 JSON 里，这里不再往 SQLite 写新数据。
 func migrateSQLiteIfPresent(e *Engine) error {
 	if e == nil || e.docs == nil {
 		return nil
@@ -32,6 +32,7 @@ func migrateSQLiteIfPresent(e *Engine) error {
 	}
 	defer db.Close()
 
+	// migrateKV 把 settings 表抄进键值设置。查询失败就跳过。
 	migrateKV := func() {
 		rows, err := db.Query(`SELECT key, value FROM settings`)
 		if err != nil {
@@ -76,6 +77,7 @@ func migrateSQLiteIfPresent(e *Engine) error {
 		e.Conn.MergeSameAccount()
 	}
 
+	// copyRows 执行一条查询并把每一行交给 scan。查询失败就返回。
 	copyRows := func(q string, scan func(*sql.Rows) error) {
 		rows, err := db.Query(q)
 		if err != nil {
@@ -123,6 +125,7 @@ func migrateSQLiteIfPresent(e *Engine) error {
 		epLinks[r.ID] = &r
 		return nil
 	})
+	// link 把分集和资产的关联补进已读出的集记录。
 	link := func(q, kind string) {
 		rows, err := db.Query(q)
 		if err != nil {

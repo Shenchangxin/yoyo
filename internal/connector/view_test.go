@@ -1,7 +1,10 @@
+// 锁住搜索条数、线程正文上限、日历必须给出时间范围，以及查询长度上限。
+
 package connector
 
 import "testing"
 
+// TestBoundViewSearchCapsAndSource 确认结果被截到上限，并且 source 为 untrusted。
 func TestBoundViewSearchCapsAndSource(t *testing.T) {
 	var items []map[string]string
 	for i := 0; i < 25; i++ {
@@ -23,6 +26,7 @@ func TestBoundViewSearchCapsAndSource(t *testing.T) {
 	}
 }
 
+// TestBoundViewThreadAllowsLongerBody 确认 thread: 查询可以留下更长的正文。
 func TestBoundViewThreadAllowsLongerBody(t *testing.T) {
 	items := []map[string]string{{"id": "t1", "body": stringsRepeat("a", 13000)}}
 	out, err := BoundView(KindMail, "thread:t1", items)
@@ -31,6 +35,7 @@ func TestBoundViewThreadAllowsLongerBody(t *testing.T) {
 	}
 }
 
+// TestBoundViewCalendarRequiresRange 确认没有时间范围的日历查询失败，合法范围可以返回。
 func TestBoundViewCalendarRequiresRange(t *testing.T) {
 	if _, err := BoundView(KindCalendar, "calendar", nil); err == nil {
 		t.Fatal("range")
@@ -45,12 +50,14 @@ func TestBoundViewCalendarRequiresRange(t *testing.T) {
 	}
 }
 
+// TestBoundViewQueryCap 确认超长查询被拒绝。
 func TestBoundViewQueryCap(t *testing.T) {
 	if _, err := BoundView(KindMail, stringsRepeat("q", 501), nil); err == nil {
 		t.Fatal("query")
 	}
 }
 
+// stringsRepeat 把字符串重复 n 次。
 func stringsRepeat(s string, n int) string {
 	b := make([]byte, 0, n*len(s))
 	for i := 0; i < n; i++ {

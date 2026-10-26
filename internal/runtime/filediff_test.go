@@ -1,3 +1,5 @@
+// 锁住行 diff 对小改动给出增删计数，超长文件仍能定位单行和两端改动，并在比较前去掉单独的 CR。
+
 package runtime
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestUnifiedLineDiffReplaceRegion 锁住一行替换的增删各为 1，补丁含 --- a/ 和对应的减号、加号行。
 func TestUnifiedLineDiffReplaceRegion(t *testing.T) {
 	old := "func main() {\n\tfmt.Println(\"hi\")\n}\n"
 	neu := "func main() {\n\tfmt.Println(\"yo\")\n}\n"
@@ -22,6 +25,7 @@ func TestUnifiedLineDiffReplaceRegion(t *testing.T) {
 	}
 }
 
+// TestFileChangeOfCreatedFile 锁住新建文件的 Created 为真、有新增、没有删除，补丁含加号行。
 func TestFileChangeOfCreatedFile(t *testing.T) {
 	ch := fileChangeOf("web/app.ts", nil, []byte("export const n = 1\n"), true)
 	if !ch.Created || ch.Added < 1 || ch.Removed != 0 {
@@ -32,6 +36,7 @@ func TestFileChangeOfCreatedFile(t *testing.T) {
 	}
 }
 
+// TestUnifiedLineDiffLargeFileOneLine 锁住 1236 行里只改一行时，增删计数仍各为 1。
 func TestUnifiedLineDiffLargeFileOneLine(t *testing.T) {
 	const n = 1236
 	old := make([]string, n)
@@ -47,6 +52,7 @@ func TestUnifiedLineDiffLargeFileOneLine(t *testing.T) {
 	}
 }
 
+// TestUnifiedLineDiffStripsBareCR 锁住 CRLF 和 LF 在去掉 CR 后增删都是 0。
 func TestUnifiedLineDiffStripsBareCR(t *testing.T) {
 	old := "a\r\nb\r\nc\n"
 	neu := "a\nb\nc\n"
@@ -56,6 +62,7 @@ func TestUnifiedLineDiffStripsBareCR(t *testing.T) {
 	}
 }
 
+// TestUnifiedLineDiffLargeFileTwoEnds 锁住首尾两处改动的增删各为 2。
 func TestUnifiedLineDiffLargeFileTwoEnds(t *testing.T) {
 	const n = 1236
 	old := make([]string, n)

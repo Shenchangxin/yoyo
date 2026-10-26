@@ -1,3 +1,6 @@
+// 工作区规则的读取、索引和路径规则。buildBill 取第一份命中；读文件和改文件时 absorbPathRules 把嵌套规则收进动态尾。
+// LoadWorkspaceRules 不把多份规则的全文叠在一起。往上叠 AGENTS.md 的是 LoadStackedAgents，只在 StackAgentsMD 为真时由 buildBill 换上。
+
 package runtime
 
 import (
@@ -7,8 +10,8 @@ import (
 	"unicode/utf8"
 )
 
-// LoadWorkspaceRules reads Cursor/Claude/Codex-style always-on files.
-// Only the first hit is used so we do not stack three copies of the same policy.
+// LoadWorkspaceRules 按顺序读第一份非空文件：YOYO.md、.yoyo/YOYO.md、AGENTS.md、CLAUDE.md、.cursor/rules/yoyo.mdc。
+// 命中后立刻返回，不把其余几份的全文叠上去。maxRunes 小于等于 0 时上限按 1500 个 rune，否则用传入值。根目录为空时返回空。
 func LoadWorkspaceRules(root string, maxRunes int) (text, source string) {
 	if root == "" {
 		return "", ""
@@ -38,6 +41,8 @@ func LoadWorkspaceRules(root string, maxRunes int) (text, source string) {
 	return "", ""
 }
 
+// WriteRulesIndex 把根上的规则文件和扫到的嵌套规则写进 .yoyo/rules/INDEX.md，只列路径和目录前缀，不把正文注入提示词。
+// 跳过 node_modules、.git、vendor、dist、.next。超过 400 个文件或相对深度大于 4 就不再收录。
 func WriteRulesIndex(root string) {
 	if root == "" {
 		return
@@ -105,6 +110,8 @@ func WriteRulesIndex(root string) {
 	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(b.String()), 0o644)
 }
 
+// LoadStackedAgents 从 root 往上走到 git 根，把沿途每一份 AGENTS.md 叠成一份。先读到的在后面，最上面的祖先在最前。
+// maxBytes 小于等于 0 时按 32KiB 截断，截断按字节，并附上省略标记。没有 git 根时就停在 root。
 func LoadStackedAgents(root string, maxBytes int) string {
 	if root == "" {
 		return ""
@@ -142,6 +149,7 @@ func LoadStackedAgents(root string, maxBytes int) string {
 	return s
 }
 
+// findGitRoot 返回 start 自身或祖先里第一个含 .git 的目录。找不到返回空串。
 func findGitRoot(start string) string {
 	cur := start
 	for {
@@ -156,15 +164,17 @@ func findGitRoot(start string) string {
 	}
 }
 
+// pathRulesCapRunes 是路径规则动态尾的 rune 上限。
 const pathRulesCapRunes = 2_000
 
+// ruleBlock 是一份嵌套规则的相对路径和截断后的正文。
 type ruleBlock struct {
 	id   string
 	text string
 }
 
-// absorbPathRules remembers nested rule files that apply to rel.
-// The workspace-root pin is not repeated.
+// absorbPathRules 记住适用于 rel 的嵌套规则，并跳过已经收过的路径。总长达到 pathRulesCapRunes 后不再追加。
+// 工作区根上那份第一命中不在这里重复。
 func (t *WorkspaceTools) absorbPathRules(rel string) {
 	if t == nil || t.Workspace == "" {
 		return
@@ -202,6 +212,7 @@ func (t *WorkspaceTools) absorbPathRules(rel string) {
 	t.pathRules = capRunes(b.String(), pathRulesCapRunes)
 }
 
+// PathRules 返回已经吸收的路径规则文本。
 func (t *WorkspaceTools) PathRules() string {
 	if t == nil {
 		return ""
@@ -211,6 +222,8 @@ func (t *WorkspaceTools) PathRules() string {
 	return t.pathRules
 }
 
+// nestedRuleBlocks 从 rel 的父目录往上找 AGENTS.md、CLAUDE.md 和 YOYO.md，直到根。每份截到 800 个 rune。
+// LoadWorkspaceRules 命中的那条相对路径会跳过，避免和稳定前缀里的第一份重复。
 func nestedRuleBlocks(root, rel string) []ruleBlock {
 	_, pinned := LoadWorkspaceRules(root, 1)
 	skip := map[string]bool{}
@@ -247,6 +260,7 @@ func nestedRuleBlocks(root, rel string) []ruleBlock {
 	return out
 }
 
+// capRunes 超过 max 个 rune 时截断并加上省略号。max 小于等于 0 时原样返回。
 func capRunes(s string, max int) string {
 	if max <= 0 || utf8.RuneCountInString(s) <= max {
 		return s

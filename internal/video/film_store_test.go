@@ -1,3 +1,5 @@
+// 锁住按描述建片、缺下载时留住地址、分叉不动原片，以及交接用画出来的画面。
+
 package video
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
+// TestDescribeBuildAndSwapKeepsTheBoard 锁住排行榜能在本机构建，换宿主后代码画面的产物编号不变。有 ffmpeg 时还会有成片。
 func TestDescribeBuildAndSwapKeepsTheBoard(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.DescribeFilm("ranking", "本机工具排行", "")
@@ -57,6 +60,7 @@ func TestDescribeBuildAndSwapKeepsTheBoard(t *testing.T) {
 	}
 }
 
+// TestOpenFilmKeepsTheURLWhenDownloadIsMissing 锁住没有 yt-dlp 时参考地址仍留在工程里，并写进备注。
 func TestOpenFilmKeepsTheURLWhenDownloadIsMissing(t *testing.T) {
 	e := testEngine(t)
 	e.YTDLP = ""
@@ -73,6 +77,7 @@ func TestOpenFilmKeepsTheURLWhenDownloadIsMissing(t *testing.T) {
 	}
 }
 
+// TestForkLeavesTheOriginalAndLanguageWaitsForChat 锁住分叉不改原片。没有对话连接时换语言只记备注，原文不改。
 func TestForkLeavesTheOriginalAndLanguageWaitsForChat(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.DescribeFilm("ranking", "", "")
@@ -102,6 +107,7 @@ func TestForkLeavesTheOriginalAndLanguageWaitsForChat(t *testing.T) {
 	}
 }
 
+// TestFilmHandoffUsesThePaintedPicture 锁住构建之后交接给剪辑台的是已有画面，而且带有标题。
 func TestFilmHandoffUsesThePaintedPicture(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.DescribeFilm("podcast", "", "")

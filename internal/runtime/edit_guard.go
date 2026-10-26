@@ -1,3 +1,5 @@
+// 占位参数守卫。上下文投影写进参数里的 _elided、_hint、_recall 不能落到文件系统。str_replace 和 office_edit 在改文件前调用 checkEditArgs。
+
 package runtime
 
 import (
@@ -5,18 +7,10 @@ import (
 	"strings"
 )
 
-// placeholderKeys are argument keys only the context projection writes.
-// A tool call that carries one was copied from a stub, not authored by the
-// model, so it must never reach the filesystem.
+// placeholderKeys 是只有上下文投影会写的参数键：_elided、_hint、_recall。调用里带着它们，就说明参数是从摘要抄来的，不能当成本次要写的正文。
 var placeholderKeys = []string{"_elided", "_hint", "_recall"}
 
-// checkEditArgs refuses an edit whose arguments are not the model's real
-// payload.
-//
-// Presence matters, not emptiness. Before this guard a missing new_str decoded
-// to "" through str(nil), and str_replace happily deleted old_str. Session
-// facb2e21ba0b31a3 lost 7 and 3 lines of main.js that way and reported
-// "replaced 1 occurrence(s)" both times.
+// checkEditArgs 拒绝不是模型真实载荷的编辑。看的是键在不在，不是值空不空。缺 new_str 时 str 会把 nil 收成空串，str_replace 会把 old_str 删掉；键缺失必须先拒绝。
 func checkEditArgs(tool string, args map[string]any, required ...string) error {
 	for _, k := range placeholderKeys {
 		if _, ok := args[k]; ok {

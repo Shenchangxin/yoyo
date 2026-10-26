@@ -1,9 +1,10 @@
+// persona.go 给出短片模块的创作者人设页模板。
+
 package video
 
 import "strings"
 
-// PersonaTemplate is a creator-voice page (not a Profile). Profiles are
-// capability projections and the video channel ignores them.
+// PersonaTemplate 返回一份创作者人设 Markdown。名字空着时用「创作者人设」。这是短片人设页，不是会话 Profile；Profile 是能力投影，视频通道不读它。
 func PersonaTemplate(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

@@ -1,3 +1,5 @@
+// 从 zip 装入皮肤包。超出字节或文件数、路径含 ..，或不在允许列表里的条目会被拒绝。
+
 package skin
 
 import (
@@ -12,14 +14,21 @@ import (
 )
 
 const (
-	MaxZipBytes       = 48 << 20
-	MaxUncompressed   = 64 << 20
-	MaxFiles          = 24
-	MaxEntry          = 40 << 20
-	MaxManifestBytes  = 32 << 10
+	// MaxZipBytes 是压缩包字节上限，48 MiB。
+	MaxZipBytes = 48 << 20
+	// MaxUncompressed 是解压后总字节上限，64 MiB。
+	MaxUncompressed = 64 << 20
+	// MaxFiles 是 zip 条目数上限，值为 24。
+	MaxFiles = 24
+	// MaxEntry 是单个条目解压后的字节上限，40 MiB。
+	MaxEntry = 40 << 20
+	// MaxManifestBytes 是 manifest.json 的字节上限，32 KiB。
+	MaxManifestBytes = 32 << 10
+	// MaxTokenFileBytes 是一份令牌 JSON 的字节上限，64 KiB。
 	MaxTokenFileBytes = 64 << 10
 )
 
+// allowedFiles 是允许出现在包里的相对路径。
 var allowedFiles = map[string]struct{}{
 	"manifest.json":           {},
 	"tokens/dark.json":        {},
@@ -36,6 +45,7 @@ var allowedFiles = map[string]struct{}{
 	"assets/fonts/mono.woff2": {},
 }
 
+// Admit 解 zip，拒绝空包、超限、非法路径和允许列表之外的文件。然后校验清单和令牌，Prepare，再检查对比度。
 func Admit(data []byte) (Pack, error) {
 	if len(data) == 0 || len(data) > MaxZipBytes {
 		return Pack{}, fmt.Errorf("skin package must be between 1 and %d bytes", MaxZipBytes)
@@ -122,6 +132,7 @@ func Admit(data []byte) (Pack, error) {
 	return pack, nil
 }
 
+// parseTokens 把 JSON 解成 TokenMap。空输入返回空映射。超过 MaxTokenFileBytes、不是合法 UTF-8，或 JSON 无效时返回错误。
 func parseTokens(raw []byte) (TokenMap, error) {
 	if len(raw) == 0 {
 		return TokenMap{}, nil
@@ -139,10 +150,12 @@ func parseTokens(raw []byte) (TokenMap, error) {
 	return m, nil
 }
 
+// Prepare 调用 bindAssets。
 func (p *Pack) Prepare() error {
 	return p.bindAssets()
 }
 
+// bindAssets 把预览缩到 MaxPreviewEdge，壁纸缩到 MaxWallpaperEdge，并检查 woff2 魔数。声明了壁纸或字体却没有文件时返回错误。最后保证能力里有 tokens。
 func (p *Pack) bindAssets() error {
 	man := &p.Manifest
 	if man.Preview != "" {
@@ -253,6 +266,7 @@ func (p *Pack) bindAssets() error {
 	return nil
 }
 
+// checkContrast 把 dark 叠到 ink、light 叠到 neutral，任一 ContrastOf 不通过就返回错误。
 func (p Pack) checkContrast() error {
 	for _, mode := range []struct {
 		name string
@@ -268,6 +282,7 @@ func (p Pack) checkContrast() error {
 	return nil
 }
 
+// replaceFile 在新旧名字不同时删掉旧条目，再写入新字节。
 func (p *Pack) replaceFile(oldName, newName string, body []byte) {
 	if p.Files == nil {
 		p.Files = map[string][]byte{}
@@ -278,6 +293,7 @@ func (p *Pack) replaceFile(oldName, newName string, body []byte) {
 	p.Files[newName] = body
 }
 
+// assertWOFF2 要求正文至少 8 字节，并且前 4 字节是 wOF2。
 func assertWOFF2(body []byte) error {
 	if len(body) < 8 {
 		return fmt.Errorf("font too small")
@@ -288,6 +304,7 @@ func assertWOFF2(body []byte) error {
 	return nil
 }
 
+// sanitizeZipPath 把反斜杠换成斜杠并 Clean。结果为 .、..、以 ../ 开头或含冒号时返回错误。
 func sanitizeZipPath(name string) (string, error) {
 	name = strings.ReplaceAll(name, "\\", "/")
 	name = path.Clean(name)
@@ -298,6 +315,7 @@ func sanitizeZipPath(name string) (string, error) {
 	return name, nil
 }
 
+// sanitizeRel 清掉空白并 Clean。结果为 .、..、以 ../ 开头，或文件名含安全字符以外的符号时返回空串。
 func sanitizeRel(name string) string {
 	name = strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")
 	name = path.Clean(name)
@@ -311,6 +329,7 @@ func sanitizeRel(name string) string {
 	return name
 }
 
+// containsCap 报告能力列表里有没有这个名字。
 func containsCap(caps []string, cap string) bool {
 	for _, c := range caps {
 		if c == cap {

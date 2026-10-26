@@ -1,3 +1,5 @@
+// 待审阅草稿写在 root/reviews.json。批准才调用 applyApprovedLocked，拒绝只改状态。
+
 package pages
 
 import (
@@ -9,15 +11,21 @@ import (
 	"time"
 )
 
+// ReviewStatus 是审阅状态。
 type ReviewStatus string
 
 const (
+	// ReviewAwaiting 是等待审阅，值为 awaiting_review。
 	ReviewAwaiting ReviewStatus = "awaiting_review"
-	ReviewSaved    ReviewStatus = "saved"
+	// ReviewSaved 是已写入页面，值为 saved。
+	ReviewSaved ReviewStatus = "saved"
+	// ReviewDeclined 是已拒绝，值为 declined。
 	ReviewDeclined ReviewStatus = "declined"
-	ReviewExpired  ReviewStatus = "expired"
+	// ReviewExpired 是已过期，值为 expired。
+	ReviewExpired ReviewStatus = "expired"
 )
 
+// Review 是一份待批准的页面草稿。Hash 覆盖标题、正文、页面 id、空间和期望修订号。
 type Review struct {
 	ID               string       `json:"id"`
 	ThreadID         string       `json:"thread_id,omitempty"`
@@ -36,6 +44,7 @@ type Review struct {
 	SavedPageID      string       `json:"saved_page_id,omitempty"`
 }
 
+// Propose 规范化字段并计算哈希，状态设为 awaiting。ExpiresAt 为空时是现在加 30 分钟。同一工具调用或同一哈希的待审阅会被替换，但保留原来的 ID 和创建时间。
 func (s *Store) Propose(r Review) (Review, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,6 +93,7 @@ func (s *Store) Propose(r Review) (Review, error) {
 	return r, nil
 }
 
+// Pending 返回仍在等待的审阅。已过期的从 awaiting 改成 expired 并写回。
 func (s *Store) Pending() []Review {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -107,6 +117,7 @@ func (s *Store) Pending() []Review {
 	return out
 }
 
+// GetReview 按 ID 或哈希查找审阅。
 func (s *Store) GetReview(id string) (Review, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,6 +129,7 @@ func (s *Store) GetReview(id string) (Review, bool) {
 	return Review{}, false
 }
 
+// Decide 在哈希非空且不符时返回错误。已保存则再读出页面。approve 为假则标成 declined，不写页面。为真时以修订号 0 调用 applyApprovedLocked，再标成 saved。
 func (s *Store) Decide(id, hash string, approve bool) (Page, Review, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,8 +155,7 @@ func (s *Store) Decide(id, hash string, approve bool) (Page, Review, error) {
 		}
 		return Page{}, rev, nil
 	}
-	// Operator approval is the write. expected_revision is advisory for the
-	// agent draft; a concurrent library edit must not leave the review stuck.
+	// 操作者批准才写入。这里把 expected revision 传 0，并发改过页面也不会把审阅卡死。
 	pg, err := s.applyApprovedLocked(rev.SpaceID, rev.PageID, rev.ParentID, rev.Title, rev.Content, rev.SessionID, 0)
 	if err != nil {
 		return Page{}, rev, err
@@ -167,6 +178,7 @@ func (s *Store) Decide(id, hash string, approve bool) (Page, Review, error) {
 	return pg, rev, nil
 }
 
+// reviewID 用哈希前 12 位生成 rev- 前缀。哈希为空时用当前 UTC 时间。
 func reviewID(hash string) string {
 	if len(hash) >= 12 {
 		return "rev-" + hash[:12]
@@ -177,6 +189,7 @@ func reviewID(hash string) string {
 	return "rev-" + hash
 }
 
+// findReview 按 ID 或哈希查找，返回条目、下标和整份列表。找不到返回 review not found。
 func (s *Store) findReview(id string) (Review, int, []Review, error) {
 	all := s.loadReviews()
 	id = strings.TrimSpace(id)
@@ -188,6 +201,7 @@ func (s *Store) findReview(id string) (Review, int, []Review, error) {
 	return Review{}, -1, all, fmt.Errorf("review not found")
 }
 
+// loadReviews 读取 reviews.json。文件不存在或 JSON 无效时返回 nil。
 func (s *Store) loadReviews() []Review {
 	b, err := os.ReadFile(filepath.Join(s.root, "reviews.json"))
 	if err != nil {
@@ -198,6 +212,7 @@ func (s *Store) loadReviews() []Review {
 	return out
 }
 
+// flushReviews 把审阅列表原子写到 reviews.json，权限 0o644。
 func (s *Store) flushReviews(all []Review) error {
 	b, err := json.MarshalIndent(all, "", "  ")
 	if err != nil {

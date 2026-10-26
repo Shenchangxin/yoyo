@@ -1,3 +1,5 @@
+// 本文件把搜索命中格式化成有限的几行。条数上限是 8，摘要上限是 280 个 rune。
+
 package webcontent
 
 import (
@@ -5,16 +7,20 @@ import (
 	"strings"
 )
 
+// maxHits 是 FormatHits、parseResultA 和 parseLiteLinks 保留的命中条数，值是 8。
 const maxHits = 8
 
-// Hit is one public-web search result.
+// Hit 是一条公开网页搜索结果。
 type Hit struct {
-	Title   string
-	URL     string
+	// Title 是标题。
+	Title string
+	// URL 是链接。
+	URL string
+	// Snippet 是摘要。FormatHits 超过 280 个 rune 就截断并加 …。
 	Snippet string
 }
 
-// FormatHits renders numbered title/url/snippet lines. Empty if nothing usable.
+// FormatHits 把命中排成带编号的标题、链接和摘要。标题和链接都空的跳过。最多 maxHits 条。没有可用行时返回空字符串。
 func FormatHits(hits []Hit) string {
 	var lines []string
 	for _, h := range hits {
@@ -35,7 +41,7 @@ func FormatHits(hits []Hit) string {
 		if link != "" && title != "" {
 			line += "\n   " + link
 		} else if link != "" && title == "" {
-			// already in the heading
+			// 链接已经写在标题那一行。
 		}
 		if snip != "" {
 			if len([]rune(snip)) > 280 {
@@ -48,7 +54,8 @@ func FormatHits(hits []Hit) string {
 	return strings.Join(lines, "\n")
 }
 
-// Useful reports whether search output has real results, not chrome or empty HTML.
+// Useful 判断文本像不像真的搜索结果。空白返回 false。含 <html 且不含 http 返回 false。
+// http:// 与 https:// 合计至少 1 次且长度至少 24 时返回 true。否则长度至少 80 才返回 true。
 func Useful(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {

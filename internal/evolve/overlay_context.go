@@ -1,3 +1,6 @@
+// 改进者在磁盘上能读到的证据树。任务说明是短指针，轨迹按文件存放，单文件最多 overlayFileCap 个 rune。
+// 只提供 read_file。不写 refs，也不含剧本。RenderL1 在这里。
+
 package evolve
 
 import (
@@ -15,24 +18,29 @@ import (
 )
 
 const (
-	overlayFileCap       = 50_000
+	// overlayFileCap 是单个证据文件保留的 rune 数，值为 50000。
+	overlayFileCap = 50_000
+	// overlayImproverTurns 是改进者读取证据的轮数上限，值为 8。用尽后返回 improver exhausted reads。
 	overlayImproverTurns = 8
-	overlayAlwaysOnMax   = 2_000
-	overlayReadToolName  = "read_file"
+	// overlayAlwaysOnMax 是常开指令正文的 rune 上限，值为 2000。AdmitOverlay 用它拒绝更长的 instruction。
+	overlayAlwaysOnMax = 2_000
+	// overlayReadToolName 是证据树唯一允许的工具名，值为 read_file。
+	overlayReadToolName = "read_file"
 )
 
-// OverlayTree is the on-disk evidence an improver may Read. The Chat user
-// message is a short mission pointer, not a concatenated 50k trajectory.
+// OverlayTree 是改进者可以读取的磁盘证据。根目录由调用方传入。held 编号和评分禁用词在写入和读出时去掉。
 type OverlayTree struct {
 	Root string
 	held map[string]bool
 	mu   sync.Mutex
 }
 
+// newOverlayTree 记下根目录和 held 编号。
 func newOverlayTree(root string, held map[string]bool) *OverlayTree {
 	return &OverlayTree{Root: root, held: held}
 }
 
+// write 把相对路径写到根下。空根或空路径返回错误。正文先去掉 held 编号；含评分禁用词时改成占位句。超过 overlayFileCap 个 rune 时截断。
 func (t *OverlayTree) write(rel, body string) error {
 	if t == nil || strings.TrimSpace(t.Root) == "" {
 		return fmt.Errorf("overlay tree: root required")
@@ -57,20 +65,24 @@ func (t *OverlayTree) write(rel, body string) error {
 	return os.WriteFile(p, []byte(body), 0o644)
 }
 
+// writeTask 把任务说明写到 task.md。
 func (t *OverlayTree) writeTask(task string) {
 	_ = t.write("task.md", strings.TrimSpace(task))
 }
 
+// writeHarness 把当前材料的 L1 写到 harness/。
 func (t *OverlayTree) writeHarness(mats MaterialSet) {
 	t.writeL1("harness", mats)
 }
 
+// writeL1 按 RenderL1 的相对路径写入。
 func (t *OverlayTree) writeL1(dir string, mats MaterialSet) {
 	for rel, body := range RenderL1(mats) {
 		_ = t.write(dir+"/"+rel, body)
 	}
 }
 
+// writeRollout 把轨迹写到 rollouts，把交付物写到 deliverables。没有交付物时写 INDEX，说明产出 0 个文件。标签为空时直接返回。
 func (t *OverlayTree) writeRollout(r OverlayRollout) {
 	if r.Label == "" {
 		return
@@ -89,6 +101,7 @@ func (t *OverlayTree) writeRollout(r OverlayRollout) {
 	}
 }
 
+// writeDecision 把合成笔记写到 decisions。笔记为空时写固定的英文占位句。标签为空时直接返回。
 func (t *OverlayTree) writeDecision(label, notes string) {
 	if label == "" {
 		return
@@ -99,6 +112,7 @@ func (t *OverlayTree) writeDecision(label, notes string) {
 	_ = t.write("decisions/"+label+".md", notes)
 }
 
+// writePool 把一份候选的 L1、轨迹和产物写到 pool 下该标签的目录。
 func (t *OverlayTree) writePool(label string, mats MaterialSet, r OverlayRollout) {
 	if label == "" {
 		return
@@ -115,6 +129,7 @@ func (t *OverlayTree) writePool(label string, mats MaterialSet, r OverlayRollout
 	_ = t.write(prefix+"/produced.md", body)
 }
 
+// writeSelection 把匿名交付物写到 selection。匿名编号为空时直接返回。产物为空时写占位句。
 func (t *OverlayTree) writeSelection(anon, deliverable string) {
 	anon = strings.ToUpper(strings.TrimSpace(anon))
 	if anon == "" {
@@ -127,6 +142,7 @@ func (t *OverlayTree) writeSelection(anon, deliverable string) {
 	_ = t.write("selection/"+anon+".md", body)
 }
 
+// writeLibrary 把领域索引和每条经验的 EXPERIENCE.md、harness 拷进 library/。库为 nil 时直接返回。harness 目录不存在且有哈希时先 WriteL1。
 func (t *OverlayTree) writeLibrary(lib *Library, cas *artifact.Store) {
 	if lib == nil {
 		return
@@ -152,6 +168,7 @@ func (t *OverlayTree) writeLibrary(lib *Library, cas *artifact.Store) {
 	}
 }
 
+// layout 按磁盘上实际存在的子目录列出 context/ 下的路径说明。树为 nil 时返回空串。
 func (t *OverlayTree) layout() string {
 	if t == nil {
 		return ""
@@ -182,6 +199,7 @@ func (t *OverlayTree) layout() string {
 	return strings.Join(lines, "\n")
 }
 
+// mission 把任务句和目录说明接成用户消息，并写明轨迹在 context/ 里，要用 read_file 去读。
 func (t *OverlayTree) mission(job string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(job))
@@ -193,6 +211,7 @@ func (t *OverlayTree) mission(job string) string {
 	return b.String()
 }
 
+// read 读取相对路径。空路径、越出根目录、读失败时返回带 unavailable 的占位。含评分禁用词时返回占位句。超过 overlayFileCap 个 rune 时截断。
 func (t *OverlayTree) read(rel string) string {
 	if t == nil {
 		return "(unavailable)"
@@ -224,6 +243,7 @@ func (t *OverlayTree) read(rel string) string {
 	return s
 }
 
+// evidence 遍历根下每个文件，返回相对路径加读出的正文。树或根为空时返回 nil。
 func (t *OverlayTree) evidence() []string {
 	if t == nil || t.Root == "" {
 		return nil
@@ -245,6 +265,7 @@ func (t *OverlayTree) evidence() []string {
 	return out
 }
 
+// overlayReadTool 是只声明 read_file 的工具规格。参数 path 是相对路径。
 var overlayReadTool = runtime.ToolJSON{
 	Type: "function",
 	Function: map[string]any{
@@ -260,6 +281,7 @@ var overlayReadTool = runtime.ToolJSON{
 	},
 }
 
+// overlayImproverChat 最多跑 overlayImproverTurns 轮。没有工具调用时返回助手正文。工具名不是 read_file 或树为 nil 时，工具结果是只允许 read_file 的占位。轮数用尽返回 improver exhausted reads。客户端为 nil 时返回 no client。
 func overlayImproverChat(ctx context.Context, opts OverlayOpts, system, mission string) (string, error) {
 	if opts.Client == nil {
 		return "", fmt.Errorf("no client")
@@ -303,6 +325,7 @@ func overlayImproverChat(ctx context.Context, opts OverlayOpts, system, mission 
 	return "", fmt.Errorf("improver exhausted reads")
 }
 
+// overlayToolPath 从工具参数 JSON 里取 path。解析失败时把原参数当路径。
 func overlayToolPath(args string) string {
 	var m map[string]any
 	if json.Unmarshal([]byte(args), &m) == nil {
@@ -313,6 +336,7 @@ func overlayToolPath(args string) string {
 	return args
 }
 
+// overlayRel 去掉 context/ 前缀。含 ..、为空或为点时返回空串。
 func overlayRel(rel string) string {
 	rel = strings.TrimSpace(rel)
 	rel = strings.ReplaceAll(rel, "\\", "/")
@@ -325,6 +349,7 @@ func overlayRel(rel string) string {
 	return rel
 }
 
+// overlayUnder 判断 path 是否等于根，或在根目录下面。
 func overlayUnder(root, path string) bool {
 	root = filepath.Clean(root)
 	path = filepath.Clean(path)
@@ -335,6 +360,7 @@ func overlayUnder(root, path string) bool {
 	return strings.HasPrefix(path, prefix)
 }
 
+// overlayHas 在根下该名字能 Stat 成功时为真。根为空时为假。
 func overlayHas(root, name string) bool {
 	if root == "" {
 		return false
@@ -343,6 +369,7 @@ func overlayHas(root, name string) bool {
 	return err == nil
 }
 
+// overlayHasGrader 在小写正文里命中 libraryBanned 任一子串时为真。
 func overlayHasGrader(s string) bool {
 	lower := strings.ToLower(s)
 	for _, w := range libraryBanned {
@@ -353,6 +380,7 @@ func overlayHasGrader(s string) bool {
 	return false
 }
 
+// overlayCopyL1 把 src 下的文件拷到 dest。路径或文件名含 playbook 的跳过。含 held 编号的会先删掉这些编号。含评分禁用词的不写。src 为空时返回 nil。
 func overlayCopyL1(src, dest string, held map[string]bool) error {
 	if src == "" {
 		return nil
@@ -386,8 +414,7 @@ func overlayCopyL1(src, dest string, held map[string]bool) error {
 	})
 }
 
-// RenderL1 is the overlay-visible harness: instruction, middleware, on-demand
-// skills. Playbook, prompt fragments, tools, and L3 topology stay out.
+// RenderL1 返回改进者能看见的 L1：verification、failure_recovery、middleware 和按需技能。不含剧本、提示片段、工具和循环拓扑。
 func RenderL1(mats MaterialSet) map[string]string {
 	out := map[string]string{}
 	if s := strings.TrimSpace(mats.Loop.Verification); s != "" {
@@ -409,6 +436,7 @@ func RenderL1(mats MaterialSet) map[string]string {
 	return out
 }
 
+// renderSkillMD 把技能收成带前置信息的 SKILL.md 文本。
 func renderSkillMD(s artifact.Skill) string {
 	desc := strings.ReplaceAll(strings.TrimSpace(s.Description), "\n", " ")
 	body := s.Body
@@ -418,6 +446,7 @@ func renderSkillMD(s artifact.Skill) string {
 	return "---\nname: " + s.Name + "\ndescription: " + desc + "\n---\n\n" + body
 }
 
+// overlayHashPrefix 返回两个哈希从开头相同的字节数。
 func overlayHashPrefix(a, b string) int {
 	n := 0
 	for n < len(a) && n < len(b) && a[n] == b[n] {
@@ -426,6 +455,7 @@ func overlayHashPrefix(a, b string) int {
 	return n
 }
 
+// overlayComposeDiversity 对终稿两两比较哈希是否相同，并记录公共前缀长度。
 func overlayComposeDiversity(finals []overlayFinal) []OverlayPair {
 	var out []OverlayPair
 	for i := 0; i < len(finals); i++ {

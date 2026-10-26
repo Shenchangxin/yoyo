@@ -1,3 +1,5 @@
+// 锁住技能目录的后层覆盖、blockedHost 的放行和拒绝，以及计划文本和 view_image 对非图片的拒绝。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestLoadSkillDirsOverlay 锁住 home 里的 skill-creator 盖过 bundled，工作区里的 extra 仍被加载。
 func TestLoadSkillDirsOverlay(t *testing.T) {
 	bundled := t.TempDir()
 	home := t.TempDir()
@@ -36,6 +39,7 @@ func TestLoadSkillDirsOverlay(t *testing.T) {
 	}
 }
 
+// TestBlockedHost 锁住 localhost、127.0.0.1 和 ::1 放行，10.0.0.1、192.168.1.1 和 metadata.google.internal 拒绝，8.8.8.8 放行。
 func TestBlockedHost(t *testing.T) {
 	if blockedHost("localhost") || blockedHost("127.0.0.1") || blockedHost("::1") {
 		t.Fatal("loopback must be fetchable on a desktop agent")
@@ -48,6 +52,7 @@ func TestBlockedHost(t *testing.T) {
 	}
 }
 
+// TestUpdatePlanAndListSkills 锁住 update_plan 写入 PlanText，没有 SkillMeta 时 list_skills 只返回名字。
 func TestUpdatePlanAndListSkills(t *testing.T) {
 	tools := &WorkspaceTools{Skills: map[string]string{"plan-first": "body"}}
 	res := tools.Call("update_plan", `{"plan":[{"step":"a","status":"in_progress"},{"step":"b","status":"pending"}]}`)
@@ -63,6 +68,7 @@ func TestUpdatePlanAndListSkills(t *testing.T) {
 	}
 }
 
+// TestViewImageRejectsText 锁住对 .txt 调用 view_image 返回错误。
 func TestViewImageRejectsText(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hi"), 0o644); err != nil {
@@ -75,6 +81,7 @@ func TestViewImageRejectsText(t *testing.T) {
 	}
 }
 
+// writeSkill 写一份带 name 和 description 的 SKILL.md。
 func writeSkill(t *testing.T, path, name, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

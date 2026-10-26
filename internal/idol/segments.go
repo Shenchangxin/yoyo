@@ -1,3 +1,6 @@
+// 本文件把模型回复拆成可朗读的 Segment，并去掉方括号里的语气提示。
+// photo 和 work 标签不进台词。不调用模型。
+
 package idol
 
 import (
@@ -6,19 +9,20 @@ import (
 )
 
 var (
+	// tagRE 匹配成对的语言或 photo、work 标签，标签名 2 到 8 个字母。
 	tagRE = regexp.MustCompile(`(?s)<([a-zA-Z]{2,8})>(.*?)</([a-zA-Z]{2,8})>`)
+	// cueRE 匹配一行内的方括号语气，例如 [happily]。
 	cueRE = regexp.MustCompile(`\[[A-Za-z][^\[\]\n]{0,80}\]`)
 )
 
-// Parsed is one model reply split into speakable segments.
+// Parsed 是一条模型回复拆开的结果。Photo 和 Work 从台词里拿出来，不放进 Segments。
 type Parsed struct {
 	Segments []Segment
 	Photo    string
 	Work     string
 }
 
-// ParseReply reads <lang>…</lang> pairs. A photo or work tag is kept out of
-// the spoken line. Untagged text becomes one segment in both languages.
+// ParseReply 读取成对的语言标签。photo、work 不进台词。没有标签时，整段去掉语气提示后变成一句，口语和字幕相同。
 func ParseReply(text, spoken, sub string) Parsed {
 	text = strings.TrimSpace(text)
 	spoken = lang(spoken)
@@ -84,15 +88,18 @@ func ParseReply(text, spoken, sub string) Parsed {
 	return out
 }
 
+// StripCues 去掉方括号语气，再把空白收成单空格。
 func StripCues(s string) string {
 	s = cueRE.ReplaceAllString(s, "")
 	return strings.TrimSpace(strings.Join(strings.Fields(s), " "))
 }
 
+// stripTags 去掉成对标签，只留标签里的文字。
 func stripTags(s string) string {
 	return strings.TrimSpace(tagRE.ReplaceAllString(s, "$2"))
 }
 
+// SpeakLine 把各段 Spoken 用空格接成一行，给语音用。
 func SpeakLine(segs []Segment) string {
 	var b strings.Builder
 	for _, s := range segs {
@@ -107,6 +114,7 @@ func SpeakLine(segs []Segment) string {
 	return b.String()
 }
 
+// CaptionLine 把各段字幕用换行接起来。某段字幕为空时用该段口语。
 func CaptionLine(segs []Segment) string {
 	var b strings.Builder
 	for _, s := range segs {
@@ -125,6 +133,7 @@ func CaptionLine(segs []Segment) string {
 	return b.String()
 }
 
+// lang 把语言码收成小写并去掉空白。空则是 zh，长于 8 个字符则截到 8。
 func lang(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "" {

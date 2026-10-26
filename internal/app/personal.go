@@ -1,3 +1,5 @@
+// 打开记忆、页面、档案、日程、连接器、浏览器和个人引擎，并把它们挂到回合工具上。搜索有 20 秒超时。日程循环每 30 秒看一次到期任务。
+
 package app
 
 import (
@@ -28,6 +30,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// mountFiber 用内核插件挂上一个可撤销的效果。
 func (a *App) mountFiber(name string, setup func() (func() error, error)) error {
 	_, err := a.Kernel.Plugin(name, func(c *kernel.Context) error {
 		return c.Effect(setup)
@@ -35,6 +38,7 @@ func (a *App) mountFiber(name string, setup func() (func() error, error)) error 
 	return err
 }
 
+// openPersonal 依次打开记忆、页面、档案、日程、连接器、浏览器，以及空的 office 和 preview 纤维，然后打开项目、收件箱、电脑使用、观测和个人引擎。日程循环在 scheduler 纤维里启动。个人变更发到 Hub 的 personal 事件。
 func (a *App) openPersonal() error {
 	if err := a.mountFiber("memory", func() (func() error, error) {
 		mem, err := memory.Open(a.Home.Memory())
@@ -174,6 +178,7 @@ func (a *App) openPersonal() error {
 	})
 }
 
+// attachPersonal 把记忆、日程、项目、连接器、个人引擎、浏览器、电脑使用、收件箱和页面挂到工具上，并打开 ChatOverlay。档案的 AllowTools 非空时，用宿主工具名加已广告名滤出 AllowedTools 并置上 ToolJail。
 func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	if tools == nil {
 		return
@@ -193,9 +198,7 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	if p := a.sessionProfile(tools.SessionID); p != nil {
 		tools.Advertised = profile.FilterTools(tools.Advertised, *p)
 		tools.DeniedTools = profile.DeniedNames(*p)
-		// allow_tools is a real call jail. Copying the opening schema into
-		// AllowedTools is not: deferred host tools such as browser_verify
-		// must stay callable after tool_search.
+		// allow_tools 才是调用监禁。把开场 schema 抄进 AllowedTools 不算：browser_verify 这类稍后才挂上的宿主工具，在 tool_search 之后仍必须能调用。
 		if len(p.AllowTools) > 0 {
 			names := make([]string, 0, len(tool.HostSpecs())+len(tools.Advertised))
 			for _, s := range tool.HostSpecs() {
@@ -211,6 +214,7 @@ func (a *App) attachPersonal(tools *runtime.WorkspaceTools) {
 	}
 }
 
+// searchAPI 优先用视频连接里 capability 为 search 的活动连接，否则用 Config.SearchURL。密钥名默认 search。超时 20 秒。两端都空则返回 no search_url。
 func (a *App) searchAPI(query string) (string, error) {
 	endpoint := strings.TrimSpace(a.Config.SearchURL)
 	keyName := a.Config.SearchKey
@@ -243,6 +247,7 @@ func (a *App) searchAPI(query string) (string, error) {
 	return connection.QuerySearch(ctx, searchConn, key, query)
 }
 
+// IsolationReport 返回 isolation.Status、保险库状态和浏览器是否隔离。computer_display 写成 virtual，awake_required 和 lid_close_stops 写成 true，sandbox_badge_ok 取 Status 的 Sandbox 字段。
 func (a *App) IsolationReport() map[string]any {
 	iso := isolation.Status()
 	vault := a.Vault.Status()
@@ -263,6 +268,7 @@ func (a *App) IsolationReport() map[string]any {
 	}
 }
 
+// crashResume 在 App 为空时返回 true，否则返回 Config.CrashResume。
 func (a *App) crashResume() bool {
 	if a == nil {
 		return true
@@ -270,6 +276,7 @@ func (a *App) crashResume() bool {
 	return a.Config.CrashResume
 }
 
+// InboxList 返回收件箱列表。收件箱为空时返回 nil。
 func (a *App) InboxList() []inbox.Item {
 	if a.Inbox == nil {
 		return nil
@@ -277,6 +284,7 @@ func (a *App) InboxList() []inbox.Item {
 	return a.Inbox.List()
 }
 
+// ProjectsList 返回项目列表。项目库为空时返回 nil。
 func (a *App) ProjectsList() []project.Project {
 	if a.Projects == nil {
 		return nil
@@ -284,6 +292,7 @@ func (a *App) ProjectsList() []project.Project {
 	return a.Projects.List()
 }
 
+// ProjectCreate 创建项目。项目库为空时返回入参本身。
 func (a *App) ProjectCreate(p project.Project) project.Project {
 	if a.Projects == nil {
 		return p
@@ -291,6 +300,7 @@ func (a *App) ProjectCreate(p project.Project) project.Project {
 	return a.Projects.Create(p)
 }
 
+// MemoryList 按查询和种类搜索记忆，最多 50 条。记忆库为空时返回 nil。
 func (a *App) MemoryList(q, kind string) []memory.Item {
 	if a.Memory == nil {
 		return nil
@@ -298,6 +308,7 @@ func (a *App) MemoryList(q, kind string) []memory.Item {
 	return a.Memory.Search(q, memory.Kind(kind), 50)
 }
 
+// MemoryPromote 把 id 交给 Memory.Promote。记忆库为空返回 false。晋升条件由记忆库决定。
 func (a *App) MemoryPromote(id string) bool {
 	if a.Memory == nil {
 		return false
@@ -305,6 +316,7 @@ func (a *App) MemoryPromote(id string) bool {
 	return a.Memory.Promote(id)
 }
 
+// ScheduleList 返回日程列表。日程为空时返回 nil。
 func (a *App) ScheduleList() []schedule.Job {
 	if a.Schedule == nil {
 		return nil
@@ -312,6 +324,7 @@ func (a *App) ScheduleList() []schedule.Job {
 	return a.Schedule.List()
 }
 
+// ScheduleCreate 创建日程，并往收件箱推一条 KindSchedule。日程为空时返回入参。
 func (a *App) ScheduleCreate(j schedule.Job) schedule.Job {
 	if a.Schedule == nil {
 		return j
@@ -323,6 +336,7 @@ func (a *App) ScheduleCreate(j schedule.Job) schedule.Job {
 	return out
 }
 
+// ScheduleCancel 取消一条日程。日程为空返回 false。
 func (a *App) ScheduleCancel(id string) bool {
 	if a.Schedule == nil {
 		return false
@@ -330,6 +344,7 @@ func (a *App) ScheduleCancel(id string) bool {
 	return a.Schedule.Cancel(id)
 }
 
+// ConnectorsList 返回连接器账号。连接器为空时返回 nil。
 func (a *App) ConnectorsList() []connector.Account {
 	if a.Connectors == nil {
 		return nil
@@ -337,6 +352,7 @@ func (a *App) ConnectorsList() []connector.Account {
 	return a.Connectors.List()
 }
 
+// ConnectorConnect 连接一个账号。连接器为空时返回入参。
 func (a *App) ConnectorConnect(acct connector.Account) connector.Account {
 	if a.Connectors == nil {
 		return acct
@@ -344,6 +360,7 @@ func (a *App) ConnectorConnect(acct connector.Account) connector.Account {
 	return a.Connectors.Connect(acct)
 }
 
+// ConnectorDisconnect 断开账号。成功且个人引擎存在时 InvalidateAccount。
 func (a *App) ConnectorDisconnect(id string) bool {
 	if a.Connectors == nil {
 		return false
@@ -355,12 +372,14 @@ func (a *App) ConnectorDisconnect(id string) bool {
 	return ok
 }
 
+// ComputerAllow 把应用名交给电脑使用的 Allow。电脑使用为空则返回。
 func (a *App) ComputerAllow(appName string) {
 	if a.Computer != nil {
 		a.Computer.Allow(appName)
 	}
 }
 
+// ComputerRecording 返回电脑使用录制。电脑使用为空时返回 nil。
 func (a *App) ComputerRecording() []computeruse.Event {
 	if a.Computer == nil {
 		return nil
@@ -368,10 +387,12 @@ func (a *App) ComputerRecording() []computeruse.Event {
 	return a.Computer.Recording()
 }
 
+// DistillSkill 把名称、描述和正文交给 expert.Distill。
 func (a *App) DistillSkill(name, description, body string) string {
 	return expert.Distill(name, description, body)
 }
 
+// PhoneStatus 汇总待审批数、未读收件箱、正在跑的会话、隔离报告、日程条数和个人事务计数。
 func (a *App) PhoneStatus() map[string]any {
 	pending := 0
 	if a.Gate != nil {
@@ -392,6 +413,7 @@ func (a *App) PhoneStatus() map[string]any {
 	}
 }
 
+// personalCounts 统计 waiting_input、waiting_approval、状态为 new 的想法，以及 awaiting_review 的提案。引擎为空返回空 map。
 func (a *App) personalCounts() map[string]any {
 	if a.Personal == nil {
 		return map[string]any{}
@@ -416,6 +438,7 @@ func (a *App) personalCounts() map[string]any {
 	return map[string]any{"waiting": waiting, "ideas": ideas, "proposals": proposals, "running": s.Worker.Running}
 }
 
+// scheduleLoop 每 30 秒取出到期日程并调用 runScheduledJob。暂停或日程为空时跳过这一拍。schedStop 关闭后退出。
 func (a *App) scheduleLoop() {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
@@ -435,6 +458,7 @@ func (a *App) scheduleLoop() {
 	}
 }
 
+// StartMCPHTTP 按名字和端点启动 HTTP MCP，成功后 persistMCP。失败时记下诊断并返回错误。
 func (a *App) StartMCPHTTP(name, endpoint string) error {
 	if err := a.MCP.StartHTTP(name, endpoint); err != nil {
 		diaglog.Error("mcp start http failed", "component", "mcp", "name", name, "err", err)

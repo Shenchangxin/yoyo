@@ -1,7 +1,8 @@
+// edit.go 从剪辑表里挖掉或插回一段时间。
+
 package cut
 
-// Punch removes [start, end) from each clip. Trimmed clips drop their media
-// hash so the next apply re-extracts from the source.
+// Punch 从每个片段里去掉 [start, end)。窗口短于等于 0.05 秒时原表返回。被整段盖住的片段丢掉；被切到的片段清掉媒体哈希，中间切开时两段的标识也清掉，以便下次套用时从源片重新抽出。
 func Punch(cuts []Clip, start, end float64) []Clip {
 	const eps = 0.05
 	if end-start <= eps {
@@ -41,7 +42,7 @@ func Punch(cuts []Clip, start, end float64) []Clip {
 	return out
 }
 
-// InsertSpan puts [start, end) back into the edit list, in time order.
+// InsertSpan 把 [start, end) 按开始时间插回剪辑表。窗口短于等于 0.05 秒时原表返回。新片段的标题是 restored。
 func InsertSpan(cuts []Clip, start, end float64) []Clip {
 	if end-start <= 0.05 {
 		return cuts

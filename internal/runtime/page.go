@@ -1,3 +1,6 @@
+// 把轨迹存储页收成界面用的窗口：瘦身后的事件，加上头尾序号和是否还有更早事件。
+// 不读盘。调用方传入 trace.Page 和当时的总线序号。
+
 package runtime
 
 import (
@@ -6,9 +9,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// TrajectoryPage is the renderer window: a UI-slimmed slice plus cursors.
-// HeadSeq/TailSeq are store index seqs. HubSeq is the live bus head at
-// the moment the page was built so the client can catch up without a gap.
+// TrajectoryPage 是渲染窗口：瘦身后的事件，加上游标。
+// HeadSeq 和 TailSeq 是存储序号。HubSeq 是组装这一页时的总线头，供客户端补齐空隙。
 type TrajectoryPage struct {
 	Events  []trace.Event `json:"events"`
 	HeadSeq int64         `json:"head_seq"`
@@ -17,14 +19,13 @@ type TrajectoryPage struct {
 	HubSeq  int64         `json:"hub_seq"`
 }
 
-// ProjectPage slims a store page and enforces a marshal budget by dropping
-// the oldest user-turns. The live tail is never dropped.
+// ProjectPage 瘦身存储页，并按字节预算丢掉最旧的用户回合。默认不丢当前最后一段。
 func ProjectPage(raw trace.Page, hubSeq int64, byteCap int) TrajectoryPage {
 	return ProjectPageKeep(raw, hubSeq, byteCap, 0)
 }
 
-// ProjectPageKeep is ProjectPage but will not drop the user-turn at keepSeq.
-// Jump-around must keep the target even when the window is over budget.
+// ProjectPageKeep 与 ProjectPage 相同，但不会丢掉含 keepSeq 的用户回合。
+// 目标不在最后一段时，先删最后一段，直到目标变成最后一段，再删更早的段。
 func ProjectPageKeep(raw trace.Page, hubSeq int64, byteCap int, keepSeq int64) TrajectoryPage {
 	ui := UITrajectory(raw.Events)
 	older := raw.Older
@@ -54,10 +55,12 @@ func ProjectPageKeep(raw trace.Page, hubSeq int64, byteCap int, keepSeq int64) T
 	}
 }
 
+// capTrajectoryBytes 按字节预算从最旧的用户回合删起。
 func capTrajectoryBytes(evs []trace.Event, byteCap int) ([]trace.Event, bool) {
 	return capTrajectoryBytesKeep(evs, byteCap, 0)
 }
 
+// capTrajectoryBytesKeep 在 JSON 超过 byteCap 时按用户回合整段删除，直到不超或只剩一段。keepSeq 为 0 时只删最旧段。
 func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]trace.Event, bool) {
 	if len(evs) == 0 {
 		return evs, false
@@ -114,6 +117,7 @@ func capTrajectoryBytesKeep(evs []trace.Event, byteCap int, keepSeq int64) ([]tr
 	return evs, trimmed
 }
 
+// userRanges 按非插话的用户消息切回合。第一段用户消息之前的事件单独成段，并放在最前。
 func userRanges(evs []trace.Event) [][2]int {
 	var starts []int
 	for i, ev := range evs {
@@ -138,6 +142,7 @@ func userRanges(evs []trace.Event) [][2]int {
 	return out
 }
 
+// rangeHasSeq 判断半开区间 r 里是否有序号 seq。
 func rangeHasSeq(evs []trace.Event, r [2]int, seq int64) bool {
 	for i := r[0]; i < r[1] && i < len(evs); i++ {
 		if evs[i].Seq == seq {

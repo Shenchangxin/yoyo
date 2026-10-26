@@ -1,3 +1,9 @@
+// 锁住浏览器门的链接是 http，路径以 /open 开头，浏览器端口和 TLS 端口不同。
+// 允许前 /api/health 是 401。允许后浏览器从 pending 进到 browsers，配置 JSON 里没有 search-secret，也没有 search_key。
+// 外来 Origin 是 401。thread.model.set 把模型写回电脑。同一枚 nonce 不能再打开。
+// 没存住 fetch 的 Set-Cookie 时，文档跳转 /open/enter 仍能进入。Origin 为 null 算同一页。X-Yoyo-Session 配上外来 Origin 仍是 401。
+// HTML 会注入关掉拖拽的样式，CSS 不改。公网地址访问 /open 得到 403。
+
 package remote
 
 import (
@@ -15,6 +21,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
+// TestBrowserDoor 锁住明文 HTTP 扫码门、允许前后的接口、洗掉的密钥字段、换模型、一次性配对码，以及没有 cookie 时的文档进入。
 func TestBrowserDoor(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -185,8 +192,7 @@ func TestBrowserDoor(t *testing.T) {
 		t.Fatalf("reused nonce %d", again.StatusCode)
 	}
 
-	// A phone that never stored the fetch Set-Cookie still gets in through the
-	// document navigation, and a missing or port-less Origin is the same page.
+	// 没存住 fetch 写来的 Set-Cookie 的手机，仍能靠文档跳转进入。缺 Origin，或 Origin 不带端口，都算同一页。
 	jar2, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -261,6 +267,7 @@ func TestBrowserDoor(t *testing.T) {
 	}
 }
 
+// TestBrowserHTMLDisablesDrag 锁住 HTML 被插入 yoyo-browser-touch、no-drag 和 browser 标记，并且 Cache-Control 是 no-store。CSS 正文保持原样。
 func TestBrowserHTMLDisablesDrag(t *testing.T) {
 	h := markBrowser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".css") {
@@ -287,6 +294,7 @@ func TestBrowserHTMLDisablesDrag(t *testing.T) {
 	}
 }
 
+// TestBrowserDoorRejectsPublicPeer 锁住来源 8.8.8.8 访问 /open 得到 403。
 func TestBrowserDoorRejectsPublicPeer(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

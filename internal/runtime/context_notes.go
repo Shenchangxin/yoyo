@@ -1,3 +1,6 @@
+// 会话工作笔记和用户原文的整理。笔记记目标、文件、决定和错误，不是 ACE playbook。
+// 检查点、计量和 seed 会读它。控制行和「继续」类短句不改已经记下的目标。
+
 package runtime
 
 import (
@@ -7,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// 运行时插进用户角色的催促、计划和附件标记。isControlUser 把它们排除出笔记目标。
 const toolBudgetNudge = "Stop using tools and produce the final answer now."
 const planContinueNudge = "The plan still has unfinished steps. Continue the next in_progress or pending step now. Do not ask the operator to confirm. Do not stop to summarize."
 const planContinueNudgeZH = "计划里还有未完成步骤。现在继续 in_progress 或 pending 的下一步，不要请用户确认，不要停下来写总结。"
@@ -16,8 +20,7 @@ const (
 	steerUserPrefix   = "User steering (apply now):"
 )
 
-// AttachMention puts the operator utterance first so language and task
-// follow the user, not the (often English) skill/file body.
+// AttachMention 把操作者原话放在前面，注入的提及或技能正文跟在后面。注入为空时原样返回 user。
 func AttachMention(user, inject string) string {
 	user = strings.TrimSpace(user)
 	inject = strings.TrimSpace(inject)
@@ -31,7 +34,7 @@ func AttachMention(user, inject string) string {
 	return user + "\n\n" + block
 }
 
-// SessionNotes is task working memory. It is not the ACE playbook.
+// SessionNotes 是这一轮任务的工作记忆，不是 ACE playbook。
 type SessionNotes struct {
 	Objective string   `json:"objective,omitempty"`
 	Files     []string `json:"files,omitempty"`
@@ -39,9 +42,11 @@ type SessionNotes struct {
 	Errors    []string `json:"errors,omitempty"`
 	Tools     []string `json:"tools,omitempty"`
 	Next      string   `json:"next,omitempty"`
-	SpillIDs  []string `json:"spill_ids,omitempty"`
+	// SpillIDs 是被换成占位的工具结果 id。
+	SpillIDs []string `json:"spill_ids,omitempty"`
 }
 
+// Markdown 按固定小节写出笔记。空的 Next 和空的 spill 列表不写对应小节。
 func (n SessionNotes) Markdown() string {
 	var b strings.Builder
 	b.WriteString("## Objective\n")
@@ -89,6 +94,7 @@ func (n SessionNotes) Markdown() string {
 	return b.String()
 }
 
+// isResumeUser 识别「继续」一类短句。会先去掉首尾空白和句号、叹号、省略号。
 func isResumeUser(text string) bool {
 	s := strings.TrimSpace(text)
 	s = strings.Trim(s, "。.!！…")
@@ -101,6 +107,7 @@ func isResumeUser(text string) bool {
 	}
 }
 
+// isControlUser 把运行时催促、检查点、占位、提及和 steer 当成控制行。空文本也算。这些行不进入笔记目标。
 func isControlUser(text string) bool {
 	s := strings.TrimSpace(text)
 	if s == "" {
@@ -163,6 +170,7 @@ func isControlUser(text string) bool {
 	return false
 }
 
+// ExtractNotes 从轨迹事件收集笔记。steer 来源的用户事件跳过。目标、文件、工具、错误和 spill id 各有条数上限。
 func ExtractNotes(evs []trace.Event) SessionNotes {
 	n := SessionNotes{}
 	files := map[string]bool{}
@@ -215,6 +223,7 @@ func ExtractNotes(evs []trace.Event) SessionNotes {
 	return n
 }
 
+// NotesFromMessages 从消息收集笔记。控制行和继续短句不改目标。文件和工具的条数上限在 mergeNotes。
 func NotesFromMessages(msgs []Message) SessionNotes {
 	n := SessionNotes{}
 	files := map[string]bool{}
@@ -251,6 +260,7 @@ func NotesFromMessages(msgs []Message) SessionNotes {
 	return n
 }
 
+// stickObjective 把第一句非空用户话记成目标，截到 400 个 rune。之后不同的句子进入决定，只留最近 12 条。提及前缀之后的正文不计入。
 func stickObjective(n *SessionNotes, text string) {
 	if i := strings.Index(text, mentionUserPrefix); i >= 0 {
 		text = text[:i]
@@ -271,6 +281,7 @@ func stickObjective(n *SessionNotes, text string) {
 	}
 }
 
+// mergeNotes 保留已有目标。新目标不同且不是继续短句时，收进决定。文件、工具、错误、spill 和决定按给定上限合并。新的 Next 为空时沿用旧的。
 func mergeNotes(prev, next SessionNotes) SessionNotes {
 	if prev.Objective != "" {
 		if next.Objective != "" && next.Objective != prev.Objective && !isResumeUser(next.Objective) {
@@ -291,6 +302,7 @@ func mergeNotes(prev, next SessionNotes) SessionNotes {
 	return next
 }
 
+// ParseNotes 按 Markdown 小节解析笔记。目标是该小节的非空行直接拼接。
 func ParseNotes(md string) SessionNotes {
 	n := SessionNotes{}
 	section := ""
@@ -339,6 +351,7 @@ func ParseNotes(md string) SessionNotes {
 	return n
 }
 
+// WriteNotes 先和 spill 里已有的笔记合并，再以 id notes 写回。spill 为 nil 时不动。
 func WriteNotes(spill *Spill, notes SessionNotes) {
 	if spill == nil {
 		return
@@ -347,6 +360,7 @@ func WriteNotes(spill *Spill, notes SessionNotes) {
 	_ = spill.Put("notes", notes.Markdown())
 }
 
+// ReadNotes 读取 id 为 notes 的正文。spill 为 nil 或读失败时返回空串。
 func ReadNotes(spill *Spill) string {
 	if spill == nil {
 		return ""
@@ -358,6 +372,7 @@ func ReadNotes(spill *Spill) string {
 	return s
 }
 
+// extractJSONPaths 从工具参数里取 path、file 和 glob 三个字符串字段里能当笔记路径的值。
 func extractJSONPaths(args string) []string {
 	if strings.TrimSpace(args) == "" {
 		return nil
@@ -375,6 +390,7 @@ func extractJSONPaths(args string) []string {
 	return out
 }
 
+// keepNotePath 拒绝空路径、当前目录、上级目录和带通配的模式。
 func keepNotePath(p string) bool {
 	p = strings.TrimSpace(p)
 	if p == "" || p == "." || p == "./" || p == ".." {
@@ -386,16 +402,12 @@ func keepNotePath(p string) bool {
 	return true
 }
 
-// collapseDoubledText drops an accidental exact concatenation of the same
-// operator paragraph (IME/paste). Short strings are left alone so "haha"
-// does not collapse.
-// NormalizeUserText is the durable operator utterance: trim plus IME-doubling
-// collapse. Persist-first and seed() must share this so jsonl and the model
-// see the same row.
+// NormalizeUserText 是落盘和 seed 共用的用户原文：去掉首尾空白，并收起输入法或粘贴造成的整段重复。轨迹和模型看到的是同一份文本。
 func NormalizeUserText(s string) string {
 	return collapseDoubledText(strings.TrimSpace(s))
 }
 
+// collapseDoubledText 在长度至少 24 且前后两半完全相同时只留前一半。更短的文本原样返回，避免把 haha 收成 ha。
 func collapseDoubledText(s string) string {
 	s = strings.TrimSpace(s)
 	rs := []rune(s)
@@ -410,6 +422,7 @@ func collapseDoubledText(s string) string {
 	return s
 }
 
+// keys 返回映射里的非空键，按字典序排列。
 func keys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -421,6 +434,7 @@ func keys(m map[string]bool) []string {
 	return out
 }
 
+// appendUnique 在去掉空白后非空、且尚未出现时追加。
 func appendUnique(in []string, v string) []string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -434,6 +448,7 @@ func appendUnique(in []string, v string) []string {
 	return append(in, v)
 }
 
+// unionCap 合并两列，去重后排序，n 大于 0 时只留前 n 个。
 func unionCap(a, b []string, n int) []string {
 	seen := map[string]bool{}
 	var out []string

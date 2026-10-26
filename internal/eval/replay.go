@@ -1,3 +1,5 @@
+// 把已记录的轨迹折成脚本化模型，供回放。不执行工具，也不写轨迹。
+
 package eval
 
 import (
@@ -5,7 +7,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// ReplayTools is a scripted model built from a recorded trajectory.
+// ScriptFromTrace 按事件顺序生成 ScriptedClient。助手文本各成一条消息。连续的工具调用先攒起来，遇到下一条助手文本或结束时合成一条带 ToolCalls 的助手消息。其他事件类型忽略。
 func ScriptFromTrace(events []trace.Event) *runtime.ScriptedClient {
 	var steps []runtime.Message
 	var pending []runtime.ToolCall

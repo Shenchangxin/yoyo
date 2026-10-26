@@ -1,3 +1,6 @@
+// Package modelcatalog 拉取 models.dev 的模型目录，收成 Yoyo 预设用的子集，并缓存在磁盘上。
+// 默认地址是 https://models.dev/api.json。缓存文件名是 catalog-v1.json，新鲜期限是 12 小时。HTTP 正文最多读 32 << 20 字节。
+// 拉取失败且磁盘上已有目录时，返回那份目录并把 Stale 设为真，错误改为 nil。
 package modelcatalog
 
 import (
@@ -15,23 +18,31 @@ import (
 )
 
 const (
+	// DefaultURL 是目录的默认地址 https://models.dev/api.json。
 	DefaultURL = "https://models.dev/api.json"
-	CacheTTL   = 12 * time.Hour
-	MaxBody    = 32 << 20
-	cacheName  = "catalog-v1.json"
+	// CacheTTL 是磁盘缓存的新鲜期限，值为 12 * time.Hour。cacheFresh 用 FetchedAt 与它比较。
+	CacheTTL = 12 * time.Hour
+	// MaxBody 是 HTTP 正文读取上限，值为 32 << 20。defaultGet 用 LimitReader 截到这个长度。
+	MaxBody = 32 << 20
+	// cacheName 是磁盘缓存文件名 catalog-v1.json。
+	cacheName = "catalog-v1.json"
+	// CatalogVer 是写入缓存的版本号，值为 3。Load 和 Parse 都把它写进 Version。
 	CatalogVer = 3
 )
 
 var (
-	// URL is the catalog origin. Tests may override.
+	// URL 是目录来源。测试可以改它。YOYO_MODELS_DEV_URL 非空时 catalogURL 用环境变量，不用 URL。
 	URL = DefaultURL
+	// Get 拉取目录正文。默认是 defaultGet。测试可以换成桩。
 	Get = defaultGet
 
-	mu   sync.Mutex
+	// mu 串行化 Load，避免并发写同一份缓存。
+	mu sync.Mutex
+	// live 保存最近一次 Install 的目录。WindowFor 和 OutputFor 读它。
 	live atomic.Pointer[Catalog]
 )
 
-// Catalog is the frontend-shaped models.dev subset for yoyo presets.
+// Catalog 是给 Yoyo 预设用的 models.dev 子集，形状给前端读。
 type Catalog struct {
 	Version   int                         `json:"version"`
 	FetchedAt string                      `json:"fetchedAt"`
@@ -40,12 +51,14 @@ type Catalog struct {
 	Providers map[string]map[string]Entry `json:"providers"`
 }
 
+// Entry 是一条模型，带族名和发布日期。
 type Entry struct {
 	Model       Model  `json:"model"`
 	Family      string `json:"family,omitempty"`
 	ReleaseDate string `json:"releaseDate,omitempty"`
 }
 
+// Model 是前端用的模型字段。ContextWindow 和 MaxTokens 来自来源里的 limit。
 type Model struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name,omitempty"`
@@ -57,6 +70,7 @@ type Model struct {
 	Cost            *Cost    `json:"cost,omitempty"`
 }
 
+// Cost 是输入、输出、缓存读和缓存写的价格。四个数都是 0 时 convertModel 不填 Cost。
 type Cost struct {
 	Input      float64 `json:"input"`
 	Output     float64 `json:"output"`
@@ -64,8 +78,8 @@ type Cost struct {
 	CacheWrite float64 `json:"cacheWrite"`
 }
 
-// origin → yoyo preset id. First match wins for a given model id, so
-// international hosts (moonshotai, alibaba) beat their -cn twins.
+// originMap 把 models.dev 的来源 id 映到 Yoyo 预设 id。
+// 同一个模型 id 先写入的留下，后写入的同 id 被跳过。moonshotai 排在 moonshotai-cn 前面，alibaba 排在 alibaba-cn 前面。
 var originMap = []struct{ src, dst string }{
 	{"openai", "openai"},
 	{"anthropic", "claude"},
@@ -81,6 +95,7 @@ var originMap = []struct{ src, dst string }{
 	{"groq", "groq"},
 }
 
+// catalogURL 返回要拉取的地址。YOYO_MODELS_DEV_URL 去掉空白后非空就用它，否则用 URL。
 func catalogURL() string {
 	if v := strings.TrimSpace(os.Getenv("YOYO_MODELS_DEV_URL")); v != "" {
 		return v
@@ -88,11 +103,13 @@ func catalogURL() string {
 	return URL
 }
 
+// Install 存一份目录的副本，供 WindowFor 和 OutputFor 读取。
 func Install(c Catalog) {
 	cp := c
 	live.Store(&cp)
 }
 
+// WindowFor 从已安装的目录返回模型的上下文长度。还没有目录时返回 0。
 func WindowFor(model string) int {
 	c := live.Load()
 	if c == nil {
@@ -101,6 +118,7 @@ func WindowFor(model string) int {
 	return c.WindowFor(model)
 }
 
+// WindowFor 返回该模型的 ContextWindow。没有条目或长度不是正数时返回 0。
 func (c Catalog) WindowFor(model string) int {
 	e := c.lookup(model)
 	if e == nil || e.Model.ContextWindow <= 0 {
@@ -109,9 +127,8 @@ func (c Catalog) WindowFor(model string) int {
 	return e.Model.ContextWindow
 }
 
-// OutputFor returns the model's documented output-token limit from the live
-// catalog, or 0 when it is unknown. Callers leave the provider default in place
-// for 0, so an unknown model is never sent a cap it might reject.
+// OutputFor 从已安装的目录返回该模型写明的输出 token 上限，未知时返回 0。
+// 调用方对 0 保留供应商默认值，所以未知模型不会被发一个可能被拒绝的上限。
 func OutputFor(model string) int {
 	c := live.Load()
 	if c == nil {
@@ -120,6 +137,7 @@ func OutputFor(model string) int {
 	return c.OutputFor(model)
 }
 
+// OutputFor 返回该模型的 MaxTokens。没有条目或上限不是正数时返回 0。
 func (c Catalog) OutputFor(model string) int {
 	e := c.lookup(model)
 	if e == nil || e.Model.MaxTokens <= 0 {
@@ -128,6 +146,8 @@ func (c Catalog) OutputFor(model string) int {
 	return e.Model.MaxTokens
 }
 
+// lookup 按模型 id 找条目。候选依次是原 id、最后一个斜杠后面的一段，以及各自去掉末尾 -\d{8} 的形式。
+// 每个候选先按映射键精确匹配，再按大小写不敏感匹配。都没有时返回 nil。
 func (c Catalog) lookup(model string) *Entry {
 	id := strings.TrimSpace(model)
 	if id == "" || c.Providers == nil {
@@ -160,6 +180,10 @@ func (c Catalog) lookup(model string) *Entry {
 	return nil
 }
 
+// Load 读取或刷新 cacheDir 里的 catalog-v1.json。refresh 为假且缓存仍在 CacheTTL 内时直接用磁盘上的那份。
+// 否则调用 Get。网络或解析失败时，若已有上一份就把它标成 Stale 并返回 nil 错误。
+// 成功时 Source 写成 models.dev，FetchedAt 是当前 UTC 的 RFC3339Nano，Version 写成 CatalogVer。
+// 缓存目录权限 0o755，文件权限 0o644。建目录或编码失败时仍返回这份新目录，只是不一定落盘。
 func Load(cacheDir string, refresh bool) (Catalog, error) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -189,6 +213,7 @@ func Load(cacheDir string, refresh bool) (Catalog, error) {
 	return c, nil
 }
 
+// staleOrErr 在没有上一份目录时返回空目录和原错误。有上一份时把 Stale 设为真，Install 之后返回它和 nil。
 func staleOrErr(previous Catalog, hasPrev bool, err error) (Catalog, error) {
 	if !hasPrev {
 		return Catalog{}, err
@@ -198,6 +223,7 @@ func staleOrErr(previous Catalog, hasPrev bool, err error) (Catalog, error) {
 	return previous, nil
 }
 
+// cacheFresh 解析 FetchedAt，先试 RFC3339Nano，再试 RFC3339。解析失败返回假。距离现在不超过 CacheTTL 时返回真。
 func cacheFresh(c Catalog) bool {
 	t, err := time.Parse(time.RFC3339Nano, c.FetchedAt)
 	if err != nil {
@@ -209,6 +235,7 @@ func cacheFresh(c Catalog) bool {
 	return time.Since(t) <= CacheTTL
 }
 
+// readCache 读取缓存文件。读失败、JSON 失败或 Providers 为空时返回假。成功时把 Stale 设为假。
 func readCache(path string) (Catalog, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -222,12 +249,14 @@ func readCache(path string) (Catalog, bool) {
 	return c, true
 }
 
+// apiProvider 是 models.dev 里的一个来源。
 type apiProvider struct {
 	ID     string              `json:"id"`
 	Name   string              `json:"name"`
 	Models map[string]apiModel `json:"models"`
 }
 
+// apiModel 是来源里的一条模型原文。
 type apiModel struct {
 	ID          string        `json:"id"`
 	Name        string        `json:"name"`
@@ -239,16 +268,19 @@ type apiModel struct {
 	Cost        *apiCost      `json:"cost"`
 }
 
+// apiModalities 是来源声明的输入和输出模态。
 type apiModalities struct {
 	Input  []string `json:"input"`
 	Output []string `json:"output"`
 }
 
+// apiLimit 是来源声明的上下文和输出上限。
 type apiLimit struct {
 	Context int `json:"context"`
 	Output  int `json:"output"`
 }
 
+// apiCost 是来源里的价格，字段名用下划线。
 type apiCost struct {
 	Input      float64 `json:"input"`
 	Output     float64 `json:"output"`
@@ -256,6 +288,8 @@ type apiCost struct {
 	CacheWrite float64 `json:"cache_write"`
 }
 
+// Parse 把 models.dev 的 JSON 收成 Catalog。Version 是 CatalogVer，Source 是 models.dev。
+// 没有任何映到的来源时返回 models.dev: no mapped providers。
 func Parse(raw []byte) (Catalog, error) {
 	origins, err := decodeOrigins(raw)
 	if err != nil {
@@ -293,6 +327,8 @@ func Parse(raw []byte) (Catalog, error) {
 	return out, nil
 }
 
+// decodeOrigins 读取来源表。顶层对象能解出并且不是只含一个 providers 键时，就把它当来源表。
+// 否则再按 {"providers": ...} 解。包一层的结果为空时返回 models.dev: empty catalog。
 func decodeOrigins(raw []byte) (map[string]apiProvider, error) {
 	var origins map[string]apiProvider
 	if err := json.Unmarshal(raw, &origins); err == nil && len(origins) > 0 {
@@ -312,6 +348,9 @@ func decodeOrigins(raw []byte) (map[string]apiProvider, error) {
 	return wrap.Providers, nil
 }
 
+// convertModel 把一条来源模型收成 Entry。id 为空时用映射键。keepModel 拒绝时返回假。
+// 名字为空时用 id。family 为空或与 id 只是大小写不同时改用 FamilyOf。输入模态经 filterInput。
+// 价格四个字段全是 0 或 Cost 为 nil 时不填 Cost。
 func convertModel(key string, am apiModel) (Entry, bool) {
 	id := strings.TrimSpace(am.ID)
 	if id == "" {
@@ -355,6 +394,7 @@ func convertModel(key string, am apiModel) (Entry, bool) {
 	return e, true
 }
 
+// keepModel 在上下文长度大于 0 时保留。否则输出模态里要有 text 或 image 才保留。
 func keepModel(am apiModel) bool {
 	if am.Limit.Context > 0 {
 		return true
@@ -371,6 +411,7 @@ func keepModel(am apiModel) bool {
 	return false
 }
 
+// filterInput 只留下 text 和 image，转成小写并去重，顺序与第一次出现相同。
 func filterInput(in []string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -388,6 +429,8 @@ func filterInput(in []string) []string {
 	return out
 }
 
+// defaultGet 用 GET 拉取 rawURL。超时 25 秒。Accept 是 application/json，User-Agent 是 yoyo-modelcatalog。
+// 状态码大于等于 300 时返回错误。正文用 LimitReader 截到 MaxBody。
 func defaultGet(rawURL string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()

@@ -1,3 +1,5 @@
+// quiet.go 给剪辑拉起的外部命令隐藏控制台窗口。
+
 package cut
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
+// quiet 调用 osutil.HideConsole 后返回原命令。
 func quiet(cmd *exec.Cmd) *exec.Cmd {
 	osutil.HideConsole(cmd)
 	return cmd

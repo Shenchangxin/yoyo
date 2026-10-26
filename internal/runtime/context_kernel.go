@@ -1,3 +1,6 @@
+// 一轮请求的前缀、动态尾和检查点。Run 取 prompt 的投影去调用模型，轨迹仍由 emit 追加。
+// 已准入的系统头留在原处，前缀变更追加在历史后面。动态块接在历史末尾，不写进系统头。
+
 package runtime
 
 import (
@@ -10,29 +13,32 @@ import (
 )
 
 const (
-	skillBodyCapRunes      = 5_000
+	// skillBodyCapRunes 是单份非引导技能正文的 rune 上限。
+	skillBodyCapRunes = 5_000
+	// skillBootstrapCapRunes 是带引导标记的技能正文 rune 上限。
 	skillBootstrapCapRunes = 12_000
-	skillTotalCapRunes     = 25_000
+	// skillTotalCapRunes 是全部技能正文加在一起的 rune 上限。放不下的整份跳过。
+	skillTotalCapRunes = 25_000
 )
 
-// ContextKernel owns pin/hot/dynamic assembly, the prefix contract, and
-// checkpoint. Run consumes Prompt / Checkpoint; it does not reshape history.
+// ContextKernel 持有这一轮的身份、pins、动态尾和检查点。Run 消费 prompt 和 checkpoint 的结果，不在这里改写已经落盘的轨迹。
 type ContextKernel struct {
 	req      *RunRequest
 	identity string
 	pins     string
 	prefix   string
-	// seriesPrefix is the system text actually placed at the head. A later
-	// prompt change is appended after history so this head stays byte-stable.
+	// seriesPrefix 是真正放在请求头部的系统文本，等于已准入的 identity 加 pins。前缀变更追加在历史后面，这段头部字节保持不动。检查点之后改回当前 prefix。
 	seriesPrefix string
 	bill         contextBill
 	spill        *Spill
 	notes        string
 	lastHash     string
-	prevHot      string
-	dyn          string
+	// prevHot 是上一轮热前缀的字节。本轮仍以它为开头时 CacheStable 为真。
+	prevHot string
+	dyn     string
 }
 
+// newContextKernel 按当前材料建账本。笔记从 spill 读出并截到 2000 个 rune。同时写下规则索引。seriesPrefix 留到 seed 再填。
 func newContextKernel(req *RunRequest) *ContextKernel {
 	spill := spillOf(*req)
 	notes := capRunes(ReadNotes(spill), 2000)
@@ -66,8 +72,10 @@ func newContextKernel(req *RunRequest) *ContextKernel {
 	}
 }
 
+// promptUpdateLead 是追加在历史后面的前缀更新开头。旧的系统消息留在头部，模型以这一版为准。isControlUser 认得这个前缀。
 const promptUpdateLead = "Prompt update. The earlier system message stays only so the cached prefix can be reused. Follow this version.\n提示更新。前面的系统消息留在原处是为了保住缓存前缀。以这一版为准。\n"
 
+// cachePrefix 返回缓存键用的头部。seriesPrefix 非空时用它，否则用当前 prefix。追加在历史后的更新不算进这段头部。
 func (k *ContextKernel) cachePrefix() string {
 	if k == nil {
 		return ""
@@ -78,6 +86,11 @@ func (k *ContextKernel) cachePrefix() string {
 	return k.prefix
 }
 
+// seed 组装这一轮的消息。用户原文在返回前写入轨迹。
+// 最后一次检查点之后若有准入的 prompt（还没有检查点就看整段轨迹），头部用那次事件里的 identity 和 pins，seriesPrefix 等于这两段相接，头部字节保持不动。
+// 当前 prefix 和该事件的 text 不同，或 prefix 已经不是这段头部且历史里还没有对应更新时，把 promptUpdateLead 加当前 prefix，作为用户消息追加在历史后面。
+// 同一轮要写入的 prompt 事件仍带头部的 identity 和 pins，text 才是当前 prefix。历史里已经有同样的更新就不再追加。
+// 用户文本经 NormalizeUserText。没有用户、没有注入、去掉系统消息后历史也是空的，返回错误。
 func (k *ContextKernel) seed() ([]Message, error) {
 	identity, pins := k.identity, k.pins
 	k.seriesPrefix = k.prefix
@@ -149,6 +162,7 @@ func (k *ContextKernel) seed() ([]Message, error) {
 	return messages, nil
 }
 
+// reseed 用当前 identity 和 pins 接上去掉系统消息的历史。检查点之后调用，头部换成当前 prefix，不再沿用检查点前的 seriesPrefix。
 func (k *ContextKernel) reseed(hist []Message) []Message {
 	messages := []Message{{Role: RoleSystem, Content: k.identity}}
 	if strings.TrimSpace(k.pins) != "" {
@@ -157,13 +171,14 @@ func (k *ContextKernel) reseed(hist []Message) []Message {
 	return append(messages, stripSystem(hist)...)
 }
 
+// promptHead 是某次准入 prompt 事件里放在头部的 identity 和 pins。
 type promptHead struct {
 	identity string
 	pins     string
 }
 
-// seriesPrompt is the latest admitted prompt after the last checkpoint.
-// identity and pins are the series head that stays at the front of the request.
+// seriesPrompt 取最后一次检查点之后、最后一条 kind 为 prompt 的系统事件。没有则返回 false。
+// text 是当时的前缀全文。identity 和 pins 是当时放在头部的那一份，可以和 text 不同。
 func seriesPrompt(st *trace.Store, sessionID string) (promptHead, string, bool) {
 	if st == nil || strings.TrimSpace(sessionID) == "" {
 		return promptHead{}, "", false
@@ -201,6 +216,7 @@ func seriesPrompt(st *trace.Store, sessionID string) (promptHead, string, bool) 
 	return head, latest, found
 }
 
+// transcriptHasPrompt 报告历史里是否已有内容恰好等于 promptUpdateLead 加 prefix 的用户消息。
 func transcriptHasPrompt(msgs []Message, prefix string) bool {
 	want := promptUpdateLead + prefix
 	for _, m := range msgs {
@@ -211,10 +227,13 @@ func transcriptHasPrompt(msgs []Message, prefix string) bool {
 	return false
 }
 
+// chatMode 在请求打开 SoftHorizon 时为真。
 func (k *ContextKernel) chatMode() bool {
 	return k.req != nil && k.req.SoftHorizon
 }
 
+// refreshDynamic 重算技能正文、今日和笔记。操作者语种需要提醒时，把 languageDynPin 加在动态块前面。
+// setDynamic 去掉旧的动态块，再把新块接到历史末尾。
 func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 	ckpt := k.req.Checkpoint
 	if ckpt == "" {
@@ -242,6 +261,10 @@ func (k *ContextKernel) refreshDynamic(messages []Message) []Message {
 	return setDynamic(messages, k.dyn)
 }
 
+// prompt 生成发给模型的投影和账本。先把动态块接到历史末尾。
+// SoftHorizon 且非 aggressive 时用 projectChat：截工具结果，压力够了再把旧的只读结果换成回执，然后 Legalize。不做 snip 和 forceFit，写操作参数原样保留。
+// 其他情况 Shape 之后再 Legalize。Legalize 只改这份投影，不写 JSONL。
+// 热前缀跳过动态块。CacheStable 表示本轮热前缀仍以前一轮热前缀的字节为开头。
 func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Message, tools []ToolJSON, report ShapeReport) {
 	messages = k.refreshDynamic(messages)
 	tools = AllToolJSON(k.req.Tools)
@@ -250,11 +273,7 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 		Loop: k.req.Loop, Spill: k.spill, ModelWindow: k.req.ModelWindow, Overhead: overhead, Aggressive: aggressive,
 	}
 	if k.chatMode() && !aggressive {
-		// SoftHorizon skips snip/forceFit so the cache-stable prefix stays
-		// intact, but write_file bodies must still be stubbed. Otherwise a
-		// long desktop turn ships every full file back to the local model
-		// on every round (session 477c0d8b0b8ac64e: 139 writes, 1M window
-		// so checkpoint never fired).
+		// SoftHorizon 且这次不是 aggressive：走 projectChat，不做 snip 和 forceFit，写操作参数原样保留。超长回合靠检查点，不靠改写头部。
 		out, report = projectChat(messages, opts)
 	} else {
 		out, report = Shape(messages, opts)
@@ -272,6 +291,7 @@ func (k *ContextKernel) prompt(messages []Message, aggressive bool) (out []Messa
 	return out, tools, report
 }
 
+// usedTokens 在提供商报了提示 token 时用 ProviderPrompt，否则用本地估算的 Tokens。
 func (k *ContextKernel) usedTokens(report ShapeReport) int {
 	if report.ProviderPrompt > 0 {
 		return report.ProviderPrompt
@@ -279,13 +299,10 @@ func (k *ContextKernel) usedTokens(report ShapeReport) int {
 	return report.Tokens
 }
 
-// chatCompactAt is where a desktop turn is checkpointed, as a fraction of the
-// effective window. Compacting near the full window leaves the model reasoning
-// over a degraded context for the rest of the turn. Around 65% leaves room for
-// the summary and for the next few rounds. Claude Code's auto-compact sits in
-// the same place (window minus a fixed buffer).
+// chatCompactAt 是桌面检查点用的预算比例。有模型窗口时 shouldCheckpoint 乘上它，给摘要和后面几轮留余量。
 const chatCompactAt = 0.65
 
+// shouldCheckpoint 只在 SoftHorizon 且预算大于 0 时为真。有模型窗口时阈值是预算乘 chatCompactAt，否则用整段预算。
 func (k *ContextKernel) shouldCheckpoint(report ShapeReport) bool {
 	if !k.chatMode() || report.Budget <= 0 {
 		return false
@@ -297,6 +314,7 @@ func (k *ContextKernel) shouldCheckpoint(report ShapeReport) bool {
 	return k.usedTokens(report) >= limit
 }
 
+// checkpoint 做一次检查点，然后用当前身份重新播种。笔记截到 2000 个 rune，lastHash 和 prevHot 清空，seriesPrefix 改回当前 prefix。工具解锁在这里提交。
 func (k *ContextKernel) checkpoint(messages []Message, trigger, focus string) []Message {
 	hist := forceCheckpoint(k.req.Trace, k.req.SessionID, messages, k.req.Loop, k.spill, k.req.Client, k.req.Model, k.req.ModelWindow, "runtime", k.req.Fragments, CompactOpts{Trigger: trigger, Focus: focus, Req: k.req})
 	k.notes = capRunes(ReadNotes(k.spill), 2000)
@@ -309,6 +327,8 @@ func (k *ContextKernel) checkpoint(messages []Message, trigger, focus string) []
 	return k.reseed(hist)
 }
 
+// capLoadedSkills 截断已加载技能。带引导标记的单份上限是 skillBootstrapCapRunes，其余是 skillBodyCapRunes，总和不超过 skillTotalCapRunes。
+// 引导正文按原顺序先占额度。其余从最新往旧收，输出时较新的仍在后面。放不下的整份跳过。
 func capLoadedSkills(bodies []string) []string {
 	if len(bodies) == 0 {
 		return nil
@@ -349,16 +369,19 @@ func capLoadedSkills(bodies []string) []string {
 	return out
 }
 
+// isBootstrapBody 在正文含引导标记标签时返回真。
 func isBootstrapBody(s string) bool {
 	return strings.Contains(s, "<"+bootstrapMarker+">")
 }
 
+// hotPrefixHash 对热前缀做 blake3，取前 16 字节的十六进制。动态块不计入。
 func hotPrefixHash(msgs []Message) string {
 	h := blake3.New()
 	_, _ = h.Write([]byte(hotPrefixBytes(msgs)))
 	return hex16(h.Sum(nil))
 }
 
+// hotPrefixBytes 拼热前缀。跳过 RoleMemory 和以 dynMarker 开头的内容，因此动态块不在这段字节里。
 func hotPrefixBytes(msgs []Message) string {
 	var b strings.Builder
 	for _, m := range msgs {
@@ -382,6 +405,7 @@ func hotPrefixBytes(msgs []Message) string {
 	return b.String()
 }
 
+// reportPayload 组装 kind 为 shape 的事件载荷。ProviderPrompt 大于 0 才写入。extra 里的键覆盖同名字段。
 func reportPayload(report ShapeReport, extra map[string]any) map[string]any {
 	p := map[string]any{
 		"kind":              "shape",

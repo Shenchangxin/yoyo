@@ -1,3 +1,5 @@
+// main_test.go 锁住四段版本补零，以及清单、plist、nfpm 和 NSIS 里的版本替换。
+
 package main
 
 import (
@@ -7,12 +9,14 @@ import (
 	"testing"
 )
 
+// TestFourPart 确认 1.2.3 被补成 1.2.3.0。
 func TestFourPart(t *testing.T) {
 	if got := fourPart("1.2.3"); got != "1.2.3.0" {
 		t.Fatalf("fourPart: %s", got)
 	}
 }
 
+// TestStampManifest 确认清单版本变成 0.2.0.0，旧的 0.1.0.0 不再出现。
 func TestStampManifest(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "app.manifest")
@@ -35,6 +39,7 @@ func TestStampManifest(t *testing.T) {
 	}
 }
 
+// TestStampPlistAndNFPM 确认 plist 的版本字符串变成 0.2.0，nfpm 的 version 变成 0.2.0-beta.1。
 func TestStampPlistAndNFPM(t *testing.T) {
 	dir := t.TempDir()
 	plist := filepath.Join(dir, "Info.plist")
@@ -76,6 +81,7 @@ func TestStampPlistAndNFPM(t *testing.T) {
 	}
 }
 
+// TestStampNSIS 确认 INFO_PRODUCTVERSION 变成 0.2.0。
 func TestStampNSIS(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wails_tools.nsh")

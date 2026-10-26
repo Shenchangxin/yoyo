@@ -1,3 +1,7 @@
+/**
+ * 拥有：偶像对话、语音、听写和图像服务的表单。
+ * 不拥有：偶像档案。保存和探测会调用 api 改状态。
+ */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -73,6 +77,7 @@ const empty: Form = {
 
 const fieldClass = "mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-[13px]";
 
+/** 把已存的设置收成表单。 */
 function fromRaw(v: any): Form {
   const u = v?.user || {};
   return {
@@ -105,6 +110,7 @@ function fromRaw(v: any): Form {
   };
 }
 
+/** 取出没选服务商时用来垫的预设。 */
 function fallbackOf(v: any): Fallback {
   const f = v?.fallback || {};
   return {
@@ -120,12 +126,14 @@ function fallbackOf(v: any): Fallback {
   };
 }
 
+/** 有预设就用预设，否则有地址就当自定义。 */
 function choice(provider: string, base: string, presets: ServicePreset[], kind: string): string {
   if (presetByID(presets, provider, kind)) return provider;
   if (base.trim()) return customProvider;
   return "";
 }
 
+/** 把模型和声线夹进当前预设里有的那些。 */
 function clampKind(form: Form, presets: ServicePreset[], kind: "speech" | "asr" | "image") {
   const id = kind === "speech" ? form.speech_provider : kind === "asr" ? form.asr_provider : form.image_provider;
   const preset = presetByID(presets, id, kind);
@@ -143,6 +151,7 @@ function clampKind(form: Form, presets: ServicePreset[], kind: "speech" | "asr" 
   if (!preset.models.includes(form.image_model)) form.image_model = preset.models[0];
 }
 
+/** 按预设把三类服务对齐，空着的语音可以垫一条声线。 */
 function align(form: Form, presets: ServicePreset[], fallback: Fallback): Form {
   const next: Form = {
     ...form,
@@ -161,6 +170,7 @@ function align(form: Form, presets: ServicePreset[], fallback: Fallback): Form {
   return next;
 }
 
+/** 对话模型仍在目录里就留住它带上的服务商。 */
 function keepChat(providers: ChatProvider[], raw: string): string {
   const value = raw.trim();
   if (!value) return "";
@@ -175,20 +185,24 @@ function keepChat(providers: ChatProvider[], raw: string): string {
   return value;
 }
 
+/** 自定义和空选择存成空的服务商编号。 */
 function storedProvider(id: string): string {
   return !id || id === customProvider ? "" : id;
 }
 
+/** 自定义存地址，预设存它的端点。 */
 function storedBase(id: string, base: string, presets: ServicePreset[], kind: string): string {
   if (!id || id === customProvider) return id === customProvider ? base.trim() : "";
   return presetByID(presets, id, kind)?.endpoint || base.trim();
 }
 
+/** 自定义或已选预设时存模型，空选择存空。 */
 function storedModel(id: string, model: string): string {
   if (!id || id === customProvider) return id === customProvider ? model.trim() : "";
   return model.trim();
 }
 
+/** IdolSettings 编辑偶像用的对话、语音、听写和图像。 */
 export function IdolSettings() {
   const copy = useCopy();
   const c = copy.idol;
@@ -230,8 +244,10 @@ export function IdolSettings() {
     return () => { stop = true; };
   }, []);
 
+  /** 把改动写回表单。 */
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
 
+  /** 换某一类的服务商，并把模型和地址夹到预设上。 */
   function setProvider(kind: "speech" | "asr" | "image", id: string) {
     setForm((f) => {
       const next = { ...f };
@@ -283,6 +299,7 @@ export function IdolSettings() {
     });
   }
 
+  /** 换语音模型，声线不在列表里就换一条。 */
   function setSpeechModel(model: string) {
     setForm((f) => {
       const p = presetByID(presets, f.speech_provider, "speech");
@@ -292,6 +309,7 @@ export function IdolSettings() {
     });
   }
 
+  /** 把表单存成偶像服务设置。 */
   async function save() {
     setBusy(true);
     try {
@@ -335,6 +353,7 @@ export function IdolSettings() {
     }
   }
 
+  /** 探测某一类连接。 */
   async function ping(kind: string) {
     try {
       await api.idolCall("ping", { kind });
@@ -464,6 +483,7 @@ export function IdolSettings() {
   );
 }
 
+/** 画某一类媒体服务的地址、模型和密钥。 */
 function MediaFields(props: {
   title: string;
   kind: "speech" | "asr" | "image";
@@ -532,6 +552,7 @@ function MediaFields(props: {
   );
 }
 
+/** 从可用声线里选一条。 */
 function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (voice: string) => void }) {
   const label = useCopy().idol.mediaVoice;
   const extra = props.value && !props.voices.some((v) => v.id === props.value);
@@ -546,6 +567,7 @@ function VoiceSelect(props: { voices: ServiceVoice[]; value: string; onChange: (
   );
 }
 
+/** 画一行输入，密钥可以遮住。 */
 function Field(props: { label: string; value: string; placeholder?: string; secret?: boolean; onChange: (v: string) => void }) {
   return (
     <label className="block text-[12px] text-muted">

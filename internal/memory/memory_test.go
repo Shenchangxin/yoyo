@@ -1,3 +1,6 @@
+// 本文件锁住 Forget 会删掉情景记忆，以及 profile 写入后 Staging 为假并立刻出现在 ProfilePin 里。
+// 不覆盖 Promote。由 go test 调用。
+
 package memory
 
 import (
@@ -5,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestForgetRemoves 要求情景写入后 Staging 为真，Forget 之后按 SECRET 搜不到。
 func TestForgetRemoves(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -22,6 +26,7 @@ func TestForgetRemoves(t *testing.T) {
 	}
 }
 
+// TestProfilePinSkipsStaging 要求 profile 写入后 Staging 为假、Source 保留，并且 ProfilePin 的结果里有 Ada。
 func TestProfilePinSkipsStaging(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

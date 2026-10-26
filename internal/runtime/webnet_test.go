@@ -1,3 +1,5 @@
+// 锁住 web_search 的 SearchAPI 和 Jina 回退、空查询，以及环回地址不走 Jina。web_fetch 在 403 页面上会改走 Jina 阅读器。
+
 package runtime
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
 
+// TestWebSearchUsesSearchAPI 锁住 SearchAPI 返回可用结果时，正文带来源前缀 search:，不再往下试 Jina。
 func TestWebSearchUsesSearchAPI(t *testing.T) {
 	tools := &WorkspaceTools{SearchAPI: func(q string) (string, error) {
 		if q != "hello" {
@@ -27,6 +30,7 @@ func TestWebSearchUsesSearchAPI(t *testing.T) {
 	}
 }
 
+// TestWebSearchJinaFallback 锁住没有 SearchAPI 时，检索落到 Jina，正文含 search (jina)。
 func TestWebSearchJinaFallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -50,6 +54,7 @@ func TestWebSearchJinaFallback(t *testing.T) {
 	}
 }
 
+// TestWebSearchEmpty 锁住空白查询返回错误。
 func TestWebSearchEmpty(t *testing.T) {
 	res := (&WorkspaceTools{}).webSearch("  ")
 	if res.Err == nil {
@@ -57,6 +62,7 @@ func TestWebSearchEmpty(t *testing.T) {
 	}
 }
 
+// TestShouldJinaReaderSkipsLoopback 锁住 127.0.0.1 即使状态是 403 也不走 Jina。公网 403 走。JSON 不走。
 func TestShouldJinaReaderSkipsLoopback(t *testing.T) {
 	u, _ := url.Parse("http://127.0.0.1:8080/x")
 	if shouldJinaReader(u, 403, "text/html", "nope", "nope") {
@@ -71,6 +77,7 @@ func TestShouldJinaReaderSkipsLoopback(t *testing.T) {
 	}
 }
 
+// TestWebFetchJinaFallback 把 jinaSkipLoopback 关掉后，锁住源站 403 的 HTML 会再请求 Jina，正文带 (jina)。
 func TestWebFetchJinaFallback(t *testing.T) {
 	prevSkip := jinaSkipLoopback
 	jinaSkipLoopback = false
@@ -99,6 +106,7 @@ func TestWebFetchJinaFallback(t *testing.T) {
 	}
 }
 
+// TestParseDuckDuckGoUseful 锁住 DuckDuckGo HTML 能解析出标题。
 func TestParseDuckDuckGoUseful(t *testing.T) {
 	hits := webcontent.ParseDuckDuckGoHTML(`<a class="result__a" href="https://example.com/p">Paper</a><a class="result__snippet">abs</a>`)
 	if len(hits) != 1 || hits[0].Title != "Paper" {

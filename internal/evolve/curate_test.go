@@ -1,3 +1,5 @@
+// 锁住策展会追加洞察，并把已有条目的 Helpful 计数加上去，而不是用一条新文本换掉整本剧本。
+
 package evolve
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestCurateDoesNotCollapse 要求洞察变成新增条目，且原条目的 Helpful 至少变成 2。
 func TestCurateDoesNotCollapse(t *testing.T) {
 	pb := artifact.Playbook{ID: "main", Bullets: []artifact.PlaybookBullet{
 		{ID: "b1", Text: "create output early", Helpful: 1},

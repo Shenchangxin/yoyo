@@ -1,22 +1,30 @@
+/**
+ * 拥有：把已定位的 mdast 块画成 React 元素。
+ * 不拥有：增量解析，以及 Streamdown 的定稿渲染。
+ */
+
 import { createElement, type ReactNode } from "react";
 import type { RootContent, PhrasingContent } from "mdast";
 import type { PositionedBlock } from "./incremental-md";
 
+/** 只留 http、https 和 mailto。相对地址和解析失败返回空串。 */
 function sanitizeUrl(url: string): string {
   try {
     const protocol = new URL(url).protocol;
     if (protocol === "http:" || protocol === "https:" || protocol === "mailto:") return url;
   } catch {
-    /* relative */
+    /* 相对地址 */
   }
   return "";
 }
 
+/** 把一行内的节点顺次画出来。没有节点则空数组。 */
 function phrasing(nodes: readonly PhrasingContent[] | undefined): ReactNode[] {
   if (!nodes?.length) return [];
   return nodes.map((node, i) => inline(node, i));
 }
 
+/** 画一个行内节点。链接和图片的地址过不了校验时，链接退回文字，图片退回替代文本。其余有子节点的包进 span，有 value 的返回原文。 */
 function inline(node: PhrasingContent, key: number): ReactNode {
   switch (node.type) {
     case "text":
@@ -52,6 +60,7 @@ function inline(node: PhrasingContent, key: number): ReactNode {
   }
 }
 
+/** 画一个块。标题深度夹在 1 到 6。表格不少于四列时加宽并可以聚焦。html 块只显示原文。 */
 function block(node: RootContent, key: number): ReactNode {
   switch (node.type) {
     case "paragraph":
@@ -146,7 +155,7 @@ function block(node: RootContent, key: number): ReactNode {
   }
 }
 
-/** Frozen mdast blocks as React elements. Keys are source offsets so React reconciles across freeze. */
+/** renderMdastBlocks 把冻结的 mdast 块画成元素。键是源码偏移，跨过冻结边界时 React 能对上。 */
 export function renderMdastBlocks(blocks: readonly PositionedBlock[]): ReactNode[] {
   const out: ReactNode[] = [];
   for (const b of blocks) {

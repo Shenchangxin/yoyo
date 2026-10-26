@@ -1,3 +1,5 @@
+// 从已连接邮箱和没有里程碑的目标生成想法。日历账号在这里被跳过。
+
 package personal
 
 import (
@@ -8,10 +10,13 @@ import (
 )
 
 var (
+	// reDocument 匹配主题或正文里可能需要填写的词。
 	reDocument = regexp.MustCompile(`(?i)form|permission|complete|fill|sign`)
-	reMeet     = regexp.MustCompile(`(?i)coffee|meet|available|schedule`)
+	// reMeet 匹配主题或正文里可能在约时间的词。
+	reMeet = regexp.MustCompile(`(?i)coffee|meet|available|schedule`)
 )
 
+// RefreshIdeas 从非日历账号的邮件里最多各提 5 条文档和约见想法，并为没有里程碑的进行中目标补一条计划想法。已发送或已成功处理的邮件会把 new 想法标成 dismissed。
 func (e *Engine) RefreshIdeas() error {
 	mail := e.mailViews()
 	sent := map[string]bool{}
@@ -120,6 +125,7 @@ func (e *Engine) RefreshIdeas() error {
 	return nil
 }
 
+// recoverIdeas 给状态为 accepted 但任务已经不在的想法重新 CreateTask。
 func (e *Engine) recoverIdeas() {
 	for _, idea := range e.store.ideas() {
 		if idea.Status != "accepted" {
@@ -141,6 +147,7 @@ func (e *Engine) recoverIdeas() {
 	}
 }
 
+// DecideIdea 在 action 为 dismiss 时把 new 标成 dismissed。接受 new 时，若同种类、同 message_id 已有未失败任务就复用，否则 CreateTask。
 func (e *Engine) DecideIdea(id, action string) (Idea, error) {
 	idea, ok := e.store.idea(id)
 	if !ok {
@@ -190,6 +197,7 @@ func (e *Engine) DecideIdea(id, action string) (Idea, error) {
 	return idea, nil
 }
 
+// mailViews 读取连接器里的邮件账号。日历账号跳过。没有主题却有 note 的占位项也跳过。
 func (e *Engine) mailViews() []MailView {
 	if e.Connectors == nil {
 		return nil
@@ -231,6 +239,7 @@ func (e *Engine) mailViews() []MailView {
 	return out
 }
 
+// splitList 按逗号或分号切开并去掉空白项。
 func splitList(s string) []string {
 	var out []string
 	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ';' }) {

@@ -1,3 +1,5 @@
+// source_test.go 锁住长文是否像连载、分集提案要提交后才落库，以及分镜第一批不会提前标完成。不调用模型。
+
 package video
 
 import (
@@ -7,6 +9,7 @@ import (
 	"unicode/utf8"
 )
 
+// TestLooksLikeSeries 确认短句返回假，同一句重复 280 次或出现两章时返回真。
 func TestLooksLikeSeries(t *testing.T) {
 	if LooksLikeSeries("林小雨在巷口等车。") {
 		t.Fatal("short prose should stay on the one-episode path")
@@ -21,6 +24,7 @@ func TestLooksLikeSeries(t *testing.T) {
 	}
 }
 
+// TestIngestProposeCommitSlices 确认导入后字数至少 400，草案不创建分集，提交后至少 2 集且每集正文是原文里的非空片段，已提交后再导入会失败。
 func TestIngestProposeCommitSlices(t *testing.T) {
 	e := testEngine(t)
 	d, err := e.CreateDrama(Drama{Title: "雨巷", Style: "3d", AspectRatio: "9:16"})
@@ -75,6 +79,7 @@ func TestIngestProposeCommitSlices(t *testing.T) {
 	}
 }
 
+// TestReadSourceWindow 确认返回文本不超过 maxReadWindow，原文长于 500 时 truncated 为真。
 func TestReadSourceWindow(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})
@@ -95,6 +100,7 @@ func TestReadSourceWindow(t *testing.T) {
 	}
 }
 
+// TestBindSessionDramaWithoutEpisode 确认会话绑上剧且分集标识为空，drama_read_plan 不返回错误。
 func TestBindSessionDramaWithoutEpisode(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})
@@ -110,6 +116,7 @@ func TestBindSessionDramaWithoutEpisode(t *testing.T) {
 	}
 }
 
+// TestCommitToolRejected 确认 drama_commit_episodes 返回错误。
 func TestCommitToolRejected(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})
@@ -119,6 +126,7 @@ func TestCommitToolRejected(t *testing.T) {
 	}
 }
 
+// TestStoryboardCoverageDoesNotMarkDoneEarly 确认段数多于 8 的计划在先保存 8 条分镜后返回 continue，且分镜阶段不是 done。
 func TestStoryboardCoverageDoesNotMarkDoneEarly(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})
@@ -158,6 +166,7 @@ func TestStoryboardCoverageDoesNotMarkDoneEarly(t *testing.T) {
 	}
 }
 
+// pipeStatusGo 从流水线 JSON 取出该阶段的 status 字符串，缺失时返回空串。
 func pipeStatusGo(raw, stage string) string {
 	var m map[string]any
 	_ = json.Unmarshal([]byte(raw), &m)
@@ -172,6 +181,7 @@ func pipeStatusGo(raw, stage string) string {
 	return v
 }
 
+// TestBibleSaveWithoutEpisode 确认不建分集也能保存角色，且首次出现的集数是 1。
 func TestBibleSaveWithoutEpisode(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})
@@ -185,6 +195,7 @@ func TestBibleSaveWithoutEpisode(t *testing.T) {
 	}
 }
 
+// TestSplitAndMergePlan 确认拆开后再合并，分集方案不会变成空。
 func TestSplitAndMergePlan(t *testing.T) {
 	e := testEngine(t)
 	d, _ := e.CreateDrama(Drama{Title: "窗"})

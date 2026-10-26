@@ -1,3 +1,6 @@
+// 锁住 Harbor 跑题：多数通过、安全题不计入 held-in、重复两次都要通过、隔离标记，以及工作区不含 tests/。
+// 调用方把 AllowLLMCompact 设为 true 时，轨迹里也不出现聊天检查点。
+
 package eval
 
 import (
@@ -13,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestHarborTaskPass 要求 write-hello 与 write-answer 都通过，种类分别是 held_in 和 held_out，且 DefaultLoop 没有被这次运行改掉。
 func TestHarborTaskPass(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -47,6 +51,7 @@ func TestHarborTaskPass(t *testing.T) {
 	}
 }
 
+// TestOptionalWriteReadmeNotInDefaultSeed 要求单独把 write-readme 放进 HeldIn 时启发式求解能通过。
 func TestOptionalWriteReadmeNotInDefaultSeed(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -71,6 +76,7 @@ func TestOptionalWriteReadmeNotInDefaultSeed(t *testing.T) {
 	}
 }
 
+// TestSafetyNoEscapeNotInDefaultSeed 要求只跑 no-escape 时 SafetyFail 为 0，且 HeldInTotal 仍为 0。
 func TestSafetyNoEscapeNotInDefaultSeed(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -101,6 +107,7 @@ func TestSafetyNoEscapeNotInDefaultSeed(t *testing.T) {
 	}
 }
 
+// TestLogsNoReadSafety 要求 logs-no-read 作为安全题通过，且 SafetyFail 为 0。
 func TestLogsNoReadSafety(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -128,6 +135,7 @@ func TestLogsNoReadSafety(t *testing.T) {
 	}
 }
 
+// TestSealedSafetyIncludesLogsNoRead 要求 ApplySealed 的 Safety 含 logs-no-read，且 SealedHeldOutIDs 非空。
 func TestSealedSafetyIncludesLogsNoRead(t *testing.T) {
 	var s artifact.EvalSuite
 	ApplySealed(&s)
@@ -145,6 +153,7 @@ func TestSealedSafetyIncludesLogsNoRead(t *testing.T) {
 	}
 }
 
+// TestRepeatsAndTBSubset 要求 Repeats 为 2 时两题都两次通过，隔离标记为 copy，且每题有两次尝试。
 func TestRepeatsAndTBSubset(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -184,6 +193,7 @@ func TestRepeatsAndTBSubset(t *testing.T) {
 	}
 }
 
+// TestIsolateWorktree 要求 IsolateRoot 指向带空提交的 git 仓库时，隔离标记为 git-worktree 且 held-in 通过。
 func TestIsolateWorktree(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -226,6 +236,7 @@ func TestIsolateWorktree(t *testing.T) {
 	}
 }
 
+// TestHarborShapeOnlyEvenIfAllowLLMCompact 要求调用方把 AllowLLMCompact 设为 true 时，任务轨迹里仍没有 kind 为 checkpoint 的事件，且各次重复的会话编号互不相同。
 func TestHarborShapeOnlyEvenIfAllowLLMCompact(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -284,6 +295,7 @@ func TestHarborShapeOnlyEvenIfAllowLLMCompact(t *testing.T) {
 	}
 }
 
+// TestHarborPromptSensitiveUnchanged 要求 PromptSensitiveSolver 在没有占位钉选时 held-in 与 held-out 的通过数都是 0。
 func TestHarborPromptSensitiveUnchanged(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -309,6 +321,7 @@ func TestHarborPromptSensitiveUnchanged(t *testing.T) {
 	}
 }
 
+// TestPrepareWorkOmitsTests 要求 prepareWork 的工作区里没有 tests/，但有 instruction.md。
 func TestPrepareWorkOmitsTests(t *testing.T) {
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "instruction.md"), []byte("go"), 0o644); err != nil {
@@ -333,6 +346,7 @@ func TestPrepareWorkOmitsTests(t *testing.T) {
 	}
 }
 
+// TestBehaviorProbesPassHeuristic 要求 BehaviorIDs 全部作为 HeldIn 被启发式求解通过。
 func TestBehaviorProbesPassHeuristic(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")
@@ -357,6 +371,7 @@ func TestBehaviorProbesPassHeuristic(t *testing.T) {
 	}
 }
 
+// TestHarborSpendFields 要求报告和单题的 WallMs 都大于 0。
 func TestHarborSpendFields(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	root := filepath.Join(filepath.Dir(file), "..", "..", "evals")

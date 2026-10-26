@@ -1,3 +1,6 @@
+// 本文件用真实隔离 Chrome 点按钮、发按键，并确认被挡住的按钮点不到。页面 HTML 是数据。
+// 没设置 YOYO_BROWSER_E2E=1，或找不到 Chrome（可设 YOYO_CHROME）时跳过。由 go test 调用。
+
 package browser
 
 import (
@@ -8,9 +11,7 @@ import (
 	"time"
 )
 
-// e2ePage exercises the cases that broke in session 3b9f1bbb660e4236: a
-// button with a stable id, a text-only option, a keydown listener on document,
-// and a button covered by an overlay that a real pointer press must not reach.
+// e2ePage 是端到端页面，字符串是数据。里面有稳定 id 的按钮、只靠文字的选项、文档上的 keydown，以及被遮罩挡住的按钮。
 const e2ePage = `<!doctype html><html><head><meta charset="utf-8"></head><body>
 <div id="ui">
   <button id="opt-0">First option</button>
@@ -29,8 +30,7 @@ document.addEventListener('keydown', (e) => { document.title = 'key:' + e.key; }
 </script>
 </body></html>`
 
-// TestBrowserInteractionE2E drives a real isolated Chrome. It is skipped unless
-// YOYO_BROWSER_E2E=1, because it launches Chrome and takes a few seconds.
+// TestBrowserInteractionE2E 驱动真实隔离 Chrome。没设置 YOYO_BROWSER_E2E=1 或找不到 Chrome 时跳过。
 func TestBrowserInteractionE2E(t *testing.T) {
 	if os.Getenv("YOYO_BROWSER_E2E") == "" {
 		t.Skip("set YOYO_BROWSER_E2E=1 to drive a real isolated Chrome")
@@ -38,8 +38,7 @@ func TestBrowserInteractionE2E(t *testing.T) {
 	if findChrome() == "" {
 		t.Skip("no Chrome or Chromium found (set YOYO_CHROME)")
 	}
-	// Best-effort temp cleanup: Windows keeps Chrome's log file locked for a
-	// moment after the kill, which must not fail the test.
+	// 尽力清理临时目录。Windows 在结束进程后还会锁一会儿 Chrome 的日志，这不应当让测试失败。
 	dir, err := os.MkdirTemp("", "yoyo-e2e-page-*")
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +72,7 @@ func TestBrowserInteractionE2E(t *testing.T) {
 	port := h.port
 	h.mu.Unlock()
 
-	// Idle: the connection must stay alive without any caller reading it.
+	// 空闲时没有调用方在读，连接也应当保持活着。
 	time.Sleep(700 * time.Millisecond)
 	if !h.chromeAlive() {
 		t.Fatal("idle live Chrome reported dead")

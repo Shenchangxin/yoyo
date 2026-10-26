@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短剧看板：系列、集、四段工序和任务队列。不拥有代理聊天记录。
+ * 新建、导入、排队和生成会改服务端。它等已有会话的 turn_end，不另开模型循环。
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Ellipsis, Film, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +28,7 @@ const iconBtn =
 
 const PHASES: Phase[] = ["script", "cast", "board", "cut"];
 
+/** DramaStudio 按剧本、定妆、分镜、成片推进当前集。草稿分集方案优先于集编辑。 */
 export function DramaStudio(props: { sessionId?: string; onNeedSession: () => void | Promise<string | void>; onClose?: () => void }) {
   const copy = useCopy();
   const openSettings = useUI((s) => s.openSettings);
@@ -59,11 +64,13 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   const kickRef = useRef<() => Promise<void>>(async () => {});
   const scriptQueueRef = useRef(false);
 
+  /** 读取系列列表。 */
   const loadList = useCallback(async () => {
     const list = (await api.video.listDramas()) as Drama[];
     setDramas(Array.isArray(list) ? list : []);
   }, []);
 
+  /** 读取这一集的包。集已经换了就丢掉结果。 */
   const loadBundle = useCallback(async (id: string) => {
     if (!id) {
       setBundle(null);
@@ -77,6 +84,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     if (Array.isArray(b?.status?.missing)) setMissing(b.status.missing);
   }, []);
 
+  /** 读取分集方案。没有状态就当成没有方案。 */
   const loadPlan = useCallback(async (id: string) => {
     if (!id) {
       setPlan(null);
@@ -234,12 +242,14 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     void kickRef.current();
   }, [ep]);
 
+  /** 取出已有会话，没有就向父级要。 */
   async function sessionId() {
     if (props.sessionId) return props.sessionId;
     const id = await props.onNeedSession();
     return (typeof id === "string" && id) || "";
   }
 
+  /** 跑一次请求，然后刷新这一集、系列列表和集列表。 */
   async function run(label: string, fn: () => Promise<any>) {
     setBusy(label);
     setErr("");
@@ -259,6 +269,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     }
   }
 
+  /** 绑上当前集，有文本模型就设到会话，然后开这一阶段。 */
   async function startStage(name: string) {
     const sid = await sessionId();
     if (!sid) {
@@ -271,6 +282,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     await api.video.stage(sid, episodeId, name);
   }
 
+  /** 执行队列头。定妆图、镜头和合成直接跑，其余步骤等会话回合结束。 */
   async function kickQueue() {
     const head = queueRef.current[0];
     if (!head) {
@@ -322,6 +334,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   }
   kickRef.current = kickQueue;
 
+  /** 已有剧本就通过。只有原文时跳过改写。 */
   async function ensureScript() {
     if (!ep) return false;
     if ((ep.script_content || "").trim()) return true;
@@ -341,6 +354,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     }
   }
 
+  /** 用草稿标题新建系列和一集，并进入剧本。 */
   async function createDrama() {
     await run("create", async () => {
       const d = await api.video.createDrama({ title: commitSeriesTitle(draftTitle), style: defaultDramaStyle(), aspect_ratio: ratio });
@@ -353,6 +367,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     });
   }
 
+  /** 在当前系列下新建一集，并进入剧本。 */
   async function createEpisode() {
     if (!dramaId) return;
     await run("episode", async () => {
@@ -362,6 +377,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     });
   }
 
+  /** 选一个 sqlite 或 db 文件导入。 */
   async function importHuobao() {
     const paths = await api.pickFiles();
     const db = paths.find((p) => p.toLowerCase().endsWith(".sqlite") || p.toLowerCase().endsWith(".db")) || paths[0];
@@ -372,6 +388,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     });
   }
 
+  /** 选一份文本导入系列。有会话就绑定并开大纲阶段。 */
   async function importNovel() {
     const paths = await api.pickFiles();
     const path = (paths || []).find((p) => /\.(txt|md|markdown|docx|pdf)$/i.test(p)) || (paths || [])[0];
@@ -389,6 +406,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     });
   }
 
+  /** 确认分集方案，并打开第一集的剧本。 */
   async function confirmMap() {
     if (!dramaId) return;
     await run("commit", async () => {
@@ -404,6 +422,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     });
   }
 
+  /** 让当前会话按系列排队写剧本。 */
   async function queueAllScripts() {
     if (!dramaId) return;
     const sid = await sessionId();
@@ -421,6 +440,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     }
   }
 
+  /** 绑定当前集并抽取设定。 */
   async function extractBible() {
     if (!dramaId) return;
     const sid = await sessionId();
@@ -431,6 +451,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     await api.video.stage(sid, episodeId, "bible", dramaId);
   }
 
+  /** 按当前段缺少的步骤开始队列。成片段没有 ffmpeg 就改为安装。 */
   async function runPhase() {
     if (!episodeId) {
       setCreating(true);
@@ -479,6 +500,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
     : focusAsset.kind === "scene" ? (bundle?.scenes || []).find((a) => a.id === focusAsset.id)
       : (bundle?.props || []).find((a) => a.id === focusAsset.id);
 
+  /** 挪动镜头后，把序号写回成从 1 开始。 */
   function reorder(from: number, to: number) {
     if (from === to || from < 0 || to < 0 || from >= shots.length || to >= shots.length) return;
     const next = shots.slice();
@@ -896,6 +918,7 @@ export function DramaStudio(props: { sessionId?: string; onNeedSession: () => vo
   );
 }
 
+/** 系列和集的菜单，可以新建或改选。 */
 function ProjectMenu(props: {
   dramas: Drama[];
   episodes: Episode[];
@@ -941,6 +964,7 @@ function ProjectMenu(props: {
   );
 }
 
+/** 展开一个系列下的集。 */
 function DramaGroup(props: {
   drama: Drama;
   active: string;

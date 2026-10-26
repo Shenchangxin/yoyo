@@ -1,9 +1,10 @@
+// 把技能包里的动作说法换成 Yoyo 宿主工具名。下面导出函数返回的长字符串是给模型看的适配说明。
+
 package skillpack
 
 import "strings"
 
-// ToolMapping translates pack action vocabulary into Yoyo host tools.
-// Skills themselves never name tools; this string is the whole adapter.
+// ToolMapping 按包 id 选适配说明：superpowers、novel-to-game、agent-reach，其余走通用说明。goos 为 windows 时在末尾加上 Git Bash 那一段。技能正文本身不写工具名，这段字符串就是全部适配。
 func ToolMapping(id, goos string) string {
 	id = SanitizeID(id)
 	var body string
@@ -20,6 +21,7 @@ func ToolMapping(id, goos string) string {
 	return body + windowsScriptNote(goos)
 }
 
+// hostActionTable 返回动作说法到 Yoyo 工具名的对照表。
 func hostActionTable() string {
 	return `**Tool Mapping for Yoyo:**
 Skills speak in actions. On Yoyo those resolve to the host tools below. Never invent Claude/Codex names (` + "`Skill`" + `, ` + "`Bash`" + `, ` + "`TodoWrite`" + `, ` + "`Task`" + `).
@@ -46,6 +48,7 @@ Skills speak in actions. On Yoyo those resolve to the host tools below. Never in
 `
 }
 
+// superpowersMapping 在对照表后接上 superpowers 的子代理、技能加载和用户指令优先说明。
 func superpowersMapping() string {
 	return hostActionTable() + `
 **Subagents (` + "`task`" + `):**
@@ -69,6 +72,7 @@ func superpowersMapping() string {
 `
 }
 
+// novelToGameMapping 在对照表后接上 novel-to-game 的阶段技能、产物路径和试玩说明。
 func novelToGameMapping() string {
 	return hostActionTable() + `
 **This pack (novel-to-game):** domain workflow, not a methodology bootstrap. Nothing is preloaded at session start. ` + "`load_skill`" + ` ` + "`novel-to-game`" + ` when the operator wants a novel turned into a playable game (or they ` + "`@skill:novel-to-game`" + `).
@@ -92,6 +96,7 @@ func novelToGameMapping() string {
 `
 }
 
+// agentReachMapping 在对照表后接上 agent-reach 的检索、抓取和技能加载说明。
 func agentReachMapping() string {
 	return hostActionTable() + `
 **This pack (agent-reach) on Yoyo:** routing table only. The Go host owns search and fetch.
@@ -104,6 +109,7 @@ Ignore bash in upstream SKILL.md that uses ` + "`curl`" + `, ` + "`mcporter call
 `
 }
 
+// genericMapping 在对照表后接上通用的技能加载、子代理和用户指令优先说明。
 func genericMapping() string {
 	return hostActionTable() + `
 **Skill loading:**
@@ -119,6 +125,7 @@ func genericMapping() string {
 `
 }
 
+// windowsScriptNote 在 goos 忽略大小写等于 windows 时返回 Git Bash 说明，否则返回空串。
 func windowsScriptNote(goos string) string {
 	if !strings.EqualFold(goos, "windows") {
 		return ""
@@ -128,8 +135,7 @@ func windowsScriptNote(goos string) string {
 `
 }
 
-// MappingFile is the install-time generated reference so read_skill_file
-// can load the host adapter on demand. It is not vendored upstream.
+// MappingFile 是安装时写入 references/yoyo-tools.md 的正文，供 read_skill_file 按需读取。它不是上游仓库自带的文件。
 func MappingFile(id, goos string) string {
 	return "# Yoyo Tool Mapping\n\n" + ToolMapping(id, goos)
 }

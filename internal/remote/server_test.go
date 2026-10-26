@@ -1,3 +1,9 @@
+// 锁住手机路径：连 wss 时跳过系统信任库，改用证书原文的 SHA-256 对照查询串 fp。
+// 电脑允许后才 pair_ok。thread.model.set 不带 confirm 也能把模型写回会话，并且 StateEpoch 不是 0。
+// 不带 confirm 的 key.set 失败。remote.pair.begin 即使带了 confirm 也失败。Scrub 之后的配置里没有 search-secret。
+// resume 不用再扫码。同一枚 nonce 第二次 health 失败。收回之后调用失败。未配对的第一帧得到 error。
+// 不覆盖浏览器那扇明文 HTTP。
+
 package remote
 
 import (
@@ -24,6 +30,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
+// evalsDir 从当前目录往上两级找到 evals，供本包测试打开 App。
 func evalsDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -37,6 +44,7 @@ func evalsDir(t *testing.T) string {
 	return abs
 }
 
+// TestPairModelAndStepUp 锁住钉证书、允许后配对、换模型、写密钥和签发配对被拦、resume、nonce 重放、收回，以及未配对的第一帧。
 func TestPairModelAndStepUp(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {

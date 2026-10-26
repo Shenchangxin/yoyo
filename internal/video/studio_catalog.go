@@ -1,24 +1,34 @@
+// 短片的角色、风格、预设和模板目录，以及按编号查找。
+// 不保存工程，也不生成画面。
+
 package video
 
 import "strings"
 
+// StudioCharacter 是短片目录里的一种出镜角色。
 type StudioCharacter struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Hint        string `json:"hint"`
-	Preserve    string `json:"preserve"`
-	Prohibit    string `json:"prohibit"`
-	Tags        []string `json:"tags,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Hint string `json:"hint"`
+	// Preserve 是写进镜头提示、要求保住的外形。
+	Preserve string `json:"preserve"`
+	// Prohibit 是写进镜头提示、要求不要出现的东西。
+	Prohibit string   `json:"prohibit"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
+// StudioStyle 是短片目录里的一种画面风格。
 type StudioStyle struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Hint     string `json:"hint"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Hint string `json:"hint"`
+	// Contract 是这一风格必须满足的画面约定。
 	Contract string `json:"contract"`
-	Forbid   string `json:"forbid"`
+	// Forbid 是这一风格明确不要的东西。
+	Forbid string `json:"forbid"`
 }
 
+// StudioPreset 是一条输出预设，带画幅、平台和目标秒数。
 type StudioPreset struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -28,6 +38,7 @@ type StudioPreset struct {
 	Duration int    `json:"duration"`
 }
 
+// StudioTemplate 是一套开拍模板，指向预设、风格和角色。
 type StudioTemplate struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -40,6 +51,7 @@ type StudioTemplate struct {
 	Tags        []string `json:"tags,omitempty"`
 }
 
+// StudioCharacters 返回内置的出镜角色。
 func StudioCharacters() []StudioCharacter {
 	return []StudioCharacter{
 		{ID: "presenter", Name: "口播主持", Hint: "干净出镜、对镜头说话", Preserve: "one adult presenter facing camera, clear face, simple clothing, even lighting", Prohibit: "crowd, extra faces, heavy makeup, costume, text overlay", Tags: []string{"ugc", "talk"}},
@@ -51,6 +63,7 @@ func StudioCharacters() []StudioCharacter {
 	}
 }
 
+// StudioStyles 返回内置的短片画面风格。
 func StudioStyles() []StudioStyle {
 	return []StudioStyle{
 		{ID: "clean-ugc", Name: "干净 UGC", Hint: "手机纪实", Contract: "natural phone video still, daylight, slight grain, 9:16 framing", Forbid: "cinematic anamorphic, heavy CGI, watermarks"},
@@ -61,6 +74,7 @@ func StudioStyles() []StudioStyle {
 	}
 }
 
+// StudioPresets 返回内置的画幅和平台预设。
 func StudioPresets() []StudioPreset {
 	return []StudioPreset{
 		{ID: "douyin-shorts", Name: "抖音竖屏", Hint: "9:16 · 约 60 秒", Aspect: "9:16", Platform: "douyin", Duration: 60},
@@ -72,6 +86,7 @@ func StudioPresets() []StudioPreset {
 	}
 }
 
+// StudioTemplates 返回内置的开拍模板。
 func StudioTemplates() []StudioTemplate {
 	return []StudioTemplate{
 		{ID: "explainer", Title: "知识讲解", Hint: "钩子→三点→收束", PresetID: "douyin-shorts", Style: "paper", CharacterID: "narrator", Platform: "douyin", Tone: "professional", Tags: []string{"explainer", "tutorial"}},
@@ -83,6 +98,7 @@ func StudioTemplates() []StudioTemplate {
 	}
 }
 
+// LookupStudioCharacter 按编号找角色。找不到时第二个结果是假。
 func LookupStudioCharacter(id string) (StudioCharacter, bool) {
 	id = strings.TrimSpace(id)
 	for _, c := range StudioCharacters() {
@@ -93,6 +109,7 @@ func LookupStudioCharacter(id string) (StudioCharacter, bool) {
 	return StudioCharacter{}, false
 }
 
+// LookupStudioStyle 按编号找风格。找不到时第二个结果是假。
 func LookupStudioStyle(id string) (StudioStyle, bool) {
 	id = strings.TrimSpace(id)
 	for _, s := range StudioStyles() {
@@ -103,6 +120,7 @@ func LookupStudioStyle(id string) (StudioStyle, bool) {
 	return StudioStyle{}, false
 }
 
+// LookupStudioPreset 按编号找预设。找不到时第二个结果是假。
 func LookupStudioPreset(id string) (StudioPreset, bool) {
 	id = strings.TrimSpace(id)
 	for _, p := range StudioPresets() {
@@ -113,6 +131,7 @@ func LookupStudioPreset(id string) (StudioPreset, bool) {
 	return StudioPreset{}, false
 }
 
+// LookupStudioTemplate 按编号找模板。找不到时第二个结果是假。
 func LookupStudioTemplate(id string) (StudioTemplate, bool) {
 	id = strings.TrimSpace(id)
 	for _, t := range StudioTemplates() {
@@ -123,6 +142,7 @@ func LookupStudioTemplate(id string) (StudioTemplate, bool) {
 	return StudioTemplate{}, false
 }
 
+// DefaultStudioIdentity 用口播主持和干净 UGC 拼一份默认身份。
 func DefaultStudioIdentity() StudioIdentity {
 	c, _ := LookupStudioCharacter("presenter")
 	s, _ := LookupStudioStyle("clean-ugc")
@@ -133,6 +153,7 @@ func DefaultStudioIdentity() StudioIdentity {
 	}
 }
 
+// presetIDForAspect 按画幅挑预设。16:9 用横屏讲解，1:1 用方形，其余用抖音竖屏。
 func presetIDForAspect(aspect string) string {
 	switch normalizeAspect(aspect) {
 	case "16:9":
@@ -144,6 +165,7 @@ func presetIDForAspect(aspect string) string {
 	}
 }
 
+// StudioCatalog 把角色、风格、预设、模板、声音、平台和语气拼成一份目录。
 func StudioCatalog() map[string]any {
 	return map[string]any{
 		"characters": StudioCharacters(),
@@ -156,6 +178,7 @@ func StudioCatalog() map[string]any {
 	}
 }
 
+// StudioVoices 返回可选的语音名字。
 func StudioVoices() []map[string]string {
 	return []map[string]string{
 		{"id": "alloy", "name": "Alloy"},

@@ -1,3 +1,5 @@
+// 本文件为 YouTube、Bilibili、V2EX 和 GitHub 仓库根抽文本。没有对应提取器时 SiteText 的 ok 为 false。字幕和帖子正文有单独的 rune 上限。
+
 package webcontent
 
 import (
@@ -11,20 +13,29 @@ import (
 )
 
 var (
-	reYouTubeID  = regexp.MustCompile(`(?i)(?:v=|/embed/|/shorts/|youtu\.be/)([\w-]{11})`)
+	// reYouTubeID 从 v=、/embed/、/shorts/ 或 youtu.be/ 后面抓 11 位视频 id。
+	reYouTubeID = regexp.MustCompile(`(?i)(?:v=|/embed/|/shorts/|youtu\.be/)([\w-]{11})`)
+	// reBilibiliBV 抓 BV 开头的视频号。
 	reBilibiliBV = regexp.MustCompile(`(?i)\b(BV[0-9A-Za-z]+)`)
-	reV2EXTopic  = regexp.MustCompile(`(?i)(?:v2ex\.com/t/|/t/)(\d+)`)
+	// reV2EXTopic 从 v2ex.com/t/ 或 /t/ 后面抓数字主题 id。
+	reV2EXTopic = regexp.MustCompile(`(?i)(?:v2ex\.com/t/|/t/)(\d+)`)
+	// reGitHubRepo 抓 github.com/<owner>/<repo>，仓库名停在 /、#、? 之前。
 	reGitHubRepo = regexp.MustCompile(`(?i)^https?://(?:www\.)?github\.com/([^/]+)/([^/#?]+)`)
 
-	YouTubeOEmbedBase    = "https://www.youtube.com/oembed"
+	// YouTubeOEmbedBase 是 YouTube oEmbed 地址。
+	YouTubeOEmbedBase = "https://www.youtube.com/oembed"
+	// YouTubeTimedTextBase 是 YouTube 字幕列表和字幕地址。
 	YouTubeTimedTextBase = "https://www.youtube.com/api/timedtext"
-	BilibiliViewBase     = "https://api.bilibili.com/x/web-interface/view"
-	V2EXAPIBase          = "https://www.v2ex.com/api"
-	GitHubAPIBase        = "https://api.github.com"
+	// BilibiliViewBase 是 Bilibili 视频信息接口。
+	BilibiliViewBase = "https://api.bilibili.com/x/web-interface/view"
+	// V2EXAPIBase 是 V2EX API 根。
+	V2EXAPIBase = "https://www.v2ex.com/api"
+	// GitHubAPIBase 是 GitHub API 根。测试会临时改它。
+	GitHubAPIBase = "https://api.github.com"
 )
 
-// SiteText returns structured text for well-known public URLs.
-// ok is false when this package has no extractor (caller should HTTP GET).
+// SiteText 为已知公开站点返回结构化文本。主机是 youtu.be 或以 youtube.com 结尾、bilibili.com 或其子域、v2ex.com 或其子域、或正好是 github.com 时才尝试提取。
+// 解析失败、主机为空、没有提取器、提取出错或文本空白时 ok 为 false 且 err 为 nil。
 func SiteText(ctx context.Context, client *http.Client, rawURL string) (text string, ok bool, err error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || u.Host == "" {
@@ -53,6 +64,7 @@ func SiteText(ctx context.Context, client *http.Client, rawURL string) (text str
 	return t, true, nil
 }
 
+// youtubeText 用 oEmbed 取标题和频道，再附上字幕。没有 11 位 id 时错误文案是 youtube: no video id。拼出来仍空白时错误文案是 youtube: empty。
 func youtubeText(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	id := youtubeID(rawURL)
 	if id == "" {
@@ -85,6 +97,7 @@ func youtubeText(ctx context.Context, client *http.Client, rawURL string) (strin
 	return out, nil
 }
 
+// youtubeID 返回正则抓到的 11 位 id，没有则返回空字符串。
 func youtubeID(rawURL string) string {
 	if m := reYouTubeID.FindStringSubmatch(rawURL); len(m) > 1 {
 		return m[1]
@@ -92,6 +105,8 @@ func youtubeID(rawURL string) string {
 	return ""
 }
 
+// youtubeCaptions 先拉字幕列表。失败、状态码大于等于 300 或不含 lang_code 时改拉 en。
+// 否则取第一个 lang_code，长度不超过 12。列表里有 zh 就用 zh，有 zh-hans 就用 zh-Hans。
 func youtubeCaptions(ctx context.Context, client *http.Client, id string) string {
 	listURL := YouTubeTimedTextBase + "?type=list&v=" + url.QueryEscape(id)
 	status, _, _, body, err := get(ctx, client, listURL, "application/xml, text/xml")
@@ -113,6 +128,7 @@ func youtubeCaptions(ctx context.Context, client *http.Client, id string) string
 	return fetchTimedText(ctx, client, id, lang)
 }
 
+// fetchTimedText 拉取指定语言的字幕，去掉标签并收空白。超过 8000 个 rune 时截断并加 …。失败或状态码大于等于 300 时返回空字符串。
 func fetchTimedText(ctx context.Context, client *http.Client, id, lang string) string {
 	u := YouTubeTimedTextBase + "?v=" + url.QueryEscape(id) + "&lang=" + url.QueryEscape(lang)
 	status, _, _, body, err := get(ctx, client, u, "application/xml, text/xml")
@@ -126,6 +142,7 @@ func fetchTimedText(ctx context.Context, client *http.Client, id, lang string) s
 	return text
 }
 
+// bilibiliText 用 BV 号请求查看接口。没有 BV 号时错误文案是 bilibili: no bvid。code 不是 0 或 JSON 无效时错误文案是 bilibili: bad json。
 func bilibiliText(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	bv := ""
 	if m := reBilibiliBV.FindStringSubmatch(rawURL); len(m) > 1 {
@@ -173,6 +190,7 @@ func bilibiliText(ctx context.Context, client *http.Client, rawURL string) (stri
 	return strings.TrimSpace(b.String()), nil
 }
 
+// v2exText 在地址含 /api/topics/hot.json，或去掉末尾斜杠后以 v2ex.com 结尾时，拉热门主题。否则按主题 id 拉 show.json。没有 id 时错误文案是 v2ex: no topic id。
 func v2exText(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	lower := strings.ToLower(rawURL)
 	if strings.Contains(lower, "/api/topics/hot.json") || strings.HasSuffix(strings.TrimRight(lower, "/"), "v2ex.com") {
@@ -188,6 +206,7 @@ func v2exText(ctx context.Context, client *http.Client, rawURL string) (string, 
 	return v2exJSON(ctx, client, strings.TrimRight(V2EXAPIBase, "/")+"/topics/show.json?id="+url.QueryEscape(id), "V2EX topic "+id)
 }
 
+// v2exJSON 把主题数组格式化成编号列表，最多 8 条。每条正文去掉标签后超过 400 个 rune 就截断并加 …。JSON 不是非空数组时错误文案是 v2ex: bad json。
 func v2exJSON(ctx context.Context, client *http.Client, api, label string) (string, error) {
 	status, _, _, body, err := get(ctx, client, api, "application/json")
 	if err != nil {
@@ -226,6 +245,8 @@ func v2exJSON(ctx context.Context, client *http.Client, api, label string) (stri
 	return strings.TrimSpace(b.String()), nil
 }
 
+// githubRepoText 只接受路径正好两段的仓库根。仓库名小写后是 issues、pulls、actions、projects、settings 时不当成仓库。
+// 请求 GitHubAPIBase/repos/<owner>/<repo>，Accept 为 application/vnd.github+json。JSON 无效时错误文案是 github: bad json。
 func githubRepoText(ctx context.Context, client *http.Client, rawURL string) (string, error) {
 	m := reGitHubRepo.FindStringSubmatch(rawURL)
 	if len(m) < 3 {

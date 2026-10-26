@@ -1,24 +1,32 @@
+/**
+ * 拥有：设置页的分组、页签和区块目录，以及旧链接落到现行布局的规则。
+ * 不拥有：表单。只决定导航，不调用 api。
+ */
 import type { SettingsTab } from "../../lib/protocol";
 
 type SectionTitleKey = keyof import("../../lib/copy").Copy["settings"]["sections"];
 type GroupKey = keyof import("../../lib/copy").Copy["settings"]["groups"];
 
+/** SettingsTabDef 是一个页签的键、分组和图标。 */
 export type SettingsTabDef = {
   key: SettingsTab;
   group: GroupKey;
   icon: string;
 };
 
+/** SettingsSectionDef 是一个区块的编号、所属页签和标题。 */
 export type SettingsSectionDef = {
   id: string;
   tab: SettingsTab;
   titleKey: SectionTitleKey;
-  /** Unlocalised terms so search still finds a row when the UI is in Chinese. */
+  /** 未本地化的检索词，界面是中文时仍能搜到这一行。 */
   keywords?: string;
 };
 
+/** SETTINGS_GROUPS 是设置分组的顺序。 */
 export const SETTINGS_GROUPS: readonly GroupKey[] = ["app", "agent", "system"];
 
+/** SETTINGS_TABS 是现行页签。 */
 export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "general", group: "app", icon: "sliders" },
   { key: "appearance", group: "app", icon: "palette" },
@@ -31,6 +39,7 @@ export const SETTINGS_TABS: readonly SettingsTabDef[] = [
   { key: "advanced", group: "system", icon: "wrench" },
 ];
 
+/** SETTINGS_SECTIONS 是现行区块，附带检索词。 */
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "general-workspace", tab: "general", titleKey: "generalWorkspace", keywords: "workspace folder directory" },
   { id: "general-notifications", tab: "general", titleKey: "generalNotifications", keywords: "notifications toast" },
@@ -79,7 +88,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { id: "advanced-handheld", tab: "advanced", titleKey: "advancedHandheld", keywords: "phone handheld qr pair remote mobile android ios harmony 手机 配对 扫码" },
 ];
 
-/** Tabs that existed before the current grouping. Deep links and menus still use them. */
+/** 现行分组之前就存在的页签。深链和菜单仍使用它们。 */
 const LEGACY_TABS: Readonly<Record<string, { tab: SettingsTab; section: string }>> = {
   shortcuts: { tab: "general", section: "shortcuts-map" },
   isolation: { tab: "policy", section: "policy-isolation" },
@@ -114,11 +123,12 @@ const LEGACY_SECTIONS: Readonly<Record<string, string>> = {
   "generation-styles": "generation-studio",
 };
 
+/** isSettingsTab 判断一个字符串是不是现行页签。 */
 export function isSettingsTab(v: string): v is SettingsTab {
   return SETTINGS_TABS.some((t) => t.key === v);
 }
 
-/** Resolves any tab/section pair — current or legacy — onto the current layout. */
+/** resolveSettingsTarget 把现行或旧的页签与区块对到现行布局上。 */
 export function resolveSettingsTarget(tab?: string, section?: string): { tab: SettingsTab; section: string } {
   const mappedSection = section ? LEGACY_SECTIONS[section] || section : "";
   const owner = mappedSection ? SETTINGS_SECTIONS.find((s) => s.id === mappedSection) : undefined;
@@ -129,6 +139,7 @@ export function resolveSettingsTarget(tab?: string, section?: string): { tab: Se
   return { tab: "general", section: "" };
 }
 
+/** tabsInGroup 取出某一组里的页签。 */
 export function tabsInGroup(group: GroupKey) {
   return SETTINGS_TABS.filter((t) => t.group === group);
 }

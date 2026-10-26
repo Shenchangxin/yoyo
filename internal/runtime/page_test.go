@@ -1,3 +1,5 @@
+// 锁住轨迹页的字节预算：默认丢掉最旧的用户回合，带 keepSeq 时保留目标序号。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestProjectPageDropsOldestTurnsUnderBudget 确认超预算后 Older 为真，用户回合变少，且 HubSeq 原样保留。
 func TestProjectPageDropsOldestTurnsUnderBudget(t *testing.T) {
 	var evs []trace.Event
 	for i := 0; i < 6; i++ {
@@ -33,6 +36,7 @@ func TestProjectPageDropsOldestTurnsUnderBudget(t *testing.T) {
 	}
 }
 
+// TestProjectPageKeepRetainsTargetUnderBudget 确认 keepSeq 仍在结果里，而不带 keep 的 ProjectPage 会丢掉最旧的用户事件。
 func TestProjectPageKeepRetainsTargetUnderBudget(t *testing.T) {
 	var evs []trace.Event
 	for i := 0; i < 8; i++ {

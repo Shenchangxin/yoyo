@@ -1,3 +1,5 @@
+// 为一次文件改动生成统一 diff，写入 FileChange。不做 git apply，那在 hunks.go。超长文件不用完整 LCS，改用锚点或整段替换。
+
 package runtime
 
 import (
@@ -7,12 +9,17 @@ import (
 	"unicode/utf8"
 )
 
+// maxDiffDP、maxDiffHunk、maxDiffRunes 限制行 diff 的表格、输出行数和 rune 数。
 const (
-	maxDiffDP    = 800
-	maxDiffHunk  = 120
+	// maxDiffDP 是 800。任一边超过它，或两边乘积超过 800*800，就不用完整 LCS。
+	maxDiffDP = 800
+	// maxDiffHunk 是 120。输出的上下文加增删行达到这个数就截断，并追加 @@ … @@。
+	maxDiffHunk = 120
+	// maxDiffRunes 是 8000。补丁 rune 数超过它就截断，并追加 @@ … @@。
 	maxDiffRunes = 8_000
 )
 
+// fileChangeOf 把路径改成斜杠，并用 unifiedLineDiff 填 Added、Removed 和 Patch。created 原样写入。
 func fileChangeOf(rel string, prev, next []byte, created bool) *FileChange {
 	rel = filepath.ToSlash(rel)
 	added, removed, patch := unifiedLineDiff(rel, string(prev), string(next), maxDiffHunk)
@@ -25,6 +32,7 @@ func fileChangeOf(rel string, prev, next []byte, created bool) *FileChange {
 	}
 }
 
+// unifiedLineDiff 按行做统一 diff。先把换行收成 \\n。增删都是 0 时补丁为空。每个改动块带最多 2 行上下文。
 func unifiedLineDiff(path, oldS, newS string, maxHunk int) (added, removed int, patch string) {
 	oldL := splitDiffLines(oldS)
 	newL := splitDiffLines(newS)
@@ -132,11 +140,13 @@ func unifiedLineDiff(path, oldS, newS string, maxHunk int) (added, removed int, 
 	return added, removed, out
 }
 
+// diffOp 是一行编辑。tag 为空格、加号或减号。
 type diffOp struct {
 	tag  byte
 	line string
 }
 
+// splitDiffLines 去掉 \\r\\n 和单独的 \\r，再按 \\n 切开。空串返回 nil。只有换行时返回一个空行。
 func splitDiffLines(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "")
@@ -150,12 +160,15 @@ func splitDiffLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
+// diffLines 从深度 0 调用 diffLinesDepth。
 func diffLines(a, b []string) []diffOp {
 	return diffLinesDepth(a, b, 0)
 }
 
+// maxAnchorDepth 是 32。锚点递归超过这个深度就改为整段替换。
 const maxAnchorDepth = 32
 
+// diffLinesDepth 先剥掉两端相同的行，中间交给 diffLinesMiddle，再把两端标成未改。
 func diffLinesDepth(a, b []string, depth int) []diffOp {
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
@@ -182,6 +195,7 @@ func diffLinesDepth(a, b []string, depth int) []diffOp {
 	return out
 }
 
+// diffLinesMiddle 在一边为空时把另一边全部标成新增或删除。装得下 LCS 就用 lcsDiff。否则在深度允许时找唯一锚点再递归，找不到就 coarseReplace。
 func diffLinesMiddle(a, b []string, depth int) []diffOp {
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
@@ -218,6 +232,7 @@ func diffLinesMiddle(a, b []string, depth int) []diffOp {
 	return coarseReplace(a, b)
 }
 
+// lcsFits 在两边都不超过 maxDiffDP 且乘积不超过 maxDiffDP*maxDiffDP 时返回真。
 func lcsFits(n, m int) bool {
 	if n > maxDiffDP || m > maxDiffDP {
 		return false
@@ -225,6 +240,7 @@ func lcsFits(n, m int) bool {
 	return n*m <= maxDiffDP*maxDiffDP
 }
 
+// coarseReplace 把 a 全部标成删除，b 全部标成新增。
 func coarseReplace(a, b []string) []diffOp {
 	out := make([]diffOp, 0, len(a)+len(b))
 	for _, line := range a {
@@ -236,6 +252,7 @@ func coarseReplace(a, b []string) []diffOp {
 	return out
 }
 
+// uniqueAnchor 找两边都只出现一次的行，选离两边中点距离之和最小的那一行当锚点。没有则 ok 为假。
 func uniqueAnchor(a, b []string) (ai, bi int, ok bool) {
 	acount := make(map[string]int, len(a))
 	bcount := make(map[string]int, len(b))
@@ -267,6 +284,7 @@ func uniqueAnchor(a, b []string) (ai, bi int, ok bool) {
 	return ai, bi, best >= 0
 }
 
+// absInt 返回非负整数。
 func absInt(n int) int {
 	if n < 0 {
 		return -n
@@ -274,6 +292,7 @@ func absInt(n int) int {
 	return n
 }
 
+// lcsDiff 用从后往前的 LCS 长度表回溯，相等行标成未改，否则按表选择删除或新增。
 func lcsDiff(a, b []string) []diffOp {
 	n, m := len(a), len(b)
 	lcs := make([][]int, n+1)

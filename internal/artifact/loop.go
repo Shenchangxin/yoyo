@@ -1,8 +1,8 @@
+// 循环预设的拓扑比较和文案槽赋值。不保存预设。检出前的 L3 判断和演化的采纳会调用它。
+
 package artifact
 
-// LoopTopologyEqual reports whether two loop presets share the L3 control
-// surface: turn/tool budgets, compaction, and plan mode. Instruction copy and
-// declarative middleware are L1 and may change without a human gate.
+// LoopTopologyEqual 判断两份循环预设的拓扑是否相同。ID、Bootstrap、Execution、Verification、FailureRecovery、MaxRecentToolErrors、ToolErrorInstruction、TaskInstruction 不比较；其余字段有一处不同就返回 false。
 func LoopTopologyEqual(a, b LoopPreset) bool {
 	return a.MaxTurns == b.MaxTurns &&
 		a.MaxToolMessages == b.MaxToolMessages &&
@@ -24,7 +24,7 @@ func LoopTopologyEqual(a, b LoopPreset) bool {
 		a.StackAgentsMD == b.StackAgentsMD
 }
 
-// SetInstructionSlot writes one L1 instruction field. Unknown slots are ignored.
+// SetInstructionSlot 写一个 L1 文案槽并返回副本。认 bootstrap、execution、runtime、verification、failure_recovery、task、middleware、tool_error；不认识的槽位原样返回。runtime 写入 Execution。middleware 和 tool_error 写入 ToolErrorInstruction，若 MaxRecentToolErrors 还小于等于 0 就写成 2。
 func (p LoopPreset) SetInstructionSlot(slot, text string) LoopPreset {
 	switch slot {
 	case "bootstrap":

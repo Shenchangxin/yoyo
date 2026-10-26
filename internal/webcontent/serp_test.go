@@ -1,3 +1,5 @@
+// 本文件锁住 DuckDuckGo 链接解码，以及验证码页和过薄正文的判断。由 go test 调用。
+
 package webcontent
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestParseDuckDuckGoHTML 锁住 uddg 参数会解成真实 https 地址，第二条直接使用 href，摘要里留有 abstract。
 func TestParseDuckDuckGoHTML(t *testing.T) {
 	page := `
 <html><body>
@@ -28,6 +31,7 @@ func TestParseDuckDuckGoHTML(t *testing.T) {
 	}
 }
 
+// TestLooksAntibotAndThin 锁住 Cloudflare 标题会被 LooksAntibot 命中，短正文配很长原文算薄，足够长的正文不算薄。
 func TestLooksAntibotAndThin(t *testing.T) {
 	if !LooksAntibot("Attention Required! | Cloudflare ray id 123") {
 		t.Fatal("cloudflare")

@@ -1,3 +1,6 @@
+// 本文件拥有立绘缓存。一套服装只提供 data.json、data.atlas、data.png，路径必须是 stand/<数字> 或 stand_costume/<数字>。
+// StandMiddleware 挂在 /idol-stand/。缺文件时向 standCDN 拉一次，写到 Dir。这是 HTTP 缓存，不调用 runtime.Run，也不调用 Brain。
+
 package idol
 
 import (
@@ -12,22 +15,22 @@ import (
 	"time"
 )
 
-// ShinyColorsDB keeps each card's Spine 3.6 stand on this CDN. eidolon-sc
-// downloads the same files with httpx and draws them with spine-webgl.js;
-// nothing about the picture is rendered in Python.
+// standCDN 是立绘文件的默认根地址。每套卡的 Spine 3.6 立绘放在这个 CDN 上。Open 的 Base 为空时用它。
 const standCDN = "https://cf-static.shinycolors.moe/spine/idols/"
 
 var (
+	// outfitIDPattern 只接受 stand/<数字> 或 stand_costume/<数字>。
 	outfitIDPattern = regexp.MustCompile(`^(stand|stand_costume)/\d+$`)
-	standFiles      = map[string]bool{"data.json": true, "data.atlas": true, "data.png": true}
+	// standFiles 是一套立绘允许的三个文件名。
+	standFiles = map[string]bool{"data.json": true, "data.atlas": true, "data.png": true}
 )
 
+// validOutfitID 判断服装 id 是否符合 stand/<数字> 或 stand_costume/<数字>。
 func validOutfitID(id string) bool {
 	return outfitIDPattern.MatchString(id)
 }
 
-// StandCache serves one outfit's data.json, data.atlas, and data.png.
-// Files are fetched once and kept under Dir.
+// StandCache 按服装提供 data.json、data.atlas 和 data.png。文件拉过一次就留在 Dir。Base 为空时用 standCDN。
 type StandCache struct {
 	Dir    string
 	Base   string
@@ -37,6 +40,7 @@ type StandCache struct {
 	loading map[string]*sync.Mutex
 }
 
+// client 返回调用方传入的 Client。没有则用 45 秒超时的默认客户端。
 func (c *StandCache) client() *http.Client {
 	if c.Client != nil {
 		return c.Client
@@ -44,6 +48,7 @@ func (c *StandCache) client() *http.Client {
 	return &http.Client{Timeout: 45 * time.Second}
 }
 
+// base 返回立绘根地址。Base 空白时用 standCDN。
 func (c *StandCache) base() string {
 	if strings.TrimSpace(c.Base) != "" {
 		return c.Base
@@ -51,6 +56,7 @@ func (c *StandCache) base() string {
 	return standCDN
 }
 
+// Open 返回一个立绘文件的字节和 Content-Type。同一路径同时只拉一次。缓存里已有且看起来像 Spine 文件时不再下载。atlas 会把已知的 date.png 页名改回 data.png。
 func (c *StandCache) Open(outfit, name string) ([]byte, string, error) {
 	if !validOutfitID(outfit) || !standFiles[name] {
 		return nil, "", fmt.Errorf("bad stand path")
@@ -98,6 +104,7 @@ func (c *StandCache) Open(outfit, name string) ([]byte, string, error) {
 	return body, standContentType(name, body), nil
 }
 
+// filePath 把服装和文件名拼到 Dir 下，并拒绝逃出 Dir 的路径。
 func (c *StandCache) filePath(outfit, name string) (string, error) {
 	path := filepath.Join(c.Dir, filepath.FromSlash(outfit), name)
 	rel, err := filepath.Rel(c.Dir, path)
@@ -107,6 +114,7 @@ func (c *StandCache) filePath(outfit, name string) (string, error) {
 	return path, nil
 }
 
+// download 用 GET 向 base 拉取一个立绘文件，最多读 32 MiB。状态不是 200 或内容不像 Spine 文件时返回错误。User-Agent 是 Yoyo。
 func (c *StandCache) download(outfit, name string) ([]byte, error) {
 	url := strings.TrimRight(c.base(), "/") + "/" + outfit + "/" + name
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -132,6 +140,7 @@ func (c *StandCache) download(outfit, name string) ([]byte, error) {
 	return body, nil
 }
 
+// finishStand 对 data.atlas 调用 pointAtlasAtDataPNG，其余文件原样返回。
 func finishStand(name string, body []byte) []byte {
 	if name != "data.atlas" {
 		return body
@@ -139,8 +148,7 @@ func finishStand(name string, body []byte) []byte {
 	return []byte(pointAtlasAtDataPNG(string(body)))
 }
 
-// pointAtlasAtDataPNG rewrites the known page slip `date.png` back to `data.png`,
-// the name the texture is stored under. Other page names are left alone.
+// pointAtlasAtDataPNG 把下一行以 size: 开头的 date.png 页名改回 data.png。贴图实际存在这个名字下。其他页名不动。
 func pointAtlasAtDataPNG(text string) string {
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
@@ -162,6 +170,7 @@ func pointAtlasAtDataPNG(text string) string {
 	return strings.Join(lines, "\n")
 }
 
+// standLooksValid 粗看文件是不是 Spine 资源。json 去掉左侧空白后须以 { 开头；png 须是 PNG 或 WebP；atlas 去掉空白后不能以 < 开头。
 func standLooksValid(name string, body []byte) bool {
 	if name == "data.json" {
 		return len(bytesTrimLeft(body)) > 0 && bytesTrimLeft(body)[0] == '{'
@@ -173,6 +182,7 @@ func standLooksValid(name string, body []byte) bool {
 	return len(trimmed) > 0 && trimmed[0] != '<'
 }
 
+// standContentType 按文件名返回 Content-Type。data.png 若是 WebP 则用 image/webp，否则 image/png。
 func standContentType(name string, body []byte) string {
 	switch name {
 	case "data.json":
@@ -187,6 +197,7 @@ func standContentType(name string, body []byte) string {
 	}
 }
 
+// bytesTrimLeft 去掉开头的空格、换行、回车和制表符。
 func bytesTrimLeft(b []byte) []byte {
 	i := 0
 	for i < len(b) && (b[i] == ' ' || b[i] == '\n' || b[i] == '\r' || b[i] == '\t') {
@@ -195,16 +206,17 @@ func bytesTrimLeft(b []byte) []byte {
 	return b[i:]
 }
 
+// isPNG 看前 8 字节是不是 PNG 签名。
 func isPNG(b []byte) bool {
 	return len(b) >= 8 && string(b[:8]) == "\x89PNG\r\n\x1a\n"
 }
 
+// isWebP 看是不是 RIFF 容器里的 WEBP。
 func isWebP(b []byte) bool {
 	return len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP"
 }
 
-// StandMiddleware serves /idol-stand/<outfit>/<file> from the cache, fetching
-// a missing file from the CDN. Anything else is passed on.
+// StandMiddleware 从缓存提供 /idol-stand/<服装>/<文件>。缺了就向 CDN 拉。路径对不上的请求交给 next；next 为空时用 404。只处理 GET 和 HEAD。缓存一年，并加上 nosniff。
 func StandMiddleware(dir string, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +250,7 @@ func StandMiddleware(dir string, next http.Handler) http.Handler {
 	})
 }
 
+// parseStandRequest 从 /idol-stand/ 后面拆出服装 id 和文件名。服装或文件名不在允许名单里则 ok 为 false。
 func parseStandRequest(path string) (outfit, name string, ok bool) {
 	const prefix = "/idol-stand/"
 	if !strings.HasPrefix(path, prefix) {

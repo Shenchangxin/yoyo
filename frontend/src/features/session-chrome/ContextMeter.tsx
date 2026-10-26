@@ -1,8 +1,6 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness ContextMeter (ring + breakdown panel).
+ * 拥有：上下文占用的环和分项。
+ * 不拥有：草稿和会话。只投影用量，不调用 api。
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -27,6 +25,7 @@ const ROWS: { key: string; label: (c: Copy) => string; tone: string; always?: bo
   { key: "free", label: (c) => c.composer.ctxFree, tone: "var(--ctx-free, transparent)", always: true },
 ];
 
+/** 把用量拆开，对上环上每一行的键。 */
 function meterTokens(br: CtxBreakdown): Record<string, number> {
   return {
     system: br.prefix,
@@ -42,6 +41,7 @@ function meterTokens(br: CtxBreakdown): Record<string, number> {
   };
 }
 
+/** ContextMeter 画出占用环，打开后列出各项。 */
 export function ContextMeter(props: {
   ctx?: ContextUsage;
   draftTokens?: number;
@@ -65,11 +65,13 @@ export function ContextMeter(props: {
 
   useEffect(() => {
     if (!open) return;
+    /** 点在环和面板外面就收起。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
+    /** 按退出就收起。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };

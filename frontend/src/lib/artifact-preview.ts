@@ -1,9 +1,16 @@
+/**
+ * 拥有：从改文件的工具调用和结果里做出预览：HTML、差异、代码或纯文本。
+ * 不拥有：预览卡片的渲染，以及 HTML 像不像文档。那是 html-preview 的事。
+ */
+
 import { looksLikeHTML, looksLikeHTMLFile } from "./html-preview";
 import { toolArgs, toolName } from "./tool-summary";
 import type { Item } from "./protocol";
 
+/** ArtifactKind 预览种类：HTML、差异、代码或纯文本。 */
 export type ArtifactKind = "html" | "diff" | "code" | "text";
 
+/** ArtifactView 一块预览。added、removed、created 来自结果载荷，没有则不填。 */
 export type ArtifactView = {
   kind: ArtifactKind;
   path: string;
@@ -23,28 +30,32 @@ const LANG: Record<string, string> = {
   rs: "rust", yml: "yaml", yaml: "yaml", toml: "toml", sh: "bash", vue: "vue",
 };
 
+/** langFromPath 用扩展名查语言。没有映射时退回扩展名本身。 */
 export function langFromPath(path: string): string {
   const ext = (path.split(".").pop() || "").toLowerCase();
   return LANG[ext] || ext;
 }
 
+/** pathFromPatch 从 `*** Add File:` 或 `*** Update File:` 里取出路径。对不上则空串。 */
 export function pathFromPatch(patch: string): string {
   const m = (patch || "").match(/\*\*\*\s+(?:Add|Update) File:\s*(.+)/);
   return m ? m[1].trim() : "";
 }
 
+/** prefixLines 给每一行加上同一个前缀。空文本返回空串。 */
 export function prefixLines(text: string, mark: string): string {
   if (!text) return "";
   return text.split("\n").map((ln) => mark + ln).join("\n");
 }
 
+/** 按行切开，并去掉结尾换行。空文本没有行。 */
 function splitPreviewLines(s: string): string[] {
   const n = (s || "").replace(/\r\n/g, "\n");
   if (!n) return [];
   return n.replace(/\n$/, "").split("\n");
 }
 
-/** Unified hunk of a replacement. Prefix/suffix-equal lines stay context, not −/+. */
+/** strReplaceToDiff 把一次替换收成 unified 差异。前后相同的行留作上下文，不标成减号或加号。上下文每侧最多两行。 */
 export function strReplaceToDiff(path: string, oldStr: string, newStr: string): string {
   const file = path || "file";
   const a = splitPreviewLines(oldStr);
@@ -76,6 +87,7 @@ export function strReplaceToDiff(path: string, oldStr: string, newStr: string): 
   ].join("\n");
 }
 
+/** applyPatchToDiff 把 apply_patch 的补丁收成 unified 差异。Begin 和 End 丢掉。Add 对上 /dev/null，Update 写成 a/ 与 b/。 */
 export function applyPatchToDiff(patch: string): string {
   const lines = (patch || "").replace(/\r\n/g, "\n").split("\n");
   const out: string[] = [];
@@ -97,27 +109,30 @@ export function applyPatchToDiff(patch: string): string {
   return out.join("\n").trim();
 }
 
+/** fenced 包成围栏代码块。正文截到 cap。围栏标记本身换成带零宽空格的形式，避免提前闭合。语言空则用 text。 */
 export function fenced(lang: string, text: string, cap = 12000): string {
   const body = (text || "").slice(0, cap).replace(/```/g, "``\u200b`");
   return "```" + (lang || "text") + "\n" + body + "\n```";
 }
 
+/** isElidedArg 参数以 `[elided ` 开头则视为被省略。比较不区分大小写。 */
 export function isElidedArg(raw: string): boolean {
   return /^\s*\[elided\s/i.test(raw || "");
 }
 
+/** artifactPreviewOpen 与 artifactShouldShow 相同。 */
 export function artifactPreviewOpen(view: ArtifactView): boolean {
   return artifactShouldShow(view);
 }
 
 const CODE_CHANGE_TOOLS = new Set(["write_file", "create_file", "str_replace", "edit_file", "apply_patch"]);
 
-/** File-mutating tools. Their cards are code-change bubbles and start folded. */
+/** isCodeChangeTool 会改文件的工具：write_file、create_file、str_replace、edit_file、apply_patch。它们的卡片是代码变更气泡，开始时折叠。 */
 export function isCodeChangeTool(name: string): boolean {
   return CODE_CHANGE_TOOLS.has(name);
 }
 
-/** A preview card is only for a changed fragment (or an HTML document). Full-file code dumps are not a change. */
+/** diffHasEdits 预览只认改过的片段，整文件倾倒不算变更。没有加减行，或去掉前缀后加减行完全相同，则没有编辑。文件头和块头不计入。 */
 export function diffHasEdits(diff: string): boolean {
   const plus: string[] = [];
   const minus: string[] = [];
@@ -130,17 +145,20 @@ export function diffHasEdits(diff: string): boolean {
   return plus.join("\n") !== minus.join("\n");
 }
 
+/** artifactShouldShow HTML 像文档或路径像 HTML 文件则显示。差异要真有编辑才显示。代码和纯文本不显示。 */
 export function artifactShouldShow(view: ArtifactView): boolean {
   if (view.kind === "html" && (looksLikeHTML(view.html) || looksLikeHTMLFile(view.path))) return true;
   if (view.kind === "diff" && diffHasEdits(view.diff)) return true;
   return false;
 }
 
+/** 从条目载荷里取出有限数字。没有或不是有限数则为 0。 */
 function payloadNum(item: Item | undefined, key: string): number {
   const n = Number(item?.payload?.[key] || 0);
   return Number.isFinite(n) ? n : 0;
 }
 
+/** artifactView 从调用和结果拼出预览。被省略的正文不当成内容。写入或新建的 HTML 走 HTML。apply_patch 走差异。已有编辑的 unified 走差异。str_replace 和 edit_file 用新旧字符串做差异，只有 HTML 路径时走 HTML。有正文的写入走代码。只有补丁时仍走差异。其余为纯文本。 */
 export function artifactView(call?: Item, result?: Item): ArtifactView {
   const item = call || result;
   const name = item ? toolName(item) : "";

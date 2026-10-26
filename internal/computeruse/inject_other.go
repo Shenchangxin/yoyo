@@ -1,5 +1,7 @@
 //go:build !windows
 
+// 非 Windows 上的注入。YOYO_CU_DISPLAY 为空时返回错误，不操作当前屏幕。子进程的 DISPLAY 设成该值。
+
 package computeruse
 
 import (
@@ -11,6 +13,7 @@ import (
 	"strings"
 )
 
+// inject 在 YOYO_CU_DISPLAY 为空时返回错误。open 和 launch 把 DISPLAY 设成该值后启动。click、type、key 要求 xdotool。screenshot 调用 Capture。
 func (h *Host) inject(op, app, detail string) (string, error) {
 	op = strings.ToLower(strings.TrimSpace(op))
 	if op == "" || op == "record" {
@@ -49,6 +52,7 @@ func (h *Host) inject(op, app, detail string) (string, error) {
 	}
 }
 
+// Capture 在 YOYO_CU_DISPLAY 为空时返回错误。有 import 命令时用它抓根窗口，并把 DISPLAY 设成该值。没有 import 则返回错误。
 func (h *Host) Capture(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

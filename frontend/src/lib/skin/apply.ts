@@ -1,3 +1,8 @@
+/**
+ * 拥有：把皮肤令牌、壁纸、字体和材质写到文档根，并在需要时记入本地存储。
+ * 不拥有：令牌是否合法、对比度，以及主题偏好本身。
+ */
+
 import { isCompanionSurface } from "../popout";
 import { windowRGBFromTokens } from "./builtin.ts";
 import {
@@ -19,6 +24,7 @@ import { sanitizeTokenMap } from "./validate.ts";
 const applied = new Set<string>();
 const FONT_STYLE_ID = "yoyo-skin-fonts";
 
+/** SkinPaint 一次要上屏的皮肤。preserveEvidence 为假时才允许改证据色和反馈色。persist 为假时不写入本地。 */
 export type SkinPaint = {
   id: string;
   tokens: TokenMap | null;
@@ -30,10 +36,12 @@ export type SkinPaint = {
   persist?: boolean;
 };
 
+/** 文档根。没有 document 时返回空。 */
 function rootEl(): HTMLElement | null {
   return typeof document === "undefined" ? null : document.documentElement;
 }
 
+/** clearSkinTokens 去掉本次以及上次写上的皮肤变量、壁纸、字体和 data-skin。 */
 export function clearSkinTokens() {
   const root = rootEl();
   if (!root) return;
@@ -52,6 +60,7 @@ export function clearSkinTokens() {
   root.style.removeProperty("--font-mono");
 }
 
+/** applySkinPaint 先清掉旧皮肤，再写入令牌、颗粒、玻璃、壁纸、圆角和字体。伴随窗口不上壁纸。证据色默认锁住。 */
 export function applySkinPaint(paint: SkinPaint) {
   const root = rootEl();
   if (!root) return;
@@ -92,12 +101,14 @@ export function applySkinPaint(paint: SkinPaint) {
   if (paint.persist !== false) persistPaint(paint, tokens);
 }
 
+/** 把带 px、rem 或 em 的长度乘上倍率。对不上单位时返回空。 */
 function scaleDim(v: string, scale: number): string | null {
   const m = String(v || "").trim().match(/^([0-9]*\.?[0-9]+)(px|rem|em)$/);
   if (!m) return null;
   return `${Number(m[1]) * scale}${m[2]}`;
 }
 
+/** 按材质倍率改写圆角令牌。倍率为 1 或无效时不动。 */
 function applyRadiusScale(tokens: TokenMap, scale: number) {
   const root = rootEl();
   if (!root || !scale || scale === 1) return;
@@ -110,6 +121,7 @@ function applyRadiusScale(tokens: TokenMap, scale: number) {
   }
 }
 
+/** 只接受皮肤目录里的 YoyoSkinSans 与 YoyoSkinMono，并写成字体面。 */
 function applyFonts(fonts: SkinFontFace[] | undefined) {
   const root = rootEl();
   if (!root) return;
@@ -140,6 +152,7 @@ function applyFonts(fonts: SkinFontFace[] | undefined) {
   }
 }
 
+/** 用户皮肤把令牌、壁纸文件和材质记入本地。证据色锁住时不存那些键。内置或空令牌则清掉这些键。 */
 function persistPaint(paint: SkinPaint, tokens: TokenMap) {
   try {
     if (isUserSkinId(paint.id) && Object.keys(tokens).length) {
@@ -161,10 +174,11 @@ function persistPaint(paint: SkinPaint, tokens: TokenMap) {
       localStorage.removeItem(KEY_SKIN_EVIDENCE);
     }
   } catch {
-    /* ignore */
+    /* 配额或隐私模式写入失败时忽略 */
   }
 }
 
+/** paintWindowFromTokens 把窗口背景设成令牌里的背景色。伴随窗口保持全透明。没有令牌时用调用方给的回退色。 */
 export function paintWindowFromTokens(tokens: TokenMap | null, fallbackRGB: readonly [number, number, number]) {
   import("@wailsio/runtime")
     .then(({ Window }) => {
@@ -179,6 +193,7 @@ export function paintWindowFromTokens(tokens: TokenMap | null, fallbackRGB: read
     .catch(() => {});
 }
 
+/** readPersistedSkinId 读出本地记下的用户皮肤 id。不是用户皮肤或读失败时返回空串。 */
 export function readPersistedSkinId(): string {
   try {
     const id = localStorage.getItem(KEY_SKIN) || "";

@@ -1,3 +1,4 @@
+/** 拥有页面列表、建页、改父级和删除。不拥有正文编辑器的按键。列表是投影，保存和删除会改服务端。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, FileText, Plus, Search } from "lucide-react";
 import { getLocale, useCopy } from "../../lib/i18n";
@@ -14,6 +15,7 @@ import { formatPageWhen } from "./when";
 
 type Page = PageMeta & { content: string };
 
+/** PagesWorkspace 管页面树和当前页，保存与删除写到服务端。 */
 export function PagesWorkspace(props: {
   sessionId?: string;
   boundPageId?: string;
@@ -40,6 +42,7 @@ export function PagesWorkspace(props: {
   qRef.current = q;
   activeRef.current = active;
 
+  /** 按搜索词拉取页面列表。 */
   const loadList = useCallback(async (query = qRef.current) => {
     const rows = await api.pagesList(query).catch(() => []);
     setList((Array.isArray(rows) ? rows : []).map((row) => pageOf(row)));
@@ -49,6 +52,7 @@ export function PagesWorkspace(props: {
     void loadList(q);
   }, [loadList, q]);
 
+  /** 把当前草稿存一次，冲突就停，期间又改了就再存。 */
   const persistOnce = useCallback(async (depth = 0): Promise<boolean> => {
     const page = activeRef.current;
     const d = { ...draft.current };
@@ -92,6 +96,7 @@ export function PagesWorkspace(props: {
   }, [copy.pages.conflictHint, loadList]);
 
   const chainRef = useRef(Promise.resolve(true));
+  /** 把保存排成一串，避免两笔同时写。 */
   const persist = useCallback((): Promise<boolean> => {
     const next = chainRef.current.then(() => persistOnce(), () => persistOnce());
     chainRef.current = next.then(() => true, () => true);
@@ -104,6 +109,7 @@ export function PagesWorkspace(props: {
     if (dirtyRef.current) void persistRef.current();
   }, []);
 
+  /** 把一页收成当前页，并清掉未保存标记。 */
   const adopt = (pg: Page) => {
     epochRef.current += 1;
     activeRef.current = pg;
@@ -115,6 +121,7 @@ export function PagesWorkspace(props: {
     setErr("");
   };
 
+  /** 先存住未写完的，再打开另一页。 */
   const open = async (id: string, opts?: { force?: boolean; bind?: boolean }) => {
     window.clearTimeout(timer.current);
     if (!opts?.force && dirtyRef.current) {
@@ -127,6 +134,7 @@ export function PagesWorkspace(props: {
     if (opts?.bind) props.onOpenInChat?.(pg.id);
   };
 
+  /** 把正文标成已改，并排一次保存。 */
   const schedule = () => {
     dirtyRef.current = true;
     setState("dirty");
@@ -134,6 +142,7 @@ export function PagesWorkspace(props: {
     timer.current = window.setTimeout(() => { void persist(); }, 800);
   };
 
+  /** 新建一页，可以挂在某个父级下。 */
   const create = async (parentId = "") => {
     window.clearTimeout(timer.current);
     if (dirtyRef.current) {
@@ -156,6 +165,7 @@ export function PagesWorkspace(props: {
     }
   };
 
+  /** 改一页的父级。 */
   const nest = async (id: string, parentId: string) => {
     if (dirtyRef.current && activeRef.current?.id === id) {
       const ok = await persist();
@@ -171,6 +181,7 @@ export function PagesWorkspace(props: {
     }
   };
 
+  /** 删除一页，绑在会话上的同时解开。 */
   const remove = async (pg: Page) => {
     try {
       await api.pagesDelete(pg.id, pg.space_id);
@@ -300,6 +311,7 @@ export function PagesWorkspace(props: {
   );
 }
 
+/** 画树里的一行，并能折叠孩子。 */
 function PageRow(props: {
   node: PageNode;
   depth: number;
@@ -363,6 +375,7 @@ function PageRow(props: {
   );
 }
 
+/** pageOf 把接口对象收成一页，缺内容就当空。 */
 export function pageOf(v: any): Page {
   return {
     id: str(v?.id || v?.ID),

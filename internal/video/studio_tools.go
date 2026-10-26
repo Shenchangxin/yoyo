@@ -1,3 +1,6 @@
+// 短片工具的名字、参数，以及在一场会话里怎么分发。
+// 没带工程编号时用这个会话绑着的那条。打开发布页、数据页和创建人设不在这里做。
+
 package video
 
 import (
@@ -6,6 +9,7 @@ import (
 	"strings"
 )
 
+// StudioToolNames 按规格表返回工具名，顺序和 StudioToolSpecs 一致。
 func StudioToolNames() []string {
 	specs := StudioToolSpecs()
 	out := make([]string, 0, len(specs))
@@ -15,6 +19,7 @@ func StudioToolNames() []string {
 	return out
 }
 
+// StudioToolSpecs 返回短片工具的名字、说明和参数形状。说明文本是给模型看的，分发时不解释它们。
 func StudioToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	num := map[string]any{"type": "number"}
@@ -87,6 +92,8 @@ func StudioToolSpecs() []ToolSpec {
 	}
 }
 
+// StudioTool 按名字调用对应的短片操作，并返回 JSON。工程编号空着就用会话绑定。
+// studio_publish_open、studio_publish_analytics 和 studio_persona_create 直接拒绝，交给应用层。未知名字也拒绝。不在这里点击发布。
 func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}
@@ -468,6 +475,7 @@ func (e *Engine) StudioTool(sessionID, name string, args map[string]any) (string
 	}
 }
 
+// splitCSV 按逗号拆开并去掉空白。整段是空的就返回 nil。
 func splitCSV(s string) []string {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -482,6 +490,7 @@ func splitCSV(s string) []string {
 	return out
 }
 
+// floatAny 把数字、整数、json.Number 或数字字符串收成 float64。认不出就返回 0。
 func floatAny(v any) float64 {
 	switch t := v.(type) {
 	case float64:

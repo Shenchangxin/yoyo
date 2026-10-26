@@ -1,3 +1,5 @@
+// payment_rpc.go 按操作系统和架构拼出支付 RPC 后端可能的文件名。
+
 package protocol
 
 import (
@@ -5,6 +7,7 @@ import (
 	"strings"
 )
 
+// PaymentRPCBackendCandidates 在 entry 以 backend/ 开头且清理后不变时，给出带系统架构后缀、嵌套目录和原名三种路径。Windows 先给出对应的 .exe。入口、系统或架构为空时返回 nil。
 func PaymentRPCBackendCandidates(entry, goos, goarch string) []string {
 	entry = strings.TrimSuffix(strings.TrimSpace(entry), ".exe")
 	goos = strings.TrimSpace(goos)
@@ -24,6 +27,7 @@ func PaymentRPCBackendCandidates(entry, goos, goarch string) []string {
 	return uniqueStrings(candidates)
 }
 
+// HasAnyPaymentRPCBackend 查看文件表里有没有入口本身、入口加 .exe、以入口加横线开头的名字，或嵌在系统架构目录下的同名文件。
 func HasAnyPaymentRPCBackend(entry string, files map[string][]byte) bool {
 	entry = strings.TrimSuffix(strings.TrimSpace(entry), ".exe")
 	if entry == "" {
@@ -58,6 +62,7 @@ func HasAnyPaymentRPCBackend(entry string, files map[string][]byte) bool {
 	return false
 }
 
+// uniqueStrings 按出现顺序去掉重复字符串。
 func uniqueStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))

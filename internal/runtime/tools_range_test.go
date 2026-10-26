@@ -1,3 +1,5 @@
+// 锁住越界读取会写明文件实际行数，空文件会说明是空的。非法正则按字面量搜索，而不是返回错误让模型原样重试。
+
 package runtime
 
 import (
@@ -7,8 +9,7 @@ import (
 	"testing"
 )
 
-// Session 3b9f1bbb660e4236: reads past EOF came back as silent empty results,
-// and an invalid grep regex was a hard error the model retried verbatim.
+// TestReadFileRangeNamesTheRealExtent 锁住 offset 超过文件末尾时写明总行数，空文件写明 0 行，两者都不是无输出的成功。
 func TestReadFileRangeNamesTheRealExtent(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "app.js"), []byte("a\nb\nc\n"), 0o644); err != nil {
@@ -38,6 +39,7 @@ func TestReadFileRangeNamesTheRealExtent(t *testing.T) {
 	}
 }
 
+// TestGrepFallsBackToLiteralOnInvalidRegex 锁住 })(); 这种非法正则按字面量命中，合法正则不会带 literal text 说明。
 func TestGrepFallsBackToLiteralOnInvalidRegex(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "app.js"), []byte("function a() {}\n})();\n"), 0o644); err != nil {

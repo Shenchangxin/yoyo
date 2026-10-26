@@ -2,13 +2,19 @@ import { builtinTokens } from "./builtin.ts";
 import { hslToHex, relativeLuminance, veilForReadability } from "./contrast.ts";
 import type { TokenMap } from "./schema.ts";
 
-/** Average relative luminance of a wallpaper, plus a veil that keeps palette text readable over it. */
+/**
+ * 拥有：从壁纸采样亮度、算出可读纱，以及按壁纸色相生成一套暗色和亮色令牌。
+ * 不拥有：纱和令牌的上屏，以及对比度门槛本身。
+ */
+
+/** wallpaperVeil 壁纸的平均相对亮度，加上能让调色板文字盖在上面仍可读的纱。暗色和亮色用各自的背景、前景和次要文字亮度。 */
 export async function wallpaperVeil(file: Blob, mode: "dark" | "light"): Promise<number> {
   const lum = await wallpaperLuminance(file);
   if (mode === "dark") return veilForReadability(lum, relativeLuminance(28, 28, 26), relativeLuminance(244, 244, 240), relativeLuminance(140, 139, 133));
   return veilForReadability(lum, relativeLuminance(251, 251, 250), relativeLuminance(28, 28, 26), relativeLuminance(111, 110, 104));
 }
 
+/** wallpaperLuminance 把图片缩采样后的不透明像素平均成相对亮度。没有画布或没有可计像素时返回 0.5。 */
 export async function wallpaperLuminance(file: Blob): Promise<number> {
   const bmp = await createImageBitmap(file);
   const size = 48;
@@ -29,7 +35,7 @@ export async function wallpaperLuminance(file: Blob): Promise<number> {
   return n ? sum / n : 0.5;
 }
 
-/** HCT-inspired tonal palettes from a wallpaper seed. Evidence tokens stay on the builtin pair unless unlocked. */
+/** tokensFromImage 按壁纸色相生成暗色和亮色令牌。未要求重着色时，证据色和反馈色留在内置的 ink 与 neutral 上。 */
 export async function tokensFromImage(file: Blob, opts?: { recolorEvidence?: boolean }): Promise<{ dark: TokenMap; light: TokenMap; seed: string }> {
   const bmp = await createImageBitmap(file);
   const size = 48;
@@ -67,6 +73,7 @@ export async function tokensFromImage(file: Blob, opts?: { recolorEvidence?: boo
   return { dark, light, seed: `hsl(${Math.round(h)} ${Math.round(s * 100)}% 50%)` };
 }
 
+/** 用色相和饱和度铺一套暗色或亮色令牌。 */
 function tonal(mode: "dark" | "light", h: number, s: number): TokenMap {
   const hue = Math.round(h);
   const sat = Math.round(s * 100);
@@ -159,6 +166,7 @@ function tonal(mode: "dark" | "light", h: number, s: number): TokenMap {
   };
 }
 
+/** 把 0 到 255 的 RGB 收成色相、饱和度和亮度。 */
 function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
   r /= 255;
   g /= 255;

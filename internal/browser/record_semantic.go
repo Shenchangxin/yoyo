@@ -1,3 +1,6 @@
+// 本文件把原始录制事件收成步骤：点击后紧跟的输入并成 fill，连续滚动只留最后一次，about:blank 上的空白点击并成导航。
+// 输入值收成 {{名字}}。描述里的英文句子是步骤数据。不调用模型。
+
 package browser
 
 import (
@@ -7,6 +10,7 @@ import (
 	"strings"
 )
 
+// SemanticStep 是收好的一步。Kind 取 open、navigate、click、fill、select、press、scroll。
 type SemanticStep struct {
 	ID          string       `json:"id"`
 	Kind        string       `json:"kind"`
@@ -18,6 +22,7 @@ type SemanticStep struct {
 	Description string       `json:"description,omitempty"`
 }
 
+// SkillInput 是草稿里要操作者提供的一项。Kind 取 secret、email、string。
 type SkillInput struct {
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
@@ -25,6 +30,7 @@ type SkillInput struct {
 	Example  string `json:"example,omitempty"`
 }
 
+// StepsDocument 是一次录制收好的步骤、输入和技能名。
 type StepsDocument struct {
 	StartURL  string         `json:"start_url"`
 	Steps     []SemanticStep `json:"steps"`
@@ -32,8 +38,10 @@ type StepsDocument struct {
 	SkillName string         `json:"skill_name"`
 }
 
+// emailRE 用来把看起来像邮箱的值收成 email 输入。
 var emailRE = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+// collapseRecordEvents 把事件收成 StepsDocument。起始地址可回放时先加一步 open。点击后四条之内的同目标 input 或 change 并成 fill。连续 scroll 只留最后一条。
 func collapseRecordEvents(events []RecordEvent, startURL string) StepsDocument {
 	used := map[string]bool{}
 	var inputs []SkillInput
@@ -106,7 +114,7 @@ func collapseRecordEvents(events []RecordEvent, startURL string) StepsDocument {
 			}
 			add(SemanticStep{Kind: "press", Key: ev.Key, Description: "Press " + ev.Key})
 		case "scroll":
-			// keep the last scroll before the next non-scroll
+			// 下一条还是滚动时先跳过，只留这段滚动的最后一次
 			if i+1 < len(events) && events[i+1].Kind == "scroll" {
 				continue
 			}
@@ -121,6 +129,7 @@ func collapseRecordEvents(events []RecordEvent, startURL string) StepsDocument {
 	}
 }
 
+// targetName 按无障碍名、标签、占位、正文、id、name 属性的顺序取第一个非空。都空时用标签名，再空则是 element。
 func targetName(t RecordTarget) string {
 	if s := firstNonEmpty(t.Name, t.Label, t.Placeholder, t.Text, t.ID, t.NameAttr); s != "" {
 		return s
@@ -131,6 +140,7 @@ func targetName(t RecordTarget) string {
 	return "element"
 }
 
+// sameRecordTarget 先比角色、名字、name 属性和 id 拼成的键，再看选择器候选有没有交集。
 func sameRecordTarget(a, b RecordTarget) bool {
 	key := func(t RecordTarget) string {
 		return strings.ToLower(t.Role + "|" + targetName(t) + "|" + t.NameAttr + "|" + t.ID)
@@ -151,6 +161,7 @@ func sameRecordTarget(a, b RecordTarget) bool {
 	return false
 }
 
+// nextInputOnSame 在后面最多 4 条里找同目标的 input 或 change。先遇到 click 或 navigation 就返回没有。
 func nextInputOnSame(events []RecordEvent, from int, target RecordTarget) (RecordEvent, bool) {
 	for i := from; i < len(events) && i < from+4; i++ {
 		if events[i].Kind == "input" || events[i].Kind == "change" {
@@ -165,6 +176,7 @@ func nextInputOnSame(events []RecordEvent, from int, target RecordTarget) (Recor
 	return RecordEvent{}, false
 }
 
+// skipSameFill 跳过从 from 起连续的、同一目标的 input 和 change，返回最后一条的下标。
 func skipSameFill(events []RecordEvent, from int, target RecordTarget) int {
 	i := from
 	for i < len(events) && (events[i].Kind == "input" || events[i].Kind == "change") && sameRecordTarget(events[i].Target, target) {
@@ -173,6 +185,7 @@ func skipSameFill(events []RecordEvent, from int, target RecordTarget) int {
 	return i - 1
 }
 
+// nextNavigation 在后面最多 5 条里找一条可回放的 navigation，返回它的地址。
 func nextNavigation(events []RecordEvent, from int) string {
 	for i := from; i < len(events) && i < from+5; i++ {
 		if events[i].Kind == "navigation" && !skipReplayURL(events[i].URL) {
@@ -182,6 +195,7 @@ func nextNavigation(events []RecordEvent, from int) string {
 	return ""
 }
 
+// isBlankBodyClick 在点击发生在 about:blank，且目标是 body、html 或没有标签时返回真。
 func isBlankBodyClick(ev RecordEvent) bool {
 	if ev.Kind != "click" {
 		return false
@@ -193,6 +207,7 @@ func isBlankBodyClick(ev RecordEvent) bool {
 	return tag == "body" || tag == "html" || tag == ""
 }
 
+// isLowSignalClick 丢掉正文很长的 div，以及没有选择器候选、正文里却带 :nth-of-type 的点击。
 func isLowSignalClick(ev RecordEvent) bool {
 	if ev.Target.Tag == "div" && len(ev.Target.Text) >= 160 {
 		return true
@@ -203,10 +218,12 @@ func isLowSignalClick(ev RecordEvent) bool {
 	return false
 }
 
+// isSelectTarget 在标签是 select 或角色是 combobox 时返回真。
 func isSelectTarget(t RecordTarget) bool {
 	return strings.EqualFold(t.Tag, "select") || strings.EqualFold(t.Role, "combobox")
 }
 
+// varFor 给一个输入值起 {{名字}}。已经是占位符的当成 secret。邮箱、搜索框各有固定名字。重名时加 _2、_3。
 func varFor(target RecordTarget, value string, used map[string]bool) (string, SkillInput) {
 	hay := strings.ToLower(strings.Join([]string{
 		target.Name, target.Label, target.Placeholder, target.NameAttr, target.ID, target.Text,
@@ -232,6 +249,7 @@ func varFor(target RecordTarget, value string, used map[string]bool) (string, Sk
 	return "{{" + name + "}}", in
 }
 
+// slugInput 把字符串收成小写的名字，非字母数字变成下划线，最长 40。空的或纯数字时返回 value。
 func slugInput(s string) string {
 	s = strings.ToLower(s)
 	var b strings.Builder
@@ -252,6 +270,7 @@ func slugInput(s string) string {
 	return out
 }
 
+// isDigits 在非空且每个字符都是数字时返回真。
 func isDigits(s string) bool {
 	for _, r := range s {
 		if r < '0' || r > '9' {
@@ -261,6 +280,7 @@ func isDigits(s string) bool {
 	return s != ""
 }
 
+// pathHint 返回地址路径的最后一段，前面加斜杠。根路径或解析失败时返回空字符串。
 func pathHint(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -276,6 +296,7 @@ func pathHint(raw string) string {
 	return "/" + bits[len(bits)-1]
 }
 
+// inferSkillName 用起始地址的主机名做成 recorded-<主机>。没有主机时用 recorded-browser-workflow。www. 前缀和端口去掉。
 func inferSkillName(start string) string {
 	if start == "" {
 		return "recorded-browser-workflow"

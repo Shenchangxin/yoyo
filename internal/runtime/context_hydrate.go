@@ -1,3 +1,6 @@
+// 检查点之后的工作集补水、今日一行，以及把过期的 read_file 结果标成占位。
+// 补水由 forceCheckpoint 调用。今日一行进入动态尾，不进稳定前缀。终端全文由循环写到工作区 terminals。
+
 package runtime
 
 import (
@@ -11,10 +14,14 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
+// hydratePrefix 是检查点后补进用户消息的工作集标记。isControlUser 认得这个前缀。
 const hydratePrefix = "Hydrated working set (untrusted; re-read from disk after checkpoint):"
 
+// hydrateFileTokenCap 是单个文件内联进补水消息的 token 上限。超过则只写路径。
 const hydrateFileTokenCap = 2_000
 
+// hydrateAfterCheckpoint 把最近写过的文件补进一条用户消息。优先取最近 5 个写路径，否则用笔记里的文件，最多计 5 个。
+// 缺失或超过 hydrateFileTokenCap 的只记一行并继续。成功内联且计数达到 5 时停止。一条都没有且目标为空时返回空消息。
 func hydrateAfterCheckpoint(workspace string, msgs []Message, notes SessionNotes, tools *WorkspaceTools) (extra Message, n int) {
 	var b strings.Builder
 	b.WriteString(hydratePrefix)
@@ -61,6 +68,7 @@ func hydrateAfterCheckpoint(workspace string, msgs []Message, notes SessionNotes
 	return Message{Role: RoleUser, Content: b.String()}, n
 }
 
+// hotWritePaths 从新到旧收集 write_file、str_replace、apply_patch 的路径，最多 limit 个。limit 小于等于 0 时按 5。
 func hotWritePaths(msgs []Message, limit int) []string {
 	if limit <= 0 {
 		limit = 5
@@ -92,6 +100,7 @@ func hotWritePaths(msgs []Message, limit int) []string {
 	return out
 }
 
+// AssembleToday 拼一行今日状态：未读收件、下一个启用的日程、列表里的第一个项目。结果截到 400 个 rune。没有内容时返回空串。
 func AssembleToday(t *WorkspaceTools) string {
 	if t == nil {
 		return ""
@@ -118,6 +127,7 @@ func AssembleToday(t *WorkspaceTools) string {
 	return capRunes(s, 400)
 }
 
+// unreadCount 返回收件箱未读数。存储为 nil 时返回 0。
 func unreadCount(s *inbox.Store) int {
 	if s == nil {
 		return 0
@@ -125,6 +135,7 @@ func unreadCount(s *inbox.Store) int {
 	return s.Unread()
 }
 
+// nextSchedule 返回第一个启用日程的标签，截到 80 个 rune。没有启用项时返回空串。
 func nextSchedule(s *schedule.Service) string {
 	if s == nil {
 		return ""
@@ -143,6 +154,7 @@ func nextSchedule(s *schedule.Service) string {
 	return ""
 }
 
+// firstProject 返回项目列表第一项的名字，空名字时用 id，截到 80 个 rune。
 func firstProject(s *project.Store) string {
 	if s == nil {
 		return ""
@@ -158,6 +170,7 @@ func firstProject(s *project.Store) string {
 	return capRunes(name, 80)
 }
 
+// writeTerminalFile 把终端输出写到工作区 .yoyo/context/<sessionID>/terminals/<callID>.txt。任一关键参数为空则不动。
 func writeTerminalFile(workspace, sessionID, callID, content string) {
 	if workspace == "" || sessionID == "" || content == "" {
 		return
@@ -171,6 +184,7 @@ func writeTerminalFile(workspace, sessionID, callID, content string) {
 	_ = os.WriteFile(filepath.Join(dir, id+".txt"), []byte(content), 0o644)
 }
 
+// markStaleReads 把同一路径上已被后一次 read_file 或后一次写覆盖的旧 read_file 结果换成占位。就地改传入切片，检查点只对副本调用。
 func markStaleReads(msgs []Message) int {
 	lastRead := map[string]int{}
 	lastWrite := map[string]int{}

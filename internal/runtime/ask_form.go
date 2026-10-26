@@ -1,3 +1,6 @@
+// ask_user 的问题卡：解析参数、空闲时采用 recommended，并识别等用户点头的结束语。
+// 不画界面。桌面用 AskUser 回调挡住工具。没有回调时走 AskIdleAnswer。
+
 package runtime
 
 import (
@@ -16,14 +19,13 @@ const askContinueNudge = "You ended the turn to wait for a nod. Do not. Call ask
 
 const askContinueNudgeZH = "你用结束本轮来等用户点头。不要这样。现在调用 ask_user：questions 里每题都要有 id、prompt、options（id 和 label）和 recommended（你认为最好的选项 id）。同一张卡片停在输入框上方，用户不操作就用 recommended 在本轮继续。工具返回后接着做，不要再写一封等新消息的信。"
 
-// AskOption is one choice on the composer question card.
+// AskOption 是作曲问题卡上的一个选项。
 type AskOption struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 }
 
-// AskQuestion is one page of that card. Recommended is the option used when
-// the operator never touches the card.
+// AskQuestion 是这张卡的一页。Recommended 是操作者没碰卡片时采用的选项。
 type AskQuestion struct {
 	ID          string      `json:"id"`
 	Prompt      string      `json:"prompt"`
@@ -31,13 +33,13 @@ type AskQuestion struct {
 	Recommended string      `json:"recommended,omitempty"`
 }
 
-// AskForm is the payload ask_user blocks on. The desktop shows every question
-// in one card and pages them with previous/next.
+// AskForm 是 ask_user 阻塞时的载荷。桌面把每道题放在同一张卡里，用上一页和下一页翻页。
 type AskForm struct {
 	Title     string        `json:"title,omitempty"`
 	Questions []AskQuestion `json:"questions"`
 }
 
+// parseAskForm 从 questions 或单个 question 解析表单，再规范化。questions 可以是 JSON 字符串。
 func parseAskForm(args map[string]any) AskForm {
 	form := AskForm{Title: strings.TrimSpace(str(args["title"]))}
 	form.Questions = questionsOf(args["questions"])
@@ -51,6 +53,7 @@ func parseAskForm(args map[string]any) AskForm {
 	return form
 }
 
+// questionsOf 解析问题列表。缺 id 时用 q 加序号。prompt 为空的对象丢掉。字符串项当成只有题干的问题。
 func questionsOf(raw any) []AskQuestion {
 	if s, ok := raw.(string); ok && strings.TrimSpace(s) != "" {
 		var parsed any
@@ -91,6 +94,7 @@ func questionsOf(raw any) []AskQuestion {
 	return out
 }
 
+// optionsOf 解析选项。label 为空时用 id。id 为空时用从 1 起的序号。字符串项的 id 也是序号。
 func optionsOf(raw any) []AskOption {
 	list, ok := raw.([]any)
 	if !ok {
@@ -123,6 +127,7 @@ func optionsOf(raw any) []AskOption {
 	return out
 }
 
+// normalizeAskForm 最多留 6 道题，每题最多 8 个选项。recommended 不在选项里时改成第一项。没有选项则清空 recommended。
 func normalizeAskForm(form *AskForm) {
 	if form == nil {
 		return
@@ -155,6 +160,7 @@ func normalizeAskForm(form *AskForm) {
 	}
 }
 
+// askForm 把表单交给 AskUser。没有回调时返回空闲答案。没有题目时返回错误。
 func (t *WorkspaceTools) askForm(form AskForm) ToolResult {
 	normalizeAskForm(&form)
 	if len(form.Questions) == 0 {
@@ -171,8 +177,7 @@ func (t *WorkspaceTools) askForm(form AskForm) ToolResult {
 	return ToolResult{Content: ans, Err: err}
 }
 
-// AskPrompt is the short text stored on the ask event. The card reads the
-// JSON command, not this line.
+// AskPrompt 是记在询问事件上的短文本。卡片读的是 JSON 命令，不是这一行。优先用标题，否则用第一题的题干。
 func AskPrompt(payload string) string {
 	form, ok := decodeAskPayload(payload)
 	if !ok {
@@ -187,8 +192,8 @@ func AskPrompt(payload string) string {
 	return strings.TrimSpace(payload)
 }
 
-// AskIdleAnswer is the tool result when nobody is there to touch the card,
-// or the desktop idle timer fires with the recommended options.
+// AskIdleAnswer 是没人碰卡片，或桌面空闲计时器用推荐选项触发时的工具结果。
+// 任一道题没有选项时返回 askNoOperator，不编造选择。
 func AskIdleAnswer(payload string) string {
 	form, ok := decodeAskPayload(payload)
 	if !ok || !askCanIdle(form) {
@@ -197,6 +202,7 @@ func AskIdleAnswer(payload string) string {
 	return formatAsk(form, true)
 }
 
+// askCanIdle 在每道题都有选项时才允许用推荐项继续。
 func askCanIdle(form AskForm) bool {
 	if len(form.Questions) == 0 {
 		return false
@@ -209,6 +215,7 @@ func askCanIdle(form AskForm) bool {
 	return true
 }
 
+// formatAsk 把每题的推荐项写成 “id: 选项 — 标签”。idle 为真时附上 askIdleNote。
 func formatAsk(form AskForm, idle bool) string {
 	var b strings.Builder
 	for _, q := range form.Questions {
@@ -241,6 +248,7 @@ func formatAsk(form AskForm, idle bool) string {
 	return strings.TrimSpace(b.String())
 }
 
+// decodeAskPayload 解析以 { 开头的 JSON 表单。没有题目或 JSON 无效时返回 false。
 func decodeAskPayload(payload string) (AskForm, bool) {
 	payload = strings.TrimSpace(payload)
 	if !strings.HasPrefix(payload, "{") {
@@ -254,7 +262,7 @@ func decodeAskPayload(payload string) (AskForm, bool) {
 	return form, true
 }
 
-// chosenOption finds the option id the card wrote into an ask_user result.
+// chosenOption 从 ask_user 结果里找出卡片写下的选项 id。跳过 note: 行。只接受 ids 里有的 id。
 func chosenOption(answer string, ids []string) string {
 	for _, line := range strings.Split(answer, "\n") {
 		line = strings.TrimSpace(line)
@@ -277,6 +285,7 @@ func chosenOption(answer string, ids []string) string {
 	return ""
 }
 
+// waitsForNod 判断结束语是不是在等用户点头或确认，而不是已经做完。
 func waitsForNod(text string) bool {
 	s := strings.ToLower(text)
 	if strings.TrimSpace(s) == "" {

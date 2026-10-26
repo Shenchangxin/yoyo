@@ -1,7 +1,10 @@
+// 数据：内置画布技能目录。分类名和每条技能正文是数据。
+
 package video
 
 import "fmt"
 
+// skillTagLabel 按分类值返回中文标签，没有则返回空串。
 func skillTagLabel(tag string) string {
 	for _, item := range skillCategories() {
 		if fmt.Sprint(item["value"]) == tag {
@@ -11,6 +14,7 @@ func skillTagLabel(tag string) string {
 	return ""
 }
 
+// skillCategories 返回技能分类的值和标签。
 func skillCategories() []map[string]any {
 	return []map[string]any{
 		{"value": "drama", "label": "短剧影视"},
@@ -26,10 +30,12 @@ type canvasSkillDef struct {
 	Likes, Added                     int
 }
 
+// skillMD 把标题、时机、步骤、输出和禁止拼成一份技能 Markdown。
 func skillMD(title, when, steps, output, forbid string) string {
 	return "# " + title + "\n\n## 何时使用\n" + when + "\n\n## 步骤\n" + steps + "\n\n## 输出\n" + output + "\n\n## 禁止\n" + forbid + "\n"
 }
 
+// builtinCanvasSkills 返回内置技能定义，并接上 extraCanvasSkills。
 func builtinCanvasSkills() []canvasSkillDef {
 	covers := []string{
 		"/short-drama-styles/cyberpunk-neon.jpg",

@@ -1,3 +1,5 @@
+// 技能包的路径白名单、默认关闭、本地安装和工具映射测试。
+
 package skillpack
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestFileAllowedExtensionlessScripts 确认 scripts/ 下无扩展名可过，目录外的无扩展名、路径穿越和 exe 被拒绝，LICENSE 与 .dot 可过。
 func TestFileAllowedExtensionlessScripts(t *testing.T) {
 	if !FileAllowed("scripts/start-server") {
 		t.Fatal("extensionless scripts/ helpers must be allowed")
@@ -31,6 +34,7 @@ func TestFileAllowedExtensionlessScripts(t *testing.T) {
 	}
 }
 
+// TestEnabledWorkspaceOverridesGlobal 确认工作区 false 压过全局 true，没有工作区条目时用全局，两处都空则关闭。
 func TestEnabledWorkspaceOverridesGlobal(t *testing.T) {
 	global := map[string]Pref{"superpowers": {Enabled: true}}
 	ws := map[string]WorkspacePref{"superpowers": {Enabled: false}}
@@ -45,6 +49,7 @@ func TestEnabledWorkspaceOverridesGlobal(t *testing.T) {
 	}
 }
 
+// TestSanitizeID 确认 " Super Powers!! " 变成 superpowers，"../etc" 变成 etc。
 func TestSanitizeID(t *testing.T) {
 	if got := SanitizeID(" Super Powers!! "); got != "superpowers" {
 		t.Fatalf("%q", got)
@@ -54,6 +59,7 @@ func TestSanitizeID(t *testing.T) {
 	}
 }
 
+// packByID 在列表里按 id 查找状态。
 func packByID(list []Status, id string) (Status, bool) {
 	for _, st := range list {
 		if st.ID == id {
@@ -63,6 +69,7 @@ func packByID(list []Status, id string) (Status, bool) {
 	return Status{}, false
 }
 
+// TestListKnownBeforeInstall 确认未安装时目录里的包是关闭的，superpowers 排在前面且带引导技能，novel-to-game 不是方法论包。
 func TestListKnownBeforeInstall(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -91,6 +98,7 @@ func TestListKnownBeforeInstall(t *testing.T) {
 	}
 }
 
+// writeLocalPack 在临时目录写下 superpowers 夹具，含 SKILL.md 和无扩展名脚本。
 func writeLocalPack(t *testing.T, root string) {
 	t.Helper()
 	skill := func(name, extra string) string {
@@ -114,6 +122,7 @@ func writeLocalPack(t *testing.T, root string) {
 	}
 }
 
+// TestInstallLocalAndEnable 从本地目录安装 superpowers，确认默认仍关闭，工作区打开后才会进入 RuntimeFor，卸掉后清单消失。
 func TestInstallLocalAndEnable(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -175,6 +184,7 @@ func TestInstallLocalAndEnable(t *testing.T) {
 	}
 }
 
+// TestToolMappingNeverNamesForeignTools 确认映射提到 load_skill、update_plan 和 task，并且不把动作映射成 Bash 或 TodoWrite。
 func TestToolMappingNeverNamesForeignTools(t *testing.T) {
 	for _, id := range []string{SuperpowersID, NovelToGameID, "unknown-pack"} {
 		got := ToolMapping(id, "linux")
@@ -194,6 +204,7 @@ func TestToolMappingNeverNamesForeignTools(t *testing.T) {
 	}
 }
 
+// TestToolMappingNovelToGameIsDomainNotBootstrap 确认 novel-to-game 的映射不含 using-superpowers，并带上阶段技能和浏览器取证用词。
 func TestToolMappingNovelToGameIsDomainNotBootstrap(t *testing.T) {
 	got := ToolMapping(NovelToGameID, "linux")
 	if strings.Contains(got, "using-superpowers") {
@@ -222,6 +233,7 @@ func TestToolMappingNovelToGameIsDomainNotBootstrap(t *testing.T) {
 	}
 }
 
+// TestGenericMappingDoesNotClaimBootstrap 确认未知包的映射不声称 using-superpowers 已在上下文里。
 func TestGenericMappingDoesNotClaimBootstrap(t *testing.T) {
 	got := ToolMapping("some-other-pack", "linux")
 	if strings.Contains(got, "using-superpowers is already in context") {
@@ -229,6 +241,7 @@ func TestGenericMappingDoesNotClaimBootstrap(t *testing.T) {
 	}
 }
 
+// writeNovelToGamePack 写下 novel-to-game 与 novel-game-analyze 两个 SKILL.md 夹具。
 func writeNovelToGamePack(t *testing.T, root string) {
 	t.Helper()
 	skill := func(name, extra string) string {
@@ -250,6 +263,7 @@ func writeNovelToGamePack(t *testing.T, root string) {
 	}
 }
 
+// TestInstallNovelToGameWritesMappingAndStaysOff 确认领域包装上后默认关闭，linux 映射不提 Git Bash，工作区打开后会话里没有引导技能。
 func TestInstallNovelToGameWritesMappingAndStaysOff(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -299,6 +313,7 @@ func TestInstallNovelToGameWritesMappingAndStaysOff(t *testing.T) {
 	}
 }
 
+// TestAgentReachMappingUsesHostSearch 确认 agent-reach 映射改走 web_search 和 reach_status，并写明不要照搬 curl。
 func TestAgentReachMappingUsesHostSearch(t *testing.T) {
 	body := ToolMapping("agent-reach", "linux")
 	if !strings.Contains(body, "web_search") || !strings.Contains(body, "reach_status") {
@@ -313,6 +328,7 @@ func TestAgentReachMappingUsesHostSearch(t *testing.T) {
 	}
 }
 
+// TestCallLabelShowsSkillId 确认三个技能工具显示技能名，web_search 返回空串，没有参数的 load_skill 仍显示工具名。
 func TestCallLabelShowsSkillId(t *testing.T) {
 	if CallLabel("load_skill", `{"name":"brainstorming"}`) != "brainstorming" {
 		t.Fatal("load_skill")

@@ -1,3 +1,5 @@
+// 数据：工作室素材种子，含文件夹、静帧、提示词和实体。seedStudioAssets 把尚未存在的条目写入素材库。
+
 package video
 
 import (
@@ -5,6 +7,7 @@ import (
 	"strings"
 )
 
+// seedStudioAssets 写入尚未存在的工作室文件夹、静帧、提示词和实体，然后种入黑神话和卡司素材。
 func (e *Engine) seedStudioAssets() error {
 	now := Now()
 	existing := map[string]bool{}

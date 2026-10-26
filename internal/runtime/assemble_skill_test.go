@@ -1,3 +1,5 @@
+// 技能目录在 Harbor 与聊天叠层上的差别，以及动态段里的建议标题。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestAssemblePinsHarborKeepsLegacyHeader 确认 Harbor 目录保留 load_skill 说明，且不含 Trigger:。
 func TestAssemblePinsHarborKeepsLegacyHeader(t *testing.T) {
 	got := AssemblePins(DefaultLoop(), artifact.Playbook{}, []artifact.Skill{
 		{Name: "plan-first", Description: "Keep a visible task plan."},
@@ -19,6 +22,7 @@ func TestAssemblePinsHarborKeepsLegacyHeader(t *testing.T) {
 	}
 }
 
+// TestAssemblePinsChatCatalogTriggerRulesAndBudget 确认聊天目录含 Trigger、预算省略和 Enabled domain packs，且不含 Tool Mapping for Yoyo。
 func TestAssemblePinsChatCatalogTriggerRulesAndBudget(t *testing.T) {
 	var skills []artifact.Skill
 	for i := 0; i < 40; i++ {
@@ -47,6 +51,7 @@ func TestAssemblePinsChatCatalogTriggerRulesAndBudget(t *testing.T) {
 	}
 }
 
+// TestAssembleDynamicHintSection 确认动态段含 Suggested skills this turn。
 func TestAssembleDynamicHintSection(t *testing.T) {
 	got := AssembleDynamicHint("", nil, "", "", "", FormatSkillHints([]SkillSuggestion{
 		{Name: "weekly-report", Action: SkillActionHint, Reason: "description overlap"},

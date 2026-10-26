@@ -1,3 +1,5 @@
+// main_test.go 锁住签名后的频道清单、安装包种类和资源地址。密钥在测试里现生成。
+
 package main
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/update"
 )
 
+// TestBuildSignedChannels 确认 latest.json 能用公钥验签，版本和安装包种类正确，Windows 资源地址含数据集路径，且发行文件被复制出来。
 func TestBuildSignedChannels(t *testing.T) {
 	dist := t.TempDir()
 	ver := "0.9.0"

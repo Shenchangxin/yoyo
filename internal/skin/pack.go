@@ -1,3 +1,5 @@
+// 皮肤包、清单和编译结果的数据结构。资源 URL 以 /yoyo-skin/ 开头。
+
 package skin
 
 import (
@@ -7,8 +9,10 @@ import (
 	"strings"
 )
 
+// TokenMap 是令牌名到字符串值的映射。
 type TokenMap map[string]string
 
+// Materials 是颗粒、玻璃模糊、壁纸适配和圆角缩放。
 type Materials struct {
 	Grain        float64 `json:"grain"`
 	GlassBlur    string  `json:"glassBlur,omitempty"`
@@ -17,6 +21,7 @@ type Materials struct {
 	RadiusScale  float64 `json:"radiusScale,omitempty"`
 }
 
+// Manifest 是皮肤清单。PreserveEvidence 为空指针时 EvidenceLocked 为真。
 type Manifest struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
@@ -33,6 +38,7 @@ type Manifest struct {
 	Preview          string    `json:"preview,omitempty"`
 }
 
+// Pack 是清单、两套令牌和原始文件字节。
 type Pack struct {
 	Manifest Manifest
 	Dark     TokenMap
@@ -40,6 +46,7 @@ type Pack struct {
 	Files    map[string][]byte
 }
 
+// Info 是给界面看的摘要，含预览色和资源 URL。
 type Info struct {
 	ID               string    `json:"id"`
 	Name             string    `json:"name"`
@@ -59,12 +66,14 @@ type Info struct {
 	PreviewURL       string    `json:"previewUrl,omitempty"`
 }
 
+// FontFace 是编译后的一条字体，Family、URL 和 Role。
 type FontFace struct {
 	Family string `json:"family"`
 	URL    string `json:"url"`
 	Role   string `json:"role"`
 }
 
+// Resolved 是编译结果。Tokens 在用户包上是处理后的用户层，在内置包上是完整调色板。
 type Resolved struct {
 	ID               string         `json:"id"`
 	Name             string         `json:"name"`
@@ -80,14 +89,17 @@ type Resolved struct {
 	Contrast         ContrastReport `json:"contrast"`
 }
 
+// AssetPrefix 是皮肤资源 URL 的前缀，值为 /yoyo-skin/。
 const AssetPrefix = "/yoyo-skin/"
 
+// NewUserID 返回 user. 加上 6 个随机字节的十六进制。
 func NewUserID() string {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	return "user." + hex.EncodeToString(b)
 }
 
+// EvidenceLocked 在 PreserveEvidence 为 nil 或指向真时返回真。
 func (m Manifest) EvidenceLocked() bool {
 	if m.PreserveEvidence == nil {
 		return true
@@ -95,6 +107,7 @@ func (m Manifest) EvidenceLocked() bool {
 	return *m.PreserveEvidence
 }
 
+// Normalize 去掉空白，名称必填且不超过 64 字节，说明超过 280 字节则截断。未知能力返回错误。能力为空时写成 tokens。资源路径经 sanitizeRel。
 func (m *Manifest) Normalize() error {
 	if m == nil {
 		return fmt.Errorf("missing manifest")
@@ -138,6 +151,7 @@ func (m *Manifest) Normalize() error {
 	return nil
 }
 
+// Normalize 把 Grain 和 WallpaperDim 夹到 0 和 1。WallpaperFit 只保留 cover、contain、tile，否则改成 cover。RadiusScale 小于等于 0 时写成 1，再夹到 0.5 和 2。非法的 GlassBlur 清空。
 func (m Materials) Normalize() Materials {
 	if m.Grain < 0 {
 		m.Grain = 0
@@ -173,6 +187,7 @@ func (m Materials) Normalize() Materials {
 	return m
 }
 
+// Info 填上摘要。有壁纸或预览时拼出 AssetPrefix URL。预览色用 ink 和 neutral 作底，再盖上用户令牌。
 func (p Pack) Info() Info {
 	ev := p.Manifest.EvidenceLocked()
 	id := p.Manifest.ID
@@ -200,6 +215,7 @@ func (p Pack) Info() Info {
 	return info
 }
 
+// previewSwatch 只复制背景、侧栏、卡片、弱化色、强调色、边框和前景这几个键。
 func previewSwatch(m TokenMap) TokenMap {
 	out := TokenMap{}
 	for _, k := range []string{"--background", "--sidebar", "--card", "--muted", "--accent", "--border", "--foreground"} {
@@ -210,6 +226,7 @@ func previewSwatch(m TokenMap) TokenMap {
 	return out
 }
 
+// HasCap 报告清单的能力列表里有没有这个名字。
 func (p Pack) HasCap(cap string) bool {
 	for _, c := range p.Manifest.Capabilities {
 		if c == cap {

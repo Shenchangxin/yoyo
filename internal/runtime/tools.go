@@ -1,3 +1,5 @@
+// 工作区工具的调度、路径解析、文件读写和 shell。resolve 不调用 filepath.EvalSymlinks，WithinWorkspace 也不调用。宿主名字表在 tools_host.go。子代理预算在 tools_task.go。单次写入正文超过 writeFilePartMax（32 * 1024 字节）由 refuseHugeWrite 拒绝。
+
 package runtime
 
 import (
@@ -35,6 +37,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// ToolResult 是一次工具调用的返回。Content 是给模型的文本，Err 非空表示失败，FileChange 记录改过的文件，Parts 是多模态片段。
 type ToolResult struct {
 	Content    string
 	Err        error
@@ -42,6 +45,7 @@ type ToolResult struct {
 	Parts      []ContentPart
 }
 
+// FileChange 记录这次写入涉及的路径、统一 diff、增删行数，以及是否新建。
 type FileChange struct {
 	Paths   []string
 	Patch   string
@@ -50,8 +54,7 @@ type FileChange struct {
 	Created bool
 }
 
-// prefetchHit is a stream-time readonly execution that must not be traced
-// until the final dispatchTools path emits once.
+// prefetchHit 是流式阶段提前执行的只读结果。在最终 dispatchTools 发出之前不能单独记成一条轨迹。
 type prefetchHit struct {
 	content   string
 	elapsedMs int
@@ -61,7 +64,7 @@ type prefetchHit struct {
 	parts     []ContentPart
 }
 
-// ExtraTool is a host-bridged tool (MCP, WASM) sharing the same capability gate.
+// ExtraTool 是宿主桥接的扩展工具，例如 MCP 或 WASM，走同一套能力闸门。Call 是实现。ReadOnly、OpenWorld、Exclusive、Destructive 描述该工具的副作用。
 type ExtraTool struct {
 	JSON        ToolJSON
 	Call        func(argsJSON string) ToolResult
@@ -71,6 +74,7 @@ type ExtraTool struct {
 	Destructive bool
 }
 
+// WorkspaceTools 是一轮会话的工具状态：工作区、能力经纪、技能、已广告的工具和子代理入口。
 type WorkspaceTools struct {
 	Workspace    string
 	Home         string
@@ -84,31 +88,26 @@ type WorkspaceTools struct {
 	pendingHost  []string
 	Policy       artifact.PolicyPack
 	PlanMode     bool
-	// ReadOnly is explore/qa subagents: deny writes without the plan-mode
-	// persona ("produce a plan"). Plan mode and read-only are not the same.
+	// ReadOnly 用于 explore 或 qa 子代理：拒绝写入，但不套用计划模式那句「先产出计划」。计划模式和只读不是一回事。
 	ReadOnly bool
-	// ChatOverlay is desktop/CLI personal chat (I6). Harbor eval leaves it
-	// false so shell, plan language, and the tool menu stay eval-stable.
+	// ChatOverlay 为真表示桌面或 CLI 的个人聊天。Harbor 评测保持为假，使 shell、计划用语和工具菜单保持评测稳定。
 	ChatOverlay bool
-	// OperatorVoice is the latest real operator utterance for chat overlays.
+	// OperatorVoice 是聊天叠加层里最近一句真实的操作者原话。
 	OperatorVoice string
-	// VerifyHint is set when chat tries to end_turn with an open plan so
-	// verify-artifact is re-injected into working memory (I2/I5).
-	VerifyHint   bool
-	Ctx          context.Context
-	Extra        map[string]ExtraTool
-	Spill        *Spill
+	// VerifyHint 在聊天带着未完成计划试图结束时为真，用来把 verify-artifact 重新注入工作记忆。
+	VerifyHint bool
+	Ctx        context.Context
+	Extra      map[string]ExtraTool
+	Spill      *Spill
+	// Depth 是子代理嵌套层。0 是父级。达到 MaxTaskDepth 后不能再派 task。
 	Depth        int
 	Task         TaskFunc
 	PlanText     string
 	Advertised   []string
 	AllowedTools []string
-	// DeniedTools is the profile block list. It applies even when chat
-	// may call a host tool that is not in the opening schema.
+	// DeniedTools 是配置档的拒绝表。聊天可以调用开场 schema 里没有的宿主工具，这张表仍然生效。
 	DeniedTools []string
-	// ToolJail means AllowedTools is a real allow-list from a skill
-	// frontmatter or a profile allow_tools. The opening schema is not a jail:
-	// a deferred host tool stays callable on chat until one of those is set.
+	// ToolJail 为真表示 AllowedTools 是技能前言或配置档的真实允许表。开场 schema 本身不是牢笼：在设置这张表之前，推迟的宿主工具在聊天里仍可调用。
 	ToolJail          bool
 	AskUser           func(question string) (string, error)
 	SkillMeta         map[string]artifact.Skill
@@ -136,35 +135,33 @@ type WorkspaceTools struct {
 	liveCall          string
 	liveRound         string
 	liveOut           int
-	// Packs are enabled methodology/content packs for this controller turn.
+	// Packs 是本回合控制器启用的方法论或内容包。
 	Packs []PackSession
-	// Methodology yields write-now chat conduct and plan-first overlay.
+	// Methodology 为真时，聊天行为改成先加载技能，计划优先的叠加也会让开。
 	Methodology bool
-	// BootstrapBodies are wrapped session-start skill texts. Chat no longer
-	// fills this; methodology packs keep a one-line BootstrapPin instead.
+	// BootstrapBodies 是包过的会话开始技能正文。聊天路径不再填充它；方法论包改留一行 BootstrapPin。
 	BootstrapBodies map[string]string
-	// BootstrapPin is the cache-stable methodology one-liner. The body loads
-	// through load_skill.
+	// BootstrapPin 是可缓存的一行方法论提示。正文要通过 load_skill 加载。
 	BootstrapPin string
-	// CatalogLane is "agent" or "video". The agent lane hides studio/drama/cut
-	// catalog lines.
+	// CatalogLane 是 agent 或 video。agent 车道会藏起 studio、drama、cut 的目录行。
 	CatalogLane  string
 	pathRules    string
 	pathRuleSeen map[string]bool
-	// SkillAutoInvoke is off | hint | on. Empty means on.
+	// SkillAutoInvoke 是 off、hint 或 on。空串按 on。
 	SkillAutoInvoke string
-	// SkillCatalogBudget caps catalog lines in pins (bytes). Zero uses default.
+	// SkillCatalogBudget 按字节限制钉住的目录行。零使用默认预算。
 	SkillCatalogBudget int
-	// SkillHints are this-turn matcher results (hint + autoload).
+	// SkillHints 是本回合匹配结果，含 hint 和 autoload。
 	SkillHints []SkillSuggestion
-	// Autoloaded is the subset the host injected as implicit @skill.
+	// Autoloaded 是宿主按隐式 @skill 注入的那一部分技能名。
 	Autoloaded []string
-	// repeatScript blocks one more run of a check whose output did not change.
-	// repeatRefusal is the tool result returned instead of executing it.
-	repeatScript  string
+	// repeatScript 拦住下一次输出没有变化的检查命令。repeatRefusal 是不执行时返回的工具结果。
+	repeatScript string
+	// repeatRefusal 是 repeatScript 命中时直接返回的文本。
 	repeatRefusal string
 }
 
+// BuiltinToolJSON 把 tool.HostSpecs 转成工具 JSON 列表。
 func BuiltinToolJSON() []ToolJSON {
 	specs := tool.HostSpecs()
 	out := make([]ToolJSON, 0, len(specs))
@@ -174,6 +171,7 @@ func BuiltinToolJSON() []ToolJSON {
 	return out
 }
 
+// AllToolJSON 组装本回合广告给模型的工具。深度达到 MaxTaskDepth 时去掉 task。ReadOnly 时只留 readOnlySubagentCall 允许的名字。Advertised 或 AllowedTools 非空时按它们过滤，alwaysAdvertise 的名字保留。额外工具超过 8 个或 ChatOverlay 为真时，未启用的推迟并写入溢出或宿主索引。同名只留先出现的宿主 schema。
 func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	out := BuiltinToolJSON()
 	if t != nil && t.Depth >= MaxTaskDepth {
@@ -231,6 +229,7 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	// schemaCap 是 8。额外工具多于这个数时，未启用的不放进开场 schema。
 	const schemaCap = 8
 	enabled := map[string]bool{}
 	t.mu.Lock()
@@ -266,11 +265,11 @@ func AllToolJSON(t *WorkspaceTools) []ToolJSON {
 	}
 	WriteHostToolIndex(t.Workspace, deferred)
 	WriteMCPCatalog(t.Workspace, t.Extra)
-	// Gateways reject the whole turn when a name appears twice. Host schemas
-	// stay; a later extra with the same name (canvas ask_user) is dropped.
+	// 网关会因同名工具拒绝整轮。宿主 schema 保留，后出现的同名扩展（例如画布上的 ask_user）丢掉。
 	return uniqueToolJSON(out)
 }
 
+// uniqueToolJSON 按名字去重，保留第一次出现。空名字丢掉。少于两条时原样返回。
 func uniqueToolJSON(in []ToolJSON) []ToolJSON {
 	if len(in) < 2 {
 		return in
@@ -289,6 +288,7 @@ func uniqueToolJSON(in []ToolJSON) []ToolJSON {
 	return out
 }
 
+// fn 用名字、说明和参数对象构造一条 function 类型的 ToolJSON。
 func fn(name, desc string, params map[string]any) ToolJSON {
 	return ToolJSON{
 		Type: "function",
@@ -300,6 +300,7 @@ func fn(name, desc string, params map[string]any) ToolJSON {
 	}
 }
 
+// writeLikeTool 在名字是 write_file、create_file、apply_patch、str_replace、edit_file、office_create、office_edit 或 cite_sources 时返回真。
 func writeLikeTool(name string) bool {
 	switch name {
 	case "write_file", "create_file", "apply_patch", "str_replace", "edit_file",
@@ -310,11 +311,10 @@ func writeLikeTool(name string) bool {
 	}
 }
 
+// Call 是工具入口。写类工具的参数被截断时不执行。未广告、只读子代理或计划模式不允许的调用直接返回错误。已登记的宿主工具走 hostFns，否则走 Extra。
 func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	if writeLikeTool(name) && toolArgsTruncated(argsJSON) {
-		// A cut-off payload is never executed. A salvaged prefix on disk looks
-		// finished to the next round and invites str_replace over text that was
-		// never written. The model resends the same work in parts instead.
+		// 截断的载荷不执行。把捞出来的前缀写到磁盘会让下一轮以为已经写完，再对着没写过的文本做 str_replace。模型应改成分段重写。
 		return ToolResult{Err: truncatedWriteErr(argsJSON)}
 	}
 	args := unwrapToolArgs(parseToolArgs(argsJSON))
@@ -347,6 +347,7 @@ func (t *WorkspaceTools) Call(name, argsJSON string) ToolResult {
 	return ToolResult{Err: fmt.Errorf("unknown tool %s", name)}
 }
 
+// toolListed 在列表项按空白切开后含有该名字时返回真。
 func toolListed(list []string, name string) bool {
 	for _, n := range list {
 		for _, part := range strings.Fields(n) {
@@ -358,6 +359,7 @@ func toolListed(list []string, name string) bool {
 	return false
 }
 
+// toolDenied 在 DeniedTools 含有该名字时返回真。工具或名字为空则返回假。
 func (t *WorkspaceTools) toolDenied(name string) bool {
 	if t == nil || name == "" {
 		return false
@@ -370,6 +372,7 @@ func (t *WorkspaceTools) toolDenied(name string) bool {
 	return false
 }
 
+// toolAllowed 先看拒绝表。Extra 里的名字和 alwaysAdvertise 的名字放行。ChatOverlay 且未设 ToolJail 时，已知宿主工具放行。AllowedTools 非空时只认这张表。ChatOverlay 下其余已知宿主工具也放行。有广告表时必须在表里。都没有则放行。
 func (t *WorkspaceTools) toolAllowed(name string) bool {
 	if t == nil {
 		return true
@@ -385,8 +388,7 @@ func (t *WorkspaceTools) toolAllowed(name string) bool {
 	if alwaysAdvertise(name) {
 		return true
 	}
-	// The opening menu is a schema diet, not a call jail. Profile denials and
-	// an explicit allow-list (ToolJail) still block.
+	// 开场菜单只是精简 schema，不是调用牢笼。配置档拒绝表和显式允许表 ToolJail 仍然拦截。
 	if t.ChatOverlay && hostToolKnown(name) && !t.ToolJail {
 		return true
 	}
@@ -408,6 +410,7 @@ func (t *WorkspaceTools) toolAllowed(name string) bool {
 	return true
 }
 
+// advertisedCopy 在锁内复制 Advertised。工具为空时返回 nil。
 func (t *WorkspaceTools) advertisedCopy() []string {
 	if t == nil {
 		return nil
@@ -417,6 +420,7 @@ func (t *WorkspaceTools) advertisedCopy() []string {
 	return append([]string(nil), t.Advertised...)
 }
 
+// alwaysAdvertise 对 load_skill、list_skills、tool_search、recall_context、update_plan、ask_user、read_thread、read_skill_file 返回真。
 func alwaysAdvertise(name string) bool {
 	switch name {
 	case "load_skill", "list_skills", "tool_search", "recall_context", "update_plan", "ask_user", "read_thread", "read_skill_file":
@@ -426,6 +430,7 @@ func alwaysAdvertise(name string) bool {
 	}
 }
 
+// CommitToolUnlocks 把 ExtraLive 并进 ExtraEnabled 后清空 ExtraLive，并把 pendingHost 交给 unlockAdvertised。
 func (t *WorkspaceTools) CommitToolUnlocks() {
 	if t == nil {
 		return
@@ -449,6 +454,7 @@ func (t *WorkspaceTools) CommitToolUnlocks() {
 	t.unlockAdvertised(host)
 }
 
+// resolve 把相对路径接到 Workspace 上。先 CanonicalizeToolPath，绝对路径保持不变，再 filepath.Clean。WithinWorkspace 拒绝逃出工作区，ForbiddenDiagPath 拒绝诊断面。本函数不调用 filepath.EvalSymlinks，WithinWorkspace 也不调用。
 func (t *WorkspaceTools) resolve(rel string) (string, error) {
 	if rel == "" {
 		return "", fmt.Errorf("empty path")
@@ -467,6 +473,7 @@ func (t *WorkspaceTools) resolve(rel string) (string, error) {
 	return p, nil
 }
 
+// check 在 Caps 为空时直接通过。否则按级别、动作、路径和命令做能力检查。policyRequires 为真时 ForceAsk。有工具上下文则用 CheckCtx。
 func (t *WorkspaceTools) check(level capability.Level, action, path, cmd string) error {
 	if t.Caps == nil {
 		return nil
@@ -486,6 +493,7 @@ func (t *WorkspaceTools) check(level capability.Level, action, path, cmd string)
 	return t.Caps.Check(req)
 }
 
+// policyRequires 在模式为 bypass 时返回假。模式为 ask 且级别是 Shell、Network、HighRisk、SendAsYou 或 ComputerUse 时返回真。RequireApproval 不在这里变成 ForceAsk，经纪上已有的 Session、Once、Always 授权要保留，所以其余情况返回假。
 func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
 	if p.Mode == "bypass" {
 		return false
@@ -493,11 +501,11 @@ func policyRequires(p artifact.PolicyPack, level capability.Level) bool {
 	if p.Mode == "ask" && (level == capability.Shell || level == capability.Network || level == capability.HighRisk || level == capability.SendAsYou || level == capability.ComputerUse) {
 		return true
 	}
-	// RequireApproval means the first call must enter the gate. It is not
-	// ForceAsk: Session/Once/Always grants on the broker must stick.
+	// RequireApproval 表示第一次调用要进闸门，但这里不把它变成 ForceAsk。经纪上已有的 Session、Once、Always 授权要保留。
 	return false
 }
 
+// readFile 经 resolve 和 ReadWorkspace 读取文件。指定 offset 或 limit 时走 rangedRead。超过 maxInlineBytes 时把全文写到 .yoyo/overflow，只返回前 80 行和溢出路径。
 func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -524,6 +532,7 @@ func (t *WorkspaceTools) readFile(rel string, offset, limit int) ToolResult {
 	return ToolResult{Content: numberLines(string(b), 0, 0)}
 }
 
+// missingReadErr 在错误不是不存在时原样返回。不存在时说明路径不存在。路径以 qa/verification.json 或 qa/evidence/run.json 结尾时追加一句：这些文件由 browser_verify 写在游戏工程目录，root 应是该目录而不是 CSS 选择器。父目录能读时最多附上 8 个邻近名字。
 func missingReadErr(rel, abs string, err error) error {
 	if err == nil {
 		return nil
@@ -560,10 +569,7 @@ func missingReadErr(rel, abs string, err error) error {
 	return fmt.Errorf("%s", msg)
 }
 
-// rangedRead keeps an empty window from reading as a silent success. A model
-// that cannot see the file length re-reads past EOF; session 3b9f1bbb660e4236
-// issued six such reads (offsets 270-296 of a 264-line file) and each came
-// back as "completed with no output", so the turn spun. Name the real extent.
+// rangedRead 避免空窗口被当成没有输出的成功。文件为空时写明 0 行。offset 超过总行数时写明实际行数，并指出可读范围。否则交给 numberLines。
 func rangedRead(rel, text string, offset, limit int) string {
 	total := 0
 	if text != "" {
@@ -578,6 +584,7 @@ func rangedRead(rel, text string, offset, limit int) string {
 	return numberLines(text, offset, limit)
 }
 
+// numberLines 按 1 起的行号输出。offset 大于 0 时从该行开始。limit 大于 0 时只取这么多行。
 func numberLines(text string, offset, limit int) string {
 	lines := strings.Split(text, "\n")
 	start := 0
@@ -598,6 +605,7 @@ func numberLines(text string, offset, limit int) string {
 	return b.String()
 }
 
+// spillOverflow 把超长读到的字节写到工作区 .yoyo/overflow 下，文件名是基名加 .txt，并返回斜杠相对路径。
 func (t *WorkspaceTools) spillOverflow(rel string, b []byte) (string, error) {
 	dir := filepath.Join(t.Workspace, ".yoyo", "overflow")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -611,6 +619,7 @@ func (t *WorkspaceTools) spillOverflow(rel string, b []byte) (string, error) {
 	return filepath.ToSlash(filepath.Join(".yoyo", "overflow", name)), nil
 }
 
+// refuseHugeWrite 在 content 的字节数超过 writeFilePartMax 时拒绝。writeFilePartMax 是 32 * 1024。错误文本要求先 create 或 overwrite，再按同样上限 append。
 func refuseHugeWrite(rel, content string) error {
 	if len(content) <= writeFilePartMax {
 		return nil
@@ -618,6 +627,7 @@ func refuseHugeWrite(rel, content string) error {
 	return fmt.Errorf("refusing write_file %s: content is %d bytes (max %d per call). Split the body: first part mode=create or overwrite, each following part mode=append, at most %d bytes per call", rel, len(content), writeFilePartMax, writeFilePartMax)
 }
 
+// writeFile 覆盖或新建文件。内容像上下文占位时走 resolveElidedWrite。先过 refuseHugeWrite 和 sealedGameWorldWrite，再 resolve，并以 WriteWorkspace、动作 write_file 审批。与磁盘相同则返回 unchanged。写入前 snapshotBeforeWrite。html 或 htm 会尝试预览。
 func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	if looksLikeContextStub(content) {
 		return t.resolveElidedWrite(rel, "content", "")
@@ -659,8 +669,7 @@ func (t *WorkspaceTools) writeFile(rel, content string) ToolResult {
 	return ToolResult{Content: out, FileChange: fileChangeOf(rel, prev, want, created)}
 }
 
-// createFile writes only when the path is new. It is the explicit form of
-// "start a long file" and never clobbers existing work.
+// createFile 只在路径还不存在时写入。这是分段写长文件的第一段，不会覆盖已有内容。已存在则拒绝，并提示改用 overwrite 或 append。通过后交给 writeFile，因此同样受 32 * 1024 字节的单次上限。
 func (t *WorkspaceTools) createFile(rel, content string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -672,8 +681,7 @@ func (t *WorkspaceTools) createFile(rel, content string) ToolResult {
 	return t.writeFile(rel, content)
 }
 
-// appendFile extends a file in parts. Long bodies go through here so no single
-// tool call has to carry the whole file inside one model output budget.
+// appendFile 把内容追加到已有文件，使长正文不必塞进一次模型输出。上下文占位直接拒绝。先过 refuseHugeWrite，单次仍不得超过 writeFilePartMax（32 * 1024 字节）。文件不存在时当成新建。html 追加被 htmlAppendRefusal 拒绝时不写。
 func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
 	if looksLikeContextStub(content) {
 		return ToolResult{Err: fmt.Errorf("refusing to append a context stub to %s; send the real next part", rel)}
@@ -720,6 +728,7 @@ func (t *WorkspaceTools) appendFile(rel, content string) ToolResult {
 	}
 }
 
+// resolveElidedWrite 不把上下文占位写成文件。路径已有非空文件则返回 unchanged。能从溢出参数里按路径和字段恢复正文时，patch 走 applyPatch，其余走 writeFile。否则拒绝。
 func (t *WorkspaceTools) resolveElidedWrite(rel, field, recall string) ToolResult {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -739,6 +748,7 @@ func (t *WorkspaceTools) resolveElidedWrite(rel, field, recall string) ToolResul
 	return ToolResult{Err: fmt.Errorf("refusing to write a context stub for %s; the file is not on disk. Write the real %s — never paste _elided/omitted placeholders", rel, field)}
 }
 
+// recoverElidedField 先按 recall 标识从溢出里取字段，再扫描以 args 结尾的溢出标识。路径必须一致，正文不能再是占位。
 func (t *WorkspaceTools) recoverElidedField(rel, field, recall string) (string, bool) {
 	if t == nil || t.Spill == nil || strings.TrimSpace(rel) == "" || strings.TrimSpace(field) == "" {
 		return "", false
@@ -758,6 +768,7 @@ func (t *WorkspaceTools) recoverElidedField(rel, field, recall string) (string, 
 	return "", false
 }
 
+// spillArgsField 读取溢出 JSON。path 与 wantPath 不一致、字段为空或仍像占位时返回假。
 func (t *WorkspaceTools) spillArgsField(id, wantPath, field string) (string, bool) {
 	id = strings.TrimSpace(id)
 	if t == nil || t.Spill == nil || id == "" {
@@ -782,6 +793,7 @@ func (t *WorkspaceTools) spillArgsField(id, wantPath, field string) (string, boo
 	return body, true
 }
 
+// maybePreviewHTML 在扩展名是 .html 或 .htm 且 Browser 非空时 SetPreview。
 func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
 	if t == nil || t.Browser == nil || abs == "" {
 		return
@@ -792,6 +804,7 @@ func (t *WorkspaceTools) maybePreviewHTML(rel, abs string) {
 	}
 }
 
+// replace 做字符串替换。old 或 new 像上下文占位、old 为空、或路径被密封时拒绝。匹配 0 次返回错误并附上邻近行。多于一次且 replace_all 为假则拒绝。写入前做快照。能力级别是 WriteWorkspace，动作是 str_replace。
 func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	if looksLikeContextStub(old) || looksLikeContextStub(new) {
 		return ToolResult{Err: fmt.Errorf("refusing to write a context stub; read_file that path or recall_context the spill id instead of rewriting from memory")}
@@ -840,6 +853,7 @@ func (t *WorkspaceTools) replace(rel, old, new string, all bool) ToolResult {
 	}
 }
 
+// listDir 列出目录。最多 200 项，超过则提示改用 glob。文件行带字节大小和修改时间。能力级别是 ReadWorkspace。
 func (t *WorkspaceTools) listDir(rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -875,6 +889,7 @@ func (t *WorkspaceTools) listDir(rel string) ToolResult {
 	return ToolResult{Content: b.String()}
 }
 
+// glob 在工作区里按模式查找，最多 200 条。空模式返回错误。能力级别是 ReadWorkspace。
 func (t *WorkspaceTools) glob(pattern string) ToolResult {
 	if pattern == "" {
 		return ToolResult{Err: fmt.Errorf("empty pattern")}
@@ -892,6 +907,7 @@ func (t *WorkspaceTools) glob(pattern string) ToolResult {
 	return ToolResult{Content: strings.Join(matches, "\n")}
 }
 
+// grep 在工作区或指定路径里搜索。正则编译失败时按字面量搜索，并在结果前说明。最多 80 条。能力级别是 ReadWorkspace。
 func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	if pattern == "" {
 		return ToolResult{Err: fmt.Errorf("empty pattern")}
@@ -899,8 +915,7 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	re, compileErr := regexp.Compile(pattern)
 	literal := compileErr != nil
 	if literal {
-		// Pasted code fragments (`})();`, unbalanced `)`) are not regexes. A hard
-		// error here looped the model on the same bad pattern; search the text.
+		// 贴进来的代码片段常常不是正则。这里若直接报错，模型会原样重试。编译失败就按字面量搜索。
 		re = regexp.MustCompile(regexp.QuoteMeta(pattern))
 	}
 	root := t.Workspace
@@ -928,6 +943,7 @@ func (t *WorkspaceTools) grep(pattern, globPat, rel string) ToolResult {
 	return ToolResult{Content: note + hits}
 }
 
+// setRepeatBlock 记下要拦住的脚本片段和拒绝时返回的文本。
 func (t *WorkspaceTools) setRepeatBlock(script, refusal string) {
 	if t == nil {
 		return
@@ -936,6 +952,7 @@ func (t *WorkspaceTools) setRepeatBlock(script, refusal string) {
 	t.repeatRefusal = refusal
 }
 
+// repeatBlocked 在 repeatScript 为空、拒绝文本为空，或脚本是 browser_verify 时返回假。命令的斜杠归一化后包含该脚本则返回拒绝文本。
 func (t *WorkspaceTools) repeatBlocked(command string) (string, bool) {
 	if t == nil || t.repeatScript == "" || t.repeatRefusal == "" || t.repeatScript == "browser_verify" {
 		return "", false
@@ -946,6 +963,7 @@ func (t *WorkspaceTools) repeatBlocked(command string) (string, bool) {
 	return "", false
 }
 
+// repeatVerifyBlocked 只在 repeatScript 为 browser_verify 且拒绝文本非空时返回该文本。
 func (t *WorkspaceTools) repeatVerifyBlocked() (string, bool) {
 	if t == nil || t.repeatScript != "browser_verify" || t.repeatRefusal == "" {
 		return "", false
@@ -953,6 +971,7 @@ func (t *WorkspaceTools) repeatVerifyBlocked() (string, bool) {
 	return t.repeatRefusal, true
 }
 
+// shell 先看重复拦截，再展开技能脚本、修理工作区路径并去掉多余的 cd。Windows 上把 unix find 转成 glob，聊天叠加层把 cat 或 sed 读文件转成 readFile。超时小于等于 0 时用 60 秒。ChatOverlay 且超时大于 chatShellBlock 时启用空闲和阻塞熔断，熔断后不再给命令加超时上下文。能力级别是 Shell。
 func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	if msg, ok := t.repeatBlocked(command); ok {
 		return ToolResult{Content: msg}
@@ -1082,11 +1101,15 @@ func (t *WorkspaceTools) shell(command string, timeoutSec int) ToolResult {
 	return ToolResult{Content: content}
 }
 
+// chatShellBlock 是 30 秒，chatShellIdle 是 10 秒。聊天 shell 的熔断用这两个时长。
 const (
+	// chatShellBlock 是 30 秒。聊天命令的超时大于它才启用熔断，熔断后的阻塞上限也是它。
 	chatShellBlock = 30 * time.Second
-	chatShellIdle  = 10 * time.Second
+	// chatShellIdle 是 10 秒。熔断时这么久没有输出就停掉进程。
+	chatShellIdle = 10 * time.Second
 )
 
+// chatShellFuse 在不是聊天叠加层，或超时不超过 chatShellBlock 时关闭熔断。否则返回 chatShellIdle 和 chatShellBlock。
 func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Duration, fuse bool) {
 	if !overlay || timeout <= chatShellBlock {
 		return 0, 0, false
@@ -1094,6 +1117,7 @@ func chatShellFuse(overlay bool, timeout time.Duration) (idle, block time.Durati
 	return chatShellIdle, chatShellBlock, true
 }
 
+// stopFusedPID 在 pid 小于等于 0 时返回。Windows 上用 taskkill /T /F。其他系统 FindProcess 后 Kill。
 func stopFusedPID(pid int) {
 	if pid <= 0 {
 		return
@@ -1110,6 +1134,7 @@ func stopFusedPID(pid int) {
 	}
 }
 
+// runShell 在 idle 或 block 大于 0，或有输出回调时用 isolation.WaitNotify。否则用 isolation.Run。
 func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onChunk func([]byte)) isolation.Outcome {
 	if idle > 0 || block > 0 {
 		return isolation.WaitNotify(ctx, cmd, idle, block, onChunk)
@@ -1121,6 +1146,7 @@ func runShell(ctx context.Context, cmd *exec.Cmd, idle, block time.Duration, onC
 	return isolation.Outcome{Output: out, Err: err}
 }
 
+// setLiveCall 记下当前工具调用 ID、轮次，并把已转发的标准输出字节数清零。
 func (t *WorkspaceTools) setLiveCall(id, round string) {
 	if t == nil {
 		return
@@ -1132,6 +1158,7 @@ func (t *WorkspaceTools) setLiveCall(id, round string) {
 	t.mu.Unlock()
 }
 
+// emitStdout 把 shell 的标准输出增量发给 OnLive。单次调用累计最多 8000 字节，超出的丢掉。载荷标成 delta 和 untrusted。
 func (t *WorkspaceTools) emitStdout(p []byte) {
 	if t == nil || t.OnLive == nil || len(p) == 0 {
 		return
@@ -1164,6 +1191,7 @@ func (t *WorkspaceTools) emitStdout(p []byte) {
 	})
 }
 
+// bindShell 按命令形态选择解释器。Windows 上像 PowerShell 或含语句分隔符时走 pwsh。POSIX 语法走 windowsPosixShell，找不到则返回错误。不需要包装时直接执行 argv。Windows 其余情况用 cmd /S /C。非 Windows 需要包装时用 sh -lc。熔断路径的 ctx 为 nil，因此不带超时。
 func bindShell(ctx context.Context, command string, argv []string, posix bool, workspace string) (*exec.Cmd, func(), error) {
 	nop := func() {}
 	newCmd := func(name string, args ...string) *exec.Cmd {
@@ -1194,8 +1222,7 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool, w
 		if !shellNeedsWrapper(command, argv) {
 			return newCmd(argv[0], argv[1:]...), nop, nil
 		}
-		// /S keeps quoted tokens (findstr /C:"--- PASS") from being split
-		// when Go's Windows argv joining wraps the command.
+		// /S 让带引号的标记在 Go 拼接 Windows 参数时不被拆开，例如 findstr /C:"--- PASS"。
 		return newCmd("cmd", "/S", "/C", command), nop, nil
 	}
 	if !shellNeedsWrapper(command, argv) {
@@ -1204,6 +1231,7 @@ func bindShell(ctx context.Context, command string, argv []string, posix bool, w
 	return newCmd("sh", "-lc", command), nop, nil
 }
 
+// isExecNotFound 在错误为 nil 时返回假。ErrNotFound，或文本含 executable file not found、file not found、not recognized as an internal 时返回真。
 func isExecNotFound(err error) bool {
 	if err == nil {
 		return false
@@ -1215,6 +1243,7 @@ func isExecNotFound(err error) bool {
 	return strings.Contains(s, "executable file not found") || strings.Contains(s, "file not found") || strings.Contains(s, "not recognized as an internal")
 }
 
+// windowsPosixShell 只在 Windows 上查找 Git Bash 或 msys 的 bash。跳过 system32、sysnative、syswow64 和 WindowsApps 里的 WSL 桩。都不可用则返回空串。
 func windowsPosixShell() string {
 	if runtime.GOOS != "windows" {
 		return ""
@@ -1246,6 +1275,7 @@ func windowsPosixShell() string {
 	return ""
 }
 
+// usableWindowsPosixShell 拒绝空路径，以及位于 system32、sysnative、syswow64、WindowsApps 或 windows\\system32 下的路径。目标必须存在且不是目录。
 func usableWindowsPosixShell(p string) bool {
 	if strings.TrimSpace(p) == "" {
 		return false
@@ -1267,6 +1297,7 @@ func usableWindowsPosixShell(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
+// rewriteWindowsBash 在 argv 的程序名是 bash 或 sh 且该路径不可用时，换成 windowsPosixShell。找不到则保持原样。
 func rewriteWindowsBash(command string, argv []string) (string, []string) {
 	if len(argv) == 0 {
 		return command, argv
@@ -1287,6 +1318,7 @@ func rewriteWindowsBash(command string, argv []string) (string, []string) {
 	return joinShellArgv(argv), argv
 }
 
+// isWSLPosixStub 在 Windows 上判断 bash、sh 或 wsl 是否落在不可用的系统桩路径上。其他系统返回假。
 func isWSLPosixStub(p string) bool {
 	if runtime.GOOS != "windows" {
 		return false
@@ -1310,6 +1342,7 @@ func isWSLPosixStub(p string) bool {
 	return !usableWindowsPosixShell(abs)
 }
 
+// loadSkill 先按别名收成规范名。BootstrapBodies 里有包过的正文就直接返回。否则从 Skills 取正文，装饰后加入 Loaded。技能带 AllowedTools 时写入允许表并把 ToolJail 设为真。未知技能返回错误。
 func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	name = t.resolveSkillName(name)
 	if t.Skills == nil && (t.BootstrapBodies == nil || t.BootstrapBodies[name] == "") {
@@ -1348,6 +1381,7 @@ func (t *WorkspaceTools) loadSkill(name string) ToolResult {
 	return ToolResult{Content: content}
 }
 
+// MarkSkillsLoaded 把非空名字记入 Loaded，已存在的不重复加。
 func (t *WorkspaceTools) MarkSkillsLoaded(names ...string) {
 	if t == nil {
 		return
@@ -1372,6 +1406,7 @@ func (t *WorkspaceTools) MarkSkillsLoaded(names ...string) {
 	}
 }
 
+// recall 从 Spill 按标识取回文本并分页。没有溢出存储或标识未知时返回错误。
 func (t *WorkspaceTools) recall(id string, offset, limit int) ToolResult {
 	if t.Spill == nil {
 		return ToolResult{Err: fmt.Errorf("no spill store")}
@@ -1383,9 +1418,13 @@ func (t *WorkspaceTools) recall(id string, offset, limit int) ToolResult {
 	return ToolResult{Content: pageSpill(id, s, offset, limit)}
 }
 
+// defaultRecallLines 是 200。recall 未给 limit 时每页这么多行。
 const defaultRecallLines = 200
+
+// defaultRecallRunes 是 4000。每一页再用 capText 截到这么多 rune。
 const defaultRecallRunes = 4_000
 
+// pageSpill 按行分页。offset 小于等于 0 时从 1 开始。limit 小于等于 0 时用 defaultRecallLines。页文本再截到 defaultRecallRunes。
 func pageSpill(id, s string, offset, limit int) string {
 	lines := strings.Split(s, "\n")
 	if offset <= 0 {
@@ -1413,6 +1452,7 @@ func pageSpill(id, s string, offset, limit int) string {
 	return b.String()
 }
 
+// recallNoStub 只对 recall_context 为真，且正文 rune 数不超过 2000。
 func recallNoStub(name, content string) bool {
 	if name != "recall_context" {
 		return false
@@ -1420,6 +1460,7 @@ func recallNoStub(name, content string) bool {
 	return utf8.RuneCountInString(content) <= 2000
 }
 
+// extraSearchHit 在描述里包含查询，或查询中长度至少 3 的词出现在工具名里时返回真。
 func extraSearchHit(name, blob, q string) bool {
 	if strings.Contains(blob, q) {
 		return true
@@ -1432,6 +1473,7 @@ func extraSearchHit(name, blob, q string) bool {
 	return false
 }
 
+// toolSearch 在 Extra 里按名字和描述匹配，并把命中的 schema 返回。ChatOverlay 下还会搜索尚未广告的宿主工具。聊天里命中的扩展工具记入 ExtraLive，宿主工具记入 pendingHost。非聊天则直接启用扩展工具并 unlockAdvertised。查询已经是当前工具表里的宿主工具且没有扩展命中时，提示直接调用。
 func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	q = strings.ToLower(strings.TrimSpace(q))
 	var b strings.Builder
@@ -1532,6 +1574,7 @@ func (t *WorkspaceTools) toolSearch(q string) ToolResult {
 	return ToolResult{Content: b.String()}
 }
 
+// loadedBodies 按 Loaded 的顺序取出技能正文。BootstrapBodies 优先。空正文跳过。其余经 decorateSkillBody。
 func (t *WorkspaceTools) loadedBodies() []string {
 	if t == nil {
 		return nil
@@ -1561,6 +1604,7 @@ func (t *WorkspaceTools) loadedBodies() []string {
 	return out
 }
 
+// Pins 返回已加载技能名的副本和当前计划文本。工具为空时两者皆空。
 func (t *WorkspaceTools) Pins() (loaded []string, plan string) {
 	if t == nil {
 		return nil, ""
@@ -1570,6 +1614,7 @@ func (t *WorkspaceTools) Pins() (loaded []string, plan string) {
 	return append([]string(nil), t.Loaded...), t.PlanText
 }
 
+// str 把 nil 收成空串，其余用 fmt.Sprint。
 func str(v any) string {
 	if v == nil {
 		return ""
@@ -1577,6 +1622,7 @@ func str(v any) string {
 	return fmt.Sprint(v)
 }
 
+// anyStrings 接受 []string 或 []any。其他类型返回 nil。空白项丢掉。
 func anyStrings(v any) []string {
 	switch t := v.(type) {
 	case nil:
@@ -1597,6 +1643,7 @@ func anyStrings(v any) []string {
 	}
 }
 
+// intArg 把 nil 收成 0。接受 int、int64、float64、json.Number 和十进制字符串。
 func intArg(v any) int {
 	switch t := v.(type) {
 	case nil:
@@ -1619,6 +1666,7 @@ func intArg(v any) int {
 	}
 }
 
+// boolArg 只把布尔真，或字符串 true、1 当成真。其余为假。
 func boolArg(v any) bool {
 	switch t := v.(type) {
 	case bool:

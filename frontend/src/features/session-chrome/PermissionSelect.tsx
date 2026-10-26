@@ -1,14 +1,13 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from harness PermissionSelect. Presets map onto Yoyo AuthMode.
+ * 拥有：作曲栏的授权档位。预设落到 AuthMode。
+ * 不拥有：门禁执行。选择交给外面，不调用 api。
  */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import type { AuthMode } from "../../lib/protocol";
 import type { Copy } from "../../lib/copy";
 import { useCopy } from "../../lib/i18n";
 
+/** parseComposerAuth 把预设词收成 AuthMode，对不上就用默认。 */
 export function parseComposerAuth(mode?: string): AuthMode {
   const s = (mode || "").toLowerCase().replace(/[-\s]/g, "_");
   if (s === "ask" || s === "ask_every_time" || s === "strict") return "ask";
@@ -17,6 +16,7 @@ export function parseComposerAuth(mode?: string): AuthMode {
   return "default";
 }
 
+/** 把授权档位换成文案。 */
 function authLabel(copy: Copy["composer"], mode: AuthMode): string {
   if (mode === "auto_edit") return copy.authAutoEdit;
   if (mode === "full") return copy.authFull;
@@ -24,6 +24,7 @@ function authLabel(copy: Copy["composer"], mode: AuthMode): string {
   return copy.authDefault;
 }
 
+/** PermissionSelect 让人改作曲栏的授权档位。 */
 export function PermissionSelect(props: {
   value?: AuthMode | string;
   disabled?: boolean;

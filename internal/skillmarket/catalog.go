@@ -1,3 +1,5 @@
+// 解析 Work Buddy 的 CATALOG.md，并带 6 小时缓存。
+
 package skillmarket
 
 import (
@@ -11,20 +13,25 @@ import (
 )
 
 const (
+	// DefaultBase 是 Work Buddy 目录的默认 raw 地址。
 	DefaultBase = "https://raw.githubusercontent.com/infometa/workbuddyskills/main"
-	CacheTTL    = 6 * time.Hour
-	MaxBody     = 8 << 20
-	cacheName   = "catalog-v2.json"
+	// CacheTTL 是目录缓存有效期，6 小时。
+	CacheTTL = 6 * time.Hour
+	// MaxBody 是单次 HTTP 正文上限，8<<20，即 8 MiB。
+	MaxBody   = 8 << 20
+	cacheName = "catalog-v2.json"
 )
 
 var (
-	// Base is the catalog origin. Tests may override.
+	// Base 是目录源站。测试可以改它。
 	Base = DefaultBase
-	// ContentsBase lists pack files (GitHub Contents API shape). Empty derives from Base.
+	// ContentsBase 是列包内文件的地址，形状同 GitHub Contents API。空字符串时从 Base 推导。
 	ContentsBase = ""
-	Get          = defaultGet
+	// Get 拉取一个 URL。测试可以替换它。
+	Get = defaultGet
 )
 
+// Item 是目录里的一条技能。
 type Item struct {
 	Slug          string `json:"slug"`
 	Name          string `json:"name"`
@@ -45,6 +52,7 @@ type Item struct {
 	Stars         int    `json:"stars,omitempty"`
 }
 
+// Catalog 是一次目录加载的结果，含条目、站、查询和是否只允许搜索。
 type Catalog struct {
 	Source      string    `json:"source"`
 	FetchedAt   time.Time `json:"fetched_at"`
@@ -59,16 +67,20 @@ type Catalog struct {
 	Truncated   bool      `json:"truncated,omitempty"`
 }
 
+// CatalogURL 返回 Base 下的 CATALOG.md。
 func CatalogURL() string { return strings.TrimRight(Base, "/") + "/CATALOG.md" }
 
+// SkillURL 返回 Base/skills/<slug>/SKILL.md。
 func SkillURL(slug string) string {
 	return strings.TrimRight(Base, "/") + "/skills/" + slug + "/SKILL.md"
 }
 
+// Load 加载 Work Buddy 目录，等价于 LoadHub 且 Hub 为 HubWorkBuddy。
 func Load(cacheDir string, refresh bool) (Catalog, error) {
 	return LoadHub(cacheDir, LoadOpts{Hub: HubWorkBuddy, Refresh: refresh})
 }
 
+// loadWorkBuddy 读 cacheDir/catalog-v2.json。未要求刷新且缓存未过期时直接返回。拉取失败但有旧条目时在 Source 后加 " (stale)"。成功后解析 CATALOG.md、补树和前言，并写回缓存。
 func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {
 	cachePath := filepath.Join(cacheDir, cacheName)
 	var previous Catalog
@@ -102,6 +114,7 @@ func loadWorkBuddy(cacheDir string, refresh bool) (Catalog, error) {
 	return c, nil
 }
 
+// stampWorkBuddy 把条目标成 Work Buddy，ID 用 ItemID，缺页面时指向 infometa/workbuddyskills 的 skills/<slug>。
 func stampWorkBuddy(c Catalog) Catalog {
 	c.Hub = HubWorkBuddy
 	for i := range c.Items {
@@ -115,6 +128,7 @@ func stampWorkBuddy(c Catalog) Catalog {
 	return c
 }
 
+// ParseCatalogMD 只解析 "## 1." 到 "## 2." 之间的表格。三级标题是分类，会去掉末尾的数量括号。用途列会去掉前缀 "用途："。
 func ParseCatalogMD(md string) Catalog {
 	body := skillsSection(md)
 	var items []Item
@@ -163,6 +177,7 @@ func ParseCatalogMD(md string) Catalog {
 	return Catalog{Items: items}
 }
 
+// SanitizeSlug 取最后一段，去掉 .md。含 ..、以点或连字符开头，或出现字母、数字、-、_、. 以外的字符时返回空串。
 func SanitizeSlug(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, "`")
@@ -190,6 +205,7 @@ func SanitizeSlug(s string) string {
 	return s
 }
 
+// githubAuthToken 先读 YOYO_GITHUB_TOKEN，再读 GITHUB_TOKEN。都空则返回空串。
 func githubAuthToken() string {
 	for _, k := range []string{"YOYO_GITHUB_TOKEN", "GITHUB_TOKEN"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
@@ -199,6 +215,7 @@ func githubAuthToken() string {
 	return ""
 }
 
+// readCache 读取目录缓存。条目为空，或 FetchedAt 距现在超过 CacheTTL，则返回 false。
 func readCache(path string) (Catalog, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -214,6 +231,7 @@ func readCache(path string) (Catalog, bool) {
 	return c, true
 }
 
+// skillsSection 截取 "## 1." 或 "## 1 " 到下一个 "## 2." 之前的正文。找不到开头时返回全文。
 func skillsSection(md string) string {
 	start := strings.Index(md, "## 1.")
 	if start < 0 {
@@ -231,10 +249,12 @@ func skillsSection(md string) string {
 
 var countSuffix = regexp.MustCompile(`[（(]\d+[）)]$`)
 
+// stripCount 去掉分类名末尾的全角或半角括号加数字。
 func stripCount(s string) string {
 	return strings.TrimSpace(countSuffix.ReplaceAllString(s, ""))
 }
 
+// splitRow 按竖线拆表格行并去掉每格空白。
 func splitRow(line string) []string {
 	line = strings.Trim(line, "|")
 	parts := strings.Split(line, "|")
@@ -245,6 +265,7 @@ func splitRow(line string) []string {
 	return out
 }
 
+// headerRow 认出分隔行，以及首格为 "目录"、dir 或 slug 的表头。
 func headerRow(cells []string) bool {
 	joined := strings.Join(cells, "")
 	if strings.Contains(joined, "---") {
@@ -254,6 +275,7 @@ func headerRow(cells []string) bool {
 	return first == "目录" || strings.EqualFold(first, "dir") || strings.EqualFold(first, "slug")
 }
 
+// cellText 去掉 Markdown 链接外壳和反引号，只留可见文字。
 func cellText(s string) string {
 	s = strings.TrimSpace(s)
 	for {
@@ -278,6 +300,7 @@ var featuredHints = []string{
 	"playwright", "deep-research", "arxiv", "stock", "diagnose", "handoff",
 }
 
+// markFeatured 按 slug 命中内置关键词，最多标 10 条。一条都没有时改为标前 8 条。
 func markFeatured(items []Item) {
 	n := 0
 	for i := range items {

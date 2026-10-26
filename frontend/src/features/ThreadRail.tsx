@@ -1,3 +1,8 @@
+/**
+ * 拥有：左侧会话栏：分组、搜索、码头和悬停卡片。
+ * 不拥有：会话列表怎么来。只投影传入的 threads，打开、置顶和删除都回调，不调用 api。
+ */
+
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -51,16 +56,19 @@ import { VideoShellNav } from "./video/VideoShellNav";
 import { shownSeriesTitle } from "./video/drama-lib";
 import type { Copy } from "../lib/copy";
 
+/** 一行是小节标题、空间头、会话或视频工程。 */
 type RailEntry =
   | { kind: "label"; id: string; label: string }
   | { kind: "space"; id: string; label: string; path: string }
   | { kind: "thread"; thread: Thread }
   | { kind: "project"; project: VideoProject };
 
+/** 优先 originWorkspace，否则 workspace，并把反斜杠换成斜杠。 */
 function workspaceKey(t: Thread): string {
   return (t.originWorkspace || t.workspace || "").replace(/\\/g, "/");
 }
 
+/** 父会话不在这份列表里的，当成根。先根后子，按原有顺序走。 */
 function expandThreadTree(threads: Thread[]): Thread[] {
   const have = new Set(threads.map((t) => t.id));
   const kids = new Map<string, Thread[]>();
@@ -75,6 +83,7 @@ function expandThreadTree(threads: Thread[]): Thread[] {
     }
   }
   const out: Thread[] = [];
+  /** 先放自己，再按登记顺序放子会话。 */
   const walk = (t: Thread) => {
     out.push(t);
     for (const c of kids.get(t.id) || []) walk(c);
@@ -83,6 +92,7 @@ function expandThreadTree(threads: Thread[]): Thread[] {
   return out;
 }
 
+/** 置顶单独成组。groupSpaces 为假时其余按原序平铺。分组时空路径用 __none__。主工作区排在最前，其余按标签排序。组内按 createdAt 新的在前。 */
 function railEntries(threads: Thread[], copy: Copy, opts: { groupSpaces: boolean; homeWorkspace?: string }): RailEntry[] {
   threads = expandThreadTree(threads);
   const pinned: Thread[] = [];
@@ -101,6 +111,7 @@ function railEntries(threads: Thread[], copy: Copy, opts: { groupSpaces: boolean
     return out;
   }
   const projects = new Map<string, { path: string; label: string; items: Thread[] }>();
+  /** 空路径收成 __none__。已经有的组不再建。 */
   const addPath = (path: string) => {
     const key = path.replace(/\\/g, "/") || "__none__";
     if (projects.has(key)) return;
@@ -133,6 +144,7 @@ function railEntries(threads: Thread[], copy: Copy, opts: { groupSpaces: boolean
   return out;
 }
 
+/** 空间被收起时，藏起它下面的会话；路径是 chats 时也藏会话。工程只在 kind 等于这条路径时藏起。 */
 function visibleEntries(entries: RailEntry[], collapsed: Record<string, boolean>): RailEntry[] {
   const out: RailEntry[] = [];
   let hidePath: string | null = null;
@@ -151,8 +163,10 @@ function visibleEntries(entries: RailEntry[], collapsed: Record<string, boolean>
   return out;
 }
 
+/** 查询同时对标题和 id。已绑到工程的会话不再进聊天组。空组不画。顺序是短片、画布、短剧、聊天。 */
 function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Copy, q: string): RailEntry[] {
   const query = q.toLowerCase();
+  /** 查询为空，或标题、id 里含有查询词。 */
   const match = (title: string, id: string) => !query || `${title} ${id}`.toLowerCase().includes(query);
   const bound = new Set(projects.map((p) => p.sessionId).filter(Boolean));
   const canvases = projects.filter((p) => p.kind === "canvas" && match(p.title || "", p.id));
@@ -160,6 +174,7 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   const studios = projects.filter((p) => p.kind === "studio" && match(p.title || "", p.id));
   const chats = threads.filter((t) => !bound.has(t.id) && match(t.title || "", t.id));
   const out: RailEntry[] = [];
+  /** 没有条目就不画这个空间头。 */
   const push = (path: string, label: string, items: RailEntry[]) => {
     if (!items.length) return;
     out.push({ kind: "space", id: "g-" + path, label, path });
@@ -172,6 +187,7 @@ function videoRailEntries(threads: Thread[], projects: VideoProject[], copy: Cop
   return out;
 }
 
+/** ThreadRail 去掉子代理。已归档的只在有搜索词或打开归档时留下。视频面只留视频通道，其余面只留 agent。超过 24 条改用虚拟列表。收起状态存在 yoyo-rail-collapsed。有搜索词时不再按空间分组。视频面和设置面不画会话列表。macOS 左侧留 76px。窄于 799px 时点视频导航会收起栏。 */
 export function ThreadRail(props: {
   threads: Thread[];
   activeId: string;
@@ -247,6 +263,7 @@ export function ThreadRail(props: {
   const empty = videoOn
     ? list.length === 0 && !(props.videoProjects || []).length
     : list.length === 0 && !props.workspace;
+  /** 标签和空间头、工程、会话各走一行。有父会话，或没在搜索且未置顶且不在视频面时，会话行缩进。 */
   function renderEntry(e: RailEntry) {
     if (e.kind === "label") return <RailLabel key={e.id} label={e.label} />;
     if (e.kind === "space") {
@@ -417,6 +434,7 @@ export function ThreadRail(props: {
   );
 }
 
+/** 小节标题。第一条少留一点上边距。 */
 function RailLabel({ label }: { label: string }) {
   return (
     <div className="px-2.5 pb-1 pt-3 text-[11px] font-medium text-muted first:pt-1.5">
@@ -425,6 +443,7 @@ function RailLabel({ label }: { label: string }) {
   );
 }
 
+/** 短剧用系列标题，短片和画布用显示标题。图标按 kind 区分。 */
 function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: () => void }) {
   const copy = useCopy();
   const p = props.project;
@@ -447,6 +466,7 @@ function ProjectRow(props: { project: VideoProject; active: boolean; onSelect: (
   );
 }
 
+/** 点标题切换收起。新建按钮阻止冒泡，平时藏起，悬停或聚焦才出现。 */
 function SpaceHeader(props: {
   label: string;
   path: string;
@@ -487,6 +507,7 @@ function SpaceHeader(props: {
   );
 }
 
+/** 选中时 aria-current 为 page。mark 为真时右上角加一颗点。 */
 function DockIcon(props: {
   label: string;
   hint?: string;
@@ -515,6 +536,7 @@ function DockIcon(props: {
   );
 }
 
+/** 悬停 280 毫秒后打开资料卡，离开 160 毫秒后关掉。菜单开着时不打开资料卡。Escape 放弃重命名。弹出只在桌面窗口出现。删除在按下时就关掉菜单并调用 onDelete。 */
 function ThreadRow(props: {
   thread: Thread;
   activeId: string;
@@ -562,6 +584,7 @@ function ThreadRow(props: {
     setMetaOpen(false);
   }, [menuOpen]);
 
+  /** 菜单开着就不再排队打开资料卡。 */
   function scheduleMetaOpen() {
     if (menuOpen) return;
     window.clearTimeout(closeMetaT.current);
@@ -569,11 +592,13 @@ function ThreadRow(props: {
     openMetaT.current = window.setTimeout(() => setMetaOpen(true), 280);
   }
 
+  /** 取消打开，160 毫秒后关掉。 */
   function scheduleMetaClose() {
     window.clearTimeout(openMetaT.current);
     closeMetaT.current = window.setTimeout(() => setMetaOpen(false), 160);
   }
 
+  /** 清掉跳过标记，关掉菜单，进入编辑。 */
   function startRename() {
     skipBlur.current = false;
     setDraft(t.title || "");
@@ -581,6 +606,7 @@ function ThreadRow(props: {
     setMenuOpen(false);
   }
 
+  /** skipBlur 为真时只还原标题。空白或没改过不调用 onRename。 */
   function commit() {
     if (skipBlur.current) {
       skipBlur.current = false;
@@ -721,12 +747,14 @@ function ThreadRow(props: {
   );
 }
 
+/** 解析失败返回空字符串。否则用中等日期和短时间。 */
 function formatCreated(iso: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(t);
 }
 
+/** 没有 document 时不渲染。卡片挂到 document.body，宽 272。锚点滚出视口上下 8 像素就先不改位置。复制成功后勾保持 1200 毫秒。 */
 function SessionMetaCard(props: {
   thread: Thread;
   running: boolean;
@@ -750,6 +778,7 @@ function SessionMetaCard(props: {
     t.isolate ? copy.rail.isolated : "",
   ].filter(Boolean);
 
+  /** 优先放在锚点右侧 8 像素。放不下就放到左侧。底部超出时往上抬，至少留 8。 */
   const place = useCallback(() => {
     const anchor = props.anchorRef.current;
     const card = cardRef.current;
@@ -838,6 +867,7 @@ function SessionMetaCard(props: {
   );
 }
 
+/** 标签在上，值在下。没传 title 就用值本身。mono 为真时用等宽字。 */
 function MetaLine(props: { label: string; value: string; title?: string; mono?: boolean }) {
   return (
     <div className="border-t border-border/50 px-3 py-2">

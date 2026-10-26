@@ -1,3 +1,5 @@
+// 内置 internet-reach 技能必须声明 web_search 和 reach_status，正文不得教 curl 或 mcporter。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestBundledInternetReachSkill 确认技能名为 internet-reach，allowed-tools 含 web_search 和 reach_status，正文不含 curl - 和 mcporter call。
 func TestBundledInternetReachSkill(t *testing.T) {
 	p := filepath.Join("..", "..", "skills", "internet-reach", "SKILL.md")
 	raw, err := os.ReadFile(p)

@@ -1,14 +1,10 @@
+// 本文件的 pageHelpers 是贴进页面的函数声明，字符串是数据，不在这里改写。
+// 控件列表、点击、输入、填充和选择共用这一份「可交互、可见、文本」的定义。每次执行都包在自己的立即调用函数里，所以只有函数声明，不泄漏到页面的全局作用域。
+// ref 按固定顺序遍历赋值（同源 iframe，然后 shadow root）。解析 ref=btn_0 会重新走一遍当前文档，句柄指的是当前节点。坐标加上 iframe 偏移，这样顶层视口里的真实指针事件能落在内层节点上。
+
 package browser
 
-// pageHelpers is the single definition of interactive, visible and text that
-// the action list, click, type, fill and select all share. Only function
-// declarations go here: each evaluation wraps them in its own IIFE, so
-// nothing leaks into the page's global scope.
-//
-// Refs are assigned by a deterministic walk (same-origin iframes, then
-// shadow roots). Resolving ref=btn_0 re-walks the live document — the handle
-// names the current node, not a CSS guess. Coordinates add iframe offsets
-// so a real pointer event in the top viewport lands on the inner node.
+// pageHelpers 是页面里共用的函数声明，字符串是数据。
 const pageHelpers = `
 function __yoyoVisible(el) {
   const r = el.getBoundingClientRect();

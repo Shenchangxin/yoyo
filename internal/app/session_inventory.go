@@ -1,3 +1,5 @@
+// 会话上下文清单、计划文本和按时间点恢复文件。
+
 package app
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// ContextObject 是清单里的一项：计划、技能、文件、笔记、spill 或其他上下文。
 type ContextObject struct {
 	ID     string `json:"id"`
 	Kind   string `json:"kind"`
@@ -21,6 +24,7 @@ type ContextObject struct {
 	Pinned bool   `json:"pinned,omitempty"`
 }
 
+// ContextInventory 是一次上下文清单：形状、对象列表和计划文本。
 type ContextInventory struct {
 	Session  string              `json:"session"`
 	Shape    runtime.ShapeReport `json:"shape"`
@@ -29,6 +33,7 @@ type ContextInventory struct {
 	PlanPath string              `json:"plan_path,omitempty"`
 }
 
+// ContextInventory 列出计划、钉住的技能和路径、笔记、Today、spill，以及工作区里的 MCP、规则和终端日志。
 func (a *App) ContextInventory(sessionID string) ContextInventory {
 	meta, _ := a.GetSession(sessionID)
 	rep := a.measureSessionContext(sessionID)
@@ -131,6 +136,7 @@ func (a *App) ContextInventory(sessionID string) ContextInventory {
 	return inv
 }
 
+// SetSessionPlan 把计划文本写入 meta，并写到工具根的计划文件。
 func (a *App) SetSessionPlan(id, text string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -144,6 +150,7 @@ func (a *App) SetSessionPlan(id, text string) (SessionMeta, error) {
 	return a.attachAuthMode(m), nil
 }
 
+// RestoreSessionFiles 按 from 找到事件时间，把该时间之后的文件快照恢复到工具根。找不到回合则返回错误。
 func (a *App) RestoreSessionFiles(id, from string) (string, error) {
 	meta, err := a.GetSession(id)
 	if err != nil {
@@ -165,6 +172,7 @@ func (a *App) RestoreSessionFiles(id, from string) (string, error) {
 	return fmt.Sprintf("restored %d files", n), nil
 }
 
+// ContextPin 按 skill、file 或 hot 钉住或取消钉住一项，并写回 meta。
 func (a *App) ContextPin(id, kind, key string, pinned bool) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -189,6 +197,7 @@ func (a *App) ContextPin(id, kind, key string, pinned bool) (SessionMeta, error)
 	return a.attachAuthMode(m), nil
 }
 
+// toggleStr 按 on 把 key 放进或移出字符串列表，不重复添加。
 func toggleStr(list []string, key string, on bool) []string {
 	out := make([]string, 0, len(list)+1)
 	seen := false
@@ -208,6 +217,7 @@ func toggleStr(list []string, key string, on bool) []string {
 	return out
 }
 
+// capLine 把空白收成一行，并按 rune 截断。
 func capLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	r := []rune(s)

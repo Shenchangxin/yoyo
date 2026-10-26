@@ -1,3 +1,8 @@
+/**
+ * 拥有：画布空间索引的两条纯函数用例。
+ * 不拥有：索引的实现。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { buildCanvasSpatialIndex, canvasNodeBounds } from "../src/vendor/yingce-canvas/lib/canvas/canvas-spatial-index";
 

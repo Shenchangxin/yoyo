@@ -1,3 +1,5 @@
+// 锁住翻拍工程的词、换宿主、路由、代码出图、字幕和区域命令。
+
 package film
 
 import (
@@ -11,6 +13,7 @@ import (
 	"testing"
 )
 
+// TestContractHasNoPendingRows 锁住清单没有待定行，已实现和排除都有，而且编号不重复。
 func TestContractHasNoPendingRows(t *testing.T) {
 	if rows := Pending(); len(rows) != 0 {
 		t.Fatalf("pending %+v", rows)
@@ -36,6 +39,7 @@ func TestContractHasNoPendingRows(t *testing.T) {
 	}
 }
 
+// TestReferenceRoundTripKeepsWordsShotsAndSticker 锁住参考片会留下词、镜头和贴纸。
 func TestReferenceRoundTripKeepsWordsShotsAndSticker(t *testing.T) {
 	p := FromReference(Input{
 		ID: "f1", Title: "街拍", Structure: "interview", Duration: 6,
@@ -68,6 +72,7 @@ func TestReferenceRoundTripKeepsWordsShotsAndSticker(t *testing.T) {
 	}
 }
 
+// TestStampsAndLineRewriteKeepTheOtherAsset 锁住词级 JSON 能读入，改一行时另一行的产物编号不动。
 func TestStampsAndLineRewriteKeepTheOtherAsset(t *testing.T) {
 	words, err := WordsFromStamps([]byte(`{"words":[
 		{"text":"剪","start":0,"end":1,"speaker":"旁白","line":"a"},
@@ -107,6 +112,7 @@ func TestStampsAndLineRewriteKeepTheOtherAsset(t *testing.T) {
 	}
 }
 
+// TestSwapHostKeepsCodeAndRebuildsPicture 锁住换宿主后代码画面的产物还在，要重做的画面步骤会重新计划。
 func TestSwapHostKeepsCodeAndRebuildsPicture(t *testing.T) {
 	p := Build(ranking(""), BuildEnv{})
 	var codeHash string
@@ -129,6 +135,7 @@ func TestSwapHostKeepsCodeAndRebuildsPicture(t *testing.T) {
 	}
 }
 
+// TestTemplatesCoverTheThreeStructures 锁住排行榜、播客和街采都有词、镜头、贴纸，而且切点落在词上。
 func TestTemplatesCoverTheThreeStructures(t *testing.T) {
 	for _, structure := range []string{"ranking", "podcast", "interview"} {
 		p := FromTemplate(structure, "")
@@ -157,6 +164,7 @@ func TestTemplatesCoverTheThreeStructures(t *testing.T) {
 	}
 }
 
+// TestRouteRejectsTheForeignGateway 锁住带 hypihub 的连接不会被选中，抠像可以落到名字像的图像连接，没有视频连接就拒绝。
 func TestRouteRejectsTheForeignGateway(t *testing.T) {
 	list := []Endpoint{
 		{ID: "hub", Name: "HypiHub", Service: "image", BaseURL: "https://api.hypihub.example", Active: true, HasKey: true},
@@ -176,6 +184,7 @@ func TestRouteRejectsTheForeignGateway(t *testing.T) {
 	}
 }
 
+// TestBuildPaintsWithoutAModelAccount 锁住没有模型账号也能画出 PNG，图像和语音步骤会等待，代码画面再跑一次会跳过。
 func TestBuildPaintsWithoutAModelAccount(t *testing.T) {
 	p := Build(FromTemplate("ranking", "本机工具排行"), BuildEnv{})
 	var pngHash string
@@ -215,6 +224,7 @@ func TestBuildPaintsWithoutAModelAccount(t *testing.T) {
 	}
 }
 
+// TestBuildNamesTheVendorAndWaitsForMatting 锁住抠像会写上供应商，并在这一次做不完时保持等待。
 func TestBuildNamesTheVendorAndWaitsForMatting(t *testing.T) {
 	p := FromTemplate("interview", "")
 	p = Build(p, BuildEnv{
@@ -239,6 +249,7 @@ func TestBuildNamesTheVendorAndWaitsForMatting(t *testing.T) {
 	}
 }
 
+// TestReferenceKeepsStampedWordsAndRegions 锁住传入的词和区域会原样留在工程里。
 func TestReferenceKeepsStampedWordsAndRegions(t *testing.T) {
 	p := FromReference(Input{
 		Title: "标注", Duration: 2,
@@ -250,6 +261,7 @@ func TestReferenceKeepsStampedWordsAndRegions(t *testing.T) {
 	}
 }
 
+// TestHookAndPriceLeaveTheUntouchedPicture 锁住改开头或价格时，没被改到的画面产物还在。
 func TestHookAndPriceLeaveTheUntouchedPicture(t *testing.T) {
 	p := Build(ranking(""), BuildEnv{})
 	for i := range p.Needs {
@@ -287,6 +299,7 @@ func TestHookAndPriceLeaveTheUntouchedPicture(t *testing.T) {
 	}
 }
 
+// TestForkKeepsTheParentAndLocalizeReflowsOneLine 锁住分叉记下父片，改一行只重排这一行。
 func TestForkKeepsTheParentAndLocalizeReflowsOneLine(t *testing.T) {
 	p := Build(ranking(""), BuildEnv{})
 	p.ID = "parent"
@@ -306,6 +319,7 @@ func TestForkKeepsTheParentAndLocalizeReflowsOneLine(t *testing.T) {
 	}
 }
 
+// TestFramesShowTheBoardTheRevealAndTheSticker 锁住第一镜露出板和贴纸，后面的行先不出现，揭示和贴纸会画出来。
 func TestFramesShowTheBoardTheRevealAndTheSticker(t *testing.T) {
 	board := RenderHTML(ranking(""), ranking("").Shots[0])
 	if !strings.Contains(board, "board") || !strings.Contains(board, "剪辑台") || !strings.Contains(board, "这条排第一") {
@@ -343,6 +357,7 @@ func TestFramesShowTheBoardTheRevealAndTheSticker(t *testing.T) {
 	}
 }
 
+// TestBeatLandsOnAWord 锁住没有词的镜头不算落在词上，有词的镜头算。
 func TestBeatLandsOnAWord(t *testing.T) {
 	p := FromReference(Input{Duration: 4, Structure: "free"})
 	if len(p.Shots) != 1 || p.Shots[0].Beat {
@@ -357,6 +372,7 @@ func TestBeatLandsOnAWord(t *testing.T) {
 	}
 }
 
+// TestRankingRowsRequestTheirOwnPictures 锁住排行榜每一行都单独要一张图。
 func TestRankingRowsRequestTheirOwnPictures(t *testing.T) {
 	p := Plan(ranking(""))
 	seen := map[string]bool{}
@@ -401,6 +417,7 @@ func TestRankingRowsRequestTheirOwnPictures(t *testing.T) {
 	}
 }
 
+// TestMusicIsPlannedUntilABedIsStored 锁住没有垫乐时会计划配乐，写上垫乐后这一步就不再出现。
 func TestMusicIsPlannedUntilABedIsStored(t *testing.T) {
 	p := Plan(ranking(""))
 	found := false
@@ -435,6 +452,7 @@ func TestMusicIsPlannedUntilABedIsStored(t *testing.T) {
 	}
 }
 
+// TestWhisperXSegmentsAndMatte 锁住 WhisperX 的分段词能读入，标注命令带上 JSON 输出，抠像会叠进画面。
 func TestWhisperXSegmentsAndMatte(t *testing.T) {
 	words, err := WordsFromStamps([]byte(`{"segments":[{"speaker":"旁白","words":[{"word":"剪","start":0,"end":0.4},{"word":"完","start":0.4,"end":0.8}]}]}`))
 	if err != nil || len(words) != 2 || words[0].Text != "剪" || words[1].Speaker != "旁白" {
@@ -473,6 +491,7 @@ func TestWhisperXSegmentsAndMatte(t *testing.T) {
 	}
 }
 
+// TestParseCrop 锁住 cropdetect 能收成 0 到 1 的区域，宽或高为 0 时拒绝。
 func TestParseCrop(t *testing.T) {
 	box, ok := ParseCrop("crop=320:240:10:20", 640, 480)
 	if !ok || box.W != 0.5 || box.H != 0.5 || box.X != 10.0/640 || box.Y != 20.0/480 {
@@ -483,6 +502,7 @@ func TestParseCrop(t *testing.T) {
 	}
 }
 
+// TestRegionsAndDownloadCommand 锁住区域 JSON 能写到镜头上，下载命令不拉播放列表。
 func TestRegionsAndDownloadCommand(t *testing.T) {
 	boxes, err := ParseRegions([]byte(`{"regions":[{"x":0.1,"y":0.2,"w":0.3,"h":0.4,"label":"脸"}]}`))
 	if err != nil || len(boxes) != 1 || boxes[0].Label != "脸" {

@@ -1,3 +1,5 @@
+// 代理工作区和视频工作区的默认目录，以及检查器要用的有界文件预览。路径必须落在 capability.WithinWorkspace 里。
+
 package app
 
 import (
@@ -15,7 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
-// WorkspaceReady reports whether p is a real directory the harness can use.
+// WorkspaceReady 判断 p 是否为绝对路径上的真实目录。空串、.、./、.\ 和非绝对路径返回 false。
 func WorkspaceReady(p string) bool {
 	p = strings.TrimSpace(p)
 	if p == "" || p == "." || p == "./" || p == ".\\" {
@@ -28,6 +30,7 @@ func WorkspaceReady(p string) bool {
 	return err == nil && st.IsDir()
 }
 
+// WorkspaceReady 报告 Config.Workspace 是否为可用目录。App 为空返回 false。
 func (a *App) WorkspaceReady() bool {
 	if a == nil {
 		return false
@@ -35,13 +38,13 @@ func (a *App) WorkspaceReady() bool {
 	return WorkspaceReady(a.Config.Workspace)
 }
 
+// unsetWorkspace 判断路径是否为空白、.、./ 或 .\。
 func unsetWorkspace(p string) bool {
 	p = strings.TrimSpace(p)
 	return p == "" || p == "." || p == "./" || p == ".\\"
 }
 
-// applyDefaultWorkspace makes Config.Workspace a usable directory so the
-// desktop can open on the agent instead of a first-run gate.
+// applyDefaultWorkspace 在 Config.Workspace 还不是可用目录时，先尝试创建已有绝对路径，失败再用 Home.Workspace。返回值表示是否改写了配置里的路径。
 func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 	if h == nil || cfg == nil {
 		return false
@@ -66,8 +69,7 @@ func applyDefaultWorkspace(h *home.Dir, cfg *Config) bool {
 	return true
 }
 
-// applyDefaultVideoWorkspace gives Video its own folder, independent of the
-// Agent workspace, so video chats and file tools never share the coding repo.
+// applyDefaultVideoWorkspace 给视频单独一个目录，和代理工作区分开。规则与 applyDefaultWorkspace 相同，回落目录是 Home.VideoWorkspace。
 func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
 	if h == nil || cfg == nil {
 		return false
@@ -92,9 +94,13 @@ func applyDefaultVideoWorkspace(h *home.Dir, cfg *Config) bool {
 	return true
 }
 
+// previewFileBytes 是文本预览的字节上限，值为 80000。
 const previewFileBytes = 80_000
+
+// blobFileBytes 是二进制预览的字节上限，值为 16 MiB。
 const blobFileBytes = 16 << 20
 
+// readCapped 最多读取 limit 字节，并用多读 1 字节判断是否截断。limit 小于等于 0 时读完全部。
 func readCapped(path string, limit int) ([]byte, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -116,6 +122,7 @@ func readCapped(path string, limit int) ([]byte, bool, error) {
 	return raw, trunc, nil
 }
 
+// resolveWorkspaceFile 把相对路径拼到工作区。工作区参数为空时用 App.Workspace。逃出 capability.WithinWorkspace 的路径返回 path escapes workspace。
 func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string, err error) {
 	if a != nil && strings.TrimSpace(workspace) == "" {
 		workspace = a.Workspace()
@@ -135,8 +142,7 @@ func (a *App) resolveWorkspaceFile(workspace, rel string) (abs, slashRel string,
 	return p, filepath.ToSlash(rel), nil
 }
 
-// PreviewWorkspaceFile returns a bounded text preview of a workspace file
-// for the session inspector and artifact cards.
+// PreviewWorkspaceFile 为检查器和产物卡返回有界预览。图片、PDF、音频、视频只回元数据。docx、xlsx、pptx 走 office 文本。前 800 字节含 NUL 则标成 binary。
 func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error) {
 	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
 	if err != nil {
@@ -182,8 +188,7 @@ func (a *App) PreviewWorkspaceFile(workspace, rel string) (map[string]any, error
 	return meta, nil
 }
 
-// ReadWorkspaceBlob returns a bounded base64 payload so the inspector can
-// render PDF, images, and other binary previews.
+// ReadWorkspaceBlob 返回不超过 blobFileBytes 的 base64，供检查器显示 PDF、图片和其他二进制。扩展名没有类型时用 http.DetectContentType。
 func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
 	p, slashRel, err := a.resolveWorkspaceFile(workspace, rel)
 	if err != nil {
@@ -214,6 +219,7 @@ func (a *App) ReadWorkspaceBlob(workspace, rel string) (map[string]any, error) {
 	}, nil
 }
 
+// officePreviewText 只对 .docx、.xlsx、.pptx 调用 office.Query，其他扩展名返回 os.ErrInvalid。
 func officePreviewText(path, ext string) (string, error) {
 	switch ext {
 	case ".docx", ".xlsx", ".pptx":
@@ -223,6 +229,7 @@ func officePreviewText(path, ext string) (string, error) {
 	}
 }
 
+// looksBinary 只看前 800 字节，出现 NUL 则视为二进制。
 func looksBinary(b []byte) bool {
 	n := len(b)
 	if n > 800 {
@@ -236,6 +243,7 @@ func looksBinary(b []byte) bool {
 	return false
 }
 
+// langFromExt 按扩展名给出预览语言名。未列出的扩展名去掉点号后原样返回。
 func langFromExt(ext string) string {
 	switch ext {
 	case ".go":
@@ -267,6 +275,7 @@ func langFromExt(ext string) string {
 	}
 }
 
+// previewKind 按扩展名分成 image、pdf、audio、video、html、markdown、office 或 text。
 func previewKind(ext string) string {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif":
@@ -288,6 +297,7 @@ func previewKind(ext string) string {
 	}
 }
 
+// mimeFromExt 为 markdown、typescript 和 svg 写明类型，其余用 mime.TypeByExtension，没有则 application/octet-stream。
 func mimeFromExt(ext string) string {
 	switch ext {
 	case ".md", ".markdown":

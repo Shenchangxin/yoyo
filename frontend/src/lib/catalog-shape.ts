@@ -1,5 +1,11 @@
+/**
+ * 拥有：models.dev 目录的类型，以及把线上目录叠到快照上并水合成同一形状。
+ * 不拥有：目录的加载和界面状态。
+ */
+
 import { asArray, bool, num, pick, str } from "./normalize.ts";
 
+/** ModelDefinition 一条模型。reasoningLevels 是推理档。input 只收 text 和 image。contextWindow 与 maxTokens 来自目录。cost 含 input、output、cacheRead、cacheWrite。 */
 export type ModelDefinition = {
   id: string;
   name?: string;
@@ -11,12 +17,14 @@ export type ModelDefinition = {
   cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
 };
 
+/** CatalogEntry 目录里的一条：模型，以及可选的家族和发布日期。 */
 export type CatalogEntry = {
   model: ModelDefinition;
   family?: string;
   releaseDate?: string;
 };
 
+/** ModelsDevCatalog 一份目录。providers 先按供应商标识，再按模型 id。stale 表示这份目录已过期。 */
 export type ModelsDevCatalog = {
   version: number;
   fetchedAt: string;
@@ -25,6 +33,7 @@ export type ModelsDevCatalog = {
   providers: Record<string, Record<string, CatalogEntry>>;
 };
 
+/** overlayCatalog 用线上目录盖住基底。线上没有供应商时原样返回基底。同一供应商整表替换，不是按模型合并。version、fetchedAt、source 在线上为空时留基底的。 */
 export function overlayCatalog(
   base: ModelsDevCatalog | null | undefined,
   live: ModelsDevCatalog | null | undefined,
@@ -40,6 +49,7 @@ export function overlayCatalog(
   };
 }
 
+/** hydrateCatalog 从松散的 Wails 或 JSON 形状收成目录，再叠到 fallback 上。空 id 的模型丢掉。没有成本对象则不填 cost。version 缺省为 3。 */
 export function hydrateCatalog(raw: unknown, fallback?: ModelsDevCatalog | null): ModelsDevCatalog {
   const v = raw as any;
   const providersIn = pick(v, "providers", "Providers") || {};

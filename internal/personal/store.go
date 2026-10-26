@@ -1,3 +1,6 @@
+// 把任务、目标、监视、想法和提案写进目录下的 workspace.json。
+// flush 先写 path.tmp，权限 0o600，再改名替换。
+
 package personal
 
 import (
@@ -9,12 +12,14 @@ import (
 	"time"
 )
 
+// Store 把 doc 读写到 path 指向的 workspace.json。
 type Store struct {
 	mu   sync.Mutex
 	path string
 	doc  doc
 }
 
+// openStore 按 0o755 创建目录。文件读失败时仍返回存储。SamplePages 为 nil 时改成空映射。LastIdeasAt 为零时写成当前 UTC。
 func openStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -30,6 +35,7 @@ func openStore(dir string) (*Store, error) {
 	return s, nil
 }
 
+// load 读取 path 并把 JSON 解进 doc。
 func (s *Store) load() error {
 	b, err := os.ReadFile(s.path)
 	if err != nil {
@@ -38,6 +44,7 @@ func (s *Store) load() error {
 	return json.Unmarshal(b, &s.doc)
 }
 
+// flush 把 doc 写成缩进 JSON，先写 path.tmp，权限 0o600，再改名替换 path。
 func (s *Store) flush() error {
 	b, err := json.MarshalIndent(s.doc, "", "  ")
 	if err != nil {
@@ -50,6 +57,7 @@ func (s *Store) flush() error {
 	return os.Rename(tmp, s.path)
 }
 
+// snapshot 在锁内复制任务、目标、监视、想法、产物、提案和选择。Worker.Running 留给 Engine.Snapshot 填写。
 func (s *Store) snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,6 +74,7 @@ func (s *Store) snapshot() Snapshot {
 	}
 }
 
+// cloneMap 复制映射的顶层键。nil 得到空映射。
 func cloneMap(m map[string]any) map[string]any {
 	if m == nil {
 		return map[string]any{}
@@ -77,6 +86,7 @@ func cloneMap(m map[string]any) map[string]any {
 	return out
 }
 
+// putTask 按 ID 替换任务，没有则追加，然后 flush。
 func (s *Store) putTask(t Task) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,6 +101,7 @@ func (s *Store) putTask(t Task) {
 	_ = s.flush()
 }
 
+// task 按 ID 查找，并复制 Input 和 State 后返回。
 func (s *Store) task(id string) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,6 +115,7 @@ func (s *Store) task(id string) (Task, bool) {
 	return Task{}, false
 }
 
+// tasks 返回任务切片的副本。
 func (s *Store) tasks() []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -112,6 +124,7 @@ func (s *Store) tasks() []Task {
 	return out
 }
 
+// casTask 在 expectStatus 或 leaseID 非空时要求与当前值一致。patch 返回 false 则不写盘。
 func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool) (Task, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -138,6 +151,7 @@ func (s *Store) casTask(id, expectStatus, leaseID string, patch func(*Task) bool
 	return Task{}, false
 }
 
+// putGoal 按 ID 替换目标，没有则追加，然后 flush。
 func (s *Store) putGoal(g Goal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,6 +166,7 @@ func (s *Store) putGoal(g Goal) {
 	_ = s.flush()
 }
 
+// goal 按 ID 查找目标。
 func (s *Store) goal(id string) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,12 +178,14 @@ func (s *Store) goal(id string) (Goal, bool) {
 	return Goal{}, false
 }
 
+// goals 返回目标切片的副本。
 func (s *Store) goals() []Goal {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]Goal(nil), s.doc.Goals...)
 }
 
+// casGoal 在 expect 非空时要求状态一致。patch 返回 false 则不写盘。返回值带上里程碑副本。
 func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -191,6 +208,7 @@ func (s *Store) casGoal(id, expect string, patch func(*Goal) bool) (Goal, bool) 
 	return Goal{}, false
 }
 
+// putMonitor 按 ID 替换监视，没有则追加，然后 flush。
 func (s *Store) putMonitor(m Monitor) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -205,6 +223,7 @@ func (s *Store) putMonitor(m Monitor) {
 	_ = s.flush()
 }
 
+// casMonitor 在 expectStatus 非空或 expectChecks 大于等于 0 时核对这些字段。patch 返回 false 则不写盘。
 func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func(*Monitor) bool) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -229,6 +248,7 @@ func (s *Store) casMonitor(id, expectStatus string, expectChecks int, patch func
 	return Monitor{}, false
 }
 
+// monitor 按 ID 查找监视。
 func (s *Store) monitor(id string) (Monitor, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -240,6 +260,7 @@ func (s *Store) monitor(id string) (Monitor, bool) {
 	return Monitor{}, false
 }
 
+// putPage 按 ID 替换监视页快照，没有则追加，然后 flush。这是 workspace.json 里的抓取快照，不是 pages 包的页面库。
 func (s *Store) putPage(p MonitorPage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -254,6 +275,7 @@ func (s *Store) putPage(p MonitorPage) {
 	_ = s.flush()
 }
 
+// page 按 ID 查找监视页快照。
 func (s *Store) page(id string) (MonitorPage, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -265,6 +287,7 @@ func (s *Store) page(id string) (MonitorPage, bool) {
 	return MonitorPage{}, false
 }
 
+// insertIdea 在 ID 已存在时返回 false，否则追加并 flush。
 func (s *Store) insertIdea(it Idea) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -278,6 +301,7 @@ func (s *Store) insertIdea(it Idea) bool {
 	return true
 }
 
+// idea 按 ID 查找想法。
 func (s *Store) idea(id string) (Idea, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -289,12 +313,14 @@ func (s *Store) idea(id string) (Idea, bool) {
 	return Idea{}, false
 }
 
+// ideas 返回想法切片的副本。
 func (s *Store) ideas() []Idea {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]Idea(nil), s.doc.Ideas...)
 }
 
+// casIdea 在 expect 非空时要求状态一致。patch 返回 false 则不写盘。
 func (s *Store) casIdea(id, expect string, patch func(*Idea) bool) (Idea, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -316,6 +342,7 @@ func (s *Store) casIdea(id, expect string, patch func(*Idea) bool) (Idea, bool) 
 	return Idea{}, false
 }
 
+// putArtifact 追加一条产物并 flush。相同 ID 也会再追加一条。
 func (s *Store) putArtifact(a Artifact) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -323,6 +350,7 @@ func (s *Store) putArtifact(a Artifact) {
 	_ = s.flush()
 }
 
+// putProposal 按 ID 替换提案，没有则追加，然后 flush。
 func (s *Store) putProposal(p Proposal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -337,6 +365,7 @@ func (s *Store) putProposal(p Proposal) {
 	_ = s.flush()
 }
 
+// proposal 按 ID 查找提案。
 func (s *Store) proposal(id string) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -348,6 +377,7 @@ func (s *Store) proposal(id string) (Proposal, bool) {
 	return Proposal{}, false
 }
 
+// casProposal 在 expect 或 hash 非空时要求状态和哈希一致。patch 返回 false 则不写盘。
 func (s *Store) casProposal(id, expect, hash string, patch func(*Proposal) bool) (Proposal, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -372,6 +402,7 @@ func (s *Store) casProposal(id, expect, hash string, patch func(*Proposal) bool)
 	return Proposal{}, false
 }
 
+// putChoice 按 ID 替换选择，没有则追加，然后 flush。
 func (s *Store) putChoice(c Choice) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -386,6 +417,7 @@ func (s *Store) putChoice(c Choice) {
 	_ = s.flush()
 }
 
+// choice 按 ID 查找选择。
 func (s *Store) choice(id string) (Choice, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -397,6 +429,7 @@ func (s *Store) choice(id string) (Choice, bool) {
 	return Choice{}, false
 }
 
+// setTick 写下 LastTickAt 并 flush。
 func (s *Store) setTick(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -404,6 +437,7 @@ func (s *Store) setTick(at time.Time) {
 	_ = s.flush()
 }
 
+// setIdeasAt 写下 LastIdeasAt 并 flush。
 func (s *Store) setIdeasAt(at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -411,6 +445,7 @@ func (s *Store) setIdeasAt(at time.Time) {
 	_ = s.flush()
 }
 
+// sample 把样例页正文写入 SamplePages 并 flush。
 func (s *Store) sample(key, text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -421,18 +456,21 @@ func (s *Store) sample(key, text string) {
 	_ = s.flush()
 }
 
+// sampleGet 返回 SamplePages 里该键的正文，没有则为空串。
 func (s *Store) sampleGet(key string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.doc.SamplePages[key]
 }
 
+// lastIdeasAt 返回上次刷新想法的时间。
 func (s *Store) lastIdeasAt() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.doc.LastIdeasAt
 }
 
+// errf 给格式化错误加上 personal: 前缀。
 func errf(format string, args ...any) error {
 	return fmt.Errorf("personal: "+format, args...)
 }

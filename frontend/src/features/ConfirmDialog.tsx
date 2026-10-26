@@ -1,8 +1,11 @@
+// 本文件拥有确认层：取消、确认，以及打开后的短暂武装。不拥有确认之后做什么。调用方传入标题、正文和 onConfirm。
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../components/ui/button";
 import { useCopy } from "../lib/i18n";
 
+// ConfirmDialog 没打开或没有 document 时不渲染，打开后挂到 document.body。220 毫秒后才允许点遮罩取消。Escape 在忙时不取消。
 export function ConfirmDialog(props: {
   open: boolean;
   title: string;
@@ -37,6 +40,7 @@ export function ConfirmDialog(props: {
     return () => window.removeEventListener("keydown", onKey);
   }, [props.open, busy, props.onCancel]);
 
+  // 忙着或这一轮已经跑过就直接返回，避免确认点两次。
   async function confirm() {
     if (busy || ran.current) return;
     ran.current = true;

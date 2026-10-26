@@ -1,5 +1,7 @@
 //go:build windows
 
+// 本文件用 user32 读主显示器工作区和全部显示器的并集，再换成 DIP。尺寸公式在 size.go。
+
 package winsize
 
 import (
@@ -9,20 +11,28 @@ import (
 )
 
 const (
-	spiGetWorkArea          = 0x0030
+	// spiGetWorkArea 是 SystemParametersInfoW 的 SPI_GETWORKAREA，值 0x0030。
+	spiGetWorkArea = 0x0030
+	// monitorDefaultToPrimary 是 MonitorFromPoint 的 MONITOR_DEFAULTTOPRIMARY，值 1。
 	monitorDefaultToPrimary = 1
-	mdtEffectiveDPI         = 0
-	smXVIRTUALSCREEN        = 76
-	smYVIRTUALSCREEN        = 77
-	smCXVIRTUALSCREEN       = 78
-	smCYVIRTUALSCREEN       = 79
+	// mdtEffectiveDPI 是 GetDpiForMonitor 的 MDT_EFFECTIVE_DPI，值 0。
+	mdtEffectiveDPI = 0
+	// smXVIRTUALSCREEN 是 GetSystemMetrics 的 SM_XVIRTUALSCREEN，值 76。
+	smXVIRTUALSCREEN = 76
+	// smYVIRTUALSCREEN 是 GetSystemMetrics 的 SM_YVIRTUALSCREEN，值 77。
+	smYVIRTUALSCREEN = 77
+	// smCXVIRTUALSCREEN 是 GetSystemMetrics 的 SM_CXVIRTUALSCREEN，值 78。
+	smCXVIRTUALSCREEN = 78
+	// smCYVIRTUALSCREEN 是 GetSystemMetrics 的 SM_CYVIRTUALSCREEN，值 79。
+	smCYVIRTUALSCREEN = 79
 )
 
+// point 是传给 MonitorFromPoint 的点。本文件实际把中心坐标拆成两个 uintptr，没有使用这个类型的值。
 type point struct {
 	X, Y int32
 }
 
-// PlatformWorkArea is the primary monitor work area in DIP, matching Wails SetSize.
+// PlatformWorkArea 返回主显示器工作区的 DIP 宽高。SystemParametersInfoW 失败，或宽高小于等于 0 时返回 0, 0。
 func PlatformWorkArea() (int, int) {
 	var r windows.Rect
 	user32 := windows.NewLazySystemDLL("user32.dll")
@@ -40,7 +50,7 @@ func PlatformWorkArea() (int, int) {
 	return ToDIP(w, dpi), ToDIP(h, dpi)
 }
 
-// PlatformVirtualScreen is the union of all monitors in DIP.
+// PlatformVirtualScreen 返回全部显示器并集的 DIP 原点、宽和高。宽或高小于等于 0 时四个值都是 0。DPI 来自 GetDpiForSystem，找不到或小于 96 时用 96。
 func PlatformVirtualScreen() (x, y, w, h int) {
 	user32 := windows.NewLazySystemDLL("user32.dll")
 	get := user32.NewProc("GetSystemMetrics")
@@ -60,11 +70,13 @@ func PlatformVirtualScreen() (x, y, w, h int) {
 	return ToDIP(sx, dpi), ToDIP(sy, dpi), ToDIP(sw, dpi), ToDIP(sh, dpi)
 }
 
+// metric 调用 GetSystemMetrics，并把返回值按 int32 再转成 int，从而保留负的屏幕原点。
 func metric(get *windows.LazyProc, idx uintptr) int {
 	r, _, _ := get.Call(idx)
 	return int(int32(r))
 }
 
+// primaryDPI 取工作区中心所在显示器的有效 DPI。GetDpiForMonitor 失败时改用 GetDpiForSystem。都不可用或小于 96 时返回 96。
 func primaryDPI(user32 *windows.LazyDLL, work windows.Rect) int {
 	shcore := windows.NewLazySystemDLL("shcore.dll")
 	getDpiForMonitor := shcore.NewProc("GetDpiForMonitor")

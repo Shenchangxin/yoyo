@@ -1,3 +1,5 @@
+// 工作区文件和目录的子串检索，给补全和 @ 提及用。忽略规则走 loadIgnore。路径关进工作区用 mentions.go 的 jailPath。
+
 package runtime
 
 import (
@@ -7,19 +9,16 @@ import (
 	"strings"
 )
 
+// FileHit 是一条相对路径。Kind 为 file 或 dir。
 type FileHit struct {
 	Path string `json:"path"`
 	Kind string `json:"kind"`
 }
 
-// dirListingCap is the overlay budget for one directory's children. Typeahead
-// across the tree stays at the caller limit (typically 40); a drilled folder
-// must list its own entries or Tab into src/ is useless.
+// dirListingCap 是钻进一个目录时列出的子项上限，值为 200。整树补全仍用调用方的 limit（常见是 40）；带斜杠且前缀是真实目录时，列表上限至少抬到这个值。
 const dirListingCap = 200
 
-// FuzzySearch lists workspace files and directories matching q (substring,
-// case-insensitive). A query with a slash whose prefix is a real directory
-// lists that directory's children instead of a capped whole-tree walk.
+// FuzzySearch 按子串、不区分大小写列出工作区里的文件和目录。limit 小于等于 0 时用 40。查询含斜杠且最后一个斜杠前的前缀是真实目录时，改为列出该目录的子项，不再走有上限的整树遍历。
 func FuzzySearch(root, q string, limit int) []FileHit {
 	if limit <= 0 {
 		limit = 40
@@ -73,6 +72,7 @@ func FuzzySearch(root, q string, limit int) []FileHit {
 	return rankHits(hits, q, limit)
 }
 
+// listingPrefix 在查询含斜杠、前缀非空、且 jailPath 之后 Stat 到目录时，拆出目录和剩余过滤串。
 func listingPrefix(root, q string) (dir, rest string, ok bool) {
 	if q == "" || !strings.Contains(q, "/") {
 		return "", "", false
@@ -94,6 +94,7 @@ func listingPrefix(root, q string) (dir, rest string, ok bool) {
 	return dir, rest, true
 }
 
+// listDirChildren 只读该目录的直接子项，跳过忽略项，并用剩余串过滤文件名，再按 rankHits 截断。
 func listDirChildren(root, dir, rest string, limit int) []FileHit {
 	p, err := jailPath(root, dir)
 	if err != nil {
@@ -128,6 +129,7 @@ func listDirChildren(root, dir, rest string, limit int) []FileHit {
 	return rankHits(hits, fold, limit)
 }
 
+// ListTree 用空查询调用 FuzzySearch。limit 小于等于 0 时用 4000。
 func ListTree(root string, limit int) []FileHit {
 	if limit <= 0 {
 		limit = 4000
@@ -135,6 +137,7 @@ func ListTree(root string, limit int) []FileHit {
 	return FuzzySearch(root, "", limit)
 }
 
+// rankHits 按 scoreHit 从高到低排序，同分按路径。limit 大于 0 时截断。
 func rankHits(hits []FileHit, q string, limit int) []FileHit {
 	sort.Slice(hits, func(i, j int) bool {
 		si := scoreHit(hits[i], q)
@@ -150,6 +153,7 @@ func rankHits(hits []FileHit, q string, limit int) []FileHit {
 	return hits
 }
 
+// scoreHit 在查询为空时返回 0。基名完全相等为 3，前缀为 2，包含为 1，否则为 0。
 func scoreHit(h FileHit, q string) int {
 	base := strings.ToLower(filepath.Base(h.Path))
 	if q == "" {

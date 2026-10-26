@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-/** The picture inside a video shot. Light follows the episode, nothing else moves. */
+/** ShotLight 画镜头里的那张画面。lit 为真时把灯点亮，其余不动。 */
 export function ShotLight({ lit }: { lit: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const litRef = useRef(lit);

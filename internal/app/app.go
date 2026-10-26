@@ -1,3 +1,4 @@
+// Package app 是桌面、HTTP 和命令行共用的应用对象。发送进入 runtime.Run。
 package app
 
 import (
@@ -47,17 +48,17 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
+// runSlot 是一个会话正在跑或刚跑完的槽。cancel 留给 StopTurn。
 type runSlot struct {
 	cancel   context.CancelFunc
 	started  time.Time
 	lastTool string
-	// done flips as soon as the model loop returns. The slot stays in the map
-	// (so a second send still queues) while post-turn bookkeeping — ACE
-	// staging, thread indexing — finishes, but Running() must already say no:
-	// the UI has seen turn_end and a late poll must not resurrect the spinner.
+	// done 在模型循环返回时立刻置位。槽还留在表里，所以第二次发送仍然入队，
+	// 回合后的 StageACE 和线程索引可以做完。Running 此时已经为假：界面见过 turn_end，迟到的轮询不能把转圈重新点亮。
 	done bool
 }
 
+// MCPServerConfig 是一个 MCP 服务的名字、命令、参数或 HTTP 端点。
 type MCPServerConfig struct {
 	Name     string   `yaml:"name" json:"name"`
 	Command  string   `yaml:"command" json:"command"`
@@ -65,55 +66,57 @@ type MCPServerConfig struct {
 	Endpoint string   `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
 }
 
+// Config 是写进配置文件的应用设置。
 type Config struct {
-	Provider                string              `yaml:"provider" json:"provider"`
-	Model                   string              `yaml:"model" json:"model"`
-	BaseURL                 string              `yaml:"base_url" json:"base_url"`
-	Workspace               string              `yaml:"workspace" json:"workspace"`
-	VideoWorkspace          string              `yaml:"video_workspace" json:"video_workspace"`
-	AutoAllow               bool                `yaml:"auto_allow" json:"auto_allow"`
-	MaxBudgetUSD            float64             `yaml:"max_budget_usd" json:"max_budget_usd"`
-	USDPerMTok              float64             `yaml:"usd_per_mtok" json:"usd_per_mtok"`
-	Models                  []string            `yaml:"models" json:"models"`
-	MCP                     []MCPServerConfig   `yaml:"mcp" json:"mcp"`
-	CloseToTray             bool                `yaml:"close_to_tray" json:"close_to_tray"`
-	CompanionEnabled        bool                `yaml:"companion_enabled" json:"companion_enabled"`
-	UpdateURL               string              `yaml:"update_url" json:"update_url"`
-	UpdateAutoCheck         bool                `yaml:"update_auto_check" json:"update_auto_check"`
-	Locale                  string              `yaml:"locale" json:"locale"`
-	Keymap                  map[string]string   `yaml:"keymap" json:"keymap"`
-	AlwaysOnTop             bool                `yaml:"always_on_top" json:"always_on_top"`
-	StartAtLogin            bool                `yaml:"start_at_login" json:"start_at_login"`
-	NotificationsEnabled    bool                `yaml:"notifications_enabled" json:"notifications_enabled"`
-	NotifyWhenUnfocusedOnly bool                `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
-	UIScale                 float64             `yaml:"ui_scale" json:"ui_scale"`
-	ShowThinking            bool                `yaml:"show_thinking" json:"show_thinking"`
-	TranscriptView          string              `yaml:"transcript_view" json:"transcript_view"`
-	CollapseTiming          string              `yaml:"collapse_timing" json:"collapse_timing"`
-	UpdateChannel           string              `yaml:"update_channel" json:"update_channel"`
-	Theme                   string              `yaml:"theme" json:"theme"`
-	PaletteDark             string              `yaml:"palette_dark" json:"palette_dark"`
-	PaletteLight            string              `yaml:"palette_light" json:"palette_light"`
-	Skin                    string              `yaml:"skin" json:"skin"`
-	GateMode                string              `yaml:"gate_mode" json:"gate_mode"`
-	CrashResume             bool                `yaml:"crash_resume" json:"crash_resume"`
-	SessionRetentionDays    int                 `yaml:"session_retention_days" json:"session_retention_days"`
-	SearchURL               string              `yaml:"search_url" json:"search_url"`
-	SearchKey               string              `yaml:"search_key" json:"search_key"`
-	ContextWindow           int                 `yaml:"context_window" json:"context_window"`
-	Packs                   map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
-	Skills                  SkillsConfig        `yaml:"skills,omitempty" json:"skills,omitempty"`
-	Log                     LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
-	Paused                  bool                `yaml:"paused" json:"paused"`
+	Provider                string            `yaml:"provider" json:"provider"`
+	Model                   string            `yaml:"model" json:"model"`
+	BaseURL                 string            `yaml:"base_url" json:"base_url"`
+	Workspace               string            `yaml:"workspace" json:"workspace"`
+	VideoWorkspace          string            `yaml:"video_workspace" json:"video_workspace"`
+	AutoAllow               bool              `yaml:"auto_allow" json:"auto_allow"`
+	MaxBudgetUSD            float64           `yaml:"max_budget_usd" json:"max_budget_usd"`
+	USDPerMTok              float64           `yaml:"usd_per_mtok" json:"usd_per_mtok"`
+	Models                  []string          `yaml:"models" json:"models"`
+	MCP                     []MCPServerConfig `yaml:"mcp" json:"mcp"`
+	CloseToTray             bool              `yaml:"close_to_tray" json:"close_to_tray"`
+	CompanionEnabled        bool              `yaml:"companion_enabled" json:"companion_enabled"`
+	UpdateURL               string            `yaml:"update_url" json:"update_url"`
+	UpdateAutoCheck         bool              `yaml:"update_auto_check" json:"update_auto_check"`
+	Locale                  string            `yaml:"locale" json:"locale"`
+	Keymap                  map[string]string `yaml:"keymap" json:"keymap"`
+	AlwaysOnTop             bool              `yaml:"always_on_top" json:"always_on_top"`
+	StartAtLogin            bool              `yaml:"start_at_login" json:"start_at_login"`
+	NotificationsEnabled    bool              `yaml:"notifications_enabled" json:"notifications_enabled"`
+	NotifyWhenUnfocusedOnly bool              `yaml:"notify_when_unfocused_only" json:"notify_when_unfocused_only"`
+	UIScale                 float64           `yaml:"ui_scale" json:"ui_scale"`
+	ShowThinking            bool              `yaml:"show_thinking" json:"show_thinking"`
+	TranscriptView          string            `yaml:"transcript_view" json:"transcript_view"`
+	CollapseTiming          string            `yaml:"collapse_timing" json:"collapse_timing"`
+	UpdateChannel           string            `yaml:"update_channel" json:"update_channel"`
+	Theme                   string            `yaml:"theme" json:"theme"`
+	PaletteDark             string            `yaml:"palette_dark" json:"palette_dark"`
+	PaletteLight            string            `yaml:"palette_light" json:"palette_light"`
+	Skin                    string            `yaml:"skin" json:"skin"`
+	GateMode                string            `yaml:"gate_mode" json:"gate_mode"`
+	// CrashResume 为真时，重新打开后会把队列里剩下的回合接着跑。配置文件里没有该键时保持默认的真。
+	CrashResume          bool                `yaml:"crash_resume" json:"crash_resume"`
+	SessionRetentionDays int                 `yaml:"session_retention_days" json:"session_retention_days"`
+	SearchURL            string              `yaml:"search_url" json:"search_url"`
+	SearchKey            string              `yaml:"search_key" json:"search_key"`
+	ContextWindow        int                 `yaml:"context_window" json:"context_window"`
+	Packs                map[string]PackPref `yaml:"packs,omitempty" json:"packs,omitempty"`
+	Skills               SkillsConfig        `yaml:"skills,omitempty" json:"skills,omitempty"`
+	Log                  LogConfig           `yaml:"log,omitempty" json:"log,omitempty"`
+	Paused               bool                `yaml:"paused" json:"paused"`
 }
 
-// SkillsConfig is optional host routing for Agent Skills.
-// AutoInvoke: off | hint | on (default on).
+// SkillsConfig 是技能自动调用的可选设置。AutoInvoke 取 off、hint 或 on，默认 on。
 type SkillsConfig struct {
 	AutoInvoke         string `yaml:"auto_invoke,omitempty" json:"auto_invoke,omitempty"`
 	CatalogBudgetChars int    `yaml:"catalog_budget_chars,omitempty" json:"catalog_budget_chars,omitempty"`
 }
 
+// LogConfig 是诊断日志的级别、调试分类、滚动上限和 OTEL 端点。
 type LogConfig struct {
 	Level        string   `yaml:"level,omitempty" json:"level,omitempty"`
 	Debug        []string `yaml:"debug,omitempty" json:"debug,omitempty"`
@@ -123,6 +126,7 @@ type LogConfig struct {
 	OTELEndpoint string   `yaml:"otel_endpoint,omitempty" json:"otel_endpoint,omitempty"`
 }
 
+// App 是桌面、HTTP 和命令行共用的应用对象，持有内核、会话、队列和 Hub。
 type App struct {
 	Home         *home.Dir
 	Kernel       *kernel.Context
@@ -193,6 +197,9 @@ type App struct {
 	agentSess  sync.Map
 }
 
+// Open 打开数据根目录并装配应用对象。
+// tcb fiber 里依次 Provide cas、journal、eval、vault、capability。同名已经注册则失败返回，不覆盖。
+// CrashResume 为真时，restoreRuns 之后对队列里还有回合的会话调用 resumeCrashed。
 func Open(root, bundledEvals string) (*App, error) {
 	h, err := home.Open(root)
 	if err != nil {
@@ -417,8 +424,10 @@ func Open(root, bundledEvals string) (*App, error) {
 	return a, nil
 }
 
+// runtimeHookPreTool 返回工具调用前的内核事件名。
 func runtimeHookPreTool() string { return "agent.pre_tool" }
 
+// approve 按门禁模式决定能力请求：跳过、自动放行只读、自动允许，或交给 Gate 询问。会话级同意会记进该会话的能力。
 func (a *App) approve(ctx context.Context, req capability.Request) (capability.Decision, error) {
 	mode := capability.ParseGateMode(a.Config.GateMode)
 	if mode == capability.GateSkip && !capability.NeverAlways(req.Level) && !capability.NeverAlwaysAction(req.Action) && !req.ForceAsk {
@@ -452,17 +461,20 @@ func (a *App) approve(ctx context.Context, req capability.Request) (capability.D
 	return dec, nil
 }
 
+// Interrupt 调用 StopTurn 取消正在跑的回合。它不把文本留到下一次模型调用。
 func (a *App) Interrupt(sessionID string) error {
 	a.StopTurn(sessionID)
 	return nil
 }
 
+// RememberShape 记下该会话最近一次上下文形状。
 func (a *App) RememberShape(sessionID string, r runtime.ShapeReport) {
 	a.shapeMu.Lock()
 	a.lastShape[sessionID] = r
 	a.shapeMu.Unlock()
 }
 
+// ContextUsage 在会话仍在跑且现场形状有数字时返回现场值，否则重新测量。
 func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID != "" && a.Running(sessionID) {
@@ -476,12 +488,14 @@ func (a *App) ContextUsage(sessionID string) runtime.ShapeReport {
 	return a.measureSessionContext(sessionID)
 }
 
+// RememberUsage 记下最近一次用量快照。
 func (a *App) RememberUsage(snap map[string]any) {
 	a.usageMu.Lock()
 	a.lastUsage = snap
 	a.usageMu.Unlock()
 }
 
+// LastUsage 返回用量快照的副本。还没有时返回空 map。
 func (a *App) LastUsage() map[string]any {
 	a.usageMu.Lock()
 	defer a.usageMu.Unlock()
@@ -495,6 +509,7 @@ func (a *App) LastUsage() map[string]any {
 	return out
 }
 
+// Health 返回 harness、模型、隔离、工作区、保险库和最近评测等状态。
 func (a *App) Health() map[string]any {
 	return map[string]any{
 		"ok":                    true,
@@ -522,10 +537,12 @@ func (a *App) Health() map[string]any {
 	}
 }
 
+// ResolveApproval 按决定结案一条审批，不附带回答文本。
 func (a *App) ResolveApproval(id, decision string) error {
 	return a.ResolveApprovalAnswer(id, decision, "")
 }
 
+// ResolveApprovalAnswer 先存下回答，再把 always、session、once 或 allow 交给 Gate，并向 Hub 发布结果。
 func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	if answer != "" {
 		a.askMu.Lock()
@@ -575,8 +592,7 @@ func (a *App) ResolveApprovalAnswer(id, decision, answer string) error {
 	return nil
 }
 
-// NormalizeAppearance fills theme/palette zeros and rejects unknown ids.
-// Mode (system|dark|light) is orthogonal to the two palettes.
+// NormalizeAppearance 补上主题和调色板的空值，并拒绝不认识的 id。主题和两套调色板互不替代。
 func (c *Config) NormalizeAppearance() {
 	if c == nil {
 		return
@@ -603,6 +619,7 @@ func (c *Config) NormalizeAppearance() {
 	c.Skin = skin.NormalizeSkinID(c.Skin)
 }
 
+// SaveConfig 规范化外观后把配置写成 YAML，并刷新快捷键文件和日志。
 func (a *App) SaveConfig() error {
 	a.Config.NormalizeAppearance()
 	b, err := yaml.Marshal(a.Config)
@@ -621,6 +638,7 @@ func (a *App) SaveConfig() error {
 	return nil
 }
 
+// Close 停掉调度和更新循环，关闭视频、MCP、WASM 和日志，再卸下内核。
 func (a *App) Close() error {
 	if a.schedStop != nil {
 		select {
@@ -648,6 +666,7 @@ func (a *App) Close() error {
 	return a.Kernel.Dispose()
 }
 
+// attachLogger 按配置打开诊断日志；目录和进程与当前默认日志相同则只更新选项。
 func (a *App) attachLogger() {
 	if a == nil || a.Home == nil {
 		return
@@ -694,6 +713,7 @@ func (a *App) attachLogger() {
 	a.Log = lg
 }
 
+// Workspace 返回配置里的工作区绝对路径；空则用 home 里的工作区，再不行用当前目录。
 func (a *App) Workspace() string {
 	if a.Config.Workspace != "" {
 		if p, err := filepath.Abs(a.Config.Workspace); err == nil {
@@ -709,6 +729,7 @@ func (a *App) Workspace() string {
 	return wd
 }
 
+// VideoWorkspace 返回视频工作区绝对路径；没配置则用 home 的视频目录，再不行退回 Workspace。
 func (a *App) VideoWorkspace() string {
 	if a != nil && strings.TrimSpace(a.Config.VideoWorkspace) != "" {
 		if p, err := filepath.Abs(a.Config.VideoWorkspace); err == nil {
@@ -724,14 +745,17 @@ func (a *App) VideoWorkspace() string {
 	return a.Workspace()
 }
 
+// StagingPath 返回更新包的暂存路径。
 func (a *App) StagingPath() string {
 	return filepath.Join(a.Home.Updates(), update.StagingName())
 }
 
+// ApplyStagedUpdate 把已暂存的更新应用到给定可执行文件。
 func (a *App) ApplyStagedUpdate(exe string) error {
 	return a.ApplyUpdate(exe)
 }
 
+// restoreRuns 读取每个 .run.json：恢复授权模式和会话能力，把 steer 放回内存；回合仍在飞或有 ResumeText 时，在队列头插入一次 resume，并清掉 in-flight。它不看 CrashResume。
 func (a *App) restoreRuns() {
 	if a.Threads == nil || a.Home == nil {
 		return
@@ -769,6 +793,7 @@ func (a *App) restoreRuns() {
 	}
 }
 
+// resumeCrashed 对队列里还有回合的会话打日志并异步 kickQueue。日志写明跳过高风险授权，函数本身不改授权表。
 func (a *App) resumeCrashed() {
 	if a.Threads == nil || a.Home == nil {
 		return

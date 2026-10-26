@@ -1,3 +1,5 @@
+// 检查公钥、空正文、latest 回退、暂存，以及 ApplyStaged 留下 .old。
+
 package update
 
 import (
@@ -13,6 +15,7 @@ import (
 	"testing"
 )
 
+// TestPublicKeyFromEnv 确认空环境变量没有公钥，未设置时用编译进来的 32 字节，设置十六进制后能解析。
 func TestPublicKeyFromEnv(t *testing.T) {
 	t.Setenv(EnvPubkey, "")
 	if PublicKeyFromEnv() != nil {
@@ -32,6 +35,7 @@ func TestPublicKeyFromEnv(t *testing.T) {
 	}
 }
 
+// TestFetchRejectsEmptyBody 确认空响应返回含 "empty body" 的错误。
 func TestFetchRejectsEmptyBody(t *testing.T) {
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
@@ -47,6 +51,7 @@ func TestFetchRejectsEmptyBody(t *testing.T) {
 	}
 }
 
+// TestCheckFallsBackFromEmptyLatest 确认 latest.json 正文为空时改用 nightly.json。
 func TestCheckFallsBackFromEmptyLatest(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -79,6 +84,7 @@ func TestCheckFallsBackFromEmptyLatest(t *testing.T) {
 	}
 }
 
+// TestCheckAndStage 确认直接给出的清单能验过，Stage 接受匹配的 SHA-256 并拒绝错误摘要。
 func TestCheckAndStage(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -107,6 +113,7 @@ func TestCheckAndStage(t *testing.T) {
 	}
 }
 
+// TestApplyStagedRenamesRunningPath 确认原路径变成新字节，旧字节留在路径加 .old 的文件里。
 func TestApplyStagedRenamesRunningPath(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "yoyo.bin")

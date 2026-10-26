@@ -1,5 +1,7 @@
 //go:build windows
 
+// Windows 上用 ShellExecuteExW 的 runas 拉起 NSIS 辅助进程，并在安装结束后启动 Yoyo.exe。
+
 package update
 
 import (
@@ -40,6 +42,7 @@ type shellExecuteInfoW struct {
 	HProcess     windows.Handle
 }
 
+// hideWindow 给命令加上隐藏窗口、无控制台和新进程组。cmd 为 nil 时直接返回。
 func hideWindow(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -50,6 +53,7 @@ func hideWindow(cmd *exec.Cmd) {
 	}
 }
 
+// startElevatedApply 用 ShellExecuteExW、动词 runas、SEE_MASK_NOCLOSEPROCESS 和 SW_HIDE 启动 exe，参数是 --yoyo-nsis-apply 加 spec 路径。失败返回 "update: administrator approval failed"。
 func startElevatedApply(exe, spec string) error {
 	verb, err := windows.UTF16PtrFromString("runas")
 	if err != nil {
@@ -81,6 +85,7 @@ func startElevatedApply(exe, spec string) error {
 	return nil
 }
 
+// waitForPID 在 pid 小于等于 0 时睡 3 秒。否则打开进程并 WaitForSingleObject，时限至少 3 秒。打开失败则直接返回。
 func waitForPID(pid int, timeout time.Duration) {
 	if pid <= 0 {
 		time.Sleep(3 * time.Second)
@@ -98,6 +103,7 @@ func waitForPID(pid int, timeout time.Duration) {
 	_, _ = windows.WaitForSingleObject(h, ms)
 }
 
+// runNSISInstaller 隐藏启动安装器，命令行来自 nsisCmdLine，等待结束后再 launchInstalledYoyo。
 func runNSISInstaller(installer, destDir string) error {
 	cmd := exec.Command(installer)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -113,6 +119,7 @@ func runNSISInstaller(installer, destDir string) error {
 	return err
 }
 
+// launchInstalledYoyo 依次试 destDir/Yoyo.exe、ProgramFiles 下的 Yoyo\Yoyo\Yoyo.exe 和 Yoyo\Yoyo.exe，以及 LOCALAPPDATA\Programs\Yoyo\Yoyo.exe。启动第一个存在的文件。
 func launchInstalledYoyo(destDir string) {
 	var candidates []string
 	if destDir != "" {

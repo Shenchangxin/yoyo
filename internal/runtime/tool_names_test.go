@@ -1,7 +1,10 @@
+// 工具 JSON 名单按名字去重，额外工具与核心重名时只出现一次。
+
 package runtime
 
 import "testing"
 
+// TestAllToolJSONDropsDuplicateNames 确认 ask_user 只出现一次，cut_get 仍在。
 func TestAllToolJSONDropsDuplicateNames(t *testing.T) {
 	tools := &WorkspaceTools{
 		ChatOverlay:  true,

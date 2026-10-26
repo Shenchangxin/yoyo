@@ -1,3 +1,5 @@
+// 锁住页面落在存储根下、修订冲突不覆盖、批准写入草稿，以及路径不能逃出根目录。
+
 package pages
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestCreateGetAndRebuildIndex 确认新页面落在默认空间、修订号为 1，删掉 index.json 后 List 仍能重建出它。
 func TestCreateGetAndRebuildIndex(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -32,6 +35,7 @@ func TestCreateGetAndRebuildIndex(t *testing.T) {
 	}
 }
 
+// TestRevisionConflictKeepsDraft 确认用过期修订号 Save 返回 ConflictError，磁盘内容不变。
 func TestRevisionConflictKeepsDraft(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -59,6 +63,7 @@ func TestRevisionConflictKeepsDraft(t *testing.T) {
 	}
 }
 
+// TestReviewIdempotentAndApprove 确认相同提案不换 ID，批准后能读到页面，再次批准仍成功。
 func TestReviewIdempotentAndApprove(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -82,6 +87,7 @@ func TestReviewIdempotentAndApprove(t *testing.T) {
 	}
 }
 
+// TestPathTraversalStaysInsideStore 确认 id 里的路径片段被清掉，根目录外没有写出文件。
 func TestPathTraversalStaysInsideStore(t *testing.T) {
 	root := t.TempDir()
 	s, err := Open(root)
@@ -114,6 +120,7 @@ func TestPathTraversalStaysInsideStore(t *testing.T) {
 	}
 }
 
+// TestSaveClipsBody 确认正文被截到 MaxBody 个符文。
 func TestSaveClipsBody(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -133,6 +140,7 @@ func TestSaveClipsBody(t *testing.T) {
 	}
 }
 
+// TestApproveOverridesStaleRevision 确认页面已被改过时，批准仍写入审阅草稿。
 func TestApproveOverridesStaleRevision(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -159,6 +167,7 @@ func TestApproveOverridesStaleRevision(t *testing.T) {
 	}
 }
 
+// TestProposeKeepsReviewIDWhenContentChanges 确认同一工具调用更新内容时 ID 不变、哈希变了。
 func TestProposeKeepsReviewIDWhenContentChanges(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -180,6 +189,7 @@ func TestProposeKeepsReviewIDWhenContentChanges(t *testing.T) {
 	}
 }
 
+// TestListIncludesPreview 确认列表摘要带有正文预览。
 func TestListIncludesPreview(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -194,6 +204,7 @@ func TestListIncludesPreview(t *testing.T) {
 	}
 }
 
+// TestDeletePromotesChildren 确认删除父页后，子页的父 id 改成被删页原来的父 id。
 func TestDeletePromotesChildren(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -219,6 +230,7 @@ func TestDeletePromotesChildren(t *testing.T) {
 	}
 }
 
+// TestSaveDashClearsParent 确认父 id 为 - 时清空父页。
 func TestSaveDashClearsParent(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -239,6 +251,7 @@ func TestSaveDashClearsParent(t *testing.T) {
 	}
 }
 
+// TestAtomicRenameLeavesReadableMarkdown 确认写完的文件仍是可读的 Markdown。
 func TestAtomicRenameLeavesReadableMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

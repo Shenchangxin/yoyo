@@ -1,3 +1,5 @@
+// 本文件拥有一条子代理卡片：标题、耗时，以及展开后的子会话。不拥有子会话怎么跑。Transcript 传入 items 和 child。
+
 import { memo, useEffect, useMemo, useState } from "react";
 import { Bot, ChevronRight, CircleDashed, X } from "lucide-react";
 import { Markdown } from "../../lib/markdown";
@@ -9,6 +11,7 @@ import { mergeItem, subscribeSession } from "../../lib/stream";
 import { processStartMs } from "../../lib/transcript-layout";
 import { ProcessGroup, useNow } from "./ProcessGroup";
 
+// explore、qa、implement 换成对应文案，其余返回空字符串。
 function profileLabel(profile: string, t: { subagentExplore: string; subagentImplement: string; subagentQA: string }): string {
   switch (profile.toLowerCase()) {
     case "explore":
@@ -22,11 +25,13 @@ function profileLabel(profile: string, t: { subagentExplore: string; subagentImp
   }
 }
 
+// 取最后一条的 payload，没有就用空对象。
 function latestPayload(items: Item[]): Record<string, unknown> {
   const last = items[items.length - 1];
   return (last?.payload || {}) as Record<string, unknown>;
 }
 
+// 取第一条非空的 prompt、summary 或 text，再取其中第一个非空行。都没有就返回空字符串。
 function promptTitle(items: Item[]): string {
   for (const it of items) {
     const p = it.payload || {};
@@ -36,6 +41,7 @@ function promptTitle(items: Item[]): string {
   return "";
 }
 
+// 从最后一条往前找 summary，没有再找 error。都没有就返回空字符串。
 function summaryText(items: Item[]): string {
   for (let i = items.length - 1; i >= 0; i--) {
     const p = items[i].payload || {};
@@ -47,6 +53,7 @@ function summaryText(items: Item[]): string {
   return "";
 }
 
+// 最后一条带 error，或 phase 为 complete 且 ok 为 false，算失败。没有条目不算失败。
 function subagentFailed(items: Item[]): boolean {
   const last = items[items.length - 1];
   if (!last) return false;
@@ -55,6 +62,7 @@ function subagentFailed(items: Item[]): boolean {
   return false;
 }
 
+// SubagentCard 默认展开跟 live 走，用户点过之后改记 userOpen。只有展开且 child 非空才订阅子会话，卸下时停订。摘要去掉开头的 SUBAGENT_SUMMARY:。
 export const SubagentCard = memo(function SubagentCard({
   items,
   child,

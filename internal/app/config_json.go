@@ -1,9 +1,10 @@
+// Config 的 JSON 反序列化：缺省键保留原值，并接受另一种 locale 写法。
+
 package app
 
 import "encoding/json"
 
-// UnmarshalJSON merges into the existing Config so omitted keys survive a
-// partial Wails/HTTP body. It also accepts both `locale` and Wails' `Locale`.
+// UnmarshalJSON 在现有 Config 上合并 JSON，缺省键保留。locale 仍为空时再接受 Locale 或 language。
 func (c *Config) UnmarshalJSON(b []byte) error {
 	type plain Config
 	p := plain(*c)

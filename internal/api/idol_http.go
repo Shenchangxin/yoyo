@@ -8,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
+// mountIdol 只接受 POST /api/idol，正文上限 12MiB。op 交给 a.IdolCall。payload 为空或 null 时，整段正文当作 payload 字符串。失败写 400，成功把返回的 JSON 原样写出。
 func mountIdol(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("/api/idol", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

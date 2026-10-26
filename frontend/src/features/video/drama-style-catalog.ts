@@ -1,3 +1,8 @@
+/**
+ * 本文件拥有额外短剧风格的英文名、分组和画面提示词。不拥有中文名和封面。
+ * 它只是界面可选的数据，不改服务端。
+ */
+/** DramaStylePreset 是一条额外风格的值、名字、分组、提示词和短说明。 */
 export type DramaStylePreset = {
   value: string;
   name: string;
@@ -6,6 +11,7 @@ export type DramaStylePreset = {
   description: string;
 };
 
+/** EXTRA_DRAMA_STYLES 是额外风格预设列表。 */
 export const EXTRA_DRAMA_STYLES: DramaStylePreset[] = [
   { value: "toon3d", name: "Stylized toon 3D", group: "volume", prompt: "stylized 3D cartoon still, appealing volumes, graphic shadows, saturated feature-animation color, consistent character sculpt across shots, avoid photoreal pores, avoid 2D line art", description: "Graphic 3D toon." },
   { value: "q3d", name: "Q-version 3D", group: "volume", prompt: "super-deformed 3D chibi still, oversized head, tiny body, glossy materials, pastel kawaii color, consistent costume across shots, avoid realistic anatomy, avoid horror", description: "Q 3D." },

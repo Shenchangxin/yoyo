@@ -1,3 +1,5 @@
+// 锁住新家目录没有激活皮肤、再次保存会留下壁纸，以及宿主工具名单里没有皮肤 RPC。
+
 package app_test
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
+// TestSkinDefaultsEmpty 锁住 Open 后 Config.Skin 为空，ListSkins 至少包含 6 个内置皮肤。
 func TestSkinDefaultsEmpty(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -27,6 +30,7 @@ func TestSkinDefaultsEmpty(t *testing.T) {
 	}
 }
 
+// TestSkinSaveKeepsWallpaper 锁住只改令牌的再次保存仍 HasWallpaper，ActivateSkin 把 Config.Skin 写成该 id。
 func TestSkinSaveKeepsWallpaper(t *testing.T) {
 	a, err := app.Open(t.TempDir(), evalsDir(t))
 	if err != nil {
@@ -70,6 +74,7 @@ func TestSkinSaveKeepsWallpaper(t *testing.T) {
 	}
 }
 
+// TestHostToolsHaveNoSkin 锁住宿主工具名不是 skins.list、skins.import 或 skins.save。
 func TestHostToolsHaveNoSkin(t *testing.T) {
 	for _, s := range tool.HostSpecs() {
 		if s.Name == "skins.list" || s.Name == "skins.import" || s.Name == "skins.save" {
@@ -78,6 +83,7 @@ func TestHostToolsHaveNoSkin(t *testing.T) {
 	}
 }
 
+// tinyPNGApp 做一张 8×8 的 PNG，供壁纸保存测试使用。
 func tinyPNGApp(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))

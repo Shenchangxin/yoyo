@@ -1,3 +1,6 @@
+// 本文件组装一轮对话交给 Brain.Chat 的消息。稳定人设在前，用户卡片、最近记录和当轮材料在后。
+// 不调用模型。judgePrompt 的 JSON 说明是给裁决用的文案。
+
 package idol
 
 import (
@@ -6,6 +9,7 @@ import (
 	"time"
 )
 
+// formatInstructions 写出标签格式。口语和字幕相同时只用一种语言标签；不同时每段口语后面紧跟字幕。用户要办事时先写 work 标签，要照片时可以先写 photo 标签。
 func formatInstructions(spoken, sub string) string {
 	spoken = lang(spoken)
 	sub = lang(sub)
@@ -22,6 +26,7 @@ func formatInstructions(spoken, sub string) string {
 	return b.String()
 }
 
+// buildPrompt 拼出一轮要发给 Brain 的消息。系统消息依次是人设、用户卡片、当轮时间和好感；中间回放最近 12 条记录。最后一条是用户这句话。
 func buildPrompt(st *State, idol Idol, con Conversation, userText string, call bool, aff Affinity, now time.Time) []Msg {
 	nowLine := now.In(st.User.Location()).Format("2006-01-02 15:04")
 	var stable strings.Builder
@@ -103,6 +108,7 @@ func buildPrompt(st *State, idol Idol, con Conversation, userText string, call b
 	return msgs
 }
 
+// replay 把一条记录的分段套回语言标签，供下一轮当助手消息回放。
 func replay(idol Idol, rec Record) string {
 	spoken := lang(idol.SpokenLang)
 	sub := lang(idol.SubtitleLang)
@@ -117,6 +123,7 @@ func replay(idol Idol, rec Record) string {
 	return b.String()
 }
 
+// tailRecords 返回最后 n 条记录。不足 n 条时原样返回。
 func tailRecords(in []Record, n int) []Record {
 	if len(in) <= n {
 		return in
@@ -124,6 +131,7 @@ func tailRecords(in []Record, n int) []Record {
 	return in[len(in)-n:]
 }
 
+// judgePrompt 拼出裁决用的用户消息。要求只输出 JSON，并写上当前好感档位和用户原话。
 func judgePrompt(userText, tier string) string {
 	return fmt.Sprintf(`只输出 JSON，不要解释。根据用户对偶像说的这句话判断：
 {"affinity":0,"out_of_line":false,"photo":false,"work":false,"emotion":"calm","memory":""}

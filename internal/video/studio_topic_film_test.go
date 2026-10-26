@@ -1,3 +1,5 @@
+// 锁住按选题挑模板，以及批量开拍时跳过已完成的、拒绝空批次和超长批次。
+
 package video
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// TestPlanTopicFilm 锁住教程、热榜、故事、随手记和科普各自的模板、时长和声音。
 func TestPlanTopicFilm(t *testing.T) {
 	how := planTopicFilm(Topic{Title: "三步教程：怎么煮面", SourcePlatform: "xhs", Note: "水面要宽"})
 	if how.TemplateID != "howto" || how.Duration != 45 || how.Voice != "onyx" || how.Brief != "水面要宽" {
@@ -29,6 +32,7 @@ func TestPlanTopicFilm(t *testing.T) {
 	}
 }
 
+// TestStartTopicFilmsAppliesPlan 锁住两条选题套上不同模板，重复编号会去掉，没有对话时停在口播失败，选题进入制作中。
 func TestStartTopicFilmsAppliesPlan(t *testing.T) {
 	e := testEngine(t)
 	a, err := e.SaveTopic(Topic{Title: "今天这条热搜", SourcePlatform: "douyin", Angle: "给通勤的人"})
@@ -64,6 +68,7 @@ func TestStartTopicFilmsAppliesPlan(t *testing.T) {
 	}
 }
 
+// TestStartTopicFilmsSkipsFinished 锁住已经完成并有成片的短片不会重做。
 func TestStartTopicFilmsSkipsFinished(t *testing.T) {
 	e := testEngine(t)
 	topic, err := e.SaveTopic(Topic{Title: "已经拍过", SourcePlatform: "douyin"})
@@ -89,6 +94,7 @@ func TestStartTopicFilmsSkipsFinished(t *testing.T) {
 	}
 }
 
+// TestStartTopicFilmsRejectsEmptyAndHuge 锁住没勾选和一次超过八条都会拒绝。
 func TestStartTopicFilmsRejectsEmptyAndHuge(t *testing.T) {
 	e := testEngine(t)
 	if _, err := e.StartTopicFilms(nil); err == nil || !strings.Contains(err.Error(), "选题") {
@@ -100,6 +106,7 @@ func TestStartTopicFilmsRejectsEmptyAndHuge(t *testing.T) {
 	}
 }
 
+// TestFinishAutoPacksAndClosesTopic 锁住一键成片成功时打出可发布的包，并把选题标成完成。
 func TestFinishAutoPacksAndClosesTopic(t *testing.T) {
 	e := testEngine(t)
 	topic, err := e.SaveTopic(Topic{Title: "热搜甲", SourcePlatform: "douyin"})
@@ -133,6 +140,7 @@ func TestFinishAutoPacksAndClosesTopic(t *testing.T) {
 	}
 }
 
+// waitFilm 等到短片阶段变成完成或失败。超过 5 秒就让测试失败。
 func waitFilm(t *testing.T, e *Engine, id string) StudioProject {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

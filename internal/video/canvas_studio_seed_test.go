@@ -1,3 +1,5 @@
+// 行为：测试工作室技能、素材和协议插件种子，以及旧卡司素材迁进角色资产。
+
 package video
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestStudioCatalogsSeed 检查内置技能不少于 70 条且分类齐全，素材、文件夹和带能力的协议插件也种上了。
 func TestStudioCatalogsSeed(t *testing.T) {
 	dir := t.TempDir()
 	e, err := Open(dir, &memCAS{}, &memVault{m: map[string]string{}})
@@ -163,6 +166,7 @@ func TestStudioCatalogsSeed(t *testing.T) {
 	}
 }
 
+// TestCastAssetsMigrateIntoCharactersFolder 检查旧卡司文件夹里的素材会迁进角色资产，旧文件夹被删掉。
 func TestCastAssetsMigrateIntoCharactersFolder(t *testing.T) {
 	e := testEngine(t)
 	now := Now()

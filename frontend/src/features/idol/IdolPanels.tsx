@@ -1,3 +1,4 @@
+/** 拥有偶像侧栏：编辑、记忆、礼物、设定、统计、圈子和旧会话。不拥有主会话列表。保存、删除、抽卡、送礼和圈子会改服务端状态。 */
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ import {
 } from "./model";
 import { presetByID, presetsOf, voicesFor, type ServiceVoice } from "./service-presets";
 
+/** IdolPanelKind 是侧栏的七种内容。 */
 export type IdolPanelKind = "edit" | "memories" | "gifts" | "lore" | "stats" | "circles" | "history";
 
 const titles: Record<IdolPanelKind, keyof ReturnType<typeof useCopy>["idol"]> = {
@@ -32,6 +34,7 @@ const titles: Record<IdolPanelKind, keyof ReturnType<typeof useCopy>["idol"]> = 
   history: "pastTitle",
 };
 
+/** IdolPanel 按种类挂上对应的侧栏内容。 */
 export function IdolPanel(props: {
   kind: IdolPanelKind;
   idol: Idol | null;
@@ -74,6 +77,7 @@ export function IdolPanel(props: {
   );
 }
 
+/** 编辑一位偶像的档案、声线、圈子和肖像。 */
 function Editor(props: {
   idol: Idol | null;
   circles: Circle[];
@@ -85,6 +89,7 @@ function Editor(props: {
 }) {
   const c = useCopy().idol;
   const i = props.draft;
+  /** 把改动写回草稿。 */
   const set = (patch: Partial<Idol>) => props.onDraft({ ...i, ...patch });
   const [profiles, setProfiles] = useState<{ id: string; name: string }[]>([]);
   const [voices, setVoices] = useState<ServiceVoice[]>([]);
@@ -191,9 +196,11 @@ function Editor(props: {
   );
 }
 
+/** 列出并删除这位的记忆。 */
 function Memories(props: { idol: Idol | null; names: Record<string, string>; onChanged: () => void }) {
   const c = useCopy().idol;
   const [rows, setRows] = useState<any[]>([]);
+  /** 拉取这位的记忆。 */
   async function load() {
     if (!props.idol) return;
     const m = await api.idolCall("memories", { idol_id: props.idol.id });
@@ -221,14 +228,17 @@ function Memories(props: { idol: Idol | null; names: Record<string, string>; onC
   );
 }
 
+/** 抽卡、送礼、重置，并标记喜欢的礼物。 */
 function Gifts(props: { idol: Idol | null; onChanged: () => void; onSave: (i: Idol) => void }) {
   const c = useCopy().idol;
   const [gifts, setGifts] = useState<any>(null);
   const [note, setNote] = useState("");
+  /** 拉取礼物目录和持有数。 */
   async function load() {
     setGifts(await api.idolCall("gifts"));
   }
   useEffect(() => { void load().catch((e) => toast.error(idolError(e, c))); }, []);
+  /** 执行抽卡、送礼或重置，再刷新目录。 */
   async function act(op: string, extra?: Record<string, unknown>) {
     setNote("");
     try {
@@ -278,6 +288,7 @@ function Gifts(props: { idol: Idol | null; onChanged: () => void; onSave: (i: Id
   );
 }
 
+/** 列出、添加和删除这位的设定。 */
 function LorePanel(props: { idol: Idol | null; lore: Lore[]; onChanged: () => void }) {
   const c = useCopy().idol;
   const [title, setTitle] = useState("");
@@ -300,6 +311,7 @@ function LorePanel(props: { idol: Idol | null; lore: Lore[]; onChanged: () => vo
   );
 }
 
+/** 投影今日任务、累计和成就。 */
 function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
   const c = useCopy().idol;
   const [stats, setStats] = useState<any>(null);
@@ -336,6 +348,7 @@ function Stats(props: { names: Record<string, string>; idol: Idol | null }) {
   );
 }
 
+/** 画一格统计数字。 */
 function Stat(props: { label: string; value: string | number }) {
   return (
     <div className="rounded-xl bg-lift px-3 py-2">
@@ -345,6 +358,7 @@ function Stat(props: { label: string; value: string | number }) {
   );
 }
 
+/** 管理圈子：新建、改名、加入和删除。 */
 function Circles(props: {
   circles: Circle[];
   idols: Idol[];
@@ -356,6 +370,7 @@ function Circles(props: {
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState("");
   const [rename, setRename] = useState("");
+  /** 保存一个圈子的名字。 */
   async function saveCircle(id: string, next: string) {
     const trimmed = next.trim();
     if (!trimmed) return;
@@ -402,6 +417,7 @@ function Circles(props: {
   );
 }
 
+/** 列出过去的会话，打开或删除。 */
 function HistoryList(props: {
   history: { current: Conversation | null; past: Conversation[] };
   viewing: string;
@@ -428,6 +444,7 @@ function HistoryList(props: {
   );
 }
 
+/** 画一行单行输入。 */
 function Field(props: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block text-[12px] text-muted">
@@ -437,6 +454,7 @@ function Field(props: { label: string; value: string; onChange: (v: string) => v
   );
 }
 
+/** 画一块多行输入。 */
 function Area(props: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block text-[12px] text-muted">
@@ -446,6 +464,7 @@ function Area(props: { label: string; value: string; onChange: (v: string) => vo
   );
 }
 
+/** 画语言选择，并保留不在固定列表里的当前值。 */
 function Lang(props: { label: string; value: string; onChange: (v: string) => void }) {
   const options = ["zh", "en", "ja"];
   const extra = props.value && !options.includes(props.value) ? [props.value] : [];
@@ -459,6 +478,7 @@ function Lang(props: { label: string; value: string; onChange: (v: string) => vo
   );
 }
 
+/** emptyDraft 交回一份空白偶像草稿。 */
 export function emptyDraft() {
   return blankIdol();
 }

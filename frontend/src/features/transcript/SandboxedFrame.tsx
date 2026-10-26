@@ -1,6 +1,9 @@
+// 本文件拥有用 srcdoc 打开的预览框和它的 sandbox。不拥有 HTML 怎么包成文档，那一步在 asPreviewDocument。Transcript 和 FilePreview 传入 html。
+
 import { asPreviewDocument } from "../../lib/html-preview";
 import { cn } from "../../lib/utils";
 
+// SandboxedFrame 在 allowScripts 为真时允许脚本、表单、模态和指针锁定，否则只允许表单。fill 为真时撑满父级，否则高度 28rem。文档交给 asPreviewDocument，并把 scripts 传进去。
 export function SandboxedFrame({
   html,
   title,

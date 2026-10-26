@@ -1,3 +1,5 @@
+// 锁住默认隔离、视频短片和 follow 不隔离，以及 webhook 不会因时间到期。
+
 package schedule
 
 import (
@@ -5,6 +7,7 @@ import (
 	"time"
 )
 
+// TestJobsIsolateByDefault 确认普通 once 任务 Isolate 为真，并且已经到期。
 func TestJobsIsolateByDefault(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -20,6 +23,7 @@ func TestJobsIsolateByDefault(t *testing.T) {
 	}
 }
 
+// TestVideoChannelJobDoesNotIsolate 确认频道为 video 的短片任务 Isolate 为假，并保留会话 ID。
 func TestVideoChannelJobDoesNotIsolate(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -34,6 +38,7 @@ func TestVideoChannelJobDoesNotIsolate(t *testing.T) {
 	}
 }
 
+// TestLegacyShortsPromptDoesNotIsolate 确认以「做成短片」开头的提示词不隔离，且 IsStudioJob 为真。
 func TestLegacyShortsPromptDoesNotIsolate(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -48,6 +53,7 @@ func TestLegacyShortsPromptDoesNotIsolate(t *testing.T) {
 	}
 }
 
+// TestFollowStaysInSessionAndDoesNotIsolate 确认 follow 不隔离、未到间隔不到期，中断后直到 Retry 才再次到期，并仍带原会话。
 func TestFollowStaysInSessionAndDoesNotIsolate(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
@@ -77,6 +83,7 @@ func TestFollowStaysInSessionAndDoesNotIsolate(t *testing.T) {
 	}
 }
 
+// TestWebhookIsNotTimeDueButTriggerWorks 确认 webhook 不会出现在 Due 里，但能按 ID 和 Spec 触发。
 func TestWebhookIsNotTimeDueButTriggerWorks(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {

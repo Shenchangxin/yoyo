@@ -1,3 +1,8 @@
+/**
+ * 拥有：产品站的英文、简体中文和日文文案。
+ * 不拥有：页面怎么排。下面的对象是数据，不为每一句文案再写注释。
+ */
+
 export const LANGS = ["en", "zh", "ja"] as const;
 export type Lang = (typeof LANGS)[number];
 export type GateKind = "once" | "session" | "always" | "deny";
@@ -832,6 +837,7 @@ export const COPY: Record<Lang, Copy> = {
   },
 };
 
+/** detectLang 先看地址栏的 lang，再看本地保存的 yoyo-site-lang，最后看浏览器语言。中文给 zh，日文给 ja，其余给 en。读本地存储失败就当没有保存。 */
 export function detectLang(): Lang {
   try {
     const q = new URLSearchParams(window.location.search).get("lang");
@@ -847,6 +853,7 @@ export function detectLang(): Lang {
   return "en";
 }
 
+/** htmlLang 把站内的 zh 写成 html 的 zh-Hans，其余语言代码原样返回。 */
 export function htmlLang(lang: Lang): string {
   return lang === "zh" ? "zh-Hans" : lang;
 }

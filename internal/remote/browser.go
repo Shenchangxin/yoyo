@@ -1,3 +1,7 @@
+// 本文件拥有手机浏览器的明文 HTTP 门：扫码打开、等电脑允许、会话 cookie、改写页面上的拖拽，以及按字段名洗 JSON 响应。
+// 不拥有手机 WebSocket。监听用 net.Listen，不是加密通道。证书 DNS 名只有 yoyo.local，没有 IP，浏览器不会在局域网地址上信任那条 TLS，所以扫码页用 HTTP。
+// listen 调用 serveBrowser。桌面通过 UseStatic 把静态文件交进来。
+
 package remote
 
 import (
@@ -20,23 +24,23 @@ import (
 )
 
 const (
+	// browserCookie 是电脑允许之后的会话令牌。waitCookie 是还在等允许时的浏览器号。
 	browserCookie = "yoyo_session"
 	waitCookie    = "yoyo_wait"
 )
 
-// browserHold is a phone browser waiting for the operator. It has no device key.
-// The one-time nonce and the approval are the credential.
+// browserHold 是正在等电脑允许的手机浏览器。它没有设备密钥，凭的是一次性配对码和电脑上的允许。
 type browserHold struct {
 	ID    string
-	exp   time.Time
+	exp   time.Time // 沿用配对码的到期时刻
 	done  bool
 	allow bool
-	token string
+	token string // 允许成功后写入的会话令牌
 	ch    chan struct{}
 }
 
-// UseStatic is the desktop UI served after the operator allows a browser.
-// Bind may already be listening, so the files are read on the next request.
+// UseStatic 换上允许浏览器之后要提供的桌面静态文件。
+// Bind 可能已经在听，所以清掉已组好的页面处理器，下一次请求才按新文件重做。
 func (n *Node) UseStatic(h http.Handler) {
 	if n == nil {
 		return
@@ -48,6 +52,8 @@ func (n *Node) UseStatic(h http.Handler) {
 	n.mu.Unlock()
 }
 
+// serveBrowser 已经在听就直接返回。端口先取 TLS 端口加 1，结果小于等于 1 或绑不上时改听 :0。
+// 用 net.Listen 提供明文 HTTP，读请求头超时 10 秒。两次都失败时，只在 listenErr 还空着的情况下记下错误。
 func (n *Node) serveBrowser() {
 	n.mu.Lock()
 	if n.httpLn != nil {
@@ -85,6 +91,9 @@ func (n *Node) serveBrowser() {
 	go func() { _ = srv.Serve(ln) }()
 }
 
+// serveBrowserHTTP 先拒绝非私网来源。/open、/open/wait、/open/enter 在允许之前就能进。
+// 其余路径要同时有有效会话和 sameSite。静态资源、以 /api 开头的路径、/rpc 和 /ws 未通过时回 401，别的路径回扫码说明页。
+// 通过之后，最后一段里没有点的响应加上 no-store，再交给会洗 JSON 的页面处理器。
 func (n *Node) serveBrowserHTTP(w http.ResponseWriter, r *http.Request) {
 	if !privatePeer(r.RemoteAddr) {
 		http.Error(w, "只接受局域网里的手机", http.StatusForbidden)
@@ -117,6 +126,7 @@ func (n *Node) serveBrowserHTTP(w http.ResponseWriter, r *http.Request) {
 	rec.finish()
 }
 
+// pageHandler 在 static 没变时复用已经包好的 API 处理器。变了就用 spa 和 markBrowser 重新包一层。
 func (n *Node) pageHandler() http.Handler {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -128,6 +138,8 @@ func (n *Node) pageHandler() http.Handler {
 	return n.pages
 }
 
+// openBrowser 只接受 GET。用查询串 n 核销配对码，失败就说明这枚码只能用一次，并且两分钟后过期。
+// 浏览器号是 b- 加上 4 字节随机数的十六进制。等待 cookie 的 MaxAge 是 180。页面每 1500 毫秒带 cookie 问一次 /open/wait。
 func (n *Node) openBrowser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
@@ -167,9 +179,9 @@ poll();
 </script>`, id))
 }
 
-// enterBrowser sets the session cookie on a document response. WeChat and other
-// in-app browsers often drop Set-Cookie on fetch(), so the next page has to be
-// a real navigation.
+// enterBrowser 在文档响应上写会话 cookie。微信等应用内浏览器经常丢掉 fetch 的 Set-Cookie，之后的 fetch 也不带上，所以必须是一次真正的页面跳转。
+// 还没允许就回说明页。允许之后会话 cookie 的 MaxAge 是 12*60*60，等待 cookie 用 MaxAge -1 清掉，并加上 Refresh 跳到 /。
+// 正文把令牌写进 sessionStorage 的 yoyo_browser，供页面以后放进请求头。
 func (n *Node) enterBrowser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
@@ -192,11 +204,13 @@ func (n *Node) enterBrowser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Refresh", "0;url=/")
-	// WeChat often drops Set-Cookie on fetch and omits cookies on later fetch.
-	// The document navigation stores the token where the page script can send it.
+	// 微信经常丢掉 fetch 上的 Set-Cookie，之后的 fetch 也不带 cookie。这次文档跳转把令牌放进页面脚本能读到的地方。
 	_, _ = fmt.Fprintf(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Yoyo</title><script>try{sessionStorage.setItem("yoyo_browser",%q)}catch(e){}location.replace("/")</script></html>`, token)
 }
 
+// waitBrowser 只接受 GET。没有合法等待号，或找不到这次等待，就回 401 且 denied。
+// 已经过了配对码的到期时刻还没完成，就标成结束。最多堵 15 秒等电脑点允许。
+// 允许后同样写下 MaxAge 为 12*60*60 的会话 cookie，并清掉等待 cookie。被拒绝回 403。还在等就回 pending。
 func (n *Node) waitBrowser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method", http.StatusMethodNotAllowed)
@@ -242,6 +256,8 @@ func (n *Node) waitBrowser(w http.ResponseWriter, r *http.Request) {
 	writeJSONStatus(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// takeOffer 核销一枚配对码并返回它的到期时刻。不存在，或此刻已经晚于 Exp，就返回过期。
+// 删掉之后不放回去。手机 stage 再来，或浏览器再打开同一次，都会失败。
 func (n *Node) takeOffer(nonce string) (time.Time, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -253,6 +269,8 @@ func (n *Node) takeOffer(nonce string) (time.Time, error) {
 	return off.Exp, nil
 }
 
+// settleBrowser 结束一次还没完成的浏览器等待。已经完成或不存在就返回假。
+// 允许时用 32 字节随机数做令牌，sessions 里记 12 小时。随机数失败就把允许改回假。然后关掉等待通道并记审计。
 func (n *Node) settleBrowser(id string, allow bool) bool {
 	n.mu.Lock()
 	b := n.browsers[id]
@@ -278,9 +296,13 @@ func (n *Node) settleBrowser(id string, allow bool) bool {
 	return true
 }
 
+// approveBrowser 把这次浏览器等待记成允许。
 func (n *Node) approveBrowser(id string) bool { return n.settleBrowser(id, true) }
-func (n *Node) denyBrowser(id string) bool    { return n.settleBrowser(id, false) }
 
+// denyBrowser 把这次浏览器等待记成拒绝。
+func (n *Node) denyBrowser(id string) bool { return n.settleBrowser(id, false) }
+
+// browserAuthed 看呈现出来的令牌是否还在 sessions 里，并且此刻没有晚于过期时间。过期的会从 sessions 删掉。
 func (n *Node) browserAuthed(r *http.Request) bool {
 	token := browserPresented(r)
 	if token == "" {
@@ -298,8 +320,8 @@ func (n *Node) browserAuthed(r *http.Request) bool {
 	return true
 }
 
-// browserPresented is the session from the cookie, the page header, or the
-// event-stream query. Fetch in WeChat may not send the cookie the document stored.
+// browserPresented 按 cookie、请求头 X-Yoyo-Session、查询参数 ys 的顺序取会话令牌。
+// 微信里的 fetch 可能不带文档写下的那枚 cookie。
 func browserPresented(r *http.Request) string {
 	if c, err := r.Cookie(browserCookie); err == nil {
 		if tok := cleanSession(c.Value); tok != "" {
@@ -312,6 +334,7 @@ func browserPresented(r *http.Request) string {
 	return cleanSession(r.URL.Query().Get("ys"))
 }
 
+// cleanSession 去掉首尾空白。长度要在 32 到 128 之间，并且只含 0-9 和 a-f。大写十六进制会当成没有令牌。
 func cleanSession(v string) string {
 	v = strings.TrimSpace(v)
 	if len(v) < 32 || len(v) > 128 {
@@ -325,6 +348,7 @@ func cleanSession(v string) string {
 	return v
 }
 
+// waitID 先看查询参数 id。不合法再看等待 cookie。都不是合法浏览器号就返回空字符串。
 func (n *Node) waitID(r *http.Request) string {
 	if id := r.URL.Query().Get("id"); validBrowserID(id) {
 		return id
@@ -336,6 +360,7 @@ func (n *Node) waitID(r *http.Request) string {
 	return c.Value
 }
 
+// validBrowserID 要求前缀是 b-，总长 10，后面每一位都是 0-9 或 a-f。4 字节随机数编码出来正好是这个形状。
 func validBrowserID(id string) bool {
 	if !strings.HasPrefix(id, "b-") || len(id) != 10 {
 		return false
@@ -350,11 +375,10 @@ func validBrowserID(id string) bool {
 	return true
 }
 
+// sameSite 在 Origin 为空或值为 null 时放行。应用内浏览器会这样送，也会送一个不带端口的源。
+// 解析失败或没有主机就拒绝。主机名对上才放行。cookie 是 SameSite 严格，外来站点带不来这枚 cookie。请求头里的令牌也要过这里。
 func sameSite(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
-	// In-app browsers send Origin: null, or an origin without the port, on the
-	// same page that just loaded. A foreign site still cannot present the
-	// session cookie: it is SameSite=Strict.
 	if origin == "" || origin == "null" {
 		return true
 	}
@@ -365,6 +389,7 @@ func sameSite(r *http.Request) bool {
 	return hostMatches(u.Host, r.Host)
 }
 
+// hostMatches 先比整串。不一致时去掉端口再比主机名。去掉之后主机为空则不算相同。
 func hostMatches(a, b string) bool {
 	if strings.EqualFold(a, b) {
 		return true
@@ -380,10 +405,13 @@ func hostMatches(a, b string) bool {
 	return ah != "" && strings.EqualFold(ah, bh)
 }
 
+// isAsset 看路径最后一段里有没有点。有点才当成静态文件。
 func isAsset(p string) bool {
 	return strings.Contains(path.Base(p), ".")
 }
 
+// setBrowserCookie 写 Path 为 /、HttpOnly、SameSite 严格的 cookie。不设 Secure，因为这扇门是明文 HTTP。
+// MaxAge 由调用方传入。负值用来删掉 cookie。
 func setBrowserCookie(w http.ResponseWriter, name, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
@@ -395,12 +423,14 @@ func setBrowserCookie(w http.ResponseWriter, name, value string, maxAge int) {
 	})
 }
 
+// writeJSONStatus 写 JSON 正文和给定的状态码。
 func writeJSONStatus(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeBrowserPage 写一页不缓存的说明 HTML。标题和正文会做转义，extra 原样拼进页面。
 func writeBrowserPage(w http.ResponseWriter, status int, title, body, extra string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -410,15 +440,16 @@ func writeBrowserPage(w http.ResponseWriter, status int, title, body, extra stri
 </style></head><body><main><h1>%s</h1><p>%s</p>%s</main></body></html>`, htmlText(title), htmlText(body), extra)
 }
 
+// htmlText 把 &、<、> 和双引号换成字符引用。
 func htmlText(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;").Replace(s)
 }
 
+// browserTouch 插进这扇门送出的 HTML：关掉拖拽区域，并标上 browser。桌面那条服务器不走这里。
 const browserTouch = `<style id="yoyo-browser-touch">.drag{-webkit-app-region:no-drag!important;app-region:no-drag!important;--wails-draggable:no-drag!important}</style><script>document.documentElement.dataset.browser="1"</script>`
 
-// markBrowser rewrites only the HTML this door serves. The desktop window uses
-// another server, so its drag region stays intact. WeChat treats a drag region
-// as dead to touch, including when the value is unset.
+// markBrowser 只改写这扇门送出的 HTML。桌面窗口用的是另一台服务器，拖拽区域保持原样。
+// 微信把拖拽区域当成点不了的地方，没写值也一样。HEAD 原样转发。其它请求去掉 Range，好把整页攒起来再插入。
 func markBrowser(files http.Handler) http.Handler {
 	if files == nil {
 		return nil
@@ -436,6 +467,7 @@ func markBrowser(files http.Handler) http.Handler {
 	})
 }
 
+// htmlInject 把 HTML 响应攒起来，插入浏览器触摸样式。非 HTML 直接往下写。
 type htmlInject struct {
 	http.ResponseWriter
 	buf     bytes.Buffer
@@ -444,6 +476,7 @@ type htmlInject struct {
 	decided bool
 }
 
+// WriteHeader 只认第一次。HTML 先攒着，其它类型马上写下状态码。
 func (m *htmlInject) WriteHeader(code int) {
 	if m.decided {
 		return
@@ -456,6 +489,7 @@ func (m *htmlInject) WriteHeader(code int) {
 	}
 }
 
+// Write 在还没决定时补上内容类型。HTML 进缓冲区，其它字节直接写出。
 func (m *htmlInject) Write(p []byte) (int, error) {
 	if !m.decided {
 		if m.Header().Get("Content-Type") == "" {
@@ -473,6 +507,7 @@ func (m *htmlInject) Write(p []byte) (int, error) {
 	return m.ResponseWriter.Write(p)
 }
 
+// finish 把插入触摸样式后的 HTML 一次写出，并加上 no-store。不是 HTML 就什么都不做。
 func (m *htmlInject) finish() {
 	if !m.html {
 		return
@@ -488,6 +523,7 @@ func (m *htmlInject) finish() {
 	_, _ = m.ResponseWriter.Write(body)
 }
 
+// injectBrowserTouch 把 browserTouch 放进 head 开始标签后面。没有 head 就接到正文最前。
 func injectBrowserTouch(body []byte) []byte {
 	lower := bytes.ToLower(body)
 	if i := bytes.Index(lower, []byte("<head>")); i >= 0 {
@@ -504,6 +540,7 @@ func injectBrowserTouch(body []byte) []byte {
 	return append(out, body...)
 }
 
+// joinAt 在 at 这个下标处插入 browserTouch。
 func joinAt(body []byte, at int) []byte {
 	out := make([]byte, 0, len(body)+len(browserTouch))
 	out = append(out, body[:at]...)
@@ -511,6 +548,7 @@ func joinAt(body []byte, at int) []byte {
 	return append(out, body[at:]...)
 }
 
+// spa 把最后一段里没有点、且不是 / 的路径改去要 /，让前端路由落到同一份入口。有点的路径原样要文件。files 为空就返回 nil。
 func spa(files http.Handler) http.Handler {
 	if files == nil {
 		return nil
@@ -529,8 +567,9 @@ func spa(files http.Handler) http.Handler {
 	})
 }
 
-// scrubResponse buffers JSON so vault fields can be removed before the bytes leave.
-// Websocket upgrades pass through. json.Encoder may split one value across writes.
+// scrubResponse 把 JSON 正文攒起来，写出前按字段名丢掉密钥。WebSocket 升级直接透传。
+// json.Encoder 可能把一个值拆成多次 Write，所以要等到 finish。内容类型不含 json 的正文不洗。
+// 正文不是合法 JSON，解不开，或重新编码失败时，原样写出，密钥还在。
 type scrubResponse struct {
 	http.ResponseWriter
 	buf      []byte
@@ -540,6 +579,7 @@ type scrubResponse struct {
 	hijacked bool
 }
 
+// WriteHeader 只认第一次。内容类型含 json 时先不往下写状态码，等洗完再写。
 func (s *scrubResponse) WriteHeader(code int) {
 	if s.hijacked || s.decided {
 		return
@@ -554,6 +594,7 @@ func (s *scrubResponse) WriteHeader(code int) {
 	s.decided = true
 }
 
+// Write 在攒 JSON 时只追加缓冲区。已经 Hijack，或内容类型不是 JSON，就直接写出。
 func (s *scrubResponse) Write(p []byte) (int, error) {
 	if s.hijacked {
 		return s.ResponseWriter.Write(p)
@@ -576,6 +617,7 @@ func (s *scrubResponse) Write(p []byte) (int, error) {
 	return s.ResponseWriter.Write(p)
 }
 
+// finish 在攒了 JSON 且没有 Hijack 时，合法 JSON 会按 scrub 重编码再写。洗不成就把原来的字节写出。
 func (s *scrubResponse) finish() {
 	if s.hijacked || !s.hold {
 		return
@@ -598,6 +640,7 @@ func (s *scrubResponse) finish() {
 	_, _ = s.ResponseWriter.Write(cleaned)
 }
 
+// Hijack 标记这条响应已经交给 WebSocket，finish 不再把缓冲区写出。内层没有 Hijacker 就返回错误。
 func (s *scrubResponse) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	h, ok := s.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -607,6 +650,7 @@ func (s *scrubResponse) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return h.Hijack()
 }
 
+// Flush 在正在攒 JSON 或已经 Hijack 时不刷。否则调用内层的 Flusher。
 func (s *scrubResponse) Flush() {
 	if s.hold || s.hijacked {
 		return
@@ -616,8 +660,10 @@ func (s *scrubResponse) Flush() {
 	}
 }
 
+// Unwrap 返回内层 ResponseWriter，外层才能找到 Hijacker 和 Flusher。
 func (s *scrubResponse) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
+// jsonBody 把内容类型转成小写后，看里面有没有 json。
 func jsonBody(ct string) bool {
 	return strings.Contains(strings.ToLower(ct), "json")
 }

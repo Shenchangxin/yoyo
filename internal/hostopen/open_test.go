@@ -1,3 +1,6 @@
+// 本文件锁住 resolveURL 和 URL 对协议的取舍：https 原样返回，file 当成路径，javascript、data、ftp 和无协议被拒绝。
+// 不启动系统程序。由 go test 调用。
+
 package hostopen
 
 import (
@@ -6,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestResolveURLHTTP 要求 https 地址原样返回，并且 file 为假。
 func TestResolveURLHTTP(t *testing.T) {
 	got, file, err := resolveURL("https://example.com/x?q=1")
 	if err != nil {
@@ -19,6 +23,7 @@ func TestResolveURLHTTP(t *testing.T) {
 	}
 }
 
+// TestResolveURLRejects 要求空串、无协议、javascript、data、ftp 和没有主机的 http 都返回错误。
 func TestResolveURLRejects(t *testing.T) {
 	for _, raw := range []string{
 		"",
@@ -34,6 +39,7 @@ func TestResolveURLRejects(t *testing.T) {
 	}
 }
 
+// TestResolveURLFile 要求 file URL 的 file 为真。Windows 上路径含 page.html 且盘符形式可被接受，其他系统的结果里要有 page.html。
 func TestResolveURLFile(t *testing.T) {
 	got, file, err := resolveURL("file:///C:/tmp/page.html")
 	if err != nil {
@@ -53,6 +59,7 @@ func TestResolveURLFile(t *testing.T) {
 	}
 }
 
+// TestURLRejectsUnsafeSchemes 要求 URL 对 javascript、data 和空串返回错误。
 func TestURLRejectsUnsafeSchemes(t *testing.T) {
 	for _, raw := range []string{"javascript:alert(1)", "data:text/html,x", ""} {
 		if err := URL(raw); err == nil {

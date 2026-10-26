@@ -1,3 +1,6 @@
+// 本文件锁住跨度 id 的长度、父子 TraceID 相同，以及 spans.jsonl 里不出现密钥、并留下 parent_span_id。
+// 不启动 OTLP。由 go test 调用。
+
 package observe
 
 import (
@@ -7,6 +10,8 @@ import (
 	"testing"
 )
 
+// TestW3CIdsAndParent 要求 TraceID 长 32、SpanID 长 16，子级沿用父级 TraceID 和 SpanID。
+// 结束后的 spans.jsonl 不得含 sk-live，要有 parent_span_id，并且后来写入的属性里要有 cache_read。
 func TestW3CIdsAndParent(t *testing.T) {
 	dir := t.TempDir()
 	tr := Open(dir)
@@ -31,7 +36,7 @@ func TestW3CIdsAndParent(t *testing.T) {
 		t.Fatalf("missing parent: %s", body)
 	}
 	if !strings.Contains(string(body), `"model.complete"`) && !strings.Contains(string(body), "model.complete") {
-		// parent/child names are in JSON
+		// 父级和子级的名字写在 JSON 里。
 	}
 	child2 := tr.StartChild(parent, "model.complete", "s1", map[string]any{"gen_ai.usage.input_tokens": 12, "gen_ai.usage.cache_read_tokens": 3})
 	tr.End(child2, nil)

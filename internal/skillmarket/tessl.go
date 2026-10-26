@@ -1,3 +1,5 @@
+// 从 api.tessl.io 列技能，文件仍从记录的 GitHub 路径下载。
+
 package skillmarket
 
 import (
@@ -7,6 +9,7 @@ import (
 	"strings"
 )
 
+// TesslBase 是 Tessl API 根地址。测试可以改它。
 var TesslBase = "https://api.tessl.io"
 
 type tesslSkill struct {
@@ -22,6 +25,7 @@ type tesslSkill struct {
 	} `json:"attributes"`
 }
 
+// listTessl 按页收集，最多 40 页。无查询时浏览接口失败会返回 SearchOnly 和 Warning，而不是错误。前 8 条浏览结果标成 Featured。
 func listTessl(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	q := strings.TrimSpace(query)
@@ -66,6 +70,7 @@ func listTessl(query string, limit int) (Catalog, error) {
 	return Catalog{Source: "Tessl", Items: items, Truncated: len(items) >= limit}, nil
 }
 
+// fetchTesslPage 无查询的浏览走 /experimental/skills，失败再以 q=skill 打 /experimental/search。有查询时直接搜索。过滤 type 等于 skill。
 func fetchTesslPage(query string, page, pageSize int, browse bool) ([]tesslSkill, error) {
 	vals := url.Values{
 		"filter[type][eq]": {"skill"},
@@ -95,6 +100,7 @@ func fetchTesslPage(query string, page, pageSize int, browse bool) ([]tesslSkill
 	return resp.Data, nil
 }
 
+// itemFromTessl 用名字做 slug。能解析 sourceUrl 时，ID 带上仓库和目录。名字净化失败返回 false。
 func itemFromTessl(row tesslSkill) (Item, bool) {
 	slug := SanitizeSlug(row.Attributes.Name)
 	if slug == "" {
@@ -133,6 +139,7 @@ func itemFromTessl(row tesslSkill) (Item, bool) {
 	}, true
 }
 
+// fetchTessl 若 remote 是 GitHub 地址就直接下载该目录。否则按 owner/repo/余下路径取详情里的 ref 和 path。GitHub 下载失败且详情里有 skillMdBody 时，只装 SKILL.md。段数不足返回 "tessl: need owner/repo/skill"。
 func fetchTessl(remote string) (PackResult, error) {
 	remote = strings.Trim(strings.ReplaceAll(remote, "\\", "/"), "/")
 	if gh, ok := parseGitHubURL(remote); ok {

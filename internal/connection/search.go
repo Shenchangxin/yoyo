@@ -1,3 +1,5 @@
+// 按协议调用搜索端点。端点为空时，jina、exa、exa-mcp 和 duckduckgo 使用 webcontent 的默认地址。
+
 package connection
 
 import (
@@ -14,8 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/webcontent"
 )
 
-// QuerySearch hits a CapSearch connection. DuckDuckGo-style empty endpoints
-// are not handled here — the runtime falls back to html scrape.
+// QuerySearch 按协议请求搜索。端点为空时，jina、exa、exa-mcp、duckduckgo 填上 webcontent 的默认地址，其他协议返回 no search endpoint。ctx 为 nil 时使用 20 秒超时。
 func QuerySearch(ctx context.Context, c Connection, key, query string) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -76,6 +77,7 @@ func QuerySearch(ctx context.Context, c Connection, key, query string) (string, 
 	}
 }
 
+// searchGET 把 q 加到查询串上，再按给定头发送钥匙。
 func searchGET(ctx context.Context, endpoint, query, header, key string) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -87,11 +89,13 @@ func searchGET(ctx context.Context, endpoint, query, header, key string) (string
 	return searchRaw(ctx, http.MethodGet, u.String(), key, header, key, nil)
 }
 
+// searchJSON 把 body 编成 JSON 并 POST。
 func searchJSON(ctx context.Context, endpoint, key, header, headerVal string, body map[string]any) (string, error) {
 	raw, _ := json.Marshal(body)
 	return searchRaw(ctx, http.MethodPost, endpoint, key, header, headerVal, raw)
 }
 
+// searchRaw 发出请求。钥匙、头名和头值都非空才设置该头。状态码大于等于 300 时返回错误，正文最多保留 400 字节。
 func searchRaw(ctx context.Context, method, endpoint, key, header, headerVal string, body []byte) (string, error) {
 	var rdr io.Reader
 	if len(body) > 0 {
@@ -124,6 +128,7 @@ func searchRaw(ctx context.Context, method, endpoint, key, header, headerVal str
 	return digestSearchJSON(b), nil
 }
 
+// digestSearchJSON 从 results、organic、web、data 或 items 里取出最多 8 条标题、链接和摘要。解析失败则返回原文去空白。成功但没有这些字段时，缩进 JSON 最多 8000 字节。
 func digestSearchJSON(raw []byte) string {
 	var top map[string]any
 	if err := json.Unmarshal(raw, &top); err != nil {
@@ -175,6 +180,7 @@ func digestSearchJSON(raw []byte) string {
 	return s
 }
 
+// asAnySlice 在值是 []any 时返回它，否则返回 nil。
 func asAnySlice(v any) []any {
 	switch t := v.(type) {
 	case []any:
@@ -184,6 +190,7 @@ func asAnySlice(v any) []any {
 	}
 }
 
+// firstString 返回映射里第一个非空白字符串字段。
 func firstString(m map[string]any, keys ...string) string {
 	for _, k := range keys {
 		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {

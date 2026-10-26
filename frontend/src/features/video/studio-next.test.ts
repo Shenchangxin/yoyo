@@ -1,14 +1,19 @@
+/**
+ * 本文件拥有短片下一步判断的断言。不改服务端。
+ */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { studioNext } from "./studio-next.ts";
 
 describe("studio next action", () => {
+  /** 没绑短片时，雷达去收集，选题和制作去开拍。 */
   it("sends an unbound desk to radar or topics", () => {
     assert.equal(studioNext(null, "radar").key, "collect");
     assert.equal(studioNext(null, "topics").pane, "topics");
     assert.equal(studioNext(undefined, "assemble").key, "produce");
   });
 
+  /** 绑上短片后按口播、画面、合成、打包往下走。 */
   it("walks a bound short through VO, stills, cut, pack", () => {
     const base = { id: "1", title: "t" };
     assert.equal(studioNext(base, "assemble").key, "script");

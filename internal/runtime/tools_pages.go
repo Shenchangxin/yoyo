@@ -1,3 +1,5 @@
+// 页面库的读取、列表和提交审阅。review_page 走 WriteWorkspace，ForceAsk 为假。注入当前页正文的截断在 PageInject。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/pages"
 )
 
+// readPage 在 Pages 为空时返回错误。Get 成功后把页面 JSON 标成 untrusted page。
 func (t *WorkspaceTools) readPage(id, spaceID string) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Err: fmt.Errorf("pages store unavailable")}
@@ -22,6 +25,7 @@ func (t *WorkspaceTools) readPage(id, spaceID string) ToolResult {
 	return ToolResult{Content: "untrusted page:\n" + string(b)}
 }
 
+// listPages 在 Pages 为空时返回 []。query 非空则 Search，否则 List。
 func (t *WorkspaceTools) listPages(query, spaceID string) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Content: "[]"}
@@ -36,6 +40,7 @@ func (t *WorkspaceTools) listPages(query, spaceID string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// reviewPage 要求 title 和 content 都非空白。能力请求的级别是 WriteWorkspace，动作是 review_page，ForceAsk 为假。Propose 成功后若有 Inbox 就推一条提案，并返回 awaiting page review。
 func (t *WorkspaceTools) reviewPage(args map[string]any) ToolResult {
 	if t == nil || t.Pages == nil {
 		return ToolResult{Err: fmt.Errorf("pages store unavailable")}
@@ -86,6 +91,7 @@ func (t *WorkspaceTools) reviewPage(args map[string]any) ToolResult {
 	return ToolResult{Content: "awaiting page review " + string(payload)}
 }
 
+// PageInject 把标题和正文标成不可信来源。两者都空则返回空串。再用 capRunes 按 budget 截断。
 func PageInject(title, body string, budget int) string {
 	title = strings.TrimSpace(title)
 	body = strings.TrimSpace(body)

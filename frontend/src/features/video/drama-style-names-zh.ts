@@ -1,3 +1,7 @@
+/**
+ * EXTRA_STYLE_NAMES_ZH 把额外风格值映射成简体中文名。
+ * 本文件只拥有这些名字。不拥有画面提示词，不改服务端，只给界面投影用。
+ */
 export const EXTRA_STYLE_NAMES_ZH: Record<string, string> = {
   toon3d: "三渲二",
   q3d: "Q版3D",

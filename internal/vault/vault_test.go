@@ -1,3 +1,7 @@
+// 锁住文件往返：Set 写入的 default 能被 Get 读回，同一目录再次 New 后仍然能读到。
+// vault.json 权限为 0o600 或 0o666 时通过；其他权限只在路径分隔符是 / 时失败。
+// 本测试不锁环境变量回落，也不锁钥匙串里的值。
+
 package vault
 
 import (
@@ -6,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestFileRoundTrip 确认密钥经文件重开后仍能读回，并检查 vault.json 的权限。
 func TestFileRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := New(dir)
@@ -24,7 +29,7 @@ func TestFileRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if st.Mode().Perm() != 0o600 && st.Mode().Perm() != 0o666 {
-		// Windows may not honor 0600; Unix must.
+		// 分隔符为 / 时，0o600 和 0o666 以外的权限失败。
 		if filepath.Separator == '/' && st.Mode().Perm() != 0o600 {
 			t.Fatalf("perm %v", st.Mode().Perm())
 		}

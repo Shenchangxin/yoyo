@@ -1,14 +1,13 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized composer attachment rail + drop overlay.
+ * 拥有：输入栏上的附件条和拖放遮罩。
+ * 不拥有：上传。移除交给外面，不调用 api。
  */
 import { useEffect, useMemo, useState } from "react";
 import { Camera, Paperclip, X } from "lucide-react";
 import type { Attachment } from "../../lib/protocol";
 import { useCopy } from "../../lib/i18n";
 
+/** AttachmentRail 把附件排成一排，点一下交给外面移除。 */
 export function AttachmentRail(props: {
   items: Attachment[];
   onRemove: (index: number) => void;
@@ -23,12 +22,14 @@ export function AttachmentRail(props: {
   );
 }
 
+/** DropOverlay 在拖进文件时盖住一层提示。 */
 export function DropOverlay(props: { active: boolean; label?: string }) {
   const copy = useCopy();
   if (!props.active) return null;
   return <div className="sc-drop">{props.label || copy.composer.attach}</div>;
 }
 
+/** 画一张附件：图片用缩略图，其余用文件名。 */
 function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove: () => void }) {
   const name = att.name || att.path || "file";
   const preview = useMemo(() => {

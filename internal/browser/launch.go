@@ -1,3 +1,7 @@
+// 本文件拥有 Chrome 启动参数、DevToolsActivePort 等待，以及用户目录锁。
+// 隔离启动的调试端口由调用方传入，通常是 freePort 得到的端口，写进 --remote-debugging-port。参数里有 --remote-allow-origins=*，不设置 --remote-debugging-address。
+// 无头等待 20 秒，有头等待 8 秒。
+
 package browser
 
 import (
@@ -9,9 +13,13 @@ import (
 	"time"
 )
 
+// chromeReadyWait 是无头 Chrome 等到调试端口起来的时间，20 秒。
 const chromeReadyWait = 20 * time.Second
+
+// chromeHeadedReadyWait 是有头 Chrome 等到调试端口起来的时间，8 秒。
 const chromeHeadedReadyWait = 8 * time.Second
 
+// chromeLaunchArgs 拼出用户目录、调试端口和禁用项。headed 为假时加 --headless=new 和 --disable-gpu；为真时加新窗口并关掉崩溃恢复气泡。startURL 空白时用 about:blank。
 func chromeLaunchArgs(profile string, port int, headed bool, startURL string) []string {
 	args := []string{
 		"--user-data-dir=" + profile,
@@ -49,6 +57,7 @@ func chromeLaunchArgs(profile string, port int, headed bool, startURL string) []
 	return append(args, startURL)
 }
 
+// resetChromeSession 删掉用户目录和 Default 子目录里的当前会话、上次会话和 Sessions，避免有头窗口恢复旧标签。
 func resetChromeSession(profile string) {
 	profile = strings.TrimSpace(profile)
 	if profile == "" {
@@ -66,10 +75,12 @@ func resetChromeSession(profile string) {
 	}
 }
 
+// waitDevToolsPort 等到 DevToolsActivePort 里的端口在本机上可访问。等价于 hint 为 0 的 waitChromeDebug。
 func waitDevToolsPort(profile string, deadline time.Time) (int, error) {
 	return waitChromeDebug(profile, 0, deadline)
 }
 
+// waitChromeDebug 在截止时间前等调试端口。hint 大于 0 时先看 127.0.0.1:hint 是否已在听；否则读 DevToolsActivePort，并确认那个端口真的在听。超时错误文案是 chrome debug port did not come up。
 func waitChromeDebug(profile string, hint int, deadline time.Time) (int, error) {
 	path := filepath.Join(profile, "DevToolsActivePort")
 	var last error
@@ -97,6 +108,7 @@ func waitChromeDebug(profile string, hint int, deadline time.Time) (int, error) 
 	return 0, fmt.Errorf("browser: chrome debug port did not come up: %w", last)
 }
 
+// readDevToolsActivePort 读文件第一行作为端口。不是正整数时返回错误。
 func readDevToolsActivePort(path string) (int, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -110,6 +122,7 @@ func readDevToolsActivePort(path string) (int, error) {
 	return port, nil
 }
 
+// waitProfileUnlocked 等到 SingletonLock、SingletonSocket、SingletonCookie 和 lockfile 都消失。d 小于等于 0 时等 3 秒。到点仍在就删掉这些锁文件。
 func waitProfileUnlocked(profile string, d time.Duration) {
 	if d <= 0 {
 		d = 3 * time.Second

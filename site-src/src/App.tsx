@@ -1,3 +1,8 @@
+/**
+ * 拥有：产品站的页面，包括主题、语言、下载按钮和四段演示。
+ * 不拥有：桌面应用本身。下载地址来自 release.ts。
+ */
+
 import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { COPY, detectLang, htmlLang, type GateKind, type Lang, type Scene } from "./copy";
 import { detectOs, FALLBACK_VERSION, fallbackAssets, hydrateRelease, RELEASES, type Asset } from "./release";
@@ -10,12 +15,14 @@ const REPO = "https://github.com/Shenchangxin/yoyo";
 type Theme = "light" | "dark";
 type RefKey = "staging" | "canary" | "active";
 
+/** initialTheme 先看地址栏的 theme，再看文档根上已经写下的 data-theme。都不是 dark 就是 light。 */
 function initialTheme(): Theme {
   const query = new URLSearchParams(window.location.search).get("theme");
   if (query === "dark" || query === "light") return query;
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
+/** App 渲染产品站。语言、主题、演示场景和发布资源都放在这里。 */
 export function App() {
   const [lang, setLang] = useState<Lang>(() => detectLang());
   const [theme, setTheme] = useState<Theme>(() => initialTheme());
@@ -632,6 +639,7 @@ export function App() {
   );
 }
 
+/** Lines 按换行把标题拆成多行，每行一个 span。 */
 function Lines({ text, as: Tag = "h2", id }: { text: string; as?: "h1" | "h2"; id?: string }) {
   return (
     <Tag id={id}>
@@ -644,6 +652,7 @@ function Lines({ text, as: Tag = "h2", id }: { text: string; as?: "h1" | "h2"; i
   );
 }
 
+/** InlineCode 把成对反引号里的片段渲成 code，其余保持正文。 */
 function InlineCode({ text }: { text: string }) {
   return (
     <>
@@ -652,6 +661,7 @@ function InlineCode({ text }: { text: string }) {
   );
 }
 
+/** LangSwitch 在英文、简体中文和日文之间切换。 */
 function LangSwitch({ lang, onPick }: { lang: Lang; onPick: (lang: Lang) => void }) {
   return (
     <div className="lang" role="group" aria-label="Language">
@@ -670,6 +680,7 @@ function LangSwitch({ lang, onPick }: { lang: Lang; onPick: (lang: Lang) => void
   );
 }
 
+/** Mark 是页眉上的标志，只作装饰。 */
 function Mark() {
   return (
     <svg className="brand-mark" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true">
@@ -683,6 +694,7 @@ function Mark() {
   );
 }
 
+/** DownloadIcon 是下载按钮上的箭头。 */
 function DownloadIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -691,6 +703,7 @@ function DownloadIcon() {
   );
 }
 
+/** SunIcon 表示切到浅色。 */
 function SunIcon() {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -700,6 +713,7 @@ function SunIcon() {
   );
 }
 
+/** MoonIcon 表示切到深色。 */
 function MoonIcon() {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -708,6 +722,7 @@ function MoonIcon() {
   );
 }
 
+/** MenuIcon 在菜单打开时画叉，收起时画两条横线。 */
 function MenuIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">

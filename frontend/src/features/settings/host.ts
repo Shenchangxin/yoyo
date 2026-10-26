@@ -1,5 +1,10 @@
+/**
+ * 拥有：设置页拿到的配置、健康和动作回调的形状。
+ * 不拥有：具体面板。类型本身不调用 api；patch 等回调会。
+ */
 import type { AppConfig, Health } from "../../lib/protocol";
 
+/** SettingsHost 是面板能读到的配置，以及保存、探测和更新用的回调。 */
 export type SettingsHost = {
   cfg: AppConfig;
   health: Health;

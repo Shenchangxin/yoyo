@@ -1,5 +1,8 @@
+// 内置调色板 ink、dim、slate、neutral、paper、mist。dim 和 slate 叠在 ink 上，paper 和 mist 叠在 neutral 上。
+
 package skin
 
+// cloneMap 复制一份 TokenMap。
 func cloneMap(src TokenMap) TokenMap {
 	out := make(TokenMap, len(src))
 	for k, v := range src {
@@ -8,6 +11,7 @@ func cloneMap(src TokenMap) TokenMap {
 	return out
 }
 
+// mergeMap 先复制 base，再用 over 覆盖同名键。
 func mergeMap(base, over TokenMap) TokenMap {
 	out := cloneMap(base)
 	for k, v := range over {
@@ -16,6 +20,7 @@ func mergeMap(base, over TokenMap) TokenMap {
 	return out
 }
 
+// ink 是深色调色板的完整令牌。
 var ink = TokenMap{
 	"--background":       "#1c1c1a",
 	"--foreground":       "#f4f4f0",
@@ -57,6 +62,7 @@ var ink = TokenMap{
 	"--ctx-free":         "color-mix(in srgb, var(--muted) 18%, transparent)",
 }
 
+// dimOver 是叠在 ink 上的 dim 差异。
 var dimOver = TokenMap{
 	"--background": "#242422",
 	"--foreground": "#f5f5f1",
@@ -70,6 +76,7 @@ var dimOver = TokenMap{
 	"--muted":      "#999891",
 }
 
+// slateOver 是叠在 ink 上的 slate 差异。
 var slateOver = TokenMap{
 	"--background": "#121212",
 	"--foreground": "#f5f5f5",
@@ -84,6 +91,7 @@ var slateOver = TokenMap{
 	"--ctx-system": "color-mix(in srgb, var(--foreground) 32%, #8a9098)",
 }
 
+// neutral 是浅色调色板的完整令牌。
 var neutral = TokenMap{
 	"--background":       "#fbfbfa",
 	"--foreground":       "#1c1c1a",
@@ -125,6 +133,7 @@ var neutral = TokenMap{
 	"--ctx-free":         "color-mix(in srgb, var(--muted) 16%, transparent)",
 }
 
+// paperOver 是叠在 neutral 上的 paper 差异。
 var paperOver = TokenMap{
 	"--background": "#f6f3ec",
 	"--foreground": "#1a1916",
@@ -137,6 +146,7 @@ var paperOver = TokenMap{
 	"--muted":      "#6d6a62",
 }
 
+// mistOver 是叠在 neutral 上的 mist 差异。
 var mistOver = TokenMap{
 	"--background":      "#f6f8fa",
 	"--foreground":      "#1b1f24",
@@ -153,7 +163,7 @@ var mistOver = TokenMap{
 	"--ctx-system":      "color-mix(in srgb, var(--foreground) 22%, #7a8aa0)",
 }
 
-// Palette returns the fully resolved token map for a builtin palette id.
+// Palette 返回一份内置调色板的副本。dim 和 slate 由 ink 合并而来，paper 和 mist 由 neutral 合并而来。未知 id 返回假。
 func Palette(id string) (TokenMap, bool) {
 	switch id {
 	case "ink":
@@ -173,6 +183,7 @@ func Palette(id string) (TokenMap, bool) {
 	}
 }
 
+// PairForBuiltin 给 ink、dim、slate 配上浅色 neutral，给 neutral、paper、mist 配上深色 ink。其他 id 返回 ink 和 neutral。
 func PairForBuiltin(id string) (dark, light string) {
 	switch id {
 	case "ink", "dim", "slate":
@@ -184,6 +195,7 @@ func PairForBuiltin(id string) (dark, light string) {
 	}
 }
 
+// BuiltinInfo 返回 ID 为 builtin.<id> 的 Info，PreserveEvidence 为真。
 func BuiltinInfo(id string) Info {
 	name := stringsTitle(id)
 	dark, light := PairForBuiltin(id)
@@ -197,6 +209,7 @@ func BuiltinInfo(id string) Info {
 	}
 }
 
+// stringsTitle 只把第一个字节对应的 ASCII 小写字母改成大写，其余原样。
 func stringsTitle(id string) string {
 	if id == "" {
 		return id
@@ -204,6 +217,7 @@ func stringsTitle(id string) string {
 	return stringsToUpper(id[:1]) + id[1:]
 }
 
+// stringsToUpper 只把第一个 ASCII 小写字母改成大写。
 func stringsToUpper(s string) string {
 	if s == "" {
 		return s
@@ -215,6 +229,7 @@ func stringsToUpper(s string) string {
 	return string(r)
 }
 
+// BuiltinIDs 按 ink、dim、slate、neutral、paper、mist 的顺序返回。
 func BuiltinIDs() []string {
 	return []string{"ink", "dim", "slate", "neutral", "paper", "mist"}
 }

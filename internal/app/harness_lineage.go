@@ -1,3 +1,5 @@
+// harness 谱系、物化目录，以及在系统里打开对应路径。
+
 package app
 
 import (
@@ -14,8 +16,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/hostopen"
 )
 
+// lineageCap 是谱系从引用往父节点走时最多纳入的快照数。
 const lineageCap = 200
 
+// HarnessDirs 是 home、内容寻址存储、引用和归档的目录。
 type HarnessDirs struct {
 	Home    string `json:"home"`
 	CAS     string `json:"cas"`
@@ -23,6 +27,7 @@ type HarnessDirs struct {
 	Archive string `json:"archive"`
 }
 
+// LineageNode 是谱系里的一个快照：父节点、引用名、材料差异和归档信息。
 type LineageNode struct {
 	Hash        string                    `json:"hash"`
 	Parent      string                    `json:"parent,omitempty"`
@@ -39,12 +44,14 @@ type LineageNode struct {
 	FromArchive bool                      `json:"from_archive,omitempty"`
 }
 
+// HarnessLineage 是当前 active、目录和谱系节点。
 type HarnessLineage struct {
 	Active string        `json:"active"`
 	Dirs   HarnessDirs   `json:"dirs"`
 	Nodes  []LineageNode `json:"nodes"`
 }
 
+// HarnessDirs 返回 home 下内容寻址存储、引用和归档的路径。没有 home 时返回空。
 func (a *App) HarnessDirs() HarnessDirs {
 	if a.Home == nil {
 		return HarnessDirs{}
@@ -57,6 +64,7 @@ func (a *App) HarnessDirs() HarnessDirs {
 	}
 }
 
+// HarnessState 汇总 active、全部引用、当前快照、目录和谱系节点。
 func (a *App) HarnessState() (map[string]any, error) {
 	refs, err := a.ListHarnesses()
 	if err != nil {
@@ -73,6 +81,7 @@ func (a *App) HarnessState() (map[string]any, error) {
 	}, nil
 }
 
+// HarnessLineage 从引用和归档里的快照沿父节点回溯，并带上材料差异。
 func (a *App) HarnessLineage() (HarnessLineage, error) {
 	out := HarnessLineage{Active: a.ActiveHash(), Dirs: a.HarnessDirs()}
 	if a.CAS == nil {
@@ -171,6 +180,7 @@ func (a *App) HarnessLineage() (HarnessLineage, error) {
 	return out, nil
 }
 
+// MaterializeSnapshot 把快照和其中的 playbook、循环、策略、评测、提示、技能写到临时目录，并写 MANIFEST。
 func (a *App) MaterializeSnapshot(hash string) (string, error) {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -242,6 +252,7 @@ func (a *App) MaterializeSnapshot(hash string) (string, error) {
 	return dir, nil
 }
 
+// RevealHarness 在系统里打开快照的物化目录。哈希为空时打开内容寻址存储目录；物化失败则尝试打开该哈希的存储文件。
 func (a *App) RevealHarness(hash string) error {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -263,6 +274,7 @@ func (a *App) RevealHarness(hash string) error {
 	return hostopen.Path(dir)
 }
 
+// writeJSONFile 把值缩进写成 JSON 文件，并补上一行换行。
 func writeJSONFile(path string, v any) error {
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -275,6 +287,7 @@ func writeJSONFile(path string, v any) error {
 	return os.WriteFile(path, raw, 0o644)
 }
 
+// shortRef 取哈希前 12 个字符。空哈希返回 harness。
 func shortRef(hash string) string {
 	hash = strings.TrimSpace(hash)
 	if len(hash) > 12 {
@@ -286,6 +299,7 @@ func shortRef(hash string) string {
 	return hash
 }
 
+// sanitizeFile 把路径里不能做文件名的字符换成下划线。
 func sanitizeFile(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Map(func(r rune) rune {
@@ -302,6 +316,7 @@ func sanitizeFile(s string) string {
 	return s
 }
 
+// sortedCopy 返回排序后的副本。空切片返回 nil。
 func sortedCopy(in []string) []string {
 	if len(in) == 0 {
 		return nil

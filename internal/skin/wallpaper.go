@@ -1,3 +1,5 @@
+// 把壁纸和预览图限制在长边以内。未超过长边的图原样返回，超过的改成 JPEG。宽乘高超过 MaxDecodePixels 则拒绝。
+
 package skin
 
 import (
@@ -15,13 +17,15 @@ import (
 )
 
 const (
-	// Long edge stored for wallpapers. Phone/4K/5K photos are accepted then downsampled.
+	// MaxWallpaperEdge 是壁纸长边上限，值为 3840。超过的图会缩小后再保存。
 	MaxWallpaperEdge = 3840
-	MaxPreviewEdge   = 1280
-	// Decode budget: 80MP covers 48MP phone sensors with headroom; larger is treated as hostile.
+	// MaxPreviewEdge 是预览图长边上限，值为 1280。
+	MaxPreviewEdge = 1280
+	// MaxDecodePixels 是宽乘高的解码上限，值为 80000000。超过则拒绝解码。
 	MaxDecodePixels = 80_000_000
 )
 
+// fitImage 在宽乘高超过 MaxDecodePixels 时返回错误。未超过 maxEdge 的原样返回。超过的缩小后用质量 86 编成 JPEG，扩展名改成 .jpg。maxEdge 不大于 0 时用 MaxWallpaperEdge。
 func fitImage(body []byte, name string, maxEdge int) ([]byte, string, error) {
 	if len(body) == 0 {
 		return nil, "", fmt.Errorf("%s is empty", name)
@@ -58,6 +62,7 @@ func fitImage(body []byte, name string, maxEdge int) ([]byte, string, error) {
 	return buf.Bytes(), withExt(name, ".jpg"), nil
 }
 
+// imageConfig 读取图片尺寸。扩展名是 .webp 时用 webp 解码配置。
 func imageConfig(body []byte, name string) (image.Config, error) {
 	r := bytes.NewReader(body)
 	if strings.ToLower(path.Ext(name)) == ".webp" {
@@ -67,6 +72,7 @@ func imageConfig(body []byte, name string) (image.Config, error) {
 	return cfg, err
 }
 
+// decodeAnyImage 解码图片。扩展名是 .webp 时走 webp，否则走 image.Decode。
 func decodeAnyImage(body []byte, name string) (image.Image, error) {
 	r := bytes.NewReader(body)
 	if strings.ToLower(path.Ext(name)) == ".webp" {
@@ -76,6 +82,7 @@ func decodeAnyImage(body []byte, name string) (image.Image, error) {
 	return img, err
 }
 
+// fitEdge 把较长边收到 maxEdge，另一边按比例缩小，至少为 1。两边都未超过时原样返回。
 func fitEdge(w, h, maxEdge int) (int, int) {
 	if w <= maxEdge && h <= maxEdge {
 		return w, h
@@ -86,6 +93,7 @@ func fitEdge(w, h, maxEdge int) (int, int) {
 	return max(1, w*maxEdge/h), maxEdge
 }
 
+// withExt 替换文件扩展名，保留目录。
 func withExt(name, ext string) string {
 	dir := path.Dir(name)
 	base := strings.TrimSuffix(path.Base(name), path.Ext(name))

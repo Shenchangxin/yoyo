@@ -1,3 +1,5 @@
+// browser_act 的步骤解析。步数上限、未知操作和隔离浏览器缺失都在这里锁住。
+
 package runtime
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestParseBrowserSteps 确认别名被收成规范操作，普通 wait 超过 5000 毫秒被截断。
 func TestParseBrowserSteps(t *testing.T) {
 	steps, err := parseBrowserSteps([]any{
 		map[string]any{"op": "click", "selector": "#startBtn", "check": "launch"},
@@ -20,6 +23,7 @@ func TestParseBrowserSteps(t *testing.T) {
 	}
 }
 
+// TestParseBrowserStepsJSONString 确认步骤可以是 JSON 字符串。
 func TestParseBrowserStepsJSONString(t *testing.T) {
 	steps, err := parseBrowserSteps(`[{"op":"click","selector":"text=Start"}]`)
 	if err != nil || len(steps) != 1 || steps[0].Selector != "text=Start" {
@@ -27,6 +31,7 @@ func TestParseBrowserStepsJSONString(t *testing.T) {
 	}
 }
 
+// TestParseBrowserStepsCap 确认超过 maxBrowserActSteps 的数组被拒绝。
 func TestParseBrowserStepsCap(t *testing.T) {
 	raw := make([]any, maxBrowserActSteps+1)
 	for i := range raw {
@@ -37,12 +42,14 @@ func TestParseBrowserStepsCap(t *testing.T) {
 	}
 }
 
+// TestParseBrowserStepRejectsUnknown 确认未知操作 cdp 被拒绝。
 func TestParseBrowserStepRejectsUnknown(t *testing.T) {
 	if _, err := parseBrowserStep(map[string]any{"op": "cdp"}); err == nil {
 		t.Fatal("expected unknown op")
 	}
 }
 
+// TestParseBrowserStepFillAndRef 确认 fill 带 ref 时写成 ref=inp_0，条件 wait 的 9000 毫秒不被截断。
 func TestParseBrowserStepFillAndRef(t *testing.T) {
 	st, err := parseBrowserStep(map[string]any{"op": "fill", "ref": "inp_0", "text": "hi"})
 	if err != nil || st.Op != "fill" || st.Selector != "ref=inp_0" || st.Text != "hi" {
@@ -66,6 +73,7 @@ func TestParseBrowserStepFillAndRef(t *testing.T) {
 	}
 }
 
+// TestFormatBrowserActStops 确认第一次失败时正文写明 stopped。
 func TestFormatBrowserActStops(t *testing.T) {
 	got := formatBrowserAct([]browserStepResult{
 		{Index: 1, Op: "click", OK: true, Detail: "clicked #a"},
@@ -76,6 +84,7 @@ func TestFormatBrowserActStops(t *testing.T) {
 	}
 }
 
+// TestBrowserActRequiresIsolatedChrome 确认没有隔离浏览器时返回 no isolated browser。
 func TestBrowserActRequiresIsolatedChrome(t *testing.T) {
 	tools := &WorkspaceTools{Workspace: t.TempDir()}
 	res := tools.Call("browser_act", `{"steps":[{"op":"click","selector":"#a"}]}`)

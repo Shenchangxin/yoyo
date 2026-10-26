@@ -1,3 +1,9 @@
+/**
+ * 拥有：偶像对话的消息列表、输入区，以及只读、结束和冷却条。
+ * 不拥有：发送、换段和打开工作的请求，那些交给回调。
+ * 这是投影，不改服务端。照片气泡按 id 读取 blob，不改会话。
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { Phone, Send } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -8,6 +14,7 @@ import { str } from "../../lib/normalize";
 import { cn } from "../../lib/utils";
 import { clock, hexAlpha, imageURL, type Idol, type Line } from "./model";
 
+/** IdolChat 渲染消息、待发送句和输入区。靠近底部时跟着滚。只读、结束或冷却时换成对应的底栏。回车发送，Shift+回车换行。 */
 export function IdolChat(props: {
   idol: Idol;
   lines: Line[];
@@ -136,6 +143,7 @@ export function IdolChat(props: {
   );
 }
 
+/** 渲染一行用户、偶像或事件。偶像带照片、分数或工作会话时给出对应块。 */
 function Bubble(props: {
   line: Line;
   color: string;
@@ -179,6 +187,7 @@ function Bubble(props: {
   );
 }
 
+/** 按 blob id 读取图片并显示。还没有数据时留一块空位。 */
 function BlobImage({ id }: { id: string }) {
   const [src, setSrc] = useState("");
   useEffect(() => {

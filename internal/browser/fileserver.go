@@ -1,3 +1,6 @@
+// 本文件用 127.0.0.1 上的临时端口提供工作区里的本地 HTML，并判断当前文档要不要重新导航。
+// 同一目录复用已有文件服务。路径逃出根目录返回 404。Chrome 把 index.html 报成 / 时，sameDocumentURL 仍视为同一份文档，避免点击或截图把页面重新加载掉。
+
 package browser
 
 import (
@@ -12,6 +15,7 @@ import (
 	"time"
 )
 
+// SetPreview 记下要预览的本地绝对路径。
 func (h *Host) SetPreview(abs string) {
 	if h == nil {
 		return
@@ -21,6 +25,7 @@ func (h *Host) SetPreview(abs string) {
 	h.mu.Unlock()
 }
 
+// PreviewPath 返回当前预览路径。宿主为空时返回空字符串。
 func (h *Host) PreviewPath() string {
 	if h == nil {
 		return ""
@@ -30,6 +35,7 @@ func (h *Host) PreviewPath() string {
 	return h.preview
 }
 
+// OpenLocal 把本地文件设成预览，用文件服务得到地址，再确保 Chrome 并导航过去。目录会被拒绝。这里不取走页面错误，留给之后报告打开结果的调用方用 PageErrors。
 func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 	if h == nil {
 		return Snapshot{}, fmt.Errorf("browser: no host")
@@ -64,16 +70,11 @@ func (h *Host) OpenLocal(abs string) (Snapshot, error) {
 	if snap.URL == "" {
 		snap.URL = raw
 	}
-	// Page errors are not drained here. EnsurePreview discards this snapshot,
-	// so errors taken here would be lost; the caller that reports the open
-	// takes them with PageErrors.
+	// 这里不取走页面错误。EnsurePreview 会丢掉这份快照，取走的错误就没了；报告这次打开的调用方再用 PageErrors 取。
 	return snap, nil
 }
 
-// EnsureLocal starts isolated Chrome on abs if needed, but does not reload a
-// document already showing that file. Playwright page.screenshot / page.click
-// never call page.goto; session facb2e21ba0b31a3 lost every click because
-// screenshot/click always navigated back to the boot screen.
+// EnsureLocal 在需要时启动隔离 Chrome 打开 abs。当前文档已经是这个文件时不重新加载，只同步视图。
 func (h *Host) EnsureLocal(abs string) (Snapshot, error) {
 	if h == nil {
 		return Snapshot{}, fmt.Errorf("browser: no host")
@@ -87,6 +88,7 @@ func (h *Host) EnsureLocal(abs string) (Snapshot, error) {
 	return h.OpenLocal(abs)
 }
 
+// EnsurePreview 有预览路径时 EnsureLocal，否则按 previewStartURL 确保 Chrome 已启动。
 func (h *Host) EnsurePreview() error {
 	if h == nil {
 		return fmt.Errorf("browser: no host")
@@ -98,10 +100,12 @@ func (h *Host) EnsurePreview() error {
 	return h.ensureChrome(h.previewStartURL())
 }
 
+// ShowingLocal 在 Chrome 还活着且当前地址和这个文件是同一份文档时返回真。
 func (h *Host) ShowingLocal(abs string) bool {
 	return !shouldReloadLocal(h.chromeAlive(), h.liveURL(), h.wantLocalURL(abs))
 }
 
+// chromeAlive 看当前 CDP 连接的读循环是否还在。
 func (h *Host) chromeAlive() bool {
 	if h == nil {
 		return false
@@ -112,6 +116,7 @@ func (h *Host) chromeAlive() bool {
 	return cdpAlive(c)
 }
 
+// liveURL 返回宿主记下的当前地址。
 func (h *Host) liveURL() string {
 	if h == nil {
 		return ""
@@ -121,6 +126,7 @@ func (h *Host) liveURL() string {
 	return h.url
 }
 
+// wantLocalURL 在文件服务的根就是该文件所在目录时，返回文件服务上的地址。否则返回空字符串。
 func (h *Host) wantLocalURL(abs string) string {
 	if h == nil {
 		return ""
@@ -137,6 +143,7 @@ func (h *Host) wantLocalURL(abs string) string {
 	return h.fileURL + "/" + url.PathEscape(filepath.Base(abs))
 }
 
+// snapshotLocked 在锁内抄一份地址、标题、正文、配置路径和控件文本。
 func (h *Host) snapshotLocked() Snapshot {
 	if h == nil {
 		return Snapshot{}
@@ -146,6 +153,7 @@ func (h *Host) snapshotLocked() Snapshot {
 	return Snapshot{URL: h.url, Title: h.title, Text: h.snap, Profile: h.profile, Actions: h.actions}
 }
 
+// shouldReloadLocal 在 Chrome 不在、想要的地址为空，或两份地址不是同一文档时返回真。
 func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
 	if !chromeAlive || strings.TrimSpace(wantURL) == "" {
 		return true
@@ -153,6 +161,7 @@ func shouldReloadLocal(chromeAlive bool, liveURL, wantURL string) bool {
 	return !sameDocumentURL(liveURL, wantURL)
 }
 
+// sameDocumentURL 比较方案、主机和规范化后的路径。解析失败时只比较去掉末尾斜杠的原文字符串。
 func sameDocumentURL(live, want string) bool {
 	live = strings.TrimSpace(live)
 	want = strings.TrimSpace(want)
@@ -170,10 +179,7 @@ func sameDocumentURL(live, want string) bool {
 	return normalizeDocPath(a.Path) == normalizeDocPath(b.Path)
 }
 
-// normalizeDocPath maps the paths of one document to one key. Chrome reports
-// the served index.html as "/" after the file server redirects it, so without
-// this every browser_click or browser_screenshot saw a "different" page and
-// reloaded it, wiping the game state.
+// normalizeDocPath 把同一份文档的路径收成一个键。末尾的 /index.html 和 /index.htm 去掉，这样 Chrome 重定向后的 / 和 index.html 算同一页。
 func normalizeDocPath(p string) string {
 	p, _ = url.PathUnescape(strings.TrimSuffix(p, "/"))
 	for _, idx := range []string{"/index.html", "/index.htm"} {
@@ -184,6 +190,7 @@ func normalizeDocPath(p string) string {
 	return strings.TrimSuffix(p, "/")
 }
 
+// serveFileURL 在 127.0.0.1 的临时端口上提供该文件所在目录。根目录没变时复用已有服务。空路径对应该文件本身。含 .. 或逃出目录的请求返回 404。
 func (h *Host) serveFileURL(abs string) (string, error) {
 	root := filepath.Dir(abs)
 	base := filepath.Base(abs)
@@ -235,6 +242,7 @@ func (h *Host) serveFileURL(abs string) (string, error) {
 	return u + "/" + url.PathEscape(base), nil
 }
 
+// closeFileServer 关掉文件服务并清掉根和地址。最多等 500 毫秒。
 func (h *Host) closeFileServer() {
 	h.mu.Lock()
 	srv := h.fileSrv
@@ -249,6 +257,7 @@ func (h *Host) closeFileServer() {
 	}
 }
 
+// withinDir 判断 p 是否仍在 root 里面。相对路径是 .. 或以 .. 加分隔符开头时返回假。
 func withinDir(root, p string) bool {
 	root = filepath.Clean(root)
 	p = filepath.Clean(p)

@@ -1,3 +1,5 @@
+// 从轨迹和失败题里归纳机制簇，并给既有通过又有失败的重复配上对照。不调用模型。Cycle 用它生成证据，held 与安全题不进失败表。
+
 package evolve
 
 import (
@@ -7,16 +9,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// Signature 是一道失败题的验证原因、因果地位和智能体机制。
 type Signature struct {
 	VerifierCause  string `json:"verifier_cause"`
 	CausalStatus   string `json:"causal_status"`
 	AgentMechanism string `json:"agent_mechanism"`
 }
 
+// Key 把三个字段用竖线接成簇键。
 func (s Signature) Key() string {
 	return s.VerifierCause + "|" + s.CausalStatus + "|" + s.AgentMechanism
 }
 
+// Cluster 是同一签名下的题号和症状。
 type Cluster struct {
 	Signature Signature `json:"signature"`
 	Size      int       `json:"size"`
@@ -24,12 +29,14 @@ type Cluster struct {
 	Symptoms  []string  `json:"symptoms"`
 }
 
+// ContrastivePair 是同一题既失败又通过时的两侧摘要。
 type ContrastivePair struct {
 	TaskID string `json:"task_id"`
 	Fail   string `json:"fail,omitempty"`
 	Pass   string `json:"pass,omitempty"`
 }
 
+// EvidenceBundle 是簇、通过摘要、先前试用和对照对。
 type EvidenceBundle struct {
 	Clusters []Cluster         `json:"clusters"`
 	Passing  []PassSummary     `json:"passing,omitempty"`
@@ -37,6 +44,7 @@ type EvidenceBundle struct {
 	Pairs    []ContrastivePair `json:"pairs,omitempty"`
 }
 
+// Mine 按失败题归簇。没有 write_file 或 str_replace 时机制是 missing_artifact；工具结果以 ERROR: 开头达到 2 次时是 unproductive_retry；同一工具名连续达到 8 次时是 stalled_tool_loop；否则是 generic_failure，因果地位为 contributing。原因为空时写成 verifier_fail。簇按大小从大到小排。
 func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 	type acc struct {
 		sig   Signature
@@ -73,6 +81,7 @@ func Mine(events []trace.Event, failedTasks map[string]string) EvidenceBundle {
 	return EvidenceBundle{Clusters: clusters}
 }
 
+// AttachPairs 只保留 PassCount 和 FailCount 都大于 0、且不在 held 里的题。事件也跳过 held 题号。对照对按题号排序。
 func AttachPairs(bundle EvidenceBundle, events []trace.Event, reportHeld map[string]repeatOutcome, held map[string]bool) EvidenceBundle {
 	byTask := map[string][]trace.Event{}
 	for _, ev := range events {
@@ -99,15 +108,18 @@ func AttachPairs(bundle EvidenceBundle, events []trace.Event, reportHeld map[str
 	return bundle
 }
 
+// repeatOutcome 是一道题的通过次数和失败次数。
 type repeatOutcome struct {
 	PassCount int
 	FailCount int
 }
 
+// itoa 把整数格式化成十进制。
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
+// classify 根据是否写过文件、ERROR: 次数和同一工具名的最长连续次数选定机制。因果的三种机制把 CausalStatus 写成 causal。
 func classify(evs []trace.Event, cause string) Signature {
 	retries := 0
 	wrote := false
@@ -154,6 +166,7 @@ func classify(evs []trace.Event, cause string) Signature {
 	return Signature{VerifierCause: cause, CausalStatus: status, AgentMechanism: mech}
 }
 
+// summarize 数工具调用次数，以及内容以 ERROR: 开头的工具结果次数。
 func summarize(evs []trace.Event) string {
 	nTool := 0
 	nErr := 0

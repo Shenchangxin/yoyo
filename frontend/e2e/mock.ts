@@ -1,12 +1,19 @@
+/**
+ * 拥有：给端到端测试拦截 /api，返回固定的会话、视频和皮肤数据。
+ * 不拥有：真实的 Go 服务。Playwright 的通配也会命中 Vite 模块，所以只拦截路径真是 /api 的请求。
+ */
+
 import type { Page } from "@playwright/test";
 
-/** Minimal valid PDF so Chromium's viewer can load in the inspector iframe. */
+/** 一份最短的合法 PDF，让 Chromium 能在审查窗的 iframe 里打开。 */
 const MINI_PDF_B64 = "JVBERi0xLjEKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PmVuZG9iagoyIDAgb2JqCjw8L1R5cGUvUGFnZXMvS2lkc1szIDAgUl0vQ291bnQgMT4+ZW5kb2JqCjMgMCBvYmoKPDwvVHlwZS9QYWdlL01lZGlhQm94WzAgMCAzIDNdPj5lbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTIgMDAwMDAgbiAKMDAwMDAwMDEwMSAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNC9Sb290IDEgMCBSPj4Kc3RhcnR4cmVmCjE0NwolJUVPRg==";
 
+/** sid 读取 id，没有就读 ID。 */
 function sid(s: any) {
   return String(s.id || s.ID);
 }
 
+/** mockApi 拦截页面上的 /api，按路径返回夹具。workspace 写入配置里的工作区。 */
 export async function mockApi(
   page: Page,
   workspace = "",
@@ -37,8 +44,7 @@ export async function mockApi(
   await page.route("**/api/**", async (route) => {
     const method = route.request().method();
     const path = new URL(route.request().url()).pathname;
-    // Playwright's ** /api/ ** glob also matches Vite modules such as
-    // /src/vendor/yingce-canvas/services/api/request.ts. Only stub the backend.
+    // Playwright 的通配也会命中 Vite 模块，例如画布包里的 request.ts。这里只拦截后端。
     if (!path.startsWith("/api/") && path !== "/api") {
       return route.continue();
     }
@@ -785,6 +791,7 @@ export async function mockApi(
   });
 }
 
+/** mockTrace 把事件收成追踪摘要。带 delta 的事件只计数，不进入投影。摘要截到 120 字，详情截到 4000 字。 */
 function mockTrace(id: string, extra?: { sessions?: any[]; events?: any[]; artifacts?: any[]; context?: any }) {
   const events = extra?.events || [];
   const projected: any[] = [];

@@ -1,3 +1,5 @@
+// 行为：加载协议插件和用户插件，维护画布通道，并生成模型目录。
+
 package video
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/protocol"
 )
 
+// loadCanvasPlugins 把内置、插件目录和用户目录里的协议插件注册进 Proto。
 func (e *Engine) loadCanvasPlugins() error {
 	reg, err := protocol.NewRegistry()
 	if err != nil {
@@ -91,6 +94,7 @@ func (e *Engine) loadCanvasPlugins() error {
 	return nil
 }
 
+// installUserPlugin 把上传的插件包写到用户插件目录并重新加载。
 func (e *Engine) installUserPlugin(raw []byte, fileName string) (map[string]any, error) {
 	pkg, err := protocol.ParsePluginPackage(raw)
 	if err != nil {
@@ -113,6 +117,7 @@ func (e *Engine) installUserPlugin(raw []byte, fileName string) (map[string]any,
 	return e.pluginRecord(pkg.Manifest.Metadata.ID, "uploaded", fileName, "enabled"), nil
 }
 
+// pluginRecord 按协议元数据拼一条前端插件记录，供应商和说明会去掉影策品牌。
 func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]any {
 	name := id
 	version := "1"
@@ -182,6 +187,7 @@ func (e *Engine) pluginRecord(id, source, fileName, status string) map[string]an
 	}
 }
 
+// sourceOrigin 把 bundled 收成 official，其余来源收成 uploaded。
 func sourceOrigin(source string) string {
 	if source == "bundled" {
 		return "official"
@@ -199,6 +205,7 @@ var desktopApplicationPluginIDs = []string{
 	"editor-shell",
 }
 
+// pluginStateMap 拼一条插件开关状态。
 func pluginStateMap(id string, enabled bool) map[string]any {
 	return map[string]any{
 		"pluginId":          id,
@@ -211,6 +218,7 @@ func pluginStateMap(id string, enabled bool) map[string]any {
 	}
 }
 
+// setPluginEnabled 记下插件是否启用，并返回新状态。
 func (e *Engine) setPluginEnabled(id string, enabled bool) (map[string]any, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -224,6 +232,7 @@ func (e *Engine) setPluginEnabled(id string, enabled bool) (map[string]any, erro
 	return pluginStateMap(id, enabled), nil
 }
 
+// listPluginPayload 列出协议插件。桌面应用插件只在本机已经有开关记录时才下发状态。
 func (e *Engine) listPluginPayload() map[string]any {
 	plugins := []map[string]any{}
 	states := map[string]any{}
@@ -269,6 +278,7 @@ func (e *Engine) listPluginPayload() map[string]any {
 	return map[string]any{"plugins": plugins, "states": states, "statuses": statuses}
 }
 
+// pluginCatalog 按能力列出画布面上的协议提供者。scope 参数目前未使用。
 func (e *Engine) pluginCatalog(scope, capability string) map[string]any {
 	_ = scope
 	items := []map[string]any{}
@@ -311,6 +321,7 @@ type canvasChannel struct {
 	HasKey     bool   `json:"hasKey"`
 }
 
+// providerChannelID 给供应商 id 加上 ch- 前缀。已有前缀或空串则原样返回。
 func providerChannelID(id string) string {
 	id = strings.TrimSpace(id)
 	if id == "" || strings.HasPrefix(id, "ch-") {
@@ -319,10 +330,12 @@ func providerChannelID(id string) string {
 	return "ch-" + id
 }
 
+// providerIDFromChannel 去掉 ch- 前缀和目录能力后缀，得到供应商 id。
 func providerIDFromChannel(id string) string {
 	return stripCatalogCapSuffix(strings.TrimPrefix(strings.TrimSpace(id), "ch-"))
 }
 
+// stripCatalogCapSuffix 去掉 id 末尾的 --text、--image、--video 或 --audio。
 func stripCatalogCapSuffix(id string) string {
 	for _, suf := range []string{"--text", "--image", "--video", "--audio"} {
 		if strings.HasSuffix(id, suf) {
@@ -332,6 +345,7 @@ func stripCatalogCapSuffix(id string) string {
 	return id
 }
 
+// catalogSuffixCap 读出 id 末尾的目录能力后缀，没有则返回空串。
 func catalogSuffixCap(id string) string {
 	for _, suf := range []string{"--text", "--image", "--video", "--audio"} {
 		if strings.HasSuffix(id, suf) {
@@ -341,6 +355,7 @@ func catalogSuffixCap(id string) string {
 	return ""
 }
 
+// yingceCapability 把连接能力收成画布用的 text、audio、image 或 video。
 func yingceCapability(cap string) string {
 	switch connection.NormalizeCap(cap) {
 	case connection.CapChat:
@@ -356,6 +371,7 @@ func yingceCapability(cap string) string {
 	}
 }
 
+// yingceCaps 列出连接具备的画布能力，并去掉重复。
 func yingceCaps(c connection.Connection) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -370,6 +386,7 @@ func yingceCaps(c connection.Connection) []string {
 	return out
 }
 
+// connCapForYingce 把画布能力收成连接能力。text 对应 chat，audio 对应 speech。
 func connCapForYingce(y string) string {
 	switch y {
 	case "text":
@@ -381,10 +398,12 @@ func connCapForYingce(y string) string {
 	}
 }
 
+// isGenerationConnection 判断连接是否具备对话、图像、视频或语音能力。
 func isGenerationConnection(c connection.Connection) bool {
 	return connection.MatchesCap(c, connection.CapChat) || connection.MatchesCap(c, connection.CapImage) || connection.MatchesCap(c, connection.CapVideo) || connection.MatchesCap(c, connection.CapSpeech)
 }
 
+// channelFromProvider 把旧供应商记录收成画布通道。
 func (e *Engine) channelFromProvider(p Provider) canvasChannel {
 	return canvasChannel{
 		ID:         providerChannelID(p.ID),
@@ -403,6 +422,7 @@ func (e *Engine) channelFromProvider(p Provider) canvasChannel {
 	}
 }
 
+// channelFromConn 用连接的第一项画布能力收成通道。
 func (e *Engine) channelFromConn(c connection.Connection) canvasChannel {
 	cap := ""
 	if caps := yingceCaps(c); len(caps) > 0 {
@@ -411,6 +431,7 @@ func (e *Engine) channelFromConn(c connection.Connection) canvasChannel {
 	return e.channelFromConnCap(c, cap)
 }
 
+// channelFromConnCap 按指定画布能力从连接取出模型、端点和插件，收成通道。
 func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) canvasChannel {
 	if yingceCap == "" {
 		if caps := yingceCaps(c); len(caps) > 0 {
@@ -448,19 +469,24 @@ func (e *Engine) channelFromConnCap(c connection.Connection, yingceCap string) c
 	}
 }
 
+// syncProviderChannel 当前直接返回 nil。
 func (e *Engine) syncProviderChannel(p Provider) error { return nil }
 
+// deleteProviderChannel 删除供应商记录和同 id 的画布通道文档。
 func (e *Engine) deleteProviderChannel(id string) {
 	_ = e.DeleteProvider(id)
 	_ = e.delDoc(colChannels, id)
 }
 
+// syncAllProviderChannels 当前直接返回 nil。
 func (e *Engine) syncAllProviderChannels() error { return nil }
 
+// seedCanvasChannels 调用 syncAllProviderChannels，因此当前返回 nil。
 func (e *Engine) seedCanvasChannels() error {
 	return e.syncAllProviderChannels()
 }
 
+// listCanvasChannels 合并连接表和已保存的画布通道，并按金库标记是否有密钥。
 func (e *Engine) listCanvasChannels() []canvasChannel {
 	seen := map[string]bool{}
 	var out []canvasChannel
@@ -494,6 +520,7 @@ func (e *Engine) listCanvasChannels() []canvasChannel {
 	return out
 }
 
+// getCanvasChannel 按通道 id 查找。带能力后缀时改写返回的 id 和能力。
 func (e *Engine) getCanvasChannel(id string) (canvasChannel, error) {
 	id = strings.TrimSpace(id)
 	wantCap := catalogSuffixCap(id)
@@ -527,6 +554,7 @@ func (e *Engine) getCanvasChannel(id string) (canvasChannel, error) {
 	return canvasChannel{}, fmt.Errorf("channel not found")
 }
 
+// upsertCanvasChannel 创建或更新画布通道。有连接表时写进连接，否则写通道文档。
 func (e *Engine) upsertCanvasChannel(in map[string]any, apiKey string) (canvasChannel, error) {
 	id := strAnyMap(in, "id")
 	if id == "" {
@@ -576,6 +604,7 @@ func (e *Engine) upsertCanvasChannel(in map[string]any, apiKey string) (canvasCh
 	return e.getCanvasChannel(id)
 }
 
+// catalogModels 把通道上的模型键收成目录条目，操作按能力给出默认集。
 func catalogModels(c canvasChannel) []map[string]any {
 	keys := []string{}
 	if c.Models != "" && c.Models != "[]" {
@@ -623,6 +652,7 @@ func catalogModels(c canvasChannel) []map[string]any {
 	return models
 }
 
+// modelCatalog 按连接的每项能力展开通道，并带上已保存的画布通道。
 func (e *Engine) modelCatalog() map[string]any {
 	channels := []map[string]any{}
 	seen := map[string]bool{}
@@ -664,6 +694,7 @@ func (e *Engine) modelCatalog() map[string]any {
 	return map[string]any{"source": "system", "channels": channels, "models": []any{}}
 }
 
+// defaultOps 按能力返回默认可执行的操作名。
 func defaultOps(cap string) []string {
 	switch cap {
 	case "image":

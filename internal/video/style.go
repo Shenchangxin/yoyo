@@ -1,3 +1,6 @@
+// 画面风格的预设表，以及把它们写入、列出和拼进提示。
+// 短片工程用哪一种风格不在这里决定。表里的每条提示是数据，不另作说明。
+
 package video
 
 import (
@@ -6,6 +9,7 @@ import (
 	"strings"
 )
 
+// PresetStyles 返回内置画面风格。核心表在前，extraPresetStyles 接在后面。
 func PresetStyles() []Style {
 	core := []Style{
 		{Value: "3d", Name: "3D cinematic", Prompt: "high-quality 3D CG animation still, modern game-engine cinematic render, Unreal Engine and Pixar grade quality, semi-realistic stylized characters with refined facial features, clean sculpted anatomy, detailed skin shader with subtle subsurface scattering, PBR materials with crisp detailed textures, volumetric cinematic lighting with soft rim light, rich depth of field, polished film color grading, detailed environment art, sharp focus, consistent character design across shots, avoid flat lighting, avoid plastic waxy skin, avoid low-poly blurry look, avoid 2D flat cel shading, avoid anime line art", Description: "Stylized 3D, not live-action."},
@@ -70,6 +74,7 @@ func PresetStyles() []Style {
 	return append(core, extraPresetStyles()...)
 }
 
+// seedStyles 把还没有的预设写进库。四条旧的短提示如果还没改过，换成现在的长提示。已经改过的不覆盖。
 func (e *Engine) seedStyles() error {
 	now := Now()
 	seeds := PresetStyles()
@@ -106,6 +111,7 @@ func (e *Engine) seedStyles() error {
 	return nil
 }
 
+// ListStyles 只返回仍启用的风格，先按排序再按名字。没有时返回空切片。
 func (e *Engine) ListStyles() ([]Style, error) {
 	var out []Style
 	for _, s := range loadCol[styleRec](e, colStyles) {
@@ -125,6 +131,7 @@ func (e *Engine) ListStyles() ([]Style, error) {
 	return out, nil
 }
 
+// ListAllStyles 连停用的一起返回，排序和 ListStyles 一样。没有时返回空切片。
 func (e *Engine) ListAllStyles() ([]Style, error) {
 	var out []Style
 	for _, s := range loadCol[styleRec](e, colStyles) {
@@ -142,6 +149,7 @@ func (e *Engine) ListAllStyles() ([]Style, error) {
 	return out, nil
 }
 
+// StyleByValue 按 value 找一条。没有就返回 style not found。
 func (e *Engine) StyleByValue(value string) (Style, error) {
 	for _, s := range loadCol[styleRec](e, colStyles) {
 		if s.Value == value {
@@ -151,6 +159,7 @@ func (e *Engine) StyleByValue(value string) (Style, error) {
 	return Style{}, fmt.Errorf("style not found")
 }
 
+// PrefixStyle 把风格提示接在画面提示前面。库里没有就看预设表。都没有，或风格提示是空的，就原样返回画面提示。画面提示是空的就只返回风格提示。
 func (e *Engine) PrefixStyle(value, prompt string) string {
 	s, err := e.StyleByValue(value)
 	if err != nil || s.Prompt == "" {
@@ -171,6 +180,7 @@ func (e *Engine) PrefixStyle(value, prompt string) string {
 	return s.Prompt + ". " + prompt
 }
 
+// UpsertStyle 写入一条风格。value 空着就拒绝。没给编号时按 value 找已有的，仍没有就新建。
 func (e *Engine) UpsertStyle(s Style) (Style, error) {
 	now := Now()
 	if s.Value == "" {
@@ -199,6 +209,7 @@ func (e *Engine) UpsertStyle(s Style) (Style, error) {
 	return s, e.putDoc(colStyles, s.ID, rec)
 }
 
+// DeleteStyle 把风格标成停用，不删文档。
 func (e *Engine) DeleteStyle(id string) error {
 	rec, err := getDoc[styleRec](e, colStyles, id)
 	if err != nil {
@@ -209,4 +220,5 @@ func (e *Engine) DeleteStyle(id string) error {
 	return e.putDoc(colStyles, id, rec)
 }
 
+// styleValueKey 去掉 value 两端的空白。
 func styleValueKey(v string) string { return strings.TrimSpace(v) }

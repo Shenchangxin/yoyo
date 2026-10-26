@@ -1,13 +1,22 @@
+/**
+ * 拥有：把上下文用量展开成分片，以及从追踪里取出模型调用、缓存命中和回合耗时。
+ * 不拥有：用量的采集，以及用量条的渲染。
+ */
+
 import type { ContextUsage, SessionTrace, TraceEvent } from "./protocol";
 
+/** CTX_SLICE_IDS 分片顺序：系统、规则、目录、技能、工具、记忆、今日、笔记、对话、空闲。 */
 export const CTX_SLICE_IDS = ["system", "rules", "catalog", "skills", "tools", "memory", "today", "notes", "chat", "free"] as const;
+/** CtxSliceId CTX_SLICE_IDS 里的一个 id。 */
 export type CtxSliceId = (typeof CTX_SLICE_IDS)[number];
 
+/** CtxSlice 一片的 id 和 token 数。 */
 export type CtxSlice = {
   id: CtxSliceId;
   tokens: number;
 };
 
+/** CtxBreakdown 展开后的用量。pct 是已用占容量的百分比。返回里的 prefix 是系统片，dynamic 是笔记片。slices 按 CTX_SLICE_IDS 排列。 */
 export type CtxBreakdown = {
   used: number;
   capacity: number;
@@ -35,12 +44,13 @@ export type CtxBreakdown = {
   slices: CtxSlice[];
 };
 
-/** Same heuristic as runtime.estimateTokens: ~4 bytes/token. */
+/** estimateTokens 与 runtime.estimateTokens 同一启发：空串为 0，否则为 UTF-8 字节长度加 3 后整除 4。 */
 export function estimateTokens(s: string): number {
   if (!s) return 0;
   return Math.floor((new TextEncoder().encode(s).length + 3) / 4);
 }
 
+/** contextBreakdown 已用等于 max(0, tokens) 加 max(0, draftTokens)。容量为大于 0 的 window，否则大于 0 的 budget，否则非 0 的 fallbackWindow，否则已用大于 0 时等于已用，否则为 0。slicesKnown 为假时，规则、目录、技能、记忆、今日为 0，笔记取 max(0, dynamicTokens)，系统取 max(0, prefixTokens)，对话取 max(0, tokens - prefixTokens - schemaTokens - dynamicTokens) 再加草稿。slicesKnown 为真时，系统取 identityTokens，笔记取 notesTokens，对话取 chatTokens 再加草稿，这些都先与 0 取大。空闲为 max(0, 容量 - 已用)。容量大于 0 时百分比为 round(已用 / 容量 * 100) 且不超过 100，否则为 0。 */
 export function contextBreakdown(ctx: ContextUsage | undefined, fallbackWindow = 0, draftTokens = 0): CtxBreakdown {
   const prefix = Math.max(0, ctx?.prefixTokens || 0);
   const schema = Math.max(0, ctx?.schemaTokens || 0);
@@ -101,13 +111,14 @@ export function contextBreakdown(ctx: ContextUsage | undefined, fallbackWindow =
   };
 }
 
-/** Cached share of the provider prompt. Null when the provider did not report. */
+/** cacheHitPct reported 为假时返回空。prompt 不大于 0 时，reported 为真则返回 0，否则返回空。其余为 min(100, round(max(0, cached) / prompt * 1000) / 10)。 */
 export function cacheHitPct(cached: number, prompt: number, reported?: boolean): number | null {
   if (reported === false) return null;
   if (prompt <= 0) return reported ? 0 : null;
   return Math.min(100, Math.round((Math.max(0, cached) / prompt) * 1000) / 10);
 }
 
+/** ModelCall 一次模型调用。promptTokens 没有时用事件上的 tokens。cachedTokens 大于 0 也视为报告过缓存。 */
 export type ModelCall = {
   round: string;
   ts: string;
@@ -119,6 +130,7 @@ export type ModelCall = {
   cacheReported: boolean;
 };
 
+/** modelCallsOf 按事件顺序取出 type 为 model_usage 的调用。 */
 export function modelCallsOf(trace: SessionTrace | null | undefined): ModelCall[] {
   const out: ModelCall[] = [];
   for (const ev of trace?.events || []) {
@@ -128,6 +140,7 @@ export function modelCallsOf(trace: SessionTrace | null | undefined): ModelCall[
   return out;
 }
 
+/** 提示 token 取 promptTokens，没有则取 tokens。cacheReported 为真，或 cachedTokens 大于 0。 */
 function modelCallOf(ev: TraceEvent): ModelCall {
   const prompt = ev.promptTokens || ev.tokens || 0;
   return {
@@ -142,6 +155,7 @@ function modelCallOf(ev: TraceEvent): ModelCall {
   };
 }
 
+/** callStats 最后一次调用，以及提示、补全、缓存 token 的合计。平均耗时和平均首 token 只平均大于 0 的调用，并用 round。没有这样的调用时平均为 0。 */
 export function callStats(calls: ModelCall[]): {
   last: ModelCall | null;
   avgElapsed: number;
@@ -181,7 +195,7 @@ export function callStats(calls: ModelCall[]): {
   };
 }
 
-/** Wall time of the latest user → turn_end pair. */
+/** lastTurnMs 最后一条 user 与最后一条 turn_end 的时间差。没有事件、解析失败，或结束早于开始时为 0。 */
 export function lastTurnMs(events: TraceEvent[] | undefined): number {
   if (!events?.length) return 0;
   let userTs = "";
@@ -193,6 +207,7 @@ export function lastTurnMs(events: TraceEvent[] | undefined): number {
   return deltaMs(userTs, endTs);
 }
 
+/** formatDurationMs 非正数为破折号。不足 1000 用毫秒。不足 60000 用秒，不足 10000 保留一位小数。否则为分钟加剩余秒。 */
 export function formatDurationMs(ms: number): string {
   if (!ms || ms <= 0) return "—";
   if (ms < 1000) return `${ms}ms`;
@@ -202,12 +217,14 @@ export function formatDurationMs(ms: number): string {
   return `${m}m ${s}s`;
 }
 
+/** formatHitPct null 或 NaN 为破折号。整数不带小数，其余保留一位。 */
 export function formatHitPct(n: number | null): string {
   if (n == null || Number.isNaN(n)) return "—";
   if (Number.isInteger(n)) return `${n}%`;
   return `${n.toFixed(1)}%`;
 }
 
+/** 两个时间戳的毫秒差。任一为空、解析失败，或结束早于开始时为 0。 */
 function deltaMs(from: string, to: string): number {
   if (!from || !to) return 0;
   const a = Date.parse(from);

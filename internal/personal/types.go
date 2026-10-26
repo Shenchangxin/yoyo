@@ -1,55 +1,91 @@
+// 任务、目标和提案的类型与状态常量。
+// ProposalPageSave 与 ProposalPageEdit 只是种类字符串，Propose 不接受它们。页面库在 pages 包。
+
 package personal
 
 import "time"
 
+// Status 是任务状态字符串。
 type Status string
 
 const (
-	StatusQueued          Status = "queued"
-	StatusRunning         Status = "running"
-	StatusWaitingInput    Status = "waiting_input"
+	// StatusQueued 是排队，值为 queued。
+	StatusQueued Status = "queued"
+	// StatusRunning 是执行中，值为 running。
+	StatusRunning Status = "running"
+	// StatusWaitingInput 是等待用户输入，值为 waiting_input。
+	StatusWaitingInput Status = "waiting_input"
+	// StatusWaitingApproval 是等待批准提案，值为 waiting_approval。
 	StatusWaitingApproval Status = "waiting_approval"
-	StatusScheduled       Status = "scheduled"
-	StatusPaused          Status = "paused"
-	StatusSucceeded       Status = "succeeded"
-	StatusFailed          Status = "failed"
-	StatusCancelled       Status = "cancelled"
+	// StatusScheduled 是等到 NextRunAt 再跑，值为 scheduled。
+	StatusScheduled Status = "scheduled"
+	// StatusPaused 是暂停，值为 paused。
+	StatusPaused Status = "paused"
+	// StatusSucceeded 是成功，值为 succeeded。
+	StatusSucceeded Status = "succeeded"
+	// StatusFailed 是失败，值为 failed。
+	StatusFailed Status = "failed"
+	// StatusCancelled 是取消，值为 cancelled。
+	StatusCancelled Status = "cancelled"
 )
 
+// Kind 是任务种类。
 type Kind string
 
 const (
-	KindAgent    Kind = "agent"
+	// KindAgent 是对话里完成的任务，值为 agent。worker 不领取这种任务。
+	KindAgent Kind = "agent"
+	// KindDocument 是填表并准备回信，值为 document。
 	KindDocument Kind = "document"
-	KindMonitor  Kind = "monitor"
-	KindFinance  Kind = "finance"
-	KindPlan     Kind = "plan"
+	// KindMonitor 是按 URL 监视，值为 monitor。
+	KindMonitor Kind = "monitor"
+	// KindFinance 是汇总交易 CSV，值为 finance。
+	KindFinance Kind = "finance"
+	// KindPlan 是给目标写里程碑，值为 plan。
+	KindPlan Kind = "plan"
 )
 
+// ProposalKind 是待审阅动作的种类。
 type ProposalKind string
 
 const (
-	ProposalEmailSend      ProposalKind = "email.send"
+	// ProposalEmailSend 是发信，值为 email.send。
+	ProposalEmailSend ProposalKind = "email.send"
+	// ProposalCalendarCreate 是创建日程，值为 calendar.create。
 	ProposalCalendarCreate ProposalKind = "calendar.create"
+	// ProposalCalendarUpdate 是更新日程，值为 calendar.update。
 	ProposalCalendarUpdate ProposalKind = "calendar.update"
+	// ProposalCalendarDelete 是删除日程，值为 calendar.delete。
 	ProposalCalendarDelete ProposalKind = "calendar.delete"
-	ProposalPageSave       ProposalKind = "page.save"
-	ProposalPageEdit       ProposalKind = "page.edit"
+	// ProposalPageSave 是字符串 page.save。Propose 的 switch 不接受它。
+	ProposalPageSave ProposalKind = "page.save"
+	// ProposalPageEdit 是字符串 page.edit。Propose 的 switch 不接受它。
+	ProposalPageEdit ProposalKind = "page.edit"
 )
 
+// ProposalStatus 是提案状态。
 type ProposalStatus string
 
 const (
-	ProposalAwaiting       ProposalStatus = "awaiting_review"
-	ProposalExecuting      ProposalStatus = "executing"
-	ProposalSucceeded      ProposalStatus = "succeeded"
-	ProposalFailed         ProposalStatus = "failed"
+	// ProposalAwaiting 是等待审阅，值为 awaiting_review。
+	ProposalAwaiting ProposalStatus = "awaiting_review"
+	// ProposalExecuting 是正在执行，值为 executing。
+	ProposalExecuting ProposalStatus = "executing"
+	// ProposalSucceeded 是执行成功，值为 succeeded。
+	ProposalSucceeded ProposalStatus = "succeeded"
+	// ProposalFailed 是执行失败，值为 failed。
+	ProposalFailed ProposalStatus = "failed"
+	// ProposalOutcomeUnknown 是结果未知，值为 outcome_unknown。Retry 会拒绝这种关联任务。
 	ProposalOutcomeUnknown ProposalStatus = "outcome_unknown"
-	ProposalDenied         ProposalStatus = "denied"
-	ProposalCancelled      ProposalStatus = "cancelled"
-	ProposalExpired        ProposalStatus = "expired"
+	// ProposalDenied 是被拒绝，值为 denied。
+	ProposalDenied ProposalStatus = "denied"
+	// ProposalCancelled 是取消，值为 cancelled。
+	ProposalCancelled ProposalStatus = "cancelled"
+	// ProposalExpired 是过期，值为 expired。
+	ProposalExpired ProposalStatus = "expired"
 )
 
+// Evidence 是一条可引用的邮件、网页或用户原文摘录。
 type Evidence struct {
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
@@ -58,6 +94,7 @@ type Evidence struct {
 	URL     string `json:"url,omitempty"`
 }
 
+// Step 是任务计划里的一步。
 type Step struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
@@ -65,6 +102,7 @@ type Step struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// Task 是一条个人任务，含种类、状态、输入和租约。
 type Task struct {
 	ID          string         `json:"id"`
 	Title       string         `json:"title"`
@@ -91,6 +129,7 @@ type Task struct {
 	SessionID   string         `json:"session_id,omitempty"`
 }
 
+// Goal 是一个带里程碑的目标。
 type Goal struct {
 	ID          string      `json:"id"`
 	Title       string      `json:"title"`
@@ -101,12 +140,14 @@ type Goal struct {
 	CreatedAt   time.Time   `json:"created_at"`
 }
 
+// Milestone 是目标下的一条里程碑。
 type Milestone struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	Done  bool   `json:"done"`
 }
 
+// Monitor 是一条 URL 监视及其检查间隔。
 type Monitor struct {
 	ID              string    `json:"id"`
 	TaskID          string    `json:"task_id"`
@@ -124,6 +165,7 @@ type Monitor struct {
 	Checks          int       `json:"checks"`
 }
 
+// MonitorPage 是某次监视抓到的行和哈希，存在 workspace.json，不是页面库文件。
 type MonitorPage struct {
 	ID           string   `json:"id"`
 	Hash         string   `json:"hash"`
@@ -131,6 +173,7 @@ type MonitorPage struct {
 	Lines        []string `json:"lines,omitempty"`
 }
 
+// Idea 是一条待接受或已处理的想法。
 type Idea struct {
 	ID        string         `json:"id"`
 	Title     string         `json:"title"`
@@ -144,6 +187,7 @@ type Idea struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
+// Artifact 是任务写下的文件或摘要。
 type Artifact struct {
 	ID        string         `json:"id"`
 	TaskID    string         `json:"task_id"`
@@ -156,12 +200,14 @@ type Artifact struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
+// Activity 是提案上的一条状态记录。
 type Activity struct {
 	At     time.Time `json:"at"`
 	Status string    `json:"status"`
 	Detail string    `json:"detail,omitempty"`
 }
 
+// Proposal 是待审阅或已执行的邮件、日历动作。Hash 覆盖种类、数据和账号。
 type Proposal struct {
 	ID            string         `json:"id"`
 	TaskID        string         `json:"task_id,omitempty"`
@@ -180,6 +226,7 @@ type Proposal struct {
 	Activity      []Activity     `json:"activity,omitempty"`
 }
 
+// Choice 是一次让用户点选的提问。
 type Choice struct {
 	ID        string         `json:"id"`
 	SessionID string         `json:"session_id,omitempty"`
@@ -189,12 +236,14 @@ type Choice struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
+// ChoiceOption 是一个选项。Source 非空时 PresentChoices 把整组当成比较并最多留 3 项。
 type ChoiceOption struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
 	Source string `json:"source,omitempty"`
 }
 
+// MailView 是从连接器读到的一封邮件的视图，不单独落盘。
 type MailView struct {
 	ID          string
 	ThreadID    string
@@ -206,6 +255,7 @@ type MailView struct {
 	Attachments []string
 }
 
+// Snapshot 是某一刻的任务、目标、监视、想法、产物、提案、选择和 worker 状态。
 type Snapshot struct {
 	Tasks     []Task       `json:"tasks"`
 	Goals     []Goal       `json:"goals"`
@@ -218,11 +268,13 @@ type Snapshot struct {
 	LastIdeas time.Time    `json:"last_ideas_at,omitempty"`
 }
 
+// WorkerStatus 表示轮询循环是否在跑，以及上次 tick 的时间。
 type WorkerStatus struct {
 	Running    bool      `json:"running"`
 	LastTickAt time.Time `json:"last_tick_at,omitempty"`
 }
 
+// doc 是 workspace.json 的整份文档，含监视页快照和样例页。
 type doc struct {
 	Tasks       []Task            `json:"tasks"`
 	Goals       []Goal            `json:"goals"`

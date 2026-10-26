@@ -1,3 +1,8 @@
+/**
+ * 拥有：启动失败时横幅是否带上后端原因。
+ * 不拥有：错误怎么从 Go 抛出。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { bannerError } from "../src/lib/error";
 import { errMessage } from "../src/lib/normalize";

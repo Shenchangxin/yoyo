@@ -1,3 +1,5 @@
+// 改名、分叉、列表，以及工作区 diff。
+
 package app
 
 import (
@@ -20,6 +22,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/session"
 )
 
+// RenameSession 改标题并写回 meta。空标题返回错误。
 func (a *App) RenameSession(id, title string) error {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -33,10 +36,12 @@ func (a *App) RenameSession(id, title string) error {
 	return a.writeSession(m)
 }
 
+// ForkSession 复制整段轨迹来分叉，不指定截断点。
 func (a *App) ForkSession(id string) (SessionMeta, error) {
 	return a.ForkSessionFrom(id, "")
 }
 
+// ForkSessionFrom 复制 meta、轨迹和 spill。from 非空时从该用户事件截断。源会话 Isolate 为真时给新会话建工作区副本。新会话的 harness 策略钉住。
 func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	src, err := a.GetSession(id)
 	if err != nil {
@@ -107,6 +112,7 @@ func (a *App) ForkSessionFrom(id, from string) (SessionMeta, error) {
 	return dst, nil
 }
 
+// ListSessions 合并轨迹和 meta 里的会话，跳过没有 meta 的 jsonl。置顶在前，其余按更新时间倒序。
 func (a *App) ListSessions() ([]SessionMeta, error) {
 	seen := map[string]bool{}
 	var ids []string
@@ -136,7 +142,7 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 	for _, id := range ids {
 		m, err := a.GetSession(id)
 		if err != nil {
-			// jsonl without meta is a leftover, not a chat
+			// 只有 jsonl、没有 meta 的是残留，不是会话。
 			continue
 		}
 		out = append(out, a.decorateLive(m))
@@ -157,6 +163,7 @@ func (a *App) ListSessions() ([]SessionMeta, error) {
 	return out, nil
 }
 
+// decorateLive 填上队列长度。没在跑但队列非空时把 Interrupted 标为真。
 func (a *App) decorateLive(m SessionMeta) SessionMeta {
 	q := a.QueueList(m.ID)
 	m.Queued = len(q)
@@ -166,6 +173,7 @@ func (a *App) decorateLive(m SessionMeta) SessionMeta {
 	return m
 }
 
+// Playbook 读取当前 harness 的 playbook。staging 上有条目时用 staging 的那份。
 func (a *App) Playbook() (artifact.Playbook, error) {
 	_, _, pb, _, _, _, err := a.Materials(a.ActiveHash())
 	if st := a.Refs.GetOrEmpty(artifact.RefStaging); st != "" {
@@ -176,6 +184,7 @@ func (a *App) Playbook() (artifact.Playbook, error) {
 	return pb, err
 }
 
+// RatePlaybook 给条目加上有用或有害计数，把新 playbook 写成快照并设到 refs/staging，不改 active。
 func (a *App) RatePlaybook(bulletID string, helpful bool) (artifact.Playbook, error) {
 	bulletID = strings.TrimSpace(bulletID)
 	if bulletID == "" {
@@ -232,6 +241,7 @@ func (a *App) RatePlaybook(bulletID string, helpful bool) (artifact.Playbook, er
 	return next, nil
 }
 
+// WorkspaceDiff 运行 git diff。输出过长则截断，没有改动时返回说明。
 func (a *App) WorkspaceDiff(workspace string) (string, error) {
 	if workspace == "" {
 		workspace = a.Workspace()
@@ -252,6 +262,7 @@ func (a *App) WorkspaceDiff(workspace string) (string, error) {
 	return text, nil
 }
 
+// WorkspaceHunks 返回 diff 文本和解析出的 hunk。
 func (a *App) WorkspaceHunks(workspace string) (map[string]any, error) {
 	diff, err := a.WorkspaceDiff(workspace)
 	if err != nil {
@@ -263,6 +274,7 @@ func (a *App) WorkspaceHunks(workspace string) (map[string]any, error) {
 	}, nil
 }
 
+// ApplyWorkspaceHunks 把选中的 hunk 应用到工作区。
 func (a *App) ApplyWorkspaceHunks(workspace string, ids []string) error {
 	if workspace == "" {
 		workspace = a.Workspace()
@@ -274,6 +286,7 @@ func (a *App) ApplyWorkspaceHunks(workspace string, ids []string) error {
 	return runtime.ApplyHunks(workspace, diff, ids)
 }
 
+// ReverseWorkspaceHunks 按快照把选中的 hunk 撤回去。没有快照则返回错误。
 func (a *App) ReverseWorkspaceHunks(workspace string, ids []string, snapshot string) error {
 	if workspace == "" {
 		workspace = a.Workspace()
@@ -284,6 +297,7 @@ func (a *App) ReverseWorkspaceHunks(workspace string, ids []string, snapshot str
 	return runtime.ReverseApplyHunks(workspace, snapshot, ids)
 }
 
+// forkCutIndex 按 seq:、用户事件 id 或正文片段找到分叉起点。找不到返回 -1。
 func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID string) int {
 	from = strings.TrimSpace(from)
 	if from == "" {
@@ -344,11 +358,13 @@ func forkCutIndex(evs []trace.Event, from string, store *trace.Store, srcID stri
 	return -1
 }
 
+// eventTimeFrom 查找分叉点的事件时间。找不到则返回零值。
 func eventTimeFrom(evs []trace.Event, from string, store *trace.Store, srcID string) time.Time {
 	t, _ := lookupEventTime(evs, from, store, srcID)
 	return t
 }
 
+// lookupEventTime 解析时间戳、序号或正文，找到则返回该事件的时间。
 func lookupEventTime(evs []trace.Event, from string, store *trace.Store, srcID string) (time.Time, bool) {
 	from = strings.TrimSpace(from)
 	if from == "" {
@@ -363,6 +379,7 @@ func lookupEventTime(evs []trace.Event, from string, store *trace.Store, srcID s
 	return time.Time{}, false
 }
 
+// payloadStr 从载荷取出字符串。没有则返回空串。
 func payloadStr(p map[string]any, key string) string {
 	if p == nil {
 		return ""

@@ -2,6 +2,7 @@ package desktop
 
 import "reflect"
 
+// chromeStatus 用 IsPaused、agentWorking 和待审批数量合成托盘状态。
 type chromeStatus int
 
 const (
@@ -11,6 +12,7 @@ const (
 	chromeApproval
 )
 
+// chromeStatusOf 按暂停、待审批、正在工作、空闲的顺序取托盘状态。暂停优先于审批，审批优先于工作。
 func chromeStatusOf(paused, working bool, approvals int) chromeStatus {
 	if paused {
 		return chromePaused
@@ -24,6 +26,7 @@ func chromeStatusOf(paused, working bool, approvals int) chromeStatus {
 	return chromeIdle
 }
 
+// sliceLen 返回切片或数组的长度。nil 和其他类型返回 0。
 func sliceLen(v any) int {
 	if v == nil {
 		return 0
@@ -37,6 +40,7 @@ func sliceLen(v any) int {
 	}
 }
 
+// pendingApprovalCount 在 App 和 RPC 都空时返回 0。否则返回 PendingApprovals 的长度。
 func (s *Service) pendingApprovalCount() int {
 	if s.App == nil && s.RPC == nil {
 		return 0
@@ -44,6 +48,7 @@ func (s *Service) pendingApprovalCount() int {
 	return sliceLen(s.PendingApprovals())
 }
 
+// agentWorking 在 agentBusy 为真时返回真。App 和 RPC 都空时返回假。否则看 RunningIDs 是否非空。
 func (s *Service) agentWorking() bool {
 	if s.agentBusy.Load() {
 		return true
@@ -54,6 +59,7 @@ func (s *Service) agentWorking() bool {
 	return len(s.RunningIDs()) > 0
 }
 
+// chromeStatus 用 IsPaused、agentWorking 和待审批数量合成托盘状态。
 func (s *Service) chromeStatus() chromeStatus {
 	return chromeStatusOf(s.IsPaused(), s.agentWorking(), s.pendingApprovalCount())
 }

@@ -1,3 +1,5 @@
+// 暂停、页面、档案、日程重试、连接器提及和语音。暂停会停掉正在跑的回合。视频频道和子会话不套用档案工具过滤。
+
 package app
 
 import (
@@ -19,10 +21,12 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// IsPaused 在 App 非空且 Config.Paused 为真时返回真。
 func (a *App) IsPaused() bool {
 	return a != nil && a.Config.Paused
 }
 
+// SetPaused 写入配置。变为暂停时 StopTurn 每一个正在跑的会话。两种方向都记 journal，并向 Hub 发 pause 事件，然后 SaveConfig。
 func (a *App) SetPaused(paused bool) error {
 	a.Config.Paused = paused
 	if paused {
@@ -46,6 +50,7 @@ func (a *App) SetPaused(paused bool) error {
 	return a.SaveConfig()
 }
 
+// PagesList 在查询非空时搜索，否则按空间列出。页面库为空返回 nil。
 func (a *App) PagesList(q, spaceID string) []pages.Meta {
 	if a.Pages == nil {
 		return nil
@@ -56,6 +61,7 @@ func (a *App) PagesList(q, spaceID string) []pages.Meta {
 	return a.Pages.List(spaceID)
 }
 
+// PagesGet 读取一页。页面库为空返回 pages store unavailable。
 func (a *App) PagesGet(spaceID, id string) (pages.Page, error) {
 	if a.Pages == nil {
 		return pages.Page{}, fmt.Errorf("pages store unavailable")
@@ -63,6 +69,7 @@ func (a *App) PagesGet(spaceID, id string) (pages.Page, error) {
 	return a.Pages.Get(spaceID, id)
 }
 
+// PagesSave 在页面 id 为空时创建，否则按 expected 修订号保存。成功时记 page.save 或 page.edit。
 func (a *App) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	if a.Pages == nil {
 		return pages.Page{}, fmt.Errorf("pages store unavailable")
@@ -81,6 +88,7 @@ func (a *App) PagesSave(p pages.Page, expected int) (pages.Page, error) {
 	return out, err
 }
 
+// PagesDelete 删除页面，并清掉仍指向它的会话 PageID。id 空白返回 page not found。
 func (a *App) PagesDelete(spaceID, id string) error {
 	if a.Pages == nil {
 		return fmt.Errorf("pages store unavailable")
@@ -106,6 +114,7 @@ func (a *App) PagesDelete(spaceID, id string) error {
 	return nil
 }
 
+// PagesPropose 提交一页审阅，并向收件箱推一条提案。
 func (a *App) PagesPropose(sessionID, title, content, pageID, spaceID, parentID string, expected int) (pages.Review, error) {
 	if a.Pages == nil {
 		return pages.Review{}, fmt.Errorf("pages store unavailable")
@@ -126,6 +135,7 @@ func (a *App) PagesPropose(sessionID, title, content, pageID, spaceID, parentID 
 	return rev, nil
 }
 
+// PagesReviews 返回待处理的页面审阅。页面库为空返回 nil。
 func (a *App) PagesReviews() []pages.Review {
 	if a.Pages == nil {
 		return nil
@@ -133,6 +143,7 @@ func (a *App) PagesReviews() []pages.Review {
 	return a.Pages.Pending()
 }
 
+// PagesDecide 按 hash 批准或拒绝审阅。成功时记 page.save。
 func (a *App) PagesDecide(id, hash string, approve bool) (pages.Page, pages.Review, error) {
 	if a.Pages == nil {
 		return pages.Page{}, pages.Review{}, fmt.Errorf("pages store unavailable")
@@ -144,6 +155,7 @@ func (a *App) PagesDecide(id, hash string, approve bool) (pages.Page, pages.Revi
 	return pg, rev, err
 }
 
+// ProfilesList 返回档案列表。档案库为空返回 nil。
 func (a *App) ProfilesList() []profile.Profile {
 	if a.Profiles == nil {
 		return nil
@@ -151,6 +163,7 @@ func (a *App) ProfilesList() []profile.Profile {
 	return a.Profiles.List()
 }
 
+// ProfilesGet 读取一份档案。档案库为空返回 profiles unavailable。
 func (a *App) ProfilesGet(id string) (profile.Profile, error) {
 	if a.Profiles == nil {
 		return profile.Profile{}, fmt.Errorf("profiles unavailable")
@@ -158,6 +171,7 @@ func (a *App) ProfilesGet(id string) (profile.Profile, error) {
 	return a.Profiles.Get(id)
 }
 
+// ProfilesSave 保存档案，记 profile.grant，并停掉正在使用该档案的回合。
 func (a *App) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 	if a.Profiles == nil {
 		return profile.Profile{}, fmt.Errorf("profiles unavailable")
@@ -173,6 +187,7 @@ func (a *App) ProfilesSave(p profile.Profile) (profile.Profile, error) {
 	return out, nil
 }
 
+// abortProfileSessions 对 ProfileID 匹配且正在跑的会话调用 StopTurn。
 func (a *App) abortProfileSessions(profileID string) {
 	list, err := a.ListSessions()
 	if err != nil {
@@ -185,6 +200,7 @@ func (a *App) abortProfileSessions(profileID string) {
 	}
 }
 
+// SetSessionProfile 把空 id 换成默认档案。档案变化且会话正在跑时 StopTurn。返回前 attachAuthMode。
 func (a *App) SetSessionProfile(id, profileID string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -209,6 +225,7 @@ func (a *App) SetSessionProfile(id, profileID string) (SessionMeta, error) {
 	return a.attachAuthMode(m), nil
 }
 
+// SetSessionPage 写入会话的 PageID，返回前 attachAuthMode。
 func (a *App) SetSessionPage(id, pageID string) (SessionMeta, error) {
 	m, err := a.GetSession(id)
 	if err != nil {
@@ -221,6 +238,7 @@ func (a *App) SetSessionPage(id, pageID string) (SessionMeta, error) {
 	return a.attachAuthMode(m), nil
 }
 
+// sessionProfile 读取会话档案。视频频道、有 ParentID 或 id 含 --task-- 的会话返回 nil。档案 id 为空时用默认档案。
 func (a *App) sessionProfile(sessionID string) *profile.Profile {
 	if a.Profiles == nil {
 		return nil
@@ -246,6 +264,7 @@ func (a *App) sessionProfile(sessionID string) *profile.Profile {
 	return &p
 }
 
+// rememberCapture 把 shot 路径写入 ResearchShot。其他种类写入 ResearchBrief，summary 非空时同时写入 Preview。
 func (a *App) rememberCapture(sessionID, kind, path, summary string) {
 	m, err := a.GetSession(sessionID)
 	if err != nil {
@@ -263,6 +282,7 @@ func (a *App) rememberCapture(sessionID, kind, path, summary string) {
 	_ = a.writeSession(m)
 }
 
+// ScheduleRetry 重试一条日程，向收件箱推一条，并在后台 runScheduledJob。
 func (a *App) ScheduleRetry(id string) (schedule.Job, error) {
 	if a.Schedule == nil {
 		return schedule.Job{}, fmt.Errorf("no scheduler")
@@ -278,6 +298,7 @@ func (a *App) ScheduleRetry(id string) (schedule.Job, error) {
 	return j, nil
 }
 
+// runScheduledJob 在暂停时 Interrupt 并返回。KindFollow 用 StartSendOpts 续上原会话。短片任务交给 runStudioJob，其余交给 runIsolatedJob。
 func (a *App) runScheduledJob(j schedule.Job) {
 	if a.IsPaused() {
 		if a.Schedule != nil {
@@ -309,6 +330,7 @@ func (a *App) runScheduledJob(j schedule.Job) {
 	a.runIsolatedJob(j)
 }
 
+// ConnectorMention 把文本发给第一场未归档的代理会话，没有则 NewSession。暂停返回 paused，空文本返回 empty mention。
 func (a *App) ConnectorMention(account, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -340,6 +362,7 @@ func (a *App) ConnectorMention(account, text string) error {
 	return a.StartSendOpts(id, prefix+text, false, nil)
 }
 
+// VoiceTranscribe 用 speechCreds 把音频 POST 到 /audio/transcriptions。模型空则用 gpt-4o-mini-transcribe。响应体最多读 1 MiB。暂停返回 paused。
 func (a *App) VoiceTranscribe(filename string, audio []byte) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -385,6 +408,7 @@ func (a *App) VoiceTranscribe(filename string, audio []byte) (string, error) {
 	return strings.TrimSpace(out.Text), nil
 }
 
+// VoiceSpeak 把文本 POST 到 /audio/speech，声音固定 alloy。模型空则用 gpt-4o-mini-tts。响应体最多读 8 MiB。
 func (a *App) VoiceSpeak(text string) ([]byte, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -423,6 +447,7 @@ func (a *App) VoiceSpeak(text string) ([]byte, string, error) {
 	return b, ctype, nil
 }
 
+// VoiceReceipt 往轨迹追加一条语音事件。转写截到 4000 个 rune。轨迹库或会话 id 为空则返回。
 func (a *App) VoiceReceipt(sessionID string, durationSec int, transcript string) {
 	if a.Traces == nil || sessionID == "" {
 		return
@@ -439,6 +464,7 @@ func (a *App) VoiceReceipt(sessionID string, durationSec int, transcript string)
 	})
 }
 
+// speechCreds 优先用活动的 speech 连接。端点仍空则用 Config.BaseURL。密钥空则依次租用 vault 的 openai 和 api_key。端点仍空返回 speech connection not configured。
 func (a *App) speechCreds() (endpoint, key, model string, err error) {
 	if a.Video != nil && a.Video.Conn != nil {
 		if c, e := a.Video.Conn.Active(connection.CapSpeech, ""); e == nil {
@@ -464,6 +490,7 @@ func (a *App) speechCreds() (endpoint, key, model string, err error) {
 	return endpoint, key, model, nil
 }
 
+// firstNonEmpty 返回两个字符串里第一个去掉空白后非空的值。
 func firstNonEmpty(a, b string) string {
 	if strings.TrimSpace(a) != "" {
 		return a
@@ -471,6 +498,7 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// profileMCPAllowed 在允许名单为空时返回真，否则名字或服务器名有一个通过 profile.MCPAllowed 即可。
 func profileMCPAllowed(allow []string, name, server string) bool {
 	if len(allow) == 0 {
 		return true
@@ -478,6 +506,7 @@ func profileMCPAllowed(allow []string, name, server string) bool {
 	return profile.MCPAllowed(allow, name) || profile.MCPAllowed(allow, server)
 }
 
+// clipRunes 按 rune 截断。n 小于等于 0 或字符串更短时原样返回。
 func clipRunes(s string, n int) string {
 	r := []rune(s)
 	if n <= 0 || len(r) <= n {

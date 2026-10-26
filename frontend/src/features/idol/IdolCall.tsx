@@ -1,3 +1,9 @@
+/**
+ * 拥有：紧凑通话画面、全屏通话层和收起后的通话条。
+ * 不拥有：听写、播音和挂断请求，那些在 useIdolCall。立绘绘制在 IdolPresence。
+ * IdolCall 挂上 useIdolCall，会随通话发请求改服务端状态。CallSurface 和 CallBar 只投影传入的状态，交互交给回调。
+ */
+
 import { useState, type ReactNode } from "react";
 import { Mic, MicOff, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
@@ -7,6 +13,7 @@ import { hexAlpha, imageURL, mmss } from "./model";
 import { standURL } from "./stand/StandView";
 import { useIdolCall, type CallPhase, type CallWho } from "./useIdolCall";
 
+/** IdolCall 渲染陪伴窗里的紧凑通话。挂断、静音和发送都进 useIdolCall。 */
 export function IdolCall(props: {
   paused?: boolean;
   approvals?: number;
@@ -55,6 +62,7 @@ export function IdolCall(props: {
   );
 }
 
+/** CallSurface 投影通话层。紧凑时只留立绘和挂断；展开时有计时、字幕、工作开关、草稿、静音和收起。交互交给回调。 */
 export function CallSurface(props: {
   compact?: boolean;
   who: CallWho;
@@ -160,6 +168,7 @@ export function CallSurface(props: {
   );
 }
 
+/** CallBar 渲染收起后的通话条。点主体展开，点挂断结束。 */
 export function CallBar(props: { name: string; elapsed: number; dialing: boolean; onExpand: () => void; onHangup: () => void }) {
   const c = useCopy().idol;
   return (
@@ -177,6 +186,7 @@ export function CallBar(props: { name: string; elapsed: number; dialing: boolean
   );
 }
 
+/** 一颗圆形图标按钮。 */
 function Round(props: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" className="grid size-10 place-items-center rounded-full bg-white/10 text-white" aria-label={props.label} onClick={props.onClick}>

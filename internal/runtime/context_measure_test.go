@@ -1,3 +1,5 @@
+// 锁住计量把前缀、schema 和历史分开计数，并能从 turn_end 载荷恢复账本。
+
 package runtime
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestMeasureContextCountsPrefixAndHistory 确认空会话仍有前缀和 schema，加上用户和助手后总 token 增加，且能分出对话那一块。
 func TestMeasureContextCountsPrefixAndHistory(t *testing.T) {
 	loop := DefaultLoop()
 	idle := MeasureContext(MeasureOpts{Loop: loop, ModelWindow: 128_000, Tools: &WorkspaceTools{Depth: 1}})
@@ -36,6 +39,7 @@ func TestMeasureContextCountsPrefixAndHistory(t *testing.T) {
 	}
 }
 
+// TestShapeFromEventsReadsTurnEndLedger 确认从 turn_end 读出 token、前缀、提供商提示和 layers。
 func TestShapeFromEventsReadsTurnEndLedger(t *testing.T) {
 	evs := []trace.Event{{
 		Type: trace.TypeTurnEnd,

@@ -1,3 +1,5 @@
+// 会话上的 overlay。探针使用临时工作目录，采纳结果只钉住当前会话。
+
 package app
 
 import (
@@ -19,18 +21,22 @@ import (
 )
 
 const (
+	// overlayProbeTimeout 是单次探针的默认时限。更短的 MaxWall 会把它压低。
 	overlayProbeTimeout = 2 * time.Minute
-	overlayTrajCap      = 50_000
-	overlayDeliverCap   = 4_096
+	// overlayTrajCap 是探针轨迹文本的 rune 上限。
+	overlayTrajCap = 50_000
+	// overlayDeliverCap 是交付正文摘录的 rune 上限。
+	overlayDeliverCap = 4_096
 )
 
 var (
+	// overlayNamedFile 从任务原文里抽出带动词的文件名。
 	overlayNamedFile = regexp.MustCompile(`(?i)(?:file named|write|create)\s+([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`)
-	overlayBareFile  = regexp.MustCompile(`(?i)\b([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(txt|md|json|csv|go|py|ts|html))\b`)
+	// overlayBareFile 从任务原文里抽出常见后缀的路径。
+	overlayBareFile = regexp.MustCompile(`(?i)\b([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(txt|md|json|csv|go|py|ts|html))\b`)
 )
 
-// OverlayRun is the operator-facing session PPC overlay. It never writes
-// refs/active, canary, or staging. An adopted successor pins this session only.
+// OverlayRun 是会话 overlay 的参数。它不写 refs/active、canary 或 staging。采纳的后继只钉住当前会话。
 type OverlayRun struct {
 	SessionID string
 	Task      string
@@ -39,16 +45,13 @@ type OverlayRun struct {
 	Mode      string
 	MaxUSD    float64
 	MaxWall   time.Duration
-	// Client runs isolated probes (solver). Nil uses ClientFor(session).
+	// Client 在临时工作目录上跑探针。为空时用 ClientFor 取这个会话的客户端。
 	Client runtime.Client
-	// Improver proposes INV/DOM and composes. Nil uses the heuristic proposer
-	// so the probe solver is never asked for JSON.
+	// Improver 提出 INV/DOM 并合成。为空时走启发式提议，不向探针求解器要 JSON。
 	Improver runtime.Client
 }
 
-// OverlaySession copies the session tool root for each probe, rolls the
-// width-k PPC overlay (R=4k, P=3k), and pins the current session if a
-// successor is adopted.
+// OverlaySession 对会话工具根做探针，跑给定宽度的 overlay。采纳后继时只把当前会话的 harness 钉住，不改 active、canary 和 staging。视频会话直接拒绝。
 func (a *App) OverlaySession(ctx context.Context, run OverlayRun) (evolve.OverlayResult, error) {
 	var res evolve.OverlayResult
 	if a == nil || a.Evolve == nil {
@@ -189,6 +192,7 @@ func (a *App) OverlaySession(ctx context.Context, run OverlayRun) (evolve.Overla
 	return res, nil
 }
 
+// overlayProbeReq 是一次探针要的标签、任务、工具根、模型和材料。
 type overlayProbeReq struct {
 	label    string
 	session  string
@@ -200,6 +204,7 @@ type overlayProbeReq struct {
 	maxWall  time.Duration
 }
 
+// overlayProbe 用 runtime.IsolateWorkspace 得到一份临时工作目录，在其中调用 runtime.Run，再按任务里点名的文件判断是否交付。
 func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.OverlayRollout, error) {
 	out := evolve.OverlayRollout{Label: req.label}
 	src := strings.TrimSpace(req.toolRoot)
@@ -274,6 +279,7 @@ func (a *App) overlayProbe(ctx context.Context, req overlayProbeReq) (evolve.Ove
 	return out, nil
 }
 
+// overlayHeld 从套件取出 held-out 和 transfer 的题号，并把 held-in 的题目正文读出来。
 func (a *App) overlayHeld(hash string) (heldOut, heldInText []string) {
 	_, _, _, _, suite, _, err := a.Materials(hash)
 	if err != nil {
@@ -291,6 +297,7 @@ func (a *App) overlayHeld(hash string) (heldOut, heldInText []string) {
 	return heldOut, heldInText
 }
 
+// overlayLastTurn 取最后一条非 steer 的用户消息，以及它到下一条用户消息之间的事件。
 func overlayLastTurn(a *App, sessionID string) (text, harness string, turn []trace.Event, ok bool) {
 	if a == nil || a.Traces == nil {
 		return "", "", nil, false
@@ -330,6 +337,7 @@ func overlayLastTurn(a *App, sessionID string) (text, harness string, turn []tra
 	return text, harness, turn, true
 }
 
+// overlayWantedFiles 从任务原文抽出要交付的相对路径，丢掉空路径和带上级目录的路径。
 func overlayWantedFiles(task string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -355,6 +363,7 @@ func overlayWantedFiles(task string) []string {
 	return out
 }
 
+// overlayDelivered 在点名的文件都存在且非空时返回真，并带上第一个文件的摘录。
 func overlayDelivered(root string, wanted []string) (bool, string) {
 	if strings.TrimSpace(root) == "" || len(wanted) == 0 {
 		return false, ""
@@ -373,6 +382,7 @@ func overlayDelivered(root string, wanted []string) (bool, string) {
 	return true, first
 }
 
+// overlayTrajectory 把工具调用、结果、错误和助手正文收成一段轨迹文本。
 func overlayTrajectory(evs []trace.Event) string {
 	var b strings.Builder
 	for _, ev := range evs {
@@ -405,6 +415,7 @@ func overlayTrajectory(evs []trace.Event) string {
 	return capOverlayRunes(b.String(), overlayTrajCap)
 }
 
+// capOverlayRunes 按 rune 截断字符串。上限小于等于 0 或未超出时原样返回。
 func capOverlayRunes(s string, n int) string {
 	if n <= 0 || utf8.RuneCountInString(s) <= n {
 		return s
@@ -412,8 +423,7 @@ func capOverlayRunes(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-// OverlayLibrary is the read-only per-domain experience INDEX for this
-// session's workspace. It never writes refs.
+// OverlayLibrary 只读该工作区领域的经验索引，不写引用。视频会话直接拒绝。
 func (a *App) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
 	var out evolve.LibraryView
 	if a == nil || a.Home == nil {
@@ -441,7 +451,7 @@ func (a *App) OverlayLibrary(sessionID string) (evolve.LibraryView, error) {
 	return lib.View(held), nil
 }
 
-// OverlayFlagConflict rejects suite-evolve flags on the session overlay path.
+// OverlayFlagConflict 在会话 overlay 路径上拒绝再混入套件演进的旗标。没有旗标则返回 nil。
 func OverlayFlagConflict(names ...string) error {
 	var out []string
 	for _, n := range names {

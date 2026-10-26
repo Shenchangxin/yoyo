@@ -1,3 +1,5 @@
+// 本文件锁住压缩包名、下载地址顺序、前缀、官方 SHA-256、解压防穿越，以及 Look 先环境变量后托管目录。由 go test 调用。
+
 package pwsh
 
 import (
@@ -14,6 +16,7 @@ import (
 	"testing"
 )
 
+// TestArchiveName 锁住 windows/amd64 和 windows/arm64 的 zip 名，并拒绝 linux/amd64 与 windows/386。
 func TestArchiveName(t *testing.T) {
 	got, err := archiveName("windows", "amd64")
 	if err != nil || got != "PowerShell-7.6.7-win-x64.zip" {
@@ -31,6 +34,7 @@ func TestArchiveName(t *testing.T) {
 	}
 }
 
+// TestCandidateURLs 锁住默认环境下 x64 的四条地址顺序：ModelScope resolve、ModelScope API、GitHub、ghfast.top，以及 arm64 的 resolve 地址。
 func TestCandidateURLs(t *testing.T) {
 	t.Setenv(EnvURL, "")
 	t.Setenv(EnvEndpoint, "")
@@ -59,6 +63,7 @@ func TestCandidateURLs(t *testing.T) {
 	}
 }
 
+// TestRemotePath 锁住默认前缀 ps7，以及带盘符的路径只留文件名再加前缀。
 func TestRemotePath(t *testing.T) {
 	t.Setenv(EnvPrefix, "")
 	if got := remotePath("PowerShell-7.6.7-win-x64.zip"); got != "ps7/PowerShell-7.6.7-win-x64.zip" {
@@ -70,6 +75,7 @@ func TestRemotePath(t *testing.T) {
 	}
 }
 
+// TestOfficialSHAPinned 锁住 win-x64 和 win-arm64 两份官方 zip 的 SHA-256。
 func TestOfficialSHAPinned(t *testing.T) {
 	x64, _ := archiveName("windows", "amd64")
 	arm, _ := archiveName("windows", "arm64")
@@ -81,6 +87,7 @@ func TestOfficialSHAPinned(t *testing.T) {
 	}
 }
 
+// TestExtractZipPreservesTreeAndRejectsSlip 锁住解压保留 PowerShell/pwsh.exe 和同级 dll，并丢掉 ../evil.exe。
 func TestExtractZipPreservesTreeAndRejectsSlip(t *testing.T) {
 	raw := makeZip(t, map[string][]byte{
 		"PowerShell/pwsh.exe": []byte("pwsh-bin"),
@@ -107,6 +114,7 @@ func TestExtractZipPreservesTreeAndRejectsSlip(t *testing.T) {
 	}
 }
 
+// TestLookOrderEnvThenManaged 锁住没有文件时 Look 为空，托管目录里的 pwsh.exe 能被找到，YOYO_PWSH 再压过托管路径。
 func TestLookOrderEnvThenManaged(t *testing.T) {
 	home := t.TempDir()
 	m := New(filepath.Join(home, "runtime"))
@@ -135,6 +143,7 @@ func TestLookOrderEnvThenManaged(t *testing.T) {
 	}
 }
 
+// TestInstallBundleFromHTTP 用本地 HTTP 把 zip 装进托管目录，并锁住 Snapshot 的 source 是 managed。
 func TestInstallBundleFromHTTP(t *testing.T) {
 	raw := makeZip(t, map[string][]byte{"pwsh.exe": []byte("pwsh-bin")})
 	sum := sha256.Sum256(raw)
@@ -178,6 +187,7 @@ func TestInstallBundleFromHTTP(t *testing.T) {
 	}
 }
 
+// makeZip 把 files 打成 zip 字节。名字和内容原样写入。
 func makeZip(t *testing.T, files map[string][]byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer

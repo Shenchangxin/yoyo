@@ -1,3 +1,5 @@
+// 读取工作区和全局开关，汇总已安装技能包是否启用。
+
 package skillpack
 
 import (
@@ -13,6 +15,7 @@ import (
 
 var errInvalidID = fmt.Errorf("invalid pack id")
 
+// ReadWorkspace 读取 <workspace>/.yoyo/packs.json。文件不存在或 JSON 无效时返回空表。
 func ReadWorkspace(workspace string) map[string]WorkspacePref {
 	out := map[string]WorkspacePref{}
 	b, err := os.ReadFile(WorkspaceFile(workspace))
@@ -23,6 +26,7 @@ func ReadWorkspace(workspace string) map[string]WorkspacePref {
 	return out
 }
 
+// WriteWorkspace 把偏好写回 <workspace>/.yoyo/packs.json。workspace 为空白时返回 "empty workspace"。prefs 为 nil 时写成空对象。
 func WriteWorkspace(workspace string, prefs map[string]WorkspacePref) error {
 	if strings.TrimSpace(workspace) == "" {
 		return fmt.Errorf("empty workspace")
@@ -41,7 +45,7 @@ func WriteWorkspace(workspace string, prefs map[string]WorkspacePref) error {
 	return os.WriteFile(WorkspaceFile(workspace), b, 0o644)
 }
 
-// Enabled is workspace override > global config > default false.
+// Enabled 先看工作区偏好：该 id 有条目就用它的 Enabled，假也算数。否则看全局偏好。两处都没有则返回 false。
 func Enabled(id string, global map[string]Pref, workspace map[string]WorkspacePref) bool {
 	id = SanitizeID(id)
 	if wp, ok := workspace[id]; ok {
@@ -55,6 +59,7 @@ func Enabled(id string, global map[string]Pref, workspace map[string]WorkspacePr
 	return false
 }
 
+// SetWorkspaceEnabled 把该 id 的工作区开关写成 enabled。id 净化后为空则返回 invalid pack id。
 func SetWorkspaceEnabled(workspace, id string, enabled bool) error {
 	id = SanitizeID(id)
 	if id == "" {
@@ -65,6 +70,7 @@ func SetWorkspaceEnabled(workspace, id string, enabled bool) error {
 	return WriteWorkspace(workspace, prefs)
 }
 
+// ClearWorkspaceEnabled 删掉该 id 的工作区条目，之后 Enabled 回落到全局偏好或 false。
 func ClearWorkspaceEnabled(workspace, id string) error {
 	id = SanitizeID(id)
 	if id == "" {
@@ -75,6 +81,7 @@ func ClearWorkspaceEnabled(workspace, id string) error {
 	return WriteWorkspace(workspace, prefs)
 }
 
+// List 先按 Catalog 的顺序给出已知包，再追加磁盘上已安装但不在目录里的 id，后者按 id 排序。
 func List(home, workspace string, global map[string]Pref) []Status {
 	wsPrefs := ReadWorkspace(workspace)
 	seen := map[string]bool{}
@@ -96,6 +103,7 @@ func List(home, workspace string, global map[string]Pref) []Status {
 	return append(out, extra...)
 }
 
+// statusOf 合并内置目录和 pack.json。已安装时 Root 是 home/packs/<id>，SkillsDir 是其中的 skills。Enabled 为真还要求已经安装。
 func statusOf(home, workspace string, global map[string]Pref, wsPrefs map[string]WorkspacePref, id string, known Known) Status {
 	id = SanitizeID(id)
 	st := Status{ID: id}
@@ -151,6 +159,7 @@ func statusOf(home, workspace string, global map[string]Pref, wsPrefs map[string
 	return st
 }
 
+// skillNames 走目录收集每个 SKILL.md 的技能名，排序后返回。解析失败的文件跳过。
 func skillNames(skillsDir string) []string {
 	var names []string
 	_ = filepath.Walk(skillsDir, func(path string, info os.FileInfo, err error) error {
@@ -168,6 +177,7 @@ func skillNames(skillsDir string) []string {
 	return names
 }
 
+// EnabledSkillDirs 返回已启用且技能目录非空的路径。
 func EnabledSkillDirs(home, workspace string, global map[string]Pref) []string {
 	var out []string
 	for _, st := range List(home, workspace, global) {
@@ -178,14 +188,14 @@ func EnabledSkillDirs(home, workspace string, global map[string]Pref) []string {
 	return out
 }
 
+// RuntimeFor 收集已启用的包，并带上 ToolMapping。方法论包若没有 BootstrapSkill 则跳过。领域包 Methodology 为假，没有 BootstrapSkill 也会进入结果。
 func RuntimeFor(home, workspace string, global map[string]Pref, goos string) []Session {
 	var out []Session
 	for _, st := range List(home, workspace, global) {
 		if !st.Enabled {
 			continue
 		}
-		// Domain packs have no BootstrapSkill. They still join the session so
-		// the host can pin a short routing line and match the orchestrator.
+		// 方法论包没有 BootstrapSkill 时跳过。领域包 Methodology 为假，没有 BootstrapSkill 也会进入会话。
 		if st.Methodology && st.BootstrapSkill == "" {
 			continue
 		}
@@ -199,6 +209,7 @@ func RuntimeFor(home, workspace string, global map[string]Pref, goos string) []S
 	return out
 }
 
+// firstNonEmpty 返回第一段去掉空白后仍非空的字符串。都空则返回空串。
 func firstNonEmpty(v ...string) string {
 	for _, s := range v {
 		if strings.TrimSpace(s) != "" {

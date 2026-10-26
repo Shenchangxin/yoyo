@@ -1,3 +1,5 @@
+// trends_test.go 检查热榜 JSON 的几种形状，以及五分钟缓存是否少打一次请求。
+
 package video
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestParseTrendJSONShapes 确认 data 数组、嵌套 list 和 items 都能取出标题与热度，没有列表时结果为空。
 func TestParseTrendJSONShapes(t *testing.T) {
 	cases := []struct {
 		name, raw, title, hot string
@@ -26,11 +29,13 @@ func TestParseTrendJSONShapes(t *testing.T) {
 	}
 }
 
+// stubHTTP 每次 Do 都返回同一段正文，并记下调用次数。
 type stubHTTP struct {
 	n    int
 	body string
 }
 
+// Do 把调用次数加一，并返回状态 200 和预设正文。
 func (s *stubHTTP) Do(req *http.Request) (*http.Response, error) {
 	s.n++
 	return &http.Response{
@@ -41,6 +46,7 @@ func (s *stubHTTP) Do(req *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+// TestFetchTrendsCaches 确认连续两次拉取微博只打出一次 HTTP。
 func TestFetchTrendsCaches(t *testing.T) {
 	e := testEngine(t)
 	stub := &stubHTTP{body: `{"data":[{"title":"热点A","hot":"1"}]}`}

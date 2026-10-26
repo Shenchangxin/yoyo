@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有创作案例画廊的筛选和翻页。不拥有案例数据。
+ * 点卡片只把文案交给回调，本文件不改服务端。
+ */
 import { useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { useCopy } from "../../lib/i18n";
@@ -6,6 +10,7 @@ import { creationCases, type CreationCase, type CreationCaseLane } from "../../v
 
 const PAGE = 12;
 
+/** 按案例通道套上标题和提示词。 */
 function fillFor(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   const text = item.lane === "studio"
     ? c.featuredFillStudio
@@ -17,6 +22,7 @@ function fillFor(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["con
   return text.replace("{title}", item.title).replace("{prompt}", item.prompt);
 }
 
+/** 把案例通道换成界面上的名字。 */
 function laneLabel(lane: CreationCaseLane, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   if (lane === "studio") return c.featuredLaneStudio;
   if (lane === "drama") return c.featuredLaneDrama;
@@ -24,6 +30,7 @@ function laneLabel(lane: CreationCaseLane, c: ReturnType<typeof useCopy>["video"
   return c.featuredLaneChat;
 }
 
+/** 拼风格、共用对象，以及没有预设时的静帧说明。 */
 function sourceLine(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["conductor"]) {
   const parts = [c.featuredStyle.replace("{title}", item.styleTitle).replace("{file}", item.coverFile)];
   if (item.sharedWith[0]) parts.push(c.featuredShared.replace("{title}", item.sharedWith[0]));
@@ -31,6 +38,7 @@ function sourceLine(item: CreationCase, c: ReturnType<typeof useCopy>["video"]["
   return parts.join(" · ");
 }
 
+/** FeaturedCases 每次再多展示 12 条案例。封面失败时换备用图。 */
 export function FeaturedCases(props: { onPrompt: (text: string) => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;

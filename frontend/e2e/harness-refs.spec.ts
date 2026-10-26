@@ -1,3 +1,8 @@
+/**
+ * 拥有：材料指针解析和下一动作文案的纯函数用例。
+ * 不拥有：这些函数的实现。每条 test 的标题就是这则用例在断言什么。
+ */
+
 import { expect, test } from "@playwright/test";
 import { canaryDirty, harnessNext, parseHarnessRefs, parseLineage, readHarborMetrics, shortHash, stagingDirty } from "../src/lib/harness-refs";
 import { labFromTab, surfaceForLab, tabFromLab } from "../src/lib/surface";

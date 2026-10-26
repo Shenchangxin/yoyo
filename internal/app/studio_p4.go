@@ -1,3 +1,5 @@
+// 短片发布页和创作者人设页。发布记录的存储在视频引擎，本文件负责打开链接和写页面。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video"
 )
 
+// OpenStudioPublish 在 analytics 为真时打开 AnalyticsURL，否则先 ExportPublish 再打开 CreatorURL。有浏览器时先 OpenURLLane 的 isolated，再 BrowserTakeoverAt 空路径；打不开则 OpenURL。状态为空或 PublishDraft 时标成 PublishOpened。
 func (a *App) OpenStudioPublish(id string, analytics bool) (map[string]any, error) {
 	eng, err := a.requireVideo()
 	if err != nil {
@@ -54,6 +57,7 @@ func (a *App) OpenStudioPublish(id string, analytics bool) (map[string]any, erro
 	return a.enrichPublish(p), nil
 }
 
+// CreateStudioPersona 用页面保存一份人设。name 空白时用创作者人设。topicID 非空且能读到选题时，把页面 id 写进该选题的 PersonaPageID。
 func (a *App) CreateStudioPersona(name, topicID string) (map[string]any, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -79,12 +83,14 @@ func (a *App) CreateStudioPersona(name, topicID string) (map[string]any, error) 
 	return out, nil
 }
 
+// enrichPublish 给发布记录加上 media_url。
 func (a *App) enrichPublish(p video.Publish) map[string]any {
 	m := objJSON(p)
 	m["media_url"] = a.mediaURL(p.MediaHash)
 	return m
 }
 
+// strAnyFrom 按顺序返回第一个非空字段。空白和 <nil> 跳过。map 为空返回空串。
 func strAnyFrom(m map[string]any, keys ...string) string {
 	if m == nil {
 		return ""

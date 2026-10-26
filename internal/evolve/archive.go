@@ -1,3 +1,5 @@
+// 演化节点的本地 JSON 档案，路径是目录下的 nodes.json。不决定能否晋升，只追加和列出。Cycle 在试用后调用 Add。
+
 package evolve
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 )
 
+// Node 是档案里的一次试用。TransferFail 会在 ParentWeight 里把权重乘 0.3。
 type Node struct {
 	ID            string       `json:"id"`
 	Parent        string       `json:"parent"`
@@ -26,12 +29,14 @@ type Node struct {
 	CreatedAt     time.Time    `json:"created_at"`
 }
 
+// Archive 把节点列表存在 Path 指向的 nodes.json。
 type Archive struct {
 	Path  string
 	mu    sync.Mutex
 	nodes []Node
 }
 
+// OpenArchive 打开 dir/nodes.json。文件不存在时返回空档案且错误为 nil。解析失败时节点保持空，仍然返回 nil 错误。
 func OpenArchive(dir string) (*Archive, error) {
 	p := filepath.Join(dir, "nodes.json")
 	a := &Archive{Path: p}
@@ -42,6 +47,7 @@ func OpenArchive(dir string) (*Archive, error) {
 	return a, nil
 }
 
+// Add 追加一个节点。CreatedAt 为零时写成当前 UTC，然后整表落盘。
 func (a *Archive) Add(n Node) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -52,6 +58,7 @@ func (a *Archive) Add(n Node) error {
 	return a.flush()
 }
 
+// FlagTransfer 给编号相同的节点写上 TransferFail。档案为 nil 或编号为空时直接返回 nil。同一编号可命中多条。
 func (a *Archive) FlagTransfer(id string, fail bool) error {
 	if a == nil || id == "" {
 		return nil
@@ -66,6 +73,7 @@ func (a *Archive) FlagTransfer(id string, fail bool) error {
 	return a.flush()
 }
 
+// List 返回节点的副本。
 func (a *Archive) List() []Node {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -74,6 +82,7 @@ func (a *Archive) List() []Node {
 	return out
 }
 
+// flush 先写 Path.tmp，再改名为 Path。
 func (a *Archive) flush() error {
 	if err := os.MkdirAll(filepath.Dir(a.Path), 0o755); err != nil {
 		return err

@@ -1,3 +1,6 @@
+// 与供应商无关的流式块词汇。适配器发出这些块，循环只按这里的块组装。
+// BlockAssembler 在 assembler.go。本文件不读网络。
+
 package runtime
 
 import (
@@ -6,37 +9,54 @@ import (
 	"strings"
 )
 
-// Canonical provider-neutral streaming vocabulary. Adapters emit these chunks;
-// BlockAssembler is the only assembly algorithm the loop uses.
-
 const (
-	ChunkBlockStart      = "block-start"
-	ChunkTextDelta       = "text-delta"
-	ChunkReasoningDelta  = "reasoning-delta"
-	ChunkToolCallDelta   = "tool-call-delta"
-	ChunkBlockEnd        = "block-end"
-	ChunkUsage           = "usage"
-	ChunkFinish          = "finish"
+	// ChunkBlockStart 是一个块的开始。
+	ChunkBlockStart = "block-start"
+	// ChunkTextDelta 是可见文本的增量。
+	ChunkTextDelta = "text-delta"
+	// ChunkReasoningDelta 是推理文本的增量。ShowThinking 为假时 chat 丢掉它。
+	ChunkReasoningDelta = "reasoning-delta"
+	// ChunkToolCallDelta 是工具调用参数的增量。
+	ChunkToolCallDelta = "tool-call-delta"
+	// ChunkBlockEnd 是一个块的结束。
+	ChunkBlockEnd = "block-end"
+	// ChunkUsage 是这一次调用的用量。
+	ChunkUsage = "usage"
+	// ChunkFinish 是模型结束原因。
+	ChunkFinish = "finish"
 
-	BlockText      = "text"
+	// BlockText 是可见文本块。
+	BlockText = "text"
+	// BlockReasoning 是推理块。
 	BlockReasoning = "reasoning"
-	BlockToolCall  = "tool-call"
+	// BlockToolCall 是工具调用块。
+	BlockToolCall = "tool-call"
 
-	FinishStop      = "stop"
+	// FinishStop 是模型自己停住。
+	FinishStop = "stop"
+	// FinishToolCalls 是模型停下来等工具结果。
 	FinishToolCalls = "tool-calls"
+	// FinishMaxTokens 是停在输出 token 上限。
 	FinishMaxTokens = "max-tokens"
-	FinishAborted   = "aborted"
-	FinishError     = "error"
+	// FinishAborted 是流被中止。
+	FinishAborted = "aborted"
+	// FinishError 是流以错误结束。
+	FinishError = "error"
 
+	// StreamFrameStart 是一次尝试的开始帧。
 	StreamFrameStart = "start"
+	// StreamFrameChunk 是一次尝试中的块帧。
 	StreamFrameChunk = "chunk"
-	StreamFrameEnd   = "end"
+	// StreamFrameEnd 是一次尝试的结束帧。
+	StreamFrameEnd = "end"
 
+	// StreamOutcomeCommitted 表示这次尝试的块已经收下。
 	StreamOutcomeCommitted = "committed"
+	// StreamOutcomeAbandoned 表示这次尝试的块丢弃。
 	StreamOutcomeAbandoned = "abandoned"
 )
 
-// ContentBlock is one assembled assistant block. JSON names match the harness.
+// ContentBlock 是组装好的一块助手内容。JSON 名字和 harness 一致。
 type ContentBlock struct {
 	Type      string `json:"type"`
 	Text      string `json:"text,omitempty"`
@@ -45,24 +65,24 @@ type ContentBlock struct {
 	Arguments string `json:"arguments,omitempty"`
 }
 
-// TokenUsage is one model call's accounting. InputTokens is uncached input.
+// TokenUsage 是一次模型调用的用量。
 type TokenUsage struct {
-	InputTokens     int `json:"inputTokens"`
+	InputTokens     int `json:"inputTokens"` // 未命中缓存的输入 token
 	OutputTokens    int `json:"outputTokens"`
 	TotalTokens     int `json:"totalTokens,omitempty"`
 	CacheReadTokens int `json:"cacheReadTokens,omitempty"`
 }
 
-// FinishReason is why a model response stopped.
+// FinishReason 是模型这次停下的原因。
 type FinishReason struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message,omitempty"`
 }
 
-// StreamChunk is the closed live-token union. Index is 0-based block identity.
+// StreamChunk 是实时 token 的封闭联合。适配器只发这些字段。
 type StreamChunk struct {
 	Type           string        `json:"type"`
-	Index          int           `json:"index,omitempty"`
+	Index          int           `json:"index,omitempty"` // 从 0 起的块序号；省略时是 0
 	BlockType      string        `json:"blockType,omitempty"`
 	Text           string        `json:"text,omitempty"`
 	ID             string        `json:"id,omitempty"`
@@ -73,7 +93,7 @@ type StreamChunk struct {
 	Reason         *FinishReason `json:"reason,omitempty"`
 }
 
-// IsToken reports whether the chunk carries visible or tool-call content.
+// IsToken 在块是文本增量、推理增量、工具参数增量或块开始时返回 true。块结束、用量和结束原因返回 false。
 func (c StreamChunk) IsToken() bool {
 	switch c.Type {
 	case ChunkTextDelta, ChunkReasoningDelta, ChunkToolCallDelta, ChunkBlockStart:
@@ -83,12 +103,12 @@ func (c StreamChunk) IsToken() bool {
 	}
 }
 
-// Streamer is an optional Client capability. The loop uses it when present so
-// the UI can render tokens without pulling a heavy agent SDK.
+// Streamer 是 Client 的可选能力。循环发现它就走流式，界面可以逐块画，不必再接一套代理 SDK。
 type Streamer interface {
 	ChatStream(ctx context.Context, req ChatRequest, emit func(StreamChunk) error) (Message, error)
 }
 
+// chunkMap 把块编成 JSON 对象。编解码失败时只留下 type。
 func chunkMap(ch StreamChunk) map[string]any {
 	b, err := json.Marshal(ch)
 	if err != nil {
@@ -101,6 +121,7 @@ func chunkMap(ch StreamChunk) map[string]any {
 	return m
 }
 
+// textFromBlocks 按顺序拼出文本块。推理块和空文本不进入结果。
 func textFromBlocks(blocks []ContentBlock) string {
 	var b strings.Builder
 	for _, bl := range blocks {
@@ -111,6 +132,7 @@ func textFromBlocks(blocks []ContentBlock) string {
 	return b.String()
 }
 
+// reasoningFromBlocks 按顺序拼出推理块。空文本不进入结果。
 func reasoningFromBlocks(blocks []ContentBlock) string {
 	var b strings.Builder
 	for _, bl := range blocks {
@@ -121,6 +143,7 @@ func reasoningFromBlocks(blocks []ContentBlock) string {
 	return b.String()
 }
 
+// toolCallsFromBlocks 按块顺序抽出工具调用。没有工具块时返回 nil。
 func toolCallsFromBlocks(blocks []ContentBlock) []ToolCall {
 	var out []ToolCall
 	for _, bl := range blocks {
@@ -132,6 +155,7 @@ func toolCallsFromBlocks(blocks []ContentBlock) []ToolCall {
 	return out
 }
 
+// blocksFromMessage 把一条助手消息收成块。正文去掉空白后非空时先放文本块，再按原顺序放工具调用。没有正文也没有工具调用时返回 nil。
 func blocksFromMessage(msg Message) []ContentBlock {
 	var out []ContentBlock
 	if strings.TrimSpace(msg.Content) != "" {

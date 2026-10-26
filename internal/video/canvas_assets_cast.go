@@ -1,3 +1,5 @@
+// 行为：把旧卡司文件夹迁进角色资产，并导入已下载的卡司静帧。清单不存在时导入返回 nil，不算错误。
+
 package video
 
 import (
@@ -7,18 +9,19 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/diaglog"
 )
 
+// seedCastCharacterAssets 先迁移旧卡司文件夹，再导入已下载的静帧。导入失败只记警告，包缺失时导入本身返回 nil。
 func (e *Engine) seedCastCharacterAssets(now string, existing map[string]bool) error {
 	if err := e.migrateCastFolderIntoCharacters(now); err != nil {
 		return err
 	}
-	// Stills live in the downloaded pack. A missing pack is not an error:
-	// StartCharacterCast fills this in after the zip is installed.
+	// 静帧在已下载的卡司包里。包缺失不算错误，StartCharacterCast 会在 zip 装好后再导入。
 	if err := e.importCharacterCast(now, existing); err != nil {
 		diaglog.Warn("character cast import", "component", "video", "err", err)
 	}
 	return nil
 }
 
+// migrateCastFolderIntoCharacters 把卡司前缀或旧文件夹里的素材改到角色资产，并删除旧文件夹。
 func (e *Engine) migrateCastFolderIntoCharacters(now string) error {
 	const oldFolder = "studio-folder-cast"
 	const newFolder = "studio-folder-characters"

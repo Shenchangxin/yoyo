@@ -1,5 +1,8 @@
+// 内置的供应商模板。这些值没有钥匙，Endpoint 为空的模板要由调用方再填。
+
 package connection
 
+// Templates 返回内置连接模板。这些模板不带 VaultKey，也不带钥匙原文。
 func Templates() []Connection {
 	return []Connection{
 		{

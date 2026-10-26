@@ -1,3 +1,5 @@
+// 锁住 diff 按 hunk 拆分，以及 git apply 能把选中的 hunk 打上并反向撤掉。测试自己先把文件写回旧内容，ApplyHunks 失败时不 reset。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestParseDiffHunks 锁住两个 @@ 块的文件名和 ID，并且只选第一块时第二块的内容不进补丁。
 func TestParseDiffHunks(t *testing.T) {
 	diff := `diff --git a/foo.txt b/foo.txt
 index 111..222 100644
@@ -44,6 +47,7 @@ index 111..222 100644
 	}
 }
 
+// TestApplyHunksGit 在临时 git 仓库里锁住 ApplyHunks 把选中 hunk 打上，ReverseApplyHunks 再用 -R 撤回到原文本。
 func TestApplyHunksGit(t *testing.T) {
 	dir := t.TempDir()
 	run := func(args ...string) {
@@ -75,7 +79,7 @@ func TestApplyHunksGit(t *testing.T) {
 	if len(hs) != 1 {
 		t.Fatalf("hunks=%d %s", len(hs), diff)
 	}
-	// restore then apply the hunk
+	// 先把文件写回旧内容，再套用选中的 hunk。
 	if err := os.WriteFile(p, []byte("keep\nold\nstill\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

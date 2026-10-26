@@ -1,9 +1,6 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Inline mention/command chips, internalized from harness decorator chips.
- * Implemented as a TipTap atom so caret geometry stays native.
+ * 拥有：行内提及芯片。用 TipTap 原子节点，光标几何保持原生。
+ * 不拥有：草稿正文。不调用 api。
  */
 import { Node, mergeAttributes } from "@tiptap/core";
 import type { MentionKind, MentionPin } from "../../lib/mentions";
@@ -16,12 +13,14 @@ declare module "@tiptap/core" {
   }
 }
 
+/** MentionChip 是一枚行内提及芯片，光标按原子节点走。 */
 export const MentionChip = Node.create({
   name: "mentionChip",
   group: "inline",
   inline: true,
   atom: true,
   selectable: true,
+  /** 芯片带上记号、标签和种类。 */
   addAttributes() {
     return {
       token: { default: "" },
@@ -29,9 +28,11 @@ export const MentionChip = Node.create({
       kind: { default: "file" as MentionKind },
     };
   },
+  /** 从带标记的 span 读回芯片。 */
   parseHTML() {
     return [{ tag: "span[data-mention-chip]" }];
   },
+  /** 画成一枚带记号和标签的 span。 */
   renderHTML({ HTMLAttributes }) {
     const token = String(HTMLAttributes.token || "");
     return [
@@ -47,8 +48,10 @@ export const MentionChip = Node.create({
       String(HTMLAttributes.label || token),
     ];
   },
+  /** 提供插入芯片并补一个空格的命令。 */
   addCommands() {
     return {
+      /** 在光标处插入芯片，并跟上一个空格。 */
       insertMentionChip: (pin: MentionPin) => ({ chain }) =>
         chain()
           .insertContent({

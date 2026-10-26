@@ -1,3 +1,5 @@
+// 按 Poll 间隔领取到期任务。KindAgent 直接跳过。同时在跑的任务连同本轮新领取的不超过 3 个。
+
 package personal
 
 import (
@@ -5,6 +7,7 @@ import (
 	"time"
 )
 
+// Run 把 Running 设为真，先 tick 一次，再按 Poll 间隔 tick。ctx 结束时取消已登记的执行。Poll 不大于 0 时用 1 秒。
 func (e *Engine) Run(ctx context.Context) {
 	e.mu.Lock()
 	e.running = true
@@ -36,6 +39,7 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
+// tick 在暂停时直接返回。它使过期提案失效，补回丢失任务的想法，并每 15 分钟刷新一次想法。KindAgent 不领取。本轮新任务加上已在跑的任务达到 3 个就停止领取。
 func (e *Engine) tick(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -102,6 +106,7 @@ func (e *Engine) tick(ctx context.Context) {
 	}
 }
 
+// isDue 对 queued 和 waiting_approval 返回真。scheduled 看 NextRunAt，running 看租约是否已到。其他状态返回假。
 func (e *Engine) isDue(t Task, now time.Time) bool {
 	switch t.Status {
 	case StatusQueued:
@@ -117,6 +122,7 @@ func (e *Engine) isDue(t Task, now time.Time) bool {
 	}
 }
 
+// runOne 用新租约把任务改成 running，并按 Lease 的三分之一续期，最短 1 毫秒。丢失租约或 ctx 取消时改回 queued。其他执行错误标成 failed。
 func (e *Engine) runOne(ctx context.Context, previous Task) {
 	if ctx.Err() != nil {
 		return

@@ -1,3 +1,7 @@
+/**
+ * 拥有：通用、外观、快捷键、策略和高级设置的表单。
+ * 不拥有：侧栏。改配置会调用 api 改状态。
+ */
 import { useEffect, useState } from "react";
 import { Check, Copy, Download, FolderOpen, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
@@ -32,10 +36,14 @@ import { cn } from "../../lib/utils";
 import type { SettingsHost } from "./host";
 import { HandheldSettings } from "./HandheldPanel";
 
+/** SettingsHost 从 host 再导出。 */
 export type { SettingsHost } from "./host";
+/** ProviderSettings 从服务商面板再导出。 */
 export { ProviderSettings } from "./ProviderPanel";
+/** GenerationSettings 从生成设置再导出。 */
 export { GenerationSettings } from "./GenerationSettings";
 
+/** GeneralSettings 改工作区、通知和桌面行为。 */
 export function GeneralSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const cfg = host.cfg;
@@ -130,6 +138,7 @@ export function GeneralSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** AppearanceSettings 改主题、色板、语言和显示。 */
 export function AppearanceSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const showHarnessLab = useUI((s) => s.showHarnessLab);
@@ -284,6 +293,7 @@ export function AppearanceSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** ShortcutsSettings 改快捷键映射。 */
 export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const keymap = mergeKeymap(host.cfg.keymap);
@@ -325,6 +335,7 @@ export function ShortcutsSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** PolicySettings 改门禁、预算，并查看壳和隔离。 */
 export function PolicySettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const savedBudget = String(host.cfg.maxBudgetUsd || 0);
@@ -431,13 +442,16 @@ type PwshInstall = {
   shell?: string;
 };
 
+/** 安装还在解析、下载、解压或校验时为真。 */
 function pwshBusy(phase?: string) {
   return phase === "resolving" || phase === "downloading" || phase === "extracting" || phase === "verifying";
 }
 
+/** 显示 PowerShell 运行时的状态，并能安装。 */
 function PwshSection() {
   const copy = useCopy();
   const [st, setSt] = useState<PwshInstall>({});
+  /** 把状态收成对象。 */
   function apply(s: any) {
     setSt(s && typeof s === "object" ? s : {});
   }
@@ -506,6 +520,7 @@ function PwshSection() {
   );
 }
 
+/** 投影隔离报告。 */
 function IsolationSection({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [rep, setRep] = useState<any>(host.doctor?.isolation || {});
@@ -538,6 +553,7 @@ function IsolationSection({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 画一颗成功或失败的状态。 */
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
@@ -552,6 +568,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
+/** AdvancedSettings 改更新，并查看日志、日记和诊断。 */
 export function AdvancedSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const [url, setUrl] = useState(host.cfg.updateUrl);
@@ -790,6 +807,7 @@ export function AdvancedSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 按色板编号取出名字和说明。 */
 function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settings"]["palettes"]) {
   switch (id) {
     case "ink": return { name: palettes.ink, hint: palettes.inkHint };
@@ -801,6 +819,7 @@ function paletteCopy(id: PaletteId, palettes: ReturnType<typeof useCopy>["settin
   }
 }
 
+/** 画一组色板供挑选。 */
 function PaletteGroup<T extends DarkPalette | LightPalette>({
   label,
   ids,
@@ -850,6 +869,7 @@ function PaletteGroup<T extends DarkPalette | LightPalette>({
   );
 }
 
+/** 预览当前明暗色板。 */
 function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalette; light: LightPalette }) {
   if (mode === "system") {
     return (
@@ -870,6 +890,7 @@ function ThemePreview({ mode, dark, light }: { mode: ThemePref; dark: DarkPalett
   );
 }
 
+/** 画出一块色板。 */
 function PreviewPane({ palette }: { palette: PaletteId }) {
   const tokens = builtinTokens(palette);
   return (

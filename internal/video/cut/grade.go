@@ -1,7 +1,10 @@
+// grade.go 用 ffmpeg 滤镜给成片套上预设调色。
+
 package cut
 
 import "strings"
 
+// GradeFilter 返回 warm、cool、contrast、fade 对应的 ffmpeg 滤镜。其他预设用默认的对比度和饱和度。
 func GradeFilter(preset string) string {
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case "warm":
@@ -17,6 +20,7 @@ func GradeFilter(preset string) string {
 	}
 }
 
+// Grade 用 GradeFilter 重编码画面并复制音频。复制音频失败时改为不带音频再跑一次。
 func (b Bin) Grade(src, outPath, preset string) error {
 	if err := b.ok(); err != nil {
 		return err

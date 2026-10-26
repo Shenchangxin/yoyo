@@ -1,3 +1,5 @@
+// 行为：画布岛的 HTTP 适配。请求按路径分到项目、资源、任务、频道、插件、技能和助手。助手路由转到 canvasAgentHTTP，模型循环不在这里。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"time"
 )
 
+// CanvasCall 分发 canvas.http、会话绑定、项目读写和模型目录。未知方法返回错误。
 func (e *Engine) CanvasCall(method string, params map[string]any) (any, error) {
 	if params == nil {
 		params = map[string]any{}
@@ -45,6 +48,7 @@ func (e *Engine) CanvasCall(method string, params map[string]any) (any, error) {
 	}
 }
 
+// canvasHTTP 解析方法、路径、查询和正文并分发到对应处理。未映射的 GET 返回空对象，其他未映射方法返回 ok。
 func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 	method := strings.ToUpper(strAnyMap(params, "method"))
 	path := strAnyMap(params, "path")
@@ -669,13 +673,14 @@ func (e *Engine) canvasHTTP(params map[string]any) canvasEnv {
 		return e.canvasAgentHTTP(method, path, query, bodyMap)
 	}
 
-	// Unmapped endpoints stay empty-success so the canvas island does not crash.
+	// 未映射的接口仍返回空成功，避免画布岛崩溃。
 	if method == "GET" {
 		return canvasOK(map[string]any{})
 	}
 	return canvasOK(map[string]any{"ok": true})
 }
 
+// splitPath 按斜杠切开路径，并去掉首尾空段。
 func splitPath(path string) []string {
 	path = strings.Trim(path, "/")
 	if path == "" {
@@ -684,6 +689,7 @@ func splitPath(path string) []string {
 	return strings.Split(path, "/")
 }
 
+// matchPath 用带冒号的模式匹配路径段，成功时返回命名参数。
 func matchPath(parts []string, pattern string) (map[string]string, bool) {
 	pat := splitPath(pattern)
 	if len(pat) != len(parts) {
@@ -702,6 +708,7 @@ func matchPath(parts []string, pattern string) (map[string]string, bool) {
 	return out, true
 }
 
+// eagleHTTP 把 Eagle 请求转到本机 41595。非本机地址拒绝。库信息失败时返回空库。
 func (e *Engine) eagleHTTP(method, path string, query, body map[string]any) canvasEnv {
 	base := strings.TrimRight(strAnyMap(query, "baseUrl"), "/")
 	if base == "" {

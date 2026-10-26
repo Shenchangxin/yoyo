@@ -1,3 +1,6 @@
+// 本文件把日志目录打成支持用的 zip。单份日志默认最多收进末尾 4 << 20 字节。
+// 清单的 omits 固定列出 vault、cas、spill、memory、connectors、held_out。路径里含 vault 的文件和已有的 zip 不打进包。
+
 package diaglog
 
 import (
@@ -12,18 +15,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// BundleOpts 是支持包的输入。Dest 为空时写到 Dir 下的 support-时间.zip。
 type BundleOpts struct {
-	Dir          string
-	Dest         string
-	Doctor       map[string]any
-	SpansPath    string
-	ConfigPath   string
-	Isolation    map[string]any
-	Version      string
-	HeldOutIDs   []string
-	MaxLogBytes  int64
+	Dir         string
+	Dest        string
+	Doctor      map[string]any
+	SpansPath   string
+	ConfigPath  string
+	Isolation   map[string]any
+	Version     string
+	HeldOutIDs  []string
+	MaxLogBytes int64
 }
 
+// WriteBundle 生成 zip 并返回它的路径。MaxLogBytes 小于等于 0 时用 4 << 20。
+// 父目录权限 0o755。zip 本身权限 0o600。版本、doctor、隔离、配置和跨度文件按有无分别写入。
+// doctor 先 stripSecrets。配置 YAML 能解析时按键脱敏，解析失败则对原文 RedactBytes。
+// 跨度文件和日志树都只保留每个文件末尾的 MaxLogBytes 字节。清单含 created、omits 和 held_out_ids。
 func WriteBundle(opt BundleOpts) (string, error) {
 	if opt.Dest == "" {
 		opt.Dest = filepath.Join(opt.Dir, "support-"+time.Now().UTC().Format("20060102T150405Z")+".zip")
@@ -75,8 +83,8 @@ func WriteBundle(opt BundleOpts) (string, error) {
 	}
 
 	manifest := map[string]any{
-		"created":     time.Now().UTC().Format(time.RFC3339),
-		"omits":       []string{"vault", "cas", "spill", "memory", "connectors", "held_out"},
+		"created":      time.Now().UTC().Format(time.RFC3339),
+		"omits":        []string{"vault", "cas", "spill", "memory", "connectors", "held_out"},
 		"held_out_ids": opt.HeldOutIDs,
 	}
 	b, _ := json.MarshalIndent(manifest, "", "  ")
@@ -89,6 +97,7 @@ func WriteBundle(opt BundleOpts) (string, error) {
 	return opt.Dest, f.Close()
 }
 
+// addLogTree 把 dir 下的文件放进 logs/ 相对路径。目录错误继续返回。以 .zip 结尾或路径里含 vault 的跳过。每个文件只取末尾 capBytes 字节。
 func addLogTree(zw *zip.Writer, dir string, capBytes int64) error {
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -110,6 +119,7 @@ func addLogTree(zw *zip.Writer, dir string, capBytes int64) error {
 	})
 }
 
+// addFileCapped 把文件末尾最多 capBytes 字节脱敏后写进 zip。读失败时返回 nil，不中断打包。超过上限时保留切片的尾部。
 func addFileCapped(zw *zip.Writer, path, name string, capBytes int64) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -126,6 +136,7 @@ func addFileCapped(zw *zip.Writer, path, name string, capBytes int64) error {
 	return err
 }
 
+// redactConfigYAML 把 YAML 解成映射后 stripSecrets，再编回 YAML。解析或编码失败时对原文 RedactBytes。
 func redactConfigYAML(raw []byte) []byte {
 	var m map[string]any
 	if yaml.Unmarshal(raw, &m) != nil {
@@ -139,6 +150,8 @@ func redactConfigYAML(raw []byte) []byte {
 	return b
 }
 
+// stripSecrets 递归改写映射、切片和字符串。键被 LooksSecretKey 命中，或大小写等于 search_key、SearchKey 时，值改成占位文本。
+// 字符串叶子走 Redact。其他类型原样返回。
 func stripSecrets(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
@@ -162,6 +175,7 @@ func stripSecrets(v any) any {
 	}
 }
 
+// ZipContains 在 zip 的成员名或成员正文里查找 needle。打开失败返回假。任一成员读失败则跳过该成员。
 func ZipContains(path, needle string) bool {
 	r, err := zip.OpenReader(path)
 	if err != nil {

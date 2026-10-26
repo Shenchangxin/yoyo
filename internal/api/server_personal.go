@@ -11,6 +11,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
+// mountPersonal 挂上收件箱、项目、记忆、日程、连接器、OAuth、webhook、隔离、审阅队列、浏览器、手机、MCP HTTP、专家和个人操作。
+// POST /api/hooks/{id} 触发 webhook，成功时 awake_required 为真。POST /api/personal 按 op 分到 answer、decide、idea、goal、watch、cancel、choice、ideas、pause、resume、retry、goal_status、milestone、monitor_status，其他 op 返回快照。
 func mountPersonal(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("/api/inbox", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {

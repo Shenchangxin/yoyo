@@ -1,3 +1,5 @@
+// descriptor.go 描述一种画布节点能接收什么输入、能改哪些字段。
+
 package capability
 
 import (
@@ -8,12 +10,17 @@ import (
 	"unicode"
 )
 
+// 补丁字段只有字符串、数字和布尔三种。
 const (
+	// patchKindString 是字符串补丁 string。
 	patchKindString  = "string"
+	// patchKindNumber 是数字补丁 number。
 	patchKindNumber  = "number"
+	// patchKindBoolean 是布尔补丁 boolean。
 	patchKindBoolean = "boolean"
 )
 
+// ConnectionPolicy 规定节点能否作为连线来源、目标和参考，以及接受或拒绝的输入种类和数量上限。
 type ConnectionPolicy struct {
 	CanSource          bool
 	CanTarget          bool
@@ -23,6 +30,7 @@ type ConnectionPolicy struct {
 	MaxInputCount      int
 }
 
+// PatchField 是一个可写字段的路径、类型、标签、顺序、数值上限和字数上限。
 type PatchField struct {
 	Path  string
 	Kind  string
@@ -34,9 +42,7 @@ type PatchField struct {
 	MaxRunes    int
 }
 
-// Descriptor is the server-owned canvas contract. Agent tools, creation,
-// persistence and state projection all consume this registry; no caller owns a
-// second node allow-list.
+// Descriptor 是服务端保存的画布节点合同。代理工具、创建、持久化和状态投影都读这份登记，调用方不再另备一份节点允许名单。
 type Descriptor struct {
 	Type            string
 	Version         string
@@ -60,6 +66,7 @@ type Descriptor struct {
 	CreateMetadata  func(content string) map[string]any
 }
 
+// Metadata 用 CreateMetadata 生成初始元数据。没有该函数时返回 content 和 status 为 idle。
 func (d Descriptor) Metadata(content string) map[string]any {
 	if d.CreateMetadata != nil {
 		return d.CreateMetadata(content)
@@ -67,6 +74,7 @@ func (d Descriptor) Metadata(content string) map[string]any {
 	return map[string]any{"content": content, "status": "idle"}
 }
 
+// AllowsInput 在节点不能当目标时为假。拒绝列表优先，接受列表为空则其余都允许。
 func (d Descriptor) AllowsInput(kind string) bool {
 	if !d.Connection.CanTarget {
 		return false
@@ -88,6 +96,7 @@ func (d Descriptor) AllowsInput(kind string) bool {
 	return false
 }
 
+// ValidatePatch 要求节点可更新且补丁非空。键必须在补丁字段里，值要符合字符串、数字或布尔。数字不能是 NaN 或无穷，绝对值不能超过 Limit。字符串不能超过 MaxRunes。
 func (d Descriptor) ValidatePatch(patch map[string]any) error {
 	if !d.CanUpdate {
 		return fmt.Errorf("%s 节点不支持更新", d.Label)
@@ -131,6 +140,7 @@ func (d Descriptor) ValidatePatch(patch map[string]any) error {
 	return nil
 }
 
+// ApplyPatch 先校验，再按点号路径写入节点。中间层不是对象时新建。
 func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error {
 	if err := d.ValidatePatch(patch); err != nil {
 		return err
@@ -152,6 +162,7 @@ func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error 
 	return nil
 }
 
+// ValidateConnection 要求节点能接收输入，并且 AllowsInput 接受来源种类。
 func (d Descriptor) ValidateConnection(fromKind string) error {
 	if !d.Connection.CanTarget {
 		return fmt.Errorf("%s 节点不能接收参考输入", d.Label)
@@ -162,6 +173,7 @@ func (d Descriptor) ValidateConnection(fromKind string) error {
 	return nil
 }
 
+// inputKindLabel 把 image、video、audio 写成图片、视频、音频，其他写成文本。
 func inputKindLabel(kind string) string {
 	switch kind {
 	case "image":
@@ -175,20 +187,25 @@ func inputKindLabel(kind string) string {
 	}
 }
 
+// normalizeType 去掉空白并转成小写。
 func normalizeType(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
 
+// normalizeInputKind 用「canvas input kind」校验输入种类标识。
 func normalizeInputKind(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas input kind")
 }
 
+// normalizeGenerationMode 用「canvas generation mode」校验生成模式标识。
 func normalizeGenerationMode(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas generation mode")
 }
 
+// normalizeProjectionKind 用「canvas projection kind」校验投影种类标识。
 func normalizeProjectionKind(value string) (string, error) {
 	return normalizeCapabilityIdentifier(value, "canvas projection kind")
 }
 
+// normalizeCapabilityIdentifier 要求空串直接通过，否则以小写字母开头，后面只能是小写字母、数字、下划线或横线。
 func normalizeCapabilityIdentifier(value, label string) (string, error) {
 	value = normalizeType(value)
 	if value == "" {
@@ -208,6 +225,7 @@ func normalizeCapabilityIdentifier(value, label string) (string, error) {
 	return value, nil
 }
 
+// normalizeConnectionKinds 规范化、去重并排序输入种类。空种类失败。
 func normalizeConnectionKinds(values []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
@@ -229,6 +247,7 @@ func normalizeConnectionKinds(values []string) ([]string, error) {
 	return out, nil
 }
 
+// validatePatchPath 拒绝空段、.、..、__proto__、constructor 和 prototype。每段要以字母或下划线开头。
 func validatePatchPath(path string) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -253,6 +272,7 @@ func validatePatchPath(path string) error {
 	return nil
 }
 
+// normalizePatchFields 检查补丁键、路径、标签、正的显示顺序和种类。MaxRunes 不能为负。
 func normalizePatchFields(fields map[string]PatchField) (map[string]PatchField, error) {
 	out := make(map[string]PatchField, len(fields))
 	for key, field := range fields {

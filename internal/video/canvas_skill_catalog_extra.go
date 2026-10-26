@@ -1,5 +1,8 @@
+// 数据：补充的内置画布技能正文。
+
 package video
 
+// extraCanvasSkills 返回补充的内置技能定义，封面下标由调用方提供。
 func extraCanvasSkills(cover func(int) string) []canvasSkillDef {
 	return []canvasSkillDef{
 		{ID: "drama-cold-open", Name: "冷开场三镜", Tag: "drama", Cover: cover(3), Likes: 540, Added: 980,

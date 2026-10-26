@@ -1,9 +1,12 @@
+// 本文件拥有最小化、最大化和关闭三个标题按钮。不拥有 macOS 的系统红绿灯，那些由系统画。PageHeader 把它放在右侧。
+
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Minus, Square, X } from "lucide-react";
 import { chrome, isMac, showCaptionButtons } from "../../lib/chrome";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
 
+// WindowControls 在 macOS 或不该显示标题按钮时不渲染。三个按钮分别调用 chrome.minimise、toggleMaximise 和 close。
 export function WindowControls() {
   const copy = useCopy();
   if (isMac() || !showCaptionButtons()) return null;
@@ -22,6 +25,7 @@ export function WindowControls() {
   );
 }
 
+// danger 为真时悬停用危险色。type 固定为 button。
 function Cap({
   children,
   danger,

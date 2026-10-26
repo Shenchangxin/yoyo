@@ -1,3 +1,5 @@
+// 拒绝名单不是操作系统沙箱。本文件不调用路径 resolve，也没有 Windows Job Object。相对路径放行。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestBindShellStatementSepUsesPowerShellFile 确认未加引号的分号在 Windows 上走 PowerShell -File，不用 cmd /C。
 func TestBindShellStatementSepUsesPowerShellFile(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("cmd vs PowerShell routing is Windows-only")
@@ -29,6 +32,7 @@ func TestBindShellStatementSepUsesPowerShellFile(t *testing.T) {
 	}
 }
 
+// TestShellHasStatementSep 确认未加引号的分号和 && 算语句分隔，引号内的不算。
 func TestShellHasStatementSep(t *testing.T) {
 	if !shellHasStatementSep(`node --version; node -p 1`) {
 		t.Fatal("trailing/command sep")
@@ -44,6 +48,7 @@ func TestShellHasStatementSep(t *testing.T) {
 	}
 }
 
+// TestShellNeedsWrapper 确认 cd、set、echo、dir 要包装，git status 和 go test 不要。
 func TestShellNeedsWrapper(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -66,6 +71,7 @@ func TestShellNeedsWrapper(t *testing.T) {
 	}
 }
 
+// TestStripUnixOutputPipes 确认 head 和 tail 被去掉；剩余仍像 posix 的管道不剥。
 func TestStripUnixOutputPipes(t *testing.T) {
 	got, ok := stripUnixOutputPipes(`cd apps/api && go vet ./... 2>&1 | head -40`)
 	if !ok || got != `cd apps/api && go vet ./...` {
@@ -83,6 +89,7 @@ func TestStripUnixOutputPipes(t *testing.T) {
 	}
 }
 
+// TestLooksPosixUnix 确认 find -maxdepth、ls、cat、pwd 为真，dir、go build、git、find /c /v 和 echo 为假。
 func TestLooksPosixUnix(t *testing.T) {
 	posix := []string{
 		`find . -maxdepth 2 -type d -not -path '*/node_modules/*' 2>/dev/null | head -60; echo "---"; ls -la`,
@@ -110,6 +117,7 @@ func TestLooksPosixUnix(t *testing.T) {
 	}
 }
 
+// TestShellDeniedDoesNotMatchExportFormat 确认 echo export format is json 不因 format 子串被拒，format c: 被拒。
 func TestShellDeniedDoesNotMatchExportFormat(t *testing.T) {
 	if err := ShellDenied(`echo export format is json`, t.TempDir(), nil); err != nil {
 		t.Fatalf("false destructive: %v", err)
@@ -119,6 +127,7 @@ func TestShellDeniedDoesNotMatchExportFormat(t *testing.T) {
 	}
 }
 
+// TestShellDeniedAllowsPythonHTTPServerWithLoopbackFetch 确认 python -m http.server 与回环 Invoke-WebRequest 放行。
 func TestShellDeniedAllowsPythonHTTPServerWithLoopbackFetch(t *testing.T) {
 	ws := t.TempDir()
 	cmds := []string{
@@ -132,6 +141,7 @@ func TestShellDeniedAllowsPythonHTTPServerWithLoopbackFetch(t *testing.T) {
 	}
 }
 
+// TestShellDeniedAllowsLoopbackWithLocalFilename 确认带本地文件名的回环命令放行。
 func TestShellDeniedAllowsLoopbackWithLocalFilename(t *testing.T) {
 	ws := t.TempDir()
 	cmds := []string{
@@ -146,6 +156,7 @@ func TestShellDeniedAllowsLoopbackWithLocalFilename(t *testing.T) {
 	}
 }
 
+// TestLooksLikePowerShell 确认 Get-Content 与 ForEach 像 PowerShell，ls $(pwd) 不像。
 func TestLooksLikePowerShell(t *testing.T) {
 	if !looksLikePowerShell(`$c=Get-Content pelican-bicycle.html; $c.Count`) {
 		t.Fatal("assignment")
@@ -162,6 +173,7 @@ func TestLooksLikePowerShell(t *testing.T) {
 	}
 }
 
+// TestShellDeniedAllowsLoopbackCurl 确认回环 curl 放行，https://example.com 与无主机的 curl 拒绝。
 func TestShellDeniedAllowsLoopbackCurl(t *testing.T) {
 	ws := t.TempDir()
 	allow := []string{
@@ -183,6 +195,7 @@ func TestShellDeniedAllowsLoopbackCurl(t *testing.T) {
 	}
 }
 
+// TestShellDeniedMsysWorkspaceRoot 确认 Windows 上工作区内的 MSYS 路径 cd 放行。
 func TestShellDeniedMsysWorkspaceRoot(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip()
@@ -195,6 +208,7 @@ func TestShellDeniedMsysWorkspaceRoot(t *testing.T) {
 	}
 }
 
+// TestShellDeniedIgnoresWindowsSwitches 确认 taskkill //F 与 tasklist //FI 不因看起来像 UNC 被拒。
 func TestShellDeniedIgnoresWindowsSwitches(t *testing.T) {
 	ws := t.TempDir()
 	cmds := []string{
@@ -208,6 +222,7 @@ func TestShellDeniedIgnoresWindowsSwitches(t *testing.T) {
 	}
 }
 
+// TestShellDeniedAllowsHostInterpreter 确认工作区外的 python.exe 与 /usr/bin/python3 作为宿主解释器放行。
 func TestShellDeniedAllowsHostInterpreter(t *testing.T) {
 	ws := t.TempDir()
 	cmds := []string{

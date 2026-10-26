@@ -1,3 +1,6 @@
+// 邮件和日历动作先进入 awaiting_review，三十分钟内由 Decide 批准后才发送。
+// Propose 不接受 page.save 和 page.edit。
+
 package personal
 
 import (
@@ -13,8 +16,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 )
 
+// proposalTTL 是提案从创建到过期的 30 分钟。
 const proposalTTL = 30 * time.Minute
 
+// proposalHash 对种类、数据、账号和 target_version 的 JSON 做 SHA-256，返回十六进制。
 func proposalHash(kind ProposalKind, data map[string]any, account, targetVersion string) string {
 	payload, _ := json.Marshal(struct {
 		Kind          ProposalKind   `json:"kind"`
@@ -26,6 +31,7 @@ func proposalHash(kind ProposalKind, data map[string]any, account, targetVersion
 	return hex.EncodeToString(sum[:])
 }
 
+// Propose 只接受 email.send 和 calendar 的 create、update、delete。带 recurrence 直接拒绝。日历更新和删除要求 event_id 与 target_version。非空的幂等键会复用已有提案。
 func (e *Engine) Propose(kind ProposalKind, data map[string]any, account, taskID, source, idempotency string) (Proposal, error) {
 	if data == nil {
 		data = map[string]any{}
@@ -87,6 +93,7 @@ func (e *Engine) Propose(kind ProposalKind, data map[string]any, account, taskID
 	return p, nil
 }
 
+// proposalTitle 按种类和主题或标题拼出审阅标题。
 func proposalTitle(kind ProposalKind, data map[string]any) string {
 	switch kind {
 	case ProposalEmailSend:
@@ -112,6 +119,7 @@ func proposalTitle(kind ProposalKind, data map[string]any) string {
 	}
 }
 
+// RecordChatSend 把聊天草稿记成提案。带开始、结束、地点、日历或事件 ID，或收件人像时间而不像邮箱时，当成日历操作。
 func (e *Engine) RecordChatSend(d connector.Draft) Proposal {
 	data := map[string]any{
 		"to": d.To, "subject": d.Subject, "body": d.Body, "draft_id": d.ID,
@@ -137,6 +145,7 @@ func (e *Engine) RecordChatSend(d connector.Draft) Proposal {
 	return p
 }
 
+// looksCalendarDraft 在草稿带日程字段，或 To 含 T 且不含 @ 时返回真。
 func looksCalendarDraft(d connector.Draft) bool {
 	if d.Start != "" || d.End != "" || d.Location != "" || d.CalendarID != "" || d.EventID != "" {
 		return true
@@ -144,6 +153,7 @@ func looksCalendarDraft(d connector.Draft) bool {
 	return strings.Contains(d.To, "T") && !strings.Contains(d.To, "@")
 }
 
+// FinishChatSend 按发送错误把提案标成 failed、outcome_unknown 或 succeeded。找不到提案时返回零值。
 func (e *Engine) FinishChatSend(id string, sendErr error) Proposal {
 	p, ok := e.store.proposal(id)
 	if !ok {
@@ -167,6 +177,7 @@ func (e *Engine) FinishChatSend(id string, sendErr error) Proposal {
 	return p
 }
 
+// Decide 在哈希不符或已过期时拒绝。approve 为假则标成 denied，并取消关联任务。为真则先标成 executing，再 executeProposal。
 func (e *Engine) Decide(id, hash string, approve bool) (Proposal, error) {
 	p, ok := e.store.proposal(id)
 	if !ok {
@@ -269,6 +280,7 @@ func (e *Engine) Decide(id, hash string, approve bool) (Proposal, error) {
 	return out, nil
 }
 
+// executeProposal 把提案数据写成连接器草稿并 Send。没有连接器，或带 recurrence 时返回错误。
 func (e *Engine) executeProposal(p Proposal) (string, error) {
 	if rec := strMap(p.Data["recurrence"]); rec != "" {
 		return "", errf("recurring series must be edited in the calendar app (422)")
@@ -288,6 +300,7 @@ func (e *Engine) executeProposal(p Proposal) (string, error) {
 	return "sent " + string(b), nil
 }
 
+// draftFromData 从提案数据填出 connector.Draft。标题在主题为空时补到 Subject。
 func draftFromData(account string, data map[string]any) connector.Draft {
 	d := connector.Draft{
 		Account:       account,
@@ -335,6 +348,7 @@ func draftFromData(account string, data map[string]any) connector.Draft {
 	return d
 }
 
+// expireProposals 把已过 ExpiresAt 且仍为 awaiting 的提案标成 expired。
 func (e *Engine) expireProposals() {
 	now := e.now()
 	for _, p := range e.store.snapshot().Proposals {
@@ -349,6 +363,7 @@ func (e *Engine) expireProposals() {
 	}
 }
 
+// unknownOutcome 在错误文本含 outcome_unknown、timeout、deadline、429 或 HTTP 500 到 599 时返回真。
 func unknownOutcome(err error) bool {
 	if err == nil {
 		return false

@@ -1,8 +1,10 @@
+// visual.go 把画幅和静帧尺寸收成各适配器实际接受的值。
+
 package video
 
 import "strings"
 
-// NormalizeAspect keeps the four ratios the video adapters actually honor.
+// NormalizeAspect 保留 9:16、16:9、1:1 和 adaptive。其他值收成 16:9。
 func NormalizeAspect(s string) string {
 	switch strings.TrimSpace(s) {
 	case "9:16", "16:9", "1:1", "adaptive":
@@ -12,9 +14,7 @@ func NormalizeAspect(s string) string {
 	}
 }
 
-// ImageSizeFor is the still intent, not a vendor enum.
-// Character sheets are landscape turnarounds regardless of episode frame.
-// Scenes follow the episode aspect. Props are square product shots.
+// ImageSizeFor 给出静帧意图，不是供应商枚举。角色设定图固定横版 1920x1080，不跟集的画幅走。场景跟集的画幅：9:16 是 1080x1920，1:1 是 1024x1024，其余 1920x1080。道具是 1024x1024 的方图。
 func ImageSizeFor(kind, aspect string) string {
 	switch kind {
 	case "prop":
@@ -33,7 +33,7 @@ func ImageSizeFor(kind, aspect string) string {
 	}
 }
 
-// OpenAIImageSize maps an arbitrary WxH onto gpt-image allowed sizes.
+// OpenAIImageSize 把任意宽高收成 gpt-image 接受的尺寸：正方形 1024x1024，横图 1536x1024，竖图 1024x1536。解析失败时用 1024x1024。
 func OpenAIImageSize(size string) string {
 	w, h, ok := splitSize(size)
 	if !ok {
@@ -48,7 +48,7 @@ func OpenAIImageSize(size string) string {
 	return "1024x1536"
 }
 
-// GeminiAspectFromSize reads WxH, else falls back to the episode ratio.
+// GeminiAspectFromSize 从宽高读出 1:1、16:9 或 9:16。解析失败时用集的画幅；fallback 是 adaptive 时用 16:9。
 func GeminiAspectFromSize(size, fallback string) string {
 	w, h, ok := splitSize(size)
 	if !ok {
@@ -67,7 +67,7 @@ func GeminiAspectFromSize(size, fallback string) string {
 	return "9:16"
 }
 
-// IsNarrator is a visual predicate: voice-only rows do not get a face still.
+// IsNarrator 判断这一行是不是只有声音、不生成脸部静帧。名字或角色里出现旁白、画外音、narrator、voice-over、voiceover，或列出的日文、韩文旁白词时返回真。两边都空时返回假。
 func IsNarrator(name, role string) bool {
 	text := strings.ToLower(strings.TrimSpace(name + " " + role))
 	if text == "" {
@@ -82,6 +82,7 @@ func IsNarrator(name, role string) bool {
 	return false
 }
 
+// chineseContent 把空串、zh、zh-cn 和 zh-hans 当成中文。
 func chineseContent(lang string) bool {
 	s := strings.ToLower(strings.TrimSpace(lang))
 	return s == "" || s == "zh" || s == "zh-cn" || s == "zh-hans"

@@ -1,5 +1,7 @@
 //go:build windows
 
+// Windows 上的键鼠、启动和抓屏。有虚拟桌面句柄时先 SwitchDesktop，截图在没有句柄时拒绝。
+
 package computeruse
 
 import (
@@ -14,13 +16,19 @@ import (
 )
 
 var (
-	procSwitchDesktop    = user32.NewProc("SwitchDesktop")
-	procSetCursorPos     = user32.NewProc("SetCursorPos")
-	procMouseEvent       = user32.NewProc("mouse_event")
-	procKeybdEvent       = user32.NewProc("keybd_event")
+	// procSwitchDesktop 是 user32.SwitchDesktop。
+	procSwitchDesktop = user32.NewProc("SwitchDesktop")
+	// procSetCursorPos 是 user32.SetCursorPos。
+	procSetCursorPos = user32.NewProc("SetCursorPos")
+	// procMouseEvent 是 user32.mouse_event。
+	procMouseEvent = user32.NewProc("mouse_event")
+	// procKeybdEvent 是 user32.keybd_event。
+	procKeybdEvent = user32.NewProc("keybd_event")
+	// procOpenInputDesktop 是 user32.OpenInputDesktop。
 	procOpenInputDesktop = user32.NewProc("OpenInputDesktop")
 )
 
+// inject 对 open 和 launch 调用 launchOnVirtual。click、type、key 直接调 user32，不检查句柄是否为 0。screenshot 在句柄为 0 时返回错误，不抓主屏。句柄非 0 时先切到该桌面，结束再切回。
 func (h *Host) inject(op, app, detail string) (string, error) {
 	op = strings.ToLower(strings.TrimSpace(op))
 	if op == "" || op == "record" {
@@ -63,6 +71,7 @@ func (h *Host) inject(op, app, detail string) (string, error) {
 	}
 }
 
+// Capture 在桌面句柄为 0 时返回错误，不抓屏。句柄非 0 时切到该桌面再 captureDesktop，失败则报告不能切换并拒绝主屏。
 func (h *Host) Capture(path string) error {
 	h.ensureVirtual()
 	h.mu.Lock()
@@ -88,6 +97,7 @@ func (h *Host) Capture(path string) error {
 	return captureDesktop(path)
 }
 
+// launchOnVirtual 启动可执行文件。名字不含斜杠时尝试查找同名 .exe。没有把桌面名字传给进程。
 func launchOnVirtual(app, detail string) error {
 	bin := app
 	if !strings.ContainsAny(bin, `/\`) {
@@ -100,6 +110,7 @@ func launchOnVirtual(app, detail string) error {
 	return cmd.Start()
 }
 
+// parsePoint 从明细里解析 x、y。不足两个数时返回 40, 40。
 func parsePoint(detail string) (int, int) {
 	fields := strings.FieldsFunc(detail, func(r rune) bool {
 		return r == ',' || r == ' ' || r == 'x'
@@ -112,6 +123,7 @@ func parsePoint(detail string) (int, int) {
 	return 40, 40
 }
 
+// typeUnicode 把每个码元交给 keybd_event。换行发送回车的按下和抬起。
 func typeUnicode(text string) error {
 	for _, r := range text {
 		if r == '\n' {
@@ -126,6 +138,7 @@ func typeUnicode(text string) error {
 	return nil
 }
 
+// keyTap 发送 esc、tab、enter 或 space。其他名字发送回车。
 func keyTap(name string) error {
 	vk := uintptr(0x0D)
 	switch strings.ToLower(strings.TrimSpace(name)) {
@@ -143,6 +156,7 @@ func keyTap(name string) error {
 	return nil
 }
 
+// captureDesktop 用 PowerShell 按 PrimaryScreen 的范围 CopyFromScreen，写到 path。调用方负责是否已经切换桌面。
 func captureDesktop(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

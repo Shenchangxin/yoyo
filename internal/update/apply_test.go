@@ -1,3 +1,5 @@
+// 检查按 pending.json 的 bin 种类替换可执行文件。
+
 package update
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestApplyDownloadedPendingBin 确认 kind 为 bin 的 pending 会把暂存字节拷到原路径。
 func TestApplyDownloadedPendingBin(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "yoyo.bin")

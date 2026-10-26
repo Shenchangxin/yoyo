@@ -1,16 +1,17 @@
+// 工作台状态变更总线。转录 token 留在 Hub，这条总线只通知第二扇窗口重绘。投递不阻塞写入方。
+
 package app
 
 import "strings"
 
-// StateChange is a mutation of workstation state. Transcript tokens stay on
-// Hub; this bus is for everything a second window must repaint.
+// StateChange 是一次工作台状态变更。Epoch 是递增计数，Topic 是重绘主题，Object 是相关对象 id。
 type StateChange struct {
 	Epoch  int64  `json:"epoch"`
 	Topic  string `json:"topic"`
 	Object string `json:"object"`
 }
 
-// Touch records a mutation. Delivery never blocks the writer.
+// Touch 记下一次变更并返回新的 Epoch。订阅通道满时丢掉这次投递，不阻塞写入方。App 为空返回 0。
 func (a *App) Touch(topic, object string) int64 {
 	if a == nil {
 		return 0
@@ -31,7 +32,7 @@ func (a *App) Touch(topic, object string) int64 {
 	return a.stateEpoch
 }
 
-// StateEpoch is the latest mutation counter.
+// StateEpoch 返回当前变更计数。App 为空返回 0。
 func (a *App) StateEpoch() int64 {
 	if a == nil {
 		return 0
@@ -41,7 +42,7 @@ func (a *App) StateEpoch() int64 {
 	return a.stateEpoch
 }
 
-// SubscribeState returns a stream of mutations. The caller must unsub.
+// SubscribeState 返回变更流和取消函数。通道容量 64。App 为空时返回已关闭的通道。调用方必须调用取消函数。
 func (a *App) SubscribeState() (<-chan StateChange, func()) {
 	ch := make(chan StateChange, 64)
 	if a == nil {
@@ -61,7 +62,7 @@ func (a *App) SubscribeState() (<-chan StateChange, func()) {
 	}
 }
 
-// NoteRPC marks a successful JSON-RPC as a state change when it writes.
+// NoteRPC 在 JSON-RPC 方法会改状态时 Touch 一次。读方法和未知方法不产生变更。
 func (a *App) NoteRPC(method string) {
 	topic, ok := RPCTopic(method)
 	if !ok || a == nil {
@@ -70,8 +71,7 @@ func (a *App) NoteRPC(method string) {
 	a.Touch(topic, "")
 }
 
-// RPCTopic reports the repaint topic for a mutating method.
-// Reads return "", false so polls do not wake every window.
+// RPCTopic 返回会改状态的方法对应的重绘主题。读方法返回空串和 false，避免轮询唤醒每一扇窗口。
 func RPCTopic(method string) (string, bool) {
 	method = strings.TrimSpace(method)
 	if method == "" || isRPCRead(method) {
@@ -105,6 +105,7 @@ func RPCTopic(method string) (string, bool) {
 	}
 }
 
+// isRPCRead 把 health、about、doctor 等固定读方法，以及以 .list、.get、.status、.catalog、.tail、.search、.diff、.preview、.lineage 结尾的方法当成读。
 func isRPCRead(method string) bool {
 	switch method {
 	case "health", "about", "doctor", "models.catalog", "key.status", "turn.running", "turn.running_ids", "turn.running_status",

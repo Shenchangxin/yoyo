@@ -8,8 +8,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/app"
 )
 
-// ServeACP maps a subset of Agent Client Protocol methods onto Yoyo JSON-RPC.
-// The agent core is not rewritten as ACP; this is a compatibility adapter.
+// ServeACP 把一小段 Agent Client Protocol 适配到本进程的 JSON-RPC，不改写代理核心。读到 EOF 返回 nil，上下文已取消则返回该错误。
+// initialize 直接写出 protocolVersion 为 1、serverInfo.name 为 yoyo、capabilities.loadSession 为 true，然后继续读下一条，不进入 Dispatch。
+// session/new 把方法改成 thread.start。session/prompt 把方法改成 turn.start。session/cancel 把方法改成 turn.interrupt。其余方法保持原名。改写后的请求交给 Dispatch。
+// session/prompt 不补 wait。turn.start 只在 wait 为真时同步走 SendOpts，所以这条 ACP 提示走 StartSendOpts。
 func ServeACP(ctx context.Context, a *app.App, r io.Reader, w io.Writer) error {
 	dec := json.NewDecoder(r)
 	enc := json.NewEncoder(w)

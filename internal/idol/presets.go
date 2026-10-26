@@ -1,32 +1,34 @@
+// 本文件拥有偶像桌面可直接选用的语音、转写和图像供应商目录。端点、模型 id 和音色 id 是数据，不在注释里改写。
+// 本客户端说不了的协议不在这份目录里。MatchPreset 和 ApplyServicePresets 只按目录收口，不调用模型。
+
 package idol
 
 import "strings"
 
-// ServiceVoice is one timbre a preset can speak with. Models, when set, limits
-// the voice to those model ids; empty means every model of the preset.
+// ServiceVoice 是一套预设里的一种音色。Models 非空时只属于那些模型 id；空表示该预设的每个模型都能用。
 type ServiceVoice struct {
 	ID     string   `json:"id"`
 	Label  string   `json:"label"`
 	Models []string `json:"models,omitempty"`
 }
 
-// ServicePreset is an OpenAI-compatible endpoint the idol desk can call
-// without the operator pasting a URL. Protocols this client cannot speak
-// (vendor-specific ASR, Seedream, and similar) are left out on purpose.
+// ServicePreset 是一个不用手填地址就能调用的 OpenAI 兼容端点。Kind 取 speech、asr、image。
 type ServicePreset struct {
 	ID       string         `json:"id"`
 	Name     string         `json:"name"`
-	Kind     string         `json:"kind"` // speech, asr, image
+	Kind     string         `json:"kind"` // speech、asr、image
 	Vendor   string         `json:"vendor"`
 	Endpoint string         `json:"endpoint"`
 	Models   []string       `json:"models"`
 	Voices   []ServiceVoice `json:"voices,omitempty"`
 }
 
+// voice 组装一条音色。后面的模型 id 写入 Models。
 func voice(id, label string, models ...string) ServiceVoice {
 	return ServiceVoice{ID: id, Label: label, Models: models}
 }
 
+// buildPresets 返回内置目录。下面的名字、端点和 id 是数据。
 func buildPresets() []ServicePreset {
 	mini := []string{"gpt-4o-mini-tts"}
 	cosy := []string{"cosyvoice-v2"}
@@ -119,17 +121,17 @@ func buildPresets() []ServicePreset {
 	}
 }
 
+// servicePresets 是进程启动时建好的目录，ServicePresets 返回它的副本。
 var servicePresets = buildPresets()
 
-// ServicePresets returns the built-in provider catalog. The slice is a copy;
-// the voice and model lists are shared and must not be mutated.
+// ServicePresets 返回内置供应商目录的副本。音色和模型列表与目录共享，调用方不要改它们。
 func ServicePresets() []ServicePreset {
 	out := make([]ServicePreset, len(servicePresets))
 	copy(out, servicePresets)
 	return out
 }
 
-// Preset returns one catalog entry by id.
+// Preset 按 id 返回一条目录。没有则 ok 为 false。
 func Preset(id string) (ServicePreset, bool) {
 	id = strings.TrimSpace(id)
 	for _, p := range servicePresets {
@@ -140,8 +142,7 @@ func Preset(id string) (ServicePreset, bool) {
 	return ServicePreset{}, false
 }
 
-// VoicesFor lists timbres that belong to model. An empty model returns every
-// voice of the preset.
+// VoicesFor 列出属于该模型的音色。model 为空时返回这套预设的全部音色。
 func VoicesFor(p ServicePreset, model string) []ServiceVoice {
 	model = strings.TrimSpace(model)
 	out := make([]ServiceVoice, 0, len(p.Voices))
@@ -153,8 +154,7 @@ func VoicesFor(p ServicePreset, model string) []ServiceVoice {
 	return out
 }
 
-// MatchPreset finds a catalog id for an existing generation connection.
-// Endpoint match wins; vendor is the fallback inside the same kind.
+// MatchPreset 为一条已有的生成连接找目录 id。同一 Kind 里端点对上优先，对不上再用供应商名。
 func MatchPreset(kind, vendor, endpoint string) string {
 	kind = strings.TrimSpace(kind)
 	endpoint = strings.TrimSpace(endpoint)
@@ -176,9 +176,7 @@ func MatchPreset(kind, vendor, endpoint string) string {
 	return ""
 }
 
-// InferProviders fills an empty provider id when the saved endpoint is one of
-// the presets and the saved model and voice already belong to it. A private
-// model or a cloned voice on a known host stays a custom endpoint.
+// InferProviders 在供应商 id 为空、端点对上目录、且已存的模型和音色都属于该目录时，填上目录 id。已知主机上的私有模型或克隆音色保持为自定义端点，id 留空。
 func InferProviders(svc Services) Services {
 	svc.SpeechProvider = inferOne(svc.SpeechProvider, svc.SpeechBaseURL, svc.SpeechModel, svc.SpeechVoice, "speech")
 	svc.ASRProvider = inferOne(svc.ASRProvider, svc.ASRBaseURL, svc.ASRModel, "", "asr")
@@ -186,6 +184,7 @@ func InferProviders(svc Services) Services {
 	return svc
 }
 
+// inferOne 解析一个通道的供应商 id。id 已经是同种类的目录就用它。端点对上但模型或音色不在目录里时返回空字符串。
 func inferOne(id, base, model, voiceID, kind string) string {
 	id = strings.TrimSpace(id)
 	if p, ok := Preset(id); ok && p.Kind == kind {
@@ -212,6 +211,7 @@ func inferOne(id, base, model, voiceID, kind string) string {
 	return ""
 }
 
+// voiceKnown 看这个音色 id 是否出现在该模型的 VoicesFor 结果里。
 func voiceKnown(p ServicePreset, model, id string) bool {
 	for _, v := range VoicesFor(p, model) {
 		if v.ID == id {
@@ -221,9 +221,7 @@ func voiceKnown(p ServicePreset, model, id string) bool {
 	return false
 }
 
-// ApplyServicePresets copies the catalog endpoint onto a named provider and
-// keeps the model and voice inside that provider's lists. An unknown provider
-// id is cleared; a custom endpoint is left alone.
+// ApplyServicePresets 把已命名供应商的端点换成目录里的地址，并把模型和音色收进该供应商的列表。未知的供应商 id 清掉；没有目录 id 的自定义端点保持原样。
 func ApplyServicePresets(svc Services) Services {
 	svc.ChatBaseURL = strings.TrimSpace(svc.ChatBaseURL)
 	svc.ChatModel = strings.TrimSpace(svc.ChatModel)
@@ -234,12 +232,12 @@ func ApplyServicePresets(svc Services) Services {
 	return svc
 }
 
-// NormalizeServices infers a preset from a known endpoint, then clamps the
-// model and voice to that preset.
+// NormalizeServices 先按已知端点推断预设，再把模型和音色收进该预设。
 func NormalizeServices(svc Services) Services {
 	return ApplyServicePresets(InferProviders(svc))
 }
 
+// applyKind 按供应商 id 改写一个通道。id 不是该种类的目录时，非空 id 被清掉，端点、模型和音色只做 TrimSpace。对上目录时端点换成目录地址，模型用 pickListed，音色用 pickVoice。
 func applyKind(id, base, model, voiceID *string, kind string) {
 	p, ok := Preset(*id)
 	if !ok || p.Kind != kind {
@@ -261,6 +259,7 @@ func applyKind(id, base, model, voiceID *string, kind string) {
 	}
 }
 
+// pickListed 在 options 里能找到 current 就留下它，否则用第一项。options 为空时留下 current。
 func pickListed(current string, options []string) string {
 	current = strings.TrimSpace(current)
 	if contains(options, current) {
@@ -272,6 +271,7 @@ func pickListed(current string, options []string) string {
 	return options[0]
 }
 
+// pickVoice 在该模型的音色里能找到 current 就留下它，否则用第一项。没有音色时留下 current。
 func pickVoice(current, model string, p ServicePreset) string {
 	voices := VoicesFor(p, model)
 	current = strings.TrimSpace(current)
@@ -286,6 +286,7 @@ func pickVoice(current, model string, p ServicePreset) string {
 	return voices[0].ID
 }
 
+// contains 看 want 是否与 list 里某一项完全相同。
 func contains(list []string, want string) bool {
 	for _, item := range list {
 		if item == want {
@@ -295,14 +296,13 @@ func contains(list []string, want string) bool {
 	return false
 }
 
-// SameEndpoint reports whether two API roots name the same host and path.
-// A trailing /v1 is ignored so https://api.openai.com matches the preset that
-// stores https://api.openai.com/v1. Other versions, such as /v4, stay put.
+// SameEndpoint 判断两个 API 根是不是同一主机和路径。末尾的 /v1 忽略，所以 https://api.openai.com 对得上存成 https://api.openai.com/v1 的预设。/v4 这类其他版本留在路径里。
 func SameEndpoint(a, b string) bool {
 	ka, kb := endpointKey(a), endpointKey(b)
 	return ka != "" && ka == kb
 }
 
+// endpointKey 去掉协议、大小写和末尾斜杠，并剥掉结尾的 /v1，得到用来比较的键。空字符串表示对不上。
 func endpointKey(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	s = strings.TrimPrefix(s, "https://")
@@ -314,8 +314,7 @@ func endpointKey(raw string) string {
 	return s
 }
 
-// MediaURL joins an API root with an OpenAI-style path. Roots that already
-// carry a version (…/v1 or …/v4) are not given a second /v1.
+// MediaURL 把 API 根和一段 OpenAI 风格路径接起来。根上已经有版本（…/v1 或 …/v4）时不再加第二个 /v1。后缀已经在根末尾时直接返回根。
 func MediaURL(endpoint, suffix string) string {
 	u := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	suffix = strings.Trim(strings.TrimSpace(suffix), "/")
@@ -331,6 +330,7 @@ func MediaURL(endpoint, suffix string) string {
 	return u + "/v1/" + suffix
 }
 
+// hasAPIVersion 看地址里有没有 /v1 到 /v5，在末尾或后面还跟着路径。
 func hasAPIVersion(u string) bool {
 	for _, marker := range []string{"/v1", "/v2", "/v3", "/v4", "/v5"} {
 		if strings.HasSuffix(u, marker) || strings.Contains(u, marker+"/") {

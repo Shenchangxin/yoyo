@@ -1,3 +1,5 @@
+// 锁住空会话的对话 token 为 0、聊天目录预算是帽、路径规则在读到目录后才进入动态尾，以及延后工具名字不进 tool_search 描述。
+
 package runtime
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestEmptyChatHasNoConversationTokens 确认新会话的 ChatTokens 和技能正文为 0，项目记忆只留路径，延后工具的 schema 不进开场数组。
 func TestEmptyChatHasNoConversationTokens(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "YOYO.memory.md"), []byte(strings.Repeat("remember this fact. ", 80)), 0o644); err != nil {
@@ -55,6 +58,7 @@ func TestEmptyChatHasNoConversationTokens(t *testing.T) {
 	}
 }
 
+// TestChatCatalogBudgetIsACeiling 确认聊天目录预算以 ChatSkillCatalogBudget 为帽，更小的显式预算保留；没有 ChatOverlay 时用调用方给的预算。
 func TestChatCatalogBudgetIsACeiling(t *testing.T) {
 	fat := pinsOptsFromTools(&WorkspaceTools{ChatOverlay: true, SkillCatalogBudget: 80_000}, true)
 	if fat.CatalogBudget != ChatSkillCatalogBudget {
@@ -70,6 +74,7 @@ func TestChatCatalogBudgetIsACeiling(t *testing.T) {
 	}
 }
 
+// TestCatalogLaneAndOneLineDescription 确认 agent 通道不列出 studio-script，描述压成一行，截断字样不像规则截断。
 func TestCatalogLaneAndOneLineDescription(t *testing.T) {
 	long := strings.Repeat("word ", 80)
 	got := renderSkillCatalog([]artifact.Skill{
@@ -90,6 +95,7 @@ func TestCatalogLaneAndOneLineDescription(t *testing.T) {
 	}
 }
 
+// TestPathRulesLoadOnRead 确认读到 web/app.go 后嵌套规则进入路径规则和笔记，根上那份第一命中不重复进动态尾，也不进稳定前缀的规则层。
 func TestPathRulesLoadOnRead(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("root rule stays pinned"), 0o644); err != nil {
@@ -128,6 +134,7 @@ func TestPathRulesLoadOnRead(t *testing.T) {
 	}
 }
 
+// TestHostToolIndexOmitsSchemasFromDescription 确认延后工具的名字在 .yoyo/tools/INDEX.md 里，不出现在 tool_search 的描述中。
 func TestHostToolIndexOmitsSchemasFromDescription(t *testing.T) {
 	dir := t.TempDir()
 	tools := &WorkspaceTools{Workspace: dir, ChatOverlay: true, Advertised: ApplyChatToolMenu(nil)}

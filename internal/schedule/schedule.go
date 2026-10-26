@@ -1,3 +1,5 @@
+// Package schedule 把任务写在 Open 收到的目录里的 jobs.json。桌面应用把该目录设成主目录的 schedule/。
+// Create 把 Enabled 设为真。KindFollow 和 IsStudioJob 为真时 Isolate 为假，其余任务 Isolate 为真。
 package schedule
 
 import (
@@ -10,16 +12,23 @@ import (
 	"time"
 )
 
+// Kind 是任务如何到期。
 type Kind string
 
 const (
-	KindCron      Kind = "cron"
-	KindOnce      Kind = "once"
+	// KindCron 按 hourly、daily、weekly 或一段时长重复，值为 cron。
+	KindCron Kind = "cron"
+	// KindOnce 在 Spec 的 RFC3339 时间到达后跑一次，值为 once。
+	KindOnce Kind = "once"
+	// KindHeartbeat 按间隔重复，值为 heartbeat。Spec 解析失败时按 30 分钟。
 	KindHeartbeat Kind = "heartbeat"
-	KindWebhook   Kind = "webhook"
-	KindFollow    Kind = "follow"
+	// KindWebhook 不因时间到期，只能 Trigger，值为 webhook。
+	KindWebhook Kind = "webhook"
+	// KindFollow 在会话里延迟跟进，值为 follow。Create 强制 Isolate 为假。
+	KindFollow Kind = "follow"
 )
 
+// Job 是一条已保存的定时任务，含提示词、工作区和是否隔离。
 type Job struct {
 	ID        string    `json:"id"`
 	Kind      Kind      `json:"kind"`
@@ -40,12 +49,14 @@ type Job struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Service 把任务切片读写到 path 指向的 jobs.json。
 type Service struct {
 	mu   sync.Mutex
 	path string
 	jobs []Job
 }
 
+// Open 按 0o755 创建目录，路径为 dir/jobs.json。读文件失败时仍返回空服务。
 func Open(dir string) (*Service, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -55,6 +66,7 @@ func Open(dir string) (*Service, error) {
 	return s, nil
 }
 
+// Create 生成空着的 ID，并把 Enabled 设为真。Kind 为空时用 KindOnce。KindFollow 和短片任务 Isolate 为假，其他为真。follow 的间隔短于 1 分钟时改成 1m。
 func (s *Service) Create(j Job) Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,8 +86,7 @@ func (s *Service) Create(j Job) Job {
 			j.Spec = "1m"
 		}
 	} else if IsStudioJob(j) {
-		// Shorts jobs stay on the video lane. Copying the agent workspace
-		// into a temp worktree hides studio_* tools and trips the shell gate.
+		// 短片任务留在视频通道。拷进临时工作区会藏起 studio_* 工具，并触发 shell 门。
 		j.Isolate = false
 	} else {
 		j.Isolate = true
@@ -85,6 +96,7 @@ func (s *Service) Create(j Job) Job {
 	return j
 }
 
+// Cancel 按 ID 从列表删除任务。找到则返回真。
 func (s *Service) Cancel(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,6 +114,7 @@ func (s *Service) Cancel(id string) bool {
 	return ok
 }
 
+// List 按 CreatedAt 从新到旧返回副本。
 func (s *Service) List() []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,6 +123,7 @@ func (s *Service) List() []Job {
 	return out
 }
 
+// Due 返回当前已启用且到期的任务，并把它们的 LastRun 写成 now。
 func (s *Service) Due(now time.Time) []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,6 +142,7 @@ func (s *Service) Due(now time.Time) []Job {
 	return out
 }
 
+// Trigger 按 ID 或 Spec 找到 webhook、once、heartbeat 或 follow。未启用或不属于这些种类则返回假。命中时更新 LastRun。
 func (s *Service) Trigger(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -149,6 +164,7 @@ func (s *Service) Trigger(id string) (Job, bool) {
 	return Job{}, false
 }
 
+// Interrupt 把该任务的 Status 写成 interrupted，并记下原因和 LastRun。
 func (s *Service) Interrupt(id, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,6 +179,7 @@ func (s *Service) Interrupt(id, reason string) {
 	_ = s.flush()
 }
 
+// Retry 清掉 Status 和 LastErr，重新启用，并把 LastRun 置零。找不到返回假。
 func (s *Service) Retry(id string) (Job, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -181,6 +198,7 @@ func (s *Service) Retry(id string) (Job, bool) {
 	return Job{}, false
 }
 
+// Record 更新 LastRun。err 非 nil 时写下 LastErr，否则清空。once 和 follow 随后把 Enabled 设为假。
 func (s *Service) Record(id string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -201,6 +219,7 @@ func (s *Service) Record(id string, err error) {
 	_ = s.flush()
 }
 
+// due 判断一条任务在 now 是否到期。webhook 和未知种类返回假。follow 在 interrupted 时返回假，间隔短于 1 分钟时按 1 分钟。
 func due(j Job, now time.Time) bool {
 	switch j.Kind {
 	case KindOnce:
@@ -255,7 +274,7 @@ func due(j Job, now time.Time) bool {
 	}
 }
 
-// IsStudioJob reports shorts/topic jobs that must stay on the video lane.
+// IsStudioJob 在 Channel 为 video、带了 StudioID 或 TopicID，或提示词以「做成短片」开头时返回真。
 func IsStudioJob(j Job) bool {
 	if strings.EqualFold(strings.TrimSpace(j.Channel), "video") {
 		return true
@@ -267,6 +286,7 @@ func IsStudioJob(j Job) bool {
 	return strings.HasPrefix(p, "做成短片")
 }
 
+// cronDue 把 hourly、daily、weekly、0 18 * * 5、weekday-1800 或一段时长换成是否到期。daily 还要求小时为 18。
 func cronDue(spec string, last, now time.Time) bool {
 	spec = strings.TrimSpace(strings.ToLower(spec))
 	if spec == "hourly" {
@@ -288,6 +308,7 @@ func cronDue(spec string, last, now time.Time) bool {
 	return false
 }
 
+// load 读取 jobs.json 并解进任务切片。
 func (s *Service) load() error {
 	b, err := os.ReadFile(s.path)
 	if err != nil {
@@ -296,6 +317,7 @@ func (s *Service) load() error {
 	return json.Unmarshal(b, &s.jobs)
 }
 
+// flush 把任务写成缩进 JSON，先写临时文件，权限 0o644，再改名替换。
 func (s *Service) flush() error {
 	b, err := json.MarshalIndent(s.jobs, "", "  ")
 	if err != nil {

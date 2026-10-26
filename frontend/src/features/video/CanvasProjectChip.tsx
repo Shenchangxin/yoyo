@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有画布工程的选择菜单。不拥有画布编辑器。
+ * 新建工程和绑定会话会改服务端；打开画布只改本地栏。
+ */
 import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronDown, LayoutGrid, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +17,7 @@ type CanvasSummary = { id: string; title?: string };
 const ghost =
   "h-6 min-w-0 max-w-[9.5rem] gap-1 rounded-md border-transparent bg-transparent px-1.5 text-[11px] font-medium text-muted hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:opacity-70";
 
+/** CanvasProjectChip 列出画布工程，并能新建、选中或打开画布。 */
 export function CanvasProjectChip(props: { disabled?: boolean }) {
   const copy = useCopy();
   const projectId = useCanvasHost((s) => s.projectId);
@@ -21,6 +26,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
   const openVideoPane = useUI((s) => s.openVideoPane);
   const [list, setList] = useState<CanvasSummary[]>([]);
 
+  /** 读取画布工程列表。 */
   const load = useCallback(async () => {
     const env = await videoCall("canvas.http", { method: "GET", path: "canvas-projects" });
     const projects = env?.data?.projects || env?.projects || [];
@@ -34,6 +40,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
   const current = list.find((p) => p.id === projectId);
   const label = current?.title || (projectId ? title : copy.video.noCanvas);
 
+  /** 新建一块画布；已有会话就绑上。 */
   async function createBoard() {
     try {
       const env = await videoCall("canvas.http", { method: "POST", path: "canvas-projects", body: { title: copy.video.canvas } });
@@ -48,6 +55,7 @@ export function CanvasProjectChip(props: { disabled?: boolean }) {
     }
   }
 
+  /** 选中一块画布；已有会话就绑上。 */
   async function pick(p: CanvasSummary) {
     useCanvasHost.setState({ projectId: p.id, title: p.title || copy.video.canvas });
     if (sessionId) void bindCanvasSession(sessionId, p.id);

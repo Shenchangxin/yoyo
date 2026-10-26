@@ -1,3 +1,5 @@
+// 工作区里的 git 子命令。git_status、git_diff、git_commit 经 tools_host.go 调用这里。不解析 diff，hunk 选择在 hunks.go。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
+// git 在工作区目录执行 git。write 为 false 时能力级别是 ReadWorkspace，为 true 时是 WriteWorkspace，动作名是 git。输出含 not a git repository 时不当成错误，返回该说明。
 func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 	level := capability.ReadWorkspace
 	if write {
@@ -40,6 +43,7 @@ func (t *WorkspaceTools) git(args []string, write bool) ToolResult {
 	return ToolResult{Content: text}
 }
 
+// gitNotRepo 在合并后的输出或错误文本里查找 not a git repository。
 func gitNotRepo(text string, err error) bool {
 	blob := text
 	if err != nil {

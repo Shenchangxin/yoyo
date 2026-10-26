@@ -2,6 +2,5 @@
 
 package desktop
 
-// clearToastHistory does nothing off Windows. Only the Windows Action Center keeps
-// toasts after they are shown, so the other platforms have no history to empty here.
+// clearToastHistory 在非 Windows 上返回 nil。其他平台没有操作中心历史可清。
 func clearToastHistory(string) error { return nil }

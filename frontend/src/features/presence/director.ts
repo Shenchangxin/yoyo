@@ -1,6 +1,8 @@
+/** 拥有把工作台状态收成一个情绪编号的规则。一次只出一个编号。不拥有绘制，也不另开模型循环。只投影条目，不改服务端。 */
 import type { Item } from "../../lib/protocol";
 import type { VoicePhase } from "./types";
 
+/** PresenceInput 是决定表情时用的工作台状态。 */
 export type PresenceInput = {
   booted: boolean;
   running: boolean;
@@ -13,10 +15,11 @@ export type PresenceInput = {
   waking?: boolean;
   voicePhase?: VoicePhase;
   now?: number;
-  /** How long the current live/loading bout has been held. 0 keeps first-beat faces. */
+  /** 当前这一轮进行或加载已经持续了多久。传 0 时留在第一拍的表情。 */
   busyMs?: number;
 };
 
+/** PresenceOut 是一个情绪编号、可选提示，以及是否还在进行。 */
 export type PresenceOut = {
   emotionId: string;
   tips?: string;
@@ -39,7 +42,7 @@ const WANDER = [
   "02", "22", "19", "11", "02", "27", "04", "48",
 ] as const;
 
-/** Ambient idle face. Cycles through glances, moods, then drowsy sleep. */
+/** wanderEmotion 在空闲时轮换张望和心情，再沉进瞌睡。 */
 export function wanderEmotion(now: number, idleMs: number): string {
   if (idleMs >= SLEEP_MS) return "00";
   if (idleMs >= 130_000) return "06";
@@ -50,7 +53,7 @@ export function wanderEmotion(now: number, idleMs: number): string {
   return WANDER[Math.floor(now / WANDER_MS) % WANDER.length]!;
 }
 
-/** Module / companion loading: hop-blink, then connect → build → wait. */
+/** loadEmotion 在加载时从跳眨眼走到连接、搭建和等待。 */
 export function loadEmotion(busyMs: number): string {
   if (busyMs < 2200) return "36";
   if (busyMs < 5200) return "45";
@@ -59,7 +62,7 @@ export function loadEmotion(busyMs: number): string {
   return (["42", "44", "36"] as const)[beat]!;
 }
 
-/** Bare thinking: orbit, then focus, recall, patience. */
+/** thinkEmotion 在单纯思考时从绕圈走到专注、回想和耐心。 */
 export function thinkEmotion(busyMs: number): string {
   if (busyMs < 3600) return "30";
   if (busyMs < 7800) return "16";
@@ -68,6 +71,7 @@ export function thinkEmotion(busyMs: number): string {
   return (["42", "30", "16"] as const)[beat]!;
 }
 
+/** afterDoneEmotion 按做完之后的时间给出收尾表情，过了就空。 */
 export function afterDoneEmotion(age: number): string | null {
   if (age < 0) return null;
   if (age < DONE_MS) return "33";
@@ -77,6 +81,7 @@ export function afterDoneEmotion(age: number): string | null {
   return null;
 }
 
+/** voiceEmotion 按听、说、想给出通话表情。 */
 export function voiceEmotion(phase: VoicePhase | undefined, busyMs = 0): string {
   if (phase === "listening") return busyMs > 5000 ? "42" : "35";
   if (phase === "speaking") return busyMs > 4000 ? "46" : "39";
@@ -84,10 +89,12 @@ export function voiceEmotion(phase: VoicePhase | undefined, busyMs = 0): string 
   return "02";
 }
 
+/** 取出工具名，没有就用 tool。 */
 function toolName(item: Item): string {
   return String(item.name || item.payload?.name || "tool");
 }
 
+/** 从技能参数里取出要显示的名字。 */
 function skillTip(item: Item): string {
   const tagged = String(item.payload?.skill || "").trim();
   if (tagged) return tagged;
@@ -98,7 +105,7 @@ function skillTip(item: Item): string {
     try {
       const o = JSON.parse(raw) as unknown;
       if (o && typeof o === "object" && !Array.isArray(o)) args = o as Record<string, unknown>;
-    } catch { /* not JSON */ }
+    } catch { /* 不是 JSON */ }
   }
   const name = toolName(item);
   if (name === "load_skill") return String(args.name || "").trim() || name;
@@ -108,6 +115,7 @@ function skillTip(item: Item): string {
   return name;
 }
 
+/** 按工具名归成搜索、阅读、运行、编辑等种类。 */
 function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "edit" | "office" | "media" | "skill" | "other" {
   const n = name.toLowerCase();
   if (/(office_|connector_|computer_act|clipboard)/.test(n)) return "office";
@@ -122,12 +130,14 @@ function toolKind(name: string): "search" | "web" | "read" | "list" | "run" | "e
   return "other";
 }
 
+/** 把条目时间收成毫秒，没有就当 0。 */
 function ts(item: Item | undefined): number {
   if (!item?.ts) return 0;
   const n = Date.parse(item.ts);
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 从末尾找第一条符合的条目。 */
 function lastOf(items: Item[], pred: (it: Item) => boolean): Item | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     if (pred(items[i]!)) return items[i];
@@ -135,6 +145,7 @@ function lastOf(items: Item[], pred: (it: Item) => boolean): Item | undefined {
   return undefined;
 }
 
+/** 找还没有结果的那次工具调用。 */
 function openTool(items: Item[]): Item | undefined {
   const open = new Set<string>();
   for (const it of items) {
@@ -151,6 +162,7 @@ function openTool(items: Item[]): Item | undefined {
   return undefined;
 }
 
+/** 错误文案像是被拒绝或被挡住。 */
 function refused(item: Item | undefined): boolean {
   if (!item) return false;
   if (item.type === "error") {
@@ -160,6 +172,7 @@ function refused(item: Item | undefined): boolean {
   return false;
 }
 
+/** 按工具种类选一个干活时的表情。 */
 function emotionForTool(item: Item): string {
   const name = toolName(item).toLowerCase();
   if (name.includes("memory") || name.includes("trajectory")) return "37";
@@ -186,12 +199,13 @@ function emotionForTool(item: Item): string {
   }
 }
 
+/** 工具做久了就在原表情和等待脸之间换。 */
 function sustainWork(id: string, age: number): string {
   if (!(age > 10_000)) return id;
   return Math.floor((age - 10_000) / 5600) % 2 === 0 ? id : "42";
 }
 
-/** Map workstation state onto a Mood Mates emotionId. One id at a time. */
+/** presenceOf 把工作台状态收成一个情绪编号，一次只出一个。 */
 export function presenceOf(input: PresenceInput): PresenceOut {
   const now = input.now ?? Date.now();
   const items = input.items || [];
@@ -279,6 +293,7 @@ const KNOWN_TIPS = new Set([
   "wake", "sleep", "idle", "eval", "evolve", "ask",
 ]);
 
+/** presenceLine 把已知提示换成文案，活着的工具名接在工作前缀后面。 */
 export function presenceLine(out: PresenceOut, labels: Record<string, string>): string {
   const t = out.tips || "idle";
   if (labels[t]) return labels[t];

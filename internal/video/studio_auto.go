@@ -1,3 +1,6 @@
+// 一键成片。先起草或锁住口播，再配音，补上缺的静帧，最后合成。
+// 点下去就在后台做，看 auto_phase。配音失败会改成不配音再继续。
+
 package video
 
 import (
@@ -15,8 +18,8 @@ import (
 
 const autoShotWait = 12 * time.Minute
 
-// StartStudioAuto drafts or locks the script, speaks, fills missing stills, and assembles.
-// The click is the spend confirmation. Work continues in the background; poll auto_phase.
+// StartStudioAuto 开始一键成片。编号空着就拒绝。这一条已经在做就返回当前工程，不另起一次。
+// 点这一下就开始用对话、语音和图像。函数立刻返回，后台接着做。
 func (e *Engine) StartStudioAuto(id string) (StudioProject, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -43,6 +46,7 @@ func (e *Engine) StartStudioAuto(id string) (StudioProject, error) {
 	return saved, nil
 }
 
+// runStudioAuto 按口播、配音、画面、合成的顺序做完。配音失败就记警告并跳过配音。任一步失败把阶段写成 failed。中途恐慌也收成失败，避免挂住。
 func (e *Engine) runStudioAuto(id string) {
 	defer e.inflight.Delete("studio-auto:" + id)
 	defer func() {
@@ -79,6 +83,7 @@ func (e *Engine) runStudioAuto(id string) {
 	e.finishAuto(id, "done", "")
 }
 
+// autoScript 保证有口播并锁定。口播是空的就先起草。然后按口播重排镜头，已有画面按字幕对上的会留下。锁定失败就返回错误。
 func (e *Engine) autoScript(id string) error {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -102,6 +107,7 @@ func (e *Engine) autoScript(id string) error {
 	return nil
 }
 
+// syncShotsToScript 按口播重写分段和镜头。字幕对得上、且原来有图或视频的镜头，会把画面、运镜和过期标记抄回来。第一段写成钩子，最后一段写成收束。
 func (e *Engine) syncShotsToScript(p *StudioProject) {
 	if p == nil || strings.TrimSpace(p.Script) == "" {
 		return
@@ -141,6 +147,7 @@ func (e *Engine) syncShotsToScript(p *StudioProject) {
 	}
 }
 
+// autoVisuals 给缺画面的镜头排队生图，然后等到它们回来。画面已经齐就直接返回。排队失败且一镜都没有时返回错误。
 func (e *Engine) autoVisuals(id string) error {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -155,6 +162,7 @@ func (e *Engine) autoVisuals(id string) error {
 	return e.waitStudioShots(id)
 }
 
+// hasStudioMedia 判断至少有一镜已经有图或视频。
 func hasStudioMedia(p StudioProject) bool {
 	for _, s := range p.Storyboard.Shots {
 		if s.ImageHash != "" || s.VideoHash != "" {
@@ -164,6 +172,7 @@ func hasStudioMedia(p StudioProject) bool {
 	return false
 }
 
+// waitStudioShots 等到每一镜都有可用画面，或没有还在跑的任务。最多等 12 分钟。引擎取消时返回已取消。超时或仍缺画面就返回错误。
 func (e *Engine) waitStudioShots(id string) error {
 	deadline := time.Now().Add(autoShotWait)
 	for {
@@ -214,6 +223,7 @@ func (e *Engine) waitStudioShots(id string) error {
 	}
 }
 
+// draftStudioScript 用已启用的对话连接写口播。没有连接、没有密钥，或返回是空的，就要求先自己写。
 func (e *Engine) draftStudioScript(p StudioProject) (string, error) {
 	if e.Conn == nil {
 		return "", fmt.Errorf("先写几句口播，或到设置 → 生成里接上对话模型。")
@@ -254,6 +264,7 @@ func (e *Engine) draftStudioScript(p StudioProject) (string, error) {
 	return text, nil
 }
 
+// clipRunes 按字数截断。超过 n 个字就只留前 n 个。n 小于等于 0 时不截。
 func clipRunes(s string, n int) string {
 	s = strings.TrimSpace(s)
 	r := []rune(s)
@@ -263,6 +274,7 @@ func clipRunes(s string, n int) string {
 	return string(r[:n])
 }
 
+// cleanDraftScript 去掉模型输出外面的代码围栏，以及开头的「口播」标记。
 func cleanDraftScript(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "```")
@@ -276,6 +288,7 @@ func cleanDraftScript(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// chatComplete 向对话接口要一段文本。端点空着用 api.openai.com。路径还没到 /chat/completions 就补上。45 秒超时。没有 choices 就返回错误。
 func (e *Engine) chatComplete(endpoint, key, model, system, user string) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	if base == "" {
@@ -341,6 +354,7 @@ func (e *Engine) chatComplete(endpoint, key, model, system, user string) (string
 	return parsed.Choices[0].Message.Content, nil
 }
 
+// markAuto 写下当前阶段并清掉错误。工程读不到就什么都不做。
 func (e *Engine) markAuto(id, phase string) {
 	p, err := e.GetStudioProject(id)
 	if err != nil {
@@ -351,6 +365,7 @@ func (e *Engine) markAuto(id, phase string) {
 	_, _ = e.saveStudio(p)
 }
 
+// finishAuto 写下结束阶段。成功时先打交付包，包打不上就记警告，阶段仍是 done，闸门改到交付。挂了选题且已有成片时，把选题标成完成。失败时只记下原因。
 func (e *Engine) finishAuto(id, phase, errMsg string) {
 	var packErr error
 	if phase == "done" && errMsg == "" {

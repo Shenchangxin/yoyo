@@ -1,9 +1,11 @@
+// 本文件拥有两个字形切换时的淡入和缩放。不拥有字形代表的状态。调用方用 on 选定当前字形。
+
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { DURATION_FAST, motionTransition, useMotionReduced } from "../../lib/motion";
 import { cn } from "../../lib/utils";
 
-/** Cross-fade + scale between two glyphs. Motion is the state change, then it stops. */
+// IconSwap 按 on 在 off 和 live 之间交叉淡入并缩放到 0.72。动的是这次切换，停下来就不再动。减少动效时不做入场和退场。
 export function IconSwap({
   on,
   off,

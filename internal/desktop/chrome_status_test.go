@@ -2,6 +2,7 @@ package desktop
 
 import "testing"
 
+// TestChromeStatusPriority 锁住暂停压过工作和审批，审批压过工作，有回合时是工作，否则空闲。
 func TestChromeStatusPriority(t *testing.T) {
 	if chromeStatusOf(true, true, 2) != chromePaused {
 		t.Fatal("pause outranks work and approval")
@@ -17,6 +18,7 @@ func TestChromeStatusPriority(t *testing.T) {
 	}
 }
 
+// TestChromeLineAndTooltip 锁住英文空闲行、中文处理中行，以及 Windows 上暂停提示带 Ctrl+Shift+Y。wake 为假时不加第二行。
 func TestChromeLineAndTooltip(t *testing.T) {
 	en := nativeCopy("en")
 	if en.chromeLine(chromeIdle) != "Yoyo · Idle" {
@@ -38,6 +40,7 @@ func TestChromeLineAndTooltip(t *testing.T) {
 	}
 }
 
+// TestCompanionMenuCopy 锁住中英文宠物菜单文案都非空，设置项以省略号结尾。
 func TestCompanionMenuCopy(t *testing.T) {
 	for _, loc := range []string{"en", "zh"} {
 		n := nativeCopy(loc)
@@ -56,6 +59,7 @@ func TestCompanionMenuCopy(t *testing.T) {
 	}
 }
 
+// TestSliceLen 锁住 nil 的长度是 0，两元素切片是 2，标量是 0。
 func TestSliceLen(t *testing.T) {
 	if sliceLen(nil) != 0 {
 		t.Fatal("nil")
@@ -68,12 +72,14 @@ func TestSliceLen(t *testing.T) {
 	}
 }
 
+// TestCompanionContextMenuID 锁住右键菜单 id 是 yoyo-companion，和前端的 custom-contextmenu 一致。
 func TestCompanionContextMenuID(t *testing.T) {
 	if companionContextMenuID != "yoyo-companion" {
 		t.Fatalf("css --custom-contextmenu must match %q", companionContextMenuID)
 	}
 }
 
+// TestCompanionIgnoresHits 锁住默认接收点击，专注模式穿透，语音通话时即使专注也不穿透。
 func TestCompanionIgnoresHits(t *testing.T) {
 	s := &Service{}
 	if s.companionIgnoresHits() {
@@ -89,6 +95,7 @@ func TestCompanionIgnoresHits(t *testing.T) {
 	}
 }
 
+// TestSetCompanionCallNoop 锁住空闲时挂断仍空闲，打开通话后保持交互，重复打开不拆掉状态，挂断后清掉通话标志。
 func TestSetCompanionCallNoop(t *testing.T) {
 	s := &Service{}
 	s.SetCompanionCall(false)
@@ -109,6 +116,7 @@ func TestSetCompanionCallNoop(t *testing.T) {
 	}
 }
 
+// TestHideCompanionEndsCall 锁住隐藏宠物会标成已收起，并结束通话。
 func TestHideCompanionEndsCall(t *testing.T) {
 	s := &Service{}
 	s.companionCall.Store(true)
@@ -122,11 +130,13 @@ func TestHideCompanionEndsCall(t *testing.T) {
 	}
 }
 
+// TestResetCompanionWithoutWindow 锁住没有宠物窗口时 ResetCompanion 直接返回。
 func TestResetCompanionWithoutWindow(t *testing.T) {
 	s := &Service{}
 	s.ResetCompanion()
 }
 
+// TestAgentWorkingWithoutApp 锁住空 Service 不在工作，agentBusy 为真时算正在工作。
 func TestAgentWorkingWithoutApp(t *testing.T) {
 	s := &Service{}
 	if s.agentWorking() {
@@ -138,6 +148,7 @@ func TestAgentWorkingWithoutApp(t *testing.T) {
 	}
 }
 
+// TestOpenCompanionChatWithoutApp 锁住没有 App、RPC 和窗口时 OpenCompanionChat 也能返回。
 func TestOpenCompanionChatWithoutApp(t *testing.T) {
 	s := &Service{}
 	s.OpenCompanionChat()

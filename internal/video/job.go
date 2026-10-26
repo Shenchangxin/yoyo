@@ -1,3 +1,5 @@
+// job.go 排队、取消并推进图像、视频和拼接任务。模型循环仍是 runtime.Run，这里只按定时器领取已排队的任务。
+
 package video
 
 import (
@@ -10,8 +12,10 @@ import (
 	"time"
 )
 
+// maxJobWorkers 是同时执行的任务上限，8 个。
 const maxJobWorkers = 8
 
+// GetJob 按标识读出一条任务。
 func (e *Engine) GetJob(id string) (Job, error) {
 	j, err := getDoc[Job](e, colJobs, id)
 	if err != nil {
@@ -20,6 +24,7 @@ func (e *Engine) GetJob(id string) (Job, error) {
 	return j, nil
 }
 
+// ListJobs 按创建时间从新到旧列出任务。episodeID 非空时只留该集。最多 200 条，没有任务时返回空切片。
 func (e *Engine) ListJobs(episodeID string) ([]Job, error) {
 	all := loadCol[Job](e, colJobs)
 	var out []Job
@@ -39,6 +44,7 @@ func (e *Engine) ListJobs(episodeID string) ([]Job, error) {
 	return out, nil
 }
 
+// ListDramaJobs 列出一部剧的任务，按创建时间从新到旧，最多 200 条。dramaID 为空时改为列出全部任务。
 func (e *Engine) ListDramaJobs(dramaID string) ([]Job, error) {
 	if dramaID == "" {
 		return e.ListJobs("")
@@ -61,10 +67,12 @@ func (e *Engine) ListDramaJobs(dramaID string) ([]Job, error) {
 	return out, nil
 }
 
+// insertJob 把任务写入文档，不改更新时间。
 func (e *Engine) insertJob(j Job) error {
 	return e.putDoc(colJobs, j.ID, j)
 }
 
+// saveJob 把 UpdatedAt 设为现在，写入文档，并在 OnJob 非空时交出去。
 func (e *Engine) saveJob(j Job) error {
 	j.UpdatedAt = Now()
 	if err := e.putDoc(colJobs, j.ID, j); err != nil {
@@ -74,6 +82,7 @@ func (e *Engine) saveJob(j Job) error {
 	return nil
 }
 
+// EnqueueImage 用当前图像供应商排一条 queued 任务。尺寸空着时用 1920x1080。模型用 ResolveProviderModel。写入后 emit。
 func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 	p, err := e.ActiveProvider("image", in.ProviderID)
 	if err != nil {
@@ -97,6 +106,7 @@ func (e *Engine) EnqueueImage(in EnqueueImage) (Job, error) {
 	return j, nil
 }
 
+// EnqueueVideo 用当前视频供应商排一条 queued 任务。时长经 ClampProviderDuration，画幅空着时用 16:9，分辨率按供应商归一。镜头标识写在 StoryboardID。
 func (e *Engine) EnqueueVideo(in EnqueueVideo) (Job, error) {
 	p, err := e.ActiveProvider("video", in.ProviderID)
 	if err != nil {
@@ -123,6 +133,7 @@ func (e *Engine) EnqueueVideo(in EnqueueVideo) (Job, error) {
 	return j, nil
 }
 
+// EnqueueMerge 排一条 ffmpeg、模型 concat-h264 的拼接任务，并把该集流水线的 merge 标成 running。
 func (e *Engine) EnqueueMerge(episodeID, dramaID string, paths []string, shotIDs []string) (Job, error) {
 	now := Now()
 	j := Job{
@@ -138,6 +149,7 @@ func (e *Engine) EnqueueMerge(episodeID, dramaID string, paths []string, shotIDs
 	return j, nil
 }
 
+// CancelJob 把未结束的任务标成 cancelled，并取消正在跑的上下文。succeeded、failed、cancelled 返回 already finished。
 func (e *Engine) CancelJob(id string) error {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -156,6 +168,7 @@ func (e *Engine) CancelJob(id string) error {
 	return e.saveJob(j)
 }
 
+// RetryJob 只接受 failed 或 cancelled。状态改回 queued，并清掉错误、远程标识和完成时间。
 func (e *Engine) RetryJob(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {
@@ -174,6 +187,7 @@ func (e *Engine) RetryJob(id string) (Job, error) {
 	return j, nil
 }
 
+// resumeJobs 在打开时处理 running 和 polling。已有 RemoteID 的改成 polling，没有的改回 queued。
 func (e *Engine) resumeJobs() {
 	for _, j := range loadCol[Job](e, colJobs) {
 		if j.Status != "running" && j.Status != "polling" {
@@ -188,6 +202,7 @@ func (e *Engine) resumeJobs() {
 	}
 }
 
+// loop 每 800 毫秒调用一次 pump，直到上下文取消。它领取已排队的生成任务。
 func (e *Engine) loop(ctx context.Context) {
 	t := time.NewTicker(800 * time.Millisecond)
 	defer t.Stop()
@@ -201,6 +216,7 @@ func (e *Engine) loop(ctx context.Context) {
 	}
 }
 
+// inflightN 统计正在执行的任务数。
 func (e *Engine) inflightN() int {
 	n := 0
 	e.inflight.Range(func(_, _ any) bool {
@@ -210,6 +226,7 @@ func (e *Engine) inflightN() int {
 	return n
 }
 
+// pump 按创建时间从旧到新领取 queued 和 polling，空位是 maxJobWorkers 减去正在执行的数量。每条任务超时 12 分钟。已经在执行的标识会跳过。
 func (e *Engine) pump(ctx context.Context) {
 	slots := maxJobWorkers - e.inflightN()
 	if slots <= 0 {
@@ -235,6 +252,7 @@ func (e *Engine) pump(ctx context.Context) {
 	}
 }
 
+// runJob 在结束时取消上下文并移出正在执行的表。queued 走 runSubmit，polling 走 runPoll。读不到或已取消则返回。
 func (e *Engine) runJob(ctx context.Context, id string, cancel context.CancelFunc) {
 	defer func() {
 		cancel()
@@ -252,11 +270,13 @@ func (e *Engine) runJob(ctx context.Context, id string, cancel context.CancelFun
 	}
 }
 
+// abandoned 在任务读不到或状态已是 cancelled 时为真。
 func (e *Engine) abandoned(id string) bool {
 	j, err := e.GetJob(id)
 	return err != nil || j.Status == "cancelled"
 }
 
+// runSubmit 把任务标成 running。image、video、merge、canvas、canvas_timeline、canvas_transcribe 分别提交；canvas_text 把状态写成 text_replay。未知类型失败。提交前或提交后若已取消则直接返回。失败时记下错误并标记短片任务失败。
 func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 	if ctx.Err() != nil || e.abandoned(j.ID) {
 		return nil
@@ -299,6 +319,7 @@ func (e *Engine) runSubmit(ctx context.Context, j Job) error {
 	return e.saveJob(j)
 }
 
+// runPoll 轮询 image、video 和 canvas。其他类型把状态写成 failed，错误是 nothing to poll。已取消则直接返回。失败时记下错误并标记短片任务失败。
 func (e *Engine) runPoll(ctx context.Context, j Job) error {
 	if ctx.Err() != nil || e.abandoned(j.ID) {
 		return nil
@@ -331,6 +352,7 @@ func (e *Engine) runPoll(ctx context.Context, j Job) error {
 	return e.saveJob(j)
 }
 
+// finishMedia 把字节写入 CAS。视频能抽出封面时写入 PosterHash，图像则尝试缩略图。带画布工程或类型为 canvas 时再交给 finishCanvasMedia。成功后状态为 succeeded，并 writeBack。
 func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 	h, err := e.PutBytes(raw)
 	if err != nil {
@@ -357,6 +379,7 @@ func (e *Engine) finishMedia(j *Job, raw []byte, video bool) error {
 	return e.writeBack(*j)
 }
 
+// runMerge 拼接 ReferenceVideoURLs。以 / 开头、像盘符路径或含反斜杠的条目当本地路径，其余当内容寻址哈希。没有片段、哈希没有文件或文件不在磁盘上时失败。成功后把成片哈希写回该集，并把 merge 标成 done。
 func (e *Engine) runMerge(ctx context.Context, j *Job) error {
 	var p JobParams
 	_ = json.Unmarshal([]byte(j.Params), &p)
@@ -397,6 +420,7 @@ func (e *Engine) runMerge(ctx context.Context, j *Job) error {
 	return nil
 }
 
+// first 在 v 去掉空白后为空时返回 fb。
 func first(v, fb string) string {
 	if strings.TrimSpace(v) == "" {
 		return fb
@@ -404,6 +428,7 @@ func first(v, fb string) string {
 	return v
 }
 
+// parseParams 把 JSON 解成 JobParams。解不开时返回零值。
 func parseParams(raw string) JobParams {
 	var p JobParams
 	_ = json.Unmarshal([]byte(raw), &p)

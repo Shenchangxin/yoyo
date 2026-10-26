@@ -1,3 +1,5 @@
+// 行为：画布资源的登记、分片上传、访问地址和视频封面。字节在 CAS，这里只保存索引。
+
 package video
 
 import (
@@ -46,6 +48,7 @@ type canvasUpload struct {
 	got        map[int]bool
 }
 
+// resourcePublicURL 拼资源的公开地址。设置了 MediaBase 时走 /resource/ 加资源 id。
 func (e *Engine) resourcePublicURL(id, hash string) string {
 	if id == "" {
 		return e.MediaURL(hash)
@@ -56,6 +59,7 @@ func (e *Engine) resourcePublicURL(id, hash string) string {
 	return "/resource/" + id
 }
 
+// canvasResourceFromRow 把存储字段收成返回给前端的资源对象。
 func (e *Engine) canvasResourceFromRow(id, hash, kind, mime string, bytes int64, width, height, duration int, poster, playback, fileName, created, updated string) canvasResource {
 	if kind == "" {
 		kind = "file"
@@ -72,6 +76,7 @@ func (e *Engine) canvasResourceFromRow(id, hash, kind, mime string, bytes int64,
 	}
 }
 
+// getCanvasResource 读取未删除的画布资源。
 func (e *Engine) getCanvasResource(id string) (canvasResource, error) {
 	rec, err := getDoc[canvasResourceRec](e, colResources, id)
 	if err != nil || rec.DeletedAt != "" {
@@ -80,6 +85,7 @@ func (e *Engine) getCanvasResource(id string) (canvasResource, error) {
 	return e.canvasResourceFromRow(rec.ID, rec.CASHash, rec.Kind, rec.Mime, rec.Bytes, rec.Width, rec.Height, rec.DurationMs, rec.PosterHash, rec.PlaybackStatus, rec.FileName, rec.CreatedAt, rec.UpdatedAt), nil
 }
 
+// putCanvasBytes 把字节写入 CAS 并登记资源。视频封面改到后台补，避免堵住这次上传。
 func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, height, duration int, id string) (canvasResource, error) {
 	if len(raw) == 0 {
 		return canvasResource{}, fmt.Errorf("empty file")
@@ -123,13 +129,13 @@ func (e *Engine) putCanvasBytes(kind, mime, fileName string, raw []byte, width, 
 		return canvasResource{}, err
 	}
 	if deferPoster {
-		// Poster runs ffmpeg for up to 8s. Canvas upload shares one RPC turn
-		// with health and session refresh, so the still is filled afterwards.
+		// 封面抽帧最多跑 8 秒 ffmpeg。画布上传和健康检查、会话刷新共用一次 RPC，所以静帧改到事后补。
 		go e.fillVideoPoster(id, hash)
 	}
 	return e.getCanvasResource(id)
 }
 
+// fillVideoPoster 用 ffmpeg 抽一帧并写回资源的封面哈希。引擎已关闭或没有 ffmpeg 则返回。
 func (e *Engine) fillVideoPoster(id, hash string) {
 	if e == nil || strings.TrimSpace(e.FFMPEG) == "" || id == "" || hash == "" {
 		return
@@ -157,6 +163,7 @@ func (e *Engine) fillVideoPoster(id, hash string) {
 	_ = e.putDoc(colResources, id, rec)
 }
 
+// putCanvasResourceFromHash 给已有的 CAS 哈希登记一条画布资源。
 func (e *Engine) putCanvasResourceFromHash(hash, kind, mime string, bytes int64, width, height, duration int) (canvasResource, error) {
 	if hash == "" {
 		return canvasResource{}, fmt.Errorf("cas hash missing")
@@ -174,6 +181,7 @@ func (e *Engine) putCanvasResourceFromHash(hash, kind, mime string, bytes int64,
 	return e.getCanvasResource(id)
 }
 
+// finishCanvasMedia 用任务结果哈希登记画布资源，并写成 READY。登记失败时标成可重试。
 func (e *Engine) finishCanvasMedia(j *Job, raw []byte, video bool) error {
 	kind := "image"
 	if video {
@@ -203,6 +211,7 @@ func (e *Engine) finishCanvasMedia(j *Job, raw []byte, video bool) error {
 	return nil
 }
 
+// resourceAccess 返回资源的本地访问地址，实际变体固定为 original。
 func (e *Engine) resourceAccess(id, purpose, variant string) (map[string]any, error) {
 	res, err := e.getCanvasResource(id)
 	if err != nil {
@@ -210,7 +219,7 @@ func (e *Engine) resourceAccess(id, purpose, variant string) (map[string]any, er
 	}
 	url := res.PublicURL
 	if variant == "playback" && res.PosterHash != "" && purpose == "display" {
-		// original CAS playback; media server serves original bytes
+		// 仍走原始 CAS 播放，媒体服务返回原始字节。
 	}
 	_ = purpose
 	now := Now()
@@ -226,6 +235,7 @@ func (e *Engine) resourceAccess(id, purpose, variant string) (map[string]any, er
 	}, nil
 }
 
+// storageUsage 汇总未删除资源的字节数，总量按 1 TiB 返回。
 func (e *Engine) storageUsage() map[string]any {
 	var used int64
 	for _, r := range loadCol[canvasResourceRec](e, colResources) {
@@ -236,6 +246,7 @@ func (e *Engine) storageUsage() map[string]any {
 	return map[string]any{"usedBytes": used, "totalBytes": int64(1 << 40)}
 }
 
+// startChunkUpload 按 8MiB 分片创建上传会话，并记下临时目录。
 func (e *Engine) startChunkUpload(kind, fileName string, size, width, height, duration int) (*canvasUpload, error) {
 	const chunk = 8 << 20
 	if size <= 0 {
@@ -260,6 +271,7 @@ func (e *Engine) startChunkUpload(kind, fileName string, size, width, height, du
 	return u, nil
 }
 
+// putChunk 把一块分片写到上传目录，并更新已收到的块数。
 func (e *Engine) putChunk(id string, index int, raw []byte) error {
 	v, ok := e.uploads.Load(id)
 	if !ok {
@@ -284,6 +296,7 @@ func (e *Engine) putChunk(id string, index int, raw []byte) error {
 	return nil
 }
 
+// completeChunkUpload 按序拼回分片，登记成画布资源，然后删掉临时目录。
 func (e *Engine) completeChunkUpload(id string) (canvasResource, error) {
 	v, ok := e.uploads.Load(id)
 	if !ok {
@@ -305,6 +318,7 @@ func (e *Engine) completeChunkUpload(id string) (canvasResource, error) {
 	return res, err
 }
 
+// ServeResourceFile 优先返回 CAS 文件路径。路径不在时再读出字节。
 func (e *Engine) ServeResourceFile(id string) (string, []byte, string, error) {
 	res, err := e.getCanvasResource(id)
 	if err != nil {

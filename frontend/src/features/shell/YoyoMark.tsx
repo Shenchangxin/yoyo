@@ -1,12 +1,14 @@
+// 本文件拥有小写 yoyo 字标和空状态用的静置印记。不拥有旁边的导航或标题。ThreadRail、BootSkeleton、SkillsWorkspace 用 YoyoMark；About 和 Transcript 用 MarkWell。
+
 import { cn } from "../../lib/utils";
 
 type MarkProps = {
   className?: string;
-  /** Tight crop for chrome. Page marks stay cropped, just a step larger. */
+  // compact 给窄边栏用，字号 15px。页面印记不传它，字号 17px，仍然是裁切过的字标。
   compact?: boolean;
 };
 
-/** Lowercase yoyo wordmark in the UI face. */
+// YoyoMark 用界面字体画小写 yoyo。
 export function YoyoMark({ className, compact }: MarkProps) {
   return (
     <span
@@ -21,7 +23,7 @@ export function YoyoMark({ className, compact }: MarkProps) {
   );
 }
 
-/** Empty still-life: a quiet stamp, not a poster. */
+// MarkWell 是空状态里的静置印记，不是海报。它对读屏隐藏。
 export function MarkWell({ className, markClassName }: { className?: string; markClassName?: string }) {
   return (
     <span className={cn("mark-well inline-flex", className)} aria-hidden>

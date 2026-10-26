@@ -1,3 +1,5 @@
+// 把一份 L1 提议写进内容寻址库，或把多份正交提议合并到同一父快照。不跑 Harbor，也不移动 refs。quality.go 在写入前做准入。
+
 package evolve
 
 import (
@@ -8,6 +10,7 @@ import (
 	wasm "github.com/Shenchangxin/yoyo/internal/plugin/wasm"
 )
 
+// Candidate 是已经落到快照上的一条提议，以及它挂上的纤维。
 type Candidate struct {
 	Proposal Proposal
 	Snapshot artifact.HarnessSnapshot
@@ -15,6 +18,7 @@ type Candidate struct {
 	Fiber    *kernel.Fiber
 }
 
+// ApplyProposal 克隆父快照，把 Parent 和 Note 设成父哈希与审计说明，再写入唯一的 L1 载荷。载荷多于一种时 applyOne 返回错误。
 func ApplyProposal(cas *artifact.Store, base artifact.HarnessSnapshot, parent string, p Proposal) (artifact.HarnessSnapshot, string, error) {
 	next := artifact.CloneSnapshot(base)
 	next.Parent = parent
@@ -26,7 +30,7 @@ func ApplyProposal(cas *artifact.Store, base artifact.HarnessSnapshot, parent st
 	return next, hash, err
 }
 
-// MergeProposals applies every L1 payload onto the same parent snapshot.
+// MergeProposals 把每条提议的 L1 载荷写到同一份父快照上。同一 surfaceKey 只保留先出现的那条。空列表返回 nothing to merge。Note 写成 merge-accepted。
 func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent string, props []Proposal) (artifact.HarnessSnapshot, string, error) {
 	next := artifact.CloneSnapshot(base)
 	next.Parent = parent
@@ -49,6 +53,7 @@ func MergeProposals(cas *artifact.Store, base artifact.HarnessSnapshot, parent s
 	return next, hash, err
 }
 
+// applyOne 要求提议恰好一种 L1 载荷，并按片段、剧本、技能、指令槽或中间件写入。中间件的 MiddlewareN 小于等于 0 时用 2。指令槽空时用 verification。
 func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) error {
 	if payloadCount(p) > 1 {
 		return fmt.Errorf("multiple L1 surfaces")
@@ -122,6 +127,7 @@ func applyOne(cas *artifact.Store, next *artifact.HarnessSnapshot, p Proposal) e
 	return nil
 }
 
+// AdmitWASM 把一段 WASM 作为插件纤维装上，卸载时调用 host.Unload。export 传给 Load，燃料参数为 0。
 func AdmitWASM(ctx *kernel.Context, host *wasm.Host, id string, bin []byte, export string) (*kernel.Fiber, error) {
 	return ctx.Plugin("wasm:"+id, func(c *kernel.Context) error {
 		return c.Effect(func() (func() error, error) {

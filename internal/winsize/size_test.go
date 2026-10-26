@@ -1,7 +1,10 @@
+// 本文件锁住 Fit 的比例、下限、DIP 换算、离屏判断和 ShouldRefit。由 go test 调用。
+
 package winsize
 
 import "testing"
 
+// TestFitFraction 锁住 2000×1200 乘 0.85 得到 1700×1020。
 func TestFitFraction(t *testing.T) {
 	w, h := Fit(2000, 1200, 0.85)
 	if w != 1700 || h != 1020 {
@@ -9,6 +12,7 @@ func TestFitFraction(t *testing.T) {
 	}
 }
 
+// TestFitDefaultFrac 锁住比例 0 时按 DefaultFrac 计算 2560×1440。
 func TestFitDefaultFrac(t *testing.T) {
 	w, h := Fit(2560, 1440, 0)
 	if w != 2099 || h != 1180 {
@@ -16,6 +20,7 @@ func TestFitDefaultFrac(t *testing.T) {
 	}
 }
 
+// TestFitFallback 锁住工作区为 0 时返回 FallbackW 和 FallbackH。
 func TestFitFallback(t *testing.T) {
 	w, h := Fit(0, 0, DefaultFrac)
 	if w != FallbackW || h != FallbackH {
@@ -23,6 +28,7 @@ func TestFitFallback(t *testing.T) {
 	}
 }
 
+// TestFitClampsToWorkArea 锁住 1000×600 的工作区不会被抬到 MinW、MinH 以上。
 func TestFitClampsToWorkArea(t *testing.T) {
 	w, h := Fit(1000, 600, DefaultFrac)
 	if w != 1000 || h != 600 {
@@ -30,6 +36,7 @@ func TestFitClampsToWorkArea(t *testing.T) {
 	}
 }
 
+// TestToDIP 锁住 144 DPI 下 3840 变成 2560，96 DPI 和负数原样保留，0 仍是 0。
 func TestToDIP(t *testing.T) {
 	if ToDIP(3840, 144) != 2560 {
 		t.Fatalf("150%% 3840 -> %d", ToDIP(3840, 144))
@@ -45,6 +52,7 @@ func TestToDIP(t *testing.T) {
 	}
 }
 
+// TestLostOffscreen 锁住隐藏坐标和完全离开虚拟桌面为真，屏内窗口、未知虚拟屏幕和第二块显示器为假。
 func TestLostOffscreen(t *testing.T) {
 	if !LostOffscreen(-32000, -32000, 1600, 900, 0, 0, 2560, 1440) {
 		t.Fatal("Windows hide sentinel")
@@ -63,6 +71,7 @@ func TestLostOffscreen(t *testing.T) {
 	}
 }
 
+// TestKeepInside 锁住越出左上角和右下角会被夹进内边距，已经在内部的坐标不动。
 func TestKeepInside(t *testing.T) {
 	x, y := KeepInside(-80, -40, 176, 208, 0, 0, 1920, 1080, 8)
 	if x != 8 || y != 8 {
@@ -78,6 +87,7 @@ func TestKeepInside(t *testing.T) {
 	}
 }
 
+// TestFullyInside 锁住完全在盒子里为真，右边越出为假。
 func TestFullyInside(t *testing.T) {
 	if !FullyInside(100, 80, 176, 208, 0, 0, 1920, 1080) {
 		t.Fatal("on-screen must be fully inside")
@@ -87,6 +97,7 @@ func TestFullyInside(t *testing.T) {
 	}
 }
 
+// TestOverflows 锁住明显大于 DIP 工作区的窗口为真，Fit 出来的窗口为假。
 func TestOverflows(t *testing.T) {
 	if !Overflows(3532, 1987, 2560, 1440) {
 		t.Fatal("physical-pixel window overflows DIP work area")
@@ -96,6 +107,7 @@ func TestOverflows(t *testing.T) {
 	}
 }
 
+// TestShouldRefitMigratesOldDefault 锁住 fitRev 0 和 2 会重适配，当前 fitRev 下的默认尺寸和操作者改过的尺寸保留，溢出即使 fitRev 已是当前值也重适配。
 func TestShouldRefitMigratesOldDefault(t *testing.T) {
 	fitW, fitH := Fit(2560, 1440, DefaultFrac)
 	if !ShouldRefit(1440, 900, 0, fitW, fitH, 2560, 1440) {

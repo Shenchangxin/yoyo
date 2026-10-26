@@ -1,3 +1,5 @@
+// 锁住热前缀只往后接、检查点会换掉热前缀、动态块在历史末尾、recall 按页返回，以及窗口为 0 时不做模型摘要。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestPrefixStableAcrossToolRounds 确认连续工具回合里，后一轮热前缀仍以前一轮的字节为开头。
 func TestPrefixStableAcrossToolRounds(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
@@ -46,6 +49,7 @@ func TestPrefixStableAcrossToolRounds(t *testing.T) {
 	}
 }
 
+// TestCheckpointBreaksPrefixOnce 确认检查点之后的热前缀和检查点之前不同。
 func TestCheckpointBreaksPrefixOnce(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
@@ -61,6 +65,7 @@ func TestCheckpointBreaksPrefixOnce(t *testing.T) {
 	}
 }
 
+// TestToolUnlockDoesNotMutateSchemaUntilCheckpoint 确认 tool_search 在提交解锁之前不改变已公布 schema 的 token。
 func TestToolUnlockDoesNotMutateSchemaUntilCheckpoint(t *testing.T) {
 	tools := &WorkspaceTools{
 		ChatOverlay: true,
@@ -81,6 +86,7 @@ func TestToolUnlockDoesNotMutateSchemaUntilCheckpoint(t *testing.T) {
 	}
 }
 
+// TestRecallIsPaged 确认不传 offset 和 limit 时，recall_context 不倒出全文，并带上 recall id。
 func TestRecallIsPaged(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
@@ -99,6 +105,7 @@ func TestRecallIsPaged(t *testing.T) {
 	}
 }
 
+// TestHotFileHydrate 确认检查点补水会带上刚写过的文件路径和磁盘上的正文。
 func TestHotFileHydrate(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "hot.go"), []byte("package hot\n"), 0o644); err != nil {
@@ -118,6 +125,7 @@ func TestHotFileHydrate(t *testing.T) {
 	}
 }
 
+// TestHarborShapeUnchanged 确认 Compact 不调用模型；AllowLLMCompact 为真但 window 为 0 时，检查点也不做模型摘要。
 func TestHarborShapeUnchanged(t *testing.T) {
 	loop := DefaultLoop()
 	loop.AllowLLMCompact = true
@@ -144,6 +152,7 @@ func TestHarborShapeUnchanged(t *testing.T) {
 	}
 }
 
+// TestDynamicLivesAtTail 确认动态块在消息末尾，再次设置时旧块去掉、新块仍在末尾，用户消息留在原处。
 func TestDynamicLivesAtTail(t *testing.T) {
 	msgs := []Message{
 		{Role: RoleSystem, Content: "sys"},
@@ -169,17 +178,21 @@ type prefixClient struct {
 	hots []string
 }
 
+// Chat 记下每次请求的热前缀，再交给脚本客户端。
 func (p *prefixClient) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	p.hots = append(p.hots, hotPrefixBytes(req.Messages))
 	return p.ScriptedClient.Chat(ctx, req)
 }
 
+// ClientFunc 把函数适配成 Client，测试用它替换模型调用。
 type ClientFunc func(ctx context.Context, req ChatRequest) (Message, error)
 
+// Chat 把请求转给这个函数值。
 func (f ClientFunc) Chat(ctx context.Context, req ChatRequest) (Message, error) {
 	return f(ctx, req)
 }
 
+// TestRetainKeepTokensKeepsOperatorGoal 确认按 token 保留尾部时，开头的操作者目标还在，并且总量不超过放宽后的上限。
 func TestRetainKeepTokensKeepsOperatorGoal(t *testing.T) {
 	goal := "ship the parser in loop.go"
 	var msgs []Message
@@ -205,6 +218,7 @@ func TestRetainKeepTokensKeepsOperatorGoal(t *testing.T) {
 	}
 }
 
+// TestCheckpointEmitsStartThenComplete 确认检查点事件先是 checkpoint_start，最后一条是 checkpoint。
 func TestCheckpointEmitsStartThenComplete(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)

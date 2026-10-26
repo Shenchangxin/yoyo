@@ -1,3 +1,5 @@
+// 锁住静帧滤镜、字幕折行、语速、一键成片在缺画面时停下，以及从目录挂上配乐。
+
 package video
 
 import (
@@ -16,6 +18,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// TestStillFilterKenBurnsCoversWithoutPadding 锁住推拉铺满用 zoompan，不补黑边，并先放大到两倍。
 func TestStillFilterKenBurnsCoversWithoutPadding(t *testing.T) {
 	f := stillFilter(1080, 1920, 3, "ken-burns", "cover")
 	if strings.Contains(f, "pad=") || !strings.Contains(f, "zoompan=") || !strings.Contains(f, "1.08") {
@@ -26,6 +29,7 @@ func TestStillFilterKenBurnsCoversWithoutPadding(t *testing.T) {
 	}
 }
 
+// TestStillFilterStaticAndFakeMotionsStayPut 锁住静止和认不出的运镜都不推拉，而是留边。
 func TestStillFilterStaticAndFakeMotionsStayPut(t *testing.T) {
 	sb := StudioStoryboard{}
 	for _, motion := range []string{"static", "push-in", "pan-left", "zoom-out"} {
@@ -38,6 +42,7 @@ func TestStillFilterStaticAndFakeMotionsStayPut(t *testing.T) {
 	}
 }
 
+// TestStillCoverHoldsWithoutZoom 锁住静止的铺满只裁切，不推拉，也不补边。
 func TestStillCoverHoldsWithoutZoom(t *testing.T) {
 	f := stillFilter(1080, 1920, 3, "static", "cover")
 	if strings.Contains(f, "zoompan=") || strings.Contains(f, "pad=") || !strings.Contains(f, "crop=") {
@@ -45,6 +50,7 @@ func TestStillCoverHoldsWithoutZoom(t *testing.T) {
 	}
 }
 
+// TestStillFilterContainSkipsPush 锁住留边时即使运镜是推拉也不放大。
 func TestStillFilterContainSkipsPush(t *testing.T) {
 	f := stillFilter(1080, 1920, 3, "ken-burns", "contain")
 	if strings.Contains(f, "zoompan=") || !strings.Contains(f, "pad=") {
@@ -52,6 +58,7 @@ func TestStillFilterContainSkipsPush(t *testing.T) {
 	}
 }
 
+// TestClipShouldLoop 锁住素材远短于镜头时循环并提醒，只短一点时循环不提醒，够长时不循环。
 func TestClipShouldLoop(t *testing.T) {
 	loop, warn := clipShouldLoop(2, 6)
 	if !loop || !warn {
@@ -67,6 +74,7 @@ func TestClipShouldLoop(t *testing.T) {
 	}
 }
 
+// TestSRTToASSWrapsCJK 锁住竖屏 ASS 的画面尺寸，以及一长串中文会被折行。
 func TestSRTToASSWrapsCJK(t *testing.T) {
 	line := strings.Repeat("字", 40)
 	srt := "1\n00:00:00,000 --> 00:00:02,000\n" + line + "\n"
@@ -79,6 +87,7 @@ func TestSRTToASSWrapsCJK(t *testing.T) {
 	}
 }
 
+// TestAlignScriptToCuesKeepsScript 锁住对齐后句子仍是口播原文，时间来自识别条。
 func TestAlignScriptToCuesKeepsScript(t *testing.T) {
 	lines := []string{"第一句。", "第二句。"}
 	cues := []cut.Cue{{Start: 0.2, End: 1.1, Text: "错"}, {Start: 1.2, End: 2.4, Text: "误"}}
@@ -88,6 +97,7 @@ func TestAlignScriptToCuesKeepsScript(t *testing.T) {
 	}
 }
 
+// TestSpeechPayloadCarriesSpeed 锁住 1.25 倍语速会写进请求，1 倍不写，edge 的 1.2 倍是 +20%。
 func TestSpeechPayloadCarriesSpeed(t *testing.T) {
 	body := speechPayload("gpt-4o-mini-tts", "你好", "alloy", 1.25)
 	if body["speed"] != 1.25 {
@@ -101,6 +111,7 @@ func TestSpeechPayloadCarriesSpeed(t *testing.T) {
 	}
 }
 
+// TestMixGraphFadesMusicAtEnd 锁住给出淡出和总长时配乐在结尾淡出，并有侧链压缩。没给淡出就不写 afade。
 func TestMixGraphFadesMusicAtEnd(t *testing.T) {
 	filter, _ := cut.MixGraph(true, true, cut.MixOpts{Duck: true, MusicVol: 0.22, SpeechVol: 1, FadeOut: 3, Timeline: 12})
 	if !strings.Contains(filter, "afade=t=out:st=9.00:d=3.00") || !strings.Contains(filter, "sidechaincompress") {
@@ -112,6 +123,7 @@ func TestMixGraphFadesMusicAtEnd(t *testing.T) {
 	}
 }
 
+// TestCleanDraftScript 锁住围栏和「口播：」会被剥掉。
 func TestCleanDraftScript(t *testing.T) {
 	got := cleanDraftScript("```\n口播：大家好。记住这一点。\n```")
 	if got != "大家好。记住这一点。" {
@@ -119,6 +131,7 @@ func TestCleanDraftScript(t *testing.T) {
 	}
 }
 
+// TestSpeakStudioSendsSpeedAndMarksEstimate 锁住配音请求带上语速，没有识别时字幕标成估算并记警告。
 func TestSpeakStudioSendsSpeedAndMarksEstimate(t *testing.T) {
 	var saw map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +189,7 @@ func TestSpeakStudioSendsSpeedAndMarksEstimate(t *testing.T) {
 	}
 }
 
+// TestStudioAutoStopsWhenPicturesMissing 锁住一键成片在口播和配音之后，因为没有画面而失败。
 func TestStudioAutoStopsWhenPicturesMissing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -233,6 +247,7 @@ func TestStudioAutoStopsWhenPicturesMissing(t *testing.T) {
 	}
 }
 
+// TestAttachStudioBGMFromFolder 锁住目录里的 mp3 能挂上工程，清空后配乐编号消失。
 func TestAttachStudioBGMFromFolder(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateStudioProject(StudioProject{Title: "配乐"})

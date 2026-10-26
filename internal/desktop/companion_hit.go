@@ -1,3 +1,5 @@
+// companion_hit.go 拥有宠物窗口的命中、字幕矩形和贴边夹取。不创建窗口，也不调用系统 API。companion.go 用这些几何决定能不能拖。
+
 package desktop
 
 import (
@@ -27,11 +29,9 @@ const (
 	companionBottomClearance = 24
 	companionCaptionMinW     = 64
 	companionCaptionMinH     = 28
-	// Hit disk is slightly inside the pet box so empty corners pass through,
-	// but larger than the viewBox inset so bounce/lean still grab.
+	// 命中圆比宠物框略小，空角可以穿透；又比 viewBox 内缩大，弹跳和倾斜仍能抓住。
 	companionHitFill = 0.88
-	// Occupancy follows paint: a rounded rect around the 168px pet box,
-	// not a circle, so bounce/lean/ribbons/hips can overshoot the body.
+	// 占位跟着绘制走：168 像素宠物框外的圆角矩形，胯部、弹跳、飘带可以超出身体。
 	companionShapeFillX    = 1.14
 	companionBlobInset     = 0.06
 	companionBounceHead    = 36
@@ -46,6 +46,7 @@ const (
 var companionCaptionW atomic.Int32
 var companionCaptionH atomic.Int32
 
+// setCompanionCaptionBox 把字幕宽高夹到不小于 0，且不超过气泡最大宽高，再写进原子量。
 func setCompanionCaptionBox(w, h int) {
 	if w < 0 {
 		w = 0
@@ -63,6 +64,7 @@ func setCompanionCaptionBox(w, h int) {
 	companionCaptionH.Store(int32(h))
 }
 
+// captionBoxW 在记录的宽度小于最小字幕宽时返回默认气泡宽，大于最大宽时返回最大宽。
 func captionBoxW() float64 {
 	w := int(companionCaptionW.Load())
 	if w < companionCaptionMinW {
@@ -74,6 +76,7 @@ func captionBoxW() float64 {
 	return float64(w)
 }
 
+// captionBoxH 在记录的高度小于最小字幕高时返回默认气泡高，大于最大高时返回最大高。
 func captionBoxH() float64 {
 	h := int(companionCaptionH.Load())
 	if h < companionCaptionMinH {
@@ -85,6 +88,7 @@ func captionBoxH() float64 {
 	return float64(h)
 }
 
+// companionFrameH 在没有字幕时返回空闲高度。有字幕时加上气泡间距、字幕高度和底部留白。
 func companionFrameH(caption bool) int {
 	if !caption {
 		return companionIdleH
@@ -92,6 +96,7 @@ func companionFrameH(caption bool) int {
 	return companionPetTop + companionPet + companionBubbleGap + int(captionBoxH()+0.5) + companionPadBottom
 }
 
+// companionDesignH 在通话交互中返回通话高度，否则返回 companionFrameH。
 func companionDesignH(caption bool) float64 {
 	if companionInteractive.Load() {
 		return float64(companionCallH)
@@ -99,6 +104,7 @@ func companionDesignH(caption bool) float64 {
 	return float64(companionFrameH(caption))
 }
 
+// companionChildFit 表示子窗口区域该怎么处理：贴宠物形状、清掉旧裁剪，或跳过。
 type companionChildFit int
 
 const (
@@ -107,10 +113,7 @@ const (
 	companionChildSkip
 )
 
-// companionChildRegion decides what to do with one child HWND.
-// Tiny or not-yet-resized Chromium widgets must not inherit a scaled pet
-// clip — that stamps the idle blob onto the call page. During a call, drop
-// the stale clip so the webview can show the page once it catches the new size.
+// companionChildRegion 决定一个子 HWND 怎么裁。父窗口或子窗口小于 8 像素时，通话中清掉裁剪，空闲时跳过过小的子窗口。子窗口相对父窗口过小或过大时，通话中清掉旧的宠物裁剪，空闲时跳过，避免把空闲形状印到还没跟上尺寸的页面上。尺寸接近时贴宠物形状。
 func companionChildRegion(childW, childH, parentW, parentH int, inCall bool) companionChildFit {
 	if parentW < 8 || parentH < 8 {
 		return companionChildShape
@@ -136,10 +139,7 @@ type hitBox struct {
 	x, y, w, h int
 }
 
-// CompanionHit is true when a window-local point sits on the blob disk
-// or, when caption is on, on the caption chip under it. During a call the
-// whole card is the drag surface. Units only need to match the window size
-// (DIP or physical).
+// CompanionHit 在窗口本地坐标落在宠物圆盘上时返回真。字幕打开时，圆盘下方的字幕块也算命中。通话中整张卡片都是拖动面。坐标只要和窗口宽高同一套单位即可。窗口小于 8 时返回假。
 func CompanionHit(lx, ly, winW, winH float64, caption bool) bool {
 	if winW < 8 || winH < 8 {
 		return false
@@ -167,12 +167,14 @@ func CompanionHit(lx, ly, winW, winH float64, caption bool) bool {
 	return lx >= bx && lx <= bx+bw && ly >= by && ly <= by+bh
 }
 
+// companionScale 返回窗口相对设计宽、设计高的缩放，以及两者中较小的那个。
 func companionScale(winW, winH float64, caption bool) (sx, sy, s float64) {
 	sx = winW / float64(companionW)
 	sy = winH / companionDesignH(caption)
 	return sx, sy, min(sx, sy)
 }
 
+// companionBlobEllipse 给出包住宠物绘制范围的椭圆，上方留弹跳，下方留下巴，水平方向按 companionShapeFillX 放大。
 func companionBlobEllipse(winW, winH float64, caption bool) (cx, cy, rx, ry float64) {
 	_, sy, s := companionScale(winW, winH, caption)
 	cx = winW * 0.5
@@ -195,9 +197,7 @@ func companionBlobEllipse(winW, winH float64, caption bool) (cx, cy, rx, ry floa
 	return cx, cy, rx, ry
 }
 
-// companionPetRegionRect is the HWND occupancy for the blob: the 168px pet
-// box plus bounce/chin/lean. A stadium (round rect) of this size is not a
-// circle clip, so the cream body, bounce and ribbons stay visible.
+// companionPetRegionRect 是宠物 HWND 占位：168 像素宠物框再加上弹跳、下巴和左右倾斜。这是圆角矩形，身体、弹跳和飘带留在区域里。左右至少留 18 倍缩放的空，避免把圆的左边削掉。
 func companionPetRegionRect(winW, winH float64, caption bool) (x, y, w, h float64) {
 	_, sy, s := companionScale(winW, winH, caption)
 	pet := float64(companionPet) * s
@@ -205,8 +205,7 @@ func companionPetRegionRect(winW, winH float64, caption bool) (x, y, w, h float6
 	boxTop := float64(companionPetTop) * sy
 	boxH := float64(companionPet) * sy
 	padX := pet * (companionShapeFillX - 1) * 0.5
-	// Extra room so a 1px HWND/client mismatch or the breathe scale
-	// does not shave the left of the circle.
+	// 多留一点，避免 1 像素的 HWND 和客户区偏差，或呼吸缩放，把圆的左边削掉。
 	if padX < 18*s {
 		padX = 18 * s
 	}
@@ -239,9 +238,7 @@ func companionPetRegionRect(winW, winH float64, caption bool) (x, y, w, h float6
 	return x, y, w, h
 }
 
-// companionRegionCornerRadius is the visual corner radius of the HWND
-// occupancy. Keep it well below half the short side so GDI never draws a
-// stadium/circle that clips the blob hips.
+// companionRegionCornerRadius 是 HWND 占位的圆角半径。它低于短边的 0.32，避免 GDI 画成圆并把胯部裁掉。半径至少 12。
 func companionRegionCornerRadius(rw, rh, s float64) float64 {
 	rad := float64(companionRegionCorner) * s
 	if rad < 12*s {
@@ -261,6 +258,7 @@ func companionRegionCornerRadius(rw, rh, s float64) float64 {
 	return rad
 }
 
+// roundRectContains 判断点是否在圆角矩形内。角上按圆角半径做圆内测试，直边范围内直接算在里面。
 func roundRectContains(px, py, x, y, w, h, rad float64) bool {
 	if px < x || py < y || px > x+w || py > y+h {
 		return false
@@ -295,6 +293,7 @@ func roundRectContains(px, py, x, y, w, h, rad float64) bool {
 	return dx*dx+dy*dy <= rad*rad
 }
 
+// companionCaptionRect 返回字幕块加上左右和上下留白后的矩形，并夹在窗口内。
 func companionCaptionRect(winW, winH float64, caption bool) (x, y, w, h float64) {
 	sx, sy, _ := companionScale(winW, winH, caption)
 	w = captionBoxW() * sx
@@ -320,6 +319,7 @@ func companionCaptionRect(winW, winH float64, caption bool) (x, y, w, h float64)
 	return x, y, w, h
 }
 
+// inEllipse 用归一化坐标判断点是否在椭圆内。rx 或 ry 小于 1 时返回假。
 func inEllipse(px, py, cx, cy, rx, ry float64) bool {
 	if rx < 1 || ry < 1 {
 		return false
@@ -329,6 +329,7 @@ func inEllipse(px, py, cx, cy, rx, ry float64) bool {
 	return dx*dx+dy*dy <= 1
 }
 
+// dist2ToBox 返回点到矩形的平方距离。点在矩形内时为 0。
 func dist2ToBox(px, py int, b hitBox) int {
 	x, y := px, py
 	if x < b.x {
@@ -346,6 +347,7 @@ func dist2ToBox(px, py int, b hitBox) int {
 	return dx*dx + dy*dy
 }
 
+// nearestBox 按平方距离找最近的矩形。宽或高不大于 0 的矩形跳过。没有候选时返回假。
 func nearestBox(px, py int, boxes []hitBox) (hitBox, bool) {
 	var best hitBox
 	found := false
@@ -364,6 +366,7 @@ func nearestBox(px, py int, boxes []hitBox) (hitBox, bool) {
 	return best, found
 }
 
+// clampCompanionTo 先把窗口夹进中心点最近的工作区，边距是 pad，再夹进虚拟屏幕，边距是 4。
 func clampCompanionTo(x, y, w, h, pad int, boxes []hitBox, vx, vy, vw, vh int) (int, int) {
 	if home, ok := nearestBox(x+w/2, y+h/2, boxes); ok {
 		x, y = winsize.KeepInside(x, y, w, h, home.x, home.y, home.w, home.h, pad)

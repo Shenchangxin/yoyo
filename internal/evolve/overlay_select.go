@@ -1,3 +1,6 @@
+// 终稿选择。池子只含已交付的 k 条终稿，不另占弃权席，也不计入 R/P 账本。
+// 泄漏或无法解析时改用启发式。选择结果不写 refs。
+
 package evolve
 
 import (
@@ -13,13 +16,13 @@ import (
 )
 
 const (
+	// OverlayModeAgg 是并行日程的模式名，值为 agg。
 	OverlayModeAgg = "agg"
+	// OverlayModeSeq 是顺序日程的模式名，值为 seq。
 	OverlayModeSeq = "seq"
 )
 
-// OverlaySelection is outside the R/P ledger. The pool is the k finals only.
-// A composer that kept the base still occupies a slot, so choosing that
-// unmodified final is how "pick base" happens — there is no extra abstain seat.
+// OverlaySelection 是终稿选择。池子只有已交付的终稿。保留基线的合成仍然占一个名额，选中那份未改材料就是选基线。IDMap 不进入 JSON。
 type OverlaySelection struct {
 	Mode        string            `json:"mode,omitempty"`
 	K           int               `json:"k,omitempty"`
@@ -32,11 +35,13 @@ type OverlaySelection struct {
 	IDMap       map[string]string `json:"-"`
 }
 
+// overlaySelectItem 把一条终稿和它的 c 卷 rollout 配在一起。
 type overlaySelectItem struct {
 	final overlayFinal
 	roll  OverlayRollout
 }
 
+// ClampOverlayMode 把 seq、sequential、depth 收成 OverlayModeSeq，其余包括空串都收成 OverlayModeAgg。
 func ClampOverlayMode(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case OverlayModeSeq, "sequential", "depth":
@@ -46,6 +51,7 @@ func ClampOverlayMode(s string) string {
 	}
 }
 
+// overlaySessLabel 在 k 小于等于 1 时只用种类名，否则接上下标。
 func overlaySessLabel(k int, kind string, i int) string {
 	if k <= 1 {
 		return kind
@@ -53,6 +59,7 @@ func overlaySessLabel(k int, kind string, i int) string {
 	return fmt.Sprintf("%s%d", kind, i)
 }
 
+// overlayNoteFall 在退回时记下种类。k 为 1 时只记种类名，否则接上下标。未退回时不记。
 func overlayNoteFall(res *OverlayResult, k int, kind string, i int, fell bool) {
 	if !fell {
 		return
@@ -64,6 +71,7 @@ func overlayNoteFall(res *OverlayResult, k int, kind string, i int, fell bool) {
 	res.FellBack = append(res.FellBack, fmt.Sprintf("%s%d", kind, i))
 }
 
+// anonID 把从 0 起的下标收成 A、B、C 这种编号。26 之后进位，和电子表格列名一样。
 func anonID(index int) string {
 	n := index + 1
 	out := ""
@@ -75,6 +83,7 @@ func anonID(index int) string {
 	return out
 }
 
+// assignAnonIDs 先按标签排序，再用任务编号、k 和模式的 SHA-1 前 8 字节做种子打乱，然后映到匿名编号。同一输入得到同一映射。
 func assignAnonIDs(labels []string, taskID string, k int, mode string) map[string]string {
 	ordered := append([]string{}, labels...)
 	sort.Strings(ordered)
@@ -89,6 +98,9 @@ func assignAnonIDs(labels []string, taskID string, k int, mode string) map[strin
 	return out
 }
 
+// overlayPickFinal 只把 Delivered 为真的终稿放进池。池为空时 ChosenBase 为真，原因是 no candidate produced an artifact。
+// 池里只有一条时记为 trivial，匿名编号为 A，不再开会话。多条时先问模型；泄漏、匿名编号为空或对不上映射时改用 heuristicAnonPick。
+// 选中项未采纳、哈希为空或哈希等于父快照时 ChosenBase 为真。
 func overlayPickFinal(ctx context.Context, opts OverlayOpts, parent MaterialSet, base OverlayRollout, finals []overlayFinal, rolls []OverlayRollout, held map[string]bool) OverlaySelection {
 	mode := ClampOverlayMode(opts.Mode)
 	k := ClampOverlayK(opts.K)
@@ -159,6 +171,7 @@ func overlayPickFinal(ctx context.Context, opts OverlayOpts, parent MaterialSet,
 	return sel
 }
 
+// heuristicAnonPick 按匿名编号排序，返回第一份与基线交付物不同的非空产物。都相同或都空时返回排序后的第一个编号。映射为空时原因是 empty pool。
 func heuristicAnonPick(idMap map[string]string, byLabel map[string]overlaySelectItem, base OverlayRollout) (string, string) {
 	anons := make([]string, 0, len(idMap))
 	for a := range idMap {
@@ -179,6 +192,7 @@ func heuristicAnonPick(idMap map[string]string, byLabel map[string]overlaySelect
 	return anons[0], "no deliverable contrast; first anonymous id (base is valid)"
 }
 
+// selectOverlayLLM 让模型在匿名交付物里选一个。没有树时，每份交付物先经 capSelect 截到 4000 字节。回复泄漏、解析失败或匿名编号不在映射里时，匿名编号为空。客户端为 nil 时三个返回值都是空或假。
 func selectOverlayLLM(ctx context.Context, opts OverlayOpts, idMap map[string]string, byLabel map[string]overlaySelectItem, held map[string]bool) (anon, why string, leaked bool) {
 	if opts.Client == nil {
 		return "", "", false
@@ -227,6 +241,7 @@ func selectOverlayLLM(ctx context.Context, opts OverlayOpts, idMap map[string]st
 	return anon, why, false
 }
 
+// parseOverlayChoice 从 why 标签和 choice 代码块里取出理由和匿名编号。编号转成大写。编号为空时 ok 为假。
 func parseOverlayChoice(content string) (anon, why string, ok bool) {
 	if i := strings.Index(content, "<why>"); i >= 0 {
 		rest := content[i+5:]
@@ -250,6 +265,7 @@ func parseOverlayChoice(content string) (anon, why string, ok bool) {
 	return anon, why, anon != ""
 }
 
+// selectionLeaked 在小写回复里命中固定词、父哈希，或以 inv、dom 开头的标签时为真。
 func selectionLeaked(text, parentHash string, labels []string) bool {
 	lower := strings.ToLower(text)
 	for _, w := range []string{
@@ -273,6 +289,7 @@ func selectionLeaked(text, parentHash string, labels []string) bool {
 	return false
 }
 
+// capSelect 按字节截断。n 小于等于 0 或原文不长于 n 时原样返回。
 func capSelect(s string, n int) string {
 	if n <= 0 || len(s) <= n {
 		return s

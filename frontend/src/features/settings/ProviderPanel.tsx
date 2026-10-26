@@ -1,3 +1,7 @@
+/**
+ * 拥有：对话服务商和模型目录的编辑。
+ * 不拥有：生成服务。保存、探测和设默认会调用 api 改状态。
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
@@ -35,6 +39,7 @@ type Draft = {
   hasKey?: boolean;
 };
 
+/** 取出地址里的主机。 */
 function hostOf(url: string): string {
   const raw = (url || "").trim();
   if (!raw) return "";
@@ -45,6 +50,7 @@ function hostOf(url: string): string {
   }
 }
 
+/** 把已保存的对话服务商收成草稿。 */
 function fromRow(p: ChatProvider): Draft {
   return {
     id: p.id,
@@ -59,6 +65,7 @@ function fromRow(p: ChatProvider): Draft {
   };
 }
 
+/** 按预设和目录造一份新草稿。 */
 function fromPreset(id: string, catalog: ModelsDevCatalog | null, makeDefault: boolean): Draft {
   const preset = providerPreset(id);
   const next = applyProviderPreset(id);
@@ -79,6 +86,7 @@ function fromPreset(id: string, catalog: ModelsDevCatalog | null, makeDefault: b
   };
 }
 
+/** 两份草稿的可见字段是否一样。 */
 function sameDraft(a: Draft, b: Draft): boolean {
   return (
     a.name === b.name &&
@@ -91,6 +99,7 @@ function sameDraft(a: Draft, b: Draft): boolean {
   );
 }
 
+/** ProviderSettings 列出对话服务商，并能新增、保存和探测。 */
 export function ProviderSettings({ host }: { host: SettingsHost }) {
   const copy = useCopy();
   const reduced = useMotionReduced();
@@ -106,6 +115,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   const dirty = !!draft && (!baseline || !sameDraft(draft, baseline));
   const empty = rows.length === 0;
 
+  /** 重新拉取对话服务商。 */
   async function refresh() {
     try {
       setRows(await api.listChatProviders());
@@ -117,27 +127,31 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
 
   useEffect(() => {
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在打开时拉一次
   }, []);
 
+  /** 打开一份草稿。 */
   function openDraft(next: Draft) {
     setPicking(false);
     setDraft(next);
     setBaseline({ ...next, models: [...next.models] });
   }
 
+  /** 关掉正在编辑的草稿。 */
   function closeEditor() {
     setDraft(null);
     setBaseline(null);
     setPicking(false);
   }
 
+  /** 开始新增一家服务商。 */
   function startAdd() {
     setDraft(null);
     setBaseline(null);
     setPicking(true);
   }
 
+  /** 保存草稿，可以选择留在编辑里。 */
   async function save(d: Draft, keepOpen = false): Promise<ChatProvider | null> {
     setBusy("save");
     try {
@@ -173,6 +187,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     }
   }
 
+  /** 探测当前草稿的连接。 */
   async function testCurrent() {
     if (!draft) return;
     let id = draft.id;
@@ -193,6 +208,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
     }
   }
 
+  /** 把这一家设成默认。 */
   async function setDefault(p: ChatProvider) {
     try {
       await api.setDefaultChatProvider(p.id);
@@ -374,6 +390,7 @@ export function ProviderSettings({ host }: { host: SettingsHost }) {
   );
 }
 
+/** 编辑一家对话服务商的地址、模型和密钥。 */
 function ProviderEditor({
   draft,
   setDraft,
@@ -399,6 +416,7 @@ function ProviderEditor({
   const catalogLoading = useModelCatalog((s) => s.loading);
   const catalogError = useModelCatalog((s) => s.error);
   const refreshCatalog = useModelCatalog((s) => s.load);
+  /** 把改动写回草稿。 */
   const patch = (p: Partial<Draft>) => setDraft({ ...draft, ...p });
   const hint =
     draft.vendor === "claude" ? copy.settings.presetHintClaude
@@ -489,6 +507,7 @@ function ProviderEditor({
   );
 }
 
+/** 列出已选模型，并能去掉。 */
 function ModelTokens({
   models,
   current,
@@ -537,9 +556,11 @@ function ModelTokens({
   );
 }
 
+/** 输入一个模型编号再交出去。 */
 function AddModelRow({ onAdd }: { onAdd: (id: string) => void }) {
   const copy = useCopy();
   const [value, setValue] = useState("");
+  /** 把输入的模型编号交出去并清空。 */
   function commit() {
     const id = value.trim();
     if (!id) return;
@@ -567,6 +588,7 @@ function AddModelRow({ onAdd }: { onAdd: (id: string) => void }) {
   );
 }
 
+/** 从目录里挑模型。 */
 function CatalogBrowse({
   vendor,
   catalog,
@@ -663,6 +685,7 @@ function CatalogBrowse({
   );
 }
 
+/** 画一带说明的字段。 */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex w-full flex-col gap-[var(--space-item)] text-[13px] font-medium text-foreground">

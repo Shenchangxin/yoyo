@@ -1,3 +1,5 @@
+// 用 httptest 检查清单地址、端点规范化、下载和 resolve 回退。
+
 package update
 
 import (
@@ -15,6 +17,7 @@ import (
 	"testing"
 )
 
+// TestFeedURL 确认环境变量能改仓库和端点，且签名地址是清单地址加 .sig。
 func TestFeedURL(t *testing.T) {
 	t.Setenv(EnvRepo, "acme/yoyo-releases")
 	t.Setenv(EnvEndpoint, "https://www.modelscope.cn")
@@ -27,6 +30,7 @@ func TestFeedURL(t *testing.T) {
 	}
 }
 
+// TestDefaultFeedPointsAtInternationalDataset 确认默认清单在 www.modelscope.ai 的 yoyo-agent/yoyo，修订 master，文件 channels/latest.json。
 func TestDefaultFeedPointsAtInternationalDataset(t *testing.T) {
 	t.Setenv(EnvEndpoint, "")
 	t.Setenv(EnvRepo, "")
@@ -40,6 +44,7 @@ func TestDefaultFeedPointsAtInternationalDataset(t *testing.T) {
 	}
 }
 
+// TestNormalizeEndpointBareAI 确认 modelscope.ai 会补上 www，modelscope.cn 保持原样。
 func TestNormalizeEndpointBareAI(t *testing.T) {
 	t.Setenv(EnvEndpoint, "https://modelscope.ai")
 	if Endpoint() != "https://www.modelscope.ai" {
@@ -55,6 +60,7 @@ func TestNormalizeEndpointBareAI(t *testing.T) {
 	}
 }
 
+// TestCheckDownloadRoundTrip 用本地 HTTP 走通验签、判定更新和按文件名下载。
 func TestCheckDownloadRoundTrip(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -112,6 +118,7 @@ func TestCheckDownloadRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAPIFileURLFromResolve 确认 resolve 地址能换成数据集 API，并带上 Revision 与 FilePath。
 func TestAPIFileURLFromResolve(t *testing.T) {
 	got := APIFileURLFromResolve("https://www.modelscope.cn/datasets/acme/yoyo-releases/resolve/master/channels/stable.json")
 	if !strings.Contains(got, "/api/v1/datasets/acme/yoyo-releases/repo?") {
@@ -128,6 +135,7 @@ func TestAPIFileURLFromResolve(t *testing.T) {
 	}
 }
 
+// TestFetchFallsBackToAPI 确认 resolve 返回 404 时改走数据集 API。
 func TestFetchFallsBackToAPI(t *testing.T) {
 	body := []byte(`{"version":"9.9.9","channel":"stable"}`)
 	mux := http.NewServeMux()
@@ -155,6 +163,7 @@ func TestFetchFallsBackToAPI(t *testing.T) {
 	}
 }
 
+// TestDownloadRangeResume 确认已有 8 字节临时文件时会请求 bytes=8- 并拼成完整包。
 func TestDownloadRangeResume(t *testing.T) {
 	payload := []byte("abcdefghijklmnop")
 	sum := sha256.Sum256(payload)

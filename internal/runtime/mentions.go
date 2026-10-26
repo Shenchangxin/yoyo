@@ -1,3 +1,5 @@
+// 把用户消息里的 @file、@folder、@skill、@harness、@session 和裸 @路径收成有界注入块。字节预算默认 2400。主文件不占这份预算。不负责会话片段排版，那在 tools_thread.go 的 FormatSessionMentions。
+
 package runtime
 
 import (
@@ -11,23 +13,31 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/capability"
 )
 
-// Mentions are user-designated pins. They are working memory, not harness
-// pins: expand into a bounded inject block instead of dumping the repo.
+// Mention 是用户点名的工作记忆，不是 harness 钉。展开成有界注入块，而不是把仓库倒进提示。
 type Mention struct {
-	Kind string `json:"kind"` // file | folder | harness | skill | session
+	Kind string `json:"kind"` // file、folder、harness、skill、session
 	Ref  string `json:"ref"`
 }
 
+// reFile、reFolder、reSkill、reSession、reHarness、reBareQuoted、reBareAt 是解析 @ 提及的正则。带类型的每类最多 8 处，folder 最多 4 处，裸 @ 也最多 8 处。
 var (
-	reFile       = regexp.MustCompile(`@file:(\S+)`)
-	reFolder     = regexp.MustCompile(`@folder:(\S+)`)
-	reSkill      = regexp.MustCompile(`@skill:(\S+)`)
-	reSession    = regexp.MustCompile(`@session:(\S+)`)
-	reHarness    = regexp.MustCompile(`@harness\b`)
+	// reFile 匹配 @file: 后的非空白。
+	reFile = regexp.MustCompile(`@file:(\S+)`)
+	// reFolder 匹配 @folder: 后的非空白。
+	reFolder = regexp.MustCompile(`@folder:(\S+)`)
+	// reSkill 匹配 @skill: 后的非空白。
+	reSkill = regexp.MustCompile(`@skill:(\S+)`)
+	// reSession 匹配 @session: 后的非空白。
+	reSession = regexp.MustCompile(`@session:(\S+)`)
+	// reHarness 匹配独立的 @harness。
+	reHarness = regexp.MustCompile(`@harness\b`)
+	// reBareQuoted 匹配 @"..." 形式的裸提及。
 	reBareQuoted = regexp.MustCompile(`(?:^|\s)@"([^"]+)"`)
-	reBareAt     = regexp.MustCompile(`(?:^|\s)@([^\s"]+)`)
+	// reBareAt 匹配不带引号的裸 @标记。
+	reBareAt = regexp.MustCompile(`(?:^|\s)@([^\s"]+)`)
 )
 
+// ParseMentions 只解析带类型的 @file、@folder、@skill、@session 和 @harness。同类同引用只留一次。不解析裸 @路径。
 func ParseMentions(text string) []Mention {
 	var out []Mention
 	seen := map[string]bool{}
@@ -57,6 +67,7 @@ func ParseMentions(text string) []Mention {
 	return out
 }
 
+// parseBareWorkspaceMentions 把还没被带类型语法占住的裸 @ 解析成工作区文件或目录。workspace 或 text 为空则返回 nil。跳过 harness 和 file、folder、skill、session 这四种已带冒号的前缀。
 func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []Mention {
 	if workspace == "" || text == "" {
 		return nil
@@ -86,6 +97,7 @@ func parseBareWorkspaceMentions(workspace, text string, seen map[string]bool) []
 	return extra
 }
 
+// bareAtTokens 收集引号和裸 @ 标记，去掉首尾斜杠，并去重。每类正则最多取 8 处。
 func bareAtTokens(text string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -107,9 +119,7 @@ func bareAtTokens(text string) []string {
 	return out
 }
 
-// resolveWorkspaceRef maps a typed @path onto a workspace relative path.
-// Exact jail+Stat wins. A slash-free name expands only when exactly one
-// file or directory in the ignore-aware tree has that basename — never when two match.
+// resolveWorkspaceRef 把 @ 路径收成工作区相对路径。jailPath 之后 Stat 成功则按文件或目录返回。带斜杠但 Stat 失败则不再猜。没有斜杠的名字只有在忽略规则下的树里恰好一个同名文件或目录时才展开，两个匹配则失败。
 func resolveWorkspaceRef(root, raw string) (rel, kind string, ok bool) {
 	raw = strings.TrimSpace(filepath.ToSlash(raw))
 	raw = strings.TrimSuffix(raw, "/")
@@ -135,6 +145,7 @@ func resolveWorkspaceRef(root, raw string) (rel, kind string, ok bool) {
 	return hit.Path, hit.Kind, true
 }
 
+// uniqueBaseHit 在忽略规则下的树里按基名找唯一命中。目录命中的 Kind 收成 folder。零个或多于一个都返回假。
 func uniqueBaseHit(root, base string) (FileHit, bool) {
 	want := strings.ToLower(base)
 	root = filepath.Clean(root)
@@ -183,20 +194,27 @@ func uniqueBaseHit(root, base string) (FileHit, bool) {
 	return FileHit{Path: hit.Path, Kind: kind}, true
 }
 
+// ExpandMentions 把 ExpandMentionsPacks 的技能表和技能目录都传成 nil。
 func ExpandMentions(workspace, text, harnessNote string, budget int) (inject string, refs []Mention) {
 	return ExpandMentionsSkills(workspace, text, harnessNote, nil, budget)
 }
 
+// ExpandMentionsSkills 把技能目录传成 nil，其余交给 ExpandMentionsPacks。
 func ExpandMentionsSkills(workspace, text, harnessNote string, skills map[string]string, budget int) (inject string, refs []Mention) {
 	return ExpandMentionsPacks(workspace, text, harnessNote, skills, nil, budget)
 }
 
+// mentionFileRunes 是 800，mentionPrimaryRunes 是 12000，mentionPrimaryBytes 是 8*1024。
 const (
-	mentionFileRunes    = 800
+	// mentionFileRunes 是 800。普通文件注入按这个 rune 数截断正文。
+	mentionFileRunes = 800
+	// mentionPrimaryRunes 是 12000。主文件只注入提纲，提纲按这个 rune 数截断。
 	mentionPrimaryRunes = 12_000
+	// mentionPrimaryBytes 是 8*1024。正文超过这个字节数就视为主文件。
 	mentionPrimaryBytes = 8 * 1024
 )
 
+// ExpandMentionsPacks 先解析带类型提及，再补裸 @路径。budget 小于等于 0 时用 2400，按字节累计 chunk 的长度。主文件（fileLooksPrimary 为真）不计入这份预算。其余片段在已写入内容后再超出预算时写下 mentions truncated 并停止。remain 小于 32 的片段被 mentionChunk 丢掉。
 func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]string, skillDirs map[string]string, budget int) (inject string, refs []Mention) {
 	refs = ParseMentions(text)
 	seen := map[string]bool{}
@@ -232,6 +250,7 @@ func ExpandMentionsPacks(workspace, text, harnessNote string, skills map[string]
 	return strings.TrimSpace(b.String()), refs
 }
 
+// ExpandNamedSkills 按名字注入技能正文。budget 小于等于 0 时用 2400 字节。已写入后再超出则写下 mentions truncated 并停止。
 func ExpandNamedSkills(skills, skillDirs map[string]string, names []string, budget int) string {
 	if budget <= 0 {
 		budget = 2400
@@ -260,6 +279,7 @@ func ExpandNamedSkills(skills, skillDirs map[string]string, names []string, budg
 	return strings.TrimSpace(b.String())
 }
 
+// MentionSkillNames 按出现顺序返回去重后的 skill 引用。
 func MentionSkillNames(refs []Mention) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -273,6 +293,7 @@ func MentionSkillNames(refs []Mention) []string {
 	return out
 }
 
+// lookupSkillMention 先按原名取技能，再按大小写不敏感的名字，最后按目录基名。skills 为空或 ref 为空则失败。
 func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, dir string, ok bool) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" || skills == nil {
@@ -305,6 +326,7 @@ func lookupSkillMention(skills, skillDirs map[string]string, ref string) (body, 
 	return "", "", false
 }
 
+// mentionChunk 在 remain 小于 32 时返回空串。skill 没有目录时写 no skill catalog，未知技能写 unknown skill，正文经 DecorateSkillBody 再按 remain 截断。harness 用 harnessNote，空则写 refs/active。session 返回空串。folder 最多列 40 项。普通文件按 mentionFileRunes 截断；字节看起来像主文件时改走 mentionPrimaryFile。
 func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]string, m Mention, remain int) string {
 	if remain < 32 {
 		return ""
@@ -385,6 +407,7 @@ func mentionChunk(workspace, harnessNote string, skills, skillDirs map[string]st
 	}
 }
 
+// fileLooksPrimary 在 jailPath 和读文件都成功、且 looksPrimaryBytes 为真时返回真。
 func fileLooksPrimary(workspace, rel string) bool {
 	p, err := jailPath(workspace, rel)
 	if err != nil {
@@ -397,6 +420,7 @@ func fileLooksPrimary(workspace, rel string) bool {
 	return looksPrimaryBytes(raw)
 }
 
+// looksPrimaryBytes 在长度超过 mentionPrimaryBytes（8*1024）或 rune 数超过 4000 时返回真。
 func looksPrimaryBytes(raw []byte) bool {
 	if len(raw) > mentionPrimaryBytes {
 		return true
@@ -404,6 +428,7 @@ func looksPrimaryBytes(raw []byte) bool {
 	return utf8.RuneCount(raw) > 4000
 }
 
+// mentionPrimaryFile 写出字节数和 rune 数，并要求用 read_file 读原文。非文本只给一句说明。文本则附上 fileOutline，上限是 mentionPrimaryRunes。
 func mentionPrimaryFile(workspace, rel string) string {
 	p, err := jailPath(workspace, rel)
 	if err != nil {
@@ -428,6 +453,7 @@ func mentionPrimaryFile(workspace, rel string) string {
 	return b.String()
 }
 
+// looksTextBytes 只检查前 1024 字节。出现 0 则返回假。
 func looksTextBytes(raw []byte) bool {
 	n := len(raw)
 	if n > 1024 {
@@ -441,8 +467,10 @@ func looksTextBytes(raw []byte) bool {
 	return true
 }
 
+// reOutlineLine 匹配 Markdown 标题，或「第…回/章/节/卷/篇」这种行。
 var reOutlineLine = regexp.MustCompile(`(?m)^(#{1,6}\s+\S+|第.{0,12}[回章节卷篇].+)$`)
 
+// fileOutline 最多收 80 条标题，再附上前 80 行正文，最后按 maxRunes 截断。
 func fileOutline(body string, maxRunes int) string {
 	var lines []string
 	seen := map[string]bool{}
@@ -482,6 +510,7 @@ func fileOutline(body string, maxRunes int) string {
 	return capped
 }
 
+// jailPath 去掉引号后做 CanonicalizeToolPath。相对路径接到 workspace。Clean 之后用 WithinWorkspace 拒绝逃出工作区。本函数不调用 filepath.EvalSymlinks。
 func jailPath(workspace, rel string) (string, error) {
 	rel = strings.Trim(rel, `"'`)
 	rel = capability.CanonicalizeToolPath(rel)

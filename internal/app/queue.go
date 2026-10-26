@@ -1,3 +1,5 @@
+// 忙时把回合入队；Steer 只追加文本，由运行时在下一次模型调用前收走。
+
 package app
 
 import (
@@ -11,11 +13,13 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// ErrQueued means the session is already running and the turn was enqueued.
+// ErrQueued 表示会话已经在跑，这一轮已经进入队列。
 const ErrQueued errString = "queued"
 
+// queueSeq 给入队项追加递增序号，避免同一纳秒里的 id 撞上。
 var queueSeq atomic.Uint64
 
+// QueuedTurn 是排队等待的一轮：正文、是否计划、是否续跑，以及附件。
 type QueuedTurn struct {
 	ID          string       `json:"id,omitempty"`
 	Text        string       `json:"text"`
@@ -24,6 +28,7 @@ type QueuedTurn struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
+// Attachment 是路径、名字、MIME 或 base64 正文。
 type Attachment struct {
 	Path    string `json:"path,omitempty"`
 	Name    string `json:"name,omitempty"`
@@ -31,12 +36,14 @@ type Attachment struct {
 	DataB64 string `json:"data_b64,omitempty"`
 }
 
+// initQueue 准备按会话存放的回合队列和 steer 列表。
 func (a *App) initQueue() {
 	a.queueMu = sync.Mutex{}
 	a.queue = map[string][]QueuedTurn{}
 	a.steers = map[string][]string{}
 }
 
+// Enqueue 把一轮放进会话队列。有线程管理器时写入那里，否则放进内存。并记一条 next-turn 的入队。
 func (a *App) Enqueue(sessionID string, turn QueuedTurn) {
 	if turn.ID == "" {
 		turn.ID = fmt.Sprintf("q-%d-%d", time.Now().UTC().UnixNano(), queueSeq.Add(1))
@@ -51,6 +58,7 @@ func (a *App) Enqueue(sessionID string, turn QueuedTurn) {
 	a.recordInbox(sessionID, "enqueue", "next-turn", turn.ID, turn.Text)
 }
 
+// QueueList 返回该会话的排队回合副本。
 func (a *App) QueueList(sessionID string) []QueuedTurn {
 	if a.Threads != nil {
 		return fromSessionQueuedList(a.Threads.QueueList(sessionID))
@@ -60,6 +68,7 @@ func (a *App) QueueList(sessionID string) []QueuedTurn {
 	return append([]QueuedTurn(nil), a.queue[sessionID]...)
 }
 
+// QueueCancel 按 id 拿掉一条排队回合。找到则返回真。
 func (a *App) QueueCancel(sessionID, itemID string) bool {
 	if a.Threads != nil {
 		return a.Threads.CancelQueue(sessionID, itemID)
@@ -80,6 +89,7 @@ func (a *App) QueueCancel(sessionID, itemID string) bool {
 	return ok
 }
 
+// QueueReorder 把一条排队回合按 delta 与相邻项对调。越界或找不到则返回假。
 func (a *App) QueueReorder(sessionID, itemID string, delta int) bool {
 	if a.Threads != nil {
 		return a.Threads.ReorderQueue(sessionID, itemID, delta)
@@ -106,6 +116,7 @@ func (a *App) QueueReorder(sessionID, itemID string, delta int) bool {
 	return true
 }
 
+// popQueue 取出队列第一条并把它从队列里删掉。空队列返回假。
 func (a *App) popQueue(sessionID string) (QueuedTurn, bool) {
 	if a.Threads != nil {
 		t, ok := a.Threads.PopQueue(sessionID)
@@ -125,6 +136,7 @@ func (a *App) popQueue(sessionID string) (QueuedTurn, bool) {
 	return turn, true
 }
 
+// toSessionQueued 把本包的排队回合转成 session 包的结构。
 func toSessionQueued(turn QueuedTurn) session.QueuedTurn {
 	atts := make([]session.Attachment, 0, len(turn.Attachments))
 	for _, x := range turn.Attachments {
@@ -133,6 +145,7 @@ func toSessionQueued(turn QueuedTurn) session.QueuedTurn {
 	return session.QueuedTurn{ID: turn.ID, Text: turn.Text, Plan: turn.Plan, Resume: turn.Resume, Attachments: atts}
 }
 
+// fromSessionQueued 把 session 包的排队回合转回本包结构。
 func fromSessionQueued(t session.QueuedTurn) QueuedTurn {
 	atts := make([]Attachment, 0, len(t.Attachments))
 	for _, x := range t.Attachments {
@@ -141,6 +154,7 @@ func fromSessionQueued(t session.QueuedTurn) QueuedTurn {
 	return QueuedTurn{ID: t.ID, Text: t.Text, Plan: t.Plan, Resume: t.Resume, Attachments: atts}
 }
 
+// fromSessionQueuedList 转换一整条排队列表。
 func fromSessionQueuedList(in []session.QueuedTurn) []QueuedTurn {
 	out := make([]QueuedTurn, 0, len(in))
 	for _, t := range in {
@@ -149,6 +163,7 @@ func fromSessionQueuedList(in []session.QueuedTurn) []QueuedTurn {
 	return out
 }
 
+// kickQueue 取出下一条排队回合并发送。Resume 为真时按续跑启动，不把排队正文当成新的用户消息。
 func (a *App) kickQueue(sessionID string) {
 	next, ok := a.popQueue(sessionID)
 	if !ok {
@@ -162,6 +177,7 @@ func (a *App) kickQueue(sessionID string) {
 	_ = a.StartSendOpts(sessionID, next.Text, next.Plan, next.Attachments)
 }
 
+// Steer 只在会话正在跑时把文本追加进内存 steers，并 PushSteer 写进运行状态。它不取消当前回合。空文本或会话没在跑则返回错误。
 func (a *App) Steer(sessionID, text string) error {
 	if text == "" {
 		return errString("empty steer")
@@ -179,6 +195,7 @@ func (a *App) Steer(sessionID, text string) error {
 	return nil
 }
 
+// pullSteer 一次取走该会话内存里的全部 steer，拼成一段，并记一条 next-step 的领取。没有则返回空串。运行时在下一次模型调用前调用它。
 func (a *App) pullSteer(sessionID string) string {
 	a.queueMu.Lock()
 	items := a.steers[sessionID]
@@ -199,6 +216,7 @@ func (a *App) pullSteer(sessionID string) string {
 	return out
 }
 
+// recordInbox 往轨迹追加一条收件箱事件，记下入队或领取。没有轨迹或会话 id 则直接返回。
 func (a *App) recordInbox(sessionID, kind, lane, id, text string) {
 	if a == nil || a.Traces == nil || strings.TrimSpace(sessionID) == "" {
 		return

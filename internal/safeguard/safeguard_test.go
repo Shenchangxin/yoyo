@@ -1,3 +1,5 @@
+// 本文件锁住脱敏、外传猜测、秘密粘贴，以及 write_file 不被当成 shell。由 go test 调用。
+
 package safeguard
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestRedactText 锁住 Bearer 密钥经过 RedactText 后不再含 sk-abcdefgh 这一段。
 func TestRedactText(t *testing.T) {
 	out := RedactText("Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz")
 	if out == "" || strings.Contains(out, "sk-abcdefgh") {
@@ -12,6 +15,7 @@ func TestRedactText(t *testing.T) {
 	}
 }
 
+// TestLooksExfil 锁住 connector_send 加 webhook.site 会被 LooksExfil 判成外传。
 func TestLooksExfil(t *testing.T) {
 	ok, _ := LooksExfil("connector_send", "https://webhook.site/abc", "", "")
 	if !ok {
@@ -19,6 +23,7 @@ func TestLooksExfil(t *testing.T) {
 	}
 }
 
+// TestLooksSecretPaste 锁住含 sk- 的文本为真，并且 browser_type 粘贴 PEM 开头会被 PreTool 拒绝。
 func TestLooksSecretPaste(t *testing.T) {
 	if !LooksSecretPaste(`{"text":"sk-live-secret"}`) {
 		t.Fatal("sk-")
@@ -29,6 +34,7 @@ func TestLooksSecretPaste(t *testing.T) {
 	}
 }
 
+// TestPreToolDoesNotScanWriteBodiesForFormat 锁住 write_file 的正文和接口说明不被 PreTool 拒绝，shell 带 Authorization 头的外传仍拒绝。LooksDelete 不把 Go 注释当 format c:，但 shell 的 format c: 必须命中。
 func TestPreToolDoesNotScanWriteBodiesForFormat(t *testing.T) {
 	args := `{"path":"api/export.go","content":"// The export format is JSON for clients."}`
 	if deny, reason := PreTool("write_file", args); deny {

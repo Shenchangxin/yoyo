@@ -1,4 +1,8 @@
-// AUTO-GENERATED models.dev snapshot. Do not edit by hand.
+/**
+ * 拥有：自动生成的 models.dev 目录快照，目录还没拉到时先用它。不要手改。
+ * 不拥有：目录的水合，以及作曲栏里的模型列表。
+ */
+
 import type { ModelsDevCatalog } from "./models-dev";
 
 export const MODELS_DEV_SNAPSHOT: ModelsDevCatalog = {

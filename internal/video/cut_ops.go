@@ -1,3 +1,5 @@
+// cut_ops.go 对剪辑工程做摄入、拆条、混音、字幕、配音和路由。
+
 package video
 
 import (
@@ -14,6 +16,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// CutIngest 把源哈希写入工程。标识为空时新建。能出封面就写入。场景分析留到后面，这里先读时长，避免桌面把 0 秒当成导入失败。
 func (e *Engine) CutIngest(id, hash, title string) (CutProject, error) {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -37,19 +40,16 @@ func (e *Engine) CutIngest(id, hash, title string) (CutProject, error) {
 	if poster, perr := e.posterFromHash(hash); perr == nil {
 		p.PosterHash = poster
 	}
-	// Scene analysis is a later step. Length is read now so the desk does not
-	// open on a 0s clip that looks like the import failed.
 	if d := e.probeCutDuration(hash); d > 0 {
 		p.Duration = d
 	}
 	return e.saveCut(p)
 }
 
+// probeCutDuration 先读内容寻址文件，没有文件时再物化一份。优先用 probeDurationFast。文件超过 64 MiB 就不再跑 ffmpeg -i。时长不在 0 到 24 小时之间时返回 0。
 func (e *Engine) probeCutDuration(hash string) float64 {
 	path := e.casFile(hash)
 	if path == "" {
-		// In-memory CAS (tests) has no file. Production clips are on disk and
-		// never take this copy.
 		src, err := e.materialize(hash, ".mp4")
 		if err != nil {
 			return 0
@@ -60,8 +60,6 @@ func (e *Engine) probeCutDuration(hash string) float64 {
 	if d := e.probeDurationFast(path); d > 0 {
 		return d
 	}
-	// ffmpeg -i reads the container. Skip that on large files so import cannot
-	// sit on a multi-gigabyte decode just to learn the length.
 	st, err := os.Stat(path)
 	if err != nil || st.Size() > 64<<20 {
 		return 0
@@ -73,6 +71,7 @@ func (e *Engine) probeCutDuration(hash string) float64 {
 	return d
 }
 
+// probeDurationFast 用 ffprobe，没有就用 ffmpeg，6 秒超时读取 format duration。
 func (e *Engine) probeDurationFast(path string) float64 {
 	bin := strings.TrimSpace(e.FFProbe)
 	if bin == "" {
@@ -99,6 +98,7 @@ func (e *Engine) probeDurationFast(path string) float64 {
 	return d
 }
 
+// CutAnalyze 确保 ffmpeg 后对源片做场景分析，并写回时长和拆解。
 func (e *Engine) CutAnalyze(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -124,6 +124,7 @@ func (e *Engine) CutAnalyze(id string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutPropose 在还没有时长时先分析，再按窗口切出片段写入内容寻址。已有成片时把工程标成过期。
 func (e *Engine) CutPropose(id string, count int, window string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -176,6 +177,7 @@ func (e *Engine) CutPropose(id string, count int, window string) (CutProject, er
 	return e.saveCut(p)
 }
 
+// CutApply 按剪辑表拼接，没有剪辑表时用拆解片段。有哈希就用字节，否则从源片截取。结果写入 ResultHash 并清掉过期标记。
 func (e *Engine) CutApply(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -241,6 +243,7 @@ func (e *Engine) CutApply(id string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutExtractAudio 从成片或源片抽出音轨，写入 Stems.Original。
 func (e *Engine) CutExtractAudio(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -275,6 +278,7 @@ func (e *Engine) CutExtractAudio(id string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutEnhance 按预设增强人声、原声、成片或源片，结果写入 Stems.Voice。
 func (e *Engine) CutEnhance(id, preset string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -309,6 +313,7 @@ func (e *Engine) CutEnhance(id, preset string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutMix 把配音或人声，以及音乐，混进成片或源片。有人声时替换原声。
 func (e *Engine) CutMix(id string, duck bool) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -331,6 +336,7 @@ func (e *Engine) CutMix(id string, duck bool) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// mixHashes 物化视频、语音和音乐后调用 Mix，再把成片放进内容寻址。
 func (e *Engine) mixHashes(videoHash, speechHash, musicHash string, duck, replaceOrig bool) (string, error) {
 	if err := e.EnsureFFmpeg(context.Background()); err != nil {
 		return "", err
@@ -371,6 +377,7 @@ func (e *Engine) mixHashes(videoHash, speechHash, musicHash string, duck, replac
 	return e.PutBytes(raw)
 }
 
+// CutTranscribe 对成片或源片转写。没有时间轴但有文本时按时长铺开。SRT 和 VTT 分别入库，文本写入 Note。
 func (e *Engine) CutTranscribe(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -414,6 +421,7 @@ func (e *Engine) CutTranscribe(id string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutCaptions 用传入文本重铺时间轴，并按语言字段更新。非空字幕会重写 SRT 和 VTT。
 func (e *Engine) CutCaptions(id, text, lang string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -439,6 +447,7 @@ func (e *Engine) CutCaptions(id, text, lang string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutBurnin 把已有 SRT 烧进成片或源片，结果写入 ResultHash。
 func (e *Engine) CutBurnin(id string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -482,6 +491,7 @@ func (e *Engine) CutBurnin(id string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutDub 用文本、备注或字幕拼出配音稿，走当前语音适配器。模型空着时用 gpt-4o-mini-tts，音色空着时用 alloy。结果同时写入配音和人声。还没有字幕时按文本铺一条 SRT。
 func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -543,6 +553,7 @@ func (e *Engine) CutDub(id, text, voice string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutGrade 按预设给成片或源片调色，结果写入 ResultHash。
 func (e *Engine) CutGrade(id, preset string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -577,6 +588,7 @@ func (e *Engine) CutGrade(id, preset string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutSetStem 按 music、sfx、voice、dub、original 写入对应音轨。其他种类返回 unknown stem。
 func (e *Engine) CutSetStem(id, kind, hash string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -600,6 +612,7 @@ func (e *Engine) CutSetStem(id, kind, hash string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// posterFromHash 从内容寻址文件或临时物化文件抽出一帧封面并入库。
 func (e *Engine) posterFromHash(hash string) (string, error) {
 	path := e.casFile(hash)
 	temp := ""
@@ -620,6 +633,7 @@ func (e *Engine) posterFromHash(hash string) (string, error) {
 	return e.PutBytes(jpg)
 }
 
+// CutKeep 只留下指定片段，再按已省略的字幕挖掉对应区间。已有成片时标成过期。
 func (e *Engine) CutKeep(id string, clipIDs []string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -653,6 +667,7 @@ func (e *Engine) CutKeep(id string, clipIDs []string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// CutOmitCue 切换一条字幕的省略状态。没有剪辑表时先铺整段或复制拆解片段，省略时挖掉区间，恢复时插回。已有成片时标成过期。
 func (e *Engine) CutOmitCue(id string, index int) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -682,6 +697,7 @@ func (e *Engine) CutOmitCue(id string, index int) (CutProject, error) {
 	return e.saveCut(p)
 }
 
+// ProviderMenu 列出该能力下已启用且有密钥的连接。默认连接会标上 default 和 default_for。
 func (e *Engine) ProviderMenu(cap string) []map[string]any {
 	if e.Conn == nil {
 		return []map[string]any{}
@@ -716,6 +732,7 @@ func (e *Engine) ProviderMenu(cap string) []map[string]any {
 	return out
 }
 
+// VideoRoute 按目的地绑定会话。短片没有标识时新建。短剧必须带集标识。画布只在标识非空时绑定。游戏世界返回不可用。其余目的地当成剪辑，没有标识时新建标题为「胶片」的工程。intent 不使用。成功时送出 video_route。
 func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[string]any, error) {
 	dest = strings.ToLower(strings.TrimSpace(dest))
 	sessionID = strings.TrimSpace(sessionID)
@@ -805,6 +822,7 @@ func (e *Engine) VideoRoute(sessionID, dest, id, title, intent string) (map[stri
 	return out, nil
 }
 
+// windowSeconds 把 15-30 收成 20 秒，60-90 收成 75 秒，8-15 收成 12 秒，其余收成 20 秒。
 func windowSeconds(window string) float64 {
 	switch strings.TrimSpace(window) {
 	case "15-30":

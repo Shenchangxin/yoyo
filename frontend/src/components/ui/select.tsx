@@ -1,12 +1,18 @@
+// 本文件拥有下拉选择的触发器、弹出层和选项勾。不拥有选项列表从哪来。调用方传入 items 和 onValueChange。
+
 import type { ComponentProps } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+// Select 转发选择根。
 export const Select = SelectPrimitive.Root;
+// SelectValue 转发当前值的显示。
 export const SelectValue = SelectPrimitive.Value;
+// SelectGroup 转发分组。
 export const SelectGroup = SelectPrimitive.Group;
 
+// SelectTrigger 在占位时用弱色，并在右侧放一个向下的箭头。
 export function SelectTrigger({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
     <SelectPrimitive.Trigger
@@ -24,6 +30,7 @@ export function SelectTrigger({ className, children, ...props }: ComponentProps<
   );
 }
 
+// SelectContent 用弹出层对齐触发器宽度，选项放在 Viewport 里。
 export function SelectContent({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
@@ -41,6 +48,7 @@ export function SelectContent({ className, children, ...props }: ComponentProps<
   );
 }
 
+// SelectLabel 用小号大写字标出一组选项。
 export function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) {
   return (
     <SelectPrimitive.Label
@@ -50,10 +58,12 @@ export function SelectLabel({ className, ...props }: ComponentProps<typeof Selec
   );
 }
 
+// SelectSeparator 在选项之间画一条横线。
 export function SelectSeparator({ className, ...props }: ComponentProps<typeof SelectPrimitive.Separator>) {
   return <SelectPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
+// SelectItem 把文字放进 ItemText，选中时在右侧画勾。禁用时不接收指针。
 export function SelectItem({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) {
   return (
     <SelectPrimitive.Item

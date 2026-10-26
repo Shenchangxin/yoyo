@@ -1,3 +1,5 @@
+// 锁住工具配对、spill 先于截断、技能加载不改前缀字节、检查点从尾部重建，以及聊天投影保留写操作参数。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestLegalizePairsToolCalls 确认缺了结果的 tool call 会被补上配对。
 func TestLegalizePairsToolCalls(t *testing.T) {
 	msgs := []Message{
 		{Role: RoleSystem, Content: "sys"},
@@ -29,6 +32,7 @@ func TestLegalizePairsToolCalls(t *testing.T) {
 	}
 }
 
+// TestSnipDoesNotBreakPairing 确认剪旧回合之后，再 Legalize 不会留下未配对的 tool call。
 func TestSnipDoesNotBreakPairing(t *testing.T) {
 	loop := DefaultLoop()
 	loop.CompactionKeep = 2
@@ -59,6 +63,7 @@ func TestSnipDoesNotBreakPairing(t *testing.T) {
 	}
 }
 
+// TestSpillBeforeCapIsLossless 确认预览被截成占位时，spill 里仍是全文。
 func TestSpillBeforeCapIsLossless(t *testing.T) {
 	dir := t.TempDir()
 	sp := NewSpill(filepath.Join(dir, "spill"))
@@ -73,6 +78,7 @@ func TestSpillBeforeCapIsLossless(t *testing.T) {
 	}
 }
 
+// TestAssemblePrefixStableWhenSkillsLoad 确认同一材料的前缀字节稳定，加载技能正文只出现在前缀之后。
 func TestAssemblePrefixStableWhenSkillsLoad(t *testing.T) {
 	loop := DefaultLoop()
 	skills := []artifact.Skill{{Name: "b", Description: "two", Body: "BBB"}, {Name: "a", Description: "one", Body: "AAA"}}
@@ -90,6 +96,7 @@ func TestAssemblePrefixStableWhenSkillsLoad(t *testing.T) {
 	}
 }
 
+// TestCheckpointRebuildsFromTail 确认检查点之前的用户句不再出现，摘要、保留尾和新用户句还在。
 func TestCheckpointRebuildsFromTail(t *testing.T) {
 	dir := t.TempDir()
 	st := trace.NewStore(dir)
@@ -117,6 +124,7 @@ func TestCheckpointRebuildsFromTail(t *testing.T) {
 	}
 }
 
+// TestSchemaCapDefersExtras 确认额外工具默认不进 tools 数组，tool_search 命中后才出现。
 func TestSchemaCapDefersExtras(t *testing.T) {
 	extra := map[string]ExtraTool{}
 	for i := 0; i < 12; i++ {
@@ -152,6 +160,7 @@ func TestSchemaCapDefersExtras(t *testing.T) {
 	}
 }
 
+// TestCopyAndRemoveSpill 确认 CopyTree 复制 spill 文件，RemoveSessionContext 删掉源目录。
 func TestCopyAndRemoveSpill(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -172,6 +181,7 @@ func TestCopyAndRemoveSpill(t *testing.T) {
 	}
 }
 
+// TestHarborIgnoresModelWindow 确认不填 ModelWindow 时预算是 24000，填了窗口之后预算更大且仍小于窗口。
 func TestHarborIgnoresModelWindow(t *testing.T) {
 	loop := DefaultLoop()
 	b := effectiveBudget(ShapeOpts{Loop: loop})
@@ -184,6 +194,7 @@ func TestHarborIgnoresModelWindow(t *testing.T) {
 	}
 }
 
+// TestChatPromptKeepsWriteArguments 确认聊天投影和原始消息都保留 write_file 的完整参数。
 func TestChatPromptKeepsWriteArguments(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	origArgs := `{"path":"a.ts","content":"` + body + `"}`
@@ -210,6 +221,7 @@ func TestChatPromptKeepsWriteArguments(t *testing.T) {
 	}
 }
 
+// TestShapeKeepsWriteArguments 确认 Shape 不改调用方消息，投影里的写操作参数也保持原样。
 func TestShapeKeepsWriteArguments(t *testing.T) {
 	body := strings.Repeat("x", 4000)
 	origArgs := `{"path":"a.ts","content":"` + body + `"}`
@@ -228,6 +240,7 @@ func TestShapeKeepsWriteArguments(t *testing.T) {
 	}
 }
 
+// TestForceFitStubsCallArgsBeforeResults 确认强制适配换掉的是工具结果，写操作参数仍在。
 func TestForceFitStubsCallArgsBeforeResults(t *testing.T) {
 	body := strings.Repeat("y", 500)
 	origArgs := make([]string, 6)
@@ -274,6 +287,7 @@ func TestForceFitStubsCallArgsBeforeResults(t *testing.T) {
 	}
 }
 
+// TestMicrocompactKeepsLastPathOnChatKeep 确认 keepLast 为 16 时留下该路径最后一次读，为 4 时旧读仍换成占位。
 func TestMicrocompactKeepsLastPathOnChatKeep(t *testing.T) {
 	aBody := strings.Repeat("A", 800)
 	bBody := strings.Repeat("B", 800)

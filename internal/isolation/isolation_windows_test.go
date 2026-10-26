@@ -1,5 +1,8 @@
 //go:build windows
 
+// 本文件锁住 Windows 的 apply 会藏起控制台，以及 Run 正常返回后后台子进程仍能写标记文件。
+// 不覆盖其他 GOOS 的探针。由 go test 调用。
+
 package isolation
 
 import (
@@ -14,6 +17,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// TestApplyHidesConsole 要求 apply 之后 HideWindow 为真，且带有 CREATE_NO_WINDOW 和 CREATE_NEW_PROCESS_GROUP。
 func TestApplyHidesConsole(t *testing.T) {
 	cmd := exec.Command("cmd", "/c", "echo hi")
 	apply(cmd)
@@ -29,6 +33,7 @@ func TestApplyHidesConsole(t *testing.T) {
 	}
 }
 
+// TestSuccessfulRunLeavesBackgroundChild 要求 Run 返回后不拆后台子进程：返回若早于 1 秒则标记尚未出现，之后 6 秒内标记必须出现。
 func TestSuccessfulRunLeavesBackgroundChild(t *testing.T) {
 	dir := t.TempDir()
 	flag := filepath.Join(dir, "alive.txt")
@@ -55,6 +60,7 @@ func TestSuccessfulRunLeavesBackgroundChild(t *testing.T) {
 	t.Fatal("background child was killed when the job closed")
 }
 
+// backgroundWriteCmd 让 powershell 再启动一个隐藏的 powershell，睡 2 秒后把 1 写到 flag。
 func backgroundWriteCmd(t *testing.T, dir, flag string) *exec.Cmd {
 	t.Helper()
 	flagPS := strings.ReplaceAll(flag, `'`, `''`)

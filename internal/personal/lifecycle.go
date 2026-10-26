@@ -1,5 +1,9 @@
+// 暂停、继续、重试任务，并改目标、里程碑和监视的状态。
+// 账号断开时，把该账号仍在等待审阅的提案标成过期。
+
 package personal
 
+// abortTask 调用该任务登记的取消函数。没有登记则什么也不做。
 func (e *Engine) abortTask(id string) {
 	e.mu.Lock()
 	if c, ok := e.abort[id]; ok {
@@ -8,6 +12,7 @@ func (e *Engine) abortTask(id string) {
 	e.mu.Unlock()
 }
 
+// Pause 把未成功、未取消且未暂停的任务改成 paused，并清掉租约。关联的 active 监视改成 paused。
 func (e *Engine) Pause(id string) (Task, error) {
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
 		if cur.Status == StatusSucceeded || cur.Status == StatusCancelled || cur.Status == StatusPaused {
@@ -31,6 +36,7 @@ func (e *Engine) Pause(id string) (Task, error) {
 	return out, nil
 }
 
+// Resume 只接受 paused。监视任务改回 scheduled 并立刻到期，其他任务改回 queued。暂停中的监视改回 active。
 func (e *Engine) Resume(id string) (Task, error) {
 	t, ok := e.store.task(id)
 	if !ok {
@@ -62,6 +68,7 @@ func (e *Engine) Resume(id string) (Task, error) {
 	return out, nil
 }
 
+// Retry 只重试 failed 或 cancelled。关联提案若是 outcome_unknown，返回错误且不改任务。成功后清掉错误、结果和 ActionID，状态改为 queued。
 func (e *Engine) Retry(id string) (Task, error) {
 	t, ok := e.store.task(id)
 	if !ok {
@@ -94,6 +101,7 @@ func (e *Engine) Retry(id string) (Task, error) {
 	return out, nil
 }
 
+// SetGoalStatus 只接受 active、paused、done。标成 paused 或 done 时，暂停该目标下尚未成功或取消的任务。
 func (e *Engine) SetGoalStatus(id, status string) (Goal, error) {
 	status = normalizeGoalStatus(status)
 	g, ok := e.store.casGoal(id, "", func(cur *Goal) bool {
@@ -117,6 +125,7 @@ func (e *Engine) SetGoalStatus(id, status string) (Goal, error) {
 	return g, nil
 }
 
+// normalizeGoalStatus 只保留 active、paused、done，其他字符串返回空串。
 func normalizeGoalStatus(status string) string {
 	switch status {
 	case "active", "paused", "done":
@@ -126,6 +135,7 @@ func normalizeGoalStatus(status string) string {
 	}
 }
 
+// ToggleMilestone 按里程碑 ID 设置 Done。找不到则返回错误。
 func (e *Engine) ToggleMilestone(goalID, milestoneID string, done bool) (Goal, error) {
 	g, ok := e.store.casGoal(goalID, "", func(cur *Goal) bool {
 		for i := range cur.Milestones {
@@ -143,6 +153,7 @@ func (e *Engine) ToggleMilestone(goalID, milestoneID string, done bool) (Goal, e
 	return g, nil
 }
 
+// SetMonitorStatus 只接受 active、paused、stopped。paused 会暂停关联任务，stopped 会取消它，active 会在任务已暂停时继续。
 func (e *Engine) SetMonitorStatus(id, status string) (Monitor, error) {
 	if status != "active" && status != "paused" && status != "stopped" {
 		return Monitor{}, errf("monitor status must be active, paused, or stopped")
@@ -179,6 +190,7 @@ func (e *Engine) SetMonitorStatus(id, status string) (Monitor, error) {
 	return out, nil
 }
 
+// taskMonitor 按任务 ID 找第一条监视。找不到返回假。
 func (e *Engine) taskMonitor(taskID string) (Monitor, bool) {
 	for _, m := range e.store.snapshot().Monitors {
 		if m.TaskID == taskID {
@@ -188,6 +200,7 @@ func (e *Engine) taskMonitor(taskID string) (Monitor, bool) {
 	return Monitor{}, false
 }
 
+// InvalidateAccount 把该账号上仍为 awaiting 的提案标成 expired，错误写明账号或连接已变。空账号直接返回。
 func (e *Engine) InvalidateAccount(account string) {
 	if account == "" {
 		return

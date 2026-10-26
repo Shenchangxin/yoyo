@@ -1,3 +1,5 @@
+// 附件物化：控制名不是文件，图片走多模态，工作区外文件复制进 .yoyo/uploads。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestRequestIDAttachmentIsNotAFile 确认 __request_id__ 不进提示，也不被当成文件。
 func TestRequestIDAttachmentIsNotAFile(t *testing.T) {
 	atts := []Attachment{{Name: "__request_id__", Path: "c45178b7-e64e-4773-89af-2839856d65e9"}}
 	if text := ExpandAttachments(t.TempDir(), atts, 2400); text != "" {
@@ -25,6 +28,7 @@ func TestRequestIDAttachmentIsNotAFile(t *testing.T) {
 	}
 }
 
+// TestImagePartsUsesMultimodalNotBinaryDump 确认图片变成 data URL，提示里不出现 binary mime。
 func TestImagePartsUsesMultimodalNotBinaryDump(t *testing.T) {
 	raw := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4}
 	b64 := base64.StdEncoding.EncodeToString(raw)
@@ -42,6 +46,7 @@ func TestImagePartsUsesMultimodalNotBinaryDump(t *testing.T) {
 	}
 }
 
+// TestMaterializeOutsideMarkdown 确认工作区外的 Markdown 被复制到 .yoyo/uploads，并盖上 @file。
 func TestMaterializeOutsideMarkdown(t *testing.T) {
 	ws := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "我的小说.md")
@@ -82,6 +87,7 @@ func TestMaterializeOutsideMarkdown(t *testing.T) {
 	}
 }
 
+// TestMaterializeKeepsWorkspaceRelative 确认已在工作区内的文件只改相对路径，并清掉 DataB64。
 func TestMaterializeKeepsWorkspaceRelative(t *testing.T) {
 	ws := t.TempDir()
 	src := filepath.Join(ws, "notes.md")
@@ -100,6 +106,7 @@ func TestMaterializeKeepsWorkspaceRelative(t *testing.T) {
 	}
 }
 
+// TestMaterializeDataB64Text 确认无路径的文本按 DataB64 写进上传目录。
 func TestMaterializeDataB64Text(t *testing.T) {
 	ws := t.TempDir()
 	body := "drag-dropped novel"
@@ -117,6 +124,7 @@ func TestMaterializeDataB64Text(t *testing.T) {
 	}
 }
 
+// TestMaterializeUniqueNames 确认同名附件得到 -2 后缀，不互相覆盖。
 func TestMaterializeUniqueNames(t *testing.T) {
 	ws := t.TempDir()
 	outside := t.TempDir()
@@ -144,6 +152,7 @@ func TestMaterializeUniqueNames(t *testing.T) {
 	}
 }
 
+// TestStampFileMentionsSkipsImagesAndDupes 确认图片和已有 @file 不重复盖章。
 func TestStampFileMentionsSkipsImagesAndDupes(t *testing.T) {
 	msg := StampFileMentions("@file:.yoyo/uploads/a.md please", []Attachment{
 		{Path: ".yoyo/uploads/a.md", Name: "a.md"},

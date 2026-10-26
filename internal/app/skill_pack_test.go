@@ -1,3 +1,5 @@
+// 锁住本地安装会打开工作区开关，领域包不带引导技能，以及新家目录不会自动启用包。
+
 package app
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillpack"
 )
 
+// packStatus 从列表里按 id 取出状态，没有则让测试失败。
 func packStatus(t *testing.T, list []skillpack.Status, id string) skillpack.Status {
 	t.Helper()
 	for _, st := range list {
@@ -20,6 +23,7 @@ func packStatus(t *testing.T, list []skillpack.Status, id string) skillpack.Stat
 	return skillpack.Status{}
 }
 
+// writePackFixture 在目录里写下 using-superpowers 和 brainstorming 两份夹具技能。
 func writePackFixture(t *testing.T, root string) {
 	t.Helper()
 	skill := func(name string) string {
@@ -41,6 +45,7 @@ func writePackFixture(t *testing.T, root string) {
 	}
 }
 
+// TestInstallPackLocalEnablesWorkspace 锁住本地安装把工作区开关设为真，技能根和 packSessions 能看见引导技能；关掉后技能列表消失，inherit 清掉工作区覆盖。
 func TestInstallPackLocalEnablesWorkspace(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -117,6 +122,7 @@ func TestInstallPackLocalEnablesWorkspace(t *testing.T) {
 	}
 }
 
+// TestInstallNovelToGamePackIsDomain 锁住 novel-to-game 安装后 Methodology 为假、BootstrapSkill 为空，启用时仍进入 packSessions 和技能根。
 func TestInstallNovelToGamePackIsDomain(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -175,6 +181,7 @@ func TestInstallNovelToGamePackIsDomain(t *testing.T) {
 	}
 }
 
+// TestHarborMaterialsStayPackOff 锁住新家目录的 packSessions 长度为 0。
 func TestHarborMaterialsStayPackOff(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

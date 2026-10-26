@@ -1,9 +1,6 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Path-based pick menu internalized from harness WorkspacePickFlow.
- * Empty recents skip the menu — the owner opens the native folder picker.
+ * 拥有：按路径挑工作区的菜单。最近列表为空时不打开菜单，由外面走系统文件夹选择。
+ * 不拥有：绑定本身。选择交给回调，不调用 api。
  */
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +8,7 @@ import { Check, Folder, Plus } from "lucide-react";
 import type { Copy } from "../../lib/copy";
 import { workspaceLabel } from "./WorkspaceChip";
 
+/** WorkspacePicker 列出最近路径；没有最近项时不打开，交给外面选文件夹。 */
 export function WorkspacePicker(props: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -49,11 +47,13 @@ export function WorkspacePicker(props: {
 
   useEffect(() => {
     if (!props.open || skipMenu) return;
+    /** 点到锚点和菜单外面就关闭。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (props.anchorRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       onCloseRef.current();
     };
+    /** 退出键关闭菜单。 */
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCloseRef.current();
     };

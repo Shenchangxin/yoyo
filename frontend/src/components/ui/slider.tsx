@@ -1,7 +1,10 @@
+// 本文件拥有滑块的轨道、已选区间和拇指。不拥有数值的业务含义。调用方传入 value 和 onValueChange。
+
 import type { ComponentProps } from "react";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { cn } from "../../lib/utils";
 
+// Slider 拼好轨道和拇指，取值与步进仍交给 Radix。
 export function Slider({ className, ...props }: ComponentProps<typeof SliderPrimitive.Root>) {
   return (
     <SliderPrimitive.Root className={cn("relative flex w-40 touch-none items-center select-none", className)} {...props}>

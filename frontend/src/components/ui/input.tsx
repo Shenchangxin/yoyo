@@ -1,6 +1,9 @@
+// 本文件拥有单行和多行输入的边框与焦点环。不拥有输入值。调用方传入 value 和 onChange。
+
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
+// Input 默认关掉自动完成和拼写检查，并带上 no-drag，避免窗口拖拽吃掉输入。
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, autoComplete = "off", spellCheck = false, ...props },
   ref,
@@ -22,6 +25,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   );
 });
 
+// Textarea 去掉缩放和焦点轮廓，高度由调用方的行数或 class 决定。
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
   { className, ...props },
   ref,

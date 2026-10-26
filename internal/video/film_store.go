@@ -1,3 +1,6 @@
+// 翻拍工程的存取。打开参考、换简介、构建，以及把画面交给已有的剪辑台。
+// 下载、词级标注和区域检测用本机程序，没有就跳过，工程仍会保存。
+
 package video
 
 import (
@@ -17,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/film"
 )
 
+// lookFilmTools 查找 yt-dlp、词级标注、区域程序和浏览器，并写到引擎上。
 func (e *Engine) lookFilmTools() {
 	e.YTDLP = lookBin("YOYO_YTDLP", "yt-dlp")
 	if e.YTDLP == "" {
@@ -27,6 +31,7 @@ func (e *Engine) lookFilmTools() {
 	e.BrowserBin = lookBrowser()
 }
 
+// lookNamed 在视频目录和用户主目录的 bin 里找这个程序。Windows 上会补 .exe。
 func lookNamed(e *Engine, name string) string {
 	file := name
 	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(file), ".exe") {
@@ -48,6 +53,7 @@ func lookNamed(e *Engine, name string) string {
 	return ""
 }
 
+// lookBin 先看环境变量，再在 PATH 里找。都没有就返回空串。
 func lookBin(envKey, name string) string {
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
 		return v
@@ -58,6 +64,7 @@ func lookBin(envKey, name string) string {
 	return ""
 }
 
+// lookBrowser 先看 YOYO_BROWSER，再在 PATH 里找 Chrome 或 Edge。Windows 上还会看 Program Files。
 func lookBrowser() string {
 	if v := strings.TrimSpace(os.Getenv("YOYO_BROWSER")); v != "" {
 		return v
@@ -83,6 +90,7 @@ func lookBrowser() string {
 	return ""
 }
 
+// ListFilms 列出已保存的翻拍工程。没有时返回空切片。
 func (e *Engine) ListFilms() []film.Project {
 	out := loadCol[film.Project](e, colFilms)
 	if out == nil {
@@ -91,6 +99,7 @@ func (e *Engine) ListFilms() []film.Project {
 	return out
 }
 
+// GetFilm 按编号读取一部翻拍。没有时返回 film not found。
 func (e *Engine) GetFilm(id string) (film.Project, error) {
 	p, err := getDoc[film.Project](e, colFilms, strings.TrimSpace(id))
 	if err != nil {
@@ -99,6 +108,7 @@ func (e *Engine) GetFilm(id string) (film.Project, error) {
 	return p, nil
 }
 
+// saveFilm 写回工程。编号空着就新建一个。
 func (e *Engine) saveFilm(p film.Project) (film.Project, error) {
 	if strings.TrimSpace(p.ID) == "" {
 		p.ID = NewID()
@@ -109,9 +119,8 @@ func (e *Engine) saveFilm(p film.Project) (film.Project, error) {
 	return p, nil
 }
 
-// OpenFilm reads a stored reference into a production project.
-// A URL is downloaded when yt-dlp is on PATH. Scene marks need ffmpeg.
-// Word marks prefer a stamp program, then whisper.cpp sentences split into tokens.
+// OpenFilm 把已有的参考收成可再跑的工程。PATH 或本机 bin 里有 yt-dlp 时才下载地址。场景切分需要 ffmpeg。
+// 词轴优先用词级标注程序，否则在有 whisper.cpp 时把句子再切开。下载不了就把地址留在工程里。有画面但还没有词就在备注里说明。
 func (e *Engine) OpenFilm(in film.Input) (film.Project, error) {
 	in.Hash = strings.TrimSpace(in.Hash)
 	in.URL = strings.TrimSpace(in.URL)
@@ -129,6 +138,7 @@ func (e *Engine) OpenFilm(in film.Input) (film.Project, error) {
 	return e.saveFilm(p)
 }
 
+// fetchFilmURL 在还没有内容编号、且有 yt-dlp 时下载参考。失败就保持原样，地址仍在。
 func (e *Engine) fetchFilmURL(in film.Input) film.Input {
 	if in.Hash != "" || in.URL == "" || strings.TrimSpace(e.YTDLP) == "" {
 		return in
@@ -156,6 +166,7 @@ func (e *Engine) fetchFilmURL(in film.Input) film.Input {
 	return in
 }
 
+// readFilmMedia 读时长、场景、词和区域。没有 ffmpeg 就只尽量读时长。词级标注没有结果时才用 whisper.cpp 的句子。
 func (e *Engine) readFilmMedia(in film.Input) film.Input {
 	if in.Hash == "" {
 		return in
@@ -194,6 +205,7 @@ func (e *Engine) readFilmMedia(in film.Input) film.Input {
 	return in
 }
 
+// stampFilmWords 调用词级标注程序，读它写出的 JSON。程序没有、运行失败或解不开就返回 nil。
 func (e *Engine) stampFilmWords(src string) []film.Word {
 	if strings.TrimSpace(e.StampBin) == "" {
 		return nil
@@ -227,6 +239,7 @@ func (e *Engine) stampFilmWords(src string) []film.Word {
 	return words
 }
 
+// detectFilmRegions 优先跑区域程序。没有结果就用 ffmpeg 的 cropdetect。
 func (e *Engine) detectFilmRegions(src string) []film.Box {
 	if strings.TrimSpace(e.RegionBin) != "" {
 		if boxes := e.runRegionBin(src); len(boxes) > 0 {
@@ -236,6 +249,7 @@ func (e *Engine) detectFilmRegions(src string) []film.Box {
 	return e.cropFilmRegion(src)
 }
 
+// runRegionBin 调用区域程序并解析它写出的 JSON。失败就返回 nil。
 func (e *Engine) runRegionBin(src string) []film.Box {
 	out := src + ".regions.json"
 	defer os.Remove(out)
@@ -255,6 +269,7 @@ func (e *Engine) runRegionBin(src string) []film.Box {
 	return boxes
 }
 
+// cropFilmRegion 用 ffprobe 读尺寸，再用 ffmpeg cropdetect 收一个区域。没有 ffmpeg 或 ffprobe，或解析失败，就返回 nil。最多等 12 秒。
 func (e *Engine) cropFilmRegion(src string) []film.Box {
 	if strings.TrimSpace(e.FFMPEG) == "" || strings.TrimSpace(e.FFProbe) == "" {
 		return nil
@@ -288,7 +303,7 @@ func (e *Engine) cropFilmRegion(src string) []film.Box {
 	return []film.Box{box}
 }
 
-// DescribeFilm builds a structure from a description, with no reference file.
+// DescribeFilm 按描述或三个结构模板建工程，不需要参考文件。结构空着就用排行榜。排行榜、播客和街采在描述是空的时用模板。
 func (e *Engine) DescribeFilm(structure, title, description string) (film.Project, error) {
 	structure = strings.TrimSpace(structure)
 	if structure == "" {
@@ -304,7 +319,7 @@ func (e *Engine) DescribeFilm(structure, title, description string) (film.Projec
 	return e.saveFilm(p)
 }
 
-// PlanFilm refreshes needs and quotes.
+// PlanFilm 按当前镜头重算待办和输入摘要，并写回。输入没变的产物编号会留下。
 func (e *Engine) PlanFilm(id string) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -314,7 +329,7 @@ func (e *Engine) PlanFilm(id string) (film.Project, error) {
 	return e.saveFilm(p)
 }
 
-// SwapFilm changes one brief field and keeps assets whose inputs did not change.
+// SwapFilm 改简介里非空的字段，并重算待办。输入没变的产物留下。换了语言就试着用对话连接逐行重写。没有对话连接时只记下语言，备注说明还没改写。
 func (e *Engine) SwapFilm(id string, patch film.Brief) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -333,7 +348,7 @@ func (e *Engine) SwapFilm(id string, patch film.Brief) (film.Project, error) {
 	return e.saveFilm(p)
 }
 
-// ForkFilm stores a variant and leaves the original film untouched.
+// ForkFilm 另存一份并套上简介补丁。原片的产物不动。新片没有自己的产物和任务。
 func (e *Engine) ForkFilm(id string, patch film.Brief) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -342,7 +357,7 @@ func (e *Engine) ForkFilm(id string, patch film.Brief) (film.Project, error) {
 	return e.saveFilm(film.Fork(p, patch))
 }
 
-// SetFilmBed attaches a soundtrack the operator already stored.
+// SetFilmBed 把操作者已经存好的垫乐编号写上工程。不在这里生成音乐。
 func (e *Engine) SetFilmBed(id, hash string) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -352,6 +367,7 @@ func (e *Engine) SetFilmBed(id, hash string) (film.Project, error) {
 	return e.saveFilm(p)
 }
 
+// translateFilm 用已启用的对话连接按目标语言重写每一行，并只重排这些行的时间。返回的行数对不上就拒绝，原片不改。没有行时原样返回。
 func (e *Engine) translateFilm(p film.Project) (film.Project, error) {
 	lines := film.LineTexts(p)
 	if len(lines) == 0 {
@@ -395,6 +411,7 @@ func (e *Engine) translateFilm(p film.Project) (film.Project, error) {
 	return film.Localize(p, mapped), nil
 }
 
+// chatForFilm 找一条已启用、有密钥、且名称或地址里不带 hypihub 的对话连接。没有就返回错误。
 func (e *Engine) chatForFilm() (connection.Connection, string, error) {
 	if e.Conn == nil {
 		return connection.Connection{}, "", fmt.Errorf("no enabled connection for localize")
@@ -420,7 +437,7 @@ func (e *Engine) chatForFilm() (connection.Connection, string, error) {
 	return connection.Connection{}, "", fmt.Errorf("no enabled connection for localize")
 }
 
-// RewriteFilmLine replaces one line of words.
+// RewriteFilmLine 替换一行词，并只重排这一行的时间。不用这一行的镜头和产物保持原样。
 func (e *Engine) RewriteFilmLine(id, lineID, text string) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -429,7 +446,8 @@ func (e *Engine) RewriteFilmLine(id, lineID, text string) (film.Project, error) 
 	return e.saveFilm(film.ReplaceLine(p, lineID, text))
 }
 
-// BuildFilm paints code shots locally and sends model needs to enabled connections.
+// BuildFilm 按计划构建。代码画面在本机画出，图、语音、抠像和配乐交给已启用的连接。
+// 本机有浏览器时再存一张页面截图。然后尝试合成成片。生成的配乐如果还没写上垫乐，会把音乐产物当成垫乐。
 func (e *Engine) BuildFilm(id string) (film.Project, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {
@@ -457,6 +475,7 @@ func (e *Engine) BuildFilm(id string) (film.Project, error) {
 	return e.saveFilm(p)
 }
 
+// filmEndpoints 从图像、视频、语音、抠像和配乐菜单收集已启用的连接。
 func (e *Engine) filmEndpoints() []film.Endpoint {
 	var out []film.Endpoint
 	for _, kind := range []string{"image", "video", "speech", "matting", "music"} {
@@ -482,6 +501,7 @@ func (e *Engine) filmEndpoints() []film.Endpoint {
 	return out
 }
 
+// firstModel 取模型列表里的第一个。不是列表就返回空串。
 func firstModel(v any) string {
 	switch t := v.(type) {
 	case []string:
@@ -496,6 +516,7 @@ func firstModel(v any) string {
 	return ""
 }
 
+// dispatchFilmNeed 按种类提交图像、视频或语音。语音走短片的配音。还在远端跑时返回等待，不把它当成失败。抠像和配乐另走各自的接口。
 func (e *Engine) dispatchFilmNeed(n film.Need) (string, error) {
 	ctx := context.Background()
 	switch n.Kind {
@@ -538,6 +559,7 @@ func (e *Engine) dispatchFilmNeed(n film.Need) (string, error) {
 	return "", fmt.Errorf("need %s produced no asset", n.ID)
 }
 
+// dispatchFilmMatte 用抠像连接处理参考画面。供应商还只有预设、没有请求体时返回等待。没有可抠的画面也返回等待。
 func (e *Engine) dispatchFilmMatte(ctx context.Context, n film.Need) (string, error) {
 	j := &Job{Provider: n.Provider, VaultKey: n.VaultKey, Model: n.Model, Prompt: n.Prompt}
 	p, err := e.providerForFilm(*j, "matting")
@@ -563,6 +585,7 @@ func (e *Engine) dispatchFilmMatte(ctx context.Context, n film.Need) (string, er
 	return e.PutBytes(out)
 }
 
+// dispatchFilmMusic 用配乐连接生成垫乐。供应商还只有预设、没有请求体时返回等待。
 func (e *Engine) dispatchFilmMusic(ctx context.Context, n film.Need) (string, error) {
 	j := &Job{Provider: n.Provider, VaultKey: n.VaultKey, Model: n.Model, Prompt: n.Prompt}
 	p, err := e.providerForFilm(*j, "music")
@@ -584,6 +607,7 @@ func (e *Engine) dispatchFilmMusic(ctx context.Context, n film.Need) (string, er
 	return e.PutBytes(out)
 }
 
+// providerForFilm 先按任务找提供商。找不到且有保险库键时，再按键找一条已启用的连接。
 func (e *Engine) providerForFilm(j Job, kind string) (Provider, error) {
 	p, err := e.providerForJob(j, kind)
 	if err == nil {
@@ -602,6 +626,7 @@ func (e *Engine) providerForFilm(j Job, kind string) (Provider, error) {
 	return Provider{}, err
 }
 
+// protocolOf 优先用连接上写明的协议，否则按提供商和能力推断。
 func (e *Engine) protocolOf(p Provider, cap string) string {
 	if e.Conn != nil && p.ID != "" {
 		if c, err := e.Conn.Get(p.ID); err == nil && strings.TrimSpace(c.Protocol) != "" {
@@ -611,6 +636,7 @@ func (e *Engine) protocolOf(p Provider, cap string) string {
 	return connection.InferProtocol(p.Provider, cap)
 }
 
+// matteSource 读出要抠的画面。编号空着或内容库里没有就返回等待。
 func (e *Engine) matteSource(hash string) ([]byte, error) {
 	if hash == "" {
 		return nil, film.Wait("没有可抠的画面")
@@ -622,11 +648,13 @@ func (e *Engine) matteSource(hash string) ([]byte, error) {
 	return raw, nil
 }
 
+// jsonString 把字符串编成 JSON 字面量，给任务参数用。
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
 
+// captureFilmBrowser 用本机浏览器把代码画面截成 PNG 存进产物。broll 跳过。写文件或截图失败就跳过这一镜，不中断其余镜头。
 func (e *Engine) captureFilmBrowser(p film.Project) film.Project {
 	for _, shot := range p.Shots {
 		if shot.Visual == "broll" {
@@ -663,8 +691,7 @@ func (e *Engine) captureFilmBrowser(p film.Project) film.Project {
 	return p
 }
 
-// HandoffFilm opens the existing cut desk on the film's picture.
-// The caller decides when to show that desk.
+// HandoffFilm 用已有的剪辑台打开这部翻拍的画面。优先用成片，其次任意图像，最后用参考片。都没有就拒绝。标题空着就用工程标题。什么时候打开剪辑台由调用方决定。
 func (e *Engine) HandoffFilm(id, title string) (CutProject, error) {
 	p, err := e.GetFilm(id)
 	if err != nil {

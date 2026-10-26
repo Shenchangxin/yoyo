@@ -1,3 +1,5 @@
+// 本文件锁住标题截断、目录跳过转向，以及 PageAroundUser 的窗口。由 go test 调用。
+
 package trace
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestOutlineTitleStripsMentionsAndCaps 锁住 @file: 被去掉，超过 42 个汉字时截断并在末尾加 …。
 func TestOutlineTitleStripsMentionsAndCaps(t *testing.T) {
 	got := OutlineTitle("@file:src/loop.go  Fix the parser in loop.go\nmore")
 	if got != "Fix the parser in loop.go more" {
@@ -17,6 +20,7 @@ func TestOutlineTitleStripsMentionsAndCaps(t *testing.T) {
 	}
 }
 
+// TestOutlineTurnsSkipsSteer 锁住 Source 为 steer 的用户行不进目录，其余两条保留 id 和递增的 Seq。
 func TestOutlineTurnsSkipsSteer(t *testing.T) {
 	s := NewStore(t.TempDir())
 	id := "sess"
@@ -42,6 +46,7 @@ func TestOutlineTurnsSkipsSteer(t *testing.T) {
 	}
 }
 
+// TestPageAroundUserPutsTargetInWindow 锁住靠前的目标排在四回合窗口开头，文件末尾的目标仍在窗口里且窗口补满四条。
 func TestPageAroundUserPutsTargetInWindow(t *testing.T) {
 	s := NewStore(t.TempDir())
 	id := "sess"
@@ -99,6 +104,7 @@ func TestPageAroundUserPutsTargetInWindow(t *testing.T) {
 	}
 }
 
+// TestPageAroundUserSkipsSteer 锁住数操作者回合时不把 steer 算进去，但窗口正文仍保留这条 steer。PageTurns 同样不把 steer 算成回合。
 func TestPageAroundUserSkipsSteer(t *testing.T) {
 	s := NewStore(t.TempDir())
 	id := "sess"
@@ -137,6 +143,7 @@ func TestPageAroundUserSkipsSteer(t *testing.T) {
 	}
 }
 
+// operatorTexts 收集页里不是转向的用户文本。
 func operatorTexts(page Page) []string {
 	var out []string
 	for _, ev := range page.Events {
@@ -147,6 +154,7 @@ func operatorTexts(page Page) []string {
 	return out
 }
 
+// userTexts 收集页里全部用户文本，含转向。
 func userTexts(page Page) []string {
 	var out []string
 	for _, ev := range page.Events {

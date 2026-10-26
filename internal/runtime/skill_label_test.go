@@ -1,3 +1,5 @@
+// 锁住 load_skill 的实时事件和界面轨迹都保留 skill 标签，不在整理时丢掉。
+
 package runtime
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestEmitLiveIncludesSkillLabel 锁住 emit 的实时载荷和 JSONL 里都有 skill 字段。
 func TestEmitLiveIncludesSkillLabel(t *testing.T) {
 	st := trace.NewStore(t.TempDir())
 	var live []trace.Event
@@ -32,6 +35,7 @@ func TestEmitLiveIncludesSkillLabel(t *testing.T) {
 	}
 }
 
+// TestUITrajectoryKeepsLoadSkill 锁住 UITrajectory 留下 load_skill 的调用和结果，调用上的 skill 标签还在。
 func TestUITrajectoryKeepsLoadSkill(t *testing.T) {
 	got := UITrajectory([]trace.Event{
 		{Type: trace.TypeToolCall, Payload: map[string]any{"id": "s1", "name": "load_skill", "arguments": `{"name":"brainstorming"}`, "skill": "brainstorming"}},

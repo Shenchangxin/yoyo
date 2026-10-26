@@ -1,5 +1,11 @@
 import type { TokenMap } from "./schema.ts";
 
+/**
+ * 拥有：六套内置调色板的令牌，以及从背景色解析窗口 RGB。
+ * 不拥有：把令牌写到文档，以及用户皮肤的校验。
+ */
+
+/** BuiltinPaletteId 内置调色板：三套暗色和三套亮色。 */
 export type BuiltinPaletteId = "ink" | "dim" | "slate" | "neutral" | "paper" | "mist";
 
 const ink: TokenMap = {
@@ -139,10 +145,12 @@ const mistOver: TokenMap = {
   "--ctx-system": "color-mix(in srgb, var(--foreground) 22%, #7a8aa0)",
 };
 
+/** 以一套完整调色为底，盖上少量覆盖项。 */
 function merge(base: TokenMap, over: TokenMap): TokenMap {
   return { ...base, ...over };
 }
 
+/** BUILTIN_PALETTES 六套调色板。dim 与 slate 盖在 ink 上，paper 与 mist 盖在 neutral 上。 */
 export const BUILTIN_PALETTES: Record<BuiltinPaletteId, TokenMap> = {
   ink,
   dim: merge(ink, dimOver),
@@ -152,10 +160,12 @@ export const BUILTIN_PALETTES: Record<BuiltinPaletteId, TokenMap> = {
   mist: merge(neutral, mistOver),
 };
 
+/** builtinTokens 拷贝一套内置调色，避免调用方改到共享表。 */
 export function builtinTokens(id: BuiltinPaletteId): TokenMap {
   return { ...BUILTIN_PALETTES[id] };
 }
 
+/** windowRGBFromTokens 从 --background 的十六进制色取出窗口 RGB。不是 # 开头或长度不够时返回空。 */
 export function windowRGBFromTokens(tokens: TokenMap): [number, number, number] | null {
   const hex = tokens["--background"];
   if (!hex || !hex.startsWith("#")) return null;

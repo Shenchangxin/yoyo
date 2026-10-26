@@ -1,3 +1,5 @@
+// 锁住工作区必须是绝对目录、打开时会补上代理目录和独立的视频目录，以及预览不放出工作区外的文件。
+
 package app
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestWorkspaceReady 锁住空串、.、./ 不是工作区，文件和缺失路径也不是，绝对目录才是。
 func TestWorkspaceReady(t *testing.T) {
 	if WorkspaceReady("") || WorkspaceReady(".") || WorkspaceReady("./") {
 		t.Fatal("placeholders must not be ready")
@@ -30,6 +33,7 @@ func TestWorkspaceReady(t *testing.T) {
 	}
 }
 
+// TestDefaultWorkspaceOnOpen 锁住 Open 后 Config.Workspace 等于 Home.Workspace 且可用。
 func TestDefaultWorkspaceOnOpen(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -52,6 +56,7 @@ func TestDefaultWorkspaceOnOpen(t *testing.T) {
 	}
 }
 
+// TestDefaultVideoWorkspaceOnOpen 锁住视频工作区等于 Home.VideoWorkspace，并且和代理工作区不是同一目录。
 func TestDefaultVideoWorkspaceOnOpen(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -77,6 +82,7 @@ func TestDefaultVideoWorkspaceOnOpen(t *testing.T) {
 	}
 }
 
+// TestDefaultWorkspaceReplacesPlaceholder 锁住配置里的 workspace 为 . 时，Open 会换成 Home.Workspace。
 func TestDefaultWorkspaceReplacesPlaceholder(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -103,6 +109,7 @@ func TestDefaultWorkspaceReplacesPlaceholder(t *testing.T) {
 	}
 }
 
+// TestPreviewWorkspaceFile 锁住 html 带回文本，go 的 lang 为 go，越出工作区的路径失败，png 和 pdf 只标 binary 且 pdf 不带 text 字段。
 func TestPreviewWorkspaceFile(t *testing.T) {
 	dir := t.TempDir()
 	abs, err := filepath.Abs(dir)

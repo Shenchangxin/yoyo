@@ -1,3 +1,5 @@
+// 本文件拥有当前身份的切换芯片。不拥有身份列表怎么来。调用方传入 profiles 和 onProfile。
+
 import { Check, ChevronDown, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { Tooltip } from "../components/ui/tooltip";
@@ -9,6 +11,7 @@ import { profileHint, profileLabel, resolveProfile } from "../lib/profile-label"
 const chip =
   "inline-flex h-6 min-w-0 max-w-[9.5rem] items-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-muted transition-[background-color,color] duration-200 ease-[var(--ease-out)] hover:bg-lift hover:text-foreground disabled:pointer-events-none disabled:opacity-30 [&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:opacity-70";
 
+// ProfileChip 用 resolveProfile 找当前项。勾选比较时，当前 id 缺了就当成 assistant。点一项就调用 onProfile。
 export function ProfileChip(props: {
   profiles: Profile[];
   profileId?: string;

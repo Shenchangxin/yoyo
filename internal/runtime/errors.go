@@ -1,3 +1,6 @@
+// 把模型和循环的失败收成界面卡片。Run 在停止前调用 ClassifyError。
+// 不重试请求。是否换供应商由 FailoverWorthy 和 FailoverSkipProvider 回答。
+
 package runtime
 
 import (
@@ -9,24 +12,35 @@ import (
 )
 
 const (
-	ErrKindOverflow  = "overflow"
-	ErrKindAuth      = "auth"
+	// ErrKindOverflow 是上下文溢出。卡片可重试。
+	ErrKindOverflow = "overflow"
+	// ErrKindAuth 是供应商拒绝了密钥。卡片不可重试。
+	ErrKindAuth = "auth"
+	// ErrKindRateLimit 是限流。卡片可重试。
 	ErrKindRateLimit = "rate_limit"
-	ErrKindInvalid   = "invalid"
-	ErrKindTimeout   = "timeout"
-	ErrKindCanceled  = "canceled"
-	ErrKindProvider  = "provider"
-	ErrKindBudget    = "budget"
-	ErrKindMaxTurns  = "max_turns"
-	ErrKindStuck     = "stuck"
-	ErrKindPlanOpen  = "plan_open"
-	ErrKindModel     = "model"
-	ErrKindUnknown   = "unknown"
+	// ErrKindInvalid 是供应商拒绝了这一轮请求。卡片可重试。
+	ErrKindInvalid = "invalid"
+	// ErrKindTimeout 是超时。卡片可重试。
+	ErrKindTimeout = "timeout"
+	// ErrKindCanceled 是这一轮被打断。卡片可重试。
+	ErrKindCanceled = "canceled"
+	// ErrKindProvider 是供应商连接或端点失败。卡片可重试。
+	ErrKindProvider = "provider"
+	// ErrKindBudget 是会话预算用尽。卡片不可重试。
+	ErrKindBudget = "budget"
+	// ErrKindMaxTurns 是轮数用尽。卡片可重试。
+	ErrKindMaxTurns = "max_turns"
+	// ErrKindStuck 是重复循环被停住。卡片可重试。
+	ErrKindStuck = "stuck"
+	// ErrKindPlanOpen 是计划还有步骤没做完。卡片可重试。
+	ErrKindPlanOpen = "plan_open"
+	// ErrKindModel 是当前模型不可用。卡片可重试。
+	ErrKindModel = "model"
+	// ErrKindUnknown 是没有归进上面种类的失败。nil 错误也用它，卡片可重试。
+	ErrKindUnknown = "unknown"
 )
 
-// maxTurnsInfo is the terminal card for a loop that ran out of turns. It is
-// retryable: "continue this turn" resumes from history without a new user
-// message, which is exactly what an operator wants after a long tool run.
+// maxTurnsInfo 是轮数用尽的终局卡片，可重试。继续这一轮会从历史接着走，不再另起一条用户消息。
 func maxTurnsInfo(limit int) ErrorInfo {
 	return ErrorInfo{
 		Kind:      ErrKindMaxTurns,
@@ -37,10 +51,7 @@ func maxTurnsInfo(limit int) ErrorInfo {
 	}
 }
 
-// stuckLoopInfo is the terminal card for a SoftHorizon loop that kept
-// repeating the same failure, or kept the same check FAIL, after a stall
-// nudge. Retryable: the operator can steer or continue with a different
-// approach.
+// stuckLoopInfo 是 SoftHorizon 上同一失败或同一条检查 FAIL 停住后的卡片，可重试。detail 去掉空白后为空时，改成 the same tool failure kept repeating。
 func stuckLoopInfo(detail string) ErrorInfo {
 	if strings.TrimSpace(detail) == "" {
 		detail = "the same tool failure kept repeating"
@@ -54,10 +65,7 @@ func stuckLoopInfo(detail string) ErrorInfo {
 	}
 }
 
-// planOpenInfo is the terminal card for a chat turn that stopped with plan
-// steps still open. The nudge budget ran out, or the model answered in prose
-// after a nudge. Without this card the turn reads as a finished task. It is
-// retryable: "continue this turn" resumes the open steps.
+// planOpenInfo 是聊天回合停住时计划仍有步骤未完成的卡片，可重试。催促次数用尽，或催促之后模型改用散文回答，都会走到这里。没有这张卡片时，这一轮看起来像任务已经做完。
 func planOpenInfo(open, total int) ErrorInfo {
 	return ErrorInfo{
 		Kind:      ErrKindPlanOpen,
@@ -68,7 +76,7 @@ func planOpenInfo(open, total int) ErrorInfo {
 	}
 }
 
-// ErrorInfo is a UI-facing projection of a provider/runtime failure.
+// ErrorInfo 是给界面的失败投影。Retryable 为零值 false 时，卡片不可重试。
 type ErrorInfo struct {
 	Kind      string
 	Title     string
@@ -77,6 +85,7 @@ type ErrorInfo struct {
 	Retryable bool
 }
 
+// Payload 把卡片收成 error、detail、kind、title、hint、retryable。error 和 title 都是 Title。
 func (e ErrorInfo) Payload() map[string]any {
 	return map[string]any{
 		"error":     e.Title,
@@ -88,6 +97,9 @@ func (e ErrorInfo) Payload() map[string]any {
 	}
 }
 
+// ClassifyError 把失败收成界面卡片。err 为 nil 时种类是 unknown，标题是 Something went wrong，可重试。
+// 先认 StopStuck。然后区分上下文超时和取消。ErrBudget 不可重试。其余按错误文本的小写匹配，先命中的分支生效。
+// 上下文溢出可重试。鉴权失败不可重试。被切断的流是供应商连接中断，可重试，不会落成 unknown。文本里的 budget exceeded 同样不可重试。
 func ClassifyError(err error) ErrorInfo {
 	if err == nil {
 		return ErrorInfo{Kind: ErrKindUnknown, Title: "Something went wrong", Retryable: true}
@@ -141,8 +153,7 @@ func ClassifyError(err error) ErrorInfo {
 		info.Kind, info.Title, info.Hint = ErrKindTimeout, "Request timed out", "The model did not respond in time."
 		info.Retryable = true
 	case containsAny(low, "unexpected eof", "connection reset by peer", "broken pipe", "http2: response body closed", "stream error"):
-		// A cut stream is a transport failure, not an unknown one. Without this
-		// the card read "Something went wrong" and gave no cause.
+		// 流被切断是传输失败。不单列这一支时，卡片只会写成 Something went wrong，看不出原因。
 		info.Kind, info.Title, info.Hint = ErrKindProvider, "The model connection dropped", "The model stopped mid-answer. Retry the turn."
 		info.Retryable = true
 	case containsAny(low, "connection refused", "no such host", "network is unreachable", "dial tcp"):
@@ -158,7 +169,8 @@ func ClassifyError(err error) ErrorInfo {
 	return info
 }
 
-// FailoverWorthy is true when another Settings provider or model may succeed.
+// FailoverWorthy 判断换一个设置里的供应商或模型是否还可能成功。err 为 nil，或是上下文取消时，返回 false。
+// 种类是溢出、预算、取消、非法请求、轮数用尽或卡住时返回 false。超时不在这张表里，返回 true。
 func FailoverWorthy(err error) bool {
 	if err == nil {
 		return false
@@ -174,8 +186,7 @@ func FailoverWorthy(err error) bool {
 	}
 }
 
-// FailoverSkipProvider is true when the rest of this provider's models will
-// fail the same way (bad key, rate limit, dead endpoint).
+// FailoverSkipProvider 在这个供应商剩下的模型会以同样方式失败时返回 true：鉴权、限流、超时、供应商错误。其他种类返回 false。err 为 nil 时种类是 unknown，返回 false。
 func FailoverSkipProvider(err error) bool {
 	switch ClassifyError(err).Kind {
 	case ErrKindAuth, ErrKindRateLimit, ErrKindTimeout, ErrKindProvider:
@@ -185,6 +196,7 @@ func FailoverSkipProvider(err error) bool {
 	}
 }
 
+// extractProviderMsg 从第一个 { 到最后一个 } 里取供应商文案。按 msg、message、error 的顺序，字符串取非空白的值，对象再取里面的 message。解析失败时返回原文。
 func extractProviderMsg(s string) string {
 	i := strings.Index(s, "{")
 	if i < 0 {
@@ -213,6 +225,7 @@ func extractProviderMsg(s string) string {
 	return s
 }
 
+// containsAny 在 s 含有任一 needle 时返回 true。
 func containsAny(s string, needles ...string) bool {
 	for _, n := range needles {
 		if strings.Contains(s, n) {

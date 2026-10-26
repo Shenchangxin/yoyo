@@ -1,3 +1,5 @@
+// 按会话标识导出完整轨迹和产物正文。
+
 package app
 
 import (
@@ -15,9 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
-// SessionDump is the lossless on-disk bundle for one session identity.
-// Trajectory is the raw JSONL event stream (not the inspector projection).
-// Artifacts include full spill/context bodies, not previews.
+// SessionDump 是一份会话的无损包。轨迹是 JSONL 原文，产物带上 spill 和上下文的全文，不是预览。
 type SessionDump struct {
 	ID         string                `json:"id"`
 	Query      string                `json:"query,omitempty"`
@@ -28,6 +28,7 @@ type SessionDump struct {
 	Artifacts  []SessionArtifactBody `json:"artifacts"`
 }
 
+// SessionDumpPaths 是这份导出所用的 home、轨迹、meta、spill、上下文和 dump.json 路径。
 type SessionDumpPaths struct {
 	Home       string `json:"home"`
 	Trajectory string `json:"trajectory"`
@@ -37,6 +38,7 @@ type SessionDumpPaths struct {
 	Dump       string `json:"dump"`
 }
 
+// SessionArtifactBody 是一条产物的全文。合法 UTF-8 放在 Text，否则放 DataB64。
 type SessionArtifactBody struct {
 	Kind     string `json:"kind"`
 	ID       string `json:"id"`
@@ -47,8 +49,7 @@ type SessionArtifactBody struct {
 	DataB64  string `json:"data_b64,omitempty"`
 }
 
-// SessionIndexEntry is a locator row: enough to open trajectory + spill
-// from a session id without loading bodies.
+// SessionIndexEntry 是一条定位信息，用来按 id 打开轨迹和 spill，而不加载正文。
 type SessionIndexEntry struct {
 	ID             string `json:"id"`
 	Title          string `json:"title,omitempty"`
@@ -61,8 +62,7 @@ type SessionIndexEntry struct {
 	SpillDir       string `json:"spill_dir"`
 }
 
-// ResolveSessionID maps an exact id or unique prefix to the durable session
-// identity stored under YOYO_HOME/sessions.
+// ResolveSessionID 把精确 id 或唯一前缀解析成会话 id。多个前缀命中或找不到则返回错误。
 func (a *App) ResolveSessionID(query string) (string, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -101,8 +101,7 @@ func (a *App) ResolveSessionID(query string) (string, error) {
 	return "", fmt.Errorf("session %q not found under %s", q, a.Home.Sessions())
 }
 
-// DumpSession returns the complete trajectory and artifact bodies for a
-// session id (exact or unique prefix) and writes sessions/{id}/dump.json.
+// DumpSession 按 id 或唯一前缀读出完整轨迹和产物正文，并写入 sessions/{id}/dump.json。
 func (a *App) DumpSession(query string) (SessionDump, error) {
 	id, err := a.ResolveSessionID(query)
 	if err != nil {
@@ -135,6 +134,7 @@ func (a *App) DumpSession(query string) (SessionDump, error) {
 	return dump, nil
 }
 
+// ListSessionIndex 列出每个会话的标题、事件数、spill 数和路径，不加载正文。
 func (a *App) ListSessionIndex() []SessionIndexEntry {
 	ids := a.knownSessionIDs()
 	out := make([]SessionIndexEntry, 0, len(ids))
@@ -168,6 +168,7 @@ func (a *App) ListSessionIndex() []SessionIndexEntry {
 	return out
 }
 
+// sessionDumpPaths 拼出该会话的轨迹、meta、spill、上下文和 dump.json 路径。
 func (a *App) sessionDumpPaths(id string, meta SessionMeta) SessionDumpPaths {
 	p := SessionDumpPaths{
 		Home:       a.Home.Root,
@@ -187,6 +188,7 @@ func (a *App) sessionDumpPaths(id string, meta SessionMeta) SessionDumpPaths {
 	return p
 }
 
+// collectDumpArtifacts 收集 spill 正文和工作区上下文文件。跳过 dump.json 和已由 spill 覆盖的文本。
 func (a *App) collectDumpArtifacts(id string, meta SessionMeta) []SessionArtifactBody {
 	seen := map[string]bool{}
 	var out []SessionArtifactBody
@@ -259,6 +261,7 @@ func (a *App) collectDumpArtifacts(id string, meta SessionMeta) []SessionArtifac
 	return out
 }
 
+// bytesArtifact 把字节收成产物。合法 UTF-8 用文本，否则用 base64。
 func bytesArtifact(kind, id, path string, b []byte) SessionArtifactBody {
 	art := SessionArtifactBody{Kind: kind, ID: id, Path: path, Bytes: len(b)}
 	if utf8.Valid(b) {
@@ -271,6 +274,7 @@ func bytesArtifact(kind, id, path string, b []byte) SessionArtifactBody {
 	return art
 }
 
+// writeSessionDump 把导出包缩进写成 JSON。路径为空则什么都不做。
 func writeSessionDump(path string, dump SessionDump) error {
 	if path == "" {
 		return nil
@@ -289,6 +293,7 @@ func writeSessionDump(path string, dump SessionDump) error {
 	return enc.Encode(dump)
 }
 
+// knownSessionIDs 从轨迹列表、jsonl、meta 和 spill 目录收集会话 id，排序后返回。
 func (a *App) knownSessionIDs() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -337,6 +342,7 @@ func (a *App) knownSessionIDs() []string {
 	return out
 }
 
+// sessionOnDisk 判断该 id 是否已有 jsonl、meta 或 spill 目录。
 func (a *App) sessionOnDisk(id string) bool {
 	if id == "" {
 		return false

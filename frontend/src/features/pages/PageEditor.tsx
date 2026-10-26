@@ -1,3 +1,4 @@
+/** 拥有一页的标题、正文工具条和保存状态。不拥有页面树。正文改动交给回调，由外面保存到服务端。 */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
@@ -18,8 +19,10 @@ import { cn } from "../../lib/utils";
 import { htmlToMd, mdToHtml } from "./markdown";
 import { formatPageWhen, pageMeasure } from "./when";
 
+/** SaveState 是已存、正在存、已改、冲突或出错。 */
 export type SaveState = "saved" | "saving" | "dirty" | "conflict" | "error";
 
+/** PageEditor 编辑标题和正文，保存与删除交给外面。 */
 export function PageEditor(props: {
   title: string;
   content: string;
@@ -50,6 +53,7 @@ export function PageEditor(props: {
     ],
     content: mdToHtml(props.content),
     editorProps: { attributes: { class: "page-editor min-h-[52vh] w-full max-w-3xl px-1 py-1 text-[16px] leading-7 focus:outline-none" } },
+    /** 不是内部回写时，把 HTML 收成 Markdown 交给外面。 */
     onUpdate: ({ editor: ed }) => {
       if (skip.current) return;
       props.onContent(htmlToMd(ed.getHTML()));
@@ -68,6 +72,7 @@ export function PageEditor(props: {
   }, [editor]);
 
   useEffect(() => {
+    /** 用保存快捷键触发外面的保存。 */
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -80,6 +85,7 @@ export function PageEditor(props: {
 
   useEffect(() => {
     const dirty = props.state === "dirty" || props.state === "saving";
+    /** 还有未保存的改动时，离开前提醒。 */
     const leave = (e: BeforeUnloadEvent) => {
       if (!dirty) return;
       e.preventDefault();
@@ -195,6 +201,7 @@ export function PageEditor(props: {
   );
 }
 
+/** 画一个带提示的格式按钮。 */
 function MarkBtn(props: {
   editor: Editor | null;
   label: string;

@@ -1,15 +1,24 @@
+// 本文件拥有好感分数、档位和冷却。ApplyDelta 在一轮对话或送礼时改分数。
+// 不调用模型。档位文案 Feeling 由 buildPrompt 放进当轮提示。
+
 package idol
 
 import "time"
 
 const (
-	TierCold     = "cold"
-	TierDistant  = "distant"
-	TierTrust    = "trust"
-	TierClose    = "close"
+	// TierCold 是分数不超过 19 的档位，值是 cold。落到 12 及以下会开始冷却。
+	TierCold = "cold"
+	// TierDistant 是分数 20 到 39 的档位，值是 distant。这一档不会主动开口。
+	TierDistant = "distant"
+	// TierTrust 是分数 40 到 59 的档位，值是 trust。没有记录时 affinityOf 用 50，落在这一档。
+	TierTrust = "trust"
+	// TierClose 是分数 60 到 79 的档位，值是 close。主动开口的间隔是 18 小时。
+	TierClose = "close"
+	// TierIntimate 是分数 80 及以上的档位，值是 intimate。解锁时多给一张重置卡，主动开口的间隔是 8 小时。
 	TierIntimate = "intimate"
 )
 
+// TierOf 按分数返回档位名。19 及以下是 cold，39 及以下是 distant，59 及以下是 trust，79 及以下是 close，其余是 intimate。
 func TierOf(score int) string {
 	switch {
 	case score <= 19:
@@ -25,6 +34,7 @@ func TierOf(score int) string {
 	}
 }
 
+// clampScore 把分数限制在 0 到 100。
 func clampScore(n int) int {
 	if n < 0 {
 		return 0
@@ -35,6 +45,7 @@ func clampScore(n int) int {
 	return n
 }
 
+// affinityOf 返回这位偶像的好感。没有记录时分数是 50，档位是 trust。
 func (st *State) affinityOf(idolID string) Affinity {
 	for _, a := range st.Affinity {
 		if a.IdolID == idolID {
@@ -45,6 +56,7 @@ func (st *State) affinityOf(idolID string) Affinity {
 	return Affinity{IdolID: idolID, Score: 50, Tier: TierTrust}
 }
 
+// setAffinity 先夹紧分数、重算档位，再按偶像 id 替换或追加。
 func (st *State) setAffinity(a Affinity) {
 	a.Score = clampScore(a.Score)
 	a.Tier = TierOf(a.Score)
@@ -57,13 +69,13 @@ func (st *State) setAffinity(a Affinity) {
 	st.Affinity = append(st.Affinity, a)
 }
 
+// Cooling 在 CooldownUntil 还没到时返回真。
 func (a Affinity) Cooling(now time.Time) bool {
 	return !a.CooldownUntil.IsZero() && now.Before(a.CooldownUntil)
 }
 
-// ApplyDelta moves the score. A drop to the floor starts a cooldown.
-// Natural recovery toward trust happens when the last contact is old; the
-// caller passes hours since the last record, 0 during an active turn.
+// ApplyDelta 改一位偶像的分数。分数掉到 12 及以下时，冷却到 now 之后 12 小时。
+// idleHours 大于 0 且分数低于 50 时，每 12 小时向 50 回一点；一轮进行中的对话传入 0。冷却中的分数回到 28 及以上就清掉冷却。
 func (st *State) ApplyDelta(idolID string, delta int, now time.Time, idleHours int) Affinity {
 	a := st.affinityOf(idolID)
 	if idleHours > 0 && a.Score < 50 {
@@ -84,6 +96,7 @@ func (st *State) ApplyDelta(idolID string, delta int, now time.Time, idleHours i
 	return st.affinityOf(idolID)
 }
 
+// Feeling 按档位返回放进提示的一句态度。人设本身不改，冷淡档只是话少、保持距离。
 func Feeling(tier string) string {
 	switch tier {
 	case TierCold:

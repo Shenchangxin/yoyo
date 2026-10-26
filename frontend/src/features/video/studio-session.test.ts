@@ -1,8 +1,12 @@
+/**
+ * 本文件拥有短片会话对照的断言。不改服务端。
+ */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { asStudioProject, studioSessionId } from "./studio-session.ts";
 
 describe("studio session isolation", () => {
+  /** 只返回该短片自己的副驾会话。 */
   it("returns the bound copilot for that short only", () => {
     const projects = [
       { id: "a", kind: "studio" as const, title: "A", sessionId: "s-a" },
@@ -15,6 +19,7 @@ describe("studio session isolation", () => {
     assert.equal(studioSessionId("", projects), "");
   });
 
+  /** 另一条短片拿不到这条的聊天 id。 */
   it("does not reuse another short's chat id", () => {
     const projects = [
       { id: "a", kind: "studio" as const, title: "A", sessionId: "s-a" },
@@ -22,6 +27,7 @@ describe("studio session isolation", () => {
     assert.notEqual(studioSessionId("b", projects), "s-a");
   });
 
+  /** 工作区项目会被标成短片。 */
   it("marks a workspace project as a short", () => {
     const p = asStudioProject({ id: "studio-1", title: "春日通勤", sessionId: "s2" });
     assert.equal(p.kind, "studio");

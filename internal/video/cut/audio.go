@@ -1,3 +1,5 @@
+// audio.go 构造混音滤镜，并把口播或音乐混进画面。
+
 package cut
 
 import (
@@ -5,17 +7,19 @@ import (
 	"strings"
 )
 
+// MixOpts 是混音音量、是否闪避、是否替换原声，以及音乐淡出和时间线长度。
 type MixOpts struct {
 	SpeechVol   float64
 	MusicVol    float64
 	OrigVol     float64
 	Duck        bool
 	ReplaceOrig bool
-	// FadeOut fades music out over this many seconds at the end of Timeline.
+	// FadeOut 在时间线末尾把音乐淡出这么多秒。
 	FadeOut  float64
 	Timeline float64
 }
 
+// NormalizeMix 把小于等于 0 的语音音量改成 1，把小于等于 0 的音乐和原声音量改成 0.22。
 func NormalizeMix(o MixOpts) MixOpts {
 	if o.SpeechVol <= 0 {
 		o.SpeechVol = 1
@@ -29,8 +33,7 @@ func NormalizeMix(o MixOpts) MixOpts {
 	return o
 }
 
-// MixGraph is a pure filter builder so mix can be tested without FFmpeg.
-// Inputs: 0=video, 1=speech (optional), 2=music (optional).
+// MixGraph 只构造滤镜，方便不跑 ffmpeg 做测试。输入 0 是画面，1 是可选口播，2 是可选音乐。口播和音乐都在且 Duck 为真时，音乐经 sidechaincompress 压在人声下。只有口播且 ReplaceOrig 为真时不建滤镜，映射到 1:a:0。只有音乐且 ReplaceOrig 为真时音乐作为输入 1。两者都没有时滤镜和映射都空。
 func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string) {
 	o = NormalizeMix(o)
 	switch {
@@ -59,8 +62,7 @@ func MixGraph(hasSpeech, hasMusic bool, o MixOpts) (filter string, maps []string
 	}
 }
 
-// musicChain is the labelled music branch. Fade is omitted unless Timeline is long enough,
-// so the no-fade graph stays stable for existing mixes.
+// musicChain 是带标签的音乐支路。只有 FadeOut 大于 0 且 Timeline 比淡出长出 0.05 秒以上才加 afade，否则只调音量。
 func musicChain(input int, o MixOpts) string {
 	if o.FadeOut > 0 && o.Timeline > o.FadeOut+0.05 {
 		st := o.Timeline - o.FadeOut
@@ -69,7 +71,7 @@ func musicChain(input int, o MixOpts) string {
 	return fmt.Sprintf("[%d:a]volume=%.2f", input, o.MusicVol)
 }
 
-// Mix mixes speech and/or music onto video. Duck compresses the bed under voice.
+// Mix 把口播和/或音乐混进画面。两者都空时返回 nothing to mix。画面复制，音频编成 aac、48 kHz，并加上 -shortest。滤镜失败时改走 mixFallback。
 func (b Bin) Mix(video, speech, music, outPath string, o MixOpts) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -87,7 +89,7 @@ func (b Bin) Mix(video, speech, music, outPath string, o MixOpts) error {
 	if !hasSpeech && !hasMusic {
 		return fmt.Errorf("nothing to mix")
 	}
-	// Shift music to input 1 when there is no speech.
+	// 没有口播时，音乐占输入 1。
 	if !hasSpeech && hasMusic {
 		filter, maps := MixGraph(false, true, o)
 		if filter != "" {
@@ -108,6 +110,7 @@ func (b Bin) Mix(video, speech, music, outPath string, o MixOpts) error {
 	return nil
 }
 
+// mixFallback 用音量混合重试，不再做闪避和淡出。画面复制，音频 aac，并加上 -shortest。
 func (b Bin) mixFallback(video, speech, music, outPath string, o MixOpts) error {
 	args := []string{"-y", "-i", video}
 	if speech != "" {
@@ -131,6 +134,7 @@ func (b Bin) mixFallback(video, speech, music, outPath string, o MixOpts) error 
 	return err
 }
 
+// EnhanceFilter 返回 denoise、loudnorm、loudness、voice、enhance 的音频滤镜。其他预设用 loudnorm，目标 I=-16、TP=-1.5、LRA=11。
 func EnhanceFilter(preset string) string {
 	switch strings.ToLower(strings.TrimSpace(preset)) {
 	case "denoise":
@@ -144,7 +148,7 @@ func EnhanceFilter(preset string) string {
 	}
 }
 
-// ExtractAudio dumps the soundtrack.
+// ExtractAudio 丢掉画面，把音轨抽成 aac、48 kHz、192k。
 func (b Bin) ExtractAudio(src, outPath string) error {
 	if err := b.ok(); err != nil {
 		return err
@@ -153,7 +157,7 @@ func (b Bin) ExtractAudio(src, outPath string) error {
 	return err
 }
 
-// EnhanceAudio applies a named filter chain.
+// EnhanceAudio 对音轨套用 EnhanceFilter 给出的滤镜。
 func (b Bin) EnhanceAudio(src, outPath, preset string) error {
 	if err := b.ok(); err != nil {
 		return err

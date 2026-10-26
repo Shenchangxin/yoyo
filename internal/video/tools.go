@@ -1,3 +1,5 @@
+// tools.go 按名字调用短剧工具，并给出各阶段交给模型的提示。
+
 package video
 
 import (
@@ -6,6 +8,7 @@ import (
 	"strings"
 )
 
+// seriesTool 判断名字是不是剧级工具：摄入、读原文、读方案、提议分集、确认分集和读设定。
 func seriesTool(name string) bool {
 	switch name {
 	case "drama_ingest_source", "drama_read_source", "drama_read_plan",
@@ -16,6 +19,7 @@ func seriesTool(name string) bool {
 	}
 }
 
+// Tool 调用已绑定短剧的工具。没有剧也没有集时要求先打开短剧。剧级工具，以及保存角色、场景、道具时没有集标识，走 seriesTool。保存剧本后若目标超过 120 秒或段数超过 16，结果里带上 split_episode。保存分镜时每调用最多留下 8 条。未知名字返回 unknown drama tool。
 func (e *Engine) Tool(sessionID, name string, args map[string]any) (string, error) {
 	b, ok := e.SessionBind(sessionID)
 	episodeID := first(strMap(args, "episode_id"), b.EpisodeID)
@@ -169,6 +173,7 @@ func (e *Engine) Tool(sessionID, name string, args map[string]any) (string, erro
 	}
 }
 
+// seriesTool 执行剧级读写。确认分集直接返回错误，说明这是桌面上的操作者动作。方案不存在时返回 status 为 missing。
 func (e *Engine) seriesTool(name, dramaID string, args map[string]any) (string, error) {
 	if dramaID == "" {
 		return "", fmt.Errorf("no series bound")
@@ -230,6 +235,7 @@ func (e *Engine) seriesTool(name, dramaID string, args map[string]any) (string, 
 	}
 }
 
+// storyboardCoverage 用已有镜头秒数和条数对照时长计划。达到 MinTotal 或段数即算完成。目标超过 120 秒且段数超过 8 时，未完成的结果带 split_episode。读不到集时 continue 为真且完成标志为假。
 func (e *Engine) storyboardCoverage(episodeID string) (map[string]any, bool) {
 	shots, _ := e.ListShots(episodeID)
 	ep, err := e.GetEpisode(episodeID)
@@ -258,6 +264,7 @@ func (e *Engine) storyboardCoverage(episodeID string) (map[string]any, bool) {
 	}, done
 }
 
+// StagePrompt 按阶段返回一段提示和要加载的技能名。outline 和 bible 要剧标识。rewrite、extract、prompts、storyboard、video_prompts 以及分项提取会把对应流水线标成 running。未知阶段返回 unknown stage。
 func (e *Engine) StagePrompt(stage, episodeID, dramaID string) (string, []string, error) {
 	lang := e.ContentLanguage()
 	langLine := contentLangDirective(lang)
@@ -380,6 +387,7 @@ func (e *Engine) StagePrompt(stage, episodeID, dramaID string) (string, []string
 	}
 }
 
+// contentLangDirective 在语言为空、zh 或 zh-CN 时要求保存的创作文本用简体中文，否则要求用给定语言。
 func contentLangDirective(lang string) string {
 	if lang == "" || lang == "zh" || lang == "zh-CN" {
 		return "HIGHEST PRIORITY: write all saved creative text in Simplified Chinese."
@@ -387,6 +395,7 @@ func contentLangDirective(lang string) string {
 	return "HIGHEST PRIORITY: write all saved creative text in " + lang + ". Ignore any skill line that says to output Chinese only."
 }
 
+// decodeList 把值经 JSON 解成切片。空值或解不开时返回 nil。
 func decodeList[T any](v any) []T {
 	if v == nil {
 		return nil
@@ -402,6 +411,7 @@ func decodeList[T any](v any) []T {
 	return out
 }
 
+// boolArg 接受布尔、字符串 true 或 1，以及非 0 的 float64。其他值返回假。
 func boolArg(v any) bool {
 	switch t := v.(type) {
 	case bool:
@@ -414,6 +424,7 @@ func boolArg(v any) bool {
 	return false
 }
 
+// intArg 从 float64、int 或 json.Number 取出整数。其他值返回 0。
 func intArg(v any) int {
 	switch t := v.(type) {
 	case float64:

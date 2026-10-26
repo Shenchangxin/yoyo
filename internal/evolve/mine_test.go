@@ -1,3 +1,5 @@
+// 锁住没有写文件的轨迹会被收成 missing_artifact，并且启发式提议带上非空片段。
+
 package evolve
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestMineMissingArtifact 要求只有 list_dir 和 read_file 的失败题机制为 missing_artifact，且启发式片段非空。
 func TestMineMissingArtifact(t *testing.T) {
 	evs := []trace.Event{
 		{TaskID: "t1", Type: trace.TypeToolCall, Payload: map[string]any{"name": "list_dir"}},

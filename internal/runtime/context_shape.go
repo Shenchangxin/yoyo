@@ -1,3 +1,6 @@
+// 发给模型的投影。在副本上截断工具结果、微压缩、强制适配和剪旧回合。桌面聊天走 projectChat，不做 snip 和 forceFit。
+// 不改调用方手里的消息，因此不改 JSONL。不调用模型做摘要。循环、计量和检查点会调用。
+
 package runtime
 
 import (
@@ -11,7 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
-// ShapeReport is the observable context-engineering ledger.
+// ShapeReport 是一轮上下文投影的账本，给计量和 compact 事件用。
 type ShapeReport struct {
 	Note            string `json:"note"`
 	Tokens          int    `json:"tokens"`
@@ -27,21 +30,24 @@ type ShapeReport struct {
 	MemoryTokens    int    `json:"memory_tokens,omitempty"`
 	TodayTokens     int    `json:"today_tokens,omitempty"`
 	NotesTokens     int    `json:"notes_tokens,omitempty"`
-	// ChatTokens is real user, assistant, and tool history. Zero is meaningful
-	// on a new session, so it is always serialized.
-	ChatTokens     int      `json:"chat_tokens"`
-	ProviderPrompt int      `json:"provider_prompt,omitempty"`
-	CachedTokens   int      `json:"cached_tokens,omitempty"`
-	CacheReported  bool     `json:"cache_reported,omitempty"`
-	CacheStable    bool     `json:"cache_stable,omitempty"`
-	PrefixHash     string   `json:"prefix_hash,omitempty"`
-	DynamicAt      string   `json:"dynamic_at,omitempty"`
-	Trigger        string   `json:"trigger,omitempty"`
-	Hydrated       int      `json:"hydrated,omitempty"`
-	Layers         []string `json:"layers,omitempty"`
-	Elided         int      `json:"elided,omitempty"`
+	// ChatTokens 是用户、助手和工具的真实历史。新会话可以是 0，所以序列化时保留 0。
+	ChatTokens     int  `json:"chat_tokens"`
+	ProviderPrompt int  `json:"provider_prompt,omitempty"`
+	CachedTokens   int  `json:"cached_tokens,omitempty"`
+	CacheReported  bool `json:"cache_reported,omitempty"`
+	// CacheStable 表示热前缀仍以前一轮热前缀为开头。MeasureContext 固定写成 true。
+	CacheStable bool `json:"cache_stable,omitempty"`
+	// PrefixHash 是热前缀的哈希，不含动态块。
+	PrefixHash string `json:"prefix_hash,omitempty"`
+	// DynamicAt 为空时由 fillLedger 写成 tail，表示动态块在历史后面。
+	DynamicAt string   `json:"dynamic_at,omitempty"`
+	Trigger   string   `json:"trigger,omitempty"`
+	Hydrated  int      `json:"hydrated,omitempty"`
+	Layers    []string `json:"layers,omitempty"`
+	Elided    int      `json:"elided,omitempty"`
 }
 
+// ShapeOpts 控制投影预算。ModelWindow 为 0 时用 CompactionTokens。Aggressive 收紧保留条数和单条工具结果上限。Overhead 是工具 schema 的 token，算进预算比较。
 type ShapeOpts struct {
 	Loop          artifact.LoopPreset
 	Spill         *Spill
@@ -51,17 +57,14 @@ type ShapeOpts struct {
 	Aggressive    bool
 }
 
-// Compact is the eval-stable entry point: deterministic shapers only.
+// Compact 是评测用的稳定入口，只做确定性整形，不调用模型。返回投影和 Shape 的 Note。
 func Compact(msgs []Message, loop artifact.LoopPreset) ([]Message, string) {
 	out, rep := Shape(msgs, ShapeOpts{Loop: loop})
 	return out, rep.Note
 }
 
-// projectChat is the desktop-chat prompt projection: Legalize, spill
-// previews, and receipts for old re-fetchable reads. Write arguments stay
-// intact — replacing them with placeholders taught the model to emit
-// placeholders. It does not snip or forceFit, so the identity/pins prefix
-// stays cache-stable. Live transcript is not mutated.
+// projectChat 是桌面聊天的投影。在副本上按条截断工具结果，压力够了再把旧的可重读结果换成回执，最后 Legalize。
+// 不做 snip，也不 forceFit，写操作的参数保持原样。不改调用方的消息，因此不改 JSONL。
 func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	rep := ShapeReport{Budget: effectiveBudget(opts)}
 	if len(msgs) == 0 {
@@ -86,24 +89,16 @@ func projectChat(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	return Legalize(out), rep
 }
 
-// chatKeepReads is how many of the newest read-only results stay verbatim in
-// the desktop prompt. Older ones become receipts (see clearStaleReads).
+// chatKeepReads 是桌面投影里保留原文的最新只读结果条数。更旧的在有压力时换成回执。
 const chatKeepReads = 12
 
-// chatReadClearAt is the share of the effective budget at which old reads start
-// to become receipts. Below it every read stays verbatim. Clearing buys no room
-// there, and each cleared read rewrites history and breaks the provider's
-// prompt cache from that point on. Checkpointing (chatCompactAt) is later, so
-// clearing is the cheaper relief when pressure does arrive.
+// chatReadClearAt 是开始把旧读换成回执的预算比例。低于它时每条读都保持原文。chatCompactAt 更靠后，压力先到这里时用回执换出空间。
 const chatReadClearAt = 0.5
 
-// chatReadClearBatch is how many reads are cleared at once. One clearing per
-// new read moved the cache boundary on every round; a batch moves it once per
-// batch of reads.
+// chatReadClearBatch 是一次清除的条数。只清除 batch 的整数倍，两次清除之间已处理前缀的字节保持不变。
 const chatReadClearBatch = 8
 
-// readsUnderPressure reports whether the uncleared prompt has reached the
-// point where clearing old reads is worth its cache cost.
+// readsUnderPressure 在预算小于等于 0 时返回真。否则历史 token 加 Overhead 达到有效预算的 chatReadClearAt 才返回真。
 func readsUnderPressure(msgs []Message, opts ShapeOpts) bool {
 	budget := effectiveBudget(opts)
 	if budget <= 0 {
@@ -113,9 +108,7 @@ func readsUnderPressure(msgs []Message, opts ShapeOpts) bool {
 	return float64(est) >= float64(budget)*chatReadClearAt
 }
 
-// refetchableTool names results that can be produced again from the workspace.
-// Writes, shell output, and browser state are never cleared: they are not
-// reproducible from the workspace alone.
+// refetchableTool 判断结果能否只靠工作区再生成。写、shell 和浏览器状态不在此列。
 func refetchableTool(name string) bool {
 	switch name {
 	case "read_file", "grep", "glob", "list_dir", "git_status", "git_diff":
@@ -125,18 +118,8 @@ func refetchableTool(name string) bool {
 	}
 }
 
-// clearStaleReads turns older re-fetchable results into receipts. The assistant
-// tool call that produced each result stays in the prompt, so the model keeps
-// the record that it read the file. The receipt carries the path, the line span
-// it showed, size, and a hash of what was shown, so the model can tell which
-// part of the file it saw and whether a later read changed anything. This is the
-// cleared-tool-results pattern from Anthropic's context editing, applied with
-// the same rule: the call is kept, the bulky observation is dropped, and it can
-// be recovered by calling the tool again.
-//
-// Only the first `batch` multiple of the stale reads is cleared. The cleared
-// prefix therefore grows in steps, and the prompt bytes stay identical between
-// steps, so the provider's prompt cache keeps hitting.
+// clearStaleReads 把较旧的可重读结果换成回执。发出该结果的助手调用留在投影里。回执带路径、read_file 的行号范围、字节数和所示内容的哈希。
+// 只清除过期条数里 batch 的整数倍，因此两次清除之间已清除前缀的字节保持不变。短于 400 字节或已经是占位的跳过。
 func clearStaleReads(msgs []Message, keep, batch int) int {
 	var ids []int
 	for i, m := range msgs {
@@ -162,8 +145,7 @@ func clearStaleReads(msgs []Message, keep, batch int) int {
 	return n
 }
 
-// readReceipt is the replacement body for a cleared read. It is plain prose
-// with real identifiers, so nothing in it can be mistaken for tool arguments.
+// readReceipt 是被清掉的只读结果的替换正文。用明文和真实标识，避免被当成工具参数。
 func readReceipt(msgs []Message, toolIdx int) string {
 	m := msgs[toolIdx]
 	path := toolResultPath(msgs, toolIdx)
@@ -181,9 +163,7 @@ func readReceipt(msgs []Message, toolIdx int) string {
 		m.Name, path, span, len(m.Content), hex.EncodeToString(sum[:6]))
 }
 
-// numberedSpan reads the "%6d|" line numbers that read_file prefixes and reports
-// the first and last line shown, e.g. "lines=1-264". A partial read otherwise
-// looks like the whole file once it has been cleared.
+// numberedSpan 读取 read_file 行首的行号，返回第一条和最后一条，例如 lines=1-264。没有行号时返回空串。
 func numberedSpan(content string) string {
 	first, last := 0, 0
 	for _, line := range strings.Split(content, "\n") {
@@ -206,13 +186,8 @@ func numberedSpan(content string) string {
 	return fmt.Sprintf("lines=%d-%d", first, last)
 }
 
-// Shape is a read-time projection. The live transcript is not mutated.
-// Order is cheapest-first and lossless where possible: legalize-prep →
-// budget (spill+preview) → stub heavy write args → microcompact stubs →
-// if still over budget, stub remaining write args more tightly then
-// forceFit results, then snip old turns into a spill pointer.
-// User/assistant text is never rewritten; tool bodies are stubbed with
-// recall ids. LLM summarization is not part of Shape.
+// Shape 在副本上做只读投影，不改调用方的消息。顺序是按条截断、微压缩，仍超预算再把工具结果强制换成占位，还超就把旧回合剪成 spill 指针。
+// 用户和助手的正文不改写，工具参数也不换成占位。不调用模型做摘要。
 func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	rep := ShapeReport{}
 	if len(msgs) == 0 {
@@ -253,10 +228,7 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 		rep.Elided += n
 	}
 	if messagesTokens(out)+opts.Overhead > budget {
-		// Tool-call arguments are never elided here. A placeholder in the
-		// arguments teaches the model to emit placeholders (session
-		// facb2e21ba0b31a3). Results are stubbed instead, and they carry
-		// recall ids.
+		// 这里不缩短工具参数。参数里的占位会被模型照抄。超预算只给工具结果换上带 recall id 的占位。
 		if n := forceFit(out, budget-opts.Overhead, opts.Spill); n > 0 {
 			rep.Layers = append(rep.Layers, "force")
 			rep.Elided += n
@@ -274,6 +246,7 @@ func Shape(msgs []Message, opts ShapeOpts) ([]Message, ShapeReport) {
 	return out, rep
 }
 
+// copyMessages 浅拷贝消息，并单独复制 ToolCalls，避免投影改到调用方。
 func copyMessages(msgs []Message) []Message {
 	out := make([]Message, len(msgs))
 	for i, m := range msgs {
@@ -285,6 +258,7 @@ func copyMessages(msgs []Message) []Message {
 	return out
 }
 
+// applyBudget 把超过 per 个 rune 的工具结果先写入 spill，正文换成占位加头尾预览。已经是占位的跳过。
 func applyBudget(msgs []Message, per int, spill *Spill) int {
 	n := 0
 	for i := range msgs {
@@ -308,6 +282,7 @@ func applyBudget(msgs []Message, per int, spill *Spill) int {
 	return n
 }
 
+// snipWindow 钉住开头的系统消息，从配对边界切掉中段。能留下的用户消息超过 8 条时只留头 2 条和尾 6 条。其余进 spill，用一条用户消息指向 id。切点不够靠后时返回 nil。
 func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 	head := pinnedPrefix(msgs)
 	if len(msgs) <= keep+head {
@@ -354,6 +329,7 @@ func snipWindow(msgs []Message, keep int, spill *Spill) ([]Message, int) {
 	return out, len(rest)
 }
 
+// keepThroughSnip 保留非空、不是占位、也不是控制行的用户消息。
 func keepThroughSnip(m Message) bool {
 	if m.Role != RoleUser {
 		return false
@@ -365,6 +341,7 @@ func keepThroughSnip(m Message) bool {
 	return true
 }
 
+// pinnedPrefix 返回前导 system 和 developer 的条数。一条都没有时返回 1，避免把第一条历史切掉。
 func pinnedPrefix(msgs []Message) int {
 	n := 0
 	for n < len(msgs) && (msgs[n].Role == RoleSystem || msgs[n].Role == RoleDeveloper) {
@@ -376,6 +353,8 @@ func pinnedPrefix(msgs []Message) int {
 	return n
 }
 
+// microcompact 把最后 keepLast 条工具结果之前的长结果换成占位。短于 400 字节或已经是占位的跳过。
+// keepLast 大于等于 16 时，每个路径最新的一条保留，最多 12 个路径。
 func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 	ids := toolIndexes(msgs)
 	if len(ids) <= keepLast {
@@ -410,6 +389,7 @@ func microcompact(msgs []Message, keepLast int, spill *Spill) int {
 	return n
 }
 
+// lastPathToolIndexes 从新到旧为每个路径保留最新的工具结果，路径数达到 capPaths 就停。capPaths 小于等于 0 时返回空表。
 func lastPathToolIndexes(msgs []Message, ids []int, capPaths int) map[int]bool {
 	keep := map[int]bool{}
 	if capPaths <= 0 {
@@ -431,6 +411,7 @@ func lastPathToolIndexes(msgs []Message, ids []int, capPaths int) map[int]bool {
 	return keep
 }
 
+// toolResultPath 往前找发出这次结果的助手调用，返回参数里的第一个路径。找不到返回空串。
 func toolResultPath(msgs []Message, toolIdx int) string {
 	if toolIdx < 0 || toolIdx >= len(msgs) {
 		return ""
@@ -455,6 +436,7 @@ func toolResultPath(msgs []Message, toolIdx int) string {
 	return ""
 }
 
+// forceFit 从钉住的前缀之后把工具结果换成占位，直到 token 不超过预算。不改工具参数。
 func forceFit(msgs []Message, budget int, spill *Spill) int {
 	if budget < 0 {
 		budget = 0
@@ -475,6 +457,7 @@ func forceFit(msgs []Message, budget int, spill *Spill) int {
 	return n
 }
 
+// toolIndexes 返回所有 role=tool 的下标。
 func toolIndexes(msgs []Message) []int {
 	var ids []int
 	for i, m := range msgs {
@@ -485,6 +468,7 @@ func toolIndexes(msgs []Message) []int {
 	return ids
 }
 
+// alreadyStubbed 识别以 elided、collapsed、omitted、cleared 开头，或含有 _elided 的正文。
 func alreadyStubbed(s string) bool {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "[elided ") || strings.HasPrefix(s, "[collapsed ") || strings.HasPrefix(s, "(omitted ") || strings.HasPrefix(s, "[cleared ") {
@@ -493,6 +477,7 @@ func alreadyStubbed(s string) bool {
 	return strings.Contains(s, `"_elided"`)
 }
 
+// looksLikeContextStub 在正文任意位置识别占位。omitted 还要带 Do not paste this placeholder。写文件工具用它拒绝把占位写回磁盘。
 func looksLikeContextStub(s string) bool {
 	if strings.Contains(s, "[elided ") || strings.Contains(s, "[collapsed ") {
 		return true
@@ -503,6 +488,7 @@ func looksLikeContextStub(s string) bool {
 	return strings.Contains(s, `"_elided"`)
 }
 
+// stubTool 返回带 recall id 的占位。id 或名字为空时用 unknown 和 tool。
 func stubTool(id, name string, bytes int) string {
 	if id == "" {
 		id = "unknown"
@@ -513,10 +499,10 @@ func stubTool(id, name string, bytes int) string {
 	return fmt.Sprintf("[elided tool_result id=%s name=%s bytes=%d — call recall_context with this id]", id, name, bytes)
 }
 
-// heavyCallRunes is the UI slimming threshold for write-like arguments (see
-// live_event.go). It never applies to the model prompt.
+// heavyCallRunes 是界面缩短写操作参数的阈值。模型投影不用它。压缩摘要在送进摘要模型之前用同一阈值。
 const heavyCallRunes = 800
 
+// appendLayer 在同名层尚未出现时追加。
 func appendLayer(layers []string, name string) []string {
 	for _, l := range layers {
 		if l == name {
@@ -526,6 +512,7 @@ func appendLayer(layers []string, name string) []string {
 	return append(layers, name)
 }
 
+// heavyCallName 判断这些写操作的参数算不算重。Shape 不拿它改发给模型的参数。
 func heavyCallName(name string) bool {
 	switch name {
 	case "write_file", "create_file", "apply_patch", "str_replace", "edit_file",
@@ -536,10 +523,12 @@ func heavyCallName(name string) bool {
 	}
 }
 
+// compactCallArgs 按 limit 删掉超长的写操作字段，不附带 recall id。
 func compactCallArgs(name, args string, limit int) string {
 	return compactCallArgsMeta(name, args, limit, "")
 }
 
+// compactCallArgsMeta 删掉超限的 content、patch、body。str_replace、edit_file、office_edit 再加 old_str 和 new_str。解析失败则原样返回。
 func compactCallArgsMeta(name, args string, limit int, recall string) string {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(args), &m); err != nil {
@@ -559,9 +548,7 @@ func compactCallArgsMeta(name, args string, limit int, recall string) string {
 		if len([]rune(s)) <= limit {
 			continue
 		}
-		// Drop the heavy string entirely. An English sentence in `content`
-		// is still a valid write_file argument — models copy it as a
-		// protocol for large files (session 77eb12a42ce43baa).
+		// 整段删掉。content 里留一句说明仍是合法的 write_file 参数，模型会把它当成大文件的写法照抄。
 		delete(m, key)
 		fields = append(fields, map[string]any{"field": key, "runes": len([]rune(s))})
 		changed = true
@@ -581,6 +568,7 @@ func compactCallArgsMeta(name, args string, limit int, recall string) string {
 	return string(b)
 }
 
+// writePathsFromMessages 从助手的 write_file、str_replace 和 apply_patch 收集路径，最多 16 个。
 func writePathsFromMessages(msgs []Message) []string {
 	seen := map[string]bool{}
 	var out []string

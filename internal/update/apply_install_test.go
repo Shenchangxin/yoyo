@@ -1,3 +1,5 @@
+// 检查 NSIS 命令行、开发目录跳过 /D=，以及普通参数不会进入辅助进程。
+
 package update
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestNSISCmdLineQuotesInstallerAndLeavesDestUnquoted 确认安装器路径加引号，/D= 后面的目录不加引号。
 func TestNSISCmdLineQuotesInstallerAndLeavesDestUnquoted(t *testing.T) {
 	got := nsisCmdLine(`C:\Users\Jane Doe\updates\Yoyo-1.2.3-windows-x64-setup.exe`, `C:\Program Files\Yoyo\Yoyo`)
 	if got != `"C:\Users\Jane Doe\updates\Yoyo-1.2.3-windows-x64-setup.exe" /S /D=C:\Program Files\Yoyo\Yoyo` {
@@ -15,6 +18,7 @@ func TestNSISCmdLineQuotesInstallerAndLeavesDestUnquoted(t *testing.T) {
 	}
 }
 
+// TestNSISCmdLineOmitsDest 确认目标目录为空时命令只有带引号的安装器和 /S。
 func TestNSISCmdLineOmitsDest(t *testing.T) {
 	got := nsisCmdLine(`C:\setup.exe`, "")
 	if got != `"C:\setup.exe" /S` {
@@ -22,6 +26,7 @@ func TestNSISCmdLineOmitsDest(t *testing.T) {
 	}
 }
 
+// TestNSISApplySpecRoundTrip 确认 nsisApplySpec 经 JSON 来回后字段不变。
 func TestNSISApplySpecRoundTrip(t *testing.T) {
 	want := nsisApplySpec{Installer: `C:\a b\setup.exe`, DestDir: `C:\Program Files\Yoyo`, WaitPID: 42}
 	b, err := json.Marshal(want)
@@ -37,6 +42,7 @@ func TestNSISApplySpecRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSkipNSISDestDirDevLayouts 确认 go.mod 旁边的 bin 和路径中的 go-build 会跳过 /D=，普通安装目录不会。
 func TestSkipNSISDestDirDevLayouts(t *testing.T) {
 	root := t.TempDir()
 	bin := filepath.Join(root, "bin")
@@ -66,6 +72,7 @@ func TestSkipNSISDestDirDevLayouts(t *testing.T) {
 	}
 }
 
+// TestNSISDestDirTrimsSlash 确认目标目录没有末尾斜杠，并且等于可执行文件所在目录。
 func TestNSISDestDirTrimsSlash(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "Yoyo")
@@ -90,6 +97,7 @@ func TestNSISDestDirTrimsSlash(t *testing.T) {
 	}
 }
 
+// TestHandleNSISHelperIgnoresNormalArgs 确认普通进程参数不会进入 NSIS 辅助流程。
 func TestHandleNSISHelperIgnoresNormalArgs(t *testing.T) {
 	if HandleNSISHelper() {
 		t.Fatal("normal process must not enter helper")

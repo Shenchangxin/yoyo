@@ -1,3 +1,5 @@
+// 锁住内置对比度、样式注入会被拒绝、zip 路径不能逃逸，以及壁纸长边会被缩小。
+
 package skin
 
 import (
@@ -12,6 +14,7 @@ import (
 	"testing"
 )
 
+// TestBuiltinPalettesContrast 确认每个内置 id 都能取到调色板，并且 ContrastOf 通过。
 func TestBuiltinPalettesContrast(t *testing.T) {
 	for _, id := range BuiltinIDs() {
 		m, ok := Palette(id)
@@ -28,6 +31,7 @@ func TestBuiltinPalettesContrast(t *testing.T) {
 	}
 }
 
+// TestRejectsCSSInjection 确认带 url( 或 expression 的值，以及契约外的令牌名会被拒绝。
 func TestRejectsCSSInjection(t *testing.T) {
 	err := ValidateValue(KindColor, "red; } body { background: url(https://evil)")
 	if err == nil {
@@ -39,6 +43,7 @@ func TestRejectsCSSInjection(t *testing.T) {
 	}
 }
 
+// TestAdmitRoundTrip 确认 zip 能装入、保存、编译，并且 Handler 能读出壁纸字节。
 func TestAdmitRoundTrip(t *testing.T) {
 	img := tinyPNG(t)
 	dark, _ := Palette("ink")
@@ -90,6 +95,7 @@ func TestAdmitRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAdmitRejectsTraversal 确认 zip 里的越界路径被拒绝。
 func TestAdmitRejectsTraversal(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -101,6 +107,7 @@ func TestAdmitRejectsTraversal(t *testing.T) {
 	}
 }
 
+// TestNormalizeSkinID 确认内置 id 被收成空串，合法用户 id 保留，带路径的 id 被清掉。
 func TestNormalizeSkinID(t *testing.T) {
 	if NormalizeSkinID("builtin.ink") != "" {
 		t.Fatal("builtin must clear")
@@ -113,6 +120,7 @@ func TestNormalizeSkinID(t *testing.T) {
 	}
 }
 
+// TestStoreJail 确认 File 拒绝逃出存储根的路径。
 func TestStoreJail(t *testing.T) {
 	dir := t.TempDir()
 	st := NewStore(dir)
@@ -124,6 +132,7 @@ func TestStoreJail(t *testing.T) {
 	}
 }
 
+// tinyPNG 返回一张很小的 PNG，供图片测试使用。
 func tinyPNG(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
@@ -134,6 +143,7 @@ func tinyPNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// TestCompileWallpaperOnlyKeepsBuiltinContrast 确认只有壁纸时编译结果不把调色板令牌盖进 Tokens，并带上壁纸 URL。
 func TestCompileWallpaperOnlyKeepsBuiltinContrast(t *testing.T) {
 	p := Pack{
 		Manifest: Manifest{ID: "user.wall", Name: "W", Capabilities: []string{CapTokens, CapWallpaper}, Wallpaper: "wallpaper.png"},
@@ -153,6 +163,7 @@ func TestCompileWallpaperOnlyKeepsBuiltinContrast(t *testing.T) {
 	}
 }
 
+// TestCompileRadiusScale 确认圆角缩放会改到 --radius。
 func TestCompileRadiusScale(t *testing.T) {
 	dark, _ := Palette("ink")
 	light, _ := Palette("neutral")
@@ -166,6 +177,7 @@ func TestCompileRadiusScale(t *testing.T) {
 	}
 }
 
+// TestAdmitRejectsUnknownCap 确认未知能力名被拒绝。
 func TestAdmitRejectsUnknownCap(t *testing.T) {
 	dark, _ := Palette("ink")
 	light, _ := Palette("neutral")
@@ -179,6 +191,7 @@ func TestAdmitRejectsUnknownCap(t *testing.T) {
 	}
 }
 
+// TestAdmitRejectsBadFont 确认不是 woff2 的字体被拒绝。
 func TestAdmitRejectsBadFont(t *testing.T) {
 	dark, _ := Palette("ink")
 	light, _ := Palette("neutral")
@@ -197,6 +210,7 @@ func TestAdmitRejectsBadFont(t *testing.T) {
 	}
 }
 
+// TestFileRejectsUnknownRel 确认允许列表之外的相对路径被拒绝。
 func TestFileRejectsUnknownRel(t *testing.T) {
 	dir := t.TempDir()
 	st := NewStore(dir)
@@ -212,6 +226,7 @@ func TestFileRejectsUnknownRel(t *testing.T) {
 	}
 }
 
+// TestJSONTokens 确认内置 ink 编成 JSON 再解回后能通过 ValidateMap。
 func TestJSONTokens(t *testing.T) {
 	raw, _ := json.Marshal(ink)
 	var m TokenMap
@@ -223,6 +238,7 @@ func TestJSONTokens(t *testing.T) {
 	}
 }
 
+// TestFitImageKeepsSmallPNG 确认未超过长边的小 PNG 保持原字节和原文件名。
 func TestFitImageKeepsSmallPNG(t *testing.T) {
 	raw := tinyPNG(t)
 	got, name, err := fitImage(raw, "assets/wallpaper.png", MaxWallpaperEdge)
@@ -237,6 +253,7 @@ func TestFitImageKeepsSmallPNG(t *testing.T) {
 	}
 }
 
+// TestPrepareDownsamplesWallpaper 确认超大壁纸被缩到 MaxWallpaperEdge。
 func TestPrepareDownsamplesWallpaper(t *testing.T) {
 	dark, _ := Palette("ink")
 	light, _ := Palette("paper")

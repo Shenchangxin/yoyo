@@ -1,3 +1,5 @@
+// 锁住搜索协议、哪些供应商要钥匙，以及模板里包含这些搜索站。
+
 package connection
 
 import (
@@ -10,6 +12,7 @@ import (
 	"testing"
 )
 
+// TestQuerySearchVendors 确认 Tavily 带 Bearer 并 POST，Brave 把钥匙放在 X-Subscription-Token，模板端点的路径被用上。
 func TestQuerySearchVendors(t *testing.T) {
 	var gotMethod, gotAuth, gotPath, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +64,7 @@ func TestQuerySearchVendors(t *testing.T) {
 	}
 }
 
+// TestInferProtocolSearchVendors 确认 tavily、jina、exa、duckduckgo 和未知供应商的搜索协议。
 func TestInferProtocolSearchVendors(t *testing.T) {
 	if InferProtocol("tavily", CapSearch) != "tavily" {
 		t.Fatal(InferProtocol("tavily", CapSearch))
@@ -79,6 +83,7 @@ func TestInferProtocolSearchVendors(t *testing.T) {
 	}
 }
 
+// TestNeedsKeySearchVendors 确认 tavily 和 exa 要钥匙，通用 search、jina 和 exa-mcp 不要。
 func TestNeedsKeySearchVendors(t *testing.T) {
 	if !needsKey(Connection{Protocol: "tavily", Capabilities: []string{CapSearch}}) {
 		t.Fatal("tavily needs key")
@@ -97,6 +102,7 @@ func TestNeedsKeySearchVendors(t *testing.T) {
 	}
 }
 
+// TestTemplatesIncludeSearchVendors 确认模板里有这些搜索供应商，包括 exa-mcp。
 func TestTemplatesIncludeSearchVendors(t *testing.T) {
 	seen := map[string]bool{}
 	for _, c := range Templates() {
@@ -115,6 +121,7 @@ func TestTemplatesIncludeSearchVendors(t *testing.T) {
 	}
 }
 
+// TestQuerySearchJina 确认空端点的 jina 连接仍能返回搜索摘要。
 func TestQuerySearchJina(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

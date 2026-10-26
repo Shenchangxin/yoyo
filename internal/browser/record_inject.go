@@ -1,3 +1,6 @@
+// 本文件的 recorderJS 是注入页面的录制脚本，模板字符串是数据，不在这里改写。
+// 脚本监听点击、输入、按键和滚动，经绑定 yoyoRecord 送回宿主，并在页面里打码敏感地址。
+
 package browser
 
 import (
@@ -5,6 +8,7 @@ import (
 	"fmt"
 )
 
+// recorderJS 用 nonce 和录制 id 填好注入脚本。同一 REC 已经装过就直接返回。
 func recorderJS(nonce, recID string) string {
 	n, _ := json.Marshal(nonce)
 	id, _ := json.Marshal(recID)

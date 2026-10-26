@@ -1,3 +1,6 @@
+// 办公和引文题的独立验证。表格用公式引擎计分。runVerifier 在脚本和 expect.toml 之前调用。
+// behavior-no-touch-tests 只在工作区里看得到 tests/ 时接手并判失败；看不到 tests/ 时 handled 为 false，交给后面的验证器。
+
 package eval
 
 import (
@@ -9,8 +12,8 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
-// runPersonalVerifier independently checks office/research Harbor tasks.
-// Spreadsheets are scored by the formula engine, not by grepping XML.
+// runPersonalVerifier 按题号处理。handled 为 false 表示本函数没有接这道题。
+// office-xlsx-formula 在 A3 或 C1 等于 30 时通过。office-pptx-structure 要求幻灯片数不少于 3。research-cite 把 report.md 交给 cite.Validate。
 func runPersonalVerifier(work string, task Task) (ok bool, out string, err error, handled bool) {
 	switch task.ID {
 	case "office-xlsx-formula":

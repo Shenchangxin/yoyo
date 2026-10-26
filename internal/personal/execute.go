@@ -1,3 +1,6 @@
+// 按种类执行已租到的任务：填表、监视 URL、汇总 CSV、写里程碑。
+// KindAgent 不在这里跑模型，只改回 waiting_input。
+
 package personal
 
 import (
@@ -17,20 +20,25 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/office"
 )
 
+// lostLeaseError 表示租约已经不属于这次执行。
 type lostLeaseError struct{}
 
+// Error 返回 personal: lost lease。
 func (lostLeaseError) Error() string { return "personal: lost lease" }
 
+// isLostLease 判断错误是不是 lostLeaseError。
 func isLostLease(err error) bool {
 	_, ok := err.(lostLeaseError)
 	return ok
 }
 
+// shaText 返回正文的 SHA-256 十六进制。
 func shaText(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
 
+// execute 在租约仍有效时按种类执行。已关联的提案若还在等待、执行中或结果未知，任务改回 waiting_approval。默认种类改回 waiting_input。
 func (e *Engine) execute(ctx context.Context, t Task, leaseID string) (Task, error) {
 	guard := func() error {
 		cur, ok := e.store.task(t.ID)
@@ -113,6 +121,7 @@ func (e *Engine) execute(ctx context.Context, t Task, leaseID string) (Task, err
 	}
 }
 
+// finish 在租约仍匹配时把任务标成 succeeded，步骤标成 succeeded，并按 task-done 通知。
 func (e *Engine) finish(t Task, leaseID, result string) (Task, error) {
 	out, ok := e.store.casTask(t.ID, string(StatusRunning), leaseID, func(cur *Task) bool {
 		cur.Status = StatusSucceeded
@@ -132,6 +141,7 @@ func (e *Engine) finish(t Task, leaseID, result string) (Task, error) {
 	return out, nil
 }
 
+// runDocument 缺路径或缺字段时改回 waiting_input。填好的副本写到该任务文件目录的 filled.pdf，原路径只记在产物说明里。随后 Propose 一封邮件并进入 waiting_approval。
 func (e *Engine) runDocument(ctx context.Context, t Task, leaseID string, guard func() error, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = ctx
 	sourcePath := strMap(t.Input["path"])
@@ -290,6 +300,7 @@ func (e *Engine) runDocument(ctx context.Context, t Task, leaseID string, guard 
 	return out, nil
 }
 
+// fieldNames 用 office.Query 读出冒号后为空的行，当作待填字段名。查询失败返回 nil。
 func fieldNames(path string) []string {
 	text, err := office.Query(path)
 	if err != nil {
@@ -310,6 +321,7 @@ func fieldNames(path string) []string {
 	return names
 }
 
+// formatFields 把字段写成文本，并写明原文件没有被修改。
 func formatFields(fields map[string]string) string {
 	var b strings.Builder
 	b.WriteString("Filled copy. Original file was not modified.\n\n")
@@ -319,6 +331,7 @@ func formatFields(fields map[string]string) string {
 	return b.String()
 }
 
+// firstNonEmpty 返回第一段去掉空白后仍非空的字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -328,8 +341,10 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// pricePat 匹配带美元符号或 USD 的金额。
 var pricePat = regexp.MustCompile(`(?:\$|USD)\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)`)
 
+// matchesPrice 在正文里出现小于阈值的美元金额时返回真。
 func matchesPrice(text string, threshold float64) bool {
 	for _, m := range pricePat.FindAllStringSubmatch(text, -1) {
 		n, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", ""), 64)
@@ -340,6 +355,7 @@ func matchesPrice(text string, threshold float64) bool {
 	return false
 }
 
+// runMonitor 抓取监视 URL。change 在去掉相对时间后哈希相同则不通知。第一次没有先前哈希，shouldNotify 还要求已经见过基线。失败五次后监视和任务改为 paused。
 func (e *Engine) runMonitor(ctx context.Context, t Task, leaseID string, guard func() error, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = checkpoint
 	id := strMap(t.Input["monitorId"])
@@ -481,6 +497,7 @@ func (e *Engine) runMonitor(ctx context.Context, t Task, leaseID string, guard f
 	return out, nil
 }
 
+// observe 对 sample:// 读取存储里的样例正文。其他 URL 调用 Fetch，为空时用 SafeGET，再去掉标签。
 func (e *Engine) observe(ctx context.Context, m Monitor) (text, title string, err error) {
 	if strings.HasPrefix(m.URL, "sample://") {
 		key := strings.TrimPrefix(m.URL, "sample://")
@@ -501,6 +518,7 @@ func (e *Engine) observe(ctx context.Context, m Monitor) (text, title string, er
 	return stripTags(body), m.Title, nil
 }
 
+// stripTags 丢掉尖括号里的内容，标签结束处换成空格。
 func stripTags(s string) string {
 	var b strings.Builder
 	in := false
@@ -521,6 +539,7 @@ func stripTags(s string) string {
 	return b.String()
 }
 
+// monitorFail 增加失败次数，下次检查按 2 的幂分钟推迟，最长 1 小时。失败达到 5 次时把监视和任务改成 paused，并通知收件箱。
 func (e *Engine) monitorFail(t Task, m Monitor, leaseID string, err error) (Task, error) {
 	failures := 0
 	if v, ok := t.State["failures"].(float64); ok {
@@ -574,6 +593,7 @@ func (e *Engine) monitorFail(t Task, m Monitor, leaseID string, err error) (Task
 	return out, nil
 }
 
+// runFinance 没有 CSV 时，若给了路径就从工作区相对路径读取。仍为空则改回 waiting_input。汇总结果写入 spending.json。
 func (e *Engine) runFinance(t Task, leaseID string, checkpoint func(func(*Task)) error) (Task, error) {
 	csv := strMap(t.Input["csv"])
 	if csv == "" {
@@ -622,6 +642,7 @@ func (e *Engine) runFinance(t Task, leaseID string, checkpoint func(func(*Task))
 	return e.finish(t, leaseID, art.Summary)
 }
 
+// runPlan 没有里程碑标题时改回 waiting_input。找到目标则整表替换里程碑，再写入计划产物。
 func (e *Engine) runPlan(t Task, leaseID string, checkpoint func(func(*Task)) error) (Task, error) {
 	_ = checkpoint
 	var titles []string

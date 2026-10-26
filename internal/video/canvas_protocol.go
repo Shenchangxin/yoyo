@@ -1,3 +1,5 @@
+// 行为：把画布生成任务提交给协议适配器并轮询结果。没有适配器时退回图像或视频通道。
+
 package video
 
 import (
@@ -15,6 +17,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/protocol"
 )
 
+// submitCanvas 解析通道和适配器并提交生成请求。已完成则落盘，失败返回错误，否则进入 polling。
 func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	p := parseParams(j.Params)
 	ch, err := e.resolveCanvasChannel(p)
@@ -61,6 +64,7 @@ func (e *Engine) submitCanvas(ctx context.Context, j *Job) error {
 	return nil
 }
 
+// pollCanvas 向适配器查询远程任务。成功则落盘，失败或取消返回错误，其余保持 polling。
 func (e *Engine) pollCanvas(ctx context.Context, j *Job) error {
 	p := parseParams(j.Params)
 	ch, err := e.resolveCanvasChannel(p)
@@ -102,6 +106,7 @@ func (e *Engine) pollCanvas(ctx context.Context, j *Job) error {
 	}
 }
 
+// submitCanvasFallback 在没有协议适配器时，按图像或视频改走原有提交。
 func (e *Engine) submitCanvasFallback(ctx context.Context, j *Job, ch canvasChannel, p JobParams) error {
 	mode := strings.ToLower(firstNonEmpty(p.Mode, j.Type))
 	switch mode {
@@ -120,6 +125,7 @@ func (e *Engine) submitCanvasFallback(ctx context.Context, j *Job, ch canvasChan
 	}
 }
 
+// pollCanvasFallback 在没有协议适配器时，按图像或视频改走原有轮询。
 func (e *Engine) pollCanvasFallback(ctx context.Context, j *Job, p JobParams) error {
 	mode := strings.ToLower(firstNonEmpty(p.Mode, j.Type))
 	switch mode {
@@ -132,6 +138,7 @@ func (e *Engine) pollCanvasFallback(ctx context.Context, j *Job, p JobParams) er
 	}
 }
 
+// providerVendor 从插件 id 推断供应商标识，匹配不到就用插件 id。
 func providerVendor(ch canvasChannel) string {
 	id := strings.ToLower(ch.PluginID)
 	switch {
@@ -148,6 +155,7 @@ func providerVendor(ch canvasChannel) string {
 	}
 }
 
+// resolveCanvasChannel 按通道 id、能力或当前活跃供应商解析画布通道。
 func (e *Engine) resolveCanvasChannel(p JobParams) (canvasChannel, error) {
 	if p.ChannelID != "" {
 		if c, err := e.getCanvasChannel(p.ChannelID); err == nil {
@@ -177,6 +185,7 @@ func (e *Engine) resolveCanvasChannel(p JobParams) (canvasChannel, error) {
 	}, nil
 }
 
+// resolveCanvasAdapter 按插件 id 或能力从协议注册表取出适配器。
 func (e *Engine) resolveCanvasAdapter(ch canvasChannel, mode string) (protocol.Adapter, error) {
 	if e.Proto == nil {
 		return nil, fmt.Errorf("protocol registry missing")
@@ -211,6 +220,7 @@ func (e *Engine) resolveCanvasAdapter(ch canvasChannel, mode string) (protocol.A
 	return ad, nil
 }
 
+// buildGenerationRequest 把任务、参数和引用素材收成协议生成请求。
 func (e *Engine) buildGenerationRequest(j Job, p JobParams, ch canvasChannel) (protocol.GenerationRequest, error) {
 	req := protocol.GenerationRequest{
 		Model:         firstNonEmpty(j.Model, ch.Model),
@@ -286,10 +296,11 @@ func (e *Engine) buildGenerationRequest(j Job, p JobParams, ch canvasChannel) (p
 	return req, nil
 }
 
+// doProtocol 按适配器给出的请求规格发 HTTP，有文件时用 multipart。
 func (e *Engine) doProtocol(ctx context.Context, spec protocol.RequestSpec, key, base string) ([]byte, int, error) {
 	rawURL := spec.Path
 	if spec.OriginPath || strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
-		// keep
+		// 已是绝对地址或带 OriginPath 时不改路径。
 	} else {
 		rawURL = joinURL(base, "", spec.Path)
 	}
@@ -365,6 +376,7 @@ func (e *Engine) doProtocol(ctx context.Context, spec protocol.RequestSpec, key,
 	return raw, res.StatusCode, nil
 }
 
+// mediaRefBytes 从 data URL、画布资源或远程地址取出引用媒体的字节。
 func (e *Engine) mediaRefBytes(ref protocol.MediaReference) ([]byte, error) {
 	if strings.HasPrefix(ref.DataURL, "data:") {
 		return decodeDataURL(ref.DataURL)
@@ -380,6 +392,7 @@ func (e *Engine) mediaRefBytes(ref protocol.MediaReference) ([]byte, error) {
 	return nil, fmt.Errorf("empty media reference")
 }
 
+// materializeProtocolResult 把协议结果里的视频、图像、音频或文本写回任务。
 func (e *Engine) materializeProtocolResult(j *Job, result *protocol.Result) error {
 	var raw []byte
 	var video bool
@@ -418,6 +431,7 @@ func (e *Engine) materializeProtocolResult(j *Job, result *protocol.Result) erro
 	return e.finishMedia(j, raw, video)
 }
 
+// RecoverCanvasMedia 在结果哈希还在时重新登记画布资源。尝试满 3 次或对象缺失则失败，没有哈希则重新排队。
 func (e *Engine) RecoverCanvasMedia(id string) (Job, error) {
 	j, err := e.GetJob(id)
 	if err != nil {

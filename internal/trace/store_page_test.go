@@ -1,3 +1,5 @@
+// 本文件锁住默认页窗口、按用户回合分页、检查点定位，以及 durable 用户行重开后仍在。由 go test 调用。
+
 package trace
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestDefaultPageWindowFitsTheRenderer 锁住 DefaultPageTurns 不大于 12，DefaultPageBytes 不大于 300000。
 func TestDefaultPageWindowFitsTheRenderer(t *testing.T) {
 	if DefaultPageTurns > 12 {
 		t.Fatalf("DefaultPageTurns %d", DefaultPageTurns)
@@ -14,6 +17,7 @@ func TestDefaultPageWindowFitsTheRenderer(t *testing.T) {
 	}
 }
 
+// TestIndexPagesByUserTurns 锁住 PageTurns 取末尾 2 个用户回合时 Older 为真，且再用 HeadSeq 往前取时不与这一页重叠。
 func TestIndexPagesByUserTurns(t *testing.T) {
 	s := NewStore(t.TempDir())
 	id := "sess"
@@ -50,6 +54,7 @@ func TestIndexPagesByUserTurns(t *testing.T) {
 	}
 }
 
+// TestReadFromCheckpointSeeks 锁住 ReadFromCheckpoint 从 kind 为 checkpoint 的 compaction 行起，只留下该行和后面的用户行。
 func TestReadFromCheckpointSeeks(t *testing.T) {
 	s := NewStore(t.TempDir())
 	id := "ckpt"
@@ -69,6 +74,7 @@ func TestReadFromCheckpointSeeks(t *testing.T) {
 	}
 }
 
+// TestDurableUserSurvivesReopen 锁住 AppendDurable 的用户行在新 Store 打开同一目录后仍能 Read 到。
 func TestDurableUserSurvivesReopen(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sess")
 	s := NewStore(dir)

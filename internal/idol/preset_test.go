@@ -1,3 +1,6 @@
+// 本文件锁住首次打开会灌入目录和桌宠、退休的 sc- 偶像会被删掉，以及已有钉选不会被桌宠抢走。
+// 测试里写入的 state.json 是数据。由 go test 调用。
+
 package idol
 
 import (
@@ -7,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestPresetSeed 锁住空目录打开后有当前预设版本、称呼「制作人」、四位偶像、一个圈子，樱木真乃带立绘和头像，再次打开不重复灌入，删掉的桌宠不会自己回来。
 func TestPresetSeed(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(dir)
@@ -86,6 +90,7 @@ func TestPresetSeed(t *testing.T) {
 	}
 }
 
+// TestPresetDropsRetiredIdols 锁住不在目录里的 sc- 偶像和圈子会被删掉，用户自己的偶像留下，丢掉的钉选改到桌宠。
 func TestPresetDropsRetiredIdols(t *testing.T) {
 	dir := t.TempDir()
 	raw := []byte(`{"preset_rev":2,"circles":[{"id":"sc-illumination","name":"illumination STARS"},{"id":"sc-straylight","name":"Straylight"},{"id":"mine-circle","name":"宿舍"}],"idols":[{"id":"yoyo","name":"Yoyo","kind":"pet","color":"#c47b8a","spoken_lang":"zh","subtitle_lang":"zh"},{"id":"sc-mano","name":"樱木真乃","kind":"catalog","color":"#ffbad6","spoken_lang":"ja","subtitle_lang":"zh"},{"id":"sc-fuyuko","name":"黛冬优子","kind":"catalog","pinned":true,"color":"#334455","spoken_lang":"ja","subtitle_lang":"zh"},{"id":"mine","name":"小灯","color":"#112233","spoken_lang":"zh","subtitle_lang":"zh"}],"conversations":[{"id":"c1","idol_id":"sc-fuyuko"}],"memories":[{"id":"m1","text":"旧","source_idol":"sc-fuyuko"}]}`)
@@ -129,6 +134,7 @@ func TestPresetDropsRetiredIdols(t *testing.T) {
 	}
 }
 
+// TestPresetKeepsExistingPin 锁住已有偶像被钉选时，新补上的桌宠不抢钉选，已有称呼也不改。
 func TestPresetKeepsExistingPin(t *testing.T) {
 	dir := t.TempDir()
 	raw := []byte(`{"idols":[{"id":"mine","name":"小灯","pinned":true,"color":"#112233","spoken_lang":"zh","subtitle_lang":"zh"}],"user":{"address":"老板"}}`)

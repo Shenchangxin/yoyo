@@ -1,3 +1,8 @@
+/**
+ * 拥有：窗口怎么拼起来：侧栏、对话、检查器、各个表面，以及设置页的宿主回调。
+ * 不拥有：会话状态，那些在 useWorkstation。会调用 api 改工作区、模型、权限、隔离、置顶、归档、分叉、页面和密钥。
+ */
+
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { toast } from "sonner";
@@ -59,6 +64,7 @@ import { useStudioSelection } from "./features/video/workshop-store";
 import { studioSessionId } from "./features/video/studio-session";
 import { sessionLane } from "./features/video/video-lanes";
 
+/** 这些页第一次打开才加载。 */
 const HarborLab = lazy(() => import("./features/labs/HarborLab").then((m) => ({ default: m.HarborLab })));
 const EvolveLab = lazy(() => import("./features/labs/EvolveLab").then((m) => ({ default: m.EvolveLab })));
 const HarnessLab = lazy(() => import("./features/labs/HarnessLab").then((m) => ({ default: m.HarnessLab })));
@@ -68,17 +74,20 @@ const SkillsWorkspace = lazy(() => import("./features/skills/SkillsWorkspace").t
 const PagesWorkspace = lazy(() => import("./features/pages/PagesWorkspace").then((m) => ({ default: m.PagesWorkspace })));
 const VideoWorkshop = lazy(() => import("./features/video/VideoWorkshop").then((m) => ({ default: m.VideoWorkshop })));
 
+/** 按 id 合并字段。置顶的排在前面。 */
 function patchThread(list: Thread[], id: string, patch: Partial<Thread>): Thread[] {
   const next = list.map((x) => (x.id === id ? { ...x, ...patch } : x));
   next.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
   return next;
 }
 
+/** App 在陪伴表面只渲染 CompanionApp，其余交给 WorkstationApp。 */
 export default function App() {
   if (isCompanionSurface()) return <CompanionApp />;
   return <WorkstationApp />;
 }
 
+/** 按当前表面决定显示对话、设置、技能、页面、偶像、视频或 harness。启动完成后闪 900 毫秒。焦点每 2 秒刷新一次空闲时间。 */
 function WorkstationApp() {
   const ws = useWorkstation();
   useSettingsHash();
@@ -137,7 +146,9 @@ function WorkstationApp() {
     }
   }, [ws.booted]);
   useEffect(() => {
+    /** 窗口得到焦点时记下，并重置空闲起点。 */
     const on = () => { setWinFocused(true); idleAt.current = Date.now(); };
+    /** 窗口失去焦点。 */
     const off = () => setWinFocused(false);
     window.addEventListener("focus", on);
     window.addEventListener("blur", off);
@@ -150,8 +161,7 @@ function WorkstationApp() {
   }, []);
   const staged = videoing && (ws.videoBoard || ws.canvasStage || studioDesk || (videoPane !== "chat" && videoPane !== "create" && videoPane !== "game"));
   const agent = popout || ws.surface === "agent";
-  // The create entrance stays up while the welcome thread replays history or reports a leftover run.
-  // It steps aside only after a chat is sent from this desk and that chat has something to show.
+  /** 欢迎线程还在回放历史或报告残留运行时，创作入口留着。只有从这张桌子发出对话、并且对话里已经有内容时才让开。 */
   const createEntrance = createDesk && !cutBound && !(createEngaged && ws.items.length > 0);
   const home = !staged && (agent || videoing) && (createEntrance || ((ws.items.length === 0 || paneMismatch) && !ws.threadRunning && ws.approvals.length === 0));
   const copilotItems = paneMismatch ? [] : ws.items;
@@ -184,6 +194,7 @@ function WorkstationApp() {
 
   const sessionWs = ws.active?.workspace || ws.savedCfg.workspace;
   const toolRoot = sessionFsRoot(ws.active, sessionWs);
+  /** 空路径直接返回。还没有会话时新建一个，并套用待定的权限。已有会话则改它的工作区。 */
   const applySessionWorkspace = async (path: string) => {
     if (!path) return;
     if (!ws.activeId) {
@@ -206,7 +217,7 @@ function WorkstationApp() {
     })),
     skills: ws.skills,
     autoSkills: liveAutoSkills(ws.items),
-    // Before the first chat exists, show the permission the next chat will get.
+    /** 还没有第一段对话时，显示下一段对话会用的权限。 */
     authMode: studioDesk && (studioCopilotForeign || !ws.activeId)
       ? (pendingAuthMode || "full")
       : (ws.active?.authMode || pendingAuthMode || "full"),
@@ -237,7 +248,7 @@ function WorkstationApp() {
     onIngestVideo: (source: { path?: string; file?: File }) => ws.ingestVideo(source),
     onAuthMode: async (mode: AuthMode) => {
       if (!ws.activeId) {
-        // No chat yet: keep the choice for the first chat created (see adoptPendingAuthMode).
+        /** 还没有对话：把选择留给即将创建的第一段（见 adoptPendingAuthMode）。 */
         useUI.getState().setPendingAuthMode(mode);
         return;
       }
@@ -598,6 +609,7 @@ function WorkstationApp() {
     </HarnessWorkspace>
   );
 
+  /** 窄屏时鼠标离开侧栏就收起悬停层。 */
   const leaveRail = () => {
     if (railNarrow) ws.setSidebarHover(false);
   };
@@ -1225,6 +1237,7 @@ function WorkstationApp() {
   );
 }
 
+/** 把工作站的配置、健康和插件操作交给设置页。写密钥时空字符串不调用 setAPIKey。 */
 function SettingsSurface({ ws, navInRail }: { ws: ReturnType<typeof useWorkstation>; navInRail?: boolean }) {
   const copy = ws.copy;
   return (

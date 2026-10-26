@@ -1,8 +1,6 @@
 /**
- * Copyright (c) 2026 DeepSeek
- * SPDX-License-Identifier: MIT
- *
- * Internalized from deepseek-harness TodoPanel. Projects Yoyo update_plan.
+ * 拥有：当前计划步骤的投影。计划来自 update_plan。
+ * 不拥有：计划的生成。只投影计划，不调用 api。
  */
 import { useState } from "react";
 import { ChevronDown, ChevronUp, ListChecks } from "lucide-react";
@@ -10,6 +8,7 @@ import type { Copy } from "../../lib/copy";
 import type { PlanStatus, TaskPlan } from "../../lib/plan";
 import { planDoneCount } from "../../lib/plan";
 
+/** 把完成、进行和未做的数量拼成一行。 */
 function progressLabel(plan: TaskPlan, copy: Copy): string {
   const done = planDoneCount(plan);
   const active = plan.steps.filter((s) => s.status === "in_progress").length;
@@ -21,12 +20,14 @@ function progressLabel(plan: TaskPlan, copy: Copy): string {
   ].filter(Boolean).join("\u2002·\u2002");
 }
 
+/** 把步骤状态换成文案。 */
 function statusLabel(status: PlanStatus, copy: Copy): string {
   if (status === "complete") return copy.composer.todoStatusCompleted;
   if (status === "in_progress") return copy.composer.todoStatusInProgress;
   return copy.composer.todoStatusPending;
 }
 
+/** 用一个点标出步骤状态。 */
 function StatusDot({ status }: { status: PlanStatus }) {
   if (status === "in_progress") {
     return (
@@ -41,6 +42,7 @@ function StatusDot({ status }: { status: PlanStatus }) {
   return <span className="sc-todo-dot" data-state={status === "complete" ? "done" : "idle"} aria-hidden />;
 }
 
+/** TodoPanel 投影当前计划，可以收起步骤。 */
 export function TodoPanel(props: { plan: TaskPlan | null | undefined; copy: Copy }) {
   const [collapsed, setCollapsed] = useState(true);
   const plan = props.plan;

@@ -1,3 +1,5 @@
+// 按轨迹和材料估算会话已经占用的上下文。
+
 package app
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// measureSessionContext 按会话的 harness、技能、历史和窗口估算上下文形状。材料读失败时只叠历史和现场形状。
 func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	meta, _ := a.GetSession(sessionID)
 	ws := meta.Workspace
@@ -91,12 +94,14 @@ func (a *App) measureSessionContext(sessionID string) runtime.ShapeReport {
 	return rep
 }
 
+// liveShape 返回该会话上次记住的形状。
 func (a *App) liveShape(sessionID string) runtime.ShapeReport {
 	a.shapeMu.Lock()
 	defer a.shapeMu.Unlock()
 	return a.lastShape[sessionID]
 }
 
+// promptFromEvents 从最近的事件里取 provider_prompt，没有则返回 0。
 func promptFromEvents(evs []trace.Event) int {
 	for i := len(evs) - 1; i >= 0; i-- {
 		if n := payloadInt(evs[i].Payload, "provider_prompt"); n > 0 {
@@ -106,6 +111,7 @@ func promptFromEvents(evs []trace.Event) int {
 	return 0
 }
 
+// overlayPrompt 在估算结果没有供应商提示量时，用现场形状里的值补上。
 func overlayPrompt(rep, live runtime.ShapeReport) runtime.ShapeReport {
 	if rep.ProviderPrompt == 0 && live.ProviderPrompt > 0 {
 		rep.ProviderPrompt = live.ProviderPrompt
@@ -113,6 +119,7 @@ func overlayPrompt(rep, live runtime.ShapeReport) runtime.ShapeReport {
 	return rep
 }
 
+// payloadInt 把载荷里的整数或浮点读成 int，没有则返回 0。
 func payloadInt(p map[string]any, key string) int {
 	if p == nil {
 		return 0

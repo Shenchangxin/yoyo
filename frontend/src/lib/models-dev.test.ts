@@ -1,3 +1,8 @@
+/**
+ * 拥有：空的线上目录保留快照、供应商整表替换、PascalCase 水合，以及作曲栏按供应商编码。
+ * 不拥有：目录的加载。
+ */
+
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { hydrateCatalog, overlayCatalog, type ModelsDevCatalog } from "./catalog-shape.ts";
@@ -18,12 +23,14 @@ const base: ModelsDevCatalog = {
 };
 
 describe("overlayCatalog", () => {
+  /** 线上供应商为空时，基底里的 openai 和 grok 都还在。 */
   it("keeps bundled providers when live is empty", () => {
     const got = overlayCatalog(base, { version: 3, fetchedAt: "", providers: {} });
     assert.equal(got.providers.openai["gpt-4o"].model.id, "gpt-4o");
     assert.equal(got.providers.grok["grok-4"].model.id, "grok-4");
   });
 
+  /** openai 整表换成线上的，旧模型不留。grok 仍在。来源改成线上的。 */
   it("replaces a provider and keeps the rest", () => {
     const live: ModelsDevCatalog = {
       version: 3,
@@ -44,6 +51,7 @@ describe("overlayCatalog", () => {
 });
 
 describe("hydrateCatalog", () => {
+  /** PascalCase 包装能读出窗口。基底里的 grok 仍叠在上面。 */
   it("reads Wails PascalCase wrappers", () => {
     const got = hydrateCatalog({
       Version: 3,
@@ -70,6 +78,7 @@ describe("composerModelGroups", () => {
     { id: "b", name: "FlowY", vendor: "custom", endpoint: "https://server.flowyaipc.com/claw/v1", model: "openclaw/default", models: ["openclaw/default"], hasKey: true, isDefault: false, active: true },
   ];
 
+  /** 每个仍启用的供应商一组，模型列表含当前模型和配置。 */
   it("groups models under each provider", () => {
     const groups = composerModelGroups(providers, "gpt-4.1-mini", "a");
     assert.equal(groups.length, 2);
@@ -79,6 +88,7 @@ describe("composerModelGroups", () => {
     assert.deepEqual(groups[1].models, ["openclaw/default"]);
   });
 
+  /** 供应商和模型用两个冒号接上。没给供应商时，默认组拥有该模型。 */
   it("encodes provider and model so two catalogs can share an id", () => {
     assert.equal(encodeChatModel("a", "gpt-4.1-mini"), "a::gpt-4.1-mini");
     assert.equal(resolveComposerModelValue(providers, "openclaw/default", "b"), "b::openclaw/default");

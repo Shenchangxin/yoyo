@@ -1,5 +1,9 @@
 //go:build windows
 
+// 本文件拥有 Windows 上启动 Chrome 的进程标志，以及无头进程的 Job Object。
+// prepareChromeCmd 在无头时隐藏窗口。CreationFlags 总是加上 CREATE_NEW_PROCESS_GROUP 和 CREATE_NO_WINDOW。
+// bindChromeJob 只由无头启动调用。作业带 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE，返回的函数会 TerminateJobObject。
+
 package browser
 
 import (
@@ -10,6 +14,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// prepareChromeCmd 按 headed 设置 HideWindow。CreationFlags 再加上 CREATE_NEW_PROCESS_GROUP 和 CREATE_NO_WINDOW。
 func prepareChromeCmd(cmd *exec.Cmd, headed bool) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -18,6 +23,7 @@ func prepareChromeCmd(cmd *exec.Cmd, headed bool) {
 	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_NO_WINDOW
 }
 
+// bindChromeJob 把进程放进关闭时杀掉整棵树的作业。失败时返回 nil。返回的函数调用 TerminateJobObject 并关掉作业句柄。
 func bindChromeJob(cmd *exec.Cmd) func() {
 	if cmd == nil || cmd.Process == nil {
 		return nil

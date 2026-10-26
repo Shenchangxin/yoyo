@@ -7,8 +7,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillpack"
 )
 
-// companionPulseKind is the single mapping from a live item onto the
-// desktop-pet channel. "loading" must never become an OS notification.
+// companionPulseKind 把实时条目映射到桌面宠物通道。user 且 source 不是 steer 时为 loading，steer 返回空。tool_call 为 loading，turn_end 为 done，approval 和 ask_user 为 approval，error 为 error，eval 和 evolve 用同名。system 只在 source 为 update 时返回 update。其他类型返回空。loading 不会变成系统通知。
 func companionPulseKind(typ, source string) string {
 	switch typ {
 	case "user":
@@ -38,6 +37,7 @@ func companionPulseKind(typ, source string) string {
 	}
 }
 
+// companionPulseTitle 只在 kind 为 loading 时改标题。tool_call 优先用技能标签，其次工具名，再次 fallback，并截到 42 个字。其他 loading 用正文，同样截断。其余 kind 返回 fallback。
 func companionPulseTitle(kind, typ, fallback, text, tool, args string) string {
 	switch kind {
 	case "loading":
@@ -59,6 +59,7 @@ func companionPulseTitle(kind, typ, fallback, text, tool, args string) string {
 	}
 }
 
+// clipRunes 按 rune 截断。超过 n 时留下前 n 个字并加上省略号。
 func clipRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -67,9 +68,7 @@ func clipRunes(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// answeredOrAsk reports approval events that must not notify again. A decision
-// event answers an approval the user already handled, and an approval whose
-// action is ask_user repeats the question the ask_user item already announced.
+// answeredOrAsk 只在类型为 approval 时可能为真。payload 已有 decision，或 action 为 ask_user 时返回真，避免把已经处理过的审批或重复的提问再通知一次。
 func answeredOrAsk(typ string, payload map[string]any) bool {
 	if typ != "approval" {
 		return false
@@ -77,9 +76,7 @@ func answeredOrAsk(typ string, payload map[string]any) bool {
 	return payloadStr(payload, "decision") != "" || payloadStr(payload, "action") == "ask_user"
 }
 
-// quietOutcome is a run the user should see in the app but not as an OS toast:
-// a deliberate Stop, and a turn that ended with plan steps still open. The pet
-// still hears both, so its loading state clears.
+// quietOutcome 为真时宠物仍收到脉冲，但不再发系统通知。error 的 kind 为 canceled，或 turn_end 的 stop 为 plan_open 时返回真。
 func quietOutcome(typ string, payload map[string]any) bool {
 	switch typ {
 	case "error":
@@ -90,12 +87,12 @@ func quietOutcome(typ string, payload map[string]any) bool {
 	return false
 }
 
-// oneLine collapses whitespace and clips to n runes, for a single toast line.
+// oneLine 把空白收成单个空格，再按 rune 截到 n 个字。
 func oneLine(s string, n int) string {
 	return clipRunes(strings.Join(strings.Fields(s), " "), n)
 }
 
-// lineJoin joins the non-empty parts with a middle dot.
+// lineJoin 丢掉空白片段，用中点 · 把剩下的连成一行。
 func lineJoin(parts ...string) string {
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -106,7 +103,7 @@ func lineJoin(parts ...string) string {
 	return strings.Join(out, " · ")
 }
 
-// approvalLine names what is waiting: the action and the command or path it touches.
+// approvalLine 写出正在等的动作，以及它碰到的 command 或 path。两边都有时用冒号接上，detail 最多 120 个字。
 func approvalLine(p map[string]any) string {
 	action := strings.TrimSpace(payloadStr(p, "action"))
 	detail := oneLine(firstPayloadStr(p, "command", "path"), 120)

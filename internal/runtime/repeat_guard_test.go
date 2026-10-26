@@ -1,3 +1,5 @@
+// 锁住规范化参数忽略键顺序，以及重复链跳过读取、到点提醒、不结束回合。
+
 package runtime
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestCanonicalArgsIgnoresKeyOrder 确认键顺序不同的同一份 JSON 得到同一个规范化参数。
 func TestCanonicalArgsIgnoresKeyOrder(t *testing.T) {
 	a := canonicalArgs(`{"b":1,"a":{"d":true,"c":2}}`)
 	b := canonicalArgs("{\"a\":{\"c\":2,\"d\":true},\"b\":1}")
@@ -13,6 +16,7 @@ func TestCanonicalArgsIgnoresKeyOrder(t *testing.T) {
 	}
 }
 
+// TestRepeatChainSkipsReadsAndDoesNotStop 确认 read_file 和 update_plan 不打断 shell 链：第 3 次是短提醒，第 5 和 8 次是长提醒，第 9 次保持安静；换参数或 reset 后计数回到 1 且没有提醒。
 func TestRepeatChainSkipsReadsAndDoesNotStop(t *testing.T) {
 	var r repeatTracker
 	req := RunRequest{User: "继续修", SoftHorizon: true}
@@ -54,7 +58,7 @@ func TestRepeatChainSkipsReadsAndDoesNotStop(t *testing.T) {
 	if r.count != 9 {
 		t.Fatalf("count %d", r.count)
 	}
-	// A different argument shape is a new chain, not a tenth reminder.
+	// 参数形状一变就是新链，不会变成第十次提醒。
 	if got := r.observe(req, []ToolCall{swapped}); got != "" || r.count != 1 {
 		t.Fatalf("new args count=%d nudge=%q", r.count, got)
 	}
@@ -64,6 +68,7 @@ func TestRepeatChainSkipsReadsAndDoesNotStop(t *testing.T) {
 	}
 }
 
+// TestRepeatChainResetsOnDifferentTrackedCall 确认换成 str_replace 后链从 1 重新计，再回到原来的 shell 也是新链。
 func TestRepeatChainResetsOnDifferentTrackedCall(t *testing.T) {
 	var r repeatTracker
 	req := RunRequest{User: "继续", SoftHorizon: true}

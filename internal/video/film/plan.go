@@ -1,8 +1,11 @@
+// 按镜头填待办，并在输入没变时留下已有产物。
+// 选连接时拒绝名称或地址里带 hypihub 的那条。
+
 package film
 
 import "strings"
 
-// Endpoint is one enabled Yoyo connection the planner may call.
+// Endpoint 是计划可以调用的一条已启用连接。
 type Endpoint struct {
 	ID       string
 	Name     string
@@ -15,8 +18,8 @@ type Endpoint struct {
 	HasKey   bool
 }
 
-// Plan fills needs from the shots and refreshes input hashes.
-// Asset hashes stay when the input hash is unchanged.
+// Plan 按镜头填待办，并刷新输入摘要。输入摘要没变且已有产物时，产物编号留下，状态写成 skipped。
+// broll 要图像。排行榜每一行另要一张图。有词就要语音。还没有垫乐就要配乐。街采要抠像。代码画面不产生模型费用。
 func Plan(p Project) Project {
 	prev := map[string]Need{}
 	for _, n := range p.Needs {
@@ -118,13 +121,13 @@ func Plan(p Project) Project {
 	return p
 }
 
-// Quote lists what a build may spend. Code steps are free of model charges.
+// Quote 先重新计划，再返回可能产生花费的步骤。代码画面的花费写成无模型花费。
 func Quote(p Project) []Need {
 	p = Plan(p)
 	return p.Needs
 }
 
-// Swap applies the non-empty brief fields and rehashes needs.
+// Swap 把简介里非空的字段写上，并重算待办。换开头时只重写第一行的词。
 func Swap(p Project, patch Brief) Project {
 	if clean(patch.Host) != "" {
 		p.Brief.Host = clean(patch.Host)
@@ -153,7 +156,7 @@ func Swap(p Project, patch Brief) Project {
 	return rehash(p)
 }
 
-// Fork copies a film and applies a brief patch. The parent keeps its assets.
+// Fork 复制一部片子再套上简介补丁。子片记下父片编号，不带走产物和任务。父片自己的产物不动。
 func Fork(p Project, patch Brief) Project {
 	child := cloneProject(p)
 	child.ID = ""
@@ -163,7 +166,7 @@ func Fork(p Project, patch Brief) Project {
 	return Swap(child, patch)
 }
 
-// Localize rewrites the named lines and reflows only those lines.
+// Localize 按行号重写给出的句子，并只重排这些行的时间。没给出的行不动。
 func Localize(p Project, lines map[string]string) Project {
 	for _, line := range LineTexts(p) {
 		text := ""
@@ -178,6 +181,7 @@ func Localize(p Project, lines map[string]string) Project {
 	return p
 }
 
+// openingLine 返回开始最早的那一行。没有词就返回空串。
 func openingLine(words []Word) string {
 	if len(words) == 0 {
 		return ""
@@ -191,6 +195,7 @@ func openingLine(words []Word) string {
 	return best.LineID
 }
 
+// stickerOn 返回钉在这一镜某个词上的贴纸文字。有多条时留下后遇到的那条。
 func stickerOn(p Project, shot Shot) string {
 	var text string
 	for _, sticker := range p.Stickers {
@@ -203,6 +208,7 @@ func stickerOn(p Project, shot Shot) string {
 	return text
 }
 
+// rowLabels 返回排到当前这一镜为止的行标签，用竖线接起来。最后一镜列出全部行。
 func rowLabels(p Project, index, last int) string {
 	rows := p.Entries
 	n := index + 1
@@ -225,6 +231,7 @@ func rowLabels(p Project, index, last int) string {
 	return b.String()
 }
 
+// rehash 清掉待办再按现在的内容重算。输入摘要没变的产物编号会抄回来。
 func rehash(p Project) Project {
 	old := p.Needs
 	p.Needs = nil
@@ -243,8 +250,10 @@ func rehash(p Project) Project {
 	return p
 }
 
+// spoken 把整条词轴拼成要念的正文。
 func spoken(p Project) string { return joinTokens(p.Words) }
 
+// musicPrompt 拼一条不要人声的垫乐提示，带上产品、结构和语言。
 func musicPrompt(p Project) string {
 	bits := []string{"instrumental bed, no vocals"}
 	if s := clean(p.Brief.Product); s != "" {
@@ -259,6 +268,7 @@ func musicPrompt(p Project) string {
 	return strings.Join(bits, ", ")
 }
 
+// cloneProject 复制词、镜头、贴纸、待办和条目。区域框单独拷一份。产物和任务不带上。
 func cloneProject(p Project) Project {
 	p.Words = append([]Word(nil), p.Words...)
 	shots := make([]Shot, len(p.Shots))
@@ -279,8 +289,7 @@ func cloneProject(p Project) Project {
 	return p
 }
 
-// Route picks an enabled connection for a need and refuses a hosted gateway of another product.
-// An exact service match wins over a name that only looks related.
+// Route 为这一步挑一条已启用且有密钥的连接。名称或地址里带 hypihub 的拒绝。服务种类完全对上的优先于只是名字像。都没有就返回错误。
 func Route(kind string, list []Endpoint) (Endpoint, error) {
 	kind = clean(kind)
 	var loose Endpoint
@@ -307,11 +316,13 @@ func Route(kind string, list []Endpoint) (Endpoint, error) {
 	return Endpoint{}, errNoConn(kind)
 }
 
+// rejected 判断编号、名字、地址或服务里带不带 hypihub。
 func rejected(ep Endpoint) bool {
 	blob := strings.ToLower(ep.ID + " " + ep.Name + " " + ep.BaseURL + " " + ep.Service)
 	return strings.Contains(blob, "hypihub")
 }
 
+// classify 判断这条连接能不能做这一步。图像、视频、语音和配乐必须服务种类完全一致。抠像优先要 matting，图像连接的名字像抠像时也能用，但不是精确匹配。
 func classify(kind string, ep Endpoint) (exact bool, ok bool) {
 	service := strings.ToLower(clean(ep.Service))
 	model := strings.ToLower(ep.Model + " " + ep.Name)
@@ -339,31 +350,37 @@ func classify(kind string, ep Endpoint) (exact bool, ok bool) {
 
 type noConn string
 
+// errNoConn 表示这一步没有可用连接。
 func errNoConn(kind string) error { return noConn(kind) }
 
+// Error 说明没有已启用的连接能做这一步。
 func (e noConn) Error() string { return "no enabled connection for " + string(e) }
 
 type waitErr string
 
+// Error 返回这一步这次做不完的原因。
 func (e waitErr) Error() string { return string(e) }
 
-// Wait marks a selected step that cannot finish in this call.
+// Wait 表示这一步已经选中，但这一次调用做不完。
 func Wait(msg string) error { return waitErr(msg) }
 
+// isWait 判断错误是不是 Wait 返回的。
 func isWait(err error) bool {
 	_, ok := err.(waitErr)
 	return ok
 }
 
-// BuildEnv stores bytes and may call a connection. Both may be nil in a code-only build.
+// BuildEnv 负责存字节，并可以把一步交给连接。只画代码画面时两者都可以是 nil。
 type BuildEnv struct {
 	Providers []Endpoint
-	Put       func([]byte) (string, error)
-	Dispatch  func(Need) (string, error)
+	// Put 把字节放进内容库。没有它时，产物编号用内容的摘要。
+	Put func([]byte) (string, error)
+	// Dispatch 把图像、视频、语音、抠像或配乐交给连接。没有它时，这些步骤记成等待。
+	Dispatch func(Need) (string, error)
 }
 
-// Build runs planned needs. A failed generation records a task and continues.
-// Unchanged input hashes keep their asset hashes.
+// Build 先重新计划，再跑每一步。代码画面在本机画出。其余步骤先选连接再交给 Dispatch。
+// 一步失败会记下任务并继续。输入没变的产物直接跳过。词轴会另写一份一词一条的字幕。
 func Build(p Project, env BuildEnv) Project {
 	p = Plan(p)
 	p.Tasks = nil
@@ -452,6 +469,7 @@ func Build(p Project, env BuildEnv) Project {
 	return p
 }
 
+// shotByNeed 按 code:镜头编号 找回镜头。对不上就用第一镜。一镜都没有就返回一个代码画面。
 func shotByNeed(p Project, key string) Shot {
 	id := strings.TrimPrefix(key, "code:")
 	for _, shot := range p.Shots {
@@ -465,6 +483,7 @@ func shotByNeed(p Project, key string) Shot {
 	return Shot{Visual: "code"}
 }
 
+// mediaOf 给出这一步产物的媒体类型。语音和配乐是音频，视频是 mp4，其余是 PNG。
 func mediaOf(kind string) string {
 	switch kind {
 	case "speech", "music":
@@ -476,7 +495,7 @@ func mediaOf(kind string) string {
 	}
 }
 
-// EncodeSRT writes one cue per word so captions can follow the word axis.
+// EncodeSRT 一词写一条字幕，方便字幕跟着词轴走。没有词就返回空串。有说话人时写在词前面。
 func EncodeSRT(words []Word) string {
 	if len(words) == 0 {
 		return ""
@@ -502,6 +521,7 @@ func EncodeSRT(words []Word) string {
 	return b.String()
 }
 
+// stamp 把秒写成 SRT 的时:分:秒,毫秒。负数当成 0。
 func stamp(sec float64) string {
 	if sec < 0 {
 		sec = 0
@@ -516,6 +536,7 @@ func stamp(sec float64) string {
 	return pad(h) + ":" + pad(m) + ":" + pad(s) + "," + pad3(ms)
 }
 
+// pad 把整数写成至少两位。
 func pad(n int) string {
 	if n < 10 {
 		return "0" + itoa(n)
@@ -523,6 +544,7 @@ func pad(n int) string {
 	return itoa(n)
 }
 
+// pad3 把整数写成至少三位，给毫秒用。
 func pad3(n int) string {
 	s := itoa(n)
 	for len(s) < 3 {

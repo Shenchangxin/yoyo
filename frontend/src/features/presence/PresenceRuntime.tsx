@@ -1,3 +1,4 @@
+/** 拥有一块共用的情绪球宿主、槽位抢占、静态信笺、栖枝和模块加载位。不拥有导演，也不另开模型循环。信笺不是活的引擎。不改服务端。 */
 import { createContext, useCallback, useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { createMate } from "./engine";
@@ -23,6 +24,7 @@ type PresenceSlots = {
 
 const SlotsCtx = createContext<PresenceSlots | null>(null);
 
+/** PresenceRuntime 维持一只情绪球，并把它放到当前优先级最高的槽里。 */
 export function PresenceRuntime(props: {
   emotionId: string;
   reduced: boolean;
@@ -49,6 +51,7 @@ export function PresenceRuntime(props: {
   }, [slots]);
   const activeId = active?.id ?? null;
 
+  /** 登记或换掉一个槽，并交回取消登记的函数。 */
   const claim = useCallback((id: PresenceSlotId, el: HTMLElement, size: number) => {
     setSlots((prev) => {
       const i = prev.findIndex((s) => s.id === id);
@@ -107,6 +110,7 @@ export function PresenceRuntime(props: {
   useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    /** 页面可见且没减弱动效时才让情绪球动。 */
     const apply = () => {
       const on = document.visibilityState === "visible" && !!active && !props.reduced;
       mateRef.current?.setActive(on);
@@ -153,6 +157,7 @@ export function PresenceRuntime(props: {
     hostRef.current?.remove();
   }, []);
 
+  /** 让当前这只情绪球庆祝一次。 */
   const celebrate = useCallback(() => {
     mateRef.current?.celebrate(1);
   }, []);
@@ -168,6 +173,7 @@ export function PresenceRuntime(props: {
   );
 }
 
+/** PresenceAnchor 占一个槽，点一下就庆祝。 */
 export function PresenceAnchor(props: {
   id: PresenceSlotId;
   size: number;
@@ -202,7 +208,7 @@ export function PresenceAnchor(props: {
   );
 }
 
-/** Standalone instance for the companion window or exclusive module loaders. */
+/** PresenceSprite 单独养一只情绪球，给陪伴窗或独占的模块加载用。 */
 export function PresenceSprite(props: {
   emotionId: string;
   size?: number;
@@ -235,6 +241,7 @@ export function PresenceSprite(props: {
     mate.current = inst;
     faceRef.current = props.emotionId;
     if (props.reduced) inst.renderStatic();
+    /** 页面不可见或减弱动效时停掉这只球。 */
     const vis = () => {
       inst.setActive(document.visibilityState === "visible" && !props.reduced);
     };
@@ -289,7 +296,7 @@ export function PresenceSprite(props: {
   );
 }
 
-/** Rest-face letterhead: cream blob + conjugated eyes. Not a live engine. */
+/** PresenceStamp 画一张静态休息脸：奶油色身体和一对眼睛，不是活的引擎。 */
 export function PresenceStamp(props: { className?: string; size?: number; live?: boolean }) {
   const n = props.size ?? 36;
   const raw = useId();
@@ -332,8 +339,10 @@ export function PresenceStamp(props: { className?: string; size?: number; live?:
   );
 }
 
+/** COMPOSER_PRESENCE_SIZE 是输入栏栖枝的尺寸。 */
 export const COMPOSER_PRESENCE_SIZE = 64;
 
+/** PresencePerch 在输入栏占作曲槽，空着时用信笺垫着。 */
 export function PresencePerch(props: { className?: string; size?: number }) {
   const size = props.size ?? COMPOSER_PRESENCE_SIZE;
   return (
@@ -343,8 +352,10 @@ export function PresencePerch(props: { className?: string; size?: number }) {
   );
 }
 
+/** MODULE_PRESENCE_SIZE 是模块加载时情绪球的尺寸。 */
 export const MODULE_PRESENCE_SIZE = 228;
 
+/** PresenceModuleLoading 在模块加载时占住模块槽，并可带一行说明。 */
 export function PresenceModuleLoading(props: { label?: string; className?: string; size?: number }) {
   return (
     <div

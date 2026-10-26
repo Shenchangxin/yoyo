@@ -1,3 +1,5 @@
+// 实验室对照：同一基线上的 Best-of-N、独立随机补丁和顺序累积补丁。不移动 refs。Cycle 的用量累加也在这里。
+
 package evolve
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 )
 
+// Spend 累加一次或一轮的令牌、美元和墙钟毫秒。
 type Spend struct {
 	TokensIn  int     `json:"tokens_in,omitempty"`
 	TokensOut int     `json:"tokens_out,omitempty"`
@@ -16,6 +19,7 @@ type Spend struct {
 	WallMs    int64   `json:"wall_ms,omitempty"`
 }
 
+// AddSpend 把一份运行报告的用量加进 Spend。s 为 nil 时直接返回。
 func AddSpend(s *Spend, r eval.RunReport) {
 	if s == nil {
 		return
@@ -26,6 +30,7 @@ func AddSpend(s *Spend, r eval.RunReport) {
 	s.WallMs += r.WallMs
 }
 
+// LabCompare 是 SearchBaselines 的三组对照和总用量。
 type LabCompare struct {
 	BestOfN          []eval.RunReport `json:"best_of_n,omitempty"`
 	IID              []Trial          `json:"iid,omitempty"`
@@ -35,6 +40,7 @@ type LabCompare struct {
 	ModelFingerprint string           `json:"model_fingerprint,omitempty"`
 }
 
+// iidTexts 是随机 L1 片段轮换的五句文案。
 var iidTexts = []string{
 	"Write the required output file before exploring further.",
 	"If the same command fails twice, change strategy.",
@@ -43,6 +49,7 @@ var iidTexts = []string{
 	"Name the output path first, then implement.",
 }
 
+// IIDProposal 按序号从 iidTexts 取一句，做成 prompt_fragment。序号对表长取模。
 func IIDProposal(i int) Proposal {
 	text := iidTexts[i%len(iidTexts)]
 	id := fmt.Sprintf("iid-%d", i+1)
@@ -57,6 +64,8 @@ func IIDProposal(i int) Proposal {
 	}
 }
 
+// SearchBaselines 先把基线重复跑 n 次作为 Best-of-N，再对父材料做 n 次独立 IID，最后从基线出发做 n 次顺序 SCS。
+// n 小于等于 0 时用 3。父哈希为空时父材料改成基线。MaxUSD 或 MaxWall 达到后停止后续轮次。SCS 只在试用被接受且哈希非空时把累积材料换成该哈希。
 func (e *Engine) SearchBaselines(ctx context.Context, opts CycleOpts, n int) (LabCompare, error) {
 	out := LabCompare{Snapshot: opts.Baseline.Hash, ModelFingerprint: opts.Baseline.Snap.ModelFingerprint}
 	if n <= 0 {
@@ -138,6 +147,7 @@ func (e *Engine) SearchBaselines(ctx context.Context, opts CycleOpts, n int) (La
 	return out, nil
 }
 
+// patchTrial 把提议应用到父快照上，再按 trialMats 对基线报告做 Harbor 门。
 func (e *Engine) patchTrial(ctx context.Context, opts CycleOpts, parent MaterialSet, base eval.RunReport, p Proposal, held map[string]bool) Trial {
 	candSnap, hash, err := ApplyProposal(e.CAS, parent.Snap, parent.Hash, p)
 	if err != nil {
@@ -147,6 +157,7 @@ func (e *Engine) patchTrial(ctx context.Context, opts CycleOpts, parent Material
 	return e.trialMats(ctx, opts, opts.Baseline, base, mats, p, held)
 }
 
+// matsOfHash 从库里取出快照并解码成材料，解码失败的字段沿用 parent。
 func (e *Engine) matsOfHash(hash string, parent MaterialSet) (MaterialSet, error) {
 	snap, err := e.CAS.GetSnapshot(hash)
 	if err != nil {
@@ -155,6 +166,7 @@ func (e *Engine) matsOfHash(hash string, parent MaterialSet) (MaterialSet, error
 	return MaterialsFromSnapshot(e.CAS, snap, hash, parent), nil
 }
 
+// heldSet 收集调用方 HeldOut、套件 HeldOut、套件 Transfer，以及 IndexTransfer 的全部编号。
 func heldSet(opts CycleOpts) map[string]bool {
 	held := map[string]bool{}
 	for _, id := range opts.HeldOut {

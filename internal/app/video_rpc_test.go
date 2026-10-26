@@ -1,3 +1,5 @@
+// 锁住视频 RPC 取字符串的空值，以及 studio.bind 在只有 project_id 时仍能绑上会话。
+
 package app
 
 import (
@@ -7,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestRPCStringTreatsMissingAsEmpty 锁住缺键、值为 nil、参数为 nil 都得到空串，有值时去掉首尾空白。
 func TestRPCStringTreatsMissingAsEmpty(t *testing.T) {
 	if got := rpcString(map[string]any{"project_id": "p1"}, "id"); got != "" {
 		t.Fatalf("got %q", got)
@@ -22,6 +25,7 @@ func TestRPCStringTreatsMissingAsEmpty(t *testing.T) {
 	}
 }
 
+// TestStudioBindUsesProjectIDWhenIDMissing 锁住 video.studio.bind 只带 project_id 时，video.session.project 能看到同一个 id。
 func TestStudioBindUsesProjectIDWhenIDMissing(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

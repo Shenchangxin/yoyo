@@ -1,3 +1,5 @@
+// 给技能正文加上包路径，并把 shell 里的 scripts/ 相对路径改写成包内绝对路径。工作区里已存在的同名相对路径不改。解释器选择也在这里。
+
 package runtime
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/pwsh"
 )
 
+// skillDirRoots 返回去重后的 SkillDirs 值。工具或映射为空时返回 nil。
 func (t *WorkspaceTools) skillDirRoots() []string {
 	if t == nil || len(t.SkillDirs) == 0 {
 		return nil
@@ -29,6 +32,7 @@ func (t *WorkspaceTools) skillDirRoots() []string {
 	return out
 }
 
+// decorateSkillBody 用该技能的 SkillDirs 目录调用 DecorateSkillBody。
 func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 	dir := ""
 	if t != nil && t.SkillDirs != nil {
@@ -37,8 +41,7 @@ func (t *WorkspaceTools) decorateSkillBody(name, body string) string {
 	return DecorateSkillBody(name, body, dir)
 }
 
-// DecorateSkillBody prepends pack routing so @mention inject and load_skill
-// both see it before a truncated skill body.
+// skillLoadHint 只给 novel-game-analyze 追加一句：长原文要用 task profile=explore 分章，不要凭 @file 摘录重写小说。其他名字返回空串。
 func skillLoadHint(name string) string {
 	switch strings.TrimSpace(name) {
 	case "novel-game-analyze":
@@ -48,6 +51,7 @@ func skillLoadHint(name string) string {
 	}
 }
 
+// DecorateSkillBody 在有目录时把包路径、文件清单，以及 run_skill_script 和 read_skill_file 的用法写在正文前面，这样 @ 注入和 load_skill 在正文被截断前都能看到。有 references/yoyo-tools.md 时点名先读它。Windows 上没有可用 POSIX shell 时说明不要跑 .sh。目录为空时只在正文后加 skillLoadHint。
 func DecorateSkillBody(name, body, dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -87,6 +91,7 @@ func DecorateSkillBody(name, body, dir string) string {
 	return b.String()
 }
 
+// packHasRel 按小写斜杠路径判断清单里是否有 want。
 func packHasRel(files []string, want string) bool {
 	want = strings.ToLower(strings.ReplaceAll(want, "\\", "/"))
 	for _, f := range files {
@@ -97,6 +102,7 @@ func packHasRel(files []string, want string) bool {
 	return false
 }
 
+// expandSkillScripts 把命令参数里的 scripts/ 相对路径换成包内绝对路径。工作区里已经存在该相对路径时不改。改写后若脚本需要解释器，把解释器插到参数前面。
 func (t *WorkspaceTools) expandSkillScripts(command string) string {
 	if t == nil || strings.TrimSpace(command) == "" {
 		return command
@@ -123,6 +129,7 @@ func (t *WorkspaceTools) expandSkillScripts(command string) string {
 	return joinShellArgv(argv)
 }
 
+// resolveSkillScriptArg 只处理 scripts/ 开头的参数。工作区里 Stat 成功则返回假，避免盖住工作区文件。否则 lookupSkillScript。
 func (t *WorkspaceTools) resolveSkillScriptArg(arg string) (string, bool) {
 	arg = strings.TrimSpace(strings.Trim(arg, `"'`))
 	if arg == "" {
@@ -146,6 +153,7 @@ func (t *WorkspaceTools) resolveSkillScriptArg(arg string) (string, bool) {
 	return abs, true
 }
 
+// lookupSkillScript 在已加载技能里找，没有已加载名单则扫全部 SkillDirs。路径必须在该技能目录内。恰好一个文件存在才返回真。
 func (t *WorkspaceTools) lookupSkillScript(rel string) (string, bool) {
 	if t == nil || t.SkillDirs == nil {
 		return "", false
@@ -177,6 +185,7 @@ func (t *WorkspaceTools) lookupSkillScript(rel string) (string, bool) {
 	return "", false
 }
 
+// normalizeSkillScript 把反斜杠改成斜杠，去掉 ./。空路径、含 .. 或以 / 开头则返回错误。没有 scripts/ 前缀时补上。
 func normalizeSkillScript(script string) (string, error) {
 	script = strings.TrimSpace(strings.ReplaceAll(script, "\\", "/"))
 	script = strings.TrimPrefix(script, "./")
@@ -189,6 +198,7 @@ func normalizeSkillScript(script string) (string, error) {
 	return script, nil
 }
 
+// requireScriptInterpreter 对 .sh 和无扩展名要求 posix 解释器，对 .py 要求 Python。Windows 上没有可用 shell 时说明 WSL 的 bash.exe 不能用。其他扩展名不检查。
 func requireScriptInterpreter(path string) error {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -207,6 +217,7 @@ func requireScriptInterpreter(path string) error {
 	return nil
 }
 
+// posixShellBin 在 Windows 上返回 windowsPosixShell。其他系统依次找 bash 和 sh。
 func posixShellBin() string {
 	if runtime.GOOS == "windows" {
 		return windowsPosixShell()
@@ -220,6 +231,7 @@ func posixShellBin() string {
 	return ""
 }
 
+// scriptInterpreter 按扩展名选择解释器。无扩展名和 .sh 用 posixShellBin。Windows 上 .py 优先 py，再 python3、python。.js 和 .mjs 用 node。.ps1 用 pwsh.Look，Windows 上再退回 pwsh.Fallback。
 func scriptInterpreter(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == "" {
@@ -260,6 +272,7 @@ func scriptInterpreter(path string) string {
 	}
 }
 
+// lookPath 把 exec.LookPath 的失败收成空串。
 func lookPath(name string) string {
 	p, err := exec.LookPath(name)
 	if err != nil {
@@ -268,6 +281,7 @@ func lookPath(name string) string {
 	return p
 }
 
+// joinShellArgv 给每个参数加引号后用空格连接。
 func joinShellArgv(argv []string) string {
 	parts := make([]string, 0, len(argv))
 	for _, a := range argv {
@@ -276,6 +290,7 @@ func joinShellArgv(argv []string) string {
 	return strings.Join(parts, " ")
 }
 
+// quoteShellArg 在空串或含空白、引号、反斜杠时加双引号，并把内部双引号转义。
 func quoteShellArg(s string) string {
 	if s == "" {
 		return `""`

@@ -1,3 +1,5 @@
+// ask_form 的解析与空闲回答。缺 recommended 时采用第一项。没有选项时不编造选择。
+
 package runtime
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestParseAskFormFillsRecommended 确认缺 recommended 时采用第一项 ink，AskIdleAnswer 带上方向和 askIdleNote，AskPrompt 用标题。
 func TestParseAskFormFillsRecommended(t *testing.T) {
 	form := parseAskForm(map[string]any{
 		"title": "方向",
@@ -44,6 +47,7 @@ func TestParseAskFormFillsRecommended(t *testing.T) {
 	}
 }
 
+// TestAskIdleWithoutOptionsDoesNotInventAChoice 确认没有选项时返回 askNoOperator，不编造选择。
 func TestAskIdleWithoutOptionsDoesNotInventAChoice(t *testing.T) {
 	form := parseAskForm(map[string]any{"question": "登录完成了吗？"})
 	got := AskIdleAnswer(mustAskJSON(t, form))
@@ -52,6 +56,7 @@ func TestAskIdleWithoutOptionsDoesNotInventAChoice(t *testing.T) {
 	}
 }
 
+// TestWaitsForNodMatchesDesignHold 确认设计稿里的等待确认用语命中，已经做完的句子不命中。
 func TestWaitsForNodMatchesDesignHold(t *testing.T) {
 	letter := "请确认两件事：\n1. 这个方向对吗？\n你点头我就开工。"
 	if !waitsForNod(letter) {
@@ -65,6 +70,7 @@ func TestWaitsForNodMatchesDesignHold(t *testing.T) {
 	}
 }
 
+// TestChosenOptionReadsCardLine 确认从卡片行读出 ink，并跳过 note: 行。
 func TestChosenOptionReadsCardLine(t *testing.T) {
 	ans := "choice: b — Beta\nnote: operator answered"
 	if got := chosenOption(ans, []string{"a", "b"}); got != "b" {
@@ -72,12 +78,14 @@ func TestChosenOptionReadsCardLine(t *testing.T) {
 	}
 }
 
+// TestAskNudgeIsControlText 确认继续轻推算控制文本，普通句子不算。
 func TestAskNudgeIsControlText(t *testing.T) {
 	if !isControlUser(askContinueNudge) || !isControlUser(askContinueNudgeZH) {
 		t.Fatal("nudge must not become the operator objective")
 	}
 }
 
+// mustAskJSON 把表单编成 JSON，失败则终止测试。
 func mustAskJSON(t *testing.T, form AskForm) string {
 	t.Helper()
 	normalizeAskForm(&form)

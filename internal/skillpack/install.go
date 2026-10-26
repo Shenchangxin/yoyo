@@ -1,3 +1,4 @@
+// Package skillpack 安装并开关技能包。Enabled 在工作区偏好和全局偏好都没有该 id 时返回 false，默认关闭。安装根目录是 home/packs/<id>，技能文件在其中的 skills/，清单是同级的 pack.json。工作区开关写在 <workspace>/.yoyo/packs.json。
 package skillpack
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// scanFile 拒绝空文件。png、jpg、jpeg、gif、webp、ico 不再检查正文。含 NUL 返回 "binary content"，非法 UTF-8 返回 "invalid UTF-8"。正文同时出现 "curl " 和 "| sh" 或 "| bash" 时返回 "install script pipe-to-shell"。
 func scanFile(rel string, raw []byte) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("empty file")
@@ -33,12 +35,13 @@ func scanFile(rel string, raw []byte) error {
 	return nil
 }
 
-// InstallOptions selects the source. Empty Origin uses the known catalog.
+// InstallOptions 选择安装来源。Origin 为空时改用内置目录里的仓库。
 type InstallOptions struct {
 	Origin Origin
 	GOOS   string
 }
 
+// Install 把技能文件写到 home/packs/<id>/skills，并写同级 pack.json。未知 id 且 Origin 没有 Kind、Path、Repo 时返回 "unknown pack"。Kind 为空时，有 Path 视为 local，否则视为 github。local 读本地目录，github 拉远程树。成功后按 GOOS 生成 references/yoyo-tools.md。
 func Install(home, id string, opts InstallOptions) (Manifest, error) {
 	id = SanitizeID(id)
 	known, ok := Lookup(id)
@@ -111,6 +114,7 @@ func Install(home, id string, opts InstallOptions) (Manifest, error) {
 	return m, nil
 }
 
+// Uninstall 删掉 home/packs/<id>。id 净化后为空返回 invalid pack id。没有 pack.json 时返回 "pack <id> is not installed"。
 func Uninstall(home, id string) error {
 	id = SanitizeID(id)
 	if id == "" {
@@ -123,6 +127,7 @@ func Uninstall(home, id string) error {
 	return os.RemoveAll(dir)
 }
 
+// writePackTree 先把文件写到 skills 目录加 .install-tmp 的临时目录，再删掉旧的 skills 目录并改名换上。脚本路径用 0o755，其余用 0o644。路径不合法或逃出临时目录则返回错误。
 func writePackTree(home, id string, files []PackFile) error {
 	dst := SkillsDir(home, id)
 	tmp := dst + ".install-tmp"
@@ -158,6 +163,7 @@ func writePackTree(home, id string, files []PackFile) error {
 	return os.Rename(tmp, dst)
 }
 
+// writeGeneratedMapping 在选中的技能目录 references/yoyo-tools.md 写入 MappingFile。没有目标技能目录时什么也不写。
 func writeGeneratedMapping(home, id, goos string) error {
 	name := mappingTarget(home, id)
 	if name == "" {
@@ -170,9 +176,7 @@ func writeGeneratedMapping(home, id, goos string) error {
 	return os.WriteFile(filepath.Join(dir, "yoyo-tools.md"), []byte(MappingFile(id, goos)), 0o644)
 }
 
-// mappingTarget is the skill folder that receives install-time yoyo-tools.md.
-// Methodology packs prefer the bootstrap skill; domain packs use a skill
-// whose name matches the pack id. Missing folder → no adapter file.
+// mappingTarget 选择接收 yoyo-tools.md 的技能目录。先看内置目录的 BootstrapSkill，再看与包 id 同名的目录，以存在 SKILL.md 为准。都没有则返回空串。
 func mappingTarget(home, id string) string {
 	id = SanitizeID(id)
 	known, _ := Lookup(id)
@@ -188,6 +192,7 @@ func mappingTarget(home, id string) string {
 	return ""
 }
 
+// readLocal 从本地目录收集文件。root 下若有 skillsRel 子目录就从那里走。跳过点开头的目录和不允许的相对路径。单文件超过 1 MiB、总字节超过 16 MiB 或文件数达到 400 即失败。没有 SKILL.md 返回 "local pack has no SKILL.md"。每个 SKILL.md 都要能被 ParseSkillMD 解析。
 func readLocal(root, skillsRel string) ([]PackFile, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
@@ -266,6 +271,7 @@ func readLocal(root, skillsRel string) ([]PackFile, error) {
 	return files, nil
 }
 
+// withinDir 判断 p 是否仍在 root 之内。相对路径是 .. 或以 .. 加分隔符开头时返回 false。
 func withinDir(root, p string) bool {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {

@@ -1,3 +1,5 @@
+// 锁住聊天探测走 POST /chat/completions，以及 Pexels、Pixabay、Unsplash 的鉴权头。
+
 package connection
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/vault"
 )
 
+// TestTestConnectionFallsBackToDefaultKey 确认连接自己没有钥匙时，探测使用 default 里的钥匙，并且 POST 到 /chat/completions。
 func TestTestConnectionFallsBackToDefaultKey(t *testing.T) {
 	isolateVaultEnv(t)
 	var gotAuth, gotPath, gotMethod string
@@ -52,6 +55,7 @@ func TestTestConnectionFallsBackToDefaultKey(t *testing.T) {
 	}
 }
 
+// TestProbeChatCompletionsSkipsModelsRoute 确认探测不请求 /models。
 func TestProbeChatCompletionsSkipsModelsRoute(t *testing.T) {
 	isolateVaultEnv(t)
 	var modelsHits int
@@ -84,6 +88,7 @@ func TestProbeChatCompletionsSkipsModelsRoute(t *testing.T) {
 	}
 }
 
+// TestProbeChatCompletionsTreatsModel400AsReachable 确认模型错误的 400 仍算可达。
 func TestProbeChatCompletionsTreatsModel400AsReachable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -96,6 +101,7 @@ func TestProbeChatCompletionsTreatsModel400AsReachable(t *testing.T) {
 	}
 }
 
+// TestProbePexelsUsesRawAuthorization 确认 Pexels 的 Authorization 是钥匙原文，不是 Bearer。
 func TestProbePexelsUsesRawAuthorization(t *testing.T) {
 	isolateVaultEnv(t)
 	var gotAuth, gotPath string
@@ -128,6 +134,7 @@ func TestProbePexelsUsesRawAuthorization(t *testing.T) {
 	}
 }
 
+// TestProbePixabayAndUnsplashAuth 确认 Pixabay 把钥匙放进查询参数，Unsplash 使用 Client-ID。
 func TestProbePixabayAndUnsplashAuth(t *testing.T) {
 	isolateVaultEnv(t)
 	var pixKey, unsplashAuth string
@@ -170,6 +177,7 @@ func TestProbePixabayAndUnsplashAuth(t *testing.T) {
 	}
 }
 
+// TestProbeChatCompletionsFailsAuth 确认过期令牌的响应使探测失败，并把错误文本带出来。
 func TestProbeChatCompletionsFailsAuth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

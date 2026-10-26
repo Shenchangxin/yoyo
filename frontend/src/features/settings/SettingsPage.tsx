@@ -1,3 +1,7 @@
+/**
+ * 拥有：设置页的外壳，按当前页签挂上对应面板。
+ * 不拥有：各面板里的字段。本页不调用 api，面板会。
+ */
 import { useLayoutEffect, useRef } from "react";
 import { cn } from "../../lib/utils";
 import { useCopy } from "../../lib/i18n";
@@ -18,6 +22,7 @@ import { ExtensionsSettings } from "./ExtensionsPanel";
 import { PersonalSettings } from "./PersonalPanel";
 import { IdolSettings } from "./IdolSettings";
 
+/** SettingsPage 按当前页签挂上面板。 */
 export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRail?: boolean }) {
   const copy = useCopy();
   const tab = useUI((s) => s.settingsTab);
@@ -61,6 +66,7 @@ export function SettingsPage({ host, navInRail }: { host: SettingsHost; navInRai
     };
   }, [section, nav, tab]);
 
+  /** 切到另一个页签。 */
   function onTab(next: SettingsTab) {
     setSettingsTab(next);
   }

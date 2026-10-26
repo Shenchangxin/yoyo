@@ -1,3 +1,5 @@
+// 本文件是 pack 子命令：list、install、uninstall、enable、update。包注释在 main.go。
+
 package main
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/skillpack"
 )
 
+// packCmd 是 pack，子命令按顺序是 list、install、uninstall、enable、update。
 func packCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pack",
@@ -19,6 +22,7 @@ func packCmd() *cobra.Command {
 	return cmd
 }
 
+// packListCmd 是 pack list，把当前工作区的 ListPacks 缩进打印。
 func packListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -36,6 +40,7 @@ func packListCmd() *cobra.Command {
 	}
 }
 
+// packInstallCmd 是 pack install，正好一个 id。--path 传给 InstallPack 当本地检出目录，空则走目录安装。
 func packInstallCmd() *cobra.Command {
 	var local string
 	cmd := &cobra.Command{
@@ -60,6 +65,7 @@ func packInstallCmd() *cobra.Command {
 	return cmd
 }
 
+// packUninstallCmd 是 pack uninstall，正好一个 id，交给 UninstallPack。
 func packUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall [id]",
@@ -76,6 +82,7 @@ func packUninstallCmd() *cobra.Command {
 	}
 }
 
+// packEnableCmd 是 pack enable，正好一个 id。--scope 默认是工作区；空字符串在运行时也改成工作区。--off 为真时关闭。
 func packEnableCmd() *cobra.Command {
 	var scope string
 	var off bool
@@ -100,6 +107,7 @@ func packEnableCmd() *cobra.Command {
 	return cmd
 }
 
+// packUpdateCmd 是 pack update，正好一个 id，按记录的来源重新拉取。
 func packUpdateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update [id]",

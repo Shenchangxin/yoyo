@@ -1,3 +1,5 @@
+// 按 /yoyo-skin/<id>/<路径> 提供皮肤文件。只接受 GET 和 HEAD，Cache-Control 为 no-store。
+
 package skin
 
 import (
@@ -5,6 +7,7 @@ import (
 	"strings"
 )
 
+// Middleware 在路径以 AssetPrefix 开头时交给 Handler，否则交给 next。
 func Middleware(store *Store, next http.Handler) http.Handler {
 	assets := Handler(store)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -16,6 +19,7 @@ func Middleware(store *Store, next http.Handler) http.Handler {
 	})
 }
 
+// Handler 只接受 GET 和 HEAD。路径须是 <id>/<相对路径>。File 失败则 404。响应带上类型、no-store 和 nosniff。
 func Handler(store *Store) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {

@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有短剧各段的界面：剧本、定妆、分镜检查、成片选择、任务和分集图。
+ * 不拥有拉取和保存。改服务端的动作都在回调里，本文件只发「送到剪辑」的本地事件。
+ */
 import { useEffect, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -34,6 +38,7 @@ type CopyT = ReturnType<typeof useCopy>;
 const field =
   "no-drag h-8 rounded-lg border border-border bg-background px-2 text-[13px] text-foreground outline-none focus-visible:border-foreground/25 focus-visible:ring-1 focus-visible:ring-foreground/15";
 
+/** 按镜头关联的角色、场景和道具列出可 @ 的名字。一个都没有就列出全部。 */
 function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
   const out: MentionAsset[] = [];
   const chars = new Set(s.character_ids || []);
@@ -50,6 +55,7 @@ function shotMentions(s: Shot, bundle: Bundle): MentionAsset[] {
   return out.sort((a, b) => b.name.length - a.name.length);
 }
 
+/** ProviderModelSelect 按种类列出仍可用的提供方和模型。一个都没有就去生成设置。 */
 export function ProviderModelSelect(props: {
   kind: string;
   label: string;
@@ -112,6 +118,7 @@ export function ProviderModelSelect(props: {
   );
 }
 
+/** GenerationSettings 收起风格、图像、视频、语音和分辨率。分辨率选项是 480p、720p、1080p。 */
 export function GenerationSettings(props: {
   ep: Episode;
   dramaStyle: string;
@@ -150,6 +157,7 @@ export function GenerationSettings(props: {
   );
 }
 
+/** ScriptStage 左右编辑原文和剧本，失焦时一起交给保存。 */
 export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["plan"]; onSave: (p: Partial<Episode>) => void }) {
   const [content, setContent] = useState(props.ep.content);
   const [script, setScript] = useState(props.ep.script_content);
@@ -188,6 +196,7 @@ export function ScriptStage(props: { ep: Episode; copy: CopyT; plan?: Bundle["pl
   );
 }
 
+/** CastGrid 分角色、场景、道具三组显示仍关联的定妆。 */
 export function CastGrid(props: {
   bundle: Bundle;
   copy: CopyT;
@@ -210,6 +219,7 @@ export function CastGrid(props: {
   );
 }
 
+/** 一组定妆，可以就地加一条。 */
 function LookGroup(props: {
   kind: string;
   title: string;
@@ -270,6 +280,7 @@ function LookGroup(props: {
   );
 }
 
+/** CastInspector 编辑外观、造型、光线或提示词，并能上传、生成或删除。旁白不生成。 */
 export function CastInspector(props: {
   kind: string;
   asset: Asset;
@@ -317,6 +328,7 @@ export function CastInspector(props: {
   );
 }
 
+/** BoardInspector 改镜头标题、时长、提示词和绑定，并能再生成一条或设成主条。时长输入限制在 2 到 30。 */
 export function BoardInspector(props: {
   bundle: Bundle;
   shot: Shot;
@@ -419,6 +431,7 @@ export function BoardInspector(props: {
   );
 }
 
+/** CutInspector 选择要合成的镜头。没有 ffmpeg 时显示安装进度或缺失。 */
 export function CutInspector(props: {
   bundle: Bundle;
   sel: Record<string, boolean>;
@@ -474,6 +487,7 @@ export function CutInspector(props: {
   );
 }
 
+/** JobDrawer 只列出仍在动或已经失败的任务，并按集和目标分组。 */
 export function JobDrawer(props: { jobs: Job[]; bundle: Bundle | null; episodes?: { id: string; title: string; episode_number?: number }[]; copy: CopyT; onRetry: (id: string) => void; onCancel: (id: string) => void }) {
   const live = props.jobs.filter((j) => jobMoving(j.status) || j.status === "failed");
   const c = props.copy.video;
@@ -517,6 +531,7 @@ export function JobDrawer(props: { jobs: Job[]; bundle: Bundle | null; episodes?
   );
 }
 
+/** 给任务配上一行说明：镜头序号、定妆名字，或只写种类。 */
 function jobCaption(j: Job, bundle: Bundle | null, episodes: { id: string; title: string; episode_number?: number }[] | undefined, c: CopyT["video"]) {
   const ep = (episodes || []).find((e) => e.id === j.episode_id);
   const epLabel = ep && ep.id !== bundle?.episode?.id ? `${ep.title || c.untitledEp} · ` : "";
@@ -532,6 +547,7 @@ function jobCaption(j: Job, bundle: Bundle | null, episodes: { id: string; title
   return j.type === "video" ? c.jobClip : c.jobLook;
 }
 
+/** EmptyDesk 在没有集时列出最多 8 条已有系列，或提示先起名。 */
 export function EmptyDesk(props: {
   copy: CopyT;
   dramas?: Drama[];
@@ -565,6 +581,7 @@ export function EmptyDesk(props: {
   );
 }
 
+/** EpisodeMap 列出分集方案，可以确认、拆开、合并或抽设定。 */
 export function EpisodeMap(props: {
   plan: EpisodePlan;
   copy: CopyT;

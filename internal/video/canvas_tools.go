@@ -1,3 +1,5 @@
+// 行为：画布助手的工具规格和执行。改画布或把生成放进任务队列。模型循环不在这里。工具说明字符串是规格数据。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/canvas/layout"
 )
 
+// CanvasToolNames 返回 CanvasToolSpecs 里的工具名。
 func CanvasToolNames() []string {
 	specs := CanvasToolSpecs()
 	out := make([]string, 0, len(specs))
@@ -18,6 +21,7 @@ func CanvasToolNames() []string {
 	return out
 }
 
+// CanvasToolSpecs 返回画布助手的工具规格，包含只读查询、改画布、排队生成和课程记忆。
 func CanvasToolSpecs() []ToolSpec {
 	str := map[string]any{"type": "string"}
 	num := map[string]any{"type": "number"}
@@ -55,6 +59,7 @@ func CanvasToolSpecs() []ToolSpec {
 	}
 }
 
+// CanvasTool 按工具名执行。需要画布的工具先用会话绑定，没有绑定时再看参数里的画布 id。
 func (e *Engine) CanvasTool(sessionID, name string, args map[string]any) (string, error) {
 	if args == nil {
 		args = map[string]any{}
@@ -166,6 +171,7 @@ func (e *Engine) CanvasTool(sessionID, name string, args map[string]any) (string
 	}
 }
 
+// readCanvasNode 按节点 id 读出画布上的原始节点。
 func (e *Engine) readCanvasNode(canvasID, nodeID string) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -181,6 +187,7 @@ func (e *Engine) readCanvasNode(canvasID, nodeID string) (string, error) {
 	return "", fmt.Errorf("node not found")
 }
 
+// inspectCanvasImage 读出图像资源的种类、尺寸和地址。字节本身不放进返回值。
 func (e *Engine) inspectCanvasImage(canvasID string, args map[string]any) (string, error) {
 	resourceID := strAnyMap(args, "resource_id")
 	if resourceID == "" && canvasID != "" {
@@ -205,6 +212,7 @@ func (e *Engine) inspectCanvasImage(canvasID string, args map[string]any) (strin
 	}), nil
 }
 
+// rememberLesson 把一条待批准的个人课程记下来。
 func (e *Engine) rememberLesson(args map[string]any) (string, error) {
 	now := Now()
 	id := NewID()
@@ -219,6 +227,7 @@ func (e *Engine) rememberLesson(args map[string]any) (string, error) {
 	return marshalJSON(map[string]any{"id": id, "status": "pending"}), nil
 }
 
+// recallLessons 按查询词返回已批准的课程，最多 20 条。
 func (e *Engine) recallLessons(query string) (string, error) {
 	out := []map[string]any{}
 	q := strings.ToLower(query)
@@ -237,6 +246,7 @@ func (e *Engine) recallLessons(query string) (string, error) {
 	return marshalJSON(out), nil
 }
 
+// arrangeCanvasNodes 用编辑器同一套布局算法重排节点并保存。
 func (e *Engine) arrangeCanvasNodes(canvasID, mode string, args map[string]any) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -299,6 +309,7 @@ func (e *Engine) arrangeCanvasNodes(canvasID, mode string, args map[string]any) 
 	return marshalJSON(map[string]any{"ok": true, "moved": len(pos)}), nil
 }
 
+// createStoryboardNode 在画布上新增一个带行的分镜脚本节点。
 func (e *Engine) createStoryboardNode(canvasID string, args map[string]any) (string, error) {
 	row, err := e.getCanvasProject(canvasID)
 	if err != nil {
@@ -321,6 +332,7 @@ func (e *Engine) createStoryboardNode(canvasID string, args map[string]any) (str
 	return marshalJSON(node), nil
 }
 
+// patchTableNode 用更新节点操作改写表格行。
 func (e *Engine) patchTableNode(canvasID, nodeID string, rows []any) (string, error) {
 	ops := []any{map[string]any{"op": "update_node", "id": nodeID, "metadata": map[string]any{"rows": rows}}}
 	return e.applyCanvasOps(canvasID, ops)

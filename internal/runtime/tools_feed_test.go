@@ -1,3 +1,5 @@
+// 锁住 Atom 源压缩后仍保留 arXiv id，rune 数不超过 feedInlineBudget（7000）。https 的 406 才会改成 http。
+
 package runtime
 
 import (
@@ -8,6 +10,7 @@ import (
 	"unicode/utf8"
 )
 
+// TestFormatArxivAtomKeepsIDs 锁住压缩后的源仍含 arXiv id、标题和 totalResults。
 func TestFormatArxivAtomKeepsIDs(t *testing.T) {
 	body := `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
@@ -39,6 +42,7 @@ func TestFormatArxivAtomKeepsIDs(t *testing.T) {
 	}
 }
 
+// TestRetryHTTPOn406 锁住 https 且状态 406 时方案改成 http、主机不变。200 或本来就是 http 则返回 nil。
 func TestRetryHTTPOn406(t *testing.T) {
 	u, _ := url.Parse("https://export.arxiv.org/api/query?q=x")
 	alt := retryHTTPOn406(u, 406)
@@ -54,6 +58,7 @@ func TestRetryHTTPOn406(t *testing.T) {
 	}
 }
 
+// TestIsXMLFeed 锁住 atom 内容类型算源，json 不算，正文以 <?xml 开头也算。
 func TestIsXMLFeed(t *testing.T) {
 	if !isXMLFeed("application/atom+xml; charset=utf-8", "") {
 		t.Fatal("ct")
@@ -66,6 +71,7 @@ func TestIsXMLFeed(t *testing.T) {
 	}
 }
 
+// TestFormatFeedStaysUnderBudget 锁住 40 条长摘要压缩后的 rune 数不超过 feedInlineBudget，且第一条 id 还在。
 func TestFormatFeedStaysUnderBudget(t *testing.T) {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">`)

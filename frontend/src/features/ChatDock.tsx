@@ -1,3 +1,5 @@
+// 本文件拥有侧栏里的转录和输入。不拥有消息怎么发出去。调用方传入 items 和 onSend。
+
 import { Transcript } from "./Transcript";
 import { Composer } from "./Composer";
 import { pendingAsk } from "../lib/ask-form";
@@ -9,6 +11,7 @@ import type { TaskPlan } from "../lib/plan";
 import { useCopy } from "../lib/i18n";
 import { ChatNotWorking } from "./harness/ChatNotWorking";
 
+// ChatDock 始终用紧凑转录和紧凑输入。没有消息时 perch 为真。改进入口只在传入回调、已有消息且不在跑时出现。
 export function ChatDock(props: {
   items: Item[];
   showThinking?: boolean;

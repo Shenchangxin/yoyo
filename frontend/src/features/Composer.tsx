@@ -1,3 +1,8 @@
+/**
+ * 拥有：输入框、提及、斜杠和附件，以及创作桌把视频送进剪辑。
+ * 不拥有：消息怎么发出去，那由调用方传入 onSend。选文件、导入成片和读取配置档会调用 api。
+ */
+
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { BookOpen, Check, ChevronDown, Folder, GitBranch, Plus, X } from "lucide-react";
 import { ProfileChip } from "./ProfileChip";
@@ -66,6 +71,7 @@ import { TurnStatusBar } from "./transcript/TurnStatusBar";
 import type { SessionStats } from "../lib/session-stats";
 import { PresencePerch } from "./presence";
 
+/** Composer 在短剧桌且正在跑时不能发送，除非是改道。没有正文、芯片和附件时，只有 allowEmptySend 才能发。需要工作区但还没有路径时整框禁用。 */
 export function Composer(props: {
   draftKey: string;
   running: boolean;
@@ -134,6 +140,7 @@ export function Composer(props: {
   const plan = useUI((s) => s.plan);
   const setDraft = useUI((s) => s.setDraft);
   const setPlan = useUI((s) => s.setPlan);
+  /** 把正文写回这条草稿。 */
   const onChange = (v: string) => setDraft(props.draftKey, v);
   const [hint, setHint] = useState<"plus" | null>(null);
   const [hiToken, setHiToken] = useState("");
@@ -359,6 +366,7 @@ export function Composer(props: {
 
   useEffect(() => {
     if (hint !== "plus") return;
+    /** 点在卡片外面就关掉加号浮层。卡片里面的点击留着。 */
     const onDoc = (e: PointerEvent) => {
       const t = e.target as Node;
       if (cardRef.current?.contains(t)) return;
@@ -388,6 +396,7 @@ export function Composer(props: {
     cardRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [value]);
 
+  /** 斜杠出现时关掉加号。完整的 harness 提及不再下钻。文件和文件夹查询变了才去搜。 */
   function applyCaret(snap: DraftSnapshot) {
     setCaret(snap.caret);
     setBefore(snap.before);
@@ -416,12 +425,14 @@ export function Composer(props: {
     setDrilled(false);
   }
 
+  /** 把芯片和正文写回草稿，再按光标更新浮层。 */
   function applySnapshot(snap: DraftSnapshot) {
     setChips(snap.chips);
     onChange(snap.text);
     applyCaret(snap);
   }
 
+  /** 还要继续选时只替换触发词。完整提及收成芯片。其余当成普通文字再加一个空格。 */
   function insertMention(token: string, label?: string) {
     if (keepMentionOpen(token)) {
       editorRef.current?.replaceTrigger(token.endsWith(":") ? token : token);
@@ -446,6 +457,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
+  /** 没有路径就返回。否则把触发词换成这个目录，并按目录加斜杠去搜。 */
   function drillMention(item: OverlayItem) {
     const path = item.drillPath || pinFromToken(item.token).detail;
     if (!path) return;
@@ -458,6 +470,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
+  /** 只有单独的 @ 或 @" 时不算下钻。 */
   function applyTrigger(text: string) {
     setDrilled(text !== "@" && text !== "@\"");
     editorRef.current?.replaceTrigger(text);
@@ -468,6 +481,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
+  /** 清空输入，把命令交给 onSlash，剩余参数是空字符串。 */
   function applySlash(cmd: string) {
     editorRef.current?.setPlain("");
     onChange("");
@@ -475,6 +489,7 @@ export function Composer(props: {
     props.onSlash?.(cmd, "");
   }
 
+  /** __import_clip__ 或创作桌走导入。__file__ 走选文件。剪贴板和截图各走自己的回调。@ 开头插入提及，其余当斜杠命令。 */
   function pickOverlay(item: OverlayItem) {
     if (item.token === "__file__" || item.token === "__import_clip__") {
       setHint(null);
@@ -504,6 +519,7 @@ export function Composer(props: {
     applySlash(item.token);
   }
 
+  /** 禁用时不打开。再点一次关掉加号浮层。 */
   function togglePlus() {
     if (disabled) return;
     setHiToken("");
@@ -511,6 +527,7 @@ export function Composer(props: {
     editorRef.current?.focus();
   }
 
+  /** 桌面窗口用系统选文件，只收视频路径。选了文件但没有视频时提示。错误信息正好是 clip too large 时用过大文案。否则点隐藏的文件框。 */
   async function importClip() {
     if (disabled) return;
     if (props.onIngestVideo && desktopWindow()) {
@@ -530,6 +547,7 @@ export function Composer(props: {
     fileRef.current?.click();
   }
 
+  /** 不是创作桌且是桌面窗口时用 onPickFiles。否则点隐藏的文件框。 */
   async function pickAttachments() {
     if (disabled) return;
     if (!createDesk && props.onPickFiles && desktopWindow()) {
@@ -540,6 +558,7 @@ export function Composer(props: {
     fileRef.current?.click();
   }
 
+  /** 第一项不是浏览器 File 时当成已经做好的附件。创作桌有导入回调时，视频走 onIngestVideo，有本地路径就传路径。 */
   async function addFiles(list: FileList | File[] | Attachment[]) {
     if (Array.isArray(list) && list.length && !isDomFile(list[0])) {
       setAtts((prev) => [...prev, ...(list as Attachment[])]);
@@ -586,6 +605,7 @@ export function Composer(props: {
     setAtts((prev) => [...prev, ...next]);
   }
 
+  /** 没有回调或已禁用就返回。名字取路径最后一段，缺了用 screenshot.png。 */
   async function grabScreenshot() {
     if (!props.onScreenshot || disabled) return;
     const p = await props.onScreenshot();
@@ -593,6 +613,7 @@ export function Composer(props: {
     setAtts((prev) => [...prev, { path: p, name: p.replace(/^.*[\\/]/, "") || "screenshot.png", mime: "image/png" }]);
   }
 
+  /** 现有正文不是空白结尾时先补一个换行。 */
   async function pasteOsClipboard() {
     if (!props.onClipboard || disabled) return;
     const t = await props.onClipboard();
@@ -600,6 +621,7 @@ export function Composer(props: {
     editorRef.current?.insertText((value && !/\s$/.test(value) ? "\n" : "") + t);
   }
 
+  /** 短剧桌正在跑且不是改道时不发。正文、附件都空且不允许空发时不发。发出后清空附件、芯片和编辑器。 */
   function send(steer?: boolean) {
     if (attaching || (dramaDesk && props.running && !steer)) return;
     const snap = editorRef.current?.snapshot() || { text: value, chips, caret, before: value };
@@ -616,6 +638,7 @@ export function Composer(props: {
     editorRef.current?.setPlain("");
   }
 
+  /** Ctrl 或 Meta 加 Shift 加 S 截图，加 V 贴系统剪贴板。浮层开着时上下键循环，Tab 能下钻就下钻，提及浮层的 Tab 只拦住不选中。Enter 选中当前项。以 / 开头且完全匹配第一条斜杠时直接执行。输入法组合中不处理这些键。 */
   function onEditorKey(e: KeyboardEvent, snap: DraftSnapshot, _before: string): boolean {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
       void grabScreenshot();
@@ -677,6 +700,7 @@ export function Composer(props: {
     return false;
   }
 
+  /** 打开或关掉工作区选择。 */
   function toggleWorkspacePicker() {
     setPickerOpen((open) => !open);
   }
@@ -1072,6 +1096,7 @@ export function Composer(props: {
   );
 }
 
+/** 首页上的工作区芯片和选择层。路径还没就绪时不显示当前名。 */
 function HeroWorkspaceRow(props: {
   chipRef: RefObject<HTMLButtonElement | null>;
   workspace?: string;
@@ -1106,10 +1131,12 @@ function HeroWorkspaceRow(props: {
   );
 }
 
+/** 运行环境没有 File 时返回假。 */
 function isDomFile(v: unknown): v is File {
   return typeof File !== "undefined" && v instanceof File;
 }
 
+/** 图片 2MB，文本类 8MB，其余 96KB。 */
 function attachmentByteCap(f: File): number {
   if (f.type.startsWith("image/")) return 2 * 1024 * 1024;
   const name = f.name || "";
@@ -1119,6 +1146,7 @@ function attachmentByteCap(f: File): number {
   return 96 * 1024;
 }
 
+/** 超过上限就截断再做成 base64。没有名字时图片叫 image.png，其余叫 file。 */
 async function fileToAttachment(f: File): Promise<Attachment> {
   const buf = await f.arrayBuffer();
   const cap = attachmentByteCap(f);
@@ -1129,16 +1157,19 @@ async function fileToAttachment(f: File): Promise<Attachment> {
   return { name: f.name || (f.type.startsWith("image/") ? "image.png" : "file"), mime: f.type, data_b64: btoa(bin) };
 }
 
+/** 类型以 video/ 开头，或扩展名是 mp4、mov、mkv、webm、avi、m4v、mpeg、mpg。 */
 function isVideoFile(f: File): boolean {
   if (f.type.startsWith("video/")) return true;
   return /\.(mp4|mov|mkv|webm|avi|m4v|mpeg|mpg)$/i.test(f.name || "");
 }
 
+/** 只认 yoyo-cut:id:hash。对不上返回 null。 */
 function parseCutRef(path?: string): { id: string; hash: string } | null {
   const m = /^yoyo-cut:([^:]+):(.+)$/.exec(String(path || ""));
   return m ? { id: m[1], hash: m[2] } : null;
 }
 
+/** 只给带 yoyo-cut 引用的附件拼一行入库说明。没有这种附件就返回空字符串。 */
 function footageStamp(atts: Attachment[]): string {
   const lines = atts.flatMap((a) => {
     const ref = parseCutRef(a.path);
@@ -1148,6 +1179,7 @@ function footageStamp(atts: Attachment[]): string {
   return lines.join("\n");
 }
 
+/** 读成 data URL 后去掉逗号前缀。没有哈希或没有工程 id 就抛错。附件路径写成 yoyo-cut:id:hash。 */
 async function ingestCreateClip(f: File, sessionId?: string): Promise<Attachment> {
   const data = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();

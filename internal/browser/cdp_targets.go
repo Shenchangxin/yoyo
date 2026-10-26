@@ -1,3 +1,6 @@
+// 本文件从调试端口的 /json/list 或 /json 列出 CDP 目标，并挑一个 page 的 WebSocket。
+// 想要的地址对得上时优先；否则要 http、https 或 file，再退到 about，最后退到任意 page。不调用 runtime.Run。
+
 package browser
 
 import (
@@ -9,6 +12,7 @@ import (
 	"time"
 )
 
+// cdpTarget 是 /json/list 里的一条。WS 是 webSocketDebuggerUrl。
 type cdpTarget struct {
 	ID    string `json:"id"`
 	Type  string `json:"type"`
@@ -17,10 +21,12 @@ type cdpTarget struct {
 	Title string `json:"title"`
 }
 
+// pageWS 返回一个 page 目标的 WebSocket，不指定想要的地址。
 func pageWS(addr string) (string, error) {
 	return pageWSPrefer(addr, "")
 }
 
+// pageWSPrefer 在 page 目标里挑 WebSocket。want 非空且不是空白页时，URL 相同、有该前缀或 sameDocumentURL 对上就用它。否则优先 http、https、file，再 about，最后任意 page。只要指定页却没有时返回 wanted page。
 func pageWSPrefer(addr, want string) (string, error) {
 	tabs, err := listCDPTargets(addr)
 	if err != nil {
@@ -65,6 +71,7 @@ func pageWSPrefer(addr, want string) (string, error) {
 	return "", fmt.Errorf("browser: no page target")
 }
 
+// waitDebugPageWS 在截止时间前等一个 page 的 WebSocket。want 非空时先用最多 1.5 秒专等那个地址，然后再退到 debugWS。
 func waitDebugPageWS(addr, want string, deadline time.Time) (string, error) {
 	preferUntil := time.Now().Add(1500 * time.Millisecond)
 	if preferUntil.After(deadline) {
@@ -95,6 +102,7 @@ func waitDebugPageWS(addr, want string, deadline time.Time) (string, error) {
 	return "", fmt.Errorf("browser: no page target")
 }
 
+// listCDPTargets 先试 /json/list，失败再试 /json。
 func listCDPTargets(addr string) ([]cdpTarget, error) {
 	var last error
 	for _, path := range []string{"/json/list", "/json"} {
@@ -110,6 +118,7 @@ func listCDPTargets(addr string) ([]cdpTarget, error) {
 	return nil, last
 }
 
+// fetchCDPTargets 用 800 毫秒超时 GET 指定路径并解码目标列表。状态码大于等于 300 时返回错误。
 func fetchCDPTargets(addr, path string) ([]cdpTarget, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
 	defer cancel()
@@ -132,6 +141,7 @@ func fetchCDPTargets(addr, path string) ([]cdpTarget, error) {
 	return tabs, nil
 }
 
+// chromeDebugUp 在 150 毫秒内请求 /json/version，状态码小于 300 则认为调试端口在听。
 func chromeDebugUp(addr string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
@@ -147,6 +157,7 @@ func chromeDebugUp(addr string) bool {
 	return resp.StatusCode < 300
 }
 
+// debugWS 先要一个 page 的 WebSocket，没有再退到 /json/version 里的浏览器级地址。
 func debugWS(addr string) (string, error) {
 	if ws, err := pageWS(addr); err == nil && ws != "" {
 		return ws, nil

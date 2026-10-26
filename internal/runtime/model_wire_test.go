@@ -1,3 +1,5 @@
+// 线上消息把工具调用嵌进 function。思考字段按 ShowThinking 决定。错误分类的行为在 errors.go。
+
 package runtime
 
 import (
@@ -10,6 +12,7 @@ import (
 	"testing"
 )
 
+// TestWireMessagesNestsFunction 确认扁平工具调用嵌进 function，空参数写成 {}。
 func TestWireMessagesNestsFunction(t *testing.T) {
 	msgs := []Message{
 		{Role: RoleSystem, Content: "sys"},
@@ -55,6 +58,7 @@ func TestWireMessagesNestsFunction(t *testing.T) {
 	}
 }
 
+// TestDisableThinkingPayload 确认关闭思考时载荷含 thinking.type=disabled 和 enable_thinking=false。
 func TestDisableThinkingPayload(t *testing.T) {
 	p := map[string]any{"model": "x"}
 	disableThinking(p)
@@ -67,10 +71,13 @@ func TestDisableThinkingPayload(t *testing.T) {
 	}
 }
 
+// roundTripFunc 是测试用的 RoundTrip 函数。
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+// RoundTrip 把请求交给被包装的函数。
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+// TestShowThinkingOmitsDisableFields 确认 ShowThinking 为真时载荷不含 enable_thinking 和 thinking。
 func TestShowThinkingOmitsDisableFields(t *testing.T) {
 	var got map[string]any
 	c := &OpenAIClient{
@@ -90,6 +97,7 @@ func TestShowThinkingOmitsDisableFields(t *testing.T) {
 	}
 }
 
+// TestApplyStreamChunkReasoning 确认 reasoning_content 与 content 数组里 type=thinking 分开累积。
 func TestApplyStreamChunkReasoning(t *testing.T) {
 	tools := map[int]*streamAcc{}
 	max := -1
@@ -109,6 +117,7 @@ func TestApplyStreamChunkReasoning(t *testing.T) {
 	}
 }
 
+// TestClassifyModelNotFound 确认 model_not_found 是模型类错误且值得转移，但不跳过整个提供者；401 两者都为真。
 func TestClassifyModelNotFound(t *testing.T) {
 	info := ClassifyError(fmtError(`openai: 404 Not Found: {"error":{"message":"The model 'gone' does not exist","code":"model_not_found"}}`))
 	if info.Kind != ErrKindModel {
@@ -122,6 +131,7 @@ func TestClassifyModelNotFound(t *testing.T) {
 	}
 }
 
+// TestClassifyInvalidToolCalls 确认 tool_calls.function 缺失是无效请求，不值得转移。
 func TestClassifyInvalidToolCalls(t *testing.T) {
 	err := fmtError(`openai: 500 Internal Server Error: {"code":500,"msg":"Model call failed. Please try again later: invalid_parameter_error: \u003c400\u003e InternalError.Algo.InvalidParameter: Field required: input.messages.4.tool_calls.0.function","error_key":"error.all_channel_models_failed"}`)
 	info := ClassifyError(err)
@@ -133,6 +143,8 @@ func TestClassifyInvalidToolCalls(t *testing.T) {
 	}
 }
 
+// fmtError 是带 Error 方法的字符串，用来喂给错误分类。
 type fmtError string
 
+// Error 返回字符串本身。
 func (e fmtError) Error() string { return string(e) }

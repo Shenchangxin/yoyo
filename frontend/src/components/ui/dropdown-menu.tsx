@@ -1,13 +1,20 @@
+// 本文件拥有下拉菜单的面板、条目和子菜单。不拥有菜单项被点之后做什么。调用方传入条目和 onSelect。
+
 import type { ComponentProps } from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+// DropdownMenu 转发菜单根。
 export const DropdownMenu = DropdownMenuPrimitive.Root;
+// DropdownMenuTrigger 转发打开按钮。
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+// DropdownMenuGroup 转发分组。
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+// DropdownMenuPortal 转发传送门。
 export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 
+// DropdownMenuContent 把面板送进传送门，与触发器默认隔开 6。
 export function DropdownMenuContent({ className, sideOffset = 6, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (
     <DropdownMenuPrimitive.Portal>
@@ -23,6 +30,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, ...props }: Com
   );
 }
 
+// DropdownMenuItem 在高亮时铺 lift，禁用时不接收指针。
 export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Item>) {
   return (
     <DropdownMenuPrimitive.Item
@@ -35,16 +43,20 @@ export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof 
   );
 }
 
+// DropdownMenuSeparator 在条目之间画一条横线。
 export function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
   return <DropdownMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
+// DropdownMenuLabel 用小号弱色标出一组条目，本身不可选。
 export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Label>) {
   return <DropdownMenuPrimitive.Label className={cn("px-2.5 py-1.5 text-[11px] text-muted", className)} {...props} />;
 }
 
+// DropdownMenuSub 转发子菜单根。
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
+// DropdownMenuSubTrigger 在右侧放一个向右的箭头，打开时铺 lift。
 export function DropdownMenuSubTrigger({ className, children, ...props }: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>) {
   return (
     <DropdownMenuPrimitive.SubTrigger
@@ -60,6 +72,7 @@ export function DropdownMenuSubTrigger({ className, children, ...props }: Compon
   );
 }
 
+// DropdownMenuSubContent 把子面板送进传送门，最小宽度 160px。
 export function DropdownMenuSubContent({ className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
     <DropdownMenuPrimitive.Portal>

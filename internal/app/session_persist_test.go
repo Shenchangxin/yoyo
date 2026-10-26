@@ -1,3 +1,5 @@
+// 用户行先落盘、续跑不重复用户行，以及 StopTurn 的状态。
+
 package app
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestUserPersistsBeforeModel 确认模型还堵着时，用户行已经在轨迹里，且只有一条。
 func TestUserPersistsBeforeModel(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -58,6 +61,7 @@ func TestUserPersistsBeforeModel(t *testing.T) {
 	}
 }
 
+// TestCrashResumeDoesNotDuplicateUser 确认用户行先落盘后，重新打开再以空消息继续，不会多出第二条用户事件。
 func TestCrashResumeDoesNotDuplicateUser(t *testing.T) {
 	home := t.TempDir()
 	a, err := Open(home, filepath.Join("..", "..", "evals"))
@@ -97,6 +101,7 @@ func TestCrashResumeDoesNotDuplicateUser(t *testing.T) {
 	}
 }
 
+// countUsers 统计轨迹里的用户事件条数。
 func countUsers(evs []trace.Event) int {
 	n := 0
 	for _, ev := range evs {
@@ -107,6 +112,7 @@ func countUsers(evs []trace.Event) int {
 	return n
 }
 
+// TestTrajectoryPageIsCappedWindow 确认按回合分页会标出还有更早的内容。
 func TestTrajectoryPageIsCappedWindow(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -139,6 +145,7 @@ func TestTrajectoryPageIsCappedWindow(t *testing.T) {
 	}
 }
 
+// TestTrajectoryOutlineAndAround 确认大纲不把 steer 算成回合，TrajectoryAround 能取到指定用户序号附近的回合。
 func TestTrajectoryOutlineAndAround(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -180,6 +187,7 @@ func TestTrajectoryOutlineAndAround(t *testing.T) {
 	}
 }
 
+// TestStopTurnStates 确认空闲时 StopTurn 得到 idle，打断正在等待的发送后得到 cancelled 或 already_done。
 func TestStopTurnStates(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {
@@ -207,6 +215,7 @@ func TestStopTurnStates(t *testing.T) {
 	}
 }
 
+// TestPrepareAttachmentsImportsAndCommit 确认附件被引进会话目录，commitUser 把提及和附件元数据写进用户事件。
 func TestPrepareAttachmentsImportsAndCommit(t *testing.T) {
 	a, err := Open(t.TempDir(), filepath.Join("..", "..", "evals"))
 	if err != nil {

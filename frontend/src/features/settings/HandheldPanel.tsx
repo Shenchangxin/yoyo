@@ -1,3 +1,7 @@
+/**
+ * 拥有：手机配对、批准和收回的面板。
+ * 不拥有：通用设置。配对、批准和收回会调用 api 改状态。
+ */
 import { useEffect, useState } from "react";
 import * as api from "../../lib/client";
 import { useCopy } from "../../lib/i18n";
@@ -7,6 +11,7 @@ import { SettingSection } from "./SettingChrome";
 type Pending = { id?: string; name?: string };
 type Device = { id?: string; name?: string; revoked?: boolean };
 
+/** HandheldSettings 显示配对状态，并能批准或收回。 */
 export function HandheldSettings() {
   const copy = useCopy();
   const [status, setStatus] = useState<any>(null);
@@ -14,6 +19,7 @@ export function HandheldSettings() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  /** 拉取远程配对状态。 */
   async function load() {
     try {
       setStatus(await api.remoteStatus());

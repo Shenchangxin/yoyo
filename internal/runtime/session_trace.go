@@ -1,3 +1,6 @@
+// 把会话 JSONL 投影成检查器和命令行用的摘要视图。
+// 账本仍只追加。不改写原事件。形状行计入 Projections，只有 kind 为 checkpoint 的压缩计入 Compactions。
+
 package runtime
 
 import (
@@ -12,14 +15,16 @@ import (
 )
 
 const (
+	// traceDetailRunes 是单条明细的符文上限。
 	traceDetailRunes = 4_000
-	uiTraceEvents    = 180
+	// uiTraceEvents 是界面时间线默认保留的条数。
+	uiTraceEvents = 180
 )
 
+// elidedSpillRe 从被省略的工具结果里抽出 spill id 和字节数。
 var elidedSpillRe = regexp.MustCompile(`\[elided tool_result id=([A-Za-z0-9_-]+) name=\S+ bytes=(\d+)`)
 
-// TraceView is a summary-first projection of a session JSONL. The ledger
-// stays append-only; this is a read model for inspectors and the CLI.
+// TraceView 是会话 JSONL 的摘要优先投影。账本仍只追加；这是检查器和命令行的读模型。
 type TraceView struct {
 	StartedAt time.Time    `json:"started_at,omitempty"`
 	EndedAt   time.Time    `json:"ended_at,omitempty"`
@@ -27,6 +32,7 @@ type TraceView struct {
 	Events    []TraceEvent `json:"events"`
 }
 
+// TraceStats 是整本账本的计数。Projections 统计抽样的提示投影行，它们不是压缩：没有从记录里摘要或删除任何东西。
 type TraceStats struct {
 	Events      int `json:"events"`
 	Users       int `json:"users"`
@@ -35,8 +41,7 @@ type TraceStats struct {
 	ToolResults int `json:"tool_results"`
 	Errors      int `json:"errors"`
 	Compactions int `json:"compactions"`
-	// Projections counts sampled prompt-projection ledger rows. They are not
-	// compactions: nothing is summarized or removed from the transcript.
+	// Projections 统计抽样的提示投影账本行。它们不是压缩：没有从记录里摘要或删除任何东西。
 	Projections int `json:"projections"`
 	Deltas      int `json:"deltas"`
 	Tokens      int `json:"tokens,omitempty"`
@@ -44,17 +49,18 @@ type TraceStats struct {
 	SpillBytes  int `json:"spill_bytes,omitempty"`
 }
 
+// TraceEvent 是投影后的一条。Lane 由事件类型决定。Detail 截到 traceDetailRunes。
 type TraceEvent struct {
-	Index     int    `json:"index"`
-	TS        string `json:"ts,omitempty"`
-	Type      string `json:"type"`
-	Source    string `json:"source,omitempty"`
-	Lane      string `json:"lane"`
-	Round     string `json:"round,omitempty"`
-	Name      string `json:"name,omitempty"`
-	ID        string `json:"id,omitempty"`
-	Summary   string `json:"summary"`
-	Detail    string `json:"detail,omitempty"`
+	Index            int    `json:"index"`
+	TS               string `json:"ts,omitempty"`
+	Type             string `json:"type"`
+	Source           string `json:"source,omitempty"`
+	Lane             string `json:"lane"`
+	Round            string `json:"round,omitempty"`
+	Name             string `json:"name,omitempty"`
+	ID               string `json:"id,omitempty"`
+	Summary          string `json:"summary"`
+	Detail           string `json:"detail,omitempty"`
 	Bytes            int    `json:"bytes,omitempty"`
 	ElapsedMs        int    `json:"elapsed_ms,omitempty"`
 	SpillID          string `json:"spill_id,omitempty"`
@@ -67,6 +73,8 @@ type TraceEvent struct {
 	Error            bool   `json:"error,omitempty"`
 }
 
+// ProjectTrace 把事件收成视图。delta 计入 Deltas，但不进入 Events。只有 kind 为 checkpoint 的压缩计入 Compactions；kind 为 shape 的计入 Projections。
+// 只有检查点才压缩：它摘要历史并重新播种提示。抽样的 shape 行只描述一轮提示如何投影，不能算进压缩次数。
 func ProjectTrace(evs []trace.Event) TraceView {
 	out := TraceView{Events: make([]TraceEvent, 0, len(evs))}
 	out.Stats.Events = len(evs)
@@ -98,10 +106,7 @@ func ProjectTrace(evs []trace.Event) TraceView {
 		case trace.TypeError:
 			out.Stats.Errors++
 		case trace.TypeCompact:
-			// Only a checkpoint compacts: it summarizes history and reseeds the
-			// prompt. The sampled "shape" rows describe how one round's prompt was
-			// projected. Counting them as compactions made a 126-round turn with no
-			// checkpoint report three.
+			// 只有检查点才压缩。抽样的 shape 行只描述这一轮提示如何投影，不能算进压缩次数。
 			switch payloadStr(ev.Payload, "kind") {
 			case "checkpoint":
 				out.Stats.Compactions++
@@ -132,8 +137,8 @@ func ProjectTrace(evs []trace.Event) TraceView {
 	return out
 }
 
-// TrimTraceView keeps inspector stats from the full ledger but only ships a
-// short, noise-filtered timeline across Wails. Full jsonl stays on disk.
+// TrimTraceView 保留整本账本的统计，但只把滤掉噪声后的短时间线送过 Wails。完整 jsonl 仍在盘上。
+// keep 小于等于 0 时用 uiTraceEvents。file_change、system、eval、evolve，以及非 checkpoint 的 compaction 被丢掉。超出 keep 时只留末尾。
 func TrimTraceView(view TraceView, keep int) TraceView {
 	if keep <= 0 {
 		keep = uiTraceEvents
@@ -157,6 +162,7 @@ func TrimTraceView(view TraceView, keep int) TraceView {
 	return view
 }
 
+// projectTraceEvent 把一条轨迹收成摘要。工具结果若正文里有省略标记，会补上 spill id 和字节数。字节超过 defaultIngestBudget 时摘要只写字节数。
 func projectTraceEvent(i int, ev trace.Event) TraceEvent {
 	p := ev.Payload
 	id := payloadStr(p, "id")
@@ -293,6 +299,7 @@ func projectTraceEvent(i int, ev trace.Event) TraceEvent {
 	return row
 }
 
+// eventLane 把工具、批准和子代理放进 exec，压缩和注入放进 memory，错误放进 error，回合结束放进 meta，其余放进 dialog。
 func eventLane(t trace.EventType) string {
 	switch t {
 	case trace.TypeToolCall, trace.TypeToolResult, trace.TypeApproval, trace.TypeSubagent:
@@ -308,6 +315,7 @@ func eventLane(t trace.EventType) string {
 	}
 }
 
+// payloadAny 读取载荷字段。载荷为空时返回 nil。
 func payloadAny(p map[string]any, key string) any {
 	if p == nil {
 		return nil
@@ -315,6 +323,7 @@ func payloadAny(p map[string]any, key string) any {
 	return p[key]
 }
 
+// payloadStr 把载荷字段收成字符串。
 func payloadStr(p map[string]any, key string) string {
 	if p == nil {
 		return ""
@@ -322,6 +331,7 @@ func payloadStr(p map[string]any, key string) string {
 	return payloadString(p[key])
 }
 
+// payloadInt 按给定键的顺序读取第一个能转成整数的值。
 func payloadInt(p map[string]any, keys ...string) int {
 	if p == nil {
 		return 0
@@ -348,6 +358,7 @@ func payloadInt(p map[string]any, keys ...string) int {
 	return 0
 }
 
+// payloadBool 读取布尔值。字符串 true 或 1 也算真。
 func payloadBool(p map[string]any, key string) bool {
 	if p == nil {
 		return false
@@ -361,11 +372,13 @@ func payloadBool(p map[string]any, key string) bool {
 	return false
 }
 
+// oneLine 把空白折成空格，再按符文截断。
 func oneLine(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	return capTrace(s, n)
 }
 
+// capTrace 按符文截断，超出时加上省略号。n 小于等于 0 或字符串为空时原样返回。
 func capTrace(s string, n int) string {
 	if n <= 0 || s == "" {
 		return s
@@ -376,6 +389,7 @@ func capTrace(s string, n int) string {
 	return string([]rune(s)[:n]) + "…"
 }
 
+// firstNonEmpty 返回第一段非空白字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

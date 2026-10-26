@@ -1,3 +1,5 @@
+// 本文件拥有标题重命名、暂停、正在跑的入口、通知铃和检查器开关。不拥有通知列表怎么来。App 把它放进顶栏。
+
 import { useEffect, useRef, useState } from "react";
 import { Bell, Pause, Play, PanelRight } from "lucide-react";
 import { Badge } from "../components/ui/badge";
@@ -11,6 +13,7 @@ import { RunningHub } from "./RunningHub";
 import * as api from "../lib/client";
 import { InboxMenu, inboxBadgeCount } from "./InboxMenu";
 
+// Titlebar 没有标题时不显示标题按钮。有 runningThreads 时用 RunningHub，否则有 runningCount 才显示数字，窄屏藏起数字。Escape 放弃重命名，不提交。
 export function Titlebar(props: {
   onToggleInspector: () => void;
   inspector: boolean;
@@ -31,7 +34,7 @@ export function Titlebar(props: {
   onDismissNotice?: (id: string) => void;
   onClearNotices?: () => void;
   threadTitleOf?: (sessionId: string) => string | undefined;
-  /** Pending approvals; a change refreshes the bell badge at once instead of on the next poll. */
+  // 待批数量一变就立刻刷新铃铛，不等下一次轮询。
   approvalCount?: number;
   paused?: boolean;
   onPause?: () => void;
@@ -52,6 +55,7 @@ export function Titlebar(props: {
     setEditing(true);
   }, [props.renameTick]);
 
+  // skipBlur 为真时只还原标题。空白或没改过的标题不调用 onRename。
   function commit() {
     if (skipBlur.current) {
       skipBlur.current = false;
@@ -158,6 +162,7 @@ export function Titlebar(props: {
   );
 }
 
+// 每 15000 毫秒拉一次收件和队列。打开、通知条数或待批数变化时立刻再拉。
 function NoticeButton(props: {
   notices: Notice[];
   onNotice?: (n: Notice) => void;

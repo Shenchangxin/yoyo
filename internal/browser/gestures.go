@@ -1,3 +1,6 @@
+// 本文件拥有滚动、悬停、下拉选择、命名按键和条件等待。
+// 指针和按键都走 Input.dispatch* 的真实事件。不调用 runtime.Run。
+
 package browser
 
 import (
@@ -7,10 +10,7 @@ import (
 	"time"
 )
 
-// Scroll moves the viewport (or the target's nearest scroller) by amount
-// pixels. Direction is up / down / left / right. A selector is optional:
-// when given, the node is scrolled into view first so an off-screen click
-// has something to land on.
+// Scroll 按方向滚动 amount 像素。方向是 up、down、left、right，空则 down。amount 小于等于 0 时用 400，大于 4000 时收成 4000。给了选择器就先等到它可点，再用它的坐标；否则用视口中心。
 func (h *Host) Scroll(direction string, amount int, sel string) (string, error) {
 	h.record("scroll", direction)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -60,6 +60,7 @@ func (h *Host) Scroll(direction string, amount int, sel string) (string, error) 
 	return fmt.Sprintf("scrolled %s by %dpx%s%s", dir, amount, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
+// viewportCenter 读 window.innerWidth 和 innerHeight 的一半。读失败或边长小于 2 时返回 400, 300。
 func (h *Host) viewportCenter() (float64, float64, error) {
 	raw, err := h.evalJS(`JSON.stringify({w: window.innerWidth||800, h: window.innerHeight||600})`)
 	if err != nil {
@@ -72,8 +73,7 @@ func (h *Host) viewportCenter() (float64, float64, error) {
 	return box.W / 2, box.H / 2, nil
 }
 
-// Hover moves the pointer over sel without pressing. Menus that only open
-// on mouseenter need this; a click would dismiss them.
+// Hover 把指针移到选择器上，不按下。只在 mouseenter 时打开的菜单需要这个。
 func (h *Host) Hover(sel string) (string, error) {
 	h.record("hover", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -98,7 +98,7 @@ func (h *Host) Hover(sel string) (string, error) {
 	return fmt.Sprintf("hovered %s → <%s> %q at (%d,%d)%s%s", handle, p.Tag, truncRunes(p.Text, 40), int(p.X), int(p.Y), h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// Select sets a <select> (or value-bearing control) and dispatches input/change.
+// Select 等到控件可聚焦，再把 value 写上并派发 input 和 change。选择器或值为空时返回错误。
 func (h *Host) Select(sel, value string) (string, error) {
 	h.record("select", sel)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -148,7 +148,7 @@ func (h *Host) Select(sel, value string) (string, error) {
 	return fmt.Sprintf("selected %q on %s <%s>%s%s", out.Value, handle, out.Tag, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
-// Press sends a named key (Enter, Tab, Escape, Backspace, arrows).
+// Press 发送一个命名按键：Enter、Tab、Escape、Backspace、空格或方向键。单个字符走 keyFor。
 func (h *Host) Press(key string) (string, error) {
 	h.record("press", key)
 	if err := h.ensureChrome(h.previewStartURL()); err != nil {
@@ -176,6 +176,7 @@ func (h *Host) Press(key string) (string, error) {
 	return fmt.Sprintf("pressed %s%s%s", spec.key, h.pageErrorsNote(), h.actionsNote()), nil
 }
 
+// namedKey 把名字或单个字符收成 keySpec。空字符串返回错误。不认识的名字返回 unsupported key。
 func namedKey(raw string) (keySpec, error) {
 	k := strings.TrimSpace(raw)
 	if k == "" {
@@ -212,9 +213,7 @@ func namedKey(raw string) (keySpec, error) {
 	}
 }
 
-// WaitCondition polls until selector is actionable, visible text contains
-// needle, and/or the URL contains a substring. With none of those set it
-// sleeps, which is what a bare browser_act wait step used to do.
+// WaitCondition 轮询到选择器可操作、正文包含 contains，或地址包含 urlSub。三个都空时只睡眠 d。d 小于等于 0 时用 200 毫秒。超时返回最后一次没满足的原因。
 func (h *Host) WaitCondition(sel, contains, urlSub string, d time.Duration) (string, error) {
 	if d <= 0 {
 		d = 200 * time.Millisecond

@@ -1,3 +1,5 @@
+// 把部分 JSON 合并进当前配置，并在变化时同步连接登记。
+
 package app
 
 import (
@@ -8,8 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/connection"
 )
 
-// ApplyConfigPatch merges JSON into the live Config. Omitted keys keep their
-// current values, so a partial Wails/HTTP body cannot wipe MCP, search, or gate.
+// ApplyConfigPatch 把 JSON 合并进当前 Config。没出现的键保持原值，半份请求不会清掉 MCP、搜索或 gate。空正文或 null 只把当前配置再存一次。
 func (a *App) ApplyConfigPatch(raw []byte) error {
 	if a == nil {
 		return nil
@@ -29,6 +30,7 @@ func (a *App) ApplyConfigPatch(raw []byte) error {
 	return nil
 }
 
+// otelEndpoint 先看环境变量 YOYO_OTEL_ENDPOINT，再看已选的 OTEL 连接，最后用配置里的端点。
 func (a *App) otelEndpoint() string {
 	if ep := strings.TrimSpace(os.Getenv("YOYO_OTEL_ENDPOINT")); ep != "" {
 		return ep
@@ -43,6 +45,7 @@ func (a *App) otelEndpoint() string {
 	return strings.TrimSpace(a.Config.Log.OTELEndpoint)
 }
 
+// seedConnections 把聊天、搜索、OTEL 和带端点的 MCP 种进连接登记。
 func (a *App) seedConnections() {
 	if a == nil || a.Video == nil || a.Video.Conn == nil {
 		return
@@ -59,6 +62,7 @@ func (a *App) seedConnections() {
 	}
 }
 
+// syncConnectionsFromConfig 在聊天、搜索、OTEL 或 MCP 端点相对旧配置有变化时写回连接登记。
 func (a *App) syncConnectionsFromConfig(prev Config) {
 	if a.Video == nil || a.Video.Conn == nil {
 		return
@@ -80,6 +84,7 @@ func (a *App) syncConnectionsFromConfig(prev Config) {
 	}
 }
 
+// sameStrings 判断两条字符串切片是否等长且逐项相同。
 func sameStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

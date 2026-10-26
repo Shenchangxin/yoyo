@@ -1,3 +1,6 @@
+// 把会话上下文、额外工具 schema 和延后工具名单写进工作区，供 grep 和 read_file 查看。
+// 不把这些正文放进提示词。循环进度和工具列表组装时调用。
+
 package runtime
 
 import (
@@ -11,6 +14,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/tool"
 )
 
+// WorkspaceContextDir 返回工作区 .yoyo/context/<sessionID>。workspace 或 sessionID 为空时返回空串。
 func WorkspaceContextDir(workspace, sessionID string) string {
 	if workspace == "" || sessionID == "" {
 		return ""
@@ -18,6 +22,7 @@ func WorkspaceContextDir(workspace, sessionID string) string {
 	return filepath.Join(workspace, ".yoyo", "context", sessionID)
 }
 
+// WorkspaceMCPDir 返回工作区 .yoyo/mcp。workspace 为空时返回空串。
 func WorkspaceMCPDir(workspace string) string {
 	if workspace == "" {
 		return ""
@@ -25,8 +30,8 @@ func WorkspaceMCPDir(workspace string) string {
 	return filepath.Join(workspace, ".yoyo", "mcp")
 }
 
-// WriteDiscoverIndex publishes greppable session context into the workspace
-// jail: INDEX.md, notes.md, and a pointer at the spill directory.
+// WriteDiscoverIndex 在工作区监狱里写下 INDEX.md 和 notes.md，并列出 spill id。
+// 索引正文让模型用 recall_context 的 offset 和 limit 取回，或直接 grep、read_file，而不是把 spill 再倒进提示词。终端输出在 terminals/ 下。
 func WriteDiscoverIndex(workspace, sessionID string, spill *Spill) {
 	dir := WorkspaceContextDir(workspace, sessionID)
 	if dir == "" {
@@ -51,8 +56,7 @@ func WriteDiscoverIndex(workspace, sessionID string, spill *Spill) {
 	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(b.String()), 0o644)
 }
 
-// WriteMCPCatalog dumps extra tool schemas as files so they do not have to
-// occupy the advertised tools array (Cursor-style DCD).
+// WriteMCPCatalog 把额外工具的 schema 按服务器写成 JSON。文件里的说明写明要先 tool_search，schema 到下一次检查点才进入 tools 数组。本函数只写文件。
 func WriteMCPCatalog(workspace string, extras map[string]ExtraTool) {
 	dir := WorkspaceMCPDir(workspace)
 	if dir == "" || len(extras) == 0 {
@@ -95,9 +99,7 @@ func WriteMCPCatalog(workspace string, extras map[string]ExtraTool) {
 	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(root.String()), 0o644)
 }
 
-// WriteHostToolIndex lists deferred host and extra tools by name so the
-// tools array does not carry their schemas. The text is stable for a given
-// deferred set; tool_search description does not embed the names.
+// WriteHostToolIndex 把延后工具的名字和一句话说明写到 .yoyo/tools/INDEX.md。同一组名字写出的文本稳定。名字不写进 tool_search 的描述。
 func WriteHostToolIndex(workspace string, names []string) {
 	if workspace == "" || len(names) == 0 {
 		return
@@ -132,6 +134,7 @@ func WriteHostToolIndex(workspace string, names []string) {
 	_ = os.WriteFile(filepath.Join(dir, "INDEX.md"), []byte(b.String()), 0o644)
 }
 
+// firstSentence 压成一行。180 个字节以内的第一个句号处截断，否则保留 160 个 rune。
 func firstSentence(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if s == "" {
@@ -143,6 +146,7 @@ func firstSentence(s string) string {
 	return capRunes(s, 160)
 }
 
+// mcpServerOf 从 mcp__服务器__工具 取出服务器名。格式不符时返回 extra。
 func mcpServerOf(name string) string {
 	parts := strings.Split(name, "__")
 	if len(parts) >= 3 && parts[0] == "mcp" {

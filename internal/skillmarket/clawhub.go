@@ -1,3 +1,5 @@
+// ClawHub 列表和下载。默认站不可达时再试 clawhubcn.com。
+
 package skillmarket
 
 import (
@@ -9,8 +11,10 @@ import (
 
 const defaultClawHub = "https://clawhub.ai"
 
+// ClawHubBase 是 ClawHub 根地址，默认 https://clawhub.ai。测试可以改它。改过之后不再自动尝试 clawhubcn.com。
 var ClawHubBase = defaultClawHub
 
+// clawHubBases 在 ClawHubBase 仍是默认值时返回 clawhub.ai 和 clawhubcn.com。否则只返回当前基址。
 func clawHubBases() []string {
 	if ClawHubBase != defaultClawHub {
 		return []string{strings.TrimRight(ClawHubBase, "/")}
@@ -18,6 +22,7 @@ func clawHubBases() []string {
 	return uniqueBases([]string{defaultClawHub, "https://clawhubcn.com"})
 }
 
+// listClawHub 按 clawHubBases 的顺序试列表。都失败且没有错误时返回 "clawhub unreachable"。
 func listClawHub(query string, limit int) (Catalog, error) {
 	limit = catalogLimit(query, limit)
 	var last error
@@ -34,6 +39,7 @@ func listClawHub(query string, limit int) (Catalog, error) {
 	return Catalog{}, last
 }
 
+// listClawHubAt 按 cursor 翻页，最多 40 页。无查询时 sort=downloads 且 nonSuspiciousOnly=true，有查询时走搜索。浏览结果的前 8 条标成 Featured。
 func listClawHubAt(base, query string, limit int) (Catalog, error) {
 	src := "ClawHub"
 	if host := hostOf(base); host != "" && host != "clawhub.ai" {
@@ -100,6 +106,7 @@ func listClawHubAt(base, query string, limit int) (Catalog, error) {
 	return Catalog{Source: src, Items: items, Truncated: truncated}, nil
 }
 
+// clawHubListPage 请求 /api/v1/skills，并返回下一页 cursor。
 func clawHubListPage(base string, vals url.Values) ([]Item, string, error) {
 	var resp struct {
 		Items      []clawListItem `json:"items"`
@@ -117,6 +124,7 @@ func clawHubListPage(base string, vals url.Values) ([]Item, string, error) {
 	return items, strings.TrimSpace(resp.NextCursor), nil
 }
 
+// clawHubSearchPage 请求 /api/v1/search，并返回下一页 cursor。
 func clawHubSearchPage(base string, vals url.Values) ([]Item, string, error) {
 	var resp struct {
 		Results    []clawSearchHit `json:"results"`
@@ -135,8 +143,8 @@ func clawHubSearchPage(base string, vals url.Values) ([]Item, string, error) {
 }
 
 type clawListItem struct {
-	OwnerHandle   string `json:"ownerHandle"`
-	Owner         *struct {
+	OwnerHandle string `json:"ownerHandle"`
+	Owner       *struct {
 		Handle string `json:"handle"`
 	} `json:"owner"`
 	Slug          string `json:"slug"`
@@ -171,6 +179,7 @@ type clawSearchHit struct {
 	} `json:"native"`
 }
 
+// itemFromClawList 把列表行变成条目。slug 为空则返回 false。没有 owner 时 ID 只有 slug。摘要截到 240 字。
 func itemFromClawList(row clawListItem) (Item, bool) {
 	slug := SanitizeSlug(row.Slug)
 	owner := strings.TrimPrefix(strings.TrimSpace(row.OwnerHandle), "@")
@@ -212,6 +221,7 @@ func itemFromClawList(row clawListItem) (Item, bool) {
 	}, true
 }
 
+// itemFromClawSearch 从搜索命中取出 owner 和 slug。缺一则返回 false。
 func itemFromClawSearch(hit clawSearchHit) (Item, bool) {
 	owner := strings.TrimPrefix(strings.TrimSpace(hit.Native.OwnerHandle), "@")
 	slug := SanitizeSlug(hit.Native.Skill.Slug)
@@ -242,6 +252,7 @@ func itemFromClawSearch(hit clawSearchHit) (Item, bool) {
 	}, true
 }
 
+// fetchClawHub 按基址顺序下载。slug 为空返回 "clawhub id must be owner/slug"。都失败时返回 "clawhub unreachable"。
 func fetchClawHub(remote string) (PackResult, error) {
 	owner, slug := splitOwnerSlug(remote)
 	if slug == "" {
@@ -264,6 +275,7 @@ func fetchClawHub(remote string) (PackResult, error) {
 	return PackResult{}, last
 }
 
+// fetchClawHubAt 读技能详情和版本文件。isMalwareBlocked 或 verdict 为 malicious，或版本 security.status 为 malicious 时拒绝。跳过 contentType 含 zip 的文件。根上没有 SKILL.md 时再单独要一次。
 func fetchClawHubAt(root, owner, slug string) (PackResult, error) {
 	q := url.Values{}
 	if owner != "" {
@@ -378,6 +390,7 @@ func fetchClawHubAt(root, owner, slug string) (PackResult, error) {
 	return clawPack(root, owner, slug, c.files, c.warn()), nil
 }
 
+// clawPack 组装结果。主机不是 clawhub.ai 时，页面和 Catalog 改用这次实际的根地址。
 func clawPack(root, owner, slug string, files []PackFile, warn string) PackResult {
 	host := hostOf(root)
 	page := "https://clawhub.ai/skills/" + slug

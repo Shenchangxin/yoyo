@@ -1,3 +1,5 @@
+// 偶像的聊天、语音、识别、图像和立绘快照。聊天优先用会话里的文本模型。媒体密钥先用偶像保险库里的那把，没有再按同能力、同厂商和同主机借用。
+
 package app
 
 import (
@@ -18,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/runtime"
 )
 
+// idolMediaFallback 是设置页上语音、识别和图像的当前活动连接名称、模型和预设 id。
 type idolMediaFallback struct {
 	SpeechPreset string `json:"speech_preset,omitempty"`
 	SpeechName   string `json:"speech_name,omitempty"`
@@ -30,6 +33,7 @@ type idolMediaFallback struct {
 	ImageModel   string `json:"image_model,omitempty"`
 }
 
+// idolSettingsView 是偶像设置页的视图。密钥字段只放 keyHint，ChatReady 等表示对应客户端能否配齐。
 type idolSettingsView struct {
 	idol.Services
 	User        idol.UserCard        `json:"user"`
@@ -45,6 +49,7 @@ type idolSettingsView struct {
 	ImageReady  bool                 `json:"image_ready"`
 }
 
+// idolSettingsView 组装服务、用户卡、预设和回落连接，并用 idol.chat、idol.speech、idol.asr、idol.image 的密钥做提示。就绪与否来自对应的客户端函数。
 func (a *App) idolSettingsView() idolSettingsView {
 	st := a.Idols.View()
 	v := idolSettingsView{
@@ -68,6 +73,7 @@ func (a *App) idolSettingsView() idolSettingsView {
 	return v
 }
 
+// idolSaveSettings 保存服务和用户卡。四把密钥经 putIdolKey 写入 vault，空字符串不改，减号清空。
 func (a *App) idolSaveSettings(payload string) (string, error) {
 	var p struct {
 		idol.Services
@@ -95,6 +101,7 @@ func (a *App) idolSaveSettings(payload string) (string, error) {
 	return idolJSON(a.idolSettingsView())
 }
 
+// putIdolKey 把非空密钥写入 vault。值为减号时把该键设成空串。vault 为空则返回。
 func (a *App) putIdolKey(name, value string) {
 	if a.Vault == nil {
 		return
@@ -110,6 +117,7 @@ func (a *App) putIdolKey(name, value string) {
 	a.Vault.Set(name, value)
 }
 
+// vaultIdol 读取一把偶像密钥。vault 为空或读取失败返回空串。
 func (a *App) vaultIdol(name string) string {
 	if a == nil || a.Vault == nil {
 		return ""
@@ -121,6 +129,7 @@ func (a *App) vaultIdol(name string) string {
 	return strings.TrimSpace(v)
 }
 
+// keyHint 在密钥不足 8 个 rune 时返回已保存，否则返回末四位，前面用圆点。空串返回空串。
 func keyHint(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -133,6 +142,7 @@ func keyHint(s string) string {
 	return "••••" + string(r[len(r)-4:])
 }
 
+// idolSnapshot 先 EnsureDaily 再返回钉住的偶像、立绘、好感、圈子和各媒体是否就绪。立绘优先用当前服装 blob，否则用肖像 blob，读出后做 base64。
 func (a *App) idolSnapshot() (string, error) {
 	st := a.Idols.View()
 	_ = a.Idols.Update(func(live *idol.State) error {
@@ -174,6 +184,7 @@ func (a *App) idolSnapshot() (string, error) {
 	})
 }
 
+// pinnedOrNil 在没有钉住偶像时返回 nil，否则返回该偶像。
 func pinnedOrNil(ok bool, it idol.Idol) any {
 	if !ok {
 		return nil
@@ -181,6 +192,7 @@ func pinnedOrNil(ok bool, it idol.Idol) any {
 	return it
 }
 
+// affinityOrNil 返回该偶像的好感并填上 Tier。没有记录时分数为 50，等级为 TierTrust。未钉住时返回 nil。
 func affinityOrNil(st idol.State, id string, ok bool) any {
 	if !ok {
 		return nil
@@ -194,6 +206,7 @@ func affinityOrNil(st idol.State, id string, ok bool) any {
 	return idol.Affinity{IdolID: id, Score: 50, Tier: idol.TierTrust}
 }
 
+// idolSave 解析并保存一个偶像。
 func (a *App) idolSave(payload string) (string, error) {
 	var in idol.Idol
 	if err := json.Unmarshal([]byte(payload), &in); err != nil {
@@ -206,6 +219,7 @@ func (a *App) idolSave(payload string) (string, error) {
 	return idolJSON(out)
 }
 
+// idolSaveCircle 解析并保存一个圈子。
 func (a *App) idolSaveCircle(payload string) (string, error) {
 	var c idol.Circle
 	if err := json.Unmarshal([]byte(payload), &c); err != nil {
@@ -218,6 +232,7 @@ func (a *App) idolSaveCircle(payload string) (string, error) {
 	return idolJSON(out)
 }
 
+// idolSaveLore 解析并保存一条设定。
 func (a *App) idolSaveLore(payload string) (string, error) {
 	var doc idol.Lore
 	if err := json.Unmarshal([]byte(payload), &doc); err != nil {
@@ -230,6 +245,7 @@ func (a *App) idolSaveLore(payload string) (string, error) {
 	return idolJSON(out)
 }
 
+// idolVoice 优先用该偶像的 VoiceID，其次用服务里的 SpeechVoice，都空则返回 alloy。
 func (a *App) idolVoice(idolID string) string {
 	if a == nil || a.Idols == nil {
 		return "alloy"
@@ -245,10 +261,10 @@ func (a *App) idolVoice(idolID string) string {
 	return "alloy"
 }
 
-// errNoChatConn is returned when no session chat connection can be resolved.
-// The text includes "chat model" so the idol desk can point at settings.
+// errNoChatConn 表示没有解析到会话聊天连接。错误文本含 chat model，方便偶像桌面指向设置。
 var errNoChatConn = errors.New("configure a chat model in Settings → Idol or Models")
 
+// idolClient 在 kind 为 judge 且 JudgeModel 非空时用裁判模型，否则用 ChatModel。先走 idolSessionClient。得到 errNoChatConn 且 ChatBaseURL 非空时改用旧端点，否则 idolConfigClient。
 func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 	if a == nil || a.Idols == nil {
 		return nil, "", fmt.Errorf("idol store missing")
@@ -265,14 +281,14 @@ func (a *App) idolClient(kind string) (*runtime.OpenAIClient, string, error) {
 	if !errors.Is(err, errNoChatConn) {
 		return nil, "", err
 	}
-	// A saved legacy endpoint still works until a text model from Settings →
-	// Models is available. The settings page clears it on the next save.
+	// 会话连接返回 errNoChatConn 且 ChatBaseURL 非空时，改用这份旧端点。
 	if strings.TrimSpace(svc.ChatBaseURL) != "" {
 		return a.idolLegacyClient(svc.ChatBaseURL, picked)
 	}
 	return a.idolConfigClient(picked)
 }
 
+// idolSessionClient 按会话模型解析 chat 连接。没有连接时返回 errNoChatConn。模型名空则用连接的 chat 模型，再空用 Config.Model。
 func (a *App) idolSessionClient(picked string) (*runtime.OpenAIClient, string, error) {
 	connID, model := a.splitSessionModel(picked)
 	if connID == "" {
@@ -299,6 +315,7 @@ func (a *App) idolSessionClient(picked string) (*runtime.OpenAIClient, string, e
 	return client, model, nil
 }
 
+// sessionModelName 在文本是 connectionId::model 时返回右边的模型名，否则返回整段。
 func sessionModelName(picked string) string {
 	picked = strings.TrimSpace(picked)
 	left, right, ok := strings.Cut(picked, "::")
@@ -308,6 +325,7 @@ func sessionModelName(picked string) string {
 	return strings.TrimSpace(right)
 }
 
+// idolLegacyClient 用传入的旧端点和 idol.chat 密钥，密钥空则 fallbackChatKey。模型空则用 gpt-4.1-mini。密钥仍空则返回带 chat model 的错误。
 func (a *App) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, string, error) {
 	key := a.vaultIdol("idol.chat")
 	if key == "" {
@@ -326,6 +344,7 @@ func (a *App) idolLegacyClient(base, picked string) (*runtime.OpenAIClient, stri
 	return runtime.NewOpenAIClient(base, key), model, nil
 }
 
+// idolConfigClient 用 Config.BaseURL 和 fallbackChatKey。模型空则用 gpt-4.1-mini。密钥或地址为空时返回 errNoChatConn。
 func (a *App) idolConfigClient(picked string) (*runtime.OpenAIClient, string, error) {
 	key := a.fallbackChatKey()
 	model := sessionModelName(picked)
@@ -341,6 +360,7 @@ func (a *App) idolConfigClient(picked string) (*runtime.OpenAIClient, string, er
 	return runtime.NewOpenAIClient(a.Config.BaseURL, key), model, nil
 }
 
+// fallbackChatKey 依次用 Vault.Get 读取 default、openai、api_key。default 和 openai 的 Get 会回落环境变量。都没有返回空串。
 func (a *App) fallbackChatKey() string {
 	if a == nil || a.Vault == nil {
 		return ""
@@ -353,6 +373,7 @@ func (a *App) fallbackChatKey() string {
 	return ""
 }
 
+// idolSpeechCreds 读取语音服务字段。地址为空时改用 speechCreds。然后 borrowMediaKey。填了厂商但仍然没有密钥时返回错误。
 func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
 	base, key, model, provider := a.idolMediaFields("speech")
 	if base == "" {
@@ -369,6 +390,7 @@ func (a *App) idolSpeechCreds(_ string) (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
+// idolSpeak 把文本 POST 到音频 speech 地址。声音空则用 idolVoice。模型空则用 gpt-4o-mini-tts。响应体最多读 8 MiB。
 func (a *App) idolSpeak(text, voice string) ([]byte, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -410,6 +432,7 @@ func (a *App) idolSpeak(text, voice string) ([]byte, string, error) {
 	return b, ctype, nil
 }
 
+// idolASRCreds 读取识别字段。地址为空时先找活动的 asr 连接，再退到 speechCreds。speechCreds 失败时错误为 speech recognition is not configured。
 func (a *App) idolASRCreds() (base, key, model string, err error) {
 	base, key, model, provider := a.idolMediaFields("asr")
 	if base == "" {
@@ -437,6 +460,7 @@ func (a *App) idolASRCreds() (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
+// idolTranscribe 在暂停时返回 paused。模型空则用 gpt-4o-mini-transcribe。响应体最多读 1 MiB。JSON 没有 text 时返回正文本身。
 func (a *App) idolTranscribe(filename string, audio []byte) (string, error) {
 	if a.IsPaused() {
 		return "", fmt.Errorf("paused")
@@ -482,6 +506,7 @@ func (a *App) idolTranscribe(filename string, audio []byte) (string, error) {
 	return strings.TrimSpace(out.Text), nil
 }
 
+// idolImageCreds 读取图像字段。地址为空时用活动的 image 连接。仍没有地址则返回 image connection not configured。
 func (a *App) idolImageCreds() (base, key, model string, err error) {
 	base, key, model, provider := a.idolMediaFields("image")
 	if base == "" {
@@ -505,6 +530,7 @@ func (a *App) idolImageCreds() (base, key, model string, err error) {
 	return base, key, model, nil
 }
 
+// idolPaint 请求 images/generations，默认模型 gpt-image-1，尺寸 1024x1024。优先用 b64_json，否则再 GET 返回的 URL。两段响应体上限分别是 8 MiB 和 6 MiB。
 func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
 	base, key, model, err := a.idolImageCreds()
 	if err != nil {
@@ -559,6 +585,7 @@ func (a *App) idolPaint(ctx context.Context, prompt string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(ires.Body, 6<<20))
 }
 
+// idolMediaFields 按 speech、asr 或其他种类返回对应的地址、vault 密钥、模型和厂商。
 func (a *App) idolMediaFields(kind string) (base, key, model, provider string) {
 	var svc idol.Services
 	if a != nil && a.Idols != nil {
@@ -574,9 +601,7 @@ func (a *App) idolMediaFields(kind string) (base, key, model, provider string) {
 	}
 }
 
-// borrowMediaKey keeps an idol vault key. Otherwise it reuses a generation
-// connection of the same kind, then a chat connection on the same host and
-// vendor. It does not borrow a key from a different provider.
+// borrowMediaKey 已有偶像 vault 密钥时原样返回。否则先租同能力的连接，再在厂商和地址都非空时按严格主机加厂商租一把 chat 密钥。不借用另一家厂商的密钥。
 func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
 	if strings.TrimSpace(key) != "" {
 		return strings.TrimSpace(key)
@@ -596,6 +621,7 @@ func (a *App) borrowMediaKey(cap, provider, endpoint, key string) string {
 	return ""
 }
 
+// leaseMediaKey 在活动连接里找密钥。strict 为真时厂商和主机必须同时匹配。否则先要主机匹配，没有再退到只匹配厂商的第一条。
 func (a *App) leaseMediaKey(cap, vendor, endpoint string, strict bool) string {
 	r := a.connReg()
 	if r == nil || strings.TrimSpace(cap) == "" {
@@ -634,6 +660,7 @@ func (a *App) leaseMediaKey(cap, vendor, endpoint string, strict bool) string {
 	return ""
 }
 
+// leasedKey 向连接库租用该连接的密钥。失败或库为空返回空串。
 func leasedKey(r *connection.Registry, c connection.Connection) string {
 	if r == nil {
 		return ""
@@ -645,6 +672,7 @@ func leasedKey(r *connection.Registry, c connection.Connection) string {
 	return strings.TrimSpace(k)
 }
 
+// idolMediaFallback 用语音、识别和图像的活动连接填名称、模型和预设 id。
 func (a *App) idolMediaFallback() idolMediaFallback {
 	var out idolMediaFallback
 	name, vendor, endpoint, model := a.activeMedia(connection.CapSpeech)
@@ -659,6 +687,7 @@ func (a *App) idolMediaFallback() idolMediaFallback {
 	return out
 }
 
+// activeMedia 返回该能力的活动连接名称、厂商、端点和模型。没有库或没有活动连接时返回空串。
 func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
 	r := a.connReg()
 	if r == nil {
@@ -675,6 +704,7 @@ func (a *App) activeMedia(cap string) (name, vendor, endpoint, model string) {
 	return name, c.Vendor, c.Endpoint, connection.ModelFor(c, cap)
 }
 
+// idolPing 用 40 秒超时试通。speech 朗读你好，image 画一只不带字的茶杯，其他种类让聊天只回复 OK。
 func (a *App) idolPing(payload string) (string, error) {
 	var p struct {
 		Kind string `json:"kind"`
@@ -706,6 +736,7 @@ func (a *App) idolPing(payload string) (string, error) {
 	}
 }
 
+// encodeB64Raw 用标准 base64 编码字节。
 func encodeB64Raw(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }

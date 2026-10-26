@@ -1,3 +1,5 @@
+// remake.go 把有权使用的参考片读进现有剪辑工程，再换成操作者自己的画面。
+
 package video
 
 import (
@@ -9,9 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
-// RemakeDraft stores a reference the operator has rights to and reads length,
-// shots, and captions into the existing cut project. It does not open the
-// finish desk. The operator sends it there with an explicit action.
+// RemakeDraft 保存操作者有权使用的参考哈希，并把时长、镜头和字幕读进现有剪辑工程。标题空着时用「翻拍」。它不打开完成台，操作者要用明确动作再送过去。有 ffmpeg 时做分析；剪辑表还空且时长大于 0 时按 3 段、15-30 提议窗口。WHISPER 非空且已有源哈希时尝试转写。
 func (e *Engine) RemakeDraft(hash, title, _ string) (CutProject, error) {
 	hash = strings.TrimSpace(hash)
 	if hash == "" {
@@ -66,9 +66,7 @@ func (e *Engine) RemakeDraft(hash, title, _ string) (CutProject, error) {
 	return e.saveCut(p)
 }
 
-// RemakeReplace points the picture at the operator's own media and keeps the
-// reference hash plus the timed draft. Clip bytes copied from the reference
-// are dropped.
+// RemakeReplace 把画面指到操作者自己的媒体，并保留参考哈希和时间草稿。从参考片抄来的片段字节会被丢掉。只有 kind 为 remake 且已有参考哈希的工程接受替换。新哈希不能为空，也不能和参考哈希相同。
 func (e *Engine) RemakeReplace(id, hash string) (CutProject, error) {
 	p, err := e.GetCutProject(id)
 	if err != nil {
@@ -98,6 +96,7 @@ func (e *Engine) RemakeReplace(id, hash string) (CutProject, error) {
 	return e.retargetRemakeWindows(p)
 }
 
+// retargetRemakeWindows 保留剪辑窗口的起止，清掉旧哈希。开始时间已经达到新时长的窗口丢掉，结束时间超出新时长的收到新时长。ffmpeg 可用时从新源片抽出窗口并写回哈希；抽出失败的窗口保持空哈希。
 func (e *Engine) retargetRemakeWindows(p CutProject) (CutProject, error) {
 	windows := append([]cut.Clip(nil), p.EditList.Cuts...)
 	if len(windows) == 0 {

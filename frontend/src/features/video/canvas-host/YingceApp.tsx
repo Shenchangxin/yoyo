@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有把影策页面嵌进 Yoyo 的记忆路由、标题和会话绑定。
+ * 不拥有那些页面的业务。进入画布路由时会绑定会话。它自己不跑模型循环。
+ */
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, type ReactNode } from "react";
 import { createMemoryRouter, Outlet, RouterProvider, useLocation, useParams } from "react-router";
 import { AppProviders } from "@yingce/components/layout/app-providers";
@@ -40,10 +44,12 @@ if (typeof window !== "undefined") {
   (window as Window & { __YOYO_CANVAS_HOST__?: boolean }).__YOYO_CANVAS_HOST__ = true;
 }
 
+/** 用刷新壳包住懒加载页面。 */
 function deferred(node: ReactNode, fallback?: ReactNode) {
   return <Suspense fallback={fallback || <CanvasRefreshShell />}>{node}</Suspense>;
 }
 
+/** 画布路由上绑定会话，并按路径改宿主标题。 */
 function BindAndTitle() {
   const copy = useCopy();
   const params = useParams();
@@ -73,6 +79,7 @@ function BindAndTitle() {
   return null;
 }
 
+/** 套上登录和工作区布局，并挂上标题绑定。 */
 function WorkspaceLayout() {
   return (
     <RequireAuth>
@@ -84,12 +91,14 @@ function WorkspaceLayout() {
   );
 }
 
+/** YingceApp 用记忆路由打开创作、短剧、画布和资料页，并接上画布事件与宿主跳转。 */
 export default function YingceApp({ initialPath = "/create" }: { initialPath?: string }) {
   useLayoutEffect(() => {
     void bootstrapAppearance();
   }, []);
 
   useEffect(() => {
+    /** 去掉岛上的明暗类，并同步浮层根。 */
     const syncTheme = () => {
       const island = document.querySelector(".yingce-island") as HTMLElement | null;
       island?.classList.remove("dark", "light");

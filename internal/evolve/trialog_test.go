@@ -1,3 +1,5 @@
+// 锁住试用目录不写 held 题的结果文件，非 held 题和 metrics.json 会落盘。
+
 package evolve
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/eval"
 )
 
+// TestTrialLogOmitsHeldOutBodies 要求 held 题没有 tasks 文件，held-in 题和 metrics.json 存在。
 func TestTrialLogOmitsHeldOutBodies(t *testing.T) {
 	e := &Engine{TrialRoot: t.TempDir()}
 	hash := "deadbeefcafebabe"

@@ -1,3 +1,5 @@
+// registry_test.go 锁住能力描述符的归一、合同哈希和补丁路径。不渲染画布。
+
 package capability
 
 import (
@@ -5,6 +7,7 @@ import (
 	"testing"
 )
 
+// testDescriptor 返回一份带首尾空格、尚未归一的自定义描述符。
 func testDescriptor() Descriptor {
 	return Descriptor{
 		Type: "  custom  ", Version: "1", Label: "自定义", DefaultWidth: 100, DefaultHeight: 80,
@@ -19,6 +22,7 @@ func testDescriptor() Descriptor {
 	}
 }
 
+// TestRegistryNormalizesAndProtectsDescriptors 确认类型、输入种类和生成模式被收成小写，调用方改原切片或改返回值都碰不到注册表里的副本。
 func TestRegistryNormalizesAndProtectsDescriptors(t *testing.T) {
 	input := testDescriptor()
 	registry, err := NewRegistry([]Descriptor{input})
@@ -50,6 +54,7 @@ func TestRegistryNormalizesAndProtectsDescriptors(t *testing.T) {
 	}
 }
 
+// TestRegistryAcceptsExtensibleIdentifiers 确认 table_data 和 table-render 可以登记，按生成模式能解析到该描述符。
 func TestRegistryAcceptsExtensibleIdentifiers(t *testing.T) {
 	descriptor := testDescriptor()
 	descriptor.InputKind = "table_data"
@@ -66,6 +71,7 @@ func TestRegistryAcceptsExtensibleIdentifiers(t *testing.T) {
 	}
 }
 
+// TestRegistryHashIsStableAndTracksDeclarativeContract 确认工厂函数、接受种类的顺序和登记顺序不改变哈希，投影或补丁说明变了则哈希改变。
 func TestRegistryHashIsStableAndTracksDeclarativeContract(t *testing.T) {
 	first := testDescriptor()
 	second := testDescriptor()
@@ -122,6 +128,7 @@ func TestRegistryHashIsStableAndTracksDeclarativeContract(t *testing.T) {
 	}
 }
 
+// TestRegistryRejectsInvalidContracts 确认非法描述符和重复登记都会被拒绝。
 func TestRegistryRejectsInvalidContracts(t *testing.T) {
 	tests := []struct {
 		name string
@@ -176,6 +183,7 @@ func TestRegistryRejectsInvalidContracts(t *testing.T) {
 	}
 }
 
+// TestDescriptorConnectionAndPatchContract 确认 image 与 text 可接入、audio 与 video 不可，最大输入数是 2，非法补丁被拒绝，合法补丁按路径写入且保留未声明字段。
 func TestDescriptorConnectionAndPatchContract(t *testing.T) {
 	registry, err := NewRegistry([]Descriptor{testDescriptor()})
 	if err != nil {
@@ -212,6 +220,7 @@ func TestDescriptorConnectionAndPatchContract(t *testing.T) {
 	}
 }
 
+// TestRegistryGenerationModesAreStableAndResolveUniquely 确认生成模式名按 image、video 排列，VIDEO 能识别而 audio 不能，image 解析到 image-node。
 func TestRegistryGenerationModesAreStableAndResolveUniquely(t *testing.T) {
 	image := testDescriptor()
 	image.Type, image.GenerationMode = "image-node", "image"
@@ -233,6 +242,7 @@ func TestRegistryGenerationModesAreStableAndResolveUniquely(t *testing.T) {
 	}
 }
 
+// TestBuiltinMediaCapabilitiesUpdateDraftWithoutOverwritingGeneratedAssets 确认 image、video、audio 的补丁只改标题和 composerContent，不覆盖已生成内容和已提交提示词，新建元数据的 status 为 idle 且 content 为空。
 func TestBuiltinMediaCapabilitiesUpdateDraftWithoutOverwritingGeneratedAssets(t *testing.T) {
 	registry := BuiltinRegistry()
 	for _, nodeType := range []string{"image", "video", "audio"} {
@@ -273,6 +283,7 @@ func TestBuiltinMediaCapabilitiesUpdateDraftWithoutOverwritingGeneratedAssets(t 
 	}
 }
 
+// TestRegistryResolveUnknownTypeFailsClosed 确认未知类型和未知生成模式都解析失败。
 func TestRegistryResolveUnknownTypeFailsClosed(t *testing.T) {
 	registry, err := NewRegistry([]Descriptor{testDescriptor()})
 	if err != nil {

@@ -1,3 +1,6 @@
+// 在隔离的 Chrome 页面上按步骤执行点击、输入和断言。
+// 模型只给选择器，不直接说话给 CDP。不启动浏览器进程。browser_verify 复用这里的步骤解析和执行。
+
 package runtime
 
 import (
@@ -10,13 +13,15 @@ import (
 )
 
 const (
-	maxBrowserActSteps   = 40
-	maxBrowserWaitMS     = 5000
+	// maxBrowserActSteps 是 browser_act 一次最多接受的步数。
+	maxBrowserActSteps = 40
+	// maxBrowserWaitMS 是普通等待的上限，毫秒。
+	maxBrowserWaitMS = 5000
+	// maxBrowserCondWaitMS 是带选择器、文本或 URL 条件的等待上限，毫秒。
 	maxBrowserCondWaitMS = 15000
 )
 
-// BrowserStep is one host-owned action on the isolated Chrome page.
-// The model names selectors; it never talks to CDP.
+// BrowserStep 是隔离 Chrome 页面上的一步宿主动作。模型给出选择器，不直接对 CDP 说话。
 type BrowserStep struct {
 	Op        string `json:"op"`
 	Selector  string `json:"selector,omitempty"`
@@ -35,6 +40,7 @@ type BrowserStep struct {
 	MS        int    `json:"ms,omitempty"`
 }
 
+// browserStepResult 是一步的执行结果。Visual 在截图成功时是图片路径。
 type browserStepResult struct {
 	Index  int    `json:"index"`
 	Op     string `json:"op"`
@@ -45,10 +51,12 @@ type browserStepResult struct {
 	Err    string `json:"error,omitempty"`
 }
 
+// parseBrowserSteps 按 maxBrowserActSteps 解析步骤数组。
 func parseBrowserSteps(v any) ([]BrowserStep, error) {
 	return parseBrowserStepsN(v, maxBrowserActSteps)
 }
 
+// parseBrowserStepsN 把数组或 JSON 字符串解析成步骤。空数组失败。超过 max 失败。max 小于等于 0 时用 maxBrowserActSteps。
 func parseBrowserStepsN(v any, max int) ([]BrowserStep, error) {
 	raw, err := coerceJSONArray(v)
 	if err != nil {
@@ -74,6 +82,7 @@ func parseBrowserStepsN(v any, max int) ([]BrowserStep, error) {
 	return out, nil
 }
 
+// parseBrowserStep 规范化一步。ref 优先于 selector，并写成 ref=。wait 未给毫秒时，有条件用 10000，否则用 200。毫秒超过对应上限则截断。
 func parseBrowserStep(v any) (BrowserStep, error) {
 	var st BrowserStep
 	switch t := v.(type) {
@@ -148,7 +157,7 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 			st.Key = st.Text
 		}
 	case "screenshot":
-		// path may be empty; browserScreenshot fills a default
+		// 路径可以空着，browserScreenshot 会填默认路径。
 	case "open":
 		if st.Path == "" && st.Selector == "" && st.URL == "" {
 			return st, fmt.Errorf("open needs path")
@@ -182,6 +191,7 @@ func parseBrowserStep(v any) (BrowserStep, error) {
 	return st, nil
 }
 
+// normalizeBrowserOp 把别名收成规范操作名。未知名字原样返回，由调用方拒绝。
 func normalizeBrowserOp(op string) string {
 	op = strings.ToLower(strings.TrimSpace(op))
 	switch op {
@@ -216,6 +226,7 @@ func normalizeBrowserOp(op string) string {
 	}
 }
 
+// stepHandle 在 ref 非空时返回 ref= 句柄，已带 ref= 或 ref: 则不重复加。否则返回 selector。
 func stepHandle(selector, ref string) string {
 	ref = strings.TrimSpace(ref)
 	if ref != "" {
@@ -227,6 +238,7 @@ func stepHandle(selector, ref string) string {
 	return strings.TrimSpace(selector)
 }
 
+// firstNonEmptyStep 返回第一段非空白字符串。
 func firstNonEmptyStep(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -236,6 +248,7 @@ func firstNonEmptyStep(ss ...string) string {
 	return ""
 }
 
+// coerceJSONArray 把 []any、[]BrowserStep 或 JSON 数组字符串收成 []any。
 func coerceJSONArray(v any) ([]any, error) {
 	switch t := v.(type) {
 	case nil:
@@ -271,6 +284,7 @@ func coerceJSONArray(v any) ([]any, error) {
 	}
 }
 
+// browserAct 解析 steps 并在第一次失败时停下。没有隔离浏览器时返回错误。
 func (t *WorkspaceTools) browserAct(args map[string]any) ToolResult {
 	steps, err := parseBrowserSteps(args["steps"])
 	if err != nil {
@@ -283,6 +297,7 @@ func (t *WorkspaceTools) browserAct(args map[string]any) ToolResult {
 	return ToolResult{Content: formatBrowserAct(results, stopped)}
 }
 
+// checkBrowserSeq 要求已有隔离浏览器，通过 Browser 能力检查，并 EnsurePreview。
 func (t *WorkspaceTools) checkBrowserSeq(action string) error {
 	if t == nil || t.Browser == nil {
 		return fmt.Errorf("no isolated browser")
@@ -293,6 +308,7 @@ func (t *WorkspaceTools) checkBrowserSeq(action string) error {
 	return t.Browser.EnsurePreview()
 }
 
+// runBrowserSteps 按顺序执行。stopOnFail 为真时在第一步失败后返回，stopped 为真。
 func (t *WorkspaceTools) runBrowserSteps(steps []BrowserStep, stopOnFail bool) (out []browserStepResult, stopped bool) {
 	out = make([]browserStepResult, 0, len(steps))
 	for i, st := range steps {
@@ -305,6 +321,7 @@ func (t *WorkspaceTools) runBrowserSteps(steps []BrowserStep, stopOnFail bool) (
 	return out, false
 }
 
+// runBrowserStep 执行一步。无条件的 wait 在本进程 Sleep。带条件的 wait 交给浏览器。截图路径为空时，结果里的 Visual 写成 .yoyo/captures/browser.png。
 func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepResult {
 	res := browserStepResult{Index: index, Op: st.Op, Check: st.Check}
 	if t == nil || t.Browser == nil {
@@ -417,6 +434,7 @@ func (t *WorkspaceTools) runBrowserStep(index int, st BrowserStep) browserStepRe
 	}
 }
 
+// finishBrowserStep 把工具结果抄进步骤结果。有错误则 OK 保持假。
 func finishBrowserStep(res browserStepResult, got ToolResult) browserStepResult {
 	if got.Err != nil {
 		res.Err = got.Err.Error()
@@ -428,6 +446,7 @@ func finishBrowserStep(res browserStepResult, got ToolResult) browserStepResult 
 	return res
 }
 
+// formatBrowserAct 逐行列出步骤，并在中途停下时写明停在第一次失败。正文提醒不要自起静态服务或连接 CDP 9333/9222。
 func formatBrowserAct(results []browserStepResult, stopped bool) string {
 	var b strings.Builder
 	ok := 0
@@ -454,6 +473,7 @@ func formatBrowserAct(results []browserStepResult, stopped bool) string {
 	return strings.TrimSpace(b.String())
 }
 
+// firstLine 取第一行并截到 240 个符文。
 func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
@@ -462,6 +482,7 @@ func firstLine(s string) string {
 	return truncRunes(s, 240)
 }
 
+// truncRunes 按符文截断，超出时加上省略号。n 小于等于 0 返回空串。
 func truncRunes(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -473,6 +494,7 @@ func truncRunes(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
+// isQACheck 判断名字是不是 launch、render、input、coreLoop、outcome 或 restart。
 func isQACheck(name string) bool {
 	switch name {
 	case "launch", "render", "input", "coreLoop", "outcome", "restart":

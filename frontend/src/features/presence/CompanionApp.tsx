@@ -1,3 +1,4 @@
+/** 拥有陪伴窗的宠物、气泡、拖动和进入通话。不拥有工作台的模型循环，也不在这里另开一份；通话画面交给 IdolCall。快照和脉搏是投影。拖动、字幕尺寸和唤起会话会改服务端记下的窗口状态。 */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Phone } from "lucide-react";
 import { useBusyMs } from "./busy";
@@ -30,6 +31,7 @@ import { cn } from "../../lib/utils";
 const KEEP = 80;
 const AWAKE_MS = 12_000;
 
+/** CompanionApp 投影置顶偶像、工作和脉搏，拖动窗口，并把通话交给 IdolCall。 */
 export function CompanionApp() {
   const copy = useCopy();
   const reduced = useMotionReduced();
@@ -55,8 +57,10 @@ export function CompanionApp() {
   const dragged = useRef(false);
   const pulseChannel = useRef(false);
 
+  /** 把空闲计时拨回现在。 */
   const bump = () => { idleAt.current = Date.now(); };
 
+  /** 合并一条脉搏并让宠物动一下。 */
   const applyPulse = (next: CompanionPulse) => {
     bump();
     if (next.session) sessionRef.current = next.session;
@@ -108,6 +112,7 @@ export function CompanionApp() {
 
   useEffect(() => {
     if (inCall) return;
+    /** 问一句主动搭话，有字幕就留下。 */
     const tick = () => {
       void api.idolCall("reach", {}).then((r) => {
         const line = String(r?.caption || r?.speak || "").trim();
@@ -123,6 +128,7 @@ export function CompanionApp() {
   }, [idolStand]);
 
   useEffect(() => {
+    /** 读取置顶偶像的快照。 */
     const load = () => {
       void api.idolCall("snapshot").then((s) => {
         const pinned = s?.pinned;
@@ -171,6 +177,7 @@ export function CompanionApp() {
 
   useEffect(() => {
     let alive = true;
+    /** 读取正在跑的会话和待批准数量。 */
     const pull = async () => {
       try {
         const [ids, pending] = await Promise.all([
@@ -273,6 +280,7 @@ export function CompanionApp() {
       void api.setCompanionCaption(false);
       return;
     }
+    /** 把气泡尺寸交给窗口，并滚到底。 */
     const publish = () => {
       const box = scrollRef.current;
       if (box) box.scrollTop = box.scrollHeight;
@@ -288,6 +296,7 @@ export function CompanionApp() {
   useEffect(() => () => { void api.setCompanionCaption(false); }, []);
 
   const grab = useRef<{ dx: number; dy: number; sx: number; sy: number } | null>(null);
+  /** 按下时记下拖动起点，点在按钮上则放过。 */
   const dragStart = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest?.("button, input, textarea, a, [data-companion-call]")) return;
@@ -295,6 +304,7 @@ export function CompanionApp() {
     grab.current = { dx: e.screenX - window.screenX, dy: e.screenY - window.screenY, sx: e.screenX, sy: e.screenY };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
+  /** 拖动时移动陪伴窗。 */
   const dragMove = (e: ReactPointerEvent<HTMLElement>) => {
     const g = grab.current;
     if (!e.buttons || !g) return;
@@ -303,8 +313,10 @@ export function CompanionApp() {
       void api.placeCompanion(e.screenX - g.dx, e.screenY - g.dy);
     }
   };
+  /** 松开时结束拖动。 */
   const dragEnd = () => { grab.current = null; };
 
+  /** 有会话就唤起它，否则唤起主窗。 */
   const open = () => {
     const sid = activePulse?.session || sessionRef.current;
     if (sid) void api.raiseSession(sid);

@@ -1,3 +1,5 @@
+// 锁住密封目录的切分：EvolveIn、HeldIn、HeldOut、Transfer 的编号互不重复，Index 编号只进 Transfer。Repeats 至少为 2。
+
 package eval
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/artifact"
 )
 
+// TestSealedCatalogSplit 要求四张表的规格字段齐全，且编号不跨表重复。
 func TestSealedCatalogSplit(t *testing.T) {
 	if len(SealedHeldIn) < 20 {
 		t.Fatalf("held-in %d", len(SealedHeldIn))
@@ -35,6 +38,7 @@ func TestSealedCatalogSplit(t *testing.T) {
 	mark("index", IndexTransfer)
 }
 
+// TestIndexTransferDisjoint 要求 ApplyIndexTransfer 之后，Index 编号不在 EvolveIn、HeldIn、HeldOut 里，并且出现在 Transfer 里。
 func TestIndexTransferDisjoint(t *testing.T) {
 	s := artifact.EvalSuite{}
 	ApplySealed(&s)
@@ -59,6 +63,7 @@ func TestIndexTransferDisjoint(t *testing.T) {
 	}
 }
 
+// TestApplySealedRepeatsAndSafety 要求套件编号变成 sealed-v1，EvolveIn、HeldIn、HeldOut、Transfer 按密封切分，Repeats 至少为 2，且安全表含指定题号。
 func TestApplySealedRepeatsAndSafety(t *testing.T) {
 	s := artifact.EvalSuite{ID: "local-smoke", Repeats: 1}
 	ApplySealed(&s)
@@ -82,6 +87,7 @@ func TestApplySealedRepeatsAndSafety(t *testing.T) {
 	}
 }
 
+// TestMaterializeSealedTask 要求第一道密封 held-in 能物化并被 LoadHarborTask 读回同一题号。
 func TestMaterializeSealedTask(t *testing.T) {
 	e := NewEngine(t.TempDir())
 	spec := SealedHeldIn[0]

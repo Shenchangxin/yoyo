@@ -1,3 +1,5 @@
+// 行为：时间线渲染和转写任务的创建与执行。渲染走 ffmpeg 拼接，转写走本机 whisper。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"strings"
 )
 
+// LookWhisper 查找 whisper-cli 或 whisper，先看环境变量，再看可执行文件旁和用户目录。
 func LookWhisper() string {
 	if v := os.Getenv("WHISPER_BIN"); v != "" {
 		return v
@@ -48,6 +51,7 @@ func LookWhisper() string {
 	return ""
 }
 
+// createTimelineRender 把时间线片段收成一条排队中的 ffmpeg 拼接任务。
 func (e *Engine) createTimelineRender(req map[string]any) (map[string]any, error) {
 	now := Now()
 	projectID := strAnyMap(req, "projectId", "canvasId")
@@ -81,6 +85,7 @@ func (e *Engine) createTimelineRender(req map[string]any) (map[string]any, error
 	return e.taskView(j), nil
 }
 
+// createTimelineTranscribe 把资源收成一条排队中的 whisper 转写任务。
 func (e *Engine) createTimelineTranscribe(req map[string]any) (map[string]any, error) {
 	now := Now()
 	resourceID := strAnyMap(req, "resourceId")
@@ -94,6 +99,7 @@ func (e *Engine) createTimelineTranscribe(req map[string]any) (map[string]any, e
 	return e.taskView(j), nil
 }
 
+// runCanvasTimeline 按片段路径拼接视频并完成媒体登记。没有片段则返回错误。
 func (e *Engine) runCanvasTimeline(j *Job) error {
 	p := parseParams(j.Params)
 	if len(p.ReferenceVideoURLs) == 0 {
@@ -106,6 +112,7 @@ func (e *Engine) runCanvasTimeline(j *Job) error {
 	return e.finishMedia(j, raw, true)
 }
 
+// runCanvasTranscribe 对资源文件做转写，把文本写进任务草稿并标成成功。
 func (e *Engine) runCanvasTranscribe(j *Job) error {
 	p := parseParams(j.Params)
 	res, err := e.getCanvasResource(p.ResourceID)

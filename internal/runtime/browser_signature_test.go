@@ -1,10 +1,10 @@
+// 同类浏览器未命中共享一个签名，无关错误不进同一组。
+
 package runtime
 
 import "testing"
 
-// Session 3b9f1bbb660e4236: every browser_click miss named a different
-// selector, so the repeat detector saw six different errors and never stopped.
-// Misses of one kind must share a signature; unrelated errors must not.
+// TestBrowserMissesShareSignatureAcrossSelectors 确认不同选择器的 browser: no match 共享签名，covered 与 hidden 分开，无关错误不进组。
 func TestBrowserMissesShareSignatureAcrossSelectors(t *testing.T) {
 	a := errorSignature("ERROR: browser: selector #opts button:nth-child(2) matched no element\nvisible actions now (use one of these selectors):\n  #opt-0 ...")
 	c := errorSignature("ERROR: browser: selector #opt-1 matched no element\nno visible interactive elements on this page")

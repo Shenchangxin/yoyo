@@ -1,3 +1,6 @@
+// 本文件拥有成就解锁、统计，以及按用户这句话从人设事实和材料里挑一段。
+// reachDue 决定偶像能不能主动开口。不调用模型。
+
 package idol
 
 import (
@@ -6,6 +9,7 @@ import (
 	"unicode"
 )
 
+// unlock 按已有对话、礼物和好感补成就。每个新成就加一次奖励抽卡；intimate 再加一张重置卡。返回这次新加上的 id。
 func (st *State) unlock(now time.Time) []string {
 	have := map[string]bool{}
 	for _, id := range st.Achievements {
@@ -67,6 +71,7 @@ func (st *State) unlock(now time.Time) []string {
 	return add
 }
 
+// Stats 是给界面看的计数：回合、通话、礼物、未盖过的记忆、剩余抽卡、重置卡、每位偶像的档位、成就和当天任务。
 type Stats struct {
 	Turns        int               `json:"turns"`
 	CallSec      int               `json:"call_sec"`
@@ -80,6 +85,7 @@ type Stats struct {
 	Tasks        DayMark           `json:"tasks"`
 }
 
+// Stats 汇总当前状态。通话只计 Connected 为真的记录。记忆跳过已被盖过的。
 func (st State) Stats() Stats {
 	out := Stats{
 		DrawsLeft:    st.Draws + st.BonusDraws,
@@ -115,6 +121,7 @@ func (st State) Stats() Stats {
 	return out
 }
 
+// retrieve 从偶像的事实分段和她自己的材料里挑与 query 重叠词最多的一段。没有重叠就返回空。正文长于 600 个字符时截断。
 func retrieve(idol Idol, lore []Lore, query string) string {
 	type hit struct {
 		title, body string
@@ -146,7 +153,7 @@ func retrieve(idol Idol, lore []Lore, query string) string {
 		}
 	}
 	if best.score == 0 && len([]rune(query)) > 0 {
-		// idle chatter does not pull lore
+		// 对不上词的短句不拉材料
 		if len([]rune(query)) < 8 {
 			return ""
 		}
@@ -164,8 +171,10 @@ func retrieve(idol Idol, lore []Lore, query string) string {
 	return "相关材料（" + best.title + "）：\n" + body
 }
 
+// section 是 Markdown 里一个标题和它下面的正文。
 type section struct{ title, body string }
 
+// splitSections 按以 # 开头的行切开 Markdown。
 func splitSections(md string) []section {
 	lines := strings.Split(md, "\n")
 	var out []section
@@ -190,6 +199,7 @@ func splitSections(md string) []section {
 	return out
 }
 
+// overlap 数 query 和 doc 共有多少个至少两个字符的词。
 func overlap(query, doc string) int {
 	q := tokens(query)
 	d := tokens(doc)
@@ -209,6 +219,7 @@ func overlap(query, doc string) int {
 	return n
 }
 
+// tokens 把字母和数字收成词，丢掉短于两个字符的，并转成小写。
 func tokens(s string) []string {
 	var out []string
 	var cur strings.Builder
@@ -233,6 +244,8 @@ func tokens(s string) []string {
 	return out
 }
 
+// reachDue 判断现在该不该让这位偶像先开口。总开关 ReachOut 关掉、冷却中、cold、distant、夜间、当天已有 3 次、没有进行中的对话、上一次还没得到回复，都不开口。
+// trust 间隔 36 小时，close 是 18 小时，intimate 是 8 小时。距上次超过 14 天也不再开口。
 func reachDue(st *State, idol Idol, now time.Time) bool {
 	if !st.Services.ReachOut {
 		return false

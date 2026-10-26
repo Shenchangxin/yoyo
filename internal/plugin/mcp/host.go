@@ -1,3 +1,4 @@
+// Package mcp 通过 stdio 或 Streamable HTTP 与 MCP 服务器交换 JSON-RPC。协议版本是 2025-11-25。sampling/createMessage 与 sampling/create_message 被拒绝，错误码 -32000，文案是 "sampling is denied: model calls stay in the TCB"。elicitation/create 同样被拒绝，错误码 -32000，文案是 "elicitation must go through the host Gate"。
 package mcp
 
 import (
@@ -20,10 +21,10 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/osutil"
 )
 
+// ProtocolVersion 是 initialize 使用的 MCP 协议版本，值为 2025-11-25。
 const ProtocolVersion = "2025-11-25"
 
-// Host speaks MCP JSON-RPC over stdio or Streamable HTTP. Yoyo's loop stays
-// the only runtime; MCP tools register into the same Tool surface.
+// Host 持有已连接的 MCP 服务器，经 stdio 或 Streamable HTTP 收发 JSON-RPC。Yoyo 自己的循环仍是唯一运行时。
 type Host struct {
 	mu        sync.Mutex
 	servers   map[string]*Server
@@ -32,6 +33,7 @@ type Host struct {
 	StderrDir string
 }
 
+// Server 是一台已握手的 MCP 服务器，以及它列出的工具、资源和提示。
 type Server struct {
 	Name       string
 	Command    string
@@ -53,6 +55,7 @@ type Server struct {
 	stopping   atomic.Bool
 }
 
+// Tool 是某台服务器列出的工具，带只读、破坏性和开放世界三个注解。
 type Tool struct {
 	Server          string
 	Name            string
@@ -63,6 +66,7 @@ type Tool struct {
 	OpenWorldHint   bool
 }
 
+// Resource 是某台服务器列出的资源。
 type Resource struct {
 	Server      string `json:"server"`
 	URI         string `json:"uri"`
@@ -71,16 +75,19 @@ type Resource struct {
 	MimeType    string `json:"mimeType,omitempty"`
 }
 
+// Prompt 是某台服务器列出的提示。
 type Prompt struct {
 	Server      string `json:"server"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
 
+// NewHost 返回服务器表为空、Timeout 为 30 秒的 Host。
 func NewHost() *Host {
 	return &Host{servers: map[string]*Server{}, Timeout: 30 * time.Second}
 }
 
+// SetRoots 换上根目录副本，并给每台已连接服务器发送 notifications/roots/list_changed。
 func (h *Host) SetRoots(roots []string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -96,6 +103,7 @@ func (h *Host) SetRoots(roots []string) {
 	}
 }
 
+// Start 用 command 和 args 拉起 stdio 进程并握手。同名已在跑时返回 "mcp: <name> already running"。Timeout 小于等于 0 时该服务器用 30 秒。标准错误环形缓冲是 16 KiB。StderrDir 非空时，日志追加写到该目录下按名字净化后的 .stderr.log。
 func (h *Host) Start(name, command string, args []string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -128,6 +136,7 @@ func (h *Host) Start(name, command string, args []string) error {
 	return nil
 }
 
+// StartHTTP 连接 endpoint 并握手。同名已在跑时返回 "mcp: <name> already running"。Timeout 小于等于 0 时，服务器超时和 HTTP 客户端都改为 30 秒。
 func (h *Host) StartHTTP(name, endpoint string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -153,6 +162,7 @@ func (h *Host) StartHTTP(name, endpoint string) error {
 	return nil
 }
 
+// Stop 停掉并摘掉该名字的服务器。名字不存在时返回 nil。
 func (h *Host) Stop(name string) error {
 	h.mu.Lock()
 	s, ok := h.servers[name]
@@ -165,6 +175,7 @@ func (h *Host) Stop(name string) error {
 	return nil
 }
 
+// List 返回当前服务器名字，顺序不定。
 func (h *Host) List() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -175,6 +186,7 @@ func (h *Host) List() []string {
 	return out
 }
 
+// Info 是一台服务器的摘要：命令或端点，工具、资源、提示的数量，以及环形缓冲里的标准错误。
 type Info struct {
 	Name      string   `json:"name"`
 	Command   string   `json:"command"`
@@ -186,6 +198,7 @@ type Info struct {
 	Stderr    string   `json:"stderr,omitempty"`
 }
 
+// Info 返回每台服务器的 Info。
 func (h *Host) Info() []Info {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -200,6 +213,7 @@ func (h *Host) Info() []Info {
 	return out
 }
 
+// Tools 返回全部服务器当前列出的工具。
 func (h *Host) Tools() []Tool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -210,6 +224,7 @@ func (h *Host) Tools() []Tool {
 	return out
 }
 
+// Call 对指定服务器调用 tools/call。argsJSON 非空时按 JSON 解成 arguments，解失败则 arguments 为 nil。未知服务器返回 "mcp: unknown server"。
 func (h *Host) Call(server, tool, argsJSON string) (string, error) {
 	h.mu.Lock()
 	s := h.servers[server]
@@ -234,6 +249,7 @@ func (h *Host) Call(server, tool, argsJSON string) (string, error) {
 	return string(raw), nil
 }
 
+// ReadResource 调用 resources/read，把结果 JSON 当字符串返回。未知服务器返回 "mcp: unknown server"。
 func (h *Host) ReadResource(server, uri string) (string, error) {
 	h.mu.Lock()
 	s := h.servers[server]
@@ -248,6 +264,7 @@ func (h *Host) ReadResource(server, uri string) (string, error) {
 	return string(raw), nil
 }
 
+// GetPrompt 调用 prompts/get。未知服务器返回 "mcp: unknown server"。
 func (h *Host) GetPrompt(server, name string, args map[string]any) (string, error) {
 	h.mu.Lock()
 	s := h.servers[server]
@@ -262,6 +279,7 @@ func (h *Host) GetPrompt(server, name string, args map[string]any) (string, erro
 	return string(raw), nil
 }
 
+// Close 停掉全部服务器，并返回 nil。
 func (h *Host) Close() error {
 	h.mu.Lock()
 	names := make([]string, 0, len(h.servers))
@@ -275,6 +293,7 @@ func (h *Host) Close() error {
 	return nil
 }
 
+// Stderr 返回环形缓冲里的标准错误。服务器或缓冲为 nil 时返回空串。
 func (s *Server) Stderr() string {
 	if s == nil || s.stderr == nil {
 		return ""
@@ -282,6 +301,7 @@ func (s *Server) Stderr() string {
 	return s.stderr.String()
 }
 
+// startStdio 启动命令并接上 stdin、stdout、stderr，后台排空标准错误并等待进程退出。
 func (s *Server) startStdio() error {
 	cmd := exec.Command(s.Command, s.Args...)
 	osutil.HideConsole(cmd)
@@ -309,6 +329,7 @@ func (s *Server) startStdio() error {
 	return nil
 }
 
+// drainStderr 把标准错误写入环形缓冲。stderrFile 非空时再以 0o600 追加到该文件。
 func (s *Server) drainStderr(r io.Reader) {
 	var file *os.File
 	if s.stderrFile != "" {
@@ -334,6 +355,7 @@ func (s *Server) drainStderr(r io.Reader) {
 	}
 }
 
+// sanitizeMCPName 只保留字母、数字、下划线和连字符，其余换成下划线。空白或结果为空时返回 unknown。
 func sanitizeMCPName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -353,6 +375,7 @@ func sanitizeMCPName(name string) string {
 	return b.String()
 }
 
+// watchExit 等待进程结束。stopping 已置位时记一条退出信息，否则记 mcp crashed。
 func (s *Server) watchExit(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -365,6 +388,7 @@ func (s *Server) watchExit(cmd *exec.Cmd) {
 	diaglog.Error("mcp crashed", "component", "mcp", "name", s.Name, "err", err)
 }
 
+// kill 置上 stopping，杀掉进程，并清空 cmd、stdin、stdout。
 func (s *Server) kill() {
 	s.stopping.Store(true)
 	if s.cmd != nil && s.cmd.Process != nil {
@@ -375,6 +399,7 @@ func (s *Server) kill() {
 	s.stdout = nil
 }
 
+// ensure 在 HTTP 端点上直接返回 nil。stdio 进程仍在则返回 nil，否则先 kill，再 startStdio 并 handshake。
 func (s *Server) ensure() error {
 	if s.Endpoint != "" {
 		return nil
@@ -389,6 +414,7 @@ func (s *Server) ensure() error {
 	return s.handshake()
 }
 
+// handshake 发送 initialize。capabilities 里 roots.listChanged 为 true，并带上空的 elicitation。clientInfo 的 name 是 yoyo，version 是 0.6.0。成功后发送 notifications/initialized；有根目录时再发 notifications/roots/list_changed。然后刷新工具、资源和提示。
 func (s *Server) handshake() error {
 	caps := map[string]any{
 		"roots":       map[string]any{"listChanged": true},
@@ -414,6 +440,7 @@ func (s *Server) handshake() error {
 	return nil
 }
 
+// refreshTools 调用 tools/list，并用 annotations 里的 readOnlyHint、destructiveHint、openWorldHint 填 Tool。
 func (s *Server) refreshTools() error {
 	raw, err := s.call("tools/list", map[string]any{})
 	if err != nil {
@@ -446,6 +473,7 @@ func (s *Server) refreshTools() error {
 	return nil
 }
 
+// refreshResources 调用 resources/list。调用失败或 JSON 无效时保留原列表。
 func (s *Server) refreshResources() {
 	raw, err := s.call("resources/list", map[string]any{})
 	if err != nil {
@@ -470,6 +498,7 @@ func (s *Server) refreshResources() {
 	}
 }
 
+// refreshPrompts 调用 prompts/list。调用失败或 JSON 无效时保留原列表。
 func (s *Server) refreshPrompts() {
 	raw, err := s.call("prompts/list", map[string]any{})
 	if err != nil {
@@ -490,6 +519,7 @@ func (s *Server) refreshPrompts() {
 	}
 }
 
+// boolOf 取出 map 里的布尔值。键不存在或类型不是 bool 时返回 false。
 func boolOf(m map[string]any, k string) bool {
 	if m == nil {
 		return false
@@ -521,6 +551,7 @@ type rpcRes struct {
 	} `json:"error"`
 }
 
+// call 在有 Endpoint 时走 callHTTP。stdio 写出带 id 的请求，并在超时内读响应。timeout 小于等于 0 时限时 30 秒。读到带 method 的入站消息就交给 handleIncoming 并继续等。id 不匹配则跳过。对端错误返回 "mcp: " 加对方 message。超时返回 "mcp: timeout calling " 加方法名。
 func (s *Server) call(method string, params any) (json.RawMessage, error) {
 	if s.Endpoint != "" {
 		return s.callHTTP(method, params)
@@ -556,6 +587,7 @@ func (s *Server) call(method string, params any) (json.RawMessage, error) {
 	return nil, fmt.Errorf("mcp: timeout calling %s", method)
 }
 
+// callHTTP 向 Endpoint POST 一条 JSON-RPC。Content-Type 是 application/json，Accept 是 application/json, text/event-stream。对端错误返回 "mcp: " 加对方 message。
 func (s *Server) callHTTP(method string, params any) (json.RawMessage, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -594,6 +626,7 @@ func (s *Server) callHTTP(method string, params any) (json.RawMessage, error) {
 	return res.Result, nil
 }
 
+// handleIncoming 应答服务器主动发来的请求。sampling/createMessage 和 sampling/create_message 都写回 JSON-RPC 错误，code 为 -32000，message 为 "sampling is denied: model calls stay in the TCB"。elicitation/create 同样写回 code -32000，message 为 "elicitation must go through the host Gate"。notifications/tools/list_changed、notifications/resources/list_changed、notifications/prompts/list_changed 会异步刷新对应列表。roots/list 按当前根目录回答，每项 URI 为 file:// 加路径。
 func (s *Server) handleIncoming(res rpcRes) {
 	switch res.Method {
 	case "sampling/createMessage", "sampling/create_message":
@@ -623,6 +656,7 @@ func (s *Server) handleIncoming(res rpcRes) {
 	}
 }
 
+// notify 发送一条不带 id 的 JSON-RPC。Endpoint 非空时改走 callHTTP，因此 HTTP 上的通知仍会带上 id。
 func (s *Server) notify(method string, params any) error {
 	if s.Endpoint != "" {
 		_, err := s.callHTTP(method, params)
@@ -633,6 +667,7 @@ func (s *Server) notify(method string, params any) error {
 	return s.write(rpcReq{JSONRPC: "2.0", Method: method, Params: params})
 }
 
+// write 以 Content-Length 头加 JSON 正文写入 stdin。stdin 为 nil 时返回 "mcp: not connected"。
 func (s *Server) write(v any) error {
 	if s.stdin == nil {
 		return fmt.Errorf("mcp: not connected")
@@ -649,6 +684,7 @@ func (s *Server) write(v any) error {
 	return err
 }
 
+// read 读取一条响应。下一字节是 '{' 时按一行 JSON 解析。否则读头直到空行，按 Content-Length 读定长正文。没有长度时返回 "mcp: missing content-length"。
 func (s *Server) read() (rpcRes, error) {
 	var res rpcRes
 	b, err := s.stdout.Peek(1)
@@ -700,8 +736,10 @@ type ringBuf struct {
 	full bool
 }
 
+// newRing 分配容量为 n 的环形缓冲。
 func newRing(n int) *ringBuf { return &ringBuf{buf: make([]byte, n), max: n} }
 
+// Write 按字节写入环形缓冲，写满后覆盖最旧的字节。
 func (r *ringBuf) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -715,6 +753,7 @@ func (r *ringBuf) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// String 按写入顺序返回缓冲里现有的字节。
 func (r *ringBuf) String() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

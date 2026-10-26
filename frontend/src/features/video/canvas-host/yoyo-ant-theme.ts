@@ -1,7 +1,11 @@
+/**
+ * 本文件拥有托管影策时 Ant Design 的明暗令牌。不拥有组件。
+ * 它只返回主题配置，不改服务端。
+ */
 import type { ThemeConfig } from "antd";
 import { theme as antdTheme } from "antd";
 
-/** Hosted 影策 Ant tokens: quiet stone + Codex blue, Apple control geometry. */
+/** yoyoHostAntTheme 按明暗返回石色前景、焦点描边，以及本文件里的圆角和控件高度。 */
 export function yoyoHostAntTheme(dark: boolean): ThemeConfig {
   const fg = dark ? "#f4f4f0" : "#1c1c1a";
   const bg = dark ? "#1c1c1a" : "#fbfbfa";

@@ -1,3 +1,4 @@
+// Package update 检查签名清单、下载安装包，并用暂存文件替换正在运行的可执行文件。ApplyStaged 先把该文件改名为带 .old 后缀的路径，再拷贝暂存文件；拷贝失败时把 .old 改回原名。
 package update
 
 import (
@@ -15,14 +16,13 @@ import (
 )
 
 var (
-	// ErrQuitNeeded means the installer was spawned and the app should exit.
+	// ErrQuitNeeded 表示安装器已经拉起，当前进程应当退出，安装才能做完。
 	ErrQuitNeeded = errors.New("update: quit to finish install")
-	// ErrOpenedPackage means a DMG/folder was opened for the user to finish.
+	// ErrOpenedPackage 表示已经为用户打开了 DMG 或目录，剩下的步骤由用户完成。
 	ErrOpenedPackage = errors.New("update: opened package for the user")
 )
 
-// Pending names the staged payload a human asked to install. The agent loop
-// has no tool that writes this file.
+// Pending 是待安装的暂存包，由 MarkPending 写到目录下的 pending.json。
 type Pending struct {
 	Staging  string `json:"staging"`
 	SHA256   string `json:"sha256,omitempty"`
@@ -31,10 +31,12 @@ type Pending struct {
 	Filename string `json:"filename,omitempty"`
 }
 
+// pendingPath 返回 dir/pending.json。
 func pendingPath(dir string) string {
 	return filepath.Join(dir, "pending.json")
 }
 
+// MarkPending 创建目录并把 Pending 写成 pending.json，权限 0o644。
 func MarkPending(dir string, p Pending) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -46,6 +48,7 @@ func MarkPending(dir string, p Pending) error {
 	return os.WriteFile(pendingPath(dir), b, 0o644)
 }
 
+// ReadPending 读取 pending.json。
 func ReadPending(dir string) (Pending, error) {
 	var p Pending
 	b, err := os.ReadFile(pendingPath(dir))
@@ -55,6 +58,7 @@ func ReadPending(dir string) (Pending, error) {
 	return p, json.Unmarshal(b, &p)
 }
 
+// ClearPending 删除 pending.json。文件本来就不存在时返回 nil。
 func ClearPending(dir string) error {
 	err := os.Remove(pendingPath(dir))
 	if os.IsNotExist(err) {
@@ -63,12 +67,10 @@ func ClearPending(dir string) error {
 	return err
 }
 
+// StagingName 返回暂存文件名 yoyo.staging。
 func StagingName() string { return "yoyo.staging" }
 
-// ApplyStaged replaces exePath with the staged file. It never runs from the
-// agent tool loop. On Windows the running image is renamed to .old first so
-// the replacement can take the original name; the current process keeps
-// serving until exit. This is not an in-place overwrite of a locked argv[0].
+// ApplyStaged 用暂存文件替换 exePath 上正在运行的文件。exePath 为空时改用 os.Executable。两条路径先取绝对路径，相同则返回 "update: refusing to apply staging onto itself"。暂存文件不存在时返回带 "update: staging:" 的错误，大小为 0 时返回 "update: empty staging file"。接着删除已有的 exePath+".old"（删除错误被忽略），再把正在运行的文件改名为该 .old。改名失败时原文件还在，但原先的 .old 已经删掉，返回 "update: cannot move current binary aside: ..."。改名成功后把暂存文件拷到原路径，模式 0o755。拷贝失败时把 .old 改回原路径（改回的错误被忽略），并返回 "update: copy staging: ..."。runtime.GOOS 不是 windows 时，再对新文件 Chmod 0o755。
 func ApplyStaged(exePath, stagingPath string) error {
 	if exePath == "" {
 		var err error
@@ -110,8 +112,7 @@ func ApplyStaged(exePath, stagingPath string) error {
 	return nil
 }
 
-// ApplyDownloaded installs a previously downloaded package. Desktop installers
-// do not replace argv[0]; CLI archives still stage onto the running binary.
+// ApplyDownloaded 按 pending.json 安装已下载的包。没有这份文件时，对 dir/yoyo.staging 调用 ApplyStaged。kind 为空则按文件名推断。nsis 和 exe 走 applyNSIS，成功后返回 ErrQuitNeeded。dmg 打开文件并返回 ErrOpenedPackage。appimage 走 applyAppImage：没有 APPIMAGE 环境变量时打开所在目录并返回 ErrOpenedPackage，替换成功后返回 ErrQuitNeeded。zip、tar.gz、tgz、cli 先抽出可执行文件再 ApplyStaged。其余 kind 直接对暂存路径 ApplyStaged。
 func ApplyDownloaded(exePath, dir string) error {
 	p, err := ReadPending(dir)
 	if err != nil {
@@ -155,6 +156,7 @@ func ApplyDownloaded(exePath, dir string) error {
 	}
 }
 
+// kindFromName 按小写文件名推断种类：以 -setup.exe 或 installer.exe 结尾是 nsis，.dmg、.appimage、.zip、.tar.gz、.tgz 各归其类，其余是 bin。
 func kindFromName(path string) string {
 	n := strings.ToLower(path)
 	switch {
@@ -173,6 +175,7 @@ func kindFromName(path string) string {
 	}
 }
 
+// installDir 返回可执行文件的目录。exePath 为空时用 os.Executable。都失败则返回空串。
 func installDir(exePath string) string {
 	if exePath == "" {
 		exePath, _ = os.Executable()
@@ -185,9 +188,7 @@ func installDir(exePath string) string {
 	return ""
 }
 
-// nsisDestDir is the /D= target. Empty means leave NSIS on its compiled
-// InstallDir — used for go run temps and the wails3 `bin/` next to source,
-// where overwriting the live debug exe cannot succeed.
+// nsisDestDir 是交给 NSIS 的 /D= 目录，已去掉末尾斜杠。skipNSISDestDir 为真时返回空串，安装器就用它自己编译进去的 InstallDir。
 func nsisDestDir(exePath string) string {
 	dir := strings.TrimRight(installDir(exePath), `/\`)
 	if skipNSISDestDir(dir) {
@@ -196,6 +197,7 @@ func nsisDestDir(exePath string) string {
 	return dir
 }
 
+// skipNSISDestDir 在目录为空、路径中含分隔符加 go-build，或目录名是 bin 且上一级有 go.mod 或 Taskfile.yml 时返回 true。
 func skipNSISDestDir(dir string) bool {
 	if dir == "" {
 		return true
@@ -217,6 +219,7 @@ func skipNSISDestDir(dir string) bool {
 	return false
 }
 
+// extractCLIBinary 从 zip 或 tar.gz 抽出第一个可执行文件到 destDir/yoyo.staging。其他后缀原样返回归档路径。
 func extractCLIBinary(archive, destDir string) (string, error) {
 	lower := strings.ToLower(archive)
 	out := filepath.Join(destDir, StagingName())
@@ -230,6 +233,7 @@ func extractCLIBinary(archive, destDir string) (string, error) {
 	}
 }
 
+// unzipFirstBinary 优先抽出名为 yoyo 或 yoyo.exe 的文件，没有则用遇到的第一个非目录项。压缩包里没有文件时返回 "update: zip has no files"。
 func unzipFirstBinary(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -262,6 +266,7 @@ func unzipFirstBinary(src, dest string) error {
 	return writeNewFile(dest, rc, 0o755)
 }
 
+// untarFirstBinary 从 gzip 包里的 tar 抽出普通文件。遇到名为 yoyo 或 yoyo.exe 的立刻停。没有则留下第一个普通文件。一个都没有时返回 "update: tar has no files"。
 func untarFirstBinary(src, dest string) error {
 	f, err := os.Open(src)
 	if err != nil {
@@ -303,6 +308,7 @@ func untarFirstBinary(src, dest string) error {
 	return nil
 }
 
+// writeNewFile 创建或截断 dest 并把 r 全部写入。先保证父目录存在。
 func writeNewFile(dest string, r io.Reader, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
@@ -319,6 +325,7 @@ func writeNewFile(dest string, r io.Reader, mode os.FileMode) error {
 	return closeErr
 }
 
+// copyFile 打开 src，再用 writeNewFile 写到 dst。
 func copyFile(src, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {

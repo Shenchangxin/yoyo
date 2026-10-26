@@ -1,3 +1,6 @@
+// 按领域目录存放可迁移经验。cue、lesson、evidence 三者缺一，或正文含禁用词、held 编号时不落盘。
+// 检索只读本领域目录。采纳的材料记内容寻址哈希，L1 文件由 WriteL1 展开。Overlay 在采纳后调用，不移动 refs。
+
 package evolve
 
 import (
@@ -12,23 +15,27 @@ import (
 )
 
 const (
-	LibraryNoEntry  = "no_entry"
-	LibraryAdded    = "added"
+	// LibraryNoEntry 表示没有写入经验，值为 no_entry。
+	LibraryNoEntry = "no_entry"
+	// LibraryAdded 表示已经写入一条经验，值为 added。
+	LibraryAdded = "added"
+	// libraryIndexCap 是 Context 返回的 INDEX 字节上限。
 	libraryIndexCap = 8_000
-	libraryUnknown  = "unknown"
+	// libraryUnknown 是空路径或无法成名时的领域目录名。
+	libraryUnknown = "unknown"
 )
 
 var (
+	// librarySlugCut 把目录名里字母和数字以外的片段换成下划线。点、下划线和连字符保留。
 	librarySlugCut = regexp.MustCompile(`[^\p{L}\p{N}._-]+`)
-	libraryBanned  = []string{
+	// libraryBanned 是经验正文里出现就不能落盘的子串，比较时用小写。
+	libraryBanned = []string{
 		"pass_rate", "shouldpromote", "held-out", "held_out",
 		"grader", "rubric", "benchmark", "harbor-index",
 	}
 )
 
-// Experience is one transferable library row. All three of cue, lesson and
-// evidence must be non-empty or the write is NO_ENTRY — same contract as
-// Harness². Reflection sits outside the overlay ledger.
+// Experience 是一条可迁移经验。Cue、Lesson、Evidence 都非空才算完整，否则 Add 不建条目。它不计入 Overlay 的 R/P 账本。
 type Experience struct {
 	Cue        string        `json:"cue,omitempty"`
 	Lesson     string        `json:"lesson,omitempty"`
@@ -38,8 +45,7 @@ type Experience struct {
 	Verdicts   []EditVerdict `json:"verdicts,omitempty"`
 }
 
-// EditVerdict is one component row from the reflector. A lesson may rest
-// only on helped / hurt / no observed effect — never on confounded alone.
+// EditVerdict 是一个组件上的判定行。experienceTransferable 只承认 helped、hurt 和 no observed effect，单靠 confounded 不算可迁移。
 type EditVerdict struct {
 	Component  string `json:"component,omitempty"`
 	Candidates string `json:"candidates,omitempty"`
@@ -48,24 +54,20 @@ type EditVerdict struct {
 	Verdict    string `json:"verdict,omitempty"`
 }
 
-// HasExperience is the NO_ENTRY gate: missing any of the three fields must
-// not create an on-disk entry.
+// HasExperience 在 Cue、Lesson、Evidence 去空白后都非空时为真。
 func HasExperience(e Experience) bool {
 	return strings.TrimSpace(e.Cue) != "" &&
 		strings.TrimSpace(e.Lesson) != "" &&
 		strings.TrimSpace(e.Evidence) != ""
 }
 
-// Library is one domain's on-disk experience store. Retrieval is by
-// construction: a domain directory never holds another domain's entries.
-// Adopted matter is a CAS hash, not a copied tree — CAS already is the tree.
+// Library 是一个领域的磁盘经验库。目录名来自 DomainSlug，一个领域目录不放另一个领域的条目。采纳结果存的是内容寻址哈希。
 type Library struct {
 	Root   string
 	Domain string
 }
 
-// DomainSlug maps a workspace path to one directory name. Separators never
-// survive, so a domain cannot escape its folder.
+// DomainSlug 取路径最后一段，去掉分隔符和首尾的点、下划线、连字符，再把大写改成小写。空结果用 libraryUnknown。
 func DomainSlug(workspace string) string {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
@@ -96,6 +98,7 @@ func DomainSlug(workspace string) string {
 	return out
 }
 
+// taskSlug 用 DomainSlug 给题号起目录名。结果是 libraryUnknown 且题号非空时，改用把非字母数字换成下划线的原文。
 func taskSlug(taskID string) string {
 	s := DomainSlug(taskID)
 	if s == libraryUnknown && strings.TrimSpace(taskID) != "" {
@@ -104,6 +107,7 @@ func taskSlug(taskID string) string {
 	return s
 }
 
+// Dir 返回根目录下本领域的文件夹。库为 nil 时返回空串。
 func (l *Library) Dir() string {
 	if l == nil {
 		return ""
@@ -111,15 +115,17 @@ func (l *Library) Dir() string {
 	return filepath.Join(l.Root, DomainSlug(l.Domain))
 }
 
+// IndexPath 返回本领域的 INDEX.md 路径。
 func (l *Library) IndexPath() string {
 	return filepath.Join(l.Dir(), "INDEX.md")
 }
 
+// entryDir 返回该题号在 entries 下的目录。
 func (l *Library) entryDir(taskID string) string {
 	return filepath.Join(l.Dir(), "entries", taskSlug(taskID))
 }
 
-// LibraryEntry is one on-disk experience row for the operator browser.
+// LibraryEntry 是给操作者看的一行经验：编号、三字段和采纳哈希。
 type LibraryEntry struct {
 	ID       string `json:"id"`
 	Cue      string `json:"cue,omitempty"`
@@ -128,13 +134,14 @@ type LibraryEntry struct {
 	Hash     string `json:"hash,omitempty"`
 }
 
-// LibraryView is the read-only INDEX for one domain.
+// LibraryView 是一个领域的只读索引和条目列表。
 type LibraryView struct {
 	Domain  string         `json:"domain"`
 	Index   string         `json:"index,omitempty"`
 	Entries []LibraryEntry `json:"entries,omitempty"`
 }
 
+// View 列出 entries 下的子目录。正文仍含 held 编号的行跳过。库为 nil 时领域名为 libraryUnknown。
 func (l *Library) View(held map[string]bool) LibraryView {
 	out := LibraryView{Domain: libraryUnknown}
 	if l == nil {
@@ -167,8 +174,7 @@ func (l *Library) View(held map[string]bool) LibraryView {
 	return out
 }
 
-// Context is the improver-facing INDEX.md, or empty when this domain has
-// never stored a complete experience. Held-out ids must already be absent.
+// Context 读 INDEX.md。库或根为空、或文件读失败时返回空串。长于 libraryIndexCap 字节时截断。
 func (l *Library) Context() string {
 	if l == nil || l.Root == "" {
 		return ""
@@ -184,8 +190,7 @@ func (l *Library) Context() string {
 	return s
 }
 
-// Add stores one adopted snapshot hash plus a complete experience. Incomplete
-// rows, banned grader tokens, or held-out identities are NO_ENTRY (false, nil).
+// Add 写入一条完整经验及其采纳哈希，并重建索引。根为空或题号为空时返回错误。经验含 held 编号、清洗后不完整，或命中 libraryBanned 时返回 false 和 nil，不建文件。
 func (l *Library) Add(taskID, adoptedHash, why string, exp Experience, held map[string]bool) (bool, error) {
 	if l == nil || strings.TrimSpace(l.Root) == "" {
 		return false, fmt.Errorf("library: root required")
@@ -219,6 +224,7 @@ func (l *Library) Add(taskID, adoptedHash, why string, exp Experience, held map[
 	return true, nil
 }
 
+// rebuildIndex 按 entries 子目录重写 INDEX.md。没有条目时写上空库说明。
 func (l *Library) rebuildIndex() error {
 	dir := l.Dir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -256,6 +262,7 @@ func (l *Library) rebuildIndex() error {
 	return os.WriteFile(l.IndexPath(), []byte(b.String()), 0o644)
 }
 
+// renderExperienceMD 把题号、哈希、选择理由、编辑表和可迁移字段写成 EXPERIENCE.md 正文。
 func renderExperienceMD(taskID, hash, why string, exp Experience) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", taskID)
@@ -288,6 +295,7 @@ func renderExperienceMD(taskID, hash, why string, exp Experience) string {
 	return b.String()
 }
 
+// experienceField 从 EXPERIENCE.md 里取 `- **name**:` 这一行的余下文本。
 func experienceField(path, name string) string {
 	for _, line := range strings.Split(readSmall(path), "\n") {
 		pref := "- **" + name + "**:"
@@ -298,6 +306,7 @@ func experienceField(path, name string) string {
 	return ""
 }
 
+// readSmall 读整个文件。读失败时返回空串。
 func readSmall(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -306,8 +315,7 @@ func readSmall(path string) string {
 	return string(b)
 }
 
-// SanitizeExperience strips held-out identities. Emptying a required field
-// becomes NO_ENTRY at the caller.
+// SanitizeExperience 用 stripHeld 去掉各字段里的 held 编号并去掉首尾空白。必填字段被清空后，由调用方把它当成不写入。
 func SanitizeExperience(exp Experience, held map[string]bool) Experience {
 	exp.Cue = strings.TrimSpace(stripHeld(exp.Cue, held))
 	exp.Lesson = strings.TrimSpace(stripHeld(exp.Lesson, held))
@@ -324,6 +332,7 @@ func SanitizeExperience(exp Experience, held map[string]bool) Experience {
 	return exp
 }
 
+// experienceHasHeld 在 cue、lesson、evidence、edits 或判定表里出现任一非空 held 编号时为真。held 为空时为假。
 func experienceHasHeld(exp Experience, held map[string]bool) bool {
 	if len(held) == 0 {
 		return false
@@ -337,6 +346,7 @@ func experienceHasHeld(exp Experience, held map[string]bool) bool {
 	return false
 }
 
+// experienceBanned 在小写拼接正文里命中 libraryBanned 任一子串时为真。
 func experienceBanned(exp Experience) bool {
 	blob := strings.ToLower(exp.Cue + "\n" + exp.Lesson + "\n" + exp.Evidence + "\n" + exp.Edits + "\n" + renderEditTable(exp.Verdicts))
 	for _, w := range libraryBanned {
@@ -347,8 +357,7 @@ func experienceBanned(exp Experience) bool {
 	return false
 }
 
-// WriteL1 expands an adopted CAS snapshot into L1 files under the entry's
-// harness/ directory. Playbook and prompt fragments are never written.
+// WriteL1 把采纳快照展开成条目 harness/ 下的 L1 文件。RenderL1 不含剧本和提示片段。含评分禁用词的正文跳过。库、库对象或哈希为空时返回 nil。
 func (l *Library) WriteL1(cas *artifact.Store, taskID, hash string, held map[string]bool) error {
 	if l == nil || cas == nil || strings.TrimSpace(hash) == "" {
 		return nil

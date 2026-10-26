@@ -1,3 +1,5 @@
+// remotion.go 在视频目录里安装 Remotion，并用 TitleCard 合成片头。
+
 package video
 
 import (
@@ -15,6 +17,7 @@ import (
 	"time"
 )
 
+// remotionCLIName 在 Windows 上返回 remotion.cmd，其他系统返回 remotion。
 func remotionCLIName() string {
 	if runtime.GOOS == "windows" {
 		return "remotion.cmd"
@@ -22,6 +25,7 @@ func remotionCLIName() string {
 	return "remotion"
 }
 
+// remotionDir 返回视频目录下的 remotion 文件夹。目录为空时返回空。
 func (e *Engine) remotionDir() string {
 	if e == nil || strings.TrimSpace(e.Dir) == "" {
 		return ""
@@ -29,6 +33,7 @@ func (e *Engine) remotionDir() string {
 	return filepath.Join(e.Dir, "remotion")
 }
 
+// nodePath 返回已记住的 node。值为 - 时表示没有。否则在 PATH 里找。
 func (e *Engine) nodePath() string {
 	if e == nil {
 		p, _ := exec.LookPath("node")
@@ -44,6 +49,7 @@ func (e *Engine) nodePath() string {
 	return p
 }
 
+// npmPath 返回已记住的 npm。值为 - 时表示没有。否则按 lookNPM 查找。
 func (e *Engine) npmPath() string {
 	if e == nil {
 		return lookNPM()
@@ -57,6 +63,7 @@ func (e *Engine) npmPath() string {
 	return lookNPM()
 }
 
+// lookNPM 在 PATH 里找 npm，Windows 上再找 npm.cmd。
 func lookNPM() string {
 	if p, err := exec.LookPath("npm"); err == nil {
 		return p
@@ -69,6 +76,7 @@ func lookNPM() string {
 	return ""
 }
 
+// remotionBin 返回已记住的命令，或 remotion 目录 node_modules/.bin 里的可执行文件。Windows 上再试不带 .cmd 的名字。
 func (e *Engine) remotionBin() string {
 	if e != nil && e.rmBin != "" {
 		return e.rmBin
@@ -93,16 +101,17 @@ func (e *Engine) remotionBin() string {
 	return ""
 }
 
+// managedRemotionReady 在托管的 Remotion 命令存在时为真。
 func (e *Engine) managedRemotionReady() bool {
 	return e != nil && e.remotionBin() != ""
 }
 
-// RemotionStatus reports CLI detect without a video home. Prefer RemotionSnapshot
-// on an Engine so managed installs under $YOYO_HOME/video/remotion are visible.
+// RemotionStatus 在没有视频目录的空引擎上做一次检测。要看见托管安装，用引擎上的 RemotionSnapshot。
 func RemotionStatus() map[string]any {
 	return (&Engine{}).RemotionSnapshot()
 }
 
+// RemotionSnapshot 报告 node、npm、npx 和托管安装。托管命令存在时 source 为 managed 且 ready 为真。否则再看系统 remotion 或 npx --no-install remotion --version，3 秒超时。
 func (e *Engine) RemotionSnapshot() map[string]any {
 	node := ""
 	npx := ""
@@ -163,6 +172,7 @@ func (e *Engine) RemotionSnapshot() map[string]any {
 	return out
 }
 
+// RemotionInstallSnapshot 返回安装阶段、百分比和错误。已经就绪且不在安装中时，空闲或错误阶段改报 ready、100。
 func (e *Engine) RemotionInstallSnapshot() map[string]any {
 	if e == nil {
 		return map[string]any{"ready": false, "phase": "idle", "percent": 0, "error": ""}
@@ -190,12 +200,14 @@ func (e *Engine) RemotionInstallSnapshot() map[string]any {
 	}
 }
 
+// remotionCallResult 在快照上加上 ok。
 func (e *Engine) remotionCallResult() map[string]any {
 	st := e.RemotionSnapshot()
 	st["ok"] = true
 	return st
 }
 
+// InstallRemotion 在已经就绪时直接返回。没有 node 或 npm 时把阶段写成 error。否则开始一次安装并立刻返回当前快照。
 func (e *Engine) InstallRemotion() map[string]any {
 	if e.managedRemotionReady() {
 		return e.remotionCallResult()
@@ -212,6 +224,7 @@ func (e *Engine) InstallRemotion() map[string]any {
 	return e.remotionCallResult()
 }
 
+// beginRemotionInstall 已在安装时返回同一个通道。否则把阶段设为 preparing、5%，并在后台跑安装。
 func (e *Engine) beginRemotionInstall() (<-chan struct{}, error) {
 	e.rmMu.Lock()
 	defer e.rmMu.Unlock()
@@ -230,6 +243,7 @@ func (e *Engine) beginRemotionInstall() (<-chan struct{}, error) {
 	return ch, nil
 }
 
+// runRemotionInstall 跑完安装后把阶段写成 ready 或 error，关闭通道，并送出 remotion 快照。
 func (e *Engine) runRemotionInstall(done chan struct{}) {
 	defer func() {
 		e.rmMu.Lock()
@@ -253,6 +267,7 @@ func (e *Engine) runRemotionInstall(done chan struct{}) {
 	e.rmMu.Unlock()
 }
 
+// setRemotionProgress 更新阶段、百分比和错误，并送出 remotion 快照。百分比小于 0 时不改百分比。
 func (e *Engine) setRemotionProgress(phase string, percent int, errMsg string) {
 	if e == nil {
 		return
@@ -271,6 +286,7 @@ func (e *Engine) setRemotionProgress(phase string, percent int, errMsg string) {
 	e.hub("remotion", e.RemotionInstallSnapshot())
 }
 
+// installRemotionBundle 先写工程，再 npm install，最后确认命令还在。
 func (e *Engine) installRemotionBundle() error {
 	e.setRemotionProgress("preparing", 8, "")
 	if err := e.writeRemotionProject(); err != nil {
@@ -287,6 +303,7 @@ func (e *Engine) installRemotionBundle() error {
 	return nil
 }
 
+// npmInstallRemotion 在 remotion 目录执行 npm install --omit=dev --no-fund --no-audit，超时 20 分钟。进度从 20 起每 2 秒加 4，直到 90。失败时带上输出末尾 800 字。
 func (e *Engine) npmInstallRemotion() error {
 	dir := e.remotionDir()
 	npm := e.npmPath()
@@ -322,6 +339,7 @@ func (e *Engine) npmInstallRemotion() error {
 	}
 }
 
+// tailRunes 返回去掉空白后的末尾 n 个字符。
 func tailRunes(s string, n int) string {
 	s = strings.TrimSpace(s)
 	r := []rune(s)
@@ -331,6 +349,7 @@ func tailRunes(s string, n int) string {
 	return string(r[len(r)-n:])
 }
 
+// remotionChrome 先看 YOYO_CHROME，再按系统找 Chrome、Chromium 或 Edge。
 func remotionChrome() string {
 	if v := strings.TrimSpace(os.Getenv("YOYO_CHROME")); v != "" {
 		return v
@@ -370,6 +389,7 @@ func remotionChrome() string {
 	return ""
 }
 
+// probeVideo 用 ffprobe 读第一路视频的宽高和时长，超时 20 秒。读不到时宽 1080、高 1920、时长 5 秒。宽高会收成偶数。
 func (e *Engine) probeVideo(path string) (w, h int, seconds float64) {
 	w, h = 1080, 1920
 	seconds = 5
@@ -410,7 +430,7 @@ func (e *Engine) probeVideo(path string) (w, h int, seconds float64) {
 	return
 }
 
-// RenderTitleCard runs the managed Remotion TitleCard composition onto a CAS video.
+// RenderTitleCard 用托管的 TitleCard 合成片头。源片按哈希取出后放到 public，按 30 帧每秒向上取整，不足 30 帧时用 30。传入画幅时改用该画幅的宽高。渲染超时 12 分钟。找到浏览器时加上 --browser-executable。成片入库，来源是 studio-wrap-remotion。
 func (e *Engine) RenderTitleCard(hash, title, aspect string) (MediaRef, error) {
 	if !e.managedRemotionReady() {
 		return MediaRef{}, fmt.Errorf("remotion is not installed")

@@ -1,3 +1,5 @@
+// 锁住写前快照按时间戳从早到晚恢复，同一路径留下最早那一份。带创建标记的快照会删掉后来出现的文件。after 之前的时间戳目录不参与。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"time"
 )
 
+// TestFileSnapshotRewindRestoresOldest 锁住两次快照之后恢复得到的是第一次写入前的 orig，而不是中间的 edit-1。
 func TestFileSnapshotRewindRestoresOldest(t *testing.T) {
 	dir := t.TempDir()
 	ws := t.TempDir()
@@ -34,6 +37,7 @@ func TestFileSnapshotRewindRestoresOldest(t *testing.T) {
 	}
 }
 
+// TestRestoreFileSnapshotsAfterSkipsOlderStamps 锁住早于截止时间的快照被跳过，恢复得到的是之后那次写入前的 edit-1，不是最初的 orig。
 func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
 	dir := t.TempDir()
 	ws := t.TempDir()
@@ -43,8 +47,7 @@ func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
 	}
 	tools := &WorkspaceTools{Workspace: ws, Spill: NewSpill(dir)}
 	tools.snapshotBeforeWrite("note.txt", target)
-	// The origin snapshot and a wall-clock mark taken immediately after it can
-	// share one Windows tick. Derive the cutoff from the snapshot itself.
+	// 起点快照和紧接着取的墙钟可能落在同一个 Windows 时钟刻度上，所以截止时间从快照自己的时间戳推出来。
 	mark := fileStampCutoff(t, dir)
 	waitForNewerFileStamp(t, dir)
 	if err := os.WriteFile(target, []byte("edit-1"), 0o644); err != nil {
@@ -64,6 +67,7 @@ func TestRestoreFileSnapshotsAfterSkipsOlderStamps(t *testing.T) {
 	}
 }
 
+// TestRestoreFileSnapshotsAfterDeletesCreatedFile 锁住写入前不存在的文件，恢复时被删除。
 func TestRestoreFileSnapshotsAfterDeletesCreatedFile(t *testing.T) {
 	dir := t.TempDir()
 	ws := t.TempDir()
@@ -82,6 +86,7 @@ func TestRestoreFileSnapshotsAfterDeletesCreatedFile(t *testing.T) {
 	}
 }
 
+// fileStampNames 列出溢出目录 files 下的时间戳子目录名。
 func fileStampNames(t *testing.T, spill string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(spill, "files"))
@@ -97,6 +102,7 @@ func fileStampNames(t *testing.T, spill string) []string {
 	return names
 }
 
+// fileStampCutoff 解析唯一的时间戳，并加上一纳秒，使该快照早于返回的截止时间。
 func fileStampCutoff(t *testing.T, spill string) time.Time {
 	t.Helper()
 	names := fileStampNames(t, spill)
@@ -110,6 +116,7 @@ func fileStampCutoff(t *testing.T, spill string) time.Time {
 	return stamp.Add(time.Nanosecond)
 }
 
+// waitForNewerFileStamp 等到 UTC 紧凑时间字符串大于已有的最新戳，避免两个快照同名。
 func waitForNewerFileStamp(t *testing.T, spill string) {
 	t.Helper()
 	names := fileStampNames(t, spill)
@@ -132,6 +139,7 @@ func waitForNewerFileStamp(t *testing.T, spill string) {
 	t.Fatalf("clock did not advance past %s", prev)
 }
 
+// TestParseRewindScope 锁住 files from、both，以及默认的 conversation 加 from。
 func TestParseRewindScope(t *testing.T) {
 	scope, from := ParseRewindScope("files from hello")
 	if scope != "files" || from != "hello" {

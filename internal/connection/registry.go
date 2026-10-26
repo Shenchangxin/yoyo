@@ -1,3 +1,6 @@
+// Package connection 保存供应商连接。JSON 文档里的 VaultKey 是钥匙名字，结构体没有密钥原文字段。
+// Upsert 把传入的 apiKey 交给 Secrets.Set，落盘前把 HasKey 写成 false。Settings 原样写入，本包不检查其中是否夹带秘密。
+// adoptDefaultKey 只复制 GetStored 读到的已保存值，不读进程环境变量。
 package connection
 
 import (
@@ -15,18 +18,21 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/filestore"
 )
 
+// Secrets 是按名字读写钥匙的仓库。Lease 取一次可用值，Get 读取，Set 写入。
 type Secrets interface {
 	Lease(name string) (string, error)
 	Set(name, value string)
 	Get(name string) (string, error)
 }
 
+// Registry 把连接 JSON 放在 filestore 目录里，钥匙交给 vault。
 type Registry struct {
 	mu    sync.Mutex
 	docs  *filestore.Store
 	vault Secrets
 }
 
+// Open 用 filestore 打开 dir，并确保有一条本地 CAS 存储连接。
 func Open(dir string, vault Secrets) (*Registry, error) {
 	docs, err := filestore.New(dir)
 	if err != nil {
@@ -37,12 +43,14 @@ func Open(dir string, vault Secrets) (*Registry, error) {
 	return r, nil
 }
 
+// List 返回具备该能力的连接。cap 为空则返回全部非下划线文档。顺序先按 Priority 从高到低，再按 CreatedAt。
 func (r *Registry) List(cap string) ([]Connection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.listLocked(cap)
 }
 
+// listLocked 在已持有锁时列出连接，并给每条 hydrateKey。id 为空或以 _ 开头的文档跳过。
 func (r *Registry) listLocked(cap string) ([]Connection, error) {
 	ids, err := r.docs.IDs("")
 	if err != nil {
@@ -79,12 +87,14 @@ func (r *Registry) listLocked(cap string) ([]Connection, error) {
 	return out, nil
 }
 
+// Get 按 id 读取一条连接。找不到返回 connection not found。
 func (r *Registry) Get(id string) (Connection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.getLocked(id)
 }
 
+// getLocked 在已持有锁时读取 id.json。id 为空或文件不存在都返回 connection not found。
 func (r *Registry) getLocked(id string) (Connection, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -101,6 +111,7 @@ func (r *Registry) getLocked(id string) (Connection, error) {
 	return c, nil
 }
 
+// hydrateKey 在仓库里该 VaultKey 已有非空保存值，或 Get 成功时，把 HasKey 设为真。不把钥匙原文写进连接。
 func (r *Registry) hydrateKey(c *Connection) {
 	if r.vault == nil || c.VaultKey == "" {
 		return
@@ -114,12 +125,14 @@ func (r *Registry) hydrateKey(c *Connection) {
 	}
 }
 
+// Defaults 返回各能力当前的默认连接 id。
 func (r *Registry) Defaults() Defaults {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.defaultsLocked()
 }
 
+// defaultsLocked 读取 _defaults.json。文件缺失或为空时返回空映射。
 func (r *Registry) defaultsLocked() Defaults {
 	var d Defaults
 	_ = r.docs.Get("_defaults.json", &d)
@@ -129,6 +142,7 @@ func (r *Registry) defaultsLocked() Defaults {
 	return d
 }
 
+// SetDefault 把该能力的默认连接设为 id。id 为空则删掉这一项。
 func (r *Registry) SetDefault(cap, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -142,6 +156,7 @@ func (r *Registry) SetDefault(cap, id string) error {
 	return r.docs.Put("_defaults.json", d)
 }
 
+// Upsert 写入连接。VaultKey 为空时用 conn.<id>.key。apiKey 非空则 Set 到该名字；若这是默认聊天槽或还没有默认聊天槽，再 Set 到 default。落盘的副本把 HasKey 写成 false。
 func (r *Registry) Upsert(c Connection, apiKey string) (Connection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -177,7 +192,7 @@ func (r *Registry) Upsert(c Connection, apiKey string) (Connection, error) {
 	if apiKey != "" && r.vault != nil {
 		r.vault.Set(c.VaultKey, apiKey)
 		c.HasKey = true
-		// Alias only the default chat slot so extra providers keep their own keys.
+		// 只把默认聊天槽的钥匙再写一份到名字 default，其余供应商保持自己的钥匙。
 		if HasCap(c, CapChat) {
 			d := r.defaultsLocked()
 			if d[CapChat] == c.ID || d[CapChat] == "" {
@@ -205,11 +220,13 @@ func (r *Registry) Upsert(c Connection, apiKey string) (Connection, error) {
 	return c, nil
 }
 
+// stripKey 返回 HasKey 为 false 的副本，供写入 JSON。它不改 VaultKey。
 func stripKey(c Connection) Connection {
 	c.HasKey = false
 	return c
 }
 
+// uniqueNameLocked 在名称与其他连接冲突时追加空格和序号，跳过 skipID。
 func (r *Registry) uniqueNameLocked(name, skipID string) string {
 	base := strings.TrimSpace(name)
 	if base == "" {
@@ -236,6 +253,7 @@ func (r *Registry) uniqueNameLocked(name, skipID string) string {
 	return base + " " + newID()[:6]
 }
 
+// Delete 把该连接的 VaultKey 在仓库里 Set 成空串，并从默认表里去掉指向它的项，再删除 id.json。
 func (r *Registry) Delete(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -257,6 +275,7 @@ func (r *Registry) Delete(id string) error {
 	return r.docs.Delete(id + ".json")
 }
 
+// Active 先按 id 找，再按该能力的默认项，然后在已启用且有钥匙的连接里选。存储能力的 cas 协议可以没有钥匙。都没有则返回错误。
 func (r *Registry) Active(cap, id string) (Connection, error) {
 	cap = NormalizeCap(cap)
 	if id != "" {
@@ -308,6 +327,7 @@ func (r *Registry) Active(cap, id string) (Connection, error) {
 	return Connection{}, fmt.Errorf("no active %s connection — add one in Settings", cap)
 }
 
+// Lease 按连接的 VaultKey 向仓库租用钥匙原文。仓库缺失或 VaultKey 为空时返回错误。
 func (r *Registry) Lease(c Connection) (string, error) {
 	if r.vault == nil {
 		return "", fmt.Errorf("vault missing")
@@ -318,6 +338,7 @@ func (r *Registry) Lease(c Connection) (string, error) {
 	return r.vault.Lease(c.VaultKey)
 }
 
+// ensureCAS 在还没有 protocol 为 cas 的存储连接时写入 cas-local，并在存储默认项为空时把它设为默认。
 func (r *Registry) ensureCAS() error {
 	all, _ := r.listLocked(CapStorage)
 	for _, c := range all {
@@ -343,6 +364,7 @@ func (r *Registry) ensureCAS() error {
 	return nil
 }
 
+// SeedChat 在已有聊天连接时不新建，只对当前默认或列表第一条调用 adoptDefaultKey。没有时按供应商创建一条并设为默认。
 func (r *Registry) SeedChat(provider, baseURL, model string, extraModels ...string) (Connection, error) {
 	list, err := r.List(CapChat)
 	if err != nil {
@@ -381,6 +403,7 @@ func (r *Registry) SeedChat(provider, baseURL, model string, extraModels ...stri
 	return r.adoptDefaultKey(c), nil
 }
 
+// ImportProvider 用给出的 vaultKey 名字导入一条连接，apiKey 传空串，因此这里不写入钥匙原文。isDefault 为真时设成该能力的默认项。
 func (r *Registry) ImportProvider(serviceType, vendor, name, baseURL, vaultKey, model, models string, priority int, active, isDefault bool, settings string, created, updated, id string) (Connection, error) {
 	cap := NormalizeCap(serviceType)
 	if cap == "" {
@@ -417,6 +440,7 @@ func (r *Registry) ImportProvider(serviceType, vendor, name, baseURL, vaultKey, 
 	return out, nil
 }
 
+// MergeSameAccount 把同一供应商、同一主机的连接并到创建最早的那条。两边都有钥匙且 VaultKey 不同则不并。本地 cas 存储不参与。
 func (r *Registry) MergeSameAccount() {
 	list, err := r.List("")
 	if err != nil {
@@ -474,6 +498,7 @@ func (r *Registry) MergeSameAccount() {
 	}
 }
 
+// hostOf 去掉协议和路径，返回端点里的主机部分。
 func hostOf(u string) string {
 	u = strings.TrimSpace(u)
 	u = strings.TrimPrefix(u, "https://")
@@ -484,18 +509,22 @@ func hostOf(u string) string {
 	return u
 }
 
+// nowISO 返回当前 UTC 的 RFC3339Nano 文本。
 func nowISO() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
+// newID 返回 16 字节随机数的十六进制。
 func newID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
 
+// DirOfHome 返回 root 下的 connections 目录。调用方决定 root 是不是主目录。
 func DirOfHome(root string) string {
 	return filepath.Join(root, "connections")
 }
 
+// MustExist 按 0o755 创建目录。
 func MustExist(dir string) error {
 	return os.MkdirAll(dir, 0o755)
 }

@@ -1,3 +1,6 @@
+// Package personal 在 Open 收到的目录里保存任务、目标和 URL 监视，状态文件是 workspace.json。桌面应用把该目录设成主目录的 personal/。
+// KindAgent 创建后即为 waiting_input，tick 会跳过它，不另开模型循环。
+// 邮件和日历先 Propose，Decide 批准后才经连接器发出。本包不写记忆，也不把 Markdown 写进主目录的 pages/。
 package personal
 
 import (
@@ -17,6 +20,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/inbox"
 )
 
+// Bind 是挂到引擎上的依赖。Workspace 只用来拼接相对的表单或 CSV 路径，不是页面库目录。
 type Bind struct {
 	Connectors *connector.Broker
 	Inbox      *inbox.Store
@@ -29,6 +33,7 @@ type Bind struct {
 	Paused     func() bool
 }
 
+// Engine 保存个人目录、workspace.json，以及正在跑的任务租约。
 type Engine struct {
 	dir        string
 	store      *Store
@@ -50,6 +55,7 @@ type Engine struct {
 	lastTick time.Time
 }
 
+// Open 创建 dir 和 dir/files，权限都是 0o755，并打开 workspace.json。Poll 默认 1 秒，Lease 默认 1 分钟，Fetch 默认 SafeGET。
 func Open(dir string) (*Engine, error) {
 	st, err := openStore(dir)
 	if err != nil {
@@ -70,6 +76,7 @@ func Open(dir string) (*Engine, error) {
 	}, nil
 }
 
+// Bind 只覆盖传入的非空字段。Poll 和 Lease 只在大于 0 时覆盖，函数为 nil 时保持原值。
 func (e *Engine) Bind(b Bind) {
 	if b.Connectors != nil {
 		e.Connectors = b.Connectors
@@ -100,6 +107,7 @@ func (e *Engine) Bind(b Bind) {
 	}
 }
 
+// now 调用 Now 并转成 UTC。Now 为 nil 时用当前 UTC。
 func (e *Engine) now() time.Time {
 	if e.Now != nil {
 		return e.Now().UTC()
@@ -107,11 +115,13 @@ func (e *Engine) now() time.Time {
 	return time.Now().UTC()
 }
 
+// newID 用前缀、时分秒毫秒和递增序号拼出 ID。
 func (e *Engine) newID(prefix string) string {
 	n := e.seq.Add(1)
 	return fmt.Sprintf("%s-%s-%d", prefix, e.now().Format("150405.000"), n)
 }
 
+// hashID 把各段用空字节隔开后做 SHA-256，返回十六进制的前 16 位。
 func hashID(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {
@@ -121,6 +131,7 @@ func hashID(parts ...string) string {
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
+// Snapshot 复制存储里的快照，并填上内存中的 Running 和 LastTickAt。
 func (e *Engine) Snapshot() Snapshot {
 	s := e.store.snapshot()
 	e.mu.Lock()
@@ -130,12 +141,14 @@ func (e *Engine) Snapshot() Snapshot {
 	return s
 }
 
+// changed 在 OnChange 非 nil 时调用它。
 func (e *Engine) changed() {
 	if e.OnChange != nil {
 		e.OnChange()
 	}
 }
 
+// notify 在 Inbox 为 nil 时直接返回，否则推一条收件箱记录并调用 changed。
 func (e *Engine) notify(kind inbox.Kind, title, body, taskID, key string) {
 	if e.Inbox == nil {
 		return
@@ -150,6 +163,7 @@ func (e *Engine) notify(kind inbox.Kind, title, body, taskID, key string) {
 	e.changed()
 }
 
+// CreateTask 把空种类收成 agent。prompt 和 title 都空则返回错误。agent 的状态是 waiting_input，题面写明 worker 不另开模型循环。
 func (e *Engine) CreateTask(title, prompt string, kind Kind, input map[string]any, goalID, sessionID string) (Task, error) {
 	kind = Kind(strings.ToLower(strings.TrimSpace(string(kind))))
 	switch kind {
@@ -191,6 +205,7 @@ func (e *Engine) CreateTask(title, prompt string, kind Kind, input map[string]an
 	return t, nil
 }
 
+// defaultPlan 按种类给出步骤标题。未列出的种类只有一步，写明在对话里完成。
 func defaultPlan(kind Kind) []Step {
 	switch kind {
 	case KindDocument:
@@ -211,6 +226,7 @@ func defaultPlan(kind Kind) []Step {
 	}
 }
 
+// Answer 只接受 waiting_input。document 要解析出字段，plan 要按行给出里程碑，然后把状态改回 queued。
 func (e *Engine) Answer(id, text string) (Task, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -264,6 +280,7 @@ func (e *Engine) Answer(id, text string) (Task, error) {
 	return out, nil
 }
 
+// parseFields 在正文以 { 开头时按 JSON 对象解析，否则按行切分冒号或等号。
 func parseFields(text string) map[string]string {
 	text = strings.TrimSpace(text)
 	out := map[string]string{}
@@ -292,6 +309,7 @@ func parseFields(text string) map[string]string {
 	return out
 }
 
+// Complete 把未成功且未取消的任务标成 succeeded，并按 task-done 通知收件箱。
 func (e *Engine) Complete(id, result string) (Task, error) {
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
 		if cur.Status == StatusSucceeded || cur.Status == StatusCancelled {
@@ -313,6 +331,7 @@ func (e *Engine) Complete(id, result string) (Task, error) {
 	return out, nil
 }
 
+// Fail 把未成功且未取消的任务标成 failed，并写下错误文本。
 func (e *Engine) Fail(id, errMsg string) (Task, error) {
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
 		if cur.Status == StatusSucceeded || cur.Status == StatusCancelled {
@@ -332,6 +351,7 @@ func (e *Engine) Fail(id, errMsg string) (Task, error) {
 	return out, nil
 }
 
+// Cancel 把未成功且未取消的任务标成 cancelled。仍在 awaiting 的关联提案改为 cancelled，监视改为 stopped，并中止该任务的租约。
 func (e *Engine) Cancel(id string) (Task, error) {
 	var actionID string
 	out, ok := e.store.casTask(id, "", "", func(cur *Task) bool {
@@ -366,6 +386,7 @@ func (e *Engine) Cancel(id string) (Task, error) {
 	return out, nil
 }
 
+// CreateGoal 要求标题非空。类别为空时写成 Personal。空的里程碑标题会被跳过。
 func (e *Engine) CreateGoal(title, description, category string, milestones []string) (Goal, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -395,6 +416,7 @@ func (e *Engine) CreateGoal(title, description, category string, milestones []st
 	return g, nil
 }
 
+// Watch 要求标题和非空 URL。除 sample:// 外必须是 http 或 https，并拒绝 blockedHost。条件默认 change，间隔默认 15 分钟，最大 10080。任务随后改成 scheduled。
 func (e *Engine) Watch(title, rawURL, condition, value string, intervalMinutes int) (Monitor, Task, error) {
 	title = strings.TrimSpace(title)
 	rawURL = strings.TrimSpace(rawURL)
@@ -468,8 +490,9 @@ func (e *Engine) Watch(title, rawURL, condition, value string, intervalMinutes i
 	return m, t, nil
 }
 
+// parsePublicURL 去掉协议、路径和端口，只返回主机名。空主机名返回错误。
 func parsePublicURL(raw string) (string, error) {
-	// hostname only for blockedHost
+	// 只取出主机名，交给 blockedHost。
 	s := raw
 	s = strings.TrimPrefix(s, "https://")
 	s = strings.TrimPrefix(s, "http://")
@@ -481,6 +504,7 @@ func parsePublicURL(raw string) (string, error) {
 	return host, nil
 }
 
+// PresentChoices 在选项为空时放入一个 OK。任一选项的 Source 非空就当成比较，最多保留 3 项，并向收件箱推一条询问。
 func (e *Engine) PresentChoices(sessionID, title string, options []ChoiceOption) Choice {
 	if title == "" {
 		title = "Choose"
@@ -508,6 +532,7 @@ func (e *Engine) PresentChoices(sessionID, title string, options []ChoiceOption)
 	return c
 }
 
+// SelectChoice 按选项 ID 或忽略大小写的标签选中一项。未知选项返回错误。
 func (e *Engine) SelectChoice(id, option string) (Choice, error) {
 	c, ok := e.store.choice(id)
 	if !ok {
@@ -531,12 +556,14 @@ func (e *Engine) SelectChoice(id, option string) (Choice, error) {
 	return c, nil
 }
 
+// filesDir 返回 dir/files 下该任务的目录，并按 0o755 创建。
 func (e *Engine) filesDir(taskID string) string {
 	p := filepath.Join(e.dir, "files", taskID)
 	_ = os.MkdirAll(p, 0o755)
 	return p
 }
 
+// clip 去掉首尾空白，并按字节数截断。n 不大于 0 时不截。
 func clip(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if n > 0 && len(s) > n {
@@ -545,6 +572,7 @@ func clip(s string, n int) string {
 	return s
 }
 
+// strMap 在值为 nil 时返回空串，否则 Sprint 后再去掉首尾空白。
 func strMap(v any) string {
 	if v == nil {
 		return ""
@@ -552,6 +580,7 @@ func strMap(v any) string {
 	return strings.TrimSpace(fmt.Sprint(v))
 }
 
+// SetSample 把 sample:// 使用的键和正文写入存储。
 func (e *Engine) SetSample(key, text string) {
 	e.store.sample(key, text)
 }

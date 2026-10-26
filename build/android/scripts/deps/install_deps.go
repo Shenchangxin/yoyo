@@ -1,3 +1,4 @@
+// Package main 检查 Android 开发依赖。CI 非空或 TASK_FORCE_YES=true 时，创建 AVD 的提示自动接受。
 package main
 
 import (
@@ -11,26 +12,27 @@ import (
 	"strings"
 )
 
+// main 检查 Go、ANDROID_HOME、adb、模拟器、NDK、Java，并在没有 AVD 时提议用已安装的系统镜像创建。有缺失项时以状态 1 退出。
 func main() {
 	fmt.Println("Checking Android development dependencies...")
 	fmt.Println()
 
 	errors := []string{}
 
-	// Check Go
+	// 检查 Go。
 	if !checkCommand("go", "version") {
 		errors = append(errors, "Go is not installed. Install from https://go.dev/dl/")
 	} else {
 		fmt.Println("✓ Go is installed")
 	}
 
-	// Check ANDROID_HOME
+	// 检查 ANDROID_HOME，空则再看 ANDROID_SDK_ROOT。
 	androidHome := os.Getenv("ANDROID_HOME")
 	if androidHome == "" {
 		androidHome = os.Getenv("ANDROID_SDK_ROOT")
 	}
 	if androidHome == "" {
-		// Try common default locations
+		// 再试常见的默认 SDK 路径。
 		home, _ := os.UserHomeDir()
 		possiblePaths := []string{
 			filepath.Join(home, "Android", "Sdk"),
@@ -51,7 +53,7 @@ func main() {
 		fmt.Printf("✓ ANDROID_HOME: %s\n", androidHome)
 	}
 
-	// Check adb
+	// 检查 adb。
 	if !checkCommand("adb", "version") {
 		if androidHome != "" {
 			platformTools := filepath.Join(androidHome, "platform-tools")
@@ -63,7 +65,7 @@ func main() {
 		fmt.Println("✓ adb is installed")
 	}
 
-	// Check emulator
+	// 检查 emulator。
 	if !checkCommand("emulator", "-list-avds") {
 		if androidHome != "" {
 			emulatorPath := filepath.Join(androidHome, "emulator")
@@ -75,10 +77,10 @@ func main() {
 		fmt.Println("✓ Android Emulator is installed")
 	}
 
-	// Check NDK
+	// 检查 NDK。ANDROID_NDK_HOME 为空时，用 SDK 下 ndk 目录里的第一个子目录。
 	ndkHome := os.Getenv("ANDROID_NDK_HOME")
 	if ndkHome == "" && androidHome != "" {
-		// Look for NDK in default location
+		// 在默认的 ndk 目录里找第一份。
 		ndkDir := filepath.Join(androidHome, "ndk")
 		if entries, err := os.ReadDir(ndkDir); err == nil {
 			for _, entry := range entries {
@@ -96,14 +98,14 @@ func main() {
 		fmt.Printf("✓ Android NDK: %s\n", ndkHome)
 	}
 
-	// Check Java
+	// 检查 Java。
 	if !checkCommand("java", "-version") {
 		errors = append(errors, "Java not found. Install JDK 11+ (OpenJDK recommended)")
 	} else {
 		fmt.Println("✓ Java is installed")
 	}
 
-	// Check for AVD (Android Virtual Device)
+	// 能列出 AVD 且输出非空就计数。列表为空时才提议创建，并且只用已经安装的系统镜像。
 	if checkCommand("emulator", "-list-avds") {
 		cmd := exec.Command("emulator", "-list-avds")
 		output, err := cmd.Output()
@@ -111,8 +113,7 @@ func main() {
 			avds := strings.Split(strings.TrimSpace(string(output)), "\n")
 			fmt.Printf("✓ Found %d Android Virtual Device(s)\n", len(avds))
 		} else {
-			// Mirror the iOS installer, which offers to create a simulator when
-			// none exist. Only create from an already-installed system image.
+			// 没有 AVD 时提议创建。只使用已经装好的系统镜像，这里不运行 sdkmanager。
 			offerCreateAVD(androidHome)
 		}
 	}
@@ -147,6 +148,7 @@ func main() {
 	fmt.Println("✓ All Android development dependencies are installed!")
 }
 
+// checkCommand 运行 name 和 args。标准输出和标准错误都丢掉，退出码为 0 才返回 true。
 func checkCommand(name string, args ...string) bool {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = nil
@@ -154,19 +156,14 @@ func checkCommand(name string, args ...string) bool {
 	return cmd.Run() == nil
 }
 
-// offerCreateAVD mirrors the iOS installer's simulator offer: when no AVD
-// exists, offer to create one — but ONLY from a system image that is already
-// installed. We never run sdkmanager here (a multi-GB download with a license
-// prompt is a surprise the user should trigger themselves).
+// offerCreateAVD 在没有 AVD 时提议创建名为 wails 的设备。只从已经安装、且 ABI 与本机匹配的系统镜像里选 API 数字最大的一份。这里不运行 sdkmanager。
 func offerCreateAVD(androidHome string) {
 	abi := "x86_64"
 	if runtime.GOARCH == "arm64" {
 		abi = "arm64-v8a"
 	}
 
-	// Find the highest-API installed system image matching the host ABI.
-	// The API level must be compared numerically: lexicographic sorting
-	// would rank android-9 above android-35.
+	// 在已安装、ABI 匹配的系统镜像里取 API 数字最大的一份。按数字比，避免 android-9 排在 android-35 前面。
 	var img string
 	if androidHome != "" {
 		matches, _ := filepath.Glob(filepath.Join(androidHome, "system-images", "android-*", "*", abi))
@@ -175,7 +172,7 @@ func offerCreateAVD(androidHome string) {
 			apiDir := filepath.Base(filepath.Dir(filepath.Dir(m)))
 			api, err := strconv.Atoi(strings.TrimPrefix(apiDir, "android-"))
 			if err != nil {
-				continue // preview/extension images (e.g. android-35-ext14)
+				continue // 预览或扩展镜像，例如 android-35-ext14，Atoi 会失败。
 			}
 			if api > bestAPI {
 				bestAPI = api
@@ -194,9 +191,7 @@ func offerCreateAVD(androidHome string) {
 		return
 	}
 
-	// Derive the package path from the installed image directory, e.g.
-	//   <sdk>/system-images/android-35/google_apis/arm64-v8a
-	//   -> system-images;android-35;google_apis;arm64-v8a
+	// 从已安装镜像目录推出包名。例如 <sdk>/system-images/android-35/google_apis/arm64-v8a 变成 system-images;android-35;google_apis;arm64-v8a。
 	rel := strings.TrimPrefix(img, filepath.Join(androidHome, "system-images")+string(os.PathSeparator))
 	pkg := "system-images;" + strings.ReplaceAll(rel, string(os.PathSeparator), ";")
 
@@ -209,7 +204,7 @@ func offerCreateAVD(androidHome string) {
 	}
 
 	cmd := exec.Command(avdmanager, "create", "avd", "--name", "wails", "--package", pkg, "--device", "pixel_7", "--force")
-	cmd.Stdin = strings.NewReader("no\n") // decline the custom hardware-profile prompt
+	cmd.Stdin = strings.NewReader("no\n") // 拒绝自定义硬件配置的提示。
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -219,16 +214,14 @@ func offerCreateAVD(androidHome string) {
 	}
 }
 
-// findAVDManager returns the avdmanager path from PATH, or from the SDK's
-// cmdline-tools (preferring the newest version), or "" if not found.
+// findAVDManager 先在 PATH 里找 avdmanager。没有则在 SDK 的 cmdline-tools/*/bin 里找。目录名是 latest 的优先。否则按版本数字取最大的。都没有就返回空字符串。
 func findAVDManager(androidHome string) string {
 	if p, err := exec.LookPath("avdmanager"); err == nil {
 		return p
 	}
 	if androidHome != "" {
 		matches, _ := filepath.Glob(filepath.Join(androidHome, "cmdline-tools", "*", "bin", "avdmanager"))
-		// Prefer the "latest" alias; otherwise compare versions numerically
-		// ("9.0" would lexicographically outrank "11.0").
+		// 目录名 latest 优先。其余按数字比版本，避免 9.0 排在 11.0 前面。解析失败的版本当成 0。
 		best := ""
 		bestVersion := -1.0
 		for _, m := range matches {
@@ -250,6 +243,7 @@ func findAVDManager(androidHome string) string {
 	return ""
 }
 
+// promptUser 在 CI 非空或 TASK_FORCE_YES 等于 true 时返回 true。否则读一行，小写后是 y 或 yes 才返回 true。读失败返回 false。
 func promptUser(question string) bool {
 	if os.Getenv("CI") != "" || os.Getenv("TASK_FORCE_YES") == "true" {
 		fmt.Printf("%s [y/N]: y (auto-accepted)\n", question)

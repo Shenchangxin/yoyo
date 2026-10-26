@@ -1,6 +1,12 @@
+/**
+ * 拥有：把运行时错误收成种类、是否可重试，以及横幅和短标题用的文案。
+ * 不拥有：错误卡片的渲染。
+ */
+
 import { str } from "./normalize";
 import type { Item } from "./protocol";
 
+/** ErrorKind 溢出、认证、限流、非法请求、超时、取消、供应商、预算、回合上限、卡住、计划未完成、模型或未知。 */
 export type ErrorKind =
   | "overflow"
   | "auth"
@@ -16,6 +22,7 @@ export type ErrorKind =
   | "model"
   | "unknown";
 
+/** ErrorCopy 每种错误的标题和提示。 */
 export type ErrorCopy = {
   errorOverflow: string;
   errorOverflowHint: string;
@@ -45,6 +52,7 @@ export type ErrorCopy = {
   errorUnknownHint: string;
 };
 
+/** ClassifiedError 分类结果。payloadTitle 与 payloadHint 来自载荷。detail 是具体原因。 */
 export type ClassifiedError = {
   kind: ErrorKind;
   retryable: boolean;
@@ -57,6 +65,7 @@ const KINDS: ErrorKind[] = [
   "overflow", "auth", "rate_limit", "invalid", "timeout", "canceled", "provider", "budget", "max_turns", "stuck", "plan_open", "model", "unknown",
 ];
 
+/** errorCopy 按种类取标题和提示。对不上时用未知。 */
 export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint: string } {
   switch (kind) {
     case "overflow": return { title: t.errorOverflow, hint: t.errorOverflowHint };
@@ -75,6 +84,7 @@ export function errorCopy(t: ErrorCopy, kind: ErrorKind): { title: string; hint:
   }
 }
 
+/** classifyError 载荷里的 kind 属于已知种类则用它，否则从正文、detail 和 error 推断。retryable 显式为假，或种类是认证、预算时，不可重试。 */
 export function classifyError(raw: string, payload?: Record<string, any>): ClassifiedError {
   const kindRaw = str(payload?.kind).toLowerCase();
   const kind = (KINDS as string[]).includes(kindRaw) ? (kindRaw as ErrorKind) : inferKind(raw + " " + str(payload?.detail) + " " + str(payload?.error));
@@ -88,10 +98,12 @@ export function classifyError(raw: string, payload?: Record<string, any>): Class
   };
 }
 
+/** classifyItem 用条目正文和载荷做分类。 */
 export function classifyItem(item: Item): ClassifiedError {
   return classifyError(item.text, item.payload);
 }
 
+/** 按正文里的特征短语推断种类。对不上则为未知。 */
 function inferKind(s: string): ErrorKind {
   const low = s.toLowerCase();
   if (/(context_length|too many tokens|prompt is too long|maximum context)/.test(low)) return "overflow";
@@ -107,6 +119,7 @@ function inferKind(s: string): ErrorKind {
   return "unknown";
 }
 
+/** 从正文里第一段 JSON 取出 msg、message、error 或 error.message。解析失败则保留原文。 */
 function extractProviderMsg(s: string): string {
   const i = s.indexOf("{");
   if (i < 0) return s;
@@ -119,15 +132,17 @@ function extractProviderMsg(s: string): string {
     if (typeof m?.error === "string" && m.error.trim()) return m.error;
     if (m?.error && typeof m.error.message === "string") return m.error.message;
   } catch {
-    /* keep raw */
+    /* 保留原文 */
   }
   return s;
 }
 
+/** shortError 分类后的标题，不含具体原因。 */
 export function shortError(item: Item, t: ErrorCopy): string {
   return errorCopy(t, classifyItem(item).kind).title;
 }
 
+/** 去掉两端空白。像整页 HTML 时改成一句说明。超过 280 字则截到 277 再加省略号。 */
 function clipDetail(detail: string): string {
   const t = detail.trim();
   if (!t) return "";
@@ -137,7 +152,7 @@ function clipDetail(detail: string): string {
   return t.length > 280 ? `${t.slice(0, 277)}…` : t;
 }
 
-/** Title plus the real reason — the banner used to show only the generic title. */
+/** bannerError 标题加上真实原因。横幅以前只显示笼统标题。没有原因、原因与标题相同，或原因已以标题开头时，不再重复标题。 */
 export function bannerError(raw: string, t: ErrorCopy, payload?: Record<string, any>): string {
   const classified = classifyError(raw, payload);
   const { title } = errorCopy(t, classified.kind);

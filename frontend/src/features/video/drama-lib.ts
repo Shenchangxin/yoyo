@@ -1,5 +1,10 @@
+/**
+ * 本文件拥有短剧工程、集、资产、镜头和工序的类型，以及标题、风格和阶段的纯判断。
+ * 不拥有看板。它不请求服务端，也不改服务端状态。
+ */
 import { EXTRA_DRAMA_STYLES } from "./drama-style-catalog.ts";
 
+/** Drama 是一条系列的 id、标题、风格、画幅和集数。 */
 export type Drama = {
   id: string;
   title: string;
@@ -8,6 +13,7 @@ export type Drama = {
   episode_count: number;
 };
 
+/** Episode 是一集的正文、剧本、分辨率、管线和成片地址。 */
 export type Episode = {
   id: string;
   drama_id: string;
@@ -28,6 +34,7 @@ export type Episode = {
   poster_url?: string;
 };
 
+/** Asset 是角色、场景或道具上界面会读的字段。 */
 export type Asset = {
   id: string;
   name?: string;
@@ -45,6 +52,7 @@ export type Asset = {
   time_of_day?: string;
 };
 
+/** Shot 是一条分镜的序号、描述、视频提示、时长和成片。 */
 export type Shot = {
   id: string;
   shot_number: number;
@@ -61,6 +69,7 @@ export type Shot = {
   prop_ids?: string[];
 };
 
+/** Job 是一条生成任务的类型、状态，以及它挂在哪一集或哪个资产上。 */
 export type Job = {
   id: string;
   type: string;
@@ -75,6 +84,7 @@ export type Job = {
   poster_url?: string;
 };
 
+/** PlanEpisode 是分集方案里的一集，带起止和目标秒数。 */
 export type PlanEpisode = {
   n: number;
   title: string;
@@ -87,6 +97,7 @@ export type PlanEpisode = {
   episode_id?: string;
 };
 
+/** EpisodePlan 是一系列的分集方案和队列位置。 */
 export type EpisodePlan = {
   id?: string;
   drama_id?: string;
@@ -97,6 +108,7 @@ export type EpisodePlan = {
   queue_index?: number;
 };
 
+/** Bundle 是打开一集时一起拿到的系列、资产、镜头、任务和计划。 */
 export type Bundle = {
   drama: Drama;
   episode: Episode;
@@ -109,14 +121,18 @@ export type Bundle = {
   status?: { ffmpeg?: boolean; missing?: string[]; ffmpeg_install?: { phase?: string; percent?: number; error?: string } };
 };
 
+/** Phase 是剧本、定妆、分镜、成片四段。 */
 export type Phase = "script" | "cast" | "board" | "cut";
 
+/** PhaseStep 是某一段里可以排队的具体步骤。 */
 export type PhaseStep = "rewrite" | "extract" | "prompts" | "stills" | "storyboard" | "video_prompts" | "clips" | "merge";
 
+/** isAgentStep 判断这一步是不是改写、抽取、提示词、分镜或视频提示。 */
 export function isAgentStep(step: PhaseStep) {
   return step === "rewrite" || step === "extract" || step === "prompts" || step === "storyboard" || step === "video_prompts";
 }
 
+/** fill 把模板里的 {名字} 换成给出的值，缺了就换成空字符串。 */
 export function fill(template: string, vars: Record<string, string | number>) {
   return template.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
 }
@@ -124,36 +140,43 @@ export function fill(template: string, vars: Record<string, string | number>) {
 const SERIES_PLACEHOLDER = /^(untitled(\s+(series|drama|short\s*drama))?|new\s+(series|short\s*drama|drama)|新短剧|未命名(剧集|短剧|系列)?)$/i;
 const EPISODE_PLACEHOLDER = /^(untitled(\s+episode)?|new\s+episode|episode\s*\d+|第\s*\d+\s*集|未命名集)$/i;
 
+/** isPlaceholderSeries 看标题是不是空，或像未命名系列。 */
 export function isPlaceholderSeries(title: string | undefined) {
   const s = (title || "").trim();
   return !s || SERIES_PLACEHOLDER.test(s);
 }
 
+/** isPlaceholderEpisode 看标题是不是空，或像未命名集、第 n 集。 */
 export function isPlaceholderEpisode(title: string | undefined) {
   const s = (title || "").trim();
   return !s || EPISODE_PLACEHOLDER.test(s);
 }
 
+/** shownSeriesTitle 占位标题换成界面给的未命名文案。 */
 export function shownSeriesTitle(title: string | undefined, untitled: string) {
   return isPlaceholderSeries(title) ? untitled : String(title).trim();
 }
 
+/** shownEpisodeTitle 占位标题换成带集数的文案，否则用原标题。 */
 export function shownEpisodeTitle(title: string | undefined, n: number | undefined, episodeN: string) {
   const num = Math.max(1, Number(n) || 1);
   if (isPlaceholderEpisode(title)) return fill(episodeN, { n: num });
   return String(title).trim();
 }
 
+/** commitSeriesTitle 占位标题返回空字符串。 */
 export function commitSeriesTitle(typed: string) {
   const t = typed.trim();
   return isPlaceholderSeries(t) ? "" : t;
 }
 
+/** commitEpisodeTitle 占位标题返回空字符串。 */
 export function commitEpisodeTitle(typed: string) {
   const t = typed.trim();
   return isPlaceholderEpisode(t) ? "" : t;
 }
 
+/** pipeStatus 从管线 JSON 里取出某一阶段的状态。解析失败就是空。 */
 export function pipeStatus(raw: string, stage: string) {
   try {
     const m = JSON.parse(raw || "{}");
@@ -163,10 +186,12 @@ export function pipeStatus(raw: string, stage: string) {
   }
 }
 
+/** selectedClipIds 留下有视频且没有被明确取消的镜头 id。 */
 export function selectedClipIds(shots: Shot[], sel: Record<string, boolean>) {
   return shots.filter((s) => s.video_url && sel[s.id] !== false).map((s) => s.id);
 }
 
+/** parseModels 把 JSON 数组或逗号分隔的模型串收成列表。 */
 export function parseModels(raw: string): string[] {
   const s = (raw || "").trim();
   if (!s) return [];
@@ -175,12 +200,13 @@ export function parseModels(raw: string): string[] {
       const v = JSON.parse(s);
       if (Array.isArray(v)) return v.map(String).filter(Boolean);
     } catch {
-      /* fall through */
+      /* 继续按逗号拆 */
     }
   }
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+/** serviceKind 把 speech、audio 收成 tts，把 llm、text 收成 chat。 */
 export function serviceKind(raw: unknown): string {
   const s = String(raw || "").toLowerCase().trim();
   if (s === "speech" || s === "audio") return "tts";
@@ -188,12 +214,15 @@ export function serviceKind(raw: unknown): string {
   return s;
 }
 
+/** providerKey 去掉 id 上的 ch- 前缀和结尾的通道种类。 */
 export function providerKey(id: string): string {
   return String(id || "").trim().replace(/^ch-/, "").replace(/--(text|image|video|audio)$/i, "");
 }
 
+/** catalogOf 合并提供方自己的模型、当前选中和模型列表，去掉重复。 */
 export function catalogOf(p: { model?: string; models?: string } | undefined, selected = ""): string[] {
   const out: string[] = [];
+  /** 非空且未出现过的模型才放进列表。 */
   const add = (v: string) => {
     const s = (v || "").trim();
     if (s && !out.includes(s)) out.push(s);
@@ -204,20 +233,24 @@ export function catalogOf(p: { model?: string; models?: string } | undefined, se
   return out;
 }
 
+/** isNarrator 看名字或角色里有没有旁白、画外音或 narrator。 */
 export function isNarrator(a: Asset) {
   const t = `${a.name || ""} ${a.role || ""}`.toLowerCase();
   return ["旁白", "画外音", "narrator", "voice-over", "voiceover"].some((k) => t.includes(k));
 }
 
+/** assetName 场景用地点，其他用名字。 */
 export function assetName(a: Asset, kind: string) {
   if (kind === "scene") return a.location || "";
   return a.name || "";
 }
 
+/** linkedAssets 留下没有被标成未关联的资产。 */
 export function linkedAssets(items: Asset[]) {
   return items.filter((a) => a.linked !== false);
 }
 
+/** phaseDone 按管线状态，或按剧本、定妆图、镜头视频判断这一段是否做完。 */
 export function phaseDone(ep: Episode | undefined, bundle: Bundle | null, phase: Phase): boolean {
   if (!ep) return false;
   if (phase === "script") {
@@ -236,10 +269,12 @@ export function phaseDone(ep: Episode | undefined, bundle: Bundle | null, phase:
   return pipeStatus(ep.pipeline, "merge") === "done" || !!ep.video_url;
 }
 
+/** jobMoving 看任务是不是排队、运行或轮询。 */
 export function jobMoving(status: string) {
   return status === "queued" || status === "running" || status === "polling";
 }
 
+/** firstLook 按角色、场景、道具的顺序取第一个仍关联的资产。 */
 export function firstLook(bundle: Bundle | null): { kind: string; id: string } | null {
   if (!bundle) return null;
   const ch = linkedAssets(bundle.characters)[0];
@@ -251,8 +286,10 @@ export function firstLook(bundle: Bundle | null): { kind: string; id: string } |
   return null;
 }
 
+/** PRESET_STYLE_GROUP_IDS 是风格分组：动画、体积、绘画、东方、真人。 */
 export const PRESET_STYLE_GROUP_IDS = ["anime", "volume", "paint", "east", "live"] as const;
 
+/** PresetStyleGroupId 是预设风格分组的 id。 */
 export type PresetStyleGroupId = (typeof PRESET_STYLE_GROUP_IDS)[number];
 
 const CORE_PRESET_STYLES = [
@@ -316,15 +353,18 @@ const CORE_PRESET_STYLES = [
   { value: "origami", name: "Origami", group: "volume" },
 ] as const;
 
+/** PRESET_STYLES 是内置风格加上额外风格，带值和分组。 */
 export const PRESET_STYLES = [
   ...CORE_PRESET_STYLES,
   ...EXTRA_DRAMA_STYLES.map((row) => ({ value: row.value, name: row.name, group: row.group })),
 ] as const;
 
+/** presetStyleGroup 返回这个风格值的分组，不在表里就是空。 */
 export function presetStyleGroup(value: string): PresetStyleGroupId | "" {
   return PRESET_STYLES.find((row) => row.value === value)?.group || "";
 }
 
+/** mergeDramaStyles 用服务端列表覆盖同名风格，预设顺序在前，多出来的排在后面。 */
 export function mergeDramaStyles(api: Array<{ value?: string; name?: string }> | null | undefined) {
   const map = new Map<string, { value: string; name: string }>();
   for (const row of PRESET_STYLES) map.set(row.value, { value: row.value, name: row.name });
@@ -340,16 +380,19 @@ export function mergeDramaStyles(api: Array<{ value?: string; name?: string }> |
 
 const PRESET_STYLE_COVERS = new Set<string>(PRESET_STYLES.map((style) => style.value));
 
+/** isPresetDramaStyle 看这个值是不是预设风格。 */
 export function isPresetDramaStyle(value: string) {
   return PRESET_STYLE_COVERS.has(String(value || "").trim());
 }
 
+/** dramaStyleCover 预设风格返回 /drama-styles/ 下的 jpg 路径，其他返回空。 */
 export function dramaStyleCover(value: string, _label = "") {
   const key = String(value || "").trim();
   if (!key || !isPresetDramaStyle(key)) return "";
   return `/drama-styles/${key}.jpg`;
 }
 
+/** styleLabel 优先用名字表里的中文，没有就用备用名或原值。 */
 export function styleLabel(names: object | undefined, value: string, fallback = "") {
   if (names && value in names) {
     const label = (names as Record<string, string>)[value];
@@ -358,6 +401,7 @@ export function styleLabel(names: object | undefined, value: string, fallback = 
   return fallback || value;
 }
 
+/** looksLikeSeries 正文达到 2000 字，或至少两处章节且不少于 400 字，就算系列。 */
 export function looksLikeSeries(text: string) {
   const n = Array.from((text || "").trim()).length;
   if (n >= 2000) return true;
@@ -365,6 +409,7 @@ export function looksLikeSeries(text: string) {
   return !!chapters && chapters.length >= 2 && n >= 400;
 }
 
+/** phaseQueue 按这一段还缺什么，排出要跑的步骤。成片段只有合并。 */
 export function phaseQueue(phase: Phase, bundle: Bundle | null): PhaseStep[] {
   if (phase === "script") return ["rewrite"];
   if (phase === "cast") {

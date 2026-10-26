@@ -1,3 +1,5 @@
+// 办公文件、记忆、日程、浏览器、剪贴板、连接器和电脑操作的工具实现。名字登记在 tools_host.go。路径仍经 resolve，不在这里调用 EvalSymlinks。
+
 package runtime
 
 import (
@@ -20,6 +22,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/schedule"
 )
 
+// officeCreate 经 resolve 后以 WriteWorkspace、动作 office_create 审批，再按 kind、title、body、headings、rows、slides 调用 office.Create。
 func (t *WorkspaceTools) officeCreate(args map[string]any) ToolResult {
 	rel := str(args["path"])
 	p, err := t.resolve(rel)
@@ -64,6 +67,7 @@ func (t *WorkspaceTools) officeCreate(args map[string]any) ToolResult {
 	return ToolResult{Content: "wrote " + rel, FileChange: &FileChange{Paths: []string{rel}}}
 }
 
+// officeEdit 以 WriteWorkspace、动作 office_edit 审批。写入前 snapshotBeforeWrite，再 office.EditReplace。
 func (t *WorkspaceTools) officeEdit(rel, old, neu string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -79,6 +83,7 @@ func (t *WorkspaceTools) officeEdit(rel, old, neu string) ToolResult {
 	return ToolResult{Content: "edited " + rel, FileChange: &FileChange{Paths: []string{rel}}}
 }
 
+// officeQuery 以 ReadWorkspace、动作 office_query 审批，再 office.Query。查询错误放在 Err 里，同时带上 Content。
 func (t *WorkspaceTools) officeQuery(rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -91,6 +96,7 @@ func (t *WorkspaceTools) officeQuery(rel string) ToolResult {
 	return ToolResult{Content: out, Err: err}
 }
 
+// officeRender 以 ReadWorkspace、动作 office_render 审批，再 preview.Render。
 func (t *WorkspaceTools) officeRender(rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -103,6 +109,7 @@ func (t *WorkspaceTools) officeRender(rel string) ToolResult {
 	return ToolResult{Content: out, Err: err}
 }
 
+// citeSources 以 WriteWorkspace、动作 cite_sources 审批。Hash 为空的来源会先 HashExcerpt。写入成功后若有 OnCapture 就记一条 brief。
 func (t *WorkspaceTools) citeSources(rel string, raw string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -131,6 +138,7 @@ func (t *WorkspaceTools) citeSources(rel string, raw string) ToolResult {
 	return ToolResult{Content: fmt.Sprintf("wrote %d citations to %s", len(payload.Sources), rel), FileChange: &FileChange{Paths: []string{rel}}}
 }
 
+// memorySearch 在 Memory 为空时返回 memory store unavailable，这不是 Err。否则按 kind 搜索，最多 20 条。
 func (t *WorkspaceTools) memorySearch(q, kind string) ToolResult {
 	if t.Memory == nil {
 		return ToolResult{Content: "memory store unavailable"}
@@ -140,6 +148,7 @@ func (t *WorkspaceTools) memorySearch(q, kind string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// memoryWrite 以 MemoryWrite、动作 memory_write 审批。写入后说明仍由 checkout 决定提升，本函数不提升。
 func (t *WorkspaceTools) memoryWrite(kind, text, project string) ToolResult {
 	if err := t.check(capability.MemoryWrite, "memory_write", "", text); err != nil {
 		return ToolResult{Err: err}
@@ -151,6 +160,7 @@ func (t *WorkspaceTools) memoryWrite(kind, text, project string) ToolResult {
 	return ToolResult{Content: fmt.Sprintf("staged memory %s (kind=%s). checkout still owns promotion.", it.ID, it.Kind)}
 }
 
+// memoryForget 以 MemoryWrite、动作 memory_forget 审批。未知 ID 返回错误。
 func (t *WorkspaceTools) memoryForget(id string) ToolResult {
 	if err := t.check(capability.MemoryWrite, "memory_forget", "", id); err != nil {
 		return ToolResult{Err: err}
@@ -164,6 +174,7 @@ func (t *WorkspaceTools) memoryForget(id string) ToolResult {
 	return ToolResult{Content: "forgot " + id}
 }
 
+// scheduleCreate 以 Schedule、动作 schedule_create 审批。没有调度器则返回错误。任务带上当前工作区和会话。
 func (t *WorkspaceTools) scheduleCreate(kind, spec, prompt string) ToolResult {
 	if err := t.check(capability.Schedule, "schedule_create", "", prompt); err != nil {
 		return ToolResult{Err: err}
@@ -179,6 +190,7 @@ func (t *WorkspaceTools) scheduleCreate(kind, spec, prompt string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// scheduleList 在 Schedule 为空时返回 []。否则返回任务列表的 JSON。
 func (t *WorkspaceTools) scheduleList() ToolResult {
 	if t.Schedule == nil {
 		return ToolResult{Content: "[]"}
@@ -187,6 +199,7 @@ func (t *WorkspaceTools) scheduleList() ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// scheduleCancel 以 Schedule、动作 schedule_cancel 审批。调度器为空或 ID 未知则返回错误。
 func (t *WorkspaceTools) scheduleCancel(id string) ToolResult {
 	if err := t.check(capability.Schedule, "schedule_cancel", "", id); err != nil {
 		return ToolResult{Err: err}
@@ -197,6 +210,7 @@ func (t *WorkspaceTools) scheduleCancel(id string) ToolResult {
 	return ToolResult{Content: "cancelled " + id}
 }
 
+// browserOpen 拒绝 data: URL。工作区相对路径走预览：能 resolve 时以 ReadWorkspace 审批，并 SetPreview。OpenLocal 失败时仍返回 Content 而不是 Err，因为工作台窗格已经打开，隔离 Chrome 没起来。远程 URL 以 Browser、动作 browser_open 审批，再 OpenURLLane。
 func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	target, lane, profile := parseBrowserOpen(raw)
 	if profile != "" && t.Browser != nil {
@@ -228,8 +242,7 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 		if t.Browser != nil && abs != "" {
 			snap, err := t.Browser.OpenLocal(abs)
 			if err != nil {
-				// The preview pane did open, so this is a partial success, not an
-				// error: the workstation pane works without isolated Chrome.
+				// 预览窗格已经打开，所以这是部分成功，放在 Content 里而不是 Err。没有隔离 Chrome 时工作台窗格仍可用。
 				return ToolResult{Content: fmt.Sprintf("opened %s in the workstation Browser pane. Isolated Chrome did not start (%v), so browser_click and browser_type are unavailable until it does; browser_screenshot retries Chrome once. Do not call browser_open again for this path — reopening reloads and wipes clicks. Do not spawn Chrome, python -m http.server, or connect to CDP 9333.", rel, err)}
 			}
 			snap.Errors = t.Browser.PageErrors()
@@ -263,8 +276,7 @@ func (t *WorkspaceTools) browserOpen(raw string) ToolResult {
 	return ToolResult{Content: fmt.Sprintf("%s\nprofile=%s\nlane=%s\n\n%s", snap.URL, t.Browser.ProfileName(), lane, body)}
 }
 
-// browserBody is the page report the model reads after a browser call: the
-// visible text, then the ref= handles it can act on next.
+// browserBody 拼出模型读的页面报告：可见文本，以及下一步可点的 ref= 句柄。没有动作列表时只返回文本。
 func browserBody(text, actions string) string {
 	if strings.TrimSpace(actions) == "" {
 		return text
@@ -272,9 +284,7 @@ func browserBody(text, actions string) string {
 	return text + "\n\nvisible actions (prefer ref= on browser_click):\n" + actions
 }
 
-// withPageErrors puts the JavaScript errors the page raised since the last
-// browser call next to the report they came from. Without it, a page whose
-// handlers threw looked the same as a page that did nothing.
+// withPageErrors 把上次浏览器调用以来的 JavaScript 错误附在报告后面。错误为空则原样返回正文。
 func withPageErrors(body, errs string) string {
 	if strings.TrimSpace(errs) == "" {
 		return body
@@ -282,9 +292,7 @@ func withPageErrors(body, errs string) string {
 	return body + "\n\n" + errs
 }
 
-// browserSnapshot reads the live page. The cached text is only a fallback for
-// a page whose Chrome is no longer running; say so instead of passing it off
-// as current.
+// browserSnapshot 在 Browser 能 Refresh 且 URL 非空时格式化活页，并把 live 标志传给 FormatSnapshot。否则返回上次记下的 LastBrowser；空则 no snapshot。
 func (t *WorkspaceTools) browserSnapshot(level string) ToolResult {
 	if t.Browser != nil {
 		snap, live := t.Browser.Refresh()
@@ -304,9 +312,7 @@ func (t *WorkspaceTools) browserSnapshot(level string) ToolResult {
 	return ToolResult{Content: s}
 }
 
-// browserClick reports failure as failure. Earlier it returned "clicked …
-// (page not reloaded)" alongside the error, which read as success and sent the
-// agent into a loop of blind retries.
+// browserClick 以 Browser、动作 browser_click 审批。失败只放在 Err 里，不和成功文案拼在一起。没有浏览器或 EnsurePreview 失败也是错误。
 func (t *WorkspaceTools) browserClick(sel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_click", sel, sel); err != nil {
 		return ToolResult{Err: err}
@@ -324,6 +330,7 @@ func (t *WorkspaceTools) browserClick(sel string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserType 以 Browser、动作 browser_type 审批，再对选择器输入文本。错误放在 Err 里。
 func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
 	if err := t.check(capability.Browser, "browser_type", sel, text); err != nil {
 		return ToolResult{Err: err}
@@ -341,6 +348,7 @@ func (t *WorkspaceTools) browserType(sel, text string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserFill 以 Browser、动作 browser_fill 审批，再填充选择器。错误放在 Err 里。
 func (t *WorkspaceTools) browserFill(sel, text string) ToolResult {
 	if err := t.check(capability.Browser, "browser_fill", sel, text); err != nil {
 		return ToolResult{Err: err}
@@ -358,6 +366,7 @@ func (t *WorkspaceTools) browserFill(sel, text string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserScroll 以 Browser、动作 browser_scroll 审批，再按方向、幅度和可选选择器滚动。
 func (t *WorkspaceTools) browserScroll(direction string, amount int, sel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_scroll", sel, direction); err != nil {
 		return ToolResult{Err: err}
@@ -375,6 +384,7 @@ func (t *WorkspaceTools) browserScroll(direction string, amount int, sel string)
 	return ToolResult{Content: obs}
 }
 
+// browserHover 以 Browser、动作 browser_hover 审批，再悬停到选择器。
 func (t *WorkspaceTools) browserHover(sel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_hover", sel, sel); err != nil {
 		return ToolResult{Err: err}
@@ -392,6 +402,7 @@ func (t *WorkspaceTools) browserHover(sel string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserSelect 以 Browser、动作 browser_select 审批，再选中值。
 func (t *WorkspaceTools) browserSelect(sel, value string) ToolResult {
 	if err := t.check(capability.Browser, "browser_select", sel, value); err != nil {
 		return ToolResult{Err: err}
@@ -409,6 +420,7 @@ func (t *WorkspaceTools) browserSelect(sel, value string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserPress 以 Browser、动作 browser_press 审批，再按键。
 func (t *WorkspaceTools) browserPress(key string) ToolResult {
 	if err := t.check(capability.Browser, "browser_press", key, key); err != nil {
 		return ToolResult{Err: err}
@@ -426,6 +438,7 @@ func (t *WorkspaceTools) browserPress(key string) ToolResult {
 	return ToolResult{Content: obs}
 }
 
+// browserTabs 以 Browser、动作 browser_tabs 审批。op 为空或 list 列出标签，switch、new、close 分别切换、新建、关闭。其他 op 返回错误。
 func (t *WorkspaceTools) browserTabs(op, id, raw string) ToolResult {
 	if err := t.check(capability.Browser, "browser_tabs", id, op); err != nil {
 		return ToolResult{Err: err}
@@ -460,6 +473,7 @@ func (t *WorkspaceTools) browserTabs(op, id, raw string) ToolResult {
 	}
 }
 
+// formatBrowserTabs 列出标签数量。当前标签行首是星号，其余是空格，随后是 ID、URL 和标题。
 func formatBrowserTabs(tabs []browser.TabInfo) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%d tab(s):\n", len(tabs))
@@ -473,6 +487,7 @@ func formatBrowserTabs(tabs []browser.TabInfo) string {
 	return strings.TrimSpace(b.String())
 }
 
+// browserProfile 以 Browser、动作 browser_profile 审批。op 为空或 list 列出配置并标出当前项。use 切换配置。其他 op 返回错误。
 func (t *WorkspaceTools) browserProfile(op, name string) ToolResult {
 	if err := t.check(capability.Browser, "browser_profile", name, op); err != nil {
 		return ToolResult{Err: err}
@@ -493,6 +508,7 @@ func (t *WorkspaceTools) browserProfile(op, name string) ToolResult {
 	}
 }
 
+// browserRecord 以 Browser、动作 browser_record 审批。start 开始录制。status 或空 op 返回状态。stop 或 skill 停止并把会话交给 persistRecordedSkill。
 func (t *WorkspaceTools) browserRecord(op, name string) ToolResult {
 	if err := t.check(capability.Browser, "browser_record", name, op); err != nil {
 		return ToolResult{Err: err}
@@ -520,6 +536,7 @@ func (t *WorkspaceTools) browserRecord(op, name string) ToolResult {
 	}
 }
 
+// persistRecordedSkill 在会话为空时返回 recording empty。有正文且能 resolve 到 .yoyo/skills/<名>/SKILL.md 时，以 0o700 建目录、0o600 写入，并放进 Skills。写失败则只把正文放在 Content 里。
 func (t *WorkspaceTools) persistRecordedSkill(sess *browser.RecordSession, name string) ToolResult {
 	if sess == nil {
 		return ToolResult{Content: "recording empty"}
@@ -555,6 +572,7 @@ func (t *WorkspaceTools) persistRecordedSkill(sess *browser.RecordSession, name 
 	return ToolResult{Content: note + "\n\n" + body}
 }
 
+// browserDownload 先 resolve 目标路径，再以 Browser、动作 browser_download 审批。没有浏览器则返回错误。
 func (t *WorkspaceTools) browserDownload(raw, rel string) ToolResult {
 	p, err := t.resolve(rel)
 	if err != nil {
@@ -572,6 +590,7 @@ func (t *WorkspaceTools) browserDownload(raw, rel string) ToolResult {
 	return ToolResult{Content: "downloaded " + rel, FileChange: &FileChange{Paths: []string{rel}}}
 }
 
+// clipboardRead 以 Clipboard、动作 clipboard_read 审批。正文用 capText 截到 4000 个 rune，并标成 untrusted。
 func (t *WorkspaceTools) clipboardRead() ToolResult {
 	if err := t.check(capability.Clipboard, "clipboard_read", "", ""); err != nil {
 		return ToolResult{Err: err}
@@ -584,6 +603,7 @@ func (t *WorkspaceTools) clipboardRead() ToolResult {
 	return ToolResult{Content: "clipboard (untrusted):\n" + capped}
 }
 
+// clipboardWrite 以 Clipboard、动作 clipboard_write 审批，再写入系统剪贴板。
 func (t *WorkspaceTools) clipboardWrite(text string) ToolResult {
 	if err := t.check(capability.Clipboard, "clipboard_write", "", text); err != nil {
 		return ToolResult{Err: err}
@@ -594,6 +614,7 @@ func (t *WorkspaceTools) clipboardWrite(text string) ToolResult {
 	return ToolResult{Content: "clipboard updated"}
 }
 
+// screenshot 在 path 为空时用 .yoyo/captures/shot.png。能力级别是 ComputerUse，动作 screenshot_region，ForceAsk 为真。Computer 为空时说明只捕获虚拟显示器，不捕获主屏。成功后交给 viewImage。
 func (t *WorkspaceTools) screenshot(rel string) ToolResult {
 	if rel == "" {
 		rel = filepath.ToSlash(filepath.Join(".yoyo", "captures", "shot.png"))
@@ -630,6 +651,7 @@ func (t *WorkspaceTools) screenshot(rel string) ToolResult {
 	return t.viewImage(rel)
 }
 
+// fsBatch 把 from 改名到 to。两端都要 resolve 进工作区。能力级别是 WriteWorkspace，动作 fs_batch。用 os.Rename，不是复制。
 func (t *WorkspaceTools) fsBatch(from, to string) ToolResult {
 	src, err := t.resolve(from)
 	if err != nil {
@@ -651,6 +673,7 @@ func (t *WorkspaceTools) fsBatch(from, to string) ToolResult {
 	return ToolResult{Content: "moved " + from + " -> " + to, FileChange: &FileChange{Paths: []string{from, to}}}
 }
 
+// connectorRead 以 ReadConnector、动作 connector_read 审批。账户不在本会话授权里则拒绝。读到的条目再经 BoundView。
 func (t *WorkspaceTools) connectorRead(account, query string) ToolResult {
 	if err := t.check(capability.ReadConnector, "connector_read", account, query); err != nil {
 		return ToolResult{Err: err}
@@ -680,6 +703,7 @@ func (t *WorkspaceTools) connectorRead(account, query string) ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// connectorDraft 以 WriteConnector、动作 connector_draft 审批。账户必须已授权。草稿写入后返回，并说明发送还要 connector_send 和 send_as_you。本函数不发送。
 func (t *WorkspaceTools) connectorDraft(args map[string]any) ToolResult {
 	account, to, subject, body := str(args["account"]), str(args["to"]), str(args["subject"]), str(args["body"])
 	if err := t.check(capability.WriteConnector, "connector_draft", account, to); err != nil {
@@ -716,6 +740,7 @@ func (t *WorkspaceTools) connectorDraft(args map[string]any) ToolResult {
 	return ToolResult{Content: "draft " + string(b) + " — send with connector_send after send_as_you approval"}
 }
 
+// connectorSend 的能力级别是 SendAsYou，动作 connector_send，ForceAsk 为真。有 Personal 时先 RecordChatSend，发送结束后 FinishChatSend。
 func (t *WorkspaceTools) connectorSend(id string) ToolResult {
 	req := capability.Request{
 		Level:     capability.SendAsYou,
@@ -756,6 +781,7 @@ func (t *WorkspaceTools) connectorSend(id string) ToolResult {
 	return ToolResult{Content: "sent " + string(b)}
 }
 
+// computerAct 的能力级别是 ComputerUse，动作 computer_act，ForceAsk 为真。没有电脑宿主则返回错误。未注入且操作不是 record 时，正文前缀标明 inject pending。
 func (t *WorkspaceTools) computerAct(app, op, detail string) ToolResult {
 	req := capability.Request{
 		Level:     capability.ComputerUse,
@@ -791,6 +817,7 @@ func (t *WorkspaceTools) computerAct(app, op, detail string) ToolResult {
 	return ToolResult{Content: note + string(b)}
 }
 
+// browserScreenshot 以 Browser、动作 browser_screenshot 审批。path 为空时用 .yoyo/captures/browser.png。截图后 viewImage。像素未变时在正文前写 PIXELS_UNCHANGED，并说明不要为此再 browser_open。变了则写 PIXELS_CHANGED。
 func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_screenshot", rel, ""); err != nil {
 		return ToolResult{Err: err}
@@ -824,6 +851,7 @@ func (t *WorkspaceTools) browserScreenshot(rel string) ToolResult {
 	return res
 }
 
+// browserTakeover 以 Browser、动作 browser_takeover 审批，然后 StartTakeover 并开始录制。提问为空时用登录、MFA 或验证码的默认句。优先用 Takeover，否则用 AskUser。都没有则只说明窗口在等待。录制出步骤时交给 persistRecordedSkill。
 func (t *WorkspaceTools) browserTakeover(question string) ToolResult {
 	if err := t.check(capability.Browser, "browser_takeover", "", question); err != nil {
 		return ToolResult{Err: err}
@@ -861,6 +889,7 @@ func (t *WorkspaceTools) browserTakeover(question string) ToolResult {
 	return ToolResult{Content: out}
 }
 
+// browserCookies 以 Browser、动作 browser_cookies 审批，再把 resolve 后的文件导入隔离配置，并返回导入条数。
 func (t *WorkspaceTools) browserCookies(rel string) ToolResult {
 	if err := t.check(capability.Browser, "browser_cookies", rel, ""); err != nil {
 		return ToolResult{Err: err}
@@ -879,6 +908,7 @@ func (t *WorkspaceTools) browserCookies(rel string) ToolResult {
 	return ToolResult{Content: fmt.Sprintf("imported %d cookies into isolated profile", n)}
 }
 
+// projectList 在 Projects 为空时返回 []。否则返回项目列表的 JSON。
 func (t *WorkspaceTools) projectList() ToolResult {
 	if t.Projects == nil {
 		return ToolResult{Content: "[]"}
@@ -887,6 +917,7 @@ func (t *WorkspaceTools) projectList() ToolResult {
 	return ToolResult{Content: string(b)}
 }
 
+// notifyActionable 在 Inbox 为空时只在正文里注明标题。否则推一条 KindAsk，返回收件编号。
 func (t *WorkspaceTools) notifyActionable(title, body string) ToolResult {
 	if t.Inbox == nil {
 		return ToolResult{Content: "inbox unavailable; noted " + title}
@@ -895,6 +926,7 @@ func (t *WorkspaceTools) notifyActionable(title, body string) ToolResult {
 	return ToolResult{Content: "inbox " + it.ID}
 }
 
+// encodeDataURL 读取文件并做成 data URL。超过 2<<20 字节的部分丢掉。扩展名决定 jpeg、gif、webp，其余按 png。
 func encodeDataURL(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

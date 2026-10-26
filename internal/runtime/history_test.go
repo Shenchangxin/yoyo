@@ -1,3 +1,5 @@
+// 锁住轨迹重建：忽略 system 和 delta，折叠 mention，工具 id 去重，没有结果的调用补上未知结果。
+
 package runtime
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/trace"
 )
 
+// TestMessagesFromEvents 确认重建从用户消息开始，system 事件不进入结果。
 func TestMessagesFromEvents(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeSystem, Payload: map[string]any{"text": "old system"}},
@@ -30,6 +33,7 @@ func TestMessagesFromEvents(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsTwoTurns 确认两轮用户和助手按原顺序保留四条消息。
 func TestMessagesFromEventsTwoTurns(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "first"}},
@@ -46,6 +50,7 @@ func TestMessagesFromEventsTwoTurns(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsSkipsDeltas 确认 delta 为真的助手片段被跳过，只留下最终的 Hello。
 func TestMessagesFromEventsSkipsDeltas(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "hi"}},
@@ -62,6 +67,7 @@ func TestMessagesFromEventsSkipsDeltas(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsIncludesMentionInject 确认 mention 贴进后面的用户消息，skill 注入被丢掉。
 func TestMessagesFromEventsIncludesMentionInject(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeInject, Source: "mention", Payload: map[string]any{"text": "README.md"}},
@@ -81,6 +87,7 @@ func TestMessagesFromEventsIncludesMentionInject(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsFoldsMentionAfterUser 确认用户原文仍在前面，随后的 mention 技能附在同一条用户消息上。
 func TestMessagesFromEventsFoldsMentionAfterUser(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "帮我查论文"}},
@@ -99,6 +106,7 @@ func TestMessagesFromEventsFoldsMentionAfterUser(t *testing.T) {
 	}
 }
 
+// TestMaxAssistantRound 确认 id 为 s:r1、round 为 s:r12 时最大回合号是 12。
 func TestMaxAssistantRound(t *testing.T) {
 	n := MaxAssistantRound([]trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "hi"}},
@@ -110,6 +118,7 @@ func TestMaxAssistantRound(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsDedupesToolIDs 确认同一个工具 id 的再次调用和再次结果只留一份。
 func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "read it"}},
@@ -137,6 +146,7 @@ func TestMessagesFromEventsDedupesToolIDs(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsClosesUnansweredTool 确认为没有结果的 shell 调用补上含 TOOL_OUTCOME_UNKNOWN 的工具消息。
 func TestMessagesFromEventsClosesUnansweredTool(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "edit it"}},
@@ -157,6 +167,7 @@ func TestMessagesFromEventsClosesUnansweredTool(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsKeepsRepeatReminder 确认 repeat-tool-reminder 原样变成下一条用户消息，并且算控制行。
 func TestMessagesFromEventsKeepsRepeatReminder(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{"text": "继续"}},
@@ -168,6 +179,7 @@ func TestMessagesFromEventsKeepsRepeatReminder(t *testing.T) {
 	}
 }
 
+// TestMessagesFromEventsKeepsImageParts 确认用户事件上的图片 parts 留在重建出的消息里。
 func TestMessagesFromEventsKeepsImageParts(t *testing.T) {
 	evs := []trace.Event{
 		{Type: trace.TypeUser, Payload: map[string]any{

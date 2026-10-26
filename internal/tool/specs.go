@@ -1,7 +1,10 @@
+// 内置工具的规格表。Name、Description 和参数说明是交给模型看的字符串，不是宿主的执行代码。git_commit 的描述原文是 "Stage all and commit with a message. Prefer this over shell git."，规格文本写的是全部暂存后再提交。
+
 package tool
 
 import "github.com/Shenchangxin/yoyo/internal/artifact"
 
+// spec 组装一条工具规格，执行方固定为宿主，并把注解写到只读、并发、开放世界、破坏和独占上。
 func spec(name, desc, cap string, params map[string]any, ann Annotations) artifact.ToolSpec {
 	return artifact.ToolSpec{
 		Name:            name,
@@ -17,6 +20,7 @@ func spec(name, desc, cap string, params map[string]any, ann Annotations) artifa
 	}
 }
 
+// obj 返回 type 为 object 的参数模式。传了必填名时写上 required。
 func obj(props map[string]any, required ...string) map[string]any {
 	m := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -25,11 +29,16 @@ func obj(props map[string]any, required ...string) map[string]any {
 	return m
 }
 
-func strP() map[string]any  { return map[string]any{"type": "string"} }
-func intP() map[string]any  { return map[string]any{"type": "integer"} }
+// strP 返回 type 为 string 的参数模式。
+func strP() map[string]any { return map[string]any{"type": "string"} }
+
+// intP 返回 type 为 integer 的参数模式。
+func intP() map[string]any { return map[string]any{"type": "integer"} }
+
+// boolP 返回 type 为 boolean 的参数模式。
 func boolP() map[string]any { return map[string]any{"type": "boolean"} }
 
-// HostSpecs is the canonical CAS-versioned builtin catalog.
+// HostSpecs 返回内置工具规格。Description 是给模型看的字符串。git_commit 的描述原文是 "Stage all and commit with a message. Prefer this over shell git."，规格文本写的是全部暂存后再提交。
 func HostSpecs() []artifact.ToolSpec {
 	read := Annotations{ReadOnly: true, ConcurrencySafe: true}
 	write := Annotations{}
@@ -207,6 +216,7 @@ func HostSpecs() []artifact.ToolSpec {
 	}
 }
 
+// HostSpecMap 按名字索引 HostSpecs。同名后者覆盖前者。
 func HostSpecMap() map[string]artifact.ToolSpec {
 	m := map[string]artifact.ToolSpec{}
 	for _, s := range HostSpecs() {

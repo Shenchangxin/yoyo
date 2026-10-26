@@ -1,3 +1,7 @@
+/**
+ * 本文件拥有翻拍草稿的文案、换画面和配音按钮。不拥有剪辑时间线。
+ * 保存字幕、换画面和配音会改服务端上的剪辑工程。
+ */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -7,10 +11,12 @@ import { isVideoPath } from "./ingest-clip";
 import { cutCues, useCutReadiness, type CutProject } from "./cut-desk";
 import { useRemakeDesk } from "./remake-desk";
 
+/** 把字幕条目收成多行文本。 */
 function cueText(project: CutProject | null) {
   return cutCues(project).map((cue) => String(cue.text || "").trim()).filter(Boolean).join("\n");
 }
 
+/** 不足 60 秒显示秒，否则显示分和秒。无效时长显示破折号。 */
 function lengthLabel(n: number | undefined) {
   const s = Number(n || 0);
   if (!(s > 0) || !Number.isFinite(s)) return "—";
@@ -20,6 +26,7 @@ function lengthLabel(n: number | undefined) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
+/** RemakeDraft 编辑翻拍文案。自己的画面时主按钮是送去剪辑，否则主按钮是换画面。 */
 export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
   const copy = useCopy();
   const c = copy.video.conductor;
@@ -40,6 +47,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
   const mine = !!draft.reference_hash && !!draft.source_hash && draft.reference_hash !== draft.source_hash;
   const speechReason = ready.loaded && !ready.speech ? c.needSpeech : "";
 
+  /** 把文本写成这条剪辑的字幕。 */
   async function saveCopy() {
     setBusy("copy");
     try {
@@ -54,6 +62,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
+  /** 选一个视频路径，登记成媒体后换掉这条翻拍的画面。 */
   async function replacePicture() {
     const picked = await api.pickFiles();
     const path = picked.find((item) => isVideoPath(item)) || "";
@@ -78,6 +87,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
+  /** 用当前文本给这条剪辑配音。 */
   async function dub() {
     setBusy("dub");
     try {
@@ -90,6 +100,7 @@ export function RemakeDraft(props: { onOpenCut: (id: string) => void }) {
     }
   }
 
+  /** 文案有改动就先保存，然后清掉草稿并打开剪辑。 */
   async function finish() {
     if (text.trim() && text !== cueText(draft)) {
       const saved = await saveCopy();

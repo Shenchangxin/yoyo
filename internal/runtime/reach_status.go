@@ -1,3 +1,6 @@
+// reach_status 汇报搜索与阅读后端，并在 PATH 上有 agent-reach 时跑 doctor --json。
+// 不代发 curl。doctor 超时 12 秒，并隐藏控制台。本文件没有 Windows Job Object。
+
 package runtime
 
 import (
@@ -11,6 +14,7 @@ import (
 	"time"
 )
 
+// lookAgentReach 在 PATH 上查找 agent-reach。测试会换掉它。
 var lookAgentReach = func() string {
 	p, err := exec.LookPath("agent-reach")
 	if err != nil {
@@ -19,6 +23,7 @@ var lookAgentReach = func() string {
 	return p
 }
 
+// runAgentReachDoctor 执行 agent-reach doctor --json，并隐藏控制台。标准输出非空时，即使进程失败也把输出交回去。
 var runAgentReachDoctor = func(ctx context.Context, bin string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, "doctor", "--json")
 	hideConsole(cmd)
@@ -40,6 +45,7 @@ var runAgentReachDoctor = func(ctx context.Context, bin string) (string, error) 
 	return out, nil
 }
 
+// reachStatus 写出搜索和阅读该用哪些宿主工具。CLI 不在 PATH 上就停在说明。否则用 12 秒超时跑 doctor，正文截到 8000 字符。
 func (t *WorkspaceTools) reachStatus() ToolResult {
 	var b strings.Builder
 	b.WriteString("Internet backends (host tools first; never curl)\n")
@@ -84,6 +90,7 @@ func (t *WorkspaceTools) reachStatus() ToolResult {
 	return ToolResult{Content: b.String()}
 }
 
+// formatDoctorJSON 把 doctor 的 JSON 按键名排序写成一行一项。不是对象时原样返回。单条 message 超过 160 个符文则截断。
 func formatDoctorJSON(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -97,7 +104,7 @@ func formatDoctorJSON(raw string) string {
 	for k := range top {
 		keys = append(keys, k)
 	}
-	// stable-ish: json map iteration is random; sort via strings
+	// JSON 对象的遍历顺序不稳定，这里按键名排序。
 	sort.Strings(keys)
 	var b strings.Builder
 	for _, k := range keys {

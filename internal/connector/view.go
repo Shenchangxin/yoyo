@@ -1,3 +1,6 @@
+// 给对话循环收紧连接器读取结果：条数、正文长度、日历时间范围，并标上 untrusted。
+// Broker.Read 本身不截断。
+
 package connector
 
 import (
@@ -8,21 +11,28 @@ import (
 )
 
 const (
-	searchCap     = 20
+	// searchCap 是普通查询最多返回的条数，值为 20。
+	searchCap = 20
+	// searchSnippet 是普通查询里正文字段的字节上限，值为 240。
 	searchSnippet = 240
-	threadCap     = 20
-	threadBody    = 12000
-	titleCap      = 500
-	descCap       = 2000
-	queryCap      = 500
-	calendarSpan  = 366 * 24 * time.Hour
+	// threadCap 是 thread: 或 id: 查询最多返回的条数，值为 20。
+	threadCap = 20
+	// threadBody 是线程查询里正文字段的字节上限，值为 12000。
+	threadBody = 12000
+	// titleCap 是 subject、title、location 的字节上限，值为 500。
+	titleCap = 500
+	// descCap 是 description 的字节上限，值为 2000。
+	descCap = 2000
+	// queryCap 是查询字符串的字节上限，值为 500。
+	queryCap = 500
+	// calendarSpan 是日历查询允许的最长时间跨度，为 366 天。
+	calendarSpan = 366 * 24 * time.Hour
 )
 
+// rfc3339Tok 匹配查询文本里的 RFC3339 时间。
 var rfc3339Tok = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})`)
 
-// BoundView shapes connector_read for the chat loop: bounded search/thread,
-// calendar range, and an untrusted source label. Broker.Read stays unbounded
-// for workers that already cap their own scans.
+// BoundView 截断条数和字段，并把每条的 source 设为 untrusted。日历必须带两个时间且跨度不超过 366 天。查询超过 500 字节返回错误。
 func BoundView(kind Kind, query string, items []map[string]string) ([]map[string]string, error) {
 	if len(query) > queryCap {
 		return nil, fmt.Errorf("connector: query must be at most %d characters", queryCap)
@@ -77,11 +87,13 @@ func BoundView(kind Kind, query string, items []map[string]string) ([]map[string
 	return out, nil
 }
 
+// threadQuery 在查询去掉空白并转成小写后，以 thread: 或 id: 开头时返回真。
 func threadQuery(query string) bool {
 	q := strings.TrimSpace(strings.ToLower(query))
 	return strings.HasPrefix(q, "thread:") || strings.HasPrefix(q, "id:")
 }
 
+// ParseTimeRange 从查询里取出前两个能解析的 RFC3339 时间，按先后返回。不足两个则返回假。
 func ParseTimeRange(query string) (time.Time, time.Time, bool) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -107,6 +119,7 @@ func ParseTimeRange(query string) (time.Time, time.Time, bool) {
 	return min, max, true
 }
 
+// filterCalendar 保留开始时间落在 [min, max) 的条目。没有时间或解析失败的条目也保留。
 func filterCalendar(items []map[string]string, min, max time.Time) []map[string]string {
 	var out []map[string]string
 	for _, it := range items {
@@ -127,6 +140,7 @@ func filterCalendar(items []map[string]string, min, max time.Time) []map[string]
 	return out
 }
 
+// parseLooseTime 按 RFC3339、带纳秒、无时区的日期时间或纯日期解析。
 func parseLooseTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02"} {
@@ -137,6 +151,7 @@ func parseLooseTime(raw string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// clipField 在字段长于 n 个字节时截断并返回真。n 不大于 0 或未超长时返回假。
 func clipField(row map[string]string, key string, n int) bool {
 	v := row[key]
 	if n <= 0 || len(v) <= n {
@@ -146,6 +161,7 @@ func clipField(row map[string]string, key string, n int) bool {
 	return true
 }
 
+// copyItem 复制一条字符串映射。
 func copyItem(it map[string]string) map[string]string {
 	out := make(map[string]string, len(it)+1)
 	for k, v := range it {
@@ -154,6 +170,7 @@ func copyItem(it map[string]string) map[string]string {
 	return out
 }
 
+// firstNonEmpty 返回第一段去掉空白后仍非空的字符串。
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {

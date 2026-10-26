@@ -1,3 +1,5 @@
+// serve.go 在本机环回地址和应用程序源上提供媒体字节。
+
 package video
 
 import (
@@ -11,6 +13,7 @@ import (
 	"time"
 )
 
+// StartMediaServer 在 127.0.0.1 的随机端口监听，把地址记到 MediaBase，并在后台 Serve。
 func (e *Engine) StartMediaServer() error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -23,8 +26,7 @@ func (e *Engine) StartMediaServer() error {
 	return nil
 }
 
-// MediaAssetMiddleware serves /media and /resource on the app origin.
-// The loopback media server is http, and an https webview will not play it.
+// MediaAssetMiddleware 在应用自己的源上提供 /media 和 /resource。环回媒体服务是 http，https 网页视图不会播放它。
 func MediaAssetMiddleware(e *Engine, next http.Handler) http.Handler {
 	if next == nil {
 		next = http.NotFoundHandler()
@@ -43,8 +45,10 @@ func MediaAssetMiddleware(e *Engine, next http.Handler) http.Handler {
 	})
 }
 
+// mediaHandler 处理 /resource/ 和 /media/。允许任意源，并放行 Range；OPTIONS 返回 204。资源按标识交给 ServeResourceFile，媒体按哈希走本地文件或 GetBytes。缓存一年且 immutable。
 func (e *Engine) mediaHandler() http.Handler {
 	mux := http.NewServeMux()
+	// cors 写上允许任意源和 Range。OPTIONS 返回 204 并让调用方停止后续处理。
 	cors := func(w http.ResponseWriter, r *http.Request) bool {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Range")
@@ -124,6 +128,7 @@ func (e *Engine) mediaHandler() http.Handler {
 	return mux
 }
 
+// peekMedia 读文件头并写上媒体类型。读失败时返回假。
 func peekMedia(w http.ResponseWriter, f *os.File) bool {
 	head, err := peekOpen(f)
 	if err != nil {
@@ -133,6 +138,7 @@ func peekMedia(w http.ResponseWriter, f *os.File) bool {
 	return true
 }
 
+// peekOpen 读最多 512 字节，再把文件指针拨回开头。
 func peekOpen(f *os.File) ([]byte, error) {
 	head := make([]byte, 512)
 	n, err := f.Read(head)
@@ -145,6 +151,7 @@ func peekOpen(f *os.File) ([]byte, error) {
 	return head[:n], nil
 }
 
+// headBytes 返回正文的前 512 字节；更短时返回全部。
 func headBytes(raw []byte) []byte {
 	if len(raw) > 512 {
 		return raw[:512]
@@ -152,6 +159,7 @@ func headBytes(raw []byte) []byte {
 	return raw
 }
 
+// presentableMime 保留已经具体的 MIME。空串或 application/octet-stream 时改用 mediaType，仍没有且原文非空时再用 http.DetectContentType。
 func presentableMime(mime string, raw []byte) string {
 	mime = strings.TrimSpace(mime)
 	if mime != "" && !strings.EqualFold(mime, "application/octet-stream") {
@@ -168,6 +176,7 @@ func presentableMime(mime string, raw []byte) string {
 	return mime
 }
 
+// applyMediaType 在 mediaType 认得出类型时写上 Content-Type 和 nosniff。
 func applyMediaType(w http.ResponseWriter, raw []byte) {
 	ct := mediaType(raw)
 	if ct == "" {
@@ -177,8 +186,7 @@ func applyMediaType(w http.ResponseWriter, raw []byte) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 }
 
-// CAS objects have no filename. Go's sniffer calls an MP4
-// application/octet-stream, and the webview then paints a black 0s player.
+// mediaType 识别没有文件名的内容寻址对象。ftyp 视为 video/mp4，EBML 头视为 video/webm，RIFF AVI 视为 video/x-msvideo，并识别 JPEG 和 PNG。嗅探结果为空或 application/octet-stream 时返回空串，避免网页视图把 MP4 画成 0 秒黑屏。
 func mediaType(raw []byte) string {
 	if len(raw) >= 12 && string(raw[4:8]) == "ftyp" {
 		return "video/mp4"
@@ -205,6 +213,7 @@ func mediaType(raw []byte) string {
 	return ct
 }
 
+// Status 是媒体基址、ffmpeg 是否可用、安装进度和视频目录。
 type Status struct {
 	MediaBase     string         `json:"media_base"`
 	FFmpeg        bool           `json:"ffmpeg"`
@@ -214,6 +223,7 @@ type Status struct {
 	DB            string         `json:"db"`
 }
 
+// Status 刷新 ffmpeg 路径后返回当前媒体服务和安装状态。DB 字段填的是视频目录。
 func (e *Engine) Status() Status {
 	e.refreshFFmpeg()
 	return Status{
@@ -226,11 +236,13 @@ func (e *Engine) Status() Status {
 	}
 }
 
+// JSON 把值编成 RawMessage。编码错误被忽略。
 func (e *Engine) JSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
 }
 
+// Snapshot 汇总媒体地址、ffmpeg、短剧数量、内容语言、工作台、缺密钥的供应商种类，以及 Remotion、whisper、yt-dlp、whisperx、区域检测和浏览器是否有路径。
 func (e *Engine) Snapshot() map[string]any {
 	st := e.Status()
 	n := 0
@@ -262,6 +274,7 @@ func (e *Engine) Snapshot() map[string]any {
 	}
 }
 
+// missingProviderKinds 列出 image 和 video 里没有一条既启用又有密钥的供应商种类。两种都有时返回空切片。
 func (e *Engine) missingProviderKinds() []string {
 	var out []string
 	for _, kind := range []string{"image", "video"} {

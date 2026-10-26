@@ -11,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/version"
 )
 
+// OpenPath 在 RPC 非空时调用 host.open，kind 为 path。否则有 App 时走 App.OpenPath，再否则 hostopen.Path。
 func (s *Service) OpenPath(path string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": path, "kind": "path"})
@@ -22,6 +23,7 @@ func (s *Service) OpenPath(path string) error {
 	return hostopen.Path(path)
 }
 
+// OpenURL 在 RPC 非空时调用 host.open，kind 为 url。否则有 App 时走 App.OpenURL，再否则 hostopen.URL。
 func (s *Service) OpenURL(raw string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": raw, "kind": "url"})
@@ -33,6 +35,7 @@ func (s *Service) OpenURL(raw string) error {
 	return hostopen.URL(raw)
 }
 
+// OpenInEditor 在 RPC 非空时调用 host.open，kind 为 editor。否则有 App 时走 App.OpenInEditor，再否则 hostopen.Editor。
 func (s *Service) OpenInEditor(path string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": path, "kind": "editor"})
@@ -44,6 +47,7 @@ func (s *Service) OpenInEditor(path string) error {
 	return hostopen.Editor(path)
 }
 
+// OpenWorkspaceTerminal 在 RPC 非空时调用 host.open，kind 为 terminal。否则有 App 时走 App.OpenWorkspaceTerminal，再否则 hostopen.Terminal。
 func (s *Service) OpenWorkspaceTerminal(dir string) error {
 	if s.RPC != nil {
 		_, err := s.call("host.open", map[string]any{"path": dir, "kind": "terminal"})
@@ -55,6 +59,7 @@ func (s *Service) OpenWorkspaceTerminal(dir string) error {
 	return hostopen.Terminal(dir)
 }
 
+// PopOutThread 为这条会话再开一个窗口，地址是 /?popout= 加上转义后的 id，哈希同样带 popout。darwin 保留系统标题栏，其他系统无边框。id 为空返回 missing thread，没有 gui 返回 no window host。
 func (s *Service) PopOutThread(id string) error {
 	if id == "" {
 		return errors.New("missing thread")

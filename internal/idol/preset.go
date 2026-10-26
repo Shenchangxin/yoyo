@@ -1,3 +1,6 @@
+// 本文件在 Open 时把嵌入的目录灌进状态。人设、事实、问候和头像是数据：yoyoSheet、yoyoFacts 以及 preset/catalog.json、preset/avatars 里的字节不在这里改写。
+// 目录偶像的默认立绘 id 形如 stand/<编号>，骨架文件等通话要画她时再由 StandCache 去取。用户自己建的偶像和桌宠 Yoyo 不会被目录更新删掉。
+
 package idol
 
 import (
@@ -10,11 +13,10 @@ import (
 	"time"
 )
 
-// Characters, persona sheets, facts, and portraits copied from the local
-// eidolon-sc pack. Each catalog idol also keeps her default Spine outfit id
-// (`stand/<enzaId>`). The skeleton files are fetched when a call draws her.
+// presetRevision 是已经写进状态的预设版本。达到这个数就不再重灌。当前是 3。
 const presetRevision = 3
 
+// petIdolID 是桌宠的固定 id，值是 yoyo。
 const petIdolID = "yoyo"
 
 //go:embed preset/catalog.json
@@ -23,11 +25,13 @@ var presetCatalog []byte
 //go:embed preset/avatars
 var presetAvatars embed.FS
 
+// presetFile 是 catalog.json 的形状。这份 JSON 是数据。
 type presetFile struct {
 	Circles []Circle     `json:"circles"`
 	Idols   []presetIdol `json:"idols"`
 }
 
+// presetIdol 是目录里的一位偶像。Sheet、Facts、Greeting 和 Avatar 文件名都是数据。
 type presetIdol struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
@@ -43,12 +47,14 @@ type presetIdol struct {
 	Stand      string   `json:"stand"`
 }
 
+// yoyoSheet 是桌宠的人设正文，字符串是数据。
 const yoyoSheet = `你是 Yoyo，住在用户桌面上的偶像，也是这台电脑的桌宠。
 没有照片时，你的样子是一颗圆圆的、会跟着心情变表情的小球。用户把鼠标停在你身上，可以打电话给你。
 通话时你的表情跟着当下的心情走：平静、开心、害羞、惊讶、难过、生气、思考。说话的时候嘴会动，听的时候看着对方。
 你说话短、口语、温柔，偶尔俏皮。你就待在屏幕角落，能感到用户在忙，但不要假装看见你其实不知道的屏幕内容。
 用户让你做事时，先答应，再去办。`
 
+// yoyoFacts 是桌宠的事实分段，字符串是数据。
 const yoyoFacts = `# 她是谁
 ## 桌宠
 Yoyo 是默认出现在桌面上的偶像。没有设置形象照片时，桌面上那颗会变表情的小球就是她。
@@ -57,6 +63,7 @@ Yoyo 是默认出现在桌面上的偶像。没有设置形象照片时，桌面
 ## 说话
 她说中文，句子短。心情用平静、开心、害羞、惊讶、难过、生气、思考来形容。`
 
+// ensurePresets 在 PresetRev 低于 presetRevision 时灌目录。已有的偶像 id 不覆盖。缺桌宠就放上 Yoyo。空的 OutfitID 用目录里合法的 Stand 补上。还没有人被钉选时钉上桌宠。全新状态且称呼为空时写成「制作人」。然后把 PresetRev 写成当前版本并保存。
 func (s *Store) ensurePresets() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -141,8 +148,7 @@ func (s *Store) ensurePresets() error {
 	return s.saveLocked()
 }
 
-// dropRetiredPresets removes catalog idols and circles that are no longer in
-// the pack. Someone the user made, and Yoyo, stay.
+// dropRetiredPresets 删掉 id 以 sc- 开头、且不在这次目录里的偶像和圈子。用户自己建的和 Yoyo 留下。被删的偶像若正被钉选，改钉桌宠，并清掉她们的对话、记忆、好感、材料、通话和主动开口记录。
 func (st *State) dropRetiredPresets(keepIdol, keepCircle map[string]bool) {
 	gone := map[string]bool{}
 	var idols []Idol
@@ -182,6 +188,7 @@ func (st *State) dropRetiredPresets(keepIdol, keepCircle map[string]bool) {
 	st.Reaches = filterReaches(st.Reaches, gone)
 }
 
+// filterConversations 丢掉 IdolID 在 gone 里的对话。
 func filterConversations(in []Conversation, gone map[string]bool) []Conversation {
 	var out []Conversation
 	for _, it := range in {
@@ -192,6 +199,7 @@ func filterConversations(in []Conversation, gone map[string]bool) []Conversation
 	return out
 }
 
+// filterMemories 丢掉 SourceIdol 在 gone 里的记忆。
 func filterMemories(in []Memory, gone map[string]bool) []Memory {
 	var out []Memory
 	for _, it := range in {
@@ -202,6 +210,7 @@ func filterMemories(in []Memory, gone map[string]bool) []Memory {
 	return out
 }
 
+// filterAffinity 丢掉 IdolID 在 gone 里的好感。
 func filterAffinity(in []Affinity, gone map[string]bool) []Affinity {
 	var out []Affinity
 	for _, it := range in {
@@ -212,6 +221,7 @@ func filterAffinity(in []Affinity, gone map[string]bool) []Affinity {
 	return out
 }
 
+// filterLore 丢掉 IdolID 在 gone 里的材料。
 func filterLore(in []Lore, gone map[string]bool) []Lore {
 	var out []Lore
 	for _, it := range in {
@@ -222,6 +232,7 @@ func filterLore(in []Lore, gone map[string]bool) []Lore {
 	return out
 }
 
+// filterCalls 丢掉 IdolID 在 gone 里的通话。
 func filterCalls(in []CallLog, gone map[string]bool) []CallLog {
 	var out []CallLog
 	for _, it := range in {
@@ -232,6 +243,7 @@ func filterCalls(in []CallLog, gone map[string]bool) []CallLog {
 	return out
 }
 
+// filterReaches 丢掉 IdolID 在 gone 里的主动开口记录。
 func filterReaches(in []ReachMark, gone map[string]bool) []ReachMark {
 	var out []ReachMark
 	for _, it := range in {
@@ -242,6 +254,7 @@ func filterReaches(in []ReachMark, gone map[string]bool) []ReachMark {
 	return out
 }
 
+// anyPinned 看有没有偶像的 Pinned 为真。
 func anyPinned(idols []Idol) bool {
 	for _, it := range idols {
 		if it.Pinned {
@@ -251,6 +264,7 @@ func anyPinned(idols []Idol) bool {
 	return false
 }
 
+// petIdol 用 yoyoSheet 和 yoyoFacts 造桌宠。Kind 是 pet，工作通道打开。
 func petIdol(now time.Time) Idol {
 	return NormalizeIdol(Idol{
 		ID:           petIdolID,
@@ -267,6 +281,7 @@ func petIdol(now time.Time) Idol {
 	}, now)
 }
 
+// asIdol 把目录条目收成 Idol。口语是 ja，字幕是 zh，Kind 是 catalog，工作通道打开。
 func (p presetIdol) asIdol(now time.Time) Idol {
 	return Idol{
 		ID:           p.ID,
@@ -286,6 +301,7 @@ func (p presetIdol) asIdol(now time.Time) Idol {
 	}
 }
 
+// outfitID 在 raw 通过 validOutfitID 时原样返回，否则返回空字符串。
 func outfitID(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if validOutfitID(raw) {
@@ -294,6 +310,7 @@ func outfitID(raw string) string {
 	return ""
 }
 
+// composeSheet 在中文名和原文不同时先写名字，有问候就写初次见面的话，再接上目录里的人设。人设正文是数据。
 func composeSheet(p presetIdol) string {
 	var b strings.Builder
 	if orig := strings.TrimSpace(p.NameOrig); orig != "" && orig != strings.TrimSpace(p.Name) {
@@ -309,6 +326,7 @@ func composeSheet(p presetIdol) string {
 	return b.String()
 }
 
+// installAvatar 从嵌入的头像里读文件，写成 blobs/preset-<偶像 id>。文件已在就不覆盖。文件名含 .. 或 id 含斜杠时拒绝。
 func (s *Store) installAvatar(idolID, file string) (string, error) {
 	file = filepath.Base(strings.TrimSpace(file))
 	if file == "" || file == "." || strings.Contains(file, "..") {
@@ -331,7 +349,7 @@ func (s *Store) installAvatar(idolID, file string) (string, error) {
 	return id, nil
 }
 
-// eidolon gift ids mapped onto this desk's catalog.
+// giftAlias 把目录里的礼物 id 映射到本桌面 Catalog 的 id。这张表是数据。
 var giftAlias = map[string]string{
 	"tea":              "tea",
 	"black-tea":        "tea",
@@ -362,6 +380,7 @@ var giftAlias = map[string]string{
 	"letter":           "letter",
 }
 
+// mapLiked 按 giftAlias 映射并去重，丢掉 Catalog 里没有的 id。
 func mapLiked(ids []string) []string {
 	var out []string
 	seen := map[string]bool{}

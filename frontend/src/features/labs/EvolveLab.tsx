@@ -1,3 +1,5 @@
+// 本文件拥有叠加线程和一轮改进的表单与结果。不拥有改进怎么算。调用方传入 evolve、overlay 和各个开关回调。
+
 import { useEffect } from "react";
 import { asArray, bool, num, pick, str } from "../../lib/normalize";
 import { formatMoney, useCopy } from "../../lib/i18n";
@@ -8,6 +10,7 @@ import { LabCard, LabChip, LabFrame, LabTable } from "./LabFrame";
 import { PresenceModuleLoading } from "../presence";
 import { useUI } from "../../lib/store";
 
+// EvolveLab 把 overlayK 夹在 1 到 4，并把提示里的 {r}、{p}、{k} 换成 4 倍、3 倍和 k 本身。忙时只显示加载。k 的输入空了按 3，轮数空了按 1。
 export function EvolveLab(props: {
   busy: boolean;
   k: number;
@@ -45,6 +48,7 @@ export function EvolveLab(props: {
   const copy = useCopy();
   const lab = useUI((s) => s.showHarnessLab);
   const overlayK = Math.max(1, Math.min(4, props.overlayK || 1));
+  // 忙着时打开全局模块加载，卸下或不再忙时关掉。
   useEffect(() => {
     if (!props.busy) return;
     useUI.getState().setModuleLoading(true);
@@ -231,6 +235,7 @@ export function EvolveLab(props: {
   );
 }
 
+// 在用已移动时用切换文案，否则已合并用候选文案，都没有就用保持文案。实验室开关关掉时只留这一句。
 function CycleResult(props: { evolve: any; copy: ReturnType<typeof useCopy>; lab: boolean }) {
   const moved = bool(pick(props.evolve, "active_moved", "ActiveMoved"));
   const merged = bool(pick(props.evolve, "merged", "Merged"));
@@ -256,11 +261,13 @@ function CycleResult(props: { evolve: any; copy: ReturnType<typeof useCopy>; lab
   );
 }
 
+// 长于 16 个字符就截到 16，空值显示破折号。
 function slice(v: any): string {
   const s = str(v);
   return s.length > 16 ? s.slice(0, 16) : s || "—";
 }
 
+// 有领域名就接在标题后。没有条目时显示空文案。
 function LibraryBlock(props: { view?: any; copy: ReturnType<typeof useCopy> }) {
   const copy = props.copy;
   const entries = asArray(pick(props.view, "entries", "Entries"));
@@ -284,6 +291,7 @@ function LibraryBlock(props: { view?: any; copy: ReturnType<typeof useCopy> }) {
   );
 }
 
+// 已采纳用钉住文案，否则用保持文案。library 为 added 时说写进了库。证明按钮只在已采纳、有哈希、并且传入了 onProve 时出现。实验室开关打开才显示哈希前 8 位。
 function OverlayResult(props: { overlay: any; copy: ReturnType<typeof useCopy>; lab: boolean; onProve?: (hash: string) => void }) {
   const adopted = bool(pick(props.overlay, "adopted", "Adopted"));
   const hash = str(pick(props.overlay, "hash", "Hash"));
@@ -313,6 +321,7 @@ function OverlayResult(props: { overlay: any; copy: ReturnType<typeof useCopy>; 
   );
 }
 
+// 没有行就什么都不画。实验室开关关掉时拼成一段话；打开时才把对比行和 k 放进表格。
 function LabSpendTable(props: { evolve: any; overlay?: any; copy: ReturnType<typeof useCopy>; lab: boolean }) {
   const copy = props.copy;
   const cmp = pick(props.evolve, "compare", "Compare");
@@ -403,6 +412,7 @@ function LabSpendTable(props: { evolve: any; overlay?: any; copy: ReturnType<typ
   );
 }
 
+// 没有 compare 就什么都不画。best_of_n 按报告编号，iid 和 scs 按提案 id，缺 id 时用序号。
 function CompareBlock(props: { evolve: any; copy: ReturnType<typeof useCopy> }) {
   const cmp = pick(props.evolve, "compare", "Compare");
   if (!cmp) return null;
@@ -457,6 +467,7 @@ function CompareBlock(props: { evolve: any; copy: ReturnType<typeof useCopy> }) 
   );
 }
 
+// 按下状态跟 on 走。开着时用抬起色，关着时用弱色。
 function Gate(props: { on: boolean; onClick: () => void; children: string }) {
   return (
     <button

@@ -1,3 +1,5 @@
+// cut_test.go 锁住剪辑项目、会话绑定、省略和保留。依赖本机 ffmpeg 的用例在找不到二进制时跳过。
+
 package video
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/video/cut"
 )
 
+// TestReleaseCutBindReturnsHome 确认解除绑定后会话不再关联，项目仍能读到。
 func TestReleaseCutBindReturnsHome(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateCutProject(CutProject{Title: "口播"})
@@ -27,6 +30,7 @@ func TestReleaseCutBindReturnsHome(t *testing.T) {
 	}
 }
 
+// TestCutProjectCRUD 确认项目能创建和读回，会话绑到该项目，列表里只有这一条。
 func TestCutProjectCRUD(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateCutProject(CutProject{Title: "口播小样"})
@@ -60,6 +64,7 @@ func TestCutProjectCRUD(t *testing.T) {
 	}
 }
 
+// TestCutKeepAndOmit 确认省略字幕会切开时间线，再省略一次会恢复，只保留一个片段时剪辑表只剩该片段。
 func TestCutKeepAndOmit(t *testing.T) {
 	e := testEngine(t)
 	p, err := e.CreateCutProject(CutProject{Title: "口播"})
@@ -99,6 +104,7 @@ func TestCutKeepAndOmit(t *testing.T) {
 	}
 }
 
+// TestProviderMenuHidesUnkeyed 确认连接登记存在时菜单每一行都有 id，登记为空时跳过。
 func TestProviderMenuHidesUnkeyed(t *testing.T) {
 	e := testEngine(t)
 	if e.Conn == nil {
@@ -112,6 +118,7 @@ func TestProviderMenuHidesUnkeyed(t *testing.T) {
 	}
 }
 
+// TestOpenCutReleasesStudioBind 确认打开剪辑后工作室绑定解除、剪辑会话绑上，同一素材再次打开仍是原项目。
 func TestOpenCutReleasesStudioBind(t *testing.T) {
 	e := testEngine(t)
 	hash, err := e.PutBytes([]byte("cut-source-bytes"))
@@ -148,6 +155,7 @@ func TestOpenCutReleasesStudioBind(t *testing.T) {
 	}
 }
 
+// TestOpenCutFromCanvasResource 确认用画布资源打开剪辑时，来源哈希等于该资源的内容哈希。
 func TestOpenCutFromCanvasResource(t *testing.T) {
 	e := testEngine(t)
 	res, err := e.putCanvasBytes("video", "video/mp4", "clip.mp4", []byte("canvas-clip"), 0, 0, 0, "res-cut")
@@ -163,6 +171,7 @@ func TestOpenCutFromCanvasResource(t *testing.T) {
 	}
 }
 
+// TestVideoRouteRejectsGame 确认目的地为 game 时路由返回错误。
 func TestVideoRouteRejectsGame(t *testing.T) {
 	e := testEngine(t)
 	if _, err := e.VideoRoute("sess-route", "game", "", "世界", "collect three relics"); err == nil {
@@ -170,6 +179,7 @@ func TestVideoRouteRejectsGame(t *testing.T) {
 	}
 }
 
+// TestVideoRouteCreatesCut 确认路由到 cut 时返回项目标识，并把会话绑到该项目。
 func TestVideoRouteCreatesCut(t *testing.T) {
 	e := testEngine(t)
 	out, err := e.VideoRoute("sess-route", "cut", "", "胶片", "")
@@ -186,6 +196,7 @@ func TestVideoRouteCreatesCut(t *testing.T) {
 	}
 }
 
+// ffmpegBin 寻找 ffmpeg 和 ffprobe，找不到 ffmpeg 时跳过测试。
 func ffmpegBin(t *testing.T) (string, string) {
 	t.Helper()
 	ff, probe := LookFFmpeg()
@@ -205,6 +216,7 @@ func ffmpegBin(t *testing.T) (string, string) {
 	return ff, probe
 }
 
+// makeTalkingClip 用 ffmpeg 合成一段样片，合成失败时跳过。
 func makeTalkingClip(t *testing.T, dir, ff string) string {
 	t.Helper()
 	out := filepath.Join(dir, "talk.mp4")
@@ -225,6 +237,7 @@ func makeTalkingClip(t *testing.T, dir, ff string) string {
 	return out
 }
 
+// TestSampleAIngestProposeKeepAudio 确认导入和分析后时长至少为 8，提案片段都有哈希且 energy 不小于 1，应用后有成片哈希。
 func TestSampleAIngestProposeKeepAudio(t *testing.T) {
 	ff, probe := ffmpegBin(t)
 	e := testEngine(t)
@@ -276,6 +289,7 @@ func TestSampleAIngestProposeKeepAudio(t *testing.T) {
 	}
 }
 
+// TestSampleBCaptionsAndDuckMix 确认字幕至少有 2 条且有 SRT 哈希，混音后有成片哈希，闪避滤镜图不是空串。
 func TestSampleBCaptionsAndDuckMix(t *testing.T) {
 	ff, probe := ffmpegBin(t)
 	e := testEngine(t)
@@ -342,6 +356,7 @@ func TestSampleBCaptionsAndDuckMix(t *testing.T) {
 	}
 }
 
+// mustRead 读出整个文件，失败则终止测试。
 func mustRead(t *testing.T, path string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(path)

@@ -1,3 +1,6 @@
+// 磁盘上没有 instruction.md 时，按目录规格写出任务。expect 和测试脚本写在任务自己的 tests/ 里。
+// 智能体工作区由 copyDir 生成，那一步会跳过 tests/。Engine.resolveTaskDir 调用这里。
+
 package eval
 
 import (
@@ -7,6 +10,7 @@ import (
 	"strings"
 )
 
+// resolveTaskDir 在 root/id 已有 instruction.md 时直接用它。否则按规格物化到 materialRoot，失败时仍返回 root/id。
 func (e *Engine) resolveTaskDir(root, id string) string {
 	p := filepath.Join(root, id)
 	if _, err := os.Stat(filepath.Join(p, "instruction.md")); err == nil {
@@ -23,6 +27,7 @@ func (e *Engine) resolveTaskDir(root, id string) string {
 	return dst
 }
 
+// materialRoot 在 SuitesRoot 非空时用其下的 .materialized，否则用临时目录 yoyo-eval-tasks。
 func (e *Engine) materialRoot() string {
 	if e != nil && e.SuitesRoot != "" {
 		return filepath.Join(e.SuitesRoot, ".materialized")
@@ -30,6 +35,7 @@ func (e *Engine) materialRoot() string {
 	return filepath.Join(os.TempDir(), "yoyo-eval-tasks")
 }
 
+// materialize 写出 instruction.md、timeout_minutes 为 1 的 task.toml，以及 tests 下的 expect.toml、test.sh 和 test.ps1。
 func materialize(dir string, spec TaskSpec) error {
 	if err := os.MkdirAll(filepath.Join(dir, "tests"), 0o755); err != nil {
 		return err
@@ -53,6 +59,7 @@ func materialize(dir string, spec TaskSpec) error {
 	return os.WriteFile(filepath.Join(dir, "tests", "test.ps1"), []byte(ps), 0o644)
 }
 
+// shellQuote 在字符串不含单引号时用单引号包住，否则交给 strconvQuote。
 func shellQuote(s string) string {
 	if strings.IndexByte(s, '\'') < 0 {
 		return "'" + s + "'"
@@ -60,6 +67,7 @@ func shellQuote(s string) string {
 	return strconvQuote(s)
 }
 
+// strconvQuote 用双引号包住，并把其中的双引号写成反斜杠转义。
 func strconvQuote(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 }

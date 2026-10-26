@@ -1,22 +1,24 @@
+// 技能包的偏好、来源、清单和交给会话的运行时契约。
+
 package skillpack
 
 import "time"
 
-// Pref is the global config.yaml packs.<id> block.
+// Pref 是全局配置里 packs.<id> 的一块，只有 Enabled。
 type Pref struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
-// Origin records how a pack landed on disk.
+// Origin 记录技能包是从 GitHub 还是本地目录装上来的。
 type Origin struct {
-	Kind      string `json:"kind"`                 // github | local
-	Repo      string `json:"repo,omitempty"`       // owner/name
-	Ref       string `json:"ref,omitempty"`        // branch, tag, or commit
-	SkillsRel string `json:"skills_rel,omitempty"` // directory inside the repo
-	Path      string `json:"path,omitempty"`       // local checkout
+	Kind      string `json:"kind"`                 // github 或 local
+	Repo      string `json:"repo,omitempty"`       // 所有者/仓库名
+	Ref       string `json:"ref,omitempty"`        // 分支、标签或提交
+	SkillsRel string `json:"skills_rel,omitempty"` // 仓库里的技能目录
+	Path      string `json:"path,omitempty"`       // 本地目录
 }
 
-// Manifest is ~/.yoyo/packs/<id>/pack.json.
+// Manifest 是 home/packs/<id>/pack.json 的内容。
 type Manifest struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
@@ -31,12 +33,7 @@ type Manifest struct {
 	InstalledAt    time.Time `json:"installed_at"`
 }
 
-// Known is a built-in catalog entry. Installation still copies files; this
-// only describes what Yoyo can fetch and how to bootstrap it.
-//
-// Methodology packs set BootstrapSkill and Methodology. Domain packs leave
-// both empty: skills are catalog-routed and loaded on demand, with no
-// session-start inject.
+// Known 是内置目录的一条。它只描述从哪里取、如何引导；安装时仍要复制文件。方法论包设置 BootstrapSkill 和 Methodology。领域包这两项都空着，技能按目录路由、用到时再加载，会话开始时不注入。
 type Known struct {
 	ID             string
 	Name           string
@@ -49,12 +46,12 @@ type Known struct {
 	Methodology    bool
 }
 
-// WorkspacePref is one key in .yoyo/packs.json.
+// WorkspacePref 是 <workspace>/.yoyo/packs.json 里一个 id 的开关。
 type WorkspacePref struct {
 	Enabled bool `json:"enabled"`
 }
 
-// Status is the UI/API view of a pack: known catalog ∪ installed disk.
+// Status 是界面和接口看到的包：内置目录和磁盘上已安装的并集。
 type Status struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
@@ -77,7 +74,7 @@ type Status struct {
 	Known           bool      `json:"known"`
 }
 
-// Session is the per-turn runtime contract handed to the loop.
+// Session 是交给每一轮的运行时契约：包 id、引导技能、工具映射和方法论标记。
 type Session struct {
 	ID             string
 	BootstrapSkill string
@@ -86,9 +83,14 @@ type Session struct {
 }
 
 const (
-	ScopeGlobal    = "global"
+	// ScopeGlobal 表示全局开关，值为 global。
+	ScopeGlobal = "global"
+	// ScopeWorkspace 表示工作区开关，值为 workspace。
 	ScopeWorkspace = "workspace"
-	ScopeInherit   = "inherit"
-	KindGitHub     = "github"
-	KindLocal      = "local"
+	// ScopeInherit 表示沿用上一级，值为 inherit。
+	ScopeInherit = "inherit"
+	// KindGitHub 表示来源是 GitHub，值为 github。
+	KindGitHub = "github"
+	// KindLocal 表示来源是本地目录，值为 local。
+	KindLocal = "local"
 )

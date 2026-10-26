@@ -1,3 +1,5 @@
+// provider.go 把连接表投影成图像、视频和语音等供应商行。
+
 package video
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/Shenchangxin/yoyo/internal/connection"
 )
 
+// ListProviders 按服务类型列出连接。连接表为空时返回空切片。空类型时跳过聊天能力，protocol 能力一律跳过。同一连接的同一能力只出现一次。
 func (e *Engine) ListProviders(serviceType string) ([]Provider, error) {
 	if e.Conn == nil {
 		return []Provider{}, nil
@@ -46,6 +49,7 @@ func (e *Engine) ListProviders(serviceType string) ([]Provider, error) {
 	return out, nil
 }
 
+// GetProvider 按标识读取连接并投影成供应商。连接表为空或读不到时返回 provider not found。
 func (e *Engine) GetProvider(id string) (Provider, error) {
 	if e.Conn == nil {
 		return Provider{}, fmt.Errorf("provider not found")
@@ -59,6 +63,7 @@ func (e *Engine) GetProvider(id string) (Provider, error) {
 	return providerFromConn(c, connCapForYingce(wantCap), e.Conn.Defaults()), nil
 }
 
+// ActiveProvider 先按标识取匹配该能力的连接，没有再取 Active，仍没有再找第一条匹配的连接。都没有时提示到设置里添加。
 func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 	if e.Conn == nil {
 		return Provider{}, fmt.Errorf("no active %s provider — add one in Settings", serviceType)
@@ -80,6 +85,7 @@ func (e *Engine) ActiveProvider(serviceType, id string) (Provider, error) {
 	return providerFromConn(c, cap, e.Conn.Defaults()), nil
 }
 
+// firstMatchingConn 在启用且能力匹配的连接里，优先返回有密钥并且声明了该能力的一条。否则返回第一条有密钥的，再否则返回第一条匹配的。都没有时返回 no active connection。
 func (e *Engine) firstMatchingConn(cap string) (connection.Connection, error) {
 	list, err := e.Conn.List("")
 	if err != nil {
@@ -114,10 +120,12 @@ func (e *Engine) firstMatchingConn(cap string) (connection.Connection, error) {
 	return connection.Connection{}, fmt.Errorf("no active %s connection", cap)
 }
 
+// ProviderModels 解析供应商模型列表文本。
 func ProviderModels(p Provider) []string {
 	return connection.ParseModels(p.Models)
 }
 
+// ResolveProviderModel 优先用 want，其次用供应商当前模型，再次用模型列表的第一项。都空时返回空串。
 func ResolveProviderModel(p Provider, want string) string {
 	want = strings.TrimSpace(want)
 	if want != "" {
@@ -132,6 +140,7 @@ func ResolveProviderModel(p Provider, want string) string {
 	return ""
 }
 
+// UpsertProvider 把供应商写进连接表。服务类型空着时用图像。已有连接会合并能力、模型、默认模型、保险库键、名字、端点、厂商和设置。IsDefault 为真时把该连接设为这种能力的默认。连接表为空时返回 connection registry missing。
 func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 	if e.Conn == nil {
 		return p, fmt.Errorf("connection registry missing")
@@ -211,6 +220,7 @@ func (e *Engine) UpsertProvider(p Provider, apiKey string) (Provider, error) {
 	return providerFromConn(out, cap, e.Conn.Defaults()), nil
 }
 
+// DeleteProvider 删除连接。连接表为空时返回 nil。标识 cas-local 返回 local CAS cannot be removed。
 func (e *Engine) DeleteProvider(id string) error {
 	if e.Conn == nil {
 		return nil
@@ -222,6 +232,7 @@ func (e *Engine) DeleteProvider(id string) error {
 	return e.Conn.Delete(id)
 }
 
+// TestProvider 调用连接表的测试。连接表为空时返回 ok 为假、error 为 registry missing。
 func (e *Engine) TestProvider(id string) map[string]any {
 	if e.Conn == nil {
 		return map[string]any{"ok": false, "error": "registry missing"}
@@ -229,6 +240,7 @@ func (e *Engine) TestProvider(id string) map[string]any {
 	return e.Conn.Test(providerIDFromChannel(id))
 }
 
+// uniqueModels 按出现顺序去掉空白和重复模型名。
 func uniqueModels(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -243,6 +255,7 @@ func uniqueModels(in []string) []string {
 	return out
 }
 
+// providerFromConn 把一条连接投影成供应商。能力空着时优先取图像、视频或语音，再取第一项。语音能力的服务类型写成 tts，聊天写成 chat。设置编不成 JSON 时用 {}。
 func providerFromConn(c connection.Connection, cap string, defs connection.Defaults) Provider {
 	if cap == "" {
 		for _, x := range c.Capabilities {
@@ -292,6 +305,7 @@ func providerFromConn(c connection.Connection, cap string, defs connection.Defau
 	}
 }
 
+// mapProviderPlugin 按厂商和服务类型推断协议名。
 func mapProviderPlugin(serviceType, vendor string) string {
 	return connection.InferProtocol(vendor, serviceType)
 }

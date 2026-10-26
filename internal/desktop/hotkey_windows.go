@@ -13,6 +13,7 @@ const (
 	wmHotkey   = 0x0312
 )
 
+// registerWakeHotkey 注册 Ctrl+Shift+Y。注册失败则返回。消息循环里见到 WM_HOTKEY 就 RaiseWindow。GetMessageW 返回不大于 0 时结束。
 func registerWakeHotkey(s *Service) {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	reg := user32.NewProc("RegisterHotKey")

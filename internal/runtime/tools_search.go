@@ -1,3 +1,5 @@
+// glob 和 grep 的工作区遍历。跳过 skipDirNames 和 loadIgnore 命中的路径。含 NUL 的文件不参与 grep。
+
 package runtime
 
 import (
@@ -8,11 +10,13 @@ import (
 	"strings"
 )
 
+// skipDirNames 是遍历时跳过的目录名：.git、node_modules、vendor、dist、.yoyo、target、.next、__pycache__。copyTree 也用它。
 var skipDirNames = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, "dist": true,
 	".yoyo": true, "target": true, ".next": true, "__pycache__": true,
 }
 
+// globWalk 按 filepath.Match 匹配相对路径或文件名。模式含 ** 时再试 matchStarStar。达到 limit 就停止。忽略目录和文件被跳过。
 func globWalk(root, pattern string, limit int) ([]string, error) {
 	pattern = filepath.ToSlash(pattern)
 	ign := loadIgnore(root)
@@ -57,6 +61,7 @@ func globWalk(root, pattern string, limit int) ([]string, error) {
 	return out, err
 }
 
+// matchStarStar 把 **/*、**/ 和 ** 收成 * 后再做 filepath.Match，先对相对路径，再对基名。
 func matchStarStar(pattern, rel string) bool {
 	pattern = strings.ReplaceAll(pattern, "**/*", "*")
 	pattern = strings.ReplaceAll(pattern, "**/", "")
@@ -73,6 +78,7 @@ func matchStarStar(pattern, rel string) bool {
 	return ok
 }
 
+// grepWalk 逐行匹配。globPat 非空时先按文件名或相对路径过滤。文件头 512 字节含 NUL 则跳过。扫描缓冲最大 1MiB。单行超过 240 字节会截断。达到 limit 就停止。
 func grepWalk(root, ws string, re *regexp.Regexp, globPat string, limit int) (string, error) {
 	var b strings.Builder
 	n := 0
@@ -138,6 +144,7 @@ func grepWalk(root, ws string, re *regexp.Regexp, globPat string, limit int) (st
 	return b.String(), err
 }
 
+// fmtLine 写成 相对路径:行号:内容。内容长于 240 字节时截断并加省略号。
 func fmtLine(b *strings.Builder, rel string, n int, line string) {
 	if len(line) > 240 {
 		line = line[:240] + "…"
@@ -150,6 +157,7 @@ func fmtLine(b *strings.Builder, rel string, n int, line string) {
 	b.WriteByte('\n')
 }
 
+// hasNull 在字节里出现 0 时返回真。
 func hasNull(b []byte) bool {
 	for _, c := range b {
 		if c == 0 {
@@ -159,8 +167,11 @@ func hasNull(b []byte) bool {
 	return false
 }
 
+// stopWalk 是提前结束 Walk 的错误，Error 返回 stop。
 type stopWalk struct{}
 
+// Error 返回 stop，供 Walk 识别提前结束。
 func (stopWalk) Error() string { return "stop" }
 
+// errStopWalk 是 stopWalk 的实例。globWalk 和 grepWalk 遇到它会当成正常停止。
 var errStopWalk error = stopWalk{}

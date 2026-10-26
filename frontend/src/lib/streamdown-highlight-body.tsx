@@ -1,3 +1,8 @@
+/**
+ * 拥有：代码块高亮后的 token 行渲染。
+ * 不拥有：语言插件和主题。Streamdown 原本懒加载 highlighted-body，Vite 依赖优化会把它改写成带哈希的文件，WebView2 拿不到。高亮改由这里经 code 插件从源码提供。
+ */
+
 import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { codePlugin } from "./code-plugin";
 
@@ -19,6 +24,7 @@ type Props = {
   lineNumbers?: boolean;
 };
 
+/** 把高亮 token 上的颜色和 htmlStyle 收成行内样式。 */
 function tokenStyle(t: HlToken): CSSProperties | undefined {
   if (t.htmlStyle && typeof t.htmlStyle === "object" && !Array.isArray(t.htmlStyle)) {
     return t.htmlStyle as CSSProperties;
@@ -38,11 +44,7 @@ function tokenStyle(t: HlToken): CSSProperties | undefined {
   return Object.keys(style).length ? style : undefined;
 }
 
-/**
- * Streamdown lazy-loads ./highlighted-body-*.js. Vite's dep optimizer rewrites
- * that to a hashed file under .vite/deps that WebView2 never receives.
- * This module is the same highlighter (via @streamdown/code) served from /src.
- */
+/** HighlightedCodeBlockBody 渲染已经或即将高亮的代码行。已有 token 先画出来，插件回调再替换。 */
 export function HighlightedCodeBlockBody({
   code,
   language,
